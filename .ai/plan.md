@@ -12,6 +12,7 @@ A Node.js/TypeScript CLI tool that analyzes videos in a folder, transcribes them
 6. **Resumable Processing** - SQLite database tracks progress, can resume after interruption
 7. **Model Management** - Download and select local Whisper model versions
 8. **Prerequisite Checking** - Validate all dependencies on startup
+9. **Interactive Menu** - Configure settings interactively or use defaults
 
 ## Output Directory Structure
 
@@ -178,6 +179,254 @@ async function checkPrerequisites(options: { whisperMode: 'local' | 'api' }): Pr
 - **Skip for help/version** - `--help` and `--version` should work without checks
 - **Mode-aware** - Only check for local Whisper if not using `--whisper api`
 
+## Interactive Settings Menu
+
+When launching without flags (or with `--interactive`), the CLI displays an interactive menu to configure settings before processing.
+
+### Menu Flow
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   AI Video Cataloger                        │
+│                                                             │
+│  Found 12 video files in /path/to/folder                    │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  > Start with defaults                              │    │
+│  │    Configure settings                               │    │
+│  │    View current settings                            │    │
+│  │    Exit                                             │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Settings Configuration Menu
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Configure Settings                        │
+│                                                             │
+│  Transcription                                              │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  > Local Whisper (default)                          │    │
+│  │    OpenAI Whisper API                               │    │
+│  │    Skip transcription                               │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  Whisper Model (if local)                                   │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │    tiny (75 MB, fastest)                            │    │
+│  │  > base (142 MB, default)                           │    │
+│  │    small (466 MB)                                   │    │
+│  │    medium (1.5 GB)                                  │    │
+│  │    large-v3 (3.1 GB, best quality)                  │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  Frame Extraction                                           │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  Frames per video: [3]  (1-10)                      │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  File Renaming                                              │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  > Rename videos based on content                   │    │
+│  │    Keep original names                              │    │
+│  └─────────────────────────────────────────────────────┘    │
+│                                                             │
+│  ┌─────────────────────────────────────────────────────┐    │
+│  │  > Save and start processing                        │    │
+│  │    Back to main menu                                │    │
+│  └─────────────────────────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### View Current Settings
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                   Current Settings                          │
+│                                                             │
+│  Transcription:     Local Whisper                           │
+│  Whisper Model:     base (142 MB)                           │
+│  Frames per video:  3                                       │
+│  Rename videos:     Yes                                     │
+│  Output directory:  ./                                      │
+│                                                             │
+│  Press any key to return...                                 │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### Implementation
+
+```typescript
+// src/services/interactive-menu.ts
+
+import inquirer from 'inquirer';
+import chalk from 'chalk';
+
+interface Settings {
+  whisperMode: 'local' | 'api' | 'skip';
+  whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+  frameCount: number;
+  renameVideos: boolean;
+}
+
+const defaultSettings: Settings = {
+  whisperMode: 'local',
+  whisperModel: 'base',
+  frameCount: 3,
+  renameVideos: true,
+};
+
+export async function showMainMenu(videoCount: number, directory: string): Promise<Settings | null> {
+  console.clear();
+  console.log(chalk.bold.blue('\n  AI Video Cataloger\n'));
+  console.log(chalk.gray(`  Found ${videoCount} video files in ${directory}\n`));
+
+  const { action } = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'action',
+      message: 'What would you like to do?',
+      choices: [
+        { name: 'Start with defaults', value: 'defaults' },
+        { name: 'Configure settings', value: 'configure' },
+        { name: 'View current settings', value: 'view' },
+        { name: 'Exit', value: 'exit' },
+      ],
+    },
+  ]);
+
+  switch (action) {
+    case 'defaults':
+      return defaultSettings;
+    case 'configure':
+      return await configureSettings();
+    case 'view':
+      await viewSettings(defaultSettings);
+      return showMainMenu(videoCount, directory);
+    case 'exit':
+      return null;
+  }
+}
+
+async function configureSettings(): Promise<Settings> {
+  const answers = await inquirer.prompt([
+    {
+      type: 'list',
+      name: 'whisperMode',
+      message: 'Transcription method:',
+      choices: [
+        { name: 'Local Whisper (default)', value: 'local' },
+        { name: 'OpenAI Whisper API', value: 'api' },
+        { name: 'Skip transcription', value: 'skip' },
+      ],
+    },
+    {
+      type: 'list',
+      name: 'whisperModel',
+      message: 'Whisper model:',
+      when: (ans) => ans.whisperMode === 'local',
+      choices: [
+        { name: 'tiny (75 MB, fastest)', value: 'tiny' },
+        { name: 'base (142 MB, default)', value: 'base' },
+        { name: 'small (466 MB)', value: 'small' },
+        { name: 'medium (1.5 GB)', value: 'medium' },
+        { name: 'large-v3 (3.1 GB, best quality)', value: 'large-v3' },
+      ],
+      default: 'base',
+    },
+    {
+      type: 'number',
+      name: 'frameCount',
+      message: 'Frames to extract per video (1-10):',
+      default: 3,
+      validate: (val) => val >= 1 && val <= 10 ? true : 'Enter a number between 1 and 10',
+    },
+    {
+      type: 'confirm',
+      name: 'renameVideos',
+      message: 'Rename videos based on content?',
+      default: true,
+    },
+  ]);
+
+  return {
+    whisperMode: answers.whisperMode,
+    whisperModel: answers.whisperModel || 'base',
+    frameCount: answers.frameCount,
+    renameVideos: answers.renameVideos,
+  };
+}
+
+function viewSettings(settings: Settings): void {
+  console.log(chalk.bold('\n  Current Settings\n'));
+  console.log(`  Transcription:     ${settings.whisperMode}`);
+  if (settings.whisperMode === 'local') {
+    console.log(`  Whisper Model:     ${settings.whisperModel}`);
+  }
+  console.log(`  Frames per video:  ${settings.frameCount}`);
+  console.log(`  Rename videos:     ${settings.renameVideos ? 'Yes' : 'No'}`);
+  console.log();
+}
+```
+
+### CLI Entry Point Integration
+
+```typescript
+// In src/cli.ts
+
+async function main() {
+  // 1. Check prerequisites first
+  await checkPrerequisites({ whisperMode: 'local' });
+
+  // 2. Scan for videos
+  const videos = await scanForVideos(targetDirectory);
+
+  if (videos.length === 0) {
+    console.log(chalk.yellow('No video files found in directory.'));
+    process.exit(0);
+  }
+
+  // 3. Show interactive menu (unless --yes flag provided)
+  let settings: Settings;
+  if (options.yes || options.nonInteractive) {
+    settings = defaultSettings;
+  } else {
+    const result = await showMainMenu(videos.length, targetDirectory);
+    if (result === null) {
+      console.log('Exiting...');
+      process.exit(0);
+    }
+    settings = result;
+  }
+
+  // 4. Process videos with chosen settings
+  await processVideos(videos, settings);
+}
+```
+
+### Dependencies for Interactive Menu
+- **inquirer** - Interactive command-line prompts
+- **chalk** - Terminal styling (already included)
+
+### CLI Flags to Control Menu
+
+```bash
+# Show interactive menu (default)
+ai-video-cataloger
+
+# Skip menu, use defaults
+ai-video-cataloger --yes
+ai-video-cataloger -y
+
+# Non-interactive mode (for scripts)
+ai-video-cataloger --non-interactive
+
+# Override specific settings via flags (skips that question in menu)
+ai-video-cataloger --frames 5 --whisper api
+```
+
 ## Database Schema (SQLite)
 
 ```sql
@@ -219,6 +468,7 @@ CREATE TABLE models (
 
 ## Dependencies
 - **commander** - CLI argument parsing
+- **inquirer** - Interactive command-line prompts
 - **fluent-ffmpeg** - Video/audio processing
 - **better-sqlite3** - SQLite database (sync API, fast)
 - **openai** - Whisper API client (optional)
@@ -234,13 +484,17 @@ CREATE TABLE models (
 ## CLI Interface
 
 ```bash
-# Basic usage - process all videos in current directory
+# Basic usage - shows interactive menu
 ai-video-cataloger
 
 # Process specific directory
 ai-video-cataloger /path/to/videos
 
-# Processing options
+# Skip interactive menu, use defaults
+ai-video-cataloger --yes               # or -y
+ai-video-cataloger --non-interactive   # For scripts
+
+# Processing options (can be combined with --yes or interactive menu)
 ai-video-cataloger --frames 5          # Number of frames to extract (default: 3)
 ai-video-cataloger --whisper api       # Use Whisper API instead of local (default: local)
 ai-video-cataloger --skip-rename       # Only generate summaries, don't rename
@@ -367,21 +621,22 @@ for (const video of pendingVideos) {
 3. `src/index.ts` - Entry point with shebang for CLI
 4. `src/cli.ts` - Commander.js setup with all commands
 5. `src/services/prerequisites.ts` - Check for required dependencies
-6. `src/db/database.ts` - SQLite database initialization
-7. `src/db/progress.ts` - Progress tracking functions
-8. `src/services/video-scanner.ts` - Find videos in directory
-9. `src/services/frame-extractor.ts` - Extract frames with ffmpeg
-10. `src/services/audio-extractor.ts` - Extract audio with ffmpeg
-11. `src/services/transcriber.ts` - Local Whisper + API support
-12. `src/services/vision-analyzer.ts` - Claude Code CLI integration
-13. `src/services/summarizer.ts` - Generate summary text
-14. `src/services/renamer.ts` - File renaming logic
-15. `src/services/model-manager.ts` - Download/manage Whisper models
-16. `src/utils/ffmpeg.ts` - ffmpeg helpers
-17. `src/utils/file-utils.ts` - File utilities
-18. `src/utils/slug.ts` - Slug generation
-19. `src/types/index.ts` - TypeScript types
-20. `.env.example` - Environment template (optional, for API mode)
+6. `src/services/interactive-menu.ts` - Interactive settings menu
+7. `src/db/database.ts` - SQLite database initialization
+8. `src/db/progress.ts` - Progress tracking functions
+9. `src/services/video-scanner.ts` - Find videos in directory
+10. `src/services/frame-extractor.ts` - Extract frames with ffmpeg
+11. `src/services/audio-extractor.ts` - Extract audio with ffmpeg
+12. `src/services/transcriber.ts` - Local Whisper + API support
+13. `src/services/vision-analyzer.ts` - Claude Code CLI integration
+14. `src/services/summarizer.ts` - Generate summary text
+15. `src/services/renamer.ts` - File renaming logic
+16. `src/services/model-manager.ts` - Download/manage Whisper models
+17. `src/utils/ffmpeg.ts` - ffmpeg helpers
+18. `src/utils/file-utils.ts` - File utilities
+19. `src/utils/slug.ts` - Slug generation
+20. `src/types/index.ts` - TypeScript types
+21. `.env.example` - Environment template (optional, for API mode)
 
 ## Prerequisites
 - Node.js 18+
