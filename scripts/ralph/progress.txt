@@ -1,0 +1,4 @@
+# Ralph Progress Log
+# Project: AI Video Cataloger
+# Branch: ralph/ai-video-cataloger-mvp
+# Started:
