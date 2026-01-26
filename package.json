@@ -1,0 +1,44 @@
+{
+  "name": "ai-video-cataloger",
+  "version": "1.0.0",
+  "description": "CLI tool that analyzes videos, transcribes with local Whisper, generates summaries via Claude Code CLI, and renames files based on content",
+  "type": "module",
+  "main": "dist/index.js",
+  "bin": {
+    "ai-video-cataloger": "dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "typecheck": "tsc --noEmit",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts"
+  },
+  "keywords": [
+    "video",
+    "transcription",
+    "ai",
+    "cataloger",
+    "whisper",
+    "claude"
+  ],
+  "author": "",
+  "dependencies": {
+    "sql.js": "^1.12.0",
+    "chalk": "^5.4.1",
+    "commander": "^13.1.0",
+    "date-fns": "^4.1.0",
+    "execa": "^9.5.2",
+    "fluent-ffmpeg": "^2.1.3",
+    "ora": "^8.1.1",
+    "slugify": "^1.6.6"
+  },
+  "devDependencies": {
+    "@types/fluent-ffmpeg": "^2.1.27",
+    "@types/node": "^22.10.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}
