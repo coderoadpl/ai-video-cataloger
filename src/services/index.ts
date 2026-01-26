@@ -2,5 +2,4 @@
  * Services barrel export
  */
 
-// Services will be added as features are implemented
-export {};
+export { checkPrerequisites } from './prerequisites.js';
