@@ -2,5 +2,18 @@
  * Database barrel export
  */
 
-// Database module will be added as features are implemented
-export {};
+export {
+  initDatabase,
+  saveDatabase,
+  closeDatabase,
+  getVideoByPath,
+  getAllVideos,
+  getVideosByStatus,
+  getIncompleteVideos,
+  insertVideo,
+  updateVideoStatus,
+  updateVideoNewName,
+  getConfig,
+  setConfig,
+  getDatabaseDir,
+} from './database.js';

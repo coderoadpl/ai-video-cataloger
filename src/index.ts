@@ -7,6 +7,7 @@
  */
 
 import { checkPrerequisites } from './services/index.js';
+import { initDatabase, closeDatabase } from './db/index.js';
 
 /**
  * Check if we should skip prerequisite checks (for --help and --version)
@@ -28,6 +29,14 @@ async function main(): Promise<void> {
       process.exit(1);
     }
   }
+
+  // Initialize database
+  await initDatabase();
+
+  // Register cleanup handler
+  process.on('exit', () => {
+    closeDatabase();
+  });
 
   // Further processing will be added in subsequent user stories
 }
