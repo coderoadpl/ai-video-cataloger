@@ -12,3 +12,9 @@ export {
   cleanupTempAudio,
   type AudioExtractionResult,
 } from './audio.js';
+export {
+  transcribeAudio,
+  getTranscriptsDir,
+  getTranscriptPath,
+  type TranscriptionResult,
+} from './transcription.js';

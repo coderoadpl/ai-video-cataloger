@@ -6,7 +6,7 @@
  * generates summaries via Claude Code CLI, and renames files based on content.
  */
 
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio } from './services/index.js';
 import { initDatabase, closeDatabase } from './db/index.js';
 import chalk from 'chalk';
 
@@ -68,11 +68,17 @@ async function main(): Promise<void> {
       }
 
       // Step 2: Extract audio (if not already done)
+      let hasAudio = true;
       if (video.status === 'frames_extracted') {
-        await extractAudio(video);
+        const audioResult = await extractAudio(video);
+        hasAudio = audioResult.hasAudio;
         video.status = 'audio_extracted';
-        // Audio path can be retrieved with getTempAudioPath() for transcription
-        // Cleanup will happen after transcription in US-014
+      }
+
+      // Step 3: Transcribe audio (if not already done)
+      if (video.status === 'audio_extracted') {
+        await transcribeAudio(video, hasAudio);
+        video.status = 'transcribed';
       }
 
       // Further processing will be added in subsequent user stories
