@@ -6,8 +6,9 @@
  * generates summaries via Claude Code CLI, and renames files based on content.
  */
 
-import { checkPrerequisites, scanDirectory } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames } from './services/index.js';
 import { initDatabase, closeDatabase } from './db/index.js';
+import chalk from 'chalk';
 
 /**
  * Check if we should skip prerequisite checks (for --help and --version)
@@ -53,6 +54,24 @@ async function main(): Promise<void> {
     // All videos already completed
     console.log('\nNothing to do.');
     process.exit(0);
+  }
+
+  // Process each video - extract frames
+  console.log(chalk.blue('\nProcessing videos...'));
+
+  for (const video of scanResult.newVideos) {
+    // Skip videos that already have frames extracted
+    if (video.status !== 'pending') {
+      continue;
+    }
+
+    try {
+      await extractFrames(video);
+    } catch (error) {
+      // Error already logged by extractFrames
+      // Continue with next video (error handling to be improved in US-013)
+      continue;
+    }
   }
 
   // Further processing will be added in subsequent user stories
