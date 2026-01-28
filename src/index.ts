@@ -6,7 +6,7 @@
  * generates summaries via Claude Code CLI, and renames files based on content.
  */
 
-import { checkPrerequisites, scanDirectory, extractFrames } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio } from './services/index.js';
 import { initDatabase, closeDatabase } from './db/index.js';
 import chalk from 'chalk';
 
@@ -56,25 +56,32 @@ async function main(): Promise<void> {
     process.exit(0);
   }
 
-  // Process each video - extract frames
+  // Process each video
   console.log(chalk.blue('\nProcessing videos...'));
 
   for (const video of scanResult.newVideos) {
-    // Skip videos that already have frames extracted
-    if (video.status !== 'pending') {
-      continue;
-    }
-
     try {
-      await extractFrames(video);
+      // Step 1: Extract frames (if not already done)
+      if (video.status === 'pending') {
+        await extractFrames(video);
+        video.status = 'frames_extracted';
+      }
+
+      // Step 2: Extract audio (if not already done)
+      if (video.status === 'frames_extracted') {
+        await extractAudio(video);
+        video.status = 'audio_extracted';
+        // Audio path can be retrieved with getTempAudioPath() for transcription
+        // Cleanup will happen after transcription in US-014
+      }
+
+      // Further processing will be added in subsequent user stories
     } catch (error) {
-      // Error already logged by extractFrames
+      // Error already logged by the respective service
       // Continue with next video (error handling to be improved in US-013)
       continue;
     }
   }
-
-  // Further processing will be added in subsequent user stories
 }
 
 main().catch((error: unknown) => {
