@@ -29,6 +29,29 @@ export function getSummaryPath(videoPath: string): string {
   return join(getSummariesDir(videoPath), `${videoName}.txt`);
 }
 
+/**
+ * Extract the suggested filename from an existing summary file
+ * Used when resuming from 'analyzed' status
+ */
+export function getSuggestedFilenameFromSummary(videoPath: string): string | null {
+  const summaryPath = getSummaryPath(videoPath);
+
+  if (!existsSync(summaryPath)) {
+    return null;
+  }
+
+  try {
+    const content = readFileSync(summaryPath, 'utf-8');
+    const match = content.match(/SUGGESTED FILENAME:\s*\n?([^\n]+)/i);
+    if (match && match[1]) {
+      return match[1].trim();
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export interface AnalysisResult {
   description: string;
   suggestedFilename: string;

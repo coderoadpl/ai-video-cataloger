@@ -14,6 +14,7 @@ const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
 
 export interface ScanResult {
   newVideos: VideoRecord[];
+  resumingVideos: VideoRecord[];
   skippedCompleted: number;
   totalFound: number;
 }
@@ -36,6 +37,7 @@ export async function scanDirectory(directory: string = process.cwd()): Promise<
     console.log(chalk.gray(`Supported formats: ${VIDEO_EXTENSIONS.join(', ')}`));
     return {
       newVideos: [],
+      resumingVideos: [],
       skippedCompleted: 0,
       totalFound: 0,
     };
@@ -48,6 +50,7 @@ export async function scanDirectory(directory: string = process.cwd()): Promise<
   const completedPaths = new Set(completedVideos.map(v => v.original_path));
 
   const newVideos: VideoRecord[] = [];
+  const resumingVideos: VideoRecord[] = [];
   let skippedCompleted = 0;
 
   for (const filePath of videoFiles) {
@@ -60,8 +63,14 @@ export async function scanDirectory(directory: string = process.cwd()): Promise<
     // Check if video already exists in database (but not completed)
     const existingVideo = getVideoByPath(filePath);
     if (existingVideo) {
-      // Video exists but not completed - add to processing queue
-      newVideos.push(existingVideo);
+      // Video exists but not completed - add to resuming queue
+      if (existingVideo.status !== 'pending') {
+        // Has made some progress, this is a resume
+        resumingVideos.push(existingVideo);
+      } else {
+        // Still pending, treat as new
+        newVideos.push(existingVideo);
+      }
       continue;
     }
 
@@ -76,17 +85,24 @@ export async function scanDirectory(directory: string = process.cwd()): Promise<
   // Display results
   console.log('');
   if (newVideos.length > 0) {
-    console.log(chalk.green(`✓ ${newVideos.length} video(s) to process`));
+    console.log(chalk.green(`✓ ${newVideos.length} new video(s) to process`));
+  }
+  if (resumingVideos.length > 0) {
+    console.log(chalk.yellow(`↻ ${resumingVideos.length} video(s) to resume`));
+    for (const video of resumingVideos) {
+      console.log(chalk.gray(`    ${video.original_name} (${video.status})`));
+    }
   }
   if (skippedCompleted > 0) {
     console.log(chalk.gray(`  ${skippedCompleted} already completed (skipped)`));
   }
-  if (newVideos.length === 0 && skippedCompleted > 0) {
+  if (newVideos.length === 0 && resumingVideos.length === 0 && skippedCompleted > 0) {
     console.log(chalk.yellow('\nAll videos have already been processed.'));
   }
 
   return {
     newVideos,
+    resumingVideos,
     skippedCompleted,
     totalFound: videoFiles.length,
   };

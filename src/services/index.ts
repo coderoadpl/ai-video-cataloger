@@ -22,6 +22,7 @@ export {
   analyzeVideo,
   getSummariesDir,
   getSummaryPath,
+  getSuggestedFilenameFromSummary,
   type AnalysisResult,
 } from './analyzer.js';
 export {
