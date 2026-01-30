@@ -18,3 +18,9 @@ export {
   getTranscriptPath,
   type TranscriptionResult,
 } from './transcription.js';
+export {
+  analyzeVideo,
+  getSummariesDir,
+  getSummaryPath,
+  type AnalysisResult,
+} from './analyzer.js';

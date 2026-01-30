@@ -1,4 +1,145 @@
 # Ralph Progress Log
 # Project: AI Video Cataloger
 # Branch: ralph/ai-video-cataloger-mvp
-# Started:
+# Started: 2026-01-23
+
+## Codebase Patterns
+- Use sql.js instead of better-sqlite3 (native module compatibility with Node.js v25)
+- ESM modules ("type": "module" in package.json)
+- TypeScript strict mode enabled
+- Entry point: src/index.ts with shebang
+- Use execa for running shell commands (already a dependency)
+- Use chalk for colored terminal output (already a dependency)
+- Services are exported through src/services/index.ts barrel export
+- Database exports through src/db/index.ts barrel export
+- Utilities are exported through src/utils/index.ts barrel export
+- Database file stored in .ai-video-cataloger/catalog.db (auto-created)
+- Call saveDatabase() after each database modification (sql.js is in-memory)
+- Video extensions: .mp4, .mov, .avi, .mkv, .webm
+- Use fluent-ffmpeg for video/audio operations (ffprobe for metadata, ffmpeg for extraction)
+- Frame/transcript/summary directories stored in same directory as videos (e.g., frames/{video-name}/)
+- Temp audio files stored in OS temp directory using getTempAudioPath(videoPath)
+- Claude CLI for analysis: `claude -p <prompt> <image1> <image2> ...` to pass frames as attachments
+- Analysis response format: DESCRIPTION: <text> FILENAME: <kebab-case-name>
+
+---
+
+## 2026-01-23 - US-001
+- What was implemented: Project scaffolding with TypeScript and all required dependencies
+- Files changed:
+  - package.json (created with dependencies)
+  - tsconfig.json (created with strict mode)
+  - .gitignore (created)
+  - src/index.ts (entry point with shebang)
+  - src/types/index.ts (type definitions)
+  - src/services/index.ts (barrel export)
+  - src/db/index.ts (barrel export)
+  - src/utils/index.ts (barrel export)
+- **Learnings for future iterations:**
+  - better-sqlite3 has compatibility issues with Node.js v25 (native module compilation fails), use sql.js instead
+  - fluent-ffmpeg is deprecated but still works for basic operations
+  - Directory structure: src/, src/services/, src/db/, src/utils/, src/types/
+---
+
+## 2026-01-23 - US-002
+- What was implemented: Prerequisites checker to verify all required dependencies on startup
+- Files changed:
+  - src/services/prerequisites.ts (created - checks Node.js, ffmpeg, Claude CLI, Whisper)
+  - src/services/index.ts (updated - export checkPrerequisites)
+  - src/index.ts (updated - call checkPrerequisites on startup, skip for --help/--version)
+- **Learnings for future iterations:**
+  - Use execa for running shell commands to check for binaries
+  - Whisper doesn't have a --version flag, just check if --help runs successfully
+  - Claude CLI version output includes full string like "2.1.9 (Claude Code)"
+  - ffmpeg version can be parsed from first line of `ffmpeg -version` output
+  - Skip checks for help/version by checking process.argv before calling checkPrerequisites
+---
+
+## 2026-01-23 - US-003
+- What was implemented: SQLite database service using sql.js for tracking video processing progress
+- Files changed:
+  - src/db/database.ts (created - database initialization, CRUD operations for videos and config)
+  - src/db/index.ts (updated - export all database functions)
+  - src/index.ts (updated - call initDatabase on startup, register cleanup handler)
+  - package.json (added @types/sql.js devDependency)
+- **Learnings for future iterations:**
+  - sql.js uses async initialization with `initSqlJs()` to load the WASM module
+  - Database needs to be exported and written to file after each change (in-memory only by default)
+  - Use `db.exec()` for queries that return results, `db.run()` for writes
+  - Result format from db.exec() is `{ columns: string[], values: any[][] }` - need helper to convert to objects
+  - Register cleanup handler with `process.on('exit', ...)` to ensure database is saved before exit
+---
+
+## 2026-01-23 - US-004
+- What was implemented: Directory scanner to find video files and register them in database
+- Files changed:
+  - src/services/scanner.ts (created - scans directories for video files, registers in database)
+  - src/utils/hash.ts (created - SHA-256 file hashing with streaming)
+  - src/services/index.ts (updated - export scanDirectory and ScanResult)
+  - src/utils/index.ts (updated - export hashFile)
+  - src/index.ts (updated - integrate scanner, handle directory argument)
+- **Learnings for future iterations:**
+  - Use createReadStream for hashing large files to avoid memory issues
+  - Video extensions: .mp4, .mov, .avi, .mkv, .webm
+  - getVideosByStatus('completed') returns completed videos to skip
+  - Scanner returns ScanResult with newVideos array, skippedCompleted count, and totalFound
+  - First positional argument (non-flag) is treated as directory path
+---
+
+## 2026-01-23 - US-005
+- What was implemented: Frame extraction service using fluent-ffmpeg to extract frames from videos
+- Files changed:
+  - src/services/frames.ts (created - extractFrames function, getFramesDir helper)
+  - src/services/index.ts (updated - export extractFrames and getFramesDir)
+  - src/index.ts (updated - integrate frame extraction into video processing loop)
+- **Learnings for future iterations:**
+  - Use fluent-ffmpeg's ffprobe to get video duration metadata
+  - Extract frames at evenly distributed positions (25%, 50%, 75% for 3 frames) using formula: duration * (i / (frameCount + 1))
+  - Use seekInput() to seek to timestamp before extracting frame (more efficient than seeking during output)
+  - Frames saved to frames/{video-name}/frame-001.jpg pattern
+  - ora spinner provides nice UX during long-running frame extraction
+  - getFramesDir() helper useful for later stories that need to reference frames location
+---
+
+## 2026-01-23 - US-006
+- What was implemented: Audio extraction service using fluent-ffmpeg to extract audio tracks from videos
+- Files changed:
+  - src/services/audio.ts (created - extractAudio, getTempAudioPath, getTempAudioDir, cleanupTempAudio)
+  - src/services/index.ts (updated - export audio extraction functions)
+  - src/index.ts (updated - integrate audio extraction into video processing loop after frame extraction)
+- **Learnings for future iterations:**
+  - Use ffprobe to check for audio streams with `metadata.streams.filter(s => s.codec_type === 'audio')`
+  - Extract audio with fluent-ffmpeg: noVideo(), audioCodec('pcm_s16le'), audioFrequency(16000), audioChannels(1) for Whisper compatibility
+  - Temp audio files stored in OS temp directory: `os.tmpdir()/ai-video-cataloger/audio/{video-name}.wav`
+  - cleanupTempAudio() function available for cleanup after transcription (US-014)
+  - getTempAudioPath() allows retrieving audio path by video path for transcription step
+---
+
+## 2026-01-23 - US-007
+- What was implemented: Transcription service using local Whisper to transcribe audio from videos
+- Files changed:
+  - src/services/transcription.ts (created - transcribeAudio, getTranscriptsDir, getTranscriptPath)
+  - src/services/index.ts (updated - export transcription functions)
+  - src/index.ts (updated - integrate transcription into video processing loop after audio extraction)
+- **Learnings for future iterations:**
+  - Whisper CLI: `whisper <audio_file> --model base --output_dir <dir> --output_format txt`
+  - Whisper outputs file with same basename as input audio file (e.g., video-name.wav -> video-name.txt)
+  - Transcripts stored in transcripts/{video-name}.txt in same directory as videos
+  - Pass hasAudio flag from audio extraction step to skip transcription for silent videos
+  - Videos without audio tracks still move to 'transcribed' status (graceful skip)
+---
+
+## 2026-01-23 - US-008
+- What was implemented: Video analyzer service using Claude Code CLI to analyze frames and transcripts
+- Files changed:
+  - src/services/analyzer.ts (created - analyzeVideo, getSummariesDir, getSummaryPath, parseClaudeResponse)
+  - src/services/index.ts (updated - export analyzer functions)
+  - src/index.ts (updated - integrate analyzer into video processing loop after transcription)
+- **Learnings for future iterations:**
+  - Claude Code CLI: `claude -p <prompt> <image1> <image2> ...` to pass frames as attachments
+  - Parse Claude's response using DESCRIPTION: and FILENAME: markers
+  - Summaries stored in summaries/{video-name}.txt in same directory as videos
+  - Pass hasTranscript flag from transcription step to conditionally include transcript in prompt
+  - Clean up suggested filenames to ensure valid kebab-case (lowercase, no special chars)
+  - transcribeAudio returns TranscriptionResult with transcribed boolean, need to capture it for analyzer
+---
