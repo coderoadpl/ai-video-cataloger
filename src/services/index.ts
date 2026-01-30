@@ -24,3 +24,7 @@ export {
   getSummaryPath,
   type AnalysisResult,
 } from './analyzer.js';
+export {
+  renameVideo,
+  type RenameResult,
+} from './renamer.js';
