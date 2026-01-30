@@ -6,30 +6,58 @@
  * generates summaries via Claude Code CLI, and renames files based on content.
  */
 
+import { Command } from 'commander';
 import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary } from './services/index.js';
-import { initDatabase, closeDatabase } from './db/index.js';
+import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord } from './types/index.js';
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+// Read package.json for version
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const packageJsonPath = join(__dirname, '..', 'package.json');
+const packageJson = JSON.parse(readFileSync(packageJsonPath, 'utf-8'));
 
 /**
- * Check if we should skip prerequisite checks (for --help and --version)
+ * CLI options interface
  */
-function shouldSkipPrerequisites(): boolean {
-  const args = process.argv.slice(2);
-  return args.includes('--help') || args.includes('-h') ||
-         args.includes('--version') || args.includes('-V');
+interface CliOptions {
+  frames: number;
+  skipRename: boolean;
+  verbose: boolean;
 }
 
-async function main(): Promise<void> {
-  console.log('AI Video Cataloger - Starting...');
+// Global options object
+let cliOptions: CliOptions = {
+  frames: 3,
+  skipRename: false,
+  verbose: false,
+};
 
-  // Skip prerequisite checks for help and version flags
-  if (!shouldSkipPrerequisites()) {
-    const allPrerequisitesMet = await checkPrerequisites();
+/**
+ * Log verbose output if --verbose flag is set
+ */
+function logVerbose(message: string): void {
+  if (cliOptions.verbose) {
+    console.log(chalk.gray(`[verbose] ${message}`));
+  }
+}
 
-    if (!allPrerequisitesMet) {
-      process.exit(1);
-    }
+async function run(directory: string, options: CliOptions): Promise<void> {
+  cliOptions = options;
+
+  if (cliOptions.verbose) {
+    console.log(chalk.gray('[verbose] Verbose mode enabled'));
+    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}`));
+  }
+
+  // Check prerequisites
+  const allPrerequisitesMet = await checkPrerequisites();
+
+  if (!allPrerequisitesMet) {
+    process.exit(1);
   }
 
   // Initialize database
@@ -40,9 +68,7 @@ async function main(): Promise<void> {
     closeDatabase();
   });
 
-  // Get directory from arguments (default: current directory)
-  const args = process.argv.slice(2);
-  const directory = args.find(arg => !arg.startsWith('-')) || process.cwd();
+  logVerbose(`Scanning directory: ${directory}`);
 
   // Scan directory for videos
   const scanResult = await scanDirectory(directory);
@@ -74,14 +100,35 @@ async function main(): Promise<void> {
   }
 }
 
+async function main(): Promise<void> {
+  const program = new Command();
+
+  program
+    .name('ai-video-cataloger')
+    .description('CLI tool that analyzes videos, transcribes with local Whisper, generates summaries via Claude Code CLI, and renames files based on content')
+    .version(packageJson.version)
+    .argument('[directory]', 'Directory to scan for videos', process.cwd())
+    .option('-f, --frames <number>', 'Number of frames to extract', (value) => parseInt(value, 10), 3)
+    .option('-s, --skip-rename', 'Only generate summaries, do not rename files', false)
+    .option('-v, --verbose', 'Show detailed output', false)
+    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean }) => {
+      await run(directory, options);
+    });
+
+  await program.parseAsync(process.argv);
+}
+
 /**
  * Process a single video through all required steps
  * Resumes from the last successful step based on current status
  */
 async function processVideo(video: VideoRecord): Promise<void> {
+  logVerbose(`Processing video: ${video.original_name} (status: ${video.status})`);
+
   // Step 1: Extract frames (if not already done)
   if (video.status === 'pending') {
-    await extractFrames(video);
+    logVerbose(`Extracting ${cliOptions.frames} frames...`);
+    await extractFrames(video, cliOptions.frames);
     video.status = 'frames_extracted';
   }
 
@@ -89,6 +136,7 @@ async function processVideo(video: VideoRecord): Promise<void> {
   // Note: When resuming, we assume audio was extracted if past this stage
   let hasAudio = true;
   if (video.status === 'frames_extracted') {
+    logVerbose('Extracting audio...');
     const audioResult = await extractAudio(video);
     hasAudio = audioResult.hasAudio;
     video.status = 'audio_extracted';
@@ -98,6 +146,7 @@ async function processVideo(video: VideoRecord): Promise<void> {
   // Note: When resuming, we check for transcript file existence
   let hasTranscript = hasAudio;
   if (video.status === 'audio_extracted') {
+    logVerbose('Transcribing audio...');
     const transcriptionResult = await transcribeAudio(video, hasAudio);
     hasTranscript = transcriptionResult.transcribed;
     video.status = 'transcribed';
@@ -106,19 +155,29 @@ async function processVideo(video: VideoRecord): Promise<void> {
   // Step 4: Analyze video with Claude (if not already done)
   let suggestedFilename = '';
   if (video.status === 'transcribed') {
+    logVerbose('Analyzing with Claude...');
     const analysis = await analyzeVideo(video, hasTranscript);
     suggestedFilename = analysis.suggestedFilename;
     video.status = 'analyzed';
   }
 
-  // Step 5: Rename video file (if not already done)
+  // Step 5: Rename video file (if not already done and --skip-rename not set)
   if (video.status === 'analyzed') {
-    // When resuming from analyzed status, get the filename from the saved summary
-    if (!suggestedFilename) {
-      suggestedFilename = getSuggestedFilenameFromSummary(video.original_path) || 'video-content';
+    if (cliOptions.skipRename) {
+      logVerbose('Skipping rename (--skip-rename flag set)');
+      console.log(chalk.yellow(`Skipped renaming ${video.original_name} (--skip-rename)`));
+      // Mark as completed without renaming
+      updateVideoStatus(video.id, 'completed');
+      video.status = 'completed';
+    } else {
+      // When resuming from analyzed status, get the filename from the saved summary
+      if (!suggestedFilename) {
+        suggestedFilename = getSuggestedFilenameFromSummary(video.original_path) || 'video-content';
+      }
+      logVerbose(`Renaming to: ${suggestedFilename}`);
+      await renameVideo(video, suggestedFilename);
+      video.status = 'completed';
     }
-    await renameVideo(video, suggestedFilename);
-    video.status = 'completed';
   }
 }
 
