@@ -36,6 +36,23 @@ let cliOptions: CliOptions = {
   verbose: false,
 };
 
+// Progress tracking
+interface ProcessingStats {
+  totalVideos: number;
+  currentIndex: number;
+  processedCount: number;
+  errorCount: number;
+  errors: Array<{ videoName: string; error: string }>;
+}
+
+let processingStats: ProcessingStats = {
+  totalVideos: 0,
+  currentIndex: 0,
+  processedCount: 0,
+  errorCount: 0,
+  errors: [],
+};
+
 /**
  * Log verbose output if --verbose flag is set
  */
@@ -43,6 +60,53 @@ function logVerbose(message: string): void {
   if (cliOptions.verbose) {
     console.log(chalk.gray(`[verbose] ${message}`));
   }
+}
+
+/**
+ * Get progress prefix showing current video position (e.g., "[1/5]")
+ */
+function getProgressPrefix(): string {
+  return chalk.blue(`[${processingStats.currentIndex}/${processingStats.totalVideos}]`);
+}
+
+/**
+ * Log current step being processed
+ */
+function logStep(step: string, videoName: string): void {
+  console.log(`\n${getProgressPrefix()} ${chalk.bold(step)} - ${chalk.cyan(videoName)}`);
+}
+
+/**
+ * Display final processing summary
+ */
+function displaySummary(): void {
+  console.log('\n' + chalk.bold('═══════════════════════════════════════════════════════════'));
+  console.log(chalk.bold('                      Processing Summary'));
+  console.log(chalk.bold('═══════════════════════════════════════════════════════════\n'));
+
+  // Success count
+  const successCount = processingStats.processedCount;
+  if (successCount > 0) {
+    console.log(chalk.green(`  ✓ ${successCount} video${successCount === 1 ? '' : 's'} processed successfully`));
+  }
+
+  // Error count
+  if (processingStats.errorCount > 0) {
+    console.log(chalk.red(`  ✗ ${processingStats.errorCount} video${processingStats.errorCount === 1 ? '' : 's'} failed`));
+
+    // List errors
+    console.log(chalk.red('\n  Errors:'));
+    for (const error of processingStats.errors) {
+      console.log(chalk.red(`    • ${error.videoName}: ${error.error}`));
+    }
+  }
+
+  // No videos processed at all
+  if (successCount === 0 && processingStats.errorCount === 0) {
+    console.log(chalk.yellow('  No videos were processed'));
+  }
+
+  console.log('\n' + chalk.bold('═══════════════════════════════════════════════════════════\n'));
 }
 
 async function run(directory: string, options: CliOptions): Promise<void> {
@@ -86,18 +150,39 @@ async function run(directory: string, options: CliOptions): Promise<void> {
     process.exit(0);
   }
 
+  // Initialize processing stats
+  processingStats = {
+    totalVideos: allVideos.length,
+    currentIndex: 0,
+    processedCount: 0,
+    errorCount: 0,
+    errors: [],
+  };
+
   // Process each video
-  console.log(chalk.blue('\nProcessing videos...'));
+  console.log(chalk.blue(`\nProcessing ${allVideos.length} video${allVideos.length === 1 ? '' : 's'}...\n`));
 
   for (const video of allVideos) {
+    processingStats.currentIndex++;
+
     try {
       await processVideo(video);
+      processingStats.processedCount++;
     } catch (error) {
-      // Error already logged by the respective service
-      // Continue with next video (error handling to be improved in US-013)
+      // Track the error for summary
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      processingStats.errorCount++;
+      processingStats.errors.push({
+        videoName: video.original_name,
+        error: errorMessage,
+      });
+      // Continue with next video
       continue;
     }
   }
+
+  // Display final summary
+  displaySummary();
 }
 
 async function main(): Promise<void> {
@@ -127,6 +212,7 @@ async function processVideo(video: VideoRecord): Promise<void> {
 
   // Step 1: Extract frames (if not already done)
   if (video.status === 'pending') {
+    logStep('Extracting frames', video.original_name);
     logVerbose(`Extracting ${cliOptions.frames} frames...`);
     await extractFrames(video, cliOptions.frames);
     video.status = 'frames_extracted';
@@ -136,6 +222,7 @@ async function processVideo(video: VideoRecord): Promise<void> {
   // Note: When resuming, we assume audio was extracted if past this stage
   let hasAudio = true;
   if (video.status === 'frames_extracted') {
+    logStep('Extracting audio', video.original_name);
     logVerbose('Extracting audio...');
     const audioResult = await extractAudio(video);
     hasAudio = audioResult.hasAudio;
@@ -146,6 +233,7 @@ async function processVideo(video: VideoRecord): Promise<void> {
   // Note: When resuming, we check for transcript file existence
   let hasTranscript = hasAudio;
   if (video.status === 'audio_extracted') {
+    logStep('Transcribing audio', video.original_name);
     logVerbose('Transcribing audio...');
     const transcriptionResult = await transcribeAudio(video, hasAudio);
     hasTranscript = transcriptionResult.transcribed;
@@ -155,6 +243,7 @@ async function processVideo(video: VideoRecord): Promise<void> {
   // Step 4: Analyze video with Claude (if not already done)
   let suggestedFilename = '';
   if (video.status === 'transcribed') {
+    logStep('Analyzing with Claude', video.original_name);
     logVerbose('Analyzing with Claude...');
     const analysis = await analyzeVideo(video, hasTranscript);
     suggestedFilename = analysis.suggestedFilename;
@@ -164,12 +253,14 @@ async function processVideo(video: VideoRecord): Promise<void> {
   // Step 5: Rename video file (if not already done and --skip-rename not set)
   if (video.status === 'analyzed') {
     if (cliOptions.skipRename) {
+      logStep('Skipping rename', video.original_name);
       logVerbose('Skipping rename (--skip-rename flag set)');
-      console.log(chalk.yellow(`Skipped renaming ${video.original_name} (--skip-rename)`));
+      console.log(chalk.yellow(`  Skipped renaming (--skip-rename flag set)`));
       // Mark as completed without renaming
       updateVideoStatus(video.id, 'completed');
       video.status = 'completed';
     } else {
+      logStep('Renaming video', video.original_name);
       // When resuming from analyzed status, get the filename from the saved summary
       if (!suggestedFilename) {
         suggestedFilename = getSuggestedFilenameFromSummary(video.original_path) || 'video-content';
