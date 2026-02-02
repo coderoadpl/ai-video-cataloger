@@ -27,6 +27,7 @@ interface CliOptions {
   frames: number;
   skipRename: boolean;
   verbose: boolean;
+  retryErrors: boolean;
 }
 
 // Global options object
@@ -34,6 +35,7 @@ let cliOptions: CliOptions = {
   frames: 3,
   skipRename: false,
   verbose: false,
+  retryErrors: false,
 };
 
 // Progress tracking
@@ -114,7 +116,7 @@ async function run(directory: string, options: CliOptions): Promise<void> {
 
   if (cliOptions.verbose) {
     console.log(chalk.gray('[verbose] Verbose mode enabled'));
-    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}`));
+    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}`));
   }
 
   // Check prerequisites
@@ -135,10 +137,10 @@ async function run(directory: string, options: CliOptions): Promise<void> {
   logVerbose(`Scanning directory: ${directory}`);
 
   // Scan directory for videos
-  const scanResult = await scanDirectory(directory);
+  const scanResult = await scanDirectory(directory, { retryErrors: cliOptions.retryErrors });
 
-  // Combine new and resuming videos for processing
-  const allVideos = [...scanResult.resumingVideos, ...scanResult.newVideos];
+  // Combine new, resuming, and retrying videos for processing
+  const allVideos = [...scanResult.retryingVideos, ...scanResult.resumingVideos, ...scanResult.newVideos];
 
   // Exit gracefully if no videos to process
   if (allVideos.length === 0) {
@@ -176,6 +178,8 @@ async function run(directory: string, options: CliOptions): Promise<void> {
         videoName: video.original_name,
         error: errorMessage,
       });
+      // Update video status to 'error' with error message in database
+      updateVideoStatus(video.id, 'error', errorMessage);
       // Continue with next video
       continue;
     }
@@ -196,7 +200,8 @@ async function main(): Promise<void> {
     .option('-f, --frames <number>', 'Number of frames to extract', (value) => parseInt(value, 10), 3)
     .option('-s, --skip-rename', 'Only generate summaries, do not rename files', false)
     .option('-v, --verbose', 'Show detailed output', false)
-    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean }) => {
+    .option('-r, --retry-errors', 'Re-process videos that previously failed with errors', false)
+    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean }) => {
       await run(directory, options);
     });
 

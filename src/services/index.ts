@@ -3,7 +3,7 @@
  */
 
 export { checkPrerequisites } from './prerequisites.js';
-export { scanDirectory, type ScanResult } from './scanner.js';
+export { scanDirectory, type ScanResult, type ScanOptions } from './scanner.js';
 export { extractFrames, getFramesDir } from './frames.js';
 export {
   extractAudio,
