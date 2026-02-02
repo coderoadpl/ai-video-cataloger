@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord } from './types/index.js';
@@ -180,6 +180,9 @@ async function run(directory: string, options: CliOptions): Promise<void> {
       });
       // Update video status to 'error' with error message in database
       updateVideoStatus(video.id, 'error', errorMessage);
+      // Best-effort cleanup of temporary audio file on error
+      const tempAudioPath = getTempAudioPath(video.original_path);
+      cleanupTempAudio(tempAudioPath);
       // Continue with next video
       continue;
     }
@@ -243,6 +246,11 @@ async function processVideo(video: VideoRecord): Promise<void> {
     const transcriptionResult = await transcribeAudio(video, hasAudio);
     hasTranscript = transcriptionResult.transcribed;
     video.status = 'transcribed';
+
+    // Clean up temporary audio file after transcription
+    const tempAudioPath = getTempAudioPath(video.original_path);
+    cleanupTempAudio(tempAudioPath);
+    logVerbose(`Cleaned up temporary audio file: ${tempAudioPath}`);
   }
 
   // Step 4: Analyze video with Claude (if not already done)
