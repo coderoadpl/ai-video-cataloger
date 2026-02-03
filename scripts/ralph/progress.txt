@@ -143,3 +143,87 @@
   - Clean up suggested filenames to ensure valid kebab-case (lowercase, no special chars)
   - transcribeAudio returns TranscriptionResult with transcribed boolean, need to capture it for analyzer
 ---
+
+## 2026-01-23 - US-009
+- What was implemented: Video renamer service that renames videos with descriptive names based on Claude's analysis
+- Files changed:
+  - src/services/renamer.ts (created - renameVideo, sanitizeSlug, getUniqueFilename, getDatePrefix)
+  - src/services/index.ts (updated - export renameVideo and RenameResult)
+  - src/index.ts (updated - integrate renamer into video processing loop after analysis)
+- **Learnings for future iterations:**
+  - Use date-fns format() for date formatting: `format(stats.mtime, 'yyyy-MM-dd')`
+  - Get file modification time with statSync(filePath).mtime
+  - When renaming associated files, build the new path based on new video basename (not old)
+  - Conflict resolution: loop with counter until finding unique filename (baseName-2.ext, baseName-3.ext, etc.)
+  - Always update both new_name and status in database after successful rename
+  - Store analysis.suggestedFilename from analyzeVideo() result to pass to renamer
+---
+
+## 2026-01-23 - US-010
+- What was implemented: Resume interrupted processing support for batch video processing
+- Files changed:
+  - src/services/analyzer.ts (updated - added getSuggestedFilenameFromSummary to extract filename from saved summary)
+  - src/services/scanner.ts (updated - separate newVideos and resumingVideos in ScanResult)
+  - src/services/index.ts (updated - export getSuggestedFilenameFromSummary)
+  - src/index.ts (updated - refactored into processVideo function, handle resume from any state)
+- **Learnings for future iterations:**
+  - ScanResult now has separate arrays: newVideos (pending), resumingVideos (in progress)
+  - When resuming from 'analyzed' status, retrieve suggestedFilename from summary file using getSuggestedFilenameFromSummary()
+  - Scanner displays resume count with status of each resuming video in yellow
+  - getIncompleteVideos() in database.ts already exists for querying videos not in completed/error status
+  - Summary file format: SUGGESTED FILENAME:\n<filename> - use regex to extract
+---
+
+## 2026-01-23 - US-011
+- What was implemented: Basic CLI interface using commander.js with options for frames, skip-rename, verbose
+- Files changed:
+  - src/index.ts (refactored - replaced manual arg parsing with commander.js, added CLI options handling)
+- **Learnings for future iterations:**
+  - commander.js is already a dependency, use it for CLI argument parsing
+  - Read package.json version dynamically: `JSON.parse(readFileSync(join(__dirname, '..', 'package.json'), 'utf-8')).version`
+  - Use `.option('-f, --frames <number>', ...)` for options with values
+  - Use `.option('-s, --skip-rename', ...)` for boolean flags (default: false)
+  - Global options object pattern works well for passing CLI options to helper functions
+  - logVerbose() helper function checks cliOptions.verbose before logging
+  - When --skip-rename is set, call updateVideoStatus() directly instead of renameVideo()
+---
+
+## 2026-01-23 - US-012
+- What was implemented: Progress display showing current video position and step, with final summary
+- Files changed:
+  - src/index.ts (updated - added ProcessingStats interface, getProgressPrefix, logStep, displaySummary functions)
+- **Learnings for future iterations:**
+  - Individual services (frames.ts, audio.ts, transcription.ts, analyzer.ts, renamer.ts) already use ora spinners
+  - Track processing stats with a global interface: totalVideos, currentIndex, processedCount, errorCount, errors array
+  - Use chalk.bold() for visual separators in summary display
+  - Progress prefix "[X/Y]" shown before each step with logStep() helper
+  - displaySummary() shows final counts and lists specific error messages for failed videos
+  - Error tracking allows for better debugging without stopping the batch process
+---
+
+## 2026-01-23 - US-013
+- What was implemented: Error handling and recovery with --retry-errors flag to re-process failed videos
+- Files changed:
+  - src/index.ts (updated - added updateVideoStatus call on error, added retryErrors CLI option)
+  - src/services/scanner.ts (updated - added ScanOptions, handle errored videos, added retryingVideos and skippedErrors tracking)
+  - src/services/index.ts (updated - export ScanOptions type)
+- **Learnings for future iterations:**
+  - updateVideoStatus(id, 'error', errorMessage) already supports error message as 3rd parameter
+  - Scanner needs to handle errored videos separately from completed videos
+  - When retrying errored videos, reset their status to 'pending' so they start from the beginning
+  - ScanResult now includes retryingVideos and skippedErrors fields
+  - Use chalk.magenta for retry-related messages to distinguish from resume (yellow) and new (green)
+  - Errored videos are added to the front of the processing queue (retrying first, then resuming, then new)
+---
+
+## 2026-01-23 - US-014
+- What was implemented: Cleanup of temporary audio WAV files after transcription completes
+- Files changed:
+  - src/index.ts (updated - import cleanupTempAudio and getTempAudioPath, call cleanup after transcription and on error)
+- **Learnings for future iterations:**
+  - cleanupTempAudio() function was already implemented in src/services/audio.ts (US-006), just needed to be used
+  - Call cleanup immediately after transcription completes (when audio file is no longer needed)
+  - Call cleanup in error handler for best-effort cleanup on failure
+  - cleanupTempAudio() handles non-existent files gracefully (no error thrown)
+  - Log cleanup action in verbose mode for debugging
+---
