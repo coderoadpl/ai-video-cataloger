@@ -1,7 +1,7 @@
 {
   "project": "AI Video Cataloger",
   "branchName": "ralph/ai-video-cataloger-mvp",
-  "description": "Node.js/TypeScript CLI tool that analyzes videos, transcribes with local Whisper, generates summaries via Claude Code CLI, and renames files based on content with resumable batch processing",
+  "description": "Node.js/TypeScript CLI tool that analyzes videos, transcribes with local Whisper, generates summaries via Claude Code CLI, and renames files based on content with resumable batch processing, interactive menu, model management, and Whisper API support",
   "userStories": [
     {
       "id": "US-001",
@@ -227,6 +227,170 @@
       ],
       "priority": 14,
       "passes": true,
+      "notes": ""
+    },
+    {
+      "id": "US-015",
+      "title": "Claude Analysis Timeout Handling",
+      "description": "As a user, I want the Claude analysis to have a timeout so the tool doesn't hang indefinitely.",
+      "acceptanceCriteria": [
+        "Add configurable timeout for Claude CLI calls (default: 120 seconds)",
+        "Display spinner with elapsed time during analysis",
+        "On timeout, mark video as error with 'Analysis timed out' message",
+        "Add --timeout <seconds> CLI flag to override default",
+        "Continue processing remaining videos after timeout",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-016",
+      "title": "Whisper Mode Selection",
+      "description": "As a user, I want to choose between local Whisper, OpenAI API, or skip transcription so I have flexibility in how audio is processed.",
+      "acceptanceCriteria": [
+        "Add --whisper <mode> CLI flag with options: local, api, skip",
+        "Default to 'local' mode for backward compatibility",
+        "--skip-transcribe as alias for --whisper skip",
+        "API mode requires OPENAI_API_KEY environment variable",
+        "Display clear error if API key missing when API mode selected",
+        "Prerequisite check skips local Whisper verification if using API or skip mode",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-017",
+      "title": "Whisper API Integration",
+      "description": "As a user, I want to use OpenAI's Whisper API for transcription so I don't need local Whisper installed.",
+      "acceptanceCriteria": [
+        "Add openai package as dependency",
+        "Implement transcribeWithApi() function in transcription service",
+        "Send audio file to OpenAI Whisper API",
+        "Save transcript to same location as local mode",
+        "Handle API errors gracefully with clear messages",
+        "Show spinner during API transcription",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-018",
+      "title": "Interactive Settings Menu",
+      "description": "As a user, I want an interactive menu when I run the tool so I can configure settings before processing starts.",
+      "acceptanceCriteria": [
+        "Add inquirer package as dependency",
+        "Running ai-video-cataloger without flags shows interactive menu",
+        "Menu displays count of videos found in directory",
+        "Menu options: 'Start with defaults', 'Configure settings', 'View current settings', 'Exit'",
+        "Add --yes or -y flag to skip menu and use defaults",
+        "Add --non-interactive flag for script usage (alias for --yes)",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-019",
+      "title": "Settings Configuration Submenu",
+      "description": "As a user, I want to configure transcription, frames, and renaming options through the menu so I can customize processing.",
+      "acceptanceCriteria": [
+        "'Configure settings' opens submenu with options",
+        "Transcription method: Local Whisper / OpenAI API / Skip transcription",
+        "Whisper model selection (if local): tiny, base, small, medium, large-v3",
+        "Frame count: numeric input (1-10)",
+        "Rename videos: yes/no toggle",
+        "Settings passed to processing pipeline",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-020",
+      "title": "Model Management - List Models",
+      "description": "As a user, I want to see which Whisper models are available and downloaded so I can choose the right one.",
+      "acceptanceCriteria": [
+        "ai-video-cataloger models list shows available models",
+        "Display model name, size, and download status (downloaded/not downloaded)",
+        "Mark currently active model with indicator",
+        "Models: tiny (75MB), base (142MB), small (466MB), medium (1.5GB), large-v3 (3.1GB)",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-021",
+      "title": "Model Management - Set Active Model",
+      "description": "As a user, I want to select which Whisper model to use by default so I don't have to specify it each time.",
+      "acceptanceCriteria": [
+        "ai-video-cataloger models use <model-name> sets active model",
+        "Validate model name is valid before setting",
+        "Store active model in database config table",
+        "Processing uses active model unless overridden by menu/flag",
+        "Display confirmation message after setting",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-022",
+      "title": "Database Status Command",
+      "description": "As a user, I want to see the processing status of all videos so I can track progress.",
+      "acceptanceCriteria": [
+        "ai-video-cataloger status shows all tracked videos",
+        "Display: filename, status, error message (if any)",
+        "Group by status: completed, in progress, pending, error",
+        "Show counts for each status group",
+        "Handle empty database gracefully with message",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-023",
+      "title": "Database Reset Command",
+      "description": "As a user, I want to reset the database so I can start fresh or reprocess specific videos.",
+      "acceptanceCriteria": [
+        "ai-video-cataloger reset prompts for confirmation then clears all video records",
+        "ai-video-cataloger reset <filename> resets specific video to pending status",
+        "--force flag skips confirmation prompt",
+        "Display what will be reset before confirmation",
+        "Preserve config table during reset (only clear videos)",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": "US-024",
+      "title": "Claude Analysis Verbose Output",
+      "description": "As a user, I want to see what's happening during Claude analysis so I can debug issues and understand progress.",
+      "acceptanceCriteria": [
+        "In verbose mode, display the full prompt being sent to Claude",
+        "In verbose mode, display the frame paths being analyzed",
+        "Stream Claude's stdout to console in real-time (not just at end)",
+        "Display elapsed time counter updating every second during analysis",
+        "Show full Claude response in verbose mode, truncated preview (100 chars) in normal mode",
+        "Log to a file: summaries/{video-name}-debug.log with prompt and full response",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
       "notes": ""
     }
   ]
