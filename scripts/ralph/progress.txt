@@ -227,3 +227,18 @@
   - cleanupTempAudio() handles non-existent files gracefully (no error thrown)
   - Log cleanup action in verbose mode for debugging
 ---
+
+## 2026-01-23 - US-015
+- What was implemented: Claude Analysis Timeout Handling with configurable timeout and elapsed time display
+- Files changed:
+  - src/services/analyzer.ts (updated - added timeout support with execa, elapsed time spinner, timeout error handling)
+  - src/services/index.ts (updated - export AnalysisOptions type)
+  - src/index.ts (updated - added --timeout CLI flag, pass timeout to analyzeVideo)
+- **Learnings for future iterations:**
+  - execa supports timeout option: `execa('command', args, { timeout: timeoutMs })` - timeout in milliseconds
+  - execa timeout errors have `timedOut: boolean` property to check if error was a timeout
+  - Use setInterval to update spinner text with elapsed time every second
+  - Always clearInterval in both success and error paths to avoid memory leaks
+  - Timeout errors should throw a new Error with clear message like "Analysis timed out after X seconds"
+  - CLI options with value parsers: `.option('-t, --timeout <seconds>', 'description', (value) => parseInt(value, 10), 120)`
+---
