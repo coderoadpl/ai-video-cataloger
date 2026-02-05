@@ -24,6 +24,7 @@ export {
   getSummaryPath,
   getSuggestedFilenameFromSummary,
   type AnalysisResult,
+  type AnalysisOptions,
 } from './analyzer.js';
 export {
   renameVideo,

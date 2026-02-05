@@ -58,6 +58,10 @@ export interface AnalysisResult {
   fullAnalysis: string;
 }
 
+export interface AnalysisOptions {
+  timeoutSeconds?: number;
+}
+
 /**
  * Parse Claude's response to extract description and filename suggestion
  * Expected format:
@@ -150,18 +154,32 @@ Focus on being descriptive and accurate. The filename should capture the essence
  * Analyze a video using Claude Code CLI
  * @param video - The video record to analyze
  * @param hasTranscript - Whether the video has a transcript
+ * @param options - Analysis options including timeout
  * @returns Analysis result with description and suggested filename
  */
 export async function analyzeVideo(
   video: VideoRecord,
-  hasTranscript: boolean
+  hasTranscript: boolean,
+  options: AnalysisOptions = {}
 ): Promise<AnalysisResult> {
   const videoPath = video.original_path;
+  const timeoutSeconds = options.timeoutSeconds ?? 120;
+  const timeoutMs = timeoutSeconds * 1000;
+
+  // Track elapsed time for spinner
+  let elapsedSeconds = 0;
+  const startTime = Date.now();
 
   const spinner = ora({
-    text: `Analyzing ${chalk.cyan(video.original_name)} with Claude`,
+    text: `Analyzing ${chalk.cyan(video.original_name)} with Claude (0s)`,
     color: 'blue',
   }).start();
+
+  // Update spinner with elapsed time every second
+  const elapsedTimer = setInterval(() => {
+    elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+    spinner.text = `Analyzing ${chalk.cyan(video.original_name)} with Claude (${elapsedSeconds}s)`;
+  }, 1000);
 
   try {
     // Get frame files
@@ -176,6 +194,7 @@ export async function analyzeVideo(
     }
 
     if (framePaths.length === 0) {
+      clearInterval(elapsedTimer);
       throw new Error('No frames found for analysis');
     }
 
@@ -199,9 +218,12 @@ export async function analyzeVideo(
       args.push(framePath);
     }
 
-    // Call Claude Code CLI
-    const result = await execa('claude', args);
+    // Call Claude Code CLI with timeout
+    const result = await execa('claude', args, { timeout: timeoutMs });
     const response = result.stdout;
+
+    // Clear the elapsed timer
+    clearInterval(elapsedTimer);
 
     // Parse the response
     const analysis = parseClaudeResponse(response);
@@ -231,10 +253,19 @@ ${analysis.fullAnalysis}
     // Update video status in database
     updateVideoStatus(video.id, 'analyzed');
 
-    spinner.succeed(`Analyzed ${chalk.cyan(video.original_name)}`);
+    spinner.succeed(`Analyzed ${chalk.cyan(video.original_name)} (${Math.floor((Date.now() - startTime) / 1000)}s)`);
 
     return analysis;
   } catch (error) {
+    clearInterval(elapsedTimer);
+
+    // Check if this was a timeout error
+    if (error && typeof error === 'object' && 'timedOut' in error && (error as { timedOut: boolean }).timedOut) {
+      const timeoutError = new Error(`Analysis timed out after ${timeoutSeconds} seconds`);
+      spinner.fail(`Analysis timed out for ${chalk.cyan(video.original_name)} after ${timeoutSeconds}s`);
+      throw timeoutError;
+    }
+
     const message = error instanceof Error ? error.message : String(error);
     spinner.fail(`Failed to analyze ${chalk.cyan(video.original_name)}: ${message}`);
     throw error;

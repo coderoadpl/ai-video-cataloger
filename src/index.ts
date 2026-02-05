@@ -28,6 +28,7 @@ interface CliOptions {
   skipRename: boolean;
   verbose: boolean;
   retryErrors: boolean;
+  timeout: number;
 }
 
 // Global options object
@@ -36,6 +37,7 @@ let cliOptions: CliOptions = {
   skipRename: false,
   verbose: false,
   retryErrors: false,
+  timeout: 120,
 };
 
 // Progress tracking
@@ -116,7 +118,7 @@ async function run(directory: string, options: CliOptions): Promise<void> {
 
   if (cliOptions.verbose) {
     console.log(chalk.gray('[verbose] Verbose mode enabled'));
-    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}`));
+    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}, timeout=${options.timeout}s`));
   }
 
   // Check prerequisites
@@ -204,7 +206,8 @@ async function main(): Promise<void> {
     .option('-s, --skip-rename', 'Only generate summaries, do not rename files', false)
     .option('-v, --verbose', 'Show detailed output', false)
     .option('-r, --retry-errors', 'Re-process videos that previously failed with errors', false)
-    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean }) => {
+    .option('-t, --timeout <seconds>', 'Timeout for Claude analysis in seconds', (value) => parseInt(value, 10), 120)
+    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean; timeout: number }) => {
       await run(directory, options);
     });
 
@@ -257,8 +260,8 @@ async function processVideo(video: VideoRecord): Promise<void> {
   let suggestedFilename = '';
   if (video.status === 'transcribed') {
     logStep('Analyzing with Claude', video.original_name);
-    logVerbose('Analyzing with Claude...');
-    const analysis = await analyzeVideo(video, hasTranscript);
+    logVerbose(`Analyzing with Claude (timeout: ${cliOptions.timeout}s)...`);
+    const analysis = await analyzeVideo(video, hasTranscript, { timeoutSeconds: cliOptions.timeout });
     suggestedFilename = analysis.suggestedFilename;
     video.status = 'analyzed';
   }
