@@ -5,6 +5,11 @@
 
 import { execa } from 'execa';
 import chalk from 'chalk';
+import type { WhisperMode } from '../types/index.js';
+
+export interface PrerequisiteOptions {
+  whisperMode: WhisperMode;
+}
 
 interface PrerequisiteResult {
   name: string;
@@ -113,19 +118,36 @@ function displayResult(result: PrerequisiteResult): void {
 
 /**
  * Check all prerequisites and return whether all are met
+ * @param options - Optional prerequisite options (e.g., whisperMode)
  */
-export async function checkPrerequisites(): Promise<boolean> {
+export async function checkPrerequisites(options?: PrerequisiteOptions): Promise<boolean> {
+  const whisperMode = options?.whisperMode ?? 'local';
+
   console.log(chalk.bold('\nChecking prerequisites...\n'));
 
-  const results = await Promise.all([
+  // Base prerequisites (always required)
+  const baseChecks = [
     checkNodeVersion(),
     checkFfmpeg(),
     checkClaudeCli(),
-    checkWhisper()
-  ]);
+  ];
+
+  // Only check for local Whisper if using local mode
+  if (whisperMode === 'local') {
+    baseChecks.push(checkWhisper());
+  }
+
+  const results = await Promise.all(baseChecks);
 
   for (const result of results) {
     displayResult(result);
+  }
+
+  // If using API or skip mode, show that Whisper check was skipped
+  if (whisperMode === 'api') {
+    console.log(`${chalk.blue('○')} Whisper (skipped - using OpenAI API)`);
+  } else if (whisperMode === 'skip') {
+    console.log(`${chalk.blue('○')} Whisper (skipped - transcription disabled)`);
   }
 
   console.log('');

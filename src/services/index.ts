@@ -2,7 +2,7 @@
  * Services barrel export
  */
 
-export { checkPrerequisites } from './prerequisites.js';
+export { checkPrerequisites, type PrerequisiteOptions } from './prerequisites.js';
 export { scanDirectory, type ScanResult, type ScanOptions } from './scanner.js';
 export { extractFrames, getFramesDir } from './frames.js';
 export {

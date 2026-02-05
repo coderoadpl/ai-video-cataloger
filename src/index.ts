@@ -10,7 +10,7 @@ import { Command } from 'commander';
 import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
-import type { VideoRecord } from './types/index.js';
+import type { VideoRecord, WhisperMode } from './types/index.js';
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -29,6 +29,7 @@ interface CliOptions {
   verbose: boolean;
   retryErrors: boolean;
   timeout: number;
+  whisper: WhisperMode;
 }
 
 // Global options object
@@ -38,6 +39,7 @@ let cliOptions: CliOptions = {
   verbose: false,
   retryErrors: false,
   timeout: 120,
+  whisper: 'local',
 };
 
 // Progress tracking
@@ -118,11 +120,21 @@ async function run(directory: string, options: CliOptions): Promise<void> {
 
   if (cliOptions.verbose) {
     console.log(chalk.gray('[verbose] Verbose mode enabled'));
-    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}, timeout=${options.timeout}s`));
+    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}, timeout=${options.timeout}s, whisper=${options.whisper}`));
+  }
+
+  // Validate OPENAI_API_KEY if using API mode
+  if (cliOptions.whisper === 'api') {
+    if (!process.env.OPENAI_API_KEY) {
+      console.error(chalk.red('\n✗ Error: OPENAI_API_KEY environment variable is required when using --whisper api'));
+      console.error(chalk.gray('  Set it with: export OPENAI_API_KEY=your-api-key'));
+      process.exit(1);
+    }
+    logVerbose('OPENAI_API_KEY found');
   }
 
   // Check prerequisites
-  const allPrerequisitesMet = await checkPrerequisites();
+  const allPrerequisitesMet = await checkPrerequisites({ whisperMode: cliOptions.whisper });
 
   if (!allPrerequisitesMet) {
     process.exit(1);
@@ -207,8 +219,20 @@ async function main(): Promise<void> {
     .option('-v, --verbose', 'Show detailed output', false)
     .option('-r, --retry-errors', 'Re-process videos that previously failed with errors', false)
     .option('-t, --timeout <seconds>', 'Timeout for Claude analysis in seconds', (value) => parseInt(value, 10), 120)
-    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean; timeout: number }) => {
-      await run(directory, options);
+    .option('-w, --whisper <mode>', 'Transcription mode: local, api, or skip', (value: string) => {
+      const validModes = ['local', 'api', 'skip'];
+      if (!validModes.includes(value)) {
+        console.error(chalk.red(`\nInvalid whisper mode: ${value}`));
+        console.error(chalk.gray(`  Valid modes: ${validModes.join(', ')}`));
+        process.exit(1);
+      }
+      return value as WhisperMode;
+    }, 'local')
+    .option('--skip-transcribe', 'Skip transcription (alias for --whisper skip)', false)
+    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean; timeout: number; whisper: WhisperMode; skipTranscribe: boolean }) => {
+      // Handle --skip-transcribe alias
+      const whisperMode = options.skipTranscribe ? 'skip' : options.whisper;
+      await run(directory, { ...options, whisper: whisperMode });
     });
 
   await program.parseAsync(process.argv);

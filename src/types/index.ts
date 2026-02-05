@@ -2,6 +2,8 @@
  * Type definitions for AI Video Cataloger
  */
 
+export type WhisperMode = 'local' | 'api' | 'skip';
+
 export type VideoStatus =
   | 'pending'
   | 'frames_extracted'
