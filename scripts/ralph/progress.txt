@@ -242,3 +242,18 @@
   - Timeout errors should throw a new Error with clear message like "Analysis timed out after X seconds"
   - CLI options with value parsers: `.option('-t, --timeout <seconds>', 'description', (value) => parseInt(value, 10), 120)`
 ---
+
+## 2026-01-23 - US-016
+- What was implemented: Whisper Mode Selection for flexible transcription options
+- Files changed:
+  - src/types/index.ts (added WhisperMode type: 'local' | 'api' | 'skip')
+  - src/services/prerequisites.ts (added PrerequisiteOptions interface, conditional Whisper check)
+  - src/services/index.ts (export PrerequisiteOptions type)
+  - src/index.ts (added --whisper and --skip-transcribe flags, API key validation)
+- **Learnings for future iterations:**
+  - Use commander value parser for validation: `.option('-w, --whisper <mode>', ..., (value) => { validate; return value as Type; }, 'default')`
+  - Handle alias flags by checking for both in action: `const mode = options.skipTranscribe ? 'skip' : options.whisper`
+  - Validate environment variables early in run() before checkPrerequisites for clear error messages
+  - checkPrerequisites can accept optional PrerequisiteOptions to conditionally skip checks
+  - Use chalk.blue('○') for skipped/not-applicable checks in prerequisites output
+---
