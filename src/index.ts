@@ -269,8 +269,8 @@ async function processVideo(video: VideoRecord): Promise<void> {
   let hasTranscript = hasAudio;
   if (video.status === 'audio_extracted') {
     logStep('Transcribing audio', video.original_name);
-    logVerbose('Transcribing audio...');
-    const transcriptionResult = await transcribeAudio(video, hasAudio);
+    logVerbose(`Transcribing audio (mode: ${cliOptions.whisper})...`);
+    const transcriptionResult = await transcribeAudio(video, hasAudio, { mode: cliOptions.whisper });
     hasTranscript = transcriptionResult.transcribed;
     video.status = 'transcribed';
 

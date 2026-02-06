@@ -17,6 +17,7 @@ export {
   getTranscriptsDir,
   getTranscriptPath,
   type TranscriptionResult,
+  type TranscriptionOptions,
 } from './transcription.js';
 export {
   analyzeVideo,
