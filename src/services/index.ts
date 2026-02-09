@@ -31,3 +31,10 @@ export {
   renameVideo,
   type RenameResult,
 } from './renamer.js';
+export {
+  runInteractiveMenu,
+  countVideosInDirectory,
+  displayCurrentSettings,
+  type MenuSettings,
+  type MenuAction,
+} from './menu.js';

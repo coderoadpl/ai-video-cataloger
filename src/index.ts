@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -30,6 +30,7 @@ interface CliOptions {
   retryErrors: boolean;
   timeout: number;
   whisper: WhisperMode;
+  yes: boolean;
 }
 
 // Global options object
@@ -40,6 +41,7 @@ let cliOptions: CliOptions = {
   retryErrors: false,
   timeout: 120,
   whisper: 'local',
+  yes: false,
 };
 
 // Progress tracking
@@ -229,10 +231,54 @@ async function main(): Promise<void> {
       return value as WhisperMode;
     }, 'local')
     .option('--skip-transcribe', 'Skip transcription (alias for --whisper skip)', false)
-    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean; timeout: number; whisper: WhisperMode; skipTranscribe: boolean }) => {
+    .option('-y, --yes', 'Skip interactive menu and use defaults', false)
+    .option('--non-interactive', 'Skip interactive menu (alias for --yes)', false)
+    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean; timeout: number; whisper: WhisperMode; skipTranscribe: boolean; yes: boolean; nonInteractive: boolean }) => {
       // Handle --skip-transcribe alias
       const whisperMode = options.skipTranscribe ? 'skip' : options.whisper;
-      await run(directory, { ...options, whisper: whisperMode });
+      // Handle --non-interactive alias
+      const skipMenu = options.yes || options.nonInteractive;
+
+      // Check if any configuration flags were explicitly provided
+      const hasConfigFlags = process.argv.some(arg =>
+        arg.startsWith('-f') || arg.startsWith('--frames') ||
+        arg.startsWith('-s') || arg === '--skip-rename' ||
+        arg.startsWith('-r') || arg === '--retry-errors' ||
+        arg.startsWith('-t') || arg.startsWith('--timeout') ||
+        arg.startsWith('-w') || arg.startsWith('--whisper') ||
+        arg === '--skip-transcribe'
+      );
+
+      // If running without any flags and not --yes, show interactive menu
+      if (!skipMenu && !hasConfigFlags) {
+        const defaultSettings = {
+          frames: options.frames,
+          skipRename: options.skipRename,
+          whisper: whisperMode,
+          timeout: options.timeout,
+        };
+
+        const menuResult = await runInteractiveMenu(directory, defaultSettings);
+
+        if (menuResult === null) {
+          // User chose to exit
+          process.exit(0);
+        }
+
+        // Use settings from menu
+        await run(directory, {
+          frames: menuResult.frames,
+          skipRename: menuResult.skipRename,
+          verbose: options.verbose,
+          retryErrors: options.retryErrors,
+          timeout: menuResult.timeout,
+          whisper: menuResult.whisper,
+          yes: true,
+        });
+      } else {
+        // Run directly with CLI options
+        await run(directory, { ...options, whisper: whisperMode, yes: skipMenu });
+      }
     });
 
   await program.parseAsync(process.argv);
