@@ -21,6 +21,7 @@
 - Temp audio files stored in OS temp directory using getTempAudioPath(videoPath)
 - Claude CLI for analysis: `claude -p <prompt> <image1> <image2> ...` to pass frames as attachments
 - Analysis response format: DESCRIPTION: <text> FILENAME: <kebab-case-name>
+- OpenAI Whisper API: `openai.audio.transcriptions.create({ file: createReadStream(path), model: 'whisper-1' })`
 
 ---
 
@@ -256,4 +257,21 @@
   - Validate environment variables early in run() before checkPrerequisites for clear error messages
   - checkPrerequisites can accept optional PrerequisiteOptions to conditionally skip checks
   - Use chalk.blue('○') for skipped/not-applicable checks in prerequisites output
+---
+
+## 2026-01-23 - US-017
+- What was implemented: OpenAI Whisper API integration for cloud-based transcription
+- Files changed:
+  - package.json (added openai dependency)
+  - src/services/transcription.ts (added transcribeWithApi, transcribeWithLocal functions, updated transcribeAudio to support modes)
+  - src/services/index.ts (export TranscriptionOptions type)
+  - src/index.ts (pass whisper mode option to transcribeAudio)
+- **Learnings for future iterations:**
+  - OpenAI client: `new OpenAI()` automatically reads OPENAI_API_KEY from environment
+  - Use `createReadStream(audioPath)` to pass audio file to the API
+  - API call: `openai.audio.transcriptions.create({ file: audioStream, model: 'whisper-1' })`
+  - Handle specific API errors with status codes: 401 (auth), 429 (rate limit), 413 (file size)
+  - OpenAI.APIError class provides status and message for error handling
+  - Refactored transcribeAudio to delegate to transcribeWithApi or transcribeWithLocal based on mode
+  - TranscriptionOptions interface { mode: WhisperMode } for type-safe option passing
 ---
