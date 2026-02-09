@@ -275,3 +275,19 @@
   - Refactored transcribeAudio to delegate to transcribeWithApi or transcribeWithLocal based on mode
   - TranscriptionOptions interface { mode: WhisperMode } for type-safe option passing
 ---
+
+## 2026-01-23 - US-018
+- What was implemented: Interactive settings menu using inquirer with --yes/-y and --non-interactive flags
+- Files changed:
+  - package.json (added inquirer and @types/inquirer dependencies)
+  - src/services/menu.ts (created - interactive menu with video count, main menu options, current settings display)
+  - src/services/index.ts (export menu functions and types)
+  - src/index.ts (integrated menu, added --yes/-y and --non-interactive flags, detect when to show menu)
+- **Learnings for future iterations:**
+  - inquirer uses `inquirer.prompt<T>()` with generic for type-safe answers
+  - Check `process.argv.some()` to detect if any config flags were explicitly provided
+  - Use aliases like `--non-interactive` for script usage (`options.yes || options.nonInteractive`)
+  - Menu loop: use `while(true)` with break/return for main menu loop pattern
+  - Export MenuSettings type for reuse in US-019 (settings configuration submenu)
+  - countVideosInDirectory() helper avoids full database scan before menu display
+---
