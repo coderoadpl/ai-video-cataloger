@@ -22,6 +22,8 @@
 - Claude CLI for analysis: `claude -p <prompt> <image1> <image2> ...` to pass frames as attachments
 - Analysis response format: DESCRIPTION: <text> FILENAME: <kebab-case-name>
 - OpenAI Whisper API: `openai.audio.transcriptions.create({ file: createReadStream(path), model: 'whisper-1' })`
+- Local Whisper CLI model selection: `whisper <audio> --model <model>` (models: tiny, base, small, medium, large-v3)
+- inquirer for interactive prompts: `inquirer.prompt<T>([...])` with types list, number, confirm
 
 ---
 
@@ -290,4 +292,19 @@
   - Menu loop: use `while(true)` with break/return for main menu loop pattern
   - Export MenuSettings type for reuse in US-019 (settings configuration submenu)
   - countVideosInDirectory() helper avoids full database scan before menu display
+---
+
+## 2026-01-23 - US-019
+- What was implemented: Settings configuration submenu with interactive prompts for all configurable options
+- Files changed:
+  - src/services/menu.ts (added WhisperModel type, configureSettings function with prompts for transcription method, whisper model, frames, rename toggle)
+  - src/services/transcription.ts (added WhisperModel type, updated TranscriptionOptions to include model, pass model to whisper CLI)
+  - src/services/index.ts (export configureSettings and WhisperModel type)
+  - src/index.ts (added whisperModel to CliOptions, pass model through to transcription, update verbose logging)
+- **Learnings for future iterations:**
+  - inquirer 'number' type has validate function that receives number but needs to handle NaN case
+  - inquirer 'confirm' type returns boolean directly - use inverse for skipRename (rename toggle → !skipRename)
+  - WhisperModel type defined in both menu.ts and transcription.ts to avoid circular dependencies
+  - Whisper model passed via --model flag: `whisper <audio> --model <model>`
+  - Conditional prompts: only show whisper model selection when mode is 'local'
 ---
