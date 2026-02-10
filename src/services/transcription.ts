@@ -35,8 +35,11 @@ export interface TranscriptionResult {
   transcript: string | null;
 }
 
+export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+
 export interface TranscriptionOptions {
   mode: WhisperMode;
+  model?: WhisperModel;
 }
 
 /**
@@ -114,15 +117,17 @@ async function transcribeWithApi(
  * @param video - The video record to transcribe
  * @param audioPath - Path to the audio file
  * @param transcriptsDir - Directory to save the transcript
+ * @param model - Whisper model to use (default: base)
  * @returns Result containing whether transcription occurred and the transcript content
  */
 async function transcribeWithLocal(
   video: VideoRecord,
   audioPath: string,
-  transcriptsDir: string
+  transcriptsDir: string,
+  model: WhisperModel = 'base'
 ): Promise<TranscriptionResult> {
   const spinner = ora({
-    text: `Transcribing ${chalk.cyan(video.original_name)} with Whisper`,
+    text: `Transcribing ${chalk.cyan(video.original_name)} with Whisper (${model})`,
     color: 'blue',
   }).start();
 
@@ -136,7 +141,7 @@ async function transcribeWithLocal(
     // and --output_format txt to get plain text
     await execa('whisper', [
       audioPath,
-      '--model', 'base',
+      '--model', model,
       '--output_dir', transcriptsDir,
       '--output_format', 'txt',
     ]);
@@ -213,6 +218,6 @@ export async function transcribeAudio(
   if (options.mode === 'api') {
     return transcribeWithApi(video, audioPath, transcriptsDir);
   } else {
-    return transcribeWithLocal(video, audioPath, transcriptsDir);
+    return transcribeWithLocal(video, audioPath, transcriptsDir, options.model ?? 'base');
   }
 }

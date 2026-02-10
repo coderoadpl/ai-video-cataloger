@@ -11,10 +11,13 @@ import type { WhisperMode } from '../types/index.js';
 
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
 
+export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+
 export interface MenuSettings {
   frames: number;
   skipRename: boolean;
   whisper: WhisperMode;
+  whisperModel: WhisperModel;
   timeout: number;
 }
 
@@ -95,8 +98,89 @@ export function displayCurrentSettings(settings: MenuSettings): void {
   console.log(`  Frames to extract:    ${chalk.cyan(settings.frames)}`);
   console.log(`  Rename videos:        ${settings.skipRename ? chalk.yellow('No') : chalk.green('Yes')}`);
   console.log(`  Transcription mode:   ${chalk.cyan(settings.whisper)}`);
+  if (settings.whisper === 'local') {
+    console.log(`  Whisper model:        ${chalk.cyan(settings.whisperModel)}`);
+  }
   console.log(`  Claude timeout:       ${chalk.cyan(settings.timeout + 's')}`);
   console.log(chalk.gray('─────────────────────────────────────\n'));
+}
+
+/**
+ * Configure settings through interactive submenu
+ */
+export async function configureSettings(currentSettings: MenuSettings): Promise<MenuSettings> {
+  const settings = { ...currentSettings };
+
+  console.log('\n' + chalk.bold('Configure Settings'));
+  console.log(chalk.gray('─────────────────────────────────────\n'));
+
+  // 1. Transcription method selection
+  const { transcriptionMethod } = await inquirer.prompt<{ transcriptionMethod: WhisperMode }>([
+    {
+      type: 'list',
+      name: 'transcriptionMethod',
+      message: 'Transcription method:',
+      choices: [
+        { name: 'Local Whisper (requires whisper CLI)', value: 'local' },
+        { name: 'OpenAI API (requires OPENAI_API_KEY)', value: 'api' },
+        { name: 'Skip transcription', value: 'skip' },
+      ],
+      default: settings.whisper,
+    },
+  ]);
+  settings.whisper = transcriptionMethod;
+
+  // 2. Whisper model selection (only if local mode)
+  if (transcriptionMethod === 'local') {
+    const { whisperModel } = await inquirer.prompt<{ whisperModel: WhisperModel }>([
+      {
+        type: 'list',
+        name: 'whisperModel',
+        message: 'Whisper model:',
+        choices: [
+          { name: 'tiny (75MB) - Fastest, lower quality', value: 'tiny' },
+          { name: 'base (142MB) - Default, good balance', value: 'base' },
+          { name: 'small (466MB) - Better quality', value: 'small' },
+          { name: 'medium (1.5GB) - High quality', value: 'medium' },
+          { name: 'large-v3 (3.1GB) - Best quality, slowest', value: 'large-v3' },
+        ],
+        default: settings.whisperModel,
+      },
+    ]);
+    settings.whisperModel = whisperModel;
+  }
+
+  // 3. Frame count input
+  const { frameCount } = await inquirer.prompt<{ frameCount: number }>([
+    {
+      type: 'number',
+      name: 'frameCount',
+      message: 'Number of frames to extract (1-10):',
+      default: settings.frames,
+      validate: (input: number) => {
+        if (isNaN(input) || input < 1 || input > 10) {
+          return 'Please enter a number between 1 and 10';
+        }
+        return true;
+      },
+    },
+  ]);
+  settings.frames = frameCount;
+
+  // 4. Rename videos toggle
+  const { renameVideos } = await inquirer.prompt<{ renameVideos: boolean }>([
+    {
+      type: 'confirm',
+      name: 'renameVideos',
+      message: 'Rename videos based on content?',
+      default: !settings.skipRename,
+    },
+  ]);
+  settings.skipRename = !renameVideos;
+
+  console.log(chalk.green('\n  Settings updated!\n'));
+
+  return settings;
 }
 
 /**
@@ -115,8 +199,7 @@ export async function runInteractiveMenu(directory: string, defaultSettings: Men
         return settings;
 
       case 'configure':
-        // This will be implemented in US-019
-        console.log(chalk.yellow('\n  Settings configuration coming soon (US-019).\n'));
+        settings = await configureSettings(settings);
         break;
 
       case 'view':

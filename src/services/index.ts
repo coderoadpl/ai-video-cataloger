@@ -35,6 +35,8 @@ export {
   runInteractiveMenu,
   countVideosInDirectory,
   displayCurrentSettings,
+  configureSettings,
   type MenuSettings,
   type MenuAction,
+  type WhisperModel,
 } from './menu.js';

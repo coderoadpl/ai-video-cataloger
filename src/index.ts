@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -30,6 +30,7 @@ interface CliOptions {
   retryErrors: boolean;
   timeout: number;
   whisper: WhisperMode;
+  whisperModel: WhisperModel;
   yes: boolean;
 }
 
@@ -41,6 +42,7 @@ let cliOptions: CliOptions = {
   retryErrors: false,
   timeout: 120,
   whisper: 'local',
+  whisperModel: 'base',
   yes: false,
 };
 
@@ -122,7 +124,7 @@ async function run(directory: string, options: CliOptions): Promise<void> {
 
   if (cliOptions.verbose) {
     console.log(chalk.gray('[verbose] Verbose mode enabled'));
-    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}, timeout=${options.timeout}s, whisper=${options.whisper}`));
+    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}, timeout=${options.timeout}s, whisper=${options.whisper}, whisperModel=${options.whisperModel}`));
   }
 
   // Validate OPENAI_API_KEY if using API mode
@@ -255,6 +257,7 @@ async function main(): Promise<void> {
           frames: options.frames,
           skipRename: options.skipRename,
           whisper: whisperMode,
+          whisperModel: 'base' as WhisperModel,
           timeout: options.timeout,
         };
 
@@ -273,11 +276,12 @@ async function main(): Promise<void> {
           retryErrors: options.retryErrors,
           timeout: menuResult.timeout,
           whisper: menuResult.whisper,
+          whisperModel: menuResult.whisperModel,
           yes: true,
         });
       } else {
         // Run directly with CLI options
-        await run(directory, { ...options, whisper: whisperMode, yes: skipMenu });
+        await run(directory, { ...options, whisper: whisperMode, whisperModel: 'base', yes: skipMenu });
       }
     });
 
@@ -315,8 +319,8 @@ async function processVideo(video: VideoRecord): Promise<void> {
   let hasTranscript = hasAudio;
   if (video.status === 'audio_extracted') {
     logStep('Transcribing audio', video.original_name);
-    logVerbose(`Transcribing audio (mode: ${cliOptions.whisper})...`);
-    const transcriptionResult = await transcribeAudio(video, hasAudio, { mode: cliOptions.whisper });
+    logVerbose(`Transcribing audio (mode: ${cliOptions.whisper}, model: ${cliOptions.whisperModel})...`);
+    const transcriptionResult = await transcribeAudio(video, hasAudio, { mode: cliOptions.whisper, model: cliOptions.whisperModel });
     hasTranscript = transcriptionResult.transcribed;
     video.status = 'transcribed';
 
