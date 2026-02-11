@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -283,6 +283,26 @@ async function main(): Promise<void> {
         // Run directly with CLI options
         await run(directory, { ...options, whisper: whisperMode, whisperModel: 'base', yes: skipMenu });
       }
+    });
+
+  // Models subcommand
+  const modelsCommand = program
+    .command('models')
+    .description('Manage Whisper models');
+
+  modelsCommand
+    .command('list')
+    .description('List available Whisper models and their download status')
+    .action(async () => {
+      // Initialize database to read active model from config
+      await initDatabase();
+
+      // Register cleanup handler
+      process.on('exit', () => {
+        closeDatabase();
+      });
+
+      displayModelList();
     });
 
   await program.parseAsync(process.argv);

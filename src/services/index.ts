@@ -40,3 +40,13 @@ export {
   type MenuAction,
   type WhisperModel,
 } from './menu.js';
+export {
+  listModels,
+  displayModelList,
+  isModelDownloaded,
+  getActiveModel,
+  isValidModelName,
+  getWhisperCacheDir,
+  type WhisperModelName,
+  type WhisperModelInfo,
+} from './models.js';
