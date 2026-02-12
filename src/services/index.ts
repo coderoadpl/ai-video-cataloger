@@ -45,6 +45,7 @@ export {
   displayModelList,
   isModelDownloaded,
   getActiveModel,
+  setActiveModel,
   isValidModelName,
   getWhisperCacheDir,
   type WhisperModelName,

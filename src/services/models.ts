@@ -7,7 +7,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
 import chalk from 'chalk';
-import { getConfig } from '../db/index.js';
+import { getConfig, setConfig } from '../db/index.js';
 
 export type WhisperModelName = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 
@@ -110,4 +110,40 @@ export function displayModelList(): void {
 
   console.log('\n' + chalk.gray('─────────────────────────────────────────────────'));
   console.log(chalk.gray('  Use "ai-video-cataloger models use <name>" to set active model\n'));
+}
+
+/**
+ * Set the active (default) Whisper model
+ * Validates the model name and stores it in the database config table
+ * @returns true if successful, false if model name is invalid
+ */
+export function setActiveModel(modelName: string): boolean {
+  // Validate model name
+  if (!isValidModelName(modelName)) {
+    console.error(chalk.red(`\nInvalid model name: ${modelName}`));
+    console.error(chalk.gray('  Valid models: ' + MODEL_DEFINITIONS.map(m => m.name).join(', ')));
+    return false;
+  }
+
+  // Store in database config
+  setConfig('whisper_model', modelName);
+
+  // Display confirmation
+  console.log(chalk.green(`\n✓ Active model set to: ${chalk.bold(modelName)}`));
+
+  // Show additional info about the model
+  const modelInfo = MODEL_DEFINITIONS.find(m => m.name === modelName);
+  if (modelInfo) {
+    console.log(chalk.gray(`  Size: ${modelInfo.size}`));
+
+    // Check if downloaded
+    if (isModelDownloaded(modelName as WhisperModelName)) {
+      console.log(chalk.green(`  Status: downloaded`));
+    } else {
+      console.log(chalk.yellow(`  Status: not downloaded (will be downloaded on first use)`));
+    }
+  }
+
+  console.log();
+  return true;
 }
