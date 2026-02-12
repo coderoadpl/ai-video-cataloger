@@ -24,6 +24,8 @@
 - OpenAI Whisper API: `openai.audio.transcriptions.create({ file: createReadStream(path), model: 'whisper-1' })`
 - Local Whisper CLI model selection: `whisper <audio> --model <model>` (models: tiny, base, small, medium, large-v3)
 - inquirer for interactive prompts: `inquirer.prompt<T>([...])` with types list, number, confirm
+- Local Whisper models stored in `~/.cache/whisper/` as `.pt` files (e.g., base.pt, tiny.pt)
+- Commander.js subcommands: use `program.command('name')` for subcommand groups, then chain `.command('action')` for actions
 
 ---
 
@@ -307,4 +309,18 @@
   - WhisperModel type defined in both menu.ts and transcription.ts to avoid circular dependencies
   - Whisper model passed via --model flag: `whisper <audio> --model <model>`
   - Conditional prompts: only show whisper model selection when mode is 'local'
+---
+
+## 2026-01-23 - US-020
+- What was implemented: Model management 'list' command to display available Whisper models
+- Files changed:
+  - src/services/models.ts (created - model definitions, download status detection, display function)
+  - src/services/index.ts (export model management functions and types)
+  - src/index.ts (added 'models' subcommand with 'list' action)
+- **Learnings for future iterations:**
+  - Commander.js subcommands: use `program.command('name')` to create subcommand, then chain `.command('action')` for nested commands
+  - Local Whisper stores downloaded models in `~/.cache/whisper/` as `.pt` files (e.g., base.pt, tiny.pt)
+  - Use `homedir()` from node:os to get user's home directory cross-platform
+  - Active model stored in database config table with key 'whisper_model', defaults to 'base' if not set
+  - WhisperModelName type defined in models.ts separate from WhisperModel in menu.ts to avoid coupling
 ---
