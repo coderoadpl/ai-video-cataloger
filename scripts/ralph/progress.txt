@@ -324,3 +324,16 @@
   - Active model stored in database config table with key 'whisper_model', defaults to 'base' if not set
   - WhisperModelName type defined in models.ts separate from WhisperModel in menu.ts to avoid coupling
 ---
+
+## 2026-01-23 - US-021
+- What was implemented: Model management 'use' command to set the active Whisper model
+- Files changed:
+  - src/services/models.ts (added setActiveModel function with validation, config storage, and confirmation display)
+  - src/services/index.ts (export setActiveModel)
+  - src/index.ts (added 'models use <model-name>' subcommand)
+- **Learnings for future iterations:**
+  - setConfig() from database already handles INSERT OR REPLACE for config table
+  - Command action returns boolean for success/failure, use process.exit() to return proper exit code
+  - Commander.js `<model-name>` syntax creates required positional argument
+  - Display model info (size, download status) in confirmation for better UX
+---
