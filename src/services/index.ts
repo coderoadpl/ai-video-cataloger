@@ -52,3 +52,8 @@ export {
   type WhisperModelInfo,
 } from './models.js';
 export { displayStatus } from './status.js';
+export {
+  resetAllVideos,
+  resetSingleVideo,
+  type ResetOptions,
+} from './reset.js';

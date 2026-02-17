@@ -7,6 +7,7 @@ export {
   saveDatabase,
   closeDatabase,
   getVideoByPath,
+  getVideoById,
   getAllVideos,
   getVideosByStatus,
   getIncompleteVideos,
@@ -16,4 +17,6 @@ export {
   getConfig,
   setConfig,
   getDatabaseDir,
+  clearAllVideos,
+  resetVideoByFilename,
 } from './database.js';

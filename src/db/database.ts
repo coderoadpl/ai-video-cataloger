@@ -309,3 +309,80 @@ function rowToVideoRecord(
 export function getDatabaseDir(workingDir: string = process.cwd()): string {
   return join(workingDir, DB_DIR_NAME);
 }
+
+/**
+ * Clear all video records (preserves config table)
+ */
+export function clearAllVideos(): number {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  // Get count of videos before clearing
+  const countResult = db.exec('SELECT COUNT(*) FROM videos');
+  const count = countResult.length > 0 ? (countResult[0].values[0][0] as number) : 0;
+
+  // Delete all video records
+  db.run('DELETE FROM videos');
+
+  saveDatabase();
+
+  return count;
+}
+
+/**
+ * Reset a specific video to pending status by filename (original_name)
+ * Clears error_message and new_name
+ */
+export function resetVideoByFilename(filename: string): VideoRecord | null {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  // Find video by filename
+  const result = db.exec(
+    'SELECT * FROM videos WHERE original_name = ?',
+    [filename]
+  );
+
+  if (result.length === 0 || result[0].values.length === 0) {
+    return null;
+  }
+
+  const columns = result[0].columns;
+  const values = result[0].values[0];
+  const video = rowToVideoRecord(columns, values);
+
+  // Reset video to pending status
+  db.run(
+    `UPDATE videos SET status = 'pending', error_message = NULL, new_name = NULL, updated_at = datetime('now') WHERE id = ?`,
+    [video.id]
+  );
+
+  saveDatabase();
+
+  // Return the updated record
+  return getVideoById(video.id);
+}
+
+/**
+ * Get a video record by its ID
+ */
+export function getVideoById(id: number): VideoRecord | null {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  const result = db.exec(
+    'SELECT * FROM videos WHERE id = ?',
+    [id]
+  );
+
+  if (result.length === 0 || result[0].values.length === 0) {
+    return null;
+  }
+
+  const columns = result[0].columns;
+  const values = result[0].values[0];
+  return rowToVideoRecord(columns, values);
+}

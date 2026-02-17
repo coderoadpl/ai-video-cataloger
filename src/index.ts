@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -335,6 +335,33 @@ async function main(): Promise<void> {
       });
 
       displayStatus();
+    });
+
+  // Reset command
+  program
+    .command('reset [filename]')
+    .description('Reset video records. Without filename: clears all records. With filename: resets specific video to pending.')
+    .option('--force', 'Skip confirmation prompt', false)
+    .action(async (filename: string | undefined, options: { force: boolean }) => {
+      // Initialize database
+      await initDatabase();
+
+      // Register cleanup handler
+      process.on('exit', () => {
+        closeDatabase();
+      });
+
+      let success: boolean;
+
+      if (filename) {
+        // Reset specific video
+        success = await resetSingleVideo(filename, { force: options.force });
+      } else {
+        // Reset all videos
+        success = await resetAllVideos({ force: options.force });
+      }
+
+      process.exit(success ? 0 : 1);
     });
 
   await program.parseAsync(process.argv);
