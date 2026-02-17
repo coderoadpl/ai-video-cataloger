@@ -337,3 +337,17 @@
   - Commander.js `<model-name>` syntax creates required positional argument
   - Display model info (size, download status) in confirmation for better UX
 ---
+
+## 2026-01-23 - US-022
+- What was implemented: Database Status Command to display processing status of all tracked videos
+- Files changed:
+  - src/services/status.ts (created - displayStatus function with video grouping by status)
+  - src/services/index.ts (export displayStatus)
+  - src/index.ts (added 'status' subcommand)
+- **Learnings for future iterations:**
+  - Commander.js simple commands: `program.command('name').action(...)` for top-level commands (unlike nested models subcommands)
+  - getAllVideos() from database returns all VideoRecord[] for status display
+  - Group "in progress" states: frames_extracted, audio_extracted, transcribed, analyzed are all partial completion states
+  - Display renamed filename (new_name) when available, with "(was: original_name)" annotation for clarity
+  - Handle empty database with helpful message suggesting next action
+---
