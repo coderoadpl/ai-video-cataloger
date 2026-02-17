@@ -351,3 +351,19 @@
   - Display renamed filename (new_name) when available, with "(was: original_name)" annotation for clarity
   - Handle empty database with helpful message suggesting next action
 ---
+
+## 2026-01-23 - US-023
+- What was implemented: Database Reset Command to clear all or reset specific video records
+- Files changed:
+  - src/db/database.ts (added clearAllVideos, resetVideoByFilename, getVideoById functions)
+  - src/db/index.ts (export new database functions)
+  - src/services/reset.ts (created - reset service with confirmation prompts)
+  - src/services/index.ts (export reset functions)
+  - src/index.ts (added 'reset' command with optional filename and --force flag)
+- **Learnings for future iterations:**
+  - Use `DELETE FROM table` to clear all records while preserving table structure
+  - When resetting a single video, also clear error_message and new_name fields along with status
+  - inquirer 'confirm' type returns boolean, useful for yes/no prompts
+  - Optional positional argument in Commander.js: `command('name [optional]')` with undefined check in action
+  - Use process.exit(success ? 0 : 1) pattern for commands that return success/failure
+---
