@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -319,6 +319,22 @@ async function main(): Promise<void> {
 
       const success = setActiveModel(modelName);
       process.exit(success ? 0 : 1);
+    });
+
+  // Status command
+  program
+    .command('status')
+    .description('Show processing status of all tracked videos')
+    .action(async () => {
+      // Initialize database to read video records
+      await initDatabase();
+
+      // Register cleanup handler
+      process.on('exit', () => {
+        closeDatabase();
+      });
+
+      displayStatus();
     });
 
   await program.parseAsync(process.argv);

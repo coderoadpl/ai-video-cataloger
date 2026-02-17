@@ -51,3 +51,4 @@ export {
   type WhisperModelName,
   type WhisperModelInfo,
 } from './models.js';
+export { displayStatus } from './status.js';
