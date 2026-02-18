@@ -414,7 +414,7 @@ async function processVideo(video: VideoRecord): Promise<void> {
   if (video.status === 'transcribed') {
     logStep('Analyzing with Claude', video.original_name);
     logVerbose(`Analyzing with Claude (timeout: ${cliOptions.timeout}s)...`);
-    const analysis = await analyzeVideo(video, hasTranscript, { timeoutSeconds: cliOptions.timeout });
+    const analysis = await analyzeVideo(video, hasTranscript, { timeoutSeconds: cliOptions.timeout, verbose: cliOptions.verbose });
     suggestedFilename = analysis.suggestedFilename;
     video.status = 'analyzed';
   }

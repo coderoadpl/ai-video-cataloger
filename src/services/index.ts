@@ -24,6 +24,7 @@ export {
   getSummariesDir,
   getSummaryPath,
   getSuggestedFilenameFromSummary,
+  getDebugLogPath,
   type AnalysisResult,
   type AnalysisOptions,
 } from './analyzer.js';

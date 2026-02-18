@@ -60,6 +60,7 @@ export interface AnalysisResult {
 
 export interface AnalysisOptions {
   timeoutSeconds?: number;
+  verbose?: boolean;
 }
 
 /**
@@ -151,10 +152,18 @@ Focus on being descriptive and accurate. The filename should capture the essence
 }
 
 /**
+ * Get the debug log path for a video
+ */
+export function getDebugLogPath(videoPath: string): string {
+  const videoName = basename(videoPath, extname(videoPath));
+  return join(getSummariesDir(videoPath), `${videoName}-debug.log`);
+}
+
+/**
  * Analyze a video using Claude Code CLI
  * @param video - The video record to analyze
  * @param hasTranscript - Whether the video has a transcript
- * @param options - Analysis options including timeout
+ * @param options - Analysis options including timeout and verbose mode
  * @returns Analysis result with description and suggested filename
  */
 export async function analyzeVideo(
@@ -165,9 +174,9 @@ export async function analyzeVideo(
   const videoPath = video.original_path;
   const timeoutSeconds = options.timeoutSeconds ?? 120;
   const timeoutMs = timeoutSeconds * 1000;
+  const verbose = options.verbose ?? false;
 
   // Track elapsed time for spinner
-  let elapsedSeconds = 0;
   const startTime = Date.now();
 
   const spinner = ora({
@@ -177,7 +186,7 @@ export async function analyzeVideo(
 
   // Update spinner with elapsed time every second
   const elapsedTimer = setInterval(() => {
-    elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+    const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
     spinner.text = `Analyzing ${chalk.cyan(video.original_name)} with Claude (${elapsedSeconds}s)`;
   }, 1000);
 
@@ -210,6 +219,27 @@ export async function analyzeVideo(
     // Build the prompt
     const prompt = buildAnalysisPrompt(video.original_name, transcript, framePaths.length);
 
+    // Create summaries directory early (needed for debug log)
+    const summariesDir = getSummariesDir(videoPath);
+    if (!existsSync(summariesDir)) {
+      mkdirSync(summariesDir, { recursive: true });
+    }
+
+    // Display verbose information
+    if (verbose) {
+      spinner.stop();
+      console.log(chalk.gray('\n[verbose] Frame paths being analyzed:'));
+      for (const framePath of framePaths) {
+        console.log(chalk.gray(`  • ${framePath}`));
+      }
+      console.log(chalk.gray('\n[verbose] Full prompt being sent to Claude:'));
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log(chalk.gray(prompt));
+      console.log(chalk.gray('─'.repeat(60)));
+      console.log();
+      spinner.start();
+    }
+
     // Build claude CLI command with frames as attachments
     const args = ['-p', prompt];
 
@@ -218,9 +248,40 @@ export async function analyzeVideo(
       args.push(framePath);
     }
 
-    // Call Claude Code CLI with timeout
-    const result = await execa('claude', args, { timeout: timeoutMs });
-    const response = result.stdout;
+    // Call Claude Code CLI with timeout and stream stdout in real-time if verbose
+    let response = '';
+
+    if (verbose) {
+      // Stop spinner while streaming output
+      spinner.stop();
+      console.log(chalk.gray('[verbose] Claude response (streaming):'));
+      console.log(chalk.gray('─'.repeat(60)));
+
+      // Use subprocess with streaming
+      const subprocess = execa('claude', args, { timeout: timeoutMs });
+
+      // Stream stdout in real-time
+      subprocess.stdout?.on('data', (data: Buffer) => {
+        const chunk = data.toString();
+        process.stdout.write(chalk.gray(chunk));
+        response += chunk;
+      });
+
+      // Wait for the process to complete
+      await subprocess;
+
+      console.log(chalk.gray('\n' + '─'.repeat(60)));
+      console.log();
+
+      // Restart spinner with final elapsed time
+      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+      spinner.text = `Analyzing ${chalk.cyan(video.original_name)} with Claude (${elapsedSeconds}s)`;
+      spinner.start();
+    } else {
+      // Normal mode: wait for complete response
+      const result = await execa('claude', args, { timeout: timeoutMs });
+      response = result.stdout;
+    }
 
     // Clear the elapsed timer
     clearInterval(elapsedTimer);
@@ -228,11 +289,22 @@ export async function analyzeVideo(
     // Parse the response
     const analysis = parseClaudeResponse(response);
 
-    // Create summaries directory if it doesn't exist
-    const summariesDir = getSummariesDir(videoPath);
-    if (!existsSync(summariesDir)) {
-      mkdirSync(summariesDir, { recursive: true });
-    }
+    // Save debug log with prompt and full response
+    const debugLogPath = getDebugLogPath(videoPath);
+    const debugContent = `Video: ${video.original_name}
+Date Analyzed: ${new Date().toISOString()}
+Elapsed Time: ${Math.floor((Date.now() - startTime) / 1000)}s
+
+=== FRAME PATHS ===
+${framePaths.map(fp => `  • ${fp}`).join('\n')}
+
+=== FULL PROMPT ===
+${prompt}
+
+=== FULL RESPONSE ===
+${response}
+`;
+    writeFileSync(debugLogPath, debugContent, 'utf-8');
 
     // Save full analysis to file
     const summaryPath = getSummaryPath(videoPath);
@@ -253,7 +325,19 @@ ${analysis.fullAnalysis}
     // Update video status in database
     updateVideoStatus(video.id, 'analyzed');
 
-    spinner.succeed(`Analyzed ${chalk.cyan(video.original_name)} (${Math.floor((Date.now() - startTime) / 1000)}s)`);
+    const finalElapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
+    spinner.succeed(`Analyzed ${chalk.cyan(video.original_name)} (${finalElapsedSeconds}s)`);
+
+    // Show response preview: full in verbose mode, truncated in normal mode
+    if (verbose) {
+      console.log(chalk.gray('\n[verbose] Full analysis response shown above'));
+    } else {
+      // Show truncated preview (100 chars) in normal mode
+      const preview = response.length > 100
+        ? response.substring(0, 100).replace(/\n/g, ' ') + '...'
+        : response.replace(/\n/g, ' ');
+      console.log(chalk.gray(`  Response preview: ${preview}`));
+    }
 
     return analysis;
   } catch (error) {
