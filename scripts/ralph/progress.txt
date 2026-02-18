@@ -367,3 +367,18 @@
   - Optional positional argument in Commander.js: `command('name [optional]')` with undefined check in action
   - Use process.exit(success ? 0 : 1) pattern for commands that return success/failure
 ---
+
+## 2026-01-23 - US-024
+- What was implemented: Claude Analysis Verbose Output for debugging and progress visibility
+- Files changed:
+  - src/services/analyzer.ts (added verbose option to AnalysisOptions, getDebugLogPath function, real-time streaming, truncated preview)
+  - src/services/index.ts (export getDebugLogPath)
+  - src/index.ts (pass verbose option to analyzeVideo)
+- **Learnings for future iterations:**
+  - execa subprocess streaming: use `subprocess.stdout?.on('data', ...)` to stream output in real-time
+  - Buffer data from streams needs `.toString()` to convert to string
+  - Stop ora spinner before streaming output to avoid visual conflicts, restart after
+  - Debug log files follow pattern: `summaries/{video-name}-debug.log` alongside main summary file
+  - Truncated preview: use `response.substring(0, 100).replace(/\n/g, ' ') + '...'` for single-line preview
+  - Create summaries directory early if needed for debug log (before Claude call)
+---
