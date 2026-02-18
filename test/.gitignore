@@ -1,0 +1,7 @@
+# Ignore all test artifacts
+*
+
+# But keep these files
+!.gitignore
+!.gitkeep
+!BigBuckBunny480p30s.mp4

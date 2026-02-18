@@ -117,7 +117,7 @@ function parseClaudeResponse(response: string): AnalysisResult {
 /**
  * Build the prompt for Claude to analyze the video
  */
-function buildAnalysisPrompt(videoName: string, transcript: string | null, frameCount: number): string {
+function buildAnalysisPrompt(videoName: string, transcript: string | null, framePaths: string[]): string {
   let prompt = `You are analyzing a video file named "${videoName}".
 
 `;
@@ -135,9 +135,14 @@ ${transcript}
 `;
   }
 
-  prompt += `I have also provided ${frameCount} frame(s) from the video as images.
+  // Include frame images using file:// URLs so Claude can view them
+  prompt += `Here are ${framePaths.length} frame(s) extracted from the video:\n`;
+  for (const framePath of framePaths) {
+    prompt += `file://${framePath}\n`;
+  }
+  prompt += `\n`;
 
-Based on the visual content from the frames${transcript ? ' and the audio transcript' : ''}, please provide:
+  prompt += `Based on the visual content from the frames${transcript ? ' and the audio transcript' : ''}, please provide:
 
 1. A 2-3 sentence description of what this video is about
 2. A suggested filename (3-5 words, kebab-case format like "cat-playing-with-yarn")
@@ -216,8 +221,8 @@ export async function analyzeVideo(
       }
     }
 
-    // Build the prompt
-    const prompt = buildAnalysisPrompt(video.original_name, transcript, framePaths.length);
+    // Build the prompt with frame paths included as file:// URLs
+    const prompt = buildAnalysisPrompt(video.original_name, transcript, framePaths);
 
     // Create summaries directory early (needed for debug log)
     const summariesDir = getSummariesDir(videoPath);
@@ -240,13 +245,10 @@ export async function analyzeVideo(
       spinner.start();
     }
 
-    // Build claude CLI command with frames as attachments
-    const args = ['-p', prompt];
-
-    // Add each frame as an attachment
-    for (const framePath of framePaths) {
-      args.push(framePath);
-    }
+    // Build claude CLI command (frames are included in the prompt as file:// URLs)
+    // Use --add-dir to grant Claude permission to read files from the video's directory
+    const videoDir = dirname(videoPath);
+    const args = ['--add-dir', videoDir, '-p', prompt];
 
     // Call Claude Code CLI with timeout and stream stdout in real-time if verbose
     let response = '';
@@ -254,17 +256,25 @@ export async function analyzeVideo(
     if (verbose) {
       // Stop spinner while streaming output
       spinner.stop();
+      console.log(chalk.gray(`[verbose] Running: claude --add-dir "${videoDir}" -p "<prompt>"`));
       console.log(chalk.gray('[verbose] Claude response (streaming):'));
       console.log(chalk.gray('─'.repeat(60)));
 
       // Use subprocess with streaming
-      const subprocess = execa('claude', args, { timeout: timeoutMs });
+      // stdin: 'ignore' prevents waiting for input
+      const subprocess = execa('claude', args, { timeout: timeoutMs, stdin: 'ignore' });
 
       // Stream stdout in real-time
       subprocess.stdout?.on('data', (data: Buffer) => {
         const chunk = data.toString();
         process.stdout.write(chalk.gray(chunk));
         response += chunk;
+      });
+
+      // Stream stderr for debugging
+      subprocess.stderr?.on('data', (data: Buffer) => {
+        const chunk = data.toString();
+        process.stderr.write(chalk.red('[stderr] ' + chunk));
       });
 
       // Wait for the process to complete
@@ -279,7 +289,8 @@ export async function analyzeVideo(
       spinner.start();
     } else {
       // Normal mode: wait for complete response
-      const result = await execa('claude', args, { timeout: timeoutMs });
+      // stdin: 'ignore' prevents waiting for input
+      const result = await execa('claude', args, { timeout: timeoutMs, stdin: 'ignore' });
       response = result.stdout;
     }
 
