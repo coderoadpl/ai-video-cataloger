@@ -259,6 +259,7 @@ async function main(): Promise<void> {
           whisper: whisperMode,
           whisperModel: 'base' as WhisperModel,
           timeout: options.timeout,
+          retryErrors: false,
         };
 
         const menuResult = await runInteractiveMenu(directory, defaultSettings);
@@ -273,7 +274,7 @@ async function main(): Promise<void> {
           frames: menuResult.frames,
           skipRename: menuResult.skipRename,
           verbose: options.verbose,
-          retryErrors: options.retryErrors,
+          retryErrors: menuResult.retryErrors,
           timeout: menuResult.timeout,
           whisper: menuResult.whisper,
           whisperModel: menuResult.whisperModel,

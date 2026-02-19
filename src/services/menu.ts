@@ -19,9 +19,10 @@ export interface MenuSettings {
   whisper: WhisperMode;
   whisperModel: WhisperModel;
   timeout: number;
+  retryErrors: boolean;
 }
 
-export type MenuAction = 'start' | 'configure' | 'view' | 'exit';
+export type MenuAction = 'start' | 'retry' | 'configure' | 'view' | 'exit';
 
 /**
  * Count video files in a directory (non-recursive)
@@ -75,7 +76,8 @@ export async function showMainMenu(videoCount: number, _currentSettings: MenuSet
   const action = await select<MenuAction>({
     message: 'What would you like to do?',
     choices: [
-      { name: 'Start with defaults', value: 'start' },
+      { name: 'Start processing', value: 'start' },
+      { name: 'Retry failed videos', value: 'retry' },
       { name: 'Configure settings', value: 'configure' },
       { name: 'View current settings', value: 'view' },
       { name: 'Exit', value: 'exit' },
@@ -98,6 +100,7 @@ export function displayCurrentSettings(settings: MenuSettings): void {
     console.log(`  Whisper model:        ${chalk.cyan(settings.whisperModel)}`);
   }
   console.log(`  Claude timeout:       ${chalk.cyan(settings.timeout + 's')}`);
+  console.log(`  Retry failed:         ${settings.retryErrors ? chalk.green('Yes') : chalk.yellow('No')}`);
   console.log(chalk.gray('─────────────────────────────────────\n'));
 }
 
@@ -176,7 +179,10 @@ export async function runInteractiveMenu(directory: string, defaultSettings: Men
 
     switch (action) {
       case 'start':
-        return settings;
+        return { ...settings, retryErrors: false };
+
+      case 'retry':
+        return { ...settings, retryErrors: true };
 
       case 'configure':
         settings = await configureSettings(settings);
