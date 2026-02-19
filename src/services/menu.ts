@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { readdirSync, statSync } from 'node:fs';
 import { join, extname, resolve } from 'node:path';
 import type { WhisperMode } from '../types/index.js';
+import { getVideosByStatus } from '../db/index.js';
 
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
 
@@ -62,7 +63,7 @@ export function countVideosInDirectory(directory: string): number {
 /**
  * Display the main interactive menu
  */
-export async function showMainMenu(videoCount: number, _currentSettings: MenuSettings): Promise<MenuAction> {
+export async function showMainMenu(videoCount: number, errorCount: number, _currentSettings: MenuSettings): Promise<MenuAction> {
   console.log('\n' + chalk.bold('═══════════════════════════════════════════════════════════'));
   console.log(chalk.bold('                    AI Video Cataloger'));
   console.log(chalk.bold('═══════════════════════════════════════════════════════════\n'));
@@ -73,15 +74,25 @@ export async function showMainMenu(videoCount: number, _currentSettings: MenuSet
     console.log(chalk.cyan(`  Found ${videoCount} video${videoCount === 1 ? '' : 's'} in directory\n`));
   }
 
+  // Build choices dynamically based on state
+  const choices: Array<{ name: string; value: MenuAction }> = [
+    { name: 'Start processing', value: 'start' },
+  ];
+
+  // Only show retry option if there are failed videos
+  if (errorCount > 0) {
+    choices.push({ name: `Retry failed videos (${errorCount})`, value: 'retry' });
+  }
+
+  choices.push(
+    { name: 'Configure settings', value: 'configure' },
+    { name: 'View current settings', value: 'view' },
+    { name: 'Exit', value: 'exit' },
+  );
+
   const action = await select<MenuAction>({
     message: 'What would you like to do?',
-    choices: [
-      { name: 'Start processing', value: 'start' },
-      { name: 'Retry failed videos', value: 'retry' },
-      { name: 'Configure settings', value: 'configure' },
-      { name: 'View current settings', value: 'view' },
-      { name: 'Exit', value: 'exit' },
-    ],
+    choices,
   });
 
   return action;
@@ -175,7 +186,11 @@ export async function runInteractiveMenu(directory: string, defaultSettings: Men
   let settings = { ...defaultSettings };
 
   while (true) {
-    const action = await showMainMenu(videoCount, settings);
+    // Get current count of errored videos from database
+    const erroredVideos = getVideosByStatus('error');
+    const errorCount = erroredVideos.length;
+
+    const action = await showMainMenu(videoCount, errorCount, settings);
 
     switch (action) {
       case 'start':
