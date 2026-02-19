@@ -4,7 +4,7 @@
  */
 
 import chalk from 'chalk';
-import inquirer from 'inquirer';
+import { confirm as confirmPrompt } from '@inquirer/prompts';
 import { getAllVideos, clearAllVideos, resetVideoByFilename } from '../db/index.js';
 
 /**
@@ -23,16 +23,12 @@ async function confirmReset(message: string, force: boolean): Promise<boolean> {
     return true;
   }
 
-  const { confirm } = await inquirer.prompt<{ confirm: boolean }>([
-    {
-      type: 'confirm',
-      name: 'confirm',
-      message,
-      default: false,
-    },
-  ]);
+  const result = await confirmPrompt({
+    message,
+    default: false,
+  });
 
-  return confirm;
+  return result;
 }
 
 /**
