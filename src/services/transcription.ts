@@ -35,6 +35,16 @@ export interface TranscriptionResult {
   transcript: string | null;
 }
 
+/**
+ * Check if a transcript already exists for a video
+ * @param videoPath - Path to the video file
+ * @returns true if transcript file exists
+ */
+export function checkExistingTranscript(videoPath: string): boolean {
+  const transcriptPath = getTranscriptPath(videoPath);
+  return existsSync(transcriptPath);
+}
+
 export type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 
 export interface TranscriptionOptions {

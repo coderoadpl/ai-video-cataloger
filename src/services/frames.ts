@@ -4,7 +4,7 @@
  */
 
 import ffmpeg from 'fluent-ffmpeg';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join, basename, dirname, extname } from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
@@ -57,6 +57,28 @@ export function getFramesDir(videoPath: string): string {
   const videoDir = dirname(videoPath);
   const videoName = basename(videoPath, extname(videoPath));
   return join(videoDir, 'frames', videoName);
+}
+
+/**
+ * Check if frames already exist for a video with the expected count
+ * @param videoPath - Path to the video file
+ * @param expectedCount - Expected number of frames
+ * @returns Object with exists boolean and actual count
+ */
+export function checkExistingFrames(videoPath: string, expectedCount: number): { exists: boolean; count: number } {
+  const framesDir = getFramesDir(videoPath);
+
+  if (!existsSync(framesDir)) {
+    return { exists: false, count: 0 };
+  }
+
+  try {
+    const files = readdirSync(framesDir).filter(f => f.endsWith('.jpg'));
+    const count = files.length;
+    return { exists: count >= expectedCount, count };
+  } catch {
+    return { exists: false, count: 0 };
+  }
 }
 
 /**

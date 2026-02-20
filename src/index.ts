@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -374,38 +374,75 @@ async function main(): Promise<void> {
 /**
  * Process a single video through all required steps
  * Resumes from the last successful step based on current status
+ * For error status, implements smart retry by checking existing artifacts
  */
 async function processVideo(video: VideoRecord): Promise<void> {
   logVerbose(`Processing video: ${video.original_name} (status: ${video.status})`);
 
+  // Smart retry handling for errored videos
+  // Check what artifacts exist and determine where to resume
+  let effectiveStatus = video.status;
+
+  if (video.status === 'error') {
+    // Check existing artifacts to determine where to resume
+    const framesCheck = checkExistingFrames(video.original_path, cliOptions.frames);
+    const hasTranscript = checkExistingTranscript(video.original_path);
+
+    if (framesCheck.exists && hasTranscript) {
+      // Both frames (with correct count) and transcript exist - skip to analysis
+      effectiveStatus = 'transcribed';
+      logVerbose(`Smart retry: Found ${framesCheck.count} frames and transcript, skipping to analysis`);
+    } else if (framesCheck.exists) {
+      // Frames exist with correct count but no transcript - skip to transcription
+      effectiveStatus = 'frames_extracted';
+      logVerbose(`Smart retry: Found ${framesCheck.count} frames, skipping to audio extraction`);
+    } else if (framesCheck.count > 0 && framesCheck.count < cliOptions.frames) {
+      // Frames exist but wrong count - need to re-extract
+      effectiveStatus = 'pending';
+      logVerbose(`Smart retry: Found ${framesCheck.count} frames but need ${cliOptions.frames}, re-extracting`);
+    } else {
+      // No frames - start from beginning
+      effectiveStatus = 'pending';
+      logVerbose(`Smart retry: No existing artifacts found, starting from beginning`);
+    }
+  }
+
   // Step 1: Extract frames (if not already done)
-  if (video.status === 'pending') {
+  if (effectiveStatus === 'pending') {
     logStep('Extracting frames', video.original_name);
     logVerbose(`Extracting ${cliOptions.frames} frames...`);
     await extractFrames(video, cliOptions.frames);
-    video.status = 'frames_extracted';
+    effectiveStatus = 'frames_extracted';
   }
 
   // Step 2: Extract audio (if not already done)
   // Note: When resuming, we assume audio was extracted if past this stage
   let hasAudio = true;
-  if (video.status === 'frames_extracted') {
+  if (effectiveStatus === 'frames_extracted') {
     logStep('Extracting audio', video.original_name);
     logVerbose('Extracting audio...');
     const audioResult = await extractAudio(video);
     hasAudio = audioResult.hasAudio;
-    video.status = 'audio_extracted';
+    effectiveStatus = 'audio_extracted';
   }
 
   // Step 3: Transcribe audio (if not already done)
   // Note: When resuming, we check for transcript file existence
   let hasTranscript = hasAudio;
-  if (video.status === 'audio_extracted') {
-    logStep('Transcribing audio', video.original_name);
-    logVerbose(`Transcribing audio (mode: ${cliOptions.whisper}, model: ${cliOptions.whisperModel})...`);
-    const transcriptionResult = await transcribeAudio(video, hasAudio, { mode: cliOptions.whisper, model: cliOptions.whisperModel });
-    hasTranscript = transcriptionResult.transcribed;
-    video.status = 'transcribed';
+  if (effectiveStatus === 'audio_extracted') {
+    // Check if transcript already exists (smart retry optimization)
+    if (checkExistingTranscript(video.original_path)) {
+      logVerbose('Transcript already exists, skipping transcription');
+      hasTranscript = true;
+      effectiveStatus = 'transcribed';
+      updateVideoStatus(video.id, 'transcribed');
+    } else {
+      logStep('Transcribing audio', video.original_name);
+      logVerbose(`Transcribing audio (mode: ${cliOptions.whisper}, model: ${cliOptions.whisperModel})...`);
+      const transcriptionResult = await transcribeAudio(video, hasAudio, { mode: cliOptions.whisper, model: cliOptions.whisperModel });
+      hasTranscript = transcriptionResult.transcribed;
+      effectiveStatus = 'transcribed';
+    }
 
     // Clean up temporary audio file after transcription
     const tempAudioPath = getTempAudioPath(video.original_path);
@@ -415,16 +452,16 @@ async function processVideo(video: VideoRecord): Promise<void> {
 
   // Step 4: Analyze video with Claude (if not already done)
   let suggestedFilename = '';
-  if (video.status === 'transcribed') {
+  if (effectiveStatus === 'transcribed') {
     logStep('Analyzing with Claude', video.original_name);
     logVerbose(`Analyzing with Claude (timeout: ${cliOptions.timeout}s)...`);
     const analysis = await analyzeVideo(video, hasTranscript, { timeoutSeconds: cliOptions.timeout, verbose: cliOptions.verbose });
     suggestedFilename = analysis.suggestedFilename;
-    video.status = 'analyzed';
+    effectiveStatus = 'analyzed';
   }
 
   // Step 5: Rename video file (if not already done and --skip-rename not set)
-  if (video.status === 'analyzed') {
+  if (effectiveStatus === 'analyzed') {
     if (cliOptions.skipRename) {
       logStep('Skipping rename', video.original_name);
       logVerbose('Skipping rename (--skip-rename flag set)');

@@ -4,7 +4,7 @@
 
 export { checkPrerequisites, type PrerequisiteOptions } from './prerequisites.js';
 export { scanDirectory, type ScanResult, type ScanOptions } from './scanner.js';
-export { extractFrames, getFramesDir } from './frames.js';
+export { extractFrames, getFramesDir, checkExistingFrames } from './frames.js';
 export {
   extractAudio,
   getTempAudioPath,
@@ -16,6 +16,7 @@ export {
   transcribeAudio,
   getTranscriptsDir,
   getTranscriptPath,
+  checkExistingTranscript,
   type TranscriptionResult,
   type TranscriptionOptions,
 } from './transcription.js';

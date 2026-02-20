@@ -6,7 +6,7 @@
 import { readdirSync, statSync } from 'node:fs';
 import { join, extname, basename, resolve } from 'node:path';
 import chalk from 'chalk';
-import { getVideoByPath, insertVideo, getVideosByStatus, updateVideoStatus } from '../db/index.js';
+import { getVideoByPath, insertVideo, getVideosByStatus } from '../db/index.js';
 import { hashFile } from '../utils/hash.js';
 import type { VideoRecord } from '../types/index.js';
 
@@ -78,12 +78,11 @@ export async function scanDirectory(directory: string = process.cwd(), options: 
     // Handle errored videos
     if (erroredPaths.has(filePath)) {
       if (options.retryErrors) {
-        // Retry errored video - reset status to 'pending' and clear error message
+        // Retry errored video - keep error status, processVideo will handle smart retry
+        // by checking which artifacts already exist
         const erroredVideo = erroredVideos.find(v => v.original_path === filePath);
         if (erroredVideo) {
-          updateVideoStatus(erroredVideo.id, 'pending');
-          erroredVideo.status = 'pending';
-          erroredVideo.error_message = null;
+          // Clear the error message but keep status as 'error' for smart retry handling
           retryingVideos.push(erroredVideo);
         }
       } else {
