@@ -253,6 +253,9 @@ async function main(): Promise<void> {
 
       // If running without any flags and not --yes, show interactive menu
       if (!skipMenu && !hasConfigFlags) {
+        // Initialize database early so menu can check for errored videos
+        await initDatabase(directory);
+
         const defaultSettings = {
           frames: options.frames,
           skipRename: options.skipRename,
