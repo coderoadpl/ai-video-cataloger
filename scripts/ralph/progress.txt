@@ -19,11 +19,12 @@
 - Use fluent-ffmpeg for video/audio operations (ffprobe for metadata, ffmpeg for extraction)
 - Frame/transcript/summary directories stored in same directory as videos (e.g., frames/{video-name}/)
 - Temp audio files stored in OS temp directory using getTempAudioPath(videoPath)
-- Claude CLI for analysis: `claude -p <prompt> <image1> <image2> ...` to pass frames as attachments
+- Claude CLI for analysis: `claude --add-dir <dir> -p <prompt>` with file:// URLs in prompt for images (NOT as positional args)
+- Claude CLI requires stdin: 'ignore' in execa to prevent hanging
 - Analysis response format: DESCRIPTION: <text> FILENAME: <kebab-case-name>
 - OpenAI Whisper API: `openai.audio.transcriptions.create({ file: createReadStream(path), model: 'whisper-1' })`
 - Local Whisper CLI model selection: `whisper <audio> --model <model>` (models: tiny, base, small, medium, large-v3)
-- inquirer for interactive prompts: `inquirer.prompt<T>([...])` with types list, number, confirm
+- @inquirer/prompts for interactive menus: `select()`, `number()`, `confirm()` (NOT legacy inquirer.prompt)
 - Local Whisper models stored in `~/.cache/whisper/` as `.pt` files (e.g., base.pt, tiny.pt)
 - Commander.js subcommands: use `program.command('name')` for subcommand groups, then chain `.command('action')` for actions
 
@@ -381,4 +382,45 @@
   - Debug log files follow pattern: `summaries/{video-name}-debug.log` alongside main summary file
   - Truncated preview: use `response.substring(0, 100).replace(/\n/g, ' ') + '...'` for single-line preview
   - Create summaries directory early if needed for debug log (before Claude call)
+---
+
+## 2026-01-24 - US-025
+- What was implemented: Fixed Claude CLI image analysis that was timing out
+- Files changed:
+  - src/services/analyzer.ts (changed image passing to file:// URLs in prompt, added --add-dir flag, added stdin: 'ignore')
+- **Learnings for future iterations:**
+  - Claude Code CLI does NOT accept image paths as positional arguments - they must be file:// URLs in the prompt text
+  - Use `--add-dir <directory>` to grant Claude permission to read files outside current directory
+  - Add `stdin: 'ignore'` to execa options to prevent the subprocess from waiting for input and hanging
+  - Stream stderr in verbose mode for debugging: `subprocess.stderr?.on('data', ...)`
+---
+
+## 2026-01-24 - US-026
+- What was implemented: Fixed interactive menu rendering and added retry failed videos option
+- Files changed:
+  - package.json (removed inquirer, using @inquirer/prompts)
+  - src/services/menu.ts (migrated to @inquirer/prompts select/number/confirm, added retry action, added retryErrors to MenuSettings)
+  - src/services/reset.ts (migrated to @inquirer/prompts confirm)
+  - src/index.ts (initialize database before menu, pass retryErrors from menu to run)
+- **Learnings for future iterations:**
+  - Legacy `inquirer.prompt()` has rendering issues in some terminals - use `@inquirer/prompts` direct imports instead
+  - `select<T>()` returns value directly (not wrapped in object like inquirer.prompt)
+  - Database must be initialized before showing menu if menu needs to query for error counts
+  - Use `getVideosByStatus('error')` to check for failed videos and conditionally show retry option
+---
+
+## 2026-01-24 - US-027
+- What was implemented: Smart retry that skips already-completed steps when retrying failed videos
+- Files changed:
+  - src/services/frames.ts (added checkExistingFrames helper)
+  - src/services/transcription.ts (added checkExistingTranscript helper)
+  - src/services/scanner.ts (don't reset error status to pending, let processVideo handle smart retry)
+  - src/services/index.ts (export new helper functions)
+  - src/index.ts (added smart retry logic in processVideo checking for existing artifacts)
+- **Learnings for future iterations:**
+  - For smart retry, check artifacts exist BEFORE resetting status to pending
+  - checkExistingFrames returns { exists: boolean, count: number } to verify both existence and correct count
+  - Use effective status pattern: `let effectiveStatus = video.status; if (video.status === 'error') { /* determine effectiveStatus from artifacts */ }`
+  - Frame count matters: if user requests 5 frames but only 3 exist, need to re-extract
+  - Transcript is binary check (exists or not) - no settings that affect whether existing transcript is valid
 ---

@@ -392,6 +392,58 @@
       "priority": 24,
       "passes": true,
       "notes": ""
+    },
+    {
+      "id": "US-025",
+      "title": "Claude CLI Image Analysis Fix",
+      "description": "As a user, I want the Claude analysis to correctly process video frames so analysis doesn't time out.",
+      "acceptanceCriteria": [
+        "Frame paths included in prompt as file:// URLs (not as separate CLI arguments)",
+        "Add --add-dir flag to grant Claude permission to read video directory",
+        "Add stdin: 'ignore' to execa calls to prevent subprocess from hanging",
+        "Stream stderr for debugging in verbose mode",
+        "Analysis completes successfully instead of timing out",
+        "Typecheck passes"
+      ],
+      "priority": 25,
+      "passes": true,
+      "notes": "Claude Code CLI requires file:// URLs in prompt text to read images, not positional args"
+    },
+    {
+      "id": "US-026",
+      "title": "Interactive Menu Improvements",
+      "description": "As a user, I want the interactive menu to render correctly and have a retry option so I can easily reprocess failed videos.",
+      "acceptanceCriteria": [
+        "Migrate from inquirer.prompt() to @inquirer/prompts (select, number, confirm)",
+        "Menu choices render correctly in all terminal environments",
+        "Add 'Retry failed videos' option to main menu",
+        "Retry option only visible when there are errored videos in database",
+        "Retry option shows count of failed videos: 'Retry failed videos (N)'",
+        "Initialize database before showing menu to enable error count query",
+        "Typecheck passes"
+      ],
+      "priority": 26,
+      "passes": true,
+      "notes": "inquirer 13.x had rendering issues in some terminals, @inquirer/prompts works better"
+    },
+    {
+      "id": "US-027",
+      "title": "Smart Retry for Failed Videos",
+      "description": "As a user, I want retry to skip steps that already completed so I don't waste time re-extracting frames and transcripts.",
+      "acceptanceCriteria": [
+        "Add checkExistingFrames(videoPath, expectedCount) helper function",
+        "Add checkExistingTranscript(videoPath) helper function",
+        "When retrying errored videos, check what artifacts already exist",
+        "Skip frame extraction if frames exist with correct count",
+        "Skip transcription if transcript file exists",
+        "Re-extract frames if count doesn't match requested setting",
+        "Always retry the failed step (analysis)",
+        "Log smart retry decisions in verbose mode",
+        "Typecheck passes"
+      ],
+      "priority": 27,
+      "passes": true,
+      "notes": "Prevents re-running expensive steps when only Claude analysis failed"
     }
   ]
 }
