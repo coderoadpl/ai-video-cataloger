@@ -1,35 +1,37 @@
-# Ralph Progress Log
-# Project: AI Video Cataloger
-# Branch: ralph/ai-video-cataloger-mvp-v2
-# Started: 2026-01-24
-# Phase: MVP (User-Friendly Release)
-# Previous Phase: POC (archived in archive/poc/)
-
 ## Codebase Patterns
-- Use sql.js instead of better-sqlite3 (native module compatibility with Node.js v25)
-- ESM modules ("type": "module" in package.json)
-- TypeScript strict mode enabled
-- Entry point: src/index.ts with shebang
-- Use execa for running shell commands (already a dependency)
-- Use chalk for colored terminal output (already a dependency)
-- Services are exported through src/services/index.ts barrel export
-- Database exports through src/db/index.ts barrel export
-- Utilities are exported through src/utils/index.ts barrel export
-- Database file stored in .ai-video-cataloger/catalog.db (auto-created)
-- Call saveDatabase() after each database modification (sql.js is in-memory)
-- Video extensions: .mp4, .mov, .avi, .mkv, .webm
-- Use fluent-ffmpeg for video/audio operations (ffprobe for metadata, ffmpeg for extraction)
-- Frame/transcript/summary directories stored in same directory as videos (e.g., frames/{video-name}/)
-- Temp audio files stored in OS temp directory using getTempAudioPath(videoPath)
-- Claude CLI for analysis: `claude --add-dir <dir> -p <prompt>` with file:// URLs in prompt for images (NOT as positional args)
-- Claude CLI requires stdin: 'ignore' in execa to prevent hanging
-- Analysis response format: DESCRIPTION: <text> FILENAME: <kebab-case-name>
-- OpenAI Whisper API: `openai.audio.transcriptions.create({ file: createReadStream(path), model: 'whisper-1' })`
-- Local Whisper CLI model selection: `whisper <audio> --model <model>` (models: tiny, base, small, medium, large-v3)
-- @inquirer/prompts for interactive menus: `select()`, `number()`, `confirm()` (NOT legacy inquirer.prompt)
-- Local Whisper models stored in `~/.cache/whisper/` as `.pt` files (e.g., base.pt, tiny.pt)
-- Commander.js subcommands: use `program.command('name')` for subcommand groups, then chain `.command('action')` for actions
+- Use `electron-store` for persisting settings between sessions (window state, etc.)
+- TypeScript configs are split: electron/tsconfig.json for main process, electron/tsconfig.renderer.json for React
+- IPC handlers in electron/main/ipc-handlers.ts follow pattern: ipcMain.handle('channel-name', async (_event, args) => { ... })
+- Preload script exposes API via contextBridge.exposeInMainWorld('electronAPI', {...})
+- CSS uses CSS variables defined in global.css for consistent theming
+- Components import their own CSS files (e.g., `import '../styles/Toolbar.css'`)
 
-
+# Ralph Progress Log
+Started: Sat Jan 24 16:39:25 CET 2026
 ---
 
+## 2026-01-24 - US-028
+- What was implemented:
+  - Created electron/ directory structure with main process (main/), renderer (renderer/), and preload script
+  - Main process files: index.ts (entry), window.ts (window management), menu.ts (macOS menu), ipc-handlers.ts (IPC bridge)
+  - Renderer React app with App.tsx and components: Toolbar, Sidebar, VideoDetails
+  - TypeScript configs for main and renderer processes
+  - Vite config for renderer bundling
+  - electron-builder.config.js for macOS packaging (arm64 and universal)
+  - Added npm scripts: electron:dev, electron:build, electron:build-main, electron:build-renderer, electron:package
+
+- Files changed:
+  - Created: electron/main/*.ts, electron/renderer/*.tsx, electron/renderer/components/*.tsx
+  - Created: electron/renderer/styles/*.css, electron/renderer/types/global.d.ts
+  - Created: electron/tsconfig.json, electron/tsconfig.renderer.json, electron/vite.config.ts
+  - Created: electron-builder.config.js, electron/resources/entitlements.mac.plist
+  - Modified: package.json (added Electron dependencies and scripts)
+
+- **Learnings for future iterations:**
+  - The project uses ESM (`"type": "module"`), so imports need `.js` extensions even for TypeScript files
+  - Main process TypeScript uses NodeNext module resolution for ESM compatibility
+  - Renderer uses "bundler" moduleResolution for Vite compatibility
+  - Window state persistence uses electron-store package
+  - IPC handlers use underscore prefix (`_event`, `_args`) for unused parameters to satisfy TypeScript's noUnusedParameters
+  - CSS follows macOS design guidelines with system colors and native feel
+---

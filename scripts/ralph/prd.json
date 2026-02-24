@@ -1,20 +1,434 @@
 {
-  "project": "AI Video Cataloger",
+  "project": "AI Video Cataloger GUI MVP",
   "branchName": "ralph/ai-video-cataloger-mvp-v2",
-  "description": "User-friendly MVP of the AI Video Cataloger - ready for real users",
+  "description": "Electron-based GUI for AI Video Cataloger with bundled FFmpeg, Whisper.cpp, and LLaVA/Ollama support",
   "userStories": [
     {
       "id": "US-028",
-      "title": "YOUR FIRST MVP STORY TITLE",
-      "description": "As a [user type], I want [feature] so that [benefit].",
+      "title": "Electron Project Setup",
+      "description": "As a developer, I need the Electron project scaffolded alongside the existing CLI so both can share the backend services.",
       "acceptanceCriteria": [
-        "Criterion 1",
-        "Criterion 2",
+        "Create electron/ directory with main process entry point",
+        "Configure electron-builder for macOS builds (.app and .dmg)",
+        "Target Apple Silicon (arm64) as primary, with universal binary option",
+        "Set up IPC bridge between main and renderer",
+        "Configure TypeScript for both main and renderer processes",
+        "Add npm scripts: electron:dev, electron:build, electron:package",
+        "Renderer process uses React with TypeScript",
+        "Reuse existing src/services/ and src/db/ modules in main process",
+        "App builds and launches successfully on macOS",
         "Typecheck passes"
       ],
       "priority": 1,
+      "passes": true,
+      "notes": "Foundation for all other GUI stories"
+    },
+    {
+      "id": "US-029",
+      "title": "Bundle FFmpeg with Application",
+      "description": "As a user, I want FFmpeg bundled with the app so I don't need to install it separately.",
+      "acceptanceCriteria": [
+        "Add ffmpeg-static package as dependency",
+        "Configure electron-builder asarUnpack for FFmpeg binary",
+        "Use path replacement for bundled binary",
+        "Update fluent-ffmpeg to use bundled binary path",
+        "Build includes arm64 FFmpeg binary",
+        "Exclude non-macOS binaries from build",
+        "Frame extraction works with bundled FFmpeg",
+        "Audio extraction works with bundled FFmpeg",
+        "Typecheck passes"
+      ],
+      "priority": 2,
       "passes": false,
-      "notes": ""
+      "notes": "Depends on US-028"
+    },
+    {
+      "id": "US-030",
+      "title": "Prerequisites Verification Panel",
+      "description": "As a user, I want to see a clear overview of all required dependencies and their status.",
+      "acceptanceCriteria": [
+        "Prerequisites panel accessible from Settings or shown on first launch",
+        "Display checklist with status for each dependency",
+        "Green checkmark for available dependencies",
+        "Red X with install instructions for missing dependencies",
+        "Yellow warning for optional dependencies",
+        "Check Again button to re-verify",
+        "Show which analysis methods are available",
+        "Show which transcription methods are available",
+        "Typecheck passes"
+      ],
+      "priority": 3,
+      "passes": false,
+      "notes": "Depends on US-028"
+    },
+    {
+      "id": "US-031",
+      "title": "Whisper Model Manager Panel",
+      "description": "As a user, I want to download and manage Whisper models within the app.",
+      "acceptanceCriteria": [
+        "Model Manager panel accessible from Settings",
+        "Display list of available whisper.cpp GGML models",
+        "Show download status for each model",
+        "Download button for models not yet downloaded",
+        "Download progress bar with percentage and speed",
+        "Cancel Download button during active download",
+        "Delete button for downloaded models",
+        "Display disk space used by downloaded models",
+        "Models stored in app's user data directory",
+        "Download GGML models from Hugging Face",
+        "Typecheck passes"
+      ],
+      "priority": 4,
+      "passes": false,
+      "notes": "Depends on US-028"
+    },
+    {
+      "id": "US-032",
+      "title": "Integrated Whisper.cpp Runtime",
+      "description": "As a developer, I need the app to run transcription using whisper.cpp.",
+      "acceptanceCriteria": [
+        "Bundle whisper.cpp macOS binary (arm64)",
+        "Include whisper.cpp binary in electron/resources/bin/",
+        "Configure electron-builder to unpack binary from asar",
+        "Implement transcribeWithWhisperCpp() function",
+        "Parse whisper.cpp output to extract transcript text",
+        "Fall back to system whisper CLI if available",
+        "Settings toggle for built-in vs system Whisper",
+        "Transcription produces same format output as current",
+        "Typecheck passes"
+      ],
+      "priority": 5,
+      "passes": false,
+      "notes": "Depends on US-031"
+    },
+    {
+      "id": "US-033",
+      "title": "Ollama Integration for LLaVA",
+      "description": "As a user, I want to use LLaVA via Ollama for local image analysis.",
+      "acceptanceCriteria": [
+        "Detect if Ollama is installed",
+        "Check if Ollama is running",
+        "Auto-start Ollama if installed but not running",
+        "Check if LLaVA model is pulled",
+        "Add Analysis Method setting",
+        "Implement analyzeWithOllama() function",
+        "Send frames as base64 images to LLaVA",
+        "Use same prompt format as Claude analysis",
+        "Parse LLaVA response for description and filename",
+        "Handle Ollama startup failure with clear error",
+        "Typecheck passes"
+      ],
+      "priority": 6,
+      "passes": false,
+      "notes": "Depends on US-028"
+    },
+    {
+      "id": "US-034",
+      "title": "LLaVA Model Manager",
+      "description": "As a user, I want to manage LLaVA models through the app.",
+      "acceptanceCriteria": [
+        "LLaVA section in Model Manager panel",
+        "Detect Ollama installation status",
+        "Install Ollama button/link if not installed",
+        "List available LLaVA models",
+        "Show which models are pulled in Ollama",
+        "Detect system RAM and recommend appropriate model",
+        "Pull Model button triggers ollama pull",
+        "Pull progress displayed",
+        "Delete Model removes from Ollama",
+        "Show model sizes and RAM requirements",
+        "Settings dropdown to select active LLaVA model",
+        "Typecheck passes"
+      ],
+      "priority": 7,
+      "passes": false,
+      "notes": "Depends on US-033"
+    },
+    {
+      "id": "US-035",
+      "title": "Main Window Layout",
+      "description": "As a user, I want a clean single-window interface with a sidebar for files and a main panel for details.",
+      "acceptanceCriteria": [
+        "Single window with minimum size 900x600px",
+        "Left sidebar (250px width) showing folder path and file list",
+        "Right main panel showing selected file details",
+        "Top toolbar with folder selection and action buttons",
+        "Native macOS title bar with traffic lights",
+        "Window state persisted between sessions",
+        "Typecheck passes"
+      ],
+      "priority": 8,
+      "passes": false,
+      "notes": "Depends on US-028"
+    },
+    {
+      "id": "US-036",
+      "title": "Folder Selection",
+      "description": "As a user, I want to select a folder to view its video files.",
+      "acceptanceCriteria": [
+        "Open Folder button in toolbar opens native macOS folder picker",
+        "Selected folder path displayed in toolbar",
+        "Recent folders stored and accessible via dropdown",
+        "Folder selection triggers video file scan",
+        "Last used folder restored on app launch",
+        "Typecheck passes"
+      ],
+      "priority": 9,
+      "passes": false,
+      "notes": "Depends on US-035"
+    },
+    {
+      "id": "US-037",
+      "title": "Video File List Display",
+      "description": "As a user, I want to see only video files in the selected folder with clear status indicators.",
+      "acceptanceCriteria": [
+        "List shows only video files (.mp4, .mov, .avi, .mkv, .webm)",
+        "Non-video files are not displayed",
+        "Each file shows: thumbnail, filename, file size, duration",
+        "Status badge on each file: None, Yellow, Green, Red",
+        "Files sortable by name, date modified, status",
+        "Click to select single file, Cmd+click for multi-select",
+        "Typecheck passes"
+      ],
+      "priority": 10,
+      "passes": false,
+      "notes": "Depends on US-036"
+    },
+    {
+      "id": "US-038",
+      "title": "Video Details Panel - Unprocessed State",
+      "description": "As a user, I want to see basic info about an unprocessed video.",
+      "acceptanceCriteria": [
+        "Display video filename and path",
+        "Display file size and duration",
+        "Display file modification date",
+        "Show Not yet analyzed status message",
+        "Show Analyze button prominently",
+        "Typecheck passes"
+      ],
+      "priority": 11,
+      "passes": false,
+      "notes": "Depends on US-037"
+    },
+    {
+      "id": "US-039",
+      "title": "Video Details Panel - Processed State",
+      "description": "As a user, I want to see all analysis results for a processed video.",
+      "acceptanceCriteria": [
+        "Display generated summary/description text",
+        "Display suggested filename",
+        "Display extracted frames as thumbnail gallery",
+        "Display transcript text in scrollable area",
+        "Show processing timestamps",
+        "Show which analysis method was used",
+        "Reveal in Finder buttons for all files",
+        "Re-analyze button to process again",
+        "Typecheck passes"
+      ],
+      "priority": 12,
+      "passes": false,
+      "notes": "Depends on US-038"
+    },
+    {
+      "id": "US-040",
+      "title": "Video Details Panel - Error State",
+      "description": "As a user, I want to see error details when processing fails.",
+      "acceptanceCriteria": [
+        "Display error message from database",
+        "Display which step failed",
+        "Show Retry button",
+        "Show any partial results",
+        "Typecheck passes"
+      ],
+      "priority": 13,
+      "passes": false,
+      "notes": "Depends on US-039"
+    },
+    {
+      "id": "US-041",
+      "title": "Settings Panel",
+      "description": "As a user, I want to configure processing options.",
+      "acceptanceCriteria": [
+        "Settings accessible via menu bar or Cmd+,",
+        "Modal or slide-over panel with settings form",
+        "Analysis section with method and model selection",
+        "Transcription section with method and model selection",
+        "Output section with frame count and rename toggle",
+        "Manage Models button opens Model Manager",
+        "Settings saved to database config table",
+        "Settings apply to subsequent processing",
+        "Typecheck passes"
+      ],
+      "priority": 14,
+      "passes": false,
+      "notes": "Depends on US-030, US-031, US-034"
+    },
+    {
+      "id": "US-042",
+      "title": "Analyze Single Video",
+      "description": "As a user, I want to analyze a single selected video.",
+      "acceptanceCriteria": [
+        "Analyze button enabled when single unprocessed video selected",
+        "Button starts processing pipeline",
+        "Uses configured analysis method",
+        "Progress indicator shows current step",
+        "UI remains responsive during processing",
+        "Status badge updates in real-time",
+        "Details panel updates when processing completes",
+        "Error state shown if processing fails",
+        "Typecheck passes"
+      ],
+      "priority": 15,
+      "passes": false,
+      "notes": "Depends on US-039, US-040, US-041"
+    },
+    {
+      "id": "US-043",
+      "title": "Analyze Multiple Videos (Batch)",
+      "description": "As a user, I want to analyze multiple selected videos in batch.",
+      "acceptanceCriteria": [
+        "Analyze Selected button enabled when multiple videos selected",
+        "Analyze All button processes all unprocessed videos",
+        "Progress shows: Processing X of Y videos",
+        "Individual file status badges update as each completes",
+        "Processing continues even if individual videos fail",
+        "Summary notification when batch completes",
+        "Typecheck passes"
+      ],
+      "priority": 16,
+      "passes": false,
+      "notes": "Depends on US-042"
+    },
+    {
+      "id": "US-044",
+      "title": "Cancel Processing",
+      "description": "As a user, I want to cancel ongoing processing.",
+      "acceptanceCriteria": [
+        "Cancel button appears during processing",
+        "Clicking cancel stops processing after current video",
+        "Partial results preserved",
+        "Video status updated appropriately",
+        "Typecheck passes"
+      ],
+      "priority": 17,
+      "passes": false,
+      "notes": "Depends on US-042"
+    },
+    {
+      "id": "US-045",
+      "title": "Retry Failed Videos",
+      "description": "As a user, I want to retry failed videos.",
+      "acceptanceCriteria": [
+        "Retry Failed button in toolbar when errors exist",
+        "Retries all videos with error status in current folder",
+        "Individual retry available from video details panel",
+        "Smart retry checks existing artifacts to resume",
+        "Typecheck passes"
+      ],
+      "priority": 18,
+      "passes": false,
+      "notes": "Depends on US-040"
+    },
+    {
+      "id": "US-046",
+      "title": "Frame Preview Modal",
+      "description": "As a user, I want to view extracted frames in a larger size.",
+      "acceptanceCriteria": [
+        "Clicking frame thumbnail opens modal with larger image",
+        "Arrow keys or buttons to navigate between frames",
+        "Escape or click outside to close modal",
+        "Frame number indicator",
+        "Typecheck passes"
+      ],
+      "priority": 19,
+      "passes": false,
+      "notes": "Depends on US-039"
+    },
+    {
+      "id": "US-047",
+      "title": "Native macOS Integration",
+      "description": "As a user, I want the app to feel native on macOS.",
+      "acceptanceCriteria": [
+        "Standard macOS menu bar",
+        "File > Open Folder (Cmd+O)",
+        "App > Settings (Cmd+,)",
+        "App > Quit (Cmd+Q)",
+        "Edit menu with standard Cut/Copy/Paste",
+        "View > Refresh (Cmd+R)",
+        "Help > Prerequisites",
+        "Help > Model Manager",
+        "App icon displayed in dock",
+        "Typecheck passes"
+      ],
+      "priority": 20,
+      "passes": false,
+      "notes": "Depends on US-035"
+    },
+    {
+      "id": "US-048",
+      "title": "Processing Progress Indicator",
+      "description": "As a user, I want to see detailed progress during processing.",
+      "acceptanceCriteria": [
+        "Progress bar in toolbar during batch processing",
+        "Current video name displayed",
+        "Current step displayed",
+        "Estimated progress percentage for current video",
+        "Overall batch progress (X/Y videos)",
+        "Typecheck passes"
+      ],
+      "priority": 21,
+      "passes": false,
+      "notes": "Depends on US-043"
+    },
+    {
+      "id": "US-049",
+      "title": "Empty States",
+      "description": "As a user, I want helpful messages when there's nothing to display.",
+      "acceptanceCriteria": [
+        "No folder selected: Open a folder to get started message",
+        "Folder has no videos: No video files found message",
+        "No video selected: Select a video to view details message",
+        "All videos processed: Show summary stats",
+        "Typecheck passes"
+      ],
+      "priority": 22,
+      "passes": false,
+      "notes": "Depends on US-035"
+    },
+    {
+      "id": "US-050",
+      "title": "Database Compatibility",
+      "description": "As a developer, I need the GUI to use the same database as the CLI.",
+      "acceptanceCriteria": [
+        "GUI reads/writes to same catalog.db location",
+        "Videos processed by CLI appear correctly in GUI",
+        "Videos processed by GUI can be viewed via CLI",
+        "No schema changes required",
+        "Typecheck passes"
+      ],
+      "priority": 23,
+      "passes": false,
+      "notes": "Depends on US-028"
+    },
+    {
+      "id": "US-051",
+      "title": "First Launch Setup Wizard",
+      "description": "As a new user, I want a guided setup when I first launch the app.",
+      "acceptanceCriteria": [
+        "Show setup wizard on first launch",
+        "Step 1: Welcome screen",
+        "Step 2: Prerequisites check",
+        "Step 3: Choose analysis method",
+        "Step 4: Choose transcription method",
+        "Step 5: Prompt to download models",
+        "Step 6: Ready to go - open folder picker",
+        "Skip Setup option available",
+        "Can re-run setup from Help menu",
+        "Typecheck passes"
+      ],
+      "priority": 24,
+      "passes": false,
+      "notes": "Final polish story"
     }
   ]
 }
