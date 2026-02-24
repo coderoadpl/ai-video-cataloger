@@ -4,19 +4,30 @@
 - Claude Code CLI requires file:// URLs in prompt text to read images
 - Use stdin: 'ignore' in execa calls to prevent subprocess hanging
 - Existing services in src/services/ can be reused by Electron main process
+- Use electron-store for persisting app preferences (recent folders, setup state)
+- For Electron IPC, expose minimal API via preload.ts using contextBridge
+- Use ffmpeg-static with .replace('app.asar', 'app.asar.unpacked') for bundled binary path
+- Ollama HTTP API at localhost:11434 for LLaVA integration
+- Auto-start Ollama via spawn('ollama', ['serve'], { detached: true, stdio: 'ignore' })
+- Detect RAM with os.totalmem() to recommend LLaVA model size
 
 ---
 
-## 2026-01-24 - PRD Creation
-- Created GUI MVP PRD with 24 user stories (US-028 to US-051)
-- Key features: Electron + React, bundled FFmpeg, whisper.cpp, LLaVA via Ollama
-- Target: Apple Silicon (arm64) primary
-- Analysis methods: Claude CLI or LLaVA (local)
-- Transcription: whisper.cpp (bundled) or OpenAI API
-- **Learnings for future iterations:**
-  - ffmpeg-static (original package) is more mature than ffmpeg-static-electron
-  - whisper.cpp eliminates Python dependency for local transcription
-  - Ollama HTTP API at localhost:11434 for LLaVA integration
-  - Auto-start Ollama via `ollama serve` in background
-  - Detect RAM with os.totalmem() to recommend LLaVA model size
+## 2026-01-24 - PRD Conversion to prd.json
+- Converted GUI MVP PRD to Ralph-compatible prd.json format
+- Split 24 original user stories into 37 properly-sized stories
+- Each story completable in one Ralph iteration
+- Stories ordered by dependencies: foundation → backend → UI
+- **Story splitting applied:**
+  - US-028 → 028a (scaffolding), 028b (React), 028c (IPC)
+  - US-032 → 032a (binary bundle), 032b (transcription function)
+  - US-033 → 033a (Ollama detection), 033b (LLaVA analysis)
+  - US-037 → 037a (file scanning), 037b (list UI)
+  - US-039 → 039a (summary), 039b (frames), 039c (reveal buttons)
+  - US-041 → 041a (settings storage), 041b (settings UI)
+  - US-030 → 030a (check functions), 030b (panel UI)
+  - US-031 → 031a (model download), 031b (manager UI)
+  - US-034 → 034a (LLaVA functions), 034b (manager UI)
+  - US-042 → 042a (process IPC), 042b (process UI)
+  - US-051 → 051a (first launch), 051b (wizard UI)
 ---
