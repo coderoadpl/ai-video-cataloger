@@ -1,0 +1,22 @@
+## Codebase Patterns
+- Use sql.js instead of better-sqlite3 for Node.js compatibility
+- Use @inquirer/prompts instead of inquirer for terminal compatibility
+- Claude Code CLI requires file:// URLs in prompt text to read images
+- Use stdin: 'ignore' in execa calls to prevent subprocess hanging
+- Existing services in src/services/ can be reused by Electron main process
+
+---
+
+## 2026-01-24 - PRD Creation
+- Created GUI MVP PRD with 24 user stories (US-028 to US-051)
+- Key features: Electron + React, bundled FFmpeg, whisper.cpp, LLaVA via Ollama
+- Target: Apple Silicon (arm64) primary
+- Analysis methods: Claude CLI or LLaVA (local)
+- Transcription: whisper.cpp (bundled) or OpenAI API
+- **Learnings for future iterations:**
+  - ffmpeg-static (original package) is more mature than ffmpeg-static-electron
+  - whisper.cpp eliminates Python dependency for local transcription
+  - Ollama HTTP API at localhost:11434 for LLaVA integration
+  - Auto-start Ollama via `ollama serve` in background
+  - Detect RAM with os.totalmem() to recommend LLaVA model size
+---
