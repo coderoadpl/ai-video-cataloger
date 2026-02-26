@@ -6,6 +6,7 @@ import Sidebar from './components/Sidebar.js';
 import VideoDetails from './components/VideoDetails.js';
 import Toolbar from './components/Toolbar.js';
 import PrerequisitesPanel from './components/PrerequisitesPanel.js';
+import ModelManagerPanel from './components/ModelManagerPanel.js';
 import './styles/App.css';
 
 // Video file type definition
@@ -38,6 +39,7 @@ function App(): React.ReactElement {
     step: string;
   } | null>(null);
   const [isPrerequisitesPanelOpen, setIsPrerequisitesPanelOpen] = useState(false);
+  const [isModelManagerPanelOpen, setIsModelManagerPanelOpen] = useState(false);
 
   const selectedVideo = videos.find((v) => v.id === selectedVideoId) || null;
 
@@ -114,11 +116,15 @@ function App(): React.ReactElement {
     const unsubscribeOpenPrerequisites = window.electronAPI.onMenuOpenPrerequisites(() => {
       setIsPrerequisitesPanelOpen(true);
     });
+    const unsubscribeOpenModelManager = window.electronAPI.onMenuOpenModelManager(() => {
+      setIsModelManagerPanelOpen(true);
+    });
 
     return () => {
       unsubscribeOpenFolder();
       unsubscribeRefresh();
       unsubscribeOpenPrerequisites();
+      unsubscribeOpenModelManager();
     };
   }, [handleSelectFolder, handleRefresh]);
 
@@ -191,6 +197,10 @@ function App(): React.ReactElement {
       <PrerequisitesPanel
         isOpen={isPrerequisitesPanelOpen}
         onClose={() => setIsPrerequisitesPanelOpen(false)}
+      />
+      <ModelManagerPanel
+        isOpen={isModelManagerPanelOpen}
+        onClose={() => setIsModelManagerPanelOpen(false)}
       />
     </div>
   );

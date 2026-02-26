@@ -5,10 +5,95 @@
 import { ipcMain, dialog, shell, app } from 'electron';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as https from 'https';
 import { getMainWindow } from './window.js';
 import { getFFmpegInfo } from './ffmpeg-setup.js';
 
 const execAsync = promisify(exec);
+
+// Whisper GGML model definitions
+interface WhisperModelInfo {
+  name: string;
+  filename: string;
+  url: string;
+}
+
+const WHISPER_MODELS: Record<string, WhisperModelInfo> = {
+  tiny: {
+    name: 'tiny',
+    filename: 'ggml-tiny.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin',
+  },
+  'tiny.en': {
+    name: 'tiny.en',
+    filename: 'ggml-tiny.en.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.en.bin',
+  },
+  base: {
+    name: 'base',
+    filename: 'ggml-base.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin',
+  },
+  'base.en': {
+    name: 'base.en',
+    filename: 'ggml-base.en.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin',
+  },
+  small: {
+    name: 'small',
+    filename: 'ggml-small.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin',
+  },
+  'small.en': {
+    name: 'small.en',
+    filename: 'ggml-small.en.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.en.bin',
+  },
+  medium: {
+    name: 'medium',
+    filename: 'ggml-medium.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin',
+  },
+  'medium.en': {
+    name: 'medium.en',
+    filename: 'ggml-medium.en.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.en.bin',
+  },
+  'large-v3': {
+    name: 'large-v3',
+    filename: 'ggml-large-v3.bin',
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin',
+  },
+};
+
+// Track active download for cancellation
+let activeDownload: {
+  request: ReturnType<typeof https.get> | null;
+  modelName: string;
+} | null = null;
+
+/**
+ * Get the path where Whisper models are stored
+ */
+function getWhisperModelsPath(): string {
+  const modelsDir = path.join(app.getPath('userData'), 'models', 'whisper');
+  // Ensure directory exists
+  if (!fs.existsSync(modelsDir)) {
+    fs.mkdirSync(modelsDir, { recursive: true });
+  }
+  return modelsDir;
+}
+
+/**
+ * Format bytes per second to human readable string
+ */
+function formatSpeed(bytesPerSecond: number): string {
+  if (bytesPerSecond < 1024) return `${bytesPerSecond.toFixed(0)} B/s`;
+  if (bytesPerSecond < 1024 * 1024) return `${(bytesPerSecond / 1024).toFixed(1)} KB/s`;
+  return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`;
+}
 
 // Import existing services from CLI (these will be reused)
 // Note: These imports will work once we update the tsconfig
@@ -239,18 +324,192 @@ export function registerIpcHandlers(): void {
 
   // Whisper model management
   ipcMain.handle('get-whisper-models', async () => {
-    // TODO: Implement model listing
-    return [];
+    const modelsPath = getWhisperModelsPath();
+    const models: { name: string; filename: string; path: string; sizeBytes: number }[] = [];
+
+    try {
+      const files = fs.readdirSync(modelsPath);
+      for (const file of files) {
+        if (file.startsWith('ggml-') && file.endsWith('.bin')) {
+          const filePath = path.join(modelsPath, file);
+          const stats = fs.statSync(filePath);
+          // Extract model name from filename (e.g., "ggml-tiny.bin" -> "tiny")
+          const modelName = file.replace('ggml-', '').replace('.bin', '');
+          models.push({
+            name: modelName,
+            filename: file,
+            path: filePath,
+            sizeBytes: stats.size,
+          });
+        }
+      }
+    } catch (err) {
+      console.error('Failed to list whisper models:', err);
+    }
+
+    return { models, modelsPath };
   });
 
-  ipcMain.handle('download-whisper-model', async (_event, _modelName: string) => {
-    // TODO: Implement model download
-    return { success: false, error: 'Not implemented' };
+  ipcMain.handle('download-whisper-model', async (_event, modelName: string) => {
+    const modelInfo = WHISPER_MODELS[modelName];
+    if (!modelInfo) {
+      return { success: false, error: `Unknown model: ${modelName}` };
+    }
+
+    const modelsPath = getWhisperModelsPath();
+    const destPath = path.join(modelsPath, modelInfo.filename);
+    const tempPath = destPath + '.tmp';
+
+    // Check if already downloaded
+    if (fs.existsSync(destPath)) {
+      return { success: true };
+    }
+
+    const mainWindow = getMainWindow();
+
+    return new Promise((resolve) => {
+      // Follow redirects manually for HTTPS
+      const downloadWithRedirect = (url: string, redirectCount = 0) => {
+        if (redirectCount > 5) {
+          resolve({ success: false, error: 'Too many redirects' });
+          return;
+        }
+
+        const request = https.get(url, (response) => {
+          // Handle redirects
+          if (response.statusCode === 301 || response.statusCode === 302) {
+            const redirectUrl = response.headers.location;
+            if (redirectUrl) {
+              downloadWithRedirect(redirectUrl, redirectCount + 1);
+              return;
+            }
+          }
+
+          if (response.statusCode !== 200) {
+            resolve({ success: false, error: `HTTP ${response.statusCode}` });
+            return;
+          }
+
+          const totalBytes = parseInt(response.headers['content-length'] || '0', 10);
+          let downloadedBytes = 0;
+          let lastTime = Date.now();
+          let lastBytes = 0;
+
+          const file = fs.createWriteStream(tempPath);
+          activeDownload = { request, modelName };
+
+          response.on('data', (chunk: Buffer) => {
+            downloadedBytes += chunk.length;
+
+            // Calculate speed every 500ms
+            const now = Date.now();
+            const timeDiff = now - lastTime;
+            if (timeDiff >= 500) {
+              const bytesDiff = downloadedBytes - lastBytes;
+              const bytesPerSecond = (bytesDiff / timeDiff) * 1000;
+              lastTime = now;
+              lastBytes = downloadedBytes;
+
+              // Send progress to renderer
+              mainWindow?.webContents.send('model:download-progress', {
+                modelName,
+                bytesDownloaded: downloadedBytes,
+                totalBytes,
+                speed: formatSpeed(bytesPerSecond),
+              });
+            }
+          });
+
+          response.pipe(file);
+
+          file.on('finish', () => {
+            file.close(() => {
+              // Rename temp file to final destination
+              try {
+                fs.renameSync(tempPath, destPath);
+                activeDownload = null;
+                mainWindow?.webContents.send('model:download-complete', {
+                  success: true,
+                  modelName,
+                });
+                resolve({ success: true });
+              } catch (err) {
+                activeDownload = null;
+                mainWindow?.webContents.send('model:download-complete', {
+                  success: false,
+                  error: 'Failed to save model',
+                  modelName,
+                });
+                resolve({ success: false, error: 'Failed to save model' });
+              }
+            });
+          });
+
+          file.on('error', (err) => {
+            fs.unlink(tempPath, () => {}); // Clean up temp file
+            activeDownload = null;
+            mainWindow?.webContents.send('model:download-complete', {
+              success: false,
+              error: err.message,
+              modelName,
+            });
+            resolve({ success: false, error: err.message });
+          });
+        });
+
+        request.on('error', (err) => {
+          fs.unlink(tempPath, () => {}); // Clean up temp file
+          activeDownload = null;
+          mainWindow?.webContents.send('model:download-complete', {
+            success: false,
+            error: err.message,
+            modelName,
+          });
+          resolve({ success: false, error: err.message });
+        });
+      };
+
+      downloadWithRedirect(modelInfo.url);
+    });
   });
 
-  ipcMain.handle('delete-whisper-model', async (_event, _modelName: string) => {
-    // TODO: Implement model deletion
-    return { success: false, error: 'Not implemented' };
+  ipcMain.handle('cancel-whisper-model-download', async () => {
+    if (activeDownload?.request) {
+      activeDownload.request.destroy();
+      activeDownload = null;
+      // Clean up any temp files
+      const modelsPath = getWhisperModelsPath();
+      const files = fs.readdirSync(modelsPath);
+      for (const file of files) {
+        if (file.endsWith('.tmp')) {
+          try {
+            fs.unlinkSync(path.join(modelsPath, file));
+          } catch {
+            // Ignore cleanup errors
+          }
+        }
+      }
+    }
+    return { success: true };
+  });
+
+  ipcMain.handle('delete-whisper-model', async (_event, modelName: string) => {
+    const modelInfo = WHISPER_MODELS[modelName];
+    if (!modelInfo) {
+      return { success: false, error: `Unknown model: ${modelName}` };
+    }
+
+    const modelsPath = getWhisperModelsPath();
+    const modelPath = path.join(modelsPath, modelInfo.filename);
+
+    try {
+      if (fs.existsSync(modelPath)) {
+        fs.unlinkSync(modelPath);
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: `Failed to delete model: ${err}` };
+    }
   });
 
   // Ollama/LLaVA management

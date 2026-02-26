@@ -42,11 +42,38 @@ const electronAPI = {
   }> => ipcRenderer.invoke('check-prerequisites'),
 
   // Whisper models
-  getWhisperModels: (): Promise<unknown[]> => ipcRenderer.invoke('get-whisper-models'),
+  getWhisperModels: (): Promise<{
+    models: { name: string; filename: string; path: string; sizeBytes: number }[];
+    modelsPath: string;
+  }> => ipcRenderer.invoke('get-whisper-models'),
   downloadWhisperModel: (modelName: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('download-whisper-model', modelName),
+  cancelWhisperModelDownload: (): Promise<{ success: boolean }> =>
+    ipcRenderer.invoke('cancel-whisper-model-download'),
   deleteWhisperModel: (modelName: string): Promise<{ success: boolean; error?: string }> =>
     ipcRenderer.invoke('delete-whisper-model', modelName),
+
+  // Model download events
+  onModelDownloadProgress: (
+    callback: (progress: { modelName: string; bytesDownloaded: number; totalBytes: number; speed: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      progress: { modelName: string; bytesDownloaded: number; totalBytes: number; speed: string }
+    ) => callback(progress);
+    ipcRenderer.on('model:download-progress', handler);
+    return () => ipcRenderer.removeListener('model:download-progress', handler);
+  },
+  onModelDownloadComplete: (
+    callback: (result: { success: boolean; modelName: string; error?: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      result: { success: boolean; modelName: string; error?: string }
+    ) => callback(result);
+    ipcRenderer.on('model:download-complete', handler);
+    return () => ipcRenderer.removeListener('model:download-complete', handler);
+  },
 
   // Ollama/LLaVA
   getOllamaStatus: (): Promise<{ installed: boolean; running: boolean }> =>
