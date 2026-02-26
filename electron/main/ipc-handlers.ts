@@ -4,6 +4,7 @@
  */
 import { ipcMain, dialog, shell, app } from 'electron';
 import { getMainWindow } from './window.js';
+import { getFFmpegInfo } from './ffmpeg-setup.js';
 
 // Import existing services from CLI (these will be reused)
 // Note: These imports will work once we update the tsconfig
@@ -94,9 +95,20 @@ export function registerIpcHandlers(): void {
 
   // Check prerequisites
   ipcMain.handle('check-prerequisites', async () => {
-    // TODO: Implement using checkPrerequisites service
+    // Get FFmpeg info using bundled binary
+    const ffmpegInfo = await getFFmpegInfo();
+
     return {
-      ffmpeg: { available: true, version: 'bundled', bundled: true },
+      ffmpeg: {
+        available: ffmpegInfo.version !== 'not found',
+        version: ffmpegInfo.version,
+        bundled: ffmpegInfo.bundled,
+        path: ffmpegInfo.ffmpegPath,
+      },
+      ffprobe: {
+        available: ffmpegInfo.version !== 'not found',
+        path: ffmpegInfo.ffprobePath,
+      },
       whisper: { available: false, version: null },
       claude: { available: false, version: null },
       ollama: { available: false, running: false },

@@ -12,6 +12,16 @@ module.exports = {
     'electron/dist/**/*',
     'dist/**/*',
     'package.json',
+    // Include ffmpeg-static for bundled FFmpeg (macOS only)
+    'node_modules/ffmpeg-static/**/*',
+    '!node_modules/ffmpeg-static/ffmpeg-win32*',
+    '!node_modules/ffmpeg-static/ffmpeg-linux*',
+    // Include ffprobe-installer for bundled FFprobe (macOS only)
+    'node_modules/@ffprobe-installer/ffprobe/**/*',
+    'node_modules/@ffprobe-installer/darwin-arm64/**/*',
+    'node_modules/@ffprobe-installer/darwin-x64/**/*',
+    '!node_modules/@ffprobe-installer/win32*',
+    '!node_modules/@ffprobe-installer/linux*',
   ],
   extraResources: [
     {
@@ -52,8 +62,10 @@ module.exports = {
       },
     ],
   },
+  // Unpack native binaries from asar for execution
   asarUnpack: [
     'node_modules/ffmpeg-static/**/*',
+    'node_modules/@ffprobe-installer/**/*',
     'electron/resources/bin/**/*',
   ],
 };
