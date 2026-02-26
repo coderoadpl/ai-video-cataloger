@@ -5,6 +5,8 @@
 - Preload script exposes API via contextBridge.exposeInMainWorld('electronAPI', {...})
 - CSS uses CSS variables defined in global.css for consistent theming
 - Components import their own CSS files (e.g., `import '../styles/Toolbar.css'`)
+- FFmpeg setup: Call `configureFfmpeg()` from ffmpeg-setup.ts before any ffmpeg operations
+- Bundled binaries: Use `getFFmpegPath()` and `getFFprobePath()` from ffmpeg-paths.ts for binary locations
 
 # Ralph Progress Log
 Started: Sat Jan 24 16:39:25 CET 2026
@@ -34,4 +36,51 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Window state persistence uses electron-store package
   - IPC handlers use underscore prefix (`_event`, `_args`) for unused parameters to satisfy TypeScript's noUnusedParameters
   - CSS follows macOS design guidelines with system colors and native feel
+---
+
+## 2026-01-24 - US-029
+- What was implemented:
+  - Added ffmpeg-static and @ffprobe-installer/ffprobe packages for bundled FFmpeg/FFprobe
+  - Created electron/main/ffmpeg-paths.ts for binary path resolution (handles dev vs packaged app)
+  - Created electron/main/ffmpeg-setup.ts to configure fluent-ffmpeg with bundled paths
+  - Updated electron-builder.config.js to unpack binaries from asar and exclude non-macOS binaries
+  - Updated IPC handlers to report accurate FFmpeg status (version, path, bundled status)
+
+- Files changed:
+  - Created: electron/main/ffmpeg-paths.ts, electron/main/ffmpeg-setup.ts
+  - Modified: electron-builder.config.js, electron/main/index.ts, electron/main/ipc-handlers.ts
+  - Modified: package.json (added ffmpeg-static, @ffprobe-installer/ffprobe)
+
+- **Learnings for future iterations:**
+  - ffmpeg-static package exports the binary path directly as the default export
+  - @ffprobe-installer/ffprobe uses platform-specific subdirectories like `darwin-arm64`
+  - Use `createRequire(import.meta.url)` to require CommonJS modules from ESM in Node.js
+  - electron-builder `asarUnpack` extracts binaries to `app.asar.unpacked/node_modules/...`
+  - For packaged apps, use `process.resourcesPath` to find unpacked resources
+  - `app.isPackaged` from electron distinguishes between dev and packaged environments
+---
+
+## 2026-01-24 - US-030
+- What was implemented:
+  - Prerequisites Verification Panel as a modal accessible from Help > Prerequisites menu
+  - Comprehensive dependency checking via IPC handlers (FFmpeg, Whisper, Ollama, Claude API, OpenAI API)
+  - Visual status indicators: green checkmarks for available, red X for missing, yellow warning for partial
+  - Install instructions displayed for each missing dependency
+  - "Check Again" button to re-verify all dependencies
+  - Summary section showing available analysis and transcription methods
+
+- Files changed:
+  - Created: electron/renderer/components/PrerequisitesPanel.tsx
+  - Created: electron/renderer/styles/PrerequisitesPanel.css
+  - Modified: electron/main/ipc-handlers.ts (added checkCommand, checkOllama, checkWhisper, checkClaudeApiKey, checkOpenAIApiKey helpers)
+  - Modified: electron/preload.ts (updated checkPrerequisites return type)
+  - Modified: electron/renderer/App.tsx (added PrerequisitesPanel state and menu event listener)
+
+- **Learnings for future iterations:**
+  - Modal overlay pattern: use fixed positioning with rgba background, click outside to close
+  - Check for CLI tools using `which <command>` via child_process.exec
+  - Ollama running status can be checked by trying `ollama list` - it fails if not running
+  - Claude API key can be in ANTHROPIC_API_KEY or CLAUDE_API_KEY environment variables
+  - Run parallel checks with Promise.all for better performance
+  - Whisper.cpp binary is sometimes called "main" rather than "whisper.cpp"
 ---

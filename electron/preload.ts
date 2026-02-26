@@ -30,7 +30,16 @@ const electronAPI = {
     ipcRenderer.invoke('get-app-paths'),
 
   // Prerequisites
-  checkPrerequisites: (): Promise<Record<string, unknown>> => ipcRenderer.invoke('check-prerequisites'),
+  checkPrerequisites: (): Promise<{
+    ffmpeg: { available: boolean; version: string; bundled: boolean; path: string };
+    ffprobe: { available: boolean; path: string };
+    whisper: { available: boolean; version: string | null; path: string | null; type: 'whisper.cpp' | 'whisper' | null };
+    claude: { available: boolean };
+    ollama: { installed: boolean; running: boolean; version: string | null };
+    openaiKey: { available: boolean };
+    analysisMethods: string[];
+    transcriptionMethods: string[];
+  }> => ipcRenderer.invoke('check-prerequisites'),
 
   // Whisper models
   getWhisperModels: (): Promise<unknown[]> => ipcRenderer.invoke('get-whisper-models'),

@@ -5,6 +5,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import Sidebar from './components/Sidebar.js';
 import VideoDetails from './components/VideoDetails.js';
 import Toolbar from './components/Toolbar.js';
+import PrerequisitesPanel from './components/PrerequisitesPanel.js';
 import './styles/App.css';
 
 // Video file type definition
@@ -36,6 +37,7 @@ function App(): React.ReactElement {
     total: number;
     step: string;
   } | null>(null);
+  const [isPrerequisitesPanelOpen, setIsPrerequisitesPanelOpen] = useState(false);
 
   const selectedVideo = videos.find((v) => v.id === selectedVideoId) || null;
 
@@ -109,10 +111,14 @@ function App(): React.ReactElement {
   useEffect(() => {
     const unsubscribeOpenFolder = window.electronAPI.onMenuOpenFolder(handleSelectFolder);
     const unsubscribeRefresh = window.electronAPI.onMenuRefresh(handleRefresh);
+    const unsubscribeOpenPrerequisites = window.electronAPI.onMenuOpenPrerequisites(() => {
+      setIsPrerequisitesPanelOpen(true);
+    });
 
     return () => {
       unsubscribeOpenFolder();
       unsubscribeRefresh();
+      unsubscribeOpenPrerequisites();
     };
   }, [handleSelectFolder, handleRefresh]);
 
@@ -180,6 +186,12 @@ function App(): React.ReactElement {
           isProcessing={isProcessing}
         />
       </div>
+
+      {/* Modals */}
+      <PrerequisitesPanel
+        isOpen={isPrerequisitesPanelOpen}
+        onClose={() => setIsPrerequisitesPanelOpen(false)}
+      />
     </div>
   );
 }
