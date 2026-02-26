@@ -3,15 +3,17 @@
  * Bridge between renderer and backend services
  */
 import { ipcMain, dialog, shell, app } from 'electron';
-import { exec } from 'child_process';
+import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as https from 'https';
 import { getMainWindow } from './window.js';
 import { getFFmpegInfo } from './ffmpeg-setup.js';
+import { getWhisperCppPath, isBundledWhisperCppAvailable, getWhisperCppInfo } from './whisper-paths.js';
 
 const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 // Whisper GGML model definitions
 interface WhisperModelInfo {
@@ -99,6 +101,216 @@ function formatSpeed(bytesPerSecond: number): string {
 // Note: These imports will work once we update the tsconfig
 // import { scanDirectory, extractFrames, transcribeAudio, analyzeVideo, renameVideo } from '../../src/services/index.js';
 // import { initDatabase, getVideoByPath, getAllVideos, updateVideoStatus } from '../../src/db/index.js';
+
+// Whisper transcription settings stored in user preferences
+interface WhisperSettings {
+  preferBuiltIn: boolean; // true = prefer bundled whisper.cpp, false = prefer system whisper
+  selectedModel: string;  // Model name (e.g., 'base', 'small', 'medium')
+}
+
+// Active transcription process for cancellation
+let activeTranscription: {
+  process: ReturnType<typeof spawn> | null;
+  audioPath: string;
+} | null = null;
+
+/**
+ * Get available whisper.cpp binary path - checks bundled first, then system
+ * @param preferBuiltIn - Whether to prefer bundled binary over system
+ */
+async function getAvailableWhisperPath(preferBuiltIn: boolean): Promise<{
+  path: string;
+  type: 'bundled' | 'system-whisper.cpp' | 'system-whisper' | null;
+}> {
+  // Check bundled whisper.cpp
+  const bundledAvailable = isBundledWhisperCppAvailable();
+  const bundledPath = getWhisperCppPath();
+
+  // Check system whisper.cpp
+  const systemWhisperCpp = await checkCommand('whisper.cpp');
+  const systemMain = await checkCommand('main');
+  const systemWhisper = await checkCommand('whisper');
+
+  // Determine system whisper.cpp availability
+  let systemWhisperCppPath = '';
+  if (systemWhisperCpp.available && systemWhisperCpp.path) {
+    systemWhisperCppPath = systemWhisperCpp.path;
+  } else if (systemMain.available && systemMain.path && systemMain.version?.includes('whisper')) {
+    systemWhisperCppPath = systemMain.path;
+  }
+
+  if (preferBuiltIn) {
+    // Prefer bundled, fall back to system
+    if (bundledAvailable) {
+      return { path: bundledPath, type: 'bundled' };
+    }
+    if (systemWhisperCppPath) {
+      return { path: systemWhisperCppPath, type: 'system-whisper.cpp' };
+    }
+    if (systemWhisper.available && systemWhisper.path) {
+      return { path: systemWhisper.path, type: 'system-whisper' };
+    }
+  } else {
+    // Prefer system, fall back to bundled
+    if (systemWhisperCppPath) {
+      return { path: systemWhisperCppPath, type: 'system-whisper.cpp' };
+    }
+    if (systemWhisper.available && systemWhisper.path) {
+      return { path: systemWhisper.path, type: 'system-whisper' };
+    }
+    if (bundledAvailable) {
+      return { path: bundledPath, type: 'bundled' };
+    }
+  }
+
+  return { path: '', type: null };
+}
+
+/**
+ * Transcribe audio file using whisper.cpp
+ * @param audioPath - Path to the audio file (WAV format, 16kHz mono)
+ * @param modelPath - Path to the GGML model file
+ * @param outputDir - Directory to save transcript
+ */
+async function transcribeWithWhisperCpp(
+  audioPath: string,
+  modelPath: string,
+  outputDir: string
+): Promise<{ success: boolean; transcript: string; outputPath: string; error?: string }> {
+  const mainWindow = getMainWindow();
+  const baseName = path.basename(audioPath, path.extname(audioPath));
+
+  return new Promise((resolve) => {
+    // whisper.cpp command line arguments:
+    // -m <model>   : path to model file
+    // -f <file>    : input audio file
+    // -otxt        : output as plain text
+    // -of <path>   : output file path (without extension)
+    // --no-prints  : suppress non-transcript output
+    const whisperPath = getWhisperCppPath();
+
+    if (!whisperPath) {
+      resolve({
+        success: false,
+        transcript: '',
+        outputPath: '',
+        error: 'Whisper.cpp binary not found',
+      });
+      return;
+    }
+
+    const outputBase = path.join(outputDir, baseName);
+    const args = [
+      '-m', modelPath,
+      '-f', audioPath,
+      '-otxt',
+      '-of', outputBase,
+      '--no-prints',
+    ];
+
+    const whisperProcess = spawn(whisperPath, args);
+    activeTranscription = { process: whisperProcess, audioPath };
+
+    let stderr = '';
+
+    whisperProcess.stderr.on('data', (data: Buffer) => {
+      stderr += data.toString();
+      // Send progress update
+      mainWindow?.webContents.send('transcription:progress', {
+        audioPath,
+        status: 'transcribing',
+        message: data.toString().trim(),
+      });
+    });
+
+    whisperProcess.on('close', (code) => {
+      activeTranscription = null;
+
+      if (code === 0) {
+        // Read the output file
+        const txtPath = `${outputBase}.txt`;
+        try {
+          const transcript = fs.existsSync(txtPath)
+            ? fs.readFileSync(txtPath, 'utf-8').trim()
+            : '';
+
+          resolve({
+            success: true,
+            transcript,
+            outputPath: txtPath,
+          });
+        } catch (err) {
+          resolve({
+            success: false,
+            transcript: '',
+            outputPath: '',
+            error: `Failed to read transcript: ${err}`,
+          });
+        }
+      } else {
+        resolve({
+          success: false,
+          transcript: '',
+          outputPath: '',
+          error: `Whisper.cpp exited with code ${code}: ${stderr}`,
+        });
+      }
+    });
+
+    whisperProcess.on('error', (err) => {
+      activeTranscription = null;
+      resolve({
+        success: false,
+        transcript: '',
+        outputPath: '',
+        error: `Failed to start whisper.cpp: ${err.message}`,
+      });
+    });
+  });
+}
+
+/**
+ * Transcribe audio file using OpenAI's whisper CLI (Python implementation)
+ * @param audioPath - Path to the audio file
+ * @param model - Model name (tiny, base, small, medium, large-v3)
+ * @param outputDir - Directory to save transcript
+ */
+async function transcribeWithSystemWhisper(
+  audioPath: string,
+  model: string,
+  outputDir: string
+): Promise<{ success: boolean; transcript: string; outputPath: string; error?: string }> {
+  const baseName = path.basename(audioPath, path.extname(audioPath));
+  const outputPath = path.join(outputDir, `${baseName}.txt`);
+
+  try {
+    // whisper CLI: whisper <audio> --model <model> --output_dir <dir> --output_format txt
+    await execFileAsync('whisper', [
+      audioPath,
+      '--model', model,
+      '--output_dir', outputDir,
+      '--output_format', 'txt',
+    ], { timeout: 600000 }); // 10 minute timeout
+
+    // Read the transcript
+    const transcript = fs.existsSync(outputPath)
+      ? fs.readFileSync(outputPath, 'utf-8').trim()
+      : '';
+
+    return {
+      success: true,
+      transcript,
+      outputPath,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      transcript: '',
+      outputPath: '',
+      error: `Whisper CLI error: ${err instanceof Error ? err.message : err}`,
+    };
+  }
+}
 
 /**
  * Check if a command is available on the system
@@ -510,6 +722,135 @@ export function registerIpcHandlers(): void {
     } catch (err) {
       return { success: false, error: `Failed to delete model: ${err}` };
     }
+  });
+
+  // Whisper.cpp transcription
+  ipcMain.handle('get-whisper-cpp-status', async () => {
+    const bundledInfo = await getWhisperCppInfo();
+    const systemWhisperCpp = await checkCommand('whisper.cpp');
+    const systemMain = await checkCommand('main');
+    const systemWhisper = await checkCommand('whisper');
+
+    // Determine if system whisper.cpp is available
+    let systemWhisperCppAvailable = false;
+    let systemWhisperCppPath = '';
+    if (systemWhisperCpp.available && systemWhisperCpp.path) {
+      systemWhisperCppAvailable = true;
+      systemWhisperCppPath = systemWhisperCpp.path;
+    } else if (systemMain.available && systemMain.path && systemMain.version?.includes('whisper')) {
+      systemWhisperCppAvailable = true;
+      systemWhisperCppPath = systemMain.path;
+    }
+
+    return {
+      bundled: {
+        available: bundledInfo.available,
+        path: bundledInfo.path,
+        version: bundledInfo.version,
+      },
+      system: {
+        whisperCpp: {
+          available: systemWhisperCppAvailable,
+          path: systemWhisperCppPath,
+          version: systemWhisperCpp.version || systemMain.version,
+        },
+        whisperCli: {
+          available: systemWhisper.available,
+          path: systemWhisper.path,
+          version: systemWhisper.version,
+        },
+      },
+    };
+  });
+
+  ipcMain.handle('transcribe-audio', async (
+    _event,
+    options: {
+      audioPath: string;
+      modelName: string;
+      outputDir: string;
+      preferBuiltIn: boolean;
+    }
+  ) => {
+    const { audioPath, modelName, outputDir, preferBuiltIn } = options;
+
+    // Ensure output directory exists
+    if (!fs.existsSync(outputDir)) {
+      fs.mkdirSync(outputDir, { recursive: true });
+    }
+
+    // Check if audio file exists
+    if (!fs.existsSync(audioPath)) {
+      return { success: false, error: `Audio file not found: ${audioPath}` };
+    }
+
+    // Get available whisper binary
+    const whisperInfo = await getAvailableWhisperPath(preferBuiltIn);
+
+    if (!whisperInfo.type) {
+      return {
+        success: false,
+        error: 'No whisper.cpp or whisper CLI available. Please install whisper.cpp or download a model.',
+      };
+    }
+
+    if (whisperInfo.type === 'bundled' || whisperInfo.type === 'system-whisper.cpp') {
+      // Use whisper.cpp
+      const modelsPath = getWhisperModelsPath();
+      const modelInfo = WHISPER_MODELS[modelName];
+
+      if (!modelInfo) {
+        return { success: false, error: `Unknown model: ${modelName}` };
+      }
+
+      const modelPath = path.join(modelsPath, modelInfo.filename);
+
+      if (!fs.existsSync(modelPath)) {
+        return {
+          success: false,
+          error: `Model not downloaded: ${modelName}. Please download the model first.`,
+        };
+      }
+
+      const result = await transcribeWithWhisperCpp(audioPath, modelPath, outputDir);
+      return {
+        ...result,
+        method: whisperInfo.type,
+      };
+    } else {
+      // Use system whisper CLI (Python)
+      const result = await transcribeWithSystemWhisper(audioPath, modelName, outputDir);
+      return {
+        ...result,
+        method: 'system-whisper',
+      };
+    }
+  });
+
+  ipcMain.handle('cancel-transcription', async () => {
+    if (activeTranscription?.process) {
+      activeTranscription.process.kill('SIGTERM');
+      activeTranscription = null;
+      return { success: true };
+    }
+    return { success: false, error: 'No active transcription to cancel' };
+  });
+
+  // Get/set whisper settings
+  ipcMain.handle('get-whisper-settings', async () => {
+    // For now, return default settings
+    // In the future, these should be stored in the database
+    return {
+      preferBuiltIn: true,
+      selectedModel: 'base',
+    };
+  });
+
+  ipcMain.handle('save-whisper-settings', async (_event, settings: WhisperSettings) => {
+    // For now, just acknowledge
+    // In the future, save to database
+    console.log('Saving whisper settings:', settings);
+    return { success: true };
   });
 
   // Ollama/LLaVA management

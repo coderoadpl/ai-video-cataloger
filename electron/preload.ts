@@ -75,6 +75,53 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('model:download-complete', handler);
   },
 
+  // Whisper.cpp transcription
+  getWhisperCppStatus: (): Promise<{
+    bundled: { available: boolean; path: string; version: string };
+    system: {
+      whisperCpp: { available: boolean; path: string | null; version: string | null };
+      whisperCli: { available: boolean; path: string | null; version: string | null };
+    };
+  }> => ipcRenderer.invoke('get-whisper-cpp-status'),
+
+  transcribeAudio: (options: {
+    audioPath: string;
+    modelName: string;
+    outputDir: string;
+    preferBuiltIn: boolean;
+  }): Promise<{
+    success: boolean;
+    transcript?: string;
+    outputPath?: string;
+    error?: string;
+    method?: string;
+  }> => ipcRenderer.invoke('transcribe-audio', options),
+
+  cancelTranscription: (): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('cancel-transcription'),
+
+  getWhisperSettings: (): Promise<{
+    preferBuiltIn: boolean;
+    selectedModel: string;
+  }> => ipcRenderer.invoke('get-whisper-settings'),
+
+  saveWhisperSettings: (settings: {
+    preferBuiltIn: boolean;
+    selectedModel: string;
+  }): Promise<{ success: boolean }> => ipcRenderer.invoke('save-whisper-settings', settings),
+
+  // Transcription progress events
+  onTranscriptionProgress: (
+    callback: (progress: { audioPath: string; status: string; message: string }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      progress: { audioPath: string; status: string; message: string }
+    ) => callback(progress);
+    ipcRenderer.on('transcription:progress', handler);
+    return () => ipcRenderer.removeListener('transcription:progress', handler);
+  },
+
   // Ollama/LLaVA
   getOllamaStatus: (): Promise<{ installed: boolean; running: boolean }> =>
     ipcRenderer.invoke('get-ollama-status'),

@@ -105,6 +105,19 @@ interface DownloadProgress {
   speed: string; // e.g., "2.5 MB/s"
 }
 
+interface WhisperCppStatus {
+  bundled: { available: boolean; path: string; version: string };
+  system: {
+    whisperCpp: { available: boolean; path: string | null; version: string | null };
+    whisperCli: { available: boolean; path: string | null; version: string | null };
+  };
+}
+
+interface WhisperSettings {
+  preferBuiltIn: boolean;
+  selectedModel: string;
+}
+
 interface ModelManagerPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -124,15 +137,26 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
   const [downloadProgress, setDownloadProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [modelsPath, setModelsPath] = useState<string>('');
+  const [whisperStatus, setWhisperStatus] = useState<WhisperCppStatus | null>(null);
+  const [whisperSettings, setWhisperSettings] = useState<WhisperSettings>({
+    preferBuiltIn: true,
+    selectedModel: 'base',
+  });
 
-  // Load downloaded models
+  // Load downloaded models and whisper status
   const loadModels = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const result = await window.electronAPI.getWhisperModels();
-      setDownloadedModels(result.models);
-      setModelsPath(result.modelsPath);
+      const [modelsResult, statusResult, settingsResult] = await Promise.all([
+        window.electronAPI.getWhisperModels(),
+        window.electronAPI.getWhisperCppStatus(),
+        window.electronAPI.getWhisperSettings(),
+      ]);
+      setDownloadedModels(modelsResult.models);
+      setModelsPath(modelsResult.modelsPath);
+      setWhisperStatus(statusResult);
+      setWhisperSettings(settingsResult);
     } catch (err) {
       console.error('Failed to load models:', err);
       setError('Failed to load models');
@@ -220,6 +244,17 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
     }
   };
 
+  // Handle whisper settings change
+  const handleSettingsChange = async (newSettings: Partial<WhisperSettings>) => {
+    const updated = { ...whisperSettings, ...newSettings };
+    setWhisperSettings(updated);
+    try {
+      await window.electronAPI.saveWhisperSettings(updated);
+    } catch (err) {
+      console.error('Failed to save settings:', err);
+    }
+  };
+
   // Check if a model is downloaded
   const isModelDownloaded = (modelName: string): boolean => {
     return downloadedModels.some((m) => m.name === modelName);
@@ -267,6 +302,82 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
                   </button>
                 </div>
               )}
+
+              {/* Whisper Settings Section */}
+              <section className="settings-section">
+                <h3>Whisper Settings</h3>
+
+                {/* Runtime Status */}
+                <div className="status-grid">
+                  <div className="status-item">
+                    <span className="status-label">Built-in whisper.cpp</span>
+                    <span className={`status-value ${whisperStatus?.bundled.available ? 'available' : 'unavailable'}`}>
+                      {whisperStatus?.bundled.available ? 'Available' : 'Not bundled'}
+                    </span>
+                  </div>
+                  <div className="status-item">
+                    <span className="status-label">System whisper.cpp</span>
+                    <span className={`status-value ${whisperStatus?.system.whisperCpp.available ? 'available' : 'unavailable'}`}>
+                      {whisperStatus?.system.whisperCpp.available ? 'Available' : 'Not found'}
+                    </span>
+                  </div>
+                  <div className="status-item">
+                    <span className="status-label">System Whisper CLI</span>
+                    <span className={`status-value ${whisperStatus?.system.whisperCli.available ? 'available' : 'unavailable'}`}>
+                      {whisperStatus?.system.whisperCli.available ? 'Available' : 'Not found'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Preference Toggle */}
+                <div className="setting-row">
+                  <label className="setting-label">
+                    Whisper Runtime
+                    <span className="setting-description">
+                      Choose which whisper implementation to use for transcription
+                    </span>
+                  </label>
+                  <div className="toggle-group">
+                    <button
+                      className={`toggle-button ${whisperSettings.preferBuiltIn ? 'active' : ''}`}
+                      onClick={() => handleSettingsChange({ preferBuiltIn: true })}
+                    >
+                      Built-in
+                    </button>
+                    <button
+                      className={`toggle-button ${!whisperSettings.preferBuiltIn ? 'active' : ''}`}
+                      onClick={() => handleSettingsChange({ preferBuiltIn: false })}
+                    >
+                      System
+                    </button>
+                  </div>
+                </div>
+
+                {/* Model Selection */}
+                <div className="setting-row">
+                  <label className="setting-label">
+                    Default Model
+                    <span className="setting-description">
+                      Select the model to use for transcription
+                    </span>
+                  </label>
+                  <select
+                    className="setting-select"
+                    value={whisperSettings.selectedModel}
+                    onChange={(e) => handleSettingsChange({ selectedModel: e.target.value })}
+                  >
+                    {WHISPER_MODELS.map((model) => (
+                      <option
+                        key={model.name}
+                        value={model.name}
+                        disabled={!isModelDownloaded(model.name)}
+                      >
+                        {model.name} ({model.size}){isModelDownloaded(model.name) ? '' : ' - Not downloaded'}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </section>
 
               {/* Whisper Models Section */}
               <section className="model-section">
