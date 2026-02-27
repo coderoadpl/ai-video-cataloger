@@ -7,6 +7,10 @@
 - Components import their own CSS files (e.g., `import '../styles/Toolbar.css'`)
 - FFmpeg setup: Call `configureFfmpeg()` from ffmpeg-setup.ts before any ffmpeg operations
 - Bundled binaries: Use `getFFmpegPath()` and `getFFprobePath()` from ffmpeg-paths.ts for binary locations
+- Whisper binaries: Use `getWhisperCppPath()` from whisper-paths.ts, falls back to system CLI if bundled unavailable
+- Whisper models: Stored in app.getPath('userData')/models/whisper/, use WHISPER_MODELS constant for model info
+- Download events: Use `mainWindow.webContents.send('event-name', data)` for progress updates from main to renderer
+- Long-running processes: Use spawn() with module-level reference for cancellation support via process.kill()
 
 # Ralph Progress Log
 Started: Sat Jan 24 16:39:25 CET 2026
@@ -83,4 +87,59 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Claude API key can be in ANTHROPIC_API_KEY or CLAUDE_API_KEY environment variables
   - Run parallel checks with Promise.all for better performance
   - Whisper.cpp binary is sometimes called "main" rather than "whisper.cpp"
+---
+
+## 2026-01-24 - US-031
+- What was implemented:
+  - Model Manager Panel as a modal accessible from Help > Model Manager menu
+  - Display list of 9 available whisper.cpp GGML models (tiny, base, small, medium, large-v3, plus .en variants)
+  - Download functionality with HTTPS request handling and redirect following
+  - Download progress bar showing bytes downloaded, total size, and transfer speed
+  - Cancel Download button to abort active downloads
+  - Delete button for downloaded models
+  - Disk usage summary showing number of models and total space used
+  - Models stored in app's userData directory under models/whisper/
+
+- Files changed:
+  - Created: electron/renderer/components/ModelManagerPanel.tsx
+  - Created: electron/renderer/styles/ModelManagerPanel.css
+  - Modified: electron/main/ipc-handlers.ts (added WHISPER_MODELS config, getWhisperModelsPath, formatSpeed, download/delete handlers)
+  - Modified: electron/preload.ts (added typed getWhisperModels, cancelWhisperModelDownload, onModelDownloadProgress, onModelDownloadComplete)
+  - Modified: electron/renderer/App.tsx (added ModelManagerPanel state and menu event listener)
+
+- **Learnings for future iterations:**
+  - Hugging Face URLs redirect, so need to handle 301/302 responses manually in https.get
+  - Use .tmp extension during download and rename on completion to prevent partial files
+  - Track active download in module-level variable to enable cancellation via request.destroy()
+  - Send progress events to renderer via mainWindow.webContents.send() with typed event names
+  - Models path uses app.getPath('userData') for cross-platform user data storage
+---
+
+## 2026-01-24 - US-032
+- What was implemented:
+  - Created electron/main/whisper-paths.ts for bundled whisper.cpp binary path resolution
+  - Implemented transcribeWithWhisperCpp() function using Node.js spawn for async execution
+  - Implemented transcribeWithSystemWhisper() for fallback to OpenAI's Python whisper CLI
+  - Added getAvailableWhisperPath() to select best available whisper implementation
+  - Added IPC handlers: get-whisper-cpp-status, transcribe-audio, cancel-transcription, get/save-whisper-settings
+  - Added Whisper Settings section to Model Manager panel with:
+    - Runtime status display (bundled, system whisper.cpp, system whisper CLI)
+    - Toggle for built-in vs system whisper preference
+    - Default model selection dropdown
+  - electron-builder already configured for bin/ directory unpacking (from previous work)
+
+- Files changed:
+  - Created: electron/main/whisper-paths.ts
+  - Modified: electron/main/ipc-handlers.ts (added transcription functions and IPC handlers)
+  - Modified: electron/preload.ts (exposed new whisper transcription APIs)
+  - Modified: electron/renderer/components/ModelManagerPanel.tsx (added settings section)
+  - Modified: electron/renderer/styles/ModelManagerPanel.css (added settings styles)
+
+- **Learnings for future iterations:**
+  - whisper.cpp doesn't provide pre-built macOS ARM64 binaries - binary needs to be compiled or placed manually
+  - whisper.cpp CLI uses -m (model), -f (file), -otxt (text output), -of (output path prefix), --no-prints (quiet)
+  - Use spawn() instead of exec() for long-running processes to enable cancellation via process.kill('SIGTERM')
+  - Store active process reference in module-level variable for cancellation support
+  - Settings UI uses toggle buttons for binary choices (styled as segmented control)
+  - When model not downloaded, disable option in dropdown but keep it visible for user awareness
 ---
