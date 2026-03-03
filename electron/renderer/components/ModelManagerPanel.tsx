@@ -118,6 +118,28 @@ interface WhisperSettings {
   selectedModel: string;
 }
 
+interface AnalysisSettings {
+  method: 'claude' | 'ollama';
+  ollamaModel: string;
+}
+
+interface LlavaModel {
+  name: string;
+  tag: string;
+  description: string;
+  sizeGb: number;
+  minRamGb: number;
+  isPulled: boolean;
+}
+
+interface OllamaStatus {
+  installed: boolean;
+  running: boolean;
+  version: string | null;
+  pulledModels: string[];
+  llavaModels: LlavaModel[];
+}
+
 interface ModelManagerPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -142,21 +164,35 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
     preferBuiltIn: true,
     selectedModel: 'base',
   });
+  const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
+  const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings>({
+    method: 'claude',
+    ollamaModel: 'llava:7b',
+  });
+  const [ollamaPullProgress, setOllamaPullProgress] = useState<{
+    modelTag: string;
+    message: string;
+  } | null>(null);
+  const [isStartingOllama, setIsStartingOllama] = useState(false);
 
   // Load downloaded models and whisper status
   const loadModels = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [modelsResult, statusResult, settingsResult] = await Promise.all([
+      const [modelsResult, statusResult, settingsResult, ollamaResult, analysisResult] = await Promise.all([
         window.electronAPI.getWhisperModels(),
         window.electronAPI.getWhisperCppStatus(),
         window.electronAPI.getWhisperSettings(),
+        window.electronAPI.getOllamaStatus(),
+        window.electronAPI.getAnalysisSettings(),
       ]);
       setDownloadedModels(modelsResult.models);
       setModelsPath(modelsResult.modelsPath);
       setWhisperStatus(statusResult);
       setWhisperSettings(settingsResult);
+      setOllamaStatus(ollamaResult);
+      setAnalysisSettings(analysisResult);
     } catch (err) {
       console.error('Failed to load models:', err);
       setError('Failed to load models');
@@ -189,9 +225,28 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
       }
     });
 
+    // Listen for Ollama pull progress
+    const unsubscribeOllamaPull = window.electronAPI.onOllamaPullProgress((progress) => {
+      setOllamaPullProgress({
+        modelTag: progress.modelTag,
+        message: progress.message,
+      });
+    });
+
+    const unsubscribeOllamaPullComplete = window.electronAPI.onOllamaPullComplete((result) => {
+      setOllamaPullProgress(null);
+      if (result.success) {
+        loadModels(); // Refresh the list
+      } else {
+        setError(result.error || 'Pull failed');
+      }
+    });
+
     return () => {
       unsubscribe();
       unsubscribeComplete();
+      unsubscribeOllamaPull();
+      unsubscribeOllamaPullComplete();
     };
   }, [isOpen, loadModels]);
 
@@ -255,6 +310,73 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
     }
   };
 
+  // Handle analysis settings change
+  const handleAnalysisSettingsChange = async (newSettings: Partial<AnalysisSettings>) => {
+    const updated = { ...analysisSettings, ...newSettings };
+    setAnalysisSettings(updated);
+    try {
+      await window.electronAPI.saveAnalysisSettings(updated);
+    } catch (err) {
+      console.error('Failed to save analysis settings:', err);
+    }
+  };
+
+  // Handle Ollama start
+  const handleStartOllama = async () => {
+    setIsStartingOllama(true);
+    setError(null);
+    try {
+      const result = await window.electronAPI.startOllama();
+      if (result.success) {
+        loadModels(); // Refresh status
+      } else {
+        setError(result.error || 'Failed to start Ollama');
+      }
+    } catch (err) {
+      console.error('Failed to start Ollama:', err);
+      setError('Failed to start Ollama');
+    } finally {
+      setIsStartingOllama(false);
+    }
+  };
+
+  // Handle LLaVA model pull
+  const handlePullLlavaModel = async (modelTag: string) => {
+    setError(null);
+    setOllamaPullProgress({
+      modelTag,
+      message: 'Starting pull...',
+    });
+
+    try {
+      const result = await window.electronAPI.pullLlavaModel(modelTag);
+      if (!result.success) {
+        setError(result.error || 'Pull failed');
+        setOllamaPullProgress(null);
+      }
+    } catch (err) {
+      console.error('Pull failed:', err);
+      setError('Pull failed');
+      setOllamaPullProgress(null);
+    }
+  };
+
+  // Handle LLaVA model removal
+  const handleRemoveLlavaModel = async (modelTag: string) => {
+    setError(null);
+    try {
+      const result = await window.electronAPI.removeLlavaModel(modelTag);
+      if (result.success) {
+        loadModels(); // Refresh status
+      } else {
+        setError(result.error || 'Remove failed');
+      }
+    } catch (err) {
+      console.error('Remove failed:', err);
+      setError('Remove failed');
+    }
+  };
+
   // Check if a model is downloaded
   const isModelDownloaded = (modelName: string): boolean => {
     return downloadedModels.some((m) => m.name === modelName);
@@ -301,6 +423,188 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
                     ✕
                   </button>
                 </div>
+              )}
+
+              {/* Analysis Settings Section */}
+              <section className="settings-section">
+                <h3>Analysis Settings</h3>
+
+                {/* Analysis Method Toggle */}
+                <div className="setting-row">
+                  <label className="setting-label">
+                    Analysis Method
+                    <span className="setting-description">
+                      Choose which AI model to use for video analysis
+                    </span>
+                  </label>
+                  <div className="toggle-group">
+                    <button
+                      className={`toggle-button ${analysisSettings.method === 'claude' ? 'active' : ''}`}
+                      onClick={() => handleAnalysisSettingsChange({ method: 'claude' })}
+                    >
+                      Claude API
+                    </button>
+                    <button
+                      className={`toggle-button ${analysisSettings.method === 'ollama' ? 'active' : ''}`}
+                      onClick={() => handleAnalysisSettingsChange({ method: 'ollama' })}
+                      disabled={!ollamaStatus?.installed}
+                      title={!ollamaStatus?.installed ? 'Ollama is not installed' : undefined}
+                    >
+                      Ollama (LLaVA)
+                    </button>
+                  </div>
+                </div>
+
+                {/* Ollama Status */}
+                <div className="status-grid" style={{ marginTop: 'var(--spacing-md)' }}>
+                  <div className="status-item">
+                    <span className="status-label">Ollama Installed</span>
+                    <span className={`status-value ${ollamaStatus?.installed ? 'available' : 'unavailable'}`}>
+                      {ollamaStatus?.installed ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="status-item">
+                    <span className="status-label">Ollama Running</span>
+                    <span className={`status-value ${ollamaStatus?.running ? 'available' : 'unavailable'}`}>
+                      {ollamaStatus?.running ? 'Yes' : 'No'}
+                    </span>
+                  </div>
+                  <div className="status-item">
+                    <span className="status-label">LLaVA Models</span>
+                    <span className="status-value">
+                      {ollamaStatus?.llavaModels?.filter(m => m.isPulled).length || 0} pulled
+                    </span>
+                  </div>
+                </div>
+
+                {/* Start Ollama button if installed but not running */}
+                {ollamaStatus?.installed && !ollamaStatus?.running && (
+                  <div className="setting-row">
+                    <label className="setting-label">
+                      Ollama is not running
+                      <span className="setting-description">
+                        Start Ollama to use local LLaVA analysis
+                      </span>
+                    </label>
+                    <button
+                      className="action-button primary"
+                      onClick={handleStartOllama}
+                      disabled={isStartingOllama}
+                    >
+                      {isStartingOllama ? 'Starting...' : 'Start Ollama'}
+                    </button>
+                  </div>
+                )}
+
+                {/* Install Ollama link if not installed */}
+                {!ollamaStatus?.installed && (
+                  <div className="info-box">
+                    <span>Ollama is not installed. </span>
+                    <a
+                      href="#"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        // Open Ollama download page
+                        window.open?.('https://ollama.ai/download', '_blank');
+                      }}
+                    >
+                      Download Ollama
+                    </a>
+                    <span> to use local LLaVA models for analysis.</span>
+                  </div>
+                )}
+
+                {/* LLaVA Model Selection (when using Ollama) */}
+                {analysisSettings.method === 'ollama' && ollamaStatus?.running && (
+                  <div className="setting-row">
+                    <label className="setting-label">
+                      LLaVA Model
+                      <span className="setting-description">
+                        Select the LLaVA model for image analysis
+                      </span>
+                    </label>
+                    <select
+                      className="setting-select"
+                      value={analysisSettings.ollamaModel}
+                      onChange={(e) => handleAnalysisSettingsChange({ ollamaModel: e.target.value })}
+                    >
+                      {ollamaStatus?.llavaModels?.map((model) => (
+                        <option
+                          key={model.tag}
+                          value={model.tag}
+                          disabled={!model.isPulled}
+                        >
+                          {model.tag} ({model.sizeGb} GB){model.isPulled ? '' : ' - Not pulled'}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </section>
+
+              {/* LLaVA Models Section (when Ollama is installed) */}
+              {ollamaStatus?.installed && (
+                <section className="model-section">
+                  <h3>LLaVA Models</h3>
+                  <p className="section-note">
+                    Pull vision-language models for local image analysis with Ollama
+                  </p>
+
+                  <div className="model-list">
+                    {ollamaStatus?.llavaModels?.map((model) => {
+                      const isPulling = ollamaPullProgress?.modelTag === model.tag;
+
+                      return (
+                        <div
+                          key={model.tag}
+                          className={`model-item ${model.isPulled ? 'downloaded' : ''} ${isPulling ? 'downloading' : ''}`}
+                        >
+                          <div className="model-info">
+                            <div className="model-header">
+                              <span className="model-name">{model.tag}</span>
+                              <span className="model-size">{model.sizeGb} GB</span>
+                              <span className="model-size">{model.minRamGb} GB RAM required</span>
+                              {model.isPulled && <span className="downloaded-badge">Pulled</span>}
+                            </div>
+                            <div className="model-description">{model.description}</div>
+
+                            {/* Pull Progress */}
+                            {isPulling && ollamaPullProgress && (
+                              <div className="download-progress">
+                                <div className="progress-text">
+                                  <span>{ollamaPullProgress.message}</span>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+
+                          <div className="model-actions">
+                            {isPulling ? (
+                              <span className="action-button" style={{ cursor: 'wait' }}>
+                                Pulling...
+                              </span>
+                            ) : model.isPulled ? (
+                              <button
+                                className="action-button danger"
+                                onClick={() => handleRemoveLlavaModel(model.tag)}
+                              >
+                                Remove
+                              </button>
+                            ) : (
+                              <button
+                                className="action-button primary"
+                                onClick={() => handlePullLlavaModel(model.tag)}
+                                disabled={!ollamaStatus?.running || ollamaPullProgress !== null}
+                              >
+                                Pull
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </section>
               )}
 
               {/* Whisper Settings Section */}

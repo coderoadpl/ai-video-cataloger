@@ -354,6 +354,318 @@ async function checkOllama(): Promise<{ installed: boolean; running: boolean; ve
 }
 
 /**
+ * LLaVA model definitions with their characteristics
+ */
+interface LlavaModelInfo {
+  name: string;
+  tag: string;
+  description: string;
+  sizeGb: number;
+  minRamGb: number;
+}
+
+const LLAVA_MODELS: LlavaModelInfo[] = [
+  {
+    name: 'llava',
+    tag: 'llava:7b',
+    description: 'LLaVA 1.5 7B - Good balance of quality and speed',
+    sizeGb: 4.7,
+    minRamGb: 8,
+  },
+  {
+    name: 'llava',
+    tag: 'llava:13b',
+    description: 'LLaVA 1.5 13B - Higher quality, more resources',
+    sizeGb: 8.0,
+    minRamGb: 16,
+  },
+  {
+    name: 'llava',
+    tag: 'llava:34b',
+    description: 'LLaVA 1.6 34B - Best quality, highest resources',
+    sizeGb: 20.0,
+    minRamGb: 32,
+  },
+];
+
+/**
+ * Get list of LLaVA models pulled in Ollama
+ */
+async function getOllamaPulledModels(): Promise<string[]> {
+  try {
+    const { stdout } = await execAsync('ollama list');
+    const lines = stdout.trim().split('\n').slice(1); // Skip header line
+    const pulledModels: string[] = [];
+
+    for (const line of lines) {
+      const parts = line.trim().split(/\s+/);
+      if (parts[0]) {
+        pulledModels.push(parts[0]); // Model name with tag
+      }
+    }
+
+    return pulledModels;
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * Start Ollama service if installed but not running
+ */
+async function startOllama(): Promise<{ success: boolean; error?: string }> {
+  const ollamaStatus = await checkOllama();
+
+  if (!ollamaStatus.installed) {
+    return { success: false, error: 'Ollama is not installed' };
+  }
+
+  if (ollamaStatus.running) {
+    return { success: true };
+  }
+
+  try {
+    // Start Ollama serve in background
+    // On macOS, 'ollama serve' starts the server
+    const ollamaProcess = spawn('ollama', ['serve'], {
+      detached: true,
+      stdio: 'ignore',
+    });
+    ollamaProcess.unref();
+
+    // Wait for Ollama to be ready (up to 10 seconds)
+    for (let i = 0; i < 20; i++) {
+      await new Promise(resolve => setTimeout(resolve, 500));
+      const status = await checkOllama();
+      if (status.running) {
+        return { success: true };
+      }
+    }
+
+    return { success: false, error: 'Ollama started but not responding after 10 seconds' };
+  } catch (err) {
+    return {
+      success: false,
+      error: `Failed to start Ollama: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+}
+
+/**
+ * Build the analysis prompt for LLaVA (same format as Claude for consistency)
+ */
+function buildLlavaAnalysisPrompt(videoName: string, transcript: string | null): string {
+  let prompt = `You are analyzing a video file named "${videoName}".
+
+`;
+
+  if (transcript) {
+    prompt += `Here is the transcript of the audio:
+---
+${transcript}
+---
+
+`;
+  } else {
+    prompt += `This video has no audio or transcript available.
+
+`;
+  }
+
+  prompt += `Based on the visual content from the image(s)${transcript ? ' and the audio transcript' : ''}, please provide:
+
+1. A 2-3 sentence description of what this video is about
+2. A suggested filename (3-5 words, kebab-case format like "cat-playing-with-yarn")
+
+Please format your response EXACTLY as follows:
+DESCRIPTION: <your 2-3 sentence description here>
+FILENAME: <your-suggested-filename-in-kebab-case>
+
+Focus on being descriptive and accurate. The filename should capture the essence of the video content.`;
+
+  return prompt;
+}
+
+/**
+ * Parse LLaVA response to extract description and filename (same format as Claude)
+ */
+function parseLlavaResponse(response: string): { description: string; suggestedFilename: string } {
+  const lines = response.trim().split('\n');
+
+  let description = '';
+  let suggestedFilename = '';
+  let capturingDescription = false;
+
+  for (const line of lines) {
+    const trimmedLine = line.trim();
+
+    if (trimmedLine.toUpperCase().startsWith('DESCRIPTION:')) {
+      description = trimmedLine.substring('DESCRIPTION:'.length).trim();
+      capturingDescription = true;
+    } else if (trimmedLine.toUpperCase().startsWith('FILENAME:')) {
+      suggestedFilename = trimmedLine.substring('FILENAME:'.length).trim();
+      capturingDescription = false;
+    } else if (capturingDescription && trimmedLine && !trimmedLine.toUpperCase().startsWith('FILENAME')) {
+      description += ' ' + trimmedLine;
+    }
+  }
+
+  // Clean up the suggested filename (ensure kebab-case)
+  suggestedFilename = suggestedFilename
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, '')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+
+  // If parsing failed, use the full response as description and generate a generic filename
+  if (!description) {
+    description = response.trim().substring(0, 500);
+  }
+  if (!suggestedFilename) {
+    suggestedFilename = 'video-content';
+  }
+
+  return {
+    description: description.trim(),
+    suggestedFilename,
+  };
+}
+
+// Active Ollama analysis for cancellation
+let activeOllamaAnalysis: {
+  abortController: AbortController | null;
+} | null = null;
+
+/**
+ * Analyze images with Ollama LLaVA
+ * @param imagePaths - Array of paths to image files (frames)
+ * @param videoName - Name of the video being analyzed
+ * @param transcript - Optional transcript text
+ * @param modelTag - Ollama model tag to use (e.g., 'llava:7b')
+ */
+async function analyzeWithOllama(
+  imagePaths: string[],
+  videoName: string,
+  transcript: string | null,
+  modelTag: string
+): Promise<{
+  success: boolean;
+  description?: string;
+  suggestedFilename?: string;
+  fullResponse?: string;
+  error?: string
+}> {
+  const mainWindow = getMainWindow();
+
+  // Ensure Ollama is running
+  const ollamaStatus = await checkOllama();
+  if (!ollamaStatus.running) {
+    const startResult = await startOllama();
+    if (!startResult.success) {
+      return { success: false, error: startResult.error || 'Failed to start Ollama' };
+    }
+  }
+
+  // Read images and convert to base64
+  const images: string[] = [];
+  for (const imagePath of imagePaths) {
+    try {
+      const imageBuffer = fs.readFileSync(imagePath);
+      const base64Image = imageBuffer.toString('base64');
+      images.push(base64Image);
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to read image ${imagePath}: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  }
+
+  if (images.length === 0) {
+    return { success: false, error: 'No images provided for analysis' };
+  }
+
+  // Build the prompt
+  const prompt = buildLlavaAnalysisPrompt(videoName, transcript);
+
+  // Create abort controller for cancellation
+  const abortController = new AbortController();
+  activeOllamaAnalysis = { abortController };
+
+  try {
+    // Call Ollama API
+    // Ollama exposes a REST API at http://localhost:11434
+    const requestBody = JSON.stringify({
+      model: modelTag,
+      prompt: prompt,
+      images: images, // Array of base64 encoded images
+      stream: false,
+    });
+
+    mainWindow?.webContents.send('ollama:analysis-progress', {
+      status: 'analyzing',
+      message: `Analyzing with ${modelTag}...`,
+    });
+
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: requestBody,
+      signal: abortController.signal,
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      return {
+        success: false,
+        error: `Ollama API error (${response.status}): ${errorText}`
+      };
+    }
+
+    const result = await response.json() as { response: string };
+    const fullResponse = result.response;
+
+    // Parse the response
+    const parsed = parseLlavaResponse(fullResponse);
+
+    activeOllamaAnalysis = null;
+
+    return {
+      success: true,
+      description: parsed.description,
+      suggestedFilename: parsed.suggestedFilename,
+      fullResponse,
+    };
+  } catch (err) {
+    activeOllamaAnalysis = null;
+
+    if (err instanceof Error && err.name === 'AbortError') {
+      return { success: false, error: 'Analysis cancelled' };
+    }
+
+    return {
+      success: false,
+      error: `Ollama analysis failed: ${err instanceof Error ? err.message : String(err)}`
+    };
+  }
+}
+
+/**
+ * Cancel active Ollama analysis
+ */
+function cancelOllamaAnalysis(): boolean {
+  if (activeOllamaAnalysis?.abortController) {
+    activeOllamaAnalysis.abortController.abort();
+    activeOllamaAnalysis = null;
+    return true;
+  }
+  return false;
+}
+
+/**
  * Check for Claude API key in environment
  */
 function checkClaudeApiKey(): { available: boolean } {
@@ -855,22 +1167,159 @@ export function registerIpcHandlers(): void {
 
   // Ollama/LLaVA management
   ipcMain.handle('get-ollama-status', async () => {
-    // TODO: Implement Ollama status check
-    return { installed: false, running: false };
+    const status = await checkOllama();
+    const pulledModels = status.running ? await getOllamaPulledModels() : [];
+
+    // Check which LLaVA models are pulled
+    const llavaModelStatus = LLAVA_MODELS.map(model => ({
+      ...model,
+      isPulled: pulledModels.some(m => m === model.tag || m.startsWith(model.name + ':')),
+    }));
+
+    return {
+      installed: status.installed,
+      running: status.running,
+      version: status.version,
+      pulledModels,
+      llavaModels: llavaModelStatus,
+    };
+  });
+
+  ipcMain.handle('start-ollama', async () => {
+    return await startOllama();
   });
 
   ipcMain.handle('get-llava-models', async () => {
-    // TODO: Implement LLaVA model listing
-    return [];
+    const ollamaStatus = await checkOllama();
+    if (!ollamaStatus.running) {
+      return {
+        available: false,
+        error: 'Ollama is not running',
+        models: LLAVA_MODELS.map(m => ({ ...m, isPulled: false })),
+      };
+    }
+
+    const pulledModels = await getOllamaPulledModels();
+
+    return {
+      available: true,
+      models: LLAVA_MODELS.map(model => ({
+        ...model,
+        isPulled: pulledModels.some(m => m === model.tag || m.startsWith(model.name + ':')),
+      })),
+    };
   });
 
-  ipcMain.handle('pull-llava-model', async (_event, _variant: string) => {
-    // TODO: Implement model pulling
-    return { success: false, error: 'Not implemented' };
+  ipcMain.handle('pull-llava-model', async (_event, modelTag: string) => {
+    const mainWindow = getMainWindow();
+
+    // Ensure Ollama is running
+    const ollamaStatus = await checkOllama();
+    if (!ollamaStatus.running) {
+      const startResult = await startOllama();
+      if (!startResult.success) {
+        return { success: false, error: startResult.error };
+      }
+    }
+
+    return new Promise((resolve) => {
+      const pullProcess = spawn('ollama', ['pull', modelTag]);
+
+      pullProcess.stdout.on('data', (data: Buffer) => {
+        const message = data.toString().trim();
+        mainWindow?.webContents.send('ollama:pull-progress', {
+          modelTag,
+          message,
+          status: 'pulling',
+        });
+      });
+
+      pullProcess.stderr.on('data', (data: Buffer) => {
+        const message = data.toString().trim();
+        // Ollama outputs progress to stderr
+        mainWindow?.webContents.send('ollama:pull-progress', {
+          modelTag,
+          message,
+          status: 'pulling',
+        });
+      });
+
+      pullProcess.on('close', (code) => {
+        if (code === 0) {
+          mainWindow?.webContents.send('ollama:pull-complete', {
+            success: true,
+            modelTag,
+          });
+          resolve({ success: true });
+        } else {
+          mainWindow?.webContents.send('ollama:pull-complete', {
+            success: false,
+            modelTag,
+            error: `Pull failed with exit code ${code}`,
+          });
+          resolve({ success: false, error: `Pull failed with exit code ${code}` });
+        }
+      });
+
+      pullProcess.on('error', (err) => {
+        mainWindow?.webContents.send('ollama:pull-complete', {
+          success: false,
+          modelTag,
+          error: err.message,
+        });
+        resolve({ success: false, error: err.message });
+      });
+    });
   });
 
-  ipcMain.handle('remove-llava-model', async (_event, _variant: string) => {
-    // TODO: Implement model removal
-    return { success: false, error: 'Not implemented' };
+  ipcMain.handle('remove-llava-model', async (_event, modelTag: string) => {
+    try {
+      await execAsync(`ollama rm ${modelTag}`);
+      return { success: true };
+    } catch (err) {
+      return {
+        success: false,
+        error: `Failed to remove model: ${err instanceof Error ? err.message : String(err)}`
+      };
+    }
+  });
+
+  // Ollama analysis
+  ipcMain.handle('analyze-with-ollama', async (
+    _event,
+    options: {
+      imagePaths: string[];
+      videoName: string;
+      transcript: string | null;
+      modelTag: string;
+    }
+  ) => {
+    const { imagePaths, videoName, transcript, modelTag } = options;
+    return await analyzeWithOllama(imagePaths, videoName, transcript, modelTag);
+  });
+
+  ipcMain.handle('cancel-ollama-analysis', async () => {
+    const cancelled = cancelOllamaAnalysis();
+    return { success: cancelled };
+  });
+
+  // Analysis settings
+  ipcMain.handle('get-analysis-settings', async () => {
+    // Return default settings
+    // In the future, these should be stored in the database
+    return {
+      method: 'claude' as 'claude' | 'ollama',
+      ollamaModel: 'llava:7b',
+    };
+  });
+
+  ipcMain.handle('save-analysis-settings', async (_event, settings: {
+    method: 'claude' | 'ollama';
+    ollamaModel: string;
+  }) => {
+    // For now, just acknowledge
+    // In the future, save to database
+    console.log('Saving analysis settings:', settings);
+    return { success: true };
   });
 }
