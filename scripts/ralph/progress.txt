@@ -11,6 +11,8 @@
 - Whisper models: Stored in app.getPath('userData')/models/whisper/, use WHISPER_MODELS constant for model info
 - Download events: Use `mainWindow.webContents.send('event-name', data)` for progress updates from main to renderer
 - Long-running processes: Use spawn() with module-level reference for cancellation support via process.kill()
+- Ollama integration: Use REST API at localhost:11434, send images as base64 in `images` array
+- Analysis settings: Use get/save pattern with IPC handlers, store in module-level variable (future: database)
 
 # Ralph Progress Log
 Started: Sat Jan 24 16:39:25 CET 2026
@@ -142,4 +144,38 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Store active process reference in module-level variable for cancellation support
   - Settings UI uses toggle buttons for binary choices (styled as segmented control)
   - When model not downloaded, disable option in dropdown but keep it visible for user awareness
+---
+
+## 2026-01-24 - US-033
+- What was implemented:
+  - Enhanced Ollama detection: installed status, running status, and pulled models
+  - Auto-start Ollama functionality via `ollama serve` with detached background process
+  - LLaVA model definitions with metadata (name, tag, size, RAM requirements)
+  - `getOllamaPulledModels()` parses `ollama list` output to identify pulled models
+  - `startOllama()` with polling to wait for server readiness (up to 10 seconds)
+  - `analyzeWithOllama()` function using Ollama REST API at localhost:11434
+  - Base64 image encoding for sending frames to LLaVA
+  - Same prompt format as Claude analysis for consistency
+  - `parseLlavaResponse()` extracts description and filename from LLaVA output
+  - Analysis Settings section in Model Manager panel:
+    - Toggle between Claude API and Ollama (LLaVA) methods
+    - Ollama status indicators (installed, running, models pulled)
+    - Start Ollama button when installed but not running
+    - LLaVA model selection dropdown
+  - LLaVA Models section for pulling/removing models via Ollama
+  - Pull progress display and event listeners
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added LLAVA_MODELS, Ollama helper functions, analyzeWithOllama, new IPC handlers)
+  - Modified: electron/preload.ts (exposed Ollama/LLaVA APIs and event listeners)
+  - Modified: electron/renderer/components/ModelManagerPanel.tsx (added Analysis Settings section and LLaVA model management)
+  - Modified: electron/renderer/styles/ModelManagerPanel.css (added info-box and section-note styles)
+
+- **Learnings for future iterations:**
+  - Ollama REST API accepts base64 images in `images` array field, not file paths
+  - Ollama exposes API at http://localhost:11434/api/generate for inference
+  - `ollama serve` must be started in detached mode with `stdio: 'ignore'` and `unref()` for background execution
+  - Ollama outputs pull progress to stderr, not stdout
+  - AbortController can be used to cancel fetch requests for Ollama analysis
+  - Model tags follow format 'name:variant' (e.g., 'llava:7b')
 ---
