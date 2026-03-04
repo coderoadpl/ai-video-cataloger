@@ -6,6 +6,7 @@ import { ipcMain, dialog, shell, app } from 'electron';
 import { exec, execFile, spawn } from 'child_process';
 import { promisify } from 'util';
 import * as fs from 'fs';
+import * as os from 'os';
 import * as path from 'path';
 import * as https from 'https';
 import { getMainWindow } from './window.js';
@@ -1166,6 +1167,33 @@ export function registerIpcHandlers(): void {
   });
 
   // Ollama/LLaVA management
+  // Get system memory info
+  ipcMain.handle('get-system-memory', async () => {
+    const totalBytes = os.totalmem();
+    const freeBytes = os.freemem();
+    const totalGb = Math.round(totalBytes / (1024 * 1024 * 1024));
+    const freeGb = Math.round(freeBytes / (1024 * 1024 * 1024));
+
+    // Recommend model based on available RAM
+    // Models need RAM headroom (approximately 2GB for OS + other processes)
+    const availableForModels = totalGb - 2;
+    let recommendedModel: string | null = null;
+
+    if (availableForModels >= 32) {
+      recommendedModel = 'llava:34b';
+    } else if (availableForModels >= 16) {
+      recommendedModel = 'llava:13b';
+    } else if (availableForModels >= 8) {
+      recommendedModel = 'llava:7b';
+    }
+
+    return {
+      totalGb,
+      freeGb,
+      recommendedModel,
+    };
+  });
+
   ipcMain.handle('get-ollama-status', async () => {
     const status = await checkOllama();
     const pulledModels = status.running ? await getOllamaPulledModels() : [];

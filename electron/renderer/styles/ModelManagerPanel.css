@@ -103,6 +103,15 @@
   border-left-color: var(--color-primary);
 }
 
+.model-item.recommended {
+  background-color: rgba(0, 122, 255, 0.05);
+  border-left-color: var(--color-primary);
+}
+
+.model-item.recommended.downloaded {
+  border-left-color: var(--color-success);
+}
+
 .model-info {
   flex: 1;
   min-width: 0;
@@ -138,11 +147,83 @@
   font-weight: 500;
 }
 
+.recommended-badge {
+  font-size: 10px;
+  padding: 2px 6px;
+  background-color: rgba(0, 122, 255, 0.15);
+  color: var(--color-primary);
+  border-radius: var(--radius-sm);
+  font-weight: 500;
+}
+
+.model-ram {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+  background-color: var(--color-bg-secondary);
+  padding: 2px 6px;
+  border-radius: var(--radius-sm);
+}
+
+.model-ram.insufficient {
+  background-color: rgba(255, 149, 0, 0.15);
+  color: var(--color-warning);
+}
+
 .model-description {
   font-size: 12px;
   color: var(--color-text-secondary);
   margin-top: var(--spacing-xs);
   line-height: 1.4;
+}
+
+.ram-warning-inline {
+  font-size: 11px;
+  color: var(--color-warning);
+  margin-top: var(--spacing-xs);
+}
+
+/* System RAM Info Box */
+.system-ram-info {
+  background-color: var(--color-bg);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+  margin-bottom: var(--spacing-md);
+}
+
+.ram-stats {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  font-size: 13px;
+}
+
+.ram-label {
+  color: var(--color-text-secondary);
+}
+
+.ram-value {
+  color: var(--color-text);
+  font-weight: 500;
+}
+
+.ram-separator {
+  color: var(--color-text-tertiary);
+}
+
+.ram-recommendation {
+  margin-top: var(--spacing-sm);
+  font-size: 13px;
+  color: var(--color-primary);
+}
+
+.ram-recommendation strong {
+  font-weight: 600;
+}
+
+.ram-warning {
+  margin-top: var(--spacing-sm);
+  font-size: 13px;
+  color: var(--color-warning);
 }
 
 .download-progress {

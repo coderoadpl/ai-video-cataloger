@@ -122,6 +122,13 @@ const electronAPI = {
     return () => ipcRenderer.removeListener('transcription:progress', handler);
   },
 
+  // System information
+  getSystemMemory: (): Promise<{
+    totalGb: number;
+    freeGb: number;
+    recommendedModel: string | null;
+  }> => ipcRenderer.invoke('get-system-memory'),
+
   // Ollama/LLaVA
   getOllamaStatus: (): Promise<{
     installed: boolean;

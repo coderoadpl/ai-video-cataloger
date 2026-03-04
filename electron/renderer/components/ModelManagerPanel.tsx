@@ -140,6 +140,12 @@ interface OllamaStatus {
   llavaModels: LlavaModel[];
 }
 
+interface SystemMemoryInfo {
+  totalGb: number;
+  freeGb: number;
+  recommendedModel: string | null;
+}
+
 interface ModelManagerPanelProps {
   isOpen: boolean;
   onClose: () => void;
@@ -174,18 +180,20 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
     message: string;
   } | null>(null);
   const [isStartingOllama, setIsStartingOllama] = useState(false);
+  const [systemMemory, setSystemMemory] = useState<SystemMemoryInfo | null>(null);
 
   // Load downloaded models and whisper status
   const loadModels = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const [modelsResult, statusResult, settingsResult, ollamaResult, analysisResult] = await Promise.all([
+      const [modelsResult, statusResult, settingsResult, ollamaResult, analysisResult, memoryResult] = await Promise.all([
         window.electronAPI.getWhisperModels(),
         window.electronAPI.getWhisperCppStatus(),
         window.electronAPI.getWhisperSettings(),
         window.electronAPI.getOllamaStatus(),
         window.electronAPI.getAnalysisSettings(),
+        window.electronAPI.getSystemMemory(),
       ]);
       setDownloadedModels(modelsResult.models);
       setModelsPath(modelsResult.modelsPath);
@@ -193,6 +201,7 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
       setWhisperSettings(settingsResult);
       setOllamaStatus(ollamaResult);
       setAnalysisSettings(analysisResult);
+      setSystemMemory(memoryResult);
     } catch (err) {
       console.error('Failed to load models:', err);
       setError('Failed to load models');
@@ -550,23 +559,55 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
                     Pull vision-language models for local image analysis with Ollama
                   </p>
 
+                  {/* System RAM Info */}
+                  {systemMemory && (
+                    <div className="system-ram-info">
+                      <div className="ram-stats">
+                        <span className="ram-label">System RAM:</span>
+                        <span className="ram-value">{systemMemory.totalGb} GB total</span>
+                        <span className="ram-separator">•</span>
+                        <span className="ram-value">{systemMemory.freeGb} GB free</span>
+                      </div>
+                      {systemMemory.recommendedModel && (
+                        <div className="ram-recommendation">
+                          Recommended model for your system: <strong>{systemMemory.recommendedModel}</strong>
+                        </div>
+                      )}
+                      {!systemMemory.recommendedModel && systemMemory.totalGb < 8 && (
+                        <div className="ram-warning">
+                          Your system has limited RAM. LLaVA models require at least 8 GB of RAM.
+                        </div>
+                      )}
+                    </div>
+                  )}
+
                   <div className="model-list">
                     {ollamaStatus?.llavaModels?.map((model) => {
                       const isPulling = ollamaPullProgress?.modelTag === model.tag;
+                      const isRecommended = systemMemory?.recommendedModel === model.tag;
+                      const hasEnoughRam = systemMemory ? systemMemory.totalGb >= model.minRamGb : true;
 
                       return (
                         <div
                           key={model.tag}
-                          className={`model-item ${model.isPulled ? 'downloaded' : ''} ${isPulling ? 'downloading' : ''}`}
+                          className={`model-item ${model.isPulled ? 'downloaded' : ''} ${isPulling ? 'downloading' : ''} ${isRecommended ? 'recommended' : ''}`}
                         >
                           <div className="model-info">
                             <div className="model-header">
                               <span className="model-name">{model.tag}</span>
+                              {isRecommended && <span className="recommended-badge">Recommended</span>}
                               <span className="model-size">{model.sizeGb} GB</span>
-                              <span className="model-size">{model.minRamGb} GB RAM required</span>
+                              <span className={`model-ram ${!hasEnoughRam ? 'insufficient' : ''}`}>
+                                {model.minRamGb} GB RAM required
+                              </span>
                               {model.isPulled && <span className="downloaded-badge">Pulled</span>}
                             </div>
                             <div className="model-description">{model.description}</div>
+                            {!hasEnoughRam && (
+                              <div className="ram-warning-inline">
+                                Your system may not have enough RAM for this model
+                              </div>
+                            )}
 
                             {/* Pull Progress */}
                             {isPulling && ollamaPullProgress && (
