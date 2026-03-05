@@ -9,6 +9,10 @@ const electronAPI = {
   // Folder operations
   selectFolder: (): Promise<string | null> => ipcRenderer.invoke('select-folder'),
   scanFolder: (folderPath: string): Promise<unknown[]> => ipcRenderer.invoke('scan-folder', folderPath),
+  getRecentFolders: (): Promise<string[]> => ipcRenderer.invoke('get-recent-folders'),
+  getLastFolder: (): Promise<string | null> => ipcRenderer.invoke('get-last-folder'),
+  setCurrentFolder: (folderPath: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('set-current-folder', folderPath),
 
   // Video operations
   getVideoDetails: (videoId: number): Promise<unknown> => ipcRenderer.invoke('get-video-details', videoId),

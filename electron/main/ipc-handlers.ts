@@ -9,9 +9,26 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as https from 'https';
+import Store from 'electron-store';
 import { getMainWindow } from './window.js';
 import { getFFmpegInfo } from './ffmpeg-setup.js';
 import { getWhisperCppPath, isBundledWhisperCppAvailable, getWhisperCppInfo } from './whisper-paths.js';
+
+// Electron store for persisting folder history
+interface FolderHistorySchema {
+  recentFolders: string[];
+  lastFolder: string | null;
+}
+
+const folderStore = new Store<FolderHistorySchema>({
+  name: 'folder-history',
+  defaults: {
+    recentFolders: [],
+    lastFolder: null,
+  },
+});
+
+const MAX_RECENT_FOLDERS = 10;
 
 const execAsync = promisify(exec);
 const execFileAsync = promisify(execFile);
@@ -713,16 +730,94 @@ export function registerIpcHandlers(): void {
     const mainWindow = getMainWindow();
     if (!mainWindow) return null;
 
+    // Get the last folder to use as default location
+    const lastFolder = folderStore.get('lastFolder');
+
     const result = await dialog.showOpenDialog(mainWindow, {
       properties: ['openDirectory'],
       title: 'Select a folder containing videos',
+      defaultPath: lastFolder || undefined,
     });
 
     if (result.canceled || result.filePaths.length === 0) {
       return null;
     }
 
-    return result.filePaths[0];
+    const selectedFolder = result.filePaths[0];
+
+    // Save as last folder and add to recent folders
+    folderStore.set('lastFolder', selectedFolder);
+
+    // Update recent folders list
+    let recentFolders = folderStore.get('recentFolders');
+    // Remove if already exists (to move it to the front)
+    recentFolders = recentFolders.filter(f => f !== selectedFolder);
+    // Add to the beginning
+    recentFolders.unshift(selectedFolder);
+    // Keep only the most recent
+    recentFolders = recentFolders.slice(0, MAX_RECENT_FOLDERS);
+    folderStore.set('recentFolders', recentFolders);
+
+    return selectedFolder;
+  });
+
+  // Get recent folders
+  ipcMain.handle('get-recent-folders', async () => {
+    const recentFolders = folderStore.get('recentFolders');
+    // Filter out folders that no longer exist
+    const existingFolders = recentFolders.filter(folder => {
+      try {
+        return fs.existsSync(folder) && fs.statSync(folder).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+    // Update store if some folders were removed
+    if (existingFolders.length !== recentFolders.length) {
+      folderStore.set('recentFolders', existingFolders);
+    }
+    return existingFolders;
+  });
+
+  // Get last used folder
+  ipcMain.handle('get-last-folder', async () => {
+    const lastFolder = folderStore.get('lastFolder');
+    // Verify it still exists
+    if (lastFolder) {
+      try {
+        if (fs.existsSync(lastFolder) && fs.statSync(lastFolder).isDirectory()) {
+          return lastFolder;
+        }
+      } catch {
+        // Folder doesn't exist anymore
+      }
+      // Clear if no longer valid
+      folderStore.set('lastFolder', null);
+    }
+    return null;
+  });
+
+  // Set folder as current (for when opening from recent list)
+  ipcMain.handle('set-current-folder', async (_event, folderPath: string) => {
+    // Verify folder exists
+    try {
+      if (!fs.existsSync(folderPath) || !fs.statSync(folderPath).isDirectory()) {
+        return { success: false, error: 'Folder does not exist' };
+      }
+    } catch {
+      return { success: false, error: 'Folder does not exist' };
+    }
+
+    // Save as last folder and update recent folders
+    folderStore.set('lastFolder', folderPath);
+
+    let recentFolders = folderStore.get('recentFolders');
+    recentFolders = recentFolders.filter(f => f !== folderPath);
+    recentFolders.unshift(folderPath);
+    recentFolders = recentFolders.slice(0, MAX_RECENT_FOLDERS);
+    folderStore.set('recentFolders', recentFolders);
+
+    return { success: true };
   });
 
   // Scan folder for video files

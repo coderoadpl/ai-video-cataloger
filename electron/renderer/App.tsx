@@ -43,16 +43,38 @@ function App(): React.ReactElement {
 
   const selectedVideo = videos.find((v) => v.id === selectedVideoId) || null;
 
-  // Handle folder selection
+  // Restore last used folder on app launch
+  useEffect(() => {
+    const restoreLastFolder = async () => {
+      const lastFolder = await window.electronAPI.getLastFolder();
+      if (lastFolder) {
+        setCurrentFolder(lastFolder);
+        const scannedVideos = await window.electronAPI.scanFolder(lastFolder);
+        setVideos(scannedVideos as VideoFile[]);
+      }
+    };
+    restoreLastFolder();
+  }, []);
+
+  // Handle folder selection via dialog
   const handleSelectFolder = useCallback(async () => {
     const folderPath = await window.electronAPI.selectFolder();
     if (folderPath) {
       setCurrentFolder(folderPath);
       setSelectedVideoId(null);
-      // TODO: Scan folder and update videos list
       const scannedVideos = await window.electronAPI.scanFolder(folderPath);
       setVideos(scannedVideos as VideoFile[]);
     }
+  }, []);
+
+  // Handle selecting a folder from recent list
+  const handleSelectRecentFolder = useCallback(async (folderPath: string) => {
+    // Update folder history in store
+    await window.electronAPI.setCurrentFolder(folderPath);
+    setCurrentFolder(folderPath);
+    setSelectedVideoId(null);
+    const scannedVideos = await window.electronAPI.scanFolder(folderPath);
+    setVideos(scannedVideos as VideoFile[]);
   }, []);
 
   // Handle video selection
@@ -171,6 +193,7 @@ function App(): React.ReactElement {
       <Toolbar
         currentFolder={currentFolder}
         onSelectFolder={handleSelectFolder}
+        onSelectRecentFolder={handleSelectRecentFolder}
         onAnalyzeAll={handleAnalyzeAll}
         onCancel={handleCancel}
         onRefresh={handleRefresh}
