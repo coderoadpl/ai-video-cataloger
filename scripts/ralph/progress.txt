@@ -179,3 +179,28 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - AbortController can be used to cancel fetch requests for Ollama analysis
   - Model tags follow format 'name:variant' (e.g., 'llava:7b')
 ---
+
+## 2026-01-24 - US-034
+- What was implemented:
+  - System RAM detection using Node.js `os.totalmem()` and `os.freemem()`
+  - RAM-based model recommendation logic (7b for 8GB+, 13b for 16GB+, 34b for 32GB+)
+  - New IPC handler `get-system-memory` exposed via preload
+  - System RAM info box in LLaVA Models section showing:
+    - Total and free RAM
+    - Recommended model based on available RAM
+    - Warning if system has insufficient RAM for LLaVA
+  - Per-model RAM sufficiency indicator (warning when system has less RAM than model requires)
+  - Visual "Recommended" badge on the best-fitting model
+  - Highlighted recommended model styling
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added os import, get-system-memory IPC handler)
+  - Modified: electron/preload.ts (exposed getSystemMemory API)
+  - Modified: electron/renderer/components/ModelManagerPanel.tsx (added system memory state, RAM recommendations, visual indicators)
+  - Modified: electron/renderer/styles/ModelManagerPanel.css (added system-ram-info, recommended-badge, ram-warning styles)
+
+- **Learnings for future iterations:**
+  - Use Node.js `os` module for system info (totalmem, freemem, cpus, etc.) - cross-platform
+  - Model RAM requirements should account for OS overhead (~2GB headroom)
+  - Visual recommendations help users make informed decisions about which model to download
+---
