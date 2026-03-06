@@ -10,9 +10,171 @@ import * as os from 'os';
 import * as path from 'path';
 import * as https from 'https';
 import Store from 'electron-store';
+import ffmpeg from 'fluent-ffmpeg';
 import { getMainWindow } from './window.js';
-import { getFFmpegInfo } from './ffmpeg-setup.js';
+import { getFFmpegInfo, configureFfmpeg } from './ffmpeg-setup.js';
 import { getWhisperCppPath, isBundledWhisperCppAvailable, getWhisperCppInfo } from './whisper-paths.js';
+
+// Video file extensions supported
+const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
+
+// Thumbnails cache directory
+function getThumbnailsCachePath(): string {
+  const cacheDir = path.join(app.getPath('userData'), 'thumbnails');
+  if (!fs.existsSync(cacheDir)) {
+    fs.mkdirSync(cacheDir, { recursive: true });
+  }
+  return cacheDir;
+}
+
+/**
+ * Video file interface for the renderer
+ */
+interface ScannedVideoFile {
+  id: number;
+  filename: string;
+  path: string;
+  size: number;
+  duration: number | undefined;
+  modifiedDate: Date;
+  status: 'none' | 'processing' | 'completed' | 'error';
+  thumbnail: string | undefined;
+}
+
+/**
+ * Generate a unique ID for a video file based on its path
+ */
+function generateVideoId(filePath: string): number {
+  // Simple hash of the path to generate a consistent ID
+  let hash = 0;
+  for (let i = 0; i < filePath.length; i++) {
+    const char = filePath.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32-bit integer
+  }
+  return Math.abs(hash);
+}
+
+/**
+ * Get video duration using ffprobe
+ */
+async function getVideoDuration(videoPath: string): Promise<number | undefined> {
+  return new Promise((resolve) => {
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        resolve(undefined);
+        return;
+      }
+      resolve(metadata.format.duration);
+    });
+  });
+}
+
+/**
+ * Generate a thumbnail for a video
+ */
+async function generateThumbnail(videoPath: string): Promise<string | undefined> {
+  const thumbnailsDir = getThumbnailsCachePath();
+  const videoId = generateVideoId(videoPath);
+  const thumbnailPath = path.join(thumbnailsDir, `${videoId}.jpg`);
+
+  // Return existing thumbnail if it exists
+  if (fs.existsSync(thumbnailPath)) {
+    // Return as file:// URL for the renderer
+    return `file://${thumbnailPath}`;
+  }
+
+  return new Promise((resolve) => {
+    ffmpeg(videoPath)
+      .seekInput(1) // Seek 1 second into video
+      .frames(1)
+      .size('128x72') // Small thumbnail size
+      .output(thumbnailPath)
+      .on('end', () => {
+        resolve(`file://${thumbnailPath}`);
+      })
+      .on('error', () => {
+        resolve(undefined);
+      })
+      .run();
+  });
+}
+
+/**
+ * Check if a video has been processed (look for frames directory)
+ */
+function getVideoStatus(videoPath: string): 'none' | 'processing' | 'completed' | 'error' {
+  // Check if frames directory exists for this video
+  const videoDir = path.dirname(videoPath);
+  const videoName = path.basename(videoPath, path.extname(videoPath));
+  const framesDir = path.join(videoDir, 'frames', videoName);
+
+  if (fs.existsSync(framesDir)) {
+    try {
+      const frames = fs.readdirSync(framesDir).filter(f => f.endsWith('.jpg'));
+      if (frames.length > 0) {
+        return 'completed';
+      }
+    } catch {
+      // Ignore errors reading directory
+    }
+  }
+
+  return 'none';
+}
+
+/**
+ * Scan a folder for video files with metadata
+ */
+async function scanFolderForVideos(folderPath: string): Promise<ScannedVideoFile[]> {
+  // Ensure ffmpeg is configured
+  configureFfmpeg();
+
+  const videos: ScannedVideoFile[] = [];
+
+  try {
+    const entries = fs.readdirSync(folderPath);
+
+    for (const entry of entries) {
+      const fullPath = path.join(folderPath, entry);
+
+      try {
+        const stats = fs.statSync(fullPath);
+
+        if (stats.isFile()) {
+          const ext = path.extname(entry).toLowerCase();
+          if (VIDEO_EXTENSIONS.includes(ext)) {
+            // Get video metadata
+            const [duration, thumbnail] = await Promise.all([
+              getVideoDuration(fullPath),
+              generateThumbnail(fullPath),
+            ]);
+
+            videos.push({
+              id: generateVideoId(fullPath),
+              filename: entry,
+              path: fullPath,
+              size: stats.size,
+              duration,
+              modifiedDate: stats.mtime,
+              status: getVideoStatus(fullPath),
+              thumbnail,
+            });
+          }
+        }
+      } catch {
+        // Skip files we can't stat (permission issues, etc.)
+        continue;
+      }
+    }
+  } catch (error) {
+    console.error('Error scanning folder:', error);
+    return [];
+  }
+
+  // Sort by filename by default
+  return videos.sort((a, b) => a.filename.localeCompare(b.filename));
+}
 
 // Electron store for persisting folder history
 interface FolderHistorySchema {
@@ -821,10 +983,8 @@ export function registerIpcHandlers(): void {
   });
 
   // Scan folder for video files
-  ipcMain.handle('scan-folder', async (_event, _folderPath: string) => {
-    // TODO: Implement using scanDirectory service
-    // For now, return empty array
-    return [];
+  ipcMain.handle('scan-folder', async (_event, folderPath: string) => {
+    return await scanFolderForVideos(folderPath);
   });
 
   // Get video details

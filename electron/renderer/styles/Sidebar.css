@@ -42,6 +42,37 @@
   color: var(--color-text-secondary);
 }
 
+.sort-controls {
+  display: flex;
+  gap: 2px;
+  padding: var(--spacing-xs) var(--spacing-sm);
+  border-bottom: 1px solid var(--color-border);
+  background-color: var(--color-bg);
+}
+
+.sort-button {
+  flex: 1;
+  padding: 4px 8px;
+  font-size: 11px;
+  border: none;
+  background-color: transparent;
+  color: var(--color-text-secondary);
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.sort-button:hover {
+  background-color: var(--color-bg-secondary);
+  color: var(--color-text);
+}
+
+.sort-button.active {
+  background-color: var(--color-primary);
+  color: white;
+}
+
 .video-list {
   flex: 1;
   overflow-y: auto;

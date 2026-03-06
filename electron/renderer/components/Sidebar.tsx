@@ -1,14 +1,17 @@
 /**
  * Sidebar Component - Video File List
  */
-import React from 'react';
+import React, { useState, useMemo } from 'react';
 import type { VideoFile } from '../App.js';
 import '../styles/Sidebar.css';
 
+type SortField = 'name' | 'date' | 'status';
+type SortOrder = 'asc' | 'desc';
+
 interface SidebarProps {
   videos: VideoFile[];
-  selectedVideoId: number | null;
-  onSelectVideo: (videoId: number) => void;
+  selectedVideoIds: number[];
+  onSelectVideo: (videoId: number, multiSelect: boolean) => void;
   currentFolder: string | null;
 }
 
@@ -29,22 +32,73 @@ function formatDuration(seconds?: number): string {
 function getStatusBadge(status: VideoFile['status']): React.ReactElement | null {
   switch (status) {
     case 'completed':
-      return <span className="status-badge completed" title="Completed">G</span>;
+      return <span className="status-badge completed" title="Completed">✓</span>;
     case 'processing':
-      return <span className="status-badge processing" title="Processing">Y</span>;
+      return <span className="status-badge processing" title="Processing">●</span>;
     case 'error':
-      return <span className="status-badge error" title="Error">R</span>;
+      return <span className="status-badge error" title="Error">✕</span>;
     default:
       return null;
   }
 }
 
+function getStatusSortValue(status: VideoFile['status']): number {
+  switch (status) {
+    case 'error': return 0;
+    case 'none': return 1;
+    case 'processing': return 2;
+    case 'completed': return 3;
+    default: return 1;
+  }
+}
+
 function Sidebar({
   videos,
-  selectedVideoId,
+  selectedVideoIds,
   onSelectVideo,
   currentFolder,
 }: SidebarProps): React.ReactElement {
+  const [sortField, setSortField] = useState<SortField>('name');
+  const [sortOrder, setSortOrder] = useState<SortOrder>('asc');
+
+  const sortedVideos = useMemo(() => {
+    const sorted = [...videos].sort((a, b) => {
+      let comparison = 0;
+
+      switch (sortField) {
+        case 'name':
+          comparison = a.filename.localeCompare(b.filename);
+          break;
+        case 'date':
+          comparison = new Date(a.modifiedDate).getTime() - new Date(b.modifiedDate).getTime();
+          break;
+        case 'status':
+          comparison = getStatusSortValue(a.status) - getStatusSortValue(b.status);
+          break;
+      }
+
+      return sortOrder === 'asc' ? comparison : -comparison;
+    });
+
+    return sorted;
+  }, [videos, sortField, sortOrder]);
+
+  const handleSortChange = (field: SortField) => {
+    if (field === sortField) {
+      // Toggle order if same field
+      setSortOrder(prev => prev === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortOrder('asc');
+    }
+  };
+
+  const handleVideoClick = (videoId: number, event: React.MouseEvent) => {
+    // Check for Cmd key (Mac) or Ctrl key (Windows/Linux) for multi-select
+    const multiSelect = event.metaKey || event.ctrlKey;
+    onSelectVideo(videoId, multiSelect);
+  };
+
   if (!currentFolder) {
     return (
       <div className="sidebar">
@@ -74,12 +128,35 @@ function Sidebar({
         <span className="folder-name">{currentFolder.split('/').pop()}</span>
         <span className="video-count">{videos.length} videos</span>
       </div>
+      <div className="sort-controls">
+        <button
+          className={`sort-button ${sortField === 'name' ? 'active' : ''}`}
+          onClick={() => handleSortChange('name')}
+          title="Sort by name"
+        >
+          Name {sortField === 'name' && (sortOrder === 'asc' ? '↑' : '↓')}
+        </button>
+        <button
+          className={`sort-button ${sortField === 'date' ? 'active' : ''}`}
+          onClick={() => handleSortChange('date')}
+          title="Sort by date"
+        >
+          Date {sortField === 'date' && (sortOrder === 'asc' ? '↑' : '↓')}
+        </button>
+        <button
+          className={`sort-button ${sortField === 'status' ? 'active' : ''}`}
+          onClick={() => handleSortChange('status')}
+          title="Sort by status"
+        >
+          Status {sortField === 'status' && (sortOrder === 'asc' ? '↑' : '↓')}
+        </button>
+      </div>
       <div className="video-list">
-        {videos.map((video) => (
+        {sortedVideos.map((video) => (
           <div
             key={video.id}
-            className={`video-item ${selectedVideoId === video.id ? 'selected' : ''}`}
-            onClick={() => onSelectVideo(video.id)}
+            className={`video-item ${selectedVideoIds.includes(video.id) ? 'selected' : ''}`}
+            onClick={(e) => handleVideoClick(video.id, e)}
           >
             <div className="video-thumbnail">
               {video.thumbnail ? (

@@ -31,7 +31,7 @@ export interface VideoFile {
 function App(): React.ReactElement {
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [videos, setVideos] = useState<VideoFile[]>([]);
-  const [selectedVideoId, setSelectedVideoId] = useState<number | null>(null);
+  const [selectedVideoIds, setSelectedVideoIds] = useState<number[]>([]);
   const [isProcessing, setIsProcessing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<{
     current: number;
@@ -41,7 +41,10 @@ function App(): React.ReactElement {
   const [isPrerequisitesPanelOpen, setIsPrerequisitesPanelOpen] = useState(false);
   const [isModelManagerPanelOpen, setIsModelManagerPanelOpen] = useState(false);
 
-  const selectedVideo = videos.find((v) => v.id === selectedVideoId) || null;
+  // For single selection display (VideoDetails), use the first selected or last clicked
+  const selectedVideo = selectedVideoIds.length > 0
+    ? videos.find((v) => v.id === selectedVideoIds[selectedVideoIds.length - 1]) || null
+    : null;
 
   // Restore last used folder on app launch
   useEffect(() => {
@@ -61,7 +64,7 @@ function App(): React.ReactElement {
     const folderPath = await window.electronAPI.selectFolder();
     if (folderPath) {
       setCurrentFolder(folderPath);
-      setSelectedVideoId(null);
+      setSelectedVideoIds([]);
       const scannedVideos = await window.electronAPI.scanFolder(folderPath);
       setVideos(scannedVideos as VideoFile[]);
     }
@@ -72,14 +75,27 @@ function App(): React.ReactElement {
     // Update folder history in store
     await window.electronAPI.setCurrentFolder(folderPath);
     setCurrentFolder(folderPath);
-    setSelectedVideoId(null);
+    setSelectedVideoIds([]);
     const scannedVideos = await window.electronAPI.scanFolder(folderPath);
     setVideos(scannedVideos as VideoFile[]);
   }, []);
 
-  // Handle video selection
-  const handleSelectVideo = useCallback((videoId: number) => {
-    setSelectedVideoId(videoId);
+  // Handle video selection (supports multi-select with Cmd/Ctrl+click)
+  const handleSelectVideo = useCallback((videoId: number, multiSelect: boolean) => {
+    if (multiSelect) {
+      setSelectedVideoIds((prev) => {
+        if (prev.includes(videoId)) {
+          // Deselect if already selected
+          return prev.filter((id) => id !== videoId);
+        } else {
+          // Add to selection
+          return [...prev, videoId];
+        }
+      });
+    } else {
+      // Single click - replace selection
+      setSelectedVideoIds([videoId]);
+    }
   }, []);
 
   // Handle analyze single video
@@ -205,7 +221,7 @@ function App(): React.ReactElement {
       <div className="main-content">
         <Sidebar
           videos={videos}
-          selectedVideoId={selectedVideoId}
+          selectedVideoIds={selectedVideoIds}
           onSelectVideo={handleSelectVideo}
           currentFolder={currentFolder}
         />
