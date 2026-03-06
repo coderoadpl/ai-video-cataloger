@@ -225,3 +225,27 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - CSS flexbox layout: `.app` has flex-direction: column, `.main-content` is flex: 1 with flex children
   - Sidebar width is fixed (250px, min-width: 250px), main panel takes remaining space (flex: 1)
 ---
+
+## 2026-01-24 - US-036
+- What was implemented:
+  - Native macOS folder picker via Open Folder button using Electron's dialog.showOpenDialog()
+  - Recent folders dropdown in toolbar (up to 10 folders stored)
+  - Folder path displayed in toolbar (shows folder name, full path on hover)
+  - Folder selection triggers video file scan via IPC
+  - Last used folder restored on app launch
+  - Folder history stored using electron-store with 'folder-history' store name
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added folder history store, get-recent-folders, get-last-folder, set-current-folder IPC handlers)
+  - Modified: electron/preload.ts (exposed getRecentFolders, getLastFolder, setCurrentFolder APIs)
+  - Modified: electron/renderer/components/Toolbar.tsx (added recent folders dropdown UI)
+  - Modified: electron/renderer/styles/Toolbar.css (added dropdown styles)
+  - Modified: electron/renderer/App.tsx (added handleSelectRecentFolder, useEffect for restoring last folder)
+
+- **Learnings for future iterations:**
+  - Electron-store can have multiple stores with different names (folder-history vs window-state)
+  - Use useRef with click-outside detection pattern for dropdown menus
+  - Dialog defaultPath option restores previous folder location for better UX
+  - Filter non-existent folders when loading recent folders to handle moved/deleted folders
+  - Button groups with split dropdown: remove border-radius from adjacent edges, add separator border
+---
