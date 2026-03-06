@@ -249,3 +249,29 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Filter non-existent folders when loading recent folders to handle moved/deleted folders
   - Button groups with split dropdown: remove border-radius from adjacent edges, add separator border
 ---
+
+## 2026-01-24 - US-037
+- What was implemented:
+  - Implemented scan-folder IPC handler that filters for video files only (.mp4, .mov, .avi, .mkv, .webm)
+  - Added video metadata extraction: size from fs.statSync, duration via ffprobe, modification date
+  - Implemented thumbnail generation using ffmpeg (cached in app userData/thumbnails directory)
+  - Status detection by checking for existing frames directory
+  - Sort controls in Sidebar: Name, Date, Status with toggle for ascending/descending
+  - Multi-select support: Click for single selection, Cmd/Ctrl+click for multi-select
+  - Updated App.tsx to use selectedVideoIds array instead of single selectedVideoId
+  - Status badges show checkmark for completed, dot for processing, X for error
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added VIDEO_EXTENSIONS, thumbnail generation, scanFolderForVideos function)
+  - Modified: electron/renderer/App.tsx (changed to multi-select with selectedVideoIds array)
+  - Modified: electron/renderer/components/Sidebar.tsx (added sort controls, multi-select handling)
+  - Modified: electron/renderer/styles/Sidebar.css (added sort-controls styles)
+
+- **Learnings for future iterations:**
+  - Thumbnails should be cached to avoid regenerating on every scan - use app.getPath('userData')/thumbnails
+  - Generate unique video IDs from file path hash for consistent identification
+  - ffprobe is used to get video duration via fluent-ffmpeg.ffprobe()
+  - Use React.MouseEvent.metaKey for Cmd key detection on macOS
+  - Sort state can be managed with useMemo for efficient re-sorting
+  - Status detection can check for existing frames directory to determine if video was processed
+---
