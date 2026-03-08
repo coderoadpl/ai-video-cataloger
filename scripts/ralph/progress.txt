@@ -275,3 +275,22 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Sort state can be managed with useMemo for efficient re-sorting
   - Status detection can check for existing frames directory to determine if video was processed
 ---
+
+## 2026-01-24 - US-038
+- What was implemented:
+  - Verified all unprocessed video details panel features are already in place from US-028
+  - VideoDetails.tsx already displays: filename (header), path, file size, duration, modification date
+  - "Not yet analyzed" status label shown for unprocessed videos (status === 'none' or default)
+  - Prominent "Analyze" button with `action-button primary large` classes
+  - Reveal in Finder button for quick file access
+
+- Files changed:
+  - Modified: scripts/ralph/prd.json (marked US-038 as passes: true)
+  - No code changes needed - all acceptance criteria were already satisfied by US-028
+
+- **Learnings for future iterations:**
+  - VideoDetails component uses conditional rendering based on video.status for different states
+  - Helper functions (formatFileSize, formatDuration, formatDate) are defined in the component file
+  - Status labels have CSS classes matching status names for consistent styling
+  - The unprocessed state is the default case in the render logic
+---
