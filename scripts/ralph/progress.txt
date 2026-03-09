@@ -294,3 +294,28 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Status labels have CSS classes matching status names for consistent styling
   - The unprocessed state is the default case in the render logic
 ---
+
+## 2026-01-24 - US-039
+- What was implemented:
+  - Enhanced scan-folder IPC handler to load processed video data when status is 'completed'
+  - Created loadProcessedVideoData() helper that parses CLI-generated summary and transcript files
+  - Summary file format parsing: extracts description, suggested filename, and processedAt date
+  - Added framesDir and transcriptPath to VideoFile interface for Reveal in Finder functionality
+  - Updated VideoDetails component processed state to show all file info (path, size, duration, dates)
+  - Added "Open Folder" button for frames directory
+  - Added "Open File" button for transcript file
+  - Added section-header CSS styling for consistent section titles with action buttons
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added loadProcessedVideoData helper, updated ScannedVideoFile interface and scanFolderForVideos function)
+  - Modified: electron/renderer/App.tsx (added framesDir and transcriptPath to VideoFile interface)
+  - Modified: electron/renderer/components/VideoDetails.tsx (enhanced processed state view with file info and Reveal in Finder buttons)
+  - Modified: electron/renderer/styles/VideoDetails.css (added section-header and reveal-button styles)
+
+- **Learnings for future iterations:**
+  - CLI stores processed data in three directories: frames/{videoName}/, transcripts/{videoName}.txt, summaries/{videoName}.txt
+  - Summary file format has specific sections: "DESCRIPTION:", "SUGGESTED FILENAME:", "FULL ANALYSIS:" with "Date Analyzed:" header
+  - Use Object.assign() to merge processed data into video object efficiently
+  - Section headers with action buttons use flexbox with justify-content: space-between
+  - The reveal-button class is a smaller, muted button style for inline actions
+---
