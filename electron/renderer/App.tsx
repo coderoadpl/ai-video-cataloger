@@ -23,6 +23,8 @@ export interface VideoFile {
   transcript?: string;
   suggestedName?: string;
   frames?: string[];
+  framesDir?: string;
+  transcriptPath?: string;
   errorMessage?: string;
   analysisMethod?: string;
   processedAt?: Date;

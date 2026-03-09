@@ -116,6 +116,22 @@ function VideoDetails({ video, onAnalyze, isProcessing }: VideoDetailsProps): Re
         <div className="video-details-content">
           <div className="info-section">
             <div className="info-row">
+              <span className="info-label">Path:</span>
+              <span className="info-value">{video.path}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Size:</span>
+              <span className="info-value">{formatFileSize(video.size)}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Duration:</span>
+              <span className="info-value">{formatDuration(video.duration)}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Modified:</span>
+              <span className="info-value">{formatDate(video.modifiedDate)}</span>
+            </div>
+            <div className="info-row">
               <span className="info-label">Processed:</span>
               <span className="info-value">{formatDate(video.processedAt)}</span>
             </div>
@@ -129,14 +145,27 @@ function VideoDetails({ video, onAnalyze, isProcessing }: VideoDetailsProps): Re
 
           {video.summary && (
             <div className="summary-section">
-              <h3>Summary</h3>
+              <div className="section-header">
+                <h3>Summary</h3>
+              </div>
               <p className="summary-text">{video.summary}</p>
             </div>
           )}
 
           {video.frames && video.frames.length > 0 && (
             <div className="frames-section">
-              <h3>Frames</h3>
+              <div className="section-header">
+                <h3>Frames ({video.frames.length})</h3>
+                {video.framesDir && (
+                  <button
+                    className="reveal-button"
+                    onClick={() => window.electronAPI.revealInFinder(video.framesDir!)}
+                    title="Open frames folder in Finder"
+                  >
+                    Open Folder
+                  </button>
+                )}
+              </div>
               <div className="frames-grid">
                 {video.frames.map((frame, index) => (
                   <img
@@ -152,7 +181,18 @@ function VideoDetails({ video, onAnalyze, isProcessing }: VideoDetailsProps): Re
 
           {video.transcript && (
             <div className="transcript-section">
-              <h3>Transcript</h3>
+              <div className="section-header">
+                <h3>Transcript</h3>
+                {video.transcriptPath && (
+                  <button
+                    className="reveal-button"
+                    onClick={() => window.electronAPI.revealInFinder(video.transcriptPath!)}
+                    title="Reveal transcript file in Finder"
+                  >
+                    Open File
+                  </button>
+                )}
+              </div>
               <div className="transcript-text">{video.transcript}</div>
             </div>
           )}

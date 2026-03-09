@@ -39,6 +39,16 @@ interface ScannedVideoFile {
   modifiedDate: Date;
   status: 'none' | 'processing' | 'completed' | 'error';
   thumbnail: string | undefined;
+  // Processed video data (populated when status is 'completed')
+  summary?: string;
+  transcript?: string;
+  suggestedName?: string;
+  frames?: string[];
+  framesDir?: string;
+  transcriptPath?: string;
+  analysisMethod?: string;
+  processedAt?: Date;
+  errorMessage?: string;
 }
 
 /**
@@ -124,6 +134,100 @@ function getVideoStatus(videoPath: string): 'none' | 'processing' | 'completed' 
 }
 
 /**
+ * Load processed video data (frames, transcript, summary) for a completed video
+ */
+function loadProcessedVideoData(videoPath: string): {
+  summary?: string;
+  transcript?: string;
+  suggestedName?: string;
+  frames?: string[];
+  framesDir?: string;
+  transcriptPath?: string;
+  analysisMethod?: string;
+  processedAt?: Date;
+} {
+  const videoDir = path.dirname(videoPath);
+  const videoName = path.basename(videoPath, path.extname(videoPath));
+  const result: ReturnType<typeof loadProcessedVideoData> = {};
+
+  // Load frames
+  const framesDir = path.join(videoDir, 'frames', videoName);
+  if (fs.existsSync(framesDir)) {
+    try {
+      const frameFiles = fs.readdirSync(framesDir)
+        .filter(f => f.endsWith('.jpg'))
+        .sort();
+      if (frameFiles.length > 0) {
+        result.frames = frameFiles.map(f => path.join(framesDir, f));
+        result.framesDir = framesDir;
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  // Load transcript
+  const transcriptPath = path.join(videoDir, 'transcripts', `${videoName}.txt`);
+  if (fs.existsSync(transcriptPath)) {
+    try {
+      result.transcript = fs.readFileSync(transcriptPath, 'utf-8').trim();
+      result.transcriptPath = transcriptPath;
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  // Load summary (contains description and suggested filename)
+  const summaryPath = path.join(videoDir, 'summaries', `${videoName}.txt`);
+  if (fs.existsSync(summaryPath)) {
+    try {
+      const summaryContent = fs.readFileSync(summaryPath, 'utf-8');
+
+      // Parse the summary file format:
+      // Video: filename
+      // Date Analyzed: ISO date string
+      //
+      // DESCRIPTION:
+      // <description text>
+      //
+      // SUGGESTED FILENAME:
+      // <filename>
+      //
+      // FULL ANALYSIS:
+      // <full analysis text>
+
+      // Extract description
+      const descMatch = summaryContent.match(/DESCRIPTION:\n([\s\S]*?)(?=\n\nSUGGESTED FILENAME:|\n\nFULL ANALYSIS:|\Z)/);
+      if (descMatch && descMatch[1]) {
+        result.summary = descMatch[1].trim();
+      }
+
+      // Extract suggested filename
+      const filenameMatch = summaryContent.match(/SUGGESTED FILENAME:\n([^\n]+)/);
+      if (filenameMatch && filenameMatch[1]) {
+        result.suggestedName = filenameMatch[1].trim();
+      }
+
+      // Extract date analyzed for processedAt
+      const dateMatch = summaryContent.match(/Date Analyzed:\s*([^\n]+)/);
+      if (dateMatch && dateMatch[1]) {
+        const parsedDate = new Date(dateMatch[1].trim());
+        if (!isNaN(parsedDate.getTime())) {
+          result.processedAt = parsedDate;
+        }
+      }
+
+      // Determine analysis method (default to 'claude' for CLI-processed videos)
+      result.analysisMethod = 'claude';
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  return result;
+}
+
+/**
  * Scan a folder for video files with metadata
  */
 async function scanFolderForVideos(folderPath: string): Promise<ScannedVideoFile[]> {
@@ -150,16 +254,27 @@ async function scanFolderForVideos(folderPath: string): Promise<ScannedVideoFile
               generateThumbnail(fullPath),
             ]);
 
-            videos.push({
+            const status = getVideoStatus(fullPath);
+
+            // Build the video object
+            const videoFile: ScannedVideoFile = {
               id: generateVideoId(fullPath),
               filename: entry,
               path: fullPath,
               size: stats.size,
               duration,
               modifiedDate: stats.mtime,
-              status: getVideoStatus(fullPath),
+              status,
               thumbnail,
-            });
+            };
+
+            // Load processed data for completed videos
+            if (status === 'completed') {
+              const processedData = loadProcessedVideoData(fullPath);
+              Object.assign(videoFile, processedData);
+            }
+
+            videos.push(videoFile);
           }
         }
       } catch {
