@@ -171,6 +171,23 @@
   transform: scale(1.02);
 }
 
+.error-step {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  margin-bottom: var(--spacing-sm);
+  font-size: 14px;
+}
+
+.error-step-label {
+  color: var(--color-text-secondary);
+}
+
+.error-step-value {
+  font-weight: 600;
+  color: var(--color-danger);
+}
+
 .error-message {
   color: var(--color-danger);
   background-color: rgba(255, 59, 48, 0.1);
@@ -178,6 +195,28 @@
   border-radius: var(--radius-sm);
   font-family: monospace;
   font-size: 13px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.partial-results-section {
+  background-color: rgba(255, 204, 0, 0.1);
+  border: 1px solid rgba(255, 204, 0, 0.3);
+  border-radius: var(--radius-md);
+  padding: var(--spacing-md);
+}
+
+.partial-results-section h3 {
+  font-size: 14px;
+  font-weight: 600;
+  margin-bottom: var(--spacing-xs);
+  color: #b38f00;
+}
+
+.partial-results-note {
+  font-size: 13px;
+  color: var(--color-text-secondary);
+  margin: 0;
 }
 
 .action-section {

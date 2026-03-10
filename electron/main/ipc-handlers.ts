@@ -48,7 +48,9 @@ interface ScannedVideoFile {
   transcriptPath?: string;
   analysisMethod?: string;
   processedAt?: Date;
+  // Error data (populated when status is 'error')
   errorMessage?: string;
+  errorStep?: 'frame_extraction' | 'audio_extraction' | 'transcription' | 'analysis';
 }
 
 /**

@@ -50,6 +50,16 @@ function VideoDetails({ video, onAnalyze, isProcessing }: VideoDetailsProps): Re
 
   // Error state
   if (video.status === 'error') {
+    // Map error step to human-readable label
+    const errorStepLabels: Record<string, string> = {
+      frame_extraction: 'Frame Extraction',
+      audio_extraction: 'Audio Extraction',
+      transcription: 'Transcription',
+      analysis: 'Analysis',
+    };
+
+    const hasPartialResults = (video.frames && video.frames.length > 0) || video.transcript;
+
     return (
       <div className="video-details">
         <div className="video-details-header">
@@ -63,22 +73,74 @@ function VideoDetails({ video, onAnalyze, isProcessing }: VideoDetailsProps): Re
               <span className="info-label">Path:</span>
               <span className="info-value">{video.path}</span>
             </div>
+            <div className="info-row">
+              <span className="info-label">Size:</span>
+              <span className="info-value">{formatFileSize(video.size)}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Duration:</span>
+              <span className="info-value">{formatDuration(video.duration)}</span>
+            </div>
           </div>
 
           <div className="error-section">
             <h3>Error Details</h3>
+            {video.errorStep && (
+              <div className="error-step">
+                <span className="error-step-label">Failed at step:</span>
+                <span className="error-step-value">{errorStepLabels[video.errorStep] || video.errorStep}</span>
+              </div>
+            )}
             <p className="error-message">{video.errorMessage || 'Unknown error occurred'}</p>
           </div>
 
           {/* Show partial results if any */}
+          {hasPartialResults && (
+            <div className="partial-results-section">
+              <h3>Partial Results</h3>
+              <p className="partial-results-note">
+                Some processing completed before the error occurred.
+              </p>
+            </div>
+          )}
+
           {video.frames && video.frames.length > 0 && (
             <div className="frames-section">
-              <h3>Partial Results - Frames</h3>
+              <div className="section-header">
+                <h3>Frames ({video.frames.length})</h3>
+                {video.framesDir && (
+                  <button
+                    className="reveal-button"
+                    onClick={() => window.electronAPI.revealInFinder(video.framesDir!)}
+                    title="Open frames folder in Finder"
+                  >
+                    Open Folder
+                  </button>
+                )}
+              </div>
               <div className="frames-grid">
                 {video.frames.map((frame, index) => (
                   <img key={index} src={`file://${frame}`} alt={`Frame ${index + 1}`} />
                 ))}
               </div>
+            </div>
+          )}
+
+          {video.transcript && (
+            <div className="transcript-section">
+              <div className="section-header">
+                <h3>Transcript</h3>
+                {video.transcriptPath && (
+                  <button
+                    className="reveal-button"
+                    onClick={() => window.electronAPI.revealInFinder(video.transcriptPath!)}
+                    title="Reveal transcript file in Finder"
+                  >
+                    Open File
+                  </button>
+                )}
+              </div>
+              <div className="transcript-text">{video.transcript}</div>
             </div>
           )}
 

@@ -279,8 +279,8 @@ const electronAPI = {
     ipcRenderer.on('processing:complete', handler);
     return () => ipcRenderer.removeListener('processing:complete', handler);
   },
-  onProcessingError: (callback: (error: { videoId: number; error: string }) => void): (() => void) => {
-    const handler = (_event: IpcRendererEvent, error: { videoId: number; error: string }) => callback(error);
+  onProcessingError: (callback: (error: { videoId: number; error: string; step?: string }) => void): (() => void) => {
+    const handler = (_event: IpcRendererEvent, error: { videoId: number; error: string; step?: string }) => callback(error);
     ipcRenderer.on('processing:error', handler);
     return () => ipcRenderer.removeListener('processing:error', handler);
   },

@@ -26,6 +26,7 @@ export interface VideoFile {
   framesDir?: string;
   transcriptPath?: string;
   errorMessage?: string;
+  errorStep?: 'frame_extraction' | 'audio_extraction' | 'transcription' | 'analysis';
   analysisMethod?: string;
   processedAt?: Date;
 }
@@ -194,7 +195,14 @@ function App(): React.ReactElement {
     const unsubscribeError = window.electronAPI.onProcessingError((error) => {
       setVideos((prevVideos) =>
         prevVideos.map((v) =>
-          v.id === error.videoId ? { ...v, status: 'error' as const, errorMessage: error.error } : v
+          v.id === error.videoId
+            ? {
+                ...v,
+                status: 'error' as const,
+                errorMessage: error.error,
+                errorStep: error.step as VideoFile['errorStep'],
+              }
+            : v
         )
       );
     });
