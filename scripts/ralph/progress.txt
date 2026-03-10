@@ -319,3 +319,31 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Section headers with action buttons use flexbox with justify-content: space-between
   - The reveal-button class is a smaller, muted button style for inline actions
 ---
+
+## 2026-01-24 - US-040
+- What was implemented:
+  - Added errorStep field to VideoFile interface to track which processing step failed
+  - Enhanced error state in VideoDetails component to display:
+    - File info (path, size, duration)
+    - Error step indicator with human-readable labels (Frame Extraction, Audio Extraction, Transcription, Analysis)
+    - Error message in a styled error box
+    - Partial results notification when frames or transcript exist
+    - Partial frames with "Open Folder" button
+    - Partial transcript with "Open File" button
+    - Retry button to re-process the video
+  - Updated preload.ts error event type to include step information
+  - Added CSS styles for error step display and partial results section
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added errorStep to ScannedVideoFile interface)
+  - Modified: electron/preload.ts (added step to error event type)
+  - Modified: electron/renderer/App.tsx (added errorStep to VideoFile interface, updated error handler)
+  - Modified: electron/renderer/components/VideoDetails.tsx (enhanced error state with step display and partial results)
+  - Modified: electron/renderer/styles/VideoDetails.css (added error-step, partial-results styles)
+
+- **Learnings for future iterations:**
+  - Error steps are: 'frame_extraction', 'audio_extraction', 'transcription', 'analysis'
+  - The processing:error event should include the step that failed for better error reporting
+  - Partial results (frames, transcripts) should be displayed even when processing fails
+  - Use a notification box (yellow background) to explain partial results to users
+---
