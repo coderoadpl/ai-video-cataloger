@@ -307,6 +307,30 @@ const folderStore = new Store<FolderHistorySchema>({
   },
 });
 
+// Electron store for persisting app settings
+interface AppSettingsSchema {
+  analysisMethod: 'claude' | 'ollama';
+  ollamaModel: string;
+  transcriptionMethod: 'local' | 'api';
+  whisperModel: string;
+  preferBuiltInWhisper: boolean;
+  frameCount: number;
+  renameFiles: boolean;
+}
+
+const settingsStore = new Store<AppSettingsSchema>({
+  name: 'app-settings',
+  defaults: {
+    analysisMethod: 'claude',
+    ollamaModel: 'llava:7b',
+    transcriptionMethod: 'local',
+    whisperModel: 'base',
+    preferBuiltInWhisper: true,
+    frameCount: 3,
+    renameFiles: true,
+  },
+});
+
 const MAX_RECENT_FOLDERS = 10;
 
 const execAsync = promisify(exec);
@@ -1131,19 +1155,30 @@ export function registerIpcHandlers(): void {
 
   // Get settings
   ipcMain.handle('get-settings', async () => {
-    // TODO: Implement using getConfig service
     return {
-      analysisMethod: 'claude',
-      transcriptionMethod: 'local',
-      frameCount: 3,
-      renameFiles: true,
+      analysisMethod: settingsStore.get('analysisMethod'),
+      ollamaModel: settingsStore.get('ollamaModel'),
+      transcriptionMethod: settingsStore.get('transcriptionMethod'),
+      whisperModel: settingsStore.get('whisperModel'),
+      preferBuiltInWhisper: settingsStore.get('preferBuiltInWhisper'),
+      frameCount: settingsStore.get('frameCount'),
+      renameFiles: settingsStore.get('renameFiles'),
     };
   });
 
   // Save settings
-  ipcMain.handle('save-settings', async (_event, _settings: Record<string, unknown>) => {
-    // TODO: Implement using setConfig service
-    return { success: true };
+  ipcMain.handle('save-settings', async (_event, settings: Record<string, unknown>) => {
+    try {
+      if (typeof settings.frameCount === 'number') {
+        settingsStore.set('frameCount', settings.frameCount);
+      }
+      if (typeof settings.renameFiles === 'boolean') {
+        settingsStore.set('renameFiles', settings.renameFiles);
+      }
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: `Failed to save settings: ${err}` };
+    }
   });
 
   // Reveal in Finder
@@ -1523,19 +1558,20 @@ export function registerIpcHandlers(): void {
 
   // Get/set whisper settings
   ipcMain.handle('get-whisper-settings', async () => {
-    // For now, return default settings
-    // In the future, these should be stored in the database
     return {
-      preferBuiltIn: true,
-      selectedModel: 'base',
+      preferBuiltIn: settingsStore.get('preferBuiltInWhisper'),
+      selectedModel: settingsStore.get('whisperModel'),
     };
   });
 
   ipcMain.handle('save-whisper-settings', async (_event, settings: WhisperSettings) => {
-    // For now, just acknowledge
-    // In the future, save to database
-    console.log('Saving whisper settings:', settings);
-    return { success: true };
+    try {
+      settingsStore.set('preferBuiltInWhisper', settings.preferBuiltIn);
+      settingsStore.set('whisperModel', settings.selectedModel);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: `Failed to save whisper settings: ${err}` };
+    }
   });
 
   // Ollama/LLaVA management
@@ -1705,11 +1741,9 @@ export function registerIpcHandlers(): void {
 
   // Analysis settings
   ipcMain.handle('get-analysis-settings', async () => {
-    // Return default settings
-    // In the future, these should be stored in the database
     return {
-      method: 'claude' as 'claude' | 'ollama',
-      ollamaModel: 'llava:7b',
+      method: settingsStore.get('analysisMethod'),
+      ollamaModel: settingsStore.get('ollamaModel'),
     };
   });
 
@@ -1717,9 +1751,12 @@ export function registerIpcHandlers(): void {
     method: 'claude' | 'ollama';
     ollamaModel: string;
   }) => {
-    // For now, just acknowledge
-    // In the future, save to database
-    console.log('Saving analysis settings:', settings);
-    return { success: true };
+    try {
+      settingsStore.set('analysisMethod', settings.method);
+      settingsStore.set('ollamaModel', settings.ollamaModel);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: `Failed to save analysis settings: ${err}` };
+    }
   });
 }

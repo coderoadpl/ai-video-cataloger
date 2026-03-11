@@ -7,6 +7,7 @@ import VideoDetails from './components/VideoDetails.js';
 import Toolbar from './components/Toolbar.js';
 import PrerequisitesPanel from './components/PrerequisitesPanel.js';
 import ModelManagerPanel from './components/ModelManagerPanel.js';
+import SettingsPanel from './components/SettingsPanel.js';
 import './styles/App.css';
 
 // Video file type definition
@@ -43,6 +44,7 @@ function App(): React.ReactElement {
   } | null>(null);
   const [isPrerequisitesPanelOpen, setIsPrerequisitesPanelOpen] = useState(false);
   const [isModelManagerPanelOpen, setIsModelManagerPanelOpen] = useState(false);
+  const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
 
   // For single selection display (VideoDetails), use the first selected or last clicked
   const selectedVideo = selectedVideoIds.length > 0
@@ -160,12 +162,16 @@ function App(): React.ReactElement {
     const unsubscribeOpenModelManager = window.electronAPI.onMenuOpenModelManager(() => {
       setIsModelManagerPanelOpen(true);
     });
+    const unsubscribeOpenSettings = window.electronAPI.onMenuOpenSettings(() => {
+      setIsSettingsPanelOpen(true);
+    });
 
     return () => {
       unsubscribeOpenFolder();
       unsubscribeRefresh();
       unsubscribeOpenPrerequisites();
       unsubscribeOpenModelManager();
+      unsubscribeOpenSettings();
     };
   }, [handleSelectFolder, handleRefresh]);
 
@@ -250,6 +256,14 @@ function App(): React.ReactElement {
       <ModelManagerPanel
         isOpen={isModelManagerPanelOpen}
         onClose={() => setIsModelManagerPanelOpen(false)}
+      />
+      <SettingsPanel
+        isOpen={isSettingsPanelOpen}
+        onClose={() => setIsSettingsPanelOpen(false)}
+        onOpenModelManager={() => {
+          setIsSettingsPanelOpen(false);
+          setIsModelManagerPanelOpen(true);
+        }}
       />
     </div>
   );
