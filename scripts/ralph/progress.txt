@@ -372,3 +372,41 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Always check prerequisites (claudeAvailable, ollamaStatus) before allowing method selection
   - Downloaded models can be checked by comparing model names to whisperModels.models array
 ---
+
+## 2026-01-24 - US-042
+- What was implemented:
+  - Complete video processing pipeline in ipc-handlers.ts:
+    - extractVideoFrames(): Extract frames at evenly distributed timestamps using FFmpeg
+    - extractVideoAudio(): Extract audio to WAV format (16kHz mono) for whisper
+    - analyzeWithClaude(): Analyze video via claude CLI with frames and transcript
+    - saveSummaryFile(): Save analysis results to summaries directory
+    - processVideoFull(): Orchestrate full pipeline with progress events
+  - Updated process-video IPC handler to accept video path and run full pipeline
+  - Updated cancel-processing handler to cancel active operations
+  - Updated preload.ts to accept video paths instead of video IDs
+  - Updated App.tsx handleAnalyze to:
+    - Find video by ID to get path
+    - Set processing status immediately
+    - Handle errors with error state and errorStep
+    - Rescan folder after successful processing
+  - Updated VideoDetails processing state to show:
+    - File info (path, size, duration) during processing
+    - Current processing step from processingProgress
+  - Added processingStep prop to VideoDetails interface
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added full processing pipeline)
+  - Modified: electron/preload.ts (changed processVideo to accept videoPath)
+  - Modified: electron/renderer/App.tsx (updated handleAnalyze with path lookup and error handling)
+  - Modified: electron/renderer/components/VideoDetails.tsx (added processingStep prop and display)
+  - Modified: electron/renderer/styles/VideoDetails.css (added .processing-step style)
+
+- **Learnings for future iterations:**
+  - Process video by path rather than ID - paths are more reliable for file operations
+  - Use module-level `activeVideoProcessing` object with `cancelled` flag for cancellation support
+  - Send processing:progress events with step description for real-time UI updates
+  - Rescan folder after processing completes to reload updated video data with frames/transcript
+  - Create subdirectories (frames/, transcripts/, summaries/) relative to video directory
+  - Audio extraction: use -audioCodec pcm_s16le -audioFrequency 16000 -audioChannels 1 for whisper compatibility
+  - Frame extraction: timestamps at evenly distributed points (i / (count + 1)) for better coverage
+---

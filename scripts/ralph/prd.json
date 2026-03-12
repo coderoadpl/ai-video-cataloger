@@ -279,7 +279,7 @@
         "Typecheck passes"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "Depends on US-039, US-040, US-041"
     },
     {
