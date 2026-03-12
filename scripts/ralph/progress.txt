@@ -347,3 +347,28 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Partial results (frames, transcripts) should be displayed even when processing fails
   - Use a notification box (yellow background) to explain partial results to users
 ---
+
+## 2026-01-24 - US-041
+- What was implemented:
+  - Created SettingsPanel component as a modal accessible via Cmd+, or App > Settings menu
+  - Analysis section with toggle between Claude API and Ollama (LLaVA), with model selection
+  - Transcription section with toggle between local Whisper and API, runtime preference, and model selection
+  - Output section with frame count dropdown (1, 3, 5, 10) and auto-rename toggle
+  - "Manage Models" button that opens Model Manager panel
+  - Settings persisted using electron-store with 'app-settings' store
+  - Updated IPC handlers to use settingsStore for get/save of analysis, whisper, and general settings
+  - Menu event listener for 'menu:open-settings' already existed in preload.ts
+
+- Files changed:
+  - Created: electron/renderer/components/SettingsPanel.tsx
+  - Created: electron/renderer/styles/SettingsPanel.css
+  - Modified: electron/main/ipc-handlers.ts (added AppSettingsSchema, settingsStore, updated all settings handlers)
+  - Modified: electron/renderer/App.tsx (added SettingsPanel import, state, menu listener, and modal rendering)
+
+- **Learnings for future iterations:**
+  - Multiple electron-store instances can be created with different names for different purposes
+  - Settings panel pattern: load all data in parallel on open, track changes with hasChanges state
+  - Nested settings rows with border-left provide visual hierarchy for dependent options
+  - Always check prerequisites (claudeAvailable, ollamaStatus) before allowing method selection
+  - Downloaded models can be checked by comparing model names to whisperModels.models array
+---
