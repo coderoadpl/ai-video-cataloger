@@ -9,12 +9,19 @@ interface ToolbarProps {
   onSelectFolder: () => void;
   onSelectRecentFolder: (folderPath: string) => void;
   onAnalyzeAll: () => void;
+  onAnalyzeSelected: () => void;
   onCancel: () => void;
   onRefresh: () => void;
   isProcessing: boolean;
-  processingProgress: { current: number; total: number; step: string } | null;
+  processingProgress: {
+    current: number;
+    total: number;
+    step: string;
+    videoName?: string;
+  } | null;
   hasUnprocessedVideos: boolean;
   hasErrors: boolean;
+  selectedUnprocessedCount: number;
 }
 
 function Toolbar({
@@ -22,12 +29,14 @@ function Toolbar({
   onSelectFolder,
   onSelectRecentFolder,
   onAnalyzeAll,
+  onAnalyzeSelected,
   onCancel,
   onRefresh,
   isProcessing,
   processingProgress,
   hasUnprocessedVideos,
   hasErrors,
+  selectedUnprocessedCount,
 }: ToolbarProps): React.ReactElement {
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
@@ -106,6 +115,16 @@ function Toolbar({
       <div className="toolbar-center">
         {isProcessing && processingProgress && (
           <div className="progress-indicator">
+            <div className="progress-info">
+              <span className="progress-count">
+                Processing {processingProgress.current} of {processingProgress.total} videos
+              </span>
+              {processingProgress.videoName && (
+                <span className="progress-video-name" title={processingProgress.videoName}>
+                  {processingProgress.videoName}
+                </span>
+              )}
+            </div>
             <div className="progress-bar">
               <div
                 className="progress-fill"
@@ -115,7 +134,7 @@ function Toolbar({
               />
             </div>
             <span className="progress-text">
-              {processingProgress.current}/{processingProgress.total} - {processingProgress.step}
+              {processingProgress.step}
             </span>
           </div>
         )}
@@ -128,6 +147,11 @@ function Toolbar({
           </button>
         ) : (
           <>
+            {selectedUnprocessedCount > 1 && (
+              <button className="toolbar-button primary" onClick={onAnalyzeSelected}>
+                Analyze Selected ({selectedUnprocessedCount})
+              </button>
+            )}
             {hasUnprocessedVideos && (
               <button className="toolbar-button" onClick={onAnalyzeAll}>
                 Analyze All

@@ -41,6 +41,15 @@ function App(): React.ReactElement {
     current: number;
     total: number;
     step: string;
+    videoName?: string;
+  } | null>(null);
+  const [batchNotification, setBatchNotification] = useState<{
+    show: boolean;
+    success: boolean;
+    successCount: number;
+    failureCount: number;
+    totalVideos: number;
+    cancelled: boolean;
   } | null>(null);
   const [isPrerequisitesPanelOpen, setIsPrerequisitesPanelOpen] = useState(false);
   const [isModelManagerPanelOpen, setIsModelManagerPanelOpen] = useState(false);
@@ -50,6 +59,11 @@ function App(): React.ReactElement {
   const selectedVideo = selectedVideoIds.length > 0
     ? videos.find((v) => v.id === selectedVideoIds[selectedVideoIds.length - 1]) || null
     : null;
+
+  // Count selected unprocessed videos for batch processing
+  const selectedUnprocessedCount = videos.filter(
+    (v) => selectedVideoIds.includes(v.id) && v.status === 'none'
+  ).length;
 
   // Restore last used folder on app launch
   useEffect(() => {
@@ -161,12 +175,59 @@ function App(): React.ReactElement {
       step: 'Starting...',
     });
 
+    // Mark all videos as processing
     const videoPaths = unprocessedVideos.map((v) => v.path);
+    setVideos((prevVideos) =>
+      prevVideos.map((v) =>
+        videoPaths.includes(v.path) ? { ...v, status: 'processing' as const } : v
+      )
+    );
+
     await window.electronAPI.processBatch(videoPaths);
+
+    // Processing complete - rescan folder to get updated data
+    if (currentFolder) {
+      const scannedVideos = await window.electronAPI.scanFolder(currentFolder);
+      setVideos(scannedVideos as VideoFile[]);
+    }
 
     setIsProcessing(false);
     setProcessingProgress(null);
-  }, [videos]);
+  }, [videos, currentFolder]);
+
+  // Handle analyze selected videos (multiple)
+  const handleAnalyzeSelected = useCallback(async () => {
+    const selectedUnprocessed = videos.filter(
+      (v) => selectedVideoIds.includes(v.id) && v.status === 'none'
+    );
+    if (selectedUnprocessed.length === 0) return;
+
+    setIsProcessing(true);
+    setProcessingProgress({
+      current: 0,
+      total: selectedUnprocessed.length,
+      step: 'Starting...',
+    });
+
+    // Mark selected videos as processing
+    const videoPaths = selectedUnprocessed.map((v) => v.path);
+    setVideos((prevVideos) =>
+      prevVideos.map((v) =>
+        videoPaths.includes(v.path) ? { ...v, status: 'processing' as const } : v
+      )
+    );
+
+    await window.electronAPI.processBatch(videoPaths);
+
+    // Processing complete - rescan folder to get updated data
+    if (currentFolder) {
+      const scannedVideos = await window.electronAPI.scanFolder(currentFolder);
+      setVideos(scannedVideos as VideoFile[]);
+    }
+
+    setIsProcessing(false);
+    setProcessingProgress(null);
+  }, [videos, selectedVideoIds, currentFolder]);
 
   // Handle cancel processing
   const handleCancel = useCallback(async () => {
@@ -213,6 +274,7 @@ function App(): React.ReactElement {
         current: prev?.current ?? 0,
         total: prev?.total ?? 1,
         step: progress.step,
+        videoName: prev?.videoName,
       }));
 
       // Update video status
@@ -251,6 +313,68 @@ function App(): React.ReactElement {
     };
   }, []);
 
+  // Listen for batch processing events
+  useEffect(() => {
+    const unsubscribeBatchStart = window.electronAPI.onBatchStart((_info) => {
+      // Batch started, progress already set up
+    });
+
+    const unsubscribeBatchProgress = window.electronAPI.onBatchProgress((progress) => {
+      setProcessingProgress({
+        current: progress.currentVideo,
+        total: progress.totalVideos,
+        step: 'Starting...',
+        videoName: progress.videoName,
+      });
+
+      // Update the specific video status
+      setVideos((prevVideos) =>
+        prevVideos.map((v) =>
+          v.id === progress.videoId ? { ...v, status: 'processing' as const } : v
+        )
+      );
+    });
+
+    const unsubscribeBatchComplete = window.electronAPI.onBatchComplete((result) => {
+      // Show notification
+      setBatchNotification({
+        show: true,
+        success: result.success,
+        successCount: result.successCount,
+        failureCount: result.failureCount,
+        totalVideos: result.totalVideos,
+        cancelled: result.cancelled,
+      });
+
+      // Auto-hide notification after 5 seconds
+      setTimeout(() => {
+        setBatchNotification(null);
+      }, 5000);
+    });
+
+    const unsubscribeBatchCancelled = window.electronAPI.onBatchCancelled((info) => {
+      setBatchNotification({
+        show: true,
+        success: false,
+        successCount: info.successCount,
+        failureCount: info.failureCount,
+        totalVideos: info.totalVideos,
+        cancelled: true,
+      });
+
+      setTimeout(() => {
+        setBatchNotification(null);
+      }, 5000);
+    });
+
+    return () => {
+      unsubscribeBatchStart();
+      unsubscribeBatchProgress();
+      unsubscribeBatchComplete();
+      unsubscribeBatchCancelled();
+    };
+  }, []);
+
   return (
     <div className="app">
       <Toolbar
@@ -258,12 +382,14 @@ function App(): React.ReactElement {
         onSelectFolder={handleSelectFolder}
         onSelectRecentFolder={handleSelectRecentFolder}
         onAnalyzeAll={handleAnalyzeAll}
+        onAnalyzeSelected={handleAnalyzeSelected}
         onCancel={handleCancel}
         onRefresh={handleRefresh}
         isProcessing={isProcessing}
         processingProgress={processingProgress}
         hasUnprocessedVideos={videos.some((v) => v.status === 'none')}
         hasErrors={videos.some((v) => v.status === 'error')}
+        selectedUnprocessedCount={selectedUnprocessedCount}
       />
       <div className="main-content">
         <Sidebar
@@ -297,6 +423,25 @@ function App(): React.ReactElement {
           setIsModelManagerPanelOpen(true);
         }}
       />
+
+      {/* Batch completion notification */}
+      {batchNotification && batchNotification.show && (
+        <div className={`batch-notification ${batchNotification.cancelled ? 'cancelled' : batchNotification.success ? 'success' : 'partial'}`}>
+          <div className="notification-content">
+            <span className="notification-icon">
+              {batchNotification.cancelled ? '⏹' : batchNotification.success ? '✓' : '⚠'}
+            </span>
+            <span className="notification-text">
+              {batchNotification.cancelled
+                ? `Batch cancelled: ${batchNotification.successCount} completed, ${batchNotification.totalVideos - batchNotification.successCount - batchNotification.failureCount} remaining`
+                : batchNotification.success
+                ? `Batch complete: ${batchNotification.successCount} videos processed successfully`
+                : `Batch complete: ${batchNotification.successCount} succeeded, ${batchNotification.failureCount} failed`}
+            </span>
+            <button className="notification-close" onClick={() => setBatchNotification(null)}>×</button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

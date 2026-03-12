@@ -864,6 +864,15 @@ let activeVideoProcessing: {
   videoPath: string;
 } | null = null;
 
+// Active batch processing for tracking progress
+let activeBatchProcessing: {
+  cancelled: boolean;
+  videoPaths: string[];
+  currentIndex: number;
+  successCount: number;
+  failureCount: number;
+} | null = null;
+
 // Processing step types
 type ProcessingStep = 'frame_extraction' | 'audio_extraction' | 'transcription' | 'analysis';
 
@@ -1349,6 +1358,101 @@ async function processVideoFull(
 }
 
 /**
+ * Process multiple videos in batch
+ */
+async function processVideoBatch(
+  videoPaths: string[]
+): Promise<{
+  success: boolean;
+  successCount: number;
+  failureCount: number;
+  results: Array<{ videoPath: string; success: boolean; error?: string }>;
+}> {
+  const mainWindow = getMainWindow();
+  const results: Array<{ videoPath: string; success: boolean; error?: string }> = [];
+
+  // Get current settings
+  const settings = {
+    frameCount: settingsStore.get('frameCount'),
+    analysisMethod: settingsStore.get('analysisMethod'),
+    ollamaModel: settingsStore.get('ollamaModel'),
+    whisperModel: settingsStore.get('whisperModel'),
+    preferBuiltInWhisper: settingsStore.get('preferBuiltInWhisper'),
+  };
+
+  // Set up batch processing state
+  activeBatchProcessing = {
+    cancelled: false,
+    videoPaths,
+    currentIndex: 0,
+    successCount: 0,
+    failureCount: 0,
+  };
+
+  // Send initial batch progress
+  mainWindow?.webContents.send('batch:start', {
+    totalVideos: videoPaths.length,
+  });
+
+  for (let i = 0; i < videoPaths.length; i++) {
+    // Check for cancellation
+    if (activeBatchProcessing?.cancelled) {
+      mainWindow?.webContents.send('batch:cancelled', {
+        processedCount: i,
+        totalVideos: videoPaths.length,
+        successCount: activeBatchProcessing.successCount,
+        failureCount: activeBatchProcessing.failureCount,
+      });
+      break;
+    }
+
+    const videoPath = videoPaths[i];
+    const videoId = generateVideoId(videoPath);
+
+    // Update batch progress
+    activeBatchProcessing.currentIndex = i;
+    mainWindow?.webContents.send('batch:progress', {
+      currentVideo: i + 1,
+      totalVideos: videoPaths.length,
+      videoPath,
+      videoId,
+      videoName: path.basename(videoPath),
+    });
+
+    // Process the video
+    const result = await processVideoFull(videoPath, videoId, settings);
+
+    if (result.success) {
+      activeBatchProcessing.successCount++;
+      results.push({ videoPath, success: true });
+    } else {
+      activeBatchProcessing.failureCount++;
+      results.push({ videoPath, success: false, error: result.error });
+    }
+  }
+
+  // Send batch complete notification
+  const finalResult = {
+    success: activeBatchProcessing?.failureCount === 0,
+    successCount: activeBatchProcessing?.successCount || 0,
+    failureCount: activeBatchProcessing?.failureCount || 0,
+    totalVideos: videoPaths.length,
+    cancelled: activeBatchProcessing?.cancelled || false,
+  };
+
+  mainWindow?.webContents.send('batch:complete', finalResult);
+
+  activeBatchProcessing = null;
+
+  return {
+    success: finalResult.success,
+    successCount: finalResult.successCount,
+    failureCount: finalResult.failureCount,
+    results,
+  };
+}
+
+/**
  * Analyze images with Ollama LLaVA
  * @param imagePaths - Array of paths to image files (frames)
  * @param videoName - Name of the video being analyzed
@@ -1642,13 +1746,16 @@ export function registerIpcHandlers(): void {
   });
 
   // Process batch of videos
-  ipcMain.handle('process-batch', async (_event, _videoIds: number[]) => {
-    // TODO: Implement batch processing
-    return { success: false, error: 'Not implemented' };
+  ipcMain.handle('process-batch', async (_event, videoPaths: string[]) => {
+    return await processVideoBatch(videoPaths);
   });
 
   // Cancel processing
   ipcMain.handle('cancel-processing', async () => {
+    // Cancel any active batch processing
+    if (activeBatchProcessing) {
+      activeBatchProcessing.cancelled = true;
+    }
     // Cancel any active video processing
     if (activeVideoProcessing) {
       activeVideoProcessing.cancelled = true;

@@ -6,10 +6,80 @@
   display: flex;
   flex-direction: column;
   height: 100%;
+  position: relative;
 }
 
 .main-content {
   display: flex;
   flex: 1;
   overflow: hidden;
+}
+
+/* Batch notification toast */
+.batch-notification {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 1000;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.3s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.batch-notification.success {
+  background-color: var(--color-success);
+  color: white;
+}
+
+.batch-notification.partial {
+  background-color: var(--color-warning);
+  color: var(--color-text);
+}
+
+.batch-notification.cancelled {
+  background-color: var(--color-text-secondary);
+  color: white;
+}
+
+.notification-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-sm);
+  padding: var(--spacing-sm) var(--spacing-md);
+}
+
+.notification-icon {
+  font-size: 16px;
+}
+
+.notification-text {
+  font-size: 14px;
+  font-weight: 500;
+}
+
+.notification-close {
+  background: none;
+  border: none;
+  color: inherit;
+  font-size: 18px;
+  cursor: pointer;
+  padding: 0 var(--spacing-xs);
+  opacity: 0.8;
+  line-height: 1;
+}
+
+.notification-close:hover {
+  opacity: 1;
 }

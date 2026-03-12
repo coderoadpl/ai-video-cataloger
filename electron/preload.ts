@@ -284,6 +284,85 @@ const electronAPI = {
     ipcRenderer.on('processing:error', handler);
     return () => ipcRenderer.removeListener('processing:error', handler);
   },
+
+  // Batch processing events
+  onBatchStart: (
+    callback: (info: { totalVideos: number }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      info: { totalVideos: number }
+    ) => callback(info);
+    ipcRenderer.on('batch:start', handler);
+    return () => ipcRenderer.removeListener('batch:start', handler);
+  },
+
+  onBatchProgress: (
+    callback: (progress: {
+      currentVideo: number;
+      totalVideos: number;
+      videoPath: string;
+      videoId: number;
+      videoName: string;
+    }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      progress: {
+        currentVideo: number;
+        totalVideos: number;
+        videoPath: string;
+        videoId: number;
+        videoName: string;
+      }
+    ) => callback(progress);
+    ipcRenderer.on('batch:progress', handler);
+    return () => ipcRenderer.removeListener('batch:progress', handler);
+  },
+
+  onBatchComplete: (
+    callback: (result: {
+      success: boolean;
+      successCount: number;
+      failureCount: number;
+      totalVideos: number;
+      cancelled: boolean;
+    }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      result: {
+        success: boolean;
+        successCount: number;
+        failureCount: number;
+        totalVideos: number;
+        cancelled: boolean;
+      }
+    ) => callback(result);
+    ipcRenderer.on('batch:complete', handler);
+    return () => ipcRenderer.removeListener('batch:complete', handler);
+  },
+
+  onBatchCancelled: (
+    callback: (info: {
+      processedCount: number;
+      totalVideos: number;
+      successCount: number;
+      failureCount: number;
+    }) => void
+  ): (() => void) => {
+    const handler = (
+      _event: IpcRendererEvent,
+      info: {
+        processedCount: number;
+        totalVideos: number;
+        successCount: number;
+        failureCount: number;
+      }
+    ) => callback(info);
+    ipcRenderer.on('batch:cancelled', handler);
+    return () => ipcRenderer.removeListener('batch:cancelled', handler);
+  },
 };
 
 // Expose the API to the renderer process
