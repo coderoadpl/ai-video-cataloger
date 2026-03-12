@@ -858,6 +858,496 @@ let activeOllamaAnalysis: {
   abortController: AbortController | null;
 } | null = null;
 
+// Active video processing for cancellation
+let activeVideoProcessing: {
+  cancelled: boolean;
+  videoPath: string;
+} | null = null;
+
+// Processing step types
+type ProcessingStep = 'frame_extraction' | 'audio_extraction' | 'transcription' | 'analysis';
+
+/**
+ * Extract frames from a video at evenly distributed timestamps
+ */
+async function extractVideoFrames(
+  videoPath: string,
+  frameCount: number,
+  onProgress: (message: string) => void
+): Promise<{ success: boolean; framePaths?: string[]; framesDir?: string; error?: string }> {
+  const videoDir = path.dirname(videoPath);
+  const videoName = path.basename(videoPath, path.extname(videoPath));
+  const framesDir = path.join(videoDir, 'frames', videoName);
+
+  // Create frames directory
+  if (!fs.existsSync(framesDir)) {
+    fs.mkdirSync(framesDir, { recursive: true });
+  }
+
+  // Get video duration
+  const duration = await new Promise<number>((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      const dur = metadata.format.duration;
+      if (dur === undefined) {
+        reject(new Error('Could not determine video duration'));
+        return;
+      }
+      resolve(dur);
+    });
+  });
+
+  // Calculate timestamps for frame extraction (evenly distributed)
+  const timestamps: number[] = [];
+  for (let i = 1; i <= frameCount; i++) {
+    const percentage = i / (frameCount + 1);
+    timestamps.push(duration * percentage);
+  }
+
+  // Extract frames
+  const framePaths: string[] = [];
+  for (let i = 0; i < timestamps.length; i++) {
+    if (activeVideoProcessing?.cancelled) {
+      return { success: false, error: 'Processing cancelled' };
+    }
+
+    const frameNum = String(i + 1).padStart(3, '0');
+    const framePath = path.join(framesDir, `frame-${frameNum}.jpg`);
+
+    onProgress(`Extracting frame ${i + 1}/${frameCount}`);
+
+    await new Promise<void>((resolve, reject) => {
+      ffmpeg(videoPath)
+        .seekInput(timestamps[i])
+        .frames(1)
+        .output(framePath)
+        .on('end', () => resolve())
+        .on('error', (err) => reject(err))
+        .run();
+    });
+
+    framePaths.push(framePath);
+  }
+
+  return { success: true, framePaths, framesDir };
+}
+
+/**
+ * Check if a video has an audio track
+ */
+async function videoHasAudioTrack(videoPath: string): Promise<boolean> {
+  return new Promise((resolve, reject) => {
+    ffmpeg.ffprobe(videoPath, (err, metadata) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      const audioStreams = metadata.streams.filter(
+        (stream) => stream.codec_type === 'audio'
+      );
+      resolve(audioStreams.length > 0);
+    });
+  });
+}
+
+/**
+ * Extract audio from video to WAV file suitable for Whisper
+ */
+async function extractVideoAudio(
+  videoPath: string,
+  onProgress: (message: string) => void
+): Promise<{ success: boolean; hasAudio: boolean; audioPath?: string; error?: string }> {
+  onProgress('Checking audio track');
+
+  const hasAudio = await videoHasAudioTrack(videoPath);
+  if (!hasAudio) {
+    return { success: true, hasAudio: false };
+  }
+
+  onProgress('Extracting audio');
+
+  const videoName = path.basename(videoPath, path.extname(videoPath));
+  const tempDir = path.join(app.getPath('temp'), 'ai-video-cataloger', 'audio');
+  if (!fs.existsSync(tempDir)) {
+    fs.mkdirSync(tempDir, { recursive: true });
+  }
+  const audioPath = path.join(tempDir, `${videoName}.wav`);
+
+  await new Promise<void>((resolve, reject) => {
+    ffmpeg(videoPath)
+      .noVideo()
+      .audioCodec('pcm_s16le')
+      .audioFrequency(16000)
+      .audioChannels(1)
+      .output(audioPath)
+      .on('end', () => resolve())
+      .on('error', (err) => reject(err))
+      .run();
+  });
+
+  return { success: true, hasAudio: true, audioPath };
+}
+
+/**
+ * Analyze video using Claude API via the claude CLI
+ */
+async function analyzeWithClaude(
+  videoPath: string,
+  framePaths: string[],
+  transcript: string | null,
+  onProgress: (message: string) => void
+): Promise<{
+  success: boolean;
+  description?: string;
+  suggestedFilename?: string;
+  fullResponse?: string;
+  error?: string;
+}> {
+  onProgress('Analyzing with Claude API');
+
+  const videoName = path.basename(videoPath);
+  const videoDir = path.dirname(videoPath);
+
+  // Build the prompt
+  let prompt = `You are analyzing a video file named "${videoName}".\n\n`;
+
+  if (transcript) {
+    prompt += `Here is the transcript of the audio:\n---\n${transcript}\n---\n\n`;
+  } else {
+    prompt += `This video has no audio or transcript available.\n\n`;
+  }
+
+  // Include frame images using file:// URLs
+  prompt += `Here are ${framePaths.length} frame(s) extracted from the video:\n`;
+  for (const framePath of framePaths) {
+    prompt += `file://${framePath}\n`;
+  }
+  prompt += `\n`;
+
+  prompt += `Based on the visual content from the frames${transcript ? ' and the audio transcript' : ''}, please provide:
+
+1. A 2-3 sentence description of what this video is about
+2. A suggested filename (3-5 words, kebab-case format like "cat-playing-with-yarn")
+
+Please format your response EXACTLY as follows:
+DESCRIPTION: <your 2-3 sentence description here>
+FILENAME: <your-suggested-filename-in-kebab-case>
+
+Focus on being descriptive and accurate. The filename should capture the essence of the video content.`;
+
+  try {
+    // Call Claude CLI
+    const { execFile } = await import('child_process');
+    const { promisify } = await import('util');
+    const execFileAsync = promisify(execFile);
+
+    const result = await execFileAsync('claude', [
+      '--add-dir', videoDir,
+      '-p', prompt
+    ], { timeout: 120000 }); // 2 minute timeout
+
+    const response = result.stdout;
+
+    // Parse the response
+    const parsed = parseLlavaResponse(response); // Same format as LLaVA
+
+    return {
+      success: true,
+      description: parsed.description,
+      suggestedFilename: parsed.suggestedFilename,
+      fullResponse: response,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      error: `Claude analysis failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
+  }
+}
+
+/**
+ * Save summary file for a processed video
+ */
+function saveSummaryFile(
+  videoPath: string,
+  description: string,
+  suggestedFilename: string,
+  fullResponse: string,
+  analysisMethod: string
+): string {
+  const videoDir = path.dirname(videoPath);
+  const videoName = path.basename(videoPath, path.extname(videoPath));
+  const summariesDir = path.join(videoDir, 'summaries');
+
+  if (!fs.existsSync(summariesDir)) {
+    fs.mkdirSync(summariesDir, { recursive: true });
+  }
+
+  const summaryPath = path.join(summariesDir, `${videoName}.txt`);
+  const summaryContent = `Video: ${path.basename(videoPath)}
+Date Analyzed: ${new Date().toISOString()}
+Analysis Method: ${analysisMethod}
+
+DESCRIPTION:
+${description}
+
+SUGGESTED FILENAME:
+${suggestedFilename}
+
+FULL ANALYSIS:
+${fullResponse}
+`;
+
+  fs.writeFileSync(summaryPath, summaryContent, 'utf-8');
+  return summaryPath;
+}
+
+/**
+ * Clean up temporary audio file
+ */
+function cleanupTempAudio(audioPath: string): void {
+  try {
+    if (fs.existsSync(audioPath)) {
+      fs.unlinkSync(audioPath);
+    }
+  } catch {
+    // Best effort cleanup
+  }
+}
+
+/**
+ * Process a single video through the full pipeline
+ */
+async function processVideoFull(
+  videoPath: string,
+  videoId: number,
+  settings: {
+    frameCount: number;
+    analysisMethod: 'claude' | 'ollama';
+    ollamaModel: string;
+    whisperModel: string;
+    preferBuiltInWhisper: boolean;
+  }
+): Promise<{ success: boolean; error?: string; errorStep?: ProcessingStep }> {
+  const mainWindow = getMainWindow();
+
+  // Set up active processing state for cancellation
+  activeVideoProcessing = { cancelled: false, videoPath };
+
+  const sendProgress = (step: string, percent: number = 0) => {
+    mainWindow?.webContents.send('processing:progress', {
+      videoId,
+      step,
+      percent,
+    });
+  };
+
+  const sendError = (error: string, step: ProcessingStep) => {
+    mainWindow?.webContents.send('processing:error', {
+      videoId,
+      error,
+      step,
+    });
+  };
+
+  const sendComplete = (success: boolean) => {
+    mainWindow?.webContents.send('processing:complete', {
+      videoId,
+      success,
+    });
+  };
+
+  let tempAudioPath: string | null = null;
+
+  try {
+    // Ensure ffmpeg is configured
+    configureFfmpeg();
+
+    // Step 1: Extract frames
+    sendProgress('Extracting frames', 10);
+    const frameResult = await extractVideoFrames(
+      videoPath,
+      settings.frameCount,
+      (msg) => sendProgress(`Frame extraction: ${msg}`, 20)
+    );
+
+    if (!frameResult.success || !frameResult.framePaths) {
+      const error = frameResult.error || 'Failed to extract frames';
+      sendError(error, 'frame_extraction');
+      sendComplete(false);
+      activeVideoProcessing = null;
+      return { success: false, error, errorStep: 'frame_extraction' };
+    }
+
+    if (activeVideoProcessing?.cancelled) {
+      sendComplete(false);
+      activeVideoProcessing = null;
+      return { success: false, error: 'Processing cancelled' };
+    }
+
+    // Step 2: Extract audio
+    sendProgress('Extracting audio', 30);
+    const audioResult = await extractVideoAudio(
+      videoPath,
+      (msg) => sendProgress(`Audio extraction: ${msg}`, 35)
+    );
+
+    if (!audioResult.success) {
+      const error = audioResult.error || 'Failed to extract audio';
+      sendError(error, 'audio_extraction');
+      sendComplete(false);
+      activeVideoProcessing = null;
+      return { success: false, error, errorStep: 'audio_extraction' };
+    }
+
+    tempAudioPath = audioResult.audioPath || null;
+
+    if (activeVideoProcessing?.cancelled) {
+      if (tempAudioPath) cleanupTempAudio(tempAudioPath);
+      sendComplete(false);
+      activeVideoProcessing = null;
+      return { success: false, error: 'Processing cancelled' };
+    }
+
+    // Step 3: Transcribe audio (if audio exists)
+    let transcript: string | null = null;
+    let transcriptPath: string | null = null;
+
+    if (audioResult.hasAudio && tempAudioPath) {
+      sendProgress('Transcribing audio', 40);
+
+      // Create transcripts directory
+      const videoDir = path.dirname(videoPath);
+      const videoName = path.basename(videoPath, path.extname(videoPath));
+      const transcriptsDir = path.join(videoDir, 'transcripts');
+      if (!fs.existsSync(transcriptsDir)) {
+        fs.mkdirSync(transcriptsDir, { recursive: true });
+      }
+
+      // Determine which whisper to use
+      const whisperInfo = await getAvailableWhisperPath(settings.preferBuiltInWhisper);
+
+      if (whisperInfo.type) {
+        if (whisperInfo.type === 'bundled' || whisperInfo.type === 'system-whisper.cpp') {
+          // Use whisper.cpp
+          const modelsPath = getWhisperModelsPath();
+          const modelInfo = WHISPER_MODELS[settings.whisperModel];
+
+          if (modelInfo) {
+            const modelPath = path.join(modelsPath, modelInfo.filename);
+
+            if (fs.existsSync(modelPath)) {
+              const transcriptResult = await transcribeWithWhisperCpp(
+                tempAudioPath,
+                modelPath,
+                transcriptsDir
+              );
+
+              if (transcriptResult.success) {
+                transcript = transcriptResult.transcript;
+                transcriptPath = transcriptResult.outputPath;
+              }
+            }
+          }
+        } else if (whisperInfo.type === 'system-whisper') {
+          // Use system whisper CLI
+          const transcriptResult = await transcribeWithSystemWhisper(
+            tempAudioPath,
+            settings.whisperModel,
+            transcriptsDir
+          );
+
+          if (transcriptResult.success) {
+            transcript = transcriptResult.transcript;
+            transcriptPath = transcriptResult.outputPath;
+          }
+        }
+      }
+
+      // Copy transcript to the correct location if needed
+      if (transcript && !transcriptPath) {
+        transcriptPath = path.join(transcriptsDir, `${videoName}.txt`);
+        fs.writeFileSync(transcriptPath, transcript, 'utf-8');
+      }
+    }
+
+    if (activeVideoProcessing?.cancelled) {
+      if (tempAudioPath) cleanupTempAudio(tempAudioPath);
+      sendComplete(false);
+      activeVideoProcessing = null;
+      return { success: false, error: 'Processing cancelled' };
+    }
+
+    // Step 4: Analyze video
+    sendProgress('Analyzing video', 60);
+
+    let analysisResult: {
+      success: boolean;
+      description?: string;
+      suggestedFilename?: string;
+      fullResponse?: string;
+      error?: string;
+    };
+
+    const videoName = path.basename(videoPath, path.extname(videoPath));
+
+    if (settings.analysisMethod === 'ollama') {
+      analysisResult = await analyzeWithOllama(
+        frameResult.framePaths,
+        videoName,
+        transcript,
+        settings.ollamaModel
+      );
+    } else {
+      // Use Claude API via CLI
+      analysisResult = await analyzeWithClaude(
+        videoPath,
+        frameResult.framePaths,
+        transcript,
+        (msg) => sendProgress(`Analysis: ${msg}`, 70)
+      );
+    }
+
+    if (!analysisResult.success || !analysisResult.description) {
+      const error = analysisResult.error || 'Failed to analyze video';
+      sendError(error, 'analysis');
+      sendComplete(false);
+      if (tempAudioPath) cleanupTempAudio(tempAudioPath);
+      activeVideoProcessing = null;
+      return { success: false, error, errorStep: 'analysis' };
+    }
+
+    // Step 5: Save summary file
+    sendProgress('Saving results', 90);
+    saveSummaryFile(
+      videoPath,
+      analysisResult.description,
+      analysisResult.suggestedFilename || 'video-content',
+      analysisResult.fullResponse || analysisResult.description,
+      settings.analysisMethod
+    );
+
+    // Clean up temp audio
+    if (tempAudioPath) cleanupTempAudio(tempAudioPath);
+
+    sendProgress('Complete', 100);
+    sendComplete(true);
+    activeVideoProcessing = null;
+
+    return { success: true };
+  } catch (err) {
+    const error = err instanceof Error ? err.message : String(err);
+    sendError(error, 'frame_extraction'); // Default to first step
+    sendComplete(false);
+    if (tempAudioPath) cleanupTempAudio(tempAudioPath);
+    activeVideoProcessing = null;
+    return { success: false, error };
+  }
+}
+
 /**
  * Analyze images with Ollama LLaVA
  * @param imagePaths - Array of paths to image files (frames)
@@ -1135,10 +1625,20 @@ export function registerIpcHandlers(): void {
   });
 
   // Process single video
-  ipcMain.handle('process-video', async (_event, _videoId: number) => {
-    // TODO: Implement full processing pipeline
-    // extractFrames -> extractAudio -> transcribeAudio -> analyzeVideo -> renameVideo
-    return { success: false, error: 'Not implemented' };
+  ipcMain.handle('process-video', async (_event, videoPath: string) => {
+    // Get current settings
+    const settings = {
+      frameCount: settingsStore.get('frameCount'),
+      analysisMethod: settingsStore.get('analysisMethod'),
+      ollamaModel: settingsStore.get('ollamaModel'),
+      whisperModel: settingsStore.get('whisperModel'),
+      preferBuiltInWhisper: settingsStore.get('preferBuiltInWhisper'),
+    };
+
+    // Generate video ID from path (same as scanFolderForVideos)
+    const videoId = generateVideoId(videoPath);
+
+    return await processVideoFull(videoPath, videoId, settings);
   });
 
   // Process batch of videos
@@ -1149,7 +1649,17 @@ export function registerIpcHandlers(): void {
 
   // Cancel processing
   ipcMain.handle('cancel-processing', async () => {
-    // TODO: Implement cancellation
+    // Cancel any active video processing
+    if (activeVideoProcessing) {
+      activeVideoProcessing.cancelled = true;
+    }
+    // Cancel any active transcription
+    if (activeTranscription?.process) {
+      activeTranscription.process.kill('SIGTERM');
+      activeTranscription = null;
+    }
+    // Cancel any active Ollama analysis
+    cancelOllamaAnalysis();
     return { success: true };
   });
 

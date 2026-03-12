@@ -105,18 +105,49 @@ function App(): React.ReactElement {
 
   // Handle analyze single video
   const handleAnalyze = useCallback(async (videoId: number) => {
+    // Find the video by ID to get its path
+    const video = videos.find((v) => v.id === videoId);
+    if (!video) {
+      console.error('Video not found:', videoId);
+      return;
+    }
+
     setIsProcessing(true);
     setProcessingProgress({ current: 0, total: 1, step: 'Starting...' });
 
-    const result = await window.electronAPI.processVideo(videoId);
+    // Update the video status to processing immediately
+    setVideos((prevVideos) =>
+      prevVideos.map((v) => (v.id === videoId ? { ...v, status: 'processing' as const } : v))
+    );
+
+    const result = await window.electronAPI.processVideo(video.path);
 
     setIsProcessing(false);
     setProcessingProgress(null);
 
     if (!result.success) {
       console.error('Processing failed:', result.error);
+      // Update video to error state
+      setVideos((prevVideos) =>
+        prevVideos.map((v) =>
+          v.id === videoId
+            ? {
+                ...v,
+                status: 'error' as const,
+                errorMessage: result.error,
+                errorStep: result.errorStep as VideoFile['errorStep'],
+              }
+            : v
+        )
+      );
+    } else {
+      // Rescan the folder to get updated video data
+      if (currentFolder) {
+        const scannedVideos = await window.electronAPI.scanFolder(currentFolder);
+        setVideos(scannedVideos as VideoFile[]);
+      }
     }
-  }, []);
+  }, [videos, currentFolder]);
 
   // Handle analyze all unprocessed videos
   const handleAnalyzeAll = useCallback(async () => {
@@ -130,8 +161,8 @@ function App(): React.ReactElement {
       step: 'Starting...',
     });
 
-    const videoIds = unprocessedVideos.map((v) => v.id);
-    await window.electronAPI.processBatch(videoIds);
+    const videoPaths = unprocessedVideos.map((v) => v.path);
+    await window.electronAPI.processBatch(videoPaths);
 
     setIsProcessing(false);
     setProcessingProgress(null);
@@ -245,6 +276,7 @@ function App(): React.ReactElement {
           video={selectedVideo}
           onAnalyze={handleAnalyze}
           isProcessing={isProcessing}
+          processingStep={processingProgress?.step}
         />
       </div>
 

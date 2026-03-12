@@ -283,3 +283,9 @@
     transform: rotate(360deg);
   }
 }
+
+.processing-step {
+  color: var(--color-text-secondary);
+  font-size: 14px;
+  text-align: center;
+}

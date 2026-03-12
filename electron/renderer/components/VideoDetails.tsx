@@ -9,6 +9,7 @@ interface VideoDetailsProps {
   video: VideoFile | null;
   onAnalyze: (videoId: number) => void;
   isProcessing: boolean;
+  processingStep?: string | null;
 }
 
 function formatFileSize(bytes: number): string {
@@ -36,7 +37,7 @@ function formatDate(date?: Date): string {
   });
 }
 
-function VideoDetails({ video, onAnalyze, isProcessing }: VideoDetailsProps): React.ReactElement {
+function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoDetailsProps): React.ReactElement {
   // Empty state - no video selected
   if (!video) {
     return (
@@ -289,9 +290,24 @@ function VideoDetails({ video, onAnalyze, isProcessing }: VideoDetailsProps): Re
         </div>
 
         <div className="video-details-content">
+          <div className="info-section">
+            <div className="info-row">
+              <span className="info-label">Path:</span>
+              <span className="info-value">{video.path}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Size:</span>
+              <span className="info-value">{formatFileSize(video.size)}</span>
+            </div>
+            <div className="info-row">
+              <span className="info-label">Duration:</span>
+              <span className="info-value">{formatDuration(video.duration)}</span>
+            </div>
+          </div>
+
           <div className="processing-indicator">
             <div className="spinner" />
-            <p>Analyzing video...</p>
+            <p className="processing-step">{processingStep || 'Starting analysis...'}</p>
           </div>
         </div>
       </div>

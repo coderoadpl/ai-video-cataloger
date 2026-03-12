@@ -16,10 +16,10 @@ const electronAPI = {
 
   // Video operations
   getVideoDetails: (videoId: number): Promise<unknown> => ipcRenderer.invoke('get-video-details', videoId),
-  processVideo: (videoId: number): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('process-video', videoId),
-  processBatch: (videoIds: number[]): Promise<{ success: boolean; error?: string }> =>
-    ipcRenderer.invoke('process-batch', videoIds),
+  processVideo: (videoPath: string): Promise<{ success: boolean; error?: string; errorStep?: string }> =>
+    ipcRenderer.invoke('process-video', videoPath),
+  processBatch: (videoPaths: string[]): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('process-batch', videoPaths),
   cancelProcessing: (): Promise<{ success: boolean }> => ipcRenderer.invoke('cancel-processing'),
 
   // Settings
