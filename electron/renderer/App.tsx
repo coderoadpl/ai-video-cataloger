@@ -234,7 +234,14 @@ function App(): React.ReactElement {
     await window.electronAPI.cancelProcessing();
     setIsProcessing(false);
     setProcessingProgress(null);
-  }, []);
+
+    // Rescan folder to update video statuses based on actual state
+    // Videos with partial results will show as 'none' or 'completed' based on what was saved
+    if (currentFolder) {
+      const scannedVideos = await window.electronAPI.scanFolder(currentFolder);
+      setVideos(scannedVideos as VideoFile[]);
+    }
+  }, [currentFolder]);
 
   // Handle refresh
   const handleRefresh = useCallback(async () => {
