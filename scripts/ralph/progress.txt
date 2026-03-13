@@ -410,3 +410,31 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Audio extraction: use -audioCodec pcm_s16le -audioFrequency 16000 -audioChannels 1 for whisper compatibility
   - Frame extraction: timestamps at evenly distributed points (i / (count + 1)) for better coverage
 ---
+
+## 2026-01-24 - US-043
+- What was implemented:
+  - Batch video processing with processVideoBatch() function in ipc-handlers.ts
+  - "Analyze Selected" button appears when multiple unprocessed videos are selected
+  - "Analyze All" button processes all unprocessed videos in the current folder
+  - Progress indicator shows "Processing X of Y videos" with current video name
+  - Batch processing events: batch:start, batch:progress, batch:complete, batch:cancelled
+  - Batch completion notification toast showing success/failure counts
+  - Status badges update in real-time as each video completes or fails
+  - Processing continues even if individual videos fail (error resilience)
+  - activeBatchProcessing module-level state for tracking batch progress and cancellation
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added processVideoBatch, activeBatchProcessing, batch events)
+  - Modified: electron/preload.ts (added batch event listeners)
+  - Modified: electron/renderer/App.tsx (added handleAnalyzeSelected, batch event handlers, notification UI)
+  - Modified: electron/renderer/components/Toolbar.tsx (added Analyze Selected button, updated progress display)
+  - Modified: electron/renderer/styles/Toolbar.css (enhanced progress indicator styles)
+  - Modified: electron/renderer/styles/App.css (added batch notification toast styles)
+
+- **Learnings for future iterations:**
+  - Use separate batch event channels (batch:start, batch:progress, batch:complete) rather than reusing single-video events
+  - Track batch state with module-level object containing: cancelled, videoPaths, currentIndex, successCount, failureCount
+  - Batch processing should be sequential to avoid resource contention (LLM/GPU)
+  - Toast notifications work well for batch completion summaries - use 5s auto-dismiss
+  - selectedUnprocessedCount computed from videos.filter() for conditional button display
+---
