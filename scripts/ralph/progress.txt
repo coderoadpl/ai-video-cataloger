@@ -438,3 +438,21 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Toast notifications work well for batch completion summaries - use 5s auto-dismiss
   - selectedUnprocessedCount computed from videos.filter() for conditional button display
 ---
+
+## 2026-01-24 - US-044
+- What was implemented:
+  - Updated handleCancel callback in App.tsx to rescan folder after cancellation
+  - Video statuses now properly update based on actual file state after cancel
+  - Partial results (frames, transcripts) preserved on disk and visible on rescan
+  - Cancel button already existed in Toolbar (from US-043)
+  - Cancellation logic already existed in ipc-handlers.ts (from US-043)
+
+- Files changed:
+  - Modified: electron/renderer/App.tsx (enhanced handleCancel to rescan folder)
+
+- **Learnings for future iterations:**
+  - Cancellation infrastructure was already in place from batch processing implementation
+  - The key missing piece was rescanning the folder after cancellation to update UI state
+  - Video status is determined by presence of frames directory - rescanning picks up partial results
+  - Use dependency arrays correctly in useCallback - handleCancel now depends on currentFolder
+---
