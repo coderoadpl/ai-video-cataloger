@@ -456,3 +456,26 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Video status is determined by presence of frames directory - rescanning picks up partial results
   - Use dependency arrays correctly in useCallback - handleCancel now depends on currentFolder
 ---
+
+## 2026-01-24 - US-045
+- What was implemented:
+  - Added onRetryFailed prop to Toolbar component and connected Retry Failed button
+  - Implemented handleRetryFailed callback in App.tsx to retry all videos with error status
+  - Added checkExistingArtifacts() function in ipc-handlers.ts for smart retry logic
+  - Updated processVideoFull() to check for existing artifacts before each step:
+    - Skips frame extraction if frames already exist (with enough frames)
+    - Skips audio extraction and transcription if transcript already exists
+  - Individual retry uses same smart logic via onAnalyze callback in VideoDetails
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added checkExistingArtifacts, updated processVideoFull for smart retry)
+  - Modified: electron/renderer/App.tsx (added handleRetryFailed callback, passed to Toolbar)
+  - Modified: electron/renderer/components/Toolbar.tsx (added onRetryFailed prop, connected button handler)
+
+- **Learnings for future iterations:**
+  - Smart retry pattern: check for existing artifacts at the start of processing pipeline
+  - Existing frames are checked by verifying frames directory and counting .jpg files
+  - Existing transcript is checked by verifying transcript file exists and has content
+  - When retrying, clear errorMessage and errorStep from video state to show clean processing state
+  - The same processVideoFull function handles both initial processing and retry - no need for separate logic
+---
