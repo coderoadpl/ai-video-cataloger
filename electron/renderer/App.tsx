@@ -243,6 +243,38 @@ function App(): React.ReactElement {
     }
   }, [currentFolder]);
 
+  // Handle retry all failed videos
+  const handleRetryFailed = useCallback(async () => {
+    const failedVideos = videos.filter((v) => v.status === 'error');
+    if (failedVideos.length === 0) return;
+
+    setIsProcessing(true);
+    setProcessingProgress({
+      current: 0,
+      total: failedVideos.length,
+      step: 'Starting retry...',
+    });
+
+    // Mark failed videos as processing
+    const videoPaths = failedVideos.map((v) => v.path);
+    setVideos((prevVideos) =>
+      prevVideos.map((v) =>
+        videoPaths.includes(v.path) ? { ...v, status: 'processing' as const, errorMessage: undefined, errorStep: undefined } : v
+      )
+    );
+
+    await window.electronAPI.processBatch(videoPaths);
+
+    // Processing complete - rescan folder to get updated data
+    if (currentFolder) {
+      const scannedVideos = await window.electronAPI.scanFolder(currentFolder);
+      setVideos(scannedVideos as VideoFile[]);
+    }
+
+    setIsProcessing(false);
+    setProcessingProgress(null);
+  }, [videos, currentFolder]);
+
   // Handle refresh
   const handleRefresh = useCallback(async () => {
     if (currentFolder) {
@@ -390,6 +422,7 @@ function App(): React.ReactElement {
         onSelectRecentFolder={handleSelectRecentFolder}
         onAnalyzeAll={handleAnalyzeAll}
         onAnalyzeSelected={handleAnalyzeSelected}
+        onRetryFailed={handleRetryFailed}
         onCancel={handleCancel}
         onRefresh={handleRefresh}
         isProcessing={isProcessing}

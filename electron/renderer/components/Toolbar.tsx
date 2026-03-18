@@ -10,6 +10,7 @@ interface ToolbarProps {
   onSelectRecentFolder: (folderPath: string) => void;
   onAnalyzeAll: () => void;
   onAnalyzeSelected: () => void;
+  onRetryFailed: () => void;
   onCancel: () => void;
   onRefresh: () => void;
   isProcessing: boolean;
@@ -30,6 +31,7 @@ function Toolbar({
   onSelectRecentFolder,
   onAnalyzeAll,
   onAnalyzeSelected,
+  onRetryFailed,
   onCancel,
   onRefresh,
   isProcessing,
@@ -158,7 +160,7 @@ function Toolbar({
               </button>
             )}
             {hasErrors && (
-              <button className="toolbar-button warning" onClick={() => {/* TODO: Retry failed */}}>
+              <button className="toolbar-button warning" onClick={onRetryFailed}>
                 Retry Failed
               </button>
             )}

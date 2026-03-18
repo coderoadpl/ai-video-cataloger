@@ -1128,7 +1128,67 @@ function cleanupTempAudio(audioPath: string): void {
 }
 
 /**
+ * Check for existing artifacts from a previous processing attempt
+ * Used for smart retry to skip already-completed steps
+ */
+function checkExistingArtifacts(videoPath: string): {
+  hasFrames: boolean;
+  framePaths: string[];
+  framesDir: string | null;
+  hasTranscript: boolean;
+  transcript: string | null;
+  transcriptPath: string | null;
+} {
+  const videoDir = path.dirname(videoPath);
+  const videoName = path.basename(videoPath, path.extname(videoPath));
+
+  const result = {
+    hasFrames: false,
+    framePaths: [] as string[],
+    framesDir: null as string | null,
+    hasTranscript: false,
+    transcript: null as string | null,
+    transcriptPath: null as string | null,
+  };
+
+  // Check for existing frames
+  const framesDir = path.join(videoDir, 'frames', videoName);
+  if (fs.existsSync(framesDir)) {
+    try {
+      const frameFiles = fs.readdirSync(framesDir)
+        .filter(f => f.endsWith('.jpg'))
+        .sort();
+      if (frameFiles.length > 0) {
+        result.hasFrames = true;
+        result.framePaths = frameFiles.map(f => path.join(framesDir, f));
+        result.framesDir = framesDir;
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  // Check for existing transcript
+  const transcriptPath = path.join(videoDir, 'transcripts', `${videoName}.txt`);
+  if (fs.existsSync(transcriptPath)) {
+    try {
+      const transcript = fs.readFileSync(transcriptPath, 'utf-8').trim();
+      if (transcript) {
+        result.hasTranscript = true;
+        result.transcript = transcript;
+        result.transcriptPath = transcriptPath;
+      }
+    } catch {
+      // Ignore errors
+    }
+  }
+
+  return result;
+}
+
+/**
  * Process a single video through the full pipeline
+ * Supports smart retry by checking for existing artifacts
  */
 async function processVideoFull(
   videoPath: string,
@@ -1175,111 +1235,129 @@ async function processVideoFull(
     // Ensure ffmpeg is configured
     configureFfmpeg();
 
-    // Step 1: Extract frames
-    sendProgress('Extracting frames', 10);
-    const frameResult = await extractVideoFrames(
-      videoPath,
-      settings.frameCount,
-      (msg) => sendProgress(`Frame extraction: ${msg}`, 20)
-    );
+    // Check for existing artifacts (smart retry)
+    const existingArtifacts = checkExistingArtifacts(videoPath);
 
-    if (!frameResult.success || !frameResult.framePaths) {
-      const error = frameResult.error || 'Failed to extract frames';
-      sendError(error, 'frame_extraction');
-      sendComplete(false);
-      activeVideoProcessing = null;
-      return { success: false, error, errorStep: 'frame_extraction' };
-    }
+    // Step 1: Extract frames (skip if already exists)
+    let framePaths: string[];
 
-    if (activeVideoProcessing?.cancelled) {
-      sendComplete(false);
-      activeVideoProcessing = null;
-      return { success: false, error: 'Processing cancelled' };
-    }
+    if (existingArtifacts.hasFrames && existingArtifacts.framePaths.length >= settings.frameCount) {
+      // Use existing frames
+      sendProgress('Using existing frames', 20);
+      framePaths = existingArtifacts.framePaths.slice(0, settings.frameCount);
+    } else {
+      // Extract new frames
+      sendProgress('Extracting frames', 10);
+      const frameResult = await extractVideoFrames(
+        videoPath,
+        settings.frameCount,
+        (msg) => sendProgress(`Frame extraction: ${msg}`, 20)
+      );
 
-    // Step 2: Extract audio
-    sendProgress('Extracting audio', 30);
-    const audioResult = await extractVideoAudio(
-      videoPath,
-      (msg) => sendProgress(`Audio extraction: ${msg}`, 35)
-    );
-
-    if (!audioResult.success) {
-      const error = audioResult.error || 'Failed to extract audio';
-      sendError(error, 'audio_extraction');
-      sendComplete(false);
-      activeVideoProcessing = null;
-      return { success: false, error, errorStep: 'audio_extraction' };
-    }
-
-    tempAudioPath = audioResult.audioPath || null;
-
-    if (activeVideoProcessing?.cancelled) {
-      if (tempAudioPath) cleanupTempAudio(tempAudioPath);
-      sendComplete(false);
-      activeVideoProcessing = null;
-      return { success: false, error: 'Processing cancelled' };
-    }
-
-    // Step 3: Transcribe audio (if audio exists)
-    let transcript: string | null = null;
-    let transcriptPath: string | null = null;
-
-    if (audioResult.hasAudio && tempAudioPath) {
-      sendProgress('Transcribing audio', 40);
-
-      // Create transcripts directory
-      const videoDir = path.dirname(videoPath);
-      const videoName = path.basename(videoPath, path.extname(videoPath));
-      const transcriptsDir = path.join(videoDir, 'transcripts');
-      if (!fs.existsSync(transcriptsDir)) {
-        fs.mkdirSync(transcriptsDir, { recursive: true });
+      if (!frameResult.success || !frameResult.framePaths) {
+        const error = frameResult.error || 'Failed to extract frames';
+        sendError(error, 'frame_extraction');
+        sendComplete(false);
+        activeVideoProcessing = null;
+        return { success: false, error, errorStep: 'frame_extraction' };
       }
 
-      // Determine which whisper to use
-      const whisperInfo = await getAvailableWhisperPath(settings.preferBuiltInWhisper);
+      framePaths = frameResult.framePaths;
+    }
 
-      if (whisperInfo.type) {
-        if (whisperInfo.type === 'bundled' || whisperInfo.type === 'system-whisper.cpp') {
-          // Use whisper.cpp
-          const modelsPath = getWhisperModelsPath();
-          const modelInfo = WHISPER_MODELS[settings.whisperModel];
+    if (activeVideoProcessing?.cancelled) {
+      sendComplete(false);
+      activeVideoProcessing = null;
+      return { success: false, error: 'Processing cancelled' };
+    }
 
-          if (modelInfo) {
-            const modelPath = path.join(modelsPath, modelInfo.filename);
+    // Step 2 & 3: Extract audio and transcribe (skip if transcript exists)
+    let transcript: string | null = null;
 
-            if (fs.existsSync(modelPath)) {
-              const transcriptResult = await transcribeWithWhisperCpp(
-                tempAudioPath,
-                modelPath,
-                transcriptsDir
-              );
+    if (existingArtifacts.hasTranscript && existingArtifacts.transcript) {
+      // Use existing transcript
+      sendProgress('Using existing transcript', 40);
+      transcript = existingArtifacts.transcript;
+    } else {
+      // Extract audio
+      sendProgress('Extracting audio', 30);
+      const audioResult = await extractVideoAudio(
+        videoPath,
+        (msg) => sendProgress(`Audio extraction: ${msg}`, 35)
+      );
 
-              if (transcriptResult.success) {
-                transcript = transcriptResult.transcript;
-                transcriptPath = transcriptResult.outputPath;
+      if (!audioResult.success) {
+        const error = audioResult.error || 'Failed to extract audio';
+        sendError(error, 'audio_extraction');
+        sendComplete(false);
+        activeVideoProcessing = null;
+        return { success: false, error, errorStep: 'audio_extraction' };
+      }
+
+      tempAudioPath = audioResult.audioPath || null;
+
+      if (activeVideoProcessing?.cancelled) {
+        if (tempAudioPath) cleanupTempAudio(tempAudioPath);
+        sendComplete(false);
+        activeVideoProcessing = null;
+        return { success: false, error: 'Processing cancelled' };
+      }
+
+      // Transcribe audio (if audio exists)
+      if (audioResult.hasAudio && tempAudioPath) {
+        sendProgress('Transcribing audio', 40);
+
+        // Create transcripts directory
+        const videoDir = path.dirname(videoPath);
+        const videoName = path.basename(videoPath, path.extname(videoPath));
+        const transcriptsDir = path.join(videoDir, 'transcripts');
+        if (!fs.existsSync(transcriptsDir)) {
+          fs.mkdirSync(transcriptsDir, { recursive: true });
+        }
+
+        // Determine which whisper to use
+        const whisperInfo = await getAvailableWhisperPath(settings.preferBuiltInWhisper);
+
+        if (whisperInfo.type) {
+          if (whisperInfo.type === 'bundled' || whisperInfo.type === 'system-whisper.cpp') {
+            // Use whisper.cpp
+            const modelsPath = getWhisperModelsPath();
+            const modelInfo = WHISPER_MODELS[settings.whisperModel];
+
+            if (modelInfo) {
+              const modelPath = path.join(modelsPath, modelInfo.filename);
+
+              if (fs.existsSync(modelPath)) {
+                const transcriptResult = await transcribeWithWhisperCpp(
+                  tempAudioPath,
+                  modelPath,
+                  transcriptsDir
+                );
+
+                if (transcriptResult.success) {
+                  transcript = transcriptResult.transcript;
+                }
               }
             }
-          }
-        } else if (whisperInfo.type === 'system-whisper') {
-          // Use system whisper CLI
-          const transcriptResult = await transcribeWithSystemWhisper(
-            tempAudioPath,
-            settings.whisperModel,
-            transcriptsDir
-          );
+          } else if (whisperInfo.type === 'system-whisper') {
+            // Use system whisper CLI
+            const transcriptResult = await transcribeWithSystemWhisper(
+              tempAudioPath,
+              settings.whisperModel,
+              transcriptsDir
+            );
 
-          if (transcriptResult.success) {
-            transcript = transcriptResult.transcript;
-            transcriptPath = transcriptResult.outputPath;
+            if (transcriptResult.success) {
+              transcript = transcriptResult.transcript;
+            }
           }
         }
-      }
 
-      // Copy transcript to the correct location if needed
-      if (transcript && !transcriptPath) {
-        transcriptPath = path.join(transcriptsDir, `${videoName}.txt`);
-        fs.writeFileSync(transcriptPath, transcript, 'utf-8');
+        // Save transcript to file if we got one
+        if (transcript) {
+          const transcriptFilePath = path.join(transcriptsDir, `${videoName}.txt`);
+          fs.writeFileSync(transcriptFilePath, transcript, 'utf-8');
+        }
       }
     }
 
@@ -1305,7 +1383,7 @@ async function processVideoFull(
 
     if (settings.analysisMethod === 'ollama') {
       analysisResult = await analyzeWithOllama(
-        frameResult.framePaths,
+        framePaths,
         videoName,
         transcript,
         settings.ollamaModel
@@ -1314,7 +1392,7 @@ async function processVideoFull(
       // Use Claude API via CLI
       analysisResult = await analyzeWithClaude(
         videoPath,
-        frameResult.framePaths,
+        framePaths,
         transcript,
         (msg) => sendProgress(`Analysis: ${msg}`, 70)
       );
