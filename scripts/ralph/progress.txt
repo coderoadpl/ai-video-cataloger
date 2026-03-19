@@ -479,3 +479,29 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - When retrying, clear errorMessage and errorStep from video state to show clean processing state
   - The same processVideoFull function handles both initial processing and retry - no need for separate logic
 ---
+
+## 2026-01-24 - US-046
+- What was implemented:
+  - Created FramePreviewModal component with full-screen modal overlay
+  - Click on frame thumbnail opens modal with larger image
+  - Navigation buttons (‹ ›) to move between frames
+  - Keyboard navigation: ArrowLeft/ArrowRight for navigation, Escape to close
+  - Click outside modal (on overlay) closes the modal
+  - Frame number indicator showing "Frame X of Y"
+  - Bottom thumbnail strip for quick navigation to any frame
+  - Active thumbnail highlighted with border and box-shadow
+  - Modal state managed with useState in VideoDetails component
+  - Modal integrated into both completed and error states (where frames exist)
+
+- Files changed:
+  - Created: electron/renderer/components/FramePreviewModal.tsx
+  - Created: electron/renderer/styles/FramePreviewModal.css
+  - Modified: electron/renderer/components/VideoDetails.tsx (added modal state, click handlers, FramePreviewModal integration)
+
+- **Learnings for future iterations:**
+  - Modal components should be rendered inside the parent that manages their state for simpler prop passing
+  - useCallback is important for keyboard event handlers to avoid stale closures
+  - Modal z-index should be higher than other modals (1100 vs 1000) to layer properly
+  - Thumbnail navigation strip provides better UX than just arrow navigation for multi-frame content
+  - Use `file://` protocol prefix for local file paths in img src attributes
+---
