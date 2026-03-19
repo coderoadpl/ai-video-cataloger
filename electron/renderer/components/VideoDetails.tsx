@@ -1,8 +1,9 @@
 /**
  * Video Details Panel Component
  */
-import React from 'react';
+import React, { useState } from 'react';
 import type { VideoFile } from '../App.js';
+import FramePreviewModal from './FramePreviewModal.js';
 import '../styles/VideoDetails.css';
 
 interface VideoDetailsProps {
@@ -38,6 +39,16 @@ function formatDate(date?: Date): string {
 }
 
 function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoDetailsProps): React.ReactElement {
+  const [framePreviewIndex, setFramePreviewIndex] = useState<number | null>(null);
+
+  const handleFrameClick = (index: number) => {
+    setFramePreviewIndex(index);
+  };
+
+  const closeFramePreview = () => {
+    setFramePreviewIndex(null);
+  };
+
   // Empty state - no video selected
   if (!video) {
     return (
@@ -121,7 +132,12 @@ function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoD
               </div>
               <div className="frames-grid">
                 {video.frames.map((frame, index) => (
-                  <img key={index} src={`file://${frame}`} alt={`Frame ${index + 1}`} />
+                  <img
+                    key={index}
+                    src={`file://${frame}`}
+                    alt={`Frame ${index + 1}`}
+                    onClick={() => handleFrameClick(index)}
+                  />
                 ))}
               </div>
             </div>
@@ -161,6 +177,16 @@ function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoD
             </button>
           </div>
         </div>
+
+        {/* Frame Preview Modal for error state */}
+        {framePreviewIndex !== null && video.frames && (
+          <FramePreviewModal
+            frames={video.frames}
+            currentIndex={framePreviewIndex}
+            onClose={closeFramePreview}
+            onNavigate={setFramePreviewIndex}
+          />
+        )}
       </div>
     );
   }
@@ -235,7 +261,7 @@ function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoD
                     key={index}
                     src={`file://${frame}`}
                     alt={`Frame ${index + 1}`}
-                    onClick={() => {/* TODO: Open frame modal */}}
+                    onClick={() => handleFrameClick(index)}
                   />
                 ))}
               </div>
@@ -276,6 +302,16 @@ function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoD
             </button>
           </div>
         </div>
+
+        {/* Frame Preview Modal for completed state */}
+        {framePreviewIndex !== null && video.frames && (
+          <FramePreviewModal
+            frames={video.frames}
+            currentIndex={framePreviewIndex}
+            onClose={closeFramePreview}
+            onNavigate={setFramePreviewIndex}
+          />
+        )}
       </div>
     );
   }
