@@ -505,3 +505,29 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Thumbnail navigation strip provides better UX than just arrow navigation for multi-frame content
   - Use `file://` protocol prefix for local file paths in img src attributes
 ---
+
+## 2026-01-24 - US-047
+- What was implemented:
+  - Verified all native macOS integration features are already in place
+  - menu.ts contains full macOS menu structure with:
+    - App menu: About, Settings (Cmd+,), Services, Hide/Show, Quit (Cmd+Q)
+    - File menu: Open Folder (Cmd+O)
+    - Edit menu: Undo, Redo, Cut, Copy, Paste, Delete, Select All
+    - View menu: Refresh (Cmd+R), DevTools, Zoom controls
+    - Window menu: Minimize, Zoom, standard macOS window management
+    - Help menu: Prerequisites, Model Manager, Run Setup Wizard, Learn More
+  - preload.ts exposes all menu event listeners (onMenuOpenFolder, onMenuRefresh, etc.)
+  - App.tsx has handlers wired up for all menu events
+  - electron-builder.config.js configured with icon.icns path for dock icon
+
+- Files changed:
+  - Modified: scripts/ralph/prd.json (marked US-047 as passes: true)
+  - No code changes needed - all acceptance criteria were already satisfied
+
+- **Learnings for future iterations:**
+  - Many features get implemented as foundation work in early stories (e.g., menu was part of US-028)
+  - Always verify what's already done before implementing - prevents duplicate work
+  - macOS menu uses Electron built-in roles for standard items (quit, hide, cut, copy, paste)
+  - Custom menu items use click handlers that send IPC events to renderer
+  - Icon display in dock requires icon.icns file but configuration works even without it (uses Electron default)
+---
