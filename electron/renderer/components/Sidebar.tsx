@@ -83,6 +83,17 @@ function Sidebar({
     return sorted;
   }, [videos, sortField, sortOrder]);
 
+  // Calculate video stats
+  const videoStats = useMemo(() => {
+    const completed = videos.filter(v => v.status === 'completed').length;
+    const pending = videos.filter(v => v.status === 'none').length;
+    const errors = videos.filter(v => v.status === 'error').length;
+    const processing = videos.filter(v => v.status === 'processing').length;
+    const allProcessed = pending === 0 && processing === 0 && videos.length > 0;
+
+    return { completed, pending, errors, processing, allProcessed };
+  }, [videos]);
+
   const handleSortChange = (field: SortField) => {
     if (field === sortField) {
       // Toggle order if same field
@@ -151,6 +162,15 @@ function Sidebar({
           Status {sortField === 'status' && (sortOrder === 'asc' ? '↑' : '↓')}
         </button>
       </div>
+      {videoStats.allProcessed && (
+        <div className="all-processed-summary">
+          <span className="summary-icon">✓</span>
+          <span className="summary-text">
+            All {videoStats.completed} video{videoStats.completed !== 1 ? 's' : ''} processed
+            {videoStats.errors > 0 && ` (${videoStats.errors} with errors)`}
+          </span>
+        </div>
+      )}
       <div className="video-list">
         {sortedVideos.map((video) => (
           <div

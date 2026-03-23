@@ -556,3 +556,23 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Overall progress formula accounts for completed videos + partial progress of current video
   - Use different colors for different progress bars to differentiate them visually
 ---
+
+## 2026-01-24 - US-049
+- What was implemented:
+  - Verified existing empty states: no folder, no videos, no video selected (already implemented)
+  - Added "All videos processed" summary banner to Sidebar when all videos are done
+  - Summary shows count of completed videos and any errors
+  - Added videoStats computed value using useMemo for status counts
+  - Green background banner with checkmark icon for visual distinction
+
+- Files changed:
+  - Modified: electron/renderer/components/Sidebar.tsx (added videoStats memo, added all-processed-summary UI)
+  - Modified: electron/renderer/styles/Sidebar.css (added all-processed-summary styles)
+  - Modified: scripts/ralph/prd.json (marked US-049 as passes: true)
+
+- **Learnings for future iterations:**
+  - Empty states were already mostly implemented from earlier scaffold work
+  - Use useMemo for derived state that involves filtering/counting arrays
+  - Summary banners work well for positive completion feedback
+  - Conditional rendering based on computed stats is cleaner than inline conditions
+---
