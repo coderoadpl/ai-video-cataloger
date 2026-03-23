@@ -531,3 +531,28 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Custom menu items use click handlers that send IPC events to renderer
   - Icon display in dock requires icon.icns file but configuration works even without it (uses Electron default)
 ---
+
+## 2026-01-24 - US-048
+- What was implemented:
+  - Enhanced progress indicator in toolbar with dual progress bars
+  - Added "Overall" progress bar showing total batch completion percentage
+  - Added "Current" progress bar showing individual video processing percentage
+  - Overall progress uses formula: ((current - 1 + videoPercent/100) / total) * 100
+  - Added videoPercent field to processingProgress state type
+  - Updated App.tsx to capture percent from processing:progress events
+  - Updated Toolbar.tsx to display both progress bars with percentage labels
+  - Added CSS for progress-bars container, progress-bar-container, labels, and percentages
+  - Current video progress bar uses green color (--color-success) to differentiate
+
+- Files changed:
+  - Modified: electron/renderer/App.tsx (added videoPercent to state and progress handler)
+  - Modified: electron/renderer/components/Toolbar.tsx (enhanced progress display with dual bars)
+  - Modified: electron/renderer/styles/Toolbar.css (added progress bar container styles)
+  - Modified: scripts/ralph/prd.json (marked US-048 as passes: true)
+
+- **Learnings for future iterations:**
+  - Progress percentage was already being sent from ipc-handlers.ts but not displayed in UI
+  - When showing progress for nested operations (video within batch), show both levels
+  - Overall progress formula accounts for completed videos + partial progress of current video
+  - Use different colors for different progress bars to differentiate them visually
+---

@@ -42,6 +42,7 @@ function App(): React.ReactElement {
     total: number;
     step: string;
     videoName?: string;
+    videoPercent?: number;
   } | null>(null);
   const [batchNotification, setBatchNotification] = useState<{
     show: boolean;
@@ -314,6 +315,7 @@ function App(): React.ReactElement {
         total: prev?.total ?? 1,
         step: progress.step,
         videoName: prev?.videoName,
+        videoPercent: progress.percent,
       }));
 
       // Update video status

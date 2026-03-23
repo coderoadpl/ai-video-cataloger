@@ -80,7 +80,7 @@
   flex-direction: column;
   align-items: center;
   gap: var(--spacing-xs);
-  width: 400px;
+  width: 450px;
   max-width: 100%;
 }
 
@@ -107,12 +107,46 @@
   white-space: nowrap;
 }
 
-.progress-bar {
+.progress-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
   width: 100%;
+}
+
+.progress-bar-container {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-xs);
+  width: 100%;
+}
+
+.progress-bar-label {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  width: 50px;
+  text-align: right;
+}
+
+.progress-bar {
+  flex: 1;
   height: 6px;
   background-color: var(--color-border);
   border-radius: 3px;
   overflow: hidden;
+}
+
+.progress-bar.current-video .progress-fill {
+  background-color: var(--color-success);
+}
+
+.progress-bar-percent {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-text-secondary);
+  width: 35px;
+  text-align: right;
 }
 
 .progress-fill {

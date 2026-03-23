@@ -19,6 +19,7 @@ interface ToolbarProps {
     total: number;
     step: string;
     videoName?: string;
+    videoPercent?: number;
   } | null;
   hasUnprocessedVideos: boolean;
   hasErrors: boolean;
@@ -127,13 +128,35 @@ function Toolbar({
                 </span>
               )}
             </div>
-            <div className="progress-bar">
-              <div
-                className="progress-fill"
-                style={{
-                  width: `${(processingProgress.current / processingProgress.total) * 100}%`,
-                }}
-              />
+            <div className="progress-bars">
+              <div className="progress-bar-container">
+                <div className="progress-bar-label">Overall</div>
+                <div className="progress-bar">
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${((processingProgress.current - 1 + (processingProgress.videoPercent || 0) / 100) / processingProgress.total) * 100}%`,
+                    }}
+                  />
+                </div>
+                <div className="progress-bar-percent">
+                  {Math.round(((processingProgress.current - 1 + (processingProgress.videoPercent || 0) / 100) / processingProgress.total) * 100)}%
+                </div>
+              </div>
+              <div className="progress-bar-container">
+                <div className="progress-bar-label">Current</div>
+                <div className="progress-bar current-video">
+                  <div
+                    className="progress-fill"
+                    style={{
+                      width: `${processingProgress.videoPercent || 0}%`,
+                    }}
+                  />
+                </div>
+                <div className="progress-bar-percent">
+                  {processingProgress.videoPercent || 0}%
+                </div>
+              </div>
             </div>
             <span className="progress-text">
               {processingProgress.step}

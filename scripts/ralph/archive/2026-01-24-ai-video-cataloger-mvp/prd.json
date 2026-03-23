@@ -1,0 +1,20 @@
+{
+  "project": "AI Video Cataloger",
+  "branchName": "ralph/ai-video-cataloger-mvp-v2",
+  "description": "User-friendly MVP of the AI Video Cataloger - ready for real users",
+  "userStories": [
+    {
+      "id": "US-028",
+      "title": "YOUR FIRST MVP STORY TITLE",
+      "description": "As a [user type], I want [feature] so that [benefit].",
+      "acceptanceCriteria": [
+        "Criterion 1",
+        "Criterion 2",
+        "Typecheck passes"
+      ],
+      "priority": 1,
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
