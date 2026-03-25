@@ -83,7 +83,7 @@ function FramePreviewModal({
           </button>
 
           <div className="frame-container">
-            <img src={`file://${currentFrame}`} alt={`Frame ${currentIndex + 1}`} />
+            <img src={currentFrame.startsWith('local-file://') ? currentFrame : `local-file://${currentFrame}`} alt={`Frame ${currentIndex + 1}`} />
           </div>
 
           <button
@@ -105,7 +105,7 @@ function FramePreviewModal({
                 onClick={() => onNavigate(index)}
                 title={`Frame ${index + 1}`}
               >
-                <img src={`file://${frame}`} alt={`Thumbnail ${index + 1}`} />
+                <img src={frame.startsWith('local-file://') ? frame : `local-file://${frame}`} alt={`Thumbnail ${index + 1}`} />
               </button>
             ))}
           </div>

@@ -119,7 +119,7 @@ interface WhisperSettings {
 }
 
 interface AnalysisSettings {
-  method: 'claude' | 'ollama';
+  method: 'claude-code' | 'claude-api' | 'ollama';
   ollamaModel: string;
 }
 
@@ -172,7 +172,7 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
   });
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [analysisSettings, setAnalysisSettings] = useState<AnalysisSettings>({
-    method: 'claude',
+    method: 'claude-code',
     ollamaModel: 'llava:7b',
   });
   const [ollamaPullProgress, setOllamaPullProgress] = useState<{
@@ -446,10 +446,16 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
                       Choose which AI model to use for video analysis
                     </span>
                   </label>
-                  <div className="toggle-group">
+                  <div className="toggle-group triple">
                     <button
-                      className={`toggle-button ${analysisSettings.method === 'claude' ? 'active' : ''}`}
-                      onClick={() => handleAnalysisSettingsChange({ method: 'claude' })}
+                      className={`toggle-button ${analysisSettings.method === 'claude-code' ? 'active' : ''}`}
+                      onClick={() => handleAnalysisSettingsChange({ method: 'claude-code' })}
+                    >
+                      Claude CLI
+                    </button>
+                    <button
+                      className={`toggle-button ${analysisSettings.method === 'claude-api' ? 'active' : ''}`}
+                      onClick={() => handleAnalysisSettingsChange({ method: 'claude-api' })}
                     >
                       Claude API
                     </button>
@@ -459,7 +465,7 @@ function ModelManagerPanel({ isOpen, onClose }: ModelManagerPanelProps): React.R
                       disabled={!ollamaStatus?.installed}
                       title={!ollamaStatus?.installed ? 'Ollama is not installed' : undefined}
                     >
-                      Ollama (LLaVA)
+                      Ollama
                     </button>
                   </div>
                 </div>

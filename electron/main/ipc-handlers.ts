@@ -9,11 +9,29 @@ import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
 import * as https from 'https';
+import * as crypto from 'crypto';
 import Store from 'electron-store';
 import ffmpeg from 'fluent-ffmpeg';
 import { getMainWindow } from './window.js';
 import { getFFmpegInfo, configureFfmpeg } from './ffmpeg-setup.js';
 import { getWhisperCppPath, isBundledWhisperCppAvailable, getWhisperCppInfo } from './whisper-paths.js';
+
+// Import shared database service and types
+import {
+  initDatabase,
+  closeDatabase,
+  getVideoByPath,
+  getAllVideos,
+  insertVideo,
+  updateVideoStatus as dbUpdateVideoStatus,
+  updateVideoNewName,
+  getIncompleteVideos,
+  getDatabaseDir,
+} from '../../src/db/database.js';
+import type { VideoRecord, VideoStatus as DbVideoStatus } from '../../src/types/index.js';
+
+// Track current working directory for database
+let currentWorkingDir: string | null = null;
 
 // Video file extensions supported
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
@@ -68,6 +86,44 @@ function generateVideoId(filePath: string): number {
 }
 
 /**
+ * Compute SHA-256 hash of a file (first 1MB for performance)
+ * Used for unique identification in database
+ */
+function computeFileHash(filePath: string): string {
+  const hash = crypto.createHash('sha256');
+  const fd = fs.openSync(filePath, 'r');
+  const buffer = Buffer.alloc(1024 * 1024); // 1MB buffer
+  const bytesRead = fs.readSync(fd, buffer, 0, buffer.length, 0);
+  fs.closeSync(fd);
+  hash.update(buffer.subarray(0, bytesRead));
+  return hash.digest('hex');
+}
+
+/**
+ * Map database status to UI status
+ * Note: Intermediate states (frames_extracted, audio_extracted, etc.) are mapped to 'none'
+ * because they represent incomplete processing that needs to be resumed, not active processing.
+ * The UI will show these as resumable/incomplete rather than actively processing.
+ */
+function mapDbStatusToUiStatus(dbStatus: DbVideoStatus): 'none' | 'processing' | 'completed' | 'error' {
+  switch (dbStatus) {
+    case 'completed':
+      return 'completed';
+    case 'error':
+      return 'error';
+    case 'pending':
+    case 'frames_extracted':
+    case 'audio_extracted':
+    case 'transcribed':
+    case 'analyzed':
+      // These are incomplete states - show as 'none' so user can resume
+      return 'none';
+    default:
+      return 'none';
+  }
+}
+
+/**
  * Get video duration using ffprobe
  */
 async function getVideoDuration(videoPath: string): Promise<number | undefined> {
@@ -92,8 +148,8 @@ async function generateThumbnail(videoPath: string): Promise<string | undefined>
 
   // Return existing thumbnail if it exists
   if (fs.existsSync(thumbnailPath)) {
-    // Return as file:// URL for the renderer
-    return `file://${thumbnailPath}`;
+    // Return as local-file:// URL for the renderer (custom protocol)
+    return `local-file://${thumbnailPath}`;
   }
 
   return new Promise((resolve) => {
@@ -103,7 +159,7 @@ async function generateThumbnail(videoPath: string): Promise<string | undefined>
       .size('128x72') // Small thumbnail size
       .output(thumbnailPath)
       .on('end', () => {
-        resolve(`file://${thumbnailPath}`);
+        resolve(`local-file://${thumbnailPath}`);
       })
       .on('error', () => {
         resolve(undefined);
@@ -113,10 +169,20 @@ async function generateThumbnail(videoPath: string): Promise<string | undefined>
 }
 
 /**
- * Check if a video has been processed (look for frames directory)
+ * Check if a video has been processed - uses database if available, falls back to file system
  */
 function getVideoStatus(videoPath: string): 'none' | 'processing' | 'completed' | 'error' {
-  // Check if frames directory exists for this video
+  // First try to get status from database
+  try {
+    const dbRecord = getVideoByPath(videoPath);
+    if (dbRecord) {
+      return mapDbStatusToUiStatus(dbRecord.status);
+    }
+  } catch {
+    // Database not initialized or error - fall back to file system check
+  }
+
+  // Fall back to checking frames directory (for backwards compatibility)
   const videoDir = path.dirname(videoPath);
   const videoName = path.basename(videoPath, path.extname(videoPath));
   const framesDir = path.join(videoDir, 'frames', videoName);
@@ -133,6 +199,30 @@ function getVideoStatus(videoPath: string): 'none' | 'processing' | 'completed' 
   }
 
   return 'none';
+}
+
+/**
+ * Get detailed video status from database
+ */
+function getVideoDbRecord(videoPath: string): VideoRecord | null {
+  try {
+    return getVideoByPath(videoPath);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Ensure video exists in database, create record if not
+ */
+function ensureVideoInDb(videoPath: string): VideoRecord {
+  let record = getVideoByPath(videoPath);
+  if (!record) {
+    const filename = path.basename(videoPath);
+    const fileHash = computeFileHash(videoPath);
+    record = insertVideo(videoPath, filename, fileHash);
+  }
+  return record;
 }
 
 /**
@@ -160,7 +250,8 @@ function loadProcessedVideoData(videoPath: string): {
         .filter(f => f.endsWith('.jpg'))
         .sort();
       if (frameFiles.length > 0) {
-        result.frames = frameFiles.map(f => path.join(framesDir, f));
+        // Use local-file:// protocol for renderer to access local files
+        result.frames = frameFiles.map(f => `local-file://${path.join(framesDir, f)}`);
         result.framesDir = framesDir;
       }
     } catch {
@@ -242,6 +333,21 @@ async function scanFolderForVideos(folderPath: string): Promise<ScannedVideoFile
   // Ensure ffmpeg is configured
   configureFfmpeg();
 
+  // Initialize database for this folder
+  try {
+    // Close previous database if switching folders
+    if (currentWorkingDir && currentWorkingDir !== folderPath) {
+      closeDatabase();
+    }
+
+    await initDatabase(folderPath);
+    currentWorkingDir = folderPath;
+    console.log(`Database initialized for folder: ${folderPath}`);
+  } catch (error) {
+    console.error('Failed to initialize database:', error);
+    // Continue without database - will use file system fallback
+  }
+
   const videos: ScannedVideoFile[] = [];
 
   try {
@@ -262,11 +368,15 @@ async function scanFolderForVideos(folderPath: string): Promise<ScannedVideoFile
               generateThumbnail(fullPath),
             ]);
 
+            // Get status from database or file system
             const status = getVideoStatus(fullPath);
+
+            // Get detailed database record if available
+            const dbRecord = getVideoDbRecord(fullPath);
 
             // Build the video object
             const videoFile: ScannedVideoFile = {
-              id: generateVideoId(fullPath),
+              id: dbRecord?.id ?? generateVideoId(fullPath),
               filename: entry,
               path: fullPath,
               size: stats.size,
@@ -275,6 +385,11 @@ async function scanFolderForVideos(folderPath: string): Promise<ScannedVideoFile
               status,
               thumbnail,
             };
+
+            // Add error info from database if present
+            if (dbRecord?.status === 'error' && dbRecord.error_message) {
+              videoFile.errorMessage = dbRecord.error_message;
+            }
 
             // Load processed data for completed videos
             if (status === 'completed') {
@@ -315,7 +430,7 @@ const folderStore = new Store<FolderHistorySchema>({
 
 // Electron store for persisting app settings
 interface AppSettingsSchema {
-  analysisMethod: 'claude' | 'ollama';
+  analysisMethod: 'claude-code' | 'claude-api' | 'ollama';
   ollamaModel: string;
   transcriptionMethod: 'local' | 'api';
   whisperModel: string;
@@ -328,7 +443,7 @@ interface AppSettingsSchema {
 const settingsStore = new Store<AppSettingsSchema>({
   name: 'app-settings',
   defaults: {
-    analysisMethod: 'claude',
+    analysisMethod: 'claude-code',
     ollamaModel: 'llava:7b',
     transcriptionMethod: 'local',
     whisperModel: 'base',
@@ -426,10 +541,7 @@ function formatSpeed(bytesPerSecond: number): string {
   return `${(bytesPerSecond / (1024 * 1024)).toFixed(1)} MB/s`;
 }
 
-// Import existing services from CLI (these will be reused)
-// Note: These imports will work once we update the tsconfig
-// import { scanDirectory, extractFrames, transcribeAudio, analyzeVideo, renameVideo } from '../../src/services/index.js';
-// import { initDatabase, getVideoByPath, getAllVideos, updateVideoStatus } from '../../src/db/index.js';
+// Database service is now imported from shared src/db module above
 
 // Whisper transcription settings stored in user preferences
 interface WhisperSettings {
@@ -642,26 +754,67 @@ async function transcribeWithSystemWhisper(
 }
 
 /**
+ * Common paths where CLI tools might be installed (not in default Electron PATH)
+ */
+const COMMON_BIN_PATHS = [
+  '/usr/local/bin',
+  '/opt/homebrew/bin',
+  `${process.env.HOME}/.local/bin`,
+  `${process.env.HOME}/.nvm/current/bin`,
+  `${process.env.HOME}/.npm-global/bin`,
+  '/usr/bin',
+  '/bin',
+];
+
+/**
  * Check if a command is available on the system
+ * Handles the issue where Electron apps don't inherit shell PATH
  */
 async function checkCommand(command: string): Promise<{ available: boolean; version: string | null; path: string | null }> {
+  // First try the standard which command
   try {
     const { stdout } = await execAsync(`which ${command}`);
-    const path = stdout.trim();
+    const cmdPath = stdout.trim();
 
     // Try to get version
     let version: string | null = null;
     try {
-      const { stdout: versionOutput } = await execAsync(`${command} --version 2>&1 || ${command} -v 2>&1`);
+      const { stdout: versionOutput } = await execAsync(`${cmdPath} --version 2>&1 || ${cmdPath} -v 2>&1`);
       version = versionOutput.trim().split('\n')[0];
     } catch {
       // Version check failed, but command exists
     }
 
-    return { available: true, version, path };
+    return { available: true, version, path: cmdPath };
   } catch {
-    return { available: false, version: null, path: null };
+    // which failed, try checking common paths directly
   }
+
+  // Check common installation paths (Electron apps often miss PATH entries)
+  for (const binPath of COMMON_BIN_PATHS) {
+    const cmdPath = path.join(binPath, command);
+    try {
+      if (fs.existsSync(cmdPath)) {
+        // Verify it's executable
+        fs.accessSync(cmdPath, fs.constants.X_OK);
+
+        // Try to get version
+        let version: string | null = null;
+        try {
+          const { stdout: versionOutput } = await execAsync(`"${cmdPath}" --version 2>&1 || "${cmdPath}" -v 2>&1`);
+          version = versionOutput.trim().split('\n')[0];
+        } catch {
+          // Version check failed, but command exists
+        }
+
+        return { available: true, version, path: cmdPath };
+      }
+    } catch {
+      // This path doesn't have the command, try next
+    }
+  }
+
+  return { available: false, version: null, path: null };
 }
 
 /**
@@ -1023,7 +1176,7 @@ async function analyzeWithClaude(
   fullResponse?: string;
   error?: string;
 }> {
-  onProgress('Analyzing with Claude API');
+  onProgress('Analyzing with Claude CLI');
 
   const videoName = path.basename(videoPath);
   const videoDir = path.dirname(videoPath);
@@ -1056,17 +1209,66 @@ FILENAME: <your-suggested-filename-in-kebab-case>
 Focus on being descriptive and accurate. The filename should capture the essence of the video content.`;
 
   try {
-    // Call Claude CLI
-    const { execFile } = await import('child_process');
-    const { promisify } = await import('util');
-    const execFileAsync = promisify(execFile);
+    // Call Claude CLI - need to find the full path since Electron doesn't inherit shell PATH
+    const { spawn } = await import('child_process');
 
-    const result = await execFileAsync('claude', [
-      '--add-dir', videoDir,
-      '-p', prompt
-    ], { timeout: 120000 }); // 2 minute timeout
+    // Find the claude binary path
+    const claudeInfo = await checkCommand('claude');
+    if (!claudeInfo.available || !claudeInfo.path) {
+      return {
+        success: false,
+        error: 'Claude CLI not found. Please install it from https://claude.ai/download',
+      };
+    }
 
-    const response = result.stdout;
+    const claudePath = claudeInfo.path;
+
+    // Also add the frames directory since frames might be in a subdirectory
+    const framesDir = framePaths.length > 0 ? path.dirname(framePaths[0]) : videoDir;
+
+    // Use spawn with stdin ignored to prevent blocking
+    const response = await new Promise<string>((resolve, reject) => {
+      const args = [
+        '--add-dir', videoDir,
+        '--add-dir', framesDir,
+        '-p', prompt
+      ];
+
+      const proc = spawn(claudePath, args, {
+        stdio: ['ignore', 'pipe', 'pipe'], // ignore stdin, pipe stdout/stderr
+      });
+
+      let stdout = '';
+      let stderr = '';
+
+      proc.stdout?.on('data', (data: Buffer) => {
+        stdout += data.toString();
+      });
+
+      proc.stderr?.on('data', (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      // Set timeout
+      const timeout = setTimeout(() => {
+        proc.kill();
+        reject(new Error('Claude CLI timed out after 2 minutes'));
+      }, 120000);
+
+      proc.on('close', (code) => {
+        clearTimeout(timeout);
+        if (code === 0) {
+          resolve(stdout);
+        } else {
+          reject(new Error(`Claude CLI exited with code ${code}: ${stderr || stdout}`));
+        }
+      });
+
+      proc.on('error', (err) => {
+        clearTimeout(timeout);
+        reject(err);
+      });
+    });
 
     // Parse the response
     const parsed = parseLlavaResponse(response); // Same format as LLaVA
@@ -1082,6 +1284,94 @@ Focus on being descriptive and accurate. The filename should capture the essence
       success: false,
       error: `Claude analysis failed: ${err instanceof Error ? err.message : String(err)}`,
     };
+  }
+}
+
+/**
+ * Rename a video file and its associated files based on suggested filename
+ */
+async function renameVideoFile(
+  videoPath: string,
+  suggestedFilename: string
+): Promise<{ success: boolean; newPath?: string; newName?: string; error?: string }> {
+  try {
+    const videoDir = path.dirname(videoPath);
+    const extension = path.extname(videoPath);
+    const oldBaseName = path.basename(videoPath, extension);
+
+    // Get date prefix from file modification time
+    const stats = fs.statSync(videoPath);
+    const datePrefix = stats.mtime.toISOString().split('T')[0]; // YYYY-MM-DD
+
+    // Sanitize the suggested filename to kebab-case
+    const sanitizedSlug = suggestedFilename
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/\s+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      || 'video';
+
+    // Build new filename with date prefix
+    let newBaseName = `${datePrefix}_${sanitizedSlug}`;
+    let newFileName = `${newBaseName}${extension}`;
+    let newPath = path.join(videoDir, newFileName);
+
+    // Handle conflicts by appending -2, -3, etc.
+    let counter = 1;
+    while (fs.existsSync(newPath) && newPath !== videoPath) {
+      counter++;
+      newFileName = `${newBaseName}-${counter}${extension}`;
+      newPath = path.join(videoDir, newFileName);
+    }
+
+    // Don't rename if the path is the same
+    if (newPath === videoPath) {
+      return { success: true, newPath: videoPath, newName: path.basename(videoPath) };
+    }
+
+    // Rename the video file
+    fs.renameSync(videoPath, newPath);
+
+    // Update newBaseName for associated files
+    newBaseName = path.basename(newFileName, extension);
+
+    // Rename associated files
+    // 1. Frames directory
+    const oldFramesDir = path.join(videoDir, 'frames', oldBaseName);
+    const newFramesDir = path.join(videoDir, 'frames', newBaseName);
+    if (fs.existsSync(oldFramesDir) && oldFramesDir !== newFramesDir) {
+      fs.renameSync(oldFramesDir, newFramesDir);
+    }
+
+    // 2. Transcript file
+    const oldTranscriptPath = path.join(videoDir, 'transcripts', `${oldBaseName}.txt`);
+    const newTranscriptPath = path.join(videoDir, 'transcripts', `${newBaseName}.txt`);
+    if (fs.existsSync(oldTranscriptPath) && oldTranscriptPath !== newTranscriptPath) {
+      fs.renameSync(oldTranscriptPath, newTranscriptPath);
+    }
+
+    // 3. Summary file
+    const oldSummaryPath = path.join(videoDir, 'summaries', `${oldBaseName}.txt`);
+    const newSummaryPath = path.join(videoDir, 'summaries', `${newBaseName}.txt`);
+    if (fs.existsSync(oldSummaryPath) && oldSummaryPath !== newSummaryPath) {
+      fs.renameSync(oldSummaryPath, newSummaryPath);
+    }
+
+    // 4. Debug log file
+    const oldDebugPath = path.join(videoDir, 'summaries', `${oldBaseName}-debug.log`);
+    const newDebugPath = path.join(videoDir, 'summaries', `${newBaseName}-debug.log`);
+    if (fs.existsSync(oldDebugPath) && oldDebugPath !== newDebugPath) {
+      fs.renameSync(oldDebugPath, newDebugPath);
+    }
+
+    console.log(`Renamed ${path.basename(videoPath)} to ${newFileName}`);
+
+    return { success: true, newPath, newName: newFileName };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error(`Failed to rename ${path.basename(videoPath)}: ${message}`);
+    return { success: false, error: message };
   }
 }
 
@@ -1197,22 +1487,33 @@ function checkExistingArtifacts(videoPath: string): {
 /**
  * Process a single video through the full pipeline
  * Supports smart retry by checking for existing artifacts
+ * Now tracks progress in database for resume capability
  */
 async function processVideoFull(
   videoPath: string,
   videoId: number,
   settings: {
     frameCount: number;
-    analysisMethod: 'claude' | 'ollama';
+    analysisMethod: 'claude-code' | 'claude-api' | 'ollama';
     ollamaModel: string;
     whisperModel: string;
     preferBuiltInWhisper: boolean;
+    renameFiles: boolean;
   }
 ): Promise<{ success: boolean; error?: string; errorStep?: ProcessingStep }> {
   const mainWindow = getMainWindow();
 
   // Set up active processing state for cancellation
   activeVideoProcessing = { cancelled: false, videoPath };
+
+  // Ensure video exists in database
+  let dbRecord: VideoRecord | null = null;
+  try {
+    dbRecord = ensureVideoInDb(videoPath);
+    videoId = dbRecord.id; // Use database ID for consistency
+  } catch (error) {
+    console.warn('Could not create database record, continuing without database tracking:', error);
+  }
 
   const sendProgress = (step: string, percent: number = 0) => {
     mainWindow?.webContents.send('processing:progress', {
@@ -1228,6 +1529,14 @@ async function processVideoFull(
       error,
       step,
     });
+    // Update database with error status
+    if (dbRecord) {
+      try {
+        dbUpdateVideoStatus(dbRecord.id, 'error', error);
+      } catch {
+        // Ignore database errors
+      }
+    }
   };
 
   const sendComplete = (success: boolean) => {
@@ -1237,19 +1546,38 @@ async function processVideoFull(
     });
   };
 
+  // Helper to update database status
+  const updateDbStatus = (status: DbVideoStatus) => {
+    if (dbRecord) {
+      try {
+        dbUpdateVideoStatus(dbRecord.id, status);
+      } catch {
+        // Ignore database errors
+      }
+    }
+  };
+
   let tempAudioPath: string | null = null;
 
   try {
     // Ensure ffmpeg is configured
     configureFfmpeg();
 
-    // Check for existing artifacts (smart retry)
+    // Check for existing artifacts (smart retry) - also check database status
     const existingArtifacts = checkExistingArtifacts(videoPath);
 
-    // Step 1: Extract frames (skip if already exists)
+    // Use database status to determine where to resume
+    const dbStatus = dbRecord?.status || 'pending';
+
+    // Step 1: Extract frames (skip if already exists or database says we're past this step)
     let framePaths: string[];
 
-    if (existingArtifacts.hasFrames && existingArtifacts.framePaths.length >= settings.frameCount) {
+    const canSkipFrames = (
+      (existingArtifacts.hasFrames && existingArtifacts.framePaths.length >= settings.frameCount) ||
+      (dbStatus !== 'pending' && dbStatus !== 'error')
+    );
+
+    if (canSkipFrames && existingArtifacts.framePaths.length > 0) {
       // Use existing frames
       sendProgress('Using existing frames', 20);
       framePaths = existingArtifacts.framePaths.slice(0, settings.frameCount);
@@ -1271,6 +1599,9 @@ async function processVideoFull(
       }
 
       framePaths = frameResult.framePaths;
+
+      // Update database: frames extracted
+      updateDbStatus('frames_extracted');
     }
 
     if (activeVideoProcessing?.cancelled) {
@@ -1279,10 +1610,15 @@ async function processVideoFull(
       return { success: false, error: 'Processing cancelled' };
     }
 
-    // Step 2 & 3: Extract audio and transcribe (skip if transcript exists)
+    // Step 2 & 3: Extract audio and transcribe (skip if transcript exists or database says we're past this step)
     let transcript: string | null = null;
 
-    if (existingArtifacts.hasTranscript && existingArtifacts.transcript) {
+    const canSkipTranscript = (
+      (existingArtifacts.hasTranscript && existingArtifacts.transcript) ||
+      (dbStatus === 'transcribed' || dbStatus === 'analyzed' || dbStatus === 'completed')
+    );
+
+    if (canSkipTranscript && existingArtifacts.transcript) {
       // Use existing transcript
       sendProgress('Using existing transcript', 40);
       transcript = existingArtifacts.transcript;
@@ -1303,6 +1639,9 @@ async function processVideoFull(
       }
 
       tempAudioPath = audioResult.audioPath || null;
+
+      // Update database: audio extracted
+      updateDbStatus('audio_extracted');
 
       if (activeVideoProcessing?.cancelled) {
         if (tempAudioPath) cleanupTempAudio(tempAudioPath);
@@ -1366,6 +1705,9 @@ async function processVideoFull(
           const transcriptFilePath = path.join(transcriptsDir, `${videoName}.txt`);
           fs.writeFileSync(transcriptFilePath, transcript, 'utf-8');
         }
+
+        // Update database: transcribed
+        updateDbStatus('transcribed');
       }
     }
 
@@ -1396,8 +1738,17 @@ async function processVideoFull(
         transcript,
         settings.ollamaModel
       );
+    } else if (settings.analysisMethod === 'claude-code' || settings.analysisMethod === 'claude-api') {
+      // Use Claude Code CLI (both options use the CLI for now)
+      // TODO: Implement direct Claude API for 'claude-api' option
+      analysisResult = await analyzeWithClaude(
+        videoPath,
+        framePaths,
+        transcript,
+        (msg) => sendProgress(`Analysis: ${msg}`, 70)
+      );
     } else {
-      // Use Claude API via CLI
+      // Fallback to Claude Code CLI
       analysisResult = await analyzeWithClaude(
         videoPath,
         framePaths,
@@ -1415,6 +1766,9 @@ async function processVideoFull(
       return { success: false, error, errorStep: 'analysis' };
     }
 
+    // Update database: analyzed
+    updateDbStatus('analyzed');
+
     // Step 5: Save summary file
     sendProgress('Saving results', 90);
     saveSummaryFile(
@@ -1424,6 +1778,36 @@ async function processVideoFull(
       analysisResult.fullResponse || analysisResult.description,
       settings.analysisMethod
     );
+
+    // Update database with suggested filename
+    if (dbRecord && analysisResult.suggestedFilename) {
+      try {
+        updateVideoNewName(dbRecord.id, analysisResult.suggestedFilename);
+      } catch {
+        // Ignore database errors
+      }
+    }
+
+    // Step 6: Rename file if enabled
+    if (settings.renameFiles && analysisResult.suggestedFilename) {
+      sendProgress('Renaming file', 95);
+      try {
+        const renameResult = await renameVideoFile(
+          videoPath,
+          analysisResult.suggestedFilename
+        );
+        if (renameResult.success && dbRecord) {
+          // Update database with new filename
+          updateVideoNewName(dbRecord.id, renameResult.newName!);
+        }
+      } catch (err) {
+        // Log but don't fail the whole process if rename fails
+        console.error('Failed to rename file:', err);
+      }
+    }
+
+    // Update database: completed
+    updateDbStatus('completed');
 
     // Clean up temp audio
     if (tempAudioPath) cleanupTempAudio(tempAudioPath);
@@ -1464,6 +1848,7 @@ async function processVideoBatch(
     ollamaModel: settingsStore.get('ollamaModel'),
     whisperModel: settingsStore.get('whisperModel'),
     preferBuiltInWhisper: settingsStore.get('preferBuiltInWhisper'),
+    renameFiles: settingsStore.get('renameFiles') !== false,
   };
 
   // Set up batch processing state
@@ -1675,6 +2060,13 @@ function checkClaudeApiKey(): { available: boolean } {
 }
 
 /**
+ * Check for Claude Code CLI
+ */
+async function checkClaudeCodeCli(): Promise<{ available: boolean; version: string | null; path: string | null }> {
+  return await checkCommand('claude');
+}
+
+/**
  * Check for OpenAI API key in environment (for Whisper API)
  */
 function checkOpenAIApiKey(): { available: boolean } {
@@ -1823,6 +2215,7 @@ export function registerIpcHandlers(): void {
       ollamaModel: settingsStore.get('ollamaModel'),
       whisperModel: settingsStore.get('whisperModel'),
       preferBuiltInWhisper: settingsStore.get('preferBuiltInWhisper'),
+      renameFiles: settingsStore.get('renameFiles') !== false,
     };
 
     // Generate video ID from path (same as scanFolderForVideos)
@@ -1902,18 +2295,20 @@ export function registerIpcHandlers(): void {
   // Check prerequisites
   ipcMain.handle('check-prerequisites', async () => {
     // Run all checks in parallel for performance
-    const [ffmpegInfo, whisperInfo, ollamaInfo] = await Promise.all([
+    const [ffmpegInfo, whisperInfo, ollamaInfo, claudeCodeInfo] = await Promise.all([
       getFFmpegInfo(),
       checkWhisper(),
       checkOllama(),
+      checkClaudeCodeCli(),
     ]);
 
-    const claudeInfo = checkClaudeApiKey();
+    const claudeApiInfo = checkClaudeApiKey();
     const openaiInfo = checkOpenAIApiKey();
 
     // Determine available analysis methods
     const analysisMethods: string[] = [];
-    if (claudeInfo.available) analysisMethods.push('Claude API');
+    if (claudeCodeInfo.available) analysisMethods.push('Claude Code CLI');
+    if (claudeApiInfo.available) analysisMethods.push('Claude API');
     if (ollamaInfo.running) analysisMethods.push('Ollama (LLaVA)');
 
     // Determine available transcription methods
@@ -1940,8 +2335,13 @@ export function registerIpcHandlers(): void {
         path: whisperInfo.path,
         type: whisperInfo.type,
       },
-      claude: {
-        available: claudeInfo.available,
+      claudeCode: {
+        available: claudeCodeInfo.available,
+        version: claudeCodeInfo.version,
+        path: claudeCodeInfo.path,
+      },
+      claudeApi: {
+        available: claudeApiInfo.available,
       },
       ollama: {
         installed: ollamaInfo.installed,
@@ -2451,7 +2851,7 @@ export function registerIpcHandlers(): void {
   });
 
   ipcMain.handle('save-analysis-settings', async (_event, settings: {
-    method: 'claude' | 'ollama';
+    method: 'claude-code' | 'claude-api' | 'ollama';
     ollamaModel: string;
   }) => {
     try {
@@ -2474,6 +2874,97 @@ export function registerIpcHandlers(): void {
       return { success: true };
     } catch (err) {
       return { success: false, error: `Failed to mark setup complete: ${err}` };
+    }
+  });
+
+  // Database operations
+  ipcMain.handle('get-database-info', async () => {
+    if (!currentWorkingDir) {
+      return { initialized: false };
+    }
+
+    try {
+      const dbDir = getDatabaseDir(currentWorkingDir);
+      const allVideos = getAllVideos();
+      const incompleteVideos = getIncompleteVideos();
+
+      return {
+        initialized: true,
+        workingDir: currentWorkingDir,
+        databaseDir: dbDir,
+        totalVideos: allVideos.length,
+        incompleteVideos: incompleteVideos.length,
+      };
+    } catch {
+      return { initialized: false };
+    }
+  });
+
+  ipcMain.handle('get-incomplete-videos', async () => {
+    try {
+      const videos = getIncompleteVideos();
+      return { success: true, videos };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to get incomplete videos: ${error instanceof Error ? error.message : String(error)}`,
+        videos: []
+      };
+    }
+  });
+
+  ipcMain.handle('get-video-db-status', async (_event, videoPath: string) => {
+    try {
+      const record = getVideoByPath(videoPath);
+      if (!record) {
+        return { found: false };
+      }
+      return {
+        found: true,
+        id: record.id,
+        status: record.status,
+        errorMessage: record.error_message,
+        newName: record.new_name,
+        createdAt: record.created_at,
+        updatedAt: record.updated_at,
+      };
+    } catch (error) {
+      return {
+        found: false,
+        error: `Database error: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  });
+
+  ipcMain.handle('reset-video-status', async (_event, videoPath: string) => {
+    try {
+      const record = getVideoByPath(videoPath);
+      if (!record) {
+        return { success: false, error: 'Video not found in database' };
+      }
+
+      // Reset to pending status
+      dbUpdateVideoStatus(record.id, 'pending');
+
+      return { success: true };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to reset video: ${error instanceof Error ? error.message : String(error)}`
+      };
+    }
+  });
+
+  ipcMain.handle('get-all-video-records', async () => {
+    try {
+      const videos = getAllVideos();
+      return { success: true, videos };
+    } catch (error) {
+      return {
+        success: false,
+        error: `Failed to get videos: ${error instanceof Error ? error.message : String(error)}`,
+        videos: []
+      };
     }
   });
 }

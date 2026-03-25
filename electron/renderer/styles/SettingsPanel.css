@@ -137,6 +137,12 @@
   cursor: not-allowed;
 }
 
+/* Triple toggle for three options */
+.toggle-group.triple .toggle-button {
+  padding: var(--spacing-xs) var(--spacing-sm);
+  font-size: 12px;
+}
+
 /* Select */
 .setting-select {
   padding: var(--spacing-xs) var(--spacing-sm);

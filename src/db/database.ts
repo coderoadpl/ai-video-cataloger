@@ -5,7 +5,8 @@
 
 import initSqlJs, { Database } from 'sql.js';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, dirname } from 'node:path';
+import { createRequire } from 'node:module';
 import type { VideoRecord, VideoStatus } from '../types/index.js';
 
 const DB_DIR_NAME = '.ai-video-cataloger';
@@ -13,6 +14,35 @@ const DB_FILE_NAME = 'catalog.db';
 
 let db: Database | null = null;
 let dbPath: string | null = null;
+
+// Note: __dirname is not available in ES modules, using createRequire for module resolution
+
+/**
+ * Get the path to sql.js WASM file
+ * Works in both development and packaged Electron app
+ */
+function getSqlJsWasmPath(): string | undefined {
+  try {
+    // Use createRequire to resolve the sql.js module path
+    const require = createRequire(import.meta.url);
+    const sqlJsPath = require.resolve('sql.js');
+    const sqlJsDir = dirname(sqlJsPath);
+    const wasmPath = join(sqlJsDir, 'sql-wasm.wasm');
+
+    if (existsSync(wasmPath)) {
+      return wasmPath;
+    }
+
+    // Try dist folder
+    const distWasmPath = join(sqlJsDir, 'dist', 'sql-wasm.wasm');
+    if (existsSync(distWasmPath)) {
+      return distWasmPath;
+    }
+  } catch {
+    // Fallback - let sql.js try to find it
+  }
+  return undefined;
+}
 
 /**
  * Initialize the database in the specified working directory
@@ -27,8 +57,11 @@ export async function initDatabase(workingDir: string = process.cwd()): Promise<
     mkdirSync(dbDir, { recursive: true });
   }
 
-  // Initialize sql.js
-  const SQL = await initSqlJs();
+  // Initialize sql.js with explicit WASM path for ES module compatibility
+  const wasmPath = getSqlJsWasmPath();
+  const SQL = await initSqlJs(wasmPath ? {
+    locateFile: () => wasmPath,
+  } : undefined);
 
   // Load existing database or create new one
   if (existsSync(dbPath)) {

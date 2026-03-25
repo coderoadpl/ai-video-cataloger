@@ -89,7 +89,7 @@ export async function createWindow(): Promise<BrowserWindow> {
     show: false,
     titleBarStyle: 'default', // Use default macOS title bar with traffic lights
     webPreferences: {
-      preload: path.join(__dirname, '..', 'preload.js'),
+      preload: path.join(__dirname, '..', '..', 'preload.cjs'),
       nodeIntegration: false,
       contextIsolation: true,
       sandbox: false, // Needed for some IPC operations
@@ -125,7 +125,7 @@ export async function createWindow(): Promise<BrowserWindow> {
     mainWindow.webContents.openDevTools();
   } else {
     // In production, load the built renderer
-    await mainWindow.loadFile(path.join(__dirname, '..', 'renderer', 'index.html'));
+    await mainWindow.loadFile(path.join(__dirname, '..', '..', 'renderer', 'index.html'));
   }
 
   return mainWindow;

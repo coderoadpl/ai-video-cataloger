@@ -9,7 +9,8 @@ interface PrerequisitesData {
   ffmpeg: { available: boolean; version: string; bundled: boolean; path: string };
   ffprobe: { available: boolean; path: string };
   whisper: { available: boolean; version: string | null; path: string | null; type: 'whisper.cpp' | 'whisper' | null };
-  claude: { available: boolean };
+  claudeCode: { available: boolean; version: string | null; path: string | null };
+  claudeApi: { available: boolean };
   ollama: { installed: boolean; running: boolean; version: string | null };
   openaiKey: { available: boolean };
   analysisMethods: string[];
@@ -122,9 +123,14 @@ function PrerequisitesPanel({ isOpen, onClose }: PrerequisitesPanelProps): React
     return '';
   };
 
-  const getClaudeStatus = (): DependencyStatus => {
+  const getClaudeCodeStatus = (): DependencyStatus => {
     if (!prerequisites) return 'missing';
-    return prerequisites.claude.available ? 'available' : 'missing';
+    return prerequisites.claudeCode.available ? 'available' : 'missing';
+  };
+
+  const getClaudeApiStatus = (): DependencyStatus => {
+    if (!prerequisites) return 'missing';
+    return prerequisites.claudeApi.available ? 'available' : 'missing';
   };
 
   const getOllamaStatus = (): DependencyStatus => {
@@ -182,9 +188,16 @@ function PrerequisitesPanel({ isOpen, onClose }: PrerequisitesPanelProps): React
                 <h3>Analysis Methods</h3>
                 <p className="section-note">At least one analysis method is required</p>
                 <DependencyItem
+                  name="Claude Code CLI"
+                  status={getClaudeCodeStatus()}
+                  details={prerequisites?.claudeCode.available ? `Installed at ${prerequisites.claudeCode.path}` : ''}
+                  installInstructions="npm install -g @anthropic-ai/claude-code"
+                  isOptional
+                />
+                <DependencyItem
                   name="Claude API"
-                  status={getClaudeStatus()}
-                  details={prerequisites?.claude.available ? 'API key configured' : ''}
+                  status={getClaudeApiStatus()}
+                  details={prerequisites?.claudeApi.available ? 'API key configured' : ''}
                   installInstructions="Set ANTHROPIC_API_KEY or CLAUDE_API_KEY environment variable"
                   isOptional
                 />
@@ -197,7 +210,7 @@ function PrerequisitesPanel({ isOpen, onClose }: PrerequisitesPanelProps): React
                 />
                 {!hasAnalysisMethods && prerequisites && (
                   <div className="warning-message">
-                    No analysis methods available. Configure Claude API key or install Ollama.
+                    No analysis methods available. Install Claude Code CLI, configure Claude API key, or install Ollama.
                   </div>
                 )}
               </section>

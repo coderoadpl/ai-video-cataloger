@@ -3,20 +3,20 @@
   "version": "1.0.0",
   "description": "CLI tool and Electron GUI that analyzes videos, transcribes with local Whisper, generates summaries via Claude/LLaVA, and renames files based on content",
   "type": "module",
-  "main": "electron/dist/main/index.js",
+  "main": "electron/dist/electron/main/index.js",
   "bin": {
     "ai-video-cataloger": "dist/index.js"
   },
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit && tsc --noEmit -p electron/tsconfig.json && tsc --noEmit -p electron/tsconfig.renderer.json",
+    "typecheck": "tsc --noEmit && tsc --noEmit -p electron/tsconfig.json && tsc --noEmit -p electron/tsconfig.preload.json && tsc --noEmit -p electron/tsconfig.renderer.json",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "electron:dev": "concurrently \"npm run electron:vite\" \"npm run electron:main-dev\"",
     "electron:vite": "vite --config electron/vite.config.ts",
-    "electron:main-dev": "NODE_ENV=development electron electron/dist/main/index.js",
+    "electron:main-dev": "NODE_ENV=development electron electron/dist/electron/main/index.js",
     "electron:build": "npm run electron:build-main && npm run electron:build-renderer",
-    "electron:build-main": "tsc -p electron/tsconfig.json",
+    "electron:build-main": "tsc -p electron/tsconfig.json && tsc -p electron/tsconfig.preload.json && mv electron/dist/preload.js electron/dist/preload.cjs",
     "electron:build-renderer": "vite build --config electron/vite.config.ts",
     "electron:package": "npm run electron:build && electron-builder --config electron-builder.config.js"
   },

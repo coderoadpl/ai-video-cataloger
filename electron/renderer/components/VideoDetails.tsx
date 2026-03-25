@@ -134,7 +134,7 @@ function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoD
                 {video.frames.map((frame, index) => (
                   <img
                     key={index}
-                    src={`file://${frame}`}
+                    src={frame.startsWith('local-file://') ? frame : `local-file://${frame}`}
                     alt={`Frame ${index + 1}`}
                     onClick={() => handleFrameClick(index)}
                   />
@@ -259,7 +259,7 @@ function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoD
                 {video.frames.map((frame, index) => (
                   <img
                     key={index}
-                    src={`file://${frame}`}
+                    src={frame.startsWith('local-file://') ? frame : `local-file://${frame}`}
                     alt={`Frame ${index + 1}`}
                     onClick={() => handleFrameClick(index)}
                   />
@@ -342,8 +342,17 @@ function VideoDetails({ video, onAnalyze, isProcessing, processingStep }: VideoD
           </div>
 
           <div className="processing-indicator">
-            <div className="spinner" />
-            <p className="processing-step">{processingStep || 'Starting analysis...'}</p>
+            {processingStep ? (
+              <>
+                <div className="spinner" />
+                <p className="processing-step">{processingStep}</p>
+              </>
+            ) : (
+              <>
+                <div className="waiting-icon">⏳</div>
+                <p className="processing-step">Waiting in queue...</p>
+              </>
+            )}
           </div>
         </div>
       </div>

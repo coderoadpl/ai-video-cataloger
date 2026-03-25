@@ -149,6 +149,15 @@
   text-align: right;
 }
 
+.progress-bar-time {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--color-text-tertiary, #666);
+  width: 55px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
 .progress-fill {
   height: 100%;
   background-color: var(--color-primary);
@@ -252,4 +261,23 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   max-width: 100%;
+}
+
+/* Settings button */
+.toolbar-button.settings-button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: var(--spacing-xs);
+  min-width: 32px;
+  color: var(--color-text-secondary);
+}
+
+.toolbar-button.settings-button:hover {
+  color: var(--color-text);
+}
+
+.toolbar-button.settings-button svg {
+  width: 16px;
+  height: 16px;
 }

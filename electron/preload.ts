@@ -38,7 +38,8 @@ const electronAPI = {
     ffmpeg: { available: boolean; version: string; bundled: boolean; path: string };
     ffprobe: { available: boolean; path: string };
     whisper: { available: boolean; version: string | null; path: string | null; type: 'whisper.cpp' | 'whisper' | null };
-    claude: { available: boolean };
+    claudeCode: { available: boolean; version: string | null; path: string | null };
+    claudeApi: { available: boolean };
     ollama: { installed: boolean; running: boolean; version: string | null };
     openaiKey: { available: boolean };
     analysisMethods: string[];
@@ -224,18 +225,68 @@ const electronAPI = {
 
   // Analysis settings
   getAnalysisSettings: (): Promise<{
-    method: 'claude' | 'ollama';
+    method: 'claude-code' | 'claude-api' | 'ollama';
     ollamaModel: string;
   }> => ipcRenderer.invoke('get-analysis-settings'),
 
   saveAnalysisSettings: (settings: {
-    method: 'claude' | 'ollama';
+    method: 'claude-code' | 'claude-api' | 'ollama';
     ollamaModel: string;
   }): Promise<{ success: boolean }> => ipcRenderer.invoke('save-analysis-settings', settings),
 
   // First launch / Setup wizard
   isFirstLaunch: (): Promise<boolean> => ipcRenderer.invoke('is-first-launch'),
   markSetupComplete: (): Promise<{ success: boolean }> => ipcRenderer.invoke('mark-setup-complete'),
+
+  // Database operations
+  getDatabaseInfo: (): Promise<{
+    initialized: boolean;
+    workingDir?: string;
+    databaseDir?: string;
+    totalVideos?: number;
+    incompleteVideos?: number;
+  }> => ipcRenderer.invoke('get-database-info'),
+
+  getIncompleteVideos: (): Promise<{
+    success: boolean;
+    videos: Array<{
+      id: number;
+      original_path: string;
+      original_name: string;
+      status: string;
+      error_message: string | null;
+    }>;
+    error?: string;
+  }> => ipcRenderer.invoke('get-incomplete-videos'),
+
+  getVideoDbStatus: (videoPath: string): Promise<{
+    found: boolean;
+    id?: number;
+    status?: string;
+    errorMessage?: string | null;
+    newName?: string | null;
+    createdAt?: string;
+    updatedAt?: string;
+    error?: string;
+  }> => ipcRenderer.invoke('get-video-db-status', videoPath),
+
+  resetVideoStatus: (videoPath: string): Promise<{ success: boolean; error?: string }> =>
+    ipcRenderer.invoke('reset-video-status', videoPath),
+
+  getAllVideoRecords: (): Promise<{
+    success: boolean;
+    videos: Array<{
+      id: number;
+      original_path: string;
+      original_name: string;
+      new_name: string | null;
+      status: string;
+      error_message: string | null;
+      created_at: string;
+      updated_at: string;
+    }>;
+    error?: string;
+  }> => ipcRenderer.invoke('get-all-video-records'),
 
   // Event listeners from main process
   onMenuOpenSettings: (callback: () => void): (() => void) => {

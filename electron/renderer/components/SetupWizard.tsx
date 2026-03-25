@@ -17,7 +17,8 @@ interface Prerequisites {
   ffmpeg: { available: boolean; version: string; bundled: boolean };
   whisper: { available: boolean; type: string | null };
   ollama: { installed: boolean; running: boolean };
-  claude: { available: boolean };
+  claudeCode: { available: boolean; version: string | null; path: string | null };
+  claudeApi: { available: boolean };
   analysisMethods: string[];
   transcriptionMethods: string[];
 }
@@ -46,7 +47,7 @@ function SetupWizard({
 }: SetupWizardProps): React.ReactElement | null {
   const [currentStep, setCurrentStep] = useState<WizardStep>(1);
   const [prerequisites, setPrerequisites] = useState<Prerequisites | null>(null);
-  const [analysisMethod, setAnalysisMethod] = useState<'claude' | 'ollama'>('claude');
+  const [analysisMethod, setAnalysisMethod] = useState<'claude-code' | 'claude-api' | 'ollama'>('claude-code');
   const [transcriptionMethod, setTranscriptionMethod] = useState<'local' | 'api'>('local');
   const [whisperModels, setWhisperModels] = useState<WhisperModel[]>([]);
   const [llavaModels, setLlavaModels] = useState<LlavaModel[]>([]);
@@ -73,8 +74,10 @@ function SetupWizard({
       setPrerequisites(prereqs);
 
       // Set default analysis method based on availability
-      if (prereqs.claude?.available) {
-        setAnalysisMethod('claude');
+      if (prereqs.claudeCode?.available) {
+        setAnalysisMethod('claude-code');
+      } else if (prereqs.claudeApi?.available) {
+        setAnalysisMethod('claude-api');
       } else if (prereqs.ollama?.installed) {
         setAnalysisMethod('ollama');
       }
@@ -206,12 +209,21 @@ function SetupWizard({
               </span>
             </div>
           </div>
-          <div className={`prereq-item ${prerequisites.claude?.available ? 'available' : 'warning'}`}>
-            <span className="prereq-icon">{prerequisites.claude?.available ? '✓' : '⚠'}</span>
+          <div className={`prereq-item ${prerequisites.claudeCode?.available ? 'available' : 'warning'}`}>
+            <span className="prereq-icon">{prerequisites.claudeCode?.available ? '✓' : '⚠'}</span>
             <div className="prereq-info">
-              <span className="prereq-name">Claude API</span>
+              <span className="prereq-name">Claude Code CLI</span>
               <span className="prereq-status">
-                {prerequisites.claude?.available ? 'API key found' : 'No API key set'}
+                {prerequisites.claudeCode?.available ? 'Installed' : 'Not found'}
+              </span>
+            </div>
+          </div>
+          <div className={`prereq-item ${prerequisites.claudeApi?.available ? 'available' : 'warning'}`}>
+            <span className="prereq-icon">{prerequisites.claudeApi?.available ? '✓' : '⚠'}</span>
+            <div className="prereq-info">
+              <span className="prereq-name">Claude API Key</span>
+              <span className="prereq-status">
+                {prerequisites.claudeApi?.available ? 'API key found' : 'No API key set'}
               </span>
             </div>
           </div>
@@ -233,44 +245,70 @@ function SetupWizard({
     </div>
   );
 
-  const renderStep3AnalysisMethod = () => (
-    <div className="wizard-step">
-      <h2>Choose Analysis Method</h2>
-      <p className="wizard-description">
-        Select how you want to analyze your videos.
-      </p>
-      <div className="method-options">
-        <button
-          className={`method-option ${analysisMethod === 'claude' ? 'selected' : ''}`}
-          onClick={() => setAnalysisMethod('claude')}
-          disabled={!prerequisites?.claude?.available}
-        >
-          <div className="method-header">
-            <span className="method-icon">☁️</span>
-            <span className="method-name">Claude API</span>
-            {!prerequisites?.claude?.available && <span className="method-badge unavailable">No API Key</span>}
-          </div>
-          <p className="method-desc">
-            High-quality analysis using Anthropic's Claude. Requires API key.
+  const renderStep3AnalysisMethod = () => {
+    const claudeCodeAvailable = prerequisites?.claudeCode?.available;
+    const claudeApiAvailable = prerequisites?.claudeApi?.available;
+    const ollamaAvailable = prerequisites?.ollama?.installed;
+    const noneAvailable = !claudeCodeAvailable && !claudeApiAvailable && !ollamaAvailable;
+
+    return (
+      <div className="wizard-step">
+        <h2>Choose Analysis Method</h2>
+        <p className="wizard-description">
+          Select how you want to analyze your videos.
+        </p>
+        {noneAvailable && (
+          <p className="wizard-warning">
+            No analysis method is currently available. You can still select your preferred method and configure it later in Settings.
           </p>
-        </button>
-        <button
-          className={`method-option ${analysisMethod === 'ollama' ? 'selected' : ''}`}
-          onClick={() => setAnalysisMethod('ollama')}
-          disabled={!prerequisites?.ollama?.installed}
-        >
-          <div className="method-header">
-            <span className="method-icon">💻</span>
-            <span className="method-name">Ollama (Local)</span>
-            {!prerequisites?.ollama?.installed && <span className="method-badge unavailable">Not Installed</span>}
-          </div>
-          <p className="method-desc">
-            Run LLaVA locally for private, offline analysis. No API needed.
-          </p>
-        </button>
+        )}
+        <div className="method-options">
+          <button
+            className={`method-option ${analysisMethod === 'claude-code' ? 'selected' : ''} ${!claudeCodeAvailable ? 'unavailable' : ''}`}
+            onClick={() => setAnalysisMethod('claude-code')}
+          >
+            <div className="method-header">
+              <span className="method-icon">🖥️</span>
+              <span className="method-name">Claude Code CLI</span>
+              {claudeCodeAvailable && <span className="method-badge available">Installed</span>}
+              {!claudeCodeAvailable && <span className="method-badge unavailable">Not Found</span>}
+            </div>
+            <p className="method-desc">
+              Use the Claude Code CLI tool for analysis. Best quality, works offline with your Claude subscription.
+            </p>
+          </button>
+          <button
+            className={`method-option ${analysisMethod === 'claude-api' ? 'selected' : ''} ${!claudeApiAvailable ? 'unavailable' : ''}`}
+            onClick={() => setAnalysisMethod('claude-api')}
+          >
+            <div className="method-header">
+              <span className="method-icon">☁️</span>
+              <span className="method-name">Claude API</span>
+              {claudeApiAvailable && <span className="method-badge available">API Key Set</span>}
+              {!claudeApiAvailable && <span className="method-badge unavailable">No API Key</span>}
+            </div>
+            <p className="method-desc">
+              Direct API calls to Claude. Requires ANTHROPIC_API_KEY environment variable.
+            </p>
+          </button>
+          <button
+            className={`method-option ${analysisMethod === 'ollama' ? 'selected' : ''} ${!ollamaAvailable ? 'unavailable' : ''}`}
+            onClick={() => setAnalysisMethod('ollama')}
+          >
+            <div className="method-header">
+              <span className="method-icon">💻</span>
+              <span className="method-name">Ollama (Local)</span>
+              {ollamaAvailable && <span className="method-badge available">Installed</span>}
+              {!ollamaAvailable && <span className="method-badge unavailable">Not Installed</span>}
+            </div>
+            <p className="method-desc">
+              Run LLaVA locally for private, offline analysis. Free and fully local.
+            </p>
+          </button>
+        </div>
       </div>
-    </div>
-  );
+    );
+  };
 
   const renderStep4TranscriptionMethod = () => (
     <div className="wizard-step">
@@ -310,6 +348,8 @@ function SetupWizard({
   const renderStep5Models = () => {
     const hasWhisperModel = whisperModels.length > 0;
     const hasLlavaModel = llavaModels.some(m => m.isPulled);
+    const hasSystemWhisper = prerequisites?.whisper?.available;
+    const whisperReady = hasWhisperModel || hasSystemWhisper;
 
     return (
       <div className="wizard-step">
@@ -321,14 +361,18 @@ function SetupWizard({
           <div className="wizard-loading">Checking models...</div>
         ) : (
           <div className="models-status">
-            <div className={`model-item ${hasWhisperModel ? 'available' : 'missing'}`}>
-              <span className="model-icon">{hasWhisperModel ? '✓' : '⚠'}</span>
+            <div className={`model-item ${whisperReady ? 'available' : 'missing'}`}>
+              <span className="model-icon">{whisperReady ? '✓' : '⚠'}</span>
               <div className="model-info">
-                <span className="model-name">Whisper Models</span>
+                <span className="model-name">Whisper (Transcription)</span>
                 <span className="model-status">
-                  {hasWhisperModel
-                    ? `${whisperModels.length} model(s) downloaded`
-                    : 'No models downloaded yet'}
+                  {hasSystemWhisper && hasWhisperModel
+                    ? `System whisper available + ${whisperModels.length} GGML model(s)`
+                    : hasSystemWhisper
+                    ? `System whisper available (${prerequisites?.whisper?.type})`
+                    : hasWhisperModel
+                    ? `${whisperModels.length} GGML model(s) downloaded`
+                    : 'No whisper available'}
                 </span>
               </div>
             </div>
@@ -346,7 +390,9 @@ function SetupWizard({
               </div>
             )}
             <p className="models-note">
-              You can download models later from Settings → Manage Models.
+              {whisperReady
+                ? 'Transcription is ready! You can optionally download additional models from Settings → Manage Models.'
+                : 'You can download models later from Settings → Manage Models.'}
             </p>
           </div>
         )}
@@ -366,7 +412,8 @@ function SetupWizard({
         <div className="summary-item">
           <span className="summary-label">Analysis:</span>
           <span className="summary-value">
-            {analysisMethod === 'claude' ? 'Claude API' : 'Ollama (Local)'}
+            {analysisMethod === 'claude-code' ? 'Claude Code CLI' :
+             analysisMethod === 'claude-api' ? 'Claude API' : 'Ollama (Local)'}
           </span>
         </div>
         <div className="summary-item">

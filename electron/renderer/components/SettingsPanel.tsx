@@ -6,7 +6,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import '../styles/SettingsPanel.css';
 
 interface SettingsData {
-  analysisMethod: 'claude' | 'ollama';
+  analysisMethod: 'claude-code' | 'claude-api' | 'ollama';
   ollamaModel: string;
   transcriptionMethod: 'local' | 'api';
   whisperModel: string;
@@ -39,7 +39,7 @@ interface SettingsPanelProps {
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
-  analysisMethod: 'claude',
+  analysisMethod: 'claude-code',
   ollamaModel: 'llava:7b',
   transcriptionMethod: 'local',
   whisperModel: 'base',
@@ -69,7 +69,8 @@ function SettingsPanel({ isOpen, onClose, onOpenModelManager }: SettingsPanelPro
   const [isSaving, setIsSaving] = useState(false);
   const [ollamaStatus, setOllamaStatus] = useState<OllamaStatus | null>(null);
   const [whisperModels, setWhisperModels] = useState<WhisperModels | null>(null);
-  const [claudeAvailable, setClaudeAvailable] = useState(false);
+  const [claudeCodeAvailable, setClaudeCodeAvailable] = useState(false);
+  const [claudeApiAvailable, setClaudeApiAvailable] = useState(false);
   const [openaiAvailable, setOpenaiAvailable] = useState(false);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -108,7 +109,8 @@ function SettingsPanel({ isOpen, onClose, onOpenModelManager }: SettingsPanelPro
       setOriginalSettings(loadedSettings);
       setOllamaStatus(ollamaStatusResult);
       setWhisperModels(whisperModelsResult);
-      setClaudeAvailable(prerequisites.claude.available);
+      setClaudeCodeAvailable(prerequisites.claudeCode.available);
+      setClaudeApiAvailable(prerequisites.claudeApi.available);
       setOpenaiAvailable(prerequisites.openaiKey.available);
     } catch (error) {
       console.error('Failed to load settings:', error);
@@ -221,19 +223,29 @@ function SettingsPanel({ isOpen, onClose, onOpenModelManager }: SettingsPanelPro
                   <div className="setting-label">
                     <span>Analysis Method</span>
                     <span className="setting-description">
-                      {settings.analysisMethod === 'claude'
-                        ? 'Uses Claude API for high-quality analysis'
+                      {settings.analysisMethod === 'claude-code'
+                        ? 'Uses Claude Code CLI for high-quality analysis'
+                        : settings.analysisMethod === 'claude-api'
+                        ? 'Uses Claude API directly'
                         : 'Uses local LLaVA model via Ollama'}
                     </span>
                   </div>
-                  <div className="toggle-group">
+                  <div className="toggle-group triple">
                     <button
-                      className={`toggle-button ${settings.analysisMethod === 'claude' ? 'active' : ''}`}
-                      onClick={() => updateSetting('analysisMethod', 'claude')}
-                      disabled={!claudeAvailable}
-                      title={!claudeAvailable ? 'Claude API key not configured' : undefined}
+                      className={`toggle-button ${settings.analysisMethod === 'claude-code' ? 'active' : ''}`}
+                      onClick={() => updateSetting('analysisMethod', 'claude-code')}
+                      disabled={!claudeCodeAvailable}
+                      title={!claudeCodeAvailable ? 'Claude Code CLI not found' : undefined}
                     >
-                      Claude
+                      Claude CLI
+                    </button>
+                    <button
+                      className={`toggle-button ${settings.analysisMethod === 'claude-api' ? 'active' : ''}`}
+                      onClick={() => updateSetting('analysisMethod', 'claude-api')}
+                      disabled={!claudeApiAvailable}
+                      title={!claudeApiAvailable ? 'Claude API key not configured' : undefined}
+                    >
+                      Claude API
                     </button>
                     <button
                       className={`toggle-button ${settings.analysisMethod === 'ollama' ? 'active' : ''}`}
@@ -276,7 +288,13 @@ function SettingsPanel({ isOpen, onClose, onOpenModelManager }: SettingsPanelPro
                   </div>
                 )}
 
-                {settings.analysisMethod === 'claude' && !claudeAvailable && (
+                {settings.analysisMethod === 'claude-code' && !claudeCodeAvailable && (
+                  <div className="setting-note warning">
+                    Claude Code CLI not found. Install it with: npm install -g @anthropic-ai/claude-code
+                  </div>
+                )}
+
+                {settings.analysisMethod === 'claude-api' && !claudeApiAvailable && (
                   <div className="setting-note warning">
                     Claude API key not configured. Set ANTHROPIC_API_KEY environment variable.
                   </div>
@@ -344,29 +362,35 @@ function SettingsPanel({ isOpen, onClose, onOpenModelManager }: SettingsPanelPro
                       </div>
                     </div>
 
-                    <div className="setting-row nested">
-                      <div className="setting-label">
-                        <span>Whisper Model</span>
+                    {settings.preferBuiltInWhisper ? (
+                      <div className="setting-row nested">
+                        <div className="setting-label">
+                          <span>Whisper Model</span>
+                        </div>
+                        <select
+                          className="setting-select"
+                          value={settings.whisperModel}
+                          onChange={(e) => updateSetting('whisperModel', e.target.value)}
+                        >
+                          {WHISPER_MODEL_OPTIONS.map((model) => {
+                            const isDownloaded = downloadedWhisperModels.includes(model.name);
+                            return (
+                              <option
+                                key={model.name}
+                                value={model.name}
+                                disabled={!isDownloaded}
+                              >
+                                {model.label} {isDownloaded ? '✓' : '(not downloaded)'}
+                              </option>
+                            );
+                          })}
+                        </select>
                       </div>
-                      <select
-                        className="setting-select"
-                        value={settings.whisperModel}
-                        onChange={(e) => updateSetting('whisperModel', e.target.value)}
-                      >
-                        {WHISPER_MODEL_OPTIONS.map((model) => {
-                          const isDownloaded = downloadedWhisperModels.includes(model.name);
-                          return (
-                            <option
-                              key={model.name}
-                              value={model.name}
-                              disabled={!isDownloaded}
-                            >
-                              {model.label} {isDownloaded ? '✓' : '(not downloaded)'}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
+                    ) : (
+                      <div className="setting-note info">
+                        System whisper will use the "base" model by default. Models are auto-downloaded to ~/.cache/whisper/
+                      </div>
+                    )}
                   </>
                 )}
 

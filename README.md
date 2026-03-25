@@ -1,17 +1,61 @@
 # AI Video Cataloger
 
-CLI tool that automatically analyzes, transcribes, and renames video files using AI.
+A tool that automatically analyzes, transcribes, and renames video files using AI. Available as both a **graphical desktop app** (Electron) and a **command-line interface**.
 
 ## What It Does
 
 1. **Extracts frames** from videos using FFmpeg
-2. **Transcribes audio** using local Whisper
-3. **Analyzes content** with Claude Code CLI
+2. **Transcribes audio** using local Whisper (whisper.cpp)
+3. **Analyzes content** with Claude Code CLI, Claude API, or LLaVA via Ollama (local)
 4. **Renames files** with descriptive, date-prefixed names
 
-## Prerequisites
+## Quick Start - GUI (Recommended)
 
-Install these tools before using:
+The graphical interface is the easiest way to use AI Video Cataloger. It bundles FFmpeg and whisper.cpp, so you only need Ollama for fully local AI analysis.
+
+### Launch the GUI (Development Mode)
+
+```bash
+npm install
+npm run electron:dev
+```
+
+### Build Standalone App
+
+```bash
+npm run electron:package
+```
+
+This creates a packaged `.app` (macOS) in the `dist-electron/` directory.
+
+### GUI Features
+
+- **First Launch Setup Wizard** - Guided configuration on first run
+- **Folder Browser** - Select folders and view video files with thumbnails
+- **Video Analysis** - Single or batch processing with progress indicators
+- **Model Managers** - Download Whisper models and manage LLaVA models via Ollama
+- **Settings Panel** - Configure analysis method, transcription options, and more
+- **Prerequisites Check** - See status of all dependencies at a glance
+- **Native macOS Integration** - Standard menus, keyboard shortcuts (Cmd+O, Cmd+,)
+
+### GUI Prerequisites
+
+The app supports three analysis methods (at least one required):
+- **Claude Code CLI** (recommended): Install with `npm install -g @anthropic-ai/claude-code`
+- **Claude API**: Set `ANTHROPIC_API_KEY` environment variable
+- **Ollama** (local): Install from [ollama.com](https://ollama.com) for fully offline analysis
+
+FFmpeg and whisper.cpp are bundled with the app.
+
+---
+
+## Command-Line Interface (CLI)
+
+For scripting or headless environments, the CLI provides the same functionality.
+
+### CLI Prerequisites
+
+Install these tools before using the CLI:
 
 ```bash
 # FFmpeg - video processing
@@ -25,7 +69,7 @@ pip install openai-whisper
 npm install -g @anthropic-ai/claude-code
 ```
 
-## Installation
+### CLI Installation
 
 ```bash
 npm install
@@ -33,7 +77,7 @@ npm run build
 npm link  # optional: install globally
 ```
 
-## Usage
+### CLI Usage
 
 ```bash
 # Process videos in current directory
@@ -50,7 +94,7 @@ ai-video-cataloger [directory] [options]
   -r, --retry-errors       Re-process previously failed videos
 ```
 
-## Example
+### CLI Example
 
 ```bash
 $ ai-video-cataloger ~/Downloads/videos

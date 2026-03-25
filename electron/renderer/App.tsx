@@ -44,6 +44,7 @@ function App(): React.ReactElement {
     step: string;
     videoName?: string;
     videoPercent?: number;
+    currentVideoId?: number; // Track which video is currently being processed
   } | null>(null);
   const [batchNotification, setBatchNotification] = useState<{
     show: boolean;
@@ -328,9 +329,10 @@ function App(): React.ReactElement {
         step: progress.step,
         videoName: prev?.videoName,
         videoPercent: progress.percent,
+        currentVideoId: progress.videoId, // Track which video is being processed
       }));
 
-      // Update video status
+      // Update video status - only mark the currently processing video
       setVideos((prevVideos) =>
         prevVideos.map((v) => (v.id === progress.videoId ? { ...v, status: 'processing' as const } : v))
       );
@@ -378,9 +380,10 @@ function App(): React.ReactElement {
         total: progress.totalVideos,
         step: 'Starting...',
         videoName: progress.videoName,
+        currentVideoId: progress.videoId, // Track which video is being processed
       });
 
-      // Update the specific video status
+      // Update the specific video status - only the currently processing video
       setVideos((prevVideos) =>
         prevVideos.map((v) =>
           v.id === progress.videoId ? { ...v, status: 'processing' as const } : v
@@ -439,6 +442,7 @@ function App(): React.ReactElement {
         onRetryFailed={handleRetryFailed}
         onCancel={handleCancel}
         onRefresh={handleRefresh}
+        onOpenSettings={() => setIsSettingsPanelOpen(true)}
         isProcessing={isProcessing}
         processingProgress={processingProgress}
         hasUnprocessedVideos={videos.some((v) => v.status === 'none')}
@@ -456,7 +460,12 @@ function App(): React.ReactElement {
           video={selectedVideo}
           onAnalyze={handleAnalyze}
           isProcessing={isProcessing}
-          processingStep={processingProgress?.step}
+          processingStep={
+            // Only show step if this is the video currently being processed
+            selectedVideo && processingProgress?.currentVideoId === selectedVideo.id
+              ? processingProgress?.step
+              : null
+          }
         />
       </div>
 
