@@ -322,6 +322,7 @@ interface AppSettingsSchema {
   preferBuiltInWhisper: boolean;
   frameCount: number;
   renameFiles: boolean;
+  setupCompleted: boolean;
 }
 
 const settingsStore = new Store<AppSettingsSchema>({
@@ -334,6 +335,7 @@ const settingsStore = new Store<AppSettingsSchema>({
     preferBuiltInWhisper: true,
     frameCount: 3,
     renameFiles: true,
+    setupCompleted: false,
   },
 });
 
@@ -2458,6 +2460,20 @@ export function registerIpcHandlers(): void {
       return { success: true };
     } catch (err) {
       return { success: false, error: `Failed to save analysis settings: ${err}` };
+    }
+  });
+
+  // First launch / Setup wizard
+  ipcMain.handle('is-first-launch', async () => {
+    return !settingsStore.get('setupCompleted');
+  });
+
+  ipcMain.handle('mark-setup-complete', async () => {
+    try {
+      settingsStore.set('setupCompleted', true);
+      return { success: true };
+    } catch (err) {
+      return { success: false, error: `Failed to mark setup complete: ${err}` };
     }
   });
 }

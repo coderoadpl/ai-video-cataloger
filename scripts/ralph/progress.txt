@@ -597,3 +597,34 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - File-based detection provides simpler architecture without database synchronization issues
   - Analysis Method field is optional in CLI-generated files (defaults to 'claude')
 ---
+
+## 2026-01-24 - US-051
+- What was implemented:
+  - Created SetupWizard component with 6 sequential steps
+  - Step 1: Welcome screen with app features overview
+  - Step 2: Prerequisites check (FFmpeg, Whisper, Claude API, Ollama)
+  - Step 3: Analysis method selection (Claude API vs Ollama local)
+  - Step 4: Transcription method selection (local whisper vs API)
+  - Step 5: Model status check (Whisper models, LLaVA models)
+  - Step 6: Summary and "Open Folder" to start
+  - First launch detection using setupCompleted flag in settingsStore
+  - Skip Setup button to bypass wizard
+  - Help > Run Setup Wizard menu triggers wizard re-run
+  - IPC handlers: is-first-launch, mark-setup-complete
+  - Wizard saves selected settings on completion
+
+- Files changed:
+  - Created: electron/renderer/components/SetupWizard.tsx
+  - Created: electron/renderer/styles/SetupWizard.css
+  - Modified: electron/renderer/App.tsx (added SetupWizard integration, first-launch check, menu event)
+  - Modified: electron/preload.ts (added isFirstLaunch, markSetupComplete APIs)
+  - Modified: electron/main/ipc-handlers.ts (added setupCompleted to schema, IPC handlers)
+  - Modified: scripts/ralph/prd.json (marked US-051 as passes: true)
+
+- **Learnings for future iterations:**
+  - Multi-step wizards work well with step number type and switch statement for rendering
+  - First launch detection: boolean flag in electron-store, checked once on app start
+  - Wizard modal should stop propagation to prevent closing when clicking content
+  - Step indicators using dots with active/completed states provide good visual progress
+  - Load prerequisite data only when step becomes active (useEffect with currentStep)
+---

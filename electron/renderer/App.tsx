@@ -8,6 +8,7 @@ import Toolbar from './components/Toolbar.js';
 import PrerequisitesPanel from './components/PrerequisitesPanel.js';
 import ModelManagerPanel from './components/ModelManagerPanel.js';
 import SettingsPanel from './components/SettingsPanel.js';
+import SetupWizard from './components/SetupWizard.js';
 import './styles/App.css';
 
 // Video file type definition
@@ -55,6 +56,7 @@ function App(): React.ReactElement {
   const [isPrerequisitesPanelOpen, setIsPrerequisitesPanelOpen] = useState(false);
   const [isModelManagerPanelOpen, setIsModelManagerPanelOpen] = useState(false);
   const [isSettingsPanelOpen, setIsSettingsPanelOpen] = useState(false);
+  const [isSetupWizardOpen, setIsSetupWizardOpen] = useState(false);
 
   // For single selection display (VideoDetails), use the first selected or last clicked
   const selectedVideo = selectedVideoIds.length > 0
@@ -66,17 +68,23 @@ function App(): React.ReactElement {
     (v) => selectedVideoIds.includes(v.id) && v.status === 'none'
   ).length;
 
-  // Restore last used folder on app launch
+  // Check for first launch and show setup wizard
   useEffect(() => {
-    const restoreLastFolder = async () => {
-      const lastFolder = await window.electronAPI.getLastFolder();
-      if (lastFolder) {
-        setCurrentFolder(lastFolder);
-        const scannedVideos = await window.electronAPI.scanFolder(lastFolder);
-        setVideos(scannedVideos as VideoFile[]);
+    const checkFirstLaunch = async () => {
+      const isFirstLaunch = await window.electronAPI.isFirstLaunch();
+      if (isFirstLaunch) {
+        setIsSetupWizardOpen(true);
+      } else {
+        // Only restore folder if not first launch
+        const lastFolder = await window.electronAPI.getLastFolder();
+        if (lastFolder) {
+          setCurrentFolder(lastFolder);
+          const scannedVideos = await window.electronAPI.scanFolder(lastFolder);
+          setVideos(scannedVideos as VideoFile[]);
+        }
       }
     };
-    restoreLastFolder();
+    checkFirstLaunch();
   }, []);
 
   // Handle folder selection via dialog
@@ -297,6 +305,9 @@ function App(): React.ReactElement {
     const unsubscribeOpenSettings = window.electronAPI.onMenuOpenSettings(() => {
       setIsSettingsPanelOpen(true);
     });
+    const unsubscribeRunSetupWizard = window.electronAPI.onMenuRunSetupWizard(() => {
+      setIsSetupWizardOpen(true);
+    });
 
     return () => {
       unsubscribeOpenFolder();
@@ -304,6 +315,7 @@ function App(): React.ReactElement {
       unsubscribeOpenPrerequisites();
       unsubscribeOpenModelManager();
       unsubscribeOpenSettings();
+      unsubscribeRunSetupWizard();
     };
   }, [handleSelectFolder, handleRefresh]);
 
@@ -464,6 +476,18 @@ function App(): React.ReactElement {
           setIsSettingsPanelOpen(false);
           setIsModelManagerPanelOpen(true);
         }}
+      />
+      <SetupWizard
+        isOpen={isSetupWizardOpen}
+        onClose={() => {
+          setIsSetupWizardOpen(false);
+          window.electronAPI.markSetupComplete();
+        }}
+        onComplete={() => {
+          setIsSetupWizardOpen(false);
+          window.electronAPI.markSetupComplete();
+        }}
+        onOpenFolder={handleSelectFolder}
       />
 
       {/* Batch completion notification */}

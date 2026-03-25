@@ -233,6 +233,10 @@ const electronAPI = {
     ollamaModel: string;
   }): Promise<{ success: boolean }> => ipcRenderer.invoke('save-analysis-settings', settings),
 
+  // First launch / Setup wizard
+  isFirstLaunch: (): Promise<boolean> => ipcRenderer.invoke('is-first-launch'),
+  markSetupComplete: (): Promise<{ success: boolean }> => ipcRenderer.invoke('mark-setup-complete'),
+
   // Event listeners from main process
   onMenuOpenSettings: (callback: () => void): (() => void) => {
     const handler = () => callback();
