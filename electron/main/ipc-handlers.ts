@@ -219,8 +219,14 @@ function loadProcessedVideoData(videoPath: string): {
         }
       }
 
-      // Determine analysis method (default to 'claude' for CLI-processed videos)
-      result.analysisMethod = 'claude';
+      // Extract analysis method (if present, otherwise default to 'claude' for CLI-processed videos)
+      const methodMatch = summaryContent.match(/Analysis Method:\s*([^\n]+)/);
+      if (methodMatch && methodMatch[1]) {
+        result.analysisMethod = methodMatch[1].trim();
+      } else {
+        // Default for CLI-processed videos that don't have this field
+        result.analysisMethod = 'claude';
+      }
     } catch {
       // Ignore errors
     }
