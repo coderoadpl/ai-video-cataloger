@@ -1,0 +1,464 @@
+{
+  "name": "AI Video Cataloger - GUI Rebuild as CLI Wrapper",
+  "description": "Rebuild the Electron GUI from scratch to be a thin wrapper over the CLI. The GUI will spawn CLI commands, display their output in a terminal-like log viewer, and provide a visual interface for browsing videos and their metadata.",
+  "stories": [
+    {
+      "id": "US-052",
+      "title": "Per-Folder Database Migration",
+      "description": "As a developer, I need CLI to use per-folder databases instead of global",
+      "acceptanceCriteria": [
+        "Change database location from ~/.config/ to .ai-video-cataloger/catalog.db",
+        "Each working folder has its own database",
+        "Config stored in .ai-video-cataloger/config.json",
+        "Update all database path references",
+        "Existing global DB is not migrated (fresh start)",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-053",
+      "title": "Bundle FFmpeg with CLI",
+      "description": "As a user, I want CLI to work without system ffmpeg installed",
+      "acceptanceCriteria": [
+        "Bundle ffmpeg-static for current platform",
+        "Extract binary on first use to ~/.ai-video-cataloger/bin/",
+        "Use bundled binary by default",
+        "Fall back to system ffmpeg if bundled fails",
+        "Works on macOS arm64 and x64",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-054",
+      "title": "Bundle Whisper.cpp with CLI",
+      "description": "As a user, I want CLI to work without system whisper installed",
+      "acceptanceCriteria": [
+        "Bundle whisper.cpp binary for macOS",
+        "Extract to ~/.ai-video-cataloger/bin/",
+        "Use bundled binary when whisper mode is 'local'",
+        "Models stored in ~/.ai-video-cataloger/models/whisper/",
+        "Fall back to system whisper if bundled unavailable",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-055",
+      "title": "JSON Output Mode",
+      "description": "As a developer, I want CLI to output JSON events so GUI can parse progress reliably",
+      "acceptanceCriteria": [
+        "Add --json global flag",
+        "Output newline-delimited JSON for all commands",
+        "Include event types: started, progress, completed, error",
+        "Progress events include step name and percentage",
+        "Human-readable output remains default",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-056",
+      "title": "Process Single Video Command",
+      "description": "As a user, I want to process a single video file directly",
+      "acceptanceCriteria": [
+        "Add process <video-path> subcommand",
+        "Accepts same options as main command (--frames, --whisper, etc.)",
+        "Works with --json flag",
+        "Reports error if file doesn't exist or isn't video",
+        "Creates .ai-video-cataloger/ in video's parent folder",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-057",
+      "title": "Thumbnail Generation Command",
+      "description": "As a user, I want CLI to generate video thumbnails",
+      "acceptanceCriteria": [
+        "Add thumbnail <video-path> subcommand",
+        "Generates 128x72 JPEG thumbnail",
+        "Stores in .ai-video-cataloger/thumbnails/",
+        "Returns path to generated thumbnail",
+        "Skips if thumbnail already exists (use --force to regenerate)",
+        "Works with --json flag",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-058",
+      "title": "Model Download Command",
+      "description": "As a user, I want to download Whisper models via CLI",
+      "acceptanceCriteria": [
+        "Add models download <model-name> subcommand",
+        "Downloads GGML model from Hugging Face",
+        "Shows progress with percentage and speed",
+        "Stores in ~/.ai-video-cataloger/models/whisper/",
+        "Works with --json flag (progress events)",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-059",
+      "title": "Model Delete Command",
+      "description": "As a user, I want to delete downloaded Whisper models",
+      "acceptanceCriteria": [
+        "Add models delete <model-name> subcommand",
+        "Removes model file from disk",
+        "Confirms deletion (--force to skip)",
+        "Reports error if model not downloaded",
+        "Works with --json flag",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-060",
+      "title": "Config Get/Set Commands",
+      "description": "As a user, I want to manage settings via CLI",
+      "acceptanceCriteria": [
+        "Add config get [key] subcommand (all or specific)",
+        "Add config set <key> <value> subcommand",
+        "Reads/writes .ai-video-cataloger/config.json",
+        "Validates known keys and value types",
+        "Works with --json flag",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-061",
+      "title": "Nested Database Check",
+      "description": "As a user, I want CLI to detect nested databases",
+      "acceptanceCriteria": [
+        "Add check [folder] subcommand",
+        "Scans for nested .ai-video-cataloger/ folders",
+        "Reports paths of any found",
+        "Main command refuses to run if nested DBs exist",
+        "Clear error message explaining the issue",
+        "Works with --json flag",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-062",
+      "title": "Status with JSON Output",
+      "description": "As a developer, I want status command to output JSON",
+      "acceptanceCriteria": [
+        "Existing status command supports --json flag",
+        "Returns array of video records with status",
+        "Includes all fields: path, status, error, timestamps",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-063",
+      "title": "Scan Folder Command",
+      "description": "As a user, I want to list videos in a folder",
+      "acceptanceCriteria": [
+        "Add scan <folder> subcommand",
+        "Lists all video files with metadata (size, duration)",
+        "Includes database status for each (pending/completed/etc.)",
+        "Works with --json flag",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-064",
+      "title": "Prerequisites Check Command",
+      "description": "As a user, I want to check system prerequisites",
+      "acceptanceCriteria": [
+        "Add doctor subcommand",
+        "Checks: bundled ffmpeg, bundled whisper, claude CLI, ollama",
+        "Reports status and version for each",
+        "Shows bundled vs system for ffmpeg/whisper",
+        "Suggests installation steps for missing items",
+        "Works with --json flag",
+        "Typecheck passes"
+      ],
+      "phase": 1
+    },
+    {
+      "id": "US-065",
+      "title": "Delete Current Electron Code",
+      "description": "As a developer, I need to remove the old GUI implementation",
+      "acceptanceCriteria": [
+        "Delete entire electron/ directory",
+        "Update package.json to remove old electron scripts",
+        "Keep shared src/ code intact",
+        "Document what was removed in commit message"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-066",
+      "title": "New Electron Scaffold",
+      "description": "As a developer, I need fresh Electron project setup",
+      "acceptanceCriteria": [
+        "Create new electron/ directory",
+        "Main process with TypeScript",
+        "Renderer with React + TypeScript + Vite",
+        "Preload script with contextBridge",
+        "electron-builder config for macOS",
+        "Scripts: electron:dev, electron:build",
+        "Typecheck passes"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-067",
+      "title": "Shadcn/ui Setup with macOS Theme",
+      "description": "As a developer, I need UI components with macOS styling",
+      "acceptanceCriteria": [
+        "Install shadcn/ui and dependencies",
+        "Configure Tailwind CSS",
+        "Create macOS-inspired theme (colors, radius, shadows)",
+        "Use SF Pro font (with system fallback)",
+        "Add base components: Button, Input, ScrollArea",
+        "Typecheck passes"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-068",
+      "title": "CLI Spawner Service",
+      "description": "As a developer, I need IPC to spawn and stream CLI output",
+      "acceptanceCriteria": [
+        "Create cli-spawner.ts in main process",
+        "Function: spawnCLI(command, args, onOutput, onError)",
+        "Stream stdout/stderr line by line",
+        "Return process handle for kill capability",
+        "Parse JSON lines when --json used",
+        "Handle process exit codes",
+        "Expose via IPC to renderer",
+        "Typecheck passes"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-069",
+      "title": "Terminal Log Viewer Component",
+      "description": "As a user, I want to see CLI output in the GUI",
+      "acceptanceCriteria": [
+        "Create TerminalLog React component",
+        "Scrollable log area with monospace font",
+        "Auto-scroll to bottom on new output",
+        "Support ANSI colors (or strip them)",
+        "Clear button to reset log",
+        "Copy button to copy log contents",
+        "Typecheck passes"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-070",
+      "title": "Basic Window Layout",
+      "description": "As a user, I want a functional window layout",
+      "acceptanceCriteria": [
+        "Three-panel layout: sidebar, main content, terminal log",
+        "Collapsible/resizable terminal panel",
+        "macOS native title bar",
+        "Minimum window size: 900x600",
+        "Remember window position/size",
+        "Typecheck passes"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-071",
+      "title": "Folder Picker with Nested DB Check",
+      "description": "As a user, I want to select a folder to work with",
+      "acceptanceCriteria": [
+        "Open Folder button in toolbar",
+        "Native macOS folder picker dialog",
+        "Run ai-video-cataloger check on selected folder",
+        "If nested DBs found, show error modal with explanation",
+        "Store recent folders (max 10)",
+        "Show current folder path in UI",
+        "Typecheck passes"
+      ],
+      "phase": 2
+    },
+    {
+      "id": "US-072",
+      "title": "Video List with Thumbnails",
+      "description": "As a user, I want to see videos in the selected folder",
+      "acceptanceCriteria": [
+        "Sidebar shows list of video files",
+        "Call ai-video-cataloger scan --json to get list",
+        "Generate thumbnails via ai-video-cataloger thumbnail",
+        "Display thumbnail, filename, duration, status badge",
+        "Status badges: none (pending), yellow (processing), green (done), red (error)",
+        "Click to select video",
+        "Typecheck passes"
+      ],
+      "phase": 3
+    },
+    {
+      "id": "US-073",
+      "title": "Video Details Panel",
+      "description": "As a user, I want to see details of selected video",
+      "acceptanceCriteria": [
+        "Show video metadata (size, duration, path)",
+        "If completed: show summary, transcript preview, extracted frames",
+        "If error: show error message and failed step",
+        "If pending: show Analyze button",
+        "Read data from .ai-video-cataloger/ artifacts",
+        "Typecheck passes"
+      ],
+      "phase": 3
+    },
+    {
+      "id": "US-074",
+      "title": "Analyze Single Video",
+      "description": "As a user, I want to analyze a video from GUI",
+      "acceptanceCriteria": [
+        "Analyze button on pending videos",
+        "Runs ai-video-cataloger process <video> --json",
+        "Stream output to terminal log",
+        "Parse JSON events for progress indicator",
+        "Show progress bar with current step",
+        "Refresh video list on completion",
+        "Typecheck passes"
+      ],
+      "phase": 3
+    },
+    {
+      "id": "US-075",
+      "title": "Cancel Processing",
+      "description": "As a user, I want to cancel ongoing analysis",
+      "acceptanceCriteria": [
+        "Cancel button appears during processing",
+        "Kills CLI process (SIGTERM)",
+        "Shows warning modal about potential incomplete state",
+        "Refreshes video status after cancel",
+        "Log shows 'Cancelled by user'",
+        "Typecheck passes"
+      ],
+      "phase": 3
+    },
+    {
+      "id": "US-076",
+      "title": "Batch Processing",
+      "description": "As a user, I want to analyze multiple videos",
+      "acceptanceCriteria": [
+        "Analyze All button for pending videos",
+        "Processes videos one by one via CLI",
+        "Shows overall progress (X of Y)",
+        "Can cancel entire batch",
+        "Continue to next video on error",
+        "Summary at end (success/failed counts)",
+        "Typecheck passes"
+      ],
+      "phase": 3
+    },
+    {
+      "id": "US-077",
+      "title": "Settings Panel",
+      "description": "As a user, I want to configure processing options",
+      "acceptanceCriteria": [
+        "Settings modal accessible from menu",
+        "Frame count slider (1-10)",
+        "Whisper mode selector (local/api/skip)",
+        "Whisper model dropdown (if local)",
+        "Analysis method selector",
+        "Auto-rename toggle",
+        "Saves via ai-video-cataloger config set",
+        "Loads via ai-video-cataloger config get --json",
+        "Typecheck passes"
+      ],
+      "phase": 3
+    },
+    {
+      "id": "US-078",
+      "title": "Model Manager Panel",
+      "description": "As a user, I want to manage Whisper models in GUI",
+      "acceptanceCriteria": [
+        "Model Manager accessible from menu",
+        "List available models with download status",
+        "Download button runs ai-video-cataloger models download --json",
+        "Progress bar during download",
+        "Delete button runs ai-video-cataloger models delete",
+        "Show disk space used",
+        "Typecheck passes"
+      ],
+      "phase": 4
+    },
+    {
+      "id": "US-079",
+      "title": "Prerequisites Panel",
+      "description": "As a user, I want to see system status",
+      "acceptanceCriteria": [
+        "Prerequisites panel accessible from Help menu",
+        "Runs ai-video-cataloger doctor --json",
+        "Shows status for each dependency",
+        "Green/red indicators",
+        "Install instructions for missing items",
+        "Check Again button",
+        "Typecheck passes"
+      ],
+      "phase": 4
+    },
+    {
+      "id": "US-080",
+      "title": "macOS Menu Bar",
+      "description": "As a user, I want native macOS menus",
+      "acceptanceCriteria": [
+        "File menu: Open Folder, Recent Folders, Close",
+        "Edit menu: standard edit commands",
+        "View menu: Toggle Terminal Log, Zoom",
+        "Help menu: Prerequisites, Model Manager, About",
+        "Keyboard shortcuts (Cmd+O, Cmd+,, etc.)",
+        "Typecheck passes"
+      ],
+      "phase": 4
+    },
+    {
+      "id": "US-081",
+      "title": "AI Integration Tests",
+      "description": "As a developer, I want to validate CLI output with AI",
+      "acceptanceCriteria": [
+        "Create test script in /test/",
+        "Cleans artifacts before run",
+        "Runs CLI against BigBuckBunny test video",
+        "Uses Claude Code CLI to validate: frames extracted (images of animated characters), summary mentions 'Big Buck Bunny' and 'animated', status shows completed",
+        "Reports pass/fail with reasoning",
+        "Manual run only (not CI)",
+        "Typecheck passes"
+      ],
+      "phase": 4
+    }
+  ],
+  "phases": [
+    {
+      "number": 1,
+      "name": "CLI Enhancements",
+      "description": "Enhance the CLI with JSON output, new commands, and bundled dependencies",
+      "stories": ["US-052", "US-053", "US-054", "US-055", "US-056", "US-057", "US-058", "US-059", "US-060", "US-061", "US-062", "US-063", "US-064"]
+    },
+    {
+      "number": 2,
+      "name": "New GUI Foundation",
+      "description": "Delete current Electron code and create fresh minimal GUI scaffold",
+      "stories": ["US-065", "US-066", "US-067", "US-068", "US-069", "US-070", "US-071"]
+    },
+    {
+      "number": 3,
+      "name": "Core Features",
+      "description": "Implement core video processing features in the new GUI",
+      "stories": ["US-072", "US-073", "US-074", "US-075", "US-076", "US-077"]
+    },
+    {
+      "number": 4,
+      "name": "Polish & Testing",
+      "description": "Add model management, prerequisites panel, menus, and integration tests",
+      "stories": ["US-078", "US-079", "US-080", "US-081"]
+    }
+  ]
+}
