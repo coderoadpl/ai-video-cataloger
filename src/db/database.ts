@@ -11,9 +11,19 @@ import type { VideoRecord, VideoStatus } from '../types/index.js';
 
 const DB_DIR_NAME = '.ai-video-cataloger';
 const DB_FILE_NAME = 'catalog.db';
+const CONFIG_FILE_NAME = 'config.json';
 
 let db: Database | null = null;
 let dbPath: string | null = null;
+let configPath: string | null = null;
+
+/**
+ * Config interface for type safety
+ */
+interface Config {
+  whisper_model?: string;
+  [key: string]: string | undefined;
+}
 
 // Note: __dirname is not available in ES modules, using createRequire for module resolution
 
@@ -51,6 +61,7 @@ function getSqlJsWasmPath(): string | undefined {
 export async function initDatabase(workingDir: string = process.cwd()): Promise<void> {
   const dbDir = join(workingDir, DB_DIR_NAME);
   dbPath = join(dbDir, DB_FILE_NAME);
+  configPath = join(dbDir, CONFIG_FILE_NAME);
 
   // Create .ai-video-cataloger/ directory if it doesn't exist
   if (!existsSync(dbDir)) {
@@ -132,6 +143,7 @@ export function closeDatabase(): void {
     db.close();
     db = null;
     dbPath = null;
+    configPath = null;
   }
 }
 
@@ -287,39 +299,52 @@ export function updateVideoNewName(id: number, newName: string): void {
 }
 
 /**
- * Get a config value
+ * Read the config file
  */
-export function getConfig(key: string): string | null {
-  if (!db) {
+function readConfigFile(): Config {
+  if (!configPath) {
     throw new Error('Database not initialized');
   }
 
-  const result = db.exec(
-    'SELECT value FROM config WHERE key = ?',
-    [key]
-  );
-
-  if (result.length === 0 || result[0].values.length === 0) {
-    return null;
+  if (!existsSync(configPath)) {
+    return {};
   }
 
-  return result[0].values[0][0] as string;
+  try {
+    const content = readFileSync(configPath, 'utf-8');
+    return JSON.parse(content) as Config;
+  } catch {
+    // Return empty config if file is corrupted
+    return {};
+  }
 }
 
 /**
- * Set a config value
+ * Write the config file
  */
-export function setConfig(key: string, value: string): void {
-  if (!db) {
+function writeConfigFile(config: Config): void {
+  if (!configPath) {
     throw new Error('Database not initialized');
   }
 
-  db.run(
-    `INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)`,
-    [key, value]
-  );
+  writeFileSync(configPath, JSON.stringify(config, null, 2), 'utf-8');
+}
 
-  saveDatabase();
+/**
+ * Get a config value from config.json
+ */
+export function getConfig(key: string): string | null {
+  const config = readConfigFile();
+  return config[key] ?? null;
+}
+
+/**
+ * Set a config value in config.json
+ */
+export function setConfig(key: string, value: string): void {
+  const config = readConfigFile();
+  config[key] = value;
+  writeConfigFile(config);
 }
 
 /**
