@@ -8,6 +8,7 @@ import { join } from 'node:path';
 import { homedir } from 'node:os';
 import chalk from 'chalk';
 import { getConfig, setConfig } from '../db/index.js';
+import { getWhisperModelsDir } from './whisper-setup.js';
 
 export type WhisperModelName = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 
@@ -30,22 +31,45 @@ const MODEL_DEFINITIONS: Array<{ name: WhisperModelName; size: string }> = [
 ];
 
 /**
- * Get the Whisper cache directory path
- * Local Whisper stores models in ~/.cache/whisper/
+ * Get the legacy Whisper cache directory path
+ * Local Whisper (Python) stores models in ~/.cache/whisper/
  */
-export function getWhisperCacheDir(): string {
+export function getLegacyWhisperCacheDir(): string {
   return join(homedir(), '.cache', 'whisper');
 }
 
 /**
+ * Get the Whisper cache directory path
+ * Returns the new path: ~/.ai-video-cataloger/models/whisper/
+ */
+export function getWhisperCacheDir(): string {
+  return getWhisperModelsDir();
+}
+
+/**
  * Check if a Whisper model is downloaded
- * Models are stored as .pt files in ~/.cache/whisper/
+ * Checks both:
+ * - New location: ~/.ai-video-cataloger/models/whisper/ (GGML format for whisper.cpp)
+ * - Legacy location: ~/.cache/whisper/ (PyTorch format for OpenAI Whisper)
  */
 export function isModelDownloaded(modelName: WhisperModelName): boolean {
-  const cacheDir = getWhisperCacheDir();
-  // Whisper model files are named like: tiny.pt, base.pt, small.pt, medium.pt, large-v3.pt
-  const modelFile = join(cacheDir, `${modelName}.pt`);
-  return existsSync(modelFile);
+  // Check new location (GGML format for whisper.cpp)
+  const newModelsDir = getWhisperModelsDir();
+  const ggmlModelFile = join(newModelsDir, `ggml-${modelName}.bin`);
+  if (existsSync(ggmlModelFile)) {
+    return true;
+  }
+
+  // Also check without prefix
+  const directModelFile = join(newModelsDir, `${modelName}.bin`);
+  if (existsSync(directModelFile)) {
+    return true;
+  }
+
+  // Check legacy location (PyTorch format for OpenAI Whisper Python package)
+  const legacyCacheDir = getLegacyWhisperCacheDir();
+  const ptModelFile = join(legacyCacheDir, `${modelName}.pt`);
+  return existsSync(ptModelFile);
 }
 
 /**

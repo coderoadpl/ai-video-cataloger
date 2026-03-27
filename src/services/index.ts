@@ -50,6 +50,7 @@ export {
   setActiveModel,
   isValidModelName,
   getWhisperCacheDir,
+  getLegacyWhisperCacheDir,
   type WhisperModelName,
   type WhisperModelInfo,
 } from './models.js';
@@ -71,3 +72,15 @@ export {
   isFFprobeAvailable,
   getCliBinDir,
 } from './ffmpeg-setup.js';
+export {
+  configureWhisper,
+  getWhisperPath,
+  getWhisperVersion,
+  getWhisperInfo,
+  isBundledWhisperAvailable,
+  isWhisperAvailable,
+  getWhisperModelsDir,
+  ensureWhisperModelsDirExists,
+  isModelInModelsDir,
+  getModelPath,
+} from './whisper-setup.js';

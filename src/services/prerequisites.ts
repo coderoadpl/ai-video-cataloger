@@ -6,6 +6,7 @@
 import { execa } from 'execa';
 import chalk from 'chalk';
 import { getFFmpegInfo } from './ffmpeg-setup.js';
+import { getWhisperInfo } from './whisper-setup.js';
 import type { WhisperMode } from '../types/index.js';
 
 export interface PrerequisiteOptions {
@@ -81,26 +82,26 @@ async function checkClaudeCli(): Promise<PrerequisiteResult> {
 }
 
 /**
- * Check for local Whisper installation
+ * Check for local Whisper installation (bundled or system)
  */
 async function checkWhisper(): Promise<PrerequisiteResult> {
-  try {
-    // Whisper doesn't have a --version flag, so we just check if it runs
-    await execa('whisper', ['--help']);
+  const info = await getWhisperInfo();
 
+  if (info.available) {
+    const bundledText = info.bundled ? ' [bundled]' : ' [system]';
     return {
       name: 'Whisper',
       found: true,
-      version: 'installed',
-      installHint: 'Install Whisper: pip install openai-whisper'
-    };
-  } catch {
-    return {
-      name: 'Whisper',
-      found: false,
-      installHint: 'Install Whisper: pip install openai-whisper'
+      version: info.version + bundledText,
+      installHint: 'Whisper can be bundled or installed via: pip install openai-whisper'
     };
   }
+
+  return {
+    name: 'Whisper',
+    found: false,
+    installHint: 'Install Whisper: pip install openai-whisper'
+  };
 }
 
 /**

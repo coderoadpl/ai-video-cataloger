@@ -11,7 +11,11 @@ import ora from 'ora';
 import OpenAI from 'openai';
 import { updateVideoStatus } from '../db/index.js';
 import { getTempAudioPath } from './audio.js';
+import { getWhisperPath, configureWhisper } from './whisper-setup.js';
 import type { VideoRecord, WhisperMode } from '../types/index.js';
+
+// Configure whisper on module load
+configureWhisper();
 
 /**
  * Get the transcripts directory for a video
@@ -149,7 +153,8 @@ async function transcribeWithLocal(
     // Whisper outputs to the same directory as the input file by default
     // We use --output_dir to specify the transcripts directory
     // and --output_format txt to get plain text
-    await execa('whisper', [
+    const whisperPath = getWhisperPath();
+    await execa(whisperPath, [
       audioPath,
       '--model', model,
       '--output_dir', transcriptsDir,
