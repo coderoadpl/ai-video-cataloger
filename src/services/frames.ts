@@ -9,7 +9,11 @@ import { join, basename, dirname, extname } from 'node:path';
 import chalk from 'chalk';
 import ora from 'ora';
 import { updateVideoStatus } from '../db/index.js';
+import { configureFfmpeg } from './ffmpeg-setup.js';
 import type { VideoRecord } from '../types/index.js';
+
+// Configure ffmpeg to use bundled binaries (or fall back to system)
+configureFfmpeg();
 
 /**
  * Get video duration in seconds using ffprobe

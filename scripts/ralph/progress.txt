@@ -628,3 +628,47 @@ Started: Sat Jan 24 16:39:25 CET 2026
   - Step indicators using dots with active/completed states provide good visual progress
   - Load prerequisite data only when step becomes active (useEffect with currentStep)
 ---
+
+## 2026-02-17 - US-052
+- What was implemented:
+  - Moved config storage from SQLite config table to separate config.json file
+  - Created Config interface for type safety with whisper_model and extensible keys
+  - Implemented readConfigFile() helper that reads and parses config.json
+  - Implemented writeConfigFile() helper that serializes and writes config.json
+  - Updated getConfig()/setConfig() to use JSON file instead of database table
+  - Added configPath tracking to initDatabase() and closeDatabase()
+  - Verified database already uses per-folder storage at .ai-video-cataloger/catalog.db
+
+- Files changed:
+  - Modified: src/db/database.ts (config functions now use JSON file)
+
+- **Learnings for future iterations:**
+  - CLI already used per-folder databases - the database was never at ~/.config
+  - Config is now in .ai-video-cataloger/config.json as human-readable JSON
+  - getConfig()/setConfig() API unchanged, so no changes needed to callers (models.ts)
+  - Config table still exists in database schema for backward compatibility but is unused
+---
+
+## 2026-02-17 - US-053
+- What was implemented:
+  - Created src/services/ffmpeg-setup.ts for bundled FFmpeg binary path resolution
+  - Uses ffmpeg-static package which already provides cross-platform binaries
+  - Uses @ffprobe-installer/ffprobe for FFprobe binaries
+  - Updated frames.ts and audio.ts to call configureFfmpeg() at module load
+  - Updated prerequisites.ts to use getFFmpegInfo() for bundled/system detection
+  - Exported new functions from services/index.ts
+
+- Files changed:
+  - Created: src/services/ffmpeg-setup.ts
+  - Modified: src/services/frames.ts (added configureFfmpeg import and call)
+  - Modified: src/services/audio.ts (added configureFfmpeg import and call)
+  - Modified: src/services/prerequisites.ts (updated checkFfmpeg to use bundled info)
+  - Modified: src/services/index.ts (exported ffmpeg-setup functions)
+
+- **Learnings for future iterations:**
+  - ffmpeg-static and @ffprobe-installer/ffprobe packages already provide platform-specific binaries
+  - No extraction to ~/.ai-video-cataloger/bin/ needed - the npm packages handle binary distribution
+  - Use createRequire(import.meta.url) to require CommonJS modules from ESM
+  - configureFfmpeg() should be called at module load time for files that use fluent-ffmpeg
+  - Prerequisites check now shows [bundled] or [system] suffix to indicate FFmpeg source
+---

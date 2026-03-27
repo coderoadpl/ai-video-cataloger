@@ -59,3 +59,15 @@ export {
   resetSingleVideo,
   type ResetOptions,
 } from './reset.js';
+export {
+  configureFfmpeg,
+  getFFmpegPath,
+  getFFprobePath,
+  getFFmpegVersion,
+  getFFmpegInfo,
+  isBundledFFmpegAvailable,
+  isBundledFFprobeAvailable,
+  isFFmpegAvailable,
+  isFFprobeAvailable,
+  getCliBinDir,
+} from './ffmpeg-setup.js';

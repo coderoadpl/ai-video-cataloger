@@ -10,7 +10,11 @@ import { tmpdir } from 'node:os';
 import chalk from 'chalk';
 import ora from 'ora';
 import { updateVideoStatus } from '../db/index.js';
+import { configureFfmpeg } from './ffmpeg-setup.js';
 import type { VideoRecord } from '../types/index.js';
+
+// Configure ffmpeg to use bundled binaries (or fall back to system)
+configureFfmpeg();
 
 /**
  * Check if a video has an audio track

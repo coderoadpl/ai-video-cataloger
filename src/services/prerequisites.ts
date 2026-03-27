@@ -5,6 +5,7 @@
 
 import { execa } from 'execa';
 import chalk from 'chalk';
+import { getFFmpegInfo } from './ffmpeg-setup.js';
 import type { WhisperMode } from '../types/index.js';
 
 export interface PrerequisiteOptions {
@@ -34,27 +35,26 @@ async function checkNodeVersion(): Promise<PrerequisiteResult> {
 }
 
 /**
- * Check for ffmpeg installation
+ * Check for ffmpeg (bundled or system)
  */
 async function checkFfmpeg(): Promise<PrerequisiteResult> {
-  try {
-    const { stdout } = await execa('ffmpeg', ['-version']);
-    const versionMatch = stdout.match(/ffmpeg version (\S+)/);
-    const version = versionMatch ? versionMatch[1] : 'unknown';
+  const info = await getFFmpegInfo();
 
+  if (info.available) {
+    const bundledText = info.bundled ? ' [bundled]' : ' [system]';
     return {
       name: 'ffmpeg',
       found: true,
-      version: version,
-      installHint: 'Install ffmpeg: brew install ffmpeg (macOS) or apt install ffmpeg (Ubuntu)'
-    };
-  } catch {
-    return {
-      name: 'ffmpeg',
-      found: false,
-      installHint: 'Install ffmpeg: brew install ffmpeg (macOS) or apt install ffmpeg (Ubuntu)'
+      version: info.version + bundledText,
+      installHint: 'FFmpeg is bundled with the CLI'
     };
   }
+
+  return {
+    name: 'ffmpeg',
+    found: false,
+    installHint: 'FFmpeg should be bundled with the CLI. Try reinstalling.'
+  };
 }
 
 /**
