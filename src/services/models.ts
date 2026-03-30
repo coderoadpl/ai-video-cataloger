@@ -9,6 +9,7 @@ import { homedir } from 'node:os';
 import chalk from 'chalk';
 import { getConfig, setConfig } from '../db/index.js';
 import { getWhisperModelsDir } from './whisper-setup.js';
+import { isJsonMode, emitStarted, emitCompleted, emitError, outputJson } from './json-output.js';
 
 export type WhisperModelName = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 
@@ -107,9 +108,19 @@ export function listModels(): WhisperModelInfo[] {
 
 /**
  * Display the list of models in a formatted table
+ * Supports JSON output mode
  */
 export function displayModelList(): void {
   const models = listModels();
+
+  // JSON mode - output structured data
+  if (isJsonMode()) {
+    emitStarted('models_list');
+    const data = { models };
+    outputJson(data);
+    emitCompleted(data);
+    return;
+  }
 
   console.log('\n' + chalk.bold('Available Whisper Models'));
   console.log(chalk.gray('─────────────────────────────────────────────────\n'));
@@ -139,29 +150,57 @@ export function displayModelList(): void {
 /**
  * Set the active (default) Whisper model
  * Validates the model name and stores it in the database config table
+ * Supports JSON output mode
  * @returns true if successful, false if model name is invalid
  */
 export function setActiveModel(modelName: string): boolean {
+  // JSON mode - emit started event
+  if (isJsonMode()) {
+    emitStarted('models_use', { modelName });
+  }
+
   // Validate model name
   if (!isValidModelName(modelName)) {
-    console.error(chalk.red(`\nInvalid model name: ${modelName}`));
-    console.error(chalk.gray('  Valid models: ' + MODEL_DEFINITIONS.map(m => m.name).join(', ')));
+    if (isJsonMode()) {
+      emitError(`Invalid model name: ${modelName}`, {
+        code: 'INVALID_MODEL',
+        data: { validModels: MODEL_DEFINITIONS.map(m => m.name) },
+      });
+    } else {
+      console.error(chalk.red(`\nInvalid model name: ${modelName}`));
+      console.error(chalk.gray('  Valid models: ' + MODEL_DEFINITIONS.map(m => m.name).join(', ')));
+    }
     return false;
   }
 
   // Store in database config
   setConfig('whisper_model', modelName);
 
+  // Get model info
+  const modelInfo = MODEL_DEFINITIONS.find(m => m.name === modelName);
+  const downloaded = isModelDownloaded(modelName as WhisperModelName);
+
+  // JSON mode - output result
+  if (isJsonMode()) {
+    const data = {
+      model: modelName,
+      size: modelInfo?.size,
+      downloaded,
+    };
+    outputJson(data);
+    emitCompleted(data);
+    return true;
+  }
+
   // Display confirmation
   console.log(chalk.green(`\n✓ Active model set to: ${chalk.bold(modelName)}`));
 
   // Show additional info about the model
-  const modelInfo = MODEL_DEFINITIONS.find(m => m.name === modelName);
   if (modelInfo) {
     console.log(chalk.gray(`  Size: ${modelInfo.size}`));
 
     // Check if downloaded
-    if (isModelDownloaded(modelName as WhisperModelName)) {
+    if (downloaded) {
       console.log(chalk.green(`  Status: downloaded`));
     } else {
       console.log(chalk.yellow(`  Status: not downloaded (will be downloaded on first use)`));

@@ -6,6 +6,7 @@
 import chalk from 'chalk';
 import { getAllVideos } from '../db/index.js';
 import type { VideoRecord, VideoStatus } from '../types/index.js';
+import { isJsonMode, emitStarted, emitCompleted, outputJson } from './json-output.js';
 
 /**
  * Status groups for organizing videos in display
@@ -74,12 +75,76 @@ function groupVideosByStatus(videos: VideoRecord[]): StatusGroup[] {
 }
 
 /**
+ * Get status data for all videos (used by JSON output)
+ */
+export interface VideoStatusData {
+  path: string;
+  originalName: string;
+  newName: string | null;
+  status: VideoStatus;
+  statusLabel: string;
+  errorMessage: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+/**
+ * Get status summary data
+ */
+export interface StatusSummary {
+  total: number;
+  completed: number;
+  inProgress: number;
+  pending: number;
+  error: number;
+}
+
+/**
+ * Get all video status data as structured objects
+ */
+export function getStatusData(): { videos: VideoStatusData[]; summary: StatusSummary } {
+  const videos = getAllVideos();
+  const groups = groupVideosByStatus(videos);
+
+  const videoData: VideoStatusData[] = videos.map((video) => ({
+    path: video.original_path,
+    originalName: video.original_name,
+    newName: video.new_name,
+    status: video.status,
+    statusLabel: getStatusLabel(video.status),
+    errorMessage: video.error_message,
+    createdAt: video.created_at,
+    updatedAt: video.updated_at,
+  }));
+
+  const summary: StatusSummary = {
+    total: videos.length,
+    completed: groups[0].videos.length,
+    inProgress: groups[1].videos.length,
+    pending: groups[2].videos.length,
+    error: groups[3].videos.length,
+  };
+
+  return { videos: videoData, summary };
+}
+
+/**
  * Display the status of all tracked videos
  * Groups by status: completed, in progress, pending, error
  * Shows counts for each group and individual video details
+ * Supports JSON output mode
  */
 export function displayStatus(): void {
   const videos = getAllVideos();
+
+  // JSON mode - output structured data
+  if (isJsonMode()) {
+    emitStarted('status');
+    const data = getStatusData();
+    outputJson(data);
+    emitCompleted(data);
+    return;
+  }
 
   // Handle empty database
   if (videos.length === 0) {

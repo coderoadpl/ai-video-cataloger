@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -32,6 +32,7 @@ interface CliOptions {
   whisper: WhisperMode;
   whisperModel: WhisperModel;
   yes: boolean;
+  json: boolean;
 }
 
 // Global options object
@@ -44,6 +45,7 @@ let cliOptions: CliOptions = {
   whisper: 'local',
   whisperModel: 'base',
   yes: false,
+  json: false,
 };
 
 // Progress tracking
@@ -81,9 +83,31 @@ function getProgressPrefix(): string {
 
 /**
  * Log current step being processed
+ * In JSON mode, emits a progress event instead of console output
  */
 function logStep(step: string, videoName: string): void {
-  console.log(`\n${getProgressPrefix()} ${chalk.bold(step)} - ${chalk.cyan(videoName)}`);
+  if (isJsonMode()) {
+    // Calculate percentage based on steps (5 total steps per video)
+    const stepsMap: Record<string, number> = {
+      'Extracting frames': 1,
+      'Extracting audio': 2,
+      'Transcribing audio': 3,
+      'Analyzing with Claude': 4,
+      'Renaming video': 5,
+      'Skipping rename': 5,
+    };
+    const stepNumber = stepsMap[step] || 0;
+    const percentage = Math.round((stepNumber / 5) * 100);
+
+    emitProgress(step.toLowerCase().replace(/ /g, '_'), {
+      percentage,
+      current: processingStats.currentIndex,
+      total: processingStats.totalVideos,
+      data: { video: videoName, stepNumber, totalSteps: 5 },
+    });
+  } else {
+    console.log(`\n${getProgressPrefix()} ${chalk.bold(step)} - ${chalk.cyan(videoName)}`);
+  }
 }
 
 /**
@@ -122,7 +146,20 @@ function displaySummary(): void {
 async function run(directory: string, options: CliOptions): Promise<void> {
   cliOptions = options;
 
-  if (cliOptions.verbose) {
+  // Emit started event for JSON mode
+  emitStarted('process', {
+    directory,
+    options: {
+      frames: options.frames,
+      skipRename: options.skipRename,
+      retryErrors: options.retryErrors,
+      timeout: options.timeout,
+      whisper: options.whisper,
+      whisperModel: options.whisperModel,
+    },
+  });
+
+  if (cliOptions.verbose && !isJsonMode()) {
     console.log(chalk.gray('[verbose] Verbose mode enabled'));
     console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}, timeout=${options.timeout}s, whisper=${options.whisper}, whisperModel=${options.whisperModel}`));
   }
@@ -130,8 +167,12 @@ async function run(directory: string, options: CliOptions): Promise<void> {
   // Validate OPENAI_API_KEY if using API mode
   if (cliOptions.whisper === 'api') {
     if (!process.env.OPENAI_API_KEY) {
-      console.error(chalk.red('\n✗ Error: OPENAI_API_KEY environment variable is required when using --whisper api'));
-      console.error(chalk.gray('  Set it with: export OPENAI_API_KEY=your-api-key'));
+      if (isJsonMode()) {
+        emitError('OPENAI_API_KEY environment variable is required when using --whisper api', { code: 'MISSING_API_KEY' });
+      } else {
+        console.error(chalk.red('\n✗ Error: OPENAI_API_KEY environment variable is required when using --whisper api'));
+        console.error(chalk.gray('  Set it with: export OPENAI_API_KEY=your-api-key'));
+      }
       process.exit(1);
     }
     logVerbose('OPENAI_API_KEY found');
@@ -141,6 +182,9 @@ async function run(directory: string, options: CliOptions): Promise<void> {
   const allPrerequisitesMet = await checkPrerequisites({ whisperMode: cliOptions.whisper });
 
   if (!allPrerequisitesMet) {
+    if (isJsonMode()) {
+      emitError('Prerequisites check failed', { code: 'PREREQUISITES_FAILED' });
+    }
     process.exit(1);
   }
 
@@ -163,10 +207,12 @@ async function run(directory: string, options: CliOptions): Promise<void> {
   // Exit gracefully if no videos to process
   if (allVideos.length === 0) {
     if (scanResult.totalFound === 0) {
+      emitCompleted({ videosProcessed: 0, totalFound: 0 });
       process.exit(0);
     }
     // All videos already completed
-    console.log('\nNothing to do.');
+    logHuman('\nNothing to do.');
+    emitCompleted({ videosProcessed: 0, totalFound: scanResult.totalFound, message: 'All videos already completed' });
     process.exit(0);
   }
 
@@ -180,7 +226,8 @@ async function run(directory: string, options: CliOptions): Promise<void> {
   };
 
   // Process each video
-  console.log(chalk.blue(`\nProcessing ${allVideos.length} video${allVideos.length === 1 ? '' : 's'}...\n`));
+  logHuman(chalk.blue(`\nProcessing ${allVideos.length} video${allVideos.length === 1 ? '' : 's'}...\n`));
+  emitProgress('scanning', { total: allVideos.length, data: { totalFound: scanResult.totalFound } });
 
   for (const video of allVideos) {
     processingStats.currentIndex++;
@@ -196,6 +243,12 @@ async function run(directory: string, options: CliOptions): Promise<void> {
         videoName: video.original_name,
         error: errorMessage,
       });
+      // Emit error event for this video
+      emitProgress('video_error', {
+        current: processingStats.currentIndex,
+        total: processingStats.totalVideos,
+        data: { video: video.original_name, error: errorMessage },
+      });
       // Update video status to 'error' with error message in database
       updateVideoStatus(video.id, 'error', errorMessage);
       // Best-effort cleanup of temporary audio file on error
@@ -206,8 +259,16 @@ async function run(directory: string, options: CliOptions): Promise<void> {
     }
   }
 
-  // Display final summary
-  displaySummary();
+  // Display final summary or emit completed event
+  if (isJsonMode()) {
+    emitCompleted({
+      videosProcessed: processingStats.processedCount,
+      errorCount: processingStats.errorCount,
+      errors: processingStats.errors,
+    });
+  } else {
+    displaySummary();
+  }
 }
 
 async function main(): Promise<void> {
@@ -235,11 +296,17 @@ async function main(): Promise<void> {
     .option('--skip-transcribe', 'Skip transcription (alias for --whisper skip)', false)
     .option('-y, --yes', 'Skip interactive menu and use defaults', false)
     .option('--non-interactive', 'Skip interactive menu (alias for --yes)', false)
-    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean; timeout: number; whisper: WhisperMode; skipTranscribe: boolean; yes: boolean; nonInteractive: boolean }) => {
+    .option('--json', 'Output results as newline-delimited JSON events', false)
+    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean; timeout: number; whisper: WhisperMode; skipTranscribe: boolean; yes: boolean; nonInteractive: boolean; json: boolean }) => {
       // Handle --skip-transcribe alias
       const whisperMode = options.skipTranscribe ? 'skip' : options.whisper;
       // Handle --non-interactive alias
       const skipMenu = options.yes || options.nonInteractive;
+
+      // Enable JSON output mode if --json flag is set
+      if (options.json) {
+        setJsonMode(true);
+      }
 
       // Check if any configuration flags were explicitly provided
       const hasConfigFlags = process.argv.some(arg =>
@@ -248,11 +315,13 @@ async function main(): Promise<void> {
         arg.startsWith('-r') || arg === '--retry-errors' ||
         arg.startsWith('-t') || arg.startsWith('--timeout') ||
         arg.startsWith('-w') || arg.startsWith('--whisper') ||
-        arg === '--skip-transcribe'
+        arg === '--skip-transcribe' ||
+        arg === '--json'
       );
 
       // If running without any flags and not --yes, show interactive menu
-      if (!skipMenu && !hasConfigFlags) {
+      // JSON mode also skips the interactive menu
+      if (!skipMenu && !hasConfigFlags && !options.json) {
         // Initialize database early so menu can check for errored videos
         await initDatabase(directory);
 
@@ -282,10 +351,11 @@ async function main(): Promise<void> {
           whisper: menuResult.whisper,
           whisperModel: menuResult.whisperModel,
           yes: true,
+          json: options.json,
         });
       } else {
         // Run directly with CLI options
-        await run(directory, { ...options, whisper: whisperMode, whisperModel: 'base', yes: skipMenu });
+        await run(directory, { ...options, whisper: whisperMode, whisperModel: 'base', yes: skipMenu, json: options.json });
       }
     });
 
@@ -297,7 +367,13 @@ async function main(): Promise<void> {
   modelsCommand
     .command('list')
     .description('List available Whisper models and their download status')
-    .action(async () => {
+    .option('--json', 'Output results as JSON', false)
+    .action(async (options: { json: boolean }) => {
+      // Enable JSON output mode if --json flag is set
+      if (options.json) {
+        setJsonMode(true);
+      }
+
       // Initialize database to read active model from config
       await initDatabase();
 
@@ -312,7 +388,13 @@ async function main(): Promise<void> {
   modelsCommand
     .command('use <model-name>')
     .description('Set the active Whisper model to use by default')
-    .action(async (modelName: string) => {
+    .option('--json', 'Output results as JSON', false)
+    .action(async (modelName: string, options: { json: boolean }) => {
+      // Enable JSON output mode if --json flag is set
+      if (options.json) {
+        setJsonMode(true);
+      }
+
       // Initialize database to store active model in config
       await initDatabase();
 
@@ -329,7 +411,13 @@ async function main(): Promise<void> {
   program
     .command('status')
     .description('Show processing status of all tracked videos')
-    .action(async () => {
+    .option('--json', 'Output results as JSON', false)
+    .action(async (options: { json: boolean }) => {
+      // Enable JSON output mode if --json flag is set
+      if (options.json) {
+        setJsonMode(true);
+      }
+
       // Initialize database to read video records
       await initDatabase();
 
@@ -346,7 +434,13 @@ async function main(): Promise<void> {
     .command('reset [filename]')
     .description('Reset video records. Without filename: clears all records. With filename: resets specific video to pending.')
     .option('--force', 'Skip confirmation prompt', false)
-    .action(async (filename: string | undefined, options: { force: boolean }) => {
+    .option('--json', 'Output results as JSON', false)
+    .action(async (filename: string | undefined, options: { force: boolean; json: boolean }) => {
+      // Enable JSON output mode if --json flag is set
+      if (options.json) {
+        setJsonMode(true);
+      }
+
       // Initialize database
       await initDatabase();
 
@@ -465,7 +559,7 @@ async function processVideo(video: VideoRecord): Promise<void> {
     if (cliOptions.skipRename) {
       logStep('Skipping rename', video.original_name);
       logVerbose('Skipping rename (--skip-rename flag set)');
-      console.log(chalk.yellow(`  Skipped renaming (--skip-rename flag set)`));
+      logHuman(chalk.yellow(`  Skipped renaming (--skip-rename flag set)`));
       // Mark as completed without renaming
       updateVideoStatus(video.id, 'completed');
       video.status = 'completed';

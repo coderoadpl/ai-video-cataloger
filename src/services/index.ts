@@ -54,7 +54,7 @@ export {
   type WhisperModelName,
   type WhisperModelInfo,
 } from './models.js';
-export { displayStatus } from './status.js';
+export { displayStatus, getStatusData, type VideoStatusData, type StatusSummary } from './status.js';
 export {
   resetAllVideos,
   resetSingleVideo,
@@ -84,3 +84,20 @@ export {
   isModelInModelsDir,
   getModelPath,
 } from './whisper-setup.js';
+export {
+  setJsonMode,
+  isJsonMode,
+  emitStarted,
+  emitProgress,
+  emitCompleted,
+  emitError,
+  outputJson,
+  logHuman,
+  logHumanError,
+  type JsonEvent,
+  type JsonEventType,
+  type JsonStartedEvent,
+  type JsonProgressEvent,
+  type JsonCompletedEvent,
+  type JsonErrorEvent,
+} from './json-output.js';

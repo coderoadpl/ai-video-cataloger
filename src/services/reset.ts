@@ -6,6 +6,7 @@
 import chalk from 'chalk';
 import { confirm as confirmPrompt } from '@inquirer/prompts';
 import { getAllVideos, clearAllVideos, resetVideoByFilename } from '../db/index.js';
+import { isJsonMode, emitStarted, emitCompleted, emitError, outputJson } from './json-output.js';
 
 /**
  * Options for reset operations
@@ -34,23 +35,54 @@ async function confirmReset(message: string, force: boolean): Promise<boolean> {
 /**
  * Reset all video records in the database
  * Preserves the config table
+ * Supports JSON output mode
  */
 export async function resetAllVideos(options: ResetOptions = {}): Promise<boolean> {
+  // JSON mode - emit started event
+  if (isJsonMode()) {
+    emitStarted('reset_all');
+  }
+
   const videos = getAllVideos();
 
   if (videos.length === 0) {
-    console.log(chalk.yellow('\nNo video records in database. Nothing to reset.'));
+    if (isJsonMode()) {
+      const data = { cleared: 0, message: 'No video records in database' };
+      outputJson(data);
+      emitCompleted(data);
+    } else {
+      console.log(chalk.yellow('\nNo video records in database. Nothing to reset.'));
+    }
     return true;
   }
 
-  // Display what will be reset
-  console.log(chalk.yellow('\nThis will reset the following video records:\n'));
-
-  // Group by status for display
+  // Group by status for display/data
   const byStatus: Record<string, number> = {};
   for (const video of videos) {
     byStatus[video.status] = (byStatus[video.status] || 0) + 1;
   }
+
+  // JSON mode - requires --force flag (no interactive prompt)
+  if (isJsonMode()) {
+    if (!options.force) {
+      emitError('Reset requires --force flag in JSON mode', { code: 'FORCE_REQUIRED' });
+      return false;
+    }
+
+    // Perform the reset
+    const count = clearAllVideos();
+    const data = {
+      cleared: count,
+      byStatus,
+      configPreserved: true,
+    };
+    outputJson(data);
+    emitCompleted(data);
+    return true;
+  }
+
+  // Human-readable mode
+  console.log(chalk.yellow('\nThis will reset the following video records:\n'));
 
   for (const [status, count] of Object.entries(byStatus)) {
     console.log(chalk.gray(`  ${status}: ${count} video${count === 1 ? '' : 's'}`));
@@ -80,19 +112,72 @@ export async function resetAllVideos(options: ResetOptions = {}): Promise<boolea
 
 /**
  * Reset a specific video to pending status
+ * Supports JSON output mode
  */
 export async function resetSingleVideo(filename: string, options: ResetOptions = {}): Promise<boolean> {
+  // JSON mode - emit started event
+  if (isJsonMode()) {
+    emitStarted('reset_single', { filename });
+  }
+
   // Try to find the video first
   const videos = getAllVideos();
   const video = videos.find(v => v.original_name === filename);
 
   if (!video) {
-    console.log(chalk.red(`\n✗ Video not found: ${filename}`));
-    console.log(chalk.gray('\nUse "ai-video-cataloger status" to see tracked videos.'));
+    if (isJsonMode()) {
+      emitError(`Video not found: ${filename}`, { code: 'VIDEO_NOT_FOUND' });
+    } else {
+      console.log(chalk.red(`\n✗ Video not found: ${filename}`));
+      console.log(chalk.gray('\nUse "ai-video-cataloger status" to see tracked videos.'));
+    }
     return false;
   }
 
-  // Display what will be reset
+  // If already pending, nothing to do
+  if (video.status === 'pending') {
+    if (isJsonMode()) {
+      const data = {
+        filename,
+        previousStatus: 'pending',
+        newStatus: 'pending',
+        message: 'Video is already in pending status',
+      };
+      outputJson(data);
+      emitCompleted(data);
+    } else {
+      console.log(chalk.yellow('Video is already in pending status. Nothing to reset.'));
+    }
+    return true;
+  }
+
+  // JSON mode - requires --force flag (no interactive prompt)
+  if (isJsonMode()) {
+    if (!options.force) {
+      emitError('Reset requires --force flag in JSON mode', { code: 'FORCE_REQUIRED' });
+      return false;
+    }
+
+    // Perform the reset
+    const updatedVideo = resetVideoByFilename(filename);
+
+    if (updatedVideo) {
+      const data = {
+        filename,
+        previousStatus: video.status,
+        newStatus: 'pending',
+        previousError: video.error_message,
+      };
+      outputJson(data);
+      emitCompleted(data);
+      return true;
+    } else {
+      emitError('Failed to reset video', { code: 'RESET_FAILED' });
+      return false;
+    }
+  }
+
+  // Human-readable mode
   console.log(chalk.yellow('\nVideo to reset:\n'));
   console.log(chalk.gray(`  Filename: ${chalk.white(video.original_name)}`));
   console.log(chalk.gray(`  Current status: ${chalk.white(video.status)}`));
@@ -103,12 +188,6 @@ export async function resetSingleVideo(filename: string, options: ResetOptions =
     console.log(chalk.gray(`  Renamed to: ${chalk.white(video.new_name)}`));
   }
   console.log();
-
-  // If already pending, nothing to do
-  if (video.status === 'pending') {
-    console.log(chalk.yellow('Video is already in pending status. Nothing to reset.'));
-    return true;
-  }
 
   // Confirm reset
   const confirmed = await confirmReset(
