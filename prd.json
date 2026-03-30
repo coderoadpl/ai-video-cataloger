@@ -14,7 +14,8 @@
         "Existing global DB is not migrated (fresh start)",
         "Typecheck passes"
       ],
-      "phase": 1
+      "phase": 1,
+      "passes": true
     },
     {
       "id": "US-053",
@@ -28,7 +29,8 @@
         "Works on macOS arm64 and x64",
         "Typecheck passes"
       ],
-      "phase": 1
+      "phase": 1,
+      "passes": true
     },
     {
       "id": "US-054",
@@ -42,7 +44,8 @@
         "Fall back to system whisper if bundled unavailable",
         "Typecheck passes"
       ],
-      "phase": 1
+      "phase": 1,
+      "passes": true
     },
     {
       "id": "US-055",

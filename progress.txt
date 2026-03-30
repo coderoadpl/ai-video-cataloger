@@ -1,0 +1,23 @@
+## Codebase Patterns
+- Follow ffmpeg-setup.ts pattern for bundling external binaries: path resolution with bundled first, system fallback
+- Use `createRequire(import.meta.url)` for CommonJS module imports in ESM context
+- Services that depend on binary setup should call `configureX()` at module load time
+- Model files: GGML format (.bin) for whisper.cpp, PyTorch format (.pt) for OpenAI Whisper Python
+- User data locations: `~/.ai-video-cataloger/bin/` for binaries, `~/.ai-video-cataloger/models/` for models
+
+---
+
+## 2026-02-17 - US-054
+- What was implemented: Whisper.cpp bundling support with path resolution, models directory setup, and fallback to system whisper
+- Files changed:
+  - Created: src/services/whisper-setup.ts (new service for whisper path resolution)
+  - Modified: src/services/transcription.ts (use getWhisperPath())
+  - Modified: src/services/prerequisites.ts (use getWhisperInfo() with bundled/system indicator)
+  - Modified: src/services/models.ts (check both GGML and legacy .pt model locations)
+  - Modified: src/services/index.ts (export new whisper-setup functions)
+- **Learnings for future iterations:**
+  - Pattern for binary bundling: create a setup service file (like ffmpeg-setup.ts, whisper-setup.ts) that handles path resolution
+  - Whisper models can be in two formats: GGML (.bin) for whisper.cpp or PyTorch (.pt) for OpenAI Whisper Python
+  - The `isModelDownloaded()` function now checks both locations for backwards compatibility
+  - Prerequisites checker shows [bundled] or [system] to indicate which binary is being used
+---
