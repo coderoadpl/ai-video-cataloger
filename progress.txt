@@ -4,7 +4,27 @@
 - Services that depend on binary setup should call `configureX()` at module load time
 - Model files: GGML format (.bin) for whisper.cpp, PyTorch format (.pt) for OpenAI Whisper Python
 - User data locations: `~/.ai-video-cataloger/bin/` for binaries, `~/.ai-video-cataloger/models/` for models
+- JSON output mode: Use json-output.ts service for NDJSON events (started, progress, completed, error)
+- For subcommands, add `--json` option and call `setJsonMode(true)` before any output
+- Use `isJsonMode()` to branch between JSON and human-readable output
 
+---
+
+## 2026-02-17 - US-055
+- What was implemented: JSON output mode for CLI with NDJSON events
+- Files changed:
+  - Created: src/services/json-output.ts (new service for JSON event emitting)
+  - Modified: src/index.ts (add --json flag, emit events in run() and processVideo())
+  - Modified: src/services/status.ts (add JSON output for displayStatus())
+  - Modified: src/services/models.ts (add JSON output for displayModelList() and setActiveModel())
+  - Modified: src/services/reset.ts (add JSON output for resetAllVideos() and resetSingleVideo())
+  - Modified: src/services/index.ts (export json-output functions and types)
+- **Learnings for future iterations:**
+  - Use union input types (JsonEventInput) instead of Omit<JsonEvent, 'timestamp'> for proper type distribution
+  - JSON mode should be set early via setJsonMode(true) before any output
+  - Commands that require confirmation (like reset) need --force flag in JSON mode
+  - Progress events should include percentage, current, and total for GUI progress bars
+  - Use outputJson() for data and emit events separately for started/completed
 ---
 
 ## 2026-02-17 - US-054
