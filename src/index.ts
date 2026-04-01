@@ -8,11 +8,12 @@
 
 import { Command } from 'commander';
 import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, type WhisperModel } from './services/index.js';
-import { initDatabase, closeDatabase, updateVideoStatus } from './db/index.js';
+import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
-import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { readFileSync, existsSync, statSync } from 'node:fs';
+import { dirname, join, extname, basename, resolve } from 'node:path';
+import { hashFile } from './utils/hash.js';
 import { fileURLToPath } from 'node:url';
 
 // Read package.json for version
@@ -460,6 +461,194 @@ async function main(): Promise<void> {
       }
 
       process.exit(success ? 0 : 1);
+    });
+
+  // Process single video command
+  program
+    .command('process <video-path>')
+    .description('Process a single video file')
+    .option('-f, --frames <number>', 'Number of frames to extract', (value) => parseInt(value, 10), 3)
+    .option('-s, --skip-rename', 'Only generate summaries, do not rename files', false)
+    .option('-v, --verbose', 'Show detailed output', false)
+    .option('-t, --timeout <seconds>', 'Timeout for Claude analysis in seconds', (value) => parseInt(value, 10), 120)
+    .option('-w, --whisper <mode>', 'Transcription mode: local, api, or skip', (value: string) => {
+      const validModes = ['local', 'api', 'skip'];
+      if (!validModes.includes(value)) {
+        console.error(chalk.red(`\nInvalid whisper mode: ${value}`));
+        console.error(chalk.gray(`  Valid modes: ${validModes.join(', ')}`));
+        process.exit(1);
+      }
+      return value as WhisperMode;
+    }, 'local')
+    .option('--whisper-model <model>', 'Whisper model to use', 'base')
+    .option('--json', 'Output results as newline-delimited JSON events', false)
+    .action(async (videoPath: string, options: { frames: number; skipRename: boolean; verbose: boolean; timeout: number; whisper: WhisperMode; whisperModel: string; json: boolean }) => {
+      // Enable JSON output mode if --json flag is set
+      if (options.json) {
+        setJsonMode(true);
+      }
+
+      const absolutePath = resolve(videoPath);
+
+      // Validate file exists
+      if (!existsSync(absolutePath)) {
+        if (isJsonMode()) {
+          emitError(`File not found: ${absolutePath}`, { code: 'FILE_NOT_FOUND', data: { path: absolutePath } });
+        } else {
+          console.error(chalk.red(`\n✗ Error: File not found: ${absolutePath}`));
+        }
+        process.exit(1);
+      }
+
+      // Validate file is a video
+      const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
+      const ext = extname(absolutePath).toLowerCase();
+      if (!VIDEO_EXTENSIONS.includes(ext)) {
+        if (isJsonMode()) {
+          emitError(`Not a video file: ${absolutePath}`, {
+            code: 'INVALID_FILE_TYPE',
+            data: {
+              path: absolutePath,
+              extension: ext,
+              supportedExtensions: VIDEO_EXTENSIONS
+            }
+          });
+        } else {
+          console.error(chalk.red(`\n✗ Error: Not a video file: ${absolutePath}`));
+          console.error(chalk.gray(`  Supported formats: ${VIDEO_EXTENSIONS.join(', ')}`));
+        }
+        process.exit(1);
+      }
+
+      // Validate file is actually a file (not a directory)
+      const stats = statSync(absolutePath);
+      if (!stats.isFile()) {
+        if (isJsonMode()) {
+          emitError(`Path is not a file: ${absolutePath}`, { code: 'NOT_A_FILE', data: { path: absolutePath } });
+        } else {
+          console.error(chalk.red(`\n✗ Error: Path is not a file: ${absolutePath}`));
+        }
+        process.exit(1);
+      }
+
+      // Get video's parent directory and initialize database there
+      const parentDir = dirname(absolutePath);
+      const fileName = basename(absolutePath);
+
+      // Set CLI options
+      cliOptions = {
+        frames: options.frames,
+        skipRename: options.skipRename,
+        verbose: options.verbose,
+        retryErrors: true, // Always retry errors for single video processing
+        timeout: options.timeout,
+        whisper: options.whisper,
+        whisperModel: options.whisperModel as WhisperModel,
+        yes: true,
+        json: options.json,
+      };
+
+      // Emit started event for JSON mode
+      emitStarted('process_single', {
+        videoPath: absolutePath,
+        options: {
+          frames: options.frames,
+          skipRename: options.skipRename,
+          timeout: options.timeout,
+          whisper: options.whisper,
+          whisperModel: options.whisperModel,
+        },
+      });
+
+      // Validate OPENAI_API_KEY if using API mode
+      if (cliOptions.whisper === 'api') {
+        if (!process.env.OPENAI_API_KEY) {
+          if (isJsonMode()) {
+            emitError('OPENAI_API_KEY environment variable is required when using --whisper api', { code: 'MISSING_API_KEY' });
+          } else {
+            console.error(chalk.red('\n✗ Error: OPENAI_API_KEY environment variable is required when using --whisper api'));
+            console.error(chalk.gray('  Set it with: export OPENAI_API_KEY=your-api-key'));
+          }
+          process.exit(1);
+        }
+      }
+
+      // Check prerequisites
+      const allPrerequisitesMet = await checkPrerequisites({ whisperMode: cliOptions.whisper });
+
+      if (!allPrerequisitesMet) {
+        if (isJsonMode()) {
+          emitError('Prerequisites check failed', { code: 'PREREQUISITES_FAILED' });
+        }
+        process.exit(1);
+      }
+
+      // Initialize database in video's parent folder
+      await initDatabase(parentDir);
+
+      // Register cleanup handler
+      process.on('exit', () => {
+        closeDatabase();
+      });
+
+      // Initialize processing stats for single video
+      processingStats = {
+        totalVideos: 1,
+        currentIndex: 0,
+        processedCount: 0,
+        errorCount: 0,
+        errors: [],
+      };
+
+      try {
+        // Check if video already exists in database
+        let video = getVideoByPath(absolutePath);
+
+        if (!video) {
+          // New video - hash and insert
+          logHuman(chalk.gray(`  Hashing: ${fileName}`));
+          const fileHash = await hashFile(absolutePath);
+          video = insertVideo(absolutePath, fileName, fileHash);
+        }
+
+        processingStats.currentIndex = 1;
+
+        logHuman(chalk.blue(`\nProcessing: ${fileName}\n`));
+
+        await processVideo(video);
+        processingStats.processedCount = 1;
+
+        // Emit completed event
+        if (isJsonMode()) {
+          emitCompleted({
+            video: fileName,
+            path: absolutePath,
+            status: 'completed',
+          });
+        } else {
+          console.log(chalk.green(`\n✓ Successfully processed: ${fileName}`));
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+        processingStats.errorCount = 1;
+        processingStats.errors.push({
+          videoName: fileName,
+          error: errorMessage,
+        });
+
+        if (isJsonMode()) {
+          emitError(errorMessage, {
+            code: 'PROCESSING_ERROR',
+            data: {
+              video: fileName,
+              path: absolutePath,
+            }
+          });
+        } else {
+          console.error(chalk.red(`\n✗ Error processing ${fileName}: ${errorMessage}`));
+        }
+        process.exit(1);
+      }
     });
 
   await program.parseAsync(process.argv);
