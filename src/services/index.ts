@@ -101,3 +101,11 @@ export {
   type JsonCompletedEvent,
   type JsonErrorEvent,
 } from './json-output.js';
+export {
+  generateThumbnail,
+  getThumbnailPath,
+  getThumbnailsDir,
+  getThumbnailFilename,
+  thumbnailExists,
+  type ThumbnailResult,
+} from './thumbnail.js';

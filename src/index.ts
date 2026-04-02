@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -646,6 +646,108 @@ async function main(): Promise<void> {
           });
         } else {
           console.error(chalk.red(`\n✗ Error processing ${fileName}: ${errorMessage}`));
+        }
+        process.exit(1);
+      }
+    });
+
+  // Thumbnail subcommand
+  program
+    .command('thumbnail <video-path>')
+    .description('Generate a thumbnail for a video file')
+    .option('--force', 'Regenerate thumbnail even if it already exists', false)
+    .option('--json', 'Output results as newline-delimited JSON events', false)
+    .action(async (videoPath: string, options: { force: boolean; json: boolean }) => {
+      // Enable JSON output mode if --json flag is set
+      if (options.json) {
+        setJsonMode(true);
+      }
+
+      const absolutePath = resolve(videoPath);
+
+      // Validate file exists
+      if (!existsSync(absolutePath)) {
+        if (isJsonMode()) {
+          emitError(`File not found: ${absolutePath}`, { code: 'FILE_NOT_FOUND', data: { path: absolutePath } });
+        } else {
+          console.error(chalk.red(`\n✗ Error: File not found: ${absolutePath}`));
+        }
+        process.exit(1);
+      }
+
+      // Validate file is a video
+      const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
+      const ext = extname(absolutePath).toLowerCase();
+      if (!VIDEO_EXTENSIONS.includes(ext)) {
+        if (isJsonMode()) {
+          emitError(`Not a video file: ${absolutePath}`, {
+            code: 'INVALID_FILE_TYPE',
+            data: {
+              path: absolutePath,
+              extension: ext,
+              supportedExtensions: VIDEO_EXTENSIONS
+            }
+          });
+        } else {
+          console.error(chalk.red(`\n✗ Error: Not a video file: ${absolutePath}`));
+          console.error(chalk.gray(`  Supported formats: ${VIDEO_EXTENSIONS.join(', ')}`));
+        }
+        process.exit(1);
+      }
+
+      // Validate file is actually a file (not a directory)
+      const stats = statSync(absolutePath);
+      if (!stats.isFile()) {
+        if (isJsonMode()) {
+          emitError(`Path is not a file: ${absolutePath}`, { code: 'NOT_A_FILE', data: { path: absolutePath } });
+        } else {
+          console.error(chalk.red(`\n✗ Error: Path is not a file: ${absolutePath}`));
+        }
+        process.exit(1);
+      }
+
+      const fileName = basename(absolutePath);
+
+      // Emit started event for JSON mode
+      emitStarted('thumbnail', {
+        videoPath: absolutePath,
+        force: options.force,
+      });
+
+      try {
+        const result = await generateThumbnail(absolutePath, { force: options.force });
+
+        if (isJsonMode()) {
+          emitCompleted({
+            video: fileName,
+            path: absolutePath,
+            thumbnailPath: result.path,
+            generated: result.generated,
+            skipped: result.skipped,
+          });
+        } else {
+          if (result.skipped) {
+            console.log(chalk.yellow(`Thumbnail already exists for ${chalk.cyan(fileName)}`));
+            console.log(chalk.gray(`  Path: ${result.path}`));
+            console.log(chalk.gray(`  Use --force to regenerate`));
+          } else {
+            console.log(chalk.green(`✓ Generated thumbnail for ${chalk.cyan(fileName)}`));
+            console.log(chalk.gray(`  Path: ${result.path}`));
+          }
+        }
+      } catch (error) {
+        const errorMessage = error instanceof Error ? error.message : String(error);
+
+        if (isJsonMode()) {
+          emitError(errorMessage, {
+            code: 'THUMBNAIL_ERROR',
+            data: {
+              video: fileName,
+              path: absolutePath,
+            }
+          });
+        } else {
+          console.error(chalk.red(`\n✗ Error generating thumbnail for ${fileName}: ${errorMessage}`));
         }
         process.exit(1);
       }
