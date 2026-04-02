@@ -7,7 +7,20 @@
 - JSON output mode: Use json-output.ts service for NDJSON events (started, progress, completed, error)
 - For subcommands, add `--json` option and call `setJsonMode(true)` before any output
 - Use `isJsonMode()` to branch between JSON and human-readable output
+- For single-file processing commands, use `resolve()` to get absolute path and `dirname()` for parent folder
 
+---
+
+## 2026-02-17 - US-056
+- What was implemented: `process <video-path>` subcommand for processing a single video file
+- Files changed:
+  - Modified: src/index.ts (added process subcommand with options, file validation, per-folder database init)
+- **Learnings for future iterations:**
+  - Use `resolve()` from node:path to convert relative to absolute paths
+  - Initialize database in video's parent folder using `dirname(absolutePath)`
+  - Use `getVideoByPath()` to check if video already exists, then `insertVideo()` if not
+  - The `emitError()` function accepts `{ code?: string; data?: Record<string, unknown> }` - extra properties must go in `data`
+  - Reuse existing `processVideo()` function by setting up `cliOptions` and `processingStats` before calling it
 ---
 
 ## 2026-02-17 - US-055

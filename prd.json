@@ -74,7 +74,8 @@
         "Creates .ai-video-cataloger/ in video's parent folder",
         "Typecheck passes"
       ],
-      "phase": 1
+      "phase": 1,
+      "passes": true
     },
     {
       "id": "US-057",
