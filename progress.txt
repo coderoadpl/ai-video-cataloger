@@ -8,7 +8,21 @@
 - For subcommands, add `--json` option and call `setJsonMode(true)` before any output
 - Use `isJsonMode()` to branch between JSON and human-readable output
 - For single-file processing commands, use `resolve()` to get absolute path and `dirname()` for parent folder
+- Thumbnail storage pattern: Store in `.ai-video-cataloger/thumbnails/` using video filename (without ext) + .jpg
 
+---
+
+## 2026-02-17 - US-057
+- What was implemented: `thumbnail <video-path>` subcommand for generating video thumbnails
+- Files changed:
+  - Created: src/services/thumbnail.ts (new service for thumbnail generation)
+  - Modified: src/index.ts (added thumbnail subcommand with --force and --json options)
+  - Modified: src/services/index.ts (export thumbnail functions and types)
+- **Learnings for future iterations:**
+  - Thumbnail generation uses ffmpeg with `.size('128x72')` for scaling
+  - Extract frame at 25% of video duration for representative thumbnail
+  - Return `{ path, generated, skipped }` to indicate if thumbnail was newly generated or already existed
+  - The `.ai-video-cataloger/thumbnails/` directory is created in the video's parent folder (same as database)
 ---
 
 ## 2026-02-17 - US-056
