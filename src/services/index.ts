@@ -51,8 +51,11 @@ export {
   isValidModelName,
   getWhisperCacheDir,
   getLegacyWhisperCacheDir,
+  downloadModel,
+  getModelDownloadUrl,
   type WhisperModelName,
   type WhisperModelInfo,
+  type ModelDownloadResult,
 } from './models.js';
 export { displayStatus, getStatusData, type VideoStatusData, type StatusSummary } from './status.js';
 export {

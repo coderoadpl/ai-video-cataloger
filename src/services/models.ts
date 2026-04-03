@@ -1,15 +1,17 @@
 /**
  * Model management service
- * Handles listing, status checking, and management of Whisper models
+ * Handles listing, status checking, downloading, and management of Whisper models
  */
 
-import { existsSync } from 'node:fs';
+import { existsSync, createWriteStream, unlinkSync, renameSync } from 'node:fs';
 import { join } from 'node:path';
 import { homedir } from 'node:os';
+import { Readable } from 'node:stream';
+import { pipeline } from 'node:stream/promises';
 import chalk from 'chalk';
 import { getConfig, setConfig } from '../db/index.js';
-import { getWhisperModelsDir } from './whisper-setup.js';
-import { isJsonMode, emitStarted, emitCompleted, emitError, outputJson } from './json-output.js';
+import { getWhisperModelsDir, ensureWhisperModelsDirExists } from './whisper-setup.js';
+import { isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, outputJson } from './json-output.js';
 
 export type WhisperModelName = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
 
@@ -21,14 +23,40 @@ export interface WhisperModelInfo {
 }
 
 /**
- * Model definitions with their sizes
+ * Model definitions with their sizes and Hugging Face URLs
+ * GGML models from https://huggingface.co/ggerganov/whisper.cpp
  */
-const MODEL_DEFINITIONS: Array<{ name: WhisperModelName; size: string }> = [
-  { name: 'tiny', size: '75MB' },
-  { name: 'base', size: '142MB' },
-  { name: 'small', size: '466MB' },
-  { name: 'medium', size: '1.5GB' },
-  { name: 'large-v3', size: '3.1GB' },
+const MODEL_DEFINITIONS: Array<{ name: WhisperModelName; size: string; sizeBytes: number; url: string }> = [
+  {
+    name: 'tiny',
+    size: '75MB',
+    sizeBytes: 75_000_000,
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin'
+  },
+  {
+    name: 'base',
+    size: '142MB',
+    sizeBytes: 142_000_000,
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.bin'
+  },
+  {
+    name: 'small',
+    size: '466MB',
+    sizeBytes: 466_000_000,
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-small.bin'
+  },
+  {
+    name: 'medium',
+    size: '1.5GB',
+    sizeBytes: 1_500_000_000,
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-medium.bin'
+  },
+  {
+    name: 'large-v3',
+    size: '3.1GB',
+    sizeBytes: 3_100_000_000,
+    url: 'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin'
+  },
 ];
 
 /**
@@ -209,4 +237,263 @@ export function setActiveModel(modelName: string): boolean {
 
   console.log();
   return true;
+}
+
+/**
+ * Download result interface
+ */
+export interface ModelDownloadResult {
+  model: WhisperModelName;
+  path: string;
+  downloaded: boolean;
+  skipped: boolean;
+  sizeBytes?: number;
+}
+
+/**
+ * Format bytes to human-readable string
+ */
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
+}
+
+/**
+ * Format download speed to human-readable string
+ */
+function formatSpeed(bytesPerSecond: number): string {
+  return `${formatBytes(bytesPerSecond)}/s`;
+}
+
+/**
+ * Download a Whisper model from Hugging Face
+ * Stores in ~/.ai-video-cataloger/models/whisper/
+ *
+ * @param modelName - Name of the model to download (tiny, base, small, medium, large-v3)
+ * @param options - Download options
+ * @returns Download result with path and status
+ */
+export async function downloadModel(
+  modelName: string,
+  options: { force?: boolean } = {}
+): Promise<ModelDownloadResult> {
+  // JSON mode - emit started event
+  if (isJsonMode()) {
+    emitStarted('models_download', { modelName, force: options.force });
+  }
+
+  // Validate model name
+  if (!isValidModelName(modelName)) {
+    const errorMessage = `Invalid model name: ${modelName}`;
+    if (isJsonMode()) {
+      emitError(errorMessage, {
+        code: 'INVALID_MODEL',
+        data: { validModels: MODEL_DEFINITIONS.map(m => m.name) },
+      });
+    } else {
+      console.error(chalk.red(`\n✗ ${errorMessage}`));
+      console.error(chalk.gray('  Valid models: ' + MODEL_DEFINITIONS.map(m => m.name).join(', ')));
+    }
+    throw new Error(errorMessage);
+  }
+
+  const typedModelName = modelName as WhisperModelName;
+  const modelDef = MODEL_DEFINITIONS.find(m => m.name === typedModelName)!;
+
+  // Check if already downloaded
+  if (isModelDownloaded(typedModelName) && !options.force) {
+    const modelsDir = getWhisperModelsDir();
+    const modelPath = join(modelsDir, `ggml-${modelName}.bin`);
+
+    if (isJsonMode()) {
+      const result = {
+        model: typedModelName,
+        path: modelPath,
+        downloaded: false,
+        skipped: true,
+      };
+      outputJson(result);
+      emitCompleted(result);
+    } else {
+      console.log(chalk.yellow(`\nModel '${modelName}' is already downloaded.`));
+      console.log(chalk.gray(`  Path: ${modelPath}`));
+      console.log(chalk.gray('  Use --force to re-download'));
+    }
+
+    return {
+      model: typedModelName,
+      path: modelPath,
+      downloaded: false,
+      skipped: true,
+    };
+  }
+
+  // Ensure models directory exists
+  ensureWhisperModelsDirExists();
+
+  const modelsDir = getWhisperModelsDir();
+  const modelPath = join(modelsDir, `ggml-${modelName}.bin`);
+  const tempPath = join(modelsDir, `ggml-${modelName}.bin.tmp`);
+
+  if (!isJsonMode()) {
+    console.log(chalk.blue(`\nDownloading model: ${chalk.bold(modelName)} (${modelDef.size})`));
+    console.log(chalk.gray(`  From: ${modelDef.url}`));
+    console.log(chalk.gray(`  To: ${modelPath}\n`));
+  }
+
+  try {
+    // Fetch with progress tracking
+    const response = await fetch(modelDef.url);
+
+    if (!response.ok) {
+      throw new Error(`HTTP error: ${response.status} ${response.statusText}`);
+    }
+
+    const contentLength = parseInt(response.headers.get('content-length') || '0', 10);
+    const totalSize = contentLength || modelDef.sizeBytes;
+
+    let downloadedBytes = 0;
+    let lastProgressUpdate = Date.now();
+    let lastBytes = 0;
+    const startTime = Date.now();
+
+    // Create write stream
+    const fileStream = createWriteStream(tempPath);
+
+    // Create a transform stream to track progress
+    const body = response.body;
+    if (!body) {
+      throw new Error('Response body is null');
+    }
+
+    // Convert web ReadableStream to Node.js Readable
+    const reader = body.getReader();
+    const nodeStream = new Readable({
+      async read() {
+        const { done, value } = await reader.read();
+        if (done) {
+          this.push(null);
+          return;
+        }
+
+        downloadedBytes += value.length;
+
+        // Update progress every 500ms or at significant milestones
+        const now = Date.now();
+        if (now - lastProgressUpdate >= 500 || downloadedBytes === totalSize) {
+          const elapsed = (now - lastProgressUpdate) / 1000;
+          const bytesSinceLast = downloadedBytes - lastBytes;
+          const speed = elapsed > 0 ? bytesSinceLast / elapsed : 0;
+          const percentage = totalSize > 0 ? Math.round((downloadedBytes / totalSize) * 100) : 0;
+
+          if (isJsonMode()) {
+            emitProgress('downloading', {
+              percentage,
+              data: {
+                downloadedBytes,
+                totalBytes: totalSize,
+                speed,
+                speedFormatted: formatSpeed(speed),
+              },
+            });
+          } else {
+            // Clear line and show progress
+            const progressBar = createProgressBar(percentage);
+            const speedStr = formatSpeed(speed);
+            const downloadedStr = formatBytes(downloadedBytes);
+            const totalStr = formatBytes(totalSize);
+            process.stdout.write(`\r  ${progressBar} ${percentage}% | ${downloadedStr}/${totalStr} | ${speedStr}  `);
+          }
+
+          lastProgressUpdate = now;
+          lastBytes = downloadedBytes;
+        }
+
+        this.push(value);
+      }
+    });
+
+    // Pipe to file
+    await pipeline(nodeStream, fileStream);
+
+    // Move temp file to final location
+    if (existsSync(modelPath)) {
+      unlinkSync(modelPath);
+    }
+    renameSync(tempPath, modelPath);
+
+    const totalTime = (Date.now() - startTime) / 1000;
+    const averageSpeed = downloadedBytes / totalTime;
+
+    if (!isJsonMode()) {
+      console.log(); // New line after progress
+      console.log(chalk.green(`\n✓ Downloaded successfully!`));
+      console.log(chalk.gray(`  Size: ${formatBytes(downloadedBytes)}`));
+      console.log(chalk.gray(`  Time: ${totalTime.toFixed(1)}s (avg ${formatSpeed(averageSpeed)})`));
+      console.log(chalk.gray(`  Path: ${modelPath}`));
+    }
+
+    const result: ModelDownloadResult = {
+      model: typedModelName,
+      path: modelPath,
+      downloaded: true,
+      skipped: false,
+      sizeBytes: downloadedBytes,
+    };
+
+    if (isJsonMode()) {
+      outputJson(result);
+      emitCompleted({
+        ...result,
+        downloadTime: totalTime,
+        averageSpeed,
+      });
+    }
+
+    return result;
+
+  } catch (error) {
+    // Cleanup temp file on error
+    if (existsSync(tempPath)) {
+      try {
+        unlinkSync(tempPath);
+      } catch {
+        // Ignore cleanup errors
+      }
+    }
+
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (isJsonMode()) {
+      emitError(`Failed to download model: ${errorMessage}`, {
+        code: 'DOWNLOAD_ERROR',
+        data: { model: modelName },
+      });
+    } else {
+      console.log(); // New line after progress
+      console.error(chalk.red(`\n✗ Download failed: ${errorMessage}`));
+    }
+
+    throw error;
+  }
+}
+
+/**
+ * Create a simple progress bar
+ */
+function createProgressBar(percentage: number): string {
+  const width = 30;
+  const filled = Math.round((percentage / 100) * width);
+  const empty = width - filled;
+  return `[${'█'.repeat(filled)}${'░'.repeat(empty)}]`;
+}
+
+/**
+ * Get the download URL for a model
+ */
+export function getModelDownloadUrl(modelName: WhisperModelName): string | null {
+  const model = MODEL_DEFINITIONS.find(m => m.name === modelName);
+  return model?.url || null;
 }

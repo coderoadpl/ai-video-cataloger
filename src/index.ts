@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -369,9 +369,10 @@ async function main(): Promise<void> {
     .command('list')
     .description('List available Whisper models and their download status')
     .option('--json', 'Output results as JSON', false)
-    .action(async (options: { json: boolean }) => {
-      // Enable JSON output mode if --json flag is set
-      if (options.json) {
+    .action(async (_options: { json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
         setJsonMode(true);
       }
 
@@ -390,9 +391,10 @@ async function main(): Promise<void> {
     .command('use <model-name>')
     .description('Set the active Whisper model to use by default')
     .option('--json', 'Output results as JSON', false)
-    .action(async (modelName: string, options: { json: boolean }) => {
-      // Enable JSON output mode if --json flag is set
-      if (options.json) {
+    .action(async (modelName: string, _options: { json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
         setJsonMode(true);
       }
 
@@ -408,14 +410,35 @@ async function main(): Promise<void> {
       process.exit(success ? 0 : 1);
     });
 
+  modelsCommand
+    .command('download <model-name>')
+    .description('Download a Whisper GGML model from Hugging Face')
+    .option('--force', 'Re-download even if model already exists', false)
+    .option('--json', 'Output results as newline-delimited JSON events', false)
+    .action(async (modelName: string, options: { force: boolean; json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+
+      try {
+        await downloadModel(modelName, { force: options.force });
+      } catch {
+        // Error already logged by downloadModel
+        process.exit(1);
+      }
+    });
+
   // Status command
   program
     .command('status')
     .description('Show processing status of all tracked videos')
     .option('--json', 'Output results as JSON', false)
-    .action(async (options: { json: boolean }) => {
-      // Enable JSON output mode if --json flag is set
-      if (options.json) {
+    .action(async (_options: { json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
         setJsonMode(true);
       }
 
@@ -436,9 +459,10 @@ async function main(): Promise<void> {
     .description('Reset video records. Without filename: clears all records. With filename: resets specific video to pending.')
     .option('--force', 'Skip confirmation prompt', false)
     .option('--json', 'Output results as JSON', false)
-    .action(async (filename: string | undefined, options: { force: boolean; json: boolean }) => {
-      // Enable JSON output mode if --json flag is set
-      if (options.json) {
+    .action(async (filename: string | undefined, options: { force: boolean; json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
         setJsonMode(true);
       }
 
@@ -482,9 +506,10 @@ async function main(): Promise<void> {
     }, 'local')
     .option('--whisper-model <model>', 'Whisper model to use', 'base')
     .option('--json', 'Output results as newline-delimited JSON events', false)
-    .action(async (videoPath: string, options: { frames: number; skipRename: boolean; verbose: boolean; timeout: number; whisper: WhisperMode; whisperModel: string; json: boolean }) => {
-      // Enable JSON output mode if --json flag is set
-      if (options.json) {
+    .action(async (videoPath: string, options: { frames: number; skipRename: boolean; verbose: boolean; timeout: number; whisper: WhisperMode; whisperModel: string; json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
         setJsonMode(true);
       }
 
@@ -657,9 +682,10 @@ async function main(): Promise<void> {
     .description('Generate a thumbnail for a video file')
     .option('--force', 'Regenerate thumbnail even if it already exists', false)
     .option('--json', 'Output results as newline-delimited JSON events', false)
-    .action(async (videoPath: string, options: { force: boolean; json: boolean }) => {
-      // Enable JSON output mode if --json flag is set
-      if (options.json) {
+    .action(async (videoPath: string, options: { force: boolean; json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
         setJsonMode(true);
       }
 
