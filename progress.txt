@@ -5,11 +5,26 @@
 - Model files: GGML format (.bin) for whisper.cpp, PyTorch format (.pt) for OpenAI Whisper Python
 - User data locations: `~/.ai-video-cataloger/bin/` for binaries, `~/.ai-video-cataloger/models/` for models
 - JSON output mode: Use json-output.ts service for NDJSON events (started, progress, completed, error)
-- For subcommands, add `--json` option and call `setJsonMode(true)` before any output
+- For subcommands, add `--json` option and use `command.optsWithGlobals<{ json: boolean }>()` to get the option value (Commander.js bug with same-named options on parent and child commands)
 - Use `isJsonMode()` to branch between JSON and human-readable output
 - For single-file processing commands, use `resolve()` to get absolute path and `dirname()` for parent folder
 - Thumbnail storage pattern: Store in `.ai-video-cataloger/thumbnails/` using video filename (without ext) + .jpg
+- Model download URLs: GGML models from https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{modelName}.bin
 
+---
+
+## 2026-02-17 - US-058
+- What was implemented: `models download <model-name>` subcommand for downloading Whisper GGML models from Hugging Face
+- Files changed:
+  - Modified: src/services/models.ts (added downloadModel function with progress tracking, ModelDownloadResult interface, formatBytes/formatSpeed utilities)
+  - Modified: src/index.ts (added download subcommand, fixed Commander.js --json option inheritance for all subcommands using optsWithGlobals())
+  - Modified: src/services/index.ts (export downloadModel, getModelDownloadUrl, ModelDownloadResult)
+- **Learnings for future iterations:**
+  - Commander.js has a bug where if parent command has same option name (e.g., --json), subcommand's local option shows default value instead of actual value
+  - Solution: Use `command.optsWithGlobals<{ json: boolean }>()` to get merged options from command chain
+  - For file downloads with progress, use fetch() with body.getReader() + Readable stream to track bytes
+  - Use temp file (.tmp) during download and rename to final path on success for atomic operations
+  - Progress callback every 500ms provides good UX without excessive updates
 ---
 
 ## 2026-02-17 - US-057
