@@ -52,10 +52,13 @@ export {
   getWhisperCacheDir,
   getLegacyWhisperCacheDir,
   downloadModel,
+  deleteModel,
   getModelDownloadUrl,
+  getModelFilePath,
   type WhisperModelName,
   type WhisperModelInfo,
   type ModelDownloadResult,
+  type ModelDeleteResult,
 } from './models.js';
 export { displayStatus, getStatusData, type VideoStatusData, type StatusSummary } from './status.js';
 export {

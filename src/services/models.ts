@@ -497,3 +497,131 @@ export function getModelDownloadUrl(modelName: WhisperModelName): string | null 
   const model = MODEL_DEFINITIONS.find(m => m.name === modelName);
   return model?.url || null;
 }
+
+/**
+ * Model delete result interface
+ */
+export interface ModelDeleteResult {
+  model: WhisperModelName;
+  path: string;
+  deleted: boolean;
+}
+
+/**
+ * Get the path where a model would be stored
+ * Returns the GGML model path (primary location)
+ */
+export function getModelFilePath(modelName: WhisperModelName): string {
+  const modelsDir = getWhisperModelsDir();
+  return join(modelsDir, `ggml-${modelName}.bin`);
+}
+
+/**
+ * Delete a downloaded Whisper model
+ * Removes the model file from ~/.ai-video-cataloger/models/whisper/
+ *
+ * @param modelName - Name of the model to delete (tiny, base, small, medium, large-v3)
+ * @param options - Delete options
+ * @returns Delete result with path and status
+ */
+export async function deleteModel(
+  modelName: string,
+  options: { force?: boolean } = {}
+): Promise<ModelDeleteResult> {
+  // JSON mode - emit started event
+  if (isJsonMode()) {
+    emitStarted('models_delete', { modelName, force: options.force });
+  }
+
+  // Validate model name
+  if (!isValidModelName(modelName)) {
+    const errorMessage = `Invalid model name: ${modelName}`;
+    if (isJsonMode()) {
+      emitError(errorMessage, {
+        code: 'INVALID_MODEL',
+        data: { validModels: MODEL_DEFINITIONS.map(m => m.name) },
+      });
+    } else {
+      console.error(chalk.red(`\n✗ ${errorMessage}`));
+      console.error(chalk.gray('  Valid models: ' + MODEL_DEFINITIONS.map(m => m.name).join(', ')));
+    }
+    throw new Error(errorMessage);
+  }
+
+  const typedModelName = modelName as WhisperModelName;
+  const modelPath = getModelFilePath(typedModelName);
+
+  // Check if model is downloaded
+  if (!isModelDownloaded(typedModelName)) {
+    const errorMessage = `Model '${modelName}' is not downloaded`;
+    if (isJsonMode()) {
+      emitError(errorMessage, {
+        code: 'MODEL_NOT_FOUND',
+        data: { model: modelName, path: modelPath },
+      });
+    } else {
+      console.error(chalk.red(`\n✗ ${errorMessage}`));
+      console.error(chalk.gray(`  Expected path: ${modelPath}`));
+    }
+    throw new Error(errorMessage);
+  }
+
+  // Require --force flag when not in JSON mode (CLI interactive mode)
+  if (!options.force && !isJsonMode()) {
+    console.log(chalk.yellow(`\nThis will delete the model '${modelName}'`));
+    console.log(chalk.gray(`  Path: ${modelPath}`));
+    console.log(chalk.gray('\nUse --force to confirm deletion'));
+    return {
+      model: typedModelName,
+      path: modelPath,
+      deleted: false,
+    };
+  }
+
+  // Require --force flag in JSON mode too (for scripting safety)
+  if (!options.force && isJsonMode()) {
+    const errorMessage = `Deletion requires --force flag`;
+    emitError(errorMessage, {
+      code: 'CONFIRMATION_REQUIRED',
+      data: { model: modelName, path: modelPath },
+    });
+    throw new Error(errorMessage);
+  }
+
+  try {
+    // Delete the model file
+    unlinkSync(modelPath);
+
+    if (!isJsonMode()) {
+      console.log(chalk.green(`\n✓ Deleted model '${modelName}'`));
+      console.log(chalk.gray(`  Path: ${modelPath}`));
+    }
+
+    const result: ModelDeleteResult = {
+      model: typedModelName,
+      path: modelPath,
+      deleted: true,
+    };
+
+    if (isJsonMode()) {
+      outputJson(result);
+      emitCompleted({ ...result });
+    }
+
+    return result;
+
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+
+    if (isJsonMode()) {
+      emitError(`Failed to delete model: ${errorMessage}`, {
+        code: 'DELETE_ERROR',
+        data: { model: modelName, path: modelPath },
+      });
+    } else {
+      console.error(chalk.red(`\n✗ Failed to delete model: ${errorMessage}`));
+    }
+
+    throw error;
+  }
+}
