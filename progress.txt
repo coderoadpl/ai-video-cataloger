@@ -13,6 +13,19 @@
 
 ---
 
+## 2026-02-17 - US-059
+- What was implemented: `models delete <model-name>` subcommand for deleting downloaded Whisper models
+- Files changed:
+  - Modified: src/services/models.ts (added deleteModel function, ModelDeleteResult interface, getModelFilePath helper)
+  - Modified: src/index.ts (added delete subcommand with --force and --json options)
+  - Modified: src/services/index.ts (export deleteModel, getModelFilePath, ModelDeleteResult)
+- **Learnings for future iterations:**
+  - When passing a typed interface to emitCompleted(), use spread syntax `{ ...result }` to convert to `Record<string, unknown>`
+  - For destructive operations (delete), require `--force` flag in both CLI interactive mode and JSON mode
+  - Use `unlinkSync()` from node:fs for synchronous file deletion (already imported in models.ts for download cleanup)
+  - Validate model is downloaded before attempting deletion, report specific error with expected path
+---
+
 ## 2026-02-17 - US-058
 - What was implemented: `models download <model-name>` subcommand for downloading Whisper GGML models from Hugging Face
 - Files changed:
