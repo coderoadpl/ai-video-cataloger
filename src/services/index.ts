@@ -115,3 +115,20 @@ export {
   thumbnailExists,
   type ThumbnailResult,
 } from './thumbnail.js';
+export {
+  displayAllConfig,
+  displayConfigKey,
+  setConfigCommand,
+  isValidConfigKey,
+  getValidConfigKeys,
+  validateConfigValue,
+  getAllConfig,
+  getConfigValue,
+  setConfigValue,
+  CONFIG_KEYS,
+  type ConfigKey,
+  type ConfigSchema,
+  type ConfigGetResult,
+  type ConfigSetResult,
+  type ConfigGetAllResult,
+} from './config.js';

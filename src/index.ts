@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -801,6 +801,63 @@ async function main(): Promise<void> {
         }
         process.exit(1);
       }
+    });
+
+  // Config subcommand
+  const configCommand = program
+    .command('config')
+    .description('Manage per-folder configuration');
+
+  configCommand
+    .command('get [key]')
+    .description('Get configuration value(s). Without key: show all config.')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (key: string | undefined, _options: { json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+
+      // Initialize database to read config
+      await initDatabase();
+
+      // Register cleanup handler
+      process.on('exit', () => {
+        closeDatabase();
+      });
+
+      if (key) {
+        // Get specific key
+        const success = displayConfigKey(key);
+        process.exit(success ? 0 : 1);
+      } else {
+        // Get all config
+        displayAllConfig();
+      }
+    });
+
+  configCommand
+    .command('set <key> <value>')
+    .description('Set a configuration value')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (key: string, value: string, _options: { json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+
+      // Initialize database to write config
+      await initDatabase();
+
+      // Register cleanup handler
+      process.on('exit', () => {
+        closeDatabase();
+      });
+
+      const success = setConfigCommand(key, value);
+      process.exit(success ? 0 : 1);
     });
 
   await program.parseAsync(process.argv);
