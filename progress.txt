@@ -13,6 +13,20 @@
 
 ---
 
+## 2026-02-17 - US-060
+- What was implemented: `config get [key]` and `config set <key> <value>` subcommands for managing per-folder configuration
+- Files changed:
+  - Created: src/services/config.ts (new service with config schema, validation, and CLI command handlers)
+  - Modified: src/index.ts (added config command with get and set subcommands)
+  - Modified: src/services/index.ts (export config service functions and types)
+- **Learnings for future iterations:**
+  - Define a CONFIG_KEYS schema with type, description, allowedValues, min/max range, and defaultValue for each known key
+  - Use `isValidConfigKey()` type guard to check if a string is a known config key
+  - For boolean values, accept multiple formats: true/false, yes/no, 1/0 with normalization to "true"/"false"
+  - Config is stored in `.ai-video-cataloger/config.json` alongside the database
+  - Commands that read/write config must call `initDatabase()` first to initialize the config path
+---
+
 ## 2026-02-17 - US-059
 - What was implemented: `models delete <model-name>` subcommand for deleting downloaded Whisper models
 - Files changed:
