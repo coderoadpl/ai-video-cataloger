@@ -132,3 +132,10 @@ export {
   type ConfigSetResult,
   type ConfigGetAllResult,
 } from './config.js';
+export {
+  findNestedDatabases,
+  displayNestedCheckResult,
+  checkForNestedDatabasesAndError,
+  runNestedCheck,
+  type NestedCheckResult,
+} from './nested-check.js';

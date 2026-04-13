@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, checkForNestedDatabasesAndError, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -177,6 +177,12 @@ async function run(directory: string, options: CliOptions): Promise<void> {
       process.exit(1);
     }
     logVerbose('OPENAI_API_KEY found');
+  }
+
+  // Check for nested databases before proceeding
+  const canProceed = checkForNestedDatabasesAndError(directory);
+  if (!canProceed) {
+    process.exit(1);
   }
 
   // Check prerequisites
@@ -858,6 +864,48 @@ async function main(): Promise<void> {
 
       const success = setConfigCommand(key, value);
       process.exit(success ? 0 : 1);
+    });
+
+  // Check command - scan for nested databases
+  program
+    .command('check [folder]')
+    .description('Check for nested .ai-video-cataloger/ database folders')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (folder: string | undefined, _options: { json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+
+      // Default to current directory if no folder specified
+      const targetFolder = folder ? resolve(folder) : process.cwd();
+
+      // Validate folder exists
+      if (!existsSync(targetFolder)) {
+        if (isJsonMode()) {
+          emitError(`Folder not found: ${targetFolder}`, { code: 'FOLDER_NOT_FOUND', data: { path: targetFolder } });
+        } else {
+          console.error(chalk.red(`\n✗ Error: Folder not found: ${targetFolder}`));
+        }
+        process.exit(1);
+      }
+
+      // Validate it's a directory
+      const stats = statSync(targetFolder);
+      if (!stats.isDirectory()) {
+        if (isJsonMode()) {
+          emitError(`Path is not a directory: ${targetFolder}`, { code: 'NOT_A_DIRECTORY', data: { path: targetFolder } });
+        } else {
+          console.error(chalk.red(`\n✗ Error: Path is not a directory: ${targetFolder}`));
+        }
+        process.exit(1);
+      }
+
+      const result = runNestedCheck(targetFolder);
+
+      // Exit with non-zero code if nested databases found
+      process.exit(result.hasNestedDatabases ? 1 : 0);
     });
 
   await program.parseAsync(process.argv);
