@@ -13,6 +13,21 @@
 
 ---
 
+## 2026-02-17 - US-062
+- What was implemented: Verified existing JSON output support for the `status` command
+- Files changed: None - functionality was already implemented
+- Verification:
+  - The `--json` flag on `status` command already works via `command.optsWithGlobals<{ json: boolean }>()`
+  - `displayStatus()` in status.ts already supports JSON mode via `isJsonMode()`
+  - Returns `VideoStatusData[]` array with all required fields: path, status, errorMessage, createdAt, updatedAt
+  - Also includes: originalName, newName, statusLabel for extra utility
+  - Output format: NDJSON with started event, data, and completed event
+- **Learnings for future iterations:**
+  - Before implementing a story, check if it's already been implemented by previous work
+  - The `getStatusData()` function provides structured data used by both JSON and human-readable output
+  - Status command was implemented as part of earlier JSON output mode work (US-055)
+---
+
 ## 2026-02-17 - US-061
 - What was implemented: `check [folder]` subcommand for detecting nested .ai-video-cataloger/ database folders
 - Files changed:

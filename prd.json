@@ -164,7 +164,8 @@
         "Includes all fields: path, status, error, timestamps",
         "Typecheck passes"
       ],
-      "phase": 1
+      "phase": 1,
+      "passes": true
     },
     {
       "id": "US-063",
