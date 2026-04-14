@@ -13,6 +13,20 @@
 
 ---
 
+## 2026-02-17 - US-063
+- What was implemented: `scan <folder>` subcommand for listing videos with metadata and database status
+- Files changed:
+  - Created: src/services/folder-scan.ts (new service with scanFolder, displayScanResult, formatSize, formatDuration utilities)
+  - Modified: src/index.ts (added scan command with folder validation and database initialization)
+  - Modified: src/services/index.ts (export scanFolder, displayScanResult, ScannedVideo, FolderScanResult)
+- **Learnings for future iterations:**
+  - Use ffprobe via fluent-ffmpeg to get video duration (same pattern as thumbnail.ts getVideoDuration)
+  - Database initialization in scan command is optional - gracefully handle case where no .ai-video-cataloger/ exists
+  - Status can be 'not_tracked' for videos not in database (a valid state for scan command)
+  - Configure ffmpeg at module load time with `configureFfmpeg()` before using ffprobe
+  - Use getDatabaseDir() to compute database path rather than trying to access internal db path
+---
+
 ## 2026-02-17 - US-062
 - What was implemented: Verified existing JSON output support for the `status` command
 - Files changed: None - functionality was already implemented
