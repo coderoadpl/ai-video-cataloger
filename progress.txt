@@ -13,6 +13,19 @@
 
 ---
 
+## 2026-02-17 - US-061
+- What was implemented: `check [folder]` subcommand for detecting nested .ai-video-cataloger/ database folders
+- Files changed:
+  - Created: src/services/nested-check.ts (new service with findNestedDatabases, displayNestedCheckResult, checkForNestedDatabasesAndError)
+  - Modified: src/index.ts (added check command, integrated nested DB check into main command)
+  - Modified: src/services/index.ts (export nested-check functions and types)
+- **Learnings for future iterations:**
+  - Recursive directory scanning should skip hidden directories (except the target) and common non-code directories like node_modules
+  - The main command run() function should check for nested databases before initializing the database
+  - Use `checkForNestedDatabasesAndError()` to both check and display errors, returning boolean for flow control
+  - The check command returns exit code 1 if nested databases are found (for scripting use)
+---
+
 ## 2026-02-17 - US-060
 - What was implemented: `config get [key]` and `config set <key> <value>` subcommands for managing per-folder configuration
 - Files changed:
