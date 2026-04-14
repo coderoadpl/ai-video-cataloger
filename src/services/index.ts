@@ -139,3 +139,9 @@ export {
   runNestedCheck,
   type NestedCheckResult,
 } from './nested-check.js';
+export {
+  scanFolder,
+  displayScanResult,
+  type ScannedVideo,
+  type FolderScanResult,
+} from './folder-scan.js';

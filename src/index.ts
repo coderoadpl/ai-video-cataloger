@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, checkForNestedDatabasesAndError, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, checkForNestedDatabasesAndError, scanFolder, displayScanResult, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -906,6 +906,59 @@ async function main(): Promise<void> {
 
       // Exit with non-zero code if nested databases found
       process.exit(result.hasNestedDatabases ? 1 : 0);
+    });
+
+  // Scan command - list videos in a folder with metadata and status
+  program
+    .command('scan <folder>')
+    .description('List all video files in a folder with metadata and database status')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (folder: string, _options: { json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+
+      const absoluteFolder = resolve(folder);
+
+      // Validate folder exists
+      if (!existsSync(absoluteFolder)) {
+        if (isJsonMode()) {
+          emitError(`Folder not found: ${absoluteFolder}`, { code: 'FOLDER_NOT_FOUND', data: { path: absoluteFolder } });
+        } else {
+          console.error(chalk.red(`\n✗ Error: Folder not found: ${absoluteFolder}`));
+        }
+        process.exit(1);
+      }
+
+      // Validate it's a directory
+      const stats = statSync(absoluteFolder);
+      if (!stats.isDirectory()) {
+        if (isJsonMode()) {
+          emitError(`Path is not a directory: ${absoluteFolder}`, { code: 'NOT_A_DIRECTORY', data: { path: absoluteFolder } });
+        } else {
+          console.error(chalk.red(`\n✗ Error: Path is not a directory: ${absoluteFolder}`));
+        }
+        process.exit(1);
+      }
+
+      // Try to initialize database if one exists
+      let databaseInitialized = false;
+      try {
+        await initDatabase(absoluteFolder);
+        databaseInitialized = true;
+
+        // Register cleanup handler
+        process.on('exit', () => {
+          closeDatabase();
+        });
+      } catch {
+        // No database exists, that's OK - we'll still list videos
+      }
+
+      const result = await scanFolder(absoluteFolder, { databaseInitialized });
+      displayScanResult(result);
     });
 
   await program.parseAsync(process.argv);
