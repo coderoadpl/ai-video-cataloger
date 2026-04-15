@@ -13,6 +13,21 @@
 
 ---
 
+## 2026-02-17 - US-064
+- What was implemented: `doctor` subcommand for checking system prerequisites
+- Files changed:
+  - Created: src/services/doctor.ts (new service with runDoctor, checkFfmpeg, checkWhisper, checkClaudeCli, checkOllama)
+  - Modified: src/index.ts (added doctor command with --json flag support)
+  - Modified: src/services/index.ts (export runDoctor, DependencyStatus, DoctorResult)
+- **Learnings for future iterations:**
+  - Use `Promise.all()` to check multiple dependencies concurrently for faster startup
+  - Doctor command can reuse existing `getFFmpegInfo()` and `getWhisperInfo()` from setup services
+  - Distinguish between bundled/system sources using `source` field in dependency status
+  - For version checking on external CLIs, use `--version` with timeout to avoid hanging on unresponsive commands
+  - Ollama uses `ollama --version` with version number format like "0.1.xx"
+  - Exit code 1 when any prerequisites missing allows scripting use (e.g., if doctor passes, proceed)
+---
+
 ## 2026-02-17 - US-063
 - What was implemented: `scan <folder>` subcommand for listing videos with metadata and database status
 - Files changed:
