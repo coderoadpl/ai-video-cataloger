@@ -207,7 +207,8 @@
         "Keep shared src/ code intact",
         "Document what was removed in commit message"
       ],
-      "phase": 2
+      "phase": 2,
+      "passes": true
     },
     {
       "id": "US-066",

@@ -13,6 +13,28 @@
 
 ---
 
+## 2026-02-17 - US-065
+- What was implemented: Deleted old Electron GUI code to prepare for fresh rebuild
+- Files changed:
+  - Deleted: electron/ directory (37 files total)
+    - Main process: index.ts, menu.ts, window.ts, ipc-handlers.ts, ffmpeg-setup.ts, ffmpeg-paths.ts, whisper-paths.ts
+    - Renderer: App.tsx, main.tsx, index.html, 8 component files, 10 CSS files, types
+    - Config: tsconfig.json, tsconfig.preload.json, tsconfig.renderer.json, vite.config.ts, preload.ts
+    - Resources: entitlements.mac.plist
+  - Deleted: electron-builder.config.js
+  - Modified: package.json
+    - Removed "main" field (electron entry point)
+    - Removed electron scripts (electron:dev, electron:build, electron:package, etc.)
+    - Removed devDependencies: electron, electron-builder, react, react-dom, @types/react, @types/react-dom, @vitejs/plugin-react, vite, concurrently
+    - Removed dependency: electron-store
+    - Simplified typecheck script to just `tsc --noEmit`
+- **Learnings for future iterations:**
+  - When deleting major parts of codebase, document everything thoroughly in commit message
+  - Keep CLI src/ code completely intact - it's independent of the GUI
+  - Phase 2 starts fresh with new Electron scaffold (US-066)
+  - Simplified package.json now only contains CLI dependencies
+---
+
 ## 2026-02-17 - US-064
 - What was implemented: `doctor` subcommand for checking system prerequisites
 - Files changed:
