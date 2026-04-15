@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, checkForNestedDatabasesAndError, scanFolder, displayScanResult, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, checkForNestedDatabasesAndError, scanFolder, displayScanResult, runDoctor, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -959,6 +959,24 @@ async function main(): Promise<void> {
 
       const result = await scanFolder(absoluteFolder, { databaseInitialized });
       displayScanResult(result);
+    });
+
+  // Doctor command - check system prerequisites
+  program
+    .command('doctor')
+    .description('Check system prerequisites (ffmpeg, whisper, claude, ollama)')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (_options: { json: boolean }, command: Command) => {
+      // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+
+      const result = await runDoctor();
+
+      // Exit with non-zero code if any prerequisites are missing
+      process.exit(result.allAvailable ? 0 : 1);
     });
 
   await program.parseAsync(process.argv);

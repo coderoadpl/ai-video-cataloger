@@ -145,3 +145,8 @@ export {
   type ScannedVideo,
   type FolderScanResult,
 } from './folder-scan.js';
+export {
+  runDoctor,
+  type DependencyStatus,
+  type DoctorResult,
+} from './doctor.js';
