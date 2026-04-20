@@ -223,7 +223,8 @@
         "Scripts: electron:dev, electron:build",
         "Typecheck passes"
       ],
-      "phase": 2
+      "phase": 2,
+      "passes": true
     },
     {
       "id": "US-067",

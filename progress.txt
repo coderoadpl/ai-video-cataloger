@@ -10,7 +10,36 @@
 - For single-file processing commands, use `resolve()` to get absolute path and `dirname()` for parent folder
 - Thumbnail storage pattern: Store in `.ai-video-cataloger/thumbnails/` using video filename (without ext) + .jpg
 - Model download URLs: GGML models from https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-{modelName}.bin
+- Electron structure: electron/main/ (main process), electron/preload/ (preload script), electron/renderer/ (React app)
+- Each Electron context has its own tsconfig.json with specific settings (main/preload use NodeNext, renderer uses bundler)
+- Typecheck script must check all contexts: CLI (src/), main, preload, and renderer
+- Vite dev server for renderer, compiled TypeScript for main/preload
+- Output to dist-electron/ for Electron, dist/ for CLI
 
+---
+
+## 2026-02-17 - US-066
+- What was implemented: Fresh Electron project scaffold with TypeScript, React, and Vite
+- Files changed:
+  - Created: electron/main/index.ts (main process with window creation, dev/prod handling)
+  - Created: electron/main/tsconfig.json
+  - Created: electron/preload/preload.ts (contextBridge with electronAPI)
+  - Created: electron/preload/tsconfig.json
+  - Created: electron/renderer/index.html
+  - Created: electron/renderer/src/main.tsx, App.tsx, index.css
+  - Created: electron/renderer/src/vite-env.d.ts (ElectronAPI types)
+  - Created: electron/renderer/tsconfig.json, tsconfig.node.json
+  - Created: electron/renderer/vite.config.ts
+  - Created: electron-builder.config.js (macOS DMG config)
+  - Created: build/entitlements.mac.plist
+  - Modified: package.json (added electron scripts and dependencies)
+- **Learnings for future iterations:**
+  - Keep main process minimal - just window creation and IPC handlers
+  - Use contextBridge.exposeInMainWorld() for safe IPC from renderer
+  - Vite config needs `base: './'` for Electron file:// protocol compatibility
+  - Preload script must use contextIsolation: true and nodeIntegration: false for security
+  - Dev mode: load from Vite dev server; Prod mode: load from built files
+  - electron-builder needs separate build step before packaging
 ---
 
 ## 2026-02-17 - US-065
