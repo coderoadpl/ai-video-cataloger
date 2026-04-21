@@ -15,7 +15,35 @@
 - Typecheck script must check all contexts: CLI (src/), main, preload, and renderer
 - Vite dev server for renderer, compiled TypeScript for main/preload
 - Output to dist-electron/ for Electron, dist/ for CLI
+- Tailwind CSS v4: Use `@import "tailwindcss"` and `@theme {}` block for configuration (no tailwind.config.ts)
+- Tailwind CSS v4: PostCSS uses `@tailwindcss/postcss` plugin instead of `tailwindcss`
+- Tailwind CSS v4: Define colors as `--color-{name}` in @theme block, auto-generates `bg-{name}`, `text-{name}` utilities
+- shadcn/ui components: Store in `electron/renderer/src/components/ui/`
+- cn() utility: Use clsx + tailwind-merge in `electron/renderer/src/lib/utils.ts`
+- Path aliases: Add `baseUrl` and `paths` to tsconfig.json for `@/*` imports
 
+---
+
+## 2026-02-17 - US-067
+- What was implemented: Shadcn/ui component library setup with macOS-inspired theme
+- Files changed:
+  - Created: electron/renderer/postcss.config.js (@tailwindcss/postcss plugin)
+  - Created: electron/renderer/src/lib/utils.ts (cn() utility with clsx + tailwind-merge)
+  - Created: electron/renderer/src/components/ui/button.tsx (Button component with variants)
+  - Created: electron/renderer/src/components/ui/input.tsx (Input component)
+  - Created: electron/renderer/src/components/ui/scroll-area.tsx (ScrollArea with Radix primitives)
+  - Modified: electron/renderer/src/index.css (Tailwind v4 with @theme block, macOS colors)
+  - Modified: electron/renderer/src/App.tsx (demo of new components)
+  - Modified: electron/renderer/tsconfig.json (added baseUrl and paths for @/* alias)
+  - Modified: package.json (added shadcn/ui dependencies)
+- **Learnings for future iterations:**
+  - Tailwind CSS v4 is a major breaking change - uses CSS-based config instead of JS
+  - Use `@import "tailwindcss"` instead of `@tailwind base/components/utilities`
+  - Colors defined as `--color-primary` auto-generate `bg-primary`, `text-primary` utilities
+  - The `@tailwindcss/postcss` package is required for PostCSS integration in v4
+  - Delete tailwind.config.ts when migrating to v4 - all config moves to CSS
+  - macOS colors: background #f5f5f7, primary #007AFF, destructive #ff3b30, border #d2d2d7
+  - SF Pro font: Falls back to -apple-system, BlinkMacSystemFont, etc. on non-macOS
 ---
 
 ## 2026-02-17 - US-066

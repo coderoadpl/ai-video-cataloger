@@ -238,7 +238,8 @@
         "Add base components: Button, Input, ScrollArea",
         "Typecheck passes"
       ],
-      "phase": 2
+      "phase": 2,
+      "passes": true
     },
     {
       "id": "US-068",
