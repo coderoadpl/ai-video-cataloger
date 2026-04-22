@@ -21,7 +21,29 @@
 - shadcn/ui components: Store in `electron/renderer/src/components/ui/`
 - cn() utility: Use clsx + tailwind-merge in `electron/renderer/src/lib/utils.ts`
 - Path aliases: Add `baseUrl` and `paths` to tsconfig.json for `@/*` imports
+- IPC pattern: Use ipcMain.handle() for async request/response, ipcMain.on() for one-way messages
+- IPC streaming: Use webContents.send() from main to renderer for streaming events (stdout, stderr, json, exit)
+- Preload listeners: Return cleanup function from event listeners (e.g., onStdout returns () => removeListener)
+- CLI spawner: spawn with node + CLI path, stream via readline createInterface, track processes for cleanup
 
+---
+
+## 2026-02-17 - US-068
+- What was implemented: CLI Spawner Service for IPC to spawn and stream CLI output
+- Files changed:
+  - Created: electron/main/cli-spawner.ts (spawnCLI, spawnCLIWithJson, parseJsonLine, killProcess, killAllProcesses)
+  - Created: electron/main/ipc-handlers.ts (registerIPCHandlers, cleanupIPCHandlers, IPC channels for spawn/kill/streaming)
+  - Modified: electron/main/index.ts (import and register IPC handlers, cleanup on before-quit)
+  - Modified: electron/preload/preload.ts (cli API with spawn, kill, event listeners with cleanup functions)
+  - Modified: electron/renderer/src/vite-env.d.ts (TypeScript types for CLI API)
+- **Learnings for future iterations:**
+  - Use readline.createInterface() for line-by-line streaming of stdout/stderr
+  - Store spawned processes in a Map for tracking and kill capability
+  - IPC handlers: use ipcMain.handle() for request/response, webContents.send() for streaming to renderer
+  - Each event listener in preload should return a cleanup function that removes the listener
+  - Check window.isDestroyed() before sending IPC messages to avoid errors
+  - CLI path in dev: process.cwd() + 'dist/index.js'; in prod: process.resourcesPath + 'cli/index.js'
+  - JSON mode: parse each line with try/catch, pass through non-JSON lines to raw output callback
 ---
 
 ## 2026-02-17 - US-067
