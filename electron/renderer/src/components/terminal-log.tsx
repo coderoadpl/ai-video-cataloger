@@ -122,6 +122,7 @@ interface TerminalLogProps {
   onClear?: () => void;
   className?: string;
   autoScroll?: boolean;
+  showHeader?: boolean;
 }
 
 export function TerminalLog({
@@ -129,6 +130,7 @@ export function TerminalLog({
   onClear,
   className,
   autoScroll = true,
+  showHeader = true,
 }: TerminalLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const viewportRef = useRef<HTMLDivElement>(null);
@@ -183,40 +185,43 @@ export function TerminalLog({
   return (
     <div
       className={cn(
-        'flex flex-col rounded-lg border border-border bg-[#1e1e1e] overflow-hidden',
+        'flex flex-col bg-[#1e1e1e] overflow-hidden',
+        showHeader && 'rounded-lg border border-border',
         className
       )}
     >
       {/* Header with controls */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 bg-[#252526]">
-        <span className="text-xs font-medium text-gray-400">Terminal</span>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-6 w-6 text-gray-400 hover:text-white hover:bg-white/10"
-            onClick={handleCopy}
-            title="Copy log contents"
-          >
-            {copied ? (
-              <Check className="h-3.5 w-3.5 text-green-400" />
-            ) : (
-              <Copy className="h-3.5 w-3.5" />
-            )}
-          </Button>
-          {onClear && (
+      {showHeader && (
+        <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 bg-[#252526]">
+          <span className="text-xs font-medium text-gray-400">Terminal</span>
+          <div className="flex items-center gap-1">
             <Button
               variant="ghost"
               size="icon"
               className="h-6 w-6 text-gray-400 hover:text-white hover:bg-white/10"
-              onClick={onClear}
-              title="Clear log"
+              onClick={handleCopy}
+              title="Copy log contents"
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              {copied ? (
+                <Check className="h-3.5 w-3.5 text-green-400" />
+              ) : (
+                <Copy className="h-3.5 w-3.5" />
+              )}
             </Button>
-          )}
+            {onClear && (
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6 text-gray-400 hover:text-white hover:bg-white/10"
+                onClick={onClear}
+                title="Clear log"
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </Button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
 
       {/* Log content */}
       <ScrollArea className="flex-1" ref={scrollRef}>

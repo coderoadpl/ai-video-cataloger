@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIPCHandlers, cleanupIPCHandlers } from './ipc-handlers.js';
+import { loadWindowState, attachWindowStateHandlers } from './window-state.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -20,9 +21,14 @@ function createWindow(): void {
     ? path.join(__dirname, '../preload/preload.js')
     : path.join(__dirname, '../preload/preload.js');
 
+  // Load saved window state
+  const windowState = loadWindowState();
+
   mainWindow = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    x: windowState.x,
+    y: windowState.y,
+    width: windowState.width,
+    height: windowState.height,
     minWidth: 900,
     minHeight: 600,
     show: false,
@@ -34,6 +40,9 @@ function createWindow(): void {
       sandbox: true,
     },
   });
+
+  // Attach window state handlers for persistence
+  attachWindowStateHandlers(mainWindow);
 
   // Show window when ready to prevent visual flash
   mainWindow.once('ready-to-show', () => {
