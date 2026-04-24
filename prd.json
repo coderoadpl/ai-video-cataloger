@@ -286,7 +286,8 @@
         "Remember window position/size",
         "Typecheck passes"
       ],
-      "phase": 2
+      "phase": 2,
+      "passes": true
     },
     {
       "id": "US-071",

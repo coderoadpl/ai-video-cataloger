@@ -28,7 +28,29 @@
 - TerminalLog component: Store in `electron/renderer/src/components/` (not ui/ - it's an app component)
 - ANSI parsing: Use regex `/\x1b\[([0-9;]*)m/g` to parse escape sequences, map codes to Tailwind classes
 - Auto-scroll pattern: Track user scroll position, disable auto-scroll when user scrolls up, show "Scroll to bottom" button
+- Layout components: Store in `electron/renderer/src/components/layout/` for structural components (AppLayout, ResizablePanel)
+- Window state persistence: Use `app.getPath('userData')` for config file, save on close/resize/move with debounce
+- ResizablePanel: Use mouse events with direction (horizontal/vertical), track dragging state, apply delta to size
 
+---
+
+## 2026-02-17 - US-070
+- What was implemented: Basic window layout with three-panel design and window state persistence
+- Files changed:
+  - Created: electron/main/window-state.ts (loadWindowState, saveWindowState, attachWindowStateHandlers)
+  - Created: electron/renderer/src/components/layout/app-layout.tsx (AppLayout with sidebar, content, terminal panels)
+  - Created: electron/renderer/src/components/layout/resizable-panel.tsx (ResizablePanel, ResizableHandle)
+  - Created: electron/renderer/src/components/layout/index.ts (exports)
+  - Modified: electron/main/index.ts (integrate window state persistence)
+  - Modified: electron/renderer/src/App.tsx (use AppLayout, add toolbar, restructure UI)
+  - Modified: electron/renderer/src/components/terminal-log.tsx (add showHeader prop)
+- **Learnings for future iterations:**
+  - Window state saved to `~/Library/Application Support/ai-video-cataloger/window-state.json` on macOS
+  - Use debounced save (500ms) for resize/move events to avoid excessive writes
+  - Resizable panels: track `isDragging` state, add/remove document event listeners for mouse move/up
+  - For vertical resizing (bottom panel), invert the delta since dragging up should increase height
+  - Set `userSelect: none` and `cursor: row-resize` on body while dragging for better UX
+  - Layout can pass terminal callbacks (onClear, onCopy) to header buttons
 ---
 
 ## 2026-02-17 - US-069
