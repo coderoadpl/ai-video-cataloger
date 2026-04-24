@@ -271,7 +271,8 @@
         "Copy button to copy log contents",
         "Typecheck passes"
       ],
-      "phase": 2
+      "phase": 2,
+      "passes": true
     },
     {
       "id": "US-070",

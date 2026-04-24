@@ -25,7 +25,25 @@
 - IPC streaming: Use webContents.send() from main to renderer for streaming events (stdout, stderr, json, exit)
 - Preload listeners: Return cleanup function from event listeners (e.g., onStdout returns () => removeListener)
 - CLI spawner: spawn with node + CLI path, stream via readline createInterface, track processes for cleanup
+- TerminalLog component: Store in `electron/renderer/src/components/` (not ui/ - it's an app component)
+- ANSI parsing: Use regex `/\x1b\[([0-9;]*)m/g` to parse escape sequences, map codes to Tailwind classes
+- Auto-scroll pattern: Track user scroll position, disable auto-scroll when user scrolls up, show "Scroll to bottom" button
 
+---
+
+## 2026-02-17 - US-069
+- What was implemented: Terminal Log Viewer React component for displaying CLI output
+- Files changed:
+  - Created: electron/renderer/src/components/terminal-log.tsx (TerminalLog component, ANSI parser, createLogLine helper)
+  - Modified: electron/renderer/src/App.tsx (integrated TerminalLog with demo buttons)
+- **Learnings for future iterations:**
+  - ANSI color codes: 30-37 for foreground colors, 40-47 for background, 1/2/3/4 for bold/dim/italic/underline
+  - Use regex to split string into segments, track current styles across escape sequences
+  - For copy functionality, strip ANSI codes with simple replace regex
+  - Auto-scroll: Track if user has scrolled up (scrollHeight - scrollTop - clientHeight > threshold)
+  - When auto-scroll is disabled, show a "Scroll to bottom" button for UX
+  - Use `lucide-react` for icons (Copy, Trash2, Check) - already in package.json
+  - Dark terminal background: bg-[#1e1e1e] with border-border/50 for subtle separation
 ---
 
 ## 2026-02-17 - US-068
