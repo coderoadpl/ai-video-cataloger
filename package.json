@@ -34,6 +34,7 @@
   "dependencies": {
     "@ffprobe-installer/ffprobe": "^2.1.2",
     "@inquirer/prompts": "^8.2.0",
+    "@radix-ui/react-alert-dialog": "^1.1.15",
     "@radix-ui/react-scroll-area": "^1.2.10",
     "@radix-ui/react-slot": "^1.2.4",
     "@tailwindcss/postcss": "^4.1.18",

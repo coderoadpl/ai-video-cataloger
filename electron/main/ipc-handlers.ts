@@ -1,4 +1,4 @@
-import { ipcMain, app, BrowserWindow } from 'electron';
+import { ipcMain, app, BrowserWindow, dialog } from 'electron';
 import {
   spawnCLI,
   spawnCLIWithJson,
@@ -8,6 +8,13 @@ import {
   CLIProcessHandle,
   JsonEvent,
 } from './cli-spawner.js';
+import {
+  getCurrentFolder,
+  setCurrentFolder,
+  getRecentFolders,
+  removeRecentFolder,
+  clearRecentFolders,
+} from './folder-store.js';
 
 // Store active spawned processes by their unique IDs
 const spawnedProcesses = new Map<string, CLIProcessHandle>();
@@ -147,6 +154,51 @@ export function registerIPCHandlers(): void {
   // CLI Spawner - Get active process count
   ipcMain.handle('cli:getActiveCount', async (): Promise<number> => {
     return getActiveProcessCount();
+  });
+
+  // Folder picker - Show native folder dialog
+  ipcMain.handle('folder:showPicker', async (event): Promise<string | null> => {
+    const window = BrowserWindow.fromWebContents(event.sender);
+    if (!window) {
+      return null;
+    }
+
+    const result = await dialog.showOpenDialog(window, {
+      properties: ['openDirectory', 'createDirectory'],
+      title: 'Select Video Folder',
+      buttonLabel: 'Select Folder',
+    });
+
+    if (result.canceled || result.filePaths.length === 0) {
+      return null;
+    }
+
+    return result.filePaths[0];
+  });
+
+  // Folder store - Get current folder
+  ipcMain.handle('folder:getCurrent', (): string | null => {
+    return getCurrentFolder();
+  });
+
+  // Folder store - Set current folder
+  ipcMain.handle('folder:setCurrent', (_event, folderPath: string): void => {
+    setCurrentFolder(folderPath);
+  });
+
+  // Folder store - Get recent folders
+  ipcMain.handle('folder:getRecent', (): string[] => {
+    return getRecentFolders();
+  });
+
+  // Folder store - Remove a recent folder
+  ipcMain.handle('folder:removeRecent', (_event, folderPath: string): void => {
+    removeRecentFolder(folderPath);
+  });
+
+  // Folder store - Clear recent folders
+  ipcMain.handle('folder:clearRecent', (): void => {
+    clearRecentFolders();
   });
 }
 

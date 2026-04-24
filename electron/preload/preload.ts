@@ -54,6 +54,52 @@ const electronAPI = {
     return ipcRenderer.invoke('app:getVersion');
   },
 
+  // Folder operations
+  folder: {
+    /**
+     * Show native folder picker dialog.
+     * @returns Promise with selected folder path or null if cancelled
+     */
+    showPicker: (): Promise<string | null> => {
+      return ipcRenderer.invoke('folder:showPicker');
+    },
+
+    /**
+     * Get the currently selected folder.
+     */
+    getCurrent: (): Promise<string | null> => {
+      return ipcRenderer.invoke('folder:getCurrent');
+    },
+
+    /**
+     * Set the current folder and add to recent list.
+     */
+    setCurrent: (folderPath: string): Promise<void> => {
+      return ipcRenderer.invoke('folder:setCurrent', folderPath);
+    },
+
+    /**
+     * Get list of recent folders (max 10).
+     */
+    getRecent: (): Promise<string[]> => {
+      return ipcRenderer.invoke('folder:getRecent');
+    },
+
+    /**
+     * Remove a folder from the recent list.
+     */
+    removeRecent: (folderPath: string): Promise<void> => {
+      return ipcRenderer.invoke('folder:removeRecent', folderPath);
+    },
+
+    /**
+     * Clear all recent folders.
+     */
+    clearRecent: (): Promise<void> => {
+      return ipcRenderer.invoke('folder:clearRecent');
+    },
+  },
+
   // CLI Spawner
   cli: {
     /**

@@ -45,6 +45,16 @@ interface CLIAPI {
   onExit: (callback: CLIExitCallback) => () => void;
 }
 
+// Folder API
+interface FolderAPI {
+  showPicker: () => Promise<string | null>;
+  getCurrent: () => Promise<string | null>;
+  setCurrent: (folderPath: string) => Promise<void>;
+  getRecent: () => Promise<string[]>;
+  removeRecent: (folderPath: string) => Promise<void>;
+  clearRecent: () => Promise<void>;
+}
+
 interface ElectronAPI {
   platform: NodeJS.Platform;
   closeWindow: () => void;
@@ -52,6 +62,7 @@ interface ElectronAPI {
   maximizeWindow: () => void;
   getAppVersion: () => Promise<string>;
   cli: CLIAPI;
+  folder: FolderAPI;
 }
 
 interface Window {
