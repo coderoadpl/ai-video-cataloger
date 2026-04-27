@@ -31,7 +31,29 @@
 - Layout components: Store in `electron/renderer/src/components/layout/` for structural components (AppLayout, ResizablePanel)
 - Window state persistence: Use `app.getPath('userData')` for config file, save on close/resize/move with debounce
 - ResizablePanel: Use mouse events with direction (horizontal/vertical), track dragging state, apply delta to size
+- Folder store: Use `app.getPath('userData')` for folder-store.json, store current folder and recent folders (max 10)
+- Native dialogs: Use dialog.showOpenDialog() via IPC handler for folder/file pickers
+- AlertDialog: Use @radix-ui/react-alert-dialog for error modals with shadcn/ui styling
 
+---
+
+## 2026-02-17 - US-071
+- What was implemented: Folder picker with native macOS dialog, nested DB check, and recent folders
+- Files changed:
+  - Created: electron/main/folder-store.ts (getCurrentFolder, setCurrentFolder, getRecentFolders, removeRecentFolder, clearRecentFolders)
+  - Created: electron/renderer/src/components/ui/alert-dialog.tsx (AlertDialog shadcn/ui component)
+  - Modified: electron/main/ipc-handlers.ts (folder:showPicker, folder:getCurrent, folder:setCurrent, folder:getRecent handlers)
+  - Modified: electron/preload/preload.ts (folder API with showPicker, getCurrent, setCurrent, getRecent, removeRecent, clearRecent)
+  - Modified: electron/renderer/src/vite-env.d.ts (FolderAPI interface)
+  - Modified: electron/renderer/src/App.tsx (handleOpenFolder, handleSelectRecentFolder, nested DB error dialog, recent folders dropdown)
+  - Modified: package.json (added @radix-ui/react-alert-dialog)
+- **Learnings for future iterations:**
+  - Store folder state in `app.getPath('userData')/folder-store.json` (e.g., `~/Library/Application Support/ai-video-cataloger/`)
+  - Use dialog.showOpenDialog() with properties: ['openDirectory', 'createDirectory'] for folder picker
+  - Run CLI check command via existing CLI spawner, parse JSON events for nested database paths
+  - When listening for CLI events in React, set up all listeners before spawning, clean up in exit handler
+  - Recent folders: push new folder to front, filter duplicates, limit to max 10
+  - Dropdown menus: use relative positioning, close on click outside with document event listener
 ---
 
 ## 2026-02-17 - US-070

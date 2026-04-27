@@ -302,7 +302,8 @@
         "Show current folder path in UI",
         "Typecheck passes"
       ],
-      "phase": 2
+      "phase": 2,
+      "passes": true
     },
     {
       "id": "US-072",
