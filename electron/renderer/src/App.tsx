@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import {
   AlertDialog,
@@ -11,6 +11,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { TerminalLog, LogLine, createLogLine } from '@/components/terminal-log';
 import { AppLayout } from '@/components/layout';
+import { VideoList, VideoItem } from '@/components/video-list';
 import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder } from 'lucide-react';
 
 interface JsonEvent {
@@ -31,6 +32,34 @@ interface NestedDbError {
   paths: string[];
 }
 
+// Scanned video from CLI (matches folder-scan.ts ScannedVideo)
+interface ScannedVideo {
+  path: string;
+  filename: string;
+  size: number;
+  sizeFormatted: string;
+  duration: number | null;
+  durationFormatted: string | null;
+  status: string;
+  errorMessage?: string | null;
+}
+
+// Folder scan result from CLI
+interface FolderScanResult {
+  folder: string;
+  databasePath: string | null;
+  videos: ScannedVideo[];
+  summary: {
+    total: number;
+    tracked: number;
+    pending: number;
+    inProgress: number;
+    completed: number;
+    error: number;
+    notTracked: number;
+  };
+}
+
 function App(): JSX.Element {
   const [appVersion, setAppVersion] = useState<string>('');
   const [logLines, setLogLines] = useState<LogLine[]>([]);
@@ -41,12 +70,17 @@ function App(): JSX.Element {
   const [nestedDbError, setNestedDbError] = useState<NestedDbError>({ open: false, paths: [] });
   const [showRecentMenu, setShowRecentMenu] = useState(false);
   const [isCheckingFolder, setIsCheckingFolder] = useState(false);
+  const [videos, setVideos] = useState<VideoItem[]>([]);
+  const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
+  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
+  const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
+  const thumbnailGenerationRef = useRef<{ cancelled: boolean }>({ cancelled: false });
 
   // Load initial state
   useEffect(() => {
     window.electronAPI?.getAppVersion().then(setAppVersion).catch(console.error);
-    window.electronAPI?.folder.getCurrent().then(setCurrentFolder).catch(console.error);
     window.electronAPI?.folder.getRecent().then(setRecentFolders).catch(console.error);
+    window.electronAPI?.folder.getCurrent().then(setCurrentFolder).catch(console.error);
   }, []);
 
   const handleClear = useCallback(() => {
@@ -146,6 +180,199 @@ function App(): JSX.Element {
     [addLogLine]
   );
 
+  // Get thumbnail path for a video
+  const getThumbnailPath = useCallback((videoPath: string, folderPath: string): string => {
+    const videoName = videoPath.split('/').pop()?.replace(/\.[^.]+$/, '') || 'thumbnail';
+    return `${folderPath}/.ai-video-cataloger/thumbnails/${videoName}.jpg`;
+  }, []);
+
+  // Load thumbnail for a video and return data URL
+  const loadThumbnail = useCallback(async (videoPath: string, folderPath: string): Promise<string | null> => {
+    const thumbnailPath = getThumbnailPath(videoPath, folderPath);
+    return window.electronAPI?.file.readAsDataUrl(thumbnailPath) || null;
+  }, [getThumbnailPath]);
+
+  // Generate thumbnail for a video via CLI
+  const generateThumbnail = useCallback(async (videoPath: string): Promise<boolean> => {
+    return new Promise((resolve) => {
+      let completed = false;
+
+      const handleJson = (_spawnId: string, event: JsonEvent): void => {
+        if (event.type === 'completed') {
+          completed = true;
+        } else if (event.type === 'error') {
+          addLogLine(`\x1b[31mThumbnail error:\x1b[0m ${event.error || event.message}`, 'error');
+        }
+      };
+
+      const handleExit = (_spawnId: string, _code: number | null): void => {
+        cleanupListeners();
+        resolve(completed);
+      };
+
+      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
+      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
+
+      const cleanupListeners = (): void => {
+        cleanupJson?.();
+        cleanupExit?.();
+      };
+
+      window.electronAPI?.cli
+        .spawn(['thumbnail', videoPath], { json: true })
+        .catch(() => {
+          cleanupListeners();
+          resolve(false);
+        });
+    });
+  }, [addLogLine]);
+
+  // Scan folder for videos using CLI
+  const scanFolder = useCallback(async (folderPath: string): Promise<FolderScanResult | null> => {
+    return new Promise((resolve) => {
+      setIsLoadingVideos(true);
+      addLogLine(`\x1b[36mScanning folder for videos...\x1b[0m`, 'info');
+
+      let scanResult: FolderScanResult | null = null;
+
+      const handleJson = (_spawnId: string, event: JsonEvent): void => {
+        if (event.type === 'completed' && event.data) {
+          const data = event.data as unknown as FolderScanResult;
+          if (data.videos) {
+            scanResult = data;
+          }
+        } else if (event.type === 'error') {
+          addLogLine(`\x1b[31mScan error:\x1b[0m ${event.error || event.message}`, 'error');
+        }
+      };
+
+      const handleExit = (_spawnId: string, code: number | null): void => {
+        cleanupListeners();
+        setIsLoadingVideos(false);
+
+        if (code === 0 && scanResult) {
+          addLogLine(`\x1b[32m✓\x1b[0m Found ${scanResult.videos.length} video(s)`, 'success');
+          resolve(scanResult);
+        } else {
+          resolve(null);
+        }
+      };
+
+      const cleanupStdout = window.electronAPI?.cli.onStdout((_spawnId: string, line: string) => {
+        addLogLine(line, 'stdout');
+      });
+      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
+      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
+
+      const cleanupListeners = (): void => {
+        cleanupStdout?.();
+        cleanupJson?.();
+        cleanupExit?.();
+      };
+
+      window.electronAPI?.cli
+        .spawn(['scan', folderPath], { json: true })
+        .catch((err: Error) => {
+          addLogLine(`\x1b[31mError:\x1b[0m Failed to scan folder: ${err.message}`, 'error');
+          cleanupListeners();
+          setIsLoadingVideos(false);
+          resolve(null);
+        });
+    });
+  }, [addLogLine]);
+
+  // Load videos and generate thumbnails for a folder
+  const loadVideosForFolder = useCallback(async (folderPath: string) => {
+    // Cancel any ongoing thumbnail generation
+    thumbnailGenerationRef.current.cancelled = true;
+    thumbnailGenerationRef.current = { cancelled: false };
+    const currentGeneration = thumbnailGenerationRef.current;
+
+    // Clear previous videos
+    setVideos([]);
+    setSelectedVideo(null);
+
+    // Scan folder
+    const result = await scanFolder(folderPath);
+    if (!result || result.videos.length === 0) {
+      return;
+    }
+
+    // Convert to VideoItem format (without thumbnails initially)
+    const videoItems: VideoItem[] = result.videos.map((v) => ({
+      path: v.path,
+      filename: v.filename,
+      size: v.size,
+      sizeFormatted: v.sizeFormatted,
+      duration: v.duration,
+      durationFormatted: v.durationFormatted,
+      status: v.status as VideoItem['status'],
+      errorMessage: v.errorMessage,
+      thumbnailPath: getThumbnailPath(v.path, folderPath),
+      thumbnailDataUrl: null,
+    }));
+
+    setVideos(videoItems);
+
+    // Generate and load thumbnails in background
+    setIsGeneratingThumbnails(true);
+    addLogLine(`\x1b[36mGenerating thumbnails...\x1b[0m`, 'info');
+
+    let generatedCount = 0;
+    for (let i = 0; i < videoItems.length; i++) {
+      if (currentGeneration.cancelled) {
+        addLogLine(`\x1b[33mThumbnail generation cancelled\x1b[0m`, 'info');
+        break;
+      }
+
+      const video = videoItems[i];
+
+      // Try to load existing thumbnail first
+      let thumbnailDataUrl = await loadThumbnail(video.path, folderPath);
+
+      // If no thumbnail, generate it
+      if (!thumbnailDataUrl) {
+        const generated = await generateThumbnail(video.path);
+        if (generated) {
+          thumbnailDataUrl = await loadThumbnail(video.path, folderPath);
+          generatedCount++;
+        }
+      }
+
+      if (thumbnailDataUrl && !currentGeneration.cancelled) {
+        // Update video with thumbnail
+        setVideos((prev) =>
+          prev.map((v) =>
+            v.path === video.path ? { ...v, thumbnailDataUrl } : v
+          )
+        );
+      }
+    }
+
+    if (!currentGeneration.cancelled) {
+      setIsGeneratingThumbnails(false);
+      if (generatedCount > 0) {
+        addLogLine(`\x1b[32m✓\x1b[0m Generated ${generatedCount} thumbnail(s)`, 'success');
+      } else {
+        addLogLine(`\x1b[32m✓\x1b[0m Thumbnails loaded`, 'success');
+      }
+    }
+  }, [scanFolder, getThumbnailPath, loadThumbnail, generateThumbnail, addLogLine]);
+
+  // Load videos for current folder on initial load
+  const initialLoadRef = useRef(true);
+  useEffect(() => {
+    if (initialLoadRef.current && currentFolder && videos.length === 0 && !isLoadingVideos) {
+      initialLoadRef.current = false;
+      loadVideosForFolder(currentFolder);
+    }
+  }, [currentFolder, videos.length, isLoadingVideos, loadVideosForFolder]);
+
+  // Handle video selection
+  const handleSelectVideo = useCallback((video: VideoItem) => {
+    setSelectedVideo(video);
+  }, []);
+
   // Handle folder selection
   const handleOpenFolder = useCallback(async () => {
     const selectedPath = await window.electronAPI?.folder.showPicker();
@@ -171,7 +398,10 @@ function App(): JSX.Element {
     setCurrentFolder(selectedPath);
     setRecentFolders(await window.electronAPI?.folder.getRecent() || []);
     addLogLine(`\x1b[32m✓\x1b[0m Opened folder: ${selectedPath}`, 'success');
-  }, [checkFolderForNestedDbs, addLogLine]);
+
+    // Load videos for the folder
+    await loadVideosForFolder(selectedPath);
+  }, [checkFolderForNestedDbs, addLogLine, loadVideosForFolder]);
 
   // Handle selecting a recent folder
   const handleSelectRecentFolder = useCallback(
@@ -195,8 +425,11 @@ function App(): JSX.Element {
       setCurrentFolder(folderPath);
       setRecentFolders(await window.electronAPI?.folder.getRecent() || []);
       addLogLine(`\x1b[32m✓\x1b[0m Opened folder: ${folderPath}`, 'success');
+
+      // Load videos for the folder
+      await loadVideosForFolder(folderPath);
     },
-    [checkFolderForNestedDbs, addLogLine]
+    [checkFolderForNestedDbs, addLogLine, loadVideosForFolder]
   );
 
   // Close nested DB error dialog
@@ -212,8 +445,9 @@ function App(): JSX.Element {
 
   // Sidebar content
   const sidebarContent = currentFolder ? (
-    <div className="p-4 space-y-4">
-      <div className="space-y-2">
+    <div className="flex flex-col h-full">
+      {/* Folder header */}
+      <div className="px-4 py-3 border-b border-border space-y-1">
         <div className="flex items-center gap-2">
           <Folder className="h-4 w-4 text-primary" />
           <span className="font-medium text-sm truncate" title={currentFolder}>
@@ -223,11 +457,20 @@ function App(): JSX.Element {
         <p className="text-xs text-muted-foreground truncate" title={currentFolder}>
           {currentFolder}
         </p>
+        {isGeneratingThumbnails && (
+          <p className="text-xs text-muted-foreground animate-pulse">
+            Generating thumbnails...
+          </p>
+        )}
       </div>
-      <div className="border-t border-border pt-4">
-        <p className="text-sm text-muted-foreground">
-          Video list will appear here after folder scan.
-        </p>
+      {/* Video list */}
+      <div className="flex-1 min-h-0">
+        <VideoList
+          videos={videos}
+          selectedVideoPath={selectedVideo?.path || null}
+          onSelectVideo={handleSelectVideo}
+          isLoading={isLoadingVideos}
+        />
       </div>
     </div>
   ) : (
