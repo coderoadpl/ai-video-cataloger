@@ -59,6 +59,8 @@ interface FolderAPI {
 interface FileAPI {
   readAsDataUrl: (filePath: string) => Promise<string | null>;
   exists: (filePath: string) => Promise<boolean>;
+  readText: (filePath: string) => Promise<string | null>;
+  readDir: (dirPath: string) => Promise<string[]>;
 }
 
 interface ElectronAPI {

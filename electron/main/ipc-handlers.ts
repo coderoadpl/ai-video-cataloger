@@ -247,6 +247,31 @@ export function registerIPCHandlers(): void {
       return false;
     }
   });
+
+  // File operations - Read text file
+  ipcMain.handle('file:readText', async (_event, filePath: string): Promise<string | null> => {
+    try {
+      // Check if file exists and is readable
+      await access(filePath, constants.R_OK);
+      const content = await readFile(filePath, 'utf-8');
+      return content;
+    } catch {
+      // File doesn't exist or can't be read
+      return null;
+    }
+  });
+
+  // File operations - Read directory contents
+  ipcMain.handle('file:readDir', async (_event, dirPath: string): Promise<string[]> => {
+    try {
+      const { readdir } = await import('node:fs/promises');
+      const entries = await readdir(dirPath);
+      return entries;
+    } catch {
+      // Directory doesn't exist or can't be read
+      return [];
+    }
+  });
 }
 
 /**

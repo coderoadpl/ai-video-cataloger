@@ -119,6 +119,24 @@ const electronAPI = {
     exists: (filePath: string): Promise<boolean> => {
       return ipcRenderer.invoke('file:exists', filePath);
     },
+
+    /**
+     * Read a text file.
+     * @param filePath - Absolute path to the file
+     * @returns Promise with text content or null if file doesn't exist
+     */
+    readText: (filePath: string): Promise<string | null> => {
+      return ipcRenderer.invoke('file:readText', filePath);
+    },
+
+    /**
+     * Read directory contents.
+     * @param dirPath - Absolute path to the directory
+     * @returns Promise with array of filenames (empty if directory doesn't exist)
+     */
+    readDir: (dirPath: string): Promise<string[]> => {
+      return ipcRenderer.invoke('file:readDir', dirPath);
+    },
   },
 
   // CLI Spawner

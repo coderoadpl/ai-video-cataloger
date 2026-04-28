@@ -12,6 +12,7 @@ import {
 import { TerminalLog, LogLine, createLogLine } from '@/components/terminal-log';
 import { AppLayout } from '@/components/layout';
 import { VideoList, VideoItem } from '@/components/video-list';
+import { VideoDetails } from '@/components/video-details';
 import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder } from 'lucide-react';
 
 interface JsonEvent {
@@ -98,21 +99,6 @@ function App(): JSX.Element {
   const addLogLine = useCallback((content: string, type: LogLine['type'] = 'stdout') => {
     setLogLines((prev) => [...prev, createLogLine(content, type)]);
   }, []);
-
-  const handleDemoOutput = useCallback(() => {
-    addLogLine('\x1b[32m✓\x1b[0m Starting video analysis...', 'info');
-    addLogLine('Processing: BigBuckBunny.mp4', 'stdout');
-    addLogLine('\x1b[33m⚠\x1b[0m Frame extraction: 25% complete', 'stdout');
-    addLogLine('\x1b[33m⚠\x1b[0m Frame extraction: 50% complete', 'stdout');
-    addLogLine('\x1b[33m⚠\x1b[0m Frame extraction: 75% complete', 'stdout');
-    addLogLine('\x1b[32m✓\x1b[0m Frame extraction: 100% complete', 'success');
-    addLogLine('\x1b[1m\x1b[34mTranscribing audio with Whisper...\x1b[0m', 'info');
-  }, [addLogLine]);
-
-  const handleDemoError = useCallback(() => {
-    addLogLine('\x1b[31mError:\x1b[0m Failed to connect to Ollama', 'error');
-    addLogLine('\x1b[31m  └─\x1b[0m Is Ollama running? Try: ollama serve', 'stderr');
-  }, [addLogLine]);
 
   // Check folder for nested databases using CLI
   const checkFolderForNestedDbs = useCallback(
@@ -550,42 +536,39 @@ function App(): JSX.Element {
       </header>
 
       {/* Content area */}
-      <main className="flex-1 p-6 overflow-auto scrollbar-macos">
-        <div className="max-w-3xl space-y-6">
-          {/* Welcome message */}
-          <div className="space-y-2">
-            <h2 className="text-xl font-semibold">Welcome to AI Video Cataloger</h2>
-            <p className="text-muted-foreground">
-              Select a folder containing videos to get started. The app will analyze your videos
-              using AI to generate summaries, transcriptions, and smart file names.
-            </p>
-          </div>
+      <main className="flex-1 overflow-hidden">
+        {selectedVideo && currentFolder ? (
+          <VideoDetails
+            video={selectedVideo}
+            currentFolder={currentFolder}
+            className="h-full"
+          />
+        ) : (
+          <div className="p-6 overflow-auto scrollbar-macos h-full">
+            <div className="max-w-3xl space-y-6">
+              {/* Welcome message */}
+              <div className="space-y-2">
+                <h2 className="text-xl font-semibold">Welcome to AI Video Cataloger</h2>
+                <p className="text-muted-foreground">
+                  Select a folder containing videos to get started. The app will analyze your videos
+                  using AI to generate summaries, transcriptions, and smart file names.
+                </p>
+              </div>
 
-          {/* Demo buttons for terminal */}
-          <div className="space-y-2">
-            <h3 className="text-sm font-medium">Demo Controls</h3>
-            <div className="flex gap-2">
-              <Button variant="secondary" size="sm" onClick={handleDemoOutput}>
-                Add Demo Output
-              </Button>
-              <Button variant="destructive" size="sm" onClick={handleDemoError}>
-                Add Demo Error
-              </Button>
+              {/* Instructions */}
+              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <h3 className="font-medium">Getting Started</h3>
+                <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
+                  <li>Click "Open Folder" to select a folder with video files</li>
+                  <li>The sidebar will show all detected videos</li>
+                  <li>Select a video to view details and analysis results</li>
+                  <li>Click "Analyze" to process individual videos</li>
+                  <li>Terminal output shows real-time progress</li>
+                </ol>
+              </div>
             </div>
           </div>
-
-          {/* Instructions */}
-          <div className="rounded-lg border border-border bg-card p-4 space-y-3">
-            <h3 className="font-medium">Getting Started</h3>
-            <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-              <li>Click "Open Folder" to select a folder with video files</li>
-              <li>The sidebar will show all detected videos</li>
-              <li>Select a video to view details and analysis results</li>
-              <li>Click "Analyze" to process individual videos</li>
-              <li>Terminal output shows real-time progress</li>
-            </ol>
-          </div>
-        </div>
+        )}
       </main>
     </div>
   );
