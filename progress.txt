@@ -34,7 +34,28 @@
 - Folder store: Use `app.getPath('userData')` for folder-store.json, store current folder and recent folders (max 10)
 - Native dialogs: Use dialog.showOpenDialog() via IPC handler for folder/file pickers
 - AlertDialog: Use @radix-ui/react-alert-dialog for error modals with shadcn/ui styling
+- File reading in sandbox: Use IPC handler to read local files as data URLs (base64) since file:// protocol blocked
+- Video list component: Store in `electron/renderer/src/components/` as app component, not ui/
+- Thumbnail loading: Read via IPC file:readAsDataUrl handler, cache as data URL in state
 
+---
+
+## 2026-02-17 - US-072
+- What was implemented: Video list with thumbnails in sidebar
+- Files changed:
+  - Created: electron/renderer/src/components/video-list.tsx (VideoList component, VideoItem type, status badges)
+  - Modified: electron/main/ipc-handlers.ts (file:readAsDataUrl, file:exists handlers)
+  - Modified: electron/preload/preload.ts (file API with readAsDataUrl, exists)
+  - Modified: electron/renderer/src/vite-env.d.ts (FileAPI interface)
+  - Modified: electron/renderer/src/App.tsx (scanFolder, loadVideosForFolder, generateThumbnail, VideoList integration)
+- **Learnings for future iterations:**
+  - Sandbox mode blocks file:// protocol - must use IPC to read local files as data URLs
+  - Thumbnail generation is sequential via CLI spawn - each video is processed one by one
+  - Use useRef for cancellation token to stop background operations when folder changes
+  - Keep video state in App.tsx for now, can extract to context/store if app grows
+  - FolderScanResult interface must match CLI output exactly (folder, databasePath, videos, summary)
+  - Status badge colors: green=done, red=error, blue=pending, yellow=processing
+  - useEffect with initialLoadRef pattern to load data only once on mount with async dependencies
 ---
 
 ## 2026-02-17 - US-071

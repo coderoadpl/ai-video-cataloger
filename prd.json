@@ -318,7 +318,8 @@
         "Click to select video",
         "Typecheck passes"
       ],
-      "phase": 3
+      "phase": 3,
+      "passes": true
     },
     {
       "id": "US-073",
