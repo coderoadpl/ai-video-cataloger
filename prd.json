@@ -349,7 +349,8 @@
         "Refresh video list on completion",
         "Typecheck passes"
       ],
-      "phase": 3
+      "phase": 3,
+      "passes": true
     },
     {
       "id": "US-075",

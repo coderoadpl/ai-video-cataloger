@@ -41,6 +41,22 @@
 - Artifact paths: frames in `<folder>/frames/<videoName>/`, transcripts in `<folder>/transcripts/<videoName>.txt`, summaries in `<folder>/summaries/<videoName>.txt`
 - File API: Use readText for text files, readDir for directory listings, readAsDataUrl for images
 
+- CLI analyze: Use `process` subcommand with `--json` flag, parse progress events for step/percentage display
+- Progress bar: Store in `electron/renderer/src/components/ui/progress.tsx`, use simple div with width percentage
+
+---
+
+## 2026-02-17 - US-074
+- What was implemented: Analyze single video feature with progress bar and terminal output streaming
+- Files changed:
+  - Created: electron/renderer/src/components/ui/progress.tsx (Progress bar component with ARIA attributes)
+  - Modified: electron/renderer/src/App.tsx (handleAnalyzeVideo callback, ProcessingProgress state, progress bar UI, video list refresh)
+- **Learnings for future iterations:**
+  - Progress events from CLI include `step`, `percentage`, `stepNumber`, `totalSteps` in the data object
+  - Steps are: extracting_frames (20%), extracting_audio (40%), transcribing_audio (60%), analyzing_with_claude (80%), renaming_video/skipping_rename (100%)
+  - Re-scan folder after analysis to get updated video status rather than guessing the status
+  - Keep `analyzingVideoPath` state to track which video is being analyzed for correct progress bar display
+  - Map CLI step names (snake_case) to human-readable labels for better UX
 ---
 
 ## 2026-02-17 - US-073
