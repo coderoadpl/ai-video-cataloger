@@ -37,7 +37,27 @@
 - File reading in sandbox: Use IPC handler to read local files as data URLs (base64) since file:// protocol blocked
 - Video list component: Store in `electron/renderer/src/components/` as app component, not ui/
 - Thumbnail loading: Read via IPC file:readAsDataUrl handler, cache as data URL in state
+- Video details component: Store in `electron/renderer/src/components/` as app component
+- Artifact paths: frames in `<folder>/frames/<videoName>/`, transcripts in `<folder>/transcripts/<videoName>.txt`, summaries in `<folder>/summaries/<videoName>.txt`
+- File API: Use readText for text files, readDir for directory listings, readAsDataUrl for images
 
+---
+
+## 2026-02-17 - US-073
+- What was implemented: Video details panel showing selected video information and artifacts
+- Files changed:
+  - Created: electron/renderer/src/components/video-details.tsx (VideoDetails component with metadata, status, artifacts display)
+  - Modified: electron/main/ipc-handlers.ts (file:readText, file:readDir handlers)
+  - Modified: electron/preload/preload.ts (readText, readDir methods on file API)
+  - Modified: electron/renderer/src/vite-env.d.ts (FileAPI interface with readText, readDir)
+  - Modified: electron/renderer/src/App.tsx (integrated VideoDetails, removed demo buttons)
+- **Learnings for future iterations:**
+  - Artifacts are stored relative to the video's folder, not the .ai-video-cataloger directory
+  - Summary file format: "DESCRIPTION:", "SUGGESTED FILENAME:", "FULL ANALYSIS:" sections
+  - Frame gallery: Use selectedFrame state to track which frame is displayed large
+  - Status states: pending, frames_extracted, audio_extracted, transcribed, analyzed, completed, error, not_tracked
+  - Cleanup async operations with cancelled flag to prevent state updates after unmount
+  - For collapsible sections, use HTML `<details>` element with summary for accessible disclosure widget
 ---
 
 ## 2026-02-17 - US-072
