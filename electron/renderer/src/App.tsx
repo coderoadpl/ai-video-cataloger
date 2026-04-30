@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/button';
+import { Progress } from '@/components/ui/progress';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -13,7 +14,7 @@ import { TerminalLog, LogLine, createLogLine } from '@/components/terminal-log';
 import { AppLayout } from '@/components/layout';
 import { VideoList, VideoItem } from '@/components/video-list';
 import { VideoDetails } from '@/components/video-details';
-import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder } from 'lucide-react';
+import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2 } from 'lucide-react';
 
 interface JsonEvent {
   type: 'started' | 'progress' | 'completed' | 'error';
@@ -31,6 +32,15 @@ interface JsonEvent {
 interface NestedDbError {
   open: boolean;
   paths: string[];
+}
+
+// Processing progress state
+interface ProcessingProgress {
+  videoPath: string;
+  step: string;
+  percentage: number;
+  stepNumber: number;
+  totalSteps: number;
 }
 
 // Scanned video from CLI (matches folder-scan.ts ScannedVideo)
@@ -76,6 +86,9 @@ function App(): JSX.Element {
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
   const thumbnailGenerationRef = useRef<{ cancelled: boolean }>({ cancelled: false });
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
+  const [analyzingVideoPath, setAnalyzingVideoPath] = useState<string | null>(null);
 
   // Load initial state
   useEffect(() => {
@@ -354,6 +367,137 @@ function App(): JSX.Element {
     }
   }, [currentFolder, videos.length, isLoadingVideos, loadVideosForFolder]);
 
+  // Map step names to human-readable labels
+  const getStepLabel = (step: string): string => {
+    const stepLabels: Record<string, string> = {
+      extracting_frames: 'Extracting frames',
+      extracting_audio: 'Extracting audio',
+      transcribing_audio: 'Transcribing audio',
+      analyzing_with_claude: 'Analyzing with AI',
+      renaming_video: 'Renaming video',
+      skipping_rename: 'Finalizing',
+    };
+    return stepLabels[step] || step.replace(/_/g, ' ');
+  };
+
+  // Analyze a single video using CLI
+  const handleAnalyzeVideo = useCallback(async (video: VideoItem): Promise<void> => {
+    if (!currentFolder || isAnalyzing) return;
+
+    setIsAnalyzing(true);
+    setAnalyzingVideoPath(video.path);
+    setProcessingProgress(null);
+
+    addLogLine(`\x1b[36mStarting analysis of ${video.filename}...\x1b[0m`, 'info');
+
+    return new Promise((resolve) => {
+      let hasError = false;
+
+      const handleOutput = (_spawnId: string, line: string): void => {
+        addLogLine(line, 'stdout');
+      };
+
+      const handleStderr = (_spawnId: string, line: string): void => {
+        addLogLine(line, 'stderr');
+      };
+
+      const handleJson = (_spawnId: string, event: JsonEvent): void => {
+        if (event.type === 'progress') {
+          // Update progress state
+          const stepNumber = event.data?.stepNumber as number | undefined;
+          const totalSteps = event.data?.totalSteps as number | undefined;
+
+          setProcessingProgress({
+            videoPath: video.path,
+            step: event.step || 'processing',
+            percentage: event.percentage || 0,
+            stepNumber: stepNumber || 0,
+            totalSteps: totalSteps || 5,
+          });
+
+          addLogLine(`\x1b[33m[${event.percentage || 0}%]\x1b[0m ${getStepLabel(event.step || '')}`, 'info');
+        } else if (event.type === 'completed') {
+          addLogLine(`\x1b[32m✓\x1b[0m Analysis completed for ${video.filename}`, 'success');
+        } else if (event.type === 'error') {
+          hasError = true;
+          addLogLine(`\x1b[31mError:\x1b[0m ${event.error || event.message}`, 'error');
+        }
+      };
+
+      const handleExit = (_spawnId: string, code: number | null): void => {
+        cleanupListeners();
+
+        setIsAnalyzing(false);
+        setAnalyzingVideoPath(null);
+        setProcessingProgress(null);
+
+        // Refresh video list to get updated status
+        if (currentFolder) {
+          // Re-scan to get updated status
+          scanFolder(currentFolder).then((result) => {
+            if (result) {
+              // Update video list with new statuses
+              setVideos((prev) => prev.map((v) => {
+                const updated = result.videos.find((rv) => rv.path === v.path);
+                if (updated) {
+                  return {
+                    ...v,
+                    status: updated.status as VideoItem['status'],
+                    errorMessage: updated.errorMessage,
+                  };
+                }
+                return v;
+              }));
+
+              // Update selected video if it was the one being analyzed
+              if (selectedVideo?.path === video.path) {
+                const updatedVideo = result.videos.find((rv) => rv.path === video.path);
+                if (updatedVideo) {
+                  setSelectedVideo((prev) => prev ? {
+                    ...prev,
+                    status: updatedVideo.status as VideoItem['status'],
+                    errorMessage: updatedVideo.errorMessage,
+                  } : null);
+                }
+              }
+            }
+          });
+        }
+
+        if (code !== 0 || hasError) {
+          addLogLine(`\x1b[31mAnalysis failed with exit code ${code}\x1b[0m`, 'error');
+        }
+
+        resolve();
+      };
+
+      // Set up listeners
+      const cleanupStdout = window.electronAPI?.cli.onStdout(handleOutput);
+      const cleanupStderr = window.electronAPI?.cli.onStderr(handleStderr);
+      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
+      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
+
+      const cleanupListeners = (): void => {
+        cleanupStdout?.();
+        cleanupStderr?.();
+        cleanupJson?.();
+        cleanupExit?.();
+      };
+
+      // Spawn the process command
+      window.electronAPI?.cli
+        .spawn(['process', video.path], { json: true })
+        .catch((err: Error) => {
+          addLogLine(`\x1b[31mError:\x1b[0m Failed to start analysis: ${err.message}`, 'error');
+          cleanupListeners();
+          setIsAnalyzing(false);
+          setAnalyzingVideoPath(null);
+          setProcessingProgress(null);
+          resolve();
+        });
+    });
+  }, [currentFolder, isAnalyzing, addLogLine, scanFolder, selectedVideo]);
+
   // Handle video selection
   const handleSelectVideo = useCallback((video: VideoItem) => {
     setSelectedVideo(video);
@@ -538,11 +682,35 @@ function App(): JSX.Element {
       {/* Content area */}
       <main className="flex-1 overflow-hidden">
         {selectedVideo && currentFolder ? (
-          <VideoDetails
-            video={selectedVideo}
-            currentFolder={currentFolder}
-            className="h-full"
-          />
+          <div className="flex flex-col h-full">
+            {/* Progress bar overlay when analyzing */}
+            {isAnalyzing && analyzingVideoPath === selectedVideo.path && processingProgress && (
+              <div className="px-6 py-3 bg-card border-b border-border space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 text-sm">
+                    <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                    <span className="font-medium">
+                      {getStepLabel(processingProgress.step)}
+                    </span>
+                    <span className="text-muted-foreground">
+                      (Step {processingProgress.stepNumber} of {processingProgress.totalSteps})
+                    </span>
+                  </div>
+                  <span className="text-sm font-medium text-primary">
+                    {processingProgress.percentage}%
+                  </span>
+                </div>
+                <Progress value={processingProgress.percentage} />
+              </div>
+            )}
+            <VideoDetails
+              video={selectedVideo}
+              currentFolder={currentFolder}
+              onAnalyze={handleAnalyzeVideo}
+              isAnalyzing={isAnalyzing && analyzingVideoPath === selectedVideo.path}
+              className="flex-1 min-h-0"
+            />
+          </div>
         ) : (
           <div className="p-6 overflow-auto scrollbar-macos h-full">
             <div className="max-w-3xl space-y-6">
