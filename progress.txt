@@ -43,7 +43,20 @@
 
 - CLI analyze: Use `process` subcommand with `--json` flag, parse progress events for step/percentage display
 - Progress bar: Store in `electron/renderer/src/components/ui/progress.tsx`, use simple div with width percentage
+- Cancel processing: Track currentSpawnId state, use cli.kill(spawnId) to send SIGTERM, check signal === 'SIGTERM' in exit handler
 
+---
+
+## 2026-02-17 - US-075
+- What was implemented: Cancel processing feature with confirmation modal and SIGTERM signal
+- Files changed:
+  - Modified: electron/renderer/src/App.tsx (cancelConfirmation state, currentSpawnId tracking, handleCancelClick, handleConfirmCancel, Cancel button in progress bar, warning modal)
+- **Learnings for future iterations:**
+  - Track spawnId from cli.spawn() result to enable targeted process killing
+  - Use cli.kill(spawnId) IPC to send SIGTERM to specific process
+  - Check signal === 'SIGTERM' in exit handler to distinguish cancellation from errors
+  - Use AlertDialogCancel alongside AlertDialogAction for two-button confirmation dialogs
+  - Warning modal should explain consequences (incomplete state, partial data)
 ---
 
 ## 2026-02-17 - US-074
