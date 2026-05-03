@@ -4,6 +4,7 @@ import { Progress } from '@/components/ui/progress';
 import {
   AlertDialog,
   AlertDialogAction,
+  AlertDialogCancel,
   AlertDialogContent,
   AlertDialogDescription,
   AlertDialogFooter,
@@ -14,7 +15,7 @@ import { TerminalLog, LogLine, createLogLine } from '@/components/terminal-log';
 import { AppLayout } from '@/components/layout';
 import { VideoList, VideoItem } from '@/components/video-list';
 import { VideoDetails } from '@/components/video-details';
-import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2 } from 'lucide-react';
+import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2, XCircle } from 'lucide-react';
 
 interface JsonEvent {
   type: 'started' | 'progress' | 'completed' | 'error';
@@ -32,6 +33,10 @@ interface JsonEvent {
 interface NestedDbError {
   open: boolean;
   paths: string[];
+}
+
+interface CancelConfirmation {
+  open: boolean;
 }
 
 // Processing progress state
@@ -89,6 +94,8 @@ function App(): JSX.Element {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
   const [analyzingVideoPath, setAnalyzingVideoPath] = useState<string | null>(null);
+  const [currentSpawnId, setCurrentSpawnId] = useState<string | null>(null);
+  const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({ open: false });
 
   // Load initial state
   useEffect(() => {
@@ -387,11 +394,13 @@ function App(): JSX.Element {
     setIsAnalyzing(true);
     setAnalyzingVideoPath(video.path);
     setProcessingProgress(null);
+    setCurrentSpawnId(null);
 
     addLogLine(`\x1b[36mStarting analysis of ${video.filename}...\x1b[0m`, 'info');
 
     return new Promise((resolve) => {
       let hasError = false;
+      let wasCancelled = false;
 
       const handleOutput = (_spawnId: string, line: string): void => {
         addLogLine(line, 'stdout');
@@ -424,12 +433,19 @@ function App(): JSX.Element {
         }
       };
 
-      const handleExit = (_spawnId: string, code: number | null): void => {
+      const handleExit = (_spawnId: string, code: number | null, signal: string | null): void => {
         cleanupListeners();
+
+        // Check if the process was killed (SIGTERM)
+        if (signal === 'SIGTERM') {
+          wasCancelled = true;
+          addLogLine(`\x1b[33mCancelled by user\x1b[0m`, 'info');
+        }
 
         setIsAnalyzing(false);
         setAnalyzingVideoPath(null);
         setProcessingProgress(null);
+        setCurrentSpawnId(null);
 
         // Refresh video list to get updated status
         if (currentFolder) {
@@ -464,7 +480,7 @@ function App(): JSX.Element {
           });
         }
 
-        if (code !== 0 || hasError) {
+        if (!wasCancelled && (code !== 0 || hasError)) {
           addLogLine(`\x1b[31mAnalysis failed with exit code ${code}\x1b[0m`, 'error');
         }
 
@@ -487,16 +503,40 @@ function App(): JSX.Element {
       // Spawn the process command
       window.electronAPI?.cli
         .spawn(['process', video.path], { json: true })
+        .then((result) => {
+          setCurrentSpawnId(result.spawnId);
+        })
         .catch((err: Error) => {
           addLogLine(`\x1b[31mError:\x1b[0m Failed to start analysis: ${err.message}`, 'error');
           cleanupListeners();
           setIsAnalyzing(false);
           setAnalyzingVideoPath(null);
           setProcessingProgress(null);
+          setCurrentSpawnId(null);
           resolve();
         });
     });
   }, [currentFolder, isAnalyzing, addLogLine, scanFolder, selectedVideo]);
+
+  // Handle cancel button click - show confirmation modal
+  const handleCancelClick = useCallback(() => {
+    setCancelConfirmation({ open: true });
+  }, []);
+
+  // Handle cancel confirmation - kill the process
+  const handleConfirmCancel = useCallback(async () => {
+    setCancelConfirmation({ open: false });
+
+    if (currentSpawnId) {
+      addLogLine(`\x1b[33mCancelling analysis...\x1b[0m`, 'info');
+      await window.electronAPI?.cli.kill(currentSpawnId);
+    }
+  }, [currentSpawnId, addLogLine]);
+
+  // Handle cancel modal close
+  const handleCloseCancelModal = useCallback(() => {
+    setCancelConfirmation({ open: false });
+  }, []);
 
   // Handle video selection
   const handleSelectVideo = useCallback((video: VideoItem) => {
@@ -696,9 +736,19 @@ function App(): JSX.Element {
                       (Step {processingProgress.stepNumber} of {processingProgress.totalSteps})
                     </span>
                   </div>
-                  <span className="text-sm font-medium text-primary">
-                    {processingProgress.percentage}%
-                  </span>
+                  <div className="flex items-center gap-3">
+                    <span className="text-sm font-medium text-primary">
+                      {processingProgress.percentage}%
+                    </span>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={handleCancelClick}
+                    >
+                      <XCircle className="h-4 w-4 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
                 </div>
                 <Progress value={processingProgress.percentage} />
               </div>
@@ -804,6 +854,41 @@ function App(): JSX.Element {
           <AlertDialogFooter>
             <AlertDialogAction onClick={handleCloseNestedDbError}>
               OK
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cancel Processing Confirmation Dialog */}
+      <AlertDialog open={cancelConfirmation.open} onOpenChange={(open) => !open && handleCloseCancelModal()}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
+              <AlertTriangle className="h-5 w-5" />
+              Cancel Processing?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              <div className="space-y-3">
+                <p>
+                  Are you sure you want to cancel the current video analysis?
+                </p>
+                <p className="text-amber-600">
+                  Warning: This may leave the video in an incomplete state.
+                  Partial data (extracted frames, audio, etc.) may remain and you may need to
+                  re-analyze the video from the beginning.
+                </p>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleCloseCancelModal}>
+              Continue Processing
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleConfirmCancel}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Cancel Analysis
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
