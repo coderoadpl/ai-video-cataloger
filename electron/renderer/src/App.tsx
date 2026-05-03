@@ -15,7 +15,7 @@ import { TerminalLog, LogLine, createLogLine } from '@/components/terminal-log';
 import { AppLayout } from '@/components/layout';
 import { VideoList, VideoItem } from '@/components/video-list';
 import { VideoDetails } from '@/components/video-details';
-import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2, XCircle } from 'lucide-react';
+import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2, XCircle, Play, CheckCircle2, XOctagon } from 'lucide-react';
 
 interface JsonEvent {
   type: 'started' | 'progress' | 'completed' | 'error';
@@ -37,6 +37,7 @@ interface NestedDbError {
 
 interface CancelConfirmation {
   open: boolean;
+  isBatch?: boolean;
 }
 
 // Processing progress state
@@ -46,6 +47,23 @@ interface ProcessingProgress {
   percentage: number;
   stepNumber: number;
   totalSteps: number;
+}
+
+// Batch processing progress state
+interface BatchProgress {
+  currentIndex: number;
+  totalCount: number;
+  currentVideo: VideoItem;
+  successCount: number;
+  errorCount: number;
+  cancelled: boolean;
+}
+
+// Batch result for summary
+interface BatchResult {
+  video: VideoItem;
+  success: boolean;
+  error?: string;
 }
 
 // Scanned video from CLI (matches folder-scan.ts ScannedVideo)
@@ -96,6 +114,11 @@ function App(): JSX.Element {
   const [analyzingVideoPath, setAnalyzingVideoPath] = useState<string | null>(null);
   const [currentSpawnId, setCurrentSpawnId] = useState<string | null>(null);
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({ open: false });
+  const [isBatchProcessing, setIsBatchProcessing] = useState(false);
+  const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
+  const [showBatchSummary, setShowBatchSummary] = useState(false);
+  const batchCancelledRef = useRef(false);
 
   // Load initial state
   useEffect(() => {
@@ -538,6 +561,219 @@ function App(): JSX.Element {
     setCancelConfirmation({ open: false });
   }, []);
 
+  // Process a single video in batch mode (returns success/error status)
+  const processSingleVideoInBatch = useCallback(async (video: VideoItem): Promise<{ success: boolean; error?: string }> => {
+    if (!currentFolder) return { success: false, error: 'No folder selected' };
+
+    return new Promise((resolve) => {
+      let hasError = false;
+      let errorMessage = '';
+      let wasCancelled = false;
+
+      const handleOutput = (_spawnId: string, line: string): void => {
+        addLogLine(line, 'stdout');
+      };
+
+      const handleStderr = (_spawnId: string, line: string): void => {
+        addLogLine(line, 'stderr');
+      };
+
+      const handleJson = (_spawnId: string, event: JsonEvent): void => {
+        if (event.type === 'progress') {
+          const stepNumber = event.data?.stepNumber as number | undefined;
+          const totalSteps = event.data?.totalSteps as number | undefined;
+
+          setProcessingProgress({
+            videoPath: video.path,
+            step: event.step || 'processing',
+            percentage: event.percentage || 0,
+            stepNumber: stepNumber || 0,
+            totalSteps: totalSteps || 5,
+          });
+
+          addLogLine(`\x1b[33m[${event.percentage || 0}%]\x1b[0m ${getStepLabel(event.step || '')}`, 'info');
+        } else if (event.type === 'completed') {
+          addLogLine(`\x1b[32m✓\x1b[0m Analysis completed for ${video.filename}`, 'success');
+        } else if (event.type === 'error') {
+          hasError = true;
+          errorMessage = event.error || event.message || 'Unknown error';
+          addLogLine(`\x1b[31mError:\x1b[0m ${errorMessage}`, 'error');
+        }
+      };
+
+      const handleExit = (_spawnId: string, code: number | null, signal: string | null): void => {
+        cleanupListeners();
+
+        if (signal === 'SIGTERM') {
+          wasCancelled = true;
+          addLogLine(`\x1b[33mCancelled by user\x1b[0m`, 'info');
+        }
+
+        setProcessingProgress(null);
+        setCurrentSpawnId(null);
+
+        if (wasCancelled) {
+          resolve({ success: false, error: 'Cancelled by user' });
+        } else if (code !== 0 || hasError) {
+          resolve({ success: false, error: errorMessage || `Exit code ${code}` });
+        } else {
+          resolve({ success: true });
+        }
+      };
+
+      const cleanupStdout = window.electronAPI?.cli.onStdout(handleOutput);
+      const cleanupStderr = window.electronAPI?.cli.onStderr(handleStderr);
+      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
+      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
+
+      const cleanupListeners = (): void => {
+        cleanupStdout?.();
+        cleanupStderr?.();
+        cleanupJson?.();
+        cleanupExit?.();
+      };
+
+      window.electronAPI?.cli
+        .spawn(['process', video.path], { json: true })
+        .then((result) => {
+          setCurrentSpawnId(result.spawnId);
+        })
+        .catch((err: Error) => {
+          addLogLine(`\x1b[31mError:\x1b[0m Failed to start analysis: ${err.message}`, 'error');
+          cleanupListeners();
+          resolve({ success: false, error: err.message });
+        });
+    });
+  }, [currentFolder, addLogLine]);
+
+  // Handle batch analysis of all pending videos
+  const handleBatchAnalyze = useCallback(async (): Promise<void> => {
+    if (!currentFolder || isAnalyzing || isBatchProcessing) return;
+
+    // Get all pending videos
+    const pendingVideos = videos.filter((v) =>
+      v.status === 'pending' || v.status === 'not_tracked'
+    );
+
+    if (pendingVideos.length === 0) {
+      addLogLine(`\x1b[33mNo pending videos to analyze\x1b[0m`, 'info');
+      return;
+    }
+
+    // Initialize batch processing state
+    batchCancelledRef.current = false;
+    setIsBatchProcessing(true);
+    setIsAnalyzing(true);
+    setBatchResults([]);
+
+    addLogLine(`\x1b[36m=== Starting batch analysis of ${pendingVideos.length} video(s) ===\x1b[0m`, 'info');
+
+    const results: BatchResult[] = [];
+
+    for (let i = 0; i < pendingVideos.length; i++) {
+      // Check if cancelled
+      if (batchCancelledRef.current) {
+        addLogLine(`\x1b[33mBatch processing cancelled. Processed ${i} of ${pendingVideos.length} videos.\x1b[0m`, 'info');
+        break;
+      }
+
+      const video = pendingVideos[i];
+
+      // Update batch progress
+      setBatchProgress({
+        currentIndex: i + 1,
+        totalCount: pendingVideos.length,
+        currentVideo: video,
+        successCount: results.filter((r) => r.success).length,
+        errorCount: results.filter((r) => !r.success).length,
+        cancelled: false,
+      });
+
+      setAnalyzingVideoPath(video.path);
+      addLogLine(`\x1b[36m[${i + 1}/${pendingVideos.length}]\x1b[0m Processing: ${video.filename}`, 'info');
+
+      // Process the video
+      const result = await processSingleVideoInBatch(video);
+
+      results.push({
+        video,
+        success: result.success,
+        error: result.error,
+      });
+
+      // Update results state for real-time tracking
+      setBatchResults([...results]);
+    }
+
+    // Batch processing complete
+    const successCount = results.filter((r) => r.success).length;
+    const errorCount = results.filter((r) => !r.success && r.error !== 'Cancelled by user').length;
+    const cancelledCount = results.filter((r) => r.error === 'Cancelled by user').length;
+    const skippedCount = pendingVideos.length - results.length;
+
+    addLogLine(`\x1b[36m=== Batch analysis complete ===\x1b[0m`, 'info');
+    addLogLine(`\x1b[32m✓ Success:\x1b[0m ${successCount}`, 'success');
+    if (errorCount > 0) {
+      addLogLine(`\x1b[31m✗ Failed:\x1b[0m ${errorCount}`, 'error');
+    }
+    if (cancelledCount > 0) {
+      addLogLine(`\x1b[33m⊘ Cancelled:\x1b[0m ${cancelledCount}`, 'info');
+    }
+    if (skippedCount > 0) {
+      addLogLine(`\x1b[33m⊘ Skipped:\x1b[0m ${skippedCount}`, 'info');
+    }
+
+    // Reset states
+    setIsBatchProcessing(false);
+    setIsAnalyzing(false);
+    setAnalyzingVideoPath(null);
+    setBatchProgress(null);
+
+    // Refresh video list
+    if (currentFolder) {
+      const scanResult = await scanFolder(currentFolder);
+      if (scanResult) {
+        setVideos((prev) => prev.map((v) => {
+          const updated = scanResult.videos.find((rv) => rv.path === v.path);
+          if (updated) {
+            return {
+              ...v,
+              status: updated.status as VideoItem['status'],
+              errorMessage: updated.errorMessage,
+            };
+          }
+          return v;
+        }));
+      }
+    }
+
+    // Show summary dialog
+    setBatchResults(results);
+    setShowBatchSummary(true);
+  }, [currentFolder, isAnalyzing, isBatchProcessing, videos, addLogLine, processSingleVideoInBatch, scanFolder]);
+
+  // Handle batch cancel button click
+  const handleBatchCancelClick = useCallback(() => {
+    setCancelConfirmation({ open: true, isBatch: true });
+  }, []);
+
+  // Handle batch cancel confirmation
+  const handleConfirmBatchCancel = useCallback(async () => {
+    setCancelConfirmation({ open: false });
+    batchCancelledRef.current = true;
+
+    if (currentSpawnId) {
+      addLogLine(`\x1b[33mCancelling current video and stopping batch...\x1b[0m`, 'info');
+      await window.electronAPI?.cli.kill(currentSpawnId);
+    }
+  }, [currentSpawnId, addLogLine]);
+
+  // Close batch summary dialog
+  const handleCloseBatchSummary = useCallback(() => {
+    setShowBatchSummary(false);
+    setBatchResults([]);
+  }, []);
+
   // Handle video selection
   const handleSelectVideo = useCallback((video: VideoItem) => {
     setSelectedVideo(video);
@@ -613,11 +849,16 @@ function App(): JSX.Element {
     return parts[parts.length - 1] || path;
   };
 
+  // Count pending videos for "Analyze All" button
+  const pendingVideosCount = videos.filter((v) =>
+    v.status === 'pending' || v.status === 'not_tracked'
+  ).length;
+
   // Sidebar content
   const sidebarContent = currentFolder ? (
     <div className="flex flex-col h-full">
       {/* Folder header */}
-      <div className="px-4 py-3 border-b border-border space-y-1">
+      <div className="px-4 py-3 border-b border-border space-y-2">
         <div className="flex items-center gap-2">
           <Folder className="h-4 w-4 text-primary" />
           <span className="font-medium text-sm truncate" title={currentFolder}>
@@ -631,6 +872,40 @@ function App(): JSX.Element {
           <p className="text-xs text-muted-foreground animate-pulse">
             Generating thumbnails...
           </p>
+        )}
+        {/* Analyze All button */}
+        {pendingVideosCount > 0 && !isBatchProcessing && !isAnalyzing && (
+          <Button
+            size="sm"
+            className="w-full"
+            onClick={handleBatchAnalyze}
+          >
+            <Play className="h-4 w-4 mr-2" />
+            Analyze All ({pendingVideosCount})
+          </Button>
+        )}
+        {/* Batch progress indicator in sidebar */}
+        {isBatchProcessing && batchProgress && (
+          <div className="space-y-1">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Processing {batchProgress.currentIndex} of {batchProgress.totalCount}
+              </span>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-6 px-2 text-destructive hover:text-destructive"
+                onClick={handleBatchCancelClick}
+              >
+                <XCircle className="h-3 w-3 mr-1" />
+                Stop
+              </Button>
+            </div>
+            <Progress value={(batchProgress.currentIndex / batchProgress.totalCount) * 100} className="h-1.5" />
+            <p className="text-xs text-muted-foreground truncate">
+              {batchProgress.currentVideo.filename}
+            </p>
+          </div>
         )}
       </div>
       {/* Video list */}
@@ -865,18 +1140,33 @@ function App(): JSX.Element {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-amber-600">
               <AlertTriangle className="h-5 w-5" />
-              Cancel Processing?
+              {cancelConfirmation.isBatch ? 'Cancel Batch Processing?' : 'Cancel Processing?'}
             </AlertDialogTitle>
             <AlertDialogDescription>
               <div className="space-y-3">
-                <p>
-                  Are you sure you want to cancel the current video analysis?
-                </p>
-                <p className="text-amber-600">
-                  Warning: This may leave the video in an incomplete state.
-                  Partial data (extracted frames, audio, etc.) may remain and you may need to
-                  re-analyze the video from the beginning.
-                </p>
+                {cancelConfirmation.isBatch ? (
+                  <>
+                    <p>
+                      Are you sure you want to cancel the batch analysis?
+                      This will stop after the current video finishes processing.
+                    </p>
+                    <p className="text-amber-600">
+                      Warning: The current video may be left in an incomplete state.
+                      Already processed videos will keep their results.
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p>
+                      Are you sure you want to cancel the current video analysis?
+                    </p>
+                    <p className="text-amber-600">
+                      Warning: This may leave the video in an incomplete state.
+                      Partial data (extracted frames, audio, etc.) may remain and you may need to
+                      re-analyze the video from the beginning.
+                    </p>
+                  </>
+                )}
               </div>
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -885,10 +1175,69 @@ function App(): JSX.Element {
               Continue Processing
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={handleConfirmCancel}
+              onClick={cancelConfirmation.isBatch ? handleConfirmBatchCancel : handleConfirmCancel}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Cancel Analysis
+              {cancelConfirmation.isBatch ? 'Stop Batch' : 'Cancel Analysis'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Batch Summary Dialog */}
+      <AlertDialog open={showBatchSummary} onOpenChange={(open) => !open && handleCloseBatchSummary()}>
+        <AlertDialogContent className="max-w-lg">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <CheckCircle2 className="h-5 w-5 text-green-600" />
+              Batch Analysis Complete
+            </AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                {/* Summary stats */}
+                <div className="flex gap-4">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="h-4 w-4 text-green-600" />
+                    <span className="text-sm">
+                      <span className="font-medium text-foreground">{batchResults.filter((r) => r.success).length}</span>
+                      {' '}successful
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <XOctagon className="h-4 w-4 text-red-600" />
+                    <span className="text-sm">
+                      <span className="font-medium text-foreground">{batchResults.filter((r) => !r.success).length}</span>
+                      {' '}failed
+                    </span>
+                  </div>
+                </div>
+
+                {/* Failed videos list */}
+                {batchResults.filter((r) => !r.success).length > 0 && (
+                  <div className="space-y-2">
+                    <p className="text-sm font-medium text-foreground">Failed videos:</p>
+                    <div className="bg-muted rounded-md p-3 max-h-40 overflow-auto">
+                      <ul className="text-sm space-y-2">
+                        {batchResults.filter((r) => !r.success).map((result, index) => (
+                          <li key={index} className="space-y-0.5">
+                            <div className="font-medium truncate" title={result.video.filename}>
+                              {result.video.filename}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {result.error || 'Unknown error'}
+                            </div>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogAction onClick={handleCloseBatchSummary}>
+              OK
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
