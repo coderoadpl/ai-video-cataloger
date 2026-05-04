@@ -44,7 +44,21 @@
 - CLI analyze: Use `process` subcommand with `--json` flag, parse progress events for step/percentage display
 - Progress bar: Store in `electron/renderer/src/components/ui/progress.tsx`, use simple div with width percentage
 - Cancel processing: Track currentSpawnId state, use cli.kill(spawnId) to send SIGTERM, check signal === 'SIGTERM' in exit handler
+- Batch processing: Use ref for cancellation flag (batchCancelledRef.current), not state, to ensure immediate effect in async loops
+- Batch processing: Filter pending/not_tracked videos, process sequentially, collect results array, show summary dialog at end
 
+---
+
+## 2026-02-17 - US-076
+- What was implemented: Batch processing feature for analyzing multiple pending videos
+- Files changed:
+  - Modified: electron/renderer/src/App.tsx (BatchProgress and BatchResult interfaces, isBatchProcessing/batchProgress/batchResults states, processSingleVideoInBatch, handleBatchAnalyze, handleBatchCancelClick, handleConfirmBatchCancel, handleCloseBatchSummary, pendingVideosCount computed value, Analyze All button, batch progress UI in sidebar, batch cancel confirmation dialog, batch summary dialog)
+- **Learnings for future iterations:**
+  - Use useRef for cancellation flag in async loops to ensure immediate effect (setState is async, won't update until next render)
+  - Separate the "process single video" logic into a helper function that returns { success, error } for reuse in both single and batch modes
+  - Batch progress UI can be placed in sidebar header to not interfere with main content area
+  - Summary dialog should show both success count and detailed list of failed videos with their error messages
+  - Continue on error pattern: catch error, store in results array, continue loop - don't break
 ---
 
 ## 2026-02-17 - US-075
