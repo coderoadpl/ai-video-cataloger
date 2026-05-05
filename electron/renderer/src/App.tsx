@@ -16,6 +16,7 @@ import { AppLayout } from '@/components/layout';
 import { VideoList, VideoItem } from '@/components/video-list';
 import { VideoDetails } from '@/components/video-details';
 import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2, XCircle, Play, CheckCircle2, XOctagon } from 'lucide-react';
+import { SettingsModal } from '@/components/settings-modal';
 
 interface JsonEvent {
   type: 'started' | 'progress' | 'completed' | 'error';
@@ -119,6 +120,7 @@ function App(): JSX.Element {
   const [batchResults, setBatchResults] = useState<BatchResult[]>([]);
   const [showBatchSummary, setShowBatchSummary] = useState(false);
   const batchCancelledRef = useRef(false);
+  const [showSettings, setShowSettings] = useState(false);
 
   // Load initial state
   useEffect(() => {
@@ -984,7 +986,7 @@ function App(): JSX.Element {
               </div>
             )}
           </div>
-          <Button variant="outline" size="sm">
+          <Button variant="outline" size="sm" onClick={() => setShowSettings(true)}>
             <Settings className="h-4 w-4 mr-2" />
             Settings
           </Button>
@@ -1242,6 +1244,16 @@ function App(): JSX.Element {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Settings Modal */}
+      <SettingsModal
+        open={showSettings}
+        onOpenChange={setShowSettings}
+        currentFolder={currentFolder}
+        onConfigSaved={() => {
+          addLogLine('\x1b[32m✓\x1b[0m Settings saved', 'success');
+        }}
+      />
     </>
   );
 }
