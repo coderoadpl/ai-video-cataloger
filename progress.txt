@@ -46,7 +46,29 @@
 - Cancel processing: Track currentSpawnId state, use cli.kill(spawnId) to send SIGTERM, check signal === 'SIGTERM' in exit handler
 - Batch processing: Use ref for cancellation flag (batchCancelledRef.current), not state, to ensure immediate effect in async loops
 - Batch processing: Filter pending/not_tracked videos, process sequentially, collect results array, show summary dialog at end
+- Settings modal: Use Dialog component (not AlertDialog) for forms with close button
+- Config loading: Use CLI spawn with cwd option to set working directory for per-folder config
 
+---
+
+## 2026-02-17 - US-077
+- What was implemented: Settings modal for configuring video processing options
+- Files changed:
+  - Created: electron/renderer/src/components/settings-modal.tsx (SettingsModal component with form controls)
+  - Created: electron/renderer/src/components/ui/dialog.tsx (Dialog shadcn/ui component)
+  - Created: electron/renderer/src/components/ui/slider.tsx (Slider shadcn/ui component)
+  - Created: electron/renderer/src/components/ui/select.tsx (Select shadcn/ui component)
+  - Created: electron/renderer/src/components/ui/switch.tsx (Switch shadcn/ui component)
+  - Created: electron/renderer/src/components/ui/label.tsx (Label shadcn/ui component)
+  - Modified: electron/renderer/src/App.tsx (showSettings state, SettingsModal integration, Settings button onClick)
+  - Modified: package.json (added @radix-ui/react-slider, @radix-ui/react-select, @radix-ui/react-switch, @radix-ui/react-label, @radix-ui/react-dialog)
+- **Learnings for future iterations:**
+  - CLI config commands use working directory to determine per-folder config - use `cwd` option in spawn
+  - Config values from CLI: whisper_model, whisper_mode, frames, timeout, skip_rename
+  - Conditionally show form fields: e.g., whisper model dropdown only when mode is 'local'
+  - Track original config state to determine if there are unsaved changes
+  - Save each changed config value individually via CLI 'config set' command
+  - Use Dialog (not AlertDialog) for forms that need a close button and more flexibility
 ---
 
 ## 2026-02-17 - US-076
