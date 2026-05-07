@@ -18,6 +18,7 @@ import { VideoDetails } from '@/components/video-details';
 import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2, XCircle, Play, CheckCircle2, XOctagon, HardDrive } from 'lucide-react';
 import { SettingsModal } from '@/components/settings-modal';
 import { ModelManagerModal } from '@/components/model-manager-modal';
+import { PrerequisitesModal } from '@/components/prerequisites-modal';
 
 interface JsonEvent {
   type: 'started' | 'progress' | 'completed' | 'error';
@@ -123,6 +124,7 @@ function App(): JSX.Element {
   const batchCancelledRef = useRef(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showModelManager, setShowModelManager] = useState(false);
+  const [showPrerequisites, setShowPrerequisites] = useState(false);
 
   // Load initial state
   useEffect(() => {
@@ -996,7 +998,7 @@ function App(): JSX.Element {
             <HardDrive className="h-4 w-4 mr-2" />
             Models
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button variant="ghost" size="sm" onClick={() => setShowPrerequisites(true)} title="System Prerequisites">
             <HelpCircle className="h-4 w-4" />
           </Button>
         </div>
@@ -1265,6 +1267,17 @@ function App(): JSX.Element {
       <ModelManagerModal
         open={showModelManager}
         onOpenChange={setShowModelManager}
+        onLogMessage={(message, type) => {
+          const prefix = type === 'success' ? '\x1b[32m✓\x1b[0m ' : type === 'error' ? '\x1b[31m✗\x1b[0m ' : '\x1b[36m';
+          const suffix = type === 'info' ? '\x1b[0m' : '';
+          addLogLine(`${prefix}${message}${suffix}`, type === 'error' ? 'error' : type === 'success' ? 'success' : 'info');
+        }}
+      />
+
+      {/* Prerequisites Modal */}
+      <PrerequisitesModal
+        open={showPrerequisites}
+        onOpenChange={setShowPrerequisites}
         onLogMessage={(message, type) => {
           const prefix = type === 'success' ? '\x1b[32m✓\x1b[0m ' : type === 'error' ? '\x1b[31m✗\x1b[0m ' : '\x1b[36m';
           const suffix = type === 'info' ? '\x1b[0m' : '';
