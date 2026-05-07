@@ -48,7 +48,24 @@
 - Batch processing: Filter pending/not_tracked videos, process sequentially, collect results array, show summary dialog at end
 - Settings modal: Use Dialog component (not AlertDialog) for forms with close button
 - Config loading: Use CLI spawn with cwd option to set working directory for per-folder config
+- Model Manager: Use CLI `models list --json` to get model list, parse `data.models` array from completed event
+- Model download progress: Parse progress events with step='downloading', get downloadedBytes/totalBytes/speedFormatted from data
+- Model sizes: Define MODEL_SIZES map matching CLI MODEL_DEFINITIONS for disk space calculation
 
+---
+
+## 2026-02-17 - US-078
+- What was implemented: Model Manager modal for managing Whisper models in the GUI
+- Files changed:
+  - Created: electron/renderer/src/components/model-manager-modal.tsx (ModelManagerModal component with download/delete functionality)
+  - Modified: electron/renderer/src/App.tsx (showModelManager state, Models button in toolbar, modal integration)
+- **Learnings for future iterations:**
+  - CLI `models list --json` returns models array in `event.data.models`
+  - Download progress events have step='downloading' and data contains downloadedBytes, totalBytes, speedFormatted
+  - Delete command requires --force flag to avoid confirmation prompts
+  - Disk space calculation: sum MODEL_SIZES for downloaded models
+  - isOperationInProgress check prevents multiple concurrent downloads/deletes
+  - onLogMessage callback propagates terminal log messages from modal to parent
 ---
 
 ## 2026-02-17 - US-077

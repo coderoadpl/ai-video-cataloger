@@ -414,7 +414,8 @@
         "Show disk space used",
         "Typecheck passes"
       ],
-      "phase": 4
+      "phase": 4,
+      "passes": true
     },
     {
       "id": "US-079",
