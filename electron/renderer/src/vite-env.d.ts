@@ -74,6 +74,23 @@ interface ElectronAPI {
   folder: FolderAPI;
 }
 
+// Menu callback types
+type MenuCallback = () => void;
+type MenuFolderCallback = (folderPath: string) => void;
+
+// Menu API for receiving menu events from main process
+interface MenuAPI {
+  onOpenFolder: (callback: MenuCallback) => () => void;
+  onOpenRecentFolder: (callback: MenuFolderCallback) => () => void;
+  onClearRecentFolders: (callback: MenuCallback) => () => void;
+  onToggleTerminal: (callback: MenuCallback) => () => void;
+  onToggleSidebar: (callback: MenuCallback) => () => void;
+  onShowSettings: (callback: MenuCallback) => () => void;
+  onShowPrerequisites: (callback: MenuCallback) => () => void;
+  onShowModelManager: (callback: MenuCallback) => () => void;
+}
+
 interface Window {
   electronAPI: ElectronAPI;
+  menuAPI: MenuAPI;
 }

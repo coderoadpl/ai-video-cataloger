@@ -250,8 +250,97 @@ const electronAPI = {
   },
 };
 
+// Menu event callback types
+export type MenuCallback = () => void;
+export type MenuFolderCallback = (folderPath: string) => void;
+
+// Menu API for listening to menu events from main process
+const menuAPI = {
+  /**
+   * Listen for "Open Folder" menu action.
+   * @returns Cleanup function to remove the listener
+   */
+  onOpenFolder: (callback: MenuCallback): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('menu:openFolder', handler);
+    return () => ipcRenderer.removeListener('menu:openFolder', handler);
+  },
+
+  /**
+   * Listen for "Open Recent Folder" menu action.
+   * @returns Cleanup function to remove the listener
+   */
+  onOpenRecentFolder: (callback: MenuFolderCallback): (() => void) => {
+    const handler = (_event: IpcRendererEvent, folderPath: string): void => callback(folderPath);
+    ipcRenderer.on('menu:openRecentFolder', handler);
+    return () => ipcRenderer.removeListener('menu:openRecentFolder', handler);
+  },
+
+  /**
+   * Listen for "Clear Recent Folders" menu action.
+   * @returns Cleanup function to remove the listener
+   */
+  onClearRecentFolders: (callback: MenuCallback): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('menu:clearRecentFolders', handler);
+    return () => ipcRenderer.removeListener('menu:clearRecentFolders', handler);
+  },
+
+  /**
+   * Listen for "Toggle Terminal" menu action.
+   * @returns Cleanup function to remove the listener
+   */
+  onToggleTerminal: (callback: MenuCallback): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('menu:toggleTerminal', handler);
+    return () => ipcRenderer.removeListener('menu:toggleTerminal', handler);
+  },
+
+  /**
+   * Listen for "Toggle Sidebar" menu action.
+   * @returns Cleanup function to remove the listener
+   */
+  onToggleSidebar: (callback: MenuCallback): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('menu:toggleSidebar', handler);
+    return () => ipcRenderer.removeListener('menu:toggleSidebar', handler);
+  },
+
+  /**
+   * Listen for "Show Settings" menu action.
+   * @returns Cleanup function to remove the listener
+   */
+  onShowSettings: (callback: MenuCallback): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('menu:showSettings', handler);
+    return () => ipcRenderer.removeListener('menu:showSettings', handler);
+  },
+
+  /**
+   * Listen for "Show Prerequisites" menu action.
+   * @returns Cleanup function to remove the listener
+   */
+  onShowPrerequisites: (callback: MenuCallback): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('menu:showPrerequisites', handler);
+    return () => ipcRenderer.removeListener('menu:showPrerequisites', handler);
+  },
+
+  /**
+   * Listen for "Show Model Manager" menu action.
+   * @returns Cleanup function to remove the listener
+   */
+  onShowModelManager: (callback: MenuCallback): (() => void) => {
+    const handler = (): void => callback();
+    ipcRenderer.on('menu:showModelManager', handler);
+    return () => ipcRenderer.removeListener('menu:showModelManager', handler);
+  },
+};
+
 // Expose the API to the renderer process
 contextBridge.exposeInMainWorld('electronAPI', electronAPI);
+contextBridge.exposeInMainWorld('menuAPI', menuAPI);
 
 // Type declarations for the exposed API
 export type ElectronAPI = typeof electronAPI;
+export type MenuAPI = typeof menuAPI;

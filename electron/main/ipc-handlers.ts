@@ -18,6 +18,7 @@ import {
   removeRecentFolder,
   clearRecentFolders,
 } from './folder-store.js';
+import { updateRecentFoldersMenu } from './menu.js';
 
 /**
  * Get MIME type from file extension
@@ -202,8 +203,12 @@ export function registerIPCHandlers(): void {
   });
 
   // Folder store - Set current folder
-  ipcMain.handle('folder:setCurrent', (_event, folderPath: string): void => {
+  ipcMain.handle('folder:setCurrent', (event, folderPath: string): void => {
     setCurrentFolder(folderPath);
+    // Update the recent folders menu
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const recentFolders = getRecentFolders();
+    updateRecentFoldersMenu(window, recentFolders);
   });
 
   // Folder store - Get recent folders
@@ -212,13 +217,20 @@ export function registerIPCHandlers(): void {
   });
 
   // Folder store - Remove a recent folder
-  ipcMain.handle('folder:removeRecent', (_event, folderPath: string): void => {
+  ipcMain.handle('folder:removeRecent', (event, folderPath: string): void => {
     removeRecentFolder(folderPath);
+    // Update the recent folders menu
+    const window = BrowserWindow.fromWebContents(event.sender);
+    const recentFolders = getRecentFolders();
+    updateRecentFoldersMenu(window, recentFolders);
   });
 
   // Folder store - Clear recent folders
-  ipcMain.handle('folder:clearRecent', (): void => {
+  ipcMain.handle('folder:clearRecent', (event): void => {
     clearRecentFolders();
+    // Update the recent folders menu
+    const window = BrowserWindow.fromWebContents(event.sender);
+    updateRecentFoldersMenu(window, []);
   });
 
   // File operations - Read file as data URL (for thumbnails)

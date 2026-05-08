@@ -3,6 +3,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIPCHandlers, cleanupIPCHandlers } from './ipc-handlers.js';
 import { loadWindowState, attachWindowStateHandlers } from './window-state.js';
+import { createApplicationMenu, updateRecentFoldersMenu } from './menu.js';
+import { getRecentFolders } from './folder-store.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -63,6 +65,15 @@ function createWindow(): void {
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
+
+  // Create the application menu
+  createApplicationMenu(mainWindow);
+
+  // Update the recent folders menu with saved folders
+  const recentFolders = getRecentFolders();
+  if (recentFolders.length > 0) {
+    updateRecentFoldersMenu(mainWindow, recentFolders);
+  }
 }
 
 // Quit when all windows are closed, except on macOS

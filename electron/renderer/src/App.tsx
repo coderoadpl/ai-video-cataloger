@@ -849,6 +849,57 @@ function App(): JSX.Element {
     setNestedDbError({ open: false, paths: [] });
   }, []);
 
+  // Listen for menu events from main process
+  useEffect(() => {
+    const cleanupOpenFolder = window.menuAPI?.onOpenFolder(() => {
+      handleOpenFolder();
+    });
+
+    const cleanupOpenRecentFolder = window.menuAPI?.onOpenRecentFolder((folderPath: string) => {
+      handleSelectRecentFolder(folderPath);
+    });
+
+    const cleanupClearRecentFolders = window.menuAPI?.onClearRecentFolders(async () => {
+      await window.electronAPI?.folder.clearRecent();
+      setRecentFolders([]);
+      setCurrentFolder(null);
+      setVideos([]);
+      setSelectedVideo(null);
+      addLogLine('\x1b[32m✓\x1b[0m Recent folders cleared', 'success');
+    });
+
+    const cleanupToggleTerminal = window.menuAPI?.onToggleTerminal(() => {
+      setTerminalCollapsed((prev) => !prev);
+    });
+
+    const cleanupToggleSidebar = window.menuAPI?.onToggleSidebar(() => {
+      setSidebarCollapsed((prev) => !prev);
+    });
+
+    const cleanupShowSettings = window.menuAPI?.onShowSettings(() => {
+      setShowSettings(true);
+    });
+
+    const cleanupShowPrerequisites = window.menuAPI?.onShowPrerequisites(() => {
+      setShowPrerequisites(true);
+    });
+
+    const cleanupShowModelManager = window.menuAPI?.onShowModelManager(() => {
+      setShowModelManager(true);
+    });
+
+    return () => {
+      cleanupOpenFolder?.();
+      cleanupOpenRecentFolder?.();
+      cleanupClearRecentFolders?.();
+      cleanupToggleTerminal?.();
+      cleanupToggleSidebar?.();
+      cleanupShowSettings?.();
+      cleanupShowPrerequisites?.();
+      cleanupShowModelManager?.();
+    };
+  }, [handleOpenFolder, handleSelectRecentFolder, addLogLine]);
+
   // Get folder display name (last path component)
   const getFolderName = (path: string): string => {
     const parts = path.split('/');
