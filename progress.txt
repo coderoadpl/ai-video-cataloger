@@ -51,7 +51,23 @@
 - Model Manager: Use CLI `models list --json` to get model list, parse `data.models` array from completed event
 - Model download progress: Parse progress events with step='downloading', get downloadedBytes/totalBytes/speedFormatted from data
 - Model sizes: Define MODEL_SIZES map matching CLI MODEL_DEFINITIONS for disk space calculation
+- Prerequisites Modal: Use CLI `doctor --json`, parse dependencies array from completed event data
+- Dependency status display: Show green CheckCircle2 for available, red XCircle for missing
+- Source badges: Show "bundled" or "system" label for available dependencies
 
+---
+
+## 2026-02-17 - US-079
+- What was implemented: Prerequisites Panel modal accessible from Help button in toolbar
+- Files changed:
+  - Created: electron/renderer/src/components/prerequisites-modal.tsx (PrerequisitesModal component with dependency status display)
+  - Modified: electron/renderer/src/App.tsx (showPrerequisites state, Help button onClick handler, modal integration)
+- **Learnings for future iterations:**
+  - CLI `doctor --json` returns `dependencies` array and `allAvailable` boolean in completed event data
+  - DependencyStatus fields: name, available, version, source (bundled/system/null), path, installHint
+  - Use green/amber color scheme for summary banner based on allAvailable status
+  - Include "Check Again" button for re-running the doctor command
+  - Link to external installation instructions for missing dependencies
 ---
 
 ## 2026-02-17 - US-078
