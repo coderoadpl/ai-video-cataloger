@@ -8,6 +8,7 @@ import { execa } from 'execa';
 import chalk from 'chalk';
 import { getFFmpegInfo } from './ffmpeg-setup.js';
 import { getWhisperInfo } from './whisper-setup.js';
+import { getFilteredEnv } from './env-filter.js';
 import {
   isJsonMode,
   emitStarted,
@@ -72,7 +73,7 @@ async function checkWhisper(): Promise<DependencyStatus> {
  */
 async function checkClaudeCli(): Promise<DependencyStatus> {
   try {
-    const { stdout } = await execa('claude', ['--version'], { timeout: 5000 });
+    const { stdout } = await execa('claude', ['--version'], { timeout: 5000, env: getFilteredEnv() });
     const version = stdout.trim();
 
     return {
@@ -100,7 +101,7 @@ async function checkClaudeCli(): Promise<DependencyStatus> {
  */
 async function checkOllama(): Promise<DependencyStatus> {
   try {
-    const { stdout } = await execa('ollama', ['--version'], { timeout: 5000 });
+    const { stdout } = await execa('ollama', ['--version'], { timeout: 5000, env: getFilteredEnv() });
     // Output is typically "ollama version 0.1.xx" or similar
     const versionMatch = stdout.match(/(\d+\.\d+\.\d+)/);
     const version = versionMatch ? versionMatch[1] : stdout.trim();

@@ -8,6 +8,7 @@ import chalk from 'chalk';
 import { getFFmpegInfo } from './ffmpeg-setup.js';
 import { getWhisperInfo } from './whisper-setup.js';
 import type { WhisperMode } from '../types/index.js';
+import { getFilteredEnv } from './env-filter.js';
 
 export interface PrerequisiteOptions {
   whisperMode: WhisperMode;
@@ -63,7 +64,7 @@ async function checkFfmpeg(): Promise<PrerequisiteResult> {
  */
 async function checkClaudeCli(): Promise<PrerequisiteResult> {
   try {
-    const { stdout } = await execa('claude', ['--version']);
+    const { stdout } = await execa('claude', ['--version'], { env: getFilteredEnv() });
     const version = stdout.trim();
 
     return {

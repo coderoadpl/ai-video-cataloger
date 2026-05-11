@@ -41,14 +41,27 @@ interface VideoDetailsProps {
 
 /**
  * Get status display info
+ * @param status - The video status from database
+ * @param isCurrentlyAnalyzing - Whether this video is currently being analyzed
  */
-function getStatusInfo(status: VideoStatus): {
+function getStatusInfo(status: VideoStatus, isCurrentlyAnalyzing: boolean = false): {
   label: string;
   color: string;
   bgColor: string;
   icon: React.ReactNode;
   description: string;
 } {
+  // If currently being analyzed, always show processing state
+  if (isCurrentlyAnalyzing) {
+    return {
+      label: 'Processing',
+      color: 'text-yellow-600',
+      bgColor: 'bg-yellow-100',
+      icon: <Loader2 className="h-4 w-4 animate-spin" />,
+      description: 'Video is being processed...',
+    };
+  }
+
   switch (status) {
     case 'completed':
       return {
@@ -76,35 +89,35 @@ function getStatusInfo(status: VideoStatus): {
       };
     case 'frames_extracted':
       return {
-        label: 'Frames Extracted',
-        color: 'text-yellow-600',
-        bgColor: 'bg-yellow-100',
-        icon: <Loader2 className="h-4 w-4 animate-spin" />,
-        description: 'Frames have been extracted. Processing continues.',
+        label: 'Incomplete',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
+        icon: <AlertCircle className="h-4 w-4" />,
+        description: 'Processing was interrupted at frames extraction step. Click Analyze to continue.',
       };
     case 'audio_extracted':
       return {
-        label: 'Audio Extracted',
-        color: 'text-yellow-600',
-        bgColor: 'bg-yellow-100',
-        icon: <Loader2 className="h-4 w-4 animate-spin" />,
-        description: 'Audio has been extracted. Transcribing.',
+        label: 'Incomplete',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
+        icon: <AlertCircle className="h-4 w-4" />,
+        description: 'Processing was interrupted at audio extraction step. Click Analyze to continue.',
       };
     case 'transcribed':
       return {
-        label: 'Transcribed',
-        color: 'text-yellow-600',
-        bgColor: 'bg-yellow-100',
-        icon: <Loader2 className="h-4 w-4 animate-spin" />,
-        description: 'Transcript ready. Running AI analysis.',
+        label: 'Incomplete',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
+        icon: <AlertCircle className="h-4 w-4" />,
+        description: 'Processing was interrupted at transcription step. Click Analyze to continue.',
       };
     case 'analyzed':
       return {
-        label: 'Analyzed',
-        color: 'text-yellow-600',
-        bgColor: 'bg-yellow-100',
-        icon: <Loader2 className="h-4 w-4 animate-spin" />,
-        description: 'Analysis complete. Finalizing.',
+        label: 'Incomplete',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
+        icon: <AlertCircle className="h-4 w-4" />,
+        description: 'Processing was interrupted at analysis step. Click Analyze to continue.',
       };
     case 'not_tracked':
     default:
@@ -273,9 +286,10 @@ export function VideoDetails({
     setThumbnailError(false);
   }, [video.path]);
 
-  const statusInfo = getStatusInfo(video.status);
+  const statusInfo = getStatusInfo(video.status, isAnalyzing);
   const isCompleted = video.status === 'completed';
   const isPending = video.status === 'pending' || video.status === 'not_tracked';
+  const isIncomplete = ['frames_extracted', 'audio_extracted', 'transcribed', 'analyzed'].includes(video.status);
   const isError = video.status === 'error';
 
   // Load artifacts when video changes (only for completed videos)
@@ -432,6 +446,39 @@ export function VideoDetails({
             <p className="text-xs text-muted-foreground text-center">
               This will extract frames, transcribe audio, and generate a summary using AI.
             </p>
+          </div>
+        )}
+
+        {/* Incomplete state: Show Continue button */}
+        {isIncomplete && onAnalyze && (
+          <div className="rounded-lg border border-orange-200 bg-orange-50 p-4">
+            <div className="flex items-start gap-2 mb-3">
+              <AlertCircle className="h-5 w-5 text-orange-600 flex-shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <h3 className="font-medium text-orange-900">Processing Incomplete</h3>
+                <p className="text-sm text-orange-700">
+                  A previous processing attempt was interrupted. Click the button below to restart.
+                </p>
+              </div>
+            </div>
+            <Button
+              onClick={() => onAnalyze(video)}
+              disabled={isAnalyzing}
+              className="w-full"
+              variant="outline"
+            >
+              {isAnalyzing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                <>
+                  <PlayCircle className="h-4 w-4 mr-2" />
+                  Continue Analysis
+                </>
+              )}
+            </Button>
           </div>
         )}
 

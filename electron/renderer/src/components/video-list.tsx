@@ -31,17 +31,30 @@ interface VideoListProps {
   onSelectVideo: (video: VideoItem) => void;
   isLoading?: boolean;
   className?: string;
+  analyzingVideoPath?: string | null; // Path of video currently being analyzed
 }
 
 /**
  * Get status badge configuration
+ * @param status - The video status from database
+ * @param isCurrentlyAnalyzing - Whether this video is currently being analyzed
  */
-function getStatusBadge(status: VideoStatus): {
+function getStatusBadge(status: VideoStatus, isCurrentlyAnalyzing: boolean = false): {
   color: string;
   bgColor: string;
   icon: React.ReactNode;
   label: string;
 } {
+  // If currently being analyzed, always show processing spinner
+  if (isCurrentlyAnalyzing) {
+    return {
+      color: 'text-yellow-600',
+      bgColor: 'bg-yellow-100',
+      icon: <Loader2 className="h-3 w-3 animate-spin" />,
+      label: 'Processing',
+    };
+  }
+
   switch (status) {
     case 'completed':
       return {
@@ -68,11 +81,12 @@ function getStatusBadge(status: VideoStatus): {
     case 'audio_extracted':
     case 'transcribed':
     case 'analyzed':
+      // Intermediate status - was interrupted or incomplete
       return {
-        color: 'text-yellow-600',
-        bgColor: 'bg-yellow-100',
-        icon: <Loader2 className="h-3 w-3 animate-spin" />,
-        label: 'Processing',
+        color: 'text-orange-600',
+        bgColor: 'bg-orange-100',
+        icon: <AlertCircle className="h-3 w-3" />,
+        label: 'Incomplete',
       };
     case 'not_tracked':
     default:
@@ -129,13 +143,15 @@ function VideoThumbnail({
 function VideoListItem({
   video,
   isSelected,
+  isCurrentlyAnalyzing,
   onClick,
 }: {
   video: VideoItem;
   isSelected: boolean;
+  isCurrentlyAnalyzing: boolean;
   onClick: () => void;
 }): JSX.Element {
-  const statusBadge = getStatusBadge(video.status);
+  const statusBadge = getStatusBadge(video.status, isCurrentlyAnalyzing);
 
   return (
     <button
@@ -196,6 +212,7 @@ export function VideoList({
   onSelectVideo,
   isLoading = false,
   className,
+  analyzingVideoPath,
 }: VideoListProps): JSX.Element {
   if (isLoading) {
     return (
@@ -227,6 +244,7 @@ export function VideoList({
             key={video.path}
             video={video}
             isSelected={video.path === selectedVideoPath}
+            isCurrentlyAnalyzing={video.path === analyzingVideoPath}
             onClick={() => onSelectVideo(video)}
           />
         ))}

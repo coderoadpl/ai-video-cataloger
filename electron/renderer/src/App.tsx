@@ -477,36 +477,11 @@ function App(): JSX.Element {
         setCurrentSpawnId(null);
 
         // Refresh video list to get updated status
+        // Note: Video might have been renamed, so we need to fully reload the list
         if (currentFolder) {
-          // Re-scan to get updated status
-          scanFolder(currentFolder).then((result) => {
-            if (result) {
-              // Update video list with new statuses
-              setVideos((prev) => prev.map((v) => {
-                const updated = result.videos.find((rv) => rv.path === v.path);
-                if (updated) {
-                  return {
-                    ...v,
-                    status: updated.status as VideoItem['status'],
-                    errorMessage: updated.errorMessage,
-                  };
-                }
-                return v;
-              }));
-
-              // Update selected video if it was the one being analyzed
-              if (selectedVideo?.path === video.path) {
-                const updatedVideo = result.videos.find((rv) => rv.path === video.path);
-                if (updatedVideo) {
-                  setSelectedVideo((prev) => prev ? {
-                    ...prev,
-                    status: updatedVideo.status as VideoItem['status'],
-                    errorMessage: updatedVideo.errorMessage,
-                  } : null);
-                }
-              }
-            }
-          });
+          loadVideosForFolder(currentFolder);
+          // Clear selected video since its path might have changed
+          setSelectedVideo(null);
         }
 
         if (!wasCancelled && (code !== 0 || hasError)) {
@@ -979,6 +954,7 @@ function App(): JSX.Element {
           selectedVideoPath={selectedVideo?.path || null}
           onSelectVideo={handleSelectVideo}
           isLoading={isLoadingVideos}
+          analyzingVideoPath={analyzingVideoPath}
         />
       </div>
     </div>

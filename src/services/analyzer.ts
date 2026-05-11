@@ -4,14 +4,44 @@
  */
 
 import { execa } from 'execa';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
 import { join, dirname, basename, extname } from 'node:path';
+import { homedir } from 'node:os';
 import chalk from 'chalk';
 import ora from 'ora';
 import { updateVideoStatus } from '../db/index.js';
 import { getFramesDir } from './frames.js';
 import { getTranscriptPath } from './transcription.js';
+import { getFilteredEnv } from './env-filter.js';
 import type { VideoRecord } from '../types/index.js';
+
+/**
+ * Convert a file path to Claude's project folder name format.
+ * Claude stores conversations in ~/.claude/projects/-<path-with-dashes>
+ * e.g. /Users/foo/bar becomes -Users-foo-bar
+ */
+function getClaudeProjectFolderName(dirPath: string): string {
+  // Replace all path separators with dashes and prepend with dash
+  return '-' + dirPath.replace(/\//g, '-').replace(/^-/, '');
+}
+
+/**
+ * Clear Claude Code conversation history for a directory.
+ * This prevents SIGTRAP errors caused by corrupted or too-large conversation contexts.
+ */
+function clearClaudeConversationHistory(dirPath: string): void {
+  const claudeProjectsDir = join(homedir(), '.claude', 'projects');
+  const projectFolderName = getClaudeProjectFolderName(dirPath);
+  const projectPath = join(claudeProjectsDir, projectFolderName);
+
+  if (existsSync(projectPath)) {
+    try {
+      rmSync(projectPath, { recursive: true, force: true });
+    } catch {
+      // Ignore errors - conversation history is not critical
+    }
+  }
+}
 
 /**
  * Get the summaries directory for a video
@@ -248,6 +278,10 @@ export async function analyzeVideo(
     // Build claude CLI command (frames are included in the prompt as file:// URLs)
     // Use --add-dir to grant Claude permission to read files from the video's directory
     const videoDir = dirname(videoPath);
+
+    // Clear Claude conversation history to prevent SIGTRAP errors from corrupted contexts
+    clearClaudeConversationHistory(videoDir);
+
     const args = ['--add-dir', videoDir, '-p', prompt];
 
     // Call Claude Code CLI with timeout and stream stdout in real-time if verbose
@@ -262,7 +296,7 @@ export async function analyzeVideo(
 
       // Use subprocess with streaming
       // stdin: 'ignore' prevents waiting for input
-      const subprocess = execa('claude', args, { timeout: timeoutMs, stdin: 'ignore' });
+      const subprocess = execa('claude', args, { timeout: timeoutMs, stdin: 'ignore', env: getFilteredEnv() });
 
       // Stream stdout in real-time
       subprocess.stdout?.on('data', (data: Buffer) => {
@@ -290,7 +324,7 @@ export async function analyzeVideo(
     } else {
       // Normal mode: wait for complete response
       // stdin: 'ignore' prevents waiting for input
-      const result = await execa('claude', args, { timeout: timeoutMs, stdin: 'ignore' });
+      const result = await execa('claude', args, { timeout: timeoutMs, stdin: 'ignore', env: getFilteredEnv() });
       response = result.stdout;
     }
 

@@ -93,6 +93,8 @@ export function spawnCLI(
     'VSCODE_NLS_CONFIG',
     'VSCODE_CODE_CACHE_PATH',
     'VSCODE_HANDLES_UNCAUGHT_ERRORS',
+    // Claude Code nesting detection - must be unset to allow spawning claude from within claude
+    'CLAUDECODE',
   ];
 
   for (const [key, value] of Object.entries(process.env)) {
