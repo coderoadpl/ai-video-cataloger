@@ -103,6 +103,7 @@ function App(): JSX.Element {
   const [appVersion, setAppVersion] = useState<string>('');
   const [logLines, setLogLines] = useState<LogLine[]>([]);
   const [terminalCollapsed, setTerminalCollapsed] = useState(false);
+  const [showJson, setShowJson] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
@@ -1134,9 +1135,16 @@ function App(): JSX.Element {
     </div>
   );
 
+  // Filter JSON lines based on showJson setting
+  const isJsonLine = (content: string): boolean => {
+    const trimmed = content.trim();
+    return trimmed.startsWith('{') && trimmed.endsWith('}');
+  };
+  const filteredLogLines = showJson ? logLines : logLines.filter(line => !isJsonLine(line.content));
+
   // Terminal content
   const terminalContent = (
-    <TerminalLog lines={logLines} onClear={handleClear} className="h-full" showHeader={false} />
+    <TerminalLog lines={filteredLogLines} onClear={handleClear} className="h-full" showHeader={false} />
   );
 
   // Close recent menu when clicking outside
@@ -1165,6 +1173,8 @@ function App(): JSX.Element {
         onSidebarCollapsedChange={setSidebarCollapsed}
         onTerminalClear={handleClear}
         onTerminalCopy={handleCopy}
+        showJson={showJson}
+        onShowJsonChange={setShowJson}
       />
 
       {/* Nested Database Error Dialog */}

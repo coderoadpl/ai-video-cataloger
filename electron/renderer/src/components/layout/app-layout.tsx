@@ -2,7 +2,7 @@ import * as React from 'react';
 import { cn } from '@/lib/utils';
 import { ResizablePanel } from './resizable-panel';
 import { Button } from '@/components/ui/button';
-import { ChevronUp, ChevronDown, PanelLeftClose, PanelLeft, Copy, Trash2, Check } from 'lucide-react';
+import { ChevronUp, ChevronDown, PanelLeftClose, PanelLeft, Copy, Trash2, Check, Braces } from 'lucide-react';
 
 interface AppLayoutProps {
   sidebar: React.ReactNode;
@@ -15,6 +15,8 @@ interface AppLayoutProps {
   onSidebarCollapsedChange?: (collapsed: boolean) => void;
   onTerminalClear?: () => void;
   onTerminalCopy?: () => Promise<void> | void;
+  showJson?: boolean;
+  onShowJsonChange?: (show: boolean) => void;
 }
 
 const SIDEBAR_DEFAULT_SIZE = 280;
@@ -37,6 +39,8 @@ const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
       onSidebarCollapsedChange,
       onTerminalClear,
       onTerminalCopy,
+      showJson = false,
+      onShowJsonChange,
     },
     ref
   ) => {
@@ -130,6 +134,23 @@ const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
           <div className="flex items-center justify-between px-4 py-2 bg-[#1e1e1e] border-b border-border/50">
             <span className="text-sm font-medium text-gray-300">Terminal</span>
             <div className="flex items-center gap-2">
+              {!terminalCollapsed && onShowJsonChange && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => onShowJsonChange(!showJson)}
+                  className={cn(
+                    "h-6 px-2 text-xs gap-1",
+                    showJson
+                      ? "text-cyan-400 hover:text-cyan-300 hover:bg-white/10"
+                      : "text-gray-400 hover:text-gray-200 hover:bg-white/10"
+                  )}
+                  title={showJson ? "Hide JSON output" : "Show JSON output"}
+                >
+                  <Braces className="h-3.5 w-3.5" />
+                  <span>JSON</span>
+                </Button>
+              )}
               {!terminalCollapsed && onTerminalCopy && (
                 <Button
                   variant="ghost"
