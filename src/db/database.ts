@@ -444,3 +444,43 @@ export function getVideoById(id: number): VideoRecord | null {
   const values = result[0].values[0];
   return rowToVideoRecord(columns, values);
 }
+
+/**
+ * Get a video record by its content hash
+ * Used for tracking videos across renames
+ */
+export function getVideoByHash(fileHash: string): VideoRecord | null {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  const result = db.exec(
+    'SELECT * FROM videos WHERE file_hash = ?',
+    [fileHash]
+  );
+
+  if (result.length === 0 || result[0].values.length === 0) {
+    return null;
+  }
+
+  const columns = result[0].columns;
+  const values = result[0].values[0];
+  return rowToVideoRecord(columns, values);
+}
+
+/**
+ * Update video path after rename
+ * Used when a video file is renamed to update the database record
+ */
+export function updateVideoPath(id: number, newPath: string, newName: string): void {
+  if (!db) {
+    throw new Error('Database not initialized');
+  }
+
+  db.run(
+    `UPDATE videos SET original_path = ?, original_name = ?, updated_at = datetime('now') WHERE id = ?`,
+    [newPath, newName, id]
+  );
+
+  saveDatabase();
+}

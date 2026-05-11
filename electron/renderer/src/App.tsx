@@ -317,19 +317,22 @@ function App(): JSX.Element {
   }, [addLogLine]);
 
   // Load videos and generate thumbnails for a folder
-  const loadVideosForFolder = useCallback(async (folderPath: string) => {
+  const loadVideosForFolder = useCallback(async (folderPath: string, preserveSelectionByHash?: string | null) => {
     // Cancel any ongoing thumbnail generation
     thumbnailGenerationRef.current.cancelled = true;
     thumbnailGenerationRef.current = { cancelled: false };
     const currentGeneration = thumbnailGenerationRef.current;
 
-    // Clear previous videos
+    // Clear previous videos (but don't clear selection yet if preserving)
     setVideos([]);
-    setSelectedVideo(null);
+    if (!preserveSelectionByHash) {
+      setSelectedVideo(null);
+    }
 
     // Scan folder
     const result = await scanFolder(folderPath);
     if (!result || result.videos.length === 0) {
+      setSelectedVideo(null);
       return;
     }
 
@@ -345,9 +348,21 @@ function App(): JSX.Element {
       errorMessage: v.errorMessage,
       thumbnailPath: getThumbnailPath(v.path, folderPath),
       thumbnailDataUrl: null,
+      contentHash: v.contentHash,
     }));
 
     setVideos(videoItems);
+
+    // If preserving selection, find video by contentHash and select it
+    if (preserveSelectionByHash) {
+      const matchingVideo = videoItems.find(v => v.contentHash === preserveSelectionByHash);
+      if (matchingVideo) {
+        setSelectedVideo(matchingVideo);
+      } else {
+        // Hash not found (file might have been deleted), clear selection
+        setSelectedVideo(null);
+      }
+    }
 
     // Generate and load thumbnails in background
     setIsGeneratingThumbnails(true);
@@ -477,11 +492,10 @@ function App(): JSX.Element {
         setCurrentSpawnId(null);
 
         // Refresh video list to get updated status
-        // Note: Video might have been renamed, so we need to fully reload the list
+        // Note: Video might have been renamed, so we track by contentHash to preserve selection
         if (currentFolder) {
-          loadVideosForFolder(currentFolder);
-          // Clear selected video since its path might have changed
-          setSelectedVideo(null);
+          // Pass the contentHash to preserve selection even if file was renamed
+          loadVideosForFolder(currentFolder, video.contentHash);
         }
 
         if (!wasCancelled && (code !== 0 || hasError)) {

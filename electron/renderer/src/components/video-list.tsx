@@ -23,6 +23,7 @@ export interface VideoItem {
   errorMessage?: string | null;
   thumbnailPath?: string | null;
   thumbnailDataUrl?: string | null;
+  contentHash: string | null;  // Unique identifier that survives renames
 }
 
 interface VideoListProps {

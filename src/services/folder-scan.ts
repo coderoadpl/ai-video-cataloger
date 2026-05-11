@@ -7,7 +7,8 @@ import ffmpeg from 'fluent-ffmpeg';
 import { readdirSync, statSync } from 'node:fs';
 import { join, extname, basename, resolve } from 'node:path';
 import chalk from 'chalk';
-import { getVideoByPath, getDatabaseDir } from '../db/index.js';
+import { getVideoByPath, getDatabaseDir, getVideoByHash } from '../db/index.js';
+import { hashFile } from '../utils/hash.js';
 import type { VideoStatus } from '../types/index.js';
 import { isJsonMode, emitStarted, emitCompleted, outputJson, logHuman, emitError } from './json-output.js';
 import { configureFfmpeg } from './ffmpeg-setup.js';
@@ -29,6 +30,7 @@ export interface ScannedVideo {
   durationFormatted: string | null;
   status: VideoStatus | 'not_tracked';
   errorMessage?: string | null;
+  contentHash: string | null;  // Unique identifier based on file content (survives renames)
 }
 
 /**
@@ -182,15 +184,33 @@ export async function scanFolder(
     // Get video duration
     const duration = await getVideoDuration(videoPath);
 
+    // Compute content hash for this file (fast partial hash)
+    let contentHash: string | null = null;
+    try {
+      contentHash = await hashFile(videoPath);
+    } catch {
+      // If hashing fails, continue without hash
+    }
+
     // Get database status if database is initialized
     let status: VideoStatus | 'not_tracked' = 'not_tracked';
     let errorMessage: string | null = null;
 
     if (options.databaseInitialized) {
-      const videoRecord = getVideoByPath(videoPath);
+      // First try to find by path (exact match for unchanged files)
+      let videoRecord = getVideoByPath(videoPath);
+
+      // If not found by path but we have a hash, try to find by hash
+      // This handles renamed files - the content hash stays the same
+      if (!videoRecord && contentHash) {
+        videoRecord = getVideoByHash(contentHash);
+      }
+
       if (videoRecord) {
         status = videoRecord.status;
         errorMessage = videoRecord.error_message;
+        // Use the hash from database if available (should be same)
+        contentHash = videoRecord.file_hash || contentHash;
       }
     }
 
@@ -203,6 +223,7 @@ export async function scanFolder(
       durationFormatted: duration !== null ? formatDuration(duration) : null,
       status,
       errorMessage,
+      contentHash,
     };
 
     videos.push(video);
