@@ -1,0 +1,674 @@
+## Codebase Patterns
+- Use `electron-store` for persisting settings between sessions (window state, etc.)
+- TypeScript configs are split: electron/tsconfig.json for main process, electron/tsconfig.renderer.json for React
+- IPC handlers in electron/main/ipc-handlers.ts follow pattern: ipcMain.handle('channel-name', async (_event, args) => { ... })
+- Preload script exposes API via contextBridge.exposeInMainWorld('electronAPI', {...})
+- CSS uses CSS variables defined in global.css for consistent theming
+- Components import their own CSS files (e.g., `import '../styles/Toolbar.css'`)
+- FFmpeg setup: Call `configureFfmpeg()` from ffmpeg-setup.ts before any ffmpeg operations
+- Bundled binaries: Use `getFFmpegPath()` and `getFFprobePath()` from ffmpeg-paths.ts for binary locations
+- Whisper binaries: Use `getWhisperCppPath()` from whisper-paths.ts, falls back to system CLI if bundled unavailable
+- Whisper models: Stored in app.getPath('userData')/models/whisper/, use WHISPER_MODELS constant for model info
+- Download events: Use `mainWindow.webContents.send('event-name', data)` for progress updates from main to renderer
+- Long-running processes: Use spawn() with module-level reference for cancellation support via process.kill()
+- Ollama integration: Use REST API at localhost:11434, send images as base64 in `images` array
+- Analysis settings: Use get/save pattern with IPC handlers, store in module-level variable (future: database)
+
+# Ralph Progress Log
+Started: Sat Jan 24 16:39:25 CET 2026
+---
+
+## 2026-01-24 - US-028
+- What was implemented:
+  - Created electron/ directory structure with main process (main/), renderer (renderer/), and preload script
+  - Main process files: index.ts (entry), window.ts (window management), menu.ts (macOS menu), ipc-handlers.ts (IPC bridge)
+  - Renderer React app with App.tsx and components: Toolbar, Sidebar, VideoDetails
+  - TypeScript configs for main and renderer processes
+  - Vite config for renderer bundling
+  - electron-builder.config.js for macOS packaging (arm64 and universal)
+  - Added npm scripts: electron:dev, electron:build, electron:build-main, electron:build-renderer, electron:package
+
+- Files changed:
+  - Created: electron/main/*.ts, electron/renderer/*.tsx, electron/renderer/components/*.tsx
+  - Created: electron/renderer/styles/*.css, electron/renderer/types/global.d.ts
+  - Created: electron/tsconfig.json, electron/tsconfig.renderer.json, electron/vite.config.ts
+  - Created: electron-builder.config.js, electron/resources/entitlements.mac.plist
+  - Modified: package.json (added Electron dependencies and scripts)
+
+- **Learnings for future iterations:**
+  - The project uses ESM (`"type": "module"`), so imports need `.js` extensions even for TypeScript files
+  - Main process TypeScript uses NodeNext module resolution for ESM compatibility
+  - Renderer uses "bundler" moduleResolution for Vite compatibility
+  - Window state persistence uses electron-store package
+  - IPC handlers use underscore prefix (`_event`, `_args`) for unused parameters to satisfy TypeScript's noUnusedParameters
+  - CSS follows macOS design guidelines with system colors and native feel
+---
+
+## 2026-01-24 - US-029
+- What was implemented:
+  - Added ffmpeg-static and @ffprobe-installer/ffprobe packages for bundled FFmpeg/FFprobe
+  - Created electron/main/ffmpeg-paths.ts for binary path resolution (handles dev vs packaged app)
+  - Created electron/main/ffmpeg-setup.ts to configure fluent-ffmpeg with bundled paths
+  - Updated electron-builder.config.js to unpack binaries from asar and exclude non-macOS binaries
+  - Updated IPC handlers to report accurate FFmpeg status (version, path, bundled status)
+
+- Files changed:
+  - Created: electron/main/ffmpeg-paths.ts, electron/main/ffmpeg-setup.ts
+  - Modified: electron-builder.config.js, electron/main/index.ts, electron/main/ipc-handlers.ts
+  - Modified: package.json (added ffmpeg-static, @ffprobe-installer/ffprobe)
+
+- **Learnings for future iterations:**
+  - ffmpeg-static package exports the binary path directly as the default export
+  - @ffprobe-installer/ffprobe uses platform-specific subdirectories like `darwin-arm64`
+  - Use `createRequire(import.meta.url)` to require CommonJS modules from ESM in Node.js
+  - electron-builder `asarUnpack` extracts binaries to `app.asar.unpacked/node_modules/...`
+  - For packaged apps, use `process.resourcesPath` to find unpacked resources
+  - `app.isPackaged` from electron distinguishes between dev and packaged environments
+---
+
+## 2026-01-24 - US-030
+- What was implemented:
+  - Prerequisites Verification Panel as a modal accessible from Help > Prerequisites menu
+  - Comprehensive dependency checking via IPC handlers (FFmpeg, Whisper, Ollama, Claude API, OpenAI API)
+  - Visual status indicators: green checkmarks for available, red X for missing, yellow warning for partial
+  - Install instructions displayed for each missing dependency
+  - "Check Again" button to re-verify all dependencies
+  - Summary section showing available analysis and transcription methods
+
+- Files changed:
+  - Created: electron/renderer/components/PrerequisitesPanel.tsx
+  - Created: electron/renderer/styles/PrerequisitesPanel.css
+  - Modified: electron/main/ipc-handlers.ts (added checkCommand, checkOllama, checkWhisper, checkClaudeApiKey, checkOpenAIApiKey helpers)
+  - Modified: electron/preload.ts (updated checkPrerequisites return type)
+  - Modified: electron/renderer/App.tsx (added PrerequisitesPanel state and menu event listener)
+
+- **Learnings for future iterations:**
+  - Modal overlay pattern: use fixed positioning with rgba background, click outside to close
+  - Check for CLI tools using `which <command>` via child_process.exec
+  - Ollama running status can be checked by trying `ollama list` - it fails if not running
+  - Claude API key can be in ANTHROPIC_API_KEY or CLAUDE_API_KEY environment variables
+  - Run parallel checks with Promise.all for better performance
+  - Whisper.cpp binary is sometimes called "main" rather than "whisper.cpp"
+---
+
+## 2026-01-24 - US-031
+- What was implemented:
+  - Model Manager Panel as a modal accessible from Help > Model Manager menu
+  - Display list of 9 available whisper.cpp GGML models (tiny, base, small, medium, large-v3, plus .en variants)
+  - Download functionality with HTTPS request handling and redirect following
+  - Download progress bar showing bytes downloaded, total size, and transfer speed
+  - Cancel Download button to abort active downloads
+  - Delete button for downloaded models
+  - Disk usage summary showing number of models and total space used
+  - Models stored in app's userData directory under models/whisper/
+
+- Files changed:
+  - Created: electron/renderer/components/ModelManagerPanel.tsx
+  - Created: electron/renderer/styles/ModelManagerPanel.css
+  - Modified: electron/main/ipc-handlers.ts (added WHISPER_MODELS config, getWhisperModelsPath, formatSpeed, download/delete handlers)
+  - Modified: electron/preload.ts (added typed getWhisperModels, cancelWhisperModelDownload, onModelDownloadProgress, onModelDownloadComplete)
+  - Modified: electron/renderer/App.tsx (added ModelManagerPanel state and menu event listener)
+
+- **Learnings for future iterations:**
+  - Hugging Face URLs redirect, so need to handle 301/302 responses manually in https.get
+  - Use .tmp extension during download and rename on completion to prevent partial files
+  - Track active download in module-level variable to enable cancellation via request.destroy()
+  - Send progress events to renderer via mainWindow.webContents.send() with typed event names
+  - Models path uses app.getPath('userData') for cross-platform user data storage
+---
+
+## 2026-01-24 - US-032
+- What was implemented:
+  - Created electron/main/whisper-paths.ts for bundled whisper.cpp binary path resolution
+  - Implemented transcribeWithWhisperCpp() function using Node.js spawn for async execution
+  - Implemented transcribeWithSystemWhisper() for fallback to OpenAI's Python whisper CLI
+  - Added getAvailableWhisperPath() to select best available whisper implementation
+  - Added IPC handlers: get-whisper-cpp-status, transcribe-audio, cancel-transcription, get/save-whisper-settings
+  - Added Whisper Settings section to Model Manager panel with:
+    - Runtime status display (bundled, system whisper.cpp, system whisper CLI)
+    - Toggle for built-in vs system whisper preference
+    - Default model selection dropdown
+  - electron-builder already configured for bin/ directory unpacking (from previous work)
+
+- Files changed:
+  - Created: electron/main/whisper-paths.ts
+  - Modified: electron/main/ipc-handlers.ts (added transcription functions and IPC handlers)
+  - Modified: electron/preload.ts (exposed new whisper transcription APIs)
+  - Modified: electron/renderer/components/ModelManagerPanel.tsx (added settings section)
+  - Modified: electron/renderer/styles/ModelManagerPanel.css (added settings styles)
+
+- **Learnings for future iterations:**
+  - whisper.cpp doesn't provide pre-built macOS ARM64 binaries - binary needs to be compiled or placed manually
+  - whisper.cpp CLI uses -m (model), -f (file), -otxt (text output), -of (output path prefix), --no-prints (quiet)
+  - Use spawn() instead of exec() for long-running processes to enable cancellation via process.kill('SIGTERM')
+  - Store active process reference in module-level variable for cancellation support
+  - Settings UI uses toggle buttons for binary choices (styled as segmented control)
+  - When model not downloaded, disable option in dropdown but keep it visible for user awareness
+---
+
+## 2026-01-24 - US-033
+- What was implemented:
+  - Enhanced Ollama detection: installed status, running status, and pulled models
+  - Auto-start Ollama functionality via `ollama serve` with detached background process
+  - LLaVA model definitions with metadata (name, tag, size, RAM requirements)
+  - `getOllamaPulledModels()` parses `ollama list` output to identify pulled models
+  - `startOllama()` with polling to wait for server readiness (up to 10 seconds)
+  - `analyzeWithOllama()` function using Ollama REST API at localhost:11434
+  - Base64 image encoding for sending frames to LLaVA
+  - Same prompt format as Claude analysis for consistency
+  - `parseLlavaResponse()` extracts description and filename from LLaVA output
+  - Analysis Settings section in Model Manager panel:
+    - Toggle between Claude API and Ollama (LLaVA) methods
+    - Ollama status indicators (installed, running, models pulled)
+    - Start Ollama button when installed but not running
+    - LLaVA model selection dropdown
+  - LLaVA Models section for pulling/removing models via Ollama
+  - Pull progress display and event listeners
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added LLAVA_MODELS, Ollama helper functions, analyzeWithOllama, new IPC handlers)
+  - Modified: electron/preload.ts (exposed Ollama/LLaVA APIs and event listeners)
+  - Modified: electron/renderer/components/ModelManagerPanel.tsx (added Analysis Settings section and LLaVA model management)
+  - Modified: electron/renderer/styles/ModelManagerPanel.css (added info-box and section-note styles)
+
+- **Learnings for future iterations:**
+  - Ollama REST API accepts base64 images in `images` array field, not file paths
+  - Ollama exposes API at http://localhost:11434/api/generate for inference
+  - `ollama serve` must be started in detached mode with `stdio: 'ignore'` and `unref()` for background execution
+  - Ollama outputs pull progress to stderr, not stdout
+  - AbortController can be used to cancel fetch requests for Ollama analysis
+  - Model tags follow format 'name:variant' (e.g., 'llava:7b')
+---
+
+## 2026-01-24 - US-034
+- What was implemented:
+  - System RAM detection using Node.js `os.totalmem()` and `os.freemem()`
+  - RAM-based model recommendation logic (7b for 8GB+, 13b for 16GB+, 34b for 32GB+)
+  - New IPC handler `get-system-memory` exposed via preload
+  - System RAM info box in LLaVA Models section showing:
+    - Total and free RAM
+    - Recommended model based on available RAM
+    - Warning if system has insufficient RAM for LLaVA
+  - Per-model RAM sufficiency indicator (warning when system has less RAM than model requires)
+  - Visual "Recommended" badge on the best-fitting model
+  - Highlighted recommended model styling
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added os import, get-system-memory IPC handler)
+  - Modified: electron/preload.ts (exposed getSystemMemory API)
+  - Modified: electron/renderer/components/ModelManagerPanel.tsx (added system memory state, RAM recommendations, visual indicators)
+  - Modified: electron/renderer/styles/ModelManagerPanel.css (added system-ram-info, recommended-badge, ram-warning styles)
+
+- **Learnings for future iterations:**
+  - Use Node.js `os` module for system info (totalmem, freemem, cpus, etc.) - cross-platform
+  - Model RAM requirements should account for OS overhead (~2GB headroom)
+  - Visual recommendations help users make informed decisions about which model to download
+---
+
+## 2026-01-24 - US-035
+- What was implemented:
+  - Verified all main window layout components are already in place from US-028
+  - Single window with minimum size 900x600px (electron/main/window.ts MIN_WIDTH/MIN_HEIGHT constants)
+  - Left sidebar (250px width) showing folder path and file list (electron/renderer/components/Sidebar.tsx)
+  - Right main panel showing selected file details (electron/renderer/components/VideoDetails.tsx)
+  - Top toolbar with folder selection and action buttons (electron/renderer/components/Toolbar.tsx)
+  - Native macOS title bar with traffic lights (titleBarStyle: 'default' in window.ts)
+  - Window state persistence using electron-store package (saveWindowState/restoreWindowState in window.ts)
+
+- Files changed:
+  - Modified: scripts/ralph/prd.json (marked US-035 as passes: true)
+  - No code changes needed - all acceptance criteria were already satisfied by US-028
+
+- **Learnings for future iterations:**
+  - The Electron project scaffold (US-028) already implemented the main window layout structure
+  - Window management in Electron: use BrowserWindow options for sizing, electron-store for persistence
+  - CSS flexbox layout: `.app` has flex-direction: column, `.main-content` is flex: 1 with flex children
+  - Sidebar width is fixed (250px, min-width: 250px), main panel takes remaining space (flex: 1)
+---
+
+## 2026-01-24 - US-036
+- What was implemented:
+  - Native macOS folder picker via Open Folder button using Electron's dialog.showOpenDialog()
+  - Recent folders dropdown in toolbar (up to 10 folders stored)
+  - Folder path displayed in toolbar (shows folder name, full path on hover)
+  - Folder selection triggers video file scan via IPC
+  - Last used folder restored on app launch
+  - Folder history stored using electron-store with 'folder-history' store name
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added folder history store, get-recent-folders, get-last-folder, set-current-folder IPC handlers)
+  - Modified: electron/preload.ts (exposed getRecentFolders, getLastFolder, setCurrentFolder APIs)
+  - Modified: electron/renderer/components/Toolbar.tsx (added recent folders dropdown UI)
+  - Modified: electron/renderer/styles/Toolbar.css (added dropdown styles)
+  - Modified: electron/renderer/App.tsx (added handleSelectRecentFolder, useEffect for restoring last folder)
+
+- **Learnings for future iterations:**
+  - Electron-store can have multiple stores with different names (folder-history vs window-state)
+  - Use useRef with click-outside detection pattern for dropdown menus
+  - Dialog defaultPath option restores previous folder location for better UX
+  - Filter non-existent folders when loading recent folders to handle moved/deleted folders
+  - Button groups with split dropdown: remove border-radius from adjacent edges, add separator border
+---
+
+## 2026-01-24 - US-037
+- What was implemented:
+  - Implemented scan-folder IPC handler that filters for video files only (.mp4, .mov, .avi, .mkv, .webm)
+  - Added video metadata extraction: size from fs.statSync, duration via ffprobe, modification date
+  - Implemented thumbnail generation using ffmpeg (cached in app userData/thumbnails directory)
+  - Status detection by checking for existing frames directory
+  - Sort controls in Sidebar: Name, Date, Status with toggle for ascending/descending
+  - Multi-select support: Click for single selection, Cmd/Ctrl+click for multi-select
+  - Updated App.tsx to use selectedVideoIds array instead of single selectedVideoId
+  - Status badges show checkmark for completed, dot for processing, X for error
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added VIDEO_EXTENSIONS, thumbnail generation, scanFolderForVideos function)
+  - Modified: electron/renderer/App.tsx (changed to multi-select with selectedVideoIds array)
+  - Modified: electron/renderer/components/Sidebar.tsx (added sort controls, multi-select handling)
+  - Modified: electron/renderer/styles/Sidebar.css (added sort-controls styles)
+
+- **Learnings for future iterations:**
+  - Thumbnails should be cached to avoid regenerating on every scan - use app.getPath('userData')/thumbnails
+  - Generate unique video IDs from file path hash for consistent identification
+  - ffprobe is used to get video duration via fluent-ffmpeg.ffprobe()
+  - Use React.MouseEvent.metaKey for Cmd key detection on macOS
+  - Sort state can be managed with useMemo for efficient re-sorting
+  - Status detection can check for existing frames directory to determine if video was processed
+---
+
+## 2026-01-24 - US-038
+- What was implemented:
+  - Verified all unprocessed video details panel features are already in place from US-028
+  - VideoDetails.tsx already displays: filename (header), path, file size, duration, modification date
+  - "Not yet analyzed" status label shown for unprocessed videos (status === 'none' or default)
+  - Prominent "Analyze" button with `action-button primary large` classes
+  - Reveal in Finder button for quick file access
+
+- Files changed:
+  - Modified: scripts/ralph/prd.json (marked US-038 as passes: true)
+  - No code changes needed - all acceptance criteria were already satisfied by US-028
+
+- **Learnings for future iterations:**
+  - VideoDetails component uses conditional rendering based on video.status for different states
+  - Helper functions (formatFileSize, formatDuration, formatDate) are defined in the component file
+  - Status labels have CSS classes matching status names for consistent styling
+  - The unprocessed state is the default case in the render logic
+---
+
+## 2026-01-24 - US-039
+- What was implemented:
+  - Enhanced scan-folder IPC handler to load processed video data when status is 'completed'
+  - Created loadProcessedVideoData() helper that parses CLI-generated summary and transcript files
+  - Summary file format parsing: extracts description, suggested filename, and processedAt date
+  - Added framesDir and transcriptPath to VideoFile interface for Reveal in Finder functionality
+  - Updated VideoDetails component processed state to show all file info (path, size, duration, dates)
+  - Added "Open Folder" button for frames directory
+  - Added "Open File" button for transcript file
+  - Added section-header CSS styling for consistent section titles with action buttons
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added loadProcessedVideoData helper, updated ScannedVideoFile interface and scanFolderForVideos function)
+  - Modified: electron/renderer/App.tsx (added framesDir and transcriptPath to VideoFile interface)
+  - Modified: electron/renderer/components/VideoDetails.tsx (enhanced processed state view with file info and Reveal in Finder buttons)
+  - Modified: electron/renderer/styles/VideoDetails.css (added section-header and reveal-button styles)
+
+- **Learnings for future iterations:**
+  - CLI stores processed data in three directories: frames/{videoName}/, transcripts/{videoName}.txt, summaries/{videoName}.txt
+  - Summary file format has specific sections: "DESCRIPTION:", "SUGGESTED FILENAME:", "FULL ANALYSIS:" with "Date Analyzed:" header
+  - Use Object.assign() to merge processed data into video object efficiently
+  - Section headers with action buttons use flexbox with justify-content: space-between
+  - The reveal-button class is a smaller, muted button style for inline actions
+---
+
+## 2026-01-24 - US-040
+- What was implemented:
+  - Added errorStep field to VideoFile interface to track which processing step failed
+  - Enhanced error state in VideoDetails component to display:
+    - File info (path, size, duration)
+    - Error step indicator with human-readable labels (Frame Extraction, Audio Extraction, Transcription, Analysis)
+    - Error message in a styled error box
+    - Partial results notification when frames or transcript exist
+    - Partial frames with "Open Folder" button
+    - Partial transcript with "Open File" button
+    - Retry button to re-process the video
+  - Updated preload.ts error event type to include step information
+  - Added CSS styles for error step display and partial results section
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added errorStep to ScannedVideoFile interface)
+  - Modified: electron/preload.ts (added step to error event type)
+  - Modified: electron/renderer/App.tsx (added errorStep to VideoFile interface, updated error handler)
+  - Modified: electron/renderer/components/VideoDetails.tsx (enhanced error state with step display and partial results)
+  - Modified: electron/renderer/styles/VideoDetails.css (added error-step, partial-results styles)
+
+- **Learnings for future iterations:**
+  - Error steps are: 'frame_extraction', 'audio_extraction', 'transcription', 'analysis'
+  - The processing:error event should include the step that failed for better error reporting
+  - Partial results (frames, transcripts) should be displayed even when processing fails
+  - Use a notification box (yellow background) to explain partial results to users
+---
+
+## 2026-01-24 - US-041
+- What was implemented:
+  - Created SettingsPanel component as a modal accessible via Cmd+, or App > Settings menu
+  - Analysis section with toggle between Claude API and Ollama (LLaVA), with model selection
+  - Transcription section with toggle between local Whisper and API, runtime preference, and model selection
+  - Output section with frame count dropdown (1, 3, 5, 10) and auto-rename toggle
+  - "Manage Models" button that opens Model Manager panel
+  - Settings persisted using electron-store with 'app-settings' store
+  - Updated IPC handlers to use settingsStore for get/save of analysis, whisper, and general settings
+  - Menu event listener for 'menu:open-settings' already existed in preload.ts
+
+- Files changed:
+  - Created: electron/renderer/components/SettingsPanel.tsx
+  - Created: electron/renderer/styles/SettingsPanel.css
+  - Modified: electron/main/ipc-handlers.ts (added AppSettingsSchema, settingsStore, updated all settings handlers)
+  - Modified: electron/renderer/App.tsx (added SettingsPanel import, state, menu listener, and modal rendering)
+
+- **Learnings for future iterations:**
+  - Multiple electron-store instances can be created with different names for different purposes
+  - Settings panel pattern: load all data in parallel on open, track changes with hasChanges state
+  - Nested settings rows with border-left provide visual hierarchy for dependent options
+  - Always check prerequisites (claudeAvailable, ollamaStatus) before allowing method selection
+  - Downloaded models can be checked by comparing model names to whisperModels.models array
+---
+
+## 2026-01-24 - US-042
+- What was implemented:
+  - Complete video processing pipeline in ipc-handlers.ts:
+    - extractVideoFrames(): Extract frames at evenly distributed timestamps using FFmpeg
+    - extractVideoAudio(): Extract audio to WAV format (16kHz mono) for whisper
+    - analyzeWithClaude(): Analyze video via claude CLI with frames and transcript
+    - saveSummaryFile(): Save analysis results to summaries directory
+    - processVideoFull(): Orchestrate full pipeline with progress events
+  - Updated process-video IPC handler to accept video path and run full pipeline
+  - Updated cancel-processing handler to cancel active operations
+  - Updated preload.ts to accept video paths instead of video IDs
+  - Updated App.tsx handleAnalyze to:
+    - Find video by ID to get path
+    - Set processing status immediately
+    - Handle errors with error state and errorStep
+    - Rescan folder after successful processing
+  - Updated VideoDetails processing state to show:
+    - File info (path, size, duration) during processing
+    - Current processing step from processingProgress
+  - Added processingStep prop to VideoDetails interface
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added full processing pipeline)
+  - Modified: electron/preload.ts (changed processVideo to accept videoPath)
+  - Modified: electron/renderer/App.tsx (updated handleAnalyze with path lookup and error handling)
+  - Modified: electron/renderer/components/VideoDetails.tsx (added processingStep prop and display)
+  - Modified: electron/renderer/styles/VideoDetails.css (added .processing-step style)
+
+- **Learnings for future iterations:**
+  - Process video by path rather than ID - paths are more reliable for file operations
+  - Use module-level `activeVideoProcessing` object with `cancelled` flag for cancellation support
+  - Send processing:progress events with step description for real-time UI updates
+  - Rescan folder after processing completes to reload updated video data with frames/transcript
+  - Create subdirectories (frames/, transcripts/, summaries/) relative to video directory
+  - Audio extraction: use -audioCodec pcm_s16le -audioFrequency 16000 -audioChannels 1 for whisper compatibility
+  - Frame extraction: timestamps at evenly distributed points (i / (count + 1)) for better coverage
+---
+
+## 2026-01-24 - US-043
+- What was implemented:
+  - Batch video processing with processVideoBatch() function in ipc-handlers.ts
+  - "Analyze Selected" button appears when multiple unprocessed videos are selected
+  - "Analyze All" button processes all unprocessed videos in the current folder
+  - Progress indicator shows "Processing X of Y videos" with current video name
+  - Batch processing events: batch:start, batch:progress, batch:complete, batch:cancelled
+  - Batch completion notification toast showing success/failure counts
+  - Status badges update in real-time as each video completes or fails
+  - Processing continues even if individual videos fail (error resilience)
+  - activeBatchProcessing module-level state for tracking batch progress and cancellation
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added processVideoBatch, activeBatchProcessing, batch events)
+  - Modified: electron/preload.ts (added batch event listeners)
+  - Modified: electron/renderer/App.tsx (added handleAnalyzeSelected, batch event handlers, notification UI)
+  - Modified: electron/renderer/components/Toolbar.tsx (added Analyze Selected button, updated progress display)
+  - Modified: electron/renderer/styles/Toolbar.css (enhanced progress indicator styles)
+  - Modified: electron/renderer/styles/App.css (added batch notification toast styles)
+
+- **Learnings for future iterations:**
+  - Use separate batch event channels (batch:start, batch:progress, batch:complete) rather than reusing single-video events
+  - Track batch state with module-level object containing: cancelled, videoPaths, currentIndex, successCount, failureCount
+  - Batch processing should be sequential to avoid resource contention (LLM/GPU)
+  - Toast notifications work well for batch completion summaries - use 5s auto-dismiss
+  - selectedUnprocessedCount computed from videos.filter() for conditional button display
+---
+
+## 2026-01-24 - US-044
+- What was implemented:
+  - Updated handleCancel callback in App.tsx to rescan folder after cancellation
+  - Video statuses now properly update based on actual file state after cancel
+  - Partial results (frames, transcripts) preserved on disk and visible on rescan
+  - Cancel button already existed in Toolbar (from US-043)
+  - Cancellation logic already existed in ipc-handlers.ts (from US-043)
+
+- Files changed:
+  - Modified: electron/renderer/App.tsx (enhanced handleCancel to rescan folder)
+
+- **Learnings for future iterations:**
+  - Cancellation infrastructure was already in place from batch processing implementation
+  - The key missing piece was rescanning the folder after cancellation to update UI state
+  - Video status is determined by presence of frames directory - rescanning picks up partial results
+  - Use dependency arrays correctly in useCallback - handleCancel now depends on currentFolder
+---
+
+## 2026-01-24 - US-045
+- What was implemented:
+  - Added onRetryFailed prop to Toolbar component and connected Retry Failed button
+  - Implemented handleRetryFailed callback in App.tsx to retry all videos with error status
+  - Added checkExistingArtifacts() function in ipc-handlers.ts for smart retry logic
+  - Updated processVideoFull() to check for existing artifacts before each step:
+    - Skips frame extraction if frames already exist (with enough frames)
+    - Skips audio extraction and transcription if transcript already exists
+  - Individual retry uses same smart logic via onAnalyze callback in VideoDetails
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added checkExistingArtifacts, updated processVideoFull for smart retry)
+  - Modified: electron/renderer/App.tsx (added handleRetryFailed callback, passed to Toolbar)
+  - Modified: electron/renderer/components/Toolbar.tsx (added onRetryFailed prop, connected button handler)
+
+- **Learnings for future iterations:**
+  - Smart retry pattern: check for existing artifacts at the start of processing pipeline
+  - Existing frames are checked by verifying frames directory and counting .jpg files
+  - Existing transcript is checked by verifying transcript file exists and has content
+  - When retrying, clear errorMessage and errorStep from video state to show clean processing state
+  - The same processVideoFull function handles both initial processing and retry - no need for separate logic
+---
+
+## 2026-01-24 - US-046
+- What was implemented:
+  - Created FramePreviewModal component with full-screen modal overlay
+  - Click on frame thumbnail opens modal with larger image
+  - Navigation buttons (‹ ›) to move between frames
+  - Keyboard navigation: ArrowLeft/ArrowRight for navigation, Escape to close
+  - Click outside modal (on overlay) closes the modal
+  - Frame number indicator showing "Frame X of Y"
+  - Bottom thumbnail strip for quick navigation to any frame
+  - Active thumbnail highlighted with border and box-shadow
+  - Modal state managed with useState in VideoDetails component
+  - Modal integrated into both completed and error states (where frames exist)
+
+- Files changed:
+  - Created: electron/renderer/components/FramePreviewModal.tsx
+  - Created: electron/renderer/styles/FramePreviewModal.css
+  - Modified: electron/renderer/components/VideoDetails.tsx (added modal state, click handlers, FramePreviewModal integration)
+
+- **Learnings for future iterations:**
+  - Modal components should be rendered inside the parent that manages their state for simpler prop passing
+  - useCallback is important for keyboard event handlers to avoid stale closures
+  - Modal z-index should be higher than other modals (1100 vs 1000) to layer properly
+  - Thumbnail navigation strip provides better UX than just arrow navigation for multi-frame content
+  - Use `file://` protocol prefix for local file paths in img src attributes
+---
+
+## 2026-01-24 - US-047
+- What was implemented:
+  - Verified all native macOS integration features are already in place
+  - menu.ts contains full macOS menu structure with:
+    - App menu: About, Settings (Cmd+,), Services, Hide/Show, Quit (Cmd+Q)
+    - File menu: Open Folder (Cmd+O)
+    - Edit menu: Undo, Redo, Cut, Copy, Paste, Delete, Select All
+    - View menu: Refresh (Cmd+R), DevTools, Zoom controls
+    - Window menu: Minimize, Zoom, standard macOS window management
+    - Help menu: Prerequisites, Model Manager, Run Setup Wizard, Learn More
+  - preload.ts exposes all menu event listeners (onMenuOpenFolder, onMenuRefresh, etc.)
+  - App.tsx has handlers wired up for all menu events
+  - electron-builder.config.js configured with icon.icns path for dock icon
+
+- Files changed:
+  - Modified: scripts/ralph/prd.json (marked US-047 as passes: true)
+  - No code changes needed - all acceptance criteria were already satisfied
+
+- **Learnings for future iterations:**
+  - Many features get implemented as foundation work in early stories (e.g., menu was part of US-028)
+  - Always verify what's already done before implementing - prevents duplicate work
+  - macOS menu uses Electron built-in roles for standard items (quit, hide, cut, copy, paste)
+  - Custom menu items use click handlers that send IPC events to renderer
+  - Icon display in dock requires icon.icns file but configuration works even without it (uses Electron default)
+---
+
+## 2026-01-24 - US-048
+- What was implemented:
+  - Enhanced progress indicator in toolbar with dual progress bars
+  - Added "Overall" progress bar showing total batch completion percentage
+  - Added "Current" progress bar showing individual video processing percentage
+  - Overall progress uses formula: ((current - 1 + videoPercent/100) / total) * 100
+  - Added videoPercent field to processingProgress state type
+  - Updated App.tsx to capture percent from processing:progress events
+  - Updated Toolbar.tsx to display both progress bars with percentage labels
+  - Added CSS for progress-bars container, progress-bar-container, labels, and percentages
+  - Current video progress bar uses green color (--color-success) to differentiate
+
+- Files changed:
+  - Modified: electron/renderer/App.tsx (added videoPercent to state and progress handler)
+  - Modified: electron/renderer/components/Toolbar.tsx (enhanced progress display with dual bars)
+  - Modified: electron/renderer/styles/Toolbar.css (added progress bar container styles)
+  - Modified: scripts/ralph/prd.json (marked US-048 as passes: true)
+
+- **Learnings for future iterations:**
+  - Progress percentage was already being sent from ipc-handlers.ts but not displayed in UI
+  - When showing progress for nested operations (video within batch), show both levels
+  - Overall progress formula accounts for completed videos + partial progress of current video
+  - Use different colors for different progress bars to differentiate them visually
+---
+
+## 2026-01-24 - US-049
+- What was implemented:
+  - Verified existing empty states: no folder, no videos, no video selected (already implemented)
+  - Added "All videos processed" summary banner to Sidebar when all videos are done
+  - Summary shows count of completed videos and any errors
+  - Added videoStats computed value using useMemo for status counts
+  - Green background banner with checkmark icon for visual distinction
+
+- Files changed:
+  - Modified: electron/renderer/components/Sidebar.tsx (added videoStats memo, added all-processed-summary UI)
+  - Modified: electron/renderer/styles/Sidebar.css (added all-processed-summary styles)
+  - Modified: scripts/ralph/prd.json (marked US-049 as passes: true)
+
+- **Learnings for future iterations:**
+  - Empty states were already mostly implemented from earlier scaffold work
+  - Use useMemo for derived state that involves filtering/counting arrays
+  - Summary banners work well for positive completion feedback
+  - Conditional rendering based on computed stats is cleaner than inline conditions
+---
+
+## 2026-01-24 - US-050
+- What was implemented:
+  - Verified CLI and GUI compatibility through shared file artifacts (frames/, transcripts/, summaries/)
+  - Updated loadProcessedVideoData() to properly extract Analysis Method field from GUI-generated summaries
+  - GUI reads CLI-processed videos correctly via file artifact detection
+  - GUI writes artifacts in CLI-compatible format (same directory structure and file format)
+  - Both tools use the same summary file format with DESCRIPTION, SUGGESTED FILENAME, FULL ANALYSIS sections
+
+- Files changed:
+  - Modified: electron/main/ipc-handlers.ts (added Analysis Method extraction in loadProcessedVideoData)
+  - Modified: scripts/ralph/prd.json (marked US-050 as passes: true)
+
+- **Learnings for future iterations:**
+  - CLI uses SQLite database (.ai-video-cataloger/catalog.db) + file artifacts
+  - GUI uses file-based detection only (no database integration)
+  - Both share artifact directories: frames/{videoname}/, transcripts/, summaries/
+  - Summary file format must match between CLI and GUI for compatibility
+  - File-based detection provides simpler architecture without database synchronization issues
+  - Analysis Method field is optional in CLI-generated files (defaults to 'claude')
+---
+
+## 2026-01-24 - US-051
+- What was implemented:
+  - Created SetupWizard component with 6 sequential steps
+  - Step 1: Welcome screen with app features overview
+  - Step 2: Prerequisites check (FFmpeg, Whisper, Claude API, Ollama)
+  - Step 3: Analysis method selection (Claude API vs Ollama local)
+  - Step 4: Transcription method selection (local whisper vs API)
+  - Step 5: Model status check (Whisper models, LLaVA models)
+  - Step 6: Summary and "Open Folder" to start
+  - First launch detection using setupCompleted flag in settingsStore
+  - Skip Setup button to bypass wizard
+  - Help > Run Setup Wizard menu triggers wizard re-run
+  - IPC handlers: is-first-launch, mark-setup-complete
+  - Wizard saves selected settings on completion
+
+- Files changed:
+  - Created: electron/renderer/components/SetupWizard.tsx
+  - Created: electron/renderer/styles/SetupWizard.css
+  - Modified: electron/renderer/App.tsx (added SetupWizard integration, first-launch check, menu event)
+  - Modified: electron/preload.ts (added isFirstLaunch, markSetupComplete APIs)
+  - Modified: electron/main/ipc-handlers.ts (added setupCompleted to schema, IPC handlers)
+  - Modified: scripts/ralph/prd.json (marked US-051 as passes: true)
+
+- **Learnings for future iterations:**
+  - Multi-step wizards work well with step number type and switch statement for rendering
+  - First launch detection: boolean flag in electron-store, checked once on app start
+  - Wizard modal should stop propagation to prevent closing when clicking content
+  - Step indicators using dots with active/completed states provide good visual progress
+  - Load prerequisite data only when step becomes active (useEffect with currentStep)
+---
+
+## 2026-02-17 - US-052
+- What was implemented:
+  - Moved config storage from SQLite config table to separate config.json file
+  - Created Config interface for type safety with whisper_model and extensible keys
+  - Implemented readConfigFile() helper that reads and parses config.json
+  - Implemented writeConfigFile() helper that serializes and writes config.json
+  - Updated getConfig()/setConfig() to use JSON file instead of database table
+  - Added configPath tracking to initDatabase() and closeDatabase()
+  - Verified database already uses per-folder storage at .ai-video-cataloger/catalog.db
+
+- Files changed:
+  - Modified: src/db/database.ts (config functions now use JSON file)
+
+- **Learnings for future iterations:**
+  - CLI already used per-folder databases - the database was never at ~/.config
+  - Config is now in .ai-video-cataloger/config.json as human-readable JSON
+  - getConfig()/setConfig() API unchanged, so no changes needed to callers (models.ts)
+  - Config table still exists in database schema for backward compatibility but is unused
+---
+
+## 2026-02-17 - US-053
+- What was implemented:
+  - Created src/services/ffmpeg-setup.ts for bundled FFmpeg binary path resolution
+  - Uses ffmpeg-static package which already provides cross-platform binaries
+  - Uses @ffprobe-installer/ffprobe for FFprobe binaries
+  - Updated frames.ts and audio.ts to call configureFfmpeg() at module load
+  - Updated prerequisites.ts to use getFFmpegInfo() for bundled/system detection
+  - Exported new functions from services/index.ts
+
+- Files changed:
+  - Created: src/services/ffmpeg-setup.ts
+  - Modified: src/services/frames.ts (added configureFfmpeg import and call)
+  - Modified: src/services/audio.ts (added configureFfmpeg import and call)
+  - Modified: src/services/prerequisites.ts (updated checkFfmpeg to use bundled info)
+  - Modified: src/services/index.ts (exported ffmpeg-setup functions)
+
+- **Learnings for future iterations:**
+  - ffmpeg-static and @ffprobe-installer/ffprobe packages already provide platform-specific binaries
+  - No extraction to ~/.ai-video-cataloger/bin/ needed - the npm packages handle binary distribution
+  - Use createRequire(import.meta.url) to require CommonJS modules from ESM
+  - configureFfmpeg() should be called at module load time for files that use fluent-ffmpeg
+  - Prerequisites check now shows [bundled] or [system] suffix to indicate FFmpeg source
+---
