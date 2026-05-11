@@ -1,15 +1,7 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
-import { Copy, Trash2, Check, Braces } from 'lucide-react';
+import { Copy, Trash2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-
-/**
- * Check if a string looks like a JSON line (starts with { and ends with })
- */
-function isJsonLine(content: string): boolean {
-  const trimmed = content.trim();
-  return trimmed.startsWith('{') && trimmed.endsWith('}');
-}
 
 // ANSI color codes to CSS class mapping
 const ANSI_COLORS: Record<string, string> = {
@@ -143,17 +135,13 @@ export function TerminalLog({
   const bottomRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
-  const [showJson, setShowJson] = useState(false);
-
-  // Filter lines based on showJson setting
-  const filteredLines = showJson ? lines : lines.filter(line => !isJsonLine(line.content));
 
   // Auto-scroll to bottom when new lines are added
   useEffect(() => {
     if (autoScroll && !userScrolledUp && bottomRef.current) {
       bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
-  }, [filteredLines, autoScroll, userScrolledUp]);
+  }, [lines, autoScroll, userScrolledUp]);
 
   // Track if user has scrolled up (check scroll container)
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -187,8 +175,9 @@ export function TerminalLog({
         return 'text-green-400';
       case 'info':
         return 'text-blue-400';
+      case 'stdout':
       default:
-        return '';
+        return 'text-gray-200';
     }
   };
 
@@ -205,21 +194,6 @@ export function TerminalLog({
         <div className="flex items-center justify-between px-3 py-2 border-b border-border/50 bg-[#252526]">
           <span className="text-xs font-medium text-gray-400">Terminal</span>
           <div className="flex items-center gap-1">
-            <Button
-              variant="ghost"
-              size="sm"
-              className={cn(
-                "h-6 px-2 text-xs gap-1",
-                showJson
-                  ? "text-cyan-400 hover:text-cyan-300 hover:bg-white/10"
-                  : "text-gray-400 hover:text-white hover:bg-white/10"
-              )}
-              onClick={() => setShowJson(!showJson)}
-              title={showJson ? "Hide JSON output" : "Show JSON output"}
-            >
-              <Braces className="h-3.5 w-3.5" />
-              <span>JSON</span>
-            </Button>
             <Button
               variant="ghost"
               size="icon"
@@ -255,14 +229,12 @@ export function TerminalLog({
         onScroll={handleScroll}
       >
         <div className="p-3 font-mono text-sm leading-relaxed">
-          {filteredLines.length === 0 ? (
+          {lines.length === 0 ? (
             <div className="text-gray-500 italic">
-              {lines.length === 0
-                ? 'No output yet. Run a command to see results here.'
-                : 'No visible output. Click JSON button to show raw JSON data.'}
+              No output yet. Run a command to see results here.
             </div>
           ) : (
-            filteredLines.map((line) => (
+            lines.map((line) => (
               <div
                 key={line.id}
                 className={cn(
@@ -287,7 +259,7 @@ export function TerminalLog({
       </div>
 
       {/* Scroll to bottom indicator */}
-      {userScrolledUp && filteredLines.length > 0 && (
+      {userScrolledUp && lines.length > 0 && (
         <button
           className="absolute bottom-4 right-4 px-2 py-1 text-xs bg-primary text-primary-foreground rounded-md shadow-md hover:bg-primary/90 transition-colors"
           onClick={() => {

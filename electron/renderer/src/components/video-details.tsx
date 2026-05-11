@@ -123,6 +123,7 @@ function getStatusInfo(status: VideoStatus, isCurrentlyAnalyzing: boolean = fals
 
 /**
  * Parse summary file to extract description and suggested filename
+ * Handles multi-line format where section labels are on separate lines from content
  */
 function parseSummary(summaryText: string): {
   description: string;
@@ -133,20 +134,45 @@ function parseSummary(summaryText: string): {
   let description = '';
   let suggestedFilename = '';
   let fullAnalysis = '';
-  let inFullAnalysis = false;
+
+  // Track which section we're currently in
+  let currentSection: 'none' | 'description' | 'filename' | 'fullAnalysis' = 'none';
 
   for (const line of lines) {
     const trimmed = line.trim();
 
-    // Once in FULL ANALYSIS section, capture everything
-    if (inFullAnalysis) {
-      fullAnalysis += line + '\n';
-    } else if (trimmed.startsWith('FULL ANALYSIS:')) {
-      inFullAnalysis = true;
+    // Check for section headers
+    if (trimmed.startsWith('FULL ANALYSIS:')) {
+      currentSection = 'fullAnalysis';
+      // Capture any content on the same line
+      const sameLine = trimmed.substring('FULL ANALYSIS:'.length).trim();
+      if (sameLine) fullAnalysis += sameLine + '\n';
     } else if (trimmed.startsWith('DESCRIPTION:')) {
-      description = trimmed.substring('DESCRIPTION:'.length).trim();
+      currentSection = 'description';
+      // Capture any content on the same line
+      const sameLine = trimmed.substring('DESCRIPTION:'.length).trim();
+      if (sameLine) description = sameLine;
     } else if (trimmed.startsWith('SUGGESTED FILENAME:')) {
-      suggestedFilename = trimmed.substring('SUGGESTED FILENAME:'.length).trim();
+      currentSection = 'filename';
+      // Capture any content on the same line
+      const sameLine = trimmed.substring('SUGGESTED FILENAME:'.length).trim();
+      if (sameLine) suggestedFilename = sameLine;
+    } else if (trimmed.startsWith('Video:') || trimmed.startsWith('Date Analyzed:')) {
+      // Skip header lines
+      currentSection = 'none';
+    } else if (trimmed) {
+      // Non-empty line - add to current section
+      switch (currentSection) {
+        case 'description':
+          description = description ? description + ' ' + trimmed : trimmed;
+          break;
+        case 'filename':
+          suggestedFilename = suggestedFilename || trimmed;
+          break;
+        case 'fullAnalysis':
+          fullAnalysis += line + '\n';
+          break;
+      }
     }
   }
 

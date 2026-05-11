@@ -121,14 +121,23 @@ function isInProgressStatus(status: VideoStatus): boolean {
 
 /**
  * Get artifact paths for a video
+ * Uses newName if available (for renamed videos), otherwise uses original filename
  */
-function getArtifactPaths(videoPath: string, folderPath: string): {
+function getArtifactPaths(videoPath: string, folderPath: string, newName: string | null): {
   framesDir: string;
   transcriptPath: string;
   summaryPath: string;
 } {
-  const videoFilename = basename(videoPath);
-  const videoName = videoFilename.replace(/\.[^.]+$/, '');
+  // If video was renamed, artifacts are stored with the new name
+  // Otherwise, use the original filename
+  let videoName: string;
+  if (newName) {
+    // newName includes extension, so remove it
+    videoName = newName.replace(/\.[^.]+$/, '');
+  } else {
+    const videoFilename = basename(videoPath);
+    videoName = videoFilename.replace(/\.[^.]+$/, '');
+  }
 
   return {
     framesDir: join(folderPath, 'frames', videoName),
@@ -160,7 +169,7 @@ function loadArtifacts(
     return artifacts;
   }
 
-  const paths = getArtifactPaths(videoPath, folderPath);
+  const paths = getArtifactPaths(videoPath, folderPath, newName);
 
   // Load frames if status is frames_extracted or beyond
   const hasFrames = ['frames_extracted', 'audio_extracted', 'transcribed', 'analyzed', 'completed'].includes(status);
