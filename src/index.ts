@@ -287,7 +287,7 @@ async function main(): Promise<void> {
     .version(packageJson.version)
     .argument('[directory]', 'Directory to scan for videos', process.cwd())
     .option('-f, --frames <number>', 'Number of frames to extract', (value) => parseInt(value, 10), 3)
-    .option('-s, --skip-rename', 'Only generate summaries, do not rename files', false)
+    .option('-s, --skip-rename', 'Only generate summaries, do not rename files')
     .option('-v, --verbose', 'Show detailed output', false)
     .option('-r, --retry-errors', 'Re-process videos that previously failed with errors', false)
     .option('-t, --timeout <seconds>', 'Timeout for Claude analysis in seconds', (value) => parseInt(value, 10), 120)
@@ -522,7 +522,7 @@ async function main(): Promise<void> {
     .command('process <video-path>')
     .description('Process a single video file')
     .option('-f, --frames <number>', 'Number of frames to extract', (value) => parseInt(value, 10), 3)
-    .option('-s, --skip-rename', 'Only generate summaries, do not rename files', false)
+    .option('-s, --skip-rename', 'Only generate summaries, do not rename files')
     .option('-v, --verbose', 'Show detailed output', false)
     .option('-t, --timeout <seconds>', 'Timeout for Claude analysis in seconds', (value) => parseInt(value, 10), 120)
     .option('-w, --whisper <mode>', 'Transcription mode: local, api, or skip', (value: string) => {

@@ -18,24 +18,21 @@
  */
 
 import { execSync, spawn } from 'node:child_process';
-import { existsSync, rmSync, readFileSync, readdirSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+import { existsSync, rmSync, readFileSync, readdirSync, renameSync } from 'node:fs';
+import { join, dirname, basename, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const TEST_DIR = __dirname;
-const TEST_VIDEO = 'BigBuckBunny480p30s.mp4';
-const VIDEO_PATH = join(TEST_DIR, TEST_VIDEO);
-const VIDEO_NAME = 'BigBuckBunny480p30s';
+const ORIGINAL_VIDEO_NAME = 'BigBuckBunny480p30s.mp4';
+const ORIGINAL_VIDEO_PATH = join(TEST_DIR, ORIGINAL_VIDEO_NAME);
 const CLI_PATH = join(TEST_DIR, '..', 'dist', 'index.js');
 
-// Artifact paths
+// Base directories for artifacts
 const ARTIFACTS_DIR = join(TEST_DIR, '.ai-video-cataloger');
-const FRAMES_DIR = join(TEST_DIR, 'frames', VIDEO_NAME);
+const FRAMES_BASE_DIR = join(TEST_DIR, 'frames');
 const TRANSCRIPTS_DIR = join(TEST_DIR, 'transcripts');
 const SUMMARIES_DIR = join(TEST_DIR, 'summaries');
-const TRANSCRIPT_PATH = join(TRANSCRIPTS_DIR, `${VIDEO_NAME}.txt`);
-const SUMMARY_PATH = join(SUMMARIES_DIR, `${VIDEO_NAME}.txt`);
 
 interface TestResult {
   name: string;
@@ -43,16 +40,11 @@ interface TestResult {
   reason: string;
 }
 
-interface ValidationResult {
-  passed: boolean;
-  reasoning: string;
-  details: {
-    framesValid: boolean;
-    summaryValid: boolean;
-    summaryMentionsBigBuckBunny: boolean;
-    summaryMentionsAnimated: boolean;
-    statusCompleted: boolean;
-  };
+interface ProcessedVideoInfo {
+  originalName: string;
+  newName: string;
+  newPath: string;
+  baseName: string; // filename without extension
 }
 
 /**
@@ -86,10 +78,43 @@ function runCommand(command: string, args: string[], cwd?: string): Promise<{ st
 }
 
 /**
+ * Find all video files in test directory
+ */
+function findVideoFiles(): string[] {
+  const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
+  return readdirSync(TEST_DIR).filter(f => {
+    const ext = extname(f).toLowerCase();
+    return VIDEO_EXTENSIONS.includes(ext);
+  });
+}
+
+/**
+ * Restore original video name if it was renamed
+ */
+function restoreOriginalVideo(): void {
+  const videoFiles = findVideoFiles();
+
+  // If original exists, nothing to do
+  if (videoFiles.includes(ORIGINAL_VIDEO_NAME)) {
+    return;
+  }
+
+  // Find any renamed video and restore it
+  if (videoFiles.length === 1 && videoFiles[0] !== ORIGINAL_VIDEO_NAME) {
+    const renamedPath = join(TEST_DIR, videoFiles[0]);
+    console.log(`  Restoring ${videoFiles[0]} -> ${ORIGINAL_VIDEO_NAME}`);
+    renameSync(renamedPath, ORIGINAL_VIDEO_PATH);
+  }
+}
+
+/**
  * Clean up test artifacts before running
  */
 function cleanArtifacts(): void {
   console.log('\n🧹 Cleaning test artifacts...\n');
+
+  // Restore original video name first
+  restoreOriginalVideo();
 
   // Remove database directory
   if (existsSync(ARTIFACTS_DIR)) {
@@ -97,25 +122,47 @@ function cleanArtifacts(): void {
     console.log(`  ✓ Removed ${ARTIFACTS_DIR}`);
   }
 
-  // Remove frames directory
-  if (existsSync(FRAMES_DIR)) {
-    rmSync(FRAMES_DIR, { recursive: true, force: true });
-    console.log(`  ✓ Removed ${FRAMES_DIR}`);
+  // Remove frames directory (all subdirs)
+  if (existsSync(FRAMES_BASE_DIR)) {
+    rmSync(FRAMES_BASE_DIR, { recursive: true, force: true });
+    console.log(`  ✓ Removed ${FRAMES_BASE_DIR}`);
   }
 
-  // Remove transcript
-  if (existsSync(TRANSCRIPT_PATH)) {
-    rmSync(TRANSCRIPT_PATH, { force: true });
-    console.log(`  ✓ Removed ${TRANSCRIPT_PATH}`);
+  // Remove transcripts directory
+  if (existsSync(TRANSCRIPTS_DIR)) {
+    rmSync(TRANSCRIPTS_DIR, { recursive: true, force: true });
+    console.log(`  ✓ Removed ${TRANSCRIPTS_DIR}`);
   }
 
-  // Remove summary
-  if (existsSync(SUMMARY_PATH)) {
-    rmSync(SUMMARY_PATH, { force: true });
-    console.log(`  ✓ Removed ${SUMMARY_PATH}`);
+  // Remove summaries directory
+  if (existsSync(SUMMARIES_DIR)) {
+    rmSync(SUMMARIES_DIR, { recursive: true, force: true });
+    console.log(`  ✓ Removed ${SUMMARIES_DIR}`);
   }
 
   console.log('  ✓ Artifacts cleaned\n');
+}
+
+/**
+ * Find the processed video (may have been renamed)
+ */
+function findProcessedVideo(): ProcessedVideoInfo | null {
+  const videoFiles = findVideoFiles();
+
+  if (videoFiles.length === 0) {
+    return null;
+  }
+
+  // Find the video (might be renamed or original)
+  const videoFile = videoFiles[0];
+  const baseName = basename(videoFile, extname(videoFile));
+
+  return {
+    originalName: ORIGINAL_VIDEO_NAME,
+    newName: videoFile,
+    newPath: join(TEST_DIR, videoFile),
+    baseName,
+  };
 }
 
 /**
@@ -132,19 +179,17 @@ async function processVideo(): Promise<boolean> {
   }
 
   // Check video exists
-  if (!existsSync(VIDEO_PATH)) {
-    console.error(`❌ Test video not found at ${VIDEO_PATH}`);
+  if (!existsSync(ORIGINAL_VIDEO_PATH)) {
+    console.error(`❌ Test video not found at ${ORIGINAL_VIDEO_PATH}`);
     return false;
   }
 
-  // Run CLI with --skip-rename to preserve original filename
+  // Run CLI - let it rename the file (this is part of what we're testing!)
   const result = await runCommand('node', [
     CLI_PATH,
     'process',
-    VIDEO_PATH,
-    '--skip-rename',
+    ORIGINAL_VIDEO_PATH,
     '--frames', '3',
-    '--whisper', 'skip', // Skip whisper for faster testing
   ], TEST_DIR);
 
   if (result.exitCode !== 0) {
@@ -157,20 +202,71 @@ async function processVideo(): Promise<boolean> {
 }
 
 /**
- * Check that frames were extracted and look like animated content
+ * Check that the video was renamed sensibly
  */
-function checkFrames(): TestResult {
-  console.log('\n🖼️  Checking extracted frames...\n');
+function checkRename(videoInfo: ProcessedVideoInfo): TestResult {
+  console.log('\n📛 Checking video rename...\n');
 
-  if (!existsSync(FRAMES_DIR)) {
+  const { originalName, newName, baseName } = videoInfo;
+
+  // If not renamed, that's okay but note it
+  if (newName === originalName) {
     return {
-      name: 'Frames Extraction',
-      passed: false,
-      reason: `Frames directory not found: ${FRAMES_DIR}`,
+      name: 'Video Rename',
+      passed: true,
+      reason: 'Video was not renamed (may indicate --skip-rename or same suggested name)',
     };
   }
 
-  const frames = readdirSync(FRAMES_DIR).filter((f) => f.endsWith('.jpg'));
+  console.log(`  ✓ Video renamed: ${originalName} -> ${newName}`);
+
+  // Check if the new name is sensible for Big Buck Bunny
+  const lowerName = baseName.toLowerCase();
+  const containsBunny = lowerName.includes('bunny') || lowerName.includes('buck');
+  const hasDatePrefix = /^\d{4}-\d{2}-\d{2}/.test(baseName);
+
+  console.log(`  ✓ Contains 'bunny' or 'buck': ${containsBunny}`);
+  console.log(`  ✓ Has date prefix: ${hasDatePrefix}`);
+
+  if (!containsBunny) {
+    return {
+      name: 'Video Rename',
+      passed: false,
+      reason: `New filename "${newName}" doesn't reference Big Buck Bunny content`,
+    };
+  }
+
+  return {
+    name: 'Video Rename',
+    passed: true,
+    reason: `Video sensibly renamed to: ${newName}`,
+  };
+}
+
+/**
+ * Check that frames were extracted
+ */
+function checkFrames(videoInfo: ProcessedVideoInfo): TestResult {
+  console.log('\n🖼️  Checking extracted frames...\n');
+
+  const framesDir = join(FRAMES_BASE_DIR, videoInfo.baseName);
+
+  if (!existsSync(framesDir)) {
+    // Try to find any frames directory
+    if (existsSync(FRAMES_BASE_DIR)) {
+      const frameDirs = readdirSync(FRAMES_BASE_DIR);
+      if (frameDirs.length > 0) {
+        console.log(`  Note: Found frames in ${frameDirs[0]} instead of ${videoInfo.baseName}`);
+      }
+    }
+    return {
+      name: 'Frames Extraction',
+      passed: false,
+      reason: `Frames directory not found: ${framesDir}`,
+    };
+  }
+
+  const frames = readdirSync(framesDir).filter((f) => f.endsWith('.jpg'));
 
   if (frames.length === 0) {
     return {
@@ -184,7 +280,7 @@ function checkFrames(): TestResult {
 
   // Verify frames are actual images (non-empty files)
   for (const frame of frames) {
-    const framePath = join(FRAMES_DIR, frame);
+    const framePath = join(framesDir, frame);
     const stats = readFileSync(framePath);
     if (stats.length < 1000) {
       return {
@@ -206,18 +302,27 @@ function checkFrames(): TestResult {
 /**
  * Check that a summary was generated with expected content
  */
-function checkSummary(): TestResult {
+function checkSummary(videoInfo: ProcessedVideoInfo): TestResult {
   console.log('\n📝 Checking generated summary...\n');
 
-  if (!existsSync(SUMMARY_PATH)) {
+  const summaryPath = join(SUMMARIES_DIR, `${videoInfo.baseName}.txt`);
+
+  if (!existsSync(summaryPath)) {
+    // Try to find any summary file
+    if (existsSync(SUMMARIES_DIR)) {
+      const summaryFiles = readdirSync(SUMMARIES_DIR).filter(f => f.endsWith('.txt'));
+      if (summaryFiles.length > 0) {
+        console.log(`  Note: Found summary ${summaryFiles[0]} instead of ${videoInfo.baseName}.txt`);
+      }
+    }
     return {
       name: 'Summary Generation',
       passed: false,
-      reason: `Summary file not found: ${SUMMARY_PATH}`,
+      reason: `Summary file not found: ${summaryPath}`,
     };
   }
 
-  const summary = readFileSync(SUMMARY_PATH, 'utf-8');
+  const summary = readFileSync(summaryPath, 'utf-8');
 
   if (summary.length < 100) {
     return {
@@ -256,7 +361,7 @@ function checkSummary(): TestResult {
 /**
  * Check video status in database
  */
-async function checkStatus(): Promise<TestResult> {
+async function checkStatus(videoInfo: ProcessedVideoInfo): Promise<TestResult> {
   console.log('\n📊 Checking video status in database...\n');
 
   const result = await runCommand('node', [
@@ -275,13 +380,13 @@ async function checkStatus(): Promise<TestResult> {
 
   // Parse NDJSON output - look for completed event
   const lines = result.stdout.trim().split('\n');
-  let statusData: Array<{ path: string; status: string }> | null = null;
+  let statusData: Array<{ path: string; status: string; newName?: string }> | null = null;
 
   for (const line of lines) {
     try {
       const event = JSON.parse(line);
-      if (event.type === 'completed' && event.data) {
-        statusData = event.data as Array<{ path: string; status: string }>;
+      if (event.type === 'completed' && event.data?.videos) {
+        statusData = event.data.videos as Array<{ path: string; status: string; newName?: string }>;
         break;
       }
     } catch {
@@ -297,13 +402,18 @@ async function checkStatus(): Promise<TestResult> {
     };
   }
 
-  const videoStatus = statusData.find((v) => v.path.includes(VIDEO_NAME));
+  // Find video by original path or new name
+  const videoStatus = statusData.find((v) =>
+    v.path.includes(videoInfo.baseName) ||
+    v.path.includes('BigBuckBunny') ||
+    v.newName?.includes(videoInfo.baseName)
+  );
 
   if (!videoStatus) {
     return {
       name: 'Video Status',
       passed: false,
-      reason: `Video ${VIDEO_NAME} not found in status output`,
+      reason: `Video not found in status output`,
     };
   }
 
@@ -327,7 +437,7 @@ async function checkStatus(): Promise<TestResult> {
 /**
  * Use Claude Code CLI to validate the content
  */
-async function validateWithClaude(): Promise<TestResult> {
+async function validateWithClaude(videoInfo: ProcessedVideoInfo): Promise<TestResult> {
   console.log('\n🤖 Validating output with Claude Code CLI...\n');
 
   // Check Claude CLI is available
@@ -342,7 +452,8 @@ async function validateWithClaude(): Promise<TestResult> {
   }
 
   // Read the summary
-  if (!existsSync(SUMMARY_PATH)) {
+  const summaryPath = join(SUMMARIES_DIR, `${videoInfo.baseName}.txt`);
+  if (!existsSync(summaryPath)) {
     return {
       name: 'Claude AI Validation',
       passed: false,
@@ -350,17 +461,20 @@ async function validateWithClaude(): Promise<TestResult> {
     };
   }
 
-  const summary = readFileSync(SUMMARY_PATH, 'utf-8');
+  const summary = readFileSync(summaryPath, 'utf-8');
 
   // Read frame paths for validation
-  const frameFiles = existsSync(FRAMES_DIR)
-    ? readdirSync(FRAMES_DIR).filter((f) => f.endsWith('.jpg')).map((f) => join(FRAMES_DIR, f))
+  const framesDir = join(FRAMES_BASE_DIR, videoInfo.baseName);
+  const frameFiles = existsSync(framesDir)
+    ? readdirSync(framesDir).filter((f) => f.endsWith('.jpg')).map((f) => join(framesDir, f))
     : [];
 
   // Build validation prompt
   const validationPrompt = `You are validating the output of an AI video cataloger.
 
 The video being tested is "Big Buck Bunny" - a well-known 3D animated short film by the Blender Foundation.
+
+The video was renamed from "BigBuckBunny480p30s.mp4" to "${videoInfo.newName}".
 
 Here is the summary generated by the cataloger:
 
@@ -375,12 +489,14 @@ Please validate this output by answering these questions:
 1. Does the summary mention "Big Buck Bunny" (or similar like "big buck bunny", "BigBuckBunny")?
 2. Does the summary indicate this is animated content (mentions "animated", "animation", "3D", "CGI", "Blender", or similar)?
 3. Is the description accurate for Big Buck Bunny (nature scenes, meadows, animated characters/animals)?
+4. Is the new filename "${videoInfo.newName}" a reasonable rename for Big Buck Bunny content?
 
 Respond with a JSON object (and ONLY the JSON object, no other text):
 {
   "mentionsBigBuckBunny": true/false,
   "mentionsAnimated": true/false,
   "descriptionAccurate": true/false,
+  "renameReasonable": true/false,
   "overallValid": true/false,
   "reasoning": "Brief explanation"
 }`;
@@ -416,6 +532,7 @@ Respond with a JSON object (and ONLY the JSON object, no other text):
       mentionsBigBuckBunny: boolean;
       mentionsAnimated: boolean;
       descriptionAccurate: boolean;
+      renameReasonable: boolean;
       overallValid: boolean;
       reasoning: string;
     };
@@ -423,6 +540,7 @@ Respond with a JSON object (and ONLY the JSON object, no other text):
     console.log(`  ✓ Mentions Big Buck Bunny: ${validation.mentionsBigBuckBunny}`);
     console.log(`  ✓ Mentions animated: ${validation.mentionsAnimated}`);
     console.log(`  ✓ Description accurate: ${validation.descriptionAccurate}`);
+    console.log(`  ✓ Rename reasonable: ${validation.renameReasonable}`);
     console.log(`  ✓ Overall valid: ${validation.overallValid}`);
     console.log(`  ✓ Claude's reasoning: ${validation.reasoning}`);
 
@@ -444,6 +562,9 @@ Respond with a JSON object (and ONLY the JSON object, no other text):
     }
     if (!validation.descriptionAccurate) {
       failures.push('Description is not accurate for Big Buck Bunny');
+    }
+    if (!validation.renameReasonable) {
+      failures.push('Filename rename is not reasonable');
     }
 
     if (failures.length > 0) {
@@ -489,24 +610,39 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  // Step 3: Check frames
-  const framesResult = checkFrames();
+  // Step 3: Find the processed video (may have been renamed)
+  const videoInfo = findProcessedVideo();
+  if (!videoInfo) {
+    console.error('\n❌ Could not find processed video. Cannot continue with tests.\n');
+    process.exit(1);
+  }
+
+  console.log(`\n📁 Found processed video: ${videoInfo.newName}`);
+  console.log(`   Base name for artifacts: ${videoInfo.baseName}\n`);
+
+  // Step 4: Check rename
+  const renameResult = checkRename(videoInfo);
+  results.push(renameResult);
+  if (!renameResult.passed) overallPassed = false;
+
+  // Step 5: Check frames
+  const framesResult = checkFrames(videoInfo);
   results.push(framesResult);
   if (!framesResult.passed) overallPassed = false;
 
-  // Step 4: Check summary
-  const summaryResult = checkSummary();
+  // Step 6: Check summary
+  const summaryResult = checkSummary(videoInfo);
   results.push(summaryResult);
   if (!summaryResult.passed) overallPassed = false;
 
-  // Step 5: Check status
-  const statusResult = await checkStatus();
+  // Step 7: Check status
+  const statusResult = await checkStatus(videoInfo);
   results.push(statusResult);
   if (!statusResult.passed) overallPassed = false;
 
-  // Step 6: Validate with Claude (only if previous tests passed)
+  // Step 8: Validate with Claude (only if previous tests passed)
   if (overallPassed) {
-    const claudeResult = await validateWithClaude();
+    const claudeResult = await validateWithClaude(videoInfo);
     results.push(claudeResult);
     if (!claudeResult.passed) overallPassed = false;
   } else {
