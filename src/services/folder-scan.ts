@@ -4,7 +4,7 @@
  */
 
 import ffmpeg from 'fluent-ffmpeg';
-import { readdirSync, statSync } from 'node:fs';
+import { readdirSync, statSync, readFileSync, existsSync } from 'node:fs';
 import { join, extname, basename, resolve } from 'node:path';
 import chalk from 'chalk';
 import { getVideoByPath, getDatabaseDir, getVideoByHash } from '../db/index.js';
@@ -19,6 +19,22 @@ configureFfmpeg();
 const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'];
 
 /**
+ * Artifact data for processed videos
+ */
+export interface VideoArtifacts {
+  // Extracted frames (available after 'frames_extracted' status)
+  framePaths: string[] | null;
+  // Transcript text (available after 'transcribed' status)
+  transcriptContent: string | null;
+  transcriptPath: string | null;
+  // Summary/analysis (available after 'analyzed' or 'completed' status)
+  summaryContent: string | null;
+  summaryPath: string | null;
+  // New filename if renamed (available after 'completed' status)
+  newFilename: string | null;
+}
+
+/**
  * Video file metadata with database status
  */
 export interface ScannedVideo {
@@ -31,6 +47,7 @@ export interface ScannedVideo {
   status: VideoStatus | 'not_tracked';
   errorMessage?: string | null;
   contentHash: string | null;  // Unique identifier based on file content (survives renames)
+  artifacts: VideoArtifacts;   // Processing artifacts (frames, transcript, summary)
 }
 
 /**
@@ -100,6 +117,88 @@ function getVideoDuration(videoPath: string): Promise<number | null> {
  */
 function isInProgressStatus(status: VideoStatus): boolean {
   return ['frames_extracted', 'audio_extracted', 'transcribed', 'analyzed'].includes(status);
+}
+
+/**
+ * Get artifact paths for a video
+ */
+function getArtifactPaths(videoPath: string, folderPath: string): {
+  framesDir: string;
+  transcriptPath: string;
+  summaryPath: string;
+} {
+  const videoFilename = basename(videoPath);
+  const videoName = videoFilename.replace(/\.[^.]+$/, '');
+
+  return {
+    framesDir: join(folderPath, 'frames', videoName),
+    transcriptPath: join(folderPath, 'transcripts', `${videoName}.txt`),
+    summaryPath: join(folderPath, 'summaries', `${videoName}.txt`),
+  };
+}
+
+/**
+ * Load artifacts for a video based on its status
+ */
+function loadArtifacts(
+  videoPath: string,
+  folderPath: string,
+  status: VideoStatus | 'not_tracked',
+  newName: string | null
+): VideoArtifacts {
+  const artifacts: VideoArtifacts = {
+    framePaths: null,
+    transcriptContent: null,
+    transcriptPath: null,
+    summaryContent: null,
+    summaryPath: null,
+    newFilename: newName,
+  };
+
+  // No artifacts for untracked or pending videos
+  if (status === 'not_tracked' || status === 'pending') {
+    return artifacts;
+  }
+
+  const paths = getArtifactPaths(videoPath, folderPath);
+
+  // Load frames if status is frames_extracted or beyond
+  const hasFrames = ['frames_extracted', 'audio_extracted', 'transcribed', 'analyzed', 'completed'].includes(status);
+  if (hasFrames && existsSync(paths.framesDir)) {
+    try {
+      const frameFiles = readdirSync(paths.framesDir)
+        .filter(f => f.endsWith('.jpg'))
+        .sort()
+        .map(f => join(paths.framesDir, f));
+      artifacts.framePaths = frameFiles.length > 0 ? frameFiles : null;
+    } catch {
+      // Ignore errors reading frames directory
+    }
+  }
+
+  // Load transcript if status is transcribed or beyond
+  const hasTranscript = ['transcribed', 'analyzed', 'completed'].includes(status);
+  if (hasTranscript && existsSync(paths.transcriptPath)) {
+    try {
+      artifacts.transcriptContent = readFileSync(paths.transcriptPath, 'utf-8');
+      artifacts.transcriptPath = paths.transcriptPath;
+    } catch {
+      // Ignore errors reading transcript
+    }
+  }
+
+  // Load summary if status is analyzed or completed
+  const hasSummary = ['analyzed', 'completed'].includes(status);
+  if (hasSummary && existsSync(paths.summaryPath)) {
+    try {
+      artifacts.summaryContent = readFileSync(paths.summaryPath, 'utf-8');
+      artifacts.summaryPath = paths.summaryPath;
+    } catch {
+      // Ignore errors reading summary
+    }
+  }
+
+  return artifacts;
 }
 
 /**
@@ -195,6 +294,7 @@ export async function scanFolder(
     // Get database status if database is initialized
     let status: VideoStatus | 'not_tracked' = 'not_tracked';
     let errorMessage: string | null = null;
+    let newName: string | null = null;
 
     if (options.databaseInitialized) {
       // First try to find by path (exact match for unchanged files)
@@ -209,10 +309,14 @@ export async function scanFolder(
       if (videoRecord) {
         status = videoRecord.status;
         errorMessage = videoRecord.error_message;
+        newName = videoRecord.new_name;
         // Use the hash from database if available (should be same)
         contentHash = videoRecord.file_hash || contentHash;
       }
     }
+
+    // Load artifacts based on status (frames, transcript, summary)
+    const artifacts = loadArtifacts(videoPath, absoluteFolder, status, newName);
 
     const video: ScannedVideo = {
       path: videoPath,
@@ -224,6 +328,7 @@ export async function scanFolder(
       status,
       errorMessage,
       contentHash,
+      artifacts,
     };
 
     videos.push(video);

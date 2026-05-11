@@ -11,6 +11,16 @@ import { Film, AlertCircle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 // Video status from the CLI scan command
 export type VideoStatus = 'pending' | 'frames_extracted' | 'audio_extracted' | 'transcribed' | 'analyzed' | 'completed' | 'error' | 'not_tracked';
 
+// Artifact data for processed videos (from CLI scan)
+export interface VideoArtifacts {
+  framePaths: string[] | null;
+  transcriptContent: string | null;
+  transcriptPath: string | null;
+  summaryContent: string | null;
+  summaryPath: string | null;
+  newFilename: string | null;
+}
+
 // Video item data structure (matches CLI scan output)
 export interface VideoItem {
   path: string;
@@ -24,6 +34,7 @@ export interface VideoItem {
   thumbnailPath?: string | null;
   thumbnailDataUrl?: string | null;
   contentHash: string | null;  // Unique identifier that survives renames
+  artifacts: VideoArtifacts;   // Processing artifacts (frames, transcript, summary)
 }
 
 interface VideoListProps {

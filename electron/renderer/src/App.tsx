@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { TerminalLog, LogLine, createLogLine } from '@/components/terminal-log';
 import { AppLayout } from '@/components/layout';
-import { VideoList, VideoItem } from '@/components/video-list';
+import { VideoList, VideoItem, VideoArtifacts } from '@/components/video-list';
 import { VideoDetails } from '@/components/video-details';
 import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2, XCircle, Play, CheckCircle2, XOctagon, HardDrive } from 'lucide-react';
 import { SettingsModal } from '@/components/settings-modal';
@@ -79,6 +79,8 @@ interface ScannedVideo {
   durationFormatted: string | null;
   status: string;
   errorMessage?: string | null;
+  contentHash: string | null;
+  artifacts: VideoArtifacts;
 }
 
 // Folder scan result from CLI
@@ -349,6 +351,14 @@ function App(): JSX.Element {
       thumbnailPath: getThumbnailPath(v.path, folderPath),
       thumbnailDataUrl: null,
       contentHash: v.contentHash,
+      artifacts: v.artifacts || {
+        framePaths: null,
+        transcriptContent: null,
+        transcriptPath: null,
+        summaryContent: null,
+        summaryPath: null,
+        newFilename: null,
+      },
     }));
 
     setVideos(videoItems);

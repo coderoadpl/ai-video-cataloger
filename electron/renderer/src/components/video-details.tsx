@@ -21,16 +21,6 @@ import {
 } from 'lucide-react';
 import type { VideoItem, VideoStatus } from './video-list';
 
-/**
- * Artifact data for a completed video
- */
-export interface VideoArtifacts {
-  summary: string | null;
-  transcript: string | null;
-  framePaths: string[];
-  frameDataUrls: (string | null)[];
-}
-
 interface VideoDetailsProps {
   video: VideoItem;
   currentFolder: string;
@@ -129,25 +119,6 @@ function getStatusInfo(status: VideoStatus, isCurrentlyAnalyzing: boolean = fals
         description: 'This video has not been processed yet.',
       };
   }
-}
-
-/**
- * Get artifact paths for a video
- */
-function getArtifactPaths(videoPath: string, folderPath: string): {
-  summaryPath: string;
-  transcriptPath: string;
-  framesDir: string;
-} {
-  // Extract video name without extension
-  const videoFilename = videoPath.split('/').pop() || '';
-  const videoName = videoFilename.replace(/\.[^.]+$/, '');
-
-  return {
-    summaryPath: `${folderPath}/summaries/${videoName}.txt`,
-    transcriptPath: `${folderPath}/transcripts/${videoName}.txt`,
-    framesDir: `${folderPath}/frames/${videoName}`,
-  };
 }
 
 /**
@@ -272,13 +243,13 @@ function FrameGallery({
  */
 export function VideoDetails({
   video,
-  currentFolder,
+  currentFolder: _currentFolder,
   onAnalyze,
   isAnalyzing = false,
   className,
 }: VideoDetailsProps): JSX.Element {
-  const [artifacts, setArtifacts] = React.useState<VideoArtifacts | null>(null);
-  const [isLoadingArtifacts, setIsLoadingArtifacts] = React.useState(false);
+  const [frameDataUrls, setFrameDataUrls] = React.useState<(string | null)[]>([]);
+  const [isLoadingFrames, setIsLoadingFrames] = React.useState(false);
   const [thumbnailError, setThumbnailError] = React.useState(false);
 
   // Reset thumbnail error when video changes
@@ -287,73 +258,60 @@ export function VideoDetails({
   }, [video.path]);
 
   const statusInfo = getStatusInfo(video.status, isAnalyzing);
-  const isCompleted = video.status === 'completed';
   const isPending = video.status === 'pending' || video.status === 'not_tracked';
   const isIncomplete = ['frames_extracted', 'audio_extracted', 'transcribed', 'analyzed'].includes(video.status);
   const isError = video.status === 'error';
 
-  // Load artifacts when video changes (only for completed videos)
+  // Artifacts come from CLI scan - check what's available
+  const hasFrames = video.artifacts?.framePaths && video.artifacts.framePaths.length > 0;
+  const hasTranscript = !!video.artifacts?.transcriptContent;
+  const hasSummary = !!video.artifacts?.summaryContent;
+
+  // Load frame images when frame paths are available
   React.useEffect(() => {
     let cancelled = false;
 
-    async function loadArtifacts(): Promise<void> {
-      if (!isCompleted) {
-        setArtifacts(null);
+    async function loadFrameImages(): Promise<void> {
+      if (!hasFrames || !video.artifacts?.framePaths) {
+        setFrameDataUrls([]);
         return;
       }
 
-      setIsLoadingArtifacts(true);
+      setIsLoadingFrames(true);
 
       try {
-        const paths = getArtifactPaths(video.path, currentFolder);
-
-        // Load summary and transcript in parallel
-        const [summary, transcript] = await Promise.all([
-          window.electronAPI?.file.readText(paths.summaryPath) || null,
-          window.electronAPI?.file.readText(paths.transcriptPath) || null,
-        ]);
-
-        // Get frame files
-        const frameFiles = await window.electronAPI?.file.readDir(paths.framesDir) || [];
-        const jpgFiles = frameFiles
-          .filter((f: string) => f.endsWith('.jpg'))
-          .sort();
-
-        // Load frame images
-        const framePaths = jpgFiles.map((f: string) => `${paths.framesDir}/${f}`);
-        const frameDataUrls = await Promise.all(
-          framePaths.map((fp: string) => window.electronAPI?.file.readAsDataUrl(fp) || null)
+        const dataUrls = await Promise.all(
+          video.artifacts.framePaths.map((fp: string) =>
+            window.electronAPI?.file.readAsDataUrl(fp) || null
+          )
         );
 
         if (!cancelled) {
-          setArtifacts({
-            summary,
-            transcript,
-            framePaths,
-            frameDataUrls,
-          });
+          setFrameDataUrls(dataUrls);
         }
       } catch (error) {
-        console.error('Failed to load artifacts:', error);
+        console.error('Failed to load frame images:', error);
         if (!cancelled) {
-          setArtifacts(null);
+          setFrameDataUrls([]);
         }
       } finally {
         if (!cancelled) {
-          setIsLoadingArtifacts(false);
+          setIsLoadingFrames(false);
         }
       }
     }
 
-    loadArtifacts();
+    loadFrameImages();
 
     return () => {
       cancelled = true;
     };
-  }, [video.path, video.status, currentFolder, isCompleted]);
+  }, [video.path, video.artifacts?.framePaths, hasFrames]);
 
-  // Parse summary if available
-  const parsedSummary = artifacts?.summary ? parseSummary(artifacts.summary) : null;
+  // Parse summary if available (from CLI artifacts)
+  const parsedSummary = hasSummary && video.artifacts?.summaryContent
+    ? parseSummary(video.artifacts.summaryContent)
+    : null;
 
   return (
     <ScrollArea className={cn('h-full', className)}>
@@ -513,18 +471,18 @@ export function VideoDetails({
           </div>
         )}
 
-        {/* Loading artifacts */}
-        {isCompleted && isLoadingArtifacts && (
+        {/* Loading frame images */}
+        {hasFrames && isLoadingFrames && (
           <div className="flex items-center justify-center py-8">
             <div className="flex flex-col items-center gap-2 text-muted-foreground">
               <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-sm">Loading analysis results...</span>
+              <span className="text-sm">Loading frames...</span>
             </div>
           </div>
         )}
 
-        {/* Completed state: Show summary, transcript, and frames */}
-        {isCompleted && artifacts && !isLoadingArtifacts && (
+        {/* Show artifacts when available (summary, transcript, frames) */}
+        {(hasSummary || hasTranscript || hasFrames) && (
           <>
             {/* Summary */}
             {parsedSummary && (
@@ -546,20 +504,20 @@ export function VideoDetails({
             )}
 
             {/* Extracted Frames */}
-            {artifacts.frameDataUrls.length > 0 && (
+            {frameDataUrls.length > 0 && !isLoadingFrames && (
               <div className="rounded-lg border border-border bg-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Image className="h-4 w-4 text-muted-foreground" />
                   <h3 className="font-medium text-sm">
-                    Extracted Frames ({artifacts.frameDataUrls.filter(Boolean).length})
+                    Extracted Frames ({frameDataUrls.filter(Boolean).length})
                   </h3>
                 </div>
-                <FrameGallery frameDataUrls={artifacts.frameDataUrls} />
+                <FrameGallery frameDataUrls={frameDataUrls} />
               </div>
             )}
 
             {/* Transcript */}
-            {artifacts.transcript && (
+            {hasTranscript && (
               <div className="rounded-lg border border-border bg-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-muted-foreground" />
@@ -567,7 +525,7 @@ export function VideoDetails({
                 </div>
                 <div className="max-h-64 overflow-y-auto">
                   <p className="text-sm whitespace-pre-wrap text-muted-foreground">
-                    {artifacts.transcript}
+                    {video.artifacts?.transcriptContent}
                   </p>
                 </div>
               </div>

@@ -212,12 +212,13 @@ export function spawnCLIWithJson(
     fullArgs,
     { ...options, json: true },
     (line) => {
+      // Always pass ALL output to terminal for full transparency
+      onRawOutput(line);
+
+      // Additionally parse JSON lines for progress tracking
       const jsonEvent = parseJsonLine(line);
       if (jsonEvent) {
         onJson(jsonEvent);
-      } else {
-        // Pass through non-JSON lines
-        onRawOutput(line);
       }
     },
     onStderr,
