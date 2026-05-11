@@ -461,7 +461,8 @@
         "Manual run only (not CI)",
         "Typecheck passes"
       ],
-      "phase": 4
+      "phase": 4,
+      "passes": true
     }
   ],
   "phases": [

@@ -57,7 +57,24 @@
 - Native menus: Use Electron Menu API in main process, send IPC events to renderer for actions
 - Menu event pattern: Menu click -> main process webContents.send() -> preload listener -> renderer callback
 - Recent folders menu: Dynamically rebuild entire menu when folders change using updateRecentFoldersMenu()
+- Integration tests: Use `npx tsx test/ai-integration-test.ts` to run AI validation tests (manual only, not CI)
 
+---
+
+## 2026-02-17 - US-081
+- What was implemented: AI integration test script that validates CLI output using Claude Code CLI
+- Files changed:
+  - Created: test/ai-integration-test.ts (test script with cleanup, processing, and AI validation)
+  - Modified: test/.gitignore (allow test script to be tracked)
+- **Learnings for future iterations:**
+  - Use execSync/spawn from node:child_process for running CLI commands in tests
+  - Clean artifacts (database, frames, transcripts, summaries) before test run for reproducible results
+  - Use --skip-rename flag when testing to preserve original video filename
+  - Use --whisper skip to speed up tests when audio transcription isn't the focus
+  - Claude Code CLI `--print --output-format text` outputs to stdout for programmatic parsing
+  - Parse JSON from Claude response using regex `/\{[\s\S]*\}/` to handle any surrounding text
+  - NDJSON output: Parse each line, look for event.type === 'completed' for final data
+  - Test script location: test/ directory with .gitignore allowing *.ts test files
 ---
 
 ## 2026-02-17 - US-080
