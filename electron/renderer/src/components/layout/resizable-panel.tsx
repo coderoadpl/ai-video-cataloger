@@ -60,20 +60,27 @@ const ResizablePanel = React.forwardRef<HTMLDivElement, ResizablePanelProps>(
     },
     ref
   ) => {
-    const [size, setSize] = React.useState(defaultSize);
+    // Use defaultSize as initial value and track internally
+    // The parent can read the size via onResize callback
+    const [internalSize, setInternalSize] = React.useState(defaultSize);
     const [isDragging, setIsDragging] = React.useState(false);
     const containerRef = React.useRef<HTMLDivElement>(null);
     const startPosRef = React.useRef(0);
     const startSizeRef = React.useRef(0);
+
+    // Sync internal size when defaultSize changes (e.g., from localStorage)
+    React.useEffect(() => {
+      setInternalSize(defaultSize);
+    }, [defaultSize]);
 
     const handleMouseDown = React.useCallback(
       (e: React.MouseEvent) => {
         e.preventDefault();
         setIsDragging(true);
         startPosRef.current = direction === 'horizontal' ? e.clientX : e.clientY;
-        startSizeRef.current = size;
+        startSizeRef.current = internalSize;
       },
-      [direction, size]
+      [direction, internalSize]
     );
 
     React.useEffect(() => {
@@ -88,7 +95,7 @@ const ResizablePanel = React.forwardRef<HTMLDivElement, ResizablePanelProps>(
             : startPosRef.current - currentPos;
         const newSize = Math.min(maxSize, Math.max(minSize, startSizeRef.current + delta));
 
-        setSize(newSize);
+        setInternalSize(newSize);
         onResize?.(newSize);
 
         // Auto-collapse if dragged below minimum
@@ -121,8 +128,8 @@ const ResizablePanel = React.forwardRef<HTMLDivElement, ResizablePanelProps>(
       if (collapsed) {
         return direction === 'horizontal' ? { width: 0 } : { height: 0 };
       }
-      return direction === 'horizontal' ? { width: size } : { height: size };
-    }, [collapsed, direction, size]);
+      return direction === 'horizontal' ? { width: internalSize } : { height: internalSize };
+    }, [collapsed, direction, internalSize]);
 
     return (
       <div

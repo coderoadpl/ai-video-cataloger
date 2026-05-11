@@ -11,6 +11,8 @@ interface AppLayoutProps {
   className?: string;
   terminalCollapsed?: boolean;
   onTerminalCollapsedChange?: (collapsed: boolean) => void;
+  terminalSize?: number;
+  onTerminalSizeChange?: (size: number) => void;
   sidebarCollapsed?: boolean;
   onSidebarCollapsedChange?: (collapsed: boolean) => void;
   onTerminalClear?: () => void;
@@ -22,9 +24,9 @@ interface AppLayoutProps {
 const SIDEBAR_DEFAULT_SIZE = 280;
 const SIDEBAR_MIN_SIZE = 200;
 const SIDEBAR_MAX_SIZE = 400;
-const TERMINAL_DEFAULT_SIZE = 200;
-const TERMINAL_MIN_SIZE = 100;
-const TERMINAL_MAX_SIZE = 500;
+export const TERMINAL_DEFAULT_SIZE = 200;
+export const TERMINAL_MIN_SIZE = 100;
+export const TERMINAL_MAX_SIZE = 500;
 
 const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
   (
@@ -35,6 +37,8 @@ const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
       className,
       terminalCollapsed = false,
       onTerminalCollapsedChange,
+      terminalSize,
+      onTerminalSizeChange,
       sidebarCollapsed = false,
       onSidebarCollapsedChange,
       onTerminalClear,
@@ -45,6 +49,10 @@ const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
     ref
   ) => {
     const [copied, setCopied] = React.useState(false);
+
+    const handleTerminalResize = React.useCallback((size: number) => {
+      onTerminalSizeChange?.(size);
+    }, [onTerminalSizeChange]);
 
     const handleTerminalToggle = React.useCallback(() => {
       onTerminalCollapsedChange?.(!terminalCollapsed);
@@ -196,11 +204,12 @@ const AppLayout = React.forwardRef<HTMLDivElement, AppLayoutProps>(
           {/* Terminal content (resizable) */}
           <ResizablePanel
             direction="vertical"
-            defaultSize={TERMINAL_DEFAULT_SIZE}
+            defaultSize={terminalSize ?? TERMINAL_DEFAULT_SIZE}
             minSize={TERMINAL_MIN_SIZE}
             maxSize={TERMINAL_MAX_SIZE}
             collapsed={terminalCollapsed}
             className="bg-[#1e1e1e]"
+            onResize={handleTerminalResize}
           >
             {terminal}
           </ResizablePanel>

@@ -12,7 +12,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { TerminalLog, LogLine, createLogLine } from '@/components/terminal-log';
-import { AppLayout } from '@/components/layout';
+import { AppLayout, TERMINAL_DEFAULT_SIZE } from '@/components/layout';
 import { VideoList, VideoItem, VideoArtifacts } from '@/components/video-list';
 import { VideoDetails } from '@/components/video-details';
 import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2, XCircle, Play, CheckCircle2, XOctagon, HardDrive } from 'lucide-react';
@@ -99,10 +99,40 @@ interface FolderScanResult {
   };
 }
 
+// LocalStorage keys for persisting UI state
+const STORAGE_KEY_TERMINAL_COLLAPSED = 'ai-video-cataloger:terminal-collapsed';
+const STORAGE_KEY_TERMINAL_SIZE = 'ai-video-cataloger:terminal-size';
+
+// Check if we're in development mode
+const isDevelopment = import.meta.env.DEV;
+
 function App(): JSX.Element {
   const [appVersion, setAppVersion] = useState<string>('');
   const [logLines, setLogLines] = useState<LogLine[]>([]);
-  const [terminalCollapsed, setTerminalCollapsed] = useState(false);
+
+  // Terminal collapsed: default to collapsed in production, open in development
+  // Also check localStorage for user preference
+  const [terminalCollapsed, setTerminalCollapsed] = useState(() => {
+    const stored = localStorage.getItem(STORAGE_KEY_TERMINAL_COLLAPSED);
+    if (stored !== null) {
+      return stored === 'true';
+    }
+    // Default: collapsed in production, open in development
+    return !isDevelopment;
+  });
+
+  // Terminal size from localStorage
+  const [terminalSize, setTerminalSize] = useState(() => {
+    const stored = localStorage.getItem(STORAGE_KEY_TERMINAL_SIZE);
+    if (stored !== null) {
+      const size = parseInt(stored, 10);
+      if (!isNaN(size)) {
+        return size;
+      }
+    }
+    return TERMINAL_DEFAULT_SIZE;
+  });
+
   const [showJson, setShowJson] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [currentFolder, setCurrentFolder] = useState<string | null>(null);
@@ -135,6 +165,25 @@ function App(): JSX.Element {
     window.electronAPI?.folder.getRecent().then(setRecentFolders).catch(console.error);
     window.electronAPI?.folder.getCurrent().then(setCurrentFolder).catch(console.error);
   }, []);
+
+  // Save terminal collapsed state to localStorage
+  const handleTerminalCollapsedChange = useCallback((collapsed: boolean) => {
+    setTerminalCollapsed(collapsed);
+    localStorage.setItem(STORAGE_KEY_TERMINAL_COLLAPSED, String(collapsed));
+  }, []);
+
+  // Save terminal size to localStorage (debounced via effect)
+  const handleTerminalSizeChange = useCallback((size: number) => {
+    setTerminalSize(size);
+  }, []);
+
+  // Debounce saving terminal size to avoid too many writes
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      localStorage.setItem(STORAGE_KEY_TERMINAL_SIZE, String(terminalSize));
+    }, 300);
+    return () => clearTimeout(timeout);
+  }, [terminalSize]);
 
   const handleClear = useCallback(() => {
     setLogLines([]);
@@ -876,7 +925,11 @@ function App(): JSX.Element {
     });
 
     const cleanupToggleTerminal = window.menuAPI?.onToggleTerminal(() => {
-      setTerminalCollapsed((prev) => !prev);
+      setTerminalCollapsed((prev) => {
+        const newValue = !prev;
+        localStorage.setItem(STORAGE_KEY_TERMINAL_COLLAPSED, String(newValue));
+        return newValue;
+      });
     });
 
     const cleanupToggleSidebar = window.menuAPI?.onToggleSidebar(() => {
@@ -1168,7 +1221,9 @@ function App(): JSX.Element {
         content={mainContent}
         terminal={terminalContent}
         terminalCollapsed={terminalCollapsed}
-        onTerminalCollapsedChange={setTerminalCollapsed}
+        onTerminalCollapsedChange={handleTerminalCollapsedChange}
+        terminalSize={terminalSize}
+        onTerminalSizeChange={handleTerminalSizeChange}
         sidebarCollapsed={sidebarCollapsed}
         onSidebarCollapsedChange={setSidebarCollapsed}
         onTerminalClear={handleClear}

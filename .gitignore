@@ -1,5 +1,6 @@
 node_modules/
 dist/
+dist-electron/
 .ai-video-cataloger/
 *.log
 .DS_Store
