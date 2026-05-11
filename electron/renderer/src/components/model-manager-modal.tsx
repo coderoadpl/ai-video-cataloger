@@ -255,6 +255,65 @@ export function ModelManagerModal({
     [log, loadModels]
   );
 
+  // Set a model as active
+  const setActiveModel = useCallback(
+    async (modelName: string): Promise<boolean> => {
+      log(`Setting active model: ${modelName}...`, 'info');
+
+      return new Promise((resolve) => {
+        let success = false;
+
+        const handleStdout = (_spawnId: string, line: string): void => {
+          log(line, 'info');
+        };
+
+        const handleJson = (
+          _spawnId: string,
+          event: { type: string; error?: string }
+        ): void => {
+          if (event.type === 'completed') {
+            success = true;
+            log(`Model ${modelName} is now active`, 'success');
+          } else if (event.type === 'error') {
+            log(`Failed to set active model: ${event.error}`, 'error');
+          }
+        };
+
+        const handleExit = (_spawnId: string, code: number | null): void => {
+          cleanupListeners();
+
+          if (code === 0 && success) {
+            // Refresh model list to show new active status
+            loadModels();
+            resolve(true);
+          } else {
+            resolve(false);
+          }
+        };
+
+        const cleanupStdout = window.electronAPI?.cli.onStdout(handleStdout);
+        const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
+        const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
+
+        const cleanupListeners = (): void => {
+          cleanupStdout?.();
+          cleanupJson?.();
+          cleanupExit?.();
+        };
+
+        // Spawn use command
+        window.electronAPI?.cli
+          .spawn(['models', 'use', modelName, '--json'], { json: true })
+          .catch((err: Error) => {
+            cleanupListeners();
+            log(`Failed to set active model ${modelName}: ${err.message}`, 'error');
+            resolve(false);
+          });
+      });
+    },
+    [log, loadModels]
+  );
+
   // Delete a model
   const deleteModel = useCallback(
     async (modelName: string): Promise<boolean> => {
@@ -338,8 +397,24 @@ export function ModelManagerModal({
     [downloadModel]
   );
 
+  // Track if setting active model
+  const [isSettingActive, setIsSettingActive] = useState<string | null>(null);
+
+  // Handle setting active model
+  const handleSetActive = useCallback(
+    async (modelName: string) => {
+      if (!models.find((m) => m.name === modelName)?.downloaded) return;
+      if (models.find((m) => m.name === modelName)?.active) return; // Already active
+
+      setIsSettingActive(modelName);
+      await setActiveModel(modelName);
+      setIsSettingActive(null);
+    },
+    [models, setActiveModel]
+  );
+
   // Check if any operation is in progress
-  const isOperationInProgress = downloadProgress !== null || isDeleting !== null;
+  const isOperationInProgress = downloadProgress !== null || isDeleting !== null || isSettingActive !== null;
 
   return (
     <>
@@ -378,11 +453,26 @@ export function ModelManagerModal({
                 {models.map((model) => (
                   <div
                     key={model.name}
-                    className="flex items-center justify-between p-3 rounded-lg border border-border bg-card hover:bg-muted/30 transition-colors"
+                    className={`flex items-center justify-between p-3 rounded-lg border border-border bg-card transition-colors ${
+                      model.downloaded && !model.active && !isOperationInProgress
+                        ? 'hover:bg-muted/30 cursor-pointer'
+                        : model.active
+                        ? 'border-primary/50 bg-primary/5'
+                        : ''
+                    }`}
+                    onClick={() => {
+                      if (model.downloaded && !model.active && !isOperationInProgress) {
+                        handleSetActive(model.name);
+                      }
+                    }}
+                    role={model.downloaded && !model.active ? 'button' : undefined}
+                    tabIndex={model.downloaded && !model.active ? 0 : undefined}
                   >
                     <div className="flex items-center gap-3 flex-1 min-w-0">
                       {/* Status indicator */}
-                      {model.downloaded ? (
+                      {isSettingActive === model.name ? (
+                        <Loader2 className="h-5 w-5 animate-spin text-primary flex-shrink-0" />
+                      ) : model.downloaded ? (
                         <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
                       ) : (
                         <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
@@ -399,7 +489,7 @@ export function ModelManagerModal({
                           )}
                         </div>
                         <p className="text-sm text-muted-foreground">
-                          {model.size} • {model.downloaded ? 'Downloaded' : 'Not downloaded'}
+                          {model.size} • {model.downloaded ? (model.active ? 'Downloaded' : 'Click to activate') : 'Not downloaded'}
                         </p>
                       </div>
                     </div>
