@@ -19,7 +19,9 @@
     "electron:build:main": "tsc --project electron/main/tsconfig.json",
     "electron:build:preload": "tsc --project electron/preload/tsconfig.json && cp electron/preload/package.json dist-electron/preload/",
     "electron:build:renderer": "cd electron/renderer && vite build",
-    "electron:package": "npm run electron:build && electron-builder --config electron-builder.config.js"
+    "electron:package": "npm run electron:build && electron-builder --config electron-builder.config.js",
+    "test": "npm run build && npx tsx test/deterministic-test.ts",
+    "test:e2e": "npm run build && npx tsx test/ai-integration-test.ts"
   },
   "keywords": [
     "video",
