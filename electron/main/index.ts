@@ -39,7 +39,7 @@ function createWindow(): void {
       preload: preloadPath,
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true,
+      sandbox: false, // Required for CommonJS preload to work with "type": "module" parent
     },
   });
 
@@ -54,7 +54,7 @@ function createWindow(): void {
   // Load the renderer
   if (isDev) {
     // In development, load from Vite dev server
-    const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:5173';
+    const devServerUrl = process.env.VITE_DEV_SERVER_URL || 'http://localhost:9473';
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
   } else {

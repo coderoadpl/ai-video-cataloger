@@ -785,6 +785,13 @@ function App(): JSX.Element {
     setSelectedVideo(video);
   }, []);
 
+  // Memoized log message handler for modals
+  const handleModalLogMessage = useCallback((message: string, type?: 'info' | 'success' | 'error') => {
+    const prefix = type === 'success' ? '\x1b[32m✓\x1b[0m ' : type === 'error' ? '\x1b[31m✗\x1b[0m ' : '\x1b[36m';
+    const suffix = type === 'info' ? '\x1b[0m' : '';
+    addLogLine(`${prefix}${message}${suffix}`, type === 'error' ? 'error' : type === 'success' ? 'success' : 'info');
+  }, [addLogLine]);
+
   // Handle folder selection
   const handleOpenFolder = useCallback(async () => {
     const selectedPath = await window.electronAPI?.folder.showPicker();
@@ -1318,22 +1325,14 @@ function App(): JSX.Element {
       <ModelManagerModal
         open={showModelManager}
         onOpenChange={setShowModelManager}
-        onLogMessage={(message, type) => {
-          const prefix = type === 'success' ? '\x1b[32m✓\x1b[0m ' : type === 'error' ? '\x1b[31m✗\x1b[0m ' : '\x1b[36m';
-          const suffix = type === 'info' ? '\x1b[0m' : '';
-          addLogLine(`${prefix}${message}${suffix}`, type === 'error' ? 'error' : type === 'success' ? 'success' : 'info');
-        }}
+        onLogMessage={handleModalLogMessage}
       />
 
       {/* Prerequisites Modal */}
       <PrerequisitesModal
         open={showPrerequisites}
         onOpenChange={setShowPrerequisites}
-        onLogMessage={(message, type) => {
-          const prefix = type === 'success' ? '\x1b[32m✓\x1b[0m ' : type === 'error' ? '\x1b[31m✗\x1b[0m ' : '\x1b[36m';
-          const suffix = type === 'info' ? '\x1b[0m' : '';
-          addLogLine(`${prefix}${message}${suffix}`, type === 'error' ? 'error' : type === 'success' ? 'success' : 'info');
-        }}
+        onLogMessage={handleModalLogMessage}
       />
     </>
   );

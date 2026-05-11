@@ -14,10 +14,10 @@
     "dev": "tsx src/index.ts",
     "electron:dev": "concurrently \"npm run electron:dev:vite\" \"npm run electron:dev:electron\"",
     "electron:dev:vite": "cd electron/renderer && vite",
-    "electron:dev:electron": "tsc --project electron/main/tsconfig.json && tsc --project electron/preload/tsconfig.json && NODE_ENV=development electron .",
+    "electron:dev:electron": "tsc --project electron/main/tsconfig.json && tsc --project electron/preload/tsconfig.json && cp electron/preload/package.json dist-electron/preload/ && NODE_ENV=development electron .",
     "electron:build": "npm run electron:build:renderer && npm run electron:build:main && npm run electron:build:preload",
     "electron:build:main": "tsc --project electron/main/tsconfig.json",
-    "electron:build:preload": "tsc --project electron/preload/tsconfig.json",
+    "electron:build:preload": "tsc --project electron/preload/tsconfig.json && cp electron/preload/package.json dist-electron/preload/",
     "electron:build:renderer": "cd electron/renderer && vite build",
     "electron:package": "npm run electron:build && electron-builder --config electron-builder.config.js"
   },

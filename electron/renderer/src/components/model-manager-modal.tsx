@@ -96,10 +96,15 @@ export function ModelManagerModal({
   const loadModels = useCallback(async () => {
     setIsLoading(true);
     setError(null);
+    log('Loading Whisper models...', 'info');
 
     return new Promise<void>((resolve) => {
       let modelList: WhisperModelInfo[] = [];
       let hasError = false;
+
+      const handleStdout = (_spawnId: string, line: string): void => {
+        log(line, 'info');
+      };
 
       const handleJson = (
         _spawnId: string,
@@ -113,6 +118,7 @@ export function ModelManagerModal({
         } else if (event.type === 'error') {
           hasError = true;
           setError(event.error || 'Failed to load models');
+          log(`Error: ${event.error || 'Failed to load models'}`, 'error');
         }
       };
 
@@ -122,16 +128,20 @@ export function ModelManagerModal({
 
         if (!hasError && code === 0 && modelList.length > 0) {
           setModels(modelList);
+          log(`Found ${modelList.length} Whisper model(s)`, 'success');
         } else if (!hasError && modelList.length === 0) {
           setError('No models found');
+          log('No models found', 'error');
         }
         resolve();
       };
 
+      const cleanupStdout = window.electronAPI?.cli.onStdout(handleStdout);
       const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
       const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
 
       const cleanupListeners = (): void => {
+        cleanupStdout?.();
         cleanupJson?.();
         cleanupExit?.();
       };
@@ -139,14 +149,15 @@ export function ModelManagerModal({
       // Spawn models list command
       window.electronAPI?.cli
         .spawn(['models', 'list', '--json'], { json: true })
-        .catch(() => {
+        .catch((err: Error) => {
           cleanupListeners();
           setIsLoading(false);
           setError('Failed to run models command');
+          log(`Failed to run models command: ${err.message}`, 'error');
           resolve();
         });
     });
-  }, []);
+  }, [log]);
 
   // Load models when modal opens
   useEffect(() => {
@@ -169,6 +180,10 @@ export function ModelManagerModal({
 
       return new Promise((resolve) => {
         let success = false;
+
+        const handleStdout = (_spawnId: string, line: string): void => {
+          log(line, 'info');
+        };
 
         const handleJson = (
           _spawnId: string,
@@ -216,10 +231,12 @@ export function ModelManagerModal({
           }
         };
 
+        const cleanupStdout = window.electronAPI?.cli.onStdout(handleStdout);
         const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
         const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
 
         const cleanupListeners = (): void => {
+          cleanupStdout?.();
           cleanupJson?.();
           cleanupExit?.();
         };
@@ -227,10 +244,10 @@ export function ModelManagerModal({
         // Spawn download command
         window.electronAPI?.cli
           .spawn(['models', 'download', modelName, '--json'], { json: true })
-          .catch(() => {
+          .catch((err: Error) => {
             cleanupListeners();
             setDownloadProgress(null);
-            log(`Failed to start download for ${modelName}`, 'error');
+            log(`Failed to start download for ${modelName}: ${err.message}`, 'error');
             resolve(false);
           });
       });
@@ -246,6 +263,10 @@ export function ModelManagerModal({
 
       return new Promise((resolve) => {
         let success = false;
+
+        const handleStdout = (_spawnId: string, line: string): void => {
+          log(line, 'info');
+        };
 
         const handleJson = (
           _spawnId: string,
@@ -272,10 +293,12 @@ export function ModelManagerModal({
           }
         };
 
+        const cleanupStdout = window.electronAPI?.cli.onStdout(handleStdout);
         const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
         const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
 
         const cleanupListeners = (): void => {
+          cleanupStdout?.();
           cleanupJson?.();
           cleanupExit?.();
         };
@@ -283,10 +306,10 @@ export function ModelManagerModal({
         // Spawn delete command with --force
         window.electronAPI?.cli
           .spawn(['models', 'delete', modelName, '--force', '--json'], { json: true })
-          .catch(() => {
+          .catch((err: Error) => {
             cleanupListeners();
             setIsDeleting(null);
-            log(`Failed to delete model ${modelName}`, 'error');
+            log(`Failed to delete model ${modelName}: ${err.message}`, 'error');
             resolve(false);
           });
       });
