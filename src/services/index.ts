@@ -3,7 +3,6 @@
  */
 
 export { checkPrerequisites, type PrerequisiteOptions } from './prerequisites.js';
-export { scanDirectory, type ScanResult, type ScanOptions } from './scanner.js';
 export { extractFrames, getFramesDir, checkExistingFrames } from './frames.js';
 export {
   extractAudio,

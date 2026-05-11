@@ -1,9 +1,9 @@
-# Ignore all test artifacts
-*
+# Ignore all test artifacts (frames, transcripts, summaries, database)
+frames/
+transcripts/
+summaries/
+.ai-video-cataloger/
+*.log
 
-# But keep these files
-!.gitignore
-!.gitkeep
+# Keep video files for e2e tests
 !BigBuckBunny480p30s.mp4
-!ai-integration-test.ts
-!deterministic-test.ts

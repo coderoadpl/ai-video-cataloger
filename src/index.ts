@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, scanDirectory, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, runInteractiveMenu, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, checkForNestedDatabasesAndError, scanFolder, displayScanResult, runDoctor, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, scanFolder, displayScanResult, runDoctor, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -49,7 +49,7 @@ let cliOptions: CliOptions = {
   json: false,
 };
 
-// Progress tracking
+// Progress tracking for single video processing
 interface ProcessingStats {
   totalVideos: number;
   currentIndex: number;
@@ -75,12 +75,6 @@ function logVerbose(message: string): void {
   }
 }
 
-/**
- * Get progress prefix showing current video position (e.g., "[1/5]")
- */
-function getProgressPrefix(): string {
-  return chalk.blue(`[${processingStats.currentIndex}/${processingStats.totalVideos}]`);
-}
 
 /**
  * Log current step being processed
@@ -107,176 +101,12 @@ function logStep(step: string, videoName: string): void {
       data: { video: videoName, stepNumber, totalSteps: 5 },
     });
   } else {
-    console.log(`\n${getProgressPrefix()} ${chalk.bold(step)} - ${chalk.cyan(videoName)}`);
+    const progressPrefix = chalk.blue(`[${processingStats.currentIndex}/${processingStats.totalVideos}]`);
+    console.log(`\n${progressPrefix} ${chalk.bold(step)} - ${chalk.cyan(videoName)}`);
   }
 }
 
-/**
- * Display final processing summary
- */
-function displaySummary(): void {
-  console.log('\n' + chalk.bold('═══════════════════════════════════════════════════════════'));
-  console.log(chalk.bold('                      Processing Summary'));
-  console.log(chalk.bold('═══════════════════════════════════════════════════════════\n'));
 
-  // Success count
-  const successCount = processingStats.processedCount;
-  if (successCount > 0) {
-    console.log(chalk.green(`  ✓ ${successCount} video${successCount === 1 ? '' : 's'} processed successfully`));
-  }
-
-  // Error count
-  if (processingStats.errorCount > 0) {
-    console.log(chalk.red(`  ✗ ${processingStats.errorCount} video${processingStats.errorCount === 1 ? '' : 's'} failed`));
-
-    // List errors
-    console.log(chalk.red('\n  Errors:'));
-    for (const error of processingStats.errors) {
-      console.log(chalk.red(`    • ${error.videoName}: ${error.error}`));
-    }
-  }
-
-  // No videos processed at all
-  if (successCount === 0 && processingStats.errorCount === 0) {
-    console.log(chalk.yellow('  No videos were processed'));
-  }
-
-  console.log('\n' + chalk.bold('═══════════════════════════════════════════════════════════\n'));
-}
-
-async function run(directory: string, options: CliOptions): Promise<void> {
-  cliOptions = options;
-
-  // Emit started event for JSON mode
-  emitStarted('process', {
-    directory,
-    options: {
-      frames: options.frames,
-      skipRename: options.skipRename,
-      retryErrors: options.retryErrors,
-      timeout: options.timeout,
-      whisper: options.whisper,
-      whisperModel: options.whisperModel,
-    },
-  });
-
-  if (cliOptions.verbose && !isJsonMode()) {
-    console.log(chalk.gray('[verbose] Verbose mode enabled'));
-    console.log(chalk.gray(`[verbose] Options: frames=${options.frames}, skipRename=${options.skipRename}, retryErrors=${options.retryErrors}, timeout=${options.timeout}s, whisper=${options.whisper}, whisperModel=${options.whisperModel}`));
-  }
-
-  // Validate OPENAI_API_KEY if using API mode
-  if (cliOptions.whisper === 'api') {
-    if (!process.env.OPENAI_API_KEY) {
-      if (isJsonMode()) {
-        emitError('OPENAI_API_KEY environment variable is required when using --whisper api', { code: 'MISSING_API_KEY' });
-      } else {
-        console.error(chalk.red('\n✗ Error: OPENAI_API_KEY environment variable is required when using --whisper api'));
-        console.error(chalk.gray('  Set it with: export OPENAI_API_KEY=your-api-key'));
-      }
-      process.exit(1);
-    }
-    logVerbose('OPENAI_API_KEY found');
-  }
-
-  // Check for nested databases before proceeding
-  const canProceed = checkForNestedDatabasesAndError(directory);
-  if (!canProceed) {
-    process.exit(1);
-  }
-
-  // Check prerequisites
-  const allPrerequisitesMet = await checkPrerequisites({ whisperMode: cliOptions.whisper });
-
-  if (!allPrerequisitesMet) {
-    if (isJsonMode()) {
-      emitError('Prerequisites check failed', { code: 'PREREQUISITES_FAILED' });
-    }
-    process.exit(1);
-  }
-
-  // Initialize database
-  await initDatabase();
-
-  // Register cleanup handler
-  process.on('exit', () => {
-    closeDatabase();
-  });
-
-  logVerbose(`Scanning directory: ${directory}`);
-
-  // Scan directory for videos
-  const scanResult = await scanDirectory(directory, { retryErrors: cliOptions.retryErrors });
-
-  // Combine new, resuming, and retrying videos for processing
-  const allVideos = [...scanResult.retryingVideos, ...scanResult.resumingVideos, ...scanResult.newVideos];
-
-  // Exit gracefully if no videos to process
-  if (allVideos.length === 0) {
-    if (scanResult.totalFound === 0) {
-      emitCompleted({ videosProcessed: 0, totalFound: 0 });
-      process.exit(0);
-    }
-    // All videos already completed
-    logHuman('\nNothing to do.');
-    emitCompleted({ videosProcessed: 0, totalFound: scanResult.totalFound, message: 'All videos already completed' });
-    process.exit(0);
-  }
-
-  // Initialize processing stats
-  processingStats = {
-    totalVideos: allVideos.length,
-    currentIndex: 0,
-    processedCount: 0,
-    errorCount: 0,
-    errors: [],
-  };
-
-  // Process each video
-  logHuman(chalk.blue(`\nProcessing ${allVideos.length} video${allVideos.length === 1 ? '' : 's'}...\n`));
-  emitProgress('scanning', { total: allVideos.length, data: { totalFound: scanResult.totalFound } });
-
-  for (const video of allVideos) {
-    processingStats.currentIndex++;
-
-    try {
-      await processVideo(video);
-      processingStats.processedCount++;
-    } catch (error) {
-      // Track the error for summary
-      const errorMessage = error instanceof Error ? error.message : String(error);
-      processingStats.errorCount++;
-      processingStats.errors.push({
-        videoName: video.original_name,
-        error: errorMessage,
-      });
-      // Emit error event for this video
-      emitProgress('video_error', {
-        current: processingStats.currentIndex,
-        total: processingStats.totalVideos,
-        data: { video: video.original_name, error: errorMessage },
-      });
-      // Update video status to 'error' with error message in database
-      updateVideoStatus(video.id, 'error', errorMessage);
-      // Best-effort cleanup of temporary audio file on error
-      const tempAudioPath = getTempAudioPath(video.original_path);
-      cleanupTempAudio(tempAudioPath);
-      // Continue with next video
-      continue;
-    }
-  }
-
-  // Display final summary or emit completed event
-  if (isJsonMode()) {
-    emitCompleted({
-      videosProcessed: processingStats.processedCount,
-      errorCount: processingStats.errorCount,
-      errors: processingStats.errors,
-    });
-  } else {
-    displaySummary();
-  }
-}
 
 async function main(): Promise<void> {
   const program = new Command();
@@ -284,87 +114,7 @@ async function main(): Promise<void> {
   program
     .name('ai-video-cataloger')
     .description('CLI tool that analyzes videos, transcribes with local Whisper, generates summaries via Claude Code CLI, and renames files based on content')
-    .version(packageJson.version)
-    .argument('[directory]', 'Directory to scan for videos', process.cwd())
-    .option('-f, --frames <number>', 'Number of frames to extract', (value) => parseInt(value, 10), 3)
-    .option('-s, --skip-rename', 'Only generate summaries, do not rename files')
-    .option('-v, --verbose', 'Show detailed output', false)
-    .option('-r, --retry-errors', 'Re-process videos that previously failed with errors', false)
-    .option('-t, --timeout <seconds>', 'Timeout for Claude analysis in seconds', (value) => parseInt(value, 10), 120)
-    .option('-w, --whisper <mode>', 'Transcription mode: local, api, or skip', (value: string) => {
-      const validModes = ['local', 'api', 'skip'];
-      if (!validModes.includes(value)) {
-        console.error(chalk.red(`\nInvalid whisper mode: ${value}`));
-        console.error(chalk.gray(`  Valid modes: ${validModes.join(', ')}`));
-        process.exit(1);
-      }
-      return value as WhisperMode;
-    }, 'local')
-    .option('--skip-transcribe', 'Skip transcription (alias for --whisper skip)', false)
-    .option('-y, --yes', 'Skip interactive menu and use defaults', false)
-    .option('--non-interactive', 'Skip interactive menu (alias for --yes)', false)
-    .option('--json', 'Output results as newline-delimited JSON events', false)
-    .action(async (directory: string, options: { frames: number; skipRename: boolean; verbose: boolean; retryErrors: boolean; timeout: number; whisper: WhisperMode; skipTranscribe: boolean; yes: boolean; nonInteractive: boolean; json: boolean }) => {
-      // Handle --skip-transcribe alias
-      const whisperMode = options.skipTranscribe ? 'skip' : options.whisper;
-      // Handle --non-interactive alias
-      const skipMenu = options.yes || options.nonInteractive;
-
-      // Enable JSON output mode if --json flag is set
-      if (options.json) {
-        setJsonMode(true);
-      }
-
-      // Check if any configuration flags were explicitly provided
-      const hasConfigFlags = process.argv.some(arg =>
-        arg.startsWith('-f') || arg.startsWith('--frames') ||
-        arg.startsWith('-s') || arg === '--skip-rename' ||
-        arg.startsWith('-r') || arg === '--retry-errors' ||
-        arg.startsWith('-t') || arg.startsWith('--timeout') ||
-        arg.startsWith('-w') || arg.startsWith('--whisper') ||
-        arg === '--skip-transcribe' ||
-        arg === '--json'
-      );
-
-      // If running without any flags and not --yes, show interactive menu
-      // JSON mode also skips the interactive menu
-      if (!skipMenu && !hasConfigFlags && !options.json) {
-        // Initialize database early so menu can check for errored videos
-        await initDatabase(directory);
-
-        const defaultSettings = {
-          frames: options.frames,
-          skipRename: options.skipRename,
-          whisper: whisperMode,
-          whisperModel: 'base' as WhisperModel,
-          timeout: options.timeout,
-          retryErrors: false,
-        };
-
-        const menuResult = await runInteractiveMenu(directory, defaultSettings);
-
-        if (menuResult === null) {
-          // User chose to exit
-          process.exit(0);
-        }
-
-        // Use settings from menu
-        await run(directory, {
-          frames: menuResult.frames,
-          skipRename: menuResult.skipRename,
-          verbose: options.verbose,
-          retryErrors: menuResult.retryErrors,
-          timeout: menuResult.timeout,
-          whisper: menuResult.whisper,
-          whisperModel: menuResult.whisperModel,
-          yes: true,
-          json: options.json,
-        });
-      } else {
-        // Run directly with CLI options
-        await run(directory, { ...options, whisper: whisperMode, whisperModel: 'base', yes: skipMenu, json: options.json });
-      }
-    });
+    .version(packageJson.version);
 
   // Models subcommand
   const modelsCommand = program
