@@ -138,14 +138,15 @@ function parseSummary(summaryText: string): {
   for (const line of lines) {
     const trimmed = line.trim();
 
-    if (trimmed.startsWith('DESCRIPTION:')) {
+    // Once in FULL ANALYSIS section, capture everything
+    if (inFullAnalysis) {
+      fullAnalysis += line + '\n';
+    } else if (trimmed.startsWith('FULL ANALYSIS:')) {
+      inFullAnalysis = true;
+    } else if (trimmed.startsWith('DESCRIPTION:')) {
       description = trimmed.substring('DESCRIPTION:'.length).trim();
     } else if (trimmed.startsWith('SUGGESTED FILENAME:')) {
       suggestedFilename = trimmed.substring('SUGGESTED FILENAME:'.length).trim();
-    } else if (trimmed.startsWith('FULL ANALYSIS:')) {
-      inFullAnalysis = true;
-    } else if (inFullAnalysis) {
-      fullAnalysis += line + '\n';
     }
   }
 
