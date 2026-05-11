@@ -445,7 +445,8 @@
         "Keyboard shortcuts (Cmd+O, Cmd+,, etc.)",
         "Typecheck passes"
       ],
-      "phase": 4
+      "phase": 4,
+      "passes": true
     },
     {
       "id": "US-081",

@@ -54,7 +54,30 @@
 - Prerequisites Modal: Use CLI `doctor --json`, parse dependencies array from completed event data
 - Dependency status display: Show green CheckCircle2 for available, red XCircle for missing
 - Source badges: Show "bundled" or "system" label for available dependencies
+- Native menus: Use Electron Menu API in main process, send IPC events to renderer for actions
+- Menu event pattern: Menu click -> main process webContents.send() -> preload listener -> renderer callback
+- Recent folders menu: Dynamically rebuild entire menu when folders change using updateRecentFoldersMenu()
 
+---
+
+## 2026-02-17 - US-080
+- What was implemented: Native macOS menu bar with File, Edit, View, Window, and Help menus
+- Files changed:
+  - Created: electron/main/menu.ts (createApplicationMenu, updateRecentFoldersMenu functions)
+  - Modified: electron/main/index.ts (import and initialize menu on app ready)
+  - Modified: electron/main/ipc-handlers.ts (update menu when recent folders change)
+  - Modified: electron/preload/preload.ts (menuAPI with event listeners for menu actions)
+  - Modified: electron/renderer/src/vite-env.d.ts (MenuAPI interface types)
+  - Modified: electron/renderer/src/App.tsx (useEffect for menu event listeners)
+- **Learnings for future iterations:**
+  - Electron Menu.setApplicationMenu() must be called for native menus to appear
+  - For macOS, App menu (with app name) is separate from File menu
+  - Menu accelerators: use CmdOrCtrl for cross-platform, Cmd for macOS-only
+  - Menu submenu items can use role (e.g., 'copy') for standard actions
+  - To update menu dynamically (like Recent Folders), rebuild entire menu template
+  - Send menu events via webContents.send() and listen in preload with ipcRenderer.on()
+  - Each menu event listener in preload should return cleanup function
+  - Use useEffect with cleanup to register/unregister menu listeners in React
 ---
 
 ## 2026-02-17 - US-079
