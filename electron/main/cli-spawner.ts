@@ -77,10 +77,34 @@ export function spawnCLI(
   // Build the command arguments
   const fullArgs = [...args];
 
+  // Filter out environment variables that can cause issues with child processes
+  // (especially debugger-related ones that can cause SIGTRAP)
+  const filteredEnv: NodeJS.ProcessEnv = {};
+  const envKeysToExclude = [
+    'ELECTRON_RUN_AS_NODE',
+    'ELECTRON_NO_ASAR',
+    'NODE_OPTIONS',
+    'NODE_DEBUG',
+    'DEBUG',
+    'VSCODE_INSPECTOR_OPTIONS',
+    'VSCODE_CLI',
+    'VSCODE_PID',
+    'VSCODE_CWD',
+    'VSCODE_NLS_CONFIG',
+    'VSCODE_CODE_CACHE_PATH',
+    'VSCODE_HANDLES_UNCAUGHT_ERRORS',
+  ];
+
+  for (const [key, value] of Object.entries(process.env)) {
+    if (!envKeysToExclude.includes(key) && !key.startsWith('VSCODE_')) {
+      filteredEnv[key] = value;
+    }
+  }
+
   // Set up the spawn options
   const spawnOptions = {
     cwd: options.cwd || process.cwd(),
-    env: { ...process.env },
+    env: filteredEnv,
     shell: false,
   };
 

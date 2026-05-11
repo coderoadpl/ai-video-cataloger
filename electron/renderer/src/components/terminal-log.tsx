@@ -1,7 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { Copy, Trash2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 
 // ANSI color codes to CSS class mapping
@@ -133,24 +132,23 @@ export function TerminalLog({
   showHeader = true,
 }: TerminalLogProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const viewportRef = useRef<HTMLDivElement>(null);
+  const bottomRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
 
   // Auto-scroll to bottom when new lines are added
   useEffect(() => {
-    if (autoScroll && !userScrolledUp && viewportRef.current) {
-      viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+    if (autoScroll && !userScrolledUp && bottomRef.current) {
+      bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
     }
   }, [lines, autoScroll, userScrolledUp]);
 
-  // Track if user has scrolled up
-  const handleScroll = useCallback(() => {
-    if (viewportRef.current) {
-      const { scrollTop, scrollHeight, clientHeight } = viewportRef.current;
-      const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
-      setUserScrolledUp(!isAtBottom);
-    }
+  // Track if user has scrolled up (check scroll container)
+  const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    const target = e.currentTarget;
+    const { scrollTop, scrollHeight, clientHeight } = target;
+    const isAtBottom = scrollHeight - scrollTop - clientHeight < 50;
+    setUserScrolledUp(!isAtBottom);
   }, []);
 
   // Copy all log contents to clipboard
@@ -224,40 +222,40 @@ export function TerminalLog({
       )}
 
       {/* Log content */}
-      <ScrollArea className="flex-1" ref={scrollRef}>
-        <div
-          ref={viewportRef}
-          className="h-full overflow-auto scrollbar-macos"
-          onScroll={handleScroll}
-        >
-          <div className="p-3 font-mono text-sm leading-relaxed">
-            {lines.length === 0 ? (
-              <div className="text-gray-500 italic">
-                No output yet. Run a command to see results here.
+      <div
+        ref={scrollRef}
+        className="flex-1 overflow-auto scrollbar-macos"
+        onScroll={handleScroll}
+      >
+        <div className="p-3 font-mono text-sm leading-relaxed">
+          {lines.length === 0 ? (
+            <div className="text-gray-500 italic">
+              No output yet. Run a command to see results here.
+            </div>
+          ) : (
+            lines.map((line) => (
+              <div
+                key={line.id}
+                className={cn(
+                  'whitespace-pre-wrap break-all',
+                  getLineTypeClasses(line.type)
+                )}
+              >
+                {parseAnsiString(line.content).map((segment, i) => (
+                  <span
+                    key={i}
+                    className={cn(segment.classes)}
+                  >
+                    {segment.text}
+                  </span>
+                ))}
               </div>
-            ) : (
-              lines.map((line) => (
-                <div
-                  key={line.id}
-                  className={cn(
-                    'whitespace-pre-wrap break-all',
-                    getLineTypeClasses(line.type)
-                  )}
-                >
-                  {parseAnsiString(line.content).map((segment, i) => (
-                    <span
-                      key={i}
-                      className={cn(segment.classes)}
-                    >
-                      {segment.text}
-                    </span>
-                  ))}
-                </div>
-              ))
-            )}
-          </div>
+            ))
+          )}
+          {/* Invisible element at the bottom for scrollIntoView */}
+          <div ref={bottomRef} />
         </div>
-      </ScrollArea>
+      </div>
 
       {/* Scroll to bottom indicator */}
       {userScrolledUp && lines.length > 0 && (
@@ -265,8 +263,8 @@ export function TerminalLog({
           className="absolute bottom-4 right-4 px-2 py-1 text-xs bg-primary text-primary-foreground rounded-md shadow-md hover:bg-primary/90 transition-colors"
           onClick={() => {
             setUserScrolledUp(false);
-            if (viewportRef.current) {
-              viewportRef.current.scrollTop = viewportRef.current.scrollHeight;
+            if (bottomRef.current) {
+              bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
             }
           }}
         >

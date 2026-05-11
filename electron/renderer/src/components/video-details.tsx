@@ -266,6 +266,12 @@ export function VideoDetails({
 }: VideoDetailsProps): JSX.Element {
   const [artifacts, setArtifacts] = React.useState<VideoArtifacts | null>(null);
   const [isLoadingArtifacts, setIsLoadingArtifacts] = React.useState(false);
+  const [thumbnailError, setThumbnailError] = React.useState(false);
+
+  // Reset thumbnail error when video changes
+  React.useEffect(() => {
+    setThumbnailError(false);
+  }, [video.path]);
 
   const statusInfo = getStatusInfo(video.status);
   const isCompleted = video.status === 'completed';
@@ -342,11 +348,12 @@ export function VideoDetails({
         <div className="flex gap-4">
           {/* Thumbnail */}
           <div className="relative w-32 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-            {video.thumbnailDataUrl ? (
+            {video.thumbnailDataUrl && !thumbnailError ? (
               <img
                 src={video.thumbnailDataUrl}
                 alt={video.filename}
                 className="w-full h-full object-cover"
+                onError={() => setThumbnailError(true)}
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
