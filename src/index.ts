@@ -7,7 +7,7 @@
  */
 
 import { Command } from 'commander';
-import { checkPrerequisites, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, getSuggestedFilenameFromSummary, cleanupTempAudio, getTempAudioPath, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, scanFolder, displayScanResult, runDoctor, type WhisperModel } from './services/index.js';
+import { checkPrerequisites, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, readSummary, cleanupTempAudio, getTempAudioPath, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, scanFolder, displayScanResult, runDoctor, CodedError, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -435,6 +435,7 @@ async function main(): Promise<void> {
         }
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : String(error);
+        const errorCode = error instanceof CodedError ? error.code : 'PROCESSING_ERROR';
         processingStats.errorCount = 1;
         processingStats.errors.push({
           videoName: fileName,
@@ -443,7 +444,7 @@ async function main(): Promise<void> {
 
         if (isJsonMode()) {
           emitError(errorMessage, {
-            code: 'PROCESSING_ERROR',
+            code: errorCode,
             data: {
               video: fileName,
               path: absolutePath,
@@ -834,7 +835,14 @@ async function processVideo(video: VideoRecord): Promise<void> {
       logStep('Renaming video', video.original_name);
       // When resuming from analyzed status, get the filename from the saved summary
       if (!suggestedFilename) {
-        suggestedFilename = getSuggestedFilenameFromSummary(video.original_path) || 'video-content';
+        const summary = readSummary(video.original_path);
+        if (!summary) {
+          throw new CodedError(
+            `Cannot rename ${video.original_name}: summary data is missing or invalid. Re-run analysis.`,
+            'ANALYSIS_PARSE_FAILED'
+          );
+        }
+        suggestedFilename = summary.suggestedFilename;
       }
       logVerbose(`Renaming to: ${suggestedFilename}`);
       await renameVideo(video, suggestedFilename);

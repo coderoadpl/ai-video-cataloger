@@ -405,8 +405,10 @@ function App(): JSX.Element {
         framePaths: null,
         transcriptContent: null,
         transcriptPath: null,
-        summaryContent: null,
+        summary: null,
         summaryPath: null,
+        thumbnailPath: null,
+        thumbnailMtime: null,
         newFilename: null,
       },
     }));

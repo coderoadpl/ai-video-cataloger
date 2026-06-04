@@ -122,68 +122,6 @@ function getStatusInfo(status: VideoStatus, isCurrentlyAnalyzing: boolean = fals
 }
 
 /**
- * Parse summary file to extract description and suggested filename
- * Handles multi-line format where section labels are on separate lines from content
- */
-function parseSummary(summaryText: string): {
-  description: string;
-  suggestedFilename: string;
-  fullAnalysis: string;
-} {
-  const lines = summaryText.split('\n');
-  let description = '';
-  let suggestedFilename = '';
-  let fullAnalysis = '';
-
-  // Track which section we're currently in
-  let currentSection: 'none' | 'description' | 'filename' | 'fullAnalysis' = 'none';
-
-  for (const line of lines) {
-    const trimmed = line.trim();
-
-    // Check for section headers
-    if (trimmed.startsWith('FULL ANALYSIS:')) {
-      currentSection = 'fullAnalysis';
-      // Capture any content on the same line
-      const sameLine = trimmed.substring('FULL ANALYSIS:'.length).trim();
-      if (sameLine) fullAnalysis += sameLine + '\n';
-    } else if (trimmed.startsWith('DESCRIPTION:')) {
-      currentSection = 'description';
-      // Capture any content on the same line
-      const sameLine = trimmed.substring('DESCRIPTION:'.length).trim();
-      if (sameLine) description = sameLine;
-    } else if (trimmed.startsWith('SUGGESTED FILENAME:')) {
-      currentSection = 'filename';
-      // Capture any content on the same line
-      const sameLine = trimmed.substring('SUGGESTED FILENAME:'.length).trim();
-      if (sameLine) suggestedFilename = sameLine;
-    } else if (trimmed.startsWith('Video:') || trimmed.startsWith('Date Analyzed:')) {
-      // Skip header lines
-      currentSection = 'none';
-    } else if (trimmed) {
-      // Non-empty line - add to current section
-      switch (currentSection) {
-        case 'description':
-          description = description ? description + ' ' + trimmed : trimmed;
-          break;
-        case 'filename':
-          suggestedFilename = suggestedFilename || trimmed;
-          break;
-        case 'fullAnalysis':
-          fullAnalysis += line + '\n';
-          break;
-      }
-    }
-  }
-
-  return {
-    description: description || 'No description available',
-    suggestedFilename,
-    fullAnalysis: fullAnalysis.trim(),
-  };
-}
-
-/**
  * MetadataRow component
  */
 function MetadataRow({
@@ -292,7 +230,11 @@ export function VideoDetails({
   // Artifacts come from CLI scan - check what's available
   const hasFrames = video.artifacts?.framePaths && video.artifacts.framePaths.length > 0;
   const hasTranscript = !!video.artifacts?.transcriptContent;
-  const hasSummary = !!video.artifacts?.summaryContent;
+  // Structured summary from CLI artifacts (summaries/NAME.json)
+  const summary = video.artifacts?.summary ?? null;
+  const hasSummary = summary !== null;
+  // A summary should exist for these statuses - show an empty state if it's missing
+  const summaryExpected = video.status === 'analyzed' || video.status === 'completed';
 
   // Load frame images when frame paths are available
   React.useEffect(() => {
@@ -334,11 +276,6 @@ export function VideoDetails({
       cancelled = true;
     };
   }, [video.path, video.artifacts?.framePaths, hasFrames]);
-
-  // Parse summary if available (from CLI artifacts)
-  const parsedSummary = hasSummary && video.artifacts?.summaryContent
-    ? parseSummary(video.artifacts.summaryContent)
-    : null;
 
   return (
     <ScrollArea className={cn('h-full', className)}>
@@ -509,24 +446,37 @@ export function VideoDetails({
         )}
 
         {/* Show artifacts when available (summary, transcript, frames) */}
-        {(hasSummary || hasTranscript || hasFrames) && (
+        {(hasSummary || hasTranscript || hasFrames || summaryExpected) && (
           <>
             {/* Summary */}
-            {parsedSummary && (
+            {summary && (
               <div className="rounded-lg border border-border bg-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <FileText className="h-4 w-4 text-muted-foreground" />
                   <h3 className="font-medium text-sm">Summary</h3>
                 </div>
-                <p className="text-sm">{parsedSummary.description}</p>
-                {parsedSummary.suggestedFilename && (
+                <p className="text-sm">{summary.description}</p>
+                {summary.suggestedFilename && (
                   <div className="text-xs text-muted-foreground">
                     <span className="font-medium">Suggested filename:</span>{' '}
                     <code className="bg-muted px-1 py-0.5 rounded">
-                      {parsedSummary.suggestedFilename}
+                      {summary.suggestedFilename}
                     </code>
                   </div>
                 )}
+              </div>
+            )}
+
+            {/* Summary missing for a video that should have one */}
+            {!summary && summaryExpected && (
+              <div className="rounded-lg border border-border bg-card p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <FileText className="h-4 w-4 text-muted-foreground" />
+                  <h3 className="font-medium text-sm">Summary</h3>
+                </div>
+                <p className="text-sm text-muted-foreground">
+                  No summary available. Run the analysis again to generate it.
+                </p>
               </div>
             )}
 
@@ -559,14 +509,14 @@ export function VideoDetails({
             )}
 
             {/* Full Analysis (collapsible) */}
-            {parsedSummary?.fullAnalysis && (
+            {summary?.fullAnalysis && (
               <details className="rounded-lg border border-border bg-card overflow-hidden">
                 <summary className="p-4 cursor-pointer hover:bg-muted/50 transition-colors">
                   <span className="font-medium text-sm">Full AI Analysis</span>
                 </summary>
                 <div className="px-4 pb-4">
                   <p className="text-sm whitespace-pre-wrap text-muted-foreground">
-                    {parsedSummary.fullAnalysis}
+                    {summary.fullAnalysis}
                   </p>
                 </div>
               </details>

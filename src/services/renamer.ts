@@ -11,7 +11,8 @@ import ora from 'ora';
 import { updateVideoStatus, updateVideoNewName } from '../db/index.js';
 import { getFramesDir } from './frames.js';
 import { getTranscriptPath } from './transcription.js';
-import { getSummaryPath } from './analyzer.js';
+import { getSummaryPath, getSummaryJsonPath } from './summary-format.js';
+import { getThumbnailPath, getThumbnailsDir } from './thumbnail.js';
 import type { VideoRecord } from '../types/index.js';
 
 export interface RenameResult {
@@ -106,6 +107,20 @@ function getNewSummaryPath(videoDir: string, newVideoBaseName: string): string {
 }
 
 /**
+ * Get the new summary JSON path based on new video name
+ */
+function getNewSummaryJsonPath(videoDir: string, newVideoBaseName: string): string {
+  return join(videoDir, 'summaries', `${newVideoBaseName}.json`);
+}
+
+/**
+ * Get the new thumbnail path based on new video name
+ */
+function getNewThumbnailPath(videoDir: string, newVideoBaseName: string): string {
+  return join(getThumbnailsDir(videoDir), `${newVideoBaseName}.jpg`);
+}
+
+/**
  * Rename a video file and its associated files (frames, transcript, summary)
  * @param video - The video record to rename
  * @param suggestedFilename - The suggested filename from Claude's analysis (kebab-case slug)
@@ -157,6 +172,16 @@ export async function renameVideo(
     const oldSummaryPath = getSummaryPath(videoPath);
     const newSummaryPath = getNewSummaryPath(videoDir, newVideoBaseName);
     renameFileIfExists(oldSummaryPath, newSummaryPath);
+
+    // 4. Summary JSON: summaries/{old-name}.json -> summaries/{new-name}.json
+    const oldSummaryJsonPath = getSummaryJsonPath(videoPath);
+    const newSummaryJsonPath = getNewSummaryJsonPath(videoDir, newVideoBaseName);
+    renameFileIfExists(oldSummaryJsonPath, newSummaryJsonPath);
+
+    // 5. Thumbnail: .ai-video-cataloger/thumbnails/{old-name}.jpg -> {new-name}.jpg
+    const oldThumbnailPath = getThumbnailPath(videoPath);
+    const newThumbnailPath = getNewThumbnailPath(videoDir, newVideoBaseName);
+    renameFileIfExists(oldThumbnailPath, newThumbnailPath);
 
     // Update database: set new name and status to completed
     updateVideoNewName(video.id, newFileName);

@@ -62,6 +62,21 @@ export interface JsonErrorEvent extends JsonEventBase {
 export type JsonEvent = JsonStartedEvent | JsonProgressEvent | JsonCompletedEvent | JsonErrorEvent;
 
 /**
+ * Error that carries a machine-readable code.
+ * The code flows to emitError so JSON consumers can react to specific failures
+ * (same codes as emitted directly, e.g. FILE_NOT_FOUND).
+ */
+export class CodedError extends Error {
+  readonly code: string;
+
+  constructor(message: string, code: string) {
+    super(message);
+    this.name = 'CodedError';
+    this.code = code;
+  }
+}
+
+/**
  * Input types (without timestamp) for emitting events
  */
 export type JsonStartedEventInput = Omit<JsonStartedEvent, 'timestamp'>;
