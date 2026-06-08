@@ -1,4 +1,11 @@
-import { ipcMain, app, BrowserWindow, dialog } from 'electron';
+import {
+  ipcMain,
+  app,
+  BrowserWindow,
+  dialog,
+  IpcMainEvent,
+  IpcMainInvokeEvent,
+} from 'electron';
 import { readFile, access } from 'node:fs/promises';
 import { extname } from 'node:path';
 import { constants } from 'node:fs';
@@ -42,26 +49,52 @@ const spawnedProcesses = new Map<string, CLIProcessHandle>();
 let nextSpawnId = 1;
 
 /**
+ * Check that an IPC event originates from the main window's webContents.
+ * Requests from any other sender (e.g. an unexpected frame or window) are
+ * considered untrusted and must be rejected by the caller.
+ */
+function isTrustedSender(event: IpcMainEvent | IpcMainInvokeEvent): boolean {
+  const mainWindow = BrowserWindow.getAllWindows()[0];
+  return (
+    mainWindow !== undefined &&
+    !mainWindow.isDestroyed() &&
+    event.sender === mainWindow.webContents
+  );
+}
+
+/**
  * Register all IPC handlers for the main process.
  */
 export function registerIPCHandlers(): void {
   // App info
-  ipcMain.handle('app:getVersion', () => {
+  ipcMain.handle('app:getVersion', (event) => {
+    if (!isTrustedSender(event)) {
+      throw new Error('Unauthorized IPC sender');
+    }
     return app.getVersion();
   });
 
   // Window controls
   ipcMain.on('window:close', (event) => {
+    if (!isTrustedSender(event)) {
+      return;
+    }
     const window = BrowserWindow.fromWebContents(event.sender);
     window?.close();
   });
 
   ipcMain.on('window:minimize', (event) => {
+    if (!isTrustedSender(event)) {
+      return;
+    }
     const window = BrowserWindow.fromWebContents(event.sender);
     window?.minimize();
   });
 
   ipcMain.on('window:maximize', (event) => {
+    if (!isTrustedSender(event)) {
+      return;
+    }
     const window = BrowserWindow.fromWebContents(event.sender);
     if (window?.isMaximized()) {
       window.unmaximize();
@@ -78,6 +111,10 @@ export function registerIPCHandlers(): void {
       args: string[],
       options: { cwd?: string; json?: boolean }
     ): Promise<{ spawnId: string; pid: number | undefined }> => {
+      if (!isTrustedSender(event)) {
+        throw new Error('Unauthorized IPC sender');
+      }
+
       const spawnId = `spawn-${nextSpawnId++}`;
       const window = BrowserWindow.fromWebContents(event.sender);
 
@@ -146,7 +183,10 @@ export function registerIPCHandlers(): void {
   );
 
   // CLI Spawner - Kill a specific spawned process
-  ipcMain.handle('cli:kill', async (_event, spawnId: string): Promise<boolean> => {
+  ipcMain.handle('cli:kill', async (event, spawnId: string): Promise<boolean> => {
+    if (!isTrustedSender(event)) {
+      return false;
+    }
     const handle = spawnedProcesses.get(spawnId);
     if (handle) {
       handle.kill();
@@ -157,12 +197,18 @@ export function registerIPCHandlers(): void {
   });
 
   // CLI Spawner - Kill a process by PID
-  ipcMain.handle('cli:killByPid', async (_event, pid: number): Promise<boolean> => {
+  ipcMain.handle('cli:killByPid', async (event, pid: number): Promise<boolean> => {
+    if (!isTrustedSender(event)) {
+      return false;
+    }
     return killProcess(pid);
   });
 
   // CLI Spawner - Kill all active processes
-  ipcMain.handle('cli:killAll', async (): Promise<void> => {
+  ipcMain.handle('cli:killAll', async (event): Promise<void> => {
+    if (!isTrustedSender(event)) {
+      return;
+    }
     // Kill tracked spawned processes
     for (const handle of spawnedProcesses.values()) {
       handle.kill();
@@ -173,12 +219,18 @@ export function registerIPCHandlers(): void {
   });
 
   // CLI Spawner - Get active process count
-  ipcMain.handle('cli:getActiveCount', async (): Promise<number> => {
+  ipcMain.handle('cli:getActiveCount', async (event): Promise<number> => {
+    if (!isTrustedSender(event)) {
+      return 0;
+    }
     return getActiveProcessCount();
   });
 
   // Folder picker - Show native folder dialog
   ipcMain.handle('folder:showPicker', async (event): Promise<string | null> => {
+    if (!isTrustedSender(event)) {
+      return null;
+    }
     const window = BrowserWindow.fromWebContents(event.sender);
     if (!window) {
       return null;
@@ -198,12 +250,18 @@ export function registerIPCHandlers(): void {
   });
 
   // Folder store - Get current folder
-  ipcMain.handle('folder:getCurrent', (): string | null => {
+  ipcMain.handle('folder:getCurrent', (event): string | null => {
+    if (!isTrustedSender(event)) {
+      return null;
+    }
     return getCurrentFolder();
   });
 
   // Folder store - Set current folder
   ipcMain.handle('folder:setCurrent', (event, folderPath: string): void => {
+    if (!isTrustedSender(event)) {
+      return;
+    }
     setCurrentFolder(folderPath);
     // Update the recent folders menu
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -212,12 +270,18 @@ export function registerIPCHandlers(): void {
   });
 
   // Folder store - Get recent folders
-  ipcMain.handle('folder:getRecent', (): string[] => {
+  ipcMain.handle('folder:getRecent', (event): string[] => {
+    if (!isTrustedSender(event)) {
+      return [];
+    }
     return getRecentFolders();
   });
 
   // Folder store - Remove a recent folder
   ipcMain.handle('folder:removeRecent', (event, folderPath: string): void => {
+    if (!isTrustedSender(event)) {
+      return;
+    }
     removeRecentFolder(folderPath);
     // Update the recent folders menu
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -227,6 +291,9 @@ export function registerIPCHandlers(): void {
 
   // Folder store - Clear recent folders
   ipcMain.handle('folder:clearRecent', (event): void => {
+    if (!isTrustedSender(event)) {
+      return;
+    }
     clearRecentFolders();
     // Update the recent folders menu
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -234,7 +301,10 @@ export function registerIPCHandlers(): void {
   });
 
   // File operations - Read file as data URL (for thumbnails)
-  ipcMain.handle('file:readAsDataUrl', async (_event, filePath: string): Promise<string | null> => {
+  ipcMain.handle('file:readAsDataUrl', async (event, filePath: string): Promise<string | null> => {
+    if (!isTrustedSender(event)) {
+      return null;
+    }
     try {
       // Check if file exists and is readable
       await access(filePath, constants.R_OK);
@@ -247,41 +317,6 @@ export function registerIPCHandlers(): void {
     } catch {
       // File doesn't exist or can't be read
       return null;
-    }
-  });
-
-  // File operations - Check if file exists
-  ipcMain.handle('file:exists', async (_event, filePath: string): Promise<boolean> => {
-    try {
-      await access(filePath, constants.F_OK);
-      return true;
-    } catch {
-      return false;
-    }
-  });
-
-  // File operations - Read text file
-  ipcMain.handle('file:readText', async (_event, filePath: string): Promise<string | null> => {
-    try {
-      // Check if file exists and is readable
-      await access(filePath, constants.R_OK);
-      const content = await readFile(filePath, 'utf-8');
-      return content;
-    } catch {
-      // File doesn't exist or can't be read
-      return null;
-    }
-  });
-
-  // File operations - Read directory contents
-  ipcMain.handle('file:readDir', async (_event, dirPath: string): Promise<string[]> => {
-    try {
-      const { readdir } = await import('node:fs/promises');
-      const entries = await readdir(dirPath);
-      return entries;
-    } catch {
-      // Directory doesn't exist or can't be read
-      return [];
     }
   });
 }

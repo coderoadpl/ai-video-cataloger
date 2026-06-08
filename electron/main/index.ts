@@ -2,6 +2,7 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { registerIPCHandlers, cleanupIPCHandlers } from './ipc-handlers.js';
+import { registerMediaScheme, registerMediaProtocolHandler } from './media-protocol.js';
 import { loadWindowState, attachWindowStateHandlers } from './window-state.js';
 import { createApplicationMenu, updateRecentFoldersMenu } from './menu.js';
 import { getRecentFolders } from './folder-store.js';
@@ -13,6 +14,9 @@ const __dirname = path.dirname(__filename);
 if (process.platform === 'win32') {
   app.setAppUserModelId(app.getName());
 }
+
+// Register the media: scheme as privileged (must happen before app.whenReady)
+registerMediaScheme();
 
 let mainWindow: BrowserWindow | null = null;
 
@@ -93,7 +97,10 @@ app.on('activate', () => {
 // Register IPC handlers before creating the window
 registerIPCHandlers();
 
-app.whenReady().then(createWindow);
+app.whenReady().then(() => {
+  registerMediaProtocolHandler();
+  createWindow();
+});
 
 // Cleanup on quit
 app.on('before-quit', () => {

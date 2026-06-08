@@ -5,6 +5,7 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { mediaUrl } from '@/lib/media-url';
 import { Button } from '@/components/ui/button';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import {
@@ -146,15 +147,13 @@ function MetadataRow({
  * FrameGallery component
  */
 function FrameGallery({
-  frameDataUrls,
+  framePaths,
 }: {
-  frameDataUrls: (string | null)[];
+  framePaths: string[];
 }): JSX.Element {
   const [selectedFrame, setSelectedFrame] = React.useState<number>(0);
 
-  const validFrames = frameDataUrls.filter((url): url is string => url !== null);
-
-  if (validFrames.length === 0) {
+  if (framePaths.length === 0) {
     return (
       <div className="flex items-center justify-center h-32 bg-muted rounded-lg">
         <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -170,18 +169,18 @@ function FrameGallery({
       {/* Main frame display */}
       <div className="relative rounded-lg overflow-hidden bg-black aspect-video">
         <img
-          src={validFrames[selectedFrame]}
+          src={mediaUrl(framePaths[selectedFrame])}
           alt={`Frame ${selectedFrame + 1}`}
           className="w-full h-full object-contain"
         />
       </div>
 
       {/* Frame thumbnails */}
-      {validFrames.length > 1 && (
+      {framePaths.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-2">
-          {validFrames.map((url, index) => (
+          {framePaths.map((framePath, index) => (
             <button
-              key={index}
+              key={framePath}
               onClick={() => setSelectedFrame(index)}
               className={cn(
                 'relative flex-shrink-0 w-20 h-12 rounded overflow-hidden border-2 transition-colors',
@@ -191,7 +190,7 @@ function FrameGallery({
               )}
             >
               <img
-                src={url}
+                src={mediaUrl(framePath)}
                 alt={`Frame ${index + 1}`}
                 className="w-full h-full object-cover"
               />
@@ -213,8 +212,6 @@ export function VideoDetails({
   isAnalyzing = false,
   className,
 }: VideoDetailsProps): JSX.Element {
-  const [frameDataUrls, setFrameDataUrls] = React.useState<(string | null)[]>([]);
-  const [isLoadingFrames, setIsLoadingFrames] = React.useState(false);
   const [thumbnailError, setThumbnailError] = React.useState(false);
 
   // Reset thumbnail error when video changes
@@ -228,54 +225,14 @@ export function VideoDetails({
   const isError = video.status === 'error';
 
   // Artifacts come from CLI scan - check what's available
-  const hasFrames = video.artifacts?.framePaths && video.artifacts.framePaths.length > 0;
+  const framePaths = video.artifacts?.framePaths ?? [];
+  const hasFrames = framePaths.length > 0;
   const hasTranscript = !!video.artifacts?.transcriptContent;
   // Structured summary from CLI artifacts (summaries/NAME.json)
   const summary = video.artifacts?.summary ?? null;
   const hasSummary = summary !== null;
   // A summary should exist for these statuses - show an empty state if it's missing
   const summaryExpected = video.status === 'analyzed' || video.status === 'completed';
-
-  // Load frame images when frame paths are available
-  React.useEffect(() => {
-    let cancelled = false;
-
-    async function loadFrameImages(): Promise<void> {
-      if (!hasFrames || !video.artifacts?.framePaths) {
-        setFrameDataUrls([]);
-        return;
-      }
-
-      setIsLoadingFrames(true);
-
-      try {
-        const dataUrls = await Promise.all(
-          video.artifacts.framePaths.map((fp: string) =>
-            window.electronAPI?.file.readAsDataUrl(fp) || null
-          )
-        );
-
-        if (!cancelled) {
-          setFrameDataUrls(dataUrls);
-        }
-      } catch (error) {
-        console.error('Failed to load frame images:', error);
-        if (!cancelled) {
-          setFrameDataUrls([]);
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingFrames(false);
-        }
-      }
-    }
-
-    loadFrameImages();
-
-    return () => {
-      cancelled = true;
-    };
-  }, [video.path, video.artifacts?.framePaths, hasFrames]);
 
   return (
     <ScrollArea className={cn('h-full', className)}>
@@ -435,16 +392,6 @@ export function VideoDetails({
           </div>
         )}
 
-        {/* Loading frame images */}
-        {hasFrames && isLoadingFrames && (
-          <div className="flex items-center justify-center py-8">
-            <div className="flex flex-col items-center gap-2 text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin" />
-              <span className="text-sm">Loading frames...</span>
-            </div>
-          </div>
-        )}
-
         {/* Show artifacts when available (summary, transcript, frames) */}
         {(hasSummary || hasTranscript || hasFrames || summaryExpected) && (
           <>
@@ -481,15 +428,15 @@ export function VideoDetails({
             )}
 
             {/* Extracted Frames */}
-            {frameDataUrls.length > 0 && !isLoadingFrames && (
+            {hasFrames && (
               <div className="rounded-lg border border-border bg-card p-4 space-y-3">
                 <div className="flex items-center gap-2">
                   <Image className="h-4 w-4 text-muted-foreground" />
                   <h3 className="font-medium text-sm">
-                    Extracted Frames ({frameDataUrls.filter(Boolean).length})
+                    Extracted Frames ({framePaths.length})
                   </h3>
                 </div>
-                <FrameGallery frameDataUrls={frameDataUrls} />
+                <FrameGallery key={video.path} framePaths={framePaths} />
               </div>
             )}
 
