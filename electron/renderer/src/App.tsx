@@ -13,25 +13,14 @@ import {
 } from '@/components/ui/alert-dialog';
 import { TerminalLog, LogLine, createLogLine } from '@/components/terminal-log';
 import { AppLayout, TERMINAL_DEFAULT_SIZE } from '@/components/layout';
-import { VideoList, VideoItem, VideoArtifacts } from '@/components/video-list';
+import { VideoList, VideoItem } from '@/components/video-list';
 import { VideoDetails } from '@/components/video-details';
 import { FolderOpen, Settings, HelpCircle, AlertTriangle, ChevronDown, Folder, Loader2, XCircle, Play, CheckCircle2, XOctagon, HardDrive } from 'lucide-react';
 import { SettingsModal } from '@/components/settings-modal';
 import { ModelManagerModal } from '@/components/model-manager-modal';
 import { PrerequisitesModal } from '@/components/prerequisites-modal';
-
-interface JsonEvent {
-  type: 'started' | 'progress' | 'completed' | 'error';
-  timestamp: string;
-  message?: string;
-  step?: string;
-  percentage?: number;
-  current?: number;
-  total?: number;
-  data?: Record<string, unknown>;
-  error?: string;
-  code?: string;
-}
+import { useCliCommand } from '@/hooks/use-cli-command';
+import { useCatalog, keyOf } from '@/hooks/use-catalog';
 
 interface NestedDbError {
   open: boolean;
@@ -67,36 +56,6 @@ interface BatchResult {
   video: VideoItem;
   success: boolean;
   error?: string;
-}
-
-// Scanned video from CLI (matches folder-scan.ts ScannedVideo)
-interface ScannedVideo {
-  path: string;
-  filename: string;
-  size: number;
-  sizeFormatted: string;
-  duration: number | null;
-  durationFormatted: string | null;
-  status: string;
-  errorMessage?: string | null;
-  contentHash: string | null;
-  artifacts: VideoArtifacts;
-}
-
-// Folder scan result from CLI
-interface FolderScanResult {
-  folder: string;
-  databasePath: string | null;
-  videos: ScannedVideo[];
-  summary: {
-    total: number;
-    tracked: number;
-    pending: number;
-    inProgress: number;
-    completed: number;
-    error: number;
-    notTracked: number;
-  };
 }
 
 // LocalStorage keys for persisting UI state
@@ -140,15 +99,12 @@ function App(): JSX.Element {
   const [nestedDbError, setNestedDbError] = useState<NestedDbError>({ open: false, paths: [] });
   const [showRecentMenu, setShowRecentMenu] = useState(false);
   const [isCheckingFolder, setIsCheckingFolder] = useState(false);
-  const [videos, setVideos] = useState<VideoItem[]>([]);
-  const [selectedVideo, setSelectedVideo] = useState<VideoItem | null>(null);
-  const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [isGeneratingThumbnails, setIsGeneratingThumbnails] = useState(false);
   const thumbnailGenerationRef = useRef<{ cancelled: boolean }>({ cancelled: false });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [processingProgress, setProcessingProgress] = useState<ProcessingProgress | null>(null);
   const [analyzingVideoPath, setAnalyzingVideoPath] = useState<string | null>(null);
-  const [currentSpawnId, setCurrentSpawnId] = useState<string | null>(null);
+  const analyzeAbortRef = useRef<AbortController | null>(null);
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({ open: false });
   const [isBatchProcessing, setIsBatchProcessing] = useState(false);
   const [batchProgress, setBatchProgress] = useState<BatchProgress | null>(null);
@@ -201,275 +157,122 @@ function App(): JSX.Element {
     setLogLines((prev) => [...prev, createLogLine(content, type)]);
   }, []);
 
+  // CLI access and the catalog (videos + selection derived from CLI scan output)
+  const runCli = useCliCommand();
+  const {
+    videos,
+    selectedVideo,
+    selectKey,
+    refresh,
+    isLoading: isLoadingVideos,
+  } = useCatalog(currentFolder, runCli, addLogLine);
+
   // Check folder for nested databases using CLI
   const checkFolderForNestedDbs = useCallback(
     async (folderPath: string): Promise<{ valid: boolean; nestedPaths: string[] }> => {
-      return new Promise((resolve) => {
-        setIsCheckingFolder(true);
-        addLogLine(`\x1b[36mChecking folder for nested databases...\x1b[0m`, 'info');
+      setIsCheckingFolder(true);
+      addLogLine(`\x1b[36mChecking folder for nested databases...\x1b[0m`, 'info');
 
-        let nestedPaths: string[] = [];
-        let hasError = false;
-
-        const handleOutput = (_spawnId: string, line: string): void => {
-          addLogLine(line, 'stdout');
-        };
-
-        const handleJson = (_spawnId: string, event: JsonEvent): void => {
-          if (event.type === 'completed' && event.data) {
-            const paths = event.data.nestedDatabases;
-            if (Array.isArray(paths) && paths.length > 0) {
-              nestedPaths = paths as string[];
+      try {
+        const { code, events } = await runCli(['check', folderPath], {
+          onJson: (event) => {
+            if (event.type === 'error') {
+              addLogLine(`\x1b[31mError:\x1b[0m ${event.error || event.message}`, 'error');
             }
-          } else if (event.type === 'error') {
-            hasError = true;
-            addLogLine(`\x1b[31mError:\x1b[0m ${event.error || event.message}`, 'error');
-          }
-        };
+          },
+          onLine: (line, source) => addLogLine(line, source),
+        });
 
-        const handleExit = (_spawnId: string, code: number | null): void => {
-          cleanupListeners();
-          setIsCheckingFolder(false);
+        const completed = events.find((event) => event.type === 'completed' && event.data);
+        const paths = completed?.data?.nestedDatabases;
+        const nestedPaths = Array.isArray(paths) ? (paths as string[]) : [];
+        const hasError = events.some((event) => event.type === 'error');
 
-          if (hasError || code !== 0) {
-            if (nestedPaths.length > 0) {
-              resolve({ valid: false, nestedPaths });
-            } else {
-              resolve({ valid: false, nestedPaths: [] });
-            }
-          } else {
-            resolve({ valid: true, nestedPaths: [] });
-          }
-        };
-
-        // Set up listeners
-        const cleanupStdout = window.electronAPI?.cli.onStdout(handleOutput);
-        const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-        const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-        const cleanupListeners = (): void => {
-          cleanupStdout?.();
-          cleanupJson?.();
-          cleanupExit?.();
-        };
-
-        // Spawn the check command
-        window.electronAPI?.cli
-          .spawn(['check', folderPath], { json: true })
-          .catch((err: Error) => {
-            addLogLine(`\x1b[31mError:\x1b[0m Failed to run check: ${err.message}`, 'error');
-            cleanupListeners();
-            setIsCheckingFolder(false);
-            resolve({ valid: false, nestedPaths: [] });
-          });
-      });
+        if (hasError || code !== 0) {
+          return { valid: false, nestedPaths };
+        }
+        return { valid: true, nestedPaths: [] };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        addLogLine(`\x1b[31mError:\x1b[0m Failed to run check: ${message}`, 'error');
+        return { valid: false, nestedPaths: [] };
+      } finally {
+        setIsCheckingFolder(false);
+      }
     },
-    [addLogLine]
+    [addLogLine, runCli]
   );
 
-  // Get thumbnail path for a video
-  const getThumbnailPath = useCallback((videoPath: string, folderPath: string): string => {
-    const videoName = videoPath.split('/').pop()?.replace(/\.[^.]+$/, '') || 'thumbnail';
-    return `${folderPath}/.ai-video-cataloger/thumbnails/${videoName}.jpg`;
-  }, []);
+  // Generate thumbnails for videos that don't have one yet, then refresh once
+  // so the new thumbnail artifacts (paths + mtimes) appear in the catalog.
+  const generateMissingThumbnails = useCallback(
+    async (items: VideoItem[], generation: { cancelled: boolean }): Promise<void> => {
+      const missing = items.filter((video) => video.artifacts.thumbnailPath == null);
+      if (missing.length === 0) {
+        return;
+      }
 
-  // Load thumbnail for a video and return data URL
-  const loadThumbnail = useCallback(async (videoPath: string, folderPath: string): Promise<string | null> => {
-    const thumbnailPath = getThumbnailPath(videoPath, folderPath);
-    return window.electronAPI?.file.readAsDataUrl(thumbnailPath) || null;
-  }, [getThumbnailPath]);
+      setIsGeneratingThumbnails(true);
+      addLogLine(`\x1b[36mGenerating thumbnails...\x1b[0m`, 'info');
 
-  // Generate thumbnail for a video via CLI
-  const generateThumbnail = useCallback(async (videoPath: string): Promise<boolean> => {
-    return new Promise((resolve) => {
-      let completed = false;
-
-      const handleJson = (_spawnId: string, event: JsonEvent): void => {
-        if (event.type === 'completed') {
-          completed = true;
-        } else if (event.type === 'error') {
-          addLogLine(`\x1b[31mThumbnail error:\x1b[0m ${event.error || event.message}`, 'error');
+      let generatedCount = 0;
+      for (const video of missing) {
+        if (generation.cancelled) {
+          addLogLine(`\x1b[33mThumbnail generation cancelled\x1b[0m`, 'info');
+          break;
         }
-      };
 
-      const handleExit = (_spawnId: string, _code: number | null): void => {
-        cleanupListeners();
-        resolve(completed);
-      };
-
-      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-      const cleanupListeners = (): void => {
-        cleanupJson?.();
-        cleanupExit?.();
-      };
-
-      window.electronAPI?.cli
-        .spawn(['thumbnail', videoPath], { json: true })
-        .catch(() => {
-          cleanupListeners();
-          resolve(false);
-        });
-    });
-  }, [addLogLine]);
-
-  // Scan folder for videos using CLI
-  const scanFolder = useCallback(async (folderPath: string): Promise<FolderScanResult | null> => {
-    return new Promise((resolve) => {
-      setIsLoadingVideos(true);
-      addLogLine(`\x1b[36mScanning folder for videos...\x1b[0m`, 'info');
-
-      let scanResult: FolderScanResult | null = null;
-
-      const handleJson = (_spawnId: string, event: JsonEvent): void => {
-        if (event.type === 'completed' && event.data) {
-          const data = event.data as unknown as FolderScanResult;
-          if (data.videos) {
-            scanResult = data;
+        try {
+          const { code, events } = await runCli(['thumbnail', video.path], {
+            onJson: (event) => {
+              if (event.type === 'error') {
+                addLogLine(`\x1b[31mThumbnail error:\x1b[0m ${event.error || event.message}`, 'error');
+              }
+            },
+            onLine: (line, source) => addLogLine(line, source),
+          });
+          if (code === 0 && events.some((event) => event.type === 'completed')) {
+            generatedCount++;
           }
-        } else if (event.type === 'error') {
-          addLogLine(`\x1b[31mScan error:\x1b[0m ${event.error || event.message}`, 'error');
+        } catch {
+          // Spawn failed - skip this video and continue with the rest
         }
-      };
+      }
 
-      const handleExit = (_spawnId: string, code: number | null): void => {
-        cleanupListeners();
-        setIsLoadingVideos(false);
-
-        if (code === 0 && scanResult) {
-          addLogLine(`\x1b[32m✓\x1b[0m Found ${scanResult.videos.length} video(s)`, 'success');
-          resolve(scanResult);
+      if (!generation.cancelled) {
+        setIsGeneratingThumbnails(false);
+        if (generatedCount > 0) {
+          addLogLine(`\x1b[32m✓\x1b[0m Generated ${generatedCount} thumbnail(s)`, 'success');
+          // Single refresh at the end of the loop picks up all new thumbnails
+          await refresh();
         } else {
-          resolve(null);
+          addLogLine(`\x1b[32m✓\x1b[0m Thumbnails loaded`, 'success');
         }
-      };
+      }
+    },
+    [runCli, addLogLine, refresh]
+  );
 
-      const cleanupStdout = window.electronAPI?.cli.onStdout((_spawnId: string, line: string) => {
-        addLogLine(line, 'stdout');
+  // Load videos for a folder: one wholesale refresh, then background thumbnails
+  const loadVideosForFolder = useCallback(
+    async (folderPath: string, preserveSelectionByHash?: string | null) => {
+      // Cancel any ongoing thumbnail generation
+      thumbnailGenerationRef.current.cancelled = true;
+      thumbnailGenerationRef.current = { cancelled: false };
+      const currentGeneration = thumbnailGenerationRef.current;
+
+      const items = await refresh({
+        folder: folderPath,
+        selectKey: preserveSelectionByHash ?? null,
       });
-      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-      const cleanupListeners = (): void => {
-        cleanupStdout?.();
-        cleanupJson?.();
-        cleanupExit?.();
-      };
-
-      window.electronAPI?.cli
-        .spawn(['scan', folderPath], { json: true })
-        .catch((err: Error) => {
-          addLogLine(`\x1b[31mError:\x1b[0m Failed to scan folder: ${err.message}`, 'error');
-          cleanupListeners();
-          setIsLoadingVideos(false);
-          resolve(null);
-        });
-    });
-  }, [addLogLine]);
-
-  // Load videos and generate thumbnails for a folder
-  const loadVideosForFolder = useCallback(async (folderPath: string, preserveSelectionByHash?: string | null) => {
-    // Cancel any ongoing thumbnail generation
-    thumbnailGenerationRef.current.cancelled = true;
-    thumbnailGenerationRef.current = { cancelled: false };
-    const currentGeneration = thumbnailGenerationRef.current;
-
-    // Clear previous videos (but don't clear selection yet if preserving)
-    setVideos([]);
-    if (!preserveSelectionByHash) {
-      setSelectedVideo(null);
-    }
-
-    // Scan folder
-    const result = await scanFolder(folderPath);
-    if (!result || result.videos.length === 0) {
-      setSelectedVideo(null);
-      return;
-    }
-
-    // Convert to VideoItem format (without thumbnails initially)
-    const videoItems: VideoItem[] = result.videos.map((v) => ({
-      path: v.path,
-      filename: v.filename,
-      size: v.size,
-      sizeFormatted: v.sizeFormatted,
-      duration: v.duration,
-      durationFormatted: v.durationFormatted,
-      status: v.status as VideoItem['status'],
-      errorMessage: v.errorMessage,
-      thumbnailPath: getThumbnailPath(v.path, folderPath),
-      thumbnailDataUrl: null,
-      contentHash: v.contentHash,
-      artifacts: v.artifacts || {
-        framePaths: null,
-        transcriptContent: null,
-        transcriptPath: null,
-        summary: null,
-        summaryPath: null,
-        thumbnailPath: null,
-        thumbnailMtime: null,
-        newFilename: null,
-      },
-    }));
-
-    setVideos(videoItems);
-
-    // If preserving selection, find video by contentHash and select it
-    if (preserveSelectionByHash) {
-      const matchingVideo = videoItems.find(v => v.contentHash === preserveSelectionByHash);
-      if (matchingVideo) {
-        setSelectedVideo(matchingVideo);
-      } else {
-        // Hash not found (file might have been deleted), clear selection
-        setSelectedVideo(null);
-      }
-    }
-
-    // Generate and load thumbnails in background
-    setIsGeneratingThumbnails(true);
-    addLogLine(`\x1b[36mGenerating thumbnails...\x1b[0m`, 'info');
-
-    let generatedCount = 0;
-    for (let i = 0; i < videoItems.length; i++) {
-      if (currentGeneration.cancelled) {
-        addLogLine(`\x1b[33mThumbnail generation cancelled\x1b[0m`, 'info');
-        break;
+      if (!items || items.length === 0) {
+        return;
       }
 
-      const video = videoItems[i];
-
-      // Try to load existing thumbnail first
-      let thumbnailDataUrl = await loadThumbnail(video.path, folderPath);
-
-      // If no thumbnail, generate it
-      if (!thumbnailDataUrl) {
-        const generated = await generateThumbnail(video.path);
-        if (generated) {
-          thumbnailDataUrl = await loadThumbnail(video.path, folderPath);
-          generatedCount++;
-        }
-      }
-
-      if (thumbnailDataUrl && !currentGeneration.cancelled) {
-        // Update video with thumbnail
-        setVideos((prev) =>
-          prev.map((v) =>
-            v.path === video.path ? { ...v, thumbnailDataUrl } : v
-          )
-        );
-      }
-    }
-
-    if (!currentGeneration.cancelled) {
-      setIsGeneratingThumbnails(false);
-      if (generatedCount > 0) {
-        addLogLine(`\x1b[32m✓\x1b[0m Generated ${generatedCount} thumbnail(s)`, 'success');
-      } else {
-        addLogLine(`\x1b[32m✓\x1b[0m Thumbnails loaded`, 'success');
-      }
-    }
-  }, [scanFolder, getThumbnailPath, loadThumbnail, generateThumbnail, addLogLine]);
+      await generateMissingThumbnails(items, currentGeneration);
+    },
+    [refresh, generateMissingThumbnails]
+  );
 
   // Load videos for current folder on initial load
   const initialLoadRef = useRef(true);
@@ -500,118 +303,81 @@ function App(): JSX.Element {
     setIsAnalyzing(true);
     setAnalyzingVideoPath(video.path);
     setProcessingProgress(null);
-    setCurrentSpawnId(null);
+
+    const controller = new AbortController();
+    analyzeAbortRef.current = controller;
 
     addLogLine(`\x1b[36mStarting analysis of ${video.filename}...\x1b[0m`, 'info');
 
-    return new Promise((resolve) => {
-      let hasError = false;
-      let wasCancelled = false;
+    try {
+      const { code, signal, events } = await runCli(
+        ['process', video.path],
+        {
+          onJson: (event) => {
+            if (event.type === 'progress') {
+              // Update progress state
+              const stepNumber = event.data?.stepNumber as number | undefined;
+              const totalSteps = event.data?.totalSteps as number | undefined;
 
-      const handleOutput = (_spawnId: string, line: string): void => {
-        addLogLine(line, 'stdout');
-      };
+              setProcessingProgress({
+                videoPath: video.path,
+                step: event.step || 'processing',
+                percentage: event.percentage || 0,
+                stepNumber: stepNumber || 0,
+                totalSteps: totalSteps || 5,
+              });
 
-      const handleStderr = (_spawnId: string, line: string): void => {
-        addLogLine(line, 'stderr');
-      };
+              addLogLine(`\x1b[33m[${event.percentage || 0}%]\x1b[0m ${getStepLabel(event.step || '')}`, 'info');
+            } else if (event.type === 'completed') {
+              addLogLine(`\x1b[32m✓\x1b[0m Analysis completed for ${video.filename}`, 'success');
+            } else if (event.type === 'error') {
+              addLogLine(`\x1b[31mError:\x1b[0m ${event.error || event.message}`, 'error');
+            }
+          },
+          onLine: (line, source) => addLogLine(line, source),
+        },
+        { signal: controller.signal }
+      );
 
-      const handleJson = (_spawnId: string, event: JsonEvent): void => {
-        if (event.type === 'progress') {
-          // Update progress state
-          const stepNumber = event.data?.stepNumber as number | undefined;
-          const totalSteps = event.data?.totalSteps as number | undefined;
+      // Check if the process was killed (SIGTERM)
+      const wasCancelled = signal === 'SIGTERM';
+      if (wasCancelled) {
+        addLogLine(`\x1b[33mCancelled by user\x1b[0m`, 'info');
+      }
 
-          setProcessingProgress({
-            videoPath: video.path,
-            step: event.step || 'processing',
-            percentage: event.percentage || 0,
-            stepNumber: stepNumber || 0,
-            totalSteps: totalSteps || 5,
-          });
+      const hasError = events.some((event) => event.type === 'error');
+      if (!wasCancelled && (code !== 0 || hasError)) {
+        addLogLine(`\x1b[31mAnalysis failed with exit code ${code}\x1b[0m`, 'error');
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      addLogLine(`\x1b[31mError:\x1b[0m Failed to start analysis: ${message}`, 'error');
+    } finally {
+      analyzeAbortRef.current = null;
+      setIsAnalyzing(false);
+      setAnalyzingVideoPath(null);
+      setProcessingProgress(null);
+    }
 
-          addLogLine(`\x1b[33m[${event.percentage || 0}%]\x1b[0m ${getStepLabel(event.step || '')}`, 'info');
-        } else if (event.type === 'completed') {
-          addLogLine(`\x1b[32m✓\x1b[0m Analysis completed for ${video.filename}`, 'success');
-        } else if (event.type === 'error') {
-          hasError = true;
-          addLogLine(`\x1b[31mError:\x1b[0m ${event.error || event.message}`, 'error');
-        }
-      };
-
-      const handleExit = (_spawnId: string, code: number | null, signal: string | null): void => {
-        cleanupListeners();
-
-        // Check if the process was killed (SIGTERM)
-        if (signal === 'SIGTERM') {
-          wasCancelled = true;
-          addLogLine(`\x1b[33mCancelled by user\x1b[0m`, 'info');
-        }
-
-        setIsAnalyzing(false);
-        setAnalyzingVideoPath(null);
-        setProcessingProgress(null);
-        setCurrentSpawnId(null);
-
-        // Refresh video list to get updated status
-        // Note: Video might have been renamed, so we track by contentHash to preserve selection
-        if (currentFolder) {
-          // Pass the contentHash to preserve selection even if file was renamed
-          loadVideosForFolder(currentFolder, video.contentHash);
-        }
-
-        if (!wasCancelled && (code !== 0 || hasError)) {
-          addLogLine(`\x1b[31mAnalysis failed with exit code ${code}\x1b[0m`, 'error');
-        }
-
-        resolve();
-      };
-
-      // Set up listeners
-      const cleanupStdout = window.electronAPI?.cli.onStdout(handleOutput);
-      const cleanupStderr = window.electronAPI?.cli.onStderr(handleStderr);
-      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-      const cleanupListeners = (): void => {
-        cleanupStdout?.();
-        cleanupStderr?.();
-        cleanupJson?.();
-        cleanupExit?.();
-      };
-
-      // Spawn the process command
-      window.electronAPI?.cli
-        .spawn(['process', video.path], { json: true })
-        .then((result) => {
-          setCurrentSpawnId(result.spawnId);
-        })
-        .catch((err: Error) => {
-          addLogLine(`\x1b[31mError:\x1b[0m Failed to start analysis: ${err.message}`, 'error');
-          cleanupListeners();
-          setIsAnalyzing(false);
-          setAnalyzingVideoPath(null);
-          setProcessingProgress(null);
-          setCurrentSpawnId(null);
-          resolve();
-        });
-    });
-  }, [currentFolder, isAnalyzing, addLogLine, scanFolder, selectedVideo]);
+    // Refresh the list from a fresh CLI scan. The video might have been
+    // renamed, so the selection is preserved by contentHash (key), not path.
+    await refresh({ selectKey: video.contentHash });
+  }, [currentFolder, isAnalyzing, addLogLine, runCli, refresh]);
 
   // Handle cancel button click - show confirmation modal
   const handleCancelClick = useCallback(() => {
     setCancelConfirmation({ open: true });
   }, []);
 
-  // Handle cancel confirmation - kill the process
+  // Handle cancel confirmation - abort the running command (kills the process)
   const handleConfirmCancel = useCallback(async () => {
     setCancelConfirmation({ open: false });
 
-    if (currentSpawnId) {
+    if (analyzeAbortRef.current) {
       addLogLine(`\x1b[33mCancelling analysis...\x1b[0m`, 'info');
-      await window.electronAPI?.cli.kill(currentSpawnId);
+      analyzeAbortRef.current.abort();
     }
-  }, [currentSpawnId, addLogLine]);
+  }, [addLogLine]);
 
   // Handle cancel modal close
   const handleCloseCancelModal = useCallback(() => {
@@ -622,86 +388,60 @@ function App(): JSX.Element {
   const processSingleVideoInBatch = useCallback(async (video: VideoItem): Promise<{ success: boolean; error?: string }> => {
     if (!currentFolder) return { success: false, error: 'No folder selected' };
 
-    return new Promise((resolve) => {
-      let hasError = false;
-      let errorMessage = '';
-      let wasCancelled = false;
+    const controller = new AbortController();
+    analyzeAbortRef.current = controller;
 
-      const handleOutput = (_spawnId: string, line: string): void => {
-        addLogLine(line, 'stdout');
-      };
+    let errorMessage = '';
 
-      const handleStderr = (_spawnId: string, line: string): void => {
-        addLogLine(line, 'stderr');
-      };
+    try {
+      const { code, signal, events } = await runCli(
+        ['process', video.path],
+        {
+          onJson: (event) => {
+            if (event.type === 'progress') {
+              const stepNumber = event.data?.stepNumber as number | undefined;
+              const totalSteps = event.data?.totalSteps as number | undefined;
 
-      const handleJson = (_spawnId: string, event: JsonEvent): void => {
-        if (event.type === 'progress') {
-          const stepNumber = event.data?.stepNumber as number | undefined;
-          const totalSteps = event.data?.totalSteps as number | undefined;
+              setProcessingProgress({
+                videoPath: video.path,
+                step: event.step || 'processing',
+                percentage: event.percentage || 0,
+                stepNumber: stepNumber || 0,
+                totalSteps: totalSteps || 5,
+              });
 
-          setProcessingProgress({
-            videoPath: video.path,
-            step: event.step || 'processing',
-            percentage: event.percentage || 0,
-            stepNumber: stepNumber || 0,
-            totalSteps: totalSteps || 5,
-          });
+              addLogLine(`\x1b[33m[${event.percentage || 0}%]\x1b[0m ${getStepLabel(event.step || '')}`, 'info');
+            } else if (event.type === 'completed') {
+              addLogLine(`\x1b[32m✓\x1b[0m Analysis completed for ${video.filename}`, 'success');
+            } else if (event.type === 'error') {
+              errorMessage = event.error || event.message || 'Unknown error';
+              addLogLine(`\x1b[31mError:\x1b[0m ${errorMessage}`, 'error');
+            }
+          },
+          onLine: (line, source) => addLogLine(line, source),
+        },
+        { signal: controller.signal }
+      );
 
-          addLogLine(`\x1b[33m[${event.percentage || 0}%]\x1b[0m ${getStepLabel(event.step || '')}`, 'info');
-        } else if (event.type === 'completed') {
-          addLogLine(`\x1b[32m✓\x1b[0m Analysis completed for ${video.filename}`, 'success');
-        } else if (event.type === 'error') {
-          hasError = true;
-          errorMessage = event.error || event.message || 'Unknown error';
-          addLogLine(`\x1b[31mError:\x1b[0m ${errorMessage}`, 'error');
-        }
-      };
+      if (signal === 'SIGTERM') {
+        addLogLine(`\x1b[33mCancelled by user\x1b[0m`, 'info');
+        return { success: false, error: 'Cancelled by user' };
+      }
 
-      const handleExit = (_spawnId: string, code: number | null, signal: string | null): void => {
-        cleanupListeners();
-
-        if (signal === 'SIGTERM') {
-          wasCancelled = true;
-          addLogLine(`\x1b[33mCancelled by user\x1b[0m`, 'info');
-        }
-
-        setProcessingProgress(null);
-        setCurrentSpawnId(null);
-
-        if (wasCancelled) {
-          resolve({ success: false, error: 'Cancelled by user' });
-        } else if (code !== 0 || hasError) {
-          resolve({ success: false, error: errorMessage || `Exit code ${code}` });
-        } else {
-          resolve({ success: true });
-        }
-      };
-
-      const cleanupStdout = window.electronAPI?.cli.onStdout(handleOutput);
-      const cleanupStderr = window.electronAPI?.cli.onStderr(handleStderr);
-      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-      const cleanupListeners = (): void => {
-        cleanupStdout?.();
-        cleanupStderr?.();
-        cleanupJson?.();
-        cleanupExit?.();
-      };
-
-      window.electronAPI?.cli
-        .spawn(['process', video.path], { json: true })
-        .then((result) => {
-          setCurrentSpawnId(result.spawnId);
-        })
-        .catch((err: Error) => {
-          addLogLine(`\x1b[31mError:\x1b[0m Failed to start analysis: ${err.message}`, 'error');
-          cleanupListeners();
-          resolve({ success: false, error: err.message });
-        });
-    });
-  }, [currentFolder, addLogLine]);
+      const hasError = events.some((event) => event.type === 'error');
+      if (code !== 0 || hasError) {
+        return { success: false, error: errorMessage || `Exit code ${code}` };
+      }
+      return { success: true };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      addLogLine(`\x1b[31mError:\x1b[0m Failed to start analysis: ${message}`, 'error');
+      return { success: false, error: message };
+    } finally {
+      analyzeAbortRef.current = null;
+      setProcessingProgress(null);
+    }
+  }, [currentFolder, addLogLine, runCli]);
 
   // Handle batch analysis of all pending videos
   const handleBatchAnalyze = useCallback(async (): Promise<void> => {
@@ -786,28 +526,13 @@ function App(): JSX.Element {
     setAnalyzingVideoPath(null);
     setBatchProgress(null);
 
-    // Refresh video list
-    if (currentFolder) {
-      const scanResult = await scanFolder(currentFolder);
-      if (scanResult) {
-        setVideos((prev) => prev.map((v) => {
-          const updated = scanResult.videos.find((rv) => rv.path === v.path);
-          if (updated) {
-            return {
-              ...v,
-              status: updated.status as VideoItem['status'],
-              errorMessage: updated.errorMessage,
-            };
-          }
-          return v;
-        }));
-      }
-    }
+    // Refresh video list - replaced wholesale with the new scan result
+    await refresh();
 
     // Show summary dialog
     setBatchResults(results);
     setShowBatchSummary(true);
-  }, [currentFolder, isAnalyzing, isBatchProcessing, videos, addLogLine, processSingleVideoInBatch, scanFolder]);
+  }, [currentFolder, isAnalyzing, isBatchProcessing, videos, addLogLine, processSingleVideoInBatch, refresh]);
 
   // Handle batch cancel button click
   const handleBatchCancelClick = useCallback(() => {
@@ -819,11 +544,11 @@ function App(): JSX.Element {
     setCancelConfirmation({ open: false });
     batchCancelledRef.current = true;
 
-    if (currentSpawnId) {
+    if (analyzeAbortRef.current) {
       addLogLine(`\x1b[33mCancelling current video and stopping batch...\x1b[0m`, 'info');
-      await window.electronAPI?.cli.kill(currentSpawnId);
+      analyzeAbortRef.current.abort();
     }
-  }, [currentSpawnId, addLogLine]);
+  }, [addLogLine]);
 
   // Close batch summary dialog
   const handleCloseBatchSummary = useCallback(() => {
@@ -831,10 +556,11 @@ function App(): JSX.Element {
     setBatchResults([]);
   }, []);
 
-  // Handle video selection
+  // Handle video selection (by stable key, so the item is always the
+  // up-to-date entry from the current scan)
   const handleSelectVideo = useCallback((video: VideoItem) => {
-    setSelectedVideo(video);
-  }, []);
+    selectKey(keyOf(video));
+  }, [selectKey]);
 
   // Memoized log message handler for modals
   const handleModalLogMessage = useCallback((message: string, type?: 'info' | 'success' | 'error') => {
@@ -921,8 +647,8 @@ function App(): JSX.Element {
       await window.electronAPI?.folder.clearRecent();
       setRecentFolders([]);
       setCurrentFolder(null);
-      setVideos([]);
-      setSelectedVideo(null);
+      // Clearing the folder clears the catalog (videos + selection)
+      await refresh({ folder: null });
       addLogLine('\x1b[32m✓\x1b[0m Recent folders cleared', 'success');
     });
 
@@ -960,7 +686,7 @@ function App(): JSX.Element {
       cleanupShowPrerequisites?.();
       cleanupShowModelManager?.();
     };
-  }, [handleOpenFolder, handleSelectRecentFolder, addLogLine]);
+  }, [handleOpenFolder, handleSelectRecentFolder, addLogLine, refresh]);
 
   // Get folder display name (last path component)
   const getFolderName = (path: string): string => {

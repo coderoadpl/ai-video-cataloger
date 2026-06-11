@@ -14,6 +14,7 @@ import {
   RefreshCw,
   ExternalLink,
 } from 'lucide-react';
+import { useCliCommand } from '@/hooks/use-cli-command';
 
 // Dependency status matching CLI doctor.ts DependencyStatus
 interface DependencyStatus {
@@ -57,6 +58,7 @@ export function PrerequisitesModal({
   onOpenChange,
   onLogMessage,
 }: PrerequisitesModalProps): JSX.Element {
+  const runCli = useCliCommand();
   const [result, setResult] = useState<DoctorResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -70,75 +72,49 @@ export function PrerequisitesModal({
   );
 
   // Run doctor command to check prerequisites
-  const checkPrerequisites = useCallback(async () => {
+  const checkPrerequisites = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     setError(null);
     setResult(null);
     log('Checking system prerequisites...', 'info');
 
-    return new Promise<void>((resolve) => {
-      let doctorResult: DoctorResult | null = null;
-      let hasError = false;
-
-      const handleJson = (
-        _spawnId: string,
-        event: { type: string; data?: Record<string, unknown>; error?: string }
-      ): void => {
-        if (event.type === 'completed' && event.data) {
-          const dependencies = event.data.dependencies as DependencyStatus[] | undefined;
-          const allAvailable = event.data.allAvailable as boolean | undefined;
-          if (dependencies) {
-            doctorResult = {
-              dependencies,
-              allAvailable: allAvailable ?? false,
-            };
+    try {
+      const { code, events } = await runCli(['doctor', '--json'], {
+        onJson: (event) => {
+          if (event.type === 'error') {
+            setError(event.error || 'Failed to check prerequisites');
+            log(`Failed to check prerequisites: ${event.error}`, 'error');
           }
-        } else if (event.type === 'error') {
-          hasError = true;
-          setError(event.error || 'Failed to check prerequisites');
-          log(`Failed to check prerequisites: ${event.error}`, 'error');
+        },
+      });
+
+      const hasError = events.some((event) => event.type === 'error');
+      const completed = events.find((event) => event.type === 'completed' && event.data);
+      const dependencies = completed?.data?.dependencies as DependencyStatus[] | undefined;
+      const allAvailable = completed?.data?.allAvailable as boolean | undefined;
+      const doctorResult: DoctorResult | null = dependencies
+        ? { dependencies, allAvailable: allAvailable ?? false }
+        : null;
+
+      if (!hasError && doctorResult) {
+        setResult(doctorResult);
+        const availableCount = doctorResult.dependencies.filter((d) => d.available).length;
+        const totalCount = doctorResult.dependencies.length;
+        if (doctorResult.allAvailable) {
+          log(`All ${totalCount} prerequisites are available`, 'success');
+        } else {
+          log(`${availableCount} of ${totalCount} prerequisites available`, 'info');
         }
-      };
-
-      const handleExit = (_spawnId: string, code: number | null): void => {
-        cleanupListeners();
-        setIsLoading(false);
-
-        if (!hasError && doctorResult) {
-          setResult(doctorResult);
-          const availableCount = doctorResult.dependencies.filter((d) => d.available).length;
-          const totalCount = doctorResult.dependencies.length;
-          if (doctorResult.allAvailable) {
-            log(`All ${totalCount} prerequisites are available`, 'success');
-          } else {
-            log(`${availableCount} of ${totalCount} prerequisites available`, 'info');
-          }
-        } else if (!hasError && code !== 0) {
-          setError('Failed to check prerequisites');
-        }
-        resolve();
-      };
-
-      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-      const cleanupListeners = (): void => {
-        cleanupJson?.();
-        cleanupExit?.();
-      };
-
-      // Spawn doctor command
-      window.electronAPI?.cli
-        .spawn(['doctor', '--json'], { json: true })
-        .catch(() => {
-          cleanupListeners();
-          setIsLoading(false);
-          setError('Failed to run doctor command');
-          log('Failed to run doctor command', 'error');
-          resolve();
-        });
-    });
-  }, [log]);
+      } else if (!hasError && code !== 0) {
+        setError('Failed to check prerequisites');
+      }
+    } catch {
+      setError('Failed to run doctor command');
+      log('Failed to run doctor command', 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [log, runCli]);
 
   // Check prerequisites when modal opens
   useEffect(() => {

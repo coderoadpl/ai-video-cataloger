@@ -19,6 +19,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog';
 import { Loader2, Download, Trash2, CheckCircle2, HardDrive, AlertTriangle } from 'lucide-react';
+import { useCliCommand } from '@/hooks/use-cli-command';
 
 // Model info type matching the CLI models service
 interface WhisperModelInfo {
@@ -69,6 +70,7 @@ export function ModelManagerModal({
   onOpenChange,
   onLogMessage,
 }: ModelManagerModalProps): JSX.Element {
+  const runCli = useCliCommand();
   const [models, setModels] = useState<WhisperModelInfo[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -93,71 +95,45 @@ export function ModelManagerModal({
   );
 
   // Load model list from CLI
-  const loadModels = useCallback(async () => {
+  const loadModels = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     setError(null);
     log('Loading Whisper models...', 'info');
 
-    return new Promise<void>((resolve) => {
-      let modelList: WhisperModelInfo[] = [];
-      let hasError = false;
-
-      const handleStdout = (_spawnId: string, line: string): void => {
-        log(line, 'info');
-      };
-
-      const handleJson = (
-        _spawnId: string,
-        event: { type: string; data?: Record<string, unknown>; error?: string }
-      ): void => {
-        if (event.type === 'completed' && event.data) {
-          const data = event.data.models as WhisperModelInfo[] | undefined;
-          if (data) {
-            modelList = data;
+    try {
+      const { code, events } = await runCli(['models', 'list', '--json'], {
+        onJson: (event) => {
+          if (event.type === 'error') {
+            setError(event.error || 'Failed to load models');
+            log(`Error: ${event.error || 'Failed to load models'}`, 'error');
           }
-        } else if (event.type === 'error') {
-          hasError = true;
-          setError(event.error || 'Failed to load models');
-          log(`Error: ${event.error || 'Failed to load models'}`, 'error');
-        }
-      };
+        },
+        onLine: (line, source) => {
+          if (source === 'stdout') {
+            log(line, 'info');
+          }
+        },
+      });
 
-      const handleExit = (_spawnId: string, code: number | null): void => {
-        cleanupListeners();
-        setIsLoading(false);
+      const hasError = events.some((event) => event.type === 'error');
+      const completed = events.find((event) => event.type === 'completed' && event.data);
+      const modelList = (completed?.data?.models as WhisperModelInfo[] | undefined) ?? [];
 
-        if (!hasError && code === 0 && modelList.length > 0) {
-          setModels(modelList);
-          log(`Found ${modelList.length} Whisper model(s)`, 'success');
-        } else if (!hasError && modelList.length === 0) {
-          setError('No models found');
-          log('No models found', 'error');
-        }
-        resolve();
-      };
-
-      const cleanupStdout = window.electronAPI?.cli.onStdout(handleStdout);
-      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-      const cleanupListeners = (): void => {
-        cleanupStdout?.();
-        cleanupJson?.();
-        cleanupExit?.();
-      };
-
-      // Spawn models list command
-      window.electronAPI?.cli
-        .spawn(['models', 'list', '--json'], { json: true })
-        .catch((err: Error) => {
-          cleanupListeners();
-          setIsLoading(false);
-          setError('Failed to run models command');
-          log(`Failed to run models command: ${err.message}`, 'error');
-          resolve();
-        });
-    });
-  }, [log]);
+      if (!hasError && code === 0 && modelList.length > 0) {
+        setModels(modelList);
+        log(`Found ${modelList.length} Whisper model(s)`, 'success');
+      } else if (!hasError && modelList.length === 0) {
+        setError('No models found');
+        log('No models found', 'error');
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      setError('Failed to run models command');
+      log(`Failed to run models command: ${message}`, 'error');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [log, runCli]);
 
   // Load models when modal opens
   useEffect(() => {
@@ -178,81 +154,54 @@ export function ModelManagerModal({
         speedFormatted: '0 B/s',
       });
 
-      return new Promise((resolve) => {
-        let success = false;
+      try {
+        const { code, events } = await runCli(['models', 'download', modelName, '--json'], {
+          onJson: (event) => {
+            if (event.type === 'progress' && event.step === 'downloading') {
+              const data = event.data as
+                | {
+                    downloadedBytes?: number;
+                    totalBytes?: number;
+                    speedFormatted?: string;
+                  }
+                | undefined;
+              setDownloadProgress({
+                modelName,
+                percentage: event.percentage || 0,
+                downloadedBytes: data?.downloadedBytes || 0,
+                totalBytes: data?.totalBytes || MODEL_SIZES[modelName] || 0,
+                speedFormatted: data?.speedFormatted || '0 B/s',
+              });
+            } else if (event.type === 'completed') {
+              log(`Model ${modelName} downloaded successfully`, 'success');
+            } else if (event.type === 'error') {
+              log(`Failed to download model: ${event.error}`, 'error');
+            }
+          },
+          onLine: (line, source) => {
+            if (source === 'stdout') {
+              log(line, 'info');
+            }
+          },
+        });
 
-        const handleStdout = (_spawnId: string, line: string): void => {
-          log(line, 'info');
-        };
+        setDownloadProgress(null);
 
-        const handleJson = (
-          _spawnId: string,
-          event: {
-            type: string;
-            step?: string;
-            percentage?: number;
-            data?: Record<string, unknown>;
-            error?: string;
-          }
-        ): void => {
-          if (event.type === 'progress' && event.step === 'downloading') {
-            const data = event.data as
-              | {
-                  downloadedBytes?: number;
-                  totalBytes?: number;
-                  speedFormatted?: string;
-                }
-              | undefined;
-            setDownloadProgress({
-              modelName,
-              percentage: event.percentage || 0,
-              downloadedBytes: data?.downloadedBytes || 0,
-              totalBytes: data?.totalBytes || MODEL_SIZES[modelName] || 0,
-              speedFormatted: data?.speedFormatted || '0 B/s',
-            });
-          } else if (event.type === 'completed') {
-            success = true;
-            log(`Model ${modelName} downloaded successfully`, 'success');
-          } else if (event.type === 'error') {
-            log(`Failed to download model: ${event.error}`, 'error');
-          }
-        };
-
-        const handleExit = (_spawnId: string, code: number | null): void => {
-          cleanupListeners();
-          setDownloadProgress(null);
-
-          if (code === 0 && success) {
-            // Refresh model list
-            loadModels();
-            resolve(true);
-          } else {
-            resolve(false);
-          }
-        };
-
-        const cleanupStdout = window.electronAPI?.cli.onStdout(handleStdout);
-        const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-        const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-        const cleanupListeners = (): void => {
-          cleanupStdout?.();
-          cleanupJson?.();
-          cleanupExit?.();
-        };
-
-        // Spawn download command
-        window.electronAPI?.cli
-          .spawn(['models', 'download', modelName, '--json'], { json: true })
-          .catch((err: Error) => {
-            cleanupListeners();
-            setDownloadProgress(null);
-            log(`Failed to start download for ${modelName}: ${err.message}`, 'error');
-            resolve(false);
-          });
-      });
+        const success = events.some((event) => event.type === 'completed');
+        if (code === 0 && success) {
+          // Refresh model list
+          await loadModels();
+          return true;
+        }
+        return false;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setDownloadProgress(null);
+        log(`Failed to start download for ${modelName}: ${message}`, 'error');
+        return false;
+      }
     },
-    [log, loadModels]
+    [log, loadModels, runCli]
   );
 
   // Set a model as active
@@ -260,58 +209,36 @@ export function ModelManagerModal({
     async (modelName: string): Promise<boolean> => {
       log(`Setting active model: ${modelName}...`, 'info');
 
-      return new Promise((resolve) => {
-        let success = false;
+      try {
+        const { code, events } = await runCli(['models', 'use', modelName, '--json'], {
+          onJson: (event) => {
+            if (event.type === 'completed') {
+              log(`Model ${modelName} is now active`, 'success');
+            } else if (event.type === 'error') {
+              log(`Failed to set active model: ${event.error}`, 'error');
+            }
+          },
+          onLine: (line, source) => {
+            if (source === 'stdout') {
+              log(line, 'info');
+            }
+          },
+        });
 
-        const handleStdout = (_spawnId: string, line: string): void => {
-          log(line, 'info');
-        };
-
-        const handleJson = (
-          _spawnId: string,
-          event: { type: string; error?: string }
-        ): void => {
-          if (event.type === 'completed') {
-            success = true;
-            log(`Model ${modelName} is now active`, 'success');
-          } else if (event.type === 'error') {
-            log(`Failed to set active model: ${event.error}`, 'error');
-          }
-        };
-
-        const handleExit = (_spawnId: string, code: number | null): void => {
-          cleanupListeners();
-
-          if (code === 0 && success) {
-            // Refresh model list to show new active status
-            loadModels();
-            resolve(true);
-          } else {
-            resolve(false);
-          }
-        };
-
-        const cleanupStdout = window.electronAPI?.cli.onStdout(handleStdout);
-        const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-        const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-        const cleanupListeners = (): void => {
-          cleanupStdout?.();
-          cleanupJson?.();
-          cleanupExit?.();
-        };
-
-        // Spawn use command
-        window.electronAPI?.cli
-          .spawn(['models', 'use', modelName, '--json'], { json: true })
-          .catch((err: Error) => {
-            cleanupListeners();
-            log(`Failed to set active model ${modelName}: ${err.message}`, 'error');
-            resolve(false);
-          });
-      });
+        const success = events.some((event) => event.type === 'completed');
+        if (code === 0 && success) {
+          // Refresh model list to show new active status
+          await loadModels();
+          return true;
+        }
+        return false;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        log(`Failed to set active model ${modelName}: ${message}`, 'error');
+        return false;
+      }
     },
-    [log, loadModels]
+    [log, loadModels, runCli]
   );
 
   // Delete a model
@@ -320,60 +247,40 @@ export function ModelManagerModal({
       log(`Deleting model: ${modelName}...`, 'info');
       setIsDeleting(modelName);
 
-      return new Promise((resolve) => {
-        let success = false;
+      try {
+        // Run delete command with --force
+        const { code, events } = await runCli(['models', 'delete', modelName, '--force', '--json'], {
+          onJson: (event) => {
+            if (event.type === 'completed') {
+              log(`Model ${modelName} deleted successfully`, 'success');
+            } else if (event.type === 'error') {
+              log(`Failed to delete model: ${event.error}`, 'error');
+            }
+          },
+          onLine: (line, source) => {
+            if (source === 'stdout') {
+              log(line, 'info');
+            }
+          },
+        });
 
-        const handleStdout = (_spawnId: string, line: string): void => {
-          log(line, 'info');
-        };
+        setIsDeleting(null);
 
-        const handleJson = (
-          _spawnId: string,
-          event: { type: string; error?: string }
-        ): void => {
-          if (event.type === 'completed') {
-            success = true;
-            log(`Model ${modelName} deleted successfully`, 'success');
-          } else if (event.type === 'error') {
-            log(`Failed to delete model: ${event.error}`, 'error');
-          }
-        };
-
-        const handleExit = (_spawnId: string, code: number | null): void => {
-          cleanupListeners();
-          setIsDeleting(null);
-
-          if (code === 0 && success) {
-            // Refresh model list
-            loadModels();
-            resolve(true);
-          } else {
-            resolve(false);
-          }
-        };
-
-        const cleanupStdout = window.electronAPI?.cli.onStdout(handleStdout);
-        const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-        const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-        const cleanupListeners = (): void => {
-          cleanupStdout?.();
-          cleanupJson?.();
-          cleanupExit?.();
-        };
-
-        // Spawn delete command with --force
-        window.electronAPI?.cli
-          .spawn(['models', 'delete', modelName, '--force', '--json'], { json: true })
-          .catch((err: Error) => {
-            cleanupListeners();
-            setIsDeleting(null);
-            log(`Failed to delete model ${modelName}: ${err.message}`, 'error');
-            resolve(false);
-          });
-      });
+        const success = events.some((event) => event.type === 'completed');
+        if (code === 0 && success) {
+          // Refresh model list
+          await loadModels();
+          return true;
+        }
+        return false;
+      } catch (err) {
+        const message = err instanceof Error ? err.message : String(err);
+        setIsDeleting(null);
+        log(`Failed to delete model ${modelName}: ${message}`, 'error');
+        return false;
+      }
     },
-    [log, loadModels]
+    [log, loadModels, runCli]
   );
 
   // Handle delete button click - show confirmation

@@ -6,9 +6,6 @@ import {
   IpcMainEvent,
   IpcMainInvokeEvent,
 } from 'electron';
-import { readFile, access } from 'node:fs/promises';
-import { extname } from 'node:path';
-import { constants } from 'node:fs';
 import {
   spawnCLI,
   spawnCLIWithJson,
@@ -26,23 +23,6 @@ import {
   clearRecentFolders,
 } from './folder-store.js';
 import { updateRecentFoldersMenu } from './menu.js';
-
-/**
- * Get MIME type from file extension
- */
-function getMimeType(filePath: string): string {
-  const ext = extname(filePath).toLowerCase();
-  const mimeTypes: Record<string, string> = {
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png': 'image/png',
-    '.gif': 'image/gif',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.bmp': 'image/bmp',
-  };
-  return mimeTypes[ext] || 'application/octet-stream';
-}
 
 // Store active spawned processes by their unique IDs
 const spawnedProcesses = new Map<string, CLIProcessHandle>();
@@ -298,26 +278,6 @@ export function registerIPCHandlers(): void {
     // Update the recent folders menu
     const window = BrowserWindow.fromWebContents(event.sender);
     updateRecentFoldersMenu(window, []);
-  });
-
-  // File operations - Read file as data URL (for thumbnails)
-  ipcMain.handle('file:readAsDataUrl', async (event, filePath: string): Promise<string | null> => {
-    if (!isTrustedSender(event)) {
-      return null;
-    }
-    try {
-      // Check if file exists and is readable
-      await access(filePath, constants.R_OK);
-
-      // Read file and convert to base64 data URL
-      const buffer = await readFile(filePath);
-      const base64 = buffer.toString('base64');
-      const mimeType = getMimeType(filePath);
-      return `data:${mimeType};base64,${base64}`;
-    } catch {
-      // File doesn't exist or can't be read
-      return null;
-    }
   });
 }
 

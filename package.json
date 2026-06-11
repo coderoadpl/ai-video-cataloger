@@ -22,6 +22,7 @@
     "electron:package": "npm run electron:build && electron-builder --config electron-builder.config.js",
     "test": "npm run build && vitest run",
     "test:watch": "vitest",
+    "test:renderer": "vitest run --config electron/renderer/vitest.config.ts",
     "test:e2e": "npm run build && npx tsx test/ai-integration-test.ts"
   },
   "keywords": [

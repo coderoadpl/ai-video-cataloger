@@ -100,18 +100,6 @@ const electronAPI = {
     },
   },
 
-  // File operations
-  file: {
-    /**
-     * Read a file and return it as a data URL (for images, thumbnails, etc.)
-     * @param filePath - Absolute path to the file
-     * @returns Promise with data URL or null if file doesn't exist
-     */
-    readAsDataUrl: (filePath: string): Promise<string | null> => {
-      return ipcRenderer.invoke('file:readAsDataUrl', filePath);
-    },
-  },
-
   // CLI Spawner
   cli: {
     /**

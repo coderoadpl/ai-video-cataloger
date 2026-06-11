@@ -214,10 +214,17 @@ export function VideoDetails({
 }: VideoDetailsProps): JSX.Element {
   const [thumbnailError, setThumbnailError] = React.useState(false);
 
-  // Reset thumbnail error when video changes
+  // Thumbnail comes from CLI scan artifacts, served via the media:// protocol;
+  // thumbnailMtime acts as a cache-buster when the file is regenerated.
+  const thumbnailPath = video.artifacts?.thumbnailPath ?? null;
+  const thumbnailSrc = thumbnailPath
+    ? mediaUrl(thumbnailPath, video.artifacts?.thumbnailMtime ?? undefined)
+    : null;
+
+  // Reset thumbnail error when the thumbnail source changes
   React.useEffect(() => {
     setThumbnailError(false);
-  }, [video.path]);
+  }, [thumbnailSrc]);
 
   const statusInfo = getStatusInfo(video.status, isAnalyzing);
   const isPending = video.status === 'pending' || video.status === 'not_tracked';
@@ -241,9 +248,9 @@ export function VideoDetails({
         <div className="flex gap-4">
           {/* Thumbnail */}
           <div className="relative w-32 h-20 rounded-lg overflow-hidden bg-muted flex-shrink-0">
-            {video.thumbnailDataUrl && !thumbnailError ? (
+            {thumbnailSrc && !thumbnailError ? (
               <img
-                src={video.thumbnailDataUrl}
+                src={thumbnailSrc}
                 alt={video.filename}
                 className="w-full h-full object-cover"
                 onError={() => setThumbnailError(true)}

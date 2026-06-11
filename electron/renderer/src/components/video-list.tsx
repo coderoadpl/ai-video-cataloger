@@ -5,6 +5,7 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { mediaUrl } from '@/lib/media-url';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Film, AlertCircle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 
@@ -42,8 +43,6 @@ export interface VideoItem {
   durationFormatted: string | null;
   status: VideoStatus;
   errorMessage?: string | null;
-  thumbnailPath?: string | null;
-  thumbnailDataUrl?: string | null;
   contentHash: string | null;  // Unique identifier that survives renames
   artifacts: VideoArtifacts;   // Processing artifacts (frames, transcript, summary)
 }
@@ -134,7 +133,18 @@ function VideoThumbnail({
 }): JSX.Element {
   const [imageError, setImageError] = React.useState(false);
 
-  const thumbnailSrc = video.thumbnailDataUrl;
+  // Thumbnail comes from CLI scan artifacts, served via the media:// protocol;
+  // thumbnailMtime acts as a cache-buster when the file is regenerated.
+  const thumbnailPath = video.artifacts?.thumbnailPath ?? null;
+  const thumbnailSrc = thumbnailPath
+    ? mediaUrl(thumbnailPath, video.artifacts?.thumbnailMtime ?? undefined)
+    : null;
+
+  // Reset the error state when the thumbnail source changes (e.g. regenerated)
+  React.useEffect(() => {
+    setImageError(false);
+  }, [thumbnailSrc]);
+
   const showFallback = !thumbnailSrc || imageError;
 
   return (
