@@ -1,3 +1,9 @@
+/**
+ * ModelManagerModal - manage Whisper models (list, download, activate,
+ * delete) via the CLI. Presentation split into ModelRow and
+ * DeleteModelDialog subcomponents.
+ */
+
 import { useState, useEffect, useCallback } from 'react';
 import {
   Dialog,
@@ -7,44 +13,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Progress } from '@/components/ui/progress';
-import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogCancel,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
-} from '@/components/ui/alert-dialog';
-import { Loader2, Download, Trash2, CheckCircle2, HardDrive, AlertTriangle } from 'lucide-react';
+import { Loader2, HardDrive } from 'lucide-react';
 import { useCliCommand } from '@/hooks/use-cli-command';
-
-// Model info type matching the CLI models service
-interface WhisperModelInfo {
-  name: string;
-  size: string;
-  downloaded: boolean;
-  active: boolean;
-}
-
-// Model definitions with sizes in bytes (matching CLI models.ts)
-const MODEL_SIZES: Record<string, number> = {
-  tiny: 75_000_000,
-  base: 142_000_000,
-  small: 466_000_000,
-  medium: 1_500_000_000,
-  'large-v3': 3_100_000_000,
-};
-
-interface DownloadProgress {
-  modelName: string;
-  percentage: number;
-  downloadedBytes: number;
-  totalBytes: number;
-  speedFormatted: string;
-}
+import { MODEL_SIZES, formatBytes, type WhisperModelInfo, type DownloadProgress } from './types';
+import { ModelRow } from './model-row';
+import { DeleteModelDialog } from './delete-model-dialog';
 
 interface DeleteConfirmation {
   open: boolean;
@@ -55,14 +28,6 @@ interface ModelManagerModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onLogMessage?: (message: string, type?: 'info' | 'success' | 'error') => void;
-}
-
-// Format bytes to human-readable string
-function formatBytes(bytes: number): string {
-  if (bytes < 1024) return `${bytes} B`;
-  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
-  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  return `${(bytes / (1024 * 1024 * 1024)).toFixed(2)} GB`;
 }
 
 export function ModelManagerModal({
@@ -358,92 +323,17 @@ export function ModelManagerModal({
               {/* Model list */}
               <div className="space-y-2">
                 {models.map((model) => (
-                  <div
+                  <ModelRow
                     key={model.name}
-                    className={`flex items-center justify-between p-3 rounded-lg border border-border bg-card transition-colors ${
-                      model.downloaded && !model.active && !isOperationInProgress
-                        ? 'hover:bg-muted/30 cursor-pointer'
-                        : model.active
-                        ? 'border-primary/50 bg-primary/5'
-                        : ''
-                    }`}
-                    onClick={() => {
-                      if (model.downloaded && !model.active && !isOperationInProgress) {
-                        handleSetActive(model.name);
-                      }
-                    }}
-                    role={model.downloaded && !model.active ? 'button' : undefined}
-                    tabIndex={model.downloaded && !model.active ? 0 : undefined}
-                  >
-                    <div className="flex items-center gap-3 flex-1 min-w-0">
-                      {/* Status indicator */}
-                      {isSettingActive === model.name ? (
-                        <Loader2 className="h-5 w-5 animate-spin text-primary flex-shrink-0" />
-                      ) : model.downloaded ? (
-                        <CheckCircle2 className="h-5 w-5 text-green-600 flex-shrink-0" />
-                      ) : (
-                        <div className="h-5 w-5 rounded-full border-2 border-muted-foreground/30 flex-shrink-0" />
-                      )}
-
-                      {/* Model info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2">
-                          <span className="font-medium capitalize">{model.name}</span>
-                          {model.active && (
-                            <span className="text-xs bg-primary/10 text-primary px-1.5 py-0.5 rounded">
-                              Active
-                            </span>
-                          )}
-                        </div>
-                        <p className="text-sm text-muted-foreground">
-                          {model.size} • {model.downloaded ? (model.active ? 'Downloaded' : 'Click to activate') : 'Not downloaded'}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 flex-shrink-0">
-                      {/* Download progress */}
-                      {downloadProgress?.modelName === model.name && (
-                        <div className="flex items-center gap-2 w-40">
-                          <Progress value={downloadProgress.percentage} className="h-2 flex-1" />
-                          <span className="text-xs text-muted-foreground w-10 text-right">
-                            {downloadProgress.percentage}%
-                          </span>
-                        </div>
-                      )}
-
-                      {/* Download button */}
-                      {!model.downloaded && downloadProgress?.modelName !== model.name && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => handleDownloadClick(model.name)}
-                          disabled={isOperationInProgress}
-                        >
-                          <Download className="h-4 w-4 mr-1" />
-                          Download
-                        </Button>
-                      )}
-
-                      {/* Delete button */}
-                      {model.downloaded && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handleDeleteClick(model.name)}
-                          disabled={isOperationInProgress}
-                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        >
-                          {isDeleting === model.name ? (
-                            <Loader2 className="h-4 w-4 animate-spin" />
-                          ) : (
-                            <Trash2 className="h-4 w-4" />
-                          )}
-                        </Button>
-                      )}
-                    </div>
-                  </div>
+                    model={model}
+                    isSettingActive={isSettingActive}
+                    isDeleting={isDeleting}
+                    downloadProgress={downloadProgress}
+                    isOperationInProgress={isOperationInProgress}
+                    onSetActive={handleSetActive}
+                    onDownload={handleDownloadClick}
+                    onDelete={handleDeleteClick}
+                  />
                 ))}
               </div>
 
@@ -463,32 +353,12 @@ export function ModelManagerModal({
       </Dialog>
 
       {/* Delete confirmation dialog */}
-      <AlertDialog
+      <DeleteModelDialog
         open={deleteConfirmation.open}
-        onOpenChange={(open) => !open && setDeleteConfirmation({ open: false, modelName: null })}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="h-5 w-5 text-amber-600" />
-              Delete Model?
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete the "{deleteConfirmation.modelName}" model? You will
-              need to download it again if you want to use it for transcription.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={handleConfirmDelete}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              Delete Model
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        modelName={deleteConfirmation.modelName}
+        onClose={() => setDeleteConfirmation({ open: false, modelName: null })}
+        onConfirm={handleConfirmDelete}
+      />
     </>
   );
 }

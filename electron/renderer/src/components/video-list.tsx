@@ -171,18 +171,19 @@ function VideoThumbnail({
 }
 
 /**
- * Single video item in the list
+ * Single video item in the list.
+ * Memoized so unrelated list re-renders skip unchanged rows.
  */
-function VideoListItem({
+const VideoListItem = React.memo(function VideoListItem({
   video,
   isSelected,
   isCurrentlyAnalyzing,
-  onClick,
+  onSelect,
 }: {
   video: VideoItem;
   isSelected: boolean;
   isCurrentlyAnalyzing: boolean;
-  onClick: () => void;
+  onSelect: (video: VideoItem) => void;
 }): JSX.Element {
   const statusBadge = getStatusBadge(video.status, isCurrentlyAnalyzing);
 
@@ -193,7 +194,7 @@ function VideoListItem({
         'hover:bg-muted/50',
         isSelected && 'bg-muted'
       )}
-      onClick={onClick}
+      onClick={() => onSelect(video)}
       title={video.path}
     >
       <VideoThumbnail video={video} isSelected={isSelected} />
@@ -233,7 +234,7 @@ function VideoListItem({
       </div>
     </button>
   );
-}
+});
 
 /**
  * VideoList component
@@ -278,7 +279,7 @@ export function VideoList({
             video={video}
             isSelected={video.path === selectedVideoPath}
             isCurrentlyAnalyzing={video.path === analyzingVideoPath}
-            onClick={() => onSelectVideo(video)}
+            onSelect={onSelectVideo}
           />
         ))}
       </div>

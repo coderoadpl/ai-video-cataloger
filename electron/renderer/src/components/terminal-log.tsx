@@ -1,147 +1,90 @@
-import { useRef, useEffect, useCallback, useState } from 'react';
+/**
+ * TerminalLog - virtualized terminal output panel.
+ *
+ * Renders pre-parsed ANSI segments (see hooks/use-terminal-log.ts) through
+ * @tanstack/react-virtual so only the visible lines hit the DOM. Preserves
+ * the JSON filter, copy, autoscroll-unless-scrolled-up and the optional
+ * header of the previous implementation.
+ */
+
+import { useRef, useEffect, useCallback, useMemo, useState } from 'react';
+import { useVirtualizer } from '@tanstack/react-virtual';
 import { Copy, Trash2, Check } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
+import { stripAnsi } from '@/lib/ansi';
+import type { LogLine } from '@/hooks/use-terminal-log';
 
-// ANSI color codes to CSS class mapping
-const ANSI_COLORS: Record<string, string> = {
-  '30': 'text-black',
-  '31': 'text-red-500',
-  '32': 'text-green-500',
-  '33': 'text-yellow-500',
-  '34': 'text-blue-500',
-  '35': 'text-purple-500',
-  '36': 'text-cyan-500',
-  '37': 'text-white',
-  '90': 'text-gray-500',
-  '91': 'text-red-400',
-  '92': 'text-green-400',
-  '93': 'text-yellow-400',
-  '94': 'text-blue-400',
-  '95': 'text-purple-400',
-  '96': 'text-cyan-400',
-  '97': 'text-white',
-};
+// Re-export so existing consumers can keep importing from this module
+export type { LogLine } from '@/hooks/use-terminal-log';
+export { createLogLine } from '@/hooks/use-terminal-log';
 
-const ANSI_BG_COLORS: Record<string, string> = {
-  '40': 'bg-black',
-  '41': 'bg-red-500',
-  '42': 'bg-green-500',
-  '43': 'bg-yellow-500',
-  '44': 'bg-blue-500',
-  '45': 'bg-purple-500',
-  '46': 'bg-cyan-500',
-  '47': 'bg-white',
-};
-
-const ANSI_STYLES: Record<string, string> = {
-  '1': 'font-bold',
-  '2': 'opacity-70',
-  '3': 'italic',
-  '4': 'underline',
-};
-
-interface AnsiSegment {
-  text: string;
-  classes: string[];
-}
-
-function parseAnsiString(input: string): AnsiSegment[] {
-  const segments: AnsiSegment[] = [];
-  // Match ANSI escape sequences: ESC[ followed by params and ending with 'm'
-  const ansiRegex = /\x1b\[([0-9;]*)m/g;
-
-  let lastIndex = 0;
-  let currentClasses: string[] = [];
-  let match: RegExpExecArray | null;
-
-  while ((match = ansiRegex.exec(input)) !== null) {
-    // Add text before this escape sequence
-    if (match.index > lastIndex) {
-      const text = input.slice(lastIndex, match.index);
-      if (text) {
-        segments.push({ text, classes: [...currentClasses] });
-      }
-    }
-
-    // Parse the ANSI codes
-    const codes = match[1].split(';').filter(Boolean);
-
-    for (const code of codes) {
-      if (code === '0' || code === '') {
-        // Reset all styles
-        currentClasses = [];
-      } else if (ANSI_COLORS[code]) {
-        // Remove any existing text color and add new one
-        currentClasses = currentClasses.filter(c => !c.startsWith('text-'));
-        currentClasses.push(ANSI_COLORS[code]);
-      } else if (ANSI_BG_COLORS[code]) {
-        // Remove any existing bg color and add new one
-        currentClasses = currentClasses.filter(c => !c.startsWith('bg-'));
-        currentClasses.push(ANSI_BG_COLORS[code]);
-      } else if (ANSI_STYLES[code]) {
-        if (!currentClasses.includes(ANSI_STYLES[code])) {
-          currentClasses.push(ANSI_STYLES[code]);
-        }
-      }
-    }
-
-    lastIndex = ansiRegex.lastIndex;
-  }
-
-  // Add remaining text after last escape sequence
-  if (lastIndex < input.length) {
-    const text = input.slice(lastIndex);
-    if (text) {
-      segments.push({ text, classes: [...currentClasses] });
-    }
-  }
-
-  // If no segments were created (no ANSI codes), return the whole string
-  if (segments.length === 0 && input) {
-    segments.push({ text: input, classes: [] });
-  }
-
-  return segments;
-}
-
-function stripAnsi(input: string): string {
-  return input.replace(/\x1b\[[0-9;]*m/g, '');
-}
-
-export interface LogLine {
-  id: string;
-  content: string;
-  type: 'stdout' | 'stderr' | 'info' | 'error' | 'success';
-  timestamp: Date;
+// A line is considered JSON output when it is a single {...} object
+function isJsonLine(content: string): boolean {
+  const trimmed = content.trim();
+  return trimmed.startsWith('{') && trimmed.endsWith('}');
 }
 
 interface TerminalLogProps {
   lines: LogLine[];
+  /** Number of lines dropped from the ring buffer (shown above the log). */
+  droppedCount?: number;
+  /** When false, JSON event lines are hidden (default true). */
+  showJson?: boolean;
   onClear?: () => void;
   className?: string;
   autoScroll?: boolean;
   showHeader?: boolean;
 }
 
+function getLineTypeClasses(type: LogLine['type']): string {
+  switch (type) {
+    case 'stderr':
+    case 'error':
+      return 'text-red-400';
+    case 'success':
+      return 'text-green-400';
+    case 'info':
+      return 'text-blue-400';
+    case 'stdout':
+    default:
+      return 'text-gray-200';
+  }
+}
+
 export function TerminalLog({
   lines,
+  droppedCount = 0,
+  showJson = true,
   onClear,
   className,
   autoScroll = true,
   showHeader = true,
-}: TerminalLogProps) {
+}: TerminalLogProps): JSX.Element {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const bottomRef = useRef<HTMLDivElement>(null);
   const [copied, setCopied] = useState(false);
   const [userScrolledUp, setUserScrolledUp] = useState(false);
 
-  // Auto-scroll to bottom when new lines are added
+  // Filter JSON lines based on showJson setting
+  const visibleLines = useMemo(
+    () => (showJson ? lines : lines.filter((line) => !isJsonLine(line.content))),
+    [lines, showJson]
+  );
+
+  const virtualizer = useVirtualizer({
+    count: visibleLines.length,
+    getScrollElement: () => scrollRef.current,
+    estimateSize: () => 21,
+    overscan: 10,
+    getItemKey: (index) => visibleLines[index].id,
+  });
+
+  // Auto-scroll to bottom when new lines are added (unless the user scrolled up)
   useEffect(() => {
-    if (autoScroll && !userScrolledUp && bottomRef.current) {
-      bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
+    if (autoScroll && !userScrolledUp && visibleLines.length > 0) {
+      virtualizer.scrollToIndex(visibleLines.length - 1, { align: 'end' });
     }
-  }, [lines, autoScroll, userScrolledUp]);
+  }, [visibleLines.length, autoScroll, userScrolledUp, virtualizer]);
 
   // Track if user has scrolled up (check scroll container)
   const handleScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
@@ -151,9 +94,16 @@ export function TerminalLog({
     setUserScrolledUp(!isAtBottom);
   }, []);
 
-  // Copy all log contents to clipboard
+  const scrollToBottom = useCallback(() => {
+    setUserScrolledUp(false);
+    if (visibleLines.length > 0) {
+      virtualizer.scrollToIndex(visibleLines.length - 1, { align: 'end' });
+    }
+  }, [virtualizer, visibleLines.length]);
+
+  // Copy the visible log contents to clipboard
   const handleCopy = useCallback(async () => {
-    const plainText = lines
+    const plainText = visibleLines
       .map((line) => stripAnsi(line.content))
       .join('\n');
 
@@ -164,22 +114,7 @@ export function TerminalLog({
     } catch (err) {
       console.error('Failed to copy to clipboard:', err);
     }
-  }, [lines]);
-
-  const getLineTypeClasses = (type: LogLine['type']): string => {
-    switch (type) {
-      case 'stderr':
-      case 'error':
-        return 'text-red-400';
-      case 'success':
-        return 'text-green-400';
-      case 'info':
-        return 'text-blue-400';
-      case 'stdout':
-      default:
-        return 'text-gray-200';
-    }
-  };
+  }, [visibleLines]);
 
   return (
     <div
@@ -222,71 +157,62 @@ export function TerminalLog({
         </div>
       )}
 
-      {/* Log content */}
+      {/* Log content (virtualized) */}
       <div
         ref={scrollRef}
         className="flex-1 overflow-auto scrollbar-macos"
         onScroll={handleScroll}
       >
         <div className="p-3 font-mono text-sm leading-relaxed">
-          {lines.length === 0 ? (
+          {droppedCount > 0 && (
+            <div className="text-gray-500 italic">
+              {droppedCount} earlier line(s) dropped
+            </div>
+          )}
+          {visibleLines.length === 0 ? (
             <div className="text-gray-500 italic">
               No output yet. Run a command to see results here.
             </div>
           ) : (
-            lines.map((line) => (
-              <div
-                key={line.id}
-                className={cn(
-                  'whitespace-pre-wrap break-all',
-                  getLineTypeClasses(line.type)
-                )}
-              >
-                {parseAnsiString(line.content).map((segment, i) => (
-                  <span
-                    key={i}
-                    className={cn(segment.classes)}
+            <div
+              className="relative w-full"
+              style={{ height: `${virtualizer.getTotalSize()}px` }}
+            >
+              {virtualizer.getVirtualItems().map((item) => {
+                const line = visibleLines[item.index];
+                return (
+                  <div
+                    key={item.key}
+                    data-index={item.index}
+                    ref={virtualizer.measureElement}
+                    className={cn(
+                      'absolute top-0 left-0 w-full whitespace-pre-wrap break-all',
+                      getLineTypeClasses(line.type)
+                    )}
+                    style={{ transform: `translateY(${item.start}px)` }}
                   >
-                    {segment.text}
-                  </span>
-                ))}
-              </div>
-            ))
+                    {line.segments.map((segment, i) => (
+                      <span key={i} className={cn(segment.classes)}>
+                        {segment.text}
+                      </span>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           )}
-          {/* Invisible element at the bottom for scrollIntoView */}
-          <div ref={bottomRef} />
         </div>
       </div>
 
       {/* Scroll to bottom indicator */}
-      {userScrolledUp && lines.length > 0 && (
+      {userScrolledUp && visibleLines.length > 0 && (
         <button
           className="absolute bottom-4 right-4 px-2 py-1 text-xs bg-primary text-primary-foreground rounded-md shadow-md hover:bg-primary/90 transition-colors"
-          onClick={() => {
-            setUserScrolledUp(false);
-            if (bottomRef.current) {
-              bottomRef.current.scrollIntoView({ behavior: 'smooth', block: 'end' });
-            }
-          }}
+          onClick={scrollToBottom}
         >
           Scroll to bottom
         </button>
       )}
     </div>
   );
-}
-
-// Helper to create a log line with unique ID
-let lineIdCounter = 0;
-
-export function createLogLine(
-  content: string,
-  type: LogLine['type'] = 'stdout'
-): LogLine {
-  return {
-    id: `log-${Date.now()}-${lineIdCounter++}`,
-    content,
-    type,
-    timestamp: new Date(),
-  };
 }
