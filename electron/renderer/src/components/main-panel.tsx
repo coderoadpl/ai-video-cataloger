@@ -87,10 +87,10 @@ export function MainPanel({
             <div className="rounded-lg border border-border bg-card p-4 space-y-3">
               <h3 className="font-medium">Getting Started</h3>
               <ol className="list-decimal list-inside space-y-1 text-sm text-muted-foreground">
-                <li>Click "Open Folder" to select a folder with video files</li>
+                <li>Click &quot;Open Folder&quot; to select a folder with video files</li>
                 <li>The sidebar will show all detected videos</li>
                 <li>Select a video to view details and analysis results</li>
-                <li>Click "Analyze" to process individual videos</li>
+                <li>Click &quot;Analyze&quot; to process individual videos</li>
                 <li>Terminal output shows real-time progress</li>
               </ol>
             </div>

@@ -45,7 +45,7 @@ export function SidebarPanel({
       <div className="p-4 space-y-2">
         <p className="text-sm text-muted-foreground">No folder selected</p>
         <p className="text-xs text-muted-foreground">
-          Click "Open Folder" to select a video folder.
+          Click &quot;Open Folder&quot; to select a video folder.
         </p>
       </div>
     );

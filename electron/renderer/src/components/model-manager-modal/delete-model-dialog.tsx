@@ -40,7 +40,7 @@ export function DeleteModelDialog({
             Delete Model?
           </AlertDialogTitle>
           <AlertDialogDescription>
-            Are you sure you want to delete the "{modelName}" model? You will
+            Are you sure you want to delete the &quot;{modelName}&quot; model? You will
             need to download it again if you want to use it for transcription.
           </AlertDialogDescription>
         </AlertDialogHeader>

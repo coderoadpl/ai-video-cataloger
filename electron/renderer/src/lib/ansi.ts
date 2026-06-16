@@ -51,6 +51,7 @@ export interface AnsiSegment {
 export function parseAnsiString(input: string): AnsiSegment[] {
   const segments: AnsiSegment[] = [];
   // Match ANSI escape sequences: ESC[ followed by params and ending with 'm'
+  // eslint-disable-next-line no-control-regex -- ESC (\x1b) is the point of this regex
   const ansiRegex = /\x1b\[([0-9;]*)m/g;
 
   let lastIndex = 0;
@@ -108,5 +109,6 @@ export function parseAnsiString(input: string): AnsiSegment[] {
 }
 
 export function stripAnsi(input: string): string {
+  // eslint-disable-next-line no-control-regex -- ESC (\x1b) is the point of this regex
   return input.replace(/\x1b\[[0-9;]*m/g, '');
 }

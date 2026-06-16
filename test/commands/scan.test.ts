@@ -6,7 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { runCli, parseJsonEvents, findEvent } from '../helpers/cli-runner.js';
 import { createTestDir, cleanupTestDir } from '../setup.js';
-import { createFakeVideoFile, createDbDir, createNonVideoFile } from '../helpers/fixtures.js';
+import { createFakeVideoFile, createDbDir } from '../helpers/fixtures.js';
 import { join } from 'node:path';
 import { writeFileSync } from 'node:fs';
 

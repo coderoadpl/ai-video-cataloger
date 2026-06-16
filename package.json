@@ -9,7 +9,8 @@
   },
   "scripts": {
     "build": "tsc",
-    "typecheck": "tsc --noEmit && tsc --project electron/main/tsconfig.json --noEmit && tsc --project electron/preload/tsconfig.json --noEmit && tsc --project electron/renderer/tsconfig.json --noEmit",
+    "typecheck": "tsc --noEmit && tsc --project electron/main/tsconfig.json --noEmit && tsc --project electron/preload/tsconfig.json --noEmit && tsc --project electron/renderer/tsconfig.json --noEmit && npm run lint",
+    "lint": "eslint .",
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "electron:dev": "concurrently \"npm run electron:dev:vite\" \"npm run electron:dev:electron\"",

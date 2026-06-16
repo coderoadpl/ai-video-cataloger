@@ -2,7 +2,7 @@
  * Test fixtures and mock data generators
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 
 // Minimal valid JPEG (1x1 pixel red image) as base64

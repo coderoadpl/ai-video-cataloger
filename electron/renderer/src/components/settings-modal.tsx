@@ -79,13 +79,6 @@ export function SettingsModal({
   const [hasChanges, setHasChanges] = useState(false);
   const [originalConfig, setOriginalConfig] = useState<ConfigValues>(DEFAULT_CONFIG);
 
-  // Load config when modal opens
-  useEffect(() => {
-    if (open && currentFolder) {
-      loadConfig();
-    }
-  }, [open, currentFolder]);
-
   // Track changes
   useEffect(() => {
     const changed =
@@ -155,6 +148,13 @@ export function SettingsModal({
       setIsLoading(false);
     }
   }, [currentFolder, runCli]);
+
+  // Load config when modal opens
+  useEffect(() => {
+    if (open && currentFolder) {
+      loadConfig();
+    }
+  }, [open, currentFolder, loadConfig]);
 
   // Save a single config value
   const saveConfigValue = useCallback(
