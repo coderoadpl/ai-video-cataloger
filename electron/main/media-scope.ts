@@ -47,7 +47,13 @@ export async function resolveScopedImage(
   }
 
   const relative = path.relative(realRoot, realRequested);
-  if (relative.startsWith('..') || path.isAbsolute(relative)) {
+  // '..' or '../...' means escape; a plain name starting with '..' (e.g.
+  // '..thumb.jpg') is a legitimate file inside the root.
+  if (
+    relative === '..' ||
+    relative.startsWith('..' + path.sep) ||
+    path.isAbsolute(relative)
+  ) {
     return null;
   }
 

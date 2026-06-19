@@ -23,6 +23,8 @@ import {
   clearRecentFolders,
 } from './folder-store.js';
 import { updateRecentFoldersMenu } from './menu.js';
+import { statSync } from 'node:fs';
+import path from 'node:path';
 
 // Store active spawned processes by their unique IDs
 const spawnedProcesses = new Map<string, CLIProcessHandle>();
@@ -240,6 +242,18 @@ export function registerIPCHandlers(): void {
   // Folder store - Set current folder
   ipcMain.handle('folder:setCurrent', (event, folderPath: string): void => {
     if (!isTrustedSender(event)) {
+      return;
+    }
+    // The current folder defines the media:// read scope - accept only an
+    // absolute path to an existing directory.
+    if (typeof folderPath !== 'string' || !path.isAbsolute(folderPath)) {
+      return;
+    }
+    try {
+      if (!statSync(folderPath).isDirectory()) {
+        return;
+      }
+    } catch {
       return;
     }
     setCurrentFolder(folderPath);

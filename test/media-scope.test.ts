@@ -79,6 +79,15 @@ describe('resolveScopedImage', () => {
     expect(result).toBeNull();
   });
 
+  it('accepts a file whose name merely starts with ".." inside the root', async () => {
+    const imagePath = join(rootDir, '..weird.jpg');
+    await writeFile(imagePath, 'fake-jpg-data');
+
+    const result = await resolveScopedImage(imagePath, rootDir);
+
+    expect(result).toBe(await realpath(imagePath));
+  });
+
   it('rejects a disallowed extension', async () => {
     const filePath = join(rootDir, 'notes.txt');
     await writeFile(filePath, 'not an image');
