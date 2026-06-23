@@ -24,7 +24,9 @@
     "test": "npm run build && vitest run",
     "test:watch": "vitest",
     "test:renderer": "vitest run --config electron/renderer/vitest.config.ts",
-    "test:e2e": "npm run build && npx tsx test/ai-integration-test.ts"
+    "test:e2e": "npm run build && npx tsx test/ai-integration-test.ts",
+    "test:e2e:videos": "npm run build && vitest run --config test/e2e/vitest.config.ts",
+    "test:e2e:videos:ref": "bash scripts/e2e-videos.sh"
   },
   "keywords": [
     "video",

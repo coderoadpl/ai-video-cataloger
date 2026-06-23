@@ -4,3 +4,6 @@ dist-electron/
 .ai-video-cataloger/
 *.log
 .DS_Store
+test/e2e/fixtures/
+.e2e-worktrees/
+release/
