@@ -12,6 +12,8 @@ import { hashFile } from '../utils/hash.js';
 import type { VideoStatus } from '../types/index.js';
 import { isJsonMode, emitStarted, emitCompleted, outputJson, logHuman, emitError } from './json-output.js';
 import { configureFfmpeg } from './ffmpeg-setup.js';
+import { readSummary, type SummaryData } from './summary-format.js';
+import { getThumbnailsDir } from './thumbnail.js';
 
 // Configure ffmpeg to use bundled binaries (or fall back to system)
 configureFfmpeg();
@@ -27,9 +29,12 @@ export interface VideoArtifacts {
   // Transcript text (available after 'transcribed' status)
   transcriptContent: string | null;
   transcriptPath: string | null;
-  // Summary/analysis (available after 'analyzed' or 'completed' status)
-  summaryContent: string | null;
+  // Structured summary data (available after 'analyzed' or 'completed' status)
+  summary: SummaryData | null;
   summaryPath: string | null;
+  // Thumbnail (generated independently of processing status)
+  thumbnailPath: string | null;
+  thumbnailMtime: number | null;
   // New filename if renamed (available after 'completed' status)
   newFilename: string | null;
 }
@@ -120,24 +125,28 @@ function isInProgressStatus(status: VideoStatus): boolean {
 }
 
 /**
- * Get artifact paths for a video
+ * Get the artifact base name for a video
  * Uses newName if available (for renamed videos), otherwise uses original filename
+ */
+function getArtifactBaseName(videoPath: string, newName: string | null): string {
+  // If video was renamed, artifacts are stored with the new name
+  // Otherwise, use the original filename
+  if (newName) {
+    // newName includes extension, so remove it
+    return newName.replace(/\.[^.]+$/, '');
+  }
+  return basename(videoPath).replace(/\.[^.]+$/, '');
+}
+
+/**
+ * Get artifact paths for a video
  */
 function getArtifactPaths(videoPath: string, folderPath: string, newName: string | null): {
   framesDir: string;
   transcriptPath: string;
   summaryPath: string;
 } {
-  // If video was renamed, artifacts are stored with the new name
-  // Otherwise, use the original filename
-  let videoName: string;
-  if (newName) {
-    // newName includes extension, so remove it
-    videoName = newName.replace(/\.[^.]+$/, '');
-  } else {
-    const videoFilename = basename(videoPath);
-    videoName = videoFilename.replace(/\.[^.]+$/, '');
-  }
+  const videoName = getArtifactBaseName(videoPath, newName);
 
   return {
     framesDir: join(folderPath, 'frames', videoName),
@@ -159,12 +168,26 @@ function loadArtifacts(
     framePaths: null,
     transcriptContent: null,
     transcriptPath: null,
-    summaryContent: null,
+    summary: null,
     summaryPath: null,
+    thumbnailPath: null,
+    thumbnailMtime: null,
     newFilename: newName,
   };
 
-  // No artifacts for untracked or pending videos
+  // Load thumbnail info (thumbnails are generated independently of processing status)
+  const artifactBaseName = getArtifactBaseName(videoPath, newName);
+  const thumbnailPath = join(getThumbnailsDir(folderPath), `${artifactBaseName}.jpg`);
+  if (existsSync(thumbnailPath)) {
+    try {
+      artifacts.thumbnailMtime = statSync(thumbnailPath).mtimeMs;
+      artifacts.thumbnailPath = thumbnailPath;
+    } catch {
+      // Ignore errors reading thumbnail metadata
+    }
+  }
+
+  // No further artifacts for untracked or pending videos
   if (status === 'not_tracked' || status === 'pending') {
     return artifacts;
   }
@@ -198,12 +221,12 @@ function loadArtifacts(
 
   // Load summary if status is analyzed or completed
   const hasSummary = ['analyzed', 'completed'].includes(status);
-  if (hasSummary && existsSync(paths.summaryPath)) {
-    try {
-      artifacts.summaryContent = readFileSync(paths.summaryPath, 'utf-8');
+  if (hasSummary) {
+    // readSummary derives paths from the video path, so honor newName like the other artifacts
+    const effectiveVideoPath = newName ? join(folderPath, newName) : videoPath;
+    artifacts.summary = readSummary(effectiveVideoPath);
+    if (existsSync(paths.summaryPath)) {
       artifacts.summaryPath = paths.summaryPath;
-    } catch {
-      // Ignore errors reading summary
     }
   }
 

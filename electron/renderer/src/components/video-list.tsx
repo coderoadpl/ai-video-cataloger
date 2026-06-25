@@ -5,19 +5,31 @@
 
 import * as React from 'react';
 import { cn } from '@/lib/utils';
+import { mediaUrl } from '@/lib/media-url';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Film, AlertCircle, CheckCircle2, Clock, Loader2 } from 'lucide-react';
 
 // Video status from the CLI scan command
 export type VideoStatus = 'pending' | 'frames_extracted' | 'audio_extracted' | 'transcribed' | 'analyzed' | 'completed' | 'error' | 'not_tracked';
 
+// Structured summary data (from the CLI summaries/NAME.json file)
+export interface SummaryData {
+  schemaVersion: 1;
+  description: string;
+  suggestedFilename: string;
+  fullAnalysis: string;
+  analyzedAt: string;
+}
+
 // Artifact data for processed videos (from CLI scan)
 export interface VideoArtifacts {
   framePaths: string[] | null;
   transcriptContent: string | null;
   transcriptPath: string | null;
-  summaryContent: string | null;
+  summary: SummaryData | null;
   summaryPath: string | null;
+  thumbnailPath: string | null;
+  thumbnailMtime: number | null;
   newFilename: string | null;
 }
 
@@ -31,8 +43,6 @@ export interface VideoItem {
   durationFormatted: string | null;
   status: VideoStatus;
   errorMessage?: string | null;
-  thumbnailPath?: string | null;
-  thumbnailDataUrl?: string | null;
   contentHash: string | null;  // Unique identifier that survives renames
   artifacts: VideoArtifacts;   // Processing artifacts (frames, transcript, summary)
 }
@@ -123,7 +133,18 @@ function VideoThumbnail({
 }): JSX.Element {
   const [imageError, setImageError] = React.useState(false);
 
-  const thumbnailSrc = video.thumbnailDataUrl;
+  // Thumbnail comes from CLI scan artifacts, served via the media:// protocol;
+  // thumbnailMtime acts as a cache-buster when the file is regenerated.
+  const thumbnailPath = video.artifacts?.thumbnailPath ?? null;
+  const thumbnailSrc = thumbnailPath
+    ? mediaUrl(thumbnailPath, video.artifacts?.thumbnailMtime ?? undefined)
+    : null;
+
+  // Reset the error state when the thumbnail source changes (e.g. regenerated)
+  React.useEffect(() => {
+    setImageError(false);
+  }, [thumbnailSrc]);
+
   const showFallback = !thumbnailSrc || imageError;
 
   return (
@@ -150,18 +171,19 @@ function VideoThumbnail({
 }
 
 /**
- * Single video item in the list
+ * Single video item in the list.
+ * Memoized so unrelated list re-renders skip unchanged rows.
  */
-function VideoListItem({
+const VideoListItem = React.memo(function VideoListItem({
   video,
   isSelected,
   isCurrentlyAnalyzing,
-  onClick,
+  onSelect,
 }: {
   video: VideoItem;
   isSelected: boolean;
   isCurrentlyAnalyzing: boolean;
-  onClick: () => void;
+  onSelect: (video: VideoItem) => void;
 }): JSX.Element {
   const statusBadge = getStatusBadge(video.status, isCurrentlyAnalyzing);
 
@@ -172,7 +194,7 @@ function VideoListItem({
         'hover:bg-muted/50',
         isSelected && 'bg-muted'
       )}
-      onClick={onClick}
+      onClick={() => onSelect(video)}
       title={video.path}
     >
       <VideoThumbnail video={video} isSelected={isSelected} />
@@ -212,7 +234,7 @@ function VideoListItem({
       </div>
     </button>
   );
-}
+});
 
 /**
  * VideoList component
@@ -257,7 +279,7 @@ export function VideoList({
             video={video}
             isSelected={video.path === selectedVideoPath}
             isCurrentlyAnalyzing={video.path === analyzingVideoPath}
-            onClick={() => onSelectVideo(video)}
+            onSelect={onSelectVideo}
           />
         ))}
       </div>

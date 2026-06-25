@@ -55,21 +55,12 @@ interface FolderAPI {
   clearRecent: () => Promise<void>;
 }
 
-// File API
-interface FileAPI {
-  readAsDataUrl: (filePath: string) => Promise<string | null>;
-  exists: (filePath: string) => Promise<boolean>;
-  readText: (filePath: string) => Promise<string | null>;
-  readDir: (dirPath: string) => Promise<string[]>;
-}
-
 interface ElectronAPI {
   platform: NodeJS.Platform;
   closeWindow: () => void;
   minimizeWindow: () => void;
   maximizeWindow: () => void;
   getAppVersion: () => Promise<string>;
-  file: FileAPI;
   cli: CLIAPI;
   folder: FolderAPI;
 }

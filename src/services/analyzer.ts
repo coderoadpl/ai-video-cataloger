@@ -13,6 +13,8 @@ import { updateVideoStatus } from '../db/index.js';
 import { getFramesDir } from './frames.js';
 import { getTranscriptPath } from './transcription.js';
 import { getFilteredEnv } from './env-filter.js';
+import { getSummariesDir, writeSummary } from './summary-format.js';
+import { CodedError } from './json-output.js';
 import type { VideoRecord } from '../types/index.js';
 
 /**
@@ -40,45 +42,6 @@ function clearClaudeConversationHistory(dirPath: string): void {
     } catch {
       // Ignore errors - conversation history is not critical
     }
-  }
-}
-
-/**
- * Get the summaries directory for a video
- */
-export function getSummariesDir(videoPath: string): string {
-  const videoDir = dirname(videoPath);
-  return join(videoDir, 'summaries');
-}
-
-/**
- * Get the summary file path for a video
- */
-export function getSummaryPath(videoPath: string): string {
-  const videoName = basename(videoPath, extname(videoPath));
-  return join(getSummariesDir(videoPath), `${videoName}.txt`);
-}
-
-/**
- * Extract the suggested filename from an existing summary file
- * Used when resuming from 'analyzed' status
- */
-export function getSuggestedFilenameFromSummary(videoPath: string): string | null {
-  const summaryPath = getSummaryPath(videoPath);
-
-  if (!existsSync(summaryPath)) {
-    return null;
-  }
-
-  try {
-    const content = readFileSync(summaryPath, 'utf-8');
-    const match = content.match(/SUGGESTED FILENAME:\s*\n?([^\n]+)/i);
-    if (match && match[1]) {
-      return match[1].trim();
-    }
-    return null;
-  } catch {
-    return null;
   }
 }
 
@@ -129,12 +92,17 @@ function parseClaudeResponse(response: string): AnalysisResult {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 
-  // If parsing failed, use the full response as description and generate a generic filename
+  // No FILENAME line could be extracted - fail instead of inventing a name
+  if (!suggestedFilename) {
+    throw new CodedError(
+      'Failed to parse analysis response: no FILENAME line found',
+      'ANALYSIS_PARSE_FAILED'
+    );
+  }
+
+  // Soft fallback: a FILENAME was found but no DESCRIPTION - use the response start
   if (!description) {
     description = response.trim().substring(0, 500);
-  }
-  if (!suggestedFilename) {
-    suggestedFilename = 'video-content';
   }
 
   return {
@@ -331,10 +299,8 @@ export async function analyzeVideo(
     // Clear the elapsed timer
     clearInterval(elapsedTimer);
 
-    // Parse the response
-    const analysis = parseClaudeResponse(response);
-
     // Save debug log with prompt and full response
+    // (written before parsing so failed parses still leave a debug trail)
     const debugLogPath = getDebugLogPath(videoPath);
     const debugContent = `Video: ${video.original_name}
 Date Analyzed: ${new Date().toISOString()}
@@ -351,21 +317,17 @@ ${response}
 `;
     writeFileSync(debugLogPath, debugContent, 'utf-8');
 
-    // Save full analysis to file
-    const summaryPath = getSummaryPath(videoPath);
-    const summaryContent = `Video: ${video.original_name}
-Date Analyzed: ${new Date().toISOString()}
+    // Parse the response (throws ANALYSIS_PARSE_FAILED if no filename found)
+    const analysis = parseClaudeResponse(response);
 
-DESCRIPTION:
-${analysis.description}
-
-SUGGESTED FILENAME:
-${analysis.suggestedFilename}
-
-FULL ANALYSIS:
-${analysis.fullAnalysis}
-`;
-    writeFileSync(summaryPath, summaryContent, 'utf-8');
+    // Save the summary (.json source of truth + regenerated .txt)
+    writeSummary(videoPath, {
+      schemaVersion: 1,
+      description: analysis.description,
+      suggestedFilename: analysis.suggestedFilename,
+      fullAnalysis: analysis.fullAnalysis,
+      analyzedAt: new Date().toISOString(),
+    });
 
     // Update video status in database
     updateVideoStatus(video.id, 'analyzed');

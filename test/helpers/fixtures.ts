@@ -2,7 +2,7 @@
  * Test fixtures and mock data generators
  */
 
-import { writeFileSync, mkdirSync, existsSync } from 'node:fs';
+import { writeFileSync, mkdirSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 
 // Minimal valid JPEG (1x1 pixel red image) as base64
@@ -69,7 +69,7 @@ export function createMockTranscript(
 }
 
 /**
- * Create mock summary artifact
+ * Create mock summary artifacts (machine-readable .json + human-readable .txt)
  */
 export function createMockSummary(
   testDir: string,
@@ -88,9 +88,28 @@ export function createMockSummary(
   const suggestedFilename = options?.suggestedFilename ?? 'sample-test-content';
   const fullAnalysis =
     options?.fullAnalysis ?? `DESCRIPTION: ${description}\nFILENAME: ${suggestedFilename}`;
+  const analyzedAt = new Date().toISOString();
 
+  // Machine-readable summary (source of truth)
+  const summaryJsonPath = join(summariesDir, `${baseName}.json`);
+  writeFileSync(
+    summaryJsonPath,
+    JSON.stringify(
+      {
+        schemaVersion: 1,
+        description,
+        suggestedFilename,
+        fullAnalysis,
+        analyzedAt,
+      },
+      null,
+      2
+    )
+  );
+
+  // Human-readable summary rendered from the same data
   const summaryContent = `Video: ${videoName}
-Date Analyzed: ${new Date().toISOString()}
+Date Analyzed: ${analyzedAt}
 
 DESCRIPTION:
 ${description}

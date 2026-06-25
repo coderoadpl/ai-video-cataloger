@@ -100,45 +100,6 @@ const electronAPI = {
     },
   },
 
-  // File operations
-  file: {
-    /**
-     * Read a file and return it as a data URL (for images, thumbnails, etc.)
-     * @param filePath - Absolute path to the file
-     * @returns Promise with data URL or null if file doesn't exist
-     */
-    readAsDataUrl: (filePath: string): Promise<string | null> => {
-      return ipcRenderer.invoke('file:readAsDataUrl', filePath);
-    },
-
-    /**
-     * Check if a file exists.
-     * @param filePath - Absolute path to the file
-     * @returns Promise with boolean indicating if file exists
-     */
-    exists: (filePath: string): Promise<boolean> => {
-      return ipcRenderer.invoke('file:exists', filePath);
-    },
-
-    /**
-     * Read a text file.
-     * @param filePath - Absolute path to the file
-     * @returns Promise with text content or null if file doesn't exist
-     */
-    readText: (filePath: string): Promise<string | null> => {
-      return ipcRenderer.invoke('file:readText', filePath);
-    },
-
-    /**
-     * Read directory contents.
-     * @param dirPath - Absolute path to the directory
-     * @returns Promise with array of filenames (empty if directory doesn't exist)
-     */
-    readDir: (dirPath: string): Promise<string[]> => {
-      return ipcRenderer.invoke('file:readDir', dirPath);
-    },
-  },
-
   // CLI Spawner
   cli: {
     /**

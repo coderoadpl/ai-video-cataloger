@@ -19,6 +19,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
+import { useCliCommand } from '@/hooks/use-cli-command';
 
 // Config types matching the CLI config service
 type WhisperMode = 'local' | 'api' | 'skip';
@@ -70,19 +71,13 @@ export function SettingsModal({
   currentFolder,
   onConfigSaved,
 }: SettingsModalProps): JSX.Element {
+  const runCli = useCliCommand();
   const [config, setConfig] = useState<ConfigValues>(DEFAULT_CONFIG);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
   const [originalConfig, setOriginalConfig] = useState<ConfigValues>(DEFAULT_CONFIG);
-
-  // Load config when modal opens
-  useEffect(() => {
-    if (open && currentFolder) {
-      loadConfig();
-    }
-  }, [open, currentFolder]);
 
   // Track changes
   useEffect(() => {
@@ -96,113 +91,96 @@ export function SettingsModal({
   }, [config, originalConfig]);
 
   // Load config from CLI
-  const loadConfig = useCallback(async () => {
+  const loadConfig = useCallback(async (): Promise<void> => {
     if (!currentFolder) return;
 
     setIsLoading(true);
     setError(null);
 
-    return new Promise<void>((resolve) => {
+    try {
+      // Run config get command with cwd set to current folder
+      const { code, events } = await runCli(
+        ['config', 'get', '--json'],
+        {
+          onJson: (event) => {
+            if (event.type === 'error') {
+              setError(event.error || 'Failed to load config');
+            }
+          },
+        },
+        { cwd: currentFolder }
+      );
+
+      const hasError = events.some((event) => event.type === 'error');
+      const completed = events.find((event) => event.type === 'completed' && event.data);
+
       let configData: Partial<ConfigValues> = {};
-      let hasError = false;
+      if (completed?.data) {
+        const rawConfig = completed.data.config as Record<string, string | null> | undefined;
+        const defaults = completed.data.defaults as Record<string, string> | undefined;
 
-      const handleJson = (_spawnId: string, event: { type: string; data?: Record<string, unknown>; error?: string }): void => {
-        if (event.type === 'completed' && event.data) {
-          const rawConfig = event.data.config as Record<string, string | null> | undefined;
-          const defaults = event.data.defaults as Record<string, string> | undefined;
-
-          if (rawConfig && defaults) {
-            // Parse values, using defaults if not set
-            configData = {
-              whisper_model: (rawConfig.whisper_model || defaults.whisper_model) as WhisperModel,
-              whisper_mode: (rawConfig.whisper_mode || defaults.whisper_mode) as WhisperMode,
-              frames: parseInt(rawConfig.frames || defaults.frames, 10),
-              timeout: parseInt(rawConfig.timeout || defaults.timeout, 10),
-              skip_rename: (rawConfig.skip_rename || defaults.skip_rename) === 'true',
-            };
-          }
-        } else if (event.type === 'error') {
-          hasError = true;
-          setError(event.error || 'Failed to load config');
+        if (rawConfig && defaults) {
+          // Parse values, using defaults if not set
+          configData = {
+            whisper_model: (rawConfig.whisper_model || defaults.whisper_model) as WhisperModel,
+            whisper_mode: (rawConfig.whisper_mode || defaults.whisper_mode) as WhisperMode,
+            frames: parseInt(rawConfig.frames || defaults.frames, 10),
+            timeout: parseInt(rawConfig.timeout || defaults.timeout, 10),
+            skip_rename: (rawConfig.skip_rename || defaults.skip_rename) === 'true',
+          };
         }
-      };
+      }
 
-      const handleExit = (_spawnId: string, code: number | null): void => {
-        cleanupListeners();
-        setIsLoading(false);
+      if (!hasError && code === 0 && Object.keys(configData).length > 0) {
+        const loadedConfig = { ...DEFAULT_CONFIG, ...configData };
+        setConfig(loadedConfig);
+        setOriginalConfig(loadedConfig);
+      } else if (!hasError) {
+        // No config file exists, use defaults
+        setConfig(DEFAULT_CONFIG);
+        setOriginalConfig(DEFAULT_CONFIG);
+      }
+    } catch {
+      // If no folder is set up yet, use defaults silently
+      setConfig(DEFAULT_CONFIG);
+      setOriginalConfig(DEFAULT_CONFIG);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentFolder, runCli]);
 
-        if (!hasError && code === 0 && Object.keys(configData).length > 0) {
-          const loadedConfig = { ...DEFAULT_CONFIG, ...configData };
-          setConfig(loadedConfig);
-          setOriginalConfig(loadedConfig);
-        } else if (!hasError) {
-          // No config file exists, use defaults
-          setConfig(DEFAULT_CONFIG);
-          setOriginalConfig(DEFAULT_CONFIG);
-        }
-        resolve();
-      };
-
-      const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-      const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-      const cleanupListeners = (): void => {
-        cleanupJson?.();
-        cleanupExit?.();
-      };
-
-      // Spawn config get command with cwd set to current folder
-      window.electronAPI?.cli
-        .spawn(['config', 'get', '--json'], { json: true, cwd: currentFolder })
-        .catch(() => {
-          cleanupListeners();
-          setIsLoading(false);
-          // If no folder is set up yet, use defaults silently
-          setConfig(DEFAULT_CONFIG);
-          setOriginalConfig(DEFAULT_CONFIG);
-          resolve();
-        });
-    });
-  }, [currentFolder]);
+  // Load config when modal opens
+  useEffect(() => {
+    if (open && currentFolder) {
+      loadConfig();
+    }
+  }, [open, currentFolder, loadConfig]);
 
   // Save a single config value
   const saveConfigValue = useCallback(
     async (key: keyof ConfigValues, value: string): Promise<boolean> => {
       if (!currentFolder) return false;
 
-      return new Promise((resolve) => {
-        let success = false;
+      try {
+        const { code, events } = await runCli(
+          ['config', 'set', key, value, '--json'],
+          {
+            onJson: (event) => {
+              if (event.type === 'error') {
+                setError(event.error || `Failed to save ${key}`);
+              }
+            },
+          },
+          { cwd: currentFolder }
+        );
 
-        const handleJson = (_spawnId: string, event: { type: string; error?: string }): void => {
-          if (event.type === 'completed') {
-            success = true;
-          } else if (event.type === 'error') {
-            setError(event.error || `Failed to save ${key}`);
-          }
-        };
-
-        const handleExit = (_spawnId: string, code: number | null): void => {
-          cleanupListeners();
-          resolve(code === 0 && success);
-        };
-
-        const cleanupJson = window.electronAPI?.cli.onJson(handleJson);
-        const cleanupExit = window.electronAPI?.cli.onExit(handleExit);
-
-        const cleanupListeners = (): void => {
-          cleanupJson?.();
-          cleanupExit?.();
-        };
-
-        window.electronAPI?.cli
-          .spawn(['config', 'set', key, value, '--json'], { json: true, cwd: currentFolder })
-          .catch(() => {
-            cleanupListeners();
-            resolve(false);
-          });
-      });
+        const success = events.some((event) => event.type === 'completed');
+        return code === 0 && success;
+      } catch {
+        return false;
+      }
     },
-    [currentFolder]
+    [currentFolder, runCli]
   );
 
   // Save all changed settings

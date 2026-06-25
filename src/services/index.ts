@@ -21,13 +21,18 @@ export {
 } from './transcription.js';
 export {
   analyzeVideo,
-  getSummariesDir,
-  getSummaryPath,
-  getSuggestedFilenameFromSummary,
   getDebugLogPath,
   type AnalysisResult,
   type AnalysisOptions,
 } from './analyzer.js';
+export {
+  getSummariesDir,
+  getSummaryPath,
+  getSummaryJsonPath,
+  writeSummary,
+  readSummary,
+  type SummaryData,
+} from './summary-format.js';
 export {
   renameVideo,
   type RenameResult,
@@ -90,6 +95,7 @@ export {
   getModelPath,
 } from './whisper-setup.js';
 export {
+  CodedError,
   setJsonMode,
   isJsonMode,
   emitStarted,

@@ -205,8 +205,13 @@ export function spawnCLIWithJson(
   onStderr: ErrorCallback,
   onExit: ExitCallback
 ): CLIProcessHandle {
-  // Ensure --json flag is included
-  const fullArgs = args.includes('--json') ? args : ['--json', ...args];
+  // Ensure --json flag is included.
+  // The CLI declares --json per-subcommand, so it must come AFTER the
+  // subcommand (e.g. ['check', '--json', folder]), never before it.
+  const fullArgs =
+    args.includes('--json') || args.length === 0
+      ? args
+      : [args[0], '--json', ...args.slice(1)];
 
   return spawnCLI(
     fullArgs,
