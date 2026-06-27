@@ -189,6 +189,9 @@ const VideoListItem = React.memo(function VideoListItem({
 
   return (
     <button
+      data-testid="video-item"
+      data-video-filename={video.filename}
+      data-video-status={video.status}
       className={cn(
         'w-full flex items-start gap-3 p-2 text-left rounded-md transition-colors',
         'hover:bg-muted/50',

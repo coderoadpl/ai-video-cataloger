@@ -25,6 +25,7 @@ export function StatusActions({ video, onAnalyze, isAnalyzing }: StatusActionsPr
       {isPending && onAnalyze && (
         <div className="space-y-4">
           <Button
+            data-testid="analyze-button"
             onClick={() => onAnalyze(video)}
             disabled={isAnalyzing}
             className="w-full"

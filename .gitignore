@@ -7,3 +7,5 @@ dist-electron/
 test/e2e/fixtures/
 .e2e-worktrees/
 release/
+test-results/
+playwright-report/

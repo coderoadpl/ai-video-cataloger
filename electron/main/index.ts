@@ -20,7 +20,11 @@ registerMediaScheme();
 
 let mainWindow: BrowserWindow | null = null;
 
-const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+// NODE_ENV=production forces the built-renderer path even when unpackaged
+// (used by the Playwright GUI e2e harness and for verifying a local build).
+const isDev =
+  process.env.NODE_ENV !== 'production' &&
+  (process.env.NODE_ENV === 'development' || !app.isPackaged);
 
 function createWindow(): void {
   const preloadPath = isDev
@@ -62,8 +66,12 @@ function createWindow(): void {
     mainWindow.loadURL(devServerUrl);
     mainWindow.webContents.openDevTools();
   } else {
-    // In production, load from the built files
-    mainWindow.loadFile(path.join(__dirname, '../renderer/dist/index.html'));
+    // In production, load from the built files. AVC_RENDERER_HTML lets the e2e
+    // harness point at the Vite build output without a packaging step.
+    const rendererHtml =
+      process.env.AVC_RENDERER_HTML ||
+      path.join(__dirname, '../renderer/dist/index.html');
+    mainWindow.loadFile(rendererHtml);
   }
 
   mainWindow.on('closed', () => {
