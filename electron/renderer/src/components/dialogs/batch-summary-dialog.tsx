@@ -25,7 +25,7 @@ interface BatchSummaryDialogProps {
 export function BatchSummaryDialog({ open, results, onClose }: BatchSummaryDialogProps): JSX.Element {
   return (
     <AlertDialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
-      <AlertDialogContent className="max-w-lg">
+      <AlertDialogContent data-testid="batch-summary-dialog" className="max-w-lg">
         <AlertDialogHeader>
           <AlertDialogTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5 text-green-600" />
@@ -38,14 +38,14 @@ export function BatchSummaryDialog({ open, results, onClose }: BatchSummaryDialo
                 <div className="flex items-center gap-2">
                   <CheckCircle2 className="h-4 w-4 text-green-600" />
                   <span className="text-sm">
-                    <span className="font-medium text-foreground">{results.filter((r) => r.success).length}</span>
+                    <span data-testid="batch-success-count" className="font-medium text-foreground">{results.filter((r) => r.success).length}</span>
                     {' '}successful
                   </span>
                 </div>
                 <div className="flex items-center gap-2">
                   <XOctagon className="h-4 w-4 text-red-600" />
                   <span className="text-sm">
-                    <span className="font-medium text-foreground">{results.filter((r) => !r.success).length}</span>
+                    <span data-testid="batch-failed-count" className="font-medium text-foreground">{results.filter((r) => !r.success).length}</span>
                     {' '}failed
                   </span>
                 </div>
@@ -75,7 +75,7 @@ export function BatchSummaryDialog({ open, results, onClose }: BatchSummaryDialo
           </AlertDialogDescription>
         </AlertDialogHeader>
         <AlertDialogFooter>
-          <AlertDialogAction onClick={onClose}>
+          <AlertDialogAction data-testid="batch-summary-close" onClick={onClose}>
             OK
           </AlertDialogAction>
         </AlertDialogFooter>

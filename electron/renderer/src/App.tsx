@@ -95,6 +95,15 @@ function App(): JSX.Element {
 
   return (
     <>
+      {/* Machine-readable pipeline state for the e2e GUI driver: isAnalyzing
+          flips synchronously with user actions, so tests get a race-free
+          started/finished signal even for very short (failing) runs. */}
+      <div
+        data-testid="analysis-state"
+        data-analyzing={processor.isAnalyzing ? 'true' : 'false'}
+        data-batch-processing={processor.isBatchProcessing ? 'true' : 'false'}
+        hidden
+      />
       <AppLayout
         sidebar={
           <SidebarPanel

@@ -51,6 +51,7 @@ export function MainPanel({
                     {processingProgress.percentage}%
                   </span>
                   <Button
+                    data-testid="cancel-analysis-button"
                     variant="destructive"
                     size="sm"
                     onClick={onCancelClick}
