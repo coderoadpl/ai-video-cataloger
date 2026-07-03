@@ -12,7 +12,7 @@ import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
   copyFileSync, createWriteStream, existsSync, mkdirSync, readdirSync,
-  readFileSync, renameSync, rmSync, unlinkSync,
+  readFileSync, renameSync, rmSync, unlinkSync, writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -221,23 +221,33 @@ export function listVideos(dir: string): string[] {
   }).sort();
 }
 
-export interface Prereqs {
-  claude: boolean;
-  whisper: boolean;
-  say: boolean;
-}
-
-export function detectPrereqs(): Prereqs {
-  const has = (cmd: string, args: string[]): boolean =>
-    spawnSync(cmd, args, { timeout: 20_000, stdio: 'ignore' }).status === 0;
-  return {
-    claude: has('claude', ['--version']),
-    whisper: has('which', ['whisper']),
-    say: process.platform === 'darwin' && has('which', ['say']),
-  };
-}
-
 export function findKeyword(haystack: string, keywords: string[]): string | null {
   const lower = haystack.toLowerCase();
   return keywords.find((keyword) => lower.includes(keyword.toLowerCase())) ?? null;
+}
+
+/** Create an empty isolated scenario dir. */
+export function makeEmptyWorkdir(tag: string): string {
+  const dir = join(tmpdir(), `avc-e2e-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
+  mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+/** Copy a sample's fixture into a workdir; returns the in-dir filename. */
+export async function addSampleTo(dir: string, sample: VideoSample): Promise<string> {
+  const fixture = await ensureFixture(sample);
+  copyFileSync(fixture, join(dir, sample.file));
+  return sample.file;
+}
+
+/**
+ * Write a deterministic broken "video": right extension, garbage content.
+ * ffprobe rejects it ("moov atom not found"), which is the unhappy path the
+ * pipeline must survive without renaming anything.
+ */
+export function addCorruptVideoTo(dir: string, name = 'corrupt-video.mp4'): string {
+  const garbage = Buffer.alloc(256 * 1024);
+  garbage.fill('THIS IS NOT A REAL MP4 FILE. ');
+  writeFileSync(join(dir, name), garbage);
+  return name;
 }

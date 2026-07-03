@@ -61,6 +61,7 @@ export function StatusActions({ video, onAnalyze, isAnalyzing }: StatusActionsPr
             </div>
           </div>
           <Button
+            data-testid="analyze-button"
             onClick={() => onAnalyze(video)}
             disabled={isAnalyzing}
             className="w-full"
@@ -93,6 +94,7 @@ export function StatusActions({ video, onAnalyze, isAnalyzing }: StatusActionsPr
           </div>
           {onAnalyze && (
             <Button
+              data-testid="analyze-button"
               variant="outline"
               size="sm"
               className="mt-3"

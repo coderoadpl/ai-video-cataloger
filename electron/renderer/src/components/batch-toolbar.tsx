@@ -30,6 +30,7 @@ export function BatchToolbar({
       {/* Analyze All button */}
       {pendingVideosCount > 0 && !isBatchProcessing && !isAnalyzing && (
         <Button
+          data-testid="analyze-all-button"
           size="sm"
           className="w-full"
           onClick={onBatchAnalyze}

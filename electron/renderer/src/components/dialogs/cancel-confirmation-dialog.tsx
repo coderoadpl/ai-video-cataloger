@@ -70,6 +70,7 @@ export function CancelConfirmationDialog({
             Continue Processing
           </AlertDialogCancel>
           <AlertDialogAction
+            data-testid="confirm-cancel-button"
             onClick={confirmation.isBatch ? onConfirmBatch : onConfirmSingle}
             className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
           >
