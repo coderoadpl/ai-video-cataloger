@@ -1,157 +1,43 @@
 /**
- * Video analyzer service
- * Analyzes video frames and transcripts using Claude Code CLI
+ * Video analyzer service - thin orchestrator over analyzer providers.
+ *
+ * Gathers frames + transcript, delegates to the selected provider (claude CLI
+ * or local Ollama), writes the debug log, parses/validates the shared
+ * DESCRIPTION:/FILENAME: response contract and persists the summary.
  */
 
-import { execa } from 'execa';
-import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { join, dirname, basename, extname } from 'node:path';
-import { homedir } from 'node:os';
 import chalk from 'chalk';
 import ora from 'ora';
 import { updateVideoStatus } from '../db/index.js';
 import { getFramesDir } from './frames.js';
 import { getTranscriptPath } from './transcription.js';
-import { getFilteredEnv } from './env-filter.js';
 import { getSummariesDir, writeSummary } from './summary-format.js';
-import { CodedError } from './json-output.js';
+import { parseAnalysisResponse, type AnalysisResult } from './analyzer-providers/response-format.js';
+import { ClaudeCliProvider } from './analyzer-providers/claude-cli.js';
+import type { AnalyzerBackend, AnalyzerProvider } from './analyzer-providers/types.js';
 import type { VideoRecord } from '../types/index.js';
 
-/**
- * Convert a file path to Claude's project folder name format.
- * Claude stores conversations in ~/.claude/projects/-<path-with-dashes>
- * e.g. /Users/foo/bar becomes -Users-foo-bar
- */
-function getClaudeProjectFolderName(dirPath: string): string {
-  // Replace all path separators with dashes and prepend with dash
-  return '-' + dirPath.replace(/\//g, '-').replace(/^-/, '');
-}
-
-/**
- * Clear Claude Code conversation history for a directory.
- * This prevents SIGTRAP errors caused by corrupted or too-large conversation contexts.
- */
-function clearClaudeConversationHistory(dirPath: string): void {
-  const claudeProjectsDir = join(homedir(), '.claude', 'projects');
-  const projectFolderName = getClaudeProjectFolderName(dirPath);
-  const projectPath = join(claudeProjectsDir, projectFolderName);
-
-  if (existsSync(projectPath)) {
-    try {
-      rmSync(projectPath, { recursive: true, force: true });
-    } catch {
-      // Ignore errors - conversation history is not critical
-    }
-  }
-}
-
-export interface AnalysisResult {
-  description: string;
-  suggestedFilename: string;
-  fullAnalysis: string;
-}
+export type { AnalysisResult };
 
 export interface AnalysisOptions {
   timeoutSeconds?: number;
   verbose?: boolean;
+  /** Which analysis backend to use (default: claude). */
+  analyzer?: AnalyzerBackend;
+  /** Ollama model tag for the local backend (default: gemma3:12b). */
+  localModel?: string;
 }
 
-/**
- * Parse Claude's response to extract description and filename suggestion
- * Expected format:
- * DESCRIPTION: <2-3 sentences>
- * FILENAME: <suggested-filename-in-kebab-case>
- */
-function parseClaudeResponse(response: string): AnalysisResult {
-  const lines = response.trim().split('\n');
-
-  let description = '';
-  let suggestedFilename = '';
-  let capturingDescription = false;
-
-  for (const line of lines) {
-    const trimmedLine = line.trim();
-
-    if (trimmedLine.toUpperCase().startsWith('DESCRIPTION:')) {
-      description = trimmedLine.substring('DESCRIPTION:'.length).trim();
-      capturingDescription = true;
-    } else if (trimmedLine.toUpperCase().startsWith('FILENAME:')) {
-      suggestedFilename = trimmedLine.substring('FILENAME:'.length).trim();
-      capturingDescription = false;
-    } else if (capturingDescription && trimmedLine && !trimmedLine.toUpperCase().startsWith('FILENAME')) {
-      // Continue capturing multi-line description
-      description += ' ' + trimmedLine;
-    }
+/** Instantiate the provider for the requested backend. */
+async function createProvider(options: AnalysisOptions): Promise<AnalyzerProvider> {
+  if (options.analyzer === 'local') {
+    // Lazy import keeps the claude path free of any local-runtime concerns
+    const { OllamaProvider } = await import('./analyzer-providers/ollama.js');
+    return new OllamaProvider(options.localModel ?? 'gemma3:12b');
   }
-
-  // Clean up the suggested filename (ensure kebab-case)
-  suggestedFilename = suggestedFilename
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-
-  // No FILENAME line could be extracted - fail instead of inventing a name
-  if (!suggestedFilename) {
-    throw new CodedError(
-      'Failed to parse analysis response: no FILENAME line found',
-      'ANALYSIS_PARSE_FAILED'
-    );
-  }
-
-  // Soft fallback: a FILENAME was found but no DESCRIPTION - use the response start
-  if (!description) {
-    description = response.trim().substring(0, 500);
-  }
-
-  return {
-    description: description.trim(),
-    suggestedFilename,
-    fullAnalysis: response,
-  };
-}
-
-/**
- * Build the prompt for Claude to analyze the video
- */
-function buildAnalysisPrompt(videoName: string, transcript: string | null, framePaths: string[]): string {
-  let prompt = `You are analyzing a video file named "${videoName}".
-
-`;
-
-  if (transcript) {
-    prompt += `Here is the transcript of the audio:
----
-${transcript}
----
-
-`;
-  } else {
-    prompt += `This video has no audio or transcript available.
-
-`;
-  }
-
-  // Include frame images using file:// URLs so Claude can view them
-  prompt += `Here are ${framePaths.length} frame(s) extracted from the video:\n`;
-  for (const framePath of framePaths) {
-    prompt += `file://${framePath}\n`;
-  }
-  prompt += `\n`;
-
-  prompt += `Based on the visual content from the frames${transcript ? ' and the audio transcript' : ''}, please provide:
-
-1. A 2-3 sentence description of what this video is about
-2. A suggested filename (3-5 words, kebab-case format like "cat-playing-with-yarn")
-
-Please format your response EXACTLY as follows:
-DESCRIPTION: <your 2-3 sentence description here>
-FILENAME: <your-suggested-filename-in-kebab-case>
-
-Focus on being descriptive and accurate. The filename should capture the essence of the video content.`;
-
-  return prompt;
+  return new ClaudeCliProvider();
 }
 
 /**
@@ -163,11 +49,10 @@ export function getDebugLogPath(videoPath: string): string {
 }
 
 /**
- * Analyze a video using Claude Code CLI
+ * Analyze a video using the selected provider
  * @param video - The video record to analyze
  * @param hasTranscript - Whether the video has a transcript
- * @param options - Analysis options including timeout and verbose mode
- * @returns Analysis result with description and suggested filename
+ * @param options - Analysis options including timeout, verbose mode and backend
  */
 export async function analyzeVideo(
   video: VideoRecord,
@@ -179,18 +64,19 @@ export async function analyzeVideo(
   const timeoutMs = timeoutSeconds * 1000;
   const verbose = options.verbose ?? false;
 
+  const provider = await createProvider(options);
+
   // Track elapsed time for spinner
   const startTime = Date.now();
 
   const spinner = ora({
-    text: `Analyzing ${chalk.cyan(video.original_name)} with Claude (0s)`,
+    text: `Analyzing ${chalk.cyan(video.original_name)} with ${provider.label} (0s)`,
     color: 'blue',
   }).start();
 
-  // Update spinner with elapsed time every second
   const elapsedTimer = setInterval(() => {
     const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-    spinner.text = `Analyzing ${chalk.cyan(video.original_name)} with Claude (${elapsedSeconds}s)`;
+    spinner.text = `Analyzing ${chalk.cyan(video.original_name)} with ${provider.label} (${elapsedSeconds}s)`;
   }, 1000);
 
   try {
@@ -219,106 +105,44 @@ export async function analyzeVideo(
       }
     }
 
-    // Build the prompt with frame paths included as file:// URLs
-    const prompt = buildAnalysisPrompt(video.original_name, transcript, framePaths);
-
     // Create summaries directory early (needed for debug log)
     const summariesDir = getSummariesDir(videoPath);
     if (!existsSync(summariesDir)) {
       mkdirSync(summariesDir, { recursive: true });
     }
 
-    // Display verbose information
-    if (verbose) {
-      spinner.stop();
-      console.log(chalk.gray('\n[verbose] Frame paths being analyzed:'));
-      for (const framePath of framePaths) {
-        console.log(chalk.gray(`  • ${framePath}`));
-      }
-      console.log(chalk.gray('\n[verbose] Full prompt being sent to Claude:'));
-      console.log(chalk.gray('─'.repeat(60)));
-      console.log(chalk.gray(prompt));
-      console.log(chalk.gray('─'.repeat(60)));
-      console.log();
-      spinner.start();
-    }
+    // Providers print their own verbose diagnostics - keep the spinner quiet
+    if (verbose) spinner.stop();
+    const { rawResponse } = await provider.analyze({
+      videoName: video.original_name,
+      videoDir: dirname(videoPath),
+      framePaths,
+      transcript,
+      timeoutMs,
+      verbose,
+    });
+    if (verbose) spinner.start();
 
-    // Build claude CLI command (frames are included in the prompt as file:// URLs)
-    // Use --add-dir to grant Claude permission to read files from the video's directory
-    const videoDir = dirname(videoPath);
-
-    // Clear Claude conversation history to prevent SIGTRAP errors from corrupted contexts
-    clearClaudeConversationHistory(videoDir);
-
-    const args = ['--add-dir', videoDir, '-p', prompt];
-
-    // Call Claude Code CLI with timeout and stream stdout in real-time if verbose
-    let response = '';
-
-    if (verbose) {
-      // Stop spinner while streaming output
-      spinner.stop();
-      console.log(chalk.gray(`[verbose] Running: claude --add-dir "${videoDir}" -p "<prompt>"`));
-      console.log(chalk.gray('[verbose] Claude response (streaming):'));
-      console.log(chalk.gray('─'.repeat(60)));
-
-      // Use subprocess with streaming
-      // stdin: 'ignore' prevents waiting for input
-      const subprocess = execa('claude', args, { timeout: timeoutMs, stdin: 'ignore', env: getFilteredEnv() });
-
-      // Stream stdout in real-time
-      subprocess.stdout?.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        process.stdout.write(chalk.gray(chunk));
-        response += chunk;
-      });
-
-      // Stream stderr for debugging
-      subprocess.stderr?.on('data', (data: Buffer) => {
-        const chunk = data.toString();
-        process.stderr.write(chalk.red('[stderr] ' + chunk));
-      });
-
-      // Wait for the process to complete
-      await subprocess;
-
-      console.log(chalk.gray('\n' + '─'.repeat(60)));
-      console.log();
-
-      // Restart spinner with final elapsed time
-      const elapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
-      spinner.text = `Analyzing ${chalk.cyan(video.original_name)} with Claude (${elapsedSeconds}s)`;
-      spinner.start();
-    } else {
-      // Normal mode: wait for complete response
-      // stdin: 'ignore' prevents waiting for input
-      const result = await execa('claude', args, { timeout: timeoutMs, stdin: 'ignore', env: getFilteredEnv() });
-      response = result.stdout;
-    }
-
-    // Clear the elapsed timer
     clearInterval(elapsedTimer);
 
-    // Save debug log with prompt and full response
+    // Save debug log with the full response
     // (written before parsing so failed parses still leave a debug trail)
     const debugLogPath = getDebugLogPath(videoPath);
     const debugContent = `Video: ${video.original_name}
+Analyzer: ${provider.id} (${provider.label})
 Date Analyzed: ${new Date().toISOString()}
 Elapsed Time: ${Math.floor((Date.now() - startTime) / 1000)}s
 
 === FRAME PATHS ===
 ${framePaths.map(fp => `  • ${fp}`).join('\n')}
 
-=== FULL PROMPT ===
-${prompt}
-
 === FULL RESPONSE ===
-${response}
+${rawResponse}
 `;
     writeFileSync(debugLogPath, debugContent, 'utf-8');
 
     // Parse the response (throws ANALYSIS_PARSE_FAILED if no filename found)
-    const analysis = parseClaudeResponse(response);
+    const analysis = parseAnalysisResponse(rawResponse);
 
     // Save the summary (.json source of truth + regenerated .txt)
     writeSummary(videoPath, {
@@ -335,14 +159,12 @@ ${response}
     const finalElapsedSeconds = Math.floor((Date.now() - startTime) / 1000);
     spinner.succeed(`Analyzed ${chalk.cyan(video.original_name)} (${finalElapsedSeconds}s)`);
 
-    // Show response preview: full in verbose mode, truncated in normal mode
     if (verbose) {
       console.log(chalk.gray('\n[verbose] Full analysis response shown above'));
     } else {
-      // Show truncated preview (100 chars) in normal mode
-      const preview = response.length > 100
-        ? response.substring(0, 100).replace(/\n/g, ' ') + '...'
-        : response.replace(/\n/g, ' ');
+      const preview = rawResponse.length > 100
+        ? rawResponse.substring(0, 100).replace(/\n/g, ' ') + '...'
+        : rawResponse.replace(/\n/g, ' ');
       console.log(chalk.gray(`  Response preview: ${preview}`));
     }
 
