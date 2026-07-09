@@ -12,6 +12,8 @@ import { getFilteredEnv } from './env-filter.js';
 
 export interface PrerequisiteOptions {
   whisperMode: WhisperMode;
+  /** When 'local', the claude CLI is not required (Ollama runtime is managed automatically). */
+  analyzerBackend?: 'claude' | 'local';
 }
 
 interface PrerequisiteResult {
@@ -124,6 +126,7 @@ function displayResult(result: PrerequisiteResult): void {
  */
 export async function checkPrerequisites(options?: PrerequisiteOptions): Promise<boolean> {
   const whisperMode = options?.whisperMode ?? 'local';
+  const analyzerBackend = options?.analyzerBackend ?? 'claude';
 
   console.log(chalk.bold('\nChecking prerequisites...\n'));
 
@@ -131,8 +134,12 @@ export async function checkPrerequisites(options?: PrerequisiteOptions): Promise
   const baseChecks = [
     checkNodeVersion(),
     checkFfmpeg(),
-    checkClaudeCli(),
   ];
+
+  // Claude CLI is only required for the claude analyzer backend
+  if (analyzerBackend === 'claude') {
+    baseChecks.push(checkClaudeCli());
+  }
 
   // Only check for local Whisper if using local mode
   if (whisperMode === 'local') {
@@ -150,6 +157,9 @@ export async function checkPrerequisites(options?: PrerequisiteOptions): Promise
     console.log(`${chalk.blue('○')} Whisper (skipped - using OpenAI API)`);
   } else if (whisperMode === 'skip') {
     console.log(`${chalk.blue('○')} Whisper (skipped - transcription disabled)`);
+  }
+  if (analyzerBackend === 'local') {
+    console.log(`${chalk.blue('○')} Claude CLI (skipped - using local AI analyzer)`);
   }
 
   console.log('');

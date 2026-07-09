@@ -8,7 +8,9 @@
 
 import { Command } from 'commander';
 import { checkPrerequisites, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, readSummary, cleanupTempAudio, getTempAudioPath, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, scanFolder, displayScanResult, runDoctor, CodedError, type WhisperModel } from './services/index.js';
-import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo } from './db/index.js';
+import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo, getConfig } from './db/index.js';
+import { resolveAnalyzerSettings, DEFAULT_LOCAL_MODEL } from './services/analyzer-config.js';
+import type { AnalyzerBackend } from './services/analyzer-providers/types.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
 import { readFileSync, existsSync, statSync } from 'node:fs';
@@ -34,6 +36,8 @@ interface CliOptions {
   whisperModel: WhisperModel;
   yes: boolean;
   json: boolean;
+  analyzer: AnalyzerBackend;
+  localModel: string;
 }
 
 // Global options object
@@ -47,6 +51,8 @@ let cliOptions: CliOptions = {
   whisperModel: 'base',
   yes: false,
   json: false,
+  analyzer: 'claude',
+  localModel: DEFAULT_LOCAL_MODEL,
 };
 
 // Progress tracking for single video processing
@@ -285,8 +291,17 @@ async function main(): Promise<void> {
       return value as WhisperMode;
     }, 'local')
     .option('--whisper-model <model>', 'Whisper model to use', 'base')
+    .option('--analyzer <backend>', 'AI analysis backend: claude or local (default: claude, or per-folder config)', (value: string) => {
+      if (value !== 'claude' && value !== 'local') {
+        console.error(chalk.red(`\nInvalid analyzer backend: ${value}`));
+        console.error(chalk.gray('  Valid backends: claude, local'));
+        process.exit(1);
+      }
+      return value;
+    })
+    .option('--local-model <tag>', `Local AI model tag for --analyzer local (default: ${DEFAULT_LOCAL_MODEL}, or per-folder config)`)
     .option('--json', 'Output results as newline-delimited JSON events', false)
-    .action(async (videoPath: string, options: { frames: number; skipRename: boolean; verbose: boolean; timeout: number; whisper: WhisperMode; whisperModel: string; json: boolean }, command: Command) => {
+    .action(async (videoPath: string, options: { frames: number; skipRename: boolean; verbose: boolean; timeout: number; whisper: WhisperMode; whisperModel: string; analyzer?: AnalyzerBackend; localModel?: string; json: boolean }, command: Command) => {
       // Enable JSON output mode if --json flag is set (check with optsWithGlobals for parent option inheritance)
       const globalOpts = command.optsWithGlobals<{ json: boolean }>();
       if (globalOpts.json) {
@@ -351,6 +366,9 @@ async function main(): Promise<void> {
         whisperModel: options.whisperModel as WhisperModel,
         yes: true,
         json: options.json,
+        // Overwritten after initDatabase once per-folder config is readable
+        analyzer: options.analyzer ?? 'claude',
+        localModel: options.localModel ?? DEFAULT_LOCAL_MODEL,
       };
 
       // Emit started event for JSON mode
@@ -378,8 +396,28 @@ async function main(): Promise<void> {
         }
       }
 
-      // Check prerequisites
-      const allPrerequisitesMet = await checkPrerequisites({ whisperMode: cliOptions.whisper });
+      // Initialize database in video's parent folder (also loads per-folder config)
+      await initDatabase(parentDir);
+
+      // Resolve analyzer backend/model/timeout: CLI flag > per-folder config > defaults
+      const analyzerSettings = resolveAnalyzerSettings(
+        {
+          flagBackend: options.analyzer,
+          flagModel: options.localModel,
+          flagTimeout: options.timeout,
+          timeoutExplicit: command.getOptionValueSource('timeout') === 'cli',
+        },
+        (key) => getConfig(key)
+      );
+      cliOptions.analyzer = analyzerSettings.backend;
+      cliOptions.localModel = analyzerSettings.localModel;
+      cliOptions.timeout = analyzerSettings.timeoutSeconds;
+
+      // Check prerequisites (claude CLI is not required for the local backend)
+      const allPrerequisitesMet = await checkPrerequisites({
+        whisperMode: cliOptions.whisper,
+        analyzerBackend: cliOptions.analyzer,
+      });
 
       if (!allPrerequisitesMet) {
         if (isJsonMode()) {
@@ -387,9 +425,6 @@ async function main(): Promise<void> {
         }
         process.exit(1);
       }
-
-      // Initialize database in video's parent folder
-      await initDatabase(parentDir);
 
       // Register cleanup handler
       process.on('exit', () => {
@@ -817,7 +852,12 @@ async function processVideo(video: VideoRecord): Promise<void> {
   if (effectiveStatus === 'transcribed') {
     logStep('Analyzing with Claude', video.original_name);
     logVerbose(`Analyzing with Claude (timeout: ${cliOptions.timeout}s)...`);
-    const analysis = await analyzeVideo(video, hasTranscript, { timeoutSeconds: cliOptions.timeout, verbose: cliOptions.verbose });
+    const analysis = await analyzeVideo(video, hasTranscript, {
+      timeoutSeconds: cliOptions.timeout,
+      verbose: cliOptions.verbose,
+      analyzer: cliOptions.analyzer,
+      localModel: cliOptions.localModel,
+    });
     suggestedFilename = analysis.suggestedFilename;
     effectiveStatus = 'analyzed';
   }

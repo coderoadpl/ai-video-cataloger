@@ -18,6 +18,8 @@ export interface ConfigSchema {
   frames: number;
   timeout: number;
   skip_rename: boolean;
+  analyzer_backend: 'claude' | 'local';
+  local_model: string;
 }
 
 /**
@@ -63,6 +65,17 @@ export const CONFIG_KEYS: Record<keyof ConfigSchema, ConfigKeyDef> = {
     type: 'boolean',
     description: 'Skip renaming files after analysis',
     defaultValue: 'false',
+  },
+  analyzer_backend: {
+    type: 'string',
+    description: 'AI analysis backend: claude (Claude Code CLI) or local (Ollama)',
+    allowedValues: ['claude', 'local'],
+    defaultValue: 'claude',
+  },
+  local_model: {
+    type: 'string',
+    description: 'Local AI model tag used when analyzer_backend is local',
+    defaultValue: 'gemma3:12b',
   },
 };
 
