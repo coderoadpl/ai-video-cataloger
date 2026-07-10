@@ -20,18 +20,12 @@ import {
 } from '@/components/ui/select';
 import { Loader2 } from 'lucide-react';
 import { useCliCommand } from '@/hooks/use-cli-command';
-
-// Config types matching the CLI config service
-type WhisperMode = 'local' | 'api' | 'skip';
-type WhisperModel = 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
-
-interface ConfigValues {
-  whisper_model: WhisperModel;
-  whisper_mode: WhisperMode;
-  frames: number;
-  timeout: number;
-  skip_rename: boolean;
-}
+import { useLocalAiModels } from '@/hooks/use-local-ai-models';
+import { SettingsAnalyzerSection } from '@/components/settings-analyzer-section';
+import {
+  DEFAULT_CONFIG, WHISPER_MODELS, WHISPER_MODES,
+  type AnalyzerBackend, type ConfigValues, type WhisperMode, type WhisperModel,
+} from '@/components/settings-options';
 
 interface SettingsModalProps {
   open: boolean;
@@ -40,30 +34,8 @@ interface SettingsModalProps {
   onConfigSaved?: () => void;
 }
 
-// Default values from the CLI config service
-const DEFAULT_CONFIG: ConfigValues = {
-  whisper_model: 'base',
-  whisper_mode: 'local',
-  frames: 3,
-  timeout: 120,
-  skip_rename: false,
-};
 
-// Whisper models with descriptions
-const WHISPER_MODELS: { value: WhisperModel; label: string; description: string }[] = [
-  { value: 'tiny', label: 'Tiny', description: 'Fastest, lowest accuracy' },
-  { value: 'base', label: 'Base', description: 'Good balance of speed and accuracy' },
-  { value: 'small', label: 'Small', description: 'Better accuracy, slower' },
-  { value: 'medium', label: 'Medium', description: 'High accuracy, slow' },
-  { value: 'large-v3', label: 'Large v3', description: 'Best accuracy, slowest' },
-];
 
-// Whisper modes with descriptions
-const WHISPER_MODES: { value: WhisperMode; label: string; description: string }[] = [
-  { value: 'local', label: 'Local (Whisper.cpp)', description: 'Uses local whisper.cpp binary' },
-  { value: 'api', label: 'API (OpenAI)', description: 'Uses OpenAI Whisper API' },
-  { value: 'skip', label: 'Skip Transcription', description: 'Do not transcribe audio' },
-];
 
 export function SettingsModal({
   open,
@@ -72,6 +44,8 @@ export function SettingsModal({
   onConfigSaved,
 }: SettingsModalProps): JSX.Element {
   const runCli = useCliCommand();
+  const localAi = useLocalAiModels(runCli);
+  const refreshLocalAi = localAi.refresh;
   const [config, setConfig] = useState<ConfigValues>(DEFAULT_CONFIG);
   const [isLoading, setIsLoading] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -86,7 +60,9 @@ export function SettingsModal({
       config.whisper_mode !== originalConfig.whisper_mode ||
       config.frames !== originalConfig.frames ||
       config.timeout !== originalConfig.timeout ||
-      config.skip_rename !== originalConfig.skip_rename;
+      config.skip_rename !== originalConfig.skip_rename ||
+      config.analyzer_backend !== originalConfig.analyzer_backend ||
+      config.local_model !== originalConfig.local_model;
     setHasChanges(changed);
   }, [config, originalConfig]);
 
@@ -127,6 +103,8 @@ export function SettingsModal({
             frames: parseInt(rawConfig.frames || defaults.frames, 10),
             timeout: parseInt(rawConfig.timeout || defaults.timeout, 10),
             skip_rename: (rawConfig.skip_rename || defaults.skip_rename) === 'true',
+            analyzer_backend: (rawConfig.analyzer_backend || defaults.analyzer_backend || 'claude') as AnalyzerBackend,
+            local_model: rawConfig.local_model || defaults.local_model || 'gemma3:12b',
           };
         }
       }
@@ -153,8 +131,9 @@ export function SettingsModal({
   useEffect(() => {
     if (open && currentFolder) {
       loadConfig();
+      void refreshLocalAi();
     }
-  }, [open, currentFolder, loadConfig]);
+  }, [open, currentFolder, loadConfig, refreshLocalAi]);
 
   // Save a single config value
   const saveConfigValue = useCallback(
@@ -215,6 +194,16 @@ export function SettingsModal({
 
     if (config.skip_rename !== originalConfig.skip_rename) {
       const success = await saveConfigValue('skip_rename', String(config.skip_rename));
+      if (!success) allSuccess = false;
+    }
+
+    if (config.analyzer_backend !== originalConfig.analyzer_backend) {
+      const success = await saveConfigValue('analyzer_backend', config.analyzer_backend);
+      if (!success) allSuccess = false;
+    }
+
+    if (config.local_model !== originalConfig.local_model) {
+      const success = await saveConfigValue('local_model', config.local_model);
       if (!success) allSuccess = false;
     }
 
@@ -334,6 +323,19 @@ export function SettingsModal({
                 </p>
               </div>
             )}
+
+            {/* AI Analyzer backend */}
+            <SettingsAnalyzerSection
+              backend={config.analyzer_backend}
+              localModel={config.local_model}
+              tiers={localAi.tiers}
+              onBackendChange={(backend) =>
+                setConfig((prev) => ({ ...prev, analyzer_backend: backend }))
+              }
+              onLocalModelChange={(tag) =>
+                setConfig((prev) => ({ ...prev, local_model: tag }))
+              }
+            />
 
             {/* Auto-rename Toggle */}
             <div className="flex items-center justify-between space-x-4">

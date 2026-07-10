@@ -43,7 +43,7 @@ const DEPENDENCY_DISPLAY_NAMES: Record<string, string> = {
   ffmpeg: 'FFmpeg',
   whisper: 'Whisper',
   claude: 'Claude CLI',
-  ollama: 'Ollama',
+  'local-ai': 'Local AI (managed Ollama)',
 };
 
 // Get a display-friendly source label

@@ -15,6 +15,7 @@ import {
 import { Button } from '@/components/ui/button';
 import { Loader2, HardDrive } from 'lucide-react';
 import { useCliCommand } from '@/hooks/use-cli-command';
+import { LocalAiSection } from '@/components/local-ai/local-ai-section';
 import { MODEL_SIZES, formatBytes, type WhisperModelInfo, type DownloadProgress } from './types';
 import { ModelRow } from './model-row';
 import { DeleteModelDialog } from './delete-model-dialog';
@@ -295,8 +296,7 @@ export function ModelManagerModal({
           <DialogHeader>
             <DialogTitle>Model Manager</DialogTitle>
             <DialogDescription>
-              Manage Whisper models for local audio transcription. Larger models are more accurate
-              but require more memory and take longer to process.
+              Manage Whisper transcription models and local AI analysis models.
             </DialogDescription>
           </DialogHeader>
 
@@ -347,6 +347,10 @@ export function ModelManagerModal({
                   </p>
                 </div>
               )}
+
+              <div className="border-t pt-4">
+                <LocalAiSection runCli={runCli} active={open} onLogMessage={onLogMessage} />
+              </div>
             </div>
           )}
         </DialogContent>
