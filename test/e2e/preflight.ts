@@ -13,6 +13,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { CLI_DIST, REPO_ROOT } from './helpers.js';
 import { selectedSamples } from './samples.js';
+import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
 
 function fail(message: string): never {
   throw new Error(`\n\nE2E PREFLIGHT FAILED\n====================\n${message}\n`);
@@ -41,7 +42,52 @@ function verifyClaudeAuth(): void {
   }
 }
 
-export default function preflight(): void {
+async function reachableRuntimeBaseUrl(): Promise<string | null> {
+  const probe = async (baseUrl: string): Promise<boolean> => {
+    try {
+      const response = await fetch(baseUrl + '/api/version', { signal: AbortSignal.timeout(1500) });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  };
+  if (await probe('http://127.0.0.1:11434')) return 'http://127.0.0.1:11434';
+  try {
+    const { readFileSync } = await import('node:fs');
+    const { homedir } = await import('node:os');
+    const statePath = join(homedir(), '.ai-video-cataloger', 'ollama-runtime.json');
+    const state = JSON.parse(readFileSync(statePath, 'utf-8')) as { port: number };
+    const managed = 'http://127.0.0.1:' + state.port;
+    if (await probe(managed)) return managed;
+  } catch {
+    // no managed state
+  }
+  return null;
+}
+
+async function verifyLocalAnalyzer(model: string): Promise<void> {
+  const baseUrl = await reachableRuntimeBaseUrl();
+  if (!baseUrl) {
+    fail(
+      'E2E_ANALYZER=local but no Ollama runtime is reachable.\n' +
+      'Start it (it also starts automatically on first use) and install the model:\n' +
+      '  node dist/index.js models pull ' + model
+    );
+  }
+  const response = await fetch(baseUrl + '/api/tags', { signal: AbortSignal.timeout(3000) });
+  const body = (await response.json()) as { models?: Array<{ name: string }> };
+  const installed = (body.models ?? []).some(
+    (m) => m.name === model || m.name === model + ':latest'
+  );
+  if (!installed) {
+    fail(
+      'E2E_ANALYZER=local but the model "' + model + '" is not installed on ' + baseUrl + '.\n' +
+      'Install it first: node dist/index.js models pull ' + model
+    );
+  }
+}
+
+export default async function preflight(): Promise<void> {
   const samples = selectedSamples();
   const argv = process.argv.join(' ');
   const guiSelected = !/--project[= ]cli(\s|$)/.test(argv) || /--project[= ]gui/.test(argv);
@@ -82,9 +128,15 @@ export default function preflight(): void {
     );
   }
 
+  // 4. Local analyzer mode: the runtime must be reachable and the model
+  //    installed - hard requirements, never auto-pulled from preflight.
+  if (E2E_ANALYZER === 'local') {
+    await verifyLocalAnalyzer(E2E_LOCAL_MODEL);
+  }
+
    
   console.log(
-    `[preflight] OK - claude authenticated; samples: ${samples.map((s) => s.id).join(', ')}` +
+    `[preflight] OK - analyzer=${E2E_ANALYZER}; samples: ${samples.map((s) => s.id).join(', ')}` +
     (guiSelected ? '; gui build present' : '; cli-only run')
   );
 }

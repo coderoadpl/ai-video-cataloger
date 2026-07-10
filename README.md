@@ -6,12 +6,12 @@ A tool that automatically analyzes, transcribes, and renames video files using A
 
 1. **Extracts frames** from videos using FFmpeg
 2. **Transcribes audio** using local Whisper (whisper.cpp)
-3. **Analyzes content** with Claude Code CLI, Claude API, or LLaVA via Ollama (local)
+3. **Analyzes content** with the Claude Code CLI or a fully local AI model (managed Ollama runtime)
 4. **Renames files** with descriptive, date-prefixed names
 
 ## Quick Start - GUI (Recommended)
 
-The graphical interface is the easiest way to use AI Video Cataloger. It bundles FFmpeg and whisper.cpp, so you only need Ollama for fully local AI analysis.
+The graphical interface is the easiest way to use AI Video Cataloger. FFmpeg is bundled, and the local AI runtime installs itself automatically when you choose the Local analyzer - no manual setup.
 
 ### Launch the GUI (Development Mode)
 
@@ -33,7 +33,7 @@ This creates a packaged `.app` (macOS) in the `dist-electron/` directory.
 - **First Launch Setup Wizard** - Guided configuration on first run
 - **Folder Browser** - Select folders and view video files with thumbnails
 - **Video Analysis** - Single or batch processing with progress indicators
-- **Model Managers** - Download Whisper models and manage LLaVA models via Ollama
+- **Model Managers** - Download Whisper models and local AI models (with hardware requirement checks)
 - **Settings Panel** - Configure analysis method, transcription options, and more
 - **Prerequisites Check** - See status of all dependencies at a glance
 - **Native macOS Integration** - Standard menus, keyboard shortcuts (Cmd+O, Cmd+,)
@@ -43,7 +43,7 @@ This creates a packaged `.app` (macOS) in the `dist-electron/` directory.
 The app supports three analysis methods (at least one required):
 - **Claude Code CLI** (recommended): Install with `npm install -g @anthropic-ai/claude-code`
 - **Claude API**: Set `ANTHROPIC_API_KEY` environment variable
-- **Ollama** (local): Install from [ollama.com](https://ollama.com) for fully offline analysis
+- **Local AI** (optional): nothing to install - the app downloads a managed Ollama runtime and models on demand (see "Fully local mode")
 
 FFmpeg and whisper.cpp are bundled with the app.
 
@@ -144,3 +144,37 @@ your-videos/
 ## Supported Formats
 
 MP4, MOV, AVI, MKV, WebM
+
+## Fully local mode
+
+Everything - frame extraction, transcription (Whisper) and AI analysis - can run 100% on your Mac. Nothing leaves the machine; the network is used only to download the runtime (once, 123 MB) and the model you choose.
+
+How it works:
+- If you already run your own Ollama (port 11434), the app simply uses it.
+- Otherwise the app downloads a pinned, checksum-verified Ollama runtime into `~/.ai-video-cataloger/` and starts it automatically on a private port. Stop it anytime with `ai-video-cataloger models daemon-stop`.
+
+Usage:
+
+```bash
+# see what your machine supports and what is recommended
+ai-video-cataloger models requirements
+
+# download a model (resumable, with progress)
+ai-video-cataloger models pull gemma3:12b
+
+# analyze fully locally
+ai-video-cataloger process video.mp4 --analyzer local
+```
+
+In the GUI: Settings -> AI Analyzer -> Local (Ollama), models are managed in the Model Manager.
+
+### Hardware requirements (Apple Silicon only)
+
+| Model | Download | Min RAM | Notes |
+|---|---|---|---|
+| `gemma3:4b` | 3.3 GB | 8 GB | compact; fine for quick cataloging |
+| `gemma3:12b` | 8.1 GB | 16 GB | **default & recommended** |
+| `gemma3:27b` | 17 GB | 32 GB | max quality, slower |
+| `qwen2.5vl:7b` | 6.0 GB | 16 GB | alternative vision model |
+
+Intel Macs are not supported for local AI (CPU-only inference is impractically slow) - use the Claude backend there.

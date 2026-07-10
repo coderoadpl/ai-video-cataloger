@@ -12,7 +12,8 @@ import { _electron as electron, expect, type ElectronApplication, type Page } fr
 import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { REPO_ROOT, readCatalog } from '../helpers.js';
+import { REPO_ROOT, readCatalog, runCli } from '../helpers.js';
+import { E2E_ANALYZER, E2E_LOCAL_MODEL } from '../analyzer-mode.js';
 import type { AnalyzeOutcome, BatchOutcome, PipelineDriver } from './types.js';
 
 const RENDERER_HTML = join(REPO_ROOT, 'electron', 'renderer', 'dist', 'index.html');
@@ -28,6 +29,17 @@ export class GuiDriver implements PipelineDriver {
 
   async open(workdir: string): Promise<void> {
     this.workdir = workdir;
+
+    // Local analyzer mode: the GUI spawns bare `process <path>`, so the
+    // backend comes from the per-folder config - set it exactly like the
+    // Settings modal does (config set via the CLI, cwd = the folder).
+    if (E2E_ANALYZER === 'local') {
+      const setBackend = await runCli(['config', 'set', 'analyzer_backend', 'local', '--json'], workdir);
+      const setModel = await runCli(['config', 'set', 'local_model', E2E_LOCAL_MODEL, '--json'], workdir);
+      if (setBackend.code !== 0 || setModel.code !== 0) {
+        throw new Error('Failed to preset local analyzer config for the GUI driver');
+      }
+    }
 
     const userDataDir = mkdtempSync(join(tmpdir(), 'avc-userdata-'));
     mkdirSync(userDataDir, { recursive: true });

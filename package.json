@@ -29,7 +29,8 @@
     "test:e2e:gui": "npm run build && npm run electron:build:main && npm run electron:build:preload && npm run electron:build:renderer && playwright test --config test/e2e/playwright.config.ts --project=gui",
     "test:e2e:gui:headed": "E2E_HEADED=1 npm run test:e2e:gui",
     "test:e2e:cli": "npm run build && playwright test --config test/e2e/playwright.config.ts --project=cli",
-    "test:e2e:parity": "npm run build && npm run electron:build:main && npm run electron:build:preload && npm run electron:build:renderer && playwright test --config test/e2e/playwright.config.ts"
+    "test:e2e:parity": "npm run build && npm run electron:build:main && npm run electron:build:preload && npm run electron:build:renderer && playwright test --config test/e2e/playwright.config.ts",
+    "test:e2e:local": "npm run build && npm run electron:build:main && npm run electron:build:preload && npm run electron:build:renderer && E2E_ANALYZER=local playwright test --config test/e2e/playwright.config.ts"
   },
   "keywords": [
     "video",

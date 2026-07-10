@@ -9,6 +9,7 @@
 import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 import { CLI_DIST, listVideos, runCli, type JsonEvent } from '../helpers.js';
+import { analyzerCliFlags } from '../analyzer-mode.js';
 import type { AnalyzeOutcome, BatchOutcome, PipelineDriver } from './types.js';
 
 const PIPELINE_TIMEOUT_MS = 420_000;
@@ -23,7 +24,7 @@ export class CliDriver implements PipelineDriver {
 
   async analyze(filename: string): Promise<AnalyzeOutcome> {
     const result = await runCli(
-      ['process', join(this.workdir, filename), '--json'],
+      ['process', join(this.workdir, filename), '--json', ...analyzerCliFlags()],
       this.workdir,
       PIPELINE_TIMEOUT_MS
     );
@@ -38,7 +39,7 @@ export class CliDriver implements PipelineDriver {
     await new Promise<void>((resolve, reject) => {
       const child = spawn(
         process.execPath,
-        [CLI_DIST, 'process', join(this.workdir, filename), '--json'],
+        [CLI_DIST, 'process', join(this.workdir, filename), '--json', ...analyzerCliFlags()],
         { cwd: this.workdir, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] }
       );
 
