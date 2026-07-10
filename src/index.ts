@@ -10,6 +10,10 @@ import { Command } from 'commander';
 import { checkPrerequisites, extractFrames, extractAudio, transcribeAudio, analyzeVideo, renameVideo, readSummary, cleanupTempAudio, getTempAudioPath, displayModelList, setActiveModel, displayStatus, resetAllVideos, resetSingleVideo, checkExistingFrames, checkExistingTranscript, setJsonMode, isJsonMode, emitStarted, emitProgress, emitCompleted, emitError, logHuman, generateThumbnail, downloadModel, deleteModel, displayAllConfig, displayConfigKey, setConfigCommand, runNestedCheck, scanFolder, displayScanResult, runDoctor, CodedError, type WhisperModel } from './services/index.js';
 import { initDatabase, closeDatabase, updateVideoStatus, getVideoByPath, insertVideo, getConfig } from './db/index.js';
 import { resolveAnalyzerSettings, DEFAULT_LOCAL_MODEL } from './services/analyzer-config.js';
+import {
+  displayLocalAiModelList, displayLocalAiRequirements, pullLocalAiModel,
+  removeLocalAiModel, stopLocalAiDaemon,
+} from './services/local-ai-models.js';
 import type { AnalyzerBackend } from './services/analyzer-providers/types.js';
 import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
@@ -125,7 +129,7 @@ async function main(): Promise<void> {
   // Models subcommand
   const modelsCommand = program
     .command('models')
-    .description('Manage Whisper models');
+    .description('Manage Whisper and local AI models');
 
   modelsCommand
     .command('list')
@@ -147,6 +151,61 @@ async function main(): Promise<void> {
       });
 
       displayModelList();
+
+      // Local AI section (human mode only; GUI reads models requirements --json)
+      if (!isJsonMode()) {
+        await displayLocalAiModelList();
+      }
+    });
+
+  modelsCommand
+    .command('requirements')
+    .description('Show local AI models, their hardware requirements and what this machine supports')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (_options: { json: boolean }, command: Command) => {
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+      await displayLocalAiRequirements();
+    });
+
+  modelsCommand
+    .command('pull <tag>')
+    .description('Download a local AI model (starts the managed runtime when needed)')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (tag: string, _options: { json: boolean }, command: Command) => {
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+      const success = await pullLocalAiModel(tag);
+      process.exit(success ? 0 : 1);
+    });
+
+  modelsCommand
+    .command('rm <tag>')
+    .description('Remove a local AI model')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (tag: string, _options: { json: boolean }, command: Command) => {
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+      const success = await removeLocalAiModel(tag);
+      process.exit(success ? 0 : 1);
+    });
+
+  modelsCommand
+    .command('daemon-stop')
+    .description('Stop the managed local AI runtime (never touches a user-owned Ollama)')
+    .option('--json', 'Output results as JSON', false)
+    .action(async (_options: { json: boolean }, command: Command) => {
+      const globalOpts = command.optsWithGlobals<{ json: boolean }>();
+      if (globalOpts.json) {
+        setJsonMode(true);
+      }
+      stopLocalAiDaemon();
     });
 
   modelsCommand

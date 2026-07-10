@@ -9,6 +9,8 @@ import chalk from 'chalk';
 import { getFFmpegInfo } from './ffmpeg-setup.js';
 import { getWhisperInfo } from './whisper-setup.js';
 import { getFilteredEnv } from './env-filter.js';
+import { describeMachine, getMachine, recommendTier } from './hw-requirements.js';
+import { findRunningRuntime, OLLAMA_PINNED_VERSION } from './ollama-setup.js';
 import {
   isJsonMode,
   emitStarted,
@@ -97,33 +99,43 @@ async function checkClaudeCli(): Promise<DependencyStatus> {
 }
 
 /**
- * Check Ollama status
+ * Check the local AI runtime (managed Ollama).
+ * Never starts or downloads anything - reports what is reachable/possible.
  */
-async function checkOllama(): Promise<DependencyStatus> {
-  try {
-    const { stdout } = await execa('ollama', ['--version'], { timeout: 5000, env: getFilteredEnv() });
-    // Output is typically "ollama version 0.1.xx" or similar
-    const versionMatch = stdout.match(/(\d+\.\d+\.\d+)/);
-    const version = versionMatch ? versionMatch[1] : stdout.trim();
+async function checkLocalAi(): Promise<DependencyStatus> {
+  const machine = getMachine();
 
+  if (!machine.appleSilicon) {
     return {
-      name: 'ollama',
-      available: true,
-      version,
-      source: 'system',
-      path: null,
-      installHint: 'Install Ollama from https://ollama.com or via: brew install ollama',
-    };
-  } catch {
-    return {
-      name: 'ollama',
+      name: 'local-ai',
       available: false,
       version: null,
       source: null,
       path: null,
-      installHint: 'Install Ollama from https://ollama.com or via: brew install ollama',
+      installHint: 'Local AI requires an Apple Silicon Mac (use the claude backend instead)',
     };
   }
+
+  const runtime = await findRunningRuntime();
+  if (runtime) {
+    return {
+      name: 'local-ai',
+      available: true,
+      version: runtime.managed ? `managed ${OLLAMA_PINNED_VERSION}` : 'system daemon',
+      source: runtime.managed ? 'bundled' : 'system',
+      path: runtime.baseUrl,
+      installHint: '',
+    };
+  }
+
+  return {
+    name: 'local-ai',
+    available: true,
+    version: 'auto-managed (not running - starts when needed)',
+    source: 'bundled',
+    path: null,
+    installHint: '',
+  };
 }
 
 /**
@@ -164,14 +176,14 @@ export async function runDoctor(): Promise<DoctorResult> {
   logHuman(chalk.bold('\n🩺 System Prerequisites Check\n'));
 
   // Check all dependencies in parallel
-  const [ffmpeg, whisper, claude, ollama] = await Promise.all([
+  const [ffmpeg, whisper, claude, localAi] = await Promise.all([
     checkFfmpeg(),
     checkWhisper(),
     checkClaudeCli(),
-    checkOllama(),
+    checkLocalAi(),
   ]);
 
-  const dependencies = [ffmpeg, whisper, claude, ollama];
+  const dependencies = [ffmpeg, whisper, claude, localAi];
   const allAvailable = dependencies.every((dep) => dep.available);
 
   // Display results in human-readable format
@@ -183,6 +195,20 @@ export async function runDoctor(): Promise<DoctorResult> {
       displayDependencyStatus(dep);
     }
 
+    logHuman('');
+
+    // Local AI machine summary
+    const machine = getMachine();
+    const recommended = recommendTier(machine);
+    logHuman(chalk.underline('Local AI:'));
+    logHuman('');
+    logHuman(`  Machine: ${chalk.cyan(describeMachine(machine))}`);
+    if (recommended) {
+      logHuman(`  Recommended local model: ${chalk.green(recommended.tag)} (${recommended.downloadGB} GB download)`);
+      logHuman(chalk.gray('  See all tiers: ai-video-cataloger models requirements'));
+    } else {
+      logHuman(chalk.red('  Local AI unsupported on this machine (Apple Silicon required).'));
+    }
     logHuman('');
 
     // Summary
@@ -210,6 +236,8 @@ export async function runDoctor(): Promise<DoctorResult> {
       path: dep.path,
       installHint: dep.installHint,
     })),
+    machine: getMachine(),
+    recommendedLocalModel: recommendTier(getMachine())?.tag ?? null,
     allAvailable,
   });
 
