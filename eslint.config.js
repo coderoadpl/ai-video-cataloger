@@ -40,6 +40,8 @@ export default tseslint.config(
       'dist',
       'dist-electron',
       'release',
+      '.cli-stage',
+      '.e2e-worktrees',
       'electron/renderer/dist',
       'electron/renderer/node_modules',
       'coverage',

@@ -300,59 +300,61 @@ export function ModelManagerModal({
             </DialogDescription>
           </DialogHeader>
 
-          {isLoading ? (
-            <div className="py-8 flex items-center justify-center gap-2">
-              <Loader2 className="h-5 w-5 animate-spin" />
-              <span>Loading models...</span>
-            </div>
-          ) : error ? (
-            <div className="py-6 text-center">
-              <p className="text-destructive">{error}</p>
-              <Button variant="outline" size="sm" className="mt-4" onClick={loadModels}>
-                Retry
-              </Button>
-            </div>
-          ) : (
-            <div className="space-y-4 py-2">
-              {/* Disk space summary */}
-              <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
-                <HardDrive className="h-4 w-4" />
-                <span>Disk space used: {formatBytes(totalDiskSpace)}</span>
-              </div>
-
-              {/* Model list */}
-              <div className="space-y-2">
-                {models.map((model) => (
-                  <ModelRow
-                    key={model.name}
-                    model={model}
-                    isSettingActive={isSettingActive}
-                    isDeleting={isDeleting}
-                    downloadProgress={downloadProgress}
-                    isOperationInProgress={isOperationInProgress}
-                    onSetActive={handleSetActive}
-                    onDownload={handleDownloadClick}
-                    onDelete={handleDeleteClick}
-                  />
-                ))}
-              </div>
-
-              {/* Download progress details */}
-              {downloadProgress && (
-                <div className="text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
-                  <p>
-                    Downloading {downloadProgress.modelName}:{' '}
-                    {formatBytes(downloadProgress.downloadedBytes)} /{' '}
-                    {formatBytes(downloadProgress.totalBytes)} ({downloadProgress.speedFormatted})
-                  </p>
+          <div className="space-y-4 py-2">
+            {/* Whisper transcription models */}
+            <div className="space-y-2">
+              <h3 className="text-sm font-semibold">Whisper transcription models</h3>
+              {isLoading ? (
+                <div className="py-4 flex items-center justify-center gap-2">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                  <span>Loading models...</span>
                 </div>
+              ) : error ? (
+                <div className="py-4 text-center">
+                  <p className="text-destructive text-sm">{error}</p>
+                  <Button variant="outline" size="sm" className="mt-3" onClick={loadModels}>
+                    Retry
+                  </Button>
+                </div>
+              ) : (
+                <>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
+                    <HardDrive className="h-4 w-4" />
+                    <span>Disk space used: {formatBytes(totalDiskSpace)}</span>
+                  </div>
+                  <div className="space-y-2">
+                    {models.map((model) => (
+                      <ModelRow
+                        key={model.name}
+                        model={model}
+                        isSettingActive={isSettingActive}
+                        isDeleting={isDeleting}
+                        downloadProgress={downloadProgress}
+                        isOperationInProgress={isOperationInProgress}
+                        onSetActive={handleSetActive}
+                        onDownload={handleDownloadClick}
+                        onDelete={handleDeleteClick}
+                      />
+                    ))}
+                  </div>
+                  {downloadProgress && (
+                    <div className="text-sm text-muted-foreground bg-muted/50 px-3 py-2 rounded-md">
+                      <p>
+                        Downloading {downloadProgress.modelName}:{' '}
+                        {formatBytes(downloadProgress.downloadedBytes)} /{' '}
+                        {formatBytes(downloadProgress.totalBytes)} ({downloadProgress.speedFormatted})
+                      </p>
+                    </div>
+                  )}
+                </>
               )}
-
-              <div className="border-t pt-4">
-                <LocalAiSection runCli={runCli} active={open} onLogMessage={onLogMessage} />
-              </div>
             </div>
-          )}
+
+            {/* Local AI models - independent of the whisper section above */}
+            <div className="border-t pt-4">
+              <LocalAiSection runCli={runCli} active={open} onLogMessage={onLogMessage} />
+            </div>
+          </div>
         </DialogContent>
       </Dialog>
 

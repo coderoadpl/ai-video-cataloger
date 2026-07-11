@@ -122,9 +122,12 @@ export function spawnCLI(
     filteredEnv.ELECTRON_RUN_AS_NODE = '1';
   }
 
-  // Set up the spawn options
+  // Set up the spawn options. Folder-scoped commands pass an explicit cwd;
+  // for the rest, default to the user's home rather than the main process cwd
+  // (which is "/" for a Finder-launched app and would make the CLI try to
+  // create ~/.ai-video-cataloger under a read-only root).
   const spawnOptions = {
-    cwd: options.cwd || process.cwd(),
+    cwd: options.cwd || app.getPath('home'),
     env: filteredEnv,
     shell: false,
   };
