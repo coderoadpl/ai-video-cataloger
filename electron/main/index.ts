@@ -70,7 +70,7 @@ function createWindow(): void {
     // harness point at the Vite build output without a packaging step.
     const rendererHtml =
       process.env.AVC_RENDERER_HTML ||
-      path.join(__dirname, '../renderer/dist/index.html');
+      path.join(__dirname, '../renderer/index.html');
     mainWindow.loadFile(rendererHtml);
   }
 

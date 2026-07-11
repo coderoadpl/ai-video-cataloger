@@ -20,7 +20,7 @@
     "electron:build:main": "tsc --project electron/main/tsconfig.json",
     "electron:build:preload": "tsc --project electron/preload/tsconfig.json && cp electron/preload/package.json dist-electron/preload/",
     "electron:build:renderer": "cd electron/renderer && vite build",
-    "electron:package": "npm run electron:build && electron-builder --config electron-builder.config.js",
+    "electron:package": "npm run electron:build && npm run package:stage && electron-builder --config electron-builder.config.js",
     "test": "npm run build && vitest run",
     "test:watch": "vitest",
     "test:renderer": "vitest run --config electron/renderer/vitest.config.ts",
@@ -30,7 +30,8 @@
     "test:e2e:gui:headed": "E2E_HEADED=1 npm run test:e2e:gui",
     "test:e2e:cli": "npm run build && playwright test --config test/e2e/playwright.config.ts --project=cli",
     "test:e2e:parity": "npm run build && npm run electron:build:main && npm run electron:build:preload && npm run electron:build:renderer && playwright test --config test/e2e/playwright.config.ts",
-    "test:e2e:local": "npm run build && npm run electron:build:main && npm run electron:build:preload && npm run electron:build:renderer && E2E_ANALYZER=local playwright test --config test/e2e/playwright.config.ts"
+    "test:e2e:local": "npm run build && npm run electron:build:main && npm run electron:build:preload && npm run electron:build:renderer && E2E_ANALYZER=local playwright test --config test/e2e/playwright.config.ts",
+    "package:stage": "npm run build && bash scripts/stage-cli.sh"
   },
   "keywords": [
     "video",

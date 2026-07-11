@@ -48,9 +48,9 @@ function getCLIPath(): string {
     // In development, use the locally built CLI
     return path.join(process.cwd(), 'dist', 'index.js');
   } else {
-    // In production, the CLI is bundled with the app
-    // It should be in the app's resources directory
-    return path.join(process.resourcesPath, 'cli', 'index.js');
+    // In production the staged CLI (dist + production node_modules) lives in
+    // the app's resources directory (see scripts/stage-cli.sh)
+    return path.join(process.resourcesPath, 'cli', 'dist', 'index.js');
   }
 }
 
@@ -103,6 +103,25 @@ export function spawnCLI(
     }
   }
 
+  // GUI apps launched from Finder inherit a minimal launchd PATH - make sure
+  // system tools the CLI shells out to (whisper, claude) stay reachable.
+  const extraPaths = ['/opt/homebrew/bin', '/usr/local/bin'];
+  const currentPath = filteredEnv.PATH ?? '';
+  filteredEnv.PATH = [
+    ...currentPath.split(':').filter(Boolean),
+    ...extraPaths.filter((p) => !currentPath.split(':').includes(p)),
+  ].join(':');
+
+  const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+
+  // In the packaged app there is no system node - run the CLI with Electron's
+  // own Node runtime. ELECTRON_RUN_AS_NODE is stripped from the INHERITED env
+  // above (it breaks nested tools); here we set it explicitly for the child.
+  const nodeBinary = isDev ? 'node' : process.execPath;
+  if (!isDev) {
+    filteredEnv.ELECTRON_RUN_AS_NODE = '1';
+  }
+
   // Set up the spawn options
   const spawnOptions = {
     cwd: options.cwd || process.cwd(),
@@ -110,8 +129,7 @@ export function spawnCLI(
     shell: false,
   };
 
-  // Spawn the CLI process using node
-  const child = spawn('node', [cliPath, ...fullArgs], spawnOptions);
+  const child = spawn(nodeBinary, [cliPath, ...fullArgs], spawnOptions);
 
   // Store the process for later reference
   if (child.pid) {

@@ -98,7 +98,7 @@ export default async function preflight(): Promise<void> {
   }
   if (guiSelected) {
     const mainEntry = join(REPO_ROOT, 'dist-electron', 'main', 'index.js');
-    const rendererHtml = join(REPO_ROOT, 'electron', 'renderer', 'dist', 'index.html');
+    const rendererHtml = join(REPO_ROOT, 'dist-electron', 'renderer', 'index.html');
     if (!existsSync(mainEntry) || !existsSync(rendererHtml)) {
       fail(
         'Electron build not found (dist-electron/ and/or electron/renderer/dist/).\n' +

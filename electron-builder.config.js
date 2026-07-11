@@ -11,12 +11,17 @@ const config = {
   files: [
     'dist-electron/**/*',
   ],
+  extraResources: [
+    {
+      from: '.cli-stage',
+      to: 'cli',
+      filter: ['**/*', '!package-lock.json'],
+    },
+  ],
   mac: {
     target: [
-      {
-        target: 'dmg',
-        arch: ['arm64', 'x64'],
-      },
+      { target: 'dir', arch: ['arm64'] },
+      { target: 'dmg', arch: ['arm64'] },
     ],
     category: 'public.app-category.utilities',
     darkModeSupport: true,

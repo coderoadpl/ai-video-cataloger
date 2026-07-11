@@ -16,7 +16,7 @@ import { REPO_ROOT, readCatalog, runCli } from '../helpers.js';
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from '../analyzer-mode.js';
 import type { AnalyzeOutcome, BatchOutcome, PipelineDriver } from './types.js';
 
-const RENDERER_HTML = join(REPO_ROOT, 'electron', 'renderer', 'dist', 'index.html');
+const RENDERER_HTML = join(REPO_ROOT, 'dist-electron', 'renderer', 'index.html');
 const MAIN_ENTRY = join(REPO_ROOT, 'dist-electron', 'main', 'index.js');
 const PIPELINE_TIMEOUT_MS = 420_000;
 const BATCH_TIMEOUT_MS = 880_000;

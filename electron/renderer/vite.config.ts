@@ -7,7 +7,8 @@ export default defineConfig({
   base: './',
   root: __dirname,
   build: {
-    outDir: 'dist',
+    // Build straight into the electron-builder file set (dist-electron/**)
+    outDir: path.resolve(__dirname, '../../dist-electron/renderer'),
     emptyOutDir: true,
     sourcemap: true,
   },
