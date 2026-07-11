@@ -36,16 +36,15 @@ const cliAccessSelector = {
 export default tseslint.config(
   {
     ignores: [
-      'node_modules',
-      'dist',
-      'dist-electron',
-      'release',
-      '.cli-stage',
-      '.e2e-worktrees',
-      'electron/renderer/dist',
-      'electron/renderer/node_modules',
-      'coverage',
-      'scripts/ralph',
+      '**/node_modules/**',
+      'dist/**',
+      'dist-electron/**',
+      'release/**',
+      '.cli-stage/**',
+      '.e2e-worktrees/**',
+      'electron/renderer/dist/**',
+      'coverage/**',
+      'scripts/ralph/**',
     ],
   },
 

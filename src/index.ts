@@ -19,7 +19,16 @@ import chalk from 'chalk';
 import type { VideoRecord, WhisperMode } from './types/index.js';
 import { readFileSync, existsSync, statSync } from 'node:fs';
 import { dirname, join, extname, basename, resolve } from 'node:path';
+import { homedir } from 'node:os';
 import { hashFile } from './utils/hash.js';
+
+/**
+ * Global model management (whisper model list / active selection) is not tied
+ * to any video folder, so its config lives in a fixed home-dir database. Using
+ * the process cwd here would crash when the app is launched from Finder
+ * (cwd = "/", not writable).
+ */
+const GLOBAL_DATA_DIR = homedir();
 import { fileURLToPath } from 'node:url';
 
 // Read package.json for version
@@ -142,8 +151,8 @@ async function main(): Promise<void> {
         setJsonMode(true);
       }
 
-      // Initialize database to read active model from config
-      await initDatabase();
+      // Global command: read the active model from the home-dir config
+      await initDatabase(GLOBAL_DATA_DIR);
 
       // Register cleanup handler
       process.on('exit', () => {
@@ -219,8 +228,8 @@ async function main(): Promise<void> {
         setJsonMode(true);
       }
 
-      // Initialize database to store active model in config
-      await initDatabase();
+      // Global command: store the active model in the home-dir config
+      await initDatabase(GLOBAL_DATA_DIR);
 
       // Register cleanup handler
       process.on('exit', () => {

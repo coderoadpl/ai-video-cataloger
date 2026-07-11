@@ -64,14 +64,14 @@ export function ModelManagerModal({
   const loadModels = useCallback(async (): Promise<void> => {
     setIsLoading(true);
     setError(null);
-    log('Loading Whisper models...', 'info');
+    log('Loading Whisper transcription models...', 'info');
 
     try {
       const { code, events } = await runCli(['models', 'list', '--json'], {
         onJson: (event) => {
           if (event.type === 'error') {
-            setError(event.error || 'Failed to load models');
-            log(`Error: ${event.error || 'Failed to load models'}`, 'error');
+            setError(event.error || 'Could not load Whisper models');
+            log(`Error: ${event.error || 'Could not load Whisper models'}`, 'error');
           }
         },
         onLine: (line, source) => {
@@ -88,14 +88,20 @@ export function ModelManagerModal({
       if (!hasError && code === 0 && modelList.length > 0) {
         setModels(modelList);
         log(`Found ${modelList.length} Whisper model(s)`, 'success');
-      } else if (!hasError && modelList.length === 0) {
-        setError('No models found');
-        log('No models found', 'error');
+      } else if (!hasError && code === 0) {
+        // The whisper catalog is a fixed built-in list, so an empty result
+        // here means the command did not return it - not "nothing to show".
+        setError('Could not load Whisper models');
+        log('Could not load Whisper models', 'error');
+      } else if (!hasError) {
+        // Non-zero exit with no error event = the CLI failed before emitting one
+        setError('Could not load Whisper models (the models command failed)');
+        log('Could not load Whisper models (the models command failed)', 'error');
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      setError('Failed to run models command');
-      log(`Failed to run models command: ${message}`, 'error');
+      setError('Could not load Whisper models');
+      log(`Could not load Whisper models: ${message}`, 'error');
     } finally {
       setIsLoading(false);
     }
