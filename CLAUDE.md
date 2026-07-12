@@ -26,8 +26,8 @@ Ground-up rewrite on the agentproofarch foundation
 
 ## The two gates
 
-- `npm run check` = typecheck + eslint (boundaries + local plugin) +
-  dependency-cruiser + vitest.
+- `npm run check` = typecheck + eslint (boundaries; the local plugin joins
+  with the renderer phase) + dependency-cruiser + vitest.
 - `npm run smoke` = lockfile drift → boot the real in-process app in a temp
   HOME/folder → drive doctor/scan/config/status through the CLI → assert
   envelope shapes and taxonomy exit codes.

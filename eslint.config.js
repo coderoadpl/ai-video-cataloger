@@ -1,197 +1,160 @@
-/**
- * ESLint flat config enforcing the GUI/CLI architecture invariants:
- *
- *   (A) Renderer accesses the CLI only via useCliCommand (I-1/I-4).
- *   (B) Renderer never imports the CLI engine (src/services, src/db) or main.
- *   (C) The CLI engine (src/) never imports Electron.
- *   (D) Deleted file:* IPC channels must not come back (I-3).
- *
- * Generic linting: @eslint/js + typescript-eslint recommended (non type-checked),
- * react + react-hooks recommended for the renderer.
- */
-
 import js from '@eslint/js';
+import boundaries from 'eslint-plugin-boundaries';
 import tseslint from 'typescript-eslint';
-import react from 'eslint-plugin-react';
-import reactHooks from 'eslint-plugin-react-hooks';
-import globals from 'globals';
 
-/** Selectors banning the deleted file:* IPC channel names (invariant I-3). */
-const deletedChannelSelectors = [
-  'file:readText',
-  'file:readDir',
-  'file:exists',
-  'file:readAsDataUrl',
-].map((channel) => ({
-  selector: `Literal[value="${channel}"]`,
-  message: `Channel "${channel}" was deleted: images via media://, data via CLI (invariant I-3).`,
-}));
-
-/** Selector banning direct electronAPI.cli access in the renderer (invariants I-1/I-4). */
-const cliAccessSelector = {
-  selector: 'MemberExpression[property.name="cli"][object.property.name="electronAPI"]',
-  message: 'Access the CLI only via useCliCommand (invariant I-1/I-4).',
+const AS_BAN = {
+  selector: 'TSAsExpression:not([typeAnnotation.typeName.name="const"])',
+  message: 'Type assertions (`as`) are forbidden; parse or narrow instead. `as const` is allowed.',
 };
 
+/**
+ * Layer boundaries (docs/architecture.md). `boundaries/element-types` denies
+ * everything by default; each rule below is an explicit permission adapted from
+ * the agentproofarch foundation minus auth/tenancy. dependency-cruiser
+ * double-checks the same graph plus vendor bans in `npm run depcruise`.
+ */
 export default tseslint.config(
   {
     ignores: [
-      '**/node_modules/**',
+      'node_modules/**',
       'dist/**',
       'dist-electron/**',
+      'build/**',
       'release/**',
-      '.cli-stage/**',
-      '.e2e-worktrees/**',
-      'electron/renderer/dist/**',
-      'coverage/**',
+      'src/**',
+      'electron/**',
+      'test/**',
       'scripts/ralph/**',
     ],
   },
-
-  // ---- Base: JS + TS recommended (non type-checked) -------------------------
-  js.configs.recommended,
-  ...tseslint.configs.recommended,
-
   {
-    rules: {
-      // Allow intentionally-unused values when prefixed with `_` (matches the
-      // codebase convention, e.g. destructuring and catch clauses).
-      '@typescript-eslint/no-unused-vars': [
-        'error',
-        {
-          argsIgnorePattern: '^_',
-          varsIgnorePattern: '^_',
-          caughtErrorsIgnorePattern: '^_',
-        },
-      ],
-    },
-  },
-
-  // Node-flavoured code: CLI engine, tests, Electron main/preload, config files.
-  {
-    files: ['src/**/*.ts', 'test/**/*.ts', 'electron/main/**/*.ts', 'electron/preload/**/*.ts', '*.js', 'scripts/**/*.js', 'electron/renderer/*.{js,ts}'],
+    files: ['**/*.js', '**/*.mjs'],
     languageOptions: {
-      globals: { ...globals.node },
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { console: 'readonly', process: 'readonly' },
     },
+    rules: js.configs.recommended.rules,
   },
-
-  // ---- Renderer: React + react-hooks ----------------------------------------
   {
-    files: ['electron/renderer/src/**/*.{ts,tsx}'],
-    plugins: {
-      react,
-      'react-hooks': reactHooks,
-    },
+    files: ['**/*.cjs'],
     languageOptions: {
-      globals: { ...globals.browser },
+      ecmaVersion: 'latest',
+      sourceType: 'commonjs',
+      globals: { module: 'readonly', require: 'readonly', process: 'readonly' },
+    },
+    rules: js.configs.recommended.rules,
+  },
+  ...tseslint.configs.strict,
+  {
+    files: ['**/*.ts', '**/*.tsx'],
+    plugins: { boundaries },
+    languageOptions: {
+      parserOptions: {
+        projectService: true,
+        tsconfigRootDir: import.meta.dirname,
+      },
     },
     settings: {
-      react: { version: 'detect' },
+      'boundaries/elements': [
+        { type: 'core-domain', pattern: 'core/domain/**', mode: 'full' },
+        { type: 'core-contract', pattern: 'core/contract/**', mode: 'full' },
+        { type: 'core-server', pattern: 'core/server/**', mode: 'full' },
+        { type: 'core-client', pattern: 'core/client/**', mode: 'full' },
+        { type: 'adapters', pattern: 'adapters/**', mode: 'full' },
+        { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
+        { type: 'app-desktop', pattern: 'apps/desktop/**', mode: 'full' },
+        { type: 'app-web', pattern: 'apps/web/**', mode: 'full' },
+        { type: 'app-cli', pattern: 'apps/cli/**', mode: 'full' },
+        { type: 'config', pattern: '*.config.ts', mode: 'full' },
+      ],
+      'import/resolver': {
+        typescript: { project: './tsconfig.json' },
+      },
     },
-    rules: {
-      ...react.configs.flat.recommended.rules,
-      ...react.configs.flat['jsx-runtime'].rules,
-      ...reactHooks.configs.recommended.rules,
-      'react-hooks/exhaustive-deps': 'error',
-      // TypeScript covers prop typing; PropTypes are not used in this codebase.
-      'react/prop-types': 'off',
-      // React Compiler preview rules (react-hooks v7). They flag idiomatic
-      // pre-compiler patterns used here (load-on-open effects, latest-ref);
-      // this codebase does not use the React Compiler.
-      'react-hooks/set-state-in-effect': 'off',
-      'react-hooks/refs': 'off',
-      'react-hooks/incompatible-library': 'off',
-    },
-  },
-
-  // ---- no-explicit-any: hard error in production code ------------------------
-  {
-    files: ['src/**/*.ts', 'electron/**/*.{ts,tsx}'],
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
-    },
-  },
-  {
-    files: ['test/**/*.ts', '**/*.test.{ts,tsx}', 'electron/renderer/src/test/**/*.{ts,tsx}'],
-    rules: {
-      '@typescript-eslint/no-explicit-any': 'off',
-    },
-  },
-
-  // ---- (C) CLI engine must stay independent from Electron --------------------
-  {
-    files: ['src/**/*.ts'],
-    rules: {
-      'no-restricted-imports': [
+      '@typescript-eslint/no-non-null-assertion': 'error',
+      '@typescript-eslint/consistent-type-imports': [
+        'error',
+        { prefer: 'type-imports', fixStyle: 'inline-type-imports' },
+      ],
+      '@typescript-eslint/no-floating-promises': 'error',
+      '@typescript-eslint/no-misused-promises': 'error',
+      '@typescript-eslint/switch-exhaustiveness-check': 'error',
+      'no-restricted-syntax': ['error', AS_BAN],
+      'boundaries/element-types': [
         'error',
         {
-          paths: [
+          default: 'disallow',
+          message: '${file.type} is not allowed to import ${dependency.type} (see docs/architecture.md)',
+          rules: [
+            { from: ['core-domain'], allow: ['core-domain'] },
+            { from: ['core-contract'], allow: ['core-domain', 'core-contract'] },
+            { from: ['core-server'], allow: ['core-domain', 'core-server'] },
+            { from: ['core-client'], allow: ['core-domain', 'core-contract', 'core-client'] },
             {
-              name: 'electron',
-              message: 'The CLI engine must not depend on Electron.',
+              from: ['adapters'],
+              allow: ['core-domain', 'core-server', 'core-client', 'adapters'],
+            },
+            {
+              from: ['app-server'],
+              allow: ['core-domain', 'core-contract', 'core-server', 'adapters', 'app-server'],
+            },
+            {
+              from: ['app-cli'],
+              allow: ['core-domain', 'core-contract', 'core-client', 'app-server', 'app-cli'],
+            },
+            {
+              from: ['app-desktop'],
+              allow: [
+                'core-domain',
+                'core-contract',
+                'core-client',
+                'adapters',
+                'app-server',
+                'app-desktop',
+              ],
+            },
+            {
+              from: ['app-web'],
+              allow: ['core-domain', 'core-contract', 'core-client', 'app-web'],
             },
           ],
-          patterns: [
+        },
+      ],
+      'boundaries/external': [
+        'error',
+        {
+          default: 'allow',
+          rules: [
             {
-              group: ['electron/*'],
-              message: 'The CLI engine must not depend on Electron.',
+              from: ['core-domain', 'core-contract', 'core-server'],
+              disallow: ['hono', 'drizzle-orm', 'commander', 'react', 'react-dom', 'electron'],
+              message: 'Core stays pure TypeScript: no frameworks, servers or drivers',
+            },
+            {
+              from: ['core-client'],
+              disallow: ['hono', 'drizzle-orm', 'commander', 'react', 'react-dom', 'electron'],
+              message: 'core/client is framework-agnostic',
+            },
+            {
+              from: [
+                'core-domain',
+                'core-contract',
+                'core-server',
+                'core-client',
+                'adapters',
+                'app-server',
+                'app-web',
+                'app-cli',
+              ],
+              disallow: ['electron'],
+              message: 'Only apps/desktop (composition root + preload) may import electron',
             },
           ],
         },
       ],
     },
   },
-
-  // ---- (D) Deleted file:* channels must not come back (all of electron/) -----
-  {
-    files: ['electron/**/*.{ts,tsx}'],
-    rules: {
-      'no-restricted-syntax': ['error', ...deletedChannelSelectors],
-    },
-  },
-
-  // ---- (B) Renderer must not import the CLI engine or main -------------------
-  {
-    files: ['electron/renderer/**/*.{ts,tsx}'],
-    rules: {
-      'no-restricted-imports': [
-        'error',
-        {
-          patterns: [
-            {
-              group: ['**/src/services/*', '**/src/db/*'],
-              message: 'The renderer must not import the CLI engine; talk to it via useCliCommand.',
-            },
-            {
-              // `**/main/*` catches relative specifiers like `../../../main/foo`
-              // (patterns match the raw import string, not the resolved path).
-              group: ['**/electron/main/*', '**/main/*'],
-              message: 'The renderer must not import the Electron main process.',
-            },
-          ],
-        },
-      ],
-    },
-  },
-
-  // ---- (A) Renderer: CLI access only through useCliCommand -------------------
-  // Includes the (D) selectors because a later `no-restricted-syntax` entry
-  // replaces an earlier one for the same files.
-  {
-    files: ['electron/renderer/**/*.{ts,tsx}'],
-    rules: {
-      'no-restricted-syntax': ['error', cliAccessSelector, ...deletedChannelSelectors],
-    },
-  },
-  {
-    files: [
-      'electron/renderer/src/hooks/use-cli-command.ts',
-      'electron/renderer/src/test/**/*.{ts,tsx}',
-    ],
-    rules: {
-      // Rule (A) does not apply here (the one sanctioned access point + test
-      // mocks), but the deleted-channel ban (D) still does.
-      'no-restricted-syntax': ['error', ...deletedChannelSelectors],
-    },
-  }
 );
