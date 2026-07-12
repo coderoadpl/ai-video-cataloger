@@ -72,15 +72,37 @@ export const scanOutputSchema = z.object({
 });
 
 export const processInputSchema = videoPathInputSchema.extend({
-  frames: z.number().int().min(1).max(10).default(CONFIG_DEFAULTS.frames),
-  skipRename: z.boolean().default(CONFIG_DEFAULTS.skip_rename),
+  frames: z.number().int().min(1).max(10).optional(),
+  framesExplicit: z.boolean().optional(),
+  skipRename: z.boolean().optional(),
+  skipRenameExplicit: z.boolean().optional(),
   verbose: z.boolean().default(false),
-  timeout: z.number().int().min(30).max(600).default(CONFIG_DEFAULTS.timeout),
-  whisper: z.enum(WHISPER_MODES).default(CONFIG_DEFAULTS.whisper_mode),
-  whisperModel: z.enum(WHISPER_MODEL_NAMES).default(CONFIG_DEFAULTS.whisper_model),
+  timeout: z.number().int().min(30).max(600).optional(),
+  timeoutExplicit: z.boolean().optional(),
+  whisper: z.enum(WHISPER_MODES).optional(),
+  whisperExplicit: z.boolean().optional(),
+  whisperModel: z.enum(WHISPER_MODEL_NAMES).optional(),
+  whisperModelExplicit: z.boolean().optional(),
   analyzer: z.enum(ANALYZER_BACKENDS).optional(),
   localModel: z.string().min(1).optional(),
-});
+  batch: z.object({ current: z.number().int().positive(), total: z.number().int().positive() }).optional(),
+}).transform((input) => ({
+  videoPath: input.videoPath,
+  frames: input.frames ?? CONFIG_DEFAULTS.frames,
+  framesExplicit: input.framesExplicit ?? input.frames !== undefined,
+  skipRename: input.skipRename ?? CONFIG_DEFAULTS.skip_rename,
+  skipRenameExplicit: input.skipRenameExplicit ?? input.skipRename !== undefined,
+  verbose: input.verbose,
+  timeout: input.timeout ?? CONFIG_DEFAULTS.timeout,
+  timeoutExplicit: input.timeoutExplicit ?? input.timeout !== undefined,
+  whisper: input.whisper ?? CONFIG_DEFAULTS.whisper_mode,
+  whisperExplicit: input.whisperExplicit ?? input.whisper !== undefined,
+  whisperModel: input.whisperModel ?? CONFIG_DEFAULTS.whisper_model,
+  whisperModelExplicit: input.whisperModelExplicit ?? input.whisperModel !== undefined,
+  ...(input.analyzer === undefined ? {} : { analyzer: input.analyzer }),
+  ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
+  ...(input.batch === undefined ? {} : { batch: input.batch }),
+}));
 
 export const jobAcceptedOutputSchema = z.object({
   jobId: z.string(),
@@ -316,12 +338,25 @@ export const checkOutputSchema = z.object({
 
 export const jobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']);
 export const jobKindSchema = z.enum(['process', 'whisper_download', 'local_ai_pull']);
+export const jobProgressStepSchema = z.enum([
+  'extracting_frames',
+  'extracting_audio',
+  'transcribing_audio',
+  'analyzing_with_claude',
+  'renaming_video',
+  'skipping_rename',
+  'downloading',
+  'runtime_setup',
+  'model_download',
+]);
 
 export const jobProgressSchema = z.object({
-  step: z.string(),
+  step: jobProgressStepSchema,
   percentage: z.number().min(0).max(100).optional(),
   current: z.number().int().nonnegative().optional(),
   total: z.number().int().positive().optional(),
+  stepNumber: z.number().int().positive().optional(),
+  totalSteps: z.number().int().positive().optional(),
   data: z.record(z.unknown()).optional(),
 });
 

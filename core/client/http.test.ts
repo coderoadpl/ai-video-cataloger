@@ -52,6 +52,75 @@ describe('createApiClient health query', () => {
   });
 });
 
+describe('createApiClient route calls', () => {
+  it('interpolates GET route params into the request URL', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('/api/scan?folder=%2Fvideos%2FA+B');
+      expect(init).toMatchObject({ method: 'GET' });
+      return jsonResponse({
+        ok: true,
+        data: {
+          folder: '/videos/A B',
+          databasePath: null,
+          videos: [],
+          summary: {
+            total: 0,
+            tracked: 0,
+            pending: 0,
+            inProgress: 0,
+            completed: 0,
+            error: 0,
+            notTracked: 0,
+          },
+        },
+      });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(client.scan({ folder: '/videos/A B' })).resolves.toMatchObject({ ok: true });
+  });
+
+  it('zod-parses command input before sending JSON bodies', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('/api/process');
+      expect(init).toMatchObject({
+        method: 'POST',
+        body: JSON.stringify({
+          videoPath: '/videos/clip.mp4',
+          frames: 3,
+          framesExplicit: false,
+          skipRename: false,
+          skipRenameExplicit: false,
+          verbose: false,
+          timeout: 120,
+          timeoutExplicit: false,
+          whisper: 'local',
+          whisperExplicit: false,
+          whisperModel: 'base',
+          whisperModelExplicit: false,
+        }),
+      });
+      return jsonResponse({ ok: true, data: { jobId: 'job-1' } });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(client.processVideo({ videoPath: '/videos/clip.mp4' })).resolves.toEqual({
+      ok: true,
+      value: { jobId: 'job-1' },
+    });
+  });
+
+  it('returns taxonomy errors for invalid client input', async () => {
+    const fetchImpl: typeof fetch = async () => jsonResponse({ ok: true, data: { jobId: 'unused' } });
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(client.processVideo({ videoPath: '', frames: 99 })).resolves.toMatchObject({
+      ok: false,
+      error: { code: 'validation' },
+    });
+  });
+});
+
 describe('unwrap', () => {
   it('throws ApiError carrying the AppError', () => {
     const appError: AppError = { code: 'conflict', message: 'Already exists' };

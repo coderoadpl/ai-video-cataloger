@@ -105,8 +105,8 @@ describe('route schemas', () => {
       progress: {
         step: 'transcribing_audio',
         percentage: 60,
-        current: 3,
-        total: 5,
+        current: 1,
+        total: 1,
         data: {
           video: '/videos/clip.mp4',
           stepNumber: 3,

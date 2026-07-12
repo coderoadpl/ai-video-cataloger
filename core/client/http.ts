@@ -2,13 +2,32 @@ import { type z } from 'zod';
 
 import {
   API_ROUTES,
+  checkOutputSchema,
+  configGetOutputSchema,
+  configSetOutputSchema,
+  doctorOutputSchema,
   healthOutputSchema,
+  jobAcceptedOutputSchema,
+  jobCancelOutputSchema,
+  jobOutputSchema,
+  jobsListOutputSchema,
+  localAiDaemonStopOutputSchema,
+  localAiRequirementsOutputSchema,
+  localAiRmOutputSchema,
   looseEnvelopeSchema,
+  resetAllOutputSchema,
+  resetSingleOutputSchema,
+  scanOutputSchema,
+  statusOutputSchema,
+  thumbnailOutputSchema,
   type HttpMethod,
   type ReadMethod,
   type WriteMethod,
+  whisperModelDeleteOutputSchema,
+  whisperModelUseOutputSchema,
+  whisperModelsListOutputSchema,
 } from '@core/contract/index.js';
-import { err, internal, ok, type AppError, type Result } from '@core/domain/index.js';
+import { err, internal, ok, validation, type AppError, type Result } from '@core/domain/index.js';
 
 declare const HTTP_METHOD_BRAND: unique symbol;
 
@@ -23,9 +42,7 @@ export type ReadResult<T> = Branded<Result<T, AppError>, ReadMethod>;
 export type WriteResult<T> = Branded<Result<T, AppError>, WriteMethod>;
 
 export interface ApiClientOptions {
-  /** '' for same-origin / in-process; absolute URL for a networked client. */
   baseUrl: string;
-  /** Injected transport: `honoApp.request` in-process, real `fetch` over a network. */
   fetchImpl?: typeof fetch;
   headers?: () => Record<string, string>;
 }
@@ -74,15 +91,244 @@ const request = async <S extends z.ZodTypeAny, M extends HttpMethod>(
   return ok(data.data);
 };
 
-/** The single typed gateway to the API. No client ever hand-writes HTTP. */
+const parseInput = <S extends z.ZodTypeAny>(
+  schema: S,
+  input: z.input<S>,
+): Result<z.output<S>, AppError> => {
+  const parsed = schema.safeParse(input);
+  if (!parsed.success) return err(validation('Client input does not match the contract', parsed.error.flatten()));
+  return ok(parsed.data);
+};
+
+const queryPath = (path: string, entries: ReadonlyArray<readonly [string, string | null | undefined]>): string => {
+  const params = new URLSearchParams();
+  for (const [key, value] of entries) {
+    if (value !== null && value !== undefined) params.set(key, value);
+  }
+  const query = params.toString();
+  return query.length === 0 ? path : `${path}?${query}`;
+};
+
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
     request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
+  scan: (input: z.input<typeof API_ROUTES.scan.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.scan.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.scan.method,
+      queryPath(API_ROUTES.scan.path, [['folder', parsed.value.folder]]),
+      scanOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  status: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.status.method, API_ROUTES.status.path, statusOutputSchema, undefined, signal),
+  config: (input: z.input<typeof API_ROUTES.configGet.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.configGet.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.configGet.method,
+      queryPath(API_ROUTES.configGet.path, [['key', parsed.value.key]]),
+      configGetOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  modelsWhisper: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.whisperModelsList.method,
+      API_ROUTES.whisperModelsList.path,
+      whisperModelsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  localAiRequirements: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.localAiRequirements.method,
+      API_ROUTES.localAiRequirements.path,
+      localAiRequirementsOutputSchema,
+      undefined,
+      signal,
+    ),
+  doctor: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.doctor.method, API_ROUTES.doctor.path, doctorOutputSchema, undefined, signal),
+  check: (input: z.input<typeof API_ROUTES.check.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.check.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.check.method,
+      queryPath(API_ROUTES.check.path, [['folder', parsed.value.folder]]),
+      checkOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  job: (input: z.input<typeof API_ROUTES.jobStatus.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.jobStatus.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.jobStatus.method,
+      queryPath(API_ROUTES.jobStatus.path, [['jobId', parsed.value.jobId]]),
+      jobOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  jobs: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.jobsList.method, API_ROUTES.jobsList.path, jobsListOutputSchema, undefined, signal),
+  processVideo: (input: z.input<typeof API_ROUTES.process.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.process.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.process.method,
+      API_ROUTES.process.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  generateThumbnail: (input: z.input<typeof API_ROUTES.thumbnail.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.thumbnail.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.thumbnail.method,
+      API_ROUTES.thumbnail.path,
+      thumbnailOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  resetAll: (input: z.input<typeof API_ROUTES.resetAll.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.resetAll.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.resetAll.method,
+      API_ROUTES.resetAll.path,
+      resetAllOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  resetSingle: (input: z.input<typeof API_ROUTES.resetSingle.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.resetSingle.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.resetSingle.method,
+      API_ROUTES.resetSingle.path,
+      resetSingleOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  setConfig: (input: z.input<typeof API_ROUTES.configSet.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.configSet.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.configSet.method,
+      API_ROUTES.configSet.path,
+      configSetOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  downloadWhisperModel: (input: z.input<typeof API_ROUTES.whisperModelDownload.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.whisperModelDownload.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.whisperModelDownload.method,
+      API_ROUTES.whisperModelDownload.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  deleteWhisperModel: (input: z.input<typeof API_ROUTES.whisperModelDelete.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.whisperModelDelete.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.whisperModelDelete.method,
+      API_ROUTES.whisperModelDelete.path,
+      whisperModelDeleteOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  useWhisperModel: (input: z.input<typeof API_ROUTES.whisperModelUse.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.whisperModelUse.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.whisperModelUse.method,
+      API_ROUTES.whisperModelUse.path,
+      whisperModelUseOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  pullLocalAiModel: (input: z.input<typeof API_ROUTES.localAiPull.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.localAiPull.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.localAiPull.method,
+      API_ROUTES.localAiPull.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  removeLocalAiModel: (input: z.input<typeof API_ROUTES.localAiRm.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.localAiRm.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.localAiRm.method,
+      API_ROUTES.localAiRm.path,
+      localAiRmOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  stopLocalAiDaemon: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.localAiDaemonStop.method,
+      API_ROUTES.localAiDaemonStop.path,
+      localAiDaemonStopOutputSchema,
+      {},
+      signal,
+    ),
+  cancelJob: (input: z.input<typeof API_ROUTES.jobCancel.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.jobCancel.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.jobCancel.method,
+      API_ROUTES.jobCancel.path,
+      jobCancelOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;
 
-/** For TanStack Query: converts a Result into value-or-throw at the query boundary. */
 export const unwrap = <T>(result: Result<T, AppError>): T => {
   if (!result.ok) throw new ApiError(result.error);
   return result.value;
