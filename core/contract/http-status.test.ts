@@ -2,7 +2,11 @@ import { describe, expect, it } from 'vitest';
 
 import { ERROR_CODES } from '@core/domain/index.js';
 
-import { EXIT_CODE_BY_ERROR_CODE, HTTP_STATUS_BY_ERROR_CODE } from './http-status.js';
+import {
+  EXIT_CODE_BY_ERROR_CODE,
+  HTTP_STATUS_BY_ERROR_CODE,
+  LEGACY_ERROR_CODE_BY_ERROR_CODE,
+} from './http-status.js';
 
 describe('error taxonomy mappings', () => {
   it('maps every ErrorCode to an HTTP status', () => {
@@ -17,9 +21,16 @@ describe('error taxonomy mappings', () => {
     }
   });
 
+  it('maps every ErrorCode to a legacy CLI string', () => {
+    for (const code of ERROR_CODES) {
+      expect(typeof LEGACY_ERROR_CODE_BY_ERROR_CODE[code]).toBe('string');
+    }
+  });
+
   it('has no mapping keys beyond the closed ErrorCode union', () => {
     expect(Object.keys(HTTP_STATUS_BY_ERROR_CODE).sort()).toEqual([...ERROR_CODES].sort());
     expect(Object.keys(EXIT_CODE_BY_ERROR_CODE).sort()).toEqual([...ERROR_CODES].sort());
+    expect(Object.keys(LEGACY_ERROR_CODE_BY_ERROR_CODE).sort()).toEqual([...ERROR_CODES].sort());
   });
 
   it('assigns distinct nonzero exit codes so callers can discriminate failures', () => {

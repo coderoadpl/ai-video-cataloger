@@ -118,7 +118,8 @@ has one vocabulary.
   `INVALID_CONFIG_VALUE`, `FOLDER_NOT_FOUND`, `NOT_A_DIRECTORY`,
   `READ_ERROR`, `NESTED_DATABASES_FOUND`, `THUMBNAIL_ERROR`,
   `PROCESSING_ERROR`, `ANALYSIS_PARSE_FAILED`, `MODEL_NOT_INSTALLED`,
-  `OLLAMA_UNAVAILABLE`, internal) with exhaustive exit-code mapping
+  `OLLAMA_UNAVAILABLE`, `HW_REQUIREMENTS_NOT_MET`, internal) with exhaustive
+  exit-code mapping
 - [ ] `Result<T, AppError>` everywhere; unit tests for taxonomy exhaustiveness
 
 #### US-202: Contract
@@ -353,6 +354,11 @@ the CLI consume the same partition.
   3. `renameVideo` leaves `original_path` stale (INV §10) → keep observable
      behavior (hash fallback matching) but store consistently.
   4. Duplicated statement in `config.ts` (INV §10) — irrelevant post-rewrite.
+  5. The old CLI exits uniformly 1 on every error; the rewrite exits with
+     distinct taxonomy exit codes (all nonzero) per the kickoff constraint
+     "error taxonomy with CLI exit codes". Scripts testing `!= 0` keep
+     working; scripts comparing `== 1` on specific failures would not —
+     judged acceptable, NDJSON `code` remains the precise discriminator.
 - **Foundation reuse**: copy configs/patterns from `agentproofarch/demo`
   (eslint boundaries setup, local eslint plugin with probe-proven rules,
   depcruise mirror, vitest projects, theme.ts discipline, query policies)
