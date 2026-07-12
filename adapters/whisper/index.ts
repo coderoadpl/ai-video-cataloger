@@ -1,0 +1,455 @@
+import OpenAI from 'openai';
+import { execFile } from 'node:child_process';
+import { accessSync, createReadStream, createWriteStream, type ReadStream, type WriteStream } from 'node:fs';
+import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { createHash } from 'node:crypto';
+import { homedir } from 'node:os';
+import path from 'node:path';
+import { z } from 'zod';
+
+import {
+  appError,
+  ok,
+  type AppError,
+  type Result,
+  type WhisperModelName,
+} from '@core/domain/index.js';
+import type {
+  DependencyStatus,
+  ModelDownloadPort,
+  TranscribeInput,
+  TranscriberPort,
+  WhisperDownloadProgress,
+} from '@core/server/index.js';
+
+const openAiErrorSchema = z.object({
+  status: z.number().optional(),
+  message: z.string().optional(),
+});
+
+export interface CommandRunner {
+  run(command: string, args: readonly string[]): Promise<Result<{ stdout: string; stderr: string }, AppError>>;
+}
+
+export interface WhisperBinaryResolver {
+  bundledWhisperPath(): string | null;
+}
+
+export interface ResolvedWhisperBinary {
+  path: string;
+  source: 'bundled' | 'system' | null;
+  available: boolean;
+}
+
+export interface WhisperApiClient {
+  createTranscription(input: { file: ReadStream; model: 'whisper-1' }): Promise<{ text: string }>;
+}
+
+export interface WhisperTranscriberOptions {
+  homeDirectory?: string | undefined;
+  apiKey?: string | undefined;
+  commandRunner?: CommandRunner | undefined;
+  binaryResolver?: WhisperBinaryResolver | undefined;
+  apiClient?: WhisperApiClient | undefined;
+}
+
+export interface WhisperModelDownloaderOptions {
+  homeDirectory?: string | undefined;
+  fetchImpl?: typeof fetch | undefined;
+  nowMs?: (() => number) | undefined;
+  onProgress?: ((progress: WhisperDownloadProgress) => void) | undefined;
+  urlForModel?: ((model: WhisperModelName) => string) | undefined;
+  warn?: ((message: string) => void) | undefined;
+}
+
+export class WhisperTranscriberAdapter implements TranscriberPort {
+  private readonly homeDirectory: string;
+  private readonly apiKey: string | undefined;
+  private readonly commandRunner: CommandRunner;
+  private readonly binaryResolver: WhisperBinaryResolver;
+  private readonly apiClient: WhisperApiClient | undefined;
+
+  constructor(options: WhisperTranscriberOptions = {}) {
+    this.homeDirectory = options.homeDirectory ?? homedir();
+    this.apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
+    this.commandRunner = options.commandRunner ?? childProcessCommandRunner;
+    this.binaryResolver = options.binaryResolver ?? homeWhisperBinaryResolver(this.homeDirectory);
+    this.apiClient = options.apiClient;
+  }
+
+  async transcribe(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+    if (input.mode === 'skip') return ok({ transcriptPath: input.transcriptPath, content: '' });
+    if (input.mode === 'api') return this.transcribeWithApi(input);
+    return this.transcribeWithLocal(input);
+  }
+
+  async dependency(): Promise<Result<DependencyStatus, AppError>> {
+    const binary = await resolveWhisperBinary(this.binaryResolver, this.commandRunner);
+    if (!binary.available) {
+      return ok({
+        name: 'whisper',
+        available: false,
+        version: null,
+        source: null,
+        path: null,
+        installHint: 'Whisper can be bundled or installed via: pip install openai-whisper',
+      });
+    }
+    const help = await this.commandRunner.run(binary.path, ['--help']);
+    return ok({
+      name: 'whisper',
+      available: true,
+      version: help.ok ? parseWhisperVersion(`${help.value.stdout}\n${help.value.stderr}`) : null,
+      source: binary.source,
+      path: binary.path,
+      installHint: '',
+    });
+  }
+
+  private async transcribeWithLocal(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+    const binary = await resolveWhisperBinary(this.binaryResolver, this.commandRunner);
+    if (!binary.available) {
+      return {
+        ok: false,
+        error: appError('prerequisites_failed', 'Whisper is not available'),
+      };
+    }
+    try {
+      await mkdir(path.dirname(input.transcriptPath), { recursive: true });
+      const run = await this.commandRunner.run(binary.path, [
+        input.audioPath,
+        '--model',
+        input.model,
+        '--output_dir',
+        path.dirname(input.transcriptPath),
+        '--output_format',
+        'txt',
+      ]);
+      if (!run.ok) return run;
+      const content = (await readFile(input.transcriptPath, 'utf8')).trim();
+      return ok({ transcriptPath: input.transcriptPath, content });
+    } catch (cause) {
+      return transcriptionFailure(cause, 'Failed to transcribe audio');
+    }
+  }
+
+  private async transcribeWithApi(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+    if (this.apiKey === undefined || this.apiKey.length === 0) {
+      return {
+        ok: false,
+        error: appError('missing_api_key', 'OPENAI_API_KEY environment variable is required when using OpenAI Whisper API'),
+      };
+    }
+    try {
+      await mkdir(path.dirname(input.transcriptPath), { recursive: true });
+      const client = this.apiClient ?? createOpenAiWhisperClient(this.apiKey);
+      const transcription = await client.createTranscription({
+        file: createReadStream(input.audioPath),
+        model: 'whisper-1',
+      });
+      const content = transcription.text.trim();
+      await writeFile(input.transcriptPath, content, 'utf8');
+      return ok({ transcriptPath: input.transcriptPath, content });
+    } catch (cause) {
+      return openAiFailure(cause);
+    }
+  }
+}
+
+export class HuggingFaceWhisperModelDownloader implements ModelDownloadPort {
+  private readonly homeDirectory: string;
+  private readonly fetchImpl: typeof fetch;
+  private readonly nowMs: () => number;
+  private readonly onProgress: ((progress: WhisperDownloadProgress) => void) | undefined;
+  private readonly urlForModel: (model: WhisperModelName) => string;
+  private readonly warn: (message: string) => void;
+
+  constructor(options: WhisperModelDownloaderOptions = {}) {
+    this.homeDirectory = options.homeDirectory ?? homedir();
+    this.fetchImpl = options.fetchImpl ?? fetch;
+    this.nowMs = options.nowMs ?? Date.now;
+    this.onProgress = options.onProgress;
+    this.urlForModel = options.urlForModel ?? whisperModelDownloadUrl;
+    this.warn = options.warn ?? ((message) => {
+      process.stderr.write(`${message}\n`);
+    });
+  }
+
+  whisperModelPath(model: WhisperModelName): string {
+    return primaryModelPath(this.homeDirectory, model);
+  }
+
+  async isWhisperModelDownloaded(model: WhisperModelName): Promise<Result<boolean, AppError>> {
+    try {
+      const exists = await pathExists(this.whisperModelPath(model))
+        || await pathExists(directModelPath(this.homeDirectory, model))
+        || await pathExists(legacyModelPath(this.homeDirectory, model));
+      return ok(exists);
+    } catch (cause) {
+      return downloadFailure(cause, 'Failed to check model status');
+    }
+  }
+
+  async downloadWhisperModel(
+    model: WhisperModelName,
+    options: { force: boolean; onProgress?: (progress: WhisperDownloadProgress) => void },
+  ): Promise<Result<{ model: WhisperModelName; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>> {
+    const modelPath = this.whisperModelPath(model);
+    const downloaded = await this.isWhisperModelDownloaded(model);
+    if (!downloaded.ok) return downloaded;
+    if (downloaded.value && !options.force) {
+      return ok({ model, path: modelPath, downloaded: false, skipped: true });
+    }
+
+    const tempPath = `${modelPath}.tmp`;
+    try {
+      await mkdir(path.dirname(modelPath), { recursive: true });
+      await rm(tempPath, { force: true });
+      const url = this.urlForModel(model);
+      const expectedSha256 = await this.expectedSha256(url);
+      const response = await this.fetchImpl(url);
+      if (!response.ok) {
+        return { ok: false, error: appError('download_error', `HTTP error: ${response.status} ${response.statusText}`) };
+      }
+      const onProgress = options.onProgress ?? this.onProgress;
+      const written = await this.streamVerifiedTempFile(model, response, tempPath, expectedSha256, onProgress);
+      if (!written.ok) return written;
+      await rm(modelPath, { force: true });
+      await rename(tempPath, modelPath);
+      return ok({ model, path: modelPath, downloaded: true, skipped: false, sizeBytes: written.value.sizeBytes });
+    } catch (cause) {
+      await rm(tempPath, { force: true });
+      return downloadFailure(cause, 'Failed to download model');
+    }
+  }
+
+  async deleteWhisperModel(
+    model: WhisperModelName,
+    options: { force: boolean },
+  ): Promise<Result<{ model: WhisperModelName; path: string; deleted: boolean }, AppError>> {
+    if (!options.force) return { ok: false, error: appError('confirmation_required', 'Deletion requires --force flag') };
+    const modelPath = this.whisperModelPath(model);
+    try {
+      if (!await pathExists(modelPath)) {
+        return { ok: false, error: appError('model_not_found', `Model not found: ${model}`) };
+      }
+      await rm(modelPath, { force: true });
+      return ok({ model, path: modelPath, deleted: true });
+    } catch (cause) {
+      return { ok: false, error: appError('delete_error', errorMessage(cause, 'Failed to delete model'), cause) };
+    }
+  }
+
+  private async expectedSha256(url: string): Promise<string | null> {
+    try {
+      const head = await this.fetchImpl(url, { method: 'HEAD', redirect: 'manual' });
+      return sha256Header(head.headers);
+    } catch {
+      return null;
+    }
+  }
+
+  private async streamVerifiedTempFile(
+    model: WhisperModelName,
+    response: Response,
+    tempPath: string,
+    expectedSha256: string | null,
+    onProgress: ((progress: WhisperDownloadProgress) => void) | undefined,
+  ): Promise<Result<{ sizeBytes: number }, AppError>> {
+    const body = response.body;
+    if (body === null) return { ok: false, error: appError('download_error', 'Download response body is empty') };
+    if (expectedSha256 === null) {
+      this.warn(`Whisper model ${model} could not be checksum-verified: the download source did not expose a SHA-256 header; proceeding with an unverified download`);
+    }
+
+    const totalBytes = contentLength(response.headers);
+    const hash = createHash('sha256');
+    const fileStream = createWriteStream(tempPath);
+    const reader = body.getReader();
+    let downloadedBytes = 0;
+    let lastBytes = 0;
+    let lastProgressAt = this.nowMs();
+    const emit = (now: number): void => {
+      const elapsed = (now - lastProgressAt) / 1000;
+      onProgress?.({
+        model,
+        downloadedBytes,
+        totalBytes,
+        percentage: totalBytes === null || totalBytes === 0 ? null : Math.round((downloadedBytes / totalBytes) * 100),
+        speed: elapsed > 0 ? (downloadedBytes - lastBytes) / elapsed : null,
+      });
+      lastBytes = downloadedBytes;
+      lastProgressAt = now;
+    };
+
+    try {
+      while (true) {
+        const read = await reader.read();
+        if (read.done) break;
+        hash.update(read.value);
+        downloadedBytes += read.value.length;
+        await writeChunk(fileStream, read.value);
+        const now = this.nowMs();
+        if (now - lastProgressAt >= 500) emit(now);
+      }
+      await endStream(fileStream);
+    } catch (cause) {
+      fileStream.destroy();
+      await rm(tempPath, { force: true });
+      return downloadFailure(cause, 'Failed to download model');
+    }
+
+    emit(this.nowMs());
+    const actualSha256 = hash.digest('hex');
+    if (expectedSha256 !== null && actualSha256 !== expectedSha256) {
+      await rm(tempPath, { force: true });
+      return {
+        ok: false,
+        error: appError('download_error', `Downloaded model checksum mismatch for ${model}`, {
+          expectedSha256,
+          actualSha256,
+        }),
+      };
+    }
+    return ok({ sizeBytes: downloadedBytes });
+  }
+}
+
+export const resolveWhisperBinary = async (
+  resolver: WhisperBinaryResolver = homeWhisperBinaryResolver(homedir()),
+  runner: CommandRunner = childProcessCommandRunner,
+): Promise<ResolvedWhisperBinary> => {
+  const bundled = resolver.bundledWhisperPath();
+  if (bundled !== null) return { path: bundled, source: 'bundled', available: true };
+  const system = await runner.run('whisper', ['--help']);
+  if (system.ok) return { path: 'whisper', source: 'system', available: true };
+  return { path: 'whisper', source: null, available: false };
+};
+
+export const whisperModelDownloadUrl = (model: WhisperModelName): string =>
+  `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`;
+
+export const primaryModelPath = (homeDirectory: string, model: WhisperModelName): string =>
+  path.join(homeDirectory, '.ai-video-cataloger', 'models', 'whisper', `ggml-${model}.bin`);
+
+export const directModelPath = (homeDirectory: string, model: WhisperModelName): string =>
+  path.join(homeDirectory, '.ai-video-cataloger', 'models', 'whisper', `${model}.bin`);
+
+export const legacyModelPath = (homeDirectory: string, model: WhisperModelName): string =>
+  path.join(homeDirectory, '.cache', 'whisper', `${model}.pt`);
+
+const homeWhisperBinaryResolver = (homeDirectory: string): WhisperBinaryResolver => ({
+  bundledWhisperPath: () => {
+    const bundled = path.join(homeDirectory, '.ai-video-cataloger', 'bin', 'whisper');
+    return pathExistsSync(bundled) ? bundled : null;
+  },
+});
+
+const childProcessCommandRunner: CommandRunner = {
+  run: (command, args) =>
+    new Promise((resolve) => {
+      execFile(command, [...args], (error, stdout, stderr) => {
+        if (error !== null) {
+          resolve({ ok: false, error: appError('processing_error', error.message, error) });
+          return;
+        }
+        resolve(ok({ stdout: String(stdout), stderr: String(stderr) }));
+      });
+    }),
+};
+
+const createOpenAiWhisperClient = (apiKey: string): WhisperApiClient => {
+  const client = new OpenAI({ apiKey });
+  return {
+    createTranscription: (input) => client.audio.transcriptions.create(input),
+  };
+};
+
+const parseWhisperVersion = (output: string): string | null => {
+  const match = /whisper[.\s]*([\d.]+)/i.exec(output);
+  return match?.[1] ?? 'installed';
+};
+
+const openAiFailure = (cause: unknown): Result<never, AppError> => {
+  const parsed = openAiErrorSchema.safeParse(cause);
+  const status = parsed.success ? parsed.data.status : undefined;
+  if (status === 401) {
+    return {
+      ok: false,
+      error: appError('missing_api_key', 'Invalid OpenAI API key. Please check your OPENAI_API_KEY environment variable.', cause),
+    };
+  }
+  if (status === 429) {
+    return { ok: false, error: appError('processing_error', 'OpenAI API rate limit exceeded. Please try again later.', cause) };
+  }
+  if (status === 413) {
+    return { ok: false, error: appError('processing_error', 'Audio file too large for OpenAI API. Maximum file size is 25MB.', cause) };
+  }
+  return transcriptionFailure(cause, 'OpenAI API transcription failed');
+};
+
+const transcriptionFailure = (cause: unknown, fallbackMessage: string): Result<never, AppError> => ({
+  ok: false,
+  error: appError('processing_error', errorMessage(cause, fallbackMessage), cause),
+});
+
+const downloadFailure = (cause: unknown, fallbackMessage: string): Result<never, AppError> => ({
+  ok: false,
+  error: appError('download_error', errorMessage(cause, fallbackMessage), cause),
+});
+
+const errorMessage = (cause: unknown, fallbackMessage: string): string =>
+  cause instanceof Error ? cause.message : fallbackMessage;
+
+const writeChunk = (stream: WriteStream, chunk: Uint8Array): Promise<void> =>
+  new Promise((resolve, reject) => {
+    stream.write(chunk, (error) => {
+      if (error === null || error === undefined) resolve();
+      else reject(error);
+    });
+  });
+
+const endStream = (stream: WriteStream): Promise<void> =>
+  new Promise((resolve, reject) => {
+    stream.on('error', reject);
+    stream.end(() => {
+      resolve();
+    });
+  });
+
+const pathExists = async (value: string): Promise<boolean> => {
+  try {
+    await access(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const pathExistsSync = (value: string): boolean => {
+  try {
+    accessSync(value);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const sha256Header = (headers: Headers): string | null => {
+  const linked = normalizeSha256(headers.get('x-linked-etag'));
+  if (linked !== null) return linked;
+  return normalizeSha256(headers.get('etag'));
+};
+
+const normalizeSha256 = (value: string | null): string | null => {
+  if (value === null) return null;
+  const normalized = value.replaceAll('"', '').trim().toLowerCase();
+  return /^[a-f0-9]{64}$/.test(normalized) ? normalized : null;
+};
+
+const contentLength = (headers: Headers): number | null => {
+  const raw = headers.get('content-length') ?? headers.get('x-linked-size');
+  if (raw === null) return null;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? parsed : null;
+};

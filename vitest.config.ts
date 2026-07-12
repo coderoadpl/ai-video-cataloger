@@ -28,6 +28,10 @@ export default defineConfig({
         extends: true,
         test: { name: 'core-client', environment: 'node', include: ['core/client/**/*.test.ts'] },
       },
+      {
+        extends: true,
+        test: { name: 'adapters', environment: 'node', include: ['adapters/**/*.test.ts'] },
+      },
     ],
   },
 });

@@ -359,6 +359,13 @@ the CLI consume the same partition.
      "error taxonomy with CLI exit codes". Scripts testing `!= 0` keep
      working; scripts comparing `== 1` on specific failures would not —
      judged acceptable, NDJSON `code` remains the precise discriminator.
+  6. `created_at`/`updated_at` in `status`/`scan` output are normalized to
+     ISO-8601 (`2026-07-12T10:11:12.000Z`) instead of the raw SQLite value
+     (`2026-07-12 10:11:12`, space-separated, no zone). The domain `Video`
+     schema mandates `z.string().datetime()`, so the whole contract carries
+     RFC-3339 timestamps; SQLite's `datetime('now')` is already UTC, so this
+     is a lossless format normalization, not a value change. Scripts diffing
+     the exact string see the new format; scripts parsing a date accept both.
 - **Foundation reuse**: copy configs/patterns from `agentproofarch/demo`
   (eslint boundaries setup, local eslint plugin with probe-proven rules,
   depcruise mirror, vitest projects, theme.ts discipline, query policies)

@@ -177,12 +177,20 @@ export interface LocalAiRuntimePort {
   dependency(): Promise<Result<DependencyStatus, AppError>>;
 }
 
+export interface WhisperDownloadProgress {
+  model: WhisperModelName;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  percentage: number | null;
+  speed: number | null;
+}
+
 export interface ModelDownloadPort {
   whisperModelPath(model: WhisperModelName): string;
   isWhisperModelDownloaded(model: WhisperModelName): Promise<Result<boolean, AppError>>;
   downloadWhisperModel(
     model: WhisperModelName,
-    options: { force: boolean },
+    options: { force: boolean; onProgress?: (progress: WhisperDownloadProgress) => void },
   ): Promise<Result<{ model: WhisperModelName; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>>;
   deleteWhisperModel(
     model: WhisperModelName,
@@ -192,6 +200,7 @@ export interface ModelDownloadPort {
 
 export type JobKind = 'process' | 'whisper_download' | 'local_ai_pull';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
   | 'extracting_frames'
   | 'extracting_audio'

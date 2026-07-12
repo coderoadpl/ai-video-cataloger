@@ -92,7 +92,32 @@ export const downloadWhisperModel = async (
   deps: ModelsDeps,
   input: { modelName: WhisperModelName; force: boolean },
 ): Promise<Result<JobAcceptedOutput, AppError>> =>
-  deps.jobs.enqueue({ kind: 'whisper_download', payload: { modelName: input.modelName, force: input.force } });
+  deps.jobs.enqueue({
+    kind: 'whisper_download',
+    payload: { modelName: input.modelName, force: input.force },
+    run: async (context) => {
+      const started = await context.reportProgress({ step: 'downloading', percentage: 0 });
+      if (!started.ok) return started;
+      const downloaded = await deps.downloads.downloadWhisperModel(input.modelName, {
+        force: input.force,
+        onProgress: (progress) => {
+          void context.reportProgress({
+            step: 'downloading',
+            ...(progress.percentage === null ? {} : { percentage: progress.percentage }),
+            data: {
+              downloadedBytes: progress.downloadedBytes,
+              totalBytes: progress.totalBytes,
+              speed: progress.speed,
+            },
+          });
+        },
+      });
+      if (!downloaded.ok) return downloaded;
+      const completed = await context.reportProgress({ step: 'downloading', percentage: 100 });
+      if (!completed.ok) return completed;
+      return ok(downloaded.value);
+    },
+  });
 
 export const deleteWhisperModel = async (
   deps: ModelsDeps,

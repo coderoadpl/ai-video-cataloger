@@ -13,16 +13,17 @@ import { analyzerBackendSchema, configSchema } from '@core/domain/config.js';
 import { whisperModelNameSchema } from '@core/domain/models.js';
 import { z } from 'zod';
 
-import type {
-  AnalyzerPort,
-  CatalogRepository,
-  CatalogRepositoryFactory,
-  ConfigStore,
-  FileSystemPort,
-  JobExecutionContext,
-  JobProgress,
-  MediaPort,
-  TranscriberPort,
+import {
+  JOB_CANCELLED_ERROR_MESSAGE,
+  type AnalyzerPort,
+  type CatalogRepository,
+  type CatalogRepositoryFactory,
+  type ConfigStore,
+  type FileSystemPort,
+  type JobExecutionContext,
+  type JobProgress,
+  type MediaPort,
+  type TranscriberPort,
 } from '../ports.js';
 import { artifactPaths, isSupportedVideoExtension, type SummaryData } from './shared.js';
 
@@ -102,7 +103,9 @@ export const processVideoPipeline = async (
 
   const runResult = await runPipelineSteps(deps, repository.value, video.value, resolved.value, progress);
   if (!runResult.ok) {
-    await repository.value.updateVideoStatus(video.value.id, 'error', runResult.error.message);
+    if (!isJobCancelled(runResult.error)) {
+      await repository.value.updateVideoStatus(video.value.id, 'error', runResult.error.message);
+    }
     return runResult;
   }
   return runResult;
@@ -678,6 +681,9 @@ const report = async (
     },
   });
 };
+
+const isJobCancelled = (error: AppError): boolean =>
+  error.code === 'processing_error' && error.message === JOB_CANCELLED_ERROR_MESSAGE;
 
 const tempAudioPath = (fs: FileSystemPort, videoPath: string): string =>
   fs.join(fs.tempDirectory(), 'ai-video-cataloger', 'audio', `${fs.basenameWithoutExtension(videoPath)}.wav`);

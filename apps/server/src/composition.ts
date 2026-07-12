@@ -1,5 +1,12 @@
 import path from 'node:path';
 
+import { ClaudeCliAnalyzerAdapter, OllamaAnalyzerAdapter } from '@adapters/analyzers/index.js';
+import { JsonConfigStore, SqlJsCatalogRepositoryFactory } from '@adapters/db/index.js';
+import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
+import { NodeFileSystemPort } from '@adapters/fs/index.js';
+import { InProcessJobsPort } from '@adapters/jobs/index.js';
+import { ManagedOllamaRuntimeAdapter } from '@adapters/ollama-runtime/index.js';
+import { HuggingFaceWhisperModelDownloader, WhisperTranscriberAdapter } from '@adapters/whisper/index.js';
 import {
   appError,
   ok,
@@ -9,6 +16,8 @@ import {
   type WhisperModelName,
 } from '@core/domain/index.js';
 import type {
+  AnalysisOutput,
+  AnalyzeInput,
   AnalyzerPort,
   CatalogRepository,
   CatalogRepositoryFactory,
@@ -20,10 +29,6 @@ import type {
   DirectoryEntry,
   FileStat,
   FileSystemPort,
-  JobExecutionContext,
-  JobKind,
-  JobProgress,
-  JobRecord,
   JobsPort,
   LocalAiRuntimePort,
   MediaPort,
@@ -48,24 +53,65 @@ export interface AppDeps {
 export interface AppConfig {
   version?: string;
   workingDirectory?: string;
+  homeDirectory?: string;
+  dbDriver?: 'sql-js' | 'memory';
 }
 
 export const createDeps = (config: AppConfig = {}): AppDeps => {
-  const fs = new InMemoryFileSystemPort(config.workingDirectory ?? process.cwd());
-  const clock = () => new Date().toISOString();
-  const jobs = new InMemoryJobsPort(clock);
+  const dbDriver = config.dbDriver ?? dbDriverFromEnv(process.env.DB_DRIVER);
+  const workingDirectory = config.workingDirectory ?? process.cwd();
+  const homeDirectory = config.homeDirectory;
+  const jobs = new InProcessJobsPort();
+  if (dbDriver === 'memory') {
+    return {
+      version: config.version ?? '0.1.0',
+      catalogs: new InMemoryCatalogRepositoryFactory(),
+      config: new InMemoryConfigStore(),
+      fs: new InMemoryFileSystemPort(workingDirectory),
+      media: new InMemoryMediaPort(),
+      transcriber: new InMemoryTranscriberPort(),
+      analyzer: new InMemoryAnalyzerPort(),
+      localAi: new InMemoryLocalAiRuntimePort(),
+      downloads: new InMemoryModelDownloadPort(),
+      jobs,
+    };
+  }
+  const localAi = new ManagedOllamaRuntimeAdapter({ homeDirectory });
   return {
     version: config.version ?? '0.1.0',
-    catalogs: new InMemoryCatalogRepositoryFactory(),
-    config: new InMemoryConfigStore(),
-    fs,
-    media: new InMemoryMediaPort(),
-    transcriber: new InMemoryTranscriberPort(),
-    analyzer: new InMemoryAnalyzerPort(),
-    localAi: new InMemoryLocalAiRuntimePort(),
-    downloads: new InMemoryModelDownloadPort(),
+    catalogs: new SqlJsCatalogRepositoryFactory(),
+    config: new JsonConfigStore({ homeDirectory }),
+    fs: new NodeFileSystemPort({ workingDirectory }),
+    media: new FfmpegMediaAdapter(),
+    transcriber: new WhisperTranscriberAdapter({ homeDirectory }),
+    analyzer: new BackendRoutingAnalyzerAdapter(
+      new ClaudeCliAnalyzerAdapter({ homeDirectory }),
+      new OllamaAnalyzerAdapter({ runtime: localAi }),
+    ),
+    localAi,
+    downloads: new HuggingFaceWhisperModelDownloader({ homeDirectory }),
     jobs,
   };
+};
+
+class BackendRoutingAnalyzerAdapter implements AnalyzerPort {
+  constructor(
+    private readonly cloud: AnalyzerPort,
+    private readonly local: AnalyzerPort,
+  ) {}
+
+  analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
+    return input.backend === 'local' ? this.local.analyze(input) : this.cloud.analyze(input);
+  }
+
+  dependency(): Promise<Result<DependencyStatus, AppError>> {
+    return this.cloud.dependency();
+  }
+}
+
+const dbDriverFromEnv = (value: string | undefined): 'sql-js' | 'memory' => {
+  if (value === 'memory') return 'memory';
+  return 'sql-js';
 };
 
 class InMemoryCatalogRepositoryFactory implements CatalogRepositoryFactory {
@@ -363,73 +409,6 @@ class InMemoryModelDownloadPort implements ModelDownloadPort {
     }
     this.downloaded.delete(model);
     return Promise.resolve(ok({ model, path: this.whisperModelPath(model), deleted: true }));
-  }
-}
-
-class InMemoryJobsPort implements JobsPort {
-  private readonly records = new Map<string, JobRecord>();
-  private nextNumber = 1;
-  private readonly progressEvents: JobProgress[] = [];
-
-  constructor(private readonly nowIso: () => string) {}
-
-  async enqueue(input: {
-    kind: JobKind;
-    payload: unknown;
-    run?: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>;
-  }): Promise<Result<{ jobId: string }, AppError>> {
-    const jobId = `job-${this.nextNumber}`;
-    this.nextNumber += 1;
-    const now = this.nowIso();
-    this.records.set(jobId, {
-      jobId,
-      kind: input.kind,
-      status: 'queued',
-      progress: null,
-      error: null,
-      createdAt: now,
-      updatedAt: now,
-    });
-    if (input.run !== undefined) {
-      const running = this.records.get(jobId);
-      if (running === undefined) return ok({ jobId });
-      this.records.set(jobId, { ...running, status: 'running', updatedAt: this.nowIso() });
-      const result = await input.run({
-        reportProgress: (progress) => {
-          this.progressEvents.push(progress);
-          const record = this.records.get(jobId);
-          if (record !== undefined) this.records.set(jobId, { ...record, progress, updatedAt: this.nowIso() });
-          return Promise.resolve(ok(undefined));
-        },
-      });
-      const completed = this.records.get(jobId);
-      if (completed !== undefined) {
-        this.records.set(jobId, {
-          ...completed,
-          status: result.ok ? 'completed' : 'failed',
-          result: result.ok ? result.value : undefined,
-          error: result.ok ? null : result.error,
-          updatedAt: this.nowIso(),
-        });
-      }
-    }
-    return ok({ jobId });
-  }
-
-  get(jobId: string): Promise<Result<JobRecord | null, AppError>> {
-    return Promise.resolve(ok(this.records.get(jobId) ?? null));
-  }
-
-  list(): Promise<Result<JobRecord[], AppError>> {
-    return Promise.resolve(ok([...this.records.values()]));
-  }
-
-  cancel(jobId: string): Promise<Result<{ jobId: string; cancelled: boolean }, AppError>> {
-    const record = this.records.get(jobId);
-    if (record === undefined) return Promise.resolve(ok({ jobId, cancelled: false }));
-    const updated: JobRecord = { ...record, status: 'cancelled', updatedAt: this.nowIso() };
-    this.records.set(jobId, updated);
-    return Promise.resolve(ok({ jobId, cancelled: true }));
   }
 }
 
