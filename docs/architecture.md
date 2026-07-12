@@ -53,8 +53,13 @@ an identity concept without a new ADR.
 ## Delta 3 — persistence
 
 SQLite (drizzle) behind repository ports; the composition root picks the
-driver (foundation's `DB_DRIVER` pattern). Two scopes, both preserved from
-the old app byte-for-byte (parity-inventory §5):
+driver (foundation's `DB_DRIVER` pattern). Default driver: **sql.js** (wasm,
+via `drizzle-orm/sql-js`) — the old app already ships it, the files are
+ordinary SQLite so compatibility is structural, and it avoids native-module
+rebuilds in Electron packaging; `better-sqlite3` is the named alternative if
+sql.js performance ever hurts (that swap is exactly what the port is for).
+Two scopes, both preserved from the old app byte-for-byte
+(parity-inventory §5):
 
 - **Per-folder catalog** — `{folder}/.ai-video-cataloger/catalog.db` via a
   `CatalogRepository` *factory* keyed by folder path (the foundation assumed
