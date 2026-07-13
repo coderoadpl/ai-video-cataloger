@@ -40,6 +40,53 @@ module.exports = {
       to: { path: '^(core/server|adapters|apps/(server|cli|desktop))' },
     },
     {
+      name: 'web-features-are-islands',
+      severity: 'error',
+      comment:
+        'A feature imports only itself; cross-feature sharing extracts downward (components/ui, lib, core/client) or goes through server-state invalidation, never sideways.',
+      from: { path: '^apps/web/src/features/([^/]+)/' },
+      to: {
+        path: '^apps/web/src/features/([^/]+)/',
+        pathNot: '^apps/web/src/features/$1/',
+      },
+    },
+    {
+      name: 'web-ui-presentational',
+      severity: 'error',
+      comment: 'components/ui is presentational: only lib, theme and its own siblings — never core, features, routes or api.',
+      from: { path: '^apps/web/src/components/ui/' },
+      to: {
+        path: '^(core/|apps/web/src/(features|routes|api))',
+      },
+    },
+    {
+      name: 'web-ui-no-server-state',
+      severity: 'error',
+      comment: 'components/ui holds no TanStack Query/Router: server state stays in features.',
+      from: { path: '^apps/web/src/components/ui/' },
+      to: { path: 'node_modules/@tanstack/(react-query|react-router)(/|$)' },
+    },
+    {
+      name: 'web-lib-is-pure-ts',
+      severity: 'error',
+      comment: 'lib is pure TypeScript: no react and nothing app-internal beyond itself.',
+      from: { path: '^apps/web/src/lib/' },
+      to: { path: '^(core/|apps/web/src/(features|routes|components|api|theme))' },
+    },
+    {
+      name: 'web-lib-no-react',
+      severity: 'error',
+      from: { path: '^apps/web/src/lib/' },
+      to: { path: 'node_modules/(react|react-dom)(/|$)' },
+    },
+    {
+      name: 'web-routes-are-thin',
+      severity: 'error',
+      comment: 'Routes wire features/ui/lib only: no core, api or bound clients.',
+      from: { path: '^apps/web/src/routes/' },
+      to: { path: '^(core/|apps/web/src/api)' },
+    },
+    {
       name: 'cli-only-composes-server',
       severity: 'error',
       comment: 'CLI is a composition root over createApp: no core/server, adapters, web or desktop.',

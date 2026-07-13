@@ -168,10 +168,21 @@ export interface LocalAiRuntimeStatus {
   installedModels: string[];
 }
 
+export interface LocalAiPullProgress {
+  tag: string;
+  status: string;
+  completed: number | null;
+  total: number | null;
+  percentage: number | null;
+}
+
 export interface LocalAiRuntimePort {
   machine(): Promise<Result<MachineProfile, AppError>>;
   status(): Promise<Result<LocalAiRuntimeStatus, AppError>>;
-  pull(tag: string): Promise<Result<{ tag: string; status: 'installed' }, AppError>>;
+  pull(
+    tag: string,
+    options?: { onProgress?: (progress: LocalAiPullProgress) => void },
+  ): Promise<Result<{ tag: string; status: 'installed' }, AppError>>;
   rm(tag: string): Promise<Result<{ tag: string; status: 'removed' }, AppError>>;
   stopManagedDaemon(): Promise<Result<{ stopped: boolean }, AppError>>;
   dependency(): Promise<Result<DependencyStatus, AppError>>;

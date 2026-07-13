@@ -1,15 +1,12 @@
-/**
- * CLI runner helper for tests
- * Executes CLI commands and captures output
- */
-
 import { spawn } from 'node:child_process';
-import { join, dirname } from 'node:path';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const PROJECT_ROOT = join(__dirname, '..', '..');
-const CLI_PATH = join(PROJECT_ROOT, 'dist', 'index.js');
+const CURRENT_DIR = dirname(fileURLToPath(import.meta.url));
+const PROJECT_ROOT = join(CURRENT_DIR, '..', '..');
+const CLI_PATH = join(PROJECT_ROOT, 'apps', 'cli', 'src', 'main.ts');
 
 export interface CommandResult {
   stdout: string;
@@ -17,24 +14,27 @@ export interface CommandResult {
   exitCode: number;
 }
 
-/**
- * Run CLI command and capture output
- */
 export function runCli(
   args: string[],
   options?: {
     cwd?: string;
     env?: Record<string, string>;
     timeout?: number;
-  }
+  },
 ): Promise<CommandResult> {
-  const cwd = options?.cwd ?? PROJECT_ROOT;
+  const effectiveCwd = options?.cwd ?? PROJECT_ROOT;
   const timeout = options?.timeout ?? 30000;
 
   return new Promise((resolve, reject) => {
-    const proc = spawn('node', [CLI_PATH, ...args], {
-      cwd,
-      env: { ...process.env, ...options?.env },
+    const generatedHome = options?.env?.HOME === undefined ? mkdtempSync(join(tmpdir(), 'avc-cli-home-')) : null;
+    const proc = spawn(process.execPath, ['--import', 'tsx', CLI_PATH, ...args], {
+      cwd: PROJECT_ROOT,
+      env: {
+        ...process.env,
+        ...(generatedHome === null ? {} : { HOME: generatedHome }),
+        AVC_WORKING_DIRECTORY: effectiveCwd,
+        ...options?.env,
+      },
       stdio: ['pipe', 'pipe', 'pipe'],
     });
 
@@ -47,16 +47,17 @@ export function runCli(
       proc.kill('SIGTERM');
     }, timeout);
 
-    proc.stdout?.on('data', (data) => {
+    proc.stdout.on('data', (data) => {
       stdout += data.toString();
     });
 
-    proc.stderr?.on('data', (data) => {
+    proc.stderr.on('data', (data) => {
       stderr += data.toString();
     });
 
     proc.on('close', (code) => {
       clearTimeout(timeoutId);
+      if (generatedHome !== null) rmSync(generatedHome, { recursive: true, force: true });
       if (killed) {
         reject(new Error(`Command timed out after ${timeout}ms`));
       } else {
@@ -64,26 +65,25 @@ export function runCli(
       }
     });
 
-    proc.on('error', (err) => {
+    proc.on('error', (error) => {
       clearTimeout(timeoutId);
-      reject(err);
+      if (generatedHome !== null) rmSync(generatedHome, { recursive: true, force: true });
+      reject(error);
     });
   });
 }
 
-/**
- * Parse JSON events from CLI output (newline-delimited JSON)
- */
 export function parseJsonEvents(output: string): Array<Record<string, unknown>> {
   const events: Array<Record<string, unknown>> = [];
   const lines = output.trim().split('\n');
 
   for (const line of lines) {
-    if (line.trim()) {
+    if (line.trim().length > 0) {
       try {
-        events.push(JSON.parse(line));
+        const parsed: unknown = JSON.parse(line);
+        if (typeof parsed === 'object' && parsed !== null) events.push(parsed);
       } catch {
-        // Skip non-JSON lines
+        continue;
       }
     }
   }
@@ -91,26 +91,17 @@ export function parseJsonEvents(output: string): Array<Record<string, unknown>> 
   return events;
 }
 
-/**
- * Find a specific event type in parsed events
- */
 export function findEvent(
   events: Array<Record<string, unknown>>,
-  type: string
+  type: string,
 ): Record<string, unknown> | undefined {
-  return events.find((e) => e.type === type);
+  return events.find((event) => event.type === type);
 }
 
-/**
- * Get the CLI path
- */
 export function getCliPath(): string {
   return CLI_PATH;
 }
 
-/**
- * Get the project root path
- */
 export function getProjectRoot(): string {
   return PROJECT_ROOT;
 }

@@ -194,7 +194,32 @@ export const pullLocalAiModel = async (
       }),
     };
   }
-  return deps.jobs.enqueue({ kind: 'local_ai_pull', payload: { tag: input.tag } });
+  return deps.jobs.enqueue({
+    kind: 'local_ai_pull',
+    payload: { tag: input.tag },
+    run: async (context) => {
+      const runtime = await context.reportProgress({ step: 'runtime_setup', percentage: 0 });
+      if (!runtime.ok) return runtime;
+      const download = await context.reportProgress({ step: 'model_download', percentage: 0 });
+      if (!download.ok) return download;
+      let lastPercent = -1;
+      const pulled = await deps.localAi.pull(input.tag, {
+        onProgress: (progress) => {
+          if (progress.percentage === null || progress.percentage === lastPercent) return;
+          lastPercent = progress.percentage;
+          void context.reportProgress({
+            step: 'model_download',
+            percentage: progress.percentage,
+            data: { tag: progress.tag, status: progress.status },
+          });
+        },
+      });
+      if (!pulled.ok) return pulled;
+      const completed = await context.reportProgress({ step: 'model_download', percentage: 100 });
+      if (!completed.ok) return completed;
+      return ok(pulled.value);
+    },
+  });
 };
 
 export const removeLocalAiModel = async (

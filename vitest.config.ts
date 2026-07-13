@@ -32,6 +32,28 @@ export default defineConfig({
         extends: true,
         test: { name: 'adapters', environment: 'node', include: ['adapters/**/*.test.ts'] },
       },
+      {
+        extends: true,
+        test: {
+          name: 'web',
+          environment: 'jsdom',
+          include: ['apps/web/**/*.test.{ts,tsx}'],
+          setupFiles: ['apps/web/src/test/setup.ts'],
+        },
+      },
+      {
+        extends: true,
+        test: { name: 'desktop', environment: 'node', include: ['apps/desktop/**/*.test.ts'] },
+      },
+      {
+        extends: true,
+        test: {
+          name: 'cli',
+          environment: 'node',
+          include: ['test/cli/**/*.test.ts'],
+          testTimeout: 30000,
+        },
+      },
     ],
   },
 });

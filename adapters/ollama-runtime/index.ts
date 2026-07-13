@@ -141,10 +141,13 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     });
   }
 
-  async pull(tag: string): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
+  async pull(
+    tag: string,
+    options?: { onProgress?: (progress: OllamaPullProgress) => void },
+  ): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
     const runtime = await this.ensureRuntime();
     if (!runtime.ok) return runtime;
-    const pulled = await this.pullModel(runtime.value.baseUrl, tag);
+    const pulled = await this.pullModel(runtime.value.baseUrl, tag, options?.onProgress);
     if (!pulled.ok) return pulled;
     return ok({ tag, status: 'installed' });
   }
@@ -342,7 +345,11 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     return ok(parsed.data.models.map((model) => model.name));
   }
 
-  private async pullModel(baseUrl: string, tag: string): Promise<Result<void, AppError>> {
+  private async pullModel(
+    baseUrl: string,
+    tag: string,
+    onProgress?: (progress: OllamaPullProgress) => void,
+  ): Promise<Result<void, AppError>> {
     const response = await this.request(baseUrl, '/api/pull', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -353,7 +360,7 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     if (!response.value.ok || response.value.body === null) {
       return { ok: false, error: appError('ollama_unavailable', `Local AI runtime not reachable at ${baseUrl}: HTTP ${response.value.status}`) };
     }
-    return this.readPullStream(response.value.body, tag);
+    return this.readPullStream(response.value.body, tag, onProgress);
   }
 
   private async deleteModel(baseUrl: string, tag: string): Promise<Result<void, AppError>> {
@@ -382,7 +389,11 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     }
   }
 
-  private async readPullStream(body: ReadableStream<Uint8Array>, tag: string): Promise<Result<void, AppError>> {
+  private async readPullStream(
+    body: ReadableStream<Uint8Array>,
+    tag: string,
+    onProgress?: (progress: OllamaPullProgress) => void,
+  ): Promise<Result<void, AppError>> {
     const reader = body.getReader();
     const decoder = new TextDecoder();
     let buffered = '';
@@ -390,15 +401,19 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
       const chunk = await reader.read();
       if (chunk.done) break;
       buffered += decoder.decode(chunk.value, { stream: true });
-      const parsed = this.parsePullLines(buffered, tag);
+      const parsed = this.parsePullLines(buffered, tag, onProgress);
       buffered = parsed.remaining;
       if (!parsed.result.ok) return parsed.result;
     }
     if (buffered.trim().length === 0) return ok(undefined);
-    return this.handlePullLine(buffered.trim(), tag);
+    return this.handlePullLine(buffered.trim(), tag, onProgress);
   }
 
-  private parsePullLines(buffered: string, tag: string): { remaining: string; result: Result<void, AppError> } {
+  private parsePullLines(
+    buffered: string,
+    tag: string,
+    onProgress?: (progress: OllamaPullProgress) => void,
+  ): { remaining: string; result: Result<void, AppError> } {
     let remaining = buffered;
     while (true) {
       const newlineIndex = remaining.indexOf('\n');
@@ -406,12 +421,16 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
       const line = remaining.slice(0, newlineIndex).trim();
       remaining = remaining.slice(newlineIndex + 1);
       if (line.length === 0) continue;
-      const handled = this.handlePullLine(line, tag);
+      const handled = this.handlePullLine(line, tag, onProgress);
       if (!handled.ok) return { remaining, result: handled };
     }
   }
 
-  private handlePullLine(line: string, tag: string): Result<void, AppError> {
+  private handlePullLine(
+    line: string,
+    tag: string,
+    onProgress?: (progress: OllamaPullProgress) => void,
+  ): Result<void, AppError> {
     let body: unknown;
     try {
       body = JSON.parse(line);
@@ -430,13 +449,15 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     }
     const total = parsed.data.total ?? null;
     const completed = parsed.data.completed ?? null;
-    this.onPullProgress?.({
+    const progress: OllamaPullProgress = {
       tag,
       status: parsed.data.status ?? '',
       completed,
       total,
       percentage: total === null || total <= 0 || completed === null ? null : Math.min(100, Math.round((completed / total) * 100)),
-    });
+    };
+    this.onPullProgress?.(progress);
+    onProgress?.(progress);
     return ok(undefined);
   }
 }

@@ -1,7 +1,8 @@
 import { Hono } from 'hono';
+import { trace } from '@opentelemetry/api';
 import { type z } from 'zod';
 
-import { API_ROUTES, HTTP_STATUS_BY_ERROR_CODE, toEnvelope } from '@core/contract/index.js';
+import { API_ROUTES, HTTP_STATUS_BY_ERROR_CODE, looseEnvelopeSchema, toEnvelope } from '@core/contract/index.js';
 import { appError, err, ok, type AppError, type Result } from '@core/domain/index.js';
 import {
   cancelJob,
@@ -64,6 +65,25 @@ const queryInput = (context: BodyReader): Record<string, string> => context.req.
 
 export const buildApp = (deps: AppDeps): Hono => {
   const app = new Hono();
+  const tracer = trace.getTracer('ai-video-cataloger');
+
+  app.use('*', async (context, next) =>
+    tracer.startActiveSpan('http.request', async (span) => {
+      const startedAt = performance.now();
+      try {
+        await next();
+      } finally {
+        const durationMs = Math.round(performance.now() - startedAt);
+        const errorCode = await responseErrorCode(context.res);
+        span.setAttributes({
+          route: context.req.routePath,
+          durationMs,
+          ...(errorCode === null ? {} : { errorCode }),
+        });
+        span.end();
+      }
+    }),
+  );
 
   app.get(API_ROUTES.health.path, () =>
     respond(checkHealth({ version: deps.version }), API_ROUTES.health.output),
@@ -206,4 +226,18 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   return app;
+};
+
+const responseErrorCode = async (response: Response): Promise<string | null> => {
+  if (response.status < 400) return null;
+  const contentType = response.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) return null;
+  try {
+    const payload: unknown = await response.clone().json();
+    const parsed = looseEnvelopeSchema.safeParse(payload);
+    if (!parsed.success || parsed.data.ok) return null;
+    return parsed.data.error.code;
+  } catch {
+    return null;
+  }
 };
