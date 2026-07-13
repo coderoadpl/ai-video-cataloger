@@ -25,8 +25,8 @@ run_suite() {
 }
 
 if [[ -z "$REF" ]]; then
-  ( cd "$ROOT" && npm run build )
-  run_suite "$ROOT/dist/index.js"
+  ( cd "$ROOT" && npm run package:stage )
+  run_suite "$ROOT/dist/cli/index.js"
   exit 0
 fi
 
@@ -40,7 +40,7 @@ mkdir -p "$ROOT/.e2e-worktrees"
 cleanup
 git -C "$ROOT" worktree add --force "$WT" "$REF"
 
-echo "== Building $REF in $WT =="
-( cd "$WT" && npm ci --no-audit --no-fund && npm run build )
+echo "== Staging CLI for $REF in $WT =="
+( cd "$WT" && npm ci --no-audit --no-fund && npm run package:stage )
 
-run_suite "$WT/dist/index.js"
+run_suite "$WT/dist/cli/index.js"

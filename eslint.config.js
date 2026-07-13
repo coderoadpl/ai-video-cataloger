@@ -132,8 +132,6 @@ export default tseslint.config(
       'dist-electron/**',
       'build/**',
       'release/**',
-      'src/**',
-      'electron/**',
       'test/**',
       'scripts/ralph/**',
     ],

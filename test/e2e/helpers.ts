@@ -351,13 +351,11 @@ export async function createOldDataCompatFixture(dir: string): Promise<string> {
 }
 
 function oldSchemaStatements(): string[] {
-  const source = readFileSync(join(REPO_ROOT, 'src', 'db', 'database.ts'), 'utf8');
-  const statements: string[] = [];
-  const pattern = /db\.run\(`([\s\S]*?CREATE TABLE IF NOT EXISTS[\s\S]*?)`\);/g;
-  for (const match of source.matchAll(pattern)) {
-    const statement = match[1];
-    if (statement !== undefined) statements.push(statement);
-  }
+  const source = readFileSync(join(FIXTURES_DIR, 'old-schema.sql'), 'utf8');
+  const statements = source
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
   if (statements.length !== 2) throw new Error(`Expected 2 old schema statements, found ${String(statements.length)}`);
   return statements;
 }

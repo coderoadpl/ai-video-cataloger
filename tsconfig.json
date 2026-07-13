@@ -29,8 +29,6 @@
     "dist-electron",
     "build",
     "release",
-    "src",
-    "electron",
     "test"
   ]
 }

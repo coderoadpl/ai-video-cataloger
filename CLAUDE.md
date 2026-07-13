@@ -22,7 +22,7 @@ Ground-up rewrite on the agentproofarch foundation
 | `apps/desktop` | Electron main = composition root, preload bridge adapter, `media://`, menus |
 | `apps/web` | renderer SPA (React 19, TanStack Router/Query, MUI) — foundation frontend rules verbatim |
 | `apps/cli` | commander over `core/client`; NDJSON events + taxonomy exit codes (public contract) |
-| `src/`, `electron/` | OLD implementation — read-only reference until parity lands, then deleted |
+| Legacy app | removed after parity was proven; see git history |
 
 ## The two gates
 

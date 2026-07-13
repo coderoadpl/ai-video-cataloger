@@ -188,13 +188,11 @@ const createOldCodePathDatabase = async (folder: string): Promise<void> => {
 };
 
 const oldSchemaStatements = async (): Promise<string[]> => {
-  const source = await readFile(path.resolve('src/db/database.ts'), 'utf8');
-  const statements: string[] = [];
-  const pattern = /db\.run\(`([\s\S]*?CREATE TABLE IF NOT EXISTS[\s\S]*?)`\);/g;
-  for (const match of source.matchAll(pattern)) {
-    const statement = match[1];
-    if (statement !== undefined) statements.push(statement);
-  }
+  const source = await readFile(path.resolve('test/e2e/fixtures/old-schema.sql'), 'utf8');
+  const statements = source
+    .split(';')
+    .map((statement) => statement.trim())
+    .filter((statement) => statement.length > 0);
   expect(statements).toHaveLength(2);
   return statements;
 };
