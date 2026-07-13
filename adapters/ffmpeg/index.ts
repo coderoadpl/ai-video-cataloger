@@ -303,6 +303,8 @@ const mediaFailure = (cause: unknown, fallbackMessage: string): Result<never, Ap
 
 const nodeModuleBinaryResolver: BinaryResolver = {
   bundledFfmpegPath: () => {
+    const packagedPath = packagedFfmpegPath();
+    if (packagedPath !== null) return packagedPath;
     try {
       const loaded: unknown = require('ffmpeg-static');
       if (typeof loaded === 'string' && existsSync(loaded)) return loaded;
@@ -312,6 +314,8 @@ const nodeModuleBinaryResolver: BinaryResolver = {
     return null;
   },
   bundledFfprobePath: () => {
+    const packagedPath = packagedFfprobePath();
+    if (packagedPath !== null) return packagedPath;
     try {
       const loaded: unknown = require('@ffprobe-installer/ffprobe');
       const parsed = ffprobeInstallerSchema.safeParse(loaded);
@@ -321,6 +325,24 @@ const nodeModuleBinaryResolver: BinaryResolver = {
     }
     return null;
   },
+};
+
+const packagedFfmpegPath = (): string | null =>
+  packagedResourcePath('node_modules', 'ffmpeg-static', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+
+const packagedFfprobePath = (): string | null =>
+  packagedResourcePath(
+    'node_modules',
+    '@ffprobe-installer',
+    `${process.platform}-${process.arch}`,
+    process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe',
+  );
+
+const packagedResourcePath = (...segments: string[]): string | null => {
+  const resourcesPath = process.resourcesPath;
+  if (typeof resourcesPath !== 'string' || resourcesPath.length === 0) return null;
+  const candidate = path.join(resourcesPath, 'app.asar.unpacked', ...segments);
+  return existsSync(candidate) ? candidate : null;
 };
 
 const childProcessCommandProbe: CommandProbe = {

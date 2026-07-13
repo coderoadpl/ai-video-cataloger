@@ -196,12 +196,13 @@ const loadArtifacts = async (
 };
 
 const hasFrames = (status: VideoStatus): boolean =>
-  status === 'completed' || isInProgressStatus(status);
+  status === 'completed' || status === 'error' || isInProgressStatus(status);
 
 const hasTranscript = (status: VideoStatus): boolean =>
-  status === 'transcribed' || status === 'analyzed' || status === 'completed';
+  status === 'transcribed' || status === 'analyzed' || status === 'completed' || status === 'error';
 
-const hasSummary = (status: VideoStatus): boolean => status === 'analyzed' || status === 'completed';
+const hasSummary = (status: VideoStatus): boolean =>
+  status === 'analyzed' || status === 'completed' || status === 'error';
 
 const summarize = (videos: ScanVideo[]): ScanOutput['summary'] => {
   const summary: ScanOutput['summary'] = {

@@ -1,6 +1,3 @@
-/**
- * @type {import('electron-builder').Configuration}
- */
 const config = {
   appId: 'com.ai-video-cataloger.app',
   productName: 'AI Video Cataloger',
@@ -10,12 +7,25 @@ const config = {
   },
   files: [
     'dist-electron/**/*',
+    'dist/web/**/*',
+    'package.json',
+    'node_modules/ffmpeg-static/ffmpeg',
+    'node_modules/ffmpeg-static/package.json',
+    'node_modules/@ffprobe-installer/ffprobe/package.json',
+    'node_modules/@ffprobe-installer/darwin-arm64/ffprobe',
+    'node_modules/@ffprobe-installer/darwin-arm64/package.json',
+    'node_modules/sql.js/dist/sql-wasm.wasm',
+  ],
+  asarUnpack: [
+    'node_modules/ffmpeg-static/ffmpeg',
+    'node_modules/@ffprobe-installer/darwin-arm64/ffprobe',
+    'node_modules/sql.js/dist/sql-wasm.wasm',
   ],
   extraResources: [
     {
-      from: '.cli-stage',
+      from: 'dist/cli',
       to: 'cli',
-      filter: ['**/*', '!package-lock.json'],
+      filter: ['**/*'],
     },
   ],
   mac: {

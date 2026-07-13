@@ -1,38 +1,18 @@
-/**
- * E2E video samples with known content.
- *
- * Each sample is a short, freely-licensed video whose content we know, so the
- * AI pipeline output (descriptive filename + summary) can be checked against
- * expected keywords. Remote fixtures are downloaded on first run into
- * test/e2e/fixtures/ (gitignored) and verified by sha256; the synthetic
- * sample is generated locally with macOS `say` + the bundled ffmpeg, so its
- * spoken content is fully deterministic.
- */
-
 export type SampleSource =
   | { kind: 'repo'; path: string }
   | { kind: 'url'; url: string; sha256: string }
   | { kind: 'synthetic'; speech: string };
 
+export type WhisperMode = 'local' | 'skip';
+
 export interface VideoSample {
   id: string;
-  /** Filename used inside the fixtures dir and the test working dir. */
   file: string;
   source: SampleSource;
   license: string;
-  /**
-   * At least one keyword must appear (case-insensitive) in the AI-generated
-   * filename or in the summary description. Lists are intentionally generous:
-   * the model's wording varies, the content does not.
-   */
   contentKeywords: string[];
-  /**
-   * When set (and local whisper is available), the transcript file must exist
-   * and contain at least one of these words.
-   */
   transcriptKeywords?: string[];
-  /** Transcription mode passed to the CLI for this sample. */
-  whisper: 'local' | 'skip';
+  whisper: WhisperMode;
 }
 
 export const SPEECH_SAMPLE_TEXT =
@@ -48,9 +28,22 @@ export const SAMPLES: VideoSample[] = [
     source: { kind: 'repo', path: 'test/BigBuckBunny480p30s.mp4' },
     license: 'CC-BY 3.0 (c) Blender Foundation | peach.blender.org',
     contentKeywords: [
-      'bunny', 'rabbit', 'hare', 'animal', 'forest', 'butterfly', 'bird',
-      'squirrel', 'rodent', 'creature', 'nature', 'grass', 'meadow',
-      'animated', 'animation', 'cartoon', 'big buck',
+      'bunny',
+      'rabbit',
+      'hare',
+      'animal',
+      'forest',
+      'butterfly',
+      'bird',
+      'squirrel',
+      'rodent',
+      'nature',
+      'grass',
+      'meadow',
+      'animated',
+      'animation',
+      'cartoon',
+      'big buck',
     ],
     whisper: 'skip',
   },
@@ -64,9 +57,23 @@ export const SAMPLES: VideoSample[] = [
     },
     license: 'CC-BY 3.0 (c) Blender Foundation | durian.blender.org',
     contentKeywords: [
-      'girl', 'woman', 'warrior', 'dragon', 'creature', 'sword', 'blade',
-      'snow', 'mountain', 'journey', 'quest', 'search', 'fantasy', 'sintel',
-      'animated', 'animation', 'trailer', 'cinematic',
+      'girl',
+      'woman',
+      'warrior',
+      'dragon',
+      'sword',
+      'blade',
+      'snow',
+      'mountain',
+      'journey',
+      'quest',
+      'search',
+      'fantasy',
+      'sintel',
+      'animated',
+      'animation',
+      'trailer',
+      'cinematic',
     ],
     transcriptKeywords: ['searching', 'someone', 'blade', 'dark', 'past', 'matter', 'gatekeeper'],
     whisper: 'local',
@@ -81,8 +88,18 @@ export const SAMPLES: VideoSample[] = [
     },
     license: 'free test asset | test-videos.co.uk',
     contentKeywords: [
-      'jellyfish', 'jelly', 'underwater', 'ocean', 'sea', 'marine', 'aquarium',
-      'swim', 'swimming', 'water', 'blue', 'tentacle',
+      'jellyfish',
+      'jelly',
+      'underwater',
+      'ocean',
+      'sea',
+      'marine',
+      'aquarium',
+      'swim',
+      'swimming',
+      'water',
+      'blue',
+      'tentacle',
     ],
     whisper: 'skip',
   },
@@ -92,24 +109,34 @@ export const SAMPLES: VideoSample[] = [
     source: { kind: 'synthetic', speech: SPEECH_SAMPLE_TEXT },
     license: 'generated locally for tests',
     contentKeywords: [
-      'pasta', 'cook', 'cooking', 'recipe', 'tutorial', 'tomato', 'sauce',
-      'kitchen', 'food', 'boil', 'garlic', 'test', 'pattern', 'color', 'bars',
+      'pasta',
+      'cook',
+      'cooking',
+      'recipe',
+      'tutorial',
+      'tomato',
+      'sauce',
+      'kitchen',
+      'food',
+      'boil',
+      'garlic',
+      'test',
+      'pattern',
+      'color',
+      'bars',
     ],
     transcriptKeywords: ['pasta', 'tomato', 'boil', 'garlic', 'sauce', 'basil', 'cooking'],
     whisper: 'local',
   },
 ];
 
-/** Subset selection via E2E_SAMPLES=bbb,sintel (defaults to all). */
 export function selectedSamples(): VideoSample[] {
   const raw = process.env.E2E_SAMPLES;
   if (!raw) return SAMPLES;
-  const wanted = new Set(raw.split(',').map((s) => s.trim()).filter(Boolean));
-  const picked = SAMPLES.filter((s) => wanted.has(s.id));
+  const wanted = new Set(raw.split(',').map((value) => value.trim()).filter(Boolean));
+  const picked = SAMPLES.filter((sample) => wanted.has(sample.id));
   if (picked.length === 0) {
-    throw new Error(
-      `E2E_SAMPLES=${raw} matches no sample ids (known: ${SAMPLES.map((s) => s.id).join(', ')})`
-    );
+    throw new Error(`E2E_SAMPLES=${raw} matches no sample ids: ${SAMPLES.map((sample) => sample.id).join(', ')}`);
   }
   return picked;
 }

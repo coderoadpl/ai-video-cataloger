@@ -17,6 +17,13 @@ const currentDirectory = path.dirname(currentFile);
 
 if (process.platform === 'win32') app.setAppUserModelId(app.getName());
 
+const userDataDirectory = process.argv
+  .find((arg) => arg.startsWith('--user-data-dir='))
+  ?.slice('--user-data-dir='.length);
+if (userDataDirectory !== undefined && path.isAbsolute(userDataDirectory)) {
+  app.setPath('userData', userDataDirectory);
+}
+
 registerMediaScheme();
 
 let mainWindow: BrowserWindow | null = null;
@@ -41,7 +48,7 @@ const createWindow = async (): Promise<void> => {
     show: false,
     titleBarStyle: 'default',
     webPreferences: {
-      preload: path.join(currentDirectory, 'preload.js'),
+      preload: path.join(currentDirectory, 'preload.cjs'),
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: false,
@@ -71,7 +78,7 @@ const loadRenderer = async (window: BrowserWindow): Promise<void> => {
     await window.loadFile(process.env.AVC_RENDERER_HTML);
     return;
   }
-  await window.loadURL('about:blank');
+  await window.loadFile(path.join(currentDirectory, '..', 'dist', 'web', 'index.html'));
 };
 
 const bootstrap = async (): Promise<void> => {

@@ -174,6 +174,49 @@ describe('process pipeline resume behavior', () => {
     expect(deps.analyzer.inputs[0]?.transcript).toBe('existing transcript');
   });
 
+  it('does not extract audio when whisper is skipped', async () => {
+    const deps = makeDeps('pending');
+
+    const events: string[] = [];
+    const result = await processVideoPipeline(deps, { ...baseInput, whisper: 'skip', whisperExplicit: true }, {
+      reportProgress: (event) => {
+        events.push(event.step);
+        return Promise.resolve({ ok: true, value: undefined });
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(events).toEqual([
+      'extracting_frames',
+      'extracting_audio',
+      'transcribing_audio',
+      'analyzing_with_claude',
+      'renaming_video',
+    ]);
+    expect(deps.media.audioInputs).toHaveLength(0);
+    expect(deps.transcriber.inputs).toHaveLength(0);
+    expect(deps.analyzer.inputs[0]?.transcript).toBeNull();
+  });
+
+  it('resumes errored frame-only rows without audio extraction when whisper is skipped', async () => {
+    const deps = makeDeps('error');
+    seedFrames(deps.fs);
+
+    const events: string[] = [];
+    const result = await processVideoPipeline(deps, { ...baseInput, whisper: 'skip', whisperExplicit: true }, {
+      reportProgress: (event) => {
+        events.push(event.step);
+        return Promise.resolve({ ok: true, value: undefined });
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(events[0]).toBe('extracting_audio');
+    expect(deps.media.frameInputs).toHaveLength(0);
+    expect(deps.media.audioInputs).toHaveLength(0);
+    expect(deps.transcriber.inputs).toHaveLength(0);
+  });
+
   it('inspects error artifacts and resumes at audio when frames are complete', async () => {
     const deps = makeDeps('error');
     seedFrames(deps.fs);

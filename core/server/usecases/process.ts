@@ -242,6 +242,15 @@ const runPipelineSteps = async (
   }
 
   let audioPath: string | null = null;
+  if (stage.value === 'audio' && resolved.whisper === 'skip') {
+    const progressResult = await report(progress, 'extracting_audio', 2, video.originalPath, resolved.batch);
+    if (!progressResult.ok) return progressResult;
+    const updated = await repository.updateVideoStatus(video.id, 'audio_extracted', null);
+    if (!updated.ok) return updated;
+    video = updated.value;
+    stage = ok('transcribe');
+  }
+
   if (stage.value === 'audio') {
     const progressResult = await report(progress, 'extracting_audio', 2, video.originalPath, resolved.batch);
     if (!progressResult.ok) return progressResult;

@@ -214,6 +214,7 @@ export const jobQuery = (api: ApiClient, input: JobInput) => {
   const parsed = API_ROUTES.jobStatus.input.parse(input);
   return defineQuery({
     queryKey: jobScopes.detail(parsed),
+    staleTime: 0,
     refetchInterval: jobProgressRefetchInterval(),
     call: ({ signal }) => api.job(parsed, signal),
   });

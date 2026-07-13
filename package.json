@@ -4,14 +4,28 @@
   "private": true,
   "type": "module",
   "description": "Local-first Electron + CLI video cataloger on the agentproofarch foundation",
+  "main": "dist-electron/main.js",
+  "bin": {
+    "ai-video-cataloger": "dist/cli/index.js"
+  },
   "scripts": {
+    "build": "tsc",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "depcruise": "depcruise core adapters apps scripts/smoke.ts",
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run depcruise && npm run test",
     "cli": "tsx apps/cli/src/main.ts",
-    "smoke": "tsx scripts/smoke.ts"
+    "smoke": "tsx scripts/smoke.ts",
+    "electron:build:renderer": "vite build --config apps/web/vite.config.ts",
+    "electron:build:desktop": "node scripts/build-electron.mjs",
+    "package:stage": "node scripts/build-packaged-cli.mjs",
+    "electron:build": "npm run electron:build:renderer && npm run electron:build:desktop && npm run package:stage",
+    "test:e2e:cli": "npm run package:stage && playwright test --config test/e2e/playwright.config.ts --project=cli",
+    "test:e2e:gui": "npm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=gui",
+    "test:e2e:parity": "npm run electron:build && playwright test --config test/e2e/playwright.config.ts",
+    "electron:dev": "npm run electron:build:desktop && sh -c 'NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 vite --config apps/web/vite.config.ts --host 127.0.0.1 & vite_pid=$!; NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 electron .; status=$?; kill $vite_pid; exit $status'",
+    "electron:package": "npm run electron:build && electron-builder"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
@@ -39,6 +53,7 @@
   },
   "devDependencies": {
     "@eslint/js": "^9.31.0",
+    "@playwright/test": "^1.61.1",
     "@tanstack/eslint-plugin-query": "^5.101.2",
     "@testing-library/react": "^16.3.2",
     "@testing-library/user-event": "^14.6.1",
@@ -49,6 +64,7 @@
     "dependency-cruiser": "^16.10.3",
     "electron": "^37.2.1",
     "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.1",
     "eslint": "^9.31.0",
     "eslint-import-resolver-typescript": "^4.4.5",
     "eslint-plugin-boundaries": "^5.0.1",

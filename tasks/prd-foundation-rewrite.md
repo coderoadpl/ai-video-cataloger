@@ -359,6 +359,11 @@ the CLI consume the same partition.
      "error taxonomy with CLI exit codes". Scripts testing `!= 0` keep
      working; scripts comparing `== 1` on specific failures would not —
      judged acceptable, NDJSON `code` remains the precise discriminator.
+  6. `config set --json`: the `started` event carries the value as invoked;
+     the normalized value appears in the completed/raw result (the old app
+     normalized before the started event). Additive delta — normalization
+     lives server-side behind the contract and the CLI cannot reach it
+     pre-roundtrip without violating layer boundaries.
   6. `created_at`/`updated_at` in `status`/`scan` output are normalized to
      ISO-8601 (`2026-07-12T10:11:12.000Z`) instead of the raw SQLite value
      (`2026-07-12 10:11:12`, space-separated, no zone). The domain `Video`
@@ -386,13 +391,23 @@ the CLI consume the same partition.
 - Old scripts consuming `--json` NDJSON output run unmodified against the
   new CLI.
 
+## Endgame notes (post-Phase-5 review)
+
+- Before deleting legacy `src/`: snapshot the old-schema DDL that
+  `test/e2e/helpers.ts` extracts from `src/db/database.ts` into a frozen
+  fixture file (`test/e2e/fixtures/old-schema.sql`) — the S5 compat scenario
+  couples to the legacy file existing.
+- Release note: the CLI bundled in the .app (`resources/cli`) resolves
+  ffmpeg/ffprobe only when spawned under Electron; standalone use goes
+  through the repo (`npm run cli`) as before.
+
 ## Open Questions
 
 1. **Packaged-CLI story**: today the .app stages a standalone CLI under
    `resources/cli` (INV §8) though the GUI no longer needs it post-rewrite.
    Keep shipping it inside the .app (users may `npm link` separately), or
    drop it from the bundle? Default until answered: keep bundling (strict
-   parity).
+   parity). *(Implemented: kept, as a self-contained esbuild bundle.)*
 2. **Interactive CLI menu**: unwired dead code today — confirm dropping it
    permanently (removes inquirer dependency), or wire it back as designed in
    `prd-extended-features.md` US-015/016?

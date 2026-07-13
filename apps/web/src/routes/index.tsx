@@ -53,6 +53,11 @@ export const IndexRoute = () => {
 
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <Box
+        data-testid="analysis-state"
+        data-analyzing={processing.isBusy ? 'true' : 'false'}
+        sx={{ display: 'none' }}
+      />
       {overlay === null ? null : (
         <ProcessingOverlay progress={overlay} onCancel={processing.requestCancel} />
       )}

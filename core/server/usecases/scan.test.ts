@@ -122,4 +122,44 @@ describe('scanFolder', () => {
       },
     });
   });
+
+  it('loads resumable artifacts from errored legacy rows', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/legacy.mp4', { size: 2048, hash: 'hash-1' });
+    fs.addDirectory('/videos/frames/legacy');
+    fs.addFile('/videos/frames/legacy/frame-001.jpg');
+    fs.addFile('/videos/transcripts/legacy.txt', { content: 'legacy transcript' });
+    const catalogs = new InMemoryCatalogs([
+      {
+        folder: '/videos',
+        videos: [
+          videoFixture({
+            originalPath: '/videos/legacy.mp4',
+            originalName: 'legacy.mp4',
+            fileHash: 'hash-1',
+            status: 'error',
+            errorMessage: 'Legacy interrupted run',
+          }),
+        ],
+      },
+    ]);
+
+    const result = await scanFolder({ catalogs, fs, media: new InMemoryMedia() }, { folder: '/videos' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        videos: [
+          {
+            status: 'error',
+            artifacts: {
+              framePaths: ['/videos/frames/legacy/frame-001.jpg'],
+              transcriptContent: 'legacy transcript',
+              transcriptPath: '/videos/transcripts/legacy.txt',
+            },
+          },
+        ],
+      },
+    });
+  });
 });

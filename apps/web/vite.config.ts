@@ -8,6 +8,7 @@ const API_PROXY_TARGET = 'http://127.0.0.1:9411';
 
 export default defineConfig({
   root: 'apps/web',
+  base: './',
   plugins: [react()],
   resolve: {
     alias: {

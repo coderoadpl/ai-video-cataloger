@@ -142,7 +142,7 @@ class SqlJsCatalogRepository implements CatalogRepository {
   async updateVideoPath(id: number, originalPath: string): Promise<Result<Video, AppError>> {
     return this.updateExisting(id, () => {
       this.db.update(videos)
-        .set({ originalPath, originalName: path.basename(originalPath), updatedAt: sql`datetime('now')` })
+        .set({ originalPath, updatedAt: sql`datetime('now')` })
         .where(eq(videos.id, id))
         .run();
     });
@@ -258,6 +258,8 @@ const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined
 };
 
 const findSqlJsWasmPath = (): string | null => {
+  const packagedPath = packagedSqlJsWasmPath();
+  if (packagedPath !== null) return packagedPath;
   try {
     const require = createRequire(import.meta.url);
     const modulePath = require.resolve('sql.js');
@@ -270,6 +272,16 @@ const findSqlJsWasmPath = (): string | null => {
   } catch {
     return null;
   }
+};
+
+const packagedSqlJsWasmPath = (): string | null => {
+  const resourcesPath = process.resourcesPath;
+  if (typeof resourcesPath !== 'string' || resourcesPath.length === 0) return null;
+  const candidates = [
+    path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js', 'dist', 'sql-wasm.wasm'),
+    path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js', 'sql-wasm.wasm'),
+  ];
+  return candidates.find((candidate) => existsSync(candidate)) ?? null;
 };
 
 const catalogDatabasePath = (folder: string): string =>

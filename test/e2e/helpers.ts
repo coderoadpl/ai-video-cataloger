@@ -1,49 +1,88 @@
-/**
- * E2E helpers: fixture provisioning, black-box CLI runner, catalog reader and
- * rename reversal.
- *
- * The suite is deliberately decoupled from the checkout under test: the CLI
- * binary is taken from E2E_CLI_DIST (defaults to this repo's dist/index.js),
- * so the same tests can run against main, this branch, or any PR build - see
- * scripts/e2e-videos.sh.
- */
-
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
-  copyFileSync, createWriteStream, existsSync, mkdirSync, readdirSync,
-  readFileSync, renameSync, rmSync, unlinkSync, writeFileSync,
+  copyFileSync,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  unlinkSync,
+  writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
-import { Readable } from 'node:stream';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
 import initSqlJs from 'sql.js';
+import { z } from 'zod';
+
 import type { SampleSource, VideoSample } from './samples.js';
 
 export const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..', '..');
 export const FIXTURES_DIR = join(REPO_ROOT, 'test', 'e2e', 'fixtures');
-export const CLI_DIST = process.env.E2E_CLI_DIST ?? join(REPO_ROOT, 'dist', 'index.js');
+export const CLI_DIST = process.env.E2E_CLI_DIST ?? join(REPO_ROOT, 'dist', 'cli', 'index.js');
+export const ELECTRON_MAIN = process.env.E2E_ELECTRON_MAIN ?? join(REPO_ROOT, 'dist-electron', 'main.js');
+export const RENDERER_HTML = process.env.E2E_RENDERER_HTML ?? join(REPO_ROOT, 'dist', 'web', 'index.html');
 
-export interface JsonEvent {
-  type: 'started' | 'progress' | 'completed' | 'error';
-  message?: string;
-  step?: string;
-  error?: string;
-  code?: string;
-  data?: Record<string, unknown>;
-}
+const jsonEventSchema = z.object({
+  type: z.enum(['started', 'progress', 'completed', 'error']),
+  message: z.string().optional(),
+  step: z.string().optional(),
+  error: z.string().optional(),
+  code: z.string().optional(),
+  data: z.unknown().optional(),
+});
+
+const statusOutputSchema = z.object({
+  videos: z.array(z.object({
+    originalName: z.string(),
+    newName: z.string().nullable(),
+    status: z.string(),
+  })),
+  summary: z.object({
+    total: z.number(),
+    completed: z.number(),
+    inProgress: z.number(),
+    pending: z.number(),
+    error: z.number(),
+  }),
+});
+
+const scanOutputSchema = z.object({
+  videos: z.array(z.object({
+    filename: z.string(),
+    status: z.string(),
+    artifacts: z.object({
+      framePaths: z.array(z.string()).nullable(),
+      transcriptPath: z.string().nullable(),
+      summaryPath: z.string().nullable(),
+      newFilename: z.string().nullable(),
+    }),
+  })),
+  summary: z.object({
+    total: z.number(),
+    tracked: z.number(),
+    completed: z.number(),
+    error: z.number(),
+  }),
+});
+
+export type JsonEvent = z.output<typeof jsonEventSchema>;
+export type StatusOutput = z.output<typeof statusOutputSchema>;
+export type ScanOutput = z.output<typeof scanOutputSchema>;
 
 export interface CliResult {
   code: number | null;
   events: JsonEvent[];
+  jsonValues: unknown[];
   stdout: string;
   stderr: string;
 }
 
-/** Run the CLI under test as a black box and collect its NDJSON events. */
 export function runCli(args: string[], cwd: string, timeoutMs = 300_000): Promise<CliResult> {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, [CLI_DIST, ...args], {
@@ -56,26 +95,51 @@ export function runCli(args: string[], cwd: string, timeoutMs = 300_000): Promis
     let stderr = '';
     const timer = setTimeout(() => {
       child.kill('SIGKILL');
-      rejectPromise(new Error(`CLI timed out after ${timeoutMs}ms: ${args.join(' ')}\n${stdout}\n${stderr}`));
+      rejectPromise(new Error(`CLI timed out after ${String(timeoutMs)}ms: ${args.join(' ')}\n${stdout}\n${stderr}`));
     }, timeoutMs);
 
-    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-    child.on('error', (error) => { clearTimeout(timer); rejectPromise(error); });
+    child.stdout.on('data', (chunk: Buffer) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on('data', (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
+    child.on('error', (error) => {
+      clearTimeout(timer);
+      rejectPromise(error);
+    });
     child.on('close', (code) => {
       clearTimeout(timer);
+      const jsonValues: unknown[] = [];
       const events: JsonEvent[] = [];
       for (const line of stdout.split('\n')) {
         const trimmed = line.trim();
         if (!trimmed.startsWith('{')) continue;
         try {
-          const parsed = JSON.parse(trimmed) as JsonEvent;
-          if (parsed && typeof parsed === 'object' && 'type' in parsed) events.push(parsed);
-        } catch { /* non-JSON stdout line */ }
+          const parsed: unknown = JSON.parse(trimmed);
+          jsonValues.push(parsed);
+          const event = jsonEventSchema.safeParse(parsed);
+          if (event.success) events.push(event.data);
+        } catch {
+          continue;
+        }
       }
-      resolvePromise({ code, events, stdout, stderr });
+      resolvePromise({ code, events, jsonValues, stdout, stderr });
     });
   });
+}
+
+export function completedData(result: CliResult): unknown {
+  const completed = result.events.find((event) => event.type === 'completed');
+  return completed?.data;
+}
+
+export function parseStatusOutput(value: unknown): StatusOutput {
+  return statusOutputSchema.parse(value);
+}
+
+export function parseScanOutput(value: unknown): ScanOutput {
+  return scanOutputSchema.parse(value);
 }
 
 function sha256Of(filePath: string): string {
@@ -84,20 +148,18 @@ function sha256Of(filePath: string): string {
 
 async function downloadTo(url: string, dest: string): Promise<void> {
   const response = await fetch(url);
-  if (!response.ok || !response.body) {
-    throw new Error(`Download failed (${response.status}) for ${url}`);
-  }
+  if (!response.ok) throw new Error(`Download failed (${String(response.status)}) for ${url}`);
   mkdirSync(dirname(dest), { recursive: true });
-  await pipeline(Readable.fromWeb(response.body as import('node:stream/web').ReadableStream), createWriteStream(dest));
+  await pipeline(response.body, createWriteStream(dest));
 }
 
 function ffmpegBinary(): string {
-  // The repo bundles ffmpeg via ffmpeg-static; resolve it from the suite's repo
-  // (not the checkout under test) so fixture generation never depends on the ref.
   const require = createRequire(import.meta.url);
-  const bin = require('ffmpeg-static') as unknown as string | null;
-  if (!bin || !existsSync(bin)) throw new Error('ffmpeg-static binary not found - run npm install');
-  return bin;
+  const resolved: unknown = require('ffmpeg-static');
+  if (typeof resolved !== 'string' || !existsSync(resolved)) {
+    throw new Error('ffmpeg-static binary not found - run npm install');
+  }
+  return resolved;
 }
 
 function generateSpeechVideo(dest: string, speech: string): void {
@@ -105,28 +167,35 @@ function generateSpeechVideo(dest: string, speech: string): void {
   const aiff = dest.replace(/\.mp4$/, '.aiff');
   const say = spawnSync('say', ['-o', aiff, speech], { timeout: 60_000 });
   if (say.status !== 0) {
-    throw new Error(`macOS 'say' failed (status ${say.status}): ${say.stderr?.toString()}`);
+    throw new Error(`macOS 'say' failed (status ${String(say.status)}): ${String(say.stderr)}`);
   }
   const ffmpeg = spawnSync(
     ffmpegBinary(),
     [
       '-y',
-      '-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=25',
-      '-i', aiff,
+      '-f',
+      'lavfi',
+      '-i',
+      'testsrc=size=640x360:rate=25',
+      '-i',
+      aiff,
       '-shortest',
-      '-c:v', 'libx264', '-pix_fmt', 'yuv420p',
-      '-c:a', 'aac',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-c:a',
+      'aac',
       dest,
     ],
-    { timeout: 120_000 }
+    { timeout: 120_000 },
   );
   unlinkSync(aiff);
   if (ffmpeg.status !== 0) {
-    throw new Error(`ffmpeg failed generating ${dest}: ${ffmpeg.stderr?.toString().slice(-2000)}`);
+    throw new Error(`ffmpeg failed generating ${dest}: ${String(ffmpeg.stderr).slice(-2000)}`);
   }
 }
 
-/** Make sure a sample's fixture file exists locally; return its absolute path. */
 export async function ensureFixture(sample: VideoSample): Promise<string> {
   const source: SampleSource = sample.source;
   if (source.kind === 'repo') {
@@ -137,27 +206,19 @@ export async function ensureFixture(sample: VideoSample): Promise<string> {
 
   const dest = join(FIXTURES_DIR, sample.file);
   if (source.kind === 'url') {
-    if (!existsSync(dest)) {
-      await downloadTo(source.url, dest);
-    }
+    if (!existsSync(dest)) await downloadTo(source.url, dest);
     const actual = sha256Of(dest);
     if (actual !== source.sha256) {
       rmSync(dest);
-      throw new Error(
-        `Checksum mismatch for ${sample.file}: expected ${source.sha256}, got ${actual} (file removed - rerun)`
-      );
+      throw new Error(`Checksum mismatch for ${sample.file}: expected ${source.sha256}, got ${actual}`);
     }
     return dest;
   }
 
-  // synthetic
-  if (!existsSync(dest)) {
-    generateSpeechVideo(dest, source.speech);
-  }
+  if (!existsSync(dest)) generateSpeechVideo(dest, source.speech);
   return dest;
 }
 
-/** Create an isolated working dir with a copy of the sample video inside. */
 export async function makeWorkdir(sample: VideoSample): Promise<{ dir: string; videoPath: string }> {
   const fixture = await ensureFixture(sample);
   const dir = join(tmpdir(), `avc-e2e-${sample.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
@@ -173,7 +234,6 @@ export interface CatalogRow {
   status: string;
 }
 
-/** Read the per-folder catalog the CLI wrote (schema is stable across branches). */
 export async function readCatalog(workdir: string): Promise<CatalogRow[]> {
   const dbPath = join(workdir, '.ai-video-cataloger', 'catalog.db');
   if (!existsSync(dbPath)) throw new Error(`catalog.db not found in ${workdir}`);
@@ -182,7 +242,9 @@ export async function readCatalog(workdir: string): Promise<CatalogRow[]> {
   try {
     const result = db.exec('SELECT original_name, new_name, status FROM videos');
     if (result.length === 0) return [];
-    return result[0].values.map((row) => ({
+    const table = result[0];
+    if (table === undefined) return [];
+    return table.values.map((row) => ({
       original_name: String(row[0]),
       new_name: row[1] === null ? null : String(row[1]),
       status: String(row[2]),
@@ -192,11 +254,6 @@ export async function readCatalog(workdir: string): Promise<CatalogRow[]> {
   }
 }
 
-/**
- * Reverse the renames the tool performed, using only its own catalog - this
- * proves the operation is recoverable from the data the tool persists.
- * Returns the number of files renamed back.
- */
 export async function revertRenames(workdir: string): Promise<number> {
   const rows = await readCatalog(workdir);
   let reverted = 0;
@@ -206,13 +263,12 @@ export async function revertRenames(workdir: string): Promise<number> {
     const to = join(workdir, row.original_name);
     if (existsSync(from)) {
       renameSync(from, to);
-      reverted++;
+      reverted += 1;
     }
   }
   return reverted;
 }
 
-/** List video files (by extension) directly inside a dir. */
 export function listVideos(dir: string): string[] {
   const extensions = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm']);
   return readdirSync(dir).filter((name) => {
@@ -226,28 +282,89 @@ export function findKeyword(haystack: string, keywords: string[]): string | null
   return keywords.find((keyword) => lower.includes(keyword.toLowerCase())) ?? null;
 }
 
-/** Create an empty isolated scenario dir. */
 export function makeEmptyWorkdir(tag: string): string {
   const dir = join(tmpdir(), `avc-e2e-${tag}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`);
   mkdirSync(dir, { recursive: true });
   return dir;
 }
 
-/** Copy a sample's fixture into a workdir; returns the in-dir filename. */
 export async function addSampleTo(dir: string, sample: VideoSample): Promise<string> {
   const fixture = await ensureFixture(sample);
   copyFileSync(fixture, join(dir, sample.file));
   return sample.file;
 }
 
-/**
- * Write a deterministic broken "video": right extension, garbage content.
- * ffprobe rejects it ("moov atom not found"), which is the unhappy path the
- * pipeline must survive without renaming anything.
- */
 export function addCorruptVideoTo(dir: string, name = 'corrupt-video.mp4'): string {
   const garbage = Buffer.alloc(256 * 1024);
   garbage.fill('THIS IS NOT A REAL MP4 FILE. ');
   writeFileSync(join(dir, name), garbage);
   return name;
+}
+
+export async function createOldDataCompatFixture(dir: string): Promise<string> {
+  const originalName = 'legacy-resume.mp4';
+  const originalPath = join(dir, originalName);
+  const baseName = 'legacy-resume';
+  writeFileSync(originalPath, Buffer.from('legacy placeholder video'));
+
+  mkdirSync(join(dir, 'frames', baseName), { recursive: true });
+  mkdirSync(join(dir, 'transcripts'), { recursive: true });
+  writeFileSync(join(dir, 'frames', baseName, 'frame-001.jpg'), legacyJpeg());
+  writeFileSync(
+    join(dir, 'transcripts', `${baseName}.txt`),
+    'A legacy compatibility clip about pasta, tomato sauce, and a kitchen workflow.',
+    'utf8',
+  );
+
+  const dbDir = join(dir, '.ai-video-cataloger');
+  mkdirSync(dbDir, { recursive: true });
+  writeFileSync(join(dbDir, 'config.json'), JSON.stringify({ frames: '1', whisper_mode: 'skip' }, null, 2), 'utf8');
+
+  const SQL = await initSqlJs();
+  const db = new SQL.Database();
+  for (const statement of oldSchemaStatements()) db.run(statement);
+  db.run(
+    `INSERT INTO videos (
+      original_path,
+      original_name,
+      new_name,
+      file_hash,
+      status,
+      created_at,
+      updated_at,
+      error_message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      originalPath,
+      originalName,
+      null,
+      'legacy-hash',
+      'error',
+      '2026-07-12 10:11:12',
+      '2026-07-12 10:12:13',
+      'Legacy interrupted run',
+    ],
+  );
+  writeFileSync(join(dbDir, 'catalog.db'), Buffer.from(db.export()));
+  db.close();
+  return originalName;
+}
+
+function oldSchemaStatements(): string[] {
+  const source = readFileSync(join(REPO_ROOT, 'src', 'db', 'database.ts'), 'utf8');
+  const statements: string[] = [];
+  const pattern = /db\.run\(`([\s\S]*?CREATE TABLE IF NOT EXISTS[\s\S]*?)`\);/g;
+  for (const match of source.matchAll(pattern)) {
+    const statement = match[1];
+    if (statement !== undefined) statements.push(statement);
+  }
+  if (statements.length !== 2) throw new Error(`Expected 2 old schema statements, found ${String(statements.length)}`);
+  return statements;
+}
+
+function legacyJpeg(): Buffer {
+  return Buffer.from(
+    '/9j/4AAQSkZJRgABAQAAAQABAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////2wBDAf//////////////////////////////////////////////////////////////////////////////////////wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAX/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oADAMBAAIQAxAAAAH/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAEFAqf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAEDAQE/Aaf/xAAUEQEAAAAAAAAAAAAAAAAAAAAA/9oACAECAQE/Aaf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAY/Aqf/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/9oACAEBAAE/IV//2gAMAwEAAgADAAAAEP/EFBQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQMBAT8QH//EFBQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQIBAT8QH//EFBQRAQAAAAAAAAAAAAAAAAAAABD/2gAIAQEAAT8QH//Z',
+    'base64',
+  );
 }

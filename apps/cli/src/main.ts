@@ -336,8 +336,9 @@ program
   .option('--analyzer <backend>', 'analyzer backend')
   .option('--local-model <tag>', 'local AI model')
   .option('--json', 'machine-readable JSON output', false)
-  .action(async (videoPath: string, options: ProcessOptions) => {
+  .action(async (videoPath: string, options: ProcessOptions, command: Command) => {
     const json = isJsonMode(options);
+    const explicit = (name: string): boolean => command.getOptionValueSource(name) === 'cli';
     const commandOptions = {
       frames: options.frames,
       skipRename: options.skipRename === true,
@@ -365,11 +366,16 @@ program
     const result = await api.processVideo({
       videoPath,
       frames: options.frames,
+      framesExplicit: explicit('frames'),
       skipRename: options.skipRename === true,
+      skipRenameExplicit: explicit('skipRename'),
       verbose: options.verbose === true,
       timeout: options.timeout,
+      timeoutExplicit: explicit('timeout'),
       whisper: options.whisper,
+      whisperExplicit: explicit('whisper'),
       ...(whisperModel === undefined ? {} : { whisperModel }),
+      whisperModelExplicit: explicit('whisperModel'),
       ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
       ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
     });

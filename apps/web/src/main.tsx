@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { CssBaseline } from '@mui/material';
 import { QueryClientProvider } from '@tanstack/react-query';
 import {
+  createHashHistory,
   createRootRoute,
   createRoute,
   createRouter,
@@ -26,7 +27,10 @@ const indexRoute = createRoute({
   component: IndexRoute,
 });
 
-const router = createRouter({ routeTree: rootRoute.addChildren([indexRoute]) });
+const router = createRouter({
+  routeTree: rootRoute.addChildren([indexRoute]),
+  history: createHashHistory(),
+});
 
 declare module '@tanstack/react-router' {
   interface Register {
