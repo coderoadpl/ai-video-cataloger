@@ -9,6 +9,28 @@ import {
 } from './routes.js';
 
 describe('route schemas', () => {
+  it('retains optional folder scope on folder-backed routes', () => {
+    expect(API_ROUTES.status.input.parse({ folder: '/videos' })).toEqual({ folder: '/videos' });
+    expect(API_ROUTES.resetAll.input.parse({ folder: '/videos', force: true })).toEqual({
+      folder: '/videos',
+      force: true,
+    });
+    expect(API_ROUTES.resetSingle.input.parse({ folder: '/videos', filename: 'clip.mp4', force: true })).toEqual({
+      folder: '/videos',
+      filename: 'clip.mp4',
+      force: true,
+    });
+    expect(API_ROUTES.configGet.input.parse({ folder: '/videos' })).toEqual({
+      folder: '/videos',
+      key: null,
+    });
+    expect(API_ROUTES.configSet.input.parse({ folder: '/videos', key: 'frames', value: '4' })).toEqual({
+      folder: '/videos',
+      key: 'frames',
+      value: '4',
+    });
+  });
+
   it('round-trips a scan result with artifacts and summary counts', () => {
     const parsed = scanOutputSchema.parse({
       folder: '/videos',
@@ -113,11 +135,17 @@ describe('route schemas', () => {
           totalSteps: 5,
         },
       },
+      progressEvents: [
+        { sequence: 1, progress: { step: 'extracting_frames', percentage: 20 } },
+        { sequence: 2, progress: { step: 'extracting_audio', percentage: 40 } },
+        { sequence: 3, progress: { step: 'transcribing_audio', percentage: 60 } },
+      ],
       error: null,
       createdAt: '2026-07-12T10:00:00.000Z',
       updatedAt: '2026-07-12T10:01:00.000Z',
     });
     expect(parsed.progress?.step).toBe('transcribing_audio');
+    expect(parsed.progressEvents.map((event) => event.sequence)).toEqual([1, 2, 3]);
   });
 
   it('tags reads with GET and writes with POST or DELETE', () => {

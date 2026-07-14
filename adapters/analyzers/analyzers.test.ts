@@ -58,6 +58,7 @@ describe('ClaudeCliAnalyzerAdapter', () => {
       backend: 'claude',
       localModel: 'gemma3:12b',
       timeoutSeconds: 120,
+      verbose: false,
     });
 
     expect(result).toEqual(ok({ rawResponse: 'DESCRIPTION: A clip.\nFILENAME: useful-clip' }));
@@ -85,7 +86,6 @@ describe('ClaudeCliAnalyzerAdapter', () => {
     let stderr = '';
     const adapter = new ClaudeCliAnalyzerAdapter({
       commandRunner: runner,
-      verbose: true,
       writeStdout: (chunk) => {
         stdout += chunk;
       },
@@ -101,6 +101,7 @@ describe('ClaudeCliAnalyzerAdapter', () => {
       backend: 'claude',
       localModel: 'gemma3:12b',
       timeoutSeconds: 30,
+      verbose: true,
     });
 
     expect(result).toEqual(ok({ rawResponse: 'final response' }));
@@ -109,6 +110,25 @@ describe('ClaudeCliAnalyzerAdapter', () => {
     expect(call.args[3]).toContain('This video has no audio or transcript available.');
     expect(stdout).toContain('streamed stdout');
     expect(stderr).toContain('streamed stderr');
+  });
+
+  it('passes cancellation to the Claude child process', async () => {
+    const runner = new FakeAnalyzerCommandRunner('response');
+    const controller = new AbortController();
+    const adapter = new ClaudeCliAnalyzerAdapter({ commandRunner: runner });
+
+    await adapter.analyze({
+      videoPath: '/work/clip.mp4',
+      framePaths: ['/work/frame.jpg'],
+      transcript: null,
+      backend: 'claude',
+      localModel: 'unused',
+      timeoutSeconds: 30,
+      verbose: false,
+      signal: controller.signal,
+    });
+
+    expect(runner.calls[0]?.options.signal).toBe(controller.signal);
   });
 });
 
@@ -134,6 +154,7 @@ describe('OllamaAnalyzerAdapter', () => {
       backend: 'local',
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
+      verbose: false,
     });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'model_not_installed' } });
@@ -158,6 +179,7 @@ describe('OllamaAnalyzerAdapter', () => {
         backend: 'local',
         localModel: 'gemma3:12b',
         timeoutSeconds: 300,
+        verbose: false,
       });
 
       expect(result).toEqual(ok({ rawResponse: 'DESCRIPTION: Local.\nFILENAME: local-clip' }));
@@ -196,12 +218,56 @@ describe('OllamaAnalyzerAdapter', () => {
         backend: 'local',
         localModel: 'gemma3:12b',
         timeoutSeconds: 300,
+        verbose: false,
       });
 
       expect(result).toMatchObject({ ok: false, error: { code: 'ollama_unavailable' } });
     } finally {
       await server.close();
     }
+  });
+
+  it('aborts the Ollama chat request when analysis is cancelled', async () => {
+    const runtime = new FakeLocalAiRuntime();
+    runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: ['gemma3:12b'] };
+    const requestSignals: AbortSignal[] = [];
+    const fetchImpl: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!(signal instanceof AbortSignal)) {
+        reject(new Error('Missing request signal'));
+        return;
+      }
+      requestSignals.push(signal);
+      if (signal.aborted) {
+        reject(new Error('aborted'));
+        return;
+      }
+      signal.addEventListener('abort', () => reject(new Error('aborted')), { once: true });
+    });
+    const adapter = new OllamaAnalyzerAdapter({
+      runtime,
+      fetchImpl,
+      readFrame: () => Promise.resolve(Buffer.from('frame')),
+    });
+    const controller = new AbortController();
+    const analyzing = adapter.analyze({
+      videoPath: '/work/clip.mp4',
+      framePaths: ['/work/frame.jpg'],
+      transcript: null,
+      backend: 'local',
+      localModel: 'gemma3:12b',
+      timeoutSeconds: 300,
+      verbose: false,
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    controller.abort();
+    const result = await analyzing;
+
+    expect(requestSignals[0]?.aborted).toBe(true);
+    expect(result).toMatchObject({ ok: false, error: { code: 'ollama_unavailable' } });
   });
 });
 
@@ -271,8 +337,13 @@ class FakeLocalAiRuntime implements LocalAiRuntimePort {
     return Promise.resolve(ok(this.statusValue));
   }
 
-  pull(tag: string): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
-    return Promise.resolve(ok({ tag, status: 'installed' }));
+  async pull(
+    tag: string,
+    options?: { onRuntimeReady?: (() => Promise<Result<void, AppError>>) | undefined },
+  ): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
+    const ready = await options?.onRuntimeReady?.();
+    if (ready !== undefined && !ready.ok) return ready;
+    return ok({ tag, status: 'installed' });
   }
 
   rm(tag: string): Promise<Result<{ tag: string; status: 'removed' }, AppError>> {

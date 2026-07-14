@@ -87,6 +87,30 @@ describe('WhisperTranscriberAdapter', () => {
     });
   });
 
+  it('passes cancellation to the local whisper process', async () => {
+    const root = await tempRoot();
+    const runner = new FakeCommandRunner({ '/bundled/whisper': 'whisper installed' });
+    const controller = new AbortController();
+    runner.onRun = () => Promise.resolve({
+      ok: false,
+      error: appError('processing_error', 'cancelled'),
+    });
+    const adapter = new WhisperTranscriberAdapter({
+      commandRunner: runner,
+      binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
+    });
+
+    await adapter.transcribe({
+      audioPath: path.join(root, 'audio.wav'),
+      transcriptPath: path.join(root, 'transcript.txt'),
+      mode: 'local',
+      model: 'base',
+      signal: controller.signal,
+    });
+
+    expect(runner.signals.at(-1)).toBe(controller.signal);
+  });
+
   it('uses OpenAI whisper-1 and writes trimmed API transcripts', async () => {
     const root = await tempRoot();
     const audioPath = path.join(root, 'audio.wav');
@@ -284,12 +308,18 @@ const tempRoot = async (): Promise<string> => {
 
 class FakeCommandRunner implements CommandRunner {
   readonly commands: Array<{ command: string; args: string[] }> = [];
+  readonly signals: Array<AbortSignal | undefined> = [];
   onRun: ((command: string, args: readonly string[]) => Promise<Result<{ stdout: string; stderr: string }, AppError>>) | null = null;
 
   constructor(private readonly stdoutByCommand: Record<string, string> = {}) {}
 
-  async run(command: string, args: readonly string[]): Promise<Result<{ stdout: string; stderr: string }, AppError>> {
+  async run(
+    command: string,
+    args: readonly string[],
+    options?: { signal?: AbortSignal | undefined },
+  ): Promise<Result<{ stdout: string; stderr: string }, AppError>> {
     this.commands.push({ command, args: [...args] });
+    this.signals.push(options?.signal);
     if (this.onRun !== null) return this.onRun(command, args);
     const stdout = this.stdoutByCommand[command];
     if (stdout === undefined) return { ok: false, error: appError('processing_error', `Command not found: ${command}`) };

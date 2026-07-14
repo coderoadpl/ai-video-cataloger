@@ -17,12 +17,6 @@ interface NestedDbDialogProps {
   onClose: () => void;
 }
 
-/**
- * Blocks opening a folder that contains nested `.ai-video-cataloger` databases
- * (parity-inventory §10 folder safety): nested catalogs cause conflicting
- * tracking, so the folder is not accepted and the offending paths are listed for
- * the user to remove or merge.
- */
 export const NestedDbDialog = ({ open, paths, onClose }: NestedDbDialogProps) => (
   <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth data-testid="nested-db-dialog">
     <DialogTitle sx={{ color: 'error.main' }}>Nested Databases Detected</DialogTitle>

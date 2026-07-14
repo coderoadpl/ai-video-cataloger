@@ -19,12 +19,6 @@ export interface ShellState {
   closeNestedDb: () => void;
 }
 
-/**
- * Local platform state sourced from the desktop bridge (app version, current
- * and recent folders). This is not HTTP server state, so it lives in component
- * state fed by the bridge rather than TanStack Query; the on-disk catalog
- * (scan/status) is the part that flows through bound `actions`.
- */
 export const useShell = (): ShellState => {
   const queryClient = useQueryClient();
   const [appVersion, setAppVersion] = useState('');

@@ -20,6 +20,7 @@ export const healthOutputSchema = z.object({
 
 const emptyInputSchema = z.object({});
 const folderInputSchema = z.object({ folder: z.string().min(1) });
+const optionalFolderInputSchema = z.object({ folder: z.string().min(1).optional() });
 const videoPathInputSchema = z.object({ videoPath: z.string().min(1) });
 const forceInputSchema = z.object({ force: z.boolean().default(false) });
 const jobIdInputSchema = z.object({ jobId: z.string().min(1) });
@@ -146,7 +147,7 @@ export const statusOutputSchema = z.object({
   }),
 });
 
-export const resetAllInputSchema = forceInputSchema;
+export const resetAllInputSchema = forceInputSchema.merge(optionalFolderInputSchema);
 
 export const resetAllOutputSchema = z.union([
   z.object({
@@ -161,6 +162,7 @@ export const resetAllOutputSchema = z.union([
 ]);
 
 export const resetSingleInputSchema = z.object({
+  folder: z.string().min(1).optional(),
   filename: z.string().min(1),
   force: z.boolean().default(false),
 });
@@ -181,6 +183,7 @@ export const resetSingleOutputSchema = z.union([
 ]);
 
 export const configGetInputSchema = z.object({
+  folder: z.string().min(1).optional(),
   key: configKeySchema.nullable().default(null),
 });
 
@@ -220,6 +223,7 @@ export const configGetOutputSchema = z.union([
 ]);
 
 export const configSetInputSchema = z.object({
+  folder: z.string().min(1).optional(),
   key: configKeySchema,
   value: z.string(),
 });
@@ -360,6 +364,11 @@ export const jobProgressSchema = z.object({
   data: z.record(z.unknown()).optional(),
 });
 
+export const sequencedJobProgressSchema = z.object({
+  sequence: z.number().int().positive(),
+  progress: jobProgressSchema,
+});
+
 export const jobResultSchema = z.union([
   processCompletedOutputSchema,
   whisperModelDownloadOutputSchema,
@@ -371,6 +380,7 @@ export const jobOutputSchema = z.object({
   kind: jobKindSchema,
   status: jobStatusSchema,
   progress: jobProgressSchema.nullable(),
+  progressEvents: z.array(sequencedJobProgressSchema),
   result: jobResultSchema.optional(),
   error: z
     .object({
@@ -404,7 +414,7 @@ export const API_ROUTES = {
   scan: { method: 'GET', path: '/api/scan', input: folderInputSchema, output: scanOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
   thumbnail: { method: 'POST', path: '/api/thumbnail', input: thumbnailInputSchema, output: thumbnailOutputSchema },
-  status: { method: 'GET', path: '/api/status', input: emptyInputSchema, output: statusOutputSchema },
+  status: { method: 'GET', path: '/api/status', input: optionalFolderInputSchema, output: statusOutputSchema },
   resetAll: { method: 'POST', path: '/api/reset/all', input: resetAllInputSchema, output: resetAllOutputSchema },
   resetSingle: {
     method: 'POST',

@@ -15,12 +15,6 @@ interface ProcessingOverlayProps {
   onCancel: () => void;
 }
 
-/**
- * The details-panel progress overlay shown while the selected video is being
- * analyzed (parity-inventory §2): the human step label, the step number, the
- * percentage, a determinate progress bar and a Cancel button. Driven entirely
- * by the polled job progress.
- */
 export const ProcessingOverlay = ({ progress, onCancel }: ProcessingOverlayProps) => (
   <Box
     data-testid="processing-overlay"

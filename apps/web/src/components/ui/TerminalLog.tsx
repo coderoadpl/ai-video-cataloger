@@ -27,13 +27,6 @@ const colorForType =
     }
   };
 
-/**
- * The terminal panel body: structured job/event lines with a JSON-visibility
- * filter, a dropped-line notice for the ring buffer, and auto-scroll that yields
- * to the user (scrolling up pauses it and surfaces a "scroll to bottom" button —
- * parity-inventory §2). The panel's copy/clear/JSON controls live in the
- * enclosing AppLayout toolbar; this component only renders the buffer.
- */
 export const TerminalLog = ({ lines, droppedCount = 0, showJson = false }: TerminalLogProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedUp, setPinnedUp] = useState(false);

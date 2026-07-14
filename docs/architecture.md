@@ -100,6 +100,8 @@ pulls are jobs too. Progress = job-status queries polled via TanStack Query
 websockets; revisit only if token-streaming UX demands more, and then as a
 typed closed-union event stream, never stringly.
 
+The managed Ollama daemon outlives CLI and GUI processes by design; only the explicit daemon-stop use-case terminates it.
+
 The CLI maps job progress to the NDJSON event stream
 (`started`/`progress`/`completed`/`error`) exactly as the old app emitted it
 — that stream is a public, script-consumed contract (parity-inventory §1).

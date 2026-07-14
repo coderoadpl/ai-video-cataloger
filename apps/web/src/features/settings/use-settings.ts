@@ -36,18 +36,9 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-/**
- * The Settings island's per-folder config state (parity-inventory §2/§7). Loads
- * the stored config through the bound `config` query, seeds an editable draft
- * plus its original snapshot for unsaved-change tracking, and on save writes
- * only the keys that actually changed via the `setConfig` mutation. Local-AI
- * hardware tiers come from the `localAiRequirements` query so the analyzer
- * section can gate models. Draft/original are UI edit state, not server state,
- * so they live in React state fed by the query.
- */
 export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): SettingsState => {
   const enabled = open && folder !== null;
-  const configQuery = useQuery({ ...actions.config(), enabled });
+  const configQuery = useQuery({ ...actions.config(folder === null ? {} : { folder }), enabled });
   const requirementsQuery = useQuery({ ...actions.localAiRequirements, enabled });
   const setConfig = useMutation(actions.setConfig);
 
@@ -89,7 +80,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       let allOk = true;
       for (const key of keys) {
         try {
-          await setConfig.mutateAsync({ key, value: serializeValue(draft, key) });
+          await setConfig.mutateAsync({ folder, key, value: serializeValue(draft, key) });
         } catch (error) {
           allOk = false;
           setSaveError(messageOf(error));

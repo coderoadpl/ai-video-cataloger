@@ -9,11 +9,6 @@ const emit = () => {
   for (const listener of listeners) listener();
 };
 
-/**
- * Module-scope store for the single background-refresh error notice. The
- * QueryCache error surface writes to it from outside React; the snackbar
- * subscribes via `useSyncExternalStore`.
- */
 export const refreshToastStore = {
   subscribe(listener: () => void): () => void {
     listeners.add(listener);

@@ -16,8 +16,6 @@ export const createApp = (config: AppConfig = {}): App => {
   return {
     honoApp: buildApp(deps),
     jobs: deps.jobs,
-    dispose: async () => {
-      await deps.localAi.stopManagedDaemon();
-    },
+    dispose: () => Promise.resolve(),
   };
 };

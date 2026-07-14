@@ -110,8 +110,12 @@ describe('models command', () => {
 
       const events = parseJsonEvents(result.stdout);
       const completedEvent = findEvent(events, 'completed');
+      const rawIndex = events.findIndex((event) => event.model === 'tiny' && event.type === undefined);
+      const completedIndex = events.findIndex((event) => event.type === 'completed');
 
       expect(completedEvent).toBeDefined();
+      expect(rawIndex).toBeGreaterThan(-1);
+      expect(rawIndex).toBeLessThan(completedIndex);
     });
 
     it('should error on invalid model name', async () => {

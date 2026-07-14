@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
 import { createApp } from '@server/src/create-app.js';
+import packageJson from '../package.json' with { type: 'json' };
 import { z } from 'zod';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -100,13 +101,13 @@ const checkLockfileDrift = (): void => {
 };
 
 const bootInProcess = async (): Promise<void> => {
-  const app = createApp({ version: '0.1.0-smoke' });
+  const app = createApp();
   try {
     const response = await app.honoApp.request('/api/health');
     assert(response.ok, `in-process health returned HTTP ${response.status}`);
     const parsed = healthEnvelopeSchema.parse(await response.json());
     assert(parsed.ok, 'in-process health returned an error envelope');
-    assert(parsed.data.version === '0.1.0-smoke', `in-process health echoed the wrong version: ${parsed.data.version}`);
+    assert(parsed.data.version === packageJson.version, `in-process health echoed the wrong version: ${parsed.data.version}`);
   } finally {
     await app.dispose();
   }

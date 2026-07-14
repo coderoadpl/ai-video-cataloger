@@ -159,7 +159,7 @@ describe('FfmpegMediaAdapter', () => {
       outputPath: audioPath,
     });
 
-    expect(extracted).toEqual(ok({ audioPath }));
+    expect(extracted).toEqual(ok({ hasAudio: true, audioPath }));
     expect(runtime.commands[0]?.operations).toEqual([
       { name: 'noVideo' },
       { name: 'audioCodec', value: 'pcm_s16le' },
@@ -168,6 +168,41 @@ describe('FfmpegMediaAdapter', () => {
       { name: 'output', value: audioPath },
       { name: 'run' },
     ]);
+  });
+
+  it('probes audio streams and skips ffmpeg extraction for a silent video', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    runtime.metadata = { format: { duration: 100 }, streams: [{ codec_type: 'video' }] };
+    const adapter = adapterWithFakeRuntime(runtime);
+
+    const extracted = await adapter.extractAudio({
+      videoPath: path.join(root, 'silent.mp4'),
+      outputPath: path.join(root, 'silent.wav'),
+    });
+
+    expect(extracted).toEqual(ok({ hasAudio: false, audioPath: null }));
+    expect(runtime.commands).toEqual([]);
+  });
+
+  it('kills an active ffmpeg command when extraction is aborted', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    runtime.autoComplete = false;
+    const adapter = adapterWithFakeRuntime(runtime);
+    const controller = new AbortController();
+    const extracting = adapter.extractAudio({
+      videoPath: path.join(root, 'clip.mp4'),
+      outputPath: path.join(root, 'clip.wav'),
+      signal: controller.signal,
+    });
+    await Promise.resolve();
+
+    controller.abort();
+    const result = await extracting;
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'processing_error' } });
+    expect(runtime.commands[0]?.operations).toContainEqual({ name: 'kill', value: 'SIGTERM' });
   });
 
   it('generates a 128x72 thumbnail at 25 percent duration and skips existing thumbnails without force', async () => {
@@ -213,7 +248,7 @@ describe('FfmpegMediaAdapter', () => {
 
     expect(framesDirectoryForVideo(videoPath)).toBe(path.join('/work', 'frames', 'Clip One'));
     expect(frameOutputPath(path.join('/work', 'frames', 'Clip One'), 7)).toBe(path.join('/work', 'frames', 'Clip One', 'frame-007.jpg'));
-    expect(tempAudioPathForVideo(videoPath, '/tmp')).toBe(path.join('/tmp', 'ai-video-cataloger', 'audio', 'Clip One.wav'));
+    expect(tempAudioPathForVideo(videoPath, '/tmp')).toBe(path.join('/tmp', 'ai-video-cataloger', 'audio', '1903b0a3-Clip One.wav'));
     expect(thumbnailPathForVideo(videoPath)).toBe(path.join('/work', '.ai-video-cataloger', 'thumbnails', 'Clip One.jpg'));
   });
 });
@@ -302,6 +337,7 @@ class FakeFfmpegRuntime implements FfmpegRuntime {
     format: { duration: 100 },
     streams: [{ codec_type: 'video' }, { codec_type: 'audio' }],
   };
+  autoComplete = true;
 
   setFfmpegPath(ffmpegPath: string): void {
     const last = this.configurations[this.configurations.length - 1];
@@ -326,7 +362,7 @@ class FakeFfmpegRuntime implements FfmpegRuntime {
   }
 
   command(videoPath: string): FfmpegCommand {
-    const command = new FakeFfmpegCommand(videoPath);
+    const command = new FakeFfmpegCommand(videoPath, this.autoComplete);
     this.commands.push(command);
     return command;
   }
@@ -341,6 +377,7 @@ type CommandOperation =
   | { name: 'audioFrequency'; value: number }
   | { name: 'audioChannels'; value: number }
   | { name: 'output'; value: string }
+  | { name: 'kill'; value: string | undefined }
   | { name: 'run' };
 
 class FakeFfmpegCommand implements FfmpegCommand {
@@ -348,7 +385,7 @@ class FakeFfmpegCommand implements FfmpegCommand {
   private endListener: (() => void) | null = null;
   private errorListener: ((error: Error) => void) | null = null;
 
-  constructor(readonly videoPath: string) {}
+  constructor(readonly videoPath: string, private readonly autoComplete: boolean) {}
 
   seekInput(seconds: number): FfmpegCommand {
     this.operations.push({ name: 'seekInput', value: seconds });
@@ -401,9 +438,15 @@ class FakeFfmpegCommand implements FfmpegCommand {
     return this;
   }
 
+  kill(signal?: string): FfmpegCommand {
+    this.operations.push({ name: 'kill', value: signal });
+    this.fail(new Error('killed'));
+    return this;
+  }
+
   run(): void {
     this.operations.push({ name: 'run' });
-    if (this.endListener !== null) this.endListener();
+    if (this.autoComplete && this.endListener !== null) this.endListener();
   }
 
   fail(error: Error): void {

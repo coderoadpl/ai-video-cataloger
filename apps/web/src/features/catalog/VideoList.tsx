@@ -92,12 +92,6 @@ const VideoRow = ({
   </ListItemButton>
 );
 
-/**
- * The sidebar video list: a scrollable column of rows, each a thumbnail, name,
- * duration/size and status pill. Renders the loading, error and empty states
- * from the scan query (parity-inventory §2). Selection and the currently
- * analyzing row are driven from `useCatalog` and highlighted here.
- */
 export const VideoList = ({
   videos,
   selectedKey,

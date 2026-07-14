@@ -3,7 +3,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { ok } from '@core/domain/index.js';
 
@@ -24,6 +24,7 @@ const closers: Array<() => Promise<void>> = [];
 
 describe('ManagedOllamaRuntimeAdapter', () => {
   afterEach(async () => {
+    vi.useRealTimers();
     await Promise.all(closers.map((close) => close()));
     closers.length = 0;
     await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
@@ -35,7 +36,12 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     const managed = await startFakeOllamaServer({ version: 'managed', models: ['gemma3:4b'] });
     const system = await startFakeOllamaServer({ version: 'system', models: ['gemma3:12b'] });
     await mkdir(path.dirname(stateFilePath(home)), { recursive: true });
-    await writeFile(stateFilePath(home), JSON.stringify({ port: managed.port, pid: 123, version: 'v0.31.1' }), 'utf8');
+    await writeFile(stateFilePath(home), JSON.stringify({
+      port: managed.port,
+      pid: 123,
+      version: 'v0.31.1',
+      binaryPath: managedBinaryPath(home),
+    }), 'utf8');
     const adapter = new ManagedOllamaRuntimeAdapter({ homeDirectory: home, systemBaseUrl: system.origin });
 
     const status = await adapter.status();
@@ -49,7 +55,12 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     const home = await tempRoot();
     const managed = await startFakeOllamaServer({ version: 'managed-state', models: ['qwen2.5vl:7b'] });
     await mkdir(path.dirname(stateFilePath(home)), { recursive: true });
-    await writeFile(stateFilePath(home), JSON.stringify({ port: managed.port, pid: 456, version: 'v0.31.1' }), 'utf8');
+    await writeFile(stateFilePath(home), JSON.stringify({
+      port: managed.port,
+      pid: 456,
+      version: 'v0.31.1',
+      binaryPath: managedBinaryPath(home),
+    }), 'utf8');
     const adapter = new ManagedOllamaRuntimeAdapter({ homeDirectory: home, systemBaseUrl: 'http://127.0.0.1:1' });
 
     const status = await adapter.status();
@@ -96,7 +107,12 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     const stopped = await adapter.stopManagedDaemon();
 
     expect(pulled).toEqual(ok({ tag: 'gemma3:12b', status: 'installed' }));
-    expect(JSON.parse(stateRaw)).toEqual({ port: 9786, pid: 4321, version: 'v0.31.1' });
+    expect(JSON.parse(stateRaw)).toEqual({
+      port: 9786,
+      pid: 4321,
+      version: 'v0.31.1',
+      binaryPath: managedBinaryPath(home),
+    });
     expect(processManager.spawnCalls).toEqual([
       {
         command: managedBinaryPath(home),
@@ -143,6 +159,153 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     server.pullStatus = 500;
     const unavailable = await adapter.pull('gemma3:12b');
     expect(unavailable).toMatchObject({ ok: false, error: { code: 'ollama_unavailable' } });
+  });
+
+  it('passes cancellation to the lifetime of the Ollama pull request', async () => {
+    const pullSignals: AbortSignal[] = [];
+    const fetchImpl: typeof fetch = (input, init) => {
+      if (String(input).endsWith('/api/version')) {
+        return Promise.resolve(new Response(JSON.stringify({ version: '0.31.1' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }));
+      }
+      const signal = init?.signal;
+      if (!(signal instanceof AbortSignal)) return Promise.reject(new Error('Missing pull signal'));
+      pullSignals.push(signal);
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          if (signal.aborted) {
+            controller.error(new Error('aborted'));
+            return;
+          }
+          signal.addEventListener('abort', () => controller.error(new Error('aborted')), { once: true });
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200 }));
+    };
+    const adapter = new ManagedOllamaRuntimeAdapter({ fetchImpl });
+    const controller = new AbortController();
+    const pulling = adapter.pull('gemma3:12b', { signal: controller.signal });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    controller.abort();
+    const result = await pulling;
+
+    expect(pullSignals[0]?.aborted).toBe(true);
+    expect(result).toMatchObject({ ok: false, error: { code: 'ollama_unavailable' } });
+  });
+
+  it('does not abort a streaming pull after more than ten seconds', async () => {
+    vi.useFakeTimers();
+    let pullSignal: AbortSignal | null = null;
+    const fetchImpl: typeof fetch = (input, init) => {
+      if (String(input).endsWith('/api/version')) {
+        return Promise.resolve(new Response(JSON.stringify({ version: '0.31.1' }), { status: 200 }));
+      }
+      const signal = init?.signal;
+      pullSignal = signal instanceof AbortSignal ? signal : null;
+      const body = new ReadableStream<Uint8Array>({
+        start(controller) {
+          const abort = (): void => controller.error(new Error('aborted'));
+          signal?.addEventListener('abort', abort, { once: true });
+          setTimeout(() => {
+            if (signal?.aborted === true) return;
+            controller.enqueue(new TextEncoder().encode(`${JSON.stringify({ status: 'success' })}\n`));
+            controller.close();
+          }, 10_001);
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200 }));
+    };
+    const adapter = new ManagedOllamaRuntimeAdapter({ fetchImpl });
+
+    const pulling = adapter.pull('gemma3:12b');
+    await vi.advanceTimersByTimeAsync(10_001);
+
+    await expect(pulling).resolves.toEqual(ok({ tag: 'gemma3:12b', status: 'installed' }));
+    expect(pullSignal).toBeNull();
+  });
+
+  it('reports local AI as feasible on Apple Silicon when runtime is down', async () => {
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      fetchImpl: () => Promise.reject(new Error('offline')),
+      machineProfile: () => ({ platform: 'darwin', arch: 'arm64', ramGb: 16 }),
+    });
+
+    const result = await adapter.dependency();
+
+    expect(result).toEqual(ok({
+      name: 'local-ai',
+      available: true,
+      version: 'auto-managed (not running - starts when needed)',
+      source: 'bundled',
+      path: null,
+      installHint: '',
+    }));
+  });
+
+  it('reports local AI unavailable with a platform hint off Apple Silicon', async () => {
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      machineProfile: () => ({ platform: 'linux', arch: 'x64', ramGb: 16 }),
+    });
+
+    const result = await adapter.dependency();
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        name: 'local-ai',
+        available: false,
+        installHint: expect.stringContaining('Apple Silicon'),
+      },
+    });
+  });
+
+  it('refuses invalid and identity-mismatched managed daemon pids', async () => {
+    const home = await tempRoot();
+    const processManager = new ManualProcessManager('/unrelated/process');
+    await mkdir(path.dirname(stateFilePath(home)), { recursive: true });
+    await writeFile(stateFilePath(home), JSON.stringify({
+      port: 9786,
+      pid: -1,
+      version: 'v0.31.1',
+      binaryPath: managedBinaryPath(home),
+    }), 'utf8');
+    const adapter = new ManagedOllamaRuntimeAdapter({ homeDirectory: home, processManager });
+
+    const invalid = await adapter.stopManagedDaemon();
+    await writeFile(stateFilePath(home), JSON.stringify({
+      port: 9786,
+      pid: 4321,
+      version: 'v0.31.1',
+      binaryPath: managedBinaryPath(home),
+    }), 'utf8');
+    const mismatched = await adapter.stopManagedDaemon();
+
+    expect(invalid).toEqual(ok({ stopped: false }));
+    expect(mismatched).toEqual(ok({ stopped: false }));
+    expect(processManager.killed).toEqual([]);
+  });
+
+  it('refuses to persist a managed runtime without a positive pid', async () => {
+    const home = await tempRoot();
+    await mkdir(path.dirname(managedBinaryPath(home)), { recursive: true });
+    await writeFile(managedBinaryPath(home), 'binary', 'utf8');
+    const processManager = new AutoStartOllamaProcessManager(-1);
+    closers.push(() => processManager.close());
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      systemBaseUrl: 'http://127.0.0.1:1',
+      processManager,
+      randomPort: () => 9787,
+    });
+
+    const result = await adapter.pull('gemma3:12b');
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'ollama_unavailable' } });
+    expect(existsSync(stateFilePath(home))).toBe(false);
   });
 
   it('maps delete errors and does not stop a user-owned system daemon', async () => {
@@ -282,11 +445,13 @@ class AutoStartOllamaProcessManager implements RuntimeProcessManager {
   readonly killed: Array<{ pid: number; signal: 'SIGTERM' }> = [];
   private readonly servers: Server[] = [];
 
+  constructor(private readonly pid: number | undefined = 4321) {}
+
   spawn(command: string, args: readonly string[], options: RuntimeSpawnOptions): RuntimeProcess {
     const host = options.env.OLLAMA_HOST ?? null;
     const models = options.env.OLLAMA_MODELS ?? null;
     this.spawnCalls.push({ command, args: [...args], host, models, detached: options.detached });
-    if (host !== null) {
+    if (host !== null && (this.pid ?? 0) > 0) {
       const portText = host.split(':')[1];
       if (portText === undefined) throw new Error('Expected OLLAMA_HOST port');
       const server = createServer((request, response) => {
@@ -305,9 +470,13 @@ class AutoStartOllamaProcessManager implements RuntimeProcessManager {
       this.servers.push(server);
     }
     return {
-      pid: 4321,
+      pid: this.pid,
       unref: () => undefined,
     };
+  }
+
+  command(): Promise<string | null> {
+    return Promise.resolve(this.spawnCalls[0]?.command ?? null);
   }
 
   kill(pid: number, signal: 'SIGTERM'): void {
@@ -323,11 +492,17 @@ class AutoStartOllamaProcessManager implements RuntimeProcessManager {
 class ManualProcessManager implements RuntimeProcessManager {
   readonly killed: Array<{ pid: number; signal: 'SIGTERM' }> = [];
 
+  constructor(private readonly commandValue: string | null = null) {}
+
   spawn(): RuntimeProcess {
     return {
       pid: 1,
       unref: () => undefined,
     };
+  }
+
+  command(): Promise<string | null> {
+    return Promise.resolve(this.commandValue);
   }
 
   kill(pid: number, signal: 'SIGTERM'): void {

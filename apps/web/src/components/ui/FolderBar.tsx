@@ -10,11 +10,6 @@ interface FolderBarProps {
   onSelectRecentFolder: (folderPath: string) => void;
 }
 
-/**
- * Split button: the left half opens the native folder picker, the right half
- * drops down the recent-folders list (basename over full path). Mirrors the old
- * renderer's folder bar.
- */
 export const FolderBar = ({
   recentFolders,
   isCheckingFolder,

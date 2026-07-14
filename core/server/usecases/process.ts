@@ -25,17 +25,15 @@ import {
   type MediaPort,
   type TranscriberPort,
 } from '../ports.js';
-import { artifactPaths, isSupportedVideoExtension, type SummaryData } from './shared.js';
+import {
+  artifactPaths,
+  isSupportedVideoExtension,
+  summaryDataSchema,
+  type SummaryData,
+} from './shared.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
-const summaryDataSchema = z.object({
-  schemaVersion: z.literal(1),
-  description: z.string(),
-  suggestedFilename: z.string(),
-  fullAnalysis: z.string(),
-  analyzedAt: z.string(),
-});
 
 export interface ProcessDeps {
   catalogs: CatalogRepositoryFactory;
@@ -88,6 +86,8 @@ export const processVideoPipeline = async (
   input: ProcessPipelineInput,
   progress?: JobExecutionContext,
 ): Promise<Result<ProcessCompletedOutput, AppError>> => {
+  const notCancelled = cancellationBoundary(progress);
+  if (!notCancelled.ok) return notCancelled;
   const validation = await validateVideoPath(deps.fs, input.videoPath);
   if (!validation.ok) return validation;
   const videoPath = validation.value;
@@ -103,12 +103,40 @@ export const processVideoPipeline = async (
 
   const runResult = await runPipelineSteps(deps, repository.value, video.value, resolved.value, progress);
   if (!runResult.ok) {
-    if (!isJobCancelled(runResult.error)) {
+    if (!isJobCancelled(runResult.error) && !preservesCatalog(runResult.error)) {
       await repository.value.updateVideoStatus(video.value.id, 'error', runResult.error.message);
     }
     return runResult;
   }
   return runResult;
+};
+
+export const checkProcessPrerequisites = async (
+  deps: ProcessDeps,
+  input: ProcessPipelineInput,
+): Promise<Result<void, AppError>> => {
+  const validation = await validateVideoPath(deps.fs, input.videoPath);
+  if (!validation.ok) return validation;
+  const folder = deps.fs.dirname(validation.value);
+  const resolved = await resolveProcessOptions(deps.config, folder, input);
+  if (!resolved.ok) return resolved;
+
+  const media = await deps.media.dependencies();
+  if (!media.ok) return prerequisitesFailure(media.error.message, media.error);
+  const required = [...media.value];
+  if (resolved.value.whisper === 'local') {
+    const transcriber = await deps.transcriber.dependency();
+    if (!transcriber.ok) return prerequisitesFailure(transcriber.error.message, transcriber.error);
+    required.push(transcriber.value);
+  }
+  const analyzer = await deps.analyzer.dependency({ backend: resolved.value.analyzer.backend });
+  if (!analyzer.ok) return prerequisitesFailure(analyzer.error.message, analyzer.error);
+  required.push(analyzer.value);
+  const missing = required.filter((entry) => !entry.available).map((entry) => entry.name);
+  if (missing.length > 0) {
+    return prerequisitesFailure(`Prerequisites check failed: ${missing.join(', ')}`);
+  }
+  return ok(undefined);
 };
 
 export const parseAnalysisResponse = (response: string): Result<ParsedAnalysis, AppError> => {
@@ -183,7 +211,7 @@ const findOrCreateVideo = async (
   if (hash.value !== null) {
     const byHash = await repository.findVideoByHash(hash.value);
     if (!byHash.ok) return byHash;
-    if (byHash.value !== null) return ok(byHash.value);
+    if (byHash.value !== null) return repository.updateVideoPath(byHash.value.id, videoPath);
   }
 
   const stat = await deps.fs.stat(videoPath);
@@ -223,8 +251,11 @@ const runPipelineSteps = async (
       videoPath: video.originalPath,
       outputDirectory: paths.framesDir,
       frameCount: resolved.frames,
+      signal: progress?.signal,
     });
-    if (!frames.ok) return { ok: false, error: appError('processing_error', frames.error.message, frames.error) };
+    const notCancelled = cancellationBoundary(progress);
+    if (!notCancelled.ok) return notCancelled;
+    if (!frames.ok) return frames;
     currentFramePaths = frames.value.framePaths;
     const updated = await repository.updateVideoStatus(video.id, 'frames_extracted', null);
     if (!updated.ok) return updated;
@@ -242,6 +273,7 @@ const runPipelineSteps = async (
   }
 
   let audioPath: string | null = null;
+  let skipTranscription = resolved.whisper === 'skip';
   if (stage.value === 'audio' && resolved.whisper === 'skip') {
     const progressResult = await report(progress, 'extracting_audio', 2, video.originalPath, resolved.batch);
     if (!progressResult.ok) return progressResult;
@@ -257,9 +289,13 @@ const runPipelineSteps = async (
     const extracted = await deps.media.extractAudio({
       videoPath: video.originalPath,
       outputPath: tempAudioPath(deps.fs, video.originalPath),
+      signal: progress?.signal,
     });
-    if (!extracted.ok) return { ok: false, error: appError('processing_error', extracted.error.message, extracted.error) };
+    const notCancelled = cancellationBoundary(progress);
+    if (!notCancelled.ok) return notCancelled;
+    if (!extracted.ok) return extracted;
     audioPath = extracted.value.audioPath;
+    skipTranscription = !extracted.value.hasAudio;
     const updated = await repository.updateVideoStatus(video.id, 'audio_extracted', null);
     if (!updated.ok) return updated;
     video = updated.value;
@@ -269,7 +305,17 @@ const runPipelineSteps = async (
   if (stage.value === 'transcribe') {
     const progressResult = await report(progress, 'transcribing_audio', 3, video.originalPath, resolved.batch);
     if (!progressResult.ok) return progressResult;
-    const transcript = await transcribe(deps, video.originalPath, resolved, paths.transcriptPath, audioPath);
+    const transcript = await transcribe(
+      deps,
+      video.originalPath,
+      resolved,
+      paths.transcriptPath,
+      audioPath,
+      skipTranscription,
+      progress?.signal,
+    );
+    const notCancelled = cancellationBoundary(progress);
+    if (!notCancelled.ok) return notCancelled;
     if (!transcript.ok) return transcript;
     const updated = await repository.updateVideoStatus(video.id, 'transcribed', null);
     if (!updated.ok) return updated;
@@ -295,8 +341,12 @@ const runPipelineSteps = async (
       backend: resolved.analyzer.backend,
       localModel: resolved.analyzer.localModel,
       timeoutSeconds: resolved.analyzer.timeoutSeconds,
+      verbose: resolved.verbose,
+      signal: progress?.signal,
     });
-    if (!analyzed.ok) return { ok: false, error: appError('processing_error', analyzed.error.message, analyzed.error) };
+    const notCancelled = cancellationBoundary(progress);
+    if (!notCancelled.ok) return notCancelled;
+    if (!analyzed.ok) return analyzed;
     const debug = await writeDebugLog(deps.fs, paths.debugLogPath, {
       video,
       framePaths: frames.value,
@@ -304,6 +354,8 @@ const runPipelineSteps = async (
       backend: resolved.analyzer.backend,
     });
     if (!debug.ok) return debug;
+    const afterDebug = cancellationBoundary(progress);
+    if (!afterDebug.ok) return afterDebug;
     const parsedResult = parseAnalysisResponse(analyzed.value.rawResponse);
     if (!parsedResult.ok) return parsedResult;
     parsed = parsedResult.value;
@@ -315,6 +367,8 @@ const runPipelineSteps = async (
       analyzedAt: new Date().toISOString(),
     });
     if (!summary.ok) return summary;
+    const afterSummary = cancellationBoundary(progress);
+    if (!afterSummary.ok) return afterSummary;
     const updated = await repository.updateVideoStatus(video.id, 'analyzed', null);
     if (!updated.ok) return updated;
     video = updated.value;
@@ -333,7 +387,7 @@ const runPipelineSteps = async (
     if (!progressResult.ok) return progressResult;
     const summary = parsed === null ? await loadSummary(deps.fs, paths.summaryJsonPath) : ok(parsed);
     if (!summary.ok) return summary;
-    const renamed = await renameVideoAndArtifacts(deps.fs, video, summary.value.suggestedFilename);
+    const renamed = await renameVideoAndArtifacts(deps.fs, video, summary.value.suggestedFilename, progress?.signal);
     if (!renamed.ok) return renamed;
     const moved = await repository.updateVideoPath(video.id, renamed.value.newPath);
     if (!moved.ok) return moved;
@@ -356,6 +410,7 @@ interface ResolvedAnalyzer {
 interface ResolvedProcessOptions {
   frames: number;
   skipRename: boolean;
+  verbose: boolean;
   whisper: AppConfig['whisper_mode'];
   whisperModel: WhisperModelName;
   analyzer: ResolvedAnalyzer;
@@ -387,6 +442,7 @@ const resolveProcessOptions = async (
   return ok({
     frames,
     skipRename,
+    verbose: input.verbose,
     whisper,
     whisperModel,
     analyzer: { backend, localModel, timeoutSeconds },
@@ -472,7 +528,11 @@ const resumeStage = async (
   }
   if (video.status === 'pending') return ok('frames');
   if (video.status === 'frames_extracted') return ok('audio');
-  if (video.status === 'audio_extracted') return ok('transcribe');
+  if (video.status === 'audio_extracted') {
+    const audioExists = await deps.fs.exists(tempAudioPath(deps.fs, video.originalPath));
+    if (!audioExists.ok) return audioExists;
+    return ok(audioExists.value ? 'transcribe' : 'audio');
+  }
   if (video.status === 'transcribed') return ok('analyze');
   return ok('rename');
 };
@@ -483,9 +543,11 @@ const transcribe = async (
   resolved: ResolvedProcessOptions,
   transcriptPath: string,
   audioPath: string | null,
+  skip: boolean,
+  signal: AbortSignal | undefined,
 ): Promise<Result<void, AppError>> => {
   const finalAudioPath = audioPath ?? tempAudioPath(deps.fs, videoPath);
-  if (resolved.whisper === 'skip') {
+  if (resolved.whisper === 'skip' || skip) {
     await deps.fs.deleteFile(finalAudioPath);
     return ok(undefined);
   }
@@ -494,12 +556,18 @@ const transcribe = async (
     transcriptPath,
     mode: resolved.whisper,
     model: resolved.whisperModel,
+    signal,
   });
   const cleanup = await deps.fs.deleteFile(finalAudioPath);
-  if (!result.ok) return { ok: false, error: appError('processing_error', result.error.message, result.error) };
+  if (!result.ok) return result;
   if (!cleanup.ok) return ok(undefined);
   return ok(undefined);
 };
+
+const prerequisitesFailure = (message: string, details?: unknown): Result<never, AppError> => ({
+  ok: false,
+  error: appError('prerequisites_failed', message, details),
+});
 
 const existingFrames = async (fs: FileSystemPort, framesDir: string): Promise<Result<string[], AppError>> => {
   const exists = await fs.exists(framesDir);
@@ -600,6 +668,7 @@ const renameVideoAndArtifacts = async (
   fs: FileSystemPort,
   video: Video,
   suggestedFilename: string,
+  signal: AbortSignal | undefined,
 ): Promise<Result<{ newPath: string; newName: string }, AppError>> => {
   const stat = await fs.stat(video.originalPath);
   if (!stat.ok) return stat;
@@ -611,43 +680,58 @@ const renameVideoAndArtifacts = async (
   const newPath = fs.join(folder, newName.value);
   const newBase = fs.basenameWithoutExtension(newName.value);
   const oldArtifacts = artifactPaths(fs, folder, video.originalPath, null);
-  const renamedVideo = await fs.renamePath(video.originalPath, newPath);
-  if (!renamedVideo.ok) return renamedVideo;
-  const artifactRename = await renameArtifacts(fs, oldArtifacts, {
-    framesDir: fs.join(folder, 'frames', newBase),
-    transcriptPath: fs.join(folder, 'transcripts', `${newBase}.txt`),
-    summaryPath: fs.join(folder, 'summaries', `${newBase}.txt`),
-    summaryJsonPath: fs.join(folder, 'summaries', `${newBase}.json`),
-    thumbnailPath: fs.join(folder, '.ai-video-cataloger', 'thumbnails', `${newBase}.jpg`),
-  });
-  if (!artifactRename.ok) return artifactRename;
+  const steps = [
+    { from: video.originalPath, to: newPath, required: true },
+    { from: oldArtifacts.framesDir, to: fs.join(folder, 'frames', newBase), required: false },
+    { from: oldArtifacts.transcriptPath, to: fs.join(folder, 'transcripts', `${newBase}.txt`), required: false },
+    { from: oldArtifacts.summaryPath, to: fs.join(folder, 'summaries', `${newBase}.txt`), required: false },
+    { from: oldArtifacts.summaryJsonPath, to: fs.join(folder, 'summaries', `${newBase}.json`), required: false },
+    {
+      from: oldArtifacts.thumbnailPath,
+      to: fs.join(folder, '.ai-video-cataloger', 'thumbnails', `${newBase}.jpg`),
+      required: false,
+    },
+  ] as const;
+  const renamed = await renamePathsWithRollback(fs, steps, signal);
+  if (!renamed.ok) return renamed;
   return ok({ newPath, newName: newName.value });
 };
 
-const renameArtifacts = async (
+const renamePathsWithRollback = async (
   fs: FileSystemPort,
-  oldPaths: ReturnType<typeof artifactPaths>,
-  newPaths: Omit<ReturnType<typeof artifactPaths>, 'debugLogPath'>,
+  steps: ReadonlyArray<{ from: string; to: string; required: boolean }>,
+  signal: AbortSignal | undefined,
 ): Promise<Result<void, AppError>> => {
-  const steps = [
-    { from: oldPaths.framesDir, to: newPaths.framesDir },
-    { from: oldPaths.transcriptPath, to: newPaths.transcriptPath },
-    { from: oldPaths.summaryPath, to: newPaths.summaryPath },
-    { from: oldPaths.summaryJsonPath, to: newPaths.summaryJsonPath },
-    { from: oldPaths.thumbnailPath, to: newPaths.thumbnailPath },
-  ] as const;
+  const completed: Array<{ from: string; to: string }> = [];
   for (const step of steps) {
-    const exists = await fs.exists(step.from);
-    if (!exists.ok) return exists;
-    if (exists.value) {
-      const ensured = await fs.ensureDirectory(fs.dirname(step.to));
-      if (!ensured.ok) return ensured;
-      const renamed = await fs.renamePath(step.from, step.to);
-      if (!renamed.ok) return renamed;
-    }
+    if (signal?.aborted === true) return rollbackAndPreserve(fs, completed, cancellationError());
+    const shouldRename = step.required ? ok(true) : await fs.exists(step.from);
+    if (!shouldRename.ok) return rollbackAndPreserve(fs, completed, shouldRename.error);
+    if (!shouldRename.value) continue;
+    const ensured = await fs.ensureDirectory(fs.dirname(step.to));
+    if (!ensured.ok) return rollbackAndPreserve(fs, completed, ensured.error);
+    const renamed = await fs.renamePath(step.from, step.to);
+    if (!renamed.ok) return rollbackAndPreserve(fs, completed, renamed.error);
+    completed.push({ from: step.from, to: step.to });
   }
+  if (signal?.aborted === true) return rollbackAndPreserve(fs, completed, cancellationError());
   return ok(undefined);
 };
+
+const rollbackAndPreserve = async (
+  fs: FileSystemPort,
+  completed: ReadonlyArray<{ from: string; to: string }>,
+  error: AppError,
+): Promise<Result<void, AppError>> => {
+  for (const step of [...completed].reverse()) await fs.renamePath(step.to, step.from);
+  return {
+    ok: false,
+    error: appError(error.code, error.message, { preserveCatalog: true, cause: error.details }),
+  };
+};
+
+const preservesCatalog = (error: AppError): boolean =>
+  z.object({ preserveCatalog: z.literal(true) }).passthrough().safeParse(error.details).success;
 
 const uniqueFilename = async (
   fs: FileSystemPort,
@@ -676,7 +760,7 @@ const report = async (
   batch: ProcessBatchContext,
 ): Promise<Result<void, AppError>> => {
   if (progress === undefined) return ok(undefined);
-  return progress.reportProgress({
+  const reported = await progress.reportProgress({
     step,
     percentage: stepNumber * 20,
     current: batch.current,
@@ -689,13 +773,34 @@ const report = async (
       totalSteps: TOTAL_STEPS,
     },
   });
+  if (!reported.ok) return reported;
+  return cancellationBoundary(progress);
 };
 
 const isJobCancelled = (error: AppError): boolean =>
   error.code === 'processing_error' && error.message === JOB_CANCELLED_ERROR_MESSAGE;
 
-const tempAudioPath = (fs: FileSystemPort, videoPath: string): string =>
-  fs.join(fs.tempDirectory(), 'ai-video-cataloger', 'audio', `${fs.basenameWithoutExtension(videoPath)}.wav`);
+export const tempAudioPath = (fs: FileSystemPort, videoPath: string): string =>
+  fs.join(
+    fs.tempDirectory(),
+    'ai-video-cataloger',
+    'audio',
+    `${pathHash(videoPath)}-${fs.basenameWithoutExtension(videoPath)}.wav`,
+  );
+
+const pathHash = (value: string): string => {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) {
+    hash = Math.imul(hash ^ value.charCodeAt(index), 16_777_619);
+  }
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
+
+const cancellationBoundary = (context: JobExecutionContext | undefined): Result<void, AppError> =>
+  context?.signal.aborted === true ? { ok: false, error: cancellationError() } : ok(undefined);
+
+const cancellationError = (): AppError =>
+  appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE);
 
 const datePrefix = (mtimeMs: number): string => {
   const date = new Date(mtimeMs);

@@ -4,11 +4,6 @@ import { ApiError } from '@core/client/index.js';
 
 import { activeTraceId } from './observability.js';
 
-/**
- * The renderer surfaces an `AppError` message verbatim — it never re-maps the
- * taxonomy (that mapping is the contract's job). A non-`ApiError` throw (a bug
- * in a component) gets a generic message instead of leaking a stack.
- */
 const detailFor = (error: unknown): string =>
   error instanceof ApiError ? error.appError.message : 'An unexpected error interrupted the app.';
 
@@ -17,11 +12,6 @@ interface RootErrorFallbackProps {
   traceId: string | undefined;
 }
 
-/**
- * Presentational fallback for the root error boundary. Shows the taxonomy
- * message and, whenever tracing is active, the trace id so a user can paste it
- * into a support request; it is simply absent when tracing is not configured.
- */
 export const RootErrorFallback = ({ error, traceId }: RootErrorFallbackProps) => (
   <Box sx={{ minHeight: '100vh', display: 'grid', placeItems: 'center', p: '1.5rem' }}>
     <Paper
@@ -47,7 +37,6 @@ export const RootErrorFallback = ({ error, traceId }: RootErrorFallbackProps) =>
   </Box>
 );
 
-/** Render-prop entry for the boundary: binds the live trace id. */
 export const renderRootErrorFallback = (error: unknown) => (
   <RootErrorFallback error={error} traceId={activeTraceId()} />
 );

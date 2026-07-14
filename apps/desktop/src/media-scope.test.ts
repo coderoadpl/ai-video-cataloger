@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { parseMediaUrl, resolveScopedImage } from './media-scope.js';
+import { parseMediaUrl, resolveScopedImage, resolveScopedPath } from './media-scope.js';
 
 const tempRoots: string[] = [];
 
@@ -58,6 +58,34 @@ describe('resolveScopedImage', () => {
 
     expect(await resolveScopedImage(outsideImage, root)).toBeNull();
     expect(await resolveScopedImage(linkPath, root)).toBeNull();
+  });
+});
+
+describe('resolveScopedPath', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('allows an existing target inside the current folder', async () => {
+    const root = await tempRoot();
+    const target = path.join(root, 'clip.mp4');
+    await writeFile(target, 'video', 'utf8');
+
+    expect(await resolveScopedPath(target, root)).toBe(await realpath(target));
+  });
+
+  it('rejects targets outside the current folder and symlink escapes', async () => {
+    const root = await tempRoot();
+    const outside = await tempRoot();
+    const outsideTarget = path.join(outside, 'private.txt');
+    const linkPath = path.join(root, 'linked.txt');
+    await writeFile(outsideTarget, 'private', 'utf8');
+    await symlink(outsideTarget, linkPath);
+
+    expect(await resolveScopedPath(outsideTarget, root)).toBeNull();
+    expect(await resolveScopedPath(linkPath, root)).toBeNull();
+    expect(await resolveScopedPath(path.join(root, 'missing.txt'), root)).toBeNull();
   });
 });
 

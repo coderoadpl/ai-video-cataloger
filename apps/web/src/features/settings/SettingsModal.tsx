@@ -32,13 +32,6 @@ interface SettingsModalProps {
   onClose: () => void;
 }
 
-/**
- * Settings modal (parity-inventory §2/§7): per-folder config edited as a draft
- * with unsaved-change tracking against the loaded original values, conditional
- * visibility (whisper model only when transcription is local), and Save writing
- * only the changed keys. Requires a current folder; otherwise it asks the user
- * to pick one first.
- */
 export const SettingsModal = ({ open, folder, onClose }: SettingsModalProps) => {
   const settings = useSettings({ open, folder, onSaved: onClose });
   const { draft } = settings;

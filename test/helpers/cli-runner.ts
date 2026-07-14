@@ -20,6 +20,7 @@ export function runCli(
     cwd?: string;
     env?: Record<string, string>;
     timeout?: number;
+    input?: string;
   },
 ): Promise<CommandResult> {
   const effectiveCwd = options?.cwd ?? PROJECT_ROOT;
@@ -54,6 +55,8 @@ export function runCli(
     proc.stderr.on('data', (data) => {
       stderr += data.toString();
     });
+
+    proc.stdin.end(options?.input ?? '');
 
     proc.on('close', (code) => {
       clearTimeout(timeoutId);

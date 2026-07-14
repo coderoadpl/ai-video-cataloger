@@ -31,6 +31,8 @@ describe('process command', () => {
 
     expect(errorEvent).toBeDefined();
     expect(errorEvent?.code).toBe('FILE_NOT_FOUND');
+    expect(errorEvent?.data).toEqual({ path: nonExistentPath });
+    expect(events[0]?.type).toBe('error');
   });
 
   it('should error on non-video file', async () => {
@@ -45,10 +47,16 @@ describe('process command', () => {
 
     expect(errorEvent).toBeDefined();
     expect(errorEvent?.code).toBe('INVALID_FILE_TYPE');
+    expect(errorEvent?.data).toEqual({
+      path: textFile,
+      extension: '.txt',
+      supportedExtensions: ['.mp4', '.mov', '.avi', '.mkv', '.webm'],
+    });
+    expect(events[0]?.type).toBe('error');
   });
 
   it('should error when path is a directory', async () => {
-    const subDir = createSubDir(testDir, 'subdir');
+    const subDir = createSubDir(testDir, 'subdir.mp4');
 
     const result = await runCli(['process', subDir, '--json'], { cwd: testDir });
 
@@ -58,28 +66,25 @@ describe('process command', () => {
     const errorEvent = findEvent(events, 'error');
 
     expect(errorEvent).toBeDefined();
-    // Directory without video extension triggers INVALID_FILE_TYPE check first
-    expect(errorEvent?.code).toBe('INVALID_FILE_TYPE');
+    expect(errorEvent?.code).toBe('NOT_A_FILE');
+    expect(errorEvent?.data).toEqual({ path: subDir });
+    expect(events[0]?.type).toBe('error');
   });
 
   it('should error when prerequisites fail (no claude)', async () => {
-    // This test verifies that the CLI checks prerequisites
-    // Without Claude CLI, this should fail at prerequisites check
     const videoPath = createFakeVideoFile(testDir, 'test.mp4');
 
     const result = await runCli(['process', videoPath, '--json'], {
       cwd: testDir,
-      // Don't set mock mode - let it actually check prerequisites
+      env: { PATH: '/nonexistent' },
     });
 
-    // Should fail at some point - either prerequisites or processing
     expect(result.exitCode).toBeGreaterThan(0);
 
     const events = parseJsonEvents(result.stdout);
     const errorEvent = findEvent(events, 'error');
 
-    // Should have an error event
-    expect(errorEvent).toBeDefined();
+    expect(errorEvent?.code).toBe('PREREQUISITES_FAILED');
   });
 
   it('should error on missing API key when using whisper api mode', async () => {
@@ -114,6 +119,22 @@ describe('process command', () => {
 
     const startData = startedEvent?.data as Record<string, unknown>;
     expect(startData).toHaveProperty('videoPath');
-    expect(startData).toHaveProperty('options');
+    expect(startData.options).toEqual({
+      frames: 3,
+      skipRename: false,
+      timeout: 120,
+      whisper: 'local',
+      whisperModel: 'base',
+    });
+  });
+
+  it('rejects an invalid whisper mode during option parsing with exit 1', async () => {
+    const videoPath = createFakeVideoFile(testDir, 'test.mp4');
+
+    const result = await runCli(['process', videoPath, '-w', 'bogus', '--json'], { cwd: testDir });
+
+    expect(result.exitCode).toBe(1);
+    expect(parseJsonEvents(result.stdout)).toEqual([]);
+    expect(result.stderr).toContain('Invalid whisper mode: bogus');
   });
 });

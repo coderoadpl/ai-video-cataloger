@@ -48,6 +48,10 @@ describe('InProcessJobsPort', () => {
       result: { video: 'clip.mp4', path: '/work/clip.mp4', status: 'completed' },
       error: null,
     });
+    expect(completed.progressEvents).toEqual([
+      { sequence: 1, progress: expect.objectContaining({ step: 'extracting_frames' }) },
+      { sequence: 2, progress: expect.objectContaining({ step: 'extracting_audio' }) },
+    ]);
     expect(listed).toMatchObject({ ok: true, value: [expect.objectContaining({ jobId: 'job-1' })] });
   });
 
@@ -69,10 +73,12 @@ describe('InProcessJobsPort', () => {
     await waitForJob(jobs, enqueued.value.jobId, (record) => record.progress?.step === 'extracting_frames');
 
     const cancelled = await jobs.cancel(enqueued.value.jobId);
+    const settling = await readJob(jobs, enqueued.value.jobId);
     gate.resolve();
     const terminal = await waitForJob(jobs, enqueued.value.jobId, (record) => record.status === 'cancelled');
 
     expect(cancelled).toEqual(ok({ jobId: 'job-1', cancelled: true }));
+    expect(settling.status).toBe('running');
     expect(terminal).toMatchObject({
       status: 'cancelled',
       progress: { step: 'extracting_frames', percentage: 20 },
@@ -147,6 +153,41 @@ describe('InProcessJobsPort', () => {
     expect(firstDone).toMatchObject({ status: 'completed', progress: { data: { video: '/work/one.mp4' } } });
     expect(secondStillRunning).toMatchObject({ status: 'running', progress: { data: { video: '/work/two.mp4' } } });
     expect(secondDone).toMatchObject({ status: 'completed', progress: { step: 'transcribing_audio' } });
+  });
+
+  it('rejects jobs without a run function instead of leaving them queued', async () => {
+    const jobs = new InProcessJobsPort();
+
+    const result = await jobs.enqueue({ kind: 'process', payload: {} });
+    const listed = await jobs.list();
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(listed).toEqual(ok([]));
+  });
+
+  it('retains only the newest 200 terminal records', async () => {
+    const jobs = new InProcessJobsPort();
+    let newestId = '';
+    for (let index = 0; index < 205; index += 1) {
+      const enqueued = await jobs.enqueue({
+        kind: 'process',
+        payload: { index },
+        run: () => Promise.resolve(ok({ index })),
+      });
+      if (!enqueued.ok) throw new Error(enqueued.error.message);
+      newestId = enqueued.value.jobId;
+    }
+    await waitForJob(jobs, newestId, (record) => record.status === 'completed');
+
+    const listed = await jobs.list();
+    const oldest = await jobs.get('job-1');
+    const newest = await jobs.get(newestId);
+
+    expect(listed).toMatchObject({ ok: true, value: expect.any(Array) });
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(listed.value).toHaveLength(200);
+    expect(oldest).toEqual(ok(null));
+    expect(newest).toMatchObject({ ok: true, value: { status: 'completed' } });
   });
 });
 

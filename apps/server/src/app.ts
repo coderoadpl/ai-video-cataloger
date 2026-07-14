@@ -111,9 +111,11 @@ export const buildApp = (deps: AppDeps): Hono => {
     return respond(await generateThumbnail(deps, input.value), API_ROUTES.thumbnail.output);
   });
 
-  app.get(API_ROUTES.status.path, async () =>
-    respond(await getStatus(deps), API_ROUTES.status.output),
-  );
+  app.get(API_ROUTES.status.path, async (context) => {
+    const input = parseInput(API_ROUTES.status.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.status.output);
+    return respond(await getStatus(deps, input.value), API_ROUTES.status.output);
+  });
 
   app.post(API_ROUTES.resetAll.path, async (context) => {
     const body = await readBody(context);

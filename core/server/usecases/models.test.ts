@@ -104,4 +104,24 @@ describe('model use-cases', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'hw_requirements_not_met' } });
   });
+
+  it('does not begin model download progress until the runtime is ready', async () => {
+    const jobs = new InMemoryJobs();
+    const localAi = new InMemoryLocalAi();
+    let stepsBeforeRuntimeReady: string[] = [];
+    localAi.beforeRuntimeReady = () => {
+      stepsBeforeRuntimeReady = jobs.progressEvents.map((event) => event.step);
+    };
+    const deps = { config: new InMemoryConfig(), downloads: new InMemoryDownloads(), jobs, localAi };
+
+    await pullLocalAiModel(deps, { tag: 'gemma3:12b' });
+
+    expect(stepsBeforeRuntimeReady).toEqual(['runtime_setup']);
+    expect(jobs.progressEvents.map((event) => event.step)).toEqual([
+      'runtime_setup',
+      'model_download',
+      'model_download',
+      'model_download',
+    ]);
+  });
 });

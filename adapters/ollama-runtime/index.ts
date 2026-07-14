@@ -33,8 +33,9 @@ const execFileAsync = promisify(execFile);
 
 const runtimeStateSchema = z.object({
   port: z.number().int().min(1),
-  pid: z.number().int(),
+  pid: z.number().int().min(1),
   version: z.string(),
+  binaryPath: z.string().min(1),
 });
 
 const versionResponseSchema = z.object({
@@ -71,6 +72,7 @@ export interface RuntimeProcess {
 
 export interface RuntimeProcessManager {
   spawn(command: string, args: readonly string[], options: RuntimeSpawnOptions): RuntimeProcess;
+  command(pid: number): Promise<string | null>;
   kill(pid: number, signal: 'SIGTERM'): void;
 }
 
@@ -143,11 +145,17 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
 
   async pull(
     tag: string,
-    options?: { onProgress?: (progress: OllamaPullProgress) => void },
+    options?: {
+      onRuntimeReady?: (() => Promise<Result<void, AppError>>) | undefined;
+      onProgress?: (progress: OllamaPullProgress) => void;
+      signal?: AbortSignal | undefined;
+    },
   ): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
-    const runtime = await this.ensureRuntime();
+    const runtime = await this.ensureRuntime(options?.signal);
     if (!runtime.ok) return runtime;
-    const pulled = await this.pullModel(runtime.value.baseUrl, tag, options?.onProgress);
+    const runtimeReady = await options?.onRuntimeReady?.();
+    if (runtimeReady !== undefined && !runtimeReady.ok) return runtimeReady;
+    const pulled = await this.pullModel(runtime.value.baseUrl, tag, options?.onProgress, options?.signal);
     if (!pulled.ok) return pulled;
     return ok({ tag, status: 'installed' });
   }
@@ -167,8 +175,11 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     if (state === null) return ok({ stopped: false });
     let stopped = false;
     try {
-      this.processManager.kill(state.pid, 'SIGTERM');
-      stopped = true;
+      const command = await this.processManager.command(state.pid);
+      if (commandMatchesBinary(command, state.binaryPath)) {
+        this.processManager.kill(state.pid, 'SIGTERM');
+        stopped = true;
+      }
     } catch {
       stopped = false;
     }
@@ -177,19 +188,30 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
   }
 
   async dependency(): Promise<Result<DependencyStatus, AppError>> {
+    const machine = this.machineProfile();
+    if (machine.platform !== 'darwin' || machine.arch !== 'arm64') {
+      return ok({
+        name: 'local-ai',
+        available: false,
+        version: null,
+        source: null,
+        path: null,
+        installHint: 'Local AI requires an Apple Silicon Mac (use the claude backend instead)',
+      });
+    }
     const runtime = await this.findRunningRuntime();
     if (runtime === null) {
       return ok({
-        name: 'ollama',
-        available: false,
-        version: OLLAMA_PINNED_VERSION,
+        name: 'local-ai',
+        available: true,
+        version: 'auto-managed (not running - starts when needed)',
         source: 'bundled',
-        path: managedBinaryPath(this.homeDirectory),
-        installHint: 'Local AI runtime starts automatically when needed',
+        path: null,
+        installHint: '',
       });
     }
     return ok({
-      name: 'ollama',
+      name: 'local-ai',
       available: true,
       version: runtime.managed ? `managed ${runtime.version}` : runtime.version,
       source: runtime.managed ? 'bundled' : 'system',
@@ -198,17 +220,17 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     });
   }
 
-  private async ensureRuntime(): Promise<Result<RunningRuntime, AppError>> {
-    const system = await this.probeRuntime(this.systemBaseUrl, false, null);
+  private async ensureRuntime(signal?: AbortSignal): Promise<Result<RunningRuntime, AppError>> {
+    const system = await this.probeRuntime(this.systemBaseUrl, false, null, signal);
     if (system !== null) return ok(system);
 
     const state = await this.readState();
     if (state !== null) {
-      const managed = await this.probeRuntime(baseUrlForPort(state.port), true, state.version);
+      const managed = await this.probeRuntime(baseUrlForPort(state.port), true, state.version, signal);
       if (managed !== null) return ok(managed);
     }
 
-    return this.startManagedRuntime();
+    return this.startManagedRuntime(signal);
   }
 
   private async findRunningRuntime(): Promise<RunningRuntime | null> {
@@ -220,10 +242,17 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     return this.probeRuntime(baseUrlForPort(state.port), true, state.version);
   }
 
-  private async probeRuntime(baseUrl: string, managed: boolean, fallbackVersion: string | null): Promise<RunningRuntime | null> {
+  private async probeRuntime(
+    baseUrl: string,
+    managed: boolean,
+    fallbackVersion: string | null,
+    signal?: AbortSignal,
+  ): Promise<RunningRuntime | null> {
     try {
       const response = await this.fetchImpl(`${baseUrl}/api/version`, {
-        signal: AbortSignal.timeout(probeTimeoutMs),
+        signal: signal === undefined
+          ? AbortSignal.timeout(probeTimeoutMs)
+          : AbortSignal.any([signal, AbortSignal.timeout(probeTimeoutMs)]),
       });
       if (!response.ok) return null;
       const body: unknown = await response.json().catch(() => ({}));
@@ -238,8 +267,8 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     }
   }
 
-  private async startManagedRuntime(): Promise<Result<RunningRuntime, AppError>> {
-    const installed = await this.installManagedBinary();
+  private async startManagedRuntime(signal?: AbortSignal): Promise<Result<RunningRuntime, AppError>> {
+    const installed = await this.installManagedBinary(signal);
     if (!installed.ok) return installed;
 
     const port = this.randomPort();
@@ -259,11 +288,18 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
         stdio: ['ignore', logFd, logFd],
       });
       child.unref();
+      const pid = child.pid;
+      if (pid === undefined || pid <= 0) {
+        return { ok: false, error: appError('ollama_unavailable', 'Local AI runtime started without a valid process id') };
+      }
       const deadline = this.nowMs() + serveStartTimeoutMs;
       while (this.nowMs() < deadline) {
-        const runtime = await this.probeRuntime(baseUrl, true, OLLAMA_PINNED_VERSION);
+        if (signal?.aborted === true) {
+          return { ok: false, error: appError('ollama_unavailable', 'Local AI runtime start cancelled') };
+        }
+        const runtime = await this.probeRuntime(baseUrl, true, OLLAMA_PINNED_VERSION, signal);
         if (runtime !== null) {
-          await this.writeState({ port, pid: child.pid ?? -1, version: OLLAMA_PINNED_VERSION });
+          await this.writeState({ port, pid, version: OLLAMA_PINNED_VERSION, binaryPath: installed.value });
           return ok(runtime);
         }
         await this.sleep(250);
@@ -277,7 +313,7 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     }
   }
 
-  private async installManagedBinary(): Promise<Result<string, AppError>> {
+  private async installManagedBinary(signal?: AbortSignal): Promise<Result<string, AppError>> {
     const binaryPath = managedBinaryPath(this.homeDirectory);
     if (existsSync(binaryPath)) return ok(binaryPath);
 
@@ -286,7 +322,7 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     try {
       await mkdir(runtimeDir, { recursive: true });
       await rm(tempTarball, { force: true });
-      const response = await this.fetchImpl(this.releaseUrl, { redirect: 'follow' });
+      const response = await this.fetchImpl(this.releaseUrl, { redirect: 'follow', ...signalInit(signal) });
       if (!response.ok || response.body === null) {
         return { ok: false, error: appError('ollama_unavailable', `Failed to download the local AI runtime (HTTP ${response.status})`) };
       }
@@ -349,18 +385,29 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     baseUrl: string,
     tag: string,
     onProgress?: (progress: OllamaPullProgress) => void,
+    signal?: AbortSignal,
   ): Promise<Result<void, AppError>> {
-    const response = await this.request(baseUrl, '/api/pull', {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ model: tag, stream: true }),
-    });
+    const response = await this.request(
+      baseUrl,
+      '/api/pull',
+      {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ model: tag, stream: true }),
+      },
+      signal,
+      false,
+    );
     if (!response.ok) return response;
     if (response.value.status === 404) return { ok: false, error: appError('model_not_installed', `Model not found: ${tag}`) };
     if (!response.value.ok || response.value.body === null) {
       return { ok: false, error: appError('ollama_unavailable', `Local AI runtime not reachable at ${baseUrl}: HTTP ${response.value.status}`) };
     }
-    return this.readPullStream(response.value.body, tag, onProgress);
+    try {
+      return await this.readPullStream(response.value.body, tag, onProgress);
+    } catch (cause) {
+      return { ok: false, error: appError('ollama_unavailable', unavailableMessage(baseUrl, cause), cause) };
+    }
   }
 
   private async deleteModel(baseUrl: string, tag: string): Promise<Result<void, AppError>> {
@@ -377,11 +424,22 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     return ok(undefined);
   }
 
-  private async request(baseUrl: string, urlPath: string, init: RequestInit): Promise<Result<Response, AppError>> {
+  private async request(
+    baseUrl: string,
+    urlPath: string,
+    init: RequestInit,
+    signal?: AbortSignal,
+    timeout = true,
+  ): Promise<Result<Response, AppError>> {
     try {
+      const requestSignal = timeout
+        ? signal === undefined
+          ? AbortSignal.timeout(10_000)
+          : AbortSignal.any([signal, AbortSignal.timeout(10_000)])
+        : signal;
       const response = await this.fetchImpl(`${baseUrl}${urlPath}`, {
         ...init,
-        signal: AbortSignal.timeout(10_000),
+        ...signalInit(requestSignal),
       });
       return ok(response);
     } catch (cause) {
@@ -530,6 +588,9 @@ const unavailableMessage = (baseUrl: string, cause: unknown): string =>
 const errorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? cause.message : fallback;
 
+const signalInit = (signal: AbortSignal | undefined): { signal?: AbortSignal } =>
+  signal === undefined ? {} : { signal };
+
 const extractTarArchive = async (archivePath: string, runtimeDirectory: string): Promise<Result<void, AppError>> => {
   try {
     await execFileAsync('tar', ['-xzf', archivePath, '-C', runtimeDirectory]);
@@ -541,7 +602,18 @@ const extractTarArchive = async (archivePath: string, runtimeDirectory: string):
 
 const nodeProcessManager: RuntimeProcessManager = {
   spawn: (command, args, options) => spawn(command, [...args], options),
+  command: async (pid) => {
+    try {
+      const result = await execFileAsync('ps', ['-p', String(pid), '-o', 'command='], { timeout: probeTimeoutMs });
+      return result.stdout.trim() || null;
+    } catch {
+      return null;
+    }
+  },
   kill: (pid, signal) => {
     process.kill(pid, signal);
   },
 };
+
+const commandMatchesBinary = (command: string | null, binaryPath: string): boolean =>
+  command === binaryPath || command?.startsWith(`${binaryPath} `) === true;

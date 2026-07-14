@@ -15,15 +15,6 @@ import { SettingsModal } from '../features/settings/SettingsModal.js';
 import { AppShell } from '../features/shell/AppShell.js';
 import { useShell } from '../features/shell/use-shell.js';
 
-/**
- * The page composition root: the one place the shell, catalog, details,
- * processing and terminal islands meet. It owns no server-state itself — the
- * hooks supply platform state, scan-driven video state and the processing state
- * machine — and threads the shared selection, the analyzing path, the batch
- * toolbar, the progress overlay and the processing dialogs between them. The
- * terminal buffer is created here and fed by the processing island (writer) and
- * rendered by the shell (reader).
- */
 export const IndexRoute = () => {
   const shell = useShell();
   const terminal = useTerminalLog();

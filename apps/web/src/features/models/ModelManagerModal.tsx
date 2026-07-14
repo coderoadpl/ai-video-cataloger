@@ -28,12 +28,6 @@ interface ModelManagerModalProps {
   intervalMs?: number;
 }
 
-/**
- * Model Manager modal (parity-inventory §2): the fixed Whisper catalog with
- * download/activate/delete and disk usage, plus the embedded Local AI section.
- * Both islands load only while the modal is open. Deletion is gated by a
- * confirmation dialog.
- */
 export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelManagerModalProps) => {
   const whisper = useWhisperModels({ open, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
   const localAi = useLocalAi({ open, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });

@@ -1,4 +1,5 @@
 import path from 'node:path';
+import packageJson from '../../../package.json' with { type: 'json' };
 
 import { ClaudeCliAnalyzerAdapter, OllamaAnalyzerAdapter } from '@adapters/analyzers/index.js';
 import { JsonConfigStore, SqlJsCatalogRepositoryFactory } from '@adapters/db/index.js';
@@ -64,7 +65,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   const jobs = new InProcessJobsPort();
   if (dbDriver === 'memory') {
     return {
-      version: config.version ?? '0.1.0',
+      version: config.version ?? packageJson.version,
       catalogs: new InMemoryCatalogRepositoryFactory(),
       config: new InMemoryConfigStore(),
       fs: new InMemoryFileSystemPort(workingDirectory),
@@ -78,7 +79,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   }
   const localAi = new ManagedOllamaRuntimeAdapter({ homeDirectory });
   return {
-    version: config.version ?? '0.1.0',
+    version: config.version ?? packageJson.version,
     catalogs: new SqlJsCatalogRepositoryFactory(),
     config: new JsonConfigStore({ homeDirectory }),
     fs: new NodeFileSystemPort({ workingDirectory }),
@@ -104,8 +105,8 @@ class BackendRoutingAnalyzerAdapter implements AnalyzerPort {
     return input.backend === 'local' ? this.local.analyze(input) : this.cloud.analyze(input);
   }
 
-  dependency(): Promise<Result<DependencyStatus, AppError>> {
-    return this.cloud.dependency();
+  dependency(input?: { backend: AnalyzeInput['backend'] }): Promise<Result<DependencyStatus, AppError>> {
+    return input?.backend === 'local' ? this.local.dependency() : this.cloud.dependency();
   }
 }
 
@@ -317,8 +318,8 @@ class InMemoryMediaPort implements MediaPort {
     return Promise.resolve(ok({ framePaths: [] }));
   }
 
-  extractAudio(): Promise<Result<{ audioPath: string }, AppError>> {
-    return Promise.resolve(ok({ audioPath: '' }));
+  extractAudio(): Promise<Result<{ hasAudio: boolean; audioPath: string | null }, AppError>> {
+    return Promise.resolve(ok({ hasAudio: true, audioPath: '' }));
   }
 
   thumbnail(input: { thumbnailPath: string; force: boolean }): Promise<Result<ThumbnailGeneration, AppError>> {
@@ -359,8 +360,13 @@ class InMemoryLocalAiRuntimePort implements LocalAiRuntimePort {
     return Promise.resolve(ok({ runtimeUp: false, runtimeVersion: '0.0.0', installedModels: [] }));
   }
 
-  pull(tag: string): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
-    return Promise.resolve(ok({ tag, status: 'installed' }));
+  async pull(
+    tag: string,
+    options?: { onRuntimeReady?: (() => Promise<Result<void, AppError>>) | undefined },
+  ): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
+    const ready = await options?.onRuntimeReady?.();
+    if (ready !== undefined && !ready.ok) return ready;
+    return ok({ tag, status: 'installed' });
   }
 
   rm(tag: string): Promise<Result<{ tag: string; status: 'removed' }, AppError>> {

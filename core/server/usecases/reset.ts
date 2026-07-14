@@ -34,7 +34,7 @@ export type ResetSingleOutput =
 
 export const resetAll = async (
   deps: ResetDeps,
-  input: { folder?: string; force: boolean },
+  input: { folder?: string | undefined; force: boolean },
 ): Promise<Result<ResetAllOutput, AppError>> => {
   const repository = await openRepository(deps, input.folder);
   if (!repository.ok) return repository;
@@ -42,7 +42,7 @@ export const resetAll = async (
   const videos = await repository.value.listVideos();
   if (!videos.ok) return videos;
   if (videos.value.length === 0) return ok({ cleared: 0, message: 'No video records in database' });
-  if (!input.force) return { ok: false, error: appError('force_required', 'Reset requires --force flag in JSON mode') };
+  if (!input.force) return { ok: false, error: appError('force_required', 'Reset requires confirmation') };
 
   const byStatus = emptyByStatus();
   for (const video of videos.value) {
@@ -56,7 +56,7 @@ export const resetAll = async (
 
 export const resetSingle = async (
   deps: ResetDeps,
-  input: { folder?: string; filename: string; force: boolean },
+  input: { folder?: string | undefined; filename: string; force: boolean },
 ): Promise<Result<ResetSingleOutput, AppError>> => {
   const repository = await openRepository(deps, input.folder);
   if (!repository.ok) return repository;
@@ -75,7 +75,7 @@ export const resetSingle = async (
     });
   }
 
-  if (!input.force) return { ok: false, error: appError('force_required', 'Reset requires --force flag in JSON mode') };
+  if (!input.force) return { ok: false, error: appError('force_required', 'Reset requires confirmation') };
 
   const reset = await repository.value.resetVideoByOriginalName(input.filename);
   if (!reset.ok) return { ok: false, error: appError('reset_failed', 'Failed to reset video', reset.error) };
@@ -89,7 +89,7 @@ export const resetSingle = async (
   });
 };
 
-const openRepository = async (deps: ResetDeps, folder?: string) =>
+const openRepository = async (deps: ResetDeps, folder?: string | undefined) =>
   deps.catalogs.open(deps.fs.resolve(folder ?? deps.fs.cwd()));
 
 const emptyByStatus = (): Record<VideoStatus, number> => ({

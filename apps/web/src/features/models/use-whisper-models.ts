@@ -1,13 +1,13 @@
 import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import type { WhisperModelName } from '@core/domain/index.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 
 import { actions } from '../../api.js';
 import { formatMb, whisperDiskUsageMb, type WhisperModelEntry } from './models-model.js';
-import { runJobToTerminal, sleep } from './run-job.js';
+import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 
 export interface WhisperDownloadProgress {
   modelName: WhisperModelName;
@@ -41,13 +41,6 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-/**
- * Whisper model list/download/activate/delete for the Model Manager
- * (parity-inventory §2). The catalog is a fixed built-in list read through the
- * bound `modelsWhisper` query; downloads run as jobs and advance a per-model
- * progress bar, activation and deletion are one-shot mutations. Disk usage is
- * summed from the domain model sizes.
- */
 export const useWhisperModels = ({
   open,
   addLine,
@@ -74,10 +67,11 @@ export const useWhisperModels = ({
       void (async () => {
         try {
           const accepted = await downloadMutation.mutateAsync({ modelName });
-          const final = await runJobToTerminal(accepted.jobId, {
+          const final = await pollJobUntilTerminal(accepted.jobId, {
             intervalMs,
             delay: sleep,
             fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
+            isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
             onSnapshot: (job) => {
               if (job.progress !== null) {
                 setDownloadProgress({ modelName, percentage: Math.round(job.progress.percentage ?? 0) });

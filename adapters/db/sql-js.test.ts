@@ -1,8 +1,8 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import initSqlJs from 'sql.js';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { Video } from '@core/domain/index.js';
 
@@ -76,6 +76,79 @@ describe('SqlJsCatalogRepositoryFactory', () => {
     expect(empty.value).toEqual([]);
   });
 
+  it('reloads external writes before reads and later writes', async () => {
+    const folder = await tempRoot();
+    const factoryA = new SqlJsCatalogRepositoryFactory();
+    const factoryB = new SqlJsCatalogRepositoryFactory();
+    const openedA = await factoryA.open(folder);
+    const openedB = await factoryB.open(folder);
+    if (!openedA.ok) throw new Error(openedA.error.message);
+    if (!openedB.ok) throw new Error(openedB.error.message);
+
+    const createdB = await openedB.value.createVideo(videoInput(folder));
+    if (!createdB.ok) throw new Error(createdB.error.message);
+    const visibleToA = await openedA.value.listVideos();
+    if (!visibleToA.ok) throw new Error(visibleToA.error.message);
+    expect(visibleToA.value.map((video) => video.originalName)).toEqual(['clip.mp4']);
+
+    const createdA = await openedA.value.createVideo({
+      ...videoInput(folder),
+      originalPath: path.join(folder, 'second.mp4'),
+      originalName: 'second.mp4',
+      fileHash: 'hash-2',
+    });
+    if (!createdA.ok) throw new Error(createdA.error.message);
+
+    const reopened = await new SqlJsCatalogRepositoryFactory().open(folder);
+    if (!reopened.ok) throw new Error(reopened.error.message);
+    const persisted = await reopened.value.listVideos();
+    if (!persisted.ok) throw new Error(persisted.error.message);
+    expect(persisted.value.map((video) => video.originalName).sort()).toEqual(['clip.mp4', 'second.mp4']);
+  });
+
+  it('uses the folder realpath as its repository cache key', async () => {
+    const folder = await tempRoot();
+    const aliasRoot = await tempRoot();
+    const alias = path.join(aliasRoot, 'folder-alias');
+    await symlink(folder, alias, 'dir');
+    const factory = new SqlJsCatalogRepositoryFactory();
+
+    const direct = await factory.open(folder);
+    const linked = await factory.open(alias);
+    if (!direct.ok) throw new Error(direct.error.message);
+    if (!linked.ok) throw new Error(linked.error.message);
+
+    expect(linked.value).toBe(direct.value);
+  });
+
+  it('keeps the existing catalog intact when an atomic temp export fails', async () => {
+    const folder = await tempRoot();
+    const factory = new SqlJsCatalogRepositoryFactory();
+    const opened = await factory.open(folder);
+    if (!opened.ok) throw new Error(opened.error.message);
+    const first = await opened.value.createVideo(videoInput(folder));
+    if (!first.ok) throw new Error(first.error.message);
+    const databasePath = opened.value.databasePath();
+    if (databasePath === null) throw new Error('Expected a persisted database path');
+    const tempPath = `${databasePath}.tmp`;
+    await mkdir(tempPath);
+
+    const failed = await opened.value.createVideo({
+      ...videoInput(folder),
+      originalPath: path.join(folder, 'second.mp4'),
+      originalName: 'second.mp4',
+      fileHash: 'hash-2',
+    });
+    expect(failed).toMatchObject({ ok: false, error: { code: 'internal' } });
+    await rm(tempPath, { recursive: true });
+
+    const reopened = await new SqlJsCatalogRepositoryFactory().open(folder);
+    if (!reopened.ok) throw new Error(reopened.error.message);
+    const persisted = await reopened.value.listVideos();
+    if (!persisted.ok) throw new Error(persisted.error.message);
+    expect(persisted.value.map((video) => video.originalName)).toEqual(['clip.mp4']);
+  });
+
   it('opens a catalog database constructed from the old implementation schema SQL', async () => {
     const folder = await tempRoot();
     await createOldCodePathDatabase(folder);
@@ -135,6 +208,20 @@ describe('JsonConfigStore', () => {
     expect(loaded.value).toBe('small');
     const raw = await readFile(path.join(home, '.ai-video-cataloger', 'config.json'), 'utf8');
     expect(JSON.parse(raw)).toEqual({ whisper_model: 'small' });
+  });
+
+  it('logs malformed legacy config loudly while preserving the legacy empty fallback', async () => {
+    const folder = await tempRoot();
+    const configDirectory = path.join(folder, '.ai-video-cataloger');
+    await mkdir(configDirectory, { recursive: true });
+    await writeFile(path.join(configDirectory, 'config.json'), '{not json', 'utf8');
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+
+    const loaded = await new JsonConfigStore().getAll({ kind: 'folder', folder });
+
+    expect(loaded).toEqual({ ok: true, value: {} });
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('Invalid config file'));
+    error.mockRestore();
   });
 });
 

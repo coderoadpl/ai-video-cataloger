@@ -18,11 +18,6 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-/**
- * The Prerequisites island's doctor state (parity-inventory §2). The dependency
- * report is server state read through the bound `doctor` query, refetched only
- * while the modal is open; "Check Again"/retry re-runs the same query.
- */
 export const usePrerequisites = ({ open }: { open: boolean }): PrerequisitesState => {
   const query = useQuery({ ...actions.doctor, enabled: open });
   return {

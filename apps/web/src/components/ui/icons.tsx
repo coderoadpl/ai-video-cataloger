@@ -1,11 +1,5 @@
 import { SvgIcon, type SvgIconProps } from '@mui/material';
 
-/**
- * The small glyph set the catalog and details islands draw on. The app has no
- * icon-font dependency, so each icon is a stock Material path wrapped in MUI's
- * `SvgIcon` — it inherits `fontSize` and `color` from context like any themed
- * component, keeping every colour in `theme.ts`.
- */
 
 export const FilmIcon = (props: SvgIconProps) => (
   <SvgIcon {...props}>

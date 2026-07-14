@@ -3,11 +3,6 @@ import { Box, ButtonBase } from '@mui/material';
 
 import { mediaUrl } from '../../lib/media-url.js';
 
-/**
- * The extracted-frame viewer: one large selected frame above a strip of
- * selectable thumbnails (parity-inventory §2). Frames are served over
- * `media://`; the strip only appears when there is more than one frame.
- */
 export const FrameGallery = ({ framePaths }: { framePaths: readonly string[] }) => {
   const [selected, setSelected] = useState(0);
   const active = Math.min(selected, framePaths.length - 1);

@@ -3,12 +3,6 @@ import { Chip, CircularProgress } from '@mui/material';
 import type { StatusToken } from '../../theme.js';
 import { CheckCircleIcon, ClockIcon, ErrorIcon, FilmIcon, WarningIcon } from './icons.js';
 
-/**
- * The full catalog status vocabulary as the renderer sees it: every persisted
- * pipeline status plus the renderer-only `not_tracked`. Kept as a presentational
- * literal here (components/ui may not import core) — the domain union in
- * `core/domain` is the source of truth and the scan contract validates it.
- */
 export type VideoStatusValue =
   | 'pending'
   | 'frames_extracted'
@@ -74,13 +68,6 @@ interface VideoStatusBadgeProps {
   variant?: BadgeVariant;
 }
 
-/**
- * The status pill shared by the sidebar list and the details header. Colour
- * comes from `theme.status[token]` (soft fill + main ink), never hard-coded. A
- * video that is actively being analyzed always reads as a "Processing" spinner
- * regardless of its persisted status. In the list, an untracked video shows no
- * pill at all (it renders nothing); the details header labels it explicitly.
- */
 export const VideoStatusBadge = ({
   status,
   analyzing = false,

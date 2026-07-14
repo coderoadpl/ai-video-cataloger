@@ -41,6 +41,7 @@ const ollamaChatResponseSchema = z.object({
 export interface AnalyzerCommandRunnerOptions {
   env: NodeJS.ProcessEnv;
   timeoutMs: number;
+  signal?: AbortSignal | undefined;
   onStdout?: ((chunk: string) => void) | undefined;
   onStderr?: ((chunk: string) => void) | undefined;
 }
@@ -93,6 +94,7 @@ export class ClaudeCliAnalyzerAdapter implements AnalyzerPort {
   }
 
   async analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
+    const verbose = this.verbose || input.verbose;
     const videoDir = path.dirname(input.videoPath);
     const prompt = buildAnalyzerPrompt({
       videoName: path.basename(input.videoPath),
@@ -102,7 +104,7 @@ export class ClaudeCliAnalyzerAdapter implements AnalyzerPort {
     });
     await clearClaudeProjectHistory(this.homeDirectory, videoDir);
     const args = ['--add-dir', videoDir, '-p', prompt];
-    const verbosePrefix = this.verbose
+    const verbosePrefix = verbose
       ? [
         `[verbose] Frame paths being analyzed:\n${input.framePaths.map((framePath) => `  ${framePath}`).join('\n')}\n`,
         `[verbose] Full prompt being sent to Claude:\n${prompt}\n`,
@@ -113,8 +115,9 @@ export class ClaudeCliAnalyzerAdapter implements AnalyzerPort {
     const run = await this.commandRunner.run('claude', args, {
       env: filteredAnalyzerEnv(this.env),
       timeoutMs: input.timeoutSeconds * 1000,
-      onStdout: this.verbose ? this.writeStdout : undefined,
-      onStderr: this.verbose ? this.writeStderr : undefined,
+      signal: input.signal,
+      onStdout: verbose ? this.writeStdout : undefined,
+      onStderr: verbose ? this.writeStderr : undefined,
     });
     if (!run.ok) return run;
     return ok({ rawResponse: run.value.stdout });
@@ -166,6 +169,7 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort {
   }
 
   async analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
+    const verbose = this.verbose || input.verbose;
     const status = await this.runtime.status();
     if (!status.ok) return status;
     if (!status.value.runtimeUp) {
@@ -187,7 +191,7 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort {
       framePaths: input.framePaths,
       frameMode: 'attached-images',
     });
-    if (this.verbose) {
+    if (verbose) {
       this.writeStdout(`[verbose] Local analysis via ${this.baseUrl} model ${input.localModel}\n`);
       this.writeStdout(`[verbose] ${input.framePaths.length} frame(s), prompt below:\n${prompt}\n`);
     }
@@ -196,9 +200,10 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort {
       prompt,
       images,
       timeoutMs: input.timeoutSeconds * 1000,
+      signal: input.signal,
     });
     if (!response.ok) return response;
-    if (this.verbose) this.writeStdout(`[verbose] Local model response:\n${response.value}\n`);
+    if (verbose) this.writeStdout(`[verbose] Local model response:\n${response.value}\n`);
     return ok({ rawResponse: response.value });
   }
 
@@ -262,7 +267,7 @@ const normalizeOllamaBaseUrl = (value: string): string =>
 const postOllamaChat = async (
   fetchImpl: typeof fetch,
   baseUrl: string,
-  request: { model: string; prompt: string; images: string[]; timeoutMs: number },
+  request: { model: string; prompt: string; images: string[]; timeoutMs: number; signal?: AbortSignal | undefined },
 ): Promise<Result<string, AppError>> => {
   let response: Response;
   try {
@@ -276,7 +281,9 @@ const postOllamaChat = async (
         options: { temperature: 0.2 },
         messages: [{ role: 'user', content: request.prompt, images: request.images }],
       }),
-      signal: AbortSignal.timeout(request.timeoutMs),
+      signal: request.signal === undefined
+        ? AbortSignal.timeout(request.timeoutMs)
+        : AbortSignal.any([request.signal, AbortSignal.timeout(request.timeoutMs)]),
     });
   } catch (cause) {
     return { ok: false, error: appError('ollama_unavailable', unavailableMessage(baseUrl, cause), cause) };
@@ -315,10 +322,15 @@ const childProcessAnalyzerCommandRunner: AnalyzerCommandRunner = {
       let stderr = '';
       let settled = false;
       let timedOut = false;
+      const abort = (): void => {
+        child.kill('SIGTERM');
+      };
       const timeout = setTimeout(() => {
         timedOut = true;
         child.kill('SIGTERM');
       }, options.timeoutMs);
+      if (options.signal?.aborted === true) abort();
+      else options.signal?.addEventListener('abort', abort, { once: true });
       child.stdout.on('data', (chunk: Buffer) => {
         const text = chunk.toString();
         stdout += text;
@@ -333,12 +345,14 @@ const childProcessAnalyzerCommandRunner: AnalyzerCommandRunner = {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        options.signal?.removeEventListener('abort', abort);
         resolve({ ok: false, error: appError('processing_error', cause.message, cause) });
       });
       child.on('close', (code) => {
         if (settled) return;
         settled = true;
         clearTimeout(timeout);
+        options.signal?.removeEventListener('abort', abort);
         if (timedOut) {
           resolve({ ok: false, error: appError('processing_error', `Command timed out: ${command}`) });
           return;

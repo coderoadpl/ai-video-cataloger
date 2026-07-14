@@ -66,7 +66,10 @@ const requirements = (tiers: Tier[]): Requirements => ({
 
 const stubEndpoints = (config: StoredConfig, tiers: Tier[] = []) => {
   server.use(
-    http.get('/api/config', () => HttpResponse.json({ ok: true, data: { config, defaults } })),
+    http.get('/api/config', ({ request }) => {
+      expect(new URL(request.url).searchParams.get('folder')).toBe(FOLDER);
+      return HttpResponse.json({ ok: true, data: { config, defaults } });
+    }),
     http.get('/api/models/local-ai/requirements', () =>
       HttpResponse.json({ ok: true, data: requirements(tiers) }),
     ),
@@ -97,8 +100,8 @@ describe('settings modal', () => {
   });
 
   it('saves only the changed keys and closes on success', async () => {
-    const configSetBody = z.object({ key: z.string(), value: z.string() });
-    const bodies: { key: string; value: string }[] = [];
+    const configSetBody = z.object({ folder: z.literal(FOLDER), key: z.string(), value: z.string() });
+    const bodies: { folder: typeof FOLDER; key: string; value: string }[] = [];
     stubEndpoints(emptyConfig);
     server.use(
       http.post('/api/config', async ({ request }) => {
@@ -122,7 +125,7 @@ describe('settings modal', () => {
 
     fireEvent.click(save);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(bodies).toEqual([{ key: 'skip_rename', value: 'true' }]);
+    expect(bodies).toEqual([{ folder: FOLDER, key: 'skip_rename', value: 'true' }]);
   });
 
   it('warns when the selected local model is unsupported', async () => {

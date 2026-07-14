@@ -19,13 +19,6 @@ interface SettingsAnalyzerSectionProps {
   onLocalModelChange: (tag: string) => void;
 }
 
-/**
- * The "AI Analyzer" section of the Settings modal (parity-inventory §2): the
- * backend picker (Claude CLI vs local Ollama) and, for the local backend, a
- * model picker over the hardware tiers with unsupported tiers disabled and a
- * hint when the chosen model is unsupported or not yet installed. These keys are
- * real — the processing pipeline reads them per folder.
- */
 export const SettingsAnalyzerSection = ({
   backend,
   localModel,

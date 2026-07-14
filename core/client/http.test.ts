@@ -53,6 +53,59 @@ describe('createApiClient health query', () => {
 });
 
 describe('createApiClient route calls', () => {
+  it('passes folder scope through query strings and command bodies', async () => {
+    const seen: Array<{ url: string; body: string | null }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      seen.push({ url: String(input), body: typeof init?.body === 'string' ? init.body : null });
+      if (String(input).startsWith('/api/status')) {
+        return jsonResponse({
+          ok: true,
+          data: {
+            videos: [],
+            summary: { total: 0, completed: 0, inProgress: 0, pending: 0, error: 0 },
+          },
+        });
+      }
+      if (init?.method === 'GET') {
+        return jsonResponse({
+          ok: true,
+          data: {
+            config: {
+              whisper_model: null,
+              whisper_mode: null,
+              frames: null,
+              timeout: null,
+              skip_rename: null,
+              analyzer_backend: null,
+              local_model: null,
+            },
+            defaults: {
+              whisper_model: 'base',
+              whisper_mode: 'local',
+              frames: '3',
+              timeout: '120',
+              skip_rename: 'false',
+              analyzer_backend: 'claude',
+              local_model: 'gemma3:12b',
+            },
+          },
+        });
+      }
+      return jsonResponse({ ok: true, data: { cleared: 0, message: 'No video records in database' } });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+
+    await client.status({ folder: '/videos/A B' });
+    await client.config({ folder: '/videos/A B', key: null });
+    await client.resetAll({ folder: '/videos/A B', force: true });
+
+    expect(seen).toEqual([
+      { url: '/api/status?folder=%2Fvideos%2FA+B', body: null },
+      { url: '/api/config?folder=%2Fvideos%2FA+B', body: null },
+      { url: '/api/reset/all', body: JSON.stringify({ force: true, folder: '/videos/A B' }) },
+    ]);
+  });
+
   it('interpolates GET route params into the request URL', async () => {
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(input).toBe('/api/scan?folder=%2Fvideos%2FA+B');

@@ -13,12 +13,6 @@ interface CatalogSidebarProps {
   toolbar?: ReactNode;
 }
 
-/**
- * The sidebar body: the folder header, the "generating thumbnails" hint, and
- * the video list — or the no-folder empty state (parity-inventory §2). All video
- * server-state arrives pre-resolved in `catalog`; this component only lays it
- * out.
- */
 export const CatalogSidebar = ({
   folder,
   catalog,

@@ -14,11 +14,6 @@ interface VideoDetailsProps {
   onAnalyze?: ((video: DetailsVideo) => void) | undefined;
 }
 
-/**
- * The selected video's detail view: header (thumbnail, name, path, status
- * badge), metadata card, status description, the per-status action card, and
- * the artifacts region (parity-inventory §2).
- */
 export const VideoDetails = ({ video, analyzing, onAnalyze }: VideoDetailsProps) => (
   <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 780 }}>
     <Box sx={{ display: 'flex', gap: 2 }}>

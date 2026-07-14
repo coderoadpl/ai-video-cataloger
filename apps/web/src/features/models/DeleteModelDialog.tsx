@@ -14,7 +14,6 @@ interface DeleteModelDialogProps {
   onConfirm: () => void;
 }
 
-/** Confirmation before deleting a downloaded Whisper model (parity-inventory §2). */
 export const DeleteModelDialog = ({ open, modelName, onClose, onConfirm }: DeleteModelDialogProps) => (
   <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth data-testid="delete-model-dialog">
     <DialogTitle>Delete model</DialogTitle>

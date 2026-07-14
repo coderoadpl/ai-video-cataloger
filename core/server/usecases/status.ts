@@ -30,7 +30,7 @@ export interface StatusDeps {
   fs: FileSystemPort;
 }
 
-export const getStatus = async (deps: StatusDeps, input: { folder?: string } = {}): Promise<Result<StatusOutput, AppError>> => {
+export const getStatus = async (deps: StatusDeps, input: { folder?: string | undefined } = {}): Promise<Result<StatusOutput, AppError>> => {
   const folder = deps.fs.resolve(input.folder ?? deps.fs.cwd());
   const repository = await deps.catalogs.open(folder);
   if (!repository.ok) return repository;

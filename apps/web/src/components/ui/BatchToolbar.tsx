@@ -16,12 +16,6 @@ interface BatchToolbarProps {
   onStop: () => void;
 }
 
-/**
- * The sidebar batch control (parity-inventory §2): an "Analyze All (N)" button
- * for the pending/not-tracked videos, replaced while a batch runs by the
- * current/total counter, the current filename, a progress bar and a Stop
- * button.
- */
 export const BatchToolbar = ({
   pendingCount,
   isBusy,

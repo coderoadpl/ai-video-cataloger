@@ -23,7 +23,7 @@ export const IN_PROGRESS_STATUSES: readonly VideoStatus[] = [
   'analyzed',
 ] as const;
 
-const summaryDataSchema = z.object({
+export const summaryDataSchema = z.object({
   schemaVersion: z.literal(1),
   description: z.string(),
   suggestedFilename: z.string(),

@@ -59,6 +59,7 @@ export const defineMutation = <TData, TVariables>(
 };
 
 export type ScanInput = z.input<typeof API_ROUTES.scan.input>;
+export type StatusInput = z.input<typeof API_ROUTES.status.input>;
 export type ConfigInput = z.input<typeof API_ROUTES.configGet.input>;
 export type CheckInput = z.input<typeof API_ROUTES.check.input>;
 export type JobInput = z.input<typeof API_ROUTES.jobStatus.input>;
@@ -86,12 +87,13 @@ export const scanScopes = {
 
 export const statusScopes = {
   all: () => ['status'] as const,
+  folder: (input: z.output<typeof API_ROUTES.status.input>) => ['status', 'folder', input.folder ?? null] as const,
 };
 
 export const configScopes = {
   all: () => ['config'] as const,
   entry: (input: z.output<typeof API_ROUTES.configGet.input>) =>
-    ['config', input.key === null ? 'all' : 'key', input.key] as const,
+    ['config', 'folder', input.folder ?? null, input.key === null ? 'all' : 'key', input.key] as const,
 };
 
 export const modelsWhisperScopes = {
@@ -170,11 +172,13 @@ export const scanQuery = (api: ApiClient, input: ScanInput) => {
   });
 };
 
-export const statusQuery = (api: ApiClient) =>
-  defineQuery({
-    queryKey: statusScopes.all(),
-    call: ({ signal }) => api.status(signal),
+export const statusQuery = (api: ApiClient, input: StatusInput = {}) => {
+  const parsed = API_ROUTES.status.input.parse(input);
+  return defineQuery({
+    queryKey: statusScopes.folder(parsed),
+    call: ({ signal }) => api.status(parsed, signal),
   });
+};
 
 export const configQuery = (api: ApiClient, input: ConfigInput = {}) => {
   const parsed = API_ROUTES.configGet.input.parse(input);

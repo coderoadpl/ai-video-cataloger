@@ -41,7 +41,7 @@ export interface ConfigSetOutput {
 
 export const getConfig = async (
   deps: ConfigDeps,
-  input: { folder?: string; key: ConfigKey | null },
+  input: { folder?: string | undefined; key: ConfigKey | null },
 ): Promise<Result<ConfigGetOutput, AppError>> => {
   const scope = { kind: 'folder', folder: deps.fs.resolve(input.folder ?? deps.fs.cwd()) } as const;
   if (input.key !== null) {
@@ -66,7 +66,7 @@ export const getConfig = async (
 
 export const setConfig = async (
   deps: ConfigDeps,
-  input: { folder?: string; key: ConfigKey; value: string },
+  input: { folder?: string | undefined; key: ConfigKey; value: string },
 ): Promise<Result<ConfigSetOutput, AppError>> => {
   let normalized: string;
   try {

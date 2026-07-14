@@ -1,19 +1,23 @@
 import path from 'node:path';
+import { stat } from 'node:fs/promises';
+import { createInterface } from 'node:readline/promises';
 
-import { Command } from 'commander';
+import { Command, InvalidArgumentError } from 'commander';
 
 import { createApiClient, type ApiClient } from '@core/client/index.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
 import {
+  CONFIG_KEYS,
   WHISPER_MODEL_NAMES,
   appError,
+  configKeySchema,
   err,
   type AppError,
-  type ConfigKey,
   type Result,
   type WhisperModelName,
 } from '@core/domain/index.js';
 import { createApp } from '@server/src/create-app.js';
+import packageJson from '../../../package.json' with { type: 'json' };
 
 import {
   emitCompleted,
@@ -23,6 +27,7 @@ import {
   emitStarted,
   isJsonMode,
 } from './output.js';
+import { waitForJob } from './job-wait.js';
 
 interface JsonOption {
   json?: boolean | undefined;
@@ -60,20 +65,14 @@ const api = createApiClient({
 
 const program = new Command('ai-video-cataloger')
   .description('CLI for video analysis, local Whisper transcription, Claude/local analysis, content-based renaming')
-  .version('0.1.0');
+  .version(packageJson.version);
 
 const numberOption = (value: string): number => Number.parseInt(value, 10);
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-const CONFIG_KEYS: readonly ConfigKey[] = [
-  'whisper_model',
-  'whisper_mode',
-  'frames',
-  'timeout',
-  'skip_rename',
-  'analyzer_backend',
-  'local_model',
-];
-
+const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'] as const;
+const whisperOption = (value: string): ProcessOptions['whisper'] => {
+  if (value === 'local' || value === 'api' || value === 'skip') return value;
+  throw new InvalidArgumentError(`Invalid whisper mode: ${value}. Valid modes: local, api, skip`);
+};
 const parseWhisperModel = (modelName: string): Result<WhisperModelName, AppError> => {
   for (const model of WHISPER_MODEL_NAMES) {
     if (modelName === model) return { ok: true, value: model };
@@ -104,42 +103,21 @@ const runSimple = async <T>(
   if (exitCode !== null) process.exitCode = exitCode;
 };
 
-const waitForJob = async (
+const waitForJobAndEmit = async (
   json: boolean,
   jobId: string,
   completedHuman: (data: unknown) => string,
+  raw = false,
 ): Promise<void> => {
-  let previousProgressKey = '';
-  const deadline = Date.now() + 10 * 60 * 1000;
-  while (Date.now() < deadline) {
-    const job = await api.job({ jobId });
-    if (!job.ok) {
-      emitError(json, job.error);
-      return;
-    }
-    const progress = job.value.progress;
-    if (progress !== null) {
-      const progressKey = JSON.stringify(progress);
-      if (progressKey !== previousProgressKey) {
-        previousProgressKey = progressKey;
-        emitProgress(json, progressEvent(progress));
-      }
-    }
-    if (job.value.status === 'completed') {
-      emitCompleted(json, job.value.result, completedHuman(job.value.result));
-      return;
-    }
-    if (job.value.status === 'failed') {
-      emitError(json, job.value.error ?? appError('internal', 'Job failed without an error'));
-      return;
-    }
-    if (job.value.status === 'cancelled') {
-      emitError(json, appError('processing_error', 'Job cancelled'));
-      return;
-    }
-    await sleep(25);
-  }
-  emitError(json, appError('internal', `Timed out waiting for job: ${jobId}`));
+  await waitForJob(jobId, {
+    fetchJob: (id) => api.job({ jobId: id }),
+    onProgress: (progress) => emitProgress(json, progressEvent(progress)),
+    onCompleted: (data) => {
+      if (raw) emitRaw(json, data, '');
+      emitCompleted(json, data, completedHuman(data));
+    },
+    onError: (error) => emitError(json, error),
+  });
 };
 
 const progressEvent = (progress: CliJobProgress): {
@@ -172,7 +150,23 @@ models
   .option('--json', 'machine-readable JSON output', false)
   .action(async (options: JsonOption) => {
     const json = isJsonMode(options);
-    await runSimple(json, 'models_list', () => api.modelsWhisper(), modelsListHuman, { raw: true });
+    emitStarted(json, 'models_list');
+    const whisper = await api.modelsWhisper();
+    if (!whisper.ok) {
+      emitError(json, whisper.error);
+      return;
+    }
+    emitRaw(json, whisper.value, '');
+    if (json) {
+      emitCompleted(json, whisper.value);
+      return;
+    }
+    const localAi = await api.localAiRequirements();
+    if (!localAi.ok) {
+      emitError(json, localAi.error);
+      return;
+    }
+    emitCompleted(json, whisper.value, modelsListHuman(whisper.value, localAi.value));
   });
 
 models
@@ -195,7 +189,7 @@ models
       emitError(json, result.error);
       return;
     }
-    await waitForJob(json, result.value.jobId, (data) => installedHuman(data, tag));
+    await waitForJobAndEmit(json, result.value.jobId, (data) => installedHuman(data, tag));
   });
 
 models
@@ -259,7 +253,7 @@ models
       emitError(json, result.error);
       return;
     }
-    await waitForJob(json, result.value.jobId, (data) => downloadedHuman(data, model.value));
+    await waitForJobAndEmit(json, result.value.jobId, (data) => downloadedHuman(data, model.value), true);
   });
 
 models
@@ -292,7 +286,7 @@ program
   .option('--json', 'machine-readable JSON output', false)
   .action(async (options: JsonOption) => {
     const json = isJsonMode(options);
-    await runSimple(json, 'status', () => api.status(), statusHuman, { raw: true });
+    await runSimple(json, 'status', () => api.status({ folder: cliWorkingDirectory }), statusHuman, { raw: true });
   });
 
 program
@@ -305,7 +299,15 @@ program
     const force = options.force === true;
     if (filename === undefined) {
       emitStarted(json, 'reset_all');
-      const result = await api.resetAll({ force });
+      let result = await api.resetAll({ folder: cliWorkingDirectory, force });
+      if (!json && !force && !result.ok && result.error.code === 'force_required') {
+        const confirmed = await confirmReset('Are you sure you want to clear all video records?');
+        if (!confirmed) {
+          emitCompleted(false, undefined, 'Reset cancelled.');
+          return;
+        }
+        result = await api.resetAll({ folder: cliWorkingDirectory, force: true });
+      }
       if (!result.ok) {
         emitError(json, result.error);
         return;
@@ -315,7 +317,15 @@ program
       return;
     }
     emitStarted(json, 'reset_single', { filename });
-    const result = await api.resetSingle({ filename, force });
+    let result = await api.resetSingle({ folder: cliWorkingDirectory, filename, force });
+    if (!json && !force && !result.ok && result.error.code === 'force_required') {
+      const confirmed = await confirmReset(`Reset "${filename}" to pending status?`);
+      if (!confirmed) {
+        emitCompleted(false, undefined, 'Reset cancelled.');
+        return;
+      }
+      result = await api.resetSingle({ folder: cliWorkingDirectory, filename, force: true });
+    }
     if (!result.ok) {
       emitError(json, result.error);
       return;
@@ -331,25 +341,27 @@ program
   .option('-s, --skip-rename', 'skip renaming', false)
   .option('-v, --verbose', 'verbose output', false)
   .option('-t, --timeout <seconds>', 'analysis timeout', numberOption, 120)
-  .option('-w, --whisper <mode>', 'whisper mode', 'local')
+  .option('-w, --whisper <mode>', 'whisper mode', whisperOption, 'local')
   .option('--whisper-model <model>', 'whisper model', 'base')
   .option('--analyzer <backend>', 'analyzer backend')
   .option('--local-model <tag>', 'local AI model')
   .option('--json', 'machine-readable JSON output', false)
   .action(async (videoPath: string, options: ProcessOptions, command: Command) => {
     const json = isJsonMode(options);
+    const validatedPath = await validateProcessPath(videoPath);
+    if (!validatedPath.ok) {
+      emitError(json, validatedPath.error, validatedPath.data);
+      return;
+    }
     const explicit = (name: string): boolean => command.getOptionValueSource(name) === 'cli';
     const commandOptions = {
       frames: options.frames,
       skipRename: options.skipRename === true,
-      verbose: options.verbose === true,
       timeout: options.timeout,
       whisper: options.whisper,
       whisperModel: options.whisperModel,
-      analyzer: options.analyzer ?? null,
-      localModel: options.localModel ?? null,
     };
-    emitStarted(json, 'process_single', { videoPath: path.resolve(videoPath), options: commandOptions });
+    emitStarted(json, 'process_single', { videoPath: validatedPath.value, options: commandOptions });
     let whisperModel: WhisperModelName | undefined;
     if (options.whisper === 'local') {
       const model = parseWhisperModel(options.whisperModel);
@@ -364,7 +376,7 @@ program
       return;
     }
     const result = await api.processVideo({
-      videoPath,
+      videoPath: validatedPath.value,
       frames: options.frames,
       framesExplicit: explicit('frames'),
       skipRename: options.skipRename === true,
@@ -383,7 +395,7 @@ program
       emitError(json, result.error);
       return;
     }
-    await waitForJob(json, result.value.jobId, (data) => processHuman(data));
+    await waitForJobAndEmit(json, result.value.jobId, (data) => processHuman(data));
   });
 
 program
@@ -419,7 +431,7 @@ config
       emitError(json, appError('unknown_config_key', `Unknown config key: ${key}`));
       return;
     }
-    const result = await api.config({ key: parsedKey });
+    const result = await api.config({ folder: cliWorkingDirectory, key: parsedKey });
     if (!result.ok) {
       emitError(json, result.error);
       return;
@@ -441,7 +453,7 @@ config
       emitError(json, appError('unknown_config_key', `Unknown config key: ${key}`));
       return;
     }
-    const result = await api.setConfig({ key: parsedKey, value });
+    const result = await api.setConfig({ folder: cliWorkingDirectory, key: parsedKey, value });
     if (!result.ok) {
       emitError(json, result.error);
       return;
@@ -493,27 +505,32 @@ program
 
 const configKey = (key: string | undefined) => {
   if (key === undefined) return null;
-  if (
-    key === 'whisper_model' ||
-    key === 'whisper_mode' ||
-    key === 'frames' ||
-    key === 'timeout' ||
-    key === 'skip_rename' ||
-    key === 'analyzer_backend' ||
-    key === 'local_model'
-  ) {
-    return key;
-  }
-  return null;
+  const parsed = configKeySchema.safeParse(key);
+  return parsed.success ? parsed.data : null;
 };
 
-const modelsListHuman = (data: Awaited<ReturnType<ApiClient['modelsWhisper']>> extends Result<infer T, AppError> ? T : never): string => {
+const modelsListHuman = (
+  data: Awaited<ReturnType<ApiClient['modelsWhisper']>> extends Result<infer T, AppError> ? T : never,
+  localAi: Awaited<ReturnType<ApiClient['localAiRequirements']>> extends Result<infer T, AppError> ? T : never,
+): string => {
   const lines = ['Whisper models:'];
   for (const model of data.models) {
     lines.push(`${model.active ? '*' : ' '} ${model.name} ${model.size} ${model.downloaded ? 'downloaded' : 'not downloaded'}`);
   }
-  lines.push('', 'Local AI models: run `models requirements` for hardware tiers');
+  lines.push('', 'Local AI models (Ollama):');
+  for (const tier of localAi.tiers) {
+    const recommended = tier.recommended ? ' (recommended)' : '';
+    const installed = tier.installed ? 'installed' : 'not installed';
+    lines.push(`  ${tier.tag}${recommended} - ${installed} - ${tier.downloadGB} GB, needs ${tier.minTotalMemGB} GB RAM - ${localAiSupportHuman(tier.supportLevel)}`);
+  }
+  if (!localAi.runtimeUp) lines.push('', 'Runtime not running (starts automatically when needed).');
   return lines.join('\n');
+};
+
+const localAiSupportHuman = (supportLevel: 'ok' | 'insufficient-ram' | 'unsupported-platform'): string => {
+  if (supportLevel === 'ok') return 'compatible';
+  if (supportLevel === 'insufficient-ram') return 'not enough RAM';
+  return 'Apple Silicon required';
 };
 
 const requirementsHuman = (data: Awaited<ReturnType<ApiClient['localAiRequirements']>> extends Result<infer T, AppError> ? T : never): string => {
@@ -565,6 +582,50 @@ const installedHuman = (data: unknown, tag: string): string => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const validateProcessPath = async (inputPath: string): Promise<
+  | { ok: true; value: string }
+  | { ok: false; error: AppError; data: { path: string; extension?: string; supportedExtensions?: readonly string[] } }
+> => {
+  const absolutePath = path.resolve(inputPath);
+  let fileStat;
+  try {
+    fileStat = await stat(absolutePath);
+  } catch {
+    return {
+      ok: false,
+      error: appError('file_not_found', `File not found: ${absolutePath}`),
+      data: { path: absolutePath },
+    };
+  }
+  const extension = path.extname(absolutePath).toLowerCase();
+  if (!VIDEO_EXTENSIONS.some((supported) => supported === extension)) {
+    return {
+      ok: false,
+      error: appError('invalid_file_type', `Not a video file: ${absolutePath}`),
+      data: { path: absolutePath, extension, supportedExtensions: VIDEO_EXTENSIONS },
+    };
+  }
+  if (!fileStat.isFile()) {
+    return {
+      ok: false,
+      error: appError('not_a_file', `Path is not a file: ${absolutePath}`),
+      data: { path: absolutePath },
+    };
+  }
+  return { ok: true, value: absolutePath };
+};
+
+const confirmReset = async (message: string): Promise<boolean> => {
+  const prompt = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    const answer = await prompt.question(`${message} [y/N] `);
+    const normalized = answer.trim().toLowerCase();
+    return normalized === 'y' || normalized === 'yes';
+  } finally {
+    prompt.close();
+  }
+};
 
 try {
   await program.parseAsync(process.argv);

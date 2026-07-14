@@ -1,10 +1,21 @@
 import { eq, sql, type SQL } from 'drizzle-orm';
 import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js';
-import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  mkdirSync,
+  openSync,
+  readFileSync,
+  realpathSync,
+  renameSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import initSqlJs, { type Database } from 'sql.js';
+import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 import { z } from 'zod';
 
 import {
@@ -35,6 +46,11 @@ const persistedConfigSchema = z.record(z.string(), z.string());
 type DatabaseSchema = typeof schema;
 type SqlJsDrizzle = SQLJsDatabase<DatabaseSchema>;
 
+interface DatabaseFileState {
+  mtimeMs: number;
+  size: number;
+}
+
 export interface SqlJsAdapterOptions {
   homeDirectory?: string | undefined;
 }
@@ -43,14 +59,25 @@ export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
   private readonly opened = new Map<string, SqlJsCatalogRepository>();
 
   async open(folder: string): Promise<Result<CatalogRepository, AppError>> {
-    const normalizedFolder = path.resolve(folder);
-    const existing = this.opened.get(normalizedFolder);
-    if (existing !== undefined) return ok(existing);
-    const opened = await openSqlJsDatabase(catalogDatabasePath(normalizedFolder));
-    if (!opened.ok) return opened;
-    const repository = new SqlJsCatalogRepository(opened.value.databasePath, opened.value.client, opened.value.db);
-    this.opened.set(normalizedFolder, repository);
-    return ok(repository);
+    try {
+      const normalizedFolder = path.resolve(folder);
+      const canonicalFolder = realpathSync.native(normalizedFolder);
+      const existing = this.opened.get(canonicalFolder);
+      if (existing !== undefined) return ok(existing);
+      const opened = await openSqlJsDatabase(catalogDatabasePath(normalizedFolder));
+      if (!opened.ok) return opened;
+      const repository = new SqlJsCatalogRepository(
+        opened.value.databasePath,
+        opened.value.SQL,
+        opened.value.client,
+        opened.value.db,
+        opened.value.fileState,
+      );
+      this.opened.set(canonicalFolder, repository);
+      return ok(repository);
+    } catch (cause) {
+      return repositoryFailure(cause);
+    }
   }
 }
 
@@ -92,8 +119,10 @@ export class JsonConfigStore implements ConfigStore {
 class SqlJsCatalogRepository implements CatalogRepository {
   constructor(
     private readonly filePath: string,
-    private readonly client: Database,
-    private readonly db: SqlJsDrizzle,
+    private readonly SQL: SqlJsStatic,
+    private client: Database,
+    private db: SqlJsDrizzle,
+    private fileState: DatabaseFileState | null,
   ) {}
 
   databasePath(): string | null {
@@ -209,6 +238,7 @@ class SqlJsCatalogRepository implements CatalogRepository {
 
   private async read<T>(operation: () => T): Promise<Result<T, AppError>> {
     try {
+      this.reloadIfChanged();
       return ok(operation());
     } catch (cause) {
       return repositoryFailure(cause);
@@ -217,12 +247,27 @@ class SqlJsCatalogRepository implements CatalogRepository {
 
   private async write<T>(operation: () => T): Promise<Result<T, AppError>> {
     try {
+      this.reloadIfChanged();
       const value = operation();
       persistDatabase(this.filePath, this.client);
+      this.fileState = databaseFileState(this.filePath);
       return ok(value);
     } catch (cause) {
+      this.fileState = null;
       return repositoryFailure(cause);
     }
+  }
+
+  private reloadIfChanged(): void {
+    const diskState = databaseFileState(this.filePath);
+    if (this.fileState !== null && sameFileState(this.fileState, diskState)) return;
+    const client = new this.SQL.Database(readFileSync(this.filePath));
+    client.run(createCatalogSchemaSql);
+    client.run(createConfigSchemaSql);
+    this.client.close();
+    this.client = client;
+    this.db = drizzle(client, { schema });
+    this.fileState = diskState;
   }
 }
 
@@ -234,7 +279,13 @@ class RepositoryError extends Error {
 
 const openSqlJsDatabase = async (
   databasePath: string,
-): Promise<Result<{ databasePath: string; client: Database; db: SqlJsDrizzle }, AppError>> => {
+): Promise<Result<{
+  databasePath: string;
+  SQL: SqlJsStatic;
+  client: Database;
+  db: SqlJsDrizzle;
+  fileState: DatabaseFileState;
+}, AppError>> => {
   try {
     mkdirSync(path.dirname(databasePath), { recursive: true });
     const SQL = await initSqlJs(sqlJsWasmConfig());
@@ -242,15 +293,31 @@ const openSqlJsDatabase = async (
     client.run(createCatalogSchemaSql);
     client.run(createConfigSchemaSql);
     persistDatabase(databasePath, client);
-    return ok({ databasePath, client, db: drizzle(client, { schema }) });
+    return ok({ databasePath, SQL, client, db: drizzle(client, { schema }), fileState: databaseFileState(databasePath) });
   } catch (cause) {
     return repositoryFailure(cause);
   }
 };
 
 const persistDatabase = (databasePath: string, client: Database): void => {
-  writeFileSync(databasePath, Buffer.from(client.export()));
+  const tempPath = `${databasePath}.tmp`;
+  const descriptor = openSync(tempPath, 'w');
+  try {
+    writeFileSync(descriptor, Buffer.from(client.export()));
+    fsyncSync(descriptor);
+  } finally {
+    closeSync(descriptor);
+  }
+  renameSync(tempPath, databasePath);
 };
+
+const databaseFileState = (databasePath: string): DatabaseFileState => {
+  const stats = statSync(databasePath);
+  return { mtimeMs: stats.mtimeMs, size: stats.size };
+};
+
+const sameFileState = (left: DatabaseFileState, right: DatabaseFileState): boolean =>
+  left.mtimeMs === right.mtimeMs && left.size === right.size;
 
 const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined => {
   const wasmPath = findSqlJsWasmPath();
@@ -300,8 +367,12 @@ const readConfig = (filePath: string): Result<Record<string, string>, AppError> 
   try {
     const parsed: unknown = JSON.parse(readFileSync(filePath, 'utf8'));
     const result = persistedConfigSchema.safeParse(parsed);
-    return ok(result.success ? result.data : {});
-  } catch {
+    if (result.success) return ok(result.data);
+    console.error(`Invalid config file ${filePath}: ${result.error.message}`);
+    return ok({});
+  } catch (cause) {
+    const message = cause instanceof Error ? cause.message : String(cause);
+    console.error(`Invalid config file ${filePath}: ${message}`);
     return ok({});
   }
 };

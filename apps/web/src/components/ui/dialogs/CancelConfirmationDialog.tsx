@@ -19,13 +19,6 @@ interface CancelConfirmationDialogProps {
   onConfirm: () => void;
 }
 
-/**
- * Confirms cancelling a running analysis before it is torn down. The single vs
- * batch wording is distinct (parity-inventory §2): a single cancel warns the one
- * video may be left incomplete with partial artifacts; a batch cancel warns the
- * current video may be incomplete while already-finished videos keep their
- * results.
- */
 export const CancelConfirmationDialog = ({
   confirmation,
   onClose,

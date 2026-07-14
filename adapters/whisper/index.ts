@@ -28,7 +28,7 @@ const openAiErrorSchema = z.object({
 });
 
 export interface CommandRunner {
-  run(command: string, args: readonly string[]): Promise<Result<{ stdout: string; stderr: string }, AppError>>;
+  run(command: string, args: readonly string[], options?: { signal?: AbortSignal | undefined }): Promise<Result<{ stdout: string; stderr: string }, AppError>>;
 }
 
 export interface WhisperBinaryResolver {
@@ -42,7 +42,7 @@ export interface ResolvedWhisperBinary {
 }
 
 export interface WhisperApiClient {
-  createTranscription(input: { file: ReadStream; model: 'whisper-1' }): Promise<{ text: string }>;
+  createTranscription(input: { file: ReadStream; model: 'whisper-1' }, options?: { signal?: AbortSignal | undefined }): Promise<{ text: string }>;
 }
 
 export interface WhisperTranscriberOptions {
@@ -124,7 +124,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
         path.dirname(input.transcriptPath),
         '--output_format',
         'txt',
-      ]);
+      ], { signal: input.signal });
       if (!run.ok) return run;
       const content = (await readFile(input.transcriptPath, 'utf8')).trim();
       return ok({ transcriptPath: input.transcriptPath, content });
@@ -146,7 +146,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
       const transcription = await client.createTranscription({
         file: createReadStream(input.audioPath),
         model: 'whisper-1',
-      });
+      }, { signal: input.signal });
       const content = transcription.text.trim();
       await writeFile(input.transcriptPath, content, 'utf8');
       return ok({ transcriptPath: input.transcriptPath, content });
@@ -192,7 +192,7 @@ export class HuggingFaceWhisperModelDownloader implements ModelDownloadPort {
 
   async downloadWhisperModel(
     model: WhisperModelName,
-    options: { force: boolean; onProgress?: (progress: WhisperDownloadProgress) => void },
+    options: { force: boolean; onProgress?: (progress: WhisperDownloadProgress) => void; signal?: AbortSignal | undefined },
   ): Promise<Result<{ model: WhisperModelName; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>> {
     const modelPath = this.whisperModelPath(model);
     const downloaded = await this.isWhisperModelDownloaded(model);
@@ -206,8 +206,8 @@ export class HuggingFaceWhisperModelDownloader implements ModelDownloadPort {
       await mkdir(path.dirname(modelPath), { recursive: true });
       await rm(tempPath, { force: true });
       const url = this.urlForModel(model);
-      const expectedSha256 = await this.expectedSha256(url);
-      const response = await this.fetchImpl(url);
+      const expectedSha256 = await this.expectedSha256(url, options.signal);
+      const response = await this.fetchImpl(url, signalInit(options.signal));
       if (!response.ok) {
         return { ok: false, error: appError('download_error', `HTTP error: ${response.status} ${response.statusText}`) };
       }
@@ -240,9 +240,9 @@ export class HuggingFaceWhisperModelDownloader implements ModelDownloadPort {
     }
   }
 
-  private async expectedSha256(url: string): Promise<string | null> {
+  private async expectedSha256(url: string, signal?: AbortSignal): Promise<string | null> {
     try {
-      const head = await this.fetchImpl(url, { method: 'HEAD', redirect: 'manual' });
+      const head = await this.fetchImpl(url, { method: 'HEAD', redirect: 'manual', ...signalInit(signal) });
       return sha256Header(head.headers);
     } catch {
       return null;
@@ -346,22 +346,28 @@ const homeWhisperBinaryResolver = (homeDirectory: string): WhisperBinaryResolver
 });
 
 const childProcessCommandRunner: CommandRunner = {
-  run: (command, args) =>
+  run: (command, args, options) =>
     new Promise((resolve) => {
-      execFile(command, [...args], (error, stdout, stderr) => {
+      const child = execFile(command, [...args], (error, stdout, stderr) => {
+        options?.signal?.removeEventListener('abort', abort);
         if (error !== null) {
           resolve({ ok: false, error: appError('processing_error', error.message, error) });
           return;
         }
         resolve(ok({ stdout: String(stdout), stderr: String(stderr) }));
       });
+      const abort = (): void => {
+        child.kill('SIGTERM');
+      };
+      if (options?.signal?.aborted === true) abort();
+      else options?.signal?.addEventListener('abort', abort, { once: true });
     }),
 };
 
 const createOpenAiWhisperClient = (apiKey: string): WhisperApiClient => {
   const client = new OpenAI({ apiKey });
   return {
-    createTranscription: (input) => client.audio.transcriptions.create(input),
+    createTranscription: (input, options) => client.audio.transcriptions.create(input, options),
   };
 };
 
@@ -453,3 +459,6 @@ const contentLength = (headers: Headers): number | null => {
   const parsed = Number.parseInt(raw, 10);
   return Number.isFinite(parsed) ? parsed : null;
 };
+
+const signalInit = (signal: AbortSignal | undefined): { signal?: AbortSignal } =>
+  signal === undefined ? {} : { signal };

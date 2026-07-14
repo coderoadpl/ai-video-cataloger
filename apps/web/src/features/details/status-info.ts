@@ -1,10 +1,5 @@
 import { type DetailsVideo } from './details-video.js';
 
-/**
- * The one-line status description shown under the details header, matching the
- * old renderer's status-info copy (parity-inventory §2). An actively analyzing
- * video always reads as "being processed" regardless of its persisted status.
- */
 export const statusDescription = (status: DetailsVideo['status'], analyzing: boolean): string => {
   if (analyzing) return 'Video is being processed…';
   switch (status) {

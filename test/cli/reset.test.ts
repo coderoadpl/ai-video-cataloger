@@ -8,6 +8,23 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { runCli, parseJsonEvents, findEvent } from '../helpers/cli-runner.js';
 import { createTestDir, cleanupTestDir } from '../setup.js';
 import { createDbDir } from '../helpers/fixtures.js';
+import { SqlJsCatalogRepositoryFactory } from '../../adapters/db/sql-js.js';
+
+const seedVideo = async (folder: string, filename = 'test-video.mp4'): Promise<void> => {
+  const opened = await new SqlJsCatalogRepositoryFactory().open(folder);
+  if (!opened.ok) throw new Error(opened.error.message);
+  const created = await opened.value.createVideo({
+    originalPath: `${folder}/${filename}`,
+    originalName: filename,
+    newName: null,
+    fileHash: `hash-${filename}`,
+    status: 'error',
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+    errorMessage: 'failed',
+  });
+  if (!created.ok) throw new Error(created.error.message);
+};
 
 describe('reset command', () => {
   let testDir: string;
@@ -63,6 +80,18 @@ describe('reset command', () => {
       const data = completedEvent?.data as Record<string, unknown>;
       expect(data).toHaveProperty('cleared');
     });
+
+    it('prompts in human mode and leaves records intact when declined', async () => {
+      await seedVideo(testDir);
+
+      const declined = await runCli(['reset'], { cwd: testDir, input: 'n\n' });
+      const after = await runCli(['reset', '--force', '--json'], { cwd: testDir });
+
+      expect(declined.exitCode).toBe(0);
+      expect(declined.stdout).toContain('Are you sure you want to clear all video records?');
+      expect(declined.stdout).toContain('Reset cancelled.');
+      expect(findEvent(parseJsonEvents(after.stdout), 'completed')).toMatchObject({ data: { cleared: 1 } });
+    });
   });
 
   describe('reset single', () => {
@@ -110,6 +139,16 @@ describe('reset command', () => {
       const errorEvent = findEvent(events, 'error');
 
       expect(errorEvent).toBeDefined();
+    });
+
+    it('prompts in human mode and resets one video when confirmed', async () => {
+      await seedVideo(testDir);
+
+      const result = await runCli(['reset', 'test-video.mp4'], { cwd: testDir, input: 'yes\n' });
+
+      expect(result.exitCode).toBe(0);
+      expect(result.stdout).toContain('Reset "test-video.mp4" to pending status?');
+      expect(result.stdout).toContain('Reset test-video.mp4');
     });
   });
 

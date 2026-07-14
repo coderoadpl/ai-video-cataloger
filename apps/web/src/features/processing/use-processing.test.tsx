@@ -26,6 +26,7 @@ const jobSnapshot = (jobId: string) => {
     kind: 'process',
     status: failed ? 'failed' : 'completed',
     progress: null,
+    progressEvents: [],
     error: failed ? { code: 'processing_error', message: 'ffmpeg exploded' } : null,
     createdAt: '2026-01-01T00:00:00.000Z',
     updatedAt: '2026-01-01T00:00:00.000Z',
@@ -68,5 +69,62 @@ describe('useProcessing batch', () => {
     expect(summary.map((r) => r.success)).toEqual([false, true, true]);
     expect(summary.at(0)?.error).toBe('ffmpeg exploded');
     expect(result.current.batchProgress).toBeNull();
+  });
+
+  it('keeps the busy guard until a cancelled job actually settles', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const processed: string[] = [];
+    let terminal = false;
+    server.use(
+      http.post('/api/process', async ({ request }) => {
+        const { videoPath } = processBodySchema.parse(await request.json());
+        processed.push(videoPath);
+        return HttpResponse.json({ ok: true, data: { jobId: `job:${videoPath}` } });
+      }),
+      http.post('/api/jobs/cancel', () => HttpResponse.json({
+        ok: true,
+        data: { jobId: 'job:/v/good1.mp4', cancelled: true },
+      })),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            ...jobSnapshot(jobId),
+            status: terminal ? 'cancelled' : 'running',
+            error: null,
+          },
+        });
+      }),
+    );
+    const { result } = renderHook(() => useProcessing({ videos, addLine: vi.fn(), intervalMs: 1 }), { wrapper });
+    const first = videos[1];
+    const second = videos[2];
+    if (first === undefined || second === undefined) throw new Error('Expected processing fixtures');
+
+    act(() => {
+      result.current.analyze(first);
+    });
+    await waitFor(() => expect(processed).toEqual(['/v/good1.mp4']));
+    act(() => {
+      result.current.requestCancel();
+      result.current.confirmCancel();
+      result.current.analyze(second);
+    });
+    await new Promise((resolve) => {
+      setTimeout(resolve, 20);
+    });
+    expect(processed).toEqual(['/v/good1.mp4']);
+    expect(result.current.isBusy).toBe(true);
+
+    terminal = true;
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+    act(() => {
+      result.current.analyze(second);
+    });
+    await waitFor(() => expect(processed).toEqual(['/v/good1.mp4', '/v/good2.mp4']));
   });
 });

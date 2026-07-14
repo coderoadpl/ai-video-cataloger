@@ -10,12 +10,6 @@ interface ErrorBoundaryState {
   error: unknown;
 }
 
-/**
- * Presentational error boundary: it catches render-time throws and delegates
- * rendering to a `fallback` render prop, so the taxonomy-aware fallback lives
- * with the composition root and this primitive stays free of `core`. An
- * optional `onError` reports the throw without coupling to a vendor.
- */
 export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundaryState> {
   override state: ErrorBoundaryState = { error: null };
 

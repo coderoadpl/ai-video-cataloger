@@ -24,6 +24,26 @@ export const resolveScopedImage = async (
   if (rootFolder === null) return null;
   if (!ALLOWED_EXTENSIONS.has(path.extname(requestedPath).toLowerCase())) return null;
 
+  const realRequested = await resolveScopedPath(requestedPath, rootFolder);
+  if (realRequested === null) return null;
+
+  try {
+    const stats = await stat(realRequested);
+    if (!stats.isFile()) return null;
+    if (stats.size > maxBytes) return null;
+  } catch {
+    return null;
+  }
+
+  return realRequested;
+};
+
+export const resolveScopedPath = async (
+  requestedPath: string,
+  rootFolder: string | null,
+): Promise<string | null> => {
+  if (rootFolder === null || !path.isAbsolute(requestedPath)) return null;
+
   let realRoot: string;
   let realRequested: string;
   try {
@@ -35,14 +55,5 @@ export const resolveScopedImage = async (
 
   const relative = path.relative(realRoot, realRequested);
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
-
-  try {
-    const stats = await stat(realRequested);
-    if (!stats.isFile()) return null;
-    if (stats.size > maxBytes) return null;
-  } catch {
-    return null;
-  }
-
   return realRequested;
 };

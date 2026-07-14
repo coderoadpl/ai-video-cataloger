@@ -24,6 +24,7 @@ const jobWithStatus = (status: JobOutput['status']): JobOutput => ({
   kind: 'process',
   status,
   progress: null,
+  progressEvents: [],
   error: null,
   createdAt: '2026-07-12T10:00:00.000Z',
   updatedAt: '2026-07-12T10:00:00.000Z',
@@ -67,8 +68,14 @@ describe('query descriptors', () => {
       fetchImpl: async () => jsonResponse({ ok: true, data: {} }),
     });
 
-    expect(configQuery(api).queryKey).toEqual(['config', 'all', null]);
-    expect(configQuery(api, { key: 'frames' }).queryKey).toEqual(['config', 'key', 'frames']);
+    expect(configQuery(api).queryKey).toEqual(['config', 'folder', null, 'all', null]);
+    expect(configQuery(api, { folder: '/videos', key: 'frames' }).queryKey).toEqual([
+      'config',
+      'folder',
+      '/videos',
+      'key',
+      'frames',
+    ]);
     expect(modelsWhisperScopes.all()).toEqual(['models', 'whisper']);
     expect(jobQuery(api, { jobId: 'job-1' }).queryKey).toEqual(['jobs', 'detail', 'job-1']);
   });

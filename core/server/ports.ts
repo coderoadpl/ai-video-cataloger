@@ -8,14 +8,6 @@ import type {
   WhisperModelName,
 } from '@core/domain/index.js';
 
-export interface Clock {
-  nowIso(): string;
-}
-
-export interface IdGenerator {
-  nextId(): string;
-}
-
 export type CatalogVideo = Video;
 
 export interface CatalogResetSingleResult {
@@ -102,11 +94,18 @@ export interface ExtractFramesInput {
   videoPath: string;
   outputDirectory: string;
   frameCount: number;
+  signal?: AbortSignal | undefined;
 }
 
 export interface ExtractAudioInput {
   videoPath: string;
   outputPath: string;
+  signal?: AbortSignal | undefined;
+}
+
+export interface AudioExtraction {
+  hasAudio: boolean;
+  audioPath: string | null;
 }
 
 export interface ThumbnailInput {
@@ -127,7 +126,7 @@ export interface ThumbnailGeneration {
 export interface MediaPort {
   probe(input: { videoPath: string }): Promise<Result<MediaProbe, AppError>>;
   extractFrames(input: ExtractFramesInput): Promise<Result<{ framePaths: string[] }, AppError>>;
-  extractAudio(input: ExtractAudioInput): Promise<Result<{ audioPath: string }, AppError>>;
+  extractAudio(input: ExtractAudioInput): Promise<Result<AudioExtraction, AppError>>;
   thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>>;
   dependencies(): Promise<Result<DependencyStatus[], AppError>>;
 }
@@ -137,6 +136,7 @@ export interface TranscribeInput {
   transcriptPath: string;
   mode: AppConfig['whisper_mode'];
   model: WhisperModelName;
+  signal?: AbortSignal | undefined;
 }
 
 export interface TranscriberPort {
@@ -151,6 +151,8 @@ export interface AnalyzeInput {
   backend: AppConfig['analyzer_backend'];
   localModel: string;
   timeoutSeconds: number;
+  verbose: boolean;
+  signal?: AbortSignal | undefined;
 }
 
 export interface AnalysisOutput {
@@ -159,7 +161,7 @@ export interface AnalysisOutput {
 
 export interface AnalyzerPort {
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>>;
-  dependency(): Promise<Result<DependencyStatus, AppError>>;
+  dependency(input?: { backend: AppConfig['analyzer_backend'] }): Promise<Result<DependencyStatus, AppError>>;
 }
 
 export interface LocalAiRuntimeStatus {
@@ -181,7 +183,11 @@ export interface LocalAiRuntimePort {
   status(): Promise<Result<LocalAiRuntimeStatus, AppError>>;
   pull(
     tag: string,
-    options?: { onProgress?: (progress: LocalAiPullProgress) => void },
+    options?: {
+      onRuntimeReady?: (() => Promise<Result<void, AppError>>) | undefined;
+      onProgress?: (progress: LocalAiPullProgress) => void;
+      signal?: AbortSignal | undefined;
+    },
   ): Promise<Result<{ tag: string; status: 'installed' }, AppError>>;
   rm(tag: string): Promise<Result<{ tag: string; status: 'removed' }, AppError>>;
   stopManagedDaemon(): Promise<Result<{ stopped: boolean }, AppError>>;
@@ -201,7 +207,7 @@ export interface ModelDownloadPort {
   isWhisperModelDownloaded(model: WhisperModelName): Promise<Result<boolean, AppError>>;
   downloadWhisperModel(
     model: WhisperModelName,
-    options: { force: boolean; onProgress?: (progress: WhisperDownloadProgress) => void },
+    options: { force: boolean; onProgress?: (progress: WhisperDownloadProgress) => void; signal?: AbortSignal | undefined },
   ): Promise<Result<{ model: WhisperModelName; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>>;
   deleteWhisperModel(
     model: WhisperModelName,
@@ -230,11 +236,17 @@ export interface JobProgress {
   data?: Record<string, unknown>;
 }
 
+export interface SequencedJobProgress {
+  sequence: number;
+  progress: JobProgress;
+}
+
 export interface JobRecord {
   jobId: string;
   kind: JobKind;
   status: JobStatus;
   progress: JobProgress | null;
+  progressEvents: SequencedJobProgress[];
   result?: unknown;
   error: AppError | null;
   createdAt: string;
@@ -242,6 +254,7 @@ export interface JobRecord {
 }
 
 export interface JobExecutionContext {
+  signal: AbortSignal;
   reportProgress(progress: JobProgress): Promise<Result<void, AppError>>;
 }
 

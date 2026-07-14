@@ -10,13 +10,6 @@ export interface MenuEventHandlers {
   onToggleSidebar: () => void;
 }
 
-/**
- * Subscribes to the native menu events that drive app chrome (open the
- * settings/models/prerequisites modals, toggle the terminal and sidebar) over
- * the desktop bridge (parity-inventory §3 menu channels). Handlers are held in a
- * ref so the subscriptions register once yet always call the latest closure; the
- * folder-related menu events live in `use-shell`.
- */
 export const useMenuEvents = (handlers: MenuEventHandlers): void => {
   const handlersRef = useRef(handlers);
   handlersRef.current = handlers;

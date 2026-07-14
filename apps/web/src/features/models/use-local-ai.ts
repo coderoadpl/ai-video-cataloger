@@ -1,12 +1,12 @@
 import { useCallback, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
+import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 
 import { actions } from '../../api.js';
 import type { LocalAiTier, Machine } from './models-model.js';
-import { runJobToTerminal, sleep } from './run-job.js';
+import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 
 export interface LocalAiPullProgress {
   tag: string;
@@ -38,13 +38,6 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-/**
- * Local-AI (managed Ollama) requirements/pull/remove for the Model Manager
- * (parity-inventory §2/§6). Machine summary and hardware tiers come from the
- * bound `localAiRequirements` query; a pull runs as a job advancing a progress
- * bar, delete is a one-shot mutation. Read-only status never starts the runtime;
- * pull is the start point.
- */
 export const useLocalAi = ({ open, addLine, intervalMs = 1000 }: UseLocalAiOptions): LocalAiState => {
   const queryClient = useQueryClient();
   const requirementsQuery = useQuery({ ...actions.localAiRequirements, enabled: open });
@@ -65,10 +58,11 @@ export const useLocalAi = ({ open, addLine, intervalMs = 1000 }: UseLocalAiOptio
       void (async () => {
         try {
           const accepted = await pullMutation.mutateAsync({ tag: tier.tag });
-          const final = await runJobToTerminal(accepted.jobId, {
+          const final = await pollJobUntilTerminal(accepted.jobId, {
             intervalMs,
             delay: sleep,
             fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
+            isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
             onSnapshot: (job) => {
               if (job.progress !== null) {
                 setPullProgress({ tag: tier.tag, percentage: Math.round(job.progress.percentage ?? 0) });

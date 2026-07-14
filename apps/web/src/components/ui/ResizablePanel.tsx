@@ -13,11 +13,6 @@ interface ResizablePanelProps {
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 
-/**
- * Mouse-resizable panel. `horizontal` sizes width with a handle on the right
- * edge; `vertical` sizes height with a handle on the top edge (used by the
- * bottom terminal, so dragging up grows it). Collapsed pins the size to 0.
- */
 export const ResizablePanel = ({
   direction,
   size,

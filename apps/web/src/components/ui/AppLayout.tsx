@@ -25,12 +25,6 @@ interface AppLayoutProps {
   onTerminalClear?: () => void;
 }
 
-/**
- * The app shell: a header row, a resizable/collapsible left sidebar beside the
- * main content, and a resizable/collapsible terminal panel pinned to the
- * bottom. Panel sizes and defaults mirror the old renderer (parity-inventory
- * §2): sidebar 280/200/400, terminal 200/100/500.
- */
 export const AppLayout = ({
   header,
   sidebar,

@@ -124,15 +124,28 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
-  status: (signal?: AbortSignal) =>
-    request(options, API_ROUTES.status.method, API_ROUTES.status.path, statusOutputSchema, undefined, signal),
+  status: (input: z.input<typeof API_ROUTES.status.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.status.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.status.method,
+      queryPath(API_ROUTES.status.path, [['folder', parsed.value.folder]]),
+      statusOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   config: (input: z.input<typeof API_ROUTES.configGet.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.configGet.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));
     return request(
       options,
       API_ROUTES.configGet.method,
-      queryPath(API_ROUTES.configGet.path, [['key', parsed.value.key]]),
+      queryPath(API_ROUTES.configGet.path, [
+        ['folder', parsed.value.folder],
+        ['key', parsed.value.key],
+      ]),
       configGetOutputSchema,
       undefined,
       signal,

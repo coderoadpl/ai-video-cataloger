@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError, type JobOutput } from '@core/client/index.js';
+import { ApiError, isTerminalJobStatus, type JobOutput } from '@core/client/index.js';
 import type { z } from 'zod';
 import type { scanVideoSchema } from '@core/contract/index.js';
 
@@ -11,7 +11,7 @@ import type { BatchResultItem } from '../../components/ui/dialogs/BatchSummaryDi
 import type { ProgressView } from '../../components/ui/ProcessingOverlay.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { actions } from '../../api.js';
-import { pollJobUntilTerminal } from './poll-job.js';
+import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { stepLabel } from './step-labels.js';
 
 type ProcessVideo = Pick<z.output<typeof scanVideoSchema>, 'path' | 'filename' | 'status'>;
@@ -46,17 +46,11 @@ export interface ProcessingState {
 export interface UseProcessingOptions {
   videos: readonly ProcessVideo[];
   addLine: AddLogLine;
-  /** Job poll interval; small values keep tests fast. */
   intervalMs?: number;
 }
 
 const isPending = (status: ProcessVideo['status']): boolean =>
   status === 'pending' || status === 'not_tracked';
-
-const sleep = (ms: number): Promise<void> =>
-  new Promise((resolve) => {
-    setTimeout(resolve, ms);
-  });
 
 const messageOf = (error: unknown): string => {
   if (error instanceof ApiError) return error.appError.message;
@@ -72,15 +66,6 @@ const toProgressView = (progress: NonNullable<JobOutput['progress']>): ProgressV
   totalSteps: progress.totalSteps ?? 5,
 });
 
-/**
- * The processing island: single analyze and sequential batch analyze-all, both
- * driven by the job-progress poll helper. Each video starts a `process` job,
- * then `pollJobUntilTerminal` advances the overlay/terminal until the job is
- * terminal (Delta 5). The batch loop records every result and continues past a
- * failure (parity-inventory §2, S4). Cancellation cancels the active job and, in
- * batch, stops the queue after the current video. Refs hold the imperative
- * queue/cancel flags; React state holds only what the UI renders.
- */
 export const useProcessing = ({
   videos,
   addLine,
@@ -132,6 +117,7 @@ export const useProcessing = ({
         intervalMs,
         delay: sleep,
         fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
+        isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
         onSnapshot: (job) => {
           if (job.progress === null) return;
           const view = toProgressView(job.progress);

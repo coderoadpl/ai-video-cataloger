@@ -47,6 +47,7 @@ export interface FfmpegCommand {
   audioChannels(channels: number): FfmpegCommand;
   output(outputPath: string): FfmpegCommand;
   on(event: 'end' | 'error', listener: (error?: Error) => void): FfmpegCommand;
+  kill(signal?: string): FfmpegCommand;
   run(): void;
 }
 
@@ -121,6 +122,7 @@ export class FfmpegMediaAdapter implements MediaPort {
             .seekInput(timestamp)
             .frames(1)
             .output(framePath),
+          input.signal,
         );
         if (!extracted.ok) return extracted;
         framePaths.push(framePath);
@@ -131,11 +133,16 @@ export class FfmpegMediaAdapter implements MediaPort {
     }
   }
 
-  async extractAudio(input: ExtractAudioInput): Promise<Result<{ audioPath: string }, AppError>> {
+  async extractAudio(input: ExtractAudioInput): Promise<Result<{ hasAudio: boolean; audioPath: string | null }, AppError>> {
     const configured = await this.configure();
     if (!configured.ok) return configured;
 
     try {
+      const metadata = await probeMetadata(this.runtime, input.videoPath);
+      if (!metadata.ok) return metadata;
+      if (!metadata.value.streams.some((stream) => stream.codec_type === 'audio')) {
+        return ok({ hasAudio: false, audioPath: null });
+      }
       mkdirSync(path.dirname(input.outputPath), { recursive: true });
       const extracted = await runCommand(
         this.runtime
@@ -145,9 +152,10 @@ export class FfmpegMediaAdapter implements MediaPort {
           .audioFrequency(16000)
           .audioChannels(1)
           .output(input.outputPath),
+        input.signal,
       );
       if (!extracted.ok) return extracted;
-      return ok({ audioPath: input.outputPath });
+      return ok({ hasAudio: true, audioPath: input.outputPath });
     } catch (cause) {
       return mediaFailure(cause, 'Failed to extract audio');
     }
@@ -208,7 +216,12 @@ export const frameOutputPath = (outputDirectory: string, frameNumber: number): s
   path.join(outputDirectory, `frame-${frameNumber.toString().padStart(3, '0')}.jpg`);
 
 export const tempAudioPathForVideo = (videoPath: string, tempRoot = tmpdir()): string =>
-  path.join(tempRoot, 'ai-video-cataloger', 'audio', `${path.basename(videoPath, path.extname(videoPath))}.wav`);
+  path.join(
+    tempRoot,
+    'ai-video-cataloger',
+    'audio',
+    `${pathHash(videoPath)}-${path.basename(videoPath, path.extname(videoPath))}.wav`,
+  );
 
 export const thumbnailPathForVideo = (videoPath: string): string =>
   path.join(path.dirname(videoPath), '.ai-video-cataloger', 'thumbnails', `${path.basename(videoPath, path.extname(videoPath))}.jpg`);
@@ -257,13 +270,31 @@ const probeDuration = async (runtime: FfmpegRuntime, videoPath: string): Promise
   return ok(duration);
 };
 
-const runCommand = (command: FfmpegCommand): Promise<Result<void, AppError>> =>
+const runCommand = (command: FfmpegCommand, signal?: AbortSignal): Promise<Result<void, AppError>> =>
   new Promise((resolve) => {
+    let settled = false;
+    const finish = (result: Result<void, AppError>): void => {
+      if (settled) return;
+      settled = true;
+      signal?.removeEventListener('abort', abort);
+      resolve(result);
+    };
+    const abort = (): void => {
+      command.kill('SIGTERM');
+    };
     command
-      .on('end', () => resolve(ok(undefined)))
-      .on('error', (error) => resolve(mediaFailure(error, 'FFmpeg command failed')))
+      .on('end', () => finish(ok(undefined)))
+      .on('error', (error) => finish(mediaFailure(error, 'FFmpeg command failed')))
       .run();
+    if (signal?.aborted === true) abort();
+    else signal?.addEventListener('abort', abort, { once: true });
   });
+
+const pathHash = (value: string): string => {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < value.length; index += 1) hash = Math.imul(hash ^ value.charCodeAt(index), 16_777_619);
+  return (hash >>> 0).toString(16).padStart(8, '0');
+};
 
 const dependencyStatus = async (
   name: 'ffmpeg' | 'ffprobe',

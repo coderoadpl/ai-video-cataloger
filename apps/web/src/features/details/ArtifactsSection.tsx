@@ -12,13 +12,6 @@ const CardHeader = ({ icon, title }: { icon: ReactNode; title: string }) => (
   </Box>
 );
 
-/**
- * The artifacts region of the details panel (parity-inventory §2): the summary
- * card (description + suggested filename), a missing-summary empty state for a
- * video that should have one, the extracted-frame gallery, the transcript
- * scroll area, and the collapsible full AI analysis. Each block renders only
- * when its artifact is present.
- */
 export const ArtifactsSection = ({ video }: { video: DetailsVideo }) => {
   const { framePaths, transcriptContent, summary } = video.artifacts;
   const frames = framePaths ?? [];

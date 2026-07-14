@@ -2,13 +2,16 @@ import { describe, expect, it, vi } from 'vitest';
 
 import type { JobOutput } from '@core/client/index.js';
 
-import { pollJobUntilTerminal } from './poll-job.js';
+import { isTerminalJobStatus } from '@core/client/index.js';
+
+import { pollJobUntilTerminal } from '../../lib/poll-job.js';
 
 const job = (status: JobOutput['status']): JobOutput => ({
   jobId: 'j',
   kind: 'process',
   status,
   progress: null,
+  progressEvents: [],
   error: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -21,7 +24,12 @@ describe('pollJobUntilTerminal', () => {
     const fetchJob = vi.fn().mockResolvedValue(job('completed'));
     const delay = vi.fn().mockImplementation(resolvedDelay);
 
-    const final = await pollJobUntilTerminal('j', { fetchJob, delay, intervalMs: 1 });
+    const final = await pollJobUntilTerminal<JobOutput>('j', {
+      fetchJob,
+      delay,
+      intervalMs: 1,
+      isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+    });
 
     expect(final.status).toBe('completed');
     expect(fetchJob).toHaveBeenCalledTimes(1);
@@ -37,10 +45,11 @@ describe('pollJobUntilTerminal', () => {
     const delay = vi.fn().mockImplementation(resolvedDelay);
     const seen: string[] = [];
 
-    const final = await pollJobUntilTerminal('j', {
+    const final = await pollJobUntilTerminal<JobOutput>('j', {
       fetchJob,
       delay,
       intervalMs: 5,
+      isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
       onSnapshot: (snapshot) => seen.push(snapshot.status),
     });
 
@@ -54,7 +63,12 @@ describe('pollJobUntilTerminal', () => {
     const fetchJob = vi.fn().mockResolvedValue(job('running'));
     const delay = vi.fn().mockImplementation(resolvedDelay);
 
-    const final = await pollJobUntilTerminal('j', { fetchJob, delay, shouldStop: () => true });
+    const final = await pollJobUntilTerminal<JobOutput>('j', {
+      fetchJob,
+      delay,
+      isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+      shouldStop: () => true,
+    });
 
     expect(final.status).toBe('running');
     expect(fetchJob).toHaveBeenCalledTimes(1);

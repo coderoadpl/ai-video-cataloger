@@ -22,11 +22,6 @@ interface BatchSummaryDialogProps {
   onClose: () => void;
 }
 
-/**
- * The dialog shown after a batch analysis settles (parity-inventory §2): the
- * success and failed counts, and — when any failed — the list of failed videos
- * with their error messages.
- */
 export const BatchSummaryDialog = ({ open, results, onClose }: BatchSummaryDialogProps) => {
   const failed = results.filter((result) => !result.success);
   const successCount = results.length - failed.length;

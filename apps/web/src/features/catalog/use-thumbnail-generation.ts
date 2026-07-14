@@ -6,17 +6,6 @@ import { type CatalogVideo } from './catalog-video.js';
 
 const EMPTY: readonly CatalogVideo[] = [];
 
-/**
- * Backfills missing sidebar thumbnails. The `scan` result reports each video's
- * cached thumbnail (or its absence); for every video still without one we ask
- * the `thumbnail` command to generate it, sequentially, then invalidate so the
- * catalog refetches and the new `media://` sources appear. This mirrors the old
- * renderer's post-scan thumbnail pass (parity-inventory §2 "Generating
- * thumbnails…"). Each path is attempted at most once per folder so a failing
- * generation never spins.
- *
- * Returns whether a generation pass is currently in flight.
- */
 export const useThumbnailGeneration = (
   folder: string | null,
   videos: readonly CatalogVideo[] = EMPTY,

@@ -21,6 +21,7 @@ import type { App } from '@server/src/create-app.js';
 
 import { CHANNELS } from './channels.js';
 import type { FolderStore } from './folder-store.js';
+import { resolveScopedPath } from './media-scope.js';
 import { updateRecentFoldersMenu } from './menu.js';
 
 export interface IpcDeps {
@@ -133,12 +134,9 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
     if (!isTrustedSender(event)) return;
     const targetPath = stringSchema.safeParse(pathInput);
     if (!targetPath.success || !path.isAbsolute(targetPath.data)) return;
-    try {
-      await stat(targetPath.data);
-      shell.showItemInFolder(targetPath.data);
-    } catch {
-      return;
-    }
+    const scopedPath = await resolveScopedPath(targetPath.data, await deps.folderStore.getCurrent());
+    if (scopedPath === null) return;
+    shell.showItemInFolder(scopedPath);
   });
 };
 

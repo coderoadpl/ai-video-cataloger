@@ -1,6 +1,5 @@
 import { useCallback, useState } from 'react';
 
-/** Maximum number of lines kept in the terminal buffer; oldest are dropped past it. */
 export const MAX_LOG_LINES = 5000;
 
 export type LogLineType = 'info' | 'success' | 'error' | 'stdout' | 'stderr';
@@ -29,12 +28,6 @@ interface BufferState {
 
 const EMPTY_BUFFER: BufferState = { lines: [], dropped: 0 };
 
-/**
- * Pure ring-buffer append: keep at most `maxLines`, counting how many were
- * evicted from the front so the panel can show a "N earlier line(s) dropped"
- * notice (parity-inventory §2). Extracted so the cap is unit-testable without a
- * React render.
- */
 export const appendLine = (state: BufferState, line: LogLine, maxLines: number): BufferState => {
   const lines = [...state.lines, line];
   const overflow = lines.length - maxLines;
@@ -49,12 +42,6 @@ export interface UseTerminalLogOptions {
   maxLines?: number;
 }
 
-/**
- * The terminal panel's line store as a bounded ring buffer. Job/event lines are
- * appended structured (a human line plus an optional JSON line the panel can
- * hide); the buffer caps at `maxLines` and reports the dropped count. This is UI
- * state, not server state, so it lives in React state rather than TanStack Query.
- */
 export const useTerminalLog = (options: UseTerminalLogOptions = {}): TerminalLogState => {
   const { maxLines = MAX_LOG_LINES } = options;
   const [buffer, setBuffer] = useState<BufferState>(EMPTY_BUFFER);

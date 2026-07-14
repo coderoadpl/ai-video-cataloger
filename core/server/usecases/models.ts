@@ -11,6 +11,7 @@ import {
   type WhisperModelName,
 } from '@core/domain/index.js';
 
+import { JOB_CANCELLED_ERROR_MESSAGE } from '../ports.js';
 import type { ConfigStore, JobsPort, LocalAiRuntimePort, ModelDownloadPort } from '../ports.js';
 
 export interface ModelsDeps {
@@ -100,6 +101,7 @@ export const downloadWhisperModel = async (
       if (!started.ok) return started;
       const downloaded = await deps.downloads.downloadWhisperModel(input.modelName, {
         force: input.force,
+        signal: context.signal,
         onProgress: (progress) => {
           void context.reportProgress({
             step: 'downloading',
@@ -112,6 +114,7 @@ export const downloadWhisperModel = async (
           });
         },
       });
+      if (context.signal.aborted) return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
       if (!downloaded.ok) return downloaded;
       const completed = await context.reportProgress({ step: 'downloading', percentage: 100 });
       if (!completed.ok) return completed;
@@ -200,10 +203,10 @@ export const pullLocalAiModel = async (
     run: async (context) => {
       const runtime = await context.reportProgress({ step: 'runtime_setup', percentage: 0 });
       if (!runtime.ok) return runtime;
-      const download = await context.reportProgress({ step: 'model_download', percentage: 0 });
-      if (!download.ok) return download;
       let lastPercent = -1;
       const pulled = await deps.localAi.pull(input.tag, {
+        signal: context.signal,
+        onRuntimeReady: () => context.reportProgress({ step: 'model_download', percentage: 0 }),
         onProgress: (progress) => {
           if (progress.percentage === null || progress.percentage === lastPercent) return;
           lastPercent = progress.percentage;
@@ -214,6 +217,7 @@ export const pullLocalAiModel = async (
           });
         },
       });
+      if (context.signal.aborted) return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
       if (!pulled.ok) return pulled;
       const completed = await context.reportProgress({ step: 'model_download', percentage: 100 });
       if (!completed.ok) return completed;

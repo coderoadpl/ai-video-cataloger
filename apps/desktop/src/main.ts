@@ -7,6 +7,7 @@ import type { App } from '@server/src/create-app.js';
 import { createApp } from '@server/src/create-app.js';
 
 import { folderStorePath, FolderStore } from './folder-store.js';
+import { buildDesktopPath, userDataDirectoryOverride } from './environment.js';
 import { cleanupIpcHandlers, registerIpcHandlers } from './ipc.js';
 import { createApplicationMenu } from './menu.js';
 import { registerMediaProtocolHandler, registerMediaScheme } from './media-protocol.js';
@@ -17,12 +18,12 @@ const currentDirectory = path.dirname(currentFile);
 
 if (process.platform === 'win32') app.setAppUserModelId(app.getName());
 
-const userDataDirectory = process.argv
-  .find((arg) => arg.startsWith('--user-data-dir='))
-  ?.slice('--user-data-dir='.length);
-if (userDataDirectory !== undefined && path.isAbsolute(userDataDirectory)) {
+const userDataDirectory = userDataDirectoryOverride(process.argv, app.isPackaged);
+if (userDataDirectory !== null) {
   app.setPath('userData', userDataDirectory);
 }
+
+process.env.PATH = buildDesktopPath(process.env.PATH);
 
 registerMediaScheme();
 
@@ -82,7 +83,7 @@ const loadRenderer = async (window: BrowserWindow): Promise<void> => {
 };
 
 const bootstrap = async (): Promise<void> => {
-  desktopApp = createApp({ version: app.getVersion() });
+  desktopApp = createApp({ version: app.getVersion(), workingDirectory: app.getPath('home') });
   folderStore = new FolderStore(folderStorePath(app.getPath('userData')));
   registerIpcHandlers({
     desktopApp,

@@ -25,7 +25,6 @@ const Row = ({
   </Box>
 );
 
-/** The "Video Information" card: duration, size and location (parity §2). */
 export const MetadataCard = ({ video }: { video: DetailsVideo }) => (
   <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
     <Typography variant="h2">Video Information</Typography>

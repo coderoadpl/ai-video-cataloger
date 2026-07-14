@@ -1,11 +1,5 @@
 import { createTheme, type Theme } from '@mui/material/styles';
 
-/**
- * The entire visual language of the app lives in this file: the macOS-inspired
- * palette (light + dark), typography, radii, shadows and component overrides.
- * Screens only compose MUI components with stock props and `sx` for layout;
- * every color and status token is read from the theme, never hard-coded.
- */
 
 export type ThemeMode = 'light' | 'dark';
 

@@ -14,11 +14,6 @@ interface WhisperModelRowProps {
   onDelete: () => void;
 }
 
-/**
- * A single Whisper model row in the Model Manager (parity-inventory §2): status
- * icon, Active badge, download button with inline progress, delete button, and
- * click-to-activate on a downloaded, non-active model.
- */
 export const WhisperModelRow = ({
   model,
   activating,

@@ -14,7 +14,6 @@ interface AppHeaderProps {
   onShowPrerequisites: () => void;
 }
 
-/** Top toolbar: app title + version, the folder bar, and the modal launchers. */
 export const AppHeader = ({
   appVersion,
   recentFolders,

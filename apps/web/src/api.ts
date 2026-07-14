@@ -26,6 +26,7 @@ import {
   type ConfigInput,
   type JobInput,
   type ScanInput,
+  type StatusInput,
 } from '@core/client/index.js';
 import type { DesktopApiBridge, DesktopBridge } from '@core/contract/index.js';
 
@@ -40,11 +41,6 @@ const headerRecord = (headers: HeadersInit | undefined): Record<string, string> 
   return record;
 };
 
-/**
- * Adapts the preload bridge's typed `request` into a `fetch`-shaped function so
- * the same `core/client` ApiClient runs unchanged over Electron IPC. This is
- * the only transport seam: the renderer never touches `fetch` or `electron`.
- */
 const bridgeFetch =
   (api: DesktopApiBridge): FetchLike =>
   async (input, init) => {
@@ -66,11 +62,6 @@ const bridgeFetch =
 
 const noopUnsubscribe = () => undefined;
 
-/**
- * Stand-in bridge for running the renderer under a bare Vite dev server (no
- * Electron shell). Platform capabilities degrade to inert defaults; the
- * ApiClient falls back to same-origin HTTP through the Vite `/api` proxy.
- */
 const devBridge: DesktopBridge = {
   platform: 'web',
   getAppVersion: () => Promise.resolve('dev'),
@@ -93,7 +84,6 @@ const realBridge: DesktopBridge | undefined =
     ? undefined
     : window.desktopBridge;
 
-/** The desktop bridge (real preload adapter, or the dev fallback), wired once here. */
 export const bridge: DesktopBridge = realBridge ?? devBridge;
 
 const apiClient =
@@ -101,15 +91,9 @@ const apiClient =
     ? createApiClient({ baseUrl: '' })
     : createApiClient({ baseUrl: '', fetchImpl: bridgeFetch(realBridge.api) });
 
-/**
- * The one binding site. `core/client` action factories are bound to their
- * transport exactly once here; features import these ready actions and never
- * see a client, a port, or an adapter. Parametric queries stay factories so a
- * feature supplies the folder/key/job it needs.
- */
 export const actions = {
   health: healthQuery(apiClient),
-  status: statusQuery(apiClient),
+  status: (input?: StatusInput) => statusQuery(apiClient, input),
   modelsWhisper: modelsWhisperQuery(apiClient),
   localAiRequirements: localAiRequirementsQuery(apiClient),
   doctor: doctorQuery(apiClient),

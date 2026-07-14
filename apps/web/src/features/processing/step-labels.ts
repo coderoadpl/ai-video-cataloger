@@ -1,10 +1,4 @@
-/**
- * Human labels for the pipeline's progress step ids. The NDJSON step id
- * `analyzing_with_claude` fires even for the local analyzer (sanctioned
- * deviation #2 in the PRD: keep the id for stream compat, fix the human label to
- * the analyzer-neutral "Analyzing with AI"). Unknown ids degrade to their id
- * with underscores turned to spaces.
- */
+// The legacy Claude-specific event id is analyzer-agnostic for stream compatibility.
 const STEP_LABELS: Record<string, string> = {
   extracting_frames: 'Extracting frames',
   extracting_audio: 'Extracting audio',

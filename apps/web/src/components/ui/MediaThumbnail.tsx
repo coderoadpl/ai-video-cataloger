@@ -13,12 +13,6 @@ interface MediaThumbnailProps {
   selected?: boolean;
 }
 
-/**
- * A cached video thumbnail served over `media://`, with a film-icon fallback
- * whenever no thumbnail exists yet or the image fails to load. `mtime` busts the
- * cache when the file is regenerated in place; the error state resets whenever
- * the source URL changes so a fresh thumbnail gets another chance to load.
- */
 export const MediaThumbnail = ({
   path,
   mtime,

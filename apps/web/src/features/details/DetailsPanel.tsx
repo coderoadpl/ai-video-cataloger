@@ -43,10 +43,6 @@ const Welcome = () => (
   </Box>
 );
 
-/**
- * The main content area: the selected video's details, or the welcome /
- * getting-started screen when nothing is selected (parity-inventory §2).
- */
 export const DetailsPanel = ({ video, analyzing, onAnalyze }: DetailsPanelProps) =>
   video === null ? (
     <Welcome />

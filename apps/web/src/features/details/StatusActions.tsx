@@ -12,12 +12,6 @@ interface StatusActionsProps {
 const spinner = <CircularProgress size={16} color="inherit" />;
 const play = <PlayCircleIcon fontSize="small" />;
 
-/**
- * The per-status action cards: Analyze (pending / not-tracked), Continue
- * (interrupted) and Retry (error), matching parity-inventory §2. Every button
- * calls back into the catalog's `analyze`; the actual pipeline run and progress
- * overlay belong to the processing-flows story.
- */
 export const StatusActions = ({ video, analyzing, onAnalyze }: StatusActionsProps) => {
   if (onAnalyze === undefined) return null;
   const run = () => onAnalyze(video);

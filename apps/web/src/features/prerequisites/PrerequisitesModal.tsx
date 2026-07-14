@@ -24,12 +24,6 @@ interface PrerequisitesModalProps {
   onClose: () => void;
 }
 
-/**
- * Prerequisites modal (parity-inventory §2): driven by the doctor query with
- * loading, error-with-retry and result states. The result shows a summary
- * banner (all satisfied vs missing count), one row per dependency (status icon,
- * name, source badge, version/path/hint) and a Check Again action.
- */
 export const PrerequisitesModal = ({ open, onClose }: PrerequisitesModalProps) => {
   const { isLoading, error, result, check } = usePrerequisites({ open });
 

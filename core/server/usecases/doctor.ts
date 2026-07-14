@@ -35,12 +35,12 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
   if (!transcriber.ok) return transcriber;
   const analyzer = await deps.analyzer.dependency();
   if (!analyzer.ok) return analyzer;
-  const localAi = await deps.localAi.dependency();
-  if (!localAi.ok) return localAi;
   const machine = await deps.localAi.machine();
   if (!machine.ok) return machine;
+  const localAi = await deps.localAi.dependency();
+  if (!localAi.ok) return localAi;
 
-  const dependencies = [...media.value, transcriber.value, analyzer.value, localAi.value];
+  const dependencies = [...media.value, transcriber.value, analyzer.value, localAiDependency(localAi.value, machine.value)];
   return ok({
     dependencies,
     machine: {
@@ -52,6 +52,28 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
     recommendedLocalModel: recommendedLocalModel(machine.value),
     allAvailable: dependencies.every((dependency) => dependency.available),
   });
+};
+
+const localAiDependency = (dependency: DependencyStatus, machine: MachineProfile): DependencyStatus => {
+  if (machine.platform !== 'darwin' || machine.arch !== 'arm64') {
+    return {
+      name: 'local-ai',
+      available: false,
+      version: null,
+      source: null,
+      path: null,
+      installHint: 'Local AI requires an Apple Silicon Mac (use the claude backend instead)',
+    };
+  }
+  if (dependency.available) return { ...dependency, name: 'local-ai' };
+  return {
+    name: 'local-ai',
+    available: true,
+    version: 'auto-managed (not running - starts when needed)',
+    source: 'bundled',
+    path: null,
+    installHint: '',
+  };
 };
 
 const recommendedLocalModel = (machine: MachineProfile): string | null => {

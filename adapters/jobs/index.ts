@@ -18,10 +18,15 @@ export interface InProcessJobsPortOptions {
   nextId?: () => string;
 }
 
+const MAX_TERMINAL_RECORDS = 200;
+const MAX_PROGRESS_EVENTS = 500;
+
 export class InProcessJobsPort implements JobsPort {
   private readonly records = new Map<string, JobRecord>();
   private readonly nowIso: () => string;
   private readonly nextId: () => string;
+  private readonly controllers = new Map<string, AbortController>();
+  private readonly cancellationRequests = new Set<string>();
   private nextNumber = 1;
 
   constructor(options: InProcessJobsPortOptions = {}) {
@@ -45,14 +50,17 @@ export class InProcessJobsPort implements JobsPort {
       kind: input.kind,
       status: 'queued',
       progress: null,
+      progressEvents: [],
       error: null,
       createdAt: now,
       updatedAt: now,
     });
     const run = input.run;
-    if (run !== undefined) {
-      void Promise.resolve().then(() => this.runJob(jobId, run));
+    if (run === undefined) {
+      this.records.delete(jobId);
+      return Promise.resolve({ ok: false, error: appError('internal', `Job ${jobId} has no run function`) });
     }
+    void Promise.resolve().then(() => this.runJob(jobId, run));
     return Promise.resolve(ok({ jobId }));
   }
 
@@ -68,7 +76,8 @@ export class InProcessJobsPort implements JobsPort {
     const record = this.records.get(jobId);
     if (record === undefined) return Promise.resolve(ok({ jobId, cancelled: false }));
     if (isTerminal(record)) return Promise.resolve(ok({ jobId, cancelled: false }));
-    this.records.set(jobId, { ...record, status: 'cancelled', updatedAt: this.nowIso() });
+    this.cancellationRequests.add(jobId);
+    this.controllers.get(jobId)?.abort();
     return Promise.resolve(ok({ jobId, cancelled: true }));
   }
 
@@ -80,19 +89,27 @@ export class InProcessJobsPort implements JobsPort {
     if (queued === undefined || queued.status === 'cancelled') return;
     this.records.set(jobId, { ...queued, status: 'running', updatedAt: this.nowIso() });
 
+    const controller = new AbortController();
+    this.controllers.set(jobId, controller);
+    if (this.cancellationRequests.has(jobId)) controller.abort();
+
     const result = await runSafely(run, {
+      signal: controller.signal,
       reportProgress: (progress) => this.reportProgress(jobId, progress),
     });
 
     const current = this.records.get(jobId);
-    if (current === undefined || current.status === 'cancelled') return;
+    this.controllers.delete(jobId);
+    if (current === undefined) return;
+    const cancelled = this.cancellationRequests.delete(jobId) && !result.ok;
     this.records.set(jobId, {
       ...current,
-      status: result.ok ? 'completed' : 'failed',
+      status: result.ok ? 'completed' : cancelled ? 'cancelled' : 'failed',
       result: result.ok ? result.value : undefined,
-      error: result.ok ? null : result.error,
+      error: result.ok || cancelled ? null : result.error,
       updatedAt: this.nowIso(),
     });
+    this.evictOldTerminalRecords();
   }
 
   private reportProgress(jobId: string, progress: JobProgress): Promise<Result<void, AppError>> {
@@ -106,8 +123,18 @@ export class InProcessJobsPort implements JobsPort {
     if (isTerminal(record)) {
       return Promise.resolve({ ok: false, error: appError('processing_error', `Job is already ${record.status}`) });
     }
-    this.records.set(jobId, { ...record, status: 'running', progress, updatedAt: this.nowIso() });
+    if (this.cancellationRequests.has(jobId)) {
+      return Promise.resolve({ ok: false, error: cancellationError() });
+    }
+    const sequence = (record.progressEvents.at(-1)?.sequence ?? 0) + 1;
+    const progressEvents = [...record.progressEvents, { sequence, progress }].slice(-MAX_PROGRESS_EVENTS);
+    this.records.set(jobId, { ...record, status: 'running', progress, progressEvents, updatedAt: this.nowIso() });
     return Promise.resolve(ok(undefined));
+  }
+
+  private evictOldTerminalRecords(): void {
+    const terminalIds = [...this.records.values()].filter(isTerminal).map((record) => record.jobId);
+    for (const jobId of terminalIds.slice(0, -MAX_TERMINAL_RECORDS)) this.records.delete(jobId);
   }
 }
 

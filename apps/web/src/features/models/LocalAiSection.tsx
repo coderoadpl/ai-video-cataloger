@@ -7,12 +7,6 @@ interface LocalAiSectionProps {
   state: LocalAiState;
 }
 
-/**
- * The Local AI (Ollama) section embedded in the Model Manager
- * (parity-inventory §2): machine summary with the recommended model, tier rows
- * with hardware-compatibility badges, download-with-progress for supported and
- * missing tiers, and delete for installed ones.
- */
 export const LocalAiSection = ({ state }: LocalAiSectionProps) => (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="local-ai-section">
     <Box>

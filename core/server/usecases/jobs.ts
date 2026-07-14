@@ -1,7 +1,7 @@
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { JobRecord, JobsPort } from '../ports.js';
-import { processVideoPipeline, type ProcessDeps } from './process.js';
+import { checkProcessPrerequisites, processVideoPipeline, type ProcessDeps } from './process.js';
 
 export interface JobsDeps extends Partial<ProcessDeps> {
   jobs: JobsPort;
@@ -37,7 +37,7 @@ export const enqueueProcess = async (
     deps.transcriber === undefined ||
     deps.analyzer === undefined
   ) {
-    return deps.jobs.enqueue({ kind: 'process', payload: input });
+    return { ok: false, error: appError('internal', 'Process job dependencies are incomplete') };
   }
   const processDeps: ProcessDeps = {
     catalogs: deps.catalogs,
@@ -47,6 +47,8 @@ export const enqueueProcess = async (
     transcriber: deps.transcriber,
     analyzer: deps.analyzer,
   };
+  const prerequisites = await checkProcessPrerequisites(processDeps, input);
+  if (!prerequisites.ok) return prerequisites;
   return deps.jobs.enqueue({
     kind: 'process',
     payload: input,

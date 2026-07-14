@@ -29,6 +29,7 @@ import type {
   JobProgress,
   JobRecord,
   JobsPort,
+  LocalAiPullProgress,
   LocalAiRuntimePort,
   LocalAiRuntimeStatus,
   MediaPort,
@@ -302,6 +303,7 @@ export class InMemoryCatalogRepository implements CatalogRepository {
 
 export class InMemoryCatalogs implements CatalogRepositoryFactory {
   private readonly repositories = new Map<string, InMemoryCatalogRepository>();
+  readonly openInputs: string[] = [];
 
   constructor(initial: ReadonlyArray<{ folder: string; videos: Video[] }> = []) {
     for (const entry of initial) {
@@ -319,6 +321,7 @@ export class InMemoryCatalogs implements CatalogRepositoryFactory {
   }
 
   open(folder: string): Promise<Result<CatalogRepository, AppError>> {
+    this.openInputs.push(folder);
     return Promise.resolve(ok(this.repo(folder)));
   }
 }
@@ -359,6 +362,7 @@ export class InMemoryMedia implements MediaPort {
   readonly audioInputs: Array<{ videoPath: string; outputPath: string }> = [];
   readonly durations = new Map<string, number | null>();
   dependenciesValue: DependencyStatus[] = [dependency('ffmpeg', true), dependency('ffprobe', true)];
+  hasAudio = true;
 
   probe(input: { videoPath: string }): Promise<Result<MediaProbe, AppError>> {
     return Promise.resolve(ok({ duration: this.durations.get(input.videoPath) ?? null }));
@@ -372,9 +376,9 @@ export class InMemoryMedia implements MediaPort {
     return Promise.resolve(ok({ framePaths: paths }));
   }
 
-  extractAudio(input: { videoPath: string; outputPath: string }): Promise<Result<{ audioPath: string }, AppError>> {
+  extractAudio(input: { videoPath: string; outputPath: string }): Promise<Result<{ hasAudio: boolean; audioPath: string | null }, AppError>> {
     this.audioInputs.push(input);
-    return Promise.resolve(ok({ audioPath: input.outputPath }));
+    return Promise.resolve(ok({ hasAudio: this.hasAudio, audioPath: this.hasAudio ? input.outputPath : null }));
   }
 
   thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
@@ -404,6 +408,8 @@ export class InMemoryTranscriber implements TranscriberPort {
 
 export class InMemoryAnalyzer implements AnalyzerPort {
   dependencyValue: DependencyStatus = dependency('claude', true);
+  analyzeError: AppError | null = null;
+  readonly dependencyInputs: Array<AppConfig['analyzer_backend'] | null> = [];
   readonly inputs: Array<{
     videoPath: string;
     framePaths: string[];
@@ -411,6 +417,7 @@ export class InMemoryAnalyzer implements AnalyzerPort {
     backend: AppConfig['analyzer_backend'];
     localModel: string;
     timeoutSeconds: number;
+    verbose: boolean;
   }> = [];
   rawResponse = 'DESCRIPTION: A useful clip.\nFILENAME: useful-clip';
 
@@ -421,12 +428,15 @@ export class InMemoryAnalyzer implements AnalyzerPort {
     backend: AppConfig['analyzer_backend'];
     localModel: string;
     timeoutSeconds: number;
+    verbose: boolean;
   }): Promise<Result<AnalysisOutput, AppError>> {
     this.inputs.push(input);
+    if (this.analyzeError !== null) return Promise.resolve({ ok: false, error: this.analyzeError });
     return Promise.resolve(ok({ rawResponse: this.rawResponse }));
   }
 
-  dependency(): Promise<Result<DependencyStatus, AppError>> {
+  dependency(input?: { backend: AppConfig['analyzer_backend'] }): Promise<Result<DependencyStatus, AppError>> {
+    this.dependencyInputs.push(input?.backend ?? null);
     return Promise.resolve(ok(this.dependencyValue));
   }
 }
@@ -438,6 +448,7 @@ export class InMemoryLocalAi implements LocalAiRuntimePort {
   pulled: string[] = [];
   removed: string[] = [];
   stopped = false;
+  beforeRuntimeReady: (() => void) | null = null;
 
   machine(): Promise<Result<MachineProfile, AppError>> {
     return Promise.resolve(ok(this.machineValue));
@@ -447,9 +458,19 @@ export class InMemoryLocalAi implements LocalAiRuntimePort {
     return Promise.resolve(ok(this.statusValue));
   }
 
-  pull(tag: string): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
+  async pull(
+    tag: string,
+    options?: {
+      onRuntimeReady?: (() => Promise<Result<void, AppError>>) | undefined;
+      onProgress?: ((progress: LocalAiPullProgress) => void) | undefined;
+    },
+  ): Promise<Result<{ tag: string; status: 'installed' }, AppError>> {
     this.pulled.push(tag);
-    return Promise.resolve(ok({ tag, status: 'installed' }));
+    this.beforeRuntimeReady?.();
+    const ready = await options?.onRuntimeReady?.();
+    if (ready !== undefined && !ready.ok) return ready;
+    options?.onProgress?.({ tag, status: 'success', completed: 1, total: 1, percentage: 100 });
+    return ok({ tag, status: 'installed' });
   }
 
   rm(tag: string): Promise<Result<{ tag: string; status: 'removed' }, AppError>> {
@@ -519,6 +540,7 @@ export class InMemoryJobs implements JobsPort {
       kind: input.kind,
       status: 'queued',
       progress: null,
+      progressEvents: [],
       error: null,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
@@ -537,11 +559,18 @@ export class InMemoryJobs implements JobsPort {
         updatedAt: '2026-01-01T00:00:00.000Z',
       });
       const result = await input.run({
+        signal: new AbortController().signal,
         reportProgress: (progress) => {
           this.progressEvents.push(progress);
           const record = this.records.get(jobId);
           if (record !== undefined) {
-            this.records.set(jobId, { ...record, progress, updatedAt: '2026-01-01T00:00:00.000Z' });
+            const sequence = record.progressEvents.length + 1;
+            this.records.set(jobId, {
+              ...record,
+              progress,
+              progressEvents: [...record.progressEvents, { sequence, progress }],
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            });
           }
           return Promise.resolve(ok(undefined));
         },

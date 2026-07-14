@@ -31,16 +31,6 @@ interface AppShellProps {
   renderModals?: (state: ShellModalState) => ReactNode;
 }
 
-/**
- * The application frame: header, folder bar, the sidebar and content slots, the
- * terminal panel and the global modal launchers. It owns the chrome-local UI
- * state — which modal is open, the sidebar/terminal collapse the menu toggles,
- * the terminal JSON toggle — and subscribes to the chrome menu events. Folder
- * and platform state arrive via `shell`; the catalog/details/processing islands
- * are injected as slots by the route; `overlays` carries the processing dialogs;
- * and the settings/models/prerequisites modals are supplied through `renderModals`
- * by the route so this feature never imports another feature.
- */
 export const AppShell = ({ shell, sidebar, content, terminal, overlays, renderModals }: AppShellProps) => {
   const [modal, setModal] = useState<ShellModal | null>(null);
   const [showJson, setShowJson] = useState(false);
