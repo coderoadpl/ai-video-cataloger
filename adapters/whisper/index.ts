@@ -126,6 +126,13 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
         'txt',
       ], { signal: input.signal });
       if (!run.ok) return run;
+      const producedPath = path.join(
+        path.dirname(input.transcriptPath),
+        `${path.basename(input.audioPath, path.extname(input.audioPath))}.txt`,
+      );
+      if (producedPath !== input.transcriptPath) {
+        await rename(producedPath, input.transcriptPath);
+      }
       const content = (await readFile(input.transcriptPath, 'utf8')).trim();
       return ok({ transcriptPath: input.transcriptPath, content });
     } catch (cause) {

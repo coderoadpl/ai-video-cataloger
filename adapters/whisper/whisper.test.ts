@@ -23,6 +23,20 @@ import {
 
 const tempRoots: string[] = [];
 
+const requiredArg = (args: readonly string[], index: number): string => {
+  const value = args[index];
+  if (value === undefined) throw new Error(`Missing argument at index ${String(index)}`);
+  return value;
+};
+
+const writeWhisperOutput = async (args: readonly string[], content: string): Promise<void> => {
+  const audioPath = requiredArg(args, 0);
+  const outputDir = requiredArg(args, args.indexOf('--output_dir') + 1);
+  const audioBase = path.basename(audioPath, path.extname(audioPath));
+  await mkdir(outputDir, { recursive: true });
+  await writeFile(path.join(outputDir, `${audioBase}.txt`), content, 'utf8');
+};
+
 describe('WhisperTranscriberAdapter', () => {
   afterEach(async () => {
     await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
@@ -55,8 +69,7 @@ describe('WhisperTranscriberAdapter', () => {
     const runner = new FakeCommandRunner({ '/bundled/whisper': 'whisper installed' });
     runner.onRun = async (command, args) => {
       if (command === '/bundled/whisper' && args[0] !== '--help') {
-        await mkdir(path.dirname(transcriptPath), { recursive: true });
-        await writeFile(transcriptPath, ' hello transcript \n', 'utf8');
+        await writeWhisperOutput(args, ' hello transcript \n');
       }
       return ok({ stdout: '', stderr: '' });
     };
@@ -85,6 +98,33 @@ describe('WhisperTranscriberAdapter', () => {
         'txt',
       ],
     });
+  });
+
+  it('relocates the whisper output when the temp audio name differs from the transcript name', async () => {
+    const root = await tempRoot();
+    const transcriptPath = path.join(root, 'transcripts', 'Clip One.txt');
+    const runner = new FakeCommandRunner({ '/bundled/whisper': 'whisper installed' });
+    runner.onRun = async (command, args) => {
+      if (command === '/bundled/whisper' && args[0] !== '--help') {
+        await writeWhisperOutput(args, 'hashed audio transcript\n');
+      }
+      return ok({ stdout: '', stderr: '' });
+    };
+    const adapter = new WhisperTranscriberAdapter({
+      commandRunner: runner,
+      binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
+    });
+
+    const result = await adapter.transcribe({
+      audioPath: path.join(root, 'audio', 'f1abec7d-Clip One.wav'),
+      transcriptPath,
+      mode: 'local',
+      model: 'base',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'hashed audio transcript' }));
+    expect(existsSync(path.join(root, 'transcripts', 'f1abec7d-Clip One.txt'))).toBe(false);
+    expect(existsSync(transcriptPath)).toBe(true);
   });
 
   it('passes cancellation to the local whisper process', async () => {
