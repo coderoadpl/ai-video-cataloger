@@ -280,6 +280,11 @@ terminal.
 2. Cost table: **editable price fields only**, no built-in price table.
 3. Prerequisite gate frequency: **every launch + before every run**, cached
    per process with invalidation on settings writes.
-4. Managed whisper source: **official whisper.cpp GitHub release binaries**,
-   pinned version + SHA-256.
+4. Managed whisper source: official whisper.cpp releases turned out to ship
+   **no macOS binaries** (source only — verified against live releases), so
+   the resolution is the **Homebrew `whisper-cpp` bottle from ghcr.io**
+   (prebuilt arm64, anonymously downloadable without brew, pinned version +
+   sha256 from the formula), with extracted dylib install-names rewritten to
+   `@loader_path` so the binary runs without a Homebrew installation.
+   The source-build path remains as a fallback when build tools exist.
 5. Implementation starts immediately (parallel to the owner's v1 review).

@@ -141,13 +141,19 @@ retaining its legacy dependency array, `allAvailable` meaning, and exit code.
   ffmpeg-static, system ffmpeg (platform difference is real).
 - `TranscriberPort` — whisper.cpp (configured path / managed / system) /
   OpenAI API / skip. Official whisper.cpp v1.9.1 publishes no standalone
-  macOS executable, so the managed runtime pins the official source tarball
-  and SHA-256, verifies it before extraction, then builds locally with `make`
-  only after CMake and Clang detection. The resulting executable is installed
-  with temp-file + atomic rename at the canonical home-scope path.
+  macOS executable, so the primary managed runtime pins the Homebrew arm64
+  Sequoia bottles for whisper.cpp, its matching ggml ABI, and libomp. It
+  authenticates anonymously to GHCR, validates each OCI manifest, verifies
+  every blob SHA-256, extracts the executable, dylibs, and ggml backends into
+  a versioned home-scope directory, rewrites Mach-O install names to
+  `@loader_path`, and ad-hoc signs every modified image. The canonical
+  home-scope wrapper sets the ggml backend path. The official source tarball
+  remains an explicit fallback when bottle installation fails and CMake and
+  Clang are available.
 - `WhisperRuntimePort` — configured / managed / system whisper.cpp resolution
-  plus managed source installation; the configured path always wins and the
-  canonical managed executable remains `~/.ai-video-cataloger/bin/whisper`.
+  plus managed bottle installation with source fallback; the configured path
+  always wins and the canonical managed executable remains
+  `~/.ai-video-cataloger/bin/whisper`.
 - `AnalyzerPort` — three families behind one port (v1.1,
   `tasks/prd-providers-onboarding.md`): OpenAI-compatible API adapter
   (BYO base URL + key; credentials live in the home scope only), a

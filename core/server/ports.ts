@@ -165,9 +165,18 @@ export interface WhisperRuntimeStatus {
   missingBuildTools: string[];
 }
 
+export interface WhisperRuntimeInstallProgress {
+  phase: 'authenticating' | 'downloading' | 'patching' | 'source_fallback';
+  percentage: number;
+  artifact?: string | undefined;
+}
+
 export interface WhisperRuntimePort {
   status(): Promise<Result<WhisperRuntimeStatus, AppError>>;
-  install(options?: { signal?: AbortSignal | undefined }): Promise<Result<{
+  install(options?: {
+    signal?: AbortSignal | undefined;
+    onProgress?: ((progress: WhisperRuntimeInstallProgress) => Promise<Result<void, AppError>>) | undefined;
+  }): Promise<Result<{
     path: string;
     version: string;
     installed: boolean;

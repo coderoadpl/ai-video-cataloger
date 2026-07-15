@@ -57,7 +57,17 @@ export const installWhisperRuntime = (
     run: async (context) => {
       const started = await context.reportProgress({ step: 'runtime_setup', percentage: 0 });
       if (!started.ok) return started;
-      const installed = await deps.whisperRuntime.install({ signal: context.signal });
+      const installed = await deps.whisperRuntime.install({
+        signal: context.signal,
+        onProgress: (progress) => context.reportProgress({
+          step: 'runtime_setup',
+          percentage: progress.percentage,
+          data: {
+            phase: progress.phase,
+            ...(progress.artifact === undefined ? {} : { artifact: progress.artifact }),
+          },
+        }),
+      });
       if (context.signal.aborted) return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
       if (!installed.ok) return installed;
       const completed = await context.reportProgress({ step: 'runtime_setup', percentage: 100 });
