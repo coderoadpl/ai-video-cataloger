@@ -1,7 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import { runDoctor } from './doctor.js';
-import { dependency, InMemoryAnalyzer, InMemoryLocalAi, InMemoryMedia, InMemoryTranscriber } from '../../../test/server/usecases/test-fakes.js';
+import { ReadinessCache } from './readiness.js';
+import {
+  dependency,
+  InMemoryAnalyzer,
+  InMemoryLocalAi,
+  InMemoryMedia,
+  InMemoryProviders,
+  InMemoryTranscriber,
+  InMemoryConfig,
+  InMemoryFileSystem,
+} from '../../../test/server/usecases/test-fakes.js';
 
 describe('runDoctor', () => {
   it('combines dependency status with machine recommendation', async () => {
@@ -11,7 +21,11 @@ describe('runDoctor', () => {
       media: new InMemoryMedia(),
       transcriber: new InMemoryTranscriber(),
       analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
       localAi,
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
     };
 
     const result = await runDoctor(deps);
@@ -22,8 +36,14 @@ describe('runDoctor', () => {
         machine: { platform: 'darwin', arch: 'arm64', totalMemGB: 16, appleSilicon: true },
         recommendedLocalModel: 'gemma3:12b',
         allAvailable: true,
+        harnesses: [
+          { providerId: 'claude-code', available: true },
+          { providerId: 'codex', available: true },
+          { providerId: 'cursor-agent', available: true },
+        ],
       },
     });
+    expect(deps.providers.tested).toHaveLength(3);
   });
 
   it('marks allAvailable false when one dependency is unavailable', async () => {
@@ -33,7 +53,11 @@ describe('runDoctor', () => {
       media,
       transcriber: new InMemoryTranscriber(),
       analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
       localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
     };
 
     const result = await runDoctor(deps);
@@ -50,7 +74,11 @@ describe('runDoctor', () => {
       media: new InMemoryMedia(),
       transcriber: new InMemoryTranscriber(),
       analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
       localAi,
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
     };
 
     const result = await runDoctor(deps);
@@ -74,7 +102,11 @@ describe('runDoctor', () => {
       media: new InMemoryMedia(),
       transcriber: new InMemoryTranscriber(),
       analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
       localAi,
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
     };
 
     const result = await runDoctor(deps);

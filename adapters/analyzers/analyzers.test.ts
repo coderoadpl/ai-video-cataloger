@@ -6,14 +6,25 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-import { ok, type AppError, type MachineProfile, type Result } from '@core/domain/index.js';
-import type { DependencyStatus, LocalAiRuntimePort, LocalAiRuntimeStatus } from '@core/server/index.js';
+import {
+  appError,
+  builtInHarnessProviders,
+  ok,
+  type AppError,
+  type AnalyzerProviderConfig,
+  type MachineProfile,
+  type Result,
+} from '@core/domain/index.js';
+import type { CredentialsStore, DependencyStatus, LocalAiRuntimePort, LocalAiRuntimeStatus } from '@core/server/index.js';
 
 import {
-  ClaudeCliAnalyzerAdapter,
+  HarnessAnalyzerAdapter,
   OllamaAnalyzerAdapter,
+  OpenAiCompatibleAnalyzerAdapter,
   buildAnalyzerPrompt,
+  childProcessAnalyzerCommandRunner,
   claudeProjectHistoryPath,
+  expandHarnessArgs,
   filteredAnalyzerEnv,
   type AnalyzerCommandRunner,
   type AnalyzerCommandRunnerOptions,
@@ -21,7 +32,7 @@ import {
 
 const tempRoots: string[] = [];
 
-describe('ClaudeCliAnalyzerAdapter', () => {
+describe('HarnessAnalyzerAdapter', () => {
   afterEach(async () => {
     await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
     tempRoots.length = 0;
@@ -39,7 +50,7 @@ describe('ClaudeCliAnalyzerAdapter', () => {
     await mkdir(historyPath, { recursive: true });
     await writeFile(path.join(historyPath, 'conversation.jsonl'), 'old', 'utf8');
     const runner = new FakeAnalyzerCommandRunner('DESCRIPTION: A clip.\nFILENAME: useful-clip');
-    const adapter = new ClaudeCliAnalyzerAdapter({
+    const adapter = new HarnessAnalyzerAdapter({
       commandRunner: runner,
       homeDirectory: home,
       env: {
@@ -77,14 +88,14 @@ describe('ClaudeCliAnalyzerAdapter', () => {
 
   it('passes verbose stdout and stderr through while preserving the no-transcript prompt note', async () => {
     const runner = new FakeAnalyzerCommandRunner('final response');
-    runner.onRun = (options) => {
-      options.onStdout?.('streamed stdout');
-      options.onStderr?.('streamed stderr');
+    runner.onRun = (call) => {
+      call.options.onStdout?.('streamed stdout');
+      call.options.onStderr?.('streamed stderr');
       return Promise.resolve(ok({ stdout: 'final response', stderr: '' }));
     };
     let stdout = '';
     let stderr = '';
-    const adapter = new ClaudeCliAnalyzerAdapter({
+    const adapter = new HarnessAnalyzerAdapter({
       commandRunner: runner,
       writeStdout: (chunk) => {
         stdout += chunk;
@@ -115,7 +126,7 @@ describe('ClaudeCliAnalyzerAdapter', () => {
   it('passes cancellation to the Claude child process', async () => {
     const runner = new FakeAnalyzerCommandRunner('response');
     const controller = new AbortController();
-    const adapter = new ClaudeCliAnalyzerAdapter({ commandRunner: runner });
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });
 
     await adapter.analyze({
       videoPath: '/work/clip.mp4',
@@ -130,12 +141,163 @@ describe('ClaudeCliAnalyzerAdapter', () => {
 
     expect(runner.calls[0]?.options.signal).toBe(controller.signal);
   });
+
+  it('constructs every built-in invocation from provider data', async () => {
+    const runner = new FakeAnalyzerCommandRunner('response');
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });
+
+    for (const descriptor of builtInHarnessProviders()) {
+      const provider = {
+        family: descriptor.family,
+        providerId: descriptor.providerId,
+        command: descriptor.command,
+        argsTemplate: descriptor.argsTemplate,
+        promptStyle: descriptor.promptStyle,
+      };
+      await adapter.analyze(analyzeInput(provider));
+    }
+
+    expect(runner.calls.map(({ command, args }) => ({ command, args: args.slice(0, -1) }))).toEqual([
+      { command: 'claude', args: ['--add-dir', '/work/videos', '-p'] },
+      { command: 'codex', args: ['exec', '--sandbox', 'read-only', '--cd', '/work/videos'] },
+      { command: 'cursor-agent', args: ['--print', '--mode', 'ask', '--workspace', '/work/videos'] },
+    ]);
+    expect(runner.calls[0]?.args.at(-1)).toContain('file:///work/videos/frames/frame-001.jpg');
+    expect(runner.calls[1]?.args.at(-1)).toContain('Read these 1 frame file(s)');
+    expect(runner.calls[2]?.args.at(-1)).toContain('file:///work/videos/frames/frame-001.jpg');
+  });
+
+  it('keeps quotes, command substitutions, and backticks inert inside argument values', async () => {
+    const runner = new FakeAnalyzerCommandRunner('response');
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });
+    const videoDir = '/work/videos/quoted "dir" $(touch nope) `touch nope`';
+    const provider: Extract<AnalyzerProviderConfig, { family: 'harness' }> = {
+      family: 'harness',
+      providerId: 'custom-agent',
+      command: 'custom-agent',
+      argsTemplate: ['run', '--directory={videoDir}', 'PROMPT={prompt}'],
+      promptStyle: 'file-urls',
+    };
+
+    await adapter.analyze({
+      ...analyzeInput(provider),
+      videoPath: path.join(videoDir, 'clip "name" $(touch nope) `touch nope`.mp4'),
+      framePaths: [path.join(videoDir, 'frames', 'frame-001.jpg')],
+      transcript: 'Say "hello" and preserve $(touch nope) plus `touch nope`.',
+    });
+
+    const call = runner.calls[0];
+    if (call === undefined) throw new Error('Expected custom harness call');
+    expect(call.command).toBe('custom-agent');
+    expect(call.args).toHaveLength(3);
+    expect(call.args[1]).toBe(`--directory=${videoDir}`);
+    expect(call.args[2]).toContain('$(touch nope)');
+    expect(call.args[2]).toContain('`touch nope`');
+    expect(call.args[2]).toContain('file:///work/videos/quoted "dir" $(touch nope) `touch nope`/frames/frame-001.jpg');
+  });
+
+  it('expands placeholders inside individual arguments without splitting them', () => {
+    expect(expandHarnessArgs(
+      ['before:{prompt}:after', '--dir={videoDir}'],
+      { prompt: '"quoted" $(inert) `inert`', videoDir: '/video dir' },
+    )).toEqual(['before:"quoted" $(inert) `inert`:after', '--dir=/video dir']);
+  });
+
+  it('detects custom harness availability with the configured binary version', async () => {
+    const runner = new FakeAnalyzerCommandRunner('custom-agent 4.2.0\n');
+    const adapter = new HarnessAnalyzerAdapter({
+      commandRunner: runner,
+      env: { PATH: '/custom/bin', NODE_OPTIONS: '--inspect' },
+    });
+    const provider = customHarnessProvider();
+
+    const result = await adapter.test(provider);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { family: 'harness', providerId: 'custom-agent', available: true, version: 'custom-agent 4.2.0' },
+    });
+    expect(runner.calls[0]).toMatchObject({
+      command: 'custom-agent',
+      args: ['--version'],
+      options: { env: { PATH: '/custom/bin' }, timeoutMs: 5000 },
+    });
+  });
+
+  it('reports why a configured harness binary is unavailable', async () => {
+    const runner = new FakeAnalyzerCommandRunner('');
+    runner.onRun = () => Promise.resolve({
+      ok: false,
+      error: appError('processing_error', 'spawn custom-agent ENOENT'),
+    });
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });
+
+    const result = await adapter.test(customHarnessProvider());
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        family: 'harness',
+        providerId: 'custom-agent',
+        available: false,
+        version: null,
+        message: 'spawn custom-agent ENOENT',
+      },
+    });
+  });
+
+  it.each(['timeout', 'cancel'] as const)('kills the harness process group on %s', async (cause) => {
+    const controller = new AbortController();
+    let childReady = false;
+    const pending = childProcessAnalyzerCommandRunner.run(process.execPath, processGroupFixtureArgs(), {
+      env: process.env,
+      timeoutMs: cause === 'timeout' ? 500 : 5000,
+      signal: controller.signal,
+      onStdout: (chunk) => {
+        if (cause === 'cancel' && !childReady && chunk.includes('CHILD_READY')) {
+          childReady = true;
+          controller.abort();
+        }
+      },
+    });
+
+    const result = await pending;
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { message: expect.stringContaining(cause === 'timeout' ? 'timed out' : 'cancelled') },
+    });
+  }, 7000);
 });
 
 describe('OllamaAnalyzerAdapter', () => {
   afterEach(async () => {
     await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
     tempRoots.length = 0;
+  });
+
+  it('reports the configured local model as missing until it is installed', async () => {
+    const runtime = new FakeLocalAiRuntime();
+    const adapter = new OllamaAnalyzerAdapter({ runtime });
+    const provider = { family: 'local', providerId: 'local', modelTag: 'gemma3:12b' } as const;
+
+    const missing = await adapter.dependency({ backend: 'local', provider });
+    runtime.statusValue = {
+      runtimeUp: true,
+      runtimeVersion: '1.0.0',
+      installedModels: ['gemma3:12b'],
+    };
+    const ready = await adapter.dependency({ backend: 'local', provider });
+
+    expect(missing).toMatchObject({
+      ok: true,
+      value: {
+        name: 'gemma3:12b',
+        available: false,
+        installHint: 'Run: ai-video-cataloger models pull gemma3:12b',
+      },
+    });
+    expect(ready).toMatchObject({ ok: true, value: { available: true } });
   });
 
   it('prechecks installed models before calling Ollama', async () => {
@@ -271,6 +433,158 @@ describe('OllamaAnalyzerAdapter', () => {
   });
 });
 
+describe('OpenAiCompatibleAnalyzerAdapter', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('posts OpenAI vision chat-completions with transcript and base64 image parts', async () => {
+    const root = await tempRoot();
+    const frameOne = path.join(root, 'frame-001.jpg');
+    const frameTwo = path.join(root, 'frame-002.png');
+    await writeFile(frameOne, Buffer.from('jpeg-frame'));
+    await writeFile(frameTwo, Buffer.from('png-frame'));
+    const server = await startFakeApiServer(200, {
+      choices: [{ message: { content: 'DESCRIPTION: API clip.\nFILENAME: api-clip' } }],
+    });
+    const adapter = new OpenAiCompatibleAnalyzerAdapter({ credentials: new FakeCredentialsStore('top-secret') });
+
+    try {
+      const result = await adapter.analyze({
+        videoPath: path.join(root, 'Clip.mp4'),
+        framePaths: [frameOne, frameTwo],
+        transcript: 'spoken transcript',
+        backend: 'claude',
+        localModel: 'unused',
+        provider: apiProvider(server.origin),
+        timeoutSeconds: 30,
+        verbose: false,
+      });
+
+      expect(result).toEqual(ok({ rawResponse: 'DESCRIPTION: API clip.\nFILENAME: api-clip' }));
+      const request = server.requests[0];
+      if (request === undefined) throw new Error('Expected API request');
+      expect(request.url).toBe('/v1/chat/completions');
+      expect(request.authorization).toBe('Bearer top-secret');
+      const parsed = apiChatRequestSchema.parse(request.body);
+      expect(parsed.model).toBe('vision-model');
+      expect(parsed.messages[0]?.content[0]).toMatchObject({ type: 'text', text: expect.stringContaining('spoken transcript') });
+      expect(parsed.messages[0]?.content[1]).toEqual({
+        type: 'image_url',
+        image_url: { url: `data:image/jpeg;base64,${Buffer.from('jpeg-frame').toString('base64')}`, detail: 'high' },
+      });
+      expect(parsed.messages[0]?.content[2]).toEqual({
+        type: 'image_url',
+        image_url: { url: `data:image/png;base64,${Buffer.from('png-frame').toString('base64')}`, detail: 'high' },
+      });
+      expect(parsed.messages[0]?.content[0]).toMatchObject({ text: expect.stringContaining('DESCRIPTION:') });
+      expect(parsed.messages[0]?.content[0]).toMatchObject({ text: expect.stringContaining('FILENAME:') });
+    } finally {
+      await server.close();
+    }
+  });
+
+  it.each([
+    [401, 'provider_auth_failed'],
+    [429, 'rate_limited'],
+    [400, 'provider_error'],
+    [500, 'provider_error'],
+  ])('maps HTTP %i to %s without leaking credentials', async (status, code) => {
+    const server = await startFakeApiServer(status, { error: 'failure top-secret' }, { 'retry-after': '2' });
+    const adapter = new OpenAiCompatibleAnalyzerAdapter({
+      credentials: new FakeCredentialsStore('top-secret'),
+      readFrame: () => Promise.resolve(Buffer.from('frame')),
+    });
+    try {
+      const result = await adapter.analyze({
+        videoPath: '/work/clip.mp4',
+        framePaths: ['/work/frame.jpg'],
+        transcript: null,
+        backend: 'claude',
+        localModel: 'unused',
+        provider: apiProvider(server.origin),
+        timeoutSeconds: 30,
+        verbose: false,
+      });
+      expect(result).toMatchObject({ ok: false, error: { code } });
+      expect(JSON.stringify(result)).not.toContain('top-secret');
+      if (status === 429) expect(JSON.stringify(result)).toContain('Retry after 2 seconds');
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('honors cancellation through the request AbortSignal', async () => {
+    const server = await startFakeApiServer(200, { choices: [] }, {}, 10_000);
+    const adapter = new OpenAiCompatibleAnalyzerAdapter({
+      credentials: new FakeCredentialsStore('top-secret'),
+      readFrame: () => Promise.resolve(Buffer.from('frame')),
+    });
+    const controller = new AbortController();
+    const analyzing = adapter.analyze({
+      videoPath: '/work/clip.mp4',
+      framePaths: ['/work/frame.jpg'],
+      transcript: null,
+      backend: 'claude',
+      localModel: 'unused',
+      provider: apiProvider(server.origin),
+      timeoutSeconds: 30,
+      verbose: false,
+      signal: controller.signal,
+    });
+    await new Promise<void>((resolve) => setTimeout(resolve, 20));
+    controller.abort();
+
+    expect(await analyzing).toMatchObject({ ok: false, error: { code: 'processing_error', message: 'API analysis cancelled' } });
+    await server.close();
+  });
+
+  it('honors the configured request timeout', async () => {
+    const fetchImpl: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!(signal instanceof AbortSignal)) {
+        reject(new Error('Missing signal'));
+        return;
+      }
+      signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true });
+    });
+    const adapter = new OpenAiCompatibleAnalyzerAdapter({
+      credentials: new FakeCredentialsStore('top-secret'),
+      fetchImpl,
+      readFrame: () => Promise.resolve(Buffer.from('frame')),
+    });
+
+    const result = await adapter.analyze({
+      videoPath: '/work/clip.mp4',
+      framePaths: ['/work/frame.jpg'],
+      transcript: null,
+      backend: 'claude',
+      localModel: 'unused',
+      provider: apiProvider('https://provider.example'),
+      timeoutSeconds: 0.01,
+      verbose: false,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'provider_error', message: 'API provider request timed out' } });
+  });
+
+  it('reports missing credentials as unavailable with actionable readiness guidance', async () => {
+    const adapter = new OpenAiCompatibleAnalyzerAdapter({ credentials: new FakeCredentialsStore(null) });
+
+    const result = await adapter.dependency({ backend: 'claude', provider: apiProvider('https://provider.example') });
+
+    expect(result).toEqual(ok({
+      name: 'compatible',
+      available: false,
+      version: null,
+      source: null,
+      path: null,
+      installHint: 'Run: ai-video-cataloger config set-credential compatible',
+    }));
+  });
+});
+
 describe('analyzer helpers', () => {
   it('filters subprocess env with parity semantics', () => {
     expect(filteredAnalyzerEnv({
@@ -296,6 +610,35 @@ describe('analyzer helpers', () => {
   });
 });
 
+const analyzeInput = (provider: Extract<AnalyzerProviderConfig, { family: 'harness' }>) => ({
+  videoPath: '/work/videos/clip.mp4',
+  framePaths: ['/work/videos/frames/frame-001.jpg'],
+  transcript: 'transcript',
+  backend: 'claude' as const,
+  localModel: 'unused',
+  provider,
+  timeoutSeconds: 30,
+  verbose: false,
+});
+
+const customHarnessProvider = (): Extract<AnalyzerProviderConfig, { family: 'harness' }> => ({
+  family: 'harness',
+  providerId: 'custom-agent',
+  command: 'custom-agent',
+  argsTemplate: ['run', '{prompt}'],
+  promptStyle: 'dir-access',
+});
+
+const processGroupFixtureArgs = (): string[] => [
+  '-e',
+  [
+    "const { spawn } = require('node:child_process')",
+    "process.on('SIGTERM', () => {})",
+    "spawn(process.execPath, ['-e', \"process.on('SIGTERM', () => {}); process.stdout.write('CHILD_READY\\\\n'); setInterval(() => {}, 1000)\"], { stdio: 'inherit' })",
+    'setInterval(() => {}, 1000)',
+  ].join(';'),
+];
+
 const tempRoot = async (): Promise<string> => {
   const root = await mkdtemp(path.join(tmpdir(), 'analyzer-adapter-'));
   tempRoots.push(root);
@@ -310,7 +653,7 @@ interface AnalyzerCommandCall {
 
 class FakeAnalyzerCommandRunner implements AnalyzerCommandRunner {
   readonly calls: AnalyzerCommandCall[] = [];
-  onRun: ((options: AnalyzerCommandRunnerOptions) => Promise<Result<{ stdout: string; stderr: string }, AppError>>) | null = null;
+  onRun: ((call: AnalyzerCommandCall) => Promise<Result<{ stdout: string; stderr: string }, AppError>>) | null = null;
 
   constructor(private readonly stdout: string) {}
 
@@ -319,8 +662,9 @@ class FakeAnalyzerCommandRunner implements AnalyzerCommandRunner {
     args: readonly string[],
     options: AnalyzerCommandRunnerOptions,
   ): Promise<Result<{ stdout: string; stderr: string }, AppError>> {
-    this.calls.push({ command, args: [...args], options });
-    if (this.onRun !== null) return this.onRun(options);
+    const call = { command, args: [...args], options };
+    this.calls.push(call);
+    if (this.onRun !== null) return this.onRun(call);
     return Promise.resolve(ok({ stdout: this.stdout, stderr: '' }));
   }
 }
@@ -375,6 +719,76 @@ const ollamaChatRequestSchema = z.object({
     images: z.array(z.string()),
   })),
 });
+
+const apiChatRequestSchema = z.object({
+  model: z.string(),
+  messages: z.array(z.object({
+    role: z.string(),
+    content: z.array(z.union([
+      z.object({ type: z.literal('text'), text: z.string() }),
+      z.object({
+        type: z.literal('image_url'),
+        image_url: z.object({ url: z.string(), detail: z.string() }),
+      }),
+    ])),
+  })),
+});
+
+const apiProvider = (origin: string) => ({
+  family: 'api',
+  providerId: 'compatible',
+  baseUrl: `${origin}/v1`,
+  apiKeyRef: 'compatible',
+  model: 'vision-model',
+  maxImageDetail: 'high',
+} as const);
+
+class FakeCredentialsStore implements CredentialsStore {
+  constructor(private readonly value: string | null) {}
+
+  get(): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.value));
+  }
+
+  set(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+}
+
+const startFakeApiServer = async (
+  status: number,
+  responseBody: unknown,
+  headers: Record<string, string> = {},
+  delayMs = 0,
+): Promise<{
+  origin: string;
+  requests: Array<{ url: string; authorization: string | undefined; body: unknown }>;
+  close: () => Promise<void>;
+}> => {
+  const requests: Array<{ url: string; authorization: string | undefined; body: unknown }> = [];
+  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
+    void readRequestBody(request).then((body) => {
+      requests.push({
+        url: request.url ?? '',
+        authorization: request.headers.authorization,
+        body,
+      });
+      setTimeout(() => {
+        if (response.destroyed) return;
+        response.writeHead(status, { 'content-type': 'application/json', ...headers });
+        response.end(JSON.stringify(responseBody));
+      }, delayMs);
+    });
+  });
+  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+  const address = server.address();
+  if (address === null || typeof address === 'string') throw new Error('Server did not expose a TCP port');
+  return {
+    origin: `http://127.0.0.1:${address.port}`,
+    requests,
+    close: () => new Promise((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error))),
+  };
+};
 
 const startFakeOllamaServer = async (
   responseBody: unknown,

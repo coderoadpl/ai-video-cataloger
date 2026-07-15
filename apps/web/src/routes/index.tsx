@@ -10,6 +10,10 @@ import { useCatalog } from '../features/catalog/use-catalog.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
+import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
+import { useReadiness } from '../features/readiness/use-readiness.js';
+import { SetupWizard } from '../features/wizard/SetupWizard.js';
+import { useFirstLaunch } from '../features/wizard/use-first-launch.js';
 import { useProcessing } from '../features/processing/use-processing.js';
 import { SettingsModal } from '../features/settings/SettingsModal.js';
 import { AppShell } from '../features/shell/AppShell.js';
@@ -19,7 +23,16 @@ export const IndexRoute = () => {
   const shell = useShell();
   const terminal = useTerminalLog();
   const catalog = useCatalog(shell.currentFolder);
-  const processing = useProcessing({ videos: catalog.videos, addLine: terminal.addLine });
+  const readiness = useReadiness(shell.currentFolder);
+  const firstLaunch = useFirstLaunch();
+  const processing = useProcessing({
+    videos: catalog.videos,
+    addLine: terminal.addLine,
+    checkReadiness: readiness.checkNow,
+  });
+  const disabledReason = readiness.data !== null && !readiness.data.ready
+    ? `Analysis unavailable: ${readiness.data.missingPieces.map((piece) => piece.name).join(', ')}`
+    : readiness.isLoading ? 'Checking processing setup…' : undefined;
 
   const selected = catalog.selectedVideo;
   const analyzing = selected !== null && selected.path === processing.analyzingPath;
@@ -37,6 +50,7 @@ export const IndexRoute = () => {
           batchProgress={processing.batchProgress}
           onAnalyzeAll={processing.batchAnalyze}
           onStop={processing.requestBatchCancel}
+          disabledReason={disabledReason}
         />
       }
     />
@@ -53,7 +67,12 @@ export const IndexRoute = () => {
         <ProcessingOverlay progress={overlay} onCancel={processing.requestCancel} />
       )}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        <DetailsPanel video={selected} analyzing={analyzing} onAnalyze={processing.analyze} />
+        <DetailsPanel
+          video={selected}
+          analyzing={analyzing}
+          onAnalyze={processing.analyze}
+          disabledReason={disabledReason}
+        />
       </Box>
     </Box>
   );
@@ -78,6 +97,8 @@ export const IndexRoute = () => {
       shell={shell}
       sidebar={sidebar}
       content={content}
+      autoOpenSetup={firstLaunch.shouldAutoOpen}
+      onAutoOpenSetupConsumed={firstLaunch.markSeen}
       terminal={{
         lines: terminal.lines,
         droppedCount: terminal.droppedCount,
@@ -87,11 +108,32 @@ export const IndexRoute = () => {
         onClear: terminal.clear,
       }}
       overlays={overlays}
+      renderBanner={(openModal) => readiness.data === null ? null : (
+        <ReadinessNotice
+          readiness={readiness.data}
+          onOpenSettings={() => openModal('settings')}
+          onOpenSetup={() => openModal('setup')}
+        />
+      )}
       renderModals={({ modal, close }) => (
         <>
-          <SettingsModal open={modal === 'settings'} folder={shell.currentFolder} onClose={close} />
+          <SettingsModal
+            open={modal === 'settings'}
+            folder={shell.currentFolder}
+            onClose={close}
+            onSaved={() => { void readiness.refresh(); }}
+          />
           <ModelManagerModal open={modal === 'models'} onClose={close} addLine={terminal.addLine} />
           <PrerequisitesModal open={modal === 'prerequisites'} onClose={close} />
+          <SetupWizard
+            open={modal === 'setup'}
+            folder={shell.currentFolder}
+            onClose={() => {
+              firstLaunch.markSeen();
+              close();
+              void readiness.refresh();
+            }}
+          />
         </>
       )}
     />

@@ -12,7 +12,14 @@ import {
 } from '@core/domain/index.js';
 
 import { JOB_CANCELLED_ERROR_MESSAGE } from '../ports.js';
-import type { ConfigStore, JobsPort, LocalAiRuntimePort, ModelDownloadPort } from '../ports.js';
+import type {
+  ConfigStore,
+  JobsPort,
+  LocalAiRuntimePort,
+  ModelDownloadPort,
+  WhisperRuntimePort,
+  WhisperRuntimeStatus,
+} from '../ports.js';
 
 export interface ModelsDeps {
   config: ConfigStore;
@@ -20,6 +27,8 @@ export interface ModelsDeps {
   jobs: JobsPort;
   localAi: LocalAiRuntimePort;
 }
+
+type WhisperRuntimeDeps = ModelsDeps & { whisperRuntime: WhisperRuntimePort };
 
 export interface WhisperModelListEntry {
   name: WhisperModelName;
@@ -35,6 +44,27 @@ export interface WhisperModelsListOutput {
 export interface JobAcceptedOutput {
   jobId: string;
 }
+
+export const whisperRuntimeStatus = (deps: WhisperRuntimeDeps): Promise<Result<WhisperRuntimeStatus, AppError>> =>
+  deps.whisperRuntime.status();
+
+export const installWhisperRuntime = (
+  deps: WhisperRuntimeDeps,
+): Promise<Result<JobAcceptedOutput, AppError>> =>
+  deps.jobs.enqueue({
+    kind: 'whisper_runtime_install',
+    payload: {},
+    run: async (context) => {
+      const started = await context.reportProgress({ step: 'runtime_setup', percentage: 0 });
+      if (!started.ok) return started;
+      const installed = await deps.whisperRuntime.install({ signal: context.signal });
+      if (context.signal.aborted) return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
+      if (!installed.ok) return installed;
+      const completed = await context.reportProgress({ step: 'runtime_setup', percentage: 100 });
+      if (!completed.ok) return completed;
+      return ok(installed.value);
+    },
+  });
 
 export interface WhisperModelDeleteOutput {
   model: WhisperModelName;

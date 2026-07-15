@@ -29,6 +29,7 @@ const menuChannelByName = {
   showSettings: CHANNELS.menuShowSettings,
   showPrerequisites: CHANNELS.menuShowPrerequisites,
   showModelManager: CHANNELS.menuShowModelManager,
+  showSetupWizard: CHANNELS.menuShowSetupWizard,
 } satisfies { [Name in MenuEventName]: string };
 
 const menuPayloadParsers = {
@@ -40,6 +41,7 @@ const menuPayloadParsers = {
   showSettings: () => undefined,
   showPrerequisites: () => undefined,
   showModelManager: () => undefined,
+  showSetupWizard: () => undefined,
 } satisfies { [Name in MenuEventName]: (args: readonly unknown[]) => MenuEventPayloads[Name] };
 
 type MenuEventSubscriptionArgs =
@@ -50,7 +52,8 @@ type MenuEventSubscriptionArgs =
   | [name: 'toggleSidebar', handler: MenuEventHandler<'toggleSidebar'>]
   | [name: 'showSettings', handler: MenuEventHandler<'showSettings'>]
   | [name: 'showPrerequisites', handler: MenuEventHandler<'showPrerequisites'>]
-  | [name: 'showModelManager', handler: MenuEventHandler<'showModelManager'>];
+  | [name: 'showModelManager', handler: MenuEventHandler<'showModelManager'>]
+  | [name: 'showSetupWizard', handler: MenuEventHandler<'showSetupWizard'>];
 
 function onMenuEvent(name: 'openFolder', handler: MenuEventHandler<'openFolder'>): Unsubscribe;
 function onMenuEvent(name: 'openRecentFolder', handler: MenuEventHandler<'openRecentFolder'>): Unsubscribe;
@@ -60,6 +63,7 @@ function onMenuEvent(name: 'toggleSidebar', handler: MenuEventHandler<'toggleSid
 function onMenuEvent(name: 'showSettings', handler: MenuEventHandler<'showSettings'>): Unsubscribe;
 function onMenuEvent(name: 'showPrerequisites', handler: MenuEventHandler<'showPrerequisites'>): Unsubscribe;
 function onMenuEvent(name: 'showModelManager', handler: MenuEventHandler<'showModelManager'>): Unsubscribe;
+function onMenuEvent(name: 'showSetupWizard', handler: MenuEventHandler<'showSetupWizard'>): Unsubscribe;
 function onMenuEvent(...args: MenuEventSubscriptionArgs): Unsubscribe {
   switch (args[0]) {
     case 'openFolder':
@@ -78,6 +82,8 @@ function onMenuEvent(...args: MenuEventSubscriptionArgs): Unsubscribe {
       return listenToMenuEvent(menuChannelByName.showPrerequisites, menuPayloadParsers.showPrerequisites, args[1]);
     case 'showModelManager':
       return listenToMenuEvent(menuChannelByName.showModelManager, menuPayloadParsers.showModelManager, args[1]);
+    case 'showSetupWizard':
+      return listenToMenuEvent(menuChannelByName.showSetupWizard, menuPayloadParsers.showSetupWizard, args[1]);
   }
 }
 
@@ -124,6 +130,12 @@ const desktopBridge: DesktopBridge = {
   },
   menu: {
     on: onMenuEvent,
+  },
+  onboarding: {
+    getCompleted: async () => z.boolean().parse(await invokeUnknown(CHANNELS.onboardingGetCompleted)),
+    setCompleted: async () => {
+      await invokeUnknown(CHANNELS.onboardingSetCompleted);
+    },
   },
 };
 

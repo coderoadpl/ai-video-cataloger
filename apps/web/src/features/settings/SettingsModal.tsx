@@ -15,6 +15,7 @@ import {
   Select,
   Slider,
   Switch,
+  TextField,
   Typography,
 } from '@mui/material';
 
@@ -30,10 +31,18 @@ interface SettingsModalProps {
   open: boolean;
   folder: string | null;
   onClose: () => void;
+  onSaved?: (() => void) | undefined;
 }
 
-export const SettingsModal = ({ open, folder, onClose }: SettingsModalProps) => {
-  const settings = useSettings({ open, folder, onSaved: onClose });
+export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalProps) => {
+  const settings = useSettings({
+    open,
+    folder,
+    onSaved: () => {
+      onSaved?.();
+      onClose();
+    },
+  });
   const { draft } = settings;
 
   const patch = (value: Partial<SettingsDraft>) => settings.setDraft(value);
@@ -99,33 +108,49 @@ export const SettingsModal = ({ open, folder, onClose }: SettingsModalProps) => 
             </FormControl>
 
             {draft.whisper_mode === 'local' ? (
-              <FormControl fullWidth size="small" data-testid="whisper-model-control">
-                <InputLabel id="whisper-model-label">Whisper Model</InputLabel>
-                <Select
-                  labelId="whisper-model-label"
-                  label="Whisper Model"
-                  value={draft.whisper_model}
-                  data-testid="whisper-model-select"
-                  onChange={(event) => {
-                    const next = WHISPER_MODEL_OPTIONS.find((option) => option.value === event.target.value);
-                    if (next !== undefined) patch({ whisper_model: next.value });
-                  }}
-                >
-                  {WHISPER_MODEL_OPTIONS.map((option) => (
-                    <MenuItem key={option.value} value={option.value}>
-                      {option.label}
-                    </MenuItem>
-                  ))}
-                </Select>
-              </FormControl>
+              <>
+                <FormControl fullWidth size="small" data-testid="whisper-model-control">
+                  <InputLabel id="whisper-model-label">Whisper Model</InputLabel>
+                  <Select
+                    labelId="whisper-model-label"
+                    label="Whisper Model"
+                    value={draft.whisper_model}
+                    data-testid="whisper-model-select"
+                    onChange={(event) => {
+                      const next = WHISPER_MODEL_OPTIONS.find((option) => option.value === event.target.value);
+                      if (next !== undefined) patch({ whisper_model: next.value });
+                    }}
+                  >
+                    {WHISPER_MODEL_OPTIONS.map((option) => (
+                      <MenuItem key={option.value} value={option.value}>
+                        {option.label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label="Custom whisper.cpp path"
+                  value={draft.whisper_binary_path}
+                  onChange={(event) => patch({ whisper_binary_path: event.target.value })}
+                  helperText="Optional. Takes precedence over the managed and system runtimes."
+                  slotProps={{ htmlInput: { 'data-testid': 'whisper-binary-path' } }}
+                />
+              </>
             ) : null}
 
             <SettingsAnalyzerSection
               backend={draft.analyzer_backend}
               localModel={draft.local_model}
               tiers={settings.tiers}
+              provider={draft.analyzer_provider}
+              frameCount={draft.frames}
+              apiCredential={settings.apiCredential}
               onBackendChange={(backend) => patch({ analyzer_backend: backend })}
               onLocalModelChange={(tag) => patch({ local_model: tag })}
+              onProviderChange={(provider) => patch({ analyzer_provider: provider })}
+              onApiCredentialChange={settings.setApiCredential}
             />
 
             <FormControlLabel

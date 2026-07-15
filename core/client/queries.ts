@@ -68,12 +68,15 @@ export type GenerateThumbnailInput = z.input<typeof API_ROUTES.thumbnail.input>;
 export type ResetAllInput = z.input<typeof API_ROUTES.resetAll.input>;
 export type ResetSingleInput = z.input<typeof API_ROUTES.resetSingle.input>;
 export type SetConfigInput = z.input<typeof API_ROUTES.configSet.input>;
+export type SetCredentialInput = z.input<typeof API_ROUTES.credentialSet.input>;
 export type DownloadWhisperModelInput = z.input<typeof API_ROUTES.whisperModelDownload.input>;
 export type DeleteWhisperModelInput = z.input<typeof API_ROUTES.whisperModelDelete.input>;
 export type UseWhisperModelInput = z.input<typeof API_ROUTES.whisperModelUse.input>;
 export type PullLocalAiModelInput = z.input<typeof API_ROUTES.localAiPull.input>;
 export type RemoveLocalAiModelInput = z.input<typeof API_ROUTES.localAiRm.input>;
 export type CancelJobInput = z.input<typeof API_ROUTES.jobCancel.input>;
+export type TestProviderInput = z.input<typeof API_ROUTES.providerTest.input>;
+export type ReadinessInput = z.input<typeof API_ROUTES.readiness.input>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 
 export const healthScopes = {
@@ -96,8 +99,16 @@ export const configScopes = {
     ['config', 'folder', input.folder ?? null, input.key === null ? 'all' : 'key', input.key] as const,
 };
 
+export const providerScopes = {
+  all: () => ['providers'] as const,
+};
+
 export const modelsWhisperScopes = {
   all: () => ['models', 'whisper'] as const,
+};
+
+export const whisperRuntimeScopes = {
+  all: () => ['models', 'whisper-runtime'] as const,
 };
 
 export const localAiRequirementsScopes = {
@@ -106,6 +117,11 @@ export const localAiRequirementsScopes = {
 
 export const doctorScopes = {
   all: () => ['doctor'] as const,
+};
+
+export const readinessScopes = {
+  all: () => ['readiness'] as const,
+  folder: (folder: string | undefined) => ['readiness', 'folder', folder ?? null] as const,
 };
 
 export const checkScopes = {
@@ -125,13 +141,16 @@ export const mutationScopes = {
   resetAll: () => ['resetAll'] as const,
   resetSingle: () => ['resetSingle'] as const,
   setConfig: () => ['setConfig'] as const,
+  setCredential: () => ['setCredential'] as const,
   downloadWhisperModel: () => ['downloadWhisperModel'] as const,
   deleteWhisperModel: () => ['deleteWhisperModel'] as const,
   useWhisperModel: () => ['useWhisperModel'] as const,
+  installWhisperRuntime: () => ['installWhisperRuntime'] as const,
   pullLocalAiModel: () => ['pullLocalAiModel'] as const,
   removeLocalAiModel: () => ['removeLocalAiModel'] as const,
   stopLocalAiDaemon: () => ['stopLocalAiDaemon'] as const,
   cancelJob: () => ['cancelJob'] as const,
+  testProvider: () => ['testProvider'] as const,
 };
 
 interface RefetchQuery<TData> {
@@ -188,10 +207,22 @@ export const configQuery = (api: ApiClient, input: ConfigInput = {}) => {
   });
 };
 
+export const providersQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: providerScopes.all(),
+    call: ({ signal }) => api.providers(signal),
+  });
+
 export const modelsWhisperQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: modelsWhisperScopes.all(),
     call: ({ signal }) => api.modelsWhisper(signal),
+  });
+
+export const whisperRuntimeQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: whisperRuntimeScopes.all(),
+    call: ({ signal }) => api.whisperRuntimeStatus(signal),
   });
 
 export const localAiRequirementsQuery = (api: ApiClient) =>
@@ -205,6 +236,15 @@ export const doctorQuery = (api: ApiClient) =>
     queryKey: doctorScopes.all(),
     call: ({ signal }) => api.doctor(signal),
   });
+
+export const readinessQuery = (api: ApiClient, input: ReadinessInput = {}) => {
+  const parsed = API_ROUTES.readiness.input.parse(input);
+  return defineQuery({
+    queryKey: readinessScopes.folder(parsed.folder),
+    staleTime: 0,
+    call: ({ signal }) => api.readiness(input, signal),
+  });
+};
 
 export const checkQuery = (api: ApiClient, input: CheckInput) => {
   const parsed = API_ROUTES.check.input.parse(input);
@@ -260,6 +300,18 @@ export const setConfigMutation = (api: ApiClient) =>
     call: (variables: SetConfigInput) => api.setConfig(variables),
   });
 
+export const setCredentialMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.setCredential(),
+    call: (variables: SetCredentialInput) => api.setCredential(variables),
+  });
+
+export const testProviderMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.testProvider(),
+    call: (variables: TestProviderInput) => api.testProvider(variables),
+  });
+
 export const downloadWhisperModelMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.downloadWhisperModel(),
@@ -276,6 +328,12 @@ export const useWhisperModelMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.useWhisperModel(),
     call: (variables: UseWhisperModelInput) => api.useWhisperModel(variables),
+  });
+
+export const installWhisperRuntimeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.installWhisperRuntime(),
+    call: () => api.installWhisperRuntime(),
   });
 
 export const pullLocalAiModelMutation = (api: ApiClient) =>

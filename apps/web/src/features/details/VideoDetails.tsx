@@ -12,9 +12,10 @@ interface VideoDetailsProps {
   video: DetailsVideo;
   analyzing: boolean;
   onAnalyze?: ((video: DetailsVideo) => void) | undefined;
+  disabledReason?: string | undefined;
 }
 
-export const VideoDetails = ({ video, analyzing, onAnalyze }: VideoDetailsProps) => (
+export const VideoDetails = ({ video, analyzing, onAnalyze, disabledReason }: VideoDetailsProps) => (
   <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 780 }}>
     <Box sx={{ display: 'flex', gap: 2 }}>
       <MediaThumbnail
@@ -43,7 +44,7 @@ export const VideoDetails = ({ video, analyzing, onAnalyze }: VideoDetailsProps)
       {statusDescription(video.status, analyzing)}
     </Typography>
 
-    <StatusActions video={video} analyzing={analyzing} onAnalyze={onAnalyze} />
+    <StatusActions video={video} analyzing={analyzing} onAnalyze={onAnalyze} disabledReason={disabledReason} />
 
     <ArtifactsSection video={video} />
   </Box>

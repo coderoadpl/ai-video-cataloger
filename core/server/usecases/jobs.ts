@@ -20,7 +20,7 @@ export interface ProcessInput {
   whisperExplicit?: boolean | undefined;
   whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
   whisperModelExplicit?: boolean | undefined;
-  analyzer?: 'claude' | 'local' | undefined;
+  analyzer?: 'claude' | 'local' | 'api' | undefined;
   localModel?: string | undefined;
   batch?: { current: number; total: number } | undefined;
 }

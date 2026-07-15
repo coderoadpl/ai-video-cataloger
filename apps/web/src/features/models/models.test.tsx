@@ -51,6 +51,16 @@ const requirements: Requirements = {
   ],
 };
 
+const managedRuntime = {
+  available: true,
+  path: '/home/.ai-video-cataloger/bin/whisper',
+  source: 'managed',
+  version: 'v1.9.1',
+  managedInstalled: true,
+  buildToolsAvailable: true,
+  missingBuildTools: [],
+};
+
 const terminalJob = (jobId: string, kind: string) => ({
   jobId,
   kind,
@@ -65,6 +75,7 @@ const terminalJob = (jobId: string, kind: string) => ({
 const stubList = () => {
   server.use(
     http.get('/api/models/whisper', () => HttpResponse.json({ ok: true, data: { models: whisperModels } })),
+    http.get('/api/models/whisper-runtime', () => HttpResponse.json({ ok: true, data: managedRuntime })),
     http.get('/api/models/local-ai/requirements', () => HttpResponse.json({ ok: true, data: requirements })),
     http.get('/api/jobs/status', ({ request }) => {
       const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
@@ -102,6 +113,42 @@ describe('model manager', () => {
       expect(addLine).toHaveBeenCalledWith('Model tiny downloaded successfully', 'success'),
     );
     expect(downloadHit).toBe(true);
+  });
+
+  it('installs the managed whisper runtime as a job', async () => {
+    let installed = false;
+    stubList();
+    server.use(
+      http.get('/api/models/whisper-runtime', () => HttpResponse.json({
+        ok: true,
+        data: installed
+          ? managedRuntime
+          : {
+              available: false,
+              path: null,
+              source: null,
+              version: null,
+              managedInstalled: false,
+              buildToolsAvailable: true,
+              missingBuildTools: [],
+            },
+      })),
+      http.post('/api/models/whisper-runtime/install', () => {
+        installed = true;
+        return HttpResponse.json({ ok: true, data: { jobId: 'runtime-1' } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({ ok: true, data: terminalJob(jobId, 'whisper_runtime_install') });
+      }),
+    );
+    const addLine = vi.fn();
+    renderThemed(<ModelManagerModal open onClose={vi.fn()} addLine={addLine} intervalMs={0} />);
+
+    fireEvent.click(await screen.findByTestId('whisper-runtime-install'));
+
+    await waitFor(() => expect(addLine).toHaveBeenCalledWith('Managed whisper.cpp runtime is ready', 'success'));
+    expect(await screen.findByTestId('whisper-runtime-status')).toBeDefined();
   });
 
   it('activates a downloaded model when its row is clicked', async () => {

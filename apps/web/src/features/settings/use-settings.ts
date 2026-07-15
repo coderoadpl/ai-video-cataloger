@@ -19,6 +19,8 @@ export interface SettingsState {
   hasChanges: boolean;
   isSaving: boolean;
   tiers: LocalAiTier[] | null;
+  apiCredential: string;
+  setApiCredential: (credential: string) => void;
   setDraft: (patch: Partial<SettingsDraft>) => void;
   save: () => void;
   reset: () => void;
@@ -41,11 +43,13 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const configQuery = useQuery({ ...actions.config(folder === null ? {} : { folder }), enabled });
   const requirementsQuery = useQuery({ ...actions.localAiRequirements, enabled });
   const setConfig = useMutation(actions.setConfig);
+  const setCredential = useMutation(actions.setCredential);
 
   const [draft, setDraftState] = useState<SettingsDraft | null>(null);
   const [original, setOriginal] = useState<SettingsDraft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [apiCredential, setApiCredential] = useState('');
 
   const data = configQuery.data;
   useEffect(() => {
@@ -53,6 +57,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       setDraftState(null);
       setOriginal(null);
       setSaveError(null);
+      setApiCredential('');
       return;
     }
     if (draft !== null || data === undefined || !('config' in data)) return;
@@ -73,7 +78,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const save = useCallback(() => {
     if (draft === null || original === null || folder === null) return;
     const keys = changedKeys(draft, original);
-    if (keys.length === 0) return;
+    if (keys.length === 0 && apiCredential.length === 0) return;
     void (async () => {
       setIsSaving(true);
       setSaveError(null);
@@ -86,16 +91,28 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
           setSaveError(messageOf(error));
         }
       }
+      if (apiCredential.length > 0 && draft.analyzer_provider.family === 'api') {
+        try {
+          await setCredential.mutateAsync({
+            providerId: draft.analyzer_provider.apiKeyRef,
+            credential: apiCredential,
+          });
+          setApiCredential('');
+        } catch (error) {
+          allOk = false;
+          setSaveError(messageOf(error));
+        }
+      }
       setIsSaving(false);
       if (!allOk) return;
       setOriginal(draft);
       await configQuery.refetch();
       onSaved?.();
     })();
-  }, [draft, original, folder, setConfig, configQuery, onSaved]);
+  }, [draft, original, folder, setConfig, setCredential, apiCredential, configQuery, onSaved]);
 
   const hasChanges =
-    draft !== null && original !== null && changedKeys(draft, original).length > 0;
+    draft !== null && original !== null && (changedKeys(draft, original).length > 0 || apiCredential.length > 0);
 
   return {
     isLoading: enabled && draft === null && configQuery.error === null,
@@ -104,6 +121,8 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     hasChanges,
     isSaving,
     tiers: requirementsQuery.data?.tiers ?? null,
+    apiCredential,
+    setApiCredential,
     setDraft,
     save,
     reset,

@@ -165,6 +165,10 @@ const helpMenu = (mainWindow: BrowserWindow | null): MenuItemConstructorOptions 
   role: 'help',
   submenu: [
     {
+      label: 'Setup Wizard...',
+      click: () => sendToRenderer(mainWindow, CHANNELS.menuShowSetupWizard),
+    },
+    {
       label: 'Prerequisites...',
       click: () => sendToRenderer(mainWindow, CHANNELS.menuShowPrerequisites),
     },

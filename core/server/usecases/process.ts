@@ -1,16 +1,19 @@
 import {
+  ANALYZER_PROVIDERS,
   WHISPER_MODES,
   CONFIG_DEFAULTS,
   appError,
   ok,
   type AppConfig,
   type AppError,
+  type AnalyzerProviderConfig,
   type Result,
   type Video,
   type WhisperModelName,
 } from '@core/domain/index.js';
-import { analyzerBackendSchema, configSchema } from '@core/domain/config.js';
+import { analyzerBackendSchema, configValueSchema } from '@core/domain/config.js';
 import { whisperModelNameSchema } from '@core/domain/models.js';
+import { analyzerProviderConfigSchema, legacyAnalyzerProvider } from '@core/domain/providers.js';
 import { z } from 'zod';
 
 import {
@@ -57,7 +60,7 @@ export interface ProcessPipelineInput {
   whisperExplicit?: boolean | undefined;
   whisperModel: WhisperModelName;
   whisperModelExplicit?: boolean | undefined;
-  analyzer?: AppConfig['analyzer_backend'] | undefined;
+  analyzer?: AppConfig['analyzer_backend'] | 'api' | undefined;
   localModel?: string | undefined;
   batch?: ProcessBatchContext | undefined;
 }
@@ -125,16 +128,32 @@ export const checkProcessPrerequisites = async (
   if (!media.ok) return prerequisitesFailure(media.error.message, media.error);
   const required = [...media.value];
   if (resolved.value.whisper === 'local') {
-    const transcriber = await deps.transcriber.dependency();
+    const transcriber = await deps.transcriber.dependency({
+      mode: resolved.value.whisper,
+      model: resolved.value.whisperModel,
+    });
+    if (!transcriber.ok) return prerequisitesFailure(transcriber.error.message, transcriber.error);
+    required.push(transcriber.value);
+  } else if (resolved.value.whisper === 'api') {
+    const transcriber = await deps.transcriber.dependency({
+      mode: resolved.value.whisper,
+      model: resolved.value.whisperModel,
+    });
     if (!transcriber.ok) return prerequisitesFailure(transcriber.error.message, transcriber.error);
     required.push(transcriber.value);
   }
-  const analyzer = await deps.analyzer.dependency({ backend: resolved.value.analyzer.backend });
+  const analyzer = await deps.analyzer.dependency({
+    backend: resolved.value.analyzer.backend,
+    provider: resolved.value.analyzer.provider,
+  });
   if (!analyzer.ok) return prerequisitesFailure(analyzer.error.message, analyzer.error);
   required.push(analyzer.value);
   const missing = required.filter((entry) => !entry.available).map((entry) => entry.name);
   if (missing.length > 0) {
-    return prerequisitesFailure(`Prerequisites check failed: ${missing.join(', ')}`);
+    return prerequisitesFailure(
+      `Missing prerequisite: ${missing.join(', ')}. Run: ai-video-cataloger setup`,
+      { missing },
+    );
   }
   return ok(undefined);
 };
@@ -340,6 +359,7 @@ const runPipelineSteps = async (
       transcript: transcript.value,
       backend: resolved.analyzer.backend,
       localModel: resolved.analyzer.localModel,
+      provider: resolved.analyzer.provider,
       timeoutSeconds: resolved.analyzer.timeoutSeconds,
       verbose: resolved.verbose,
       signal: progress?.signal,
@@ -351,7 +371,7 @@ const runPipelineSteps = async (
       video,
       framePaths: frames.value,
       rawResponse: analyzed.value.rawResponse,
-      backend: resolved.analyzer.backend,
+      provider: resolved.analyzer.provider,
     });
     if (!debug.ok) return debug;
     const afterDebug = cancellationBoundary(progress);
@@ -405,6 +425,7 @@ interface ResolvedAnalyzer {
   backend: AppConfig['analyzer_backend'];
   localModel: string;
   timeoutSeconds: number;
+  provider: AnalyzerProviderConfig;
 }
 
 interface ResolvedProcessOptions {
@@ -432,8 +453,11 @@ const resolveProcessOptions = async (
     input.whisperModelExplicit === true
       ? input.whisperModel
       : storedWhisperModel(stored.value.whisper_model) ?? CONFIG_DEFAULTS.whisper_model;
-  const backend = input.analyzer ?? storedAnalyzerBackend(stored.value.analyzer_backend) ?? CONFIG_DEFAULTS.analyzer_backend;
   const localModel = trimmedValue(input.localModel) ?? trimmedValue(stored.value.local_model) ?? CONFIG_DEFAULTS.local_model;
+  const persistedProvider = storedAnalyzerProvider(stored.value.analyzer_provider);
+  const legacyBackend = storedAnalyzerBackend(stored.value.analyzer_backend) ?? CONFIG_DEFAULTS.analyzer_backend;
+  const provider = resolveAnalyzerProvider(input.analyzer, persistedProvider, legacyBackend, localModel);
+  const backend = provider.family === 'local' ? 'local' : 'claude';
   const storedTimeout = storedTimeoutValue(stored.value.timeout);
   const timeoutSeconds =
     input.timeoutExplicit === true
@@ -445,9 +469,47 @@ const resolveProcessOptions = async (
     verbose: input.verbose,
     whisper,
     whisperModel,
-    analyzer: { backend, localModel, timeoutSeconds },
+    analyzer: {
+      backend,
+      localModel: provider.family === 'local' ? provider.modelTag : localModel,
+      timeoutSeconds,
+      provider,
+    },
     batch: input.batch ?? { current: 1, total: 1 },
   });
+};
+
+const storedAnalyzerProvider = (value: string | undefined): AnalyzerProviderConfig | null => {
+  if (value === undefined) return null;
+  try {
+    return analyzerProviderConfigSchema.parse(JSON.parse(value));
+  } catch {
+    return null;
+  }
+};
+
+const resolveAnalyzerProvider = (
+  explicit: ProcessPipelineInput['analyzer'],
+  persisted: AnalyzerProviderConfig | null,
+  legacyBackend: AppConfig['analyzer_backend'],
+  localModel: string,
+): AnalyzerProviderConfig => {
+  if (explicit === undefined) return persisted ?? legacyAnalyzerProvider(legacyBackend, localModel);
+  if (explicit === 'local') return legacyAnalyzerProvider('local', localModel);
+  if (explicit === 'claude') return legacyAnalyzerProvider('claude', localModel);
+  if (persisted?.family === 'api') return persisted;
+  const descriptor = ANALYZER_PROVIDERS.find((candidate) => candidate.family === 'api');
+  if (descriptor !== undefined && descriptor.family === 'api') {
+    return { ...descriptor, apiKeyRef: descriptor.providerId };
+  }
+  return {
+    family: 'api',
+    providerId: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKeyRef: 'openai',
+    model: 'gpt-4.1-mini',
+    maxImageDetail: 'auto',
+  };
 };
 
 const storedAnalyzerBackend = (value: string | undefined): AppConfig['analyzer_backend'] | null => {
@@ -462,7 +524,7 @@ const storedAnalyzerBackend = (value: string | undefined): AppConfig['analyzer_b
 const storedTimeoutValue = (value: string | undefined): number | null => {
   if (value === undefined) return null;
   try {
-    return configSchema.shape.timeout.parse(value);
+    return configValueSchema.shape.timeout.parse(value);
   } catch {
     return null;
   }
@@ -471,7 +533,7 @@ const storedTimeoutValue = (value: string | undefined): number | null => {
 const storedFrames = (value: string | undefined): number | null => {
   if (value === undefined) return null;
   try {
-    return configSchema.shape.frames.parse(value);
+    return configValueSchema.shape.frames.parse(value);
   } catch {
     return null;
   }
@@ -480,7 +542,7 @@ const storedFrames = (value: string | undefined): number | null => {
 const storedSkipRename = (value: string | undefined): boolean | null => {
   if (value === undefined) return null;
   try {
-    return configSchema.shape.skip_rename.parse(value);
+    return configValueSchema.shape.skip_rename.parse(value);
   } catch {
     return null;
   }
@@ -614,7 +676,7 @@ const loadSummary = async (fs: FileSystemPort, summaryJsonPath: string): Promise
 const writeDebugLog = async (
   fs: FileSystemPort,
   debugLogPath: string,
-  input: { video: Video; framePaths: string[]; rawResponse: string; backend: AppConfig['analyzer_backend'] },
+  input: { video: Video; framePaths: string[]; rawResponse: string; provider: AnalyzerProviderConfig },
 ): Promise<Result<void, AppError>> => {
   const dir = fs.dirname(debugLogPath);
   const ensured = await fs.ensureDirectory(dir);
@@ -622,7 +684,7 @@ const writeDebugLog = async (
   return fs.writeTextFile(
     debugLogPath,
     `Video: ${input.video.originalName}
-Analyzer: ${input.backend}
+Analyzer: ${input.provider.providerId}
 Date Analyzed: ${new Date().toISOString()}
 
 === FRAME PATHS ===

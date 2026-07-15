@@ -1,5 +1,6 @@
 import {
   LOCAL_AI_HARDWARE_TIERS,
+  builtInHarnessProviders,
   getLocalAiSupportLevel,
   ok,
   type AppError,
@@ -7,13 +8,28 @@ import {
   type Result,
 } from '@core/domain/index.js';
 
-import type { AnalyzerPort, DependencyStatus, LocalAiRuntimePort, MediaPort, TranscriberPort } from '../ports.js';
+import type {
+  AnalyzerPort,
+  DependencyStatus,
+  LocalAiRuntimePort,
+  MediaPort,
+  ProvidersPort,
+  ProviderTestResult,
+  TranscriberPort,
+  ConfigStore,
+  FileSystemPort,
+} from '../ports.js';
+import { getReadiness, type ReadinessCache, type ReadinessOutput } from './readiness.js';
 
 export interface DoctorDeps {
   media: MediaPort;
   transcriber: TranscriberPort;
   analyzer: AnalyzerPort;
+  providers: ProvidersPort;
   localAi: LocalAiRuntimePort;
+  config: ConfigStore;
+  fs: FileSystemPort;
+  readiness: ReadinessCache;
 }
 
 export interface DoctorOutput {
@@ -26,6 +42,8 @@ export interface DoctorOutput {
   };
   recommendedLocalModel: string | null;
   allAvailable: boolean;
+  harnesses: Array<Extract<ProviderTestResult, { family: 'harness' }>>;
+  configured: ReadinessOutput;
 }
 
 export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, AppError>> => {
@@ -39,6 +57,9 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
   if (!machine.ok) return machine;
   const localAi = await deps.localAi.dependency();
   if (!localAi.ok) return localAi;
+  const harnesses = await detectHarnesses(deps.providers);
+  const configured = await getReadiness(deps);
+  if (!configured.ok) return configured;
 
   const dependencies = [...media.value, transcriber.value, analyzer.value, localAiDependency(localAi.value, machine.value)];
   return ok({
@@ -51,8 +72,33 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
     },
     recommendedLocalModel: recommendedLocalModel(machine.value),
     allAvailable: dependencies.every((dependency) => dependency.available),
+    harnesses,
+    configured: configured.value,
   });
 };
+
+const detectHarnesses = async (
+  providers: ProvidersPort,
+): Promise<Array<Extract<ProviderTestResult, { family: 'harness' }>>> =>
+  Promise.all(builtInHarnessProviders().map(async (descriptor) => {
+    const provider = {
+      family: descriptor.family,
+      providerId: descriptor.providerId,
+      command: descriptor.command,
+      argsTemplate: descriptor.argsTemplate,
+      promptStyle: descriptor.promptStyle,
+    };
+    const tested = await providers.test(provider);
+    if (tested.ok && tested.value.family === 'harness') return tested.value;
+    return {
+      family: 'harness',
+      providerId: provider.providerId,
+      available: false,
+      version: null,
+      latencyMs: null,
+      message: tested.ok ? 'Provider returned the wrong availability result' : tested.error.message,
+    };
+  }));
 
 const localAiDependency = (dependency: DependencyStatus, machine: MachineProfile): DependencyStatus => {
   if (machine.platform !== 'darwin' || machine.arch !== 'arm64') {

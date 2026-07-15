@@ -51,4 +51,18 @@ describe('config use-cases', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'invalid_config_value' } });
   });
+
+  it('stores whisper_binary_path only in home scope and merges it into config reads', async () => {
+    const config = new InMemoryConfig();
+    const deps = { config, fs: new InMemoryFileSystem('/work') };
+
+    await setConfig(deps, { key: 'whisper_binary_path', value: '/opt/whisper-fast' });
+    const home = await config.get({ kind: 'home' }, 'whisper_binary_path');
+    const folder = await config.get({ kind: 'folder', folder: '/work' }, 'whisper_binary_path');
+    const all = await getConfig(deps, { key: null });
+
+    expect(home).toEqual({ ok: true, value: '/opt/whisper-fast' });
+    expect(folder).toEqual({ ok: true, value: null });
+    expect(all).toMatchObject({ ok: true, value: { config: { whisper_binary_path: '/opt/whisper-fast' } } });
+  });
 });

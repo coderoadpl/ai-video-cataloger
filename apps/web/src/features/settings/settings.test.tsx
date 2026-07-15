@@ -28,6 +28,7 @@ type Tier = z.output<typeof localAiTierSchema>;
 const FOLDER = '/videos';
 
 const defaults = {
+  whisper_binary_path: '',
   whisper_model: 'base',
   whisper_mode: 'local',
   frames: '3',
@@ -35,9 +36,17 @@ const defaults = {
   skip_rename: 'false',
   analyzer_backend: 'claude',
   local_model: 'gemma3:12b',
+  analyzer_provider: JSON.stringify({
+    family: 'harness',
+    providerId: 'claude-code',
+    command: 'claude',
+    argsTemplate: ['--add-dir', '{videoDir}', '-p', '{prompt}'],
+    promptStyle: 'file-urls',
+  }),
 };
 
 const emptyConfig: StoredConfig = {
+  whisper_binary_path: null,
   whisper_model: null,
   whisper_mode: null,
   frames: null,
@@ -45,6 +54,7 @@ const emptyConfig: StoredConfig = {
   skip_rename: null,
   analyzer_backend: null,
   local_model: null,
+  analyzer_provider: null,
 };
 
 const makeTier = (overrides: Partial<Tier> & { tag: Tier['tag'] }): Tier => ({
@@ -144,5 +154,38 @@ describe('settings modal', () => {
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
 
     expect(await screen.findByTestId('local-model-missing-hint')).toBeDefined();
+  });
+
+  it('shows the mandatory API charge notice and stores password input separately', async () => {
+    const credentialBodies: unknown[] = [];
+    stubEndpoints({
+      ...emptyConfig,
+      analyzer_provider: JSON.stringify({
+        family: 'api',
+        providerId: 'openrouter',
+        baseUrl: 'https://openrouter.ai/api/v1',
+        apiKeyRef: 'openrouter',
+        model: 'vision-model',
+        maxImageDetail: 'auto',
+      }),
+    });
+    server.use(
+      http.post('/api/credentials', async ({ request }) => {
+        const body = await request.json();
+        credentialBodies.push(body);
+        return HttpResponse.json({ ok: true, data: { providerId: 'openrouter', stored: true } });
+      }),
+    );
+    const onClose = vi.fn();
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={onClose} />);
+
+    expect(await screen.findByText('usage will be charged by your API provider')).toBeDefined();
+    const credential = screen.getByLabelText('API credential');
+    expect(credential.getAttribute('type')).toBe('password');
+    fireEvent.change(credential, { target: { value: 'secret-from-ui' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(credentialBodies).toEqual([{ providerId: 'openrouter', credential: 'secret-from-ui' }]);
   });
 });

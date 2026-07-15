@@ -9,6 +9,7 @@ export const MENU_EVENT_NAMES = [
   'showSettings',
   'showPrerequisites',
   'showModelManager',
+  'showSetupWizard',
 ] as const;
 
 export type MenuEventName = (typeof MENU_EVENT_NAMES)[number];
@@ -22,6 +23,7 @@ export interface MenuEventPayloads {
   showSettings: undefined;
   showPrerequisites: undefined;
   showModelManager: undefined;
+  showSetupWizard: undefined;
 }
 
 export type MenuEventHandler<Name extends MenuEventName> = (payload: MenuEventPayloads[Name]) => void;
@@ -51,6 +53,12 @@ export interface MenuEventsBridge {
   on(name: 'showSettings', handler: MenuEventHandler<'showSettings'>): Unsubscribe;
   on(name: 'showPrerequisites', handler: MenuEventHandler<'showPrerequisites'>): Unsubscribe;
   on(name: 'showModelManager', handler: MenuEventHandler<'showModelManager'>): Unsubscribe;
+  on(name: 'showSetupWizard', handler: MenuEventHandler<'showSetupWizard'>): Unsubscribe;
+}
+
+export interface OnboardingBridge {
+  getCompleted(): Promise<boolean>;
+  setCompleted(): Promise<void>;
 }
 
 export const desktopFetchRequestSchema = z.object({
@@ -82,4 +90,5 @@ export interface DesktopBridge {
   revealInFinder(path: string): Promise<void>;
   window: WindowControlsBridge;
   menu: MenuEventsBridge;
+  onboarding: OnboardingBridge;
 }

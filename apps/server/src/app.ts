@@ -14,8 +14,11 @@ import {
   generateThumbnail,
   getConfig,
   getJobStatus,
+  getReadiness,
   getStatus,
+  installWhisperRuntime,
   listJobs,
+  listProviders,
   listWhisperModels,
   localAiRequirements,
   pullLocalAiModel,
@@ -25,8 +28,11 @@ import {
   runDoctor,
   scanFolder,
   setConfig,
+  setCredential,
   stopLocalAiDaemon,
+  testProvider,
   useWhisperModel,
+  whisperRuntimeStatus,
 } from '@core/server/index.js';
 
 import type { AppDeps } from './composition.js';
@@ -147,6 +153,26 @@ export const buildApp = (deps: AppDeps): Hono => {
     return respond(await setConfig(deps, input.value), API_ROUTES.configSet.output);
   });
 
+  app.post(API_ROUTES.credentialSet.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.credentialSet.output);
+    const input = parseInput(API_ROUTES.credentialSet.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.credentialSet.output);
+    return respond(await setCredential(deps, input.value), API_ROUTES.credentialSet.output);
+  });
+
+  app.get(API_ROUTES.providersList.path, () =>
+    respond(listProviders(), API_ROUTES.providersList.output),
+  );
+
+  app.post(API_ROUTES.providerTest.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.providerTest.output);
+    const input = parseInput(API_ROUTES.providerTest.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.providerTest.output);
+    return respond(await testProvider(deps, input.value), API_ROUTES.providerTest.output);
+  });
+
   app.get(API_ROUTES.whisperModelsList.path, async () =>
     respond(await listWhisperModels(deps), API_ROUTES.whisperModelsList.output),
   );
@@ -175,6 +201,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     return respond(await useWhisperModel(deps, input.value), API_ROUTES.whisperModelUse.output);
   });
 
+  app.get(API_ROUTES.whisperRuntimeStatus.path, async () =>
+    respond(await whisperRuntimeStatus(deps), API_ROUTES.whisperRuntimeStatus.output),
+  );
+
+  app.post(API_ROUTES.whisperRuntimeInstall.path, async () =>
+    respond(await installWhisperRuntime(deps), API_ROUTES.whisperRuntimeInstall.output),
+  );
+
   app.get(API_ROUTES.localAiRequirements.path, async () =>
     respond(await localAiRequirements(deps), API_ROUTES.localAiRequirements.output),
   );
@@ -202,6 +236,12 @@ export const buildApp = (deps: AppDeps): Hono => {
   app.get(API_ROUTES.doctor.path, async () =>
     respond(await runDoctor(deps), API_ROUTES.doctor.output),
   );
+
+  app.get(API_ROUTES.readiness.path, async (context) => {
+    const input = parseInput(API_ROUTES.readiness.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.readiness.output);
+    return respond(await getReadiness(deps, input.value), API_ROUTES.readiness.output);
+  });
 
   app.get(API_ROUTES.check.path, async (context) => {
     const input = parseInput(API_ROUTES.check.input, queryInput(context));

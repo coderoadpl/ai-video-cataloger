@@ -8,8 +8,10 @@ import {
   jobProgressRefetchInterval,
   jobQuery,
   modelsWhisperScopes,
+  providersQuery,
   scanQuery,
   useWhisperModelMutation,
+  testProviderMutation,
   type JobOutput,
 } from './index.js';
 
@@ -78,6 +80,48 @@ describe('query descriptors', () => {
     ]);
     expect(modelsWhisperScopes.all()).toEqual(['models', 'whisper']);
     expect(jobQuery(api, { jobId: 'job-1' }).queryKey).toEqual(['jobs', 'detail', 'job-1']);
+    expect(providersQuery(api).queryKey).toEqual(['providers']);
+  });
+
+  it('provides descriptors for provider list and connectivity checks', async () => {
+    const calls: Array<{ url: string; method: string | undefined; body: string | null }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls.push({
+        url: String(input),
+        method: init?.method,
+        body: typeof init?.body === 'string' ? init.body : null,
+      });
+      if (init?.method === 'GET') return jsonResponse({ ok: true, data: { providers: [] } });
+      return jsonResponse({
+        ok: true,
+        data: {
+          family: 'local',
+          providerId: 'local',
+          runtimeAvailable: true,
+          modelAvailable: true,
+          version: '1.0.0',
+          latencyMs: 3,
+          message: 'Ready',
+        },
+      });
+    };
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const queryClient = new QueryClient();
+    await queryClient.fetchQuery(providersQuery(api));
+    const mutation = testProviderMutation(api);
+    await mutation.mutationFn(
+      { family: 'local', providerId: 'local', modelTag: 'gemma3:12b' },
+      { client: queryClient, meta: undefined, mutationKey: mutation.mutationKey },
+    );
+
+    expect(calls).toEqual([
+      { url: '/api/providers', method: 'GET', body: null },
+      {
+        url: '/api/providers/test',
+        method: 'POST',
+        body: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'gemma3:12b' }),
+      },
+    ]);
   });
 
   it('throws ApiError with the original taxonomy error from descriptors', async () => {

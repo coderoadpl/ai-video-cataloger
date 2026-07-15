@@ -115,15 +115,39 @@ exporter is registered and the facade no-ops — zero network. The wide-event
 middleware still runs (annotations are free); the composition root decides
 whether anything leaves the process.
 
+## Delta 7 — configured readiness
+
+Processing readiness is a core use-case over the configured analyzer and
+transcriber only. It returns the selected provider/mode, their availability,
+the missing pieces, and setup guidance through `GET /api/readiness`. Media
+dependencies remain in the existing process prerequisite gate so the v1
+refusal behavior stays intact.
+
+Readiness results are cached by resolved folder within each CLI or Electron
+main process. The composition root owns that cache and wraps both `ConfigStore`
+and `CredentialsStore` so every successful write invalidates it, including
+writes outside the settings route. Callers can also request a refresh; the GUI
+does so immediately before each run. Doctor embeds this configured view while
+retaining its legacy dependency array, `allAvailable` meaning, and exit code.
+
 ## Ports (complete list for this app)
 
 - `CatalogRepository` (per-folder factory) + home-scope repository — drizzle.
 - `ConfigStore` — per-folder `config.json` (schema in `core/domain`).
+- `CredentialsStore` — home-scoped provider secrets in
+  `~/.ai-video-cataloger/credentials.json`; per-folder configuration contains
+  provider references only. The JSON adapter enforces owner-only mode (`0600`).
 - `MediaPort` — probe/frames/audio/thumbnail. Adapters: bundled
   ffmpeg-static, system ffmpeg (platform difference is real).
-- `TranscriberPort` — whisper.cpp (configured path / managed download /
-  system) / OpenAI API / skip. The managed whisper binary follows the same
-  pinned-release + SHA-256 pattern as the Ollama runtime (v1.1).
+- `TranscriberPort` — whisper.cpp (configured path / managed / system) /
+  OpenAI API / skip. Official whisper.cpp v1.9.1 publishes no standalone
+  macOS executable, so the managed runtime pins the official source tarball
+  and SHA-256, verifies it before extraction, then builds locally with `make`
+  only after CMake and Clang detection. The resulting executable is installed
+  with temp-file + atomic rename at the canonical home-scope path.
+- `WhisperRuntimePort` — configured / managed / system whisper.cpp resolution
+  plus managed source installation; the configured path always wins and the
+  canonical managed executable remains `~/.ai-video-cataloger/bin/whisper`.
 - `AnalyzerPort` — three families behind one port (v1.1,
   `tasks/prd-providers-onboarding.md`): OpenAI-compatible API adapter
   (BYO base URL + key; credentials live in the home scope only), a
@@ -135,6 +159,17 @@ whether anything leaves the process.
   the runtime port.
 - `JobsPort` — in-process executor (see Delta 5).
 - `DesktopBridge` (client-side port) — preload adapter in `apps/desktop`.
+
+Harness commands are always spawned directly from an argument vector. The
+only template substitutions are `{prompt}` and `{videoDir}`; no shell parses
+either configured arguments or user/video-derived text. Harness processes run
+in their own process group so timeout and job cancellation terminate the full
+group. All harnesses receive the same filtered environment. Built-in-only
+lifecycle behavior, including Claude Code project-history cleanup, is metadata
+on the built-in definition rather than a separate adapter. Provider tests run
+the configured command's version invocation; doctor exposes those harness
+availability results separately from its legacy dependency list so optional
+harnesses do not change the existing `allAvailable` meaning or CLI exit code.
 
 Port rule unchanged: no port without a second implementation or platform
 difference; zod, `@tanstack/query-core` and `@opentelemetry/api` remain

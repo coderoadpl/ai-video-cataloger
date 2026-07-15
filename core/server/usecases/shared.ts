@@ -7,10 +7,11 @@ import {
 } from '@core/domain/index.js';
 import {
   analyzerBackendSchema,
-  configSchema,
+  configValueSchema,
   whisperModeSchema,
 } from '@core/domain/config.js';
 import { whisperModelNameSchema } from '@core/domain/models.js';
+import { analyzerProviderConfigSchema } from '@core/domain/providers.js';
 import { z } from 'zod';
 
 import type { FileSystemPort } from '../ports.js';
@@ -117,24 +118,31 @@ export const parseSummary = (content: string | null): SummaryData | null => {
 
 export const stringifyConfigDefault = (key: ConfigKey): string => stringifyConfigValue(CONFIG_DEFAULTS[key]);
 
-export const stringifyConfigValue = (value: AppConfig[ConfigKey]): string => String(value);
+export const stringifyConfigValue = (value: AppConfig[ConfigKey]): string =>
+  typeof value === 'object' ? JSON.stringify(value) : String(value);
 
 export const configValueForKey = (key: ConfigKey, value: string): AppConfig[ConfigKey] => {
   switch (key) {
+    case 'whisper_binary_path':
+      return configValueSchema.shape.whisper_binary_path.parse(value);
     case 'whisper_model':
       return whisperModelNameSchema.parse(value);
     case 'whisper_mode':
       return whisperModeSchema.parse(value);
     case 'frames':
-      return configSchema.shape.frames.parse(value);
+      return configValueSchema.shape.frames.parse(value);
     case 'timeout':
-      return configSchema.shape.timeout.parse(value);
+      return configValueSchema.shape.timeout.parse(value);
     case 'skip_rename':
-      return configSchema.shape.skip_rename.parse(value);
+      return configValueSchema.shape.skip_rename.parse(value);
     case 'analyzer_backend':
       return analyzerBackendSchema.parse(value);
     case 'local_model':
-      return configSchema.shape.local_model.parse(value);
+      return configValueSchema.shape.local_model.parse(value);
+    case 'analyzer_provider': {
+      const decoded: unknown = JSON.parse(value);
+      return analyzerProviderConfigSchema.parse(decoded);
+    }
   }
 };
 
@@ -145,6 +153,7 @@ const stripExtension = (filename: string): string => {
 };
 
 export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
+  whisper_binary_path: null,
   whisper_model: null,
   whisper_mode: null,
   frames: null,
@@ -152,9 +161,11 @@ export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
   skip_rename: null,
   analyzer_backend: null,
   local_model: null,
+  analyzer_provider: null,
 });
 
 export const storedDefaults = (): Record<ConfigKey, string> => ({
+  whisper_binary_path: stringifyConfigDefault('whisper_binary_path'),
   whisper_model: stringifyConfigDefault('whisper_model'),
   whisper_mode: stringifyConfigDefault('whisper_mode'),
   frames: stringifyConfigDefault('frames'),
@@ -162,6 +173,7 @@ export const storedDefaults = (): Record<ConfigKey, string> => ({
   skip_rename: stringifyConfigDefault('skip_rename'),
   analyzer_backend: stringifyConfigDefault('analyzer_backend'),
   local_model: stringifyConfigDefault('local_model'),
+  analyzer_provider: stringifyConfigDefault('analyzer_provider'),
 });
 
 export const configKeys = (): readonly ConfigKey[] => CONFIG_KEYS;

@@ -30,11 +30,16 @@ const requiredArg = (args: readonly string[], index: number): string => {
 };
 
 const writeWhisperOutput = async (args: readonly string[], content: string): Promise<void> => {
+  const outputPrefix = requiredArg(args, args.indexOf('-of') + 1);
+  await mkdir(path.dirname(outputPrefix), { recursive: true });
+  await writeFile(`${outputPrefix}.txt`, content, 'utf8');
+};
+
+const writeOpenAiWhisperOutput = async (args: readonly string[], content: string): Promise<void> => {
   const audioPath = requiredArg(args, 0);
-  const outputDir = requiredArg(args, args.indexOf('--output_dir') + 1);
-  const audioBase = path.basename(audioPath, path.extname(audioPath));
-  await mkdir(outputDir, { recursive: true });
-  await writeFile(path.join(outputDir, `${audioBase}.txt`), content, 'utf8');
+  const outputDirectory = requiredArg(args, args.indexOf('--output_dir') + 1);
+  await mkdir(outputDirectory, { recursive: true });
+  await writeFile(path.join(outputDirectory, `${path.basename(audioPath, path.extname(audioPath))}.txt`), content, 'utf8');
 };
 
 describe('WhisperTranscriberAdapter', () => {
@@ -74,6 +79,7 @@ describe('WhisperTranscriberAdapter', () => {
       return ok({ stdout: '', stderr: '' });
     };
     const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
       commandRunner: runner,
       binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
     });
@@ -89,13 +95,14 @@ describe('WhisperTranscriberAdapter', () => {
     expect(runner.commands).toContainEqual({
       command: '/bundled/whisper',
       args: [
+        '-m',
+        path.join(root, '.ai-video-cataloger', 'models', 'whisper', 'ggml-base.bin'),
+        '-f',
         path.join(root, 'audio', 'Clip One.wav'),
-        '--model',
-        'base',
-        '--output_dir',
-        path.dirname(transcriptPath),
-        '--output_format',
-        'txt',
+        '-otxt',
+        '-of',
+        transcriptPath.slice(0, -4),
+        '--no-prints',
       ],
     });
   });
@@ -111,6 +118,7 @@ describe('WhisperTranscriberAdapter', () => {
       return ok({ stdout: '', stderr: '' });
     };
     const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
       commandRunner: runner,
       binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
     });
@@ -125,6 +133,46 @@ describe('WhisperTranscriberAdapter', () => {
     expect(result).toEqual(ok({ transcriptPath, content: 'hashed audio transcript' }));
     expect(existsSync(path.join(root, 'transcripts', 'f1abec7d-Clip One.txt'))).toBe(false);
     expect(existsSync(transcriptPath)).toBe(true);
+  });
+
+  it('uses the OpenAI Whisper CLI dialect for the system fallback', async () => {
+    const root = await tempRoot();
+    const audioPath = path.join(root, 'audio', 'f1abec7d-Clip One.wav');
+    const transcriptPath = path.join(root, 'transcripts', 'Clip One.txt');
+    const runner = new FakeCommandRunner({ whisper: 'usage: whisper [--model MODEL] audio [audio ...]' });
+    runner.onRun = async (command, args) => {
+      if (command === 'whisper' && args[0] !== '--help') {
+        await writeOpenAiWhisperOutput(args, ' system transcript \n');
+      }
+      return ok({ stdout: '', stderr: '' });
+    };
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      commandRunner: runner,
+      binaryResolver: { bundledWhisperPath: () => null },
+    });
+
+    const result = await adapter.transcribe({
+      audioPath,
+      transcriptPath,
+      mode: 'local',
+      model: 'base',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'system transcript' }));
+    expect(runner.commands).toContainEqual({
+      command: 'whisper',
+      args: [
+        audioPath,
+        '--model',
+        'base',
+        '--output_dir',
+        path.dirname(transcriptPath),
+        '--output_format',
+        'txt',
+      ],
+    });
+    expect(existsSync(path.join(root, 'transcripts', 'f1abec7d-Clip One.txt'))).toBe(false);
   });
 
   it('passes cancellation to the local whisper process', async () => {

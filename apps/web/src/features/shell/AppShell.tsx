@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useEffect, useRef, useState, type ReactNode } from 'react';
 
 import { AppHeader } from '../../components/ui/AppHeader.js';
 import { AppLayout } from '../../components/ui/AppLayout.js';
@@ -8,7 +8,7 @@ import type { LogLine } from '../../components/ui/use-terminal-log.js';
 import { useMenuEvents } from './use-menu-events.js';
 import { type ShellState } from './use-shell.js';
 
-export type ShellModal = 'settings' | 'models' | 'prerequisites';
+export type ShellModal = 'settings' | 'models' | 'prerequisites' | 'setup';
 
 export interface TerminalPanelState {
   lines: readonly LogLine[];
@@ -29,9 +29,22 @@ interface AppShellProps {
   terminal?: TerminalPanelState;
   overlays?: ReactNode;
   renderModals?: (state: ShellModalState) => ReactNode;
+  renderBanner?: (openModal: (modal: ShellModal) => void) => ReactNode;
+  autoOpenSetup?: boolean;
+  onAutoOpenSetupConsumed?: () => void;
 }
 
-export const AppShell = ({ shell, sidebar, content, terminal, overlays, renderModals }: AppShellProps) => {
+export const AppShell = ({
+  shell,
+  sidebar,
+  content,
+  terminal,
+  overlays,
+  renderModals,
+  renderBanner,
+  autoOpenSetup = false,
+  onAutoOpenSetupConsumed,
+}: AppShellProps) => {
   const [modal, setModal] = useState<ShellModal | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
@@ -41,9 +54,20 @@ export const AppShell = ({ shell, sidebar, content, terminal, overlays, renderMo
     onShowSettings: () => setModal('settings'),
     onShowModelManager: () => setModal('models'),
     onShowPrerequisites: () => setModal('prerequisites'),
+    onShowSetupWizard: () => setModal('setup'),
     onToggleTerminal: () => setTerminalCollapsed((value) => !value),
     onToggleSidebar: () => setSidebarCollapsed((value) => !value),
   });
+
+  const autoOpenConsumed = useRef(false);
+  const consumedCallback = useRef(onAutoOpenSetupConsumed);
+  consumedCallback.current = onAutoOpenSetupConsumed;
+  useEffect(() => {
+    if (!autoOpenSetup || autoOpenConsumed.current) return;
+    autoOpenConsumed.current = true;
+    setModal('setup');
+    consumedCallback.current?.();
+  }, [autoOpenSetup]);
 
   return (
     <>
@@ -61,7 +85,12 @@ export const AppShell = ({ shell, sidebar, content, terminal, overlays, renderMo
           />
         }
         sidebar={sidebar}
-        content={content}
+        content={
+          <>
+            {renderBanner?.(setModal)}
+            {content}
+          </>
+        }
         sidebarCollapsed={sidebarCollapsed}
         terminalCollapsed={terminalCollapsed}
         onToggleSidebar={() => setSidebarCollapsed((value) => !value)}

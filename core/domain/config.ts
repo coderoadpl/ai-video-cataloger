@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 import { WHISPER_MODEL_NAMES, whisperModelNameSchema } from './models.js';
+import { analyzerProviderConfigSchema, legacyAnalyzerProvider } from './providers.js';
 
 export const WHISPER_MODES = ['local', 'api', 'skip'] as const;
 export const ANALYZER_BACKENDS = ['claude', 'local'] as const;
@@ -24,7 +25,17 @@ const booleanFromPersistedValue = (value: unknown): unknown => {
   return value;
 };
 
-export const configSchema = z.object({
+const providerFromPersistedValue = (value: unknown): unknown => {
+  if (typeof value !== 'string') return value;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return value;
+  }
+};
+
+export const configValueSchema = z.object({
+  whisper_binary_path: z.string().default(''),
   whisper_model: whisperModelNameSchema.default('base'),
   whisper_mode: whisperModeSchema.default('local'),
   frames: z.preprocess(integerFromPersistedValue, z.number().int().min(1).max(10)).default(3),
@@ -32,12 +43,19 @@ export const configSchema = z.object({
   skip_rename: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
   analyzer_backend: analyzerBackendSchema.default('claude'),
   local_model: z.string().min(1).default('gemma3:12b'),
+  analyzer_provider: z.preprocess(providerFromPersistedValue, analyzerProviderConfigSchema.optional()),
 });
+
+export const configSchema = configValueSchema.transform((config) => ({
+  ...config,
+  analyzer_provider: config.analyzer_provider ?? legacyAnalyzerProvider(config.analyzer_backend, config.local_model),
+}));
 
 export type AppConfig = z.output<typeof configSchema>;
 export type ConfigInput = z.input<typeof configSchema>;
 
 export const CONFIG_KEYS = [
+  'whisper_binary_path',
   'whisper_model',
   'whisper_mode',
   'frames',
@@ -45,16 +63,18 @@ export const CONFIG_KEYS = [
   'skip_rename',
   'analyzer_backend',
   'local_model',
+  'analyzer_provider',
 ] as const;
 
 export const configKeySchema = z.enum(CONFIG_KEYS);
 export type ConfigKey = z.output<typeof configKeySchema>;
 
-export const configPatchSchema = configSchema.partial();
+export const configPatchSchema = configValueSchema.partial();
 
 export const CONFIG_DEFAULTS = configSchema.parse({});
 
 export const configDescriptions: Record<ConfigKey, string> = {
+  whisper_binary_path: 'Path to a custom whisper.cpp executable',
   whisper_model: `Whisper model (${WHISPER_MODEL_NAMES.join(', ')})`,
   whisper_mode: 'Transcription mode',
   frames: 'Number of frames to extract for analysis',
@@ -62,4 +82,5 @@ export const configDescriptions: Record<ConfigKey, string> = {
   skip_rename: 'Skip automatic video renaming',
   analyzer_backend: 'AI analyzer backend',
   local_model: 'Local AI model tag',
+  analyzer_provider: 'Analyzer provider configuration',
 };

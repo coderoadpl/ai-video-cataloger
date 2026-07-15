@@ -102,7 +102,9 @@ describe('process command', () => {
     const errorEvent = findEvent(events, 'error');
 
     expect(errorEvent).toBeDefined();
-    expect(errorEvent?.code).toBe('MISSING_API_KEY');
+    expect(errorEvent?.code).toBe('PREREQUISITES_FAILED');
+    expect(errorEvent?.message).toContain('openai-whisper-api');
+    expect(errorEvent?.message).toContain('ai-video-cataloger setup');
   });
 
   it('should have proper JSON output structure', async () => {

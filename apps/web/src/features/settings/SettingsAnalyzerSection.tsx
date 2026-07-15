@@ -4,8 +4,11 @@ import {
   InputLabel,
   MenuItem,
   Select,
+  TextField,
   Typography,
 } from '@mui/material';
+
+import { apiCostSignal, estimateApiTokens, type AnalyzerProviderConfig } from '@core/domain/index.js';
 
 import type { LocalAiTier, SettingsDraft } from './settings-model.js';
 
@@ -15,17 +18,28 @@ interface SettingsAnalyzerSectionProps {
   backend: AnalyzerBackend;
   localModel: string;
   tiers: LocalAiTier[] | null;
+  provider: AnalyzerProviderConfig;
+  frameCount: number;
+  apiCredential: string;
   onBackendChange: (backend: AnalyzerBackend) => void;
   onLocalModelChange: (tag: string) => void;
+  onProviderChange: (provider: AnalyzerProviderConfig) => void;
+  onApiCredentialChange: (credential: string) => void;
 }
 
 export const SettingsAnalyzerSection = ({
   backend,
   localModel,
   tiers,
+  provider,
+  frameCount,
+  apiCredential,
   onBackendChange,
   onLocalModelChange,
+  onProviderChange,
+  onApiCredentialChange,
 }: SettingsAnalyzerSectionProps) => {
+  const selectedBackend = provider.family === 'api' ? 'api' : backend;
   const selectedTier = tiers?.find((tier) => tier.tag === localModel) ?? null;
   const showUnsupportedHint =
     backend === 'local' && selectedTier !== null && selectedTier.supportLevel !== 'ok';
@@ -39,12 +53,32 @@ export const SettingsAnalyzerSection = ({
         <Select
           labelId="analyzer-backend-label"
           label="AI Analyzer"
-          value={backend}
+          value={selectedBackend}
           data-testid="analyzer-backend-select"
-          onChange={(event) => onBackendChange(event.target.value === 'local' ? 'local' : 'claude')}
+          onChange={(event) => {
+            if (event.target.value === 'api') {
+              onBackendChange('claude');
+              onProviderChange(defaultApiProvider());
+              return;
+            }
+            const next = event.target.value === 'local' ? 'local' : 'claude';
+            onBackendChange(next);
+            onProviderChange(next === 'local' ? {
+              family: 'local',
+              providerId: 'local',
+              modelTag: localModel,
+            } : {
+              family: 'harness',
+              providerId: 'claude-code',
+              command: 'claude',
+              argsTemplate: ['--add-dir', '{videoDir}', '-p', '{prompt}'],
+              promptStyle: 'file-urls',
+            });
+          }}
         >
           <MenuItem value="claude">Claude (CLI)</MenuItem>
           <MenuItem value="local">Local (Ollama)</MenuItem>
+          <MenuItem value="api">OpenAI-compatible API</MenuItem>
         </Select>
       </FormControl>
 
@@ -57,7 +91,10 @@ export const SettingsAnalyzerSection = ({
               label="Local model"
               value={localModel}
               data-testid="local-model-select"
-              onChange={(event) => onLocalModelChange(event.target.value)}
+              onChange={(event) => {
+                onLocalModelChange(event.target.value);
+                onProviderChange({ family: 'local', providerId: 'local', modelTag: event.target.value });
+              }}
             >
               {(tiers ?? []).map((tier) => (
                 <MenuItem key={tier.tag} value={tier.tag} disabled={tier.supportLevel !== 'ok'}>
@@ -79,6 +116,90 @@ export const SettingsAnalyzerSection = ({
           ) : null}
         </Box>
       ) : null}
+
+      {provider.family === 'api' ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="api-provider-settings">
+          <TextField
+            size="small"
+            label="Base URL"
+            value={provider.baseUrl}
+            onChange={(event) => onProviderChange({ ...provider, baseUrl: event.target.value })}
+          />
+          <TextField
+            size="small"
+            label="Model"
+            value={provider.model}
+            onChange={(event) => onProviderChange({ ...provider, model: event.target.value })}
+          />
+          <TextField
+            size="small"
+            label="API credential"
+            type="password"
+            value={apiCredential}
+            autoComplete="new-password"
+            onChange={(event) => onApiCredentialChange(event.target.value)}
+          />
+          <TextField
+            size="small"
+            label="Input price per 1M tokens"
+            type="number"
+            value={provider.pricePerMTokensInput ?? ''}
+            onChange={(event) => onProviderChange(withInputPrice(provider, event.target.value))}
+          />
+          <TextField
+            size="small"
+            label="Output price per 1M tokens"
+            type="number"
+            value={provider.pricePerMTokensOutput ?? ''}
+            onChange={(event) => onProviderChange(withOutputPrice(provider, event.target.value))}
+          />
+          <Typography variant="caption" data-testid="api-cost-signal">
+            {apiCostSignal(provider, estimateApiTokens({ transcriptCharacters: 0, frameCount })).message}
+          </Typography>
+        </Box>
+      ) : null}
     </Box>
   );
 };
+
+const defaultApiProvider = (): Extract<AnalyzerProviderConfig, { family: 'api' }> => ({
+  family: 'api',
+  providerId: 'openai',
+  baseUrl: 'https://api.openai.com/v1',
+  apiKeyRef: 'openai',
+  model: 'gpt-4.1-mini',
+  maxImageDetail: 'auto',
+});
+
+const withInputPrice = (
+  provider: Extract<AnalyzerProviderConfig, { family: 'api' }>,
+  value: string,
+): Extract<AnalyzerProviderConfig, { family: 'api' }> => {
+  const rest = apiProviderWithoutPrices(provider);
+  const withOutput = provider.pricePerMTokensOutput === undefined
+    ? rest
+    : { ...rest, pricePerMTokensOutput: provider.pricePerMTokensOutput };
+  return value.length === 0 ? withOutput : { ...withOutput, pricePerMTokensInput: Number(value) };
+};
+
+const withOutputPrice = (
+  provider: Extract<AnalyzerProviderConfig, { family: 'api' }>,
+  value: string,
+): Extract<AnalyzerProviderConfig, { family: 'api' }> => {
+  const rest = apiProviderWithoutPrices(provider);
+  const withInput = provider.pricePerMTokensInput === undefined
+    ? rest
+    : { ...rest, pricePerMTokensInput: provider.pricePerMTokensInput };
+  return value.length === 0 ? withInput : { ...withInput, pricePerMTokensOutput: Number(value) };
+};
+
+const apiProviderWithoutPrices = (
+  provider: Extract<AnalyzerProviderConfig, { family: 'api' }>,
+): Extract<AnalyzerProviderConfig, { family: 'api' }> => ({
+  family: 'api',
+  providerId: provider.providerId,
+  baseUrl: provider.baseUrl,
+  apiKeyRef: provider.apiKeyRef,
+  model: provider.model,
+  maxImageDetail: provider.maxImageDetail,
+});

@@ -6,6 +6,7 @@ import {
   jobOutputSchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
+  providerTestOutputSchema,
 } from './routes.js';
 
 describe('route schemas', () => {
@@ -97,6 +98,14 @@ describe('route schemas', () => {
           installHint: 'install claude',
         },
       ],
+      harnesses: [{
+        family: 'harness',
+        providerId: 'claude-code',
+        available: true,
+        version: '2.1.210',
+        latencyMs: 4,
+        message: 'Available',
+      }],
       machine: {
         platform: 'darwin',
         arch: 'arm64',
@@ -105,8 +114,38 @@ describe('route schemas', () => {
       },
       recommendedLocalModel: 'gemma3:12b',
       allAvailable: false,
+      configured: {
+        ready: false,
+        analyzer: {
+          kind: 'analyzer',
+          family: 'harness',
+          providerId: 'claude-code',
+          name: 'claude-code',
+          available: false,
+          message: 'claude-code is unavailable',
+          suggestedAction: 'Run setup',
+        },
+        transcriber: {
+          kind: 'transcriber',
+          mode: 'skip',
+          model: null,
+          name: 'transcription-skip',
+          available: true,
+          message: 'transcription-skip is available',
+          suggestedAction: null,
+        },
+        missingPieces: [{
+          kind: 'analyzer',
+          name: 'claude-code',
+          available: false,
+          message: 'claude-code is unavailable',
+          suggestedAction: 'Run setup',
+        }],
+        suggestedAction: 'Run setup',
+      },
     });
     expect(parsed.dependencies).toHaveLength(2);
+    expect(parsed.harnesses).toHaveLength(1);
   });
 
   it('round-trips a models list response', () => {
@@ -117,6 +156,34 @@ describe('route schemas', () => {
       ],
     });
     expect(parsed.models[1]?.active).toBe(true);
+  });
+
+  it('defines family-specific cheap provider check results', () => {
+    expect(providerTestOutputSchema.parse({
+      family: 'api',
+      providerId: 'openai',
+      reachable: true,
+      authenticated: false,
+      latencyMs: 18,
+      message: 'Credentials rejected',
+    })).toMatchObject({ reachable: true, authenticated: false });
+    expect(providerTestOutputSchema.parse({
+      family: 'harness',
+      providerId: 'codex',
+      available: true,
+      version: '1.2.3',
+      latencyMs: 4,
+      message: 'Available',
+    })).toMatchObject({ available: true, version: '1.2.3' });
+    expect(providerTestOutputSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      runtimeAvailable: true,
+      modelAvailable: false,
+      version: '0.9.0',
+      latencyMs: 7,
+      message: 'Model is not installed',
+    })).toMatchObject({ runtimeAvailable: true, modelAvailable: false });
   });
 
   it('round-trips process job progress', () => {
@@ -153,9 +220,11 @@ describe('route schemas', () => {
     expect(API_ROUTES.scan.method).toBe('GET');
     expect(API_ROUTES.status.method).toBe('GET');
     expect(API_ROUTES.configGet.method).toBe('GET');
+    expect(API_ROUTES.providersList.method).toBe('GET');
     expect(API_ROUTES.whisperModelsList.method).toBe('GET');
     expect(API_ROUTES.localAiRequirements.method).toBe('GET');
     expect(API_ROUTES.doctor.method).toBe('GET');
+    expect(API_ROUTES.readiness).toMatchObject({ method: 'GET', path: '/api/readiness' });
     expect(API_ROUTES.check.method).toBe('GET');
     expect(API_ROUTES.jobStatus.method).toBe('GET');
     expect(API_ROUTES.jobsList.method).toBe('GET');
@@ -165,6 +234,7 @@ describe('route schemas', () => {
     expect(API_ROUTES.resetAll.method).toBe('POST');
     expect(API_ROUTES.resetSingle.method).toBe('POST');
     expect(API_ROUTES.configSet.method).toBe('POST');
+    expect(API_ROUTES.providerTest.method).toBe('POST');
     expect(API_ROUTES.whisperModelDownload.method).toBe('POST');
     expect(API_ROUTES.whisperModelUse.method).toBe('POST');
     expect(API_ROUTES.localAiPull.method).toBe('POST');

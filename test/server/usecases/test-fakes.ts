@@ -5,6 +5,7 @@ import {
   ok,
   type AppConfig,
   type AppError,
+  type AnalyzerProviderConfig,
   type ConfigKey,
   type MachineProfile,
   type Result,
@@ -35,6 +36,8 @@ import type {
   MediaPort,
   MediaProbe,
   ModelDownloadPort,
+  ProvidersPort,
+  ProviderTestResult,
   ThumbnailGeneration,
   ThumbnailInput,
   TranscriberPort,
@@ -438,6 +441,25 @@ export class InMemoryAnalyzer implements AnalyzerPort {
   dependency(input?: { backend: AppConfig['analyzer_backend'] }): Promise<Result<DependencyStatus, AppError>> {
     this.dependencyInputs.push(input?.backend ?? null);
     return Promise.resolve(ok(this.dependencyValue));
+  }
+}
+
+export class InMemoryProviders implements ProvidersPort {
+  readonly tested: AnalyzerProviderConfig[] = [];
+
+  test(config: AnalyzerProviderConfig): Promise<Result<ProviderTestResult, AppError>> {
+    this.tested.push(config);
+    if (config.family !== 'harness') {
+      return Promise.resolve({ ok: false, error: appError('invalid_config_value', 'Expected harness provider') });
+    }
+    return Promise.resolve(ok({
+      family: 'harness',
+      providerId: config.providerId,
+      available: true,
+      version: '1.0.0',
+      latencyMs: 1,
+      message: 'Available',
+    }));
   }
 }
 

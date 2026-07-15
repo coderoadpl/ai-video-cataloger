@@ -20,6 +20,8 @@ import type {
   TranscribeInput,
   TranscriberPort,
   WhisperDownloadProgress,
+  WhisperRuntimePort,
+  WhisperRuntimeStatus,
 } from '@core/server/index.js';
 
 const openAiErrorSchema = z.object({
@@ -37,7 +39,7 @@ export interface WhisperBinaryResolver {
 
 export interface ResolvedWhisperBinary {
   path: string;
-  source: 'bundled' | 'system' | null;
+  source: 'bundled' | 'configured' | 'managed' | 'system' | null;
   available: boolean;
 }
 
@@ -50,6 +52,7 @@ export interface WhisperTranscriberOptions {
   apiKey?: string | undefined;
   commandRunner?: CommandRunner | undefined;
   binaryResolver?: WhisperBinaryResolver | undefined;
+  runtime?: WhisperRuntimePort | undefined;
   apiClient?: WhisperApiClient | undefined;
 }
 
@@ -67,6 +70,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
   private readonly apiKey: string | undefined;
   private readonly commandRunner: CommandRunner;
   private readonly binaryResolver: WhisperBinaryResolver;
+  private readonly runtime: WhisperRuntimePort | undefined;
   private readonly apiClient: WhisperApiClient | undefined;
 
   constructor(options: WhisperTranscriberOptions = {}) {
@@ -74,6 +78,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     this.apiKey = options.apiKey ?? process.env.OPENAI_API_KEY;
     this.commandRunner = options.commandRunner ?? childProcessCommandRunner;
     this.binaryResolver = options.binaryResolver ?? homeWhisperBinaryResolver(this.homeDirectory);
+    this.runtime = options.runtime;
     this.apiClient = options.apiClient;
   }
 
@@ -83,7 +88,54 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     return this.transcribeWithLocal(input);
   }
 
-  async dependency(): Promise<Result<DependencyStatus, AppError>> {
+  async dependency(input?: {
+    mode: 'local' | 'api' | 'skip';
+    model: WhisperModelName;
+  }): Promise<Result<DependencyStatus, AppError>> {
+    if (input?.mode === 'skip') {
+      return ok({
+        name: 'transcription-skip',
+        available: true,
+        version: null,
+        source: null,
+        path: null,
+        installHint: '',
+      });
+    }
+    if (input?.mode === 'api') {
+      const available = this.apiKey !== undefined && this.apiKey.length > 0;
+      return ok({
+        name: 'openai-whisper-api',
+        available,
+        version: null,
+        source: null,
+        path: null,
+        installHint: available ? '' : 'Set the OPENAI_API_KEY environment variable',
+      });
+    }
+    const runtime = await this.localRuntimeDependency();
+    if (!runtime.ok || input === undefined || !runtime.value.available) return runtime;
+    const modelPath = primaryModelPath(this.homeDirectory, input.model);
+    const modelAvailable = await pathExists(modelPath)
+      || await pathExists(directModelPath(this.homeDirectory, input.model))
+      || await pathExists(legacyModelPath(this.homeDirectory, input.model));
+    if (modelAvailable) return runtime;
+    return ok({
+      name: `whisper-${input.model}`,
+      available: false,
+      version: null,
+      source: null,
+      path: modelPath,
+      installHint: `Run: ai-video-cataloger models download ${input.model}`,
+    });
+  }
+
+  private async localRuntimeDependency(): Promise<Result<DependencyStatus, AppError>> {
+    if (this.runtime !== undefined) {
+      const runtime = await this.runtime.status();
+      if (!runtime.ok) return runtime;
+      return ok(runtimeDependency(runtime.value));
+    }
     const binary = await resolveWhisperBinary(this.binaryResolver, this.commandRunner);
     if (!binary.available) {
       return ok({
@@ -92,7 +144,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
         version: null,
         source: null,
         path: null,
-        installHint: 'Whisper can be bundled or installed via: pip install openai-whisper',
+        installHint: 'Install the managed whisper.cpp runtime or configure whisper_binary_path',
       });
     }
     const help = await this.commandRunner.run(binary.path, ['--help']);
@@ -107,7 +159,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
   }
 
   private async transcribeWithLocal(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
-    const binary = await resolveWhisperBinary(this.binaryResolver, this.commandRunner);
+    const binary = await this.resolvedBinary();
     if (!binary.available) {
       return {
         ok: false,
@@ -116,28 +168,35 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     }
     try {
       await mkdir(path.dirname(input.transcriptPath), { recursive: true });
-      const run = await this.commandRunner.run(binary.path, [
-        input.audioPath,
-        '--model',
-        input.model,
-        '--output_dir',
-        path.dirname(input.transcriptPath),
-        '--output_format',
-        'txt',
-      ], { signal: input.signal });
-      if (!run.ok) return run;
-      const producedPath = path.join(
-        path.dirname(input.transcriptPath),
-        `${path.basename(input.audioPath, path.extname(input.audioPath))}.txt`,
+      const run = await this.commandRunner.run(
+        binary.path,
+        binary.source === 'system'
+          ? openAiWhisperArgs(input)
+          : whisperCppArgs(this.homeDirectory, input),
+        { signal: input.signal },
       );
-      if (producedPath !== input.transcriptPath) {
-        await rename(producedPath, input.transcriptPath);
+      if (!run.ok) return run;
+      if (binary.source === 'system') {
+        const producedPath = path.join(
+          path.dirname(input.transcriptPath),
+          `${path.basename(input.audioPath, path.extname(input.audioPath))}.txt`,
+        );
+        if (producedPath !== input.transcriptPath) await rename(producedPath, input.transcriptPath);
       }
       const content = (await readFile(input.transcriptPath, 'utf8')).trim();
       return ok({ transcriptPath: input.transcriptPath, content });
     } catch (cause) {
       return transcriptionFailure(cause, 'Failed to transcribe audio');
     }
+  }
+
+  private async resolvedBinary(): Promise<ResolvedWhisperBinary> {
+    if (this.runtime === undefined) return resolveWhisperBinary(this.binaryResolver, this.commandRunner);
+    const runtime = await this.runtime.status();
+    if (!runtime.ok || !runtime.value.available || runtime.value.path === null) {
+      return { path: 'whisper', source: null, available: false };
+    }
+    return { path: runtime.value.path, source: runtime.value.source, available: true };
   }
 
   private async transcribeWithApi(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
@@ -352,6 +411,30 @@ const homeWhisperBinaryResolver = (homeDirectory: string): WhisperBinaryResolver
   },
 });
 
+const whisperCppArgs = (homeDirectory: string, input: TranscribeInput): readonly string[] => {
+  const outputPrefix = input.transcriptPath.slice(0, -path.extname(input.transcriptPath).length);
+  return [
+    '-m',
+    primaryModelPath(homeDirectory, input.model),
+    '-f',
+    input.audioPath,
+    '-otxt',
+    '-of',
+    outputPrefix,
+    '--no-prints',
+  ];
+};
+
+const openAiWhisperArgs = (input: TranscribeInput): readonly string[] => [
+  input.audioPath,
+  '--model',
+  input.model,
+  '--output_dir',
+  path.dirname(input.transcriptPath),
+  '--output_format',
+  'txt',
+];
+
 const childProcessCommandRunner: CommandRunner = {
   run: (command, args, options) =>
     new Promise((resolve) => {
@@ -382,6 +465,19 @@ const parseWhisperVersion = (output: string): string | null => {
   const match = /whisper[.\s]*([\d.]+)/i.exec(output);
   return match?.[1] ?? 'installed';
 };
+
+const runtimeDependency = (runtime: WhisperRuntimeStatus): DependencyStatus => ({
+  name: 'whisper',
+  available: runtime.available,
+  version: runtime.version,
+  source: runtime.source,
+  path: runtime.path,
+  installHint: runtime.available
+    ? ''
+    : runtime.buildToolsAvailable
+      ? 'Install the managed whisper.cpp runtime or configure whisper_binary_path'
+      : `Managed whisper.cpp requires ${runtime.missingBuildTools.join(' and ')}`,
+});
 
 const openAiFailure = (cause: unknown): Result<never, AppError> => {
   const parsed = openAiErrorSchema.safeParse(cause);

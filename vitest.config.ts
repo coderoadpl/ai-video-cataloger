@@ -47,6 +47,10 @@ export default defineConfig({
       },
       {
         extends: true,
+        test: { name: 'app-server', environment: 'node', include: ['apps/server/**/*.test.ts'] },
+      },
+      {
+        extends: true,
         test: {
           name: 'cli',
           environment: 'node',

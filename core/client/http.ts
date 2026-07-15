@@ -5,6 +5,7 @@ import {
   checkOutputSchema,
   configGetOutputSchema,
   configSetOutputSchema,
+  credentialSetOutputSchema,
   doctorOutputSchema,
   healthOutputSchema,
   jobAcceptedOutputSchema,
@@ -13,6 +14,9 @@ import {
   jobsListOutputSchema,
   localAiDaemonStopOutputSchema,
   localAiRequirementsOutputSchema,
+  providersListOutputSchema,
+  readinessOutputSchema,
+  providerTestOutputSchema,
   localAiRmOutputSchema,
   looseEnvelopeSchema,
   resetAllOutputSchema,
@@ -26,6 +30,7 @@ import {
   whisperModelDeleteOutputSchema,
   whisperModelUseOutputSchema,
   whisperModelsListOutputSchema,
+  whisperRuntimeStatusOutputSchema,
 } from '@core/contract/index.js';
 import { err, internal, ok, validation, type AppError, type Result } from '@core/domain/index.js';
 
@@ -151,12 +156,42 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  providers: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.providersList.method,
+      API_ROUTES.providersList.path,
+      providersListOutputSchema,
+      undefined,
+      signal,
+    ),
+  testProvider: (input: z.input<typeof API_ROUTES.providerTest.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.providerTest.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.providerTest.method,
+      API_ROUTES.providerTest.path,
+      providerTestOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   modelsWhisper: (signal?: AbortSignal) =>
     request(
       options,
       API_ROUTES.whisperModelsList.method,
       API_ROUTES.whisperModelsList.path,
       whisperModelsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  whisperRuntimeStatus: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.whisperRuntimeStatus.method,
+      API_ROUTES.whisperRuntimeStatus.path,
+      whisperRuntimeStatusOutputSchema,
       undefined,
       signal,
     ),
@@ -171,6 +206,21 @@ export const createApiClient = (options: ApiClientOptions) => ({
     ),
   doctor: (signal?: AbortSignal) =>
     request(options, API_ROUTES.doctor.method, API_ROUTES.doctor.path, doctorOutputSchema, undefined, signal),
+  readiness: (input: z.input<typeof API_ROUTES.readiness.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.readiness.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.readiness.method,
+      queryPath(API_ROUTES.readiness.path, [
+        ['folder', parsed.value.folder],
+        ['refresh', String(parsed.value.refresh)],
+      ]),
+      readinessOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   check: (input: z.input<typeof API_ROUTES.check.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.check.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));
@@ -257,6 +307,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  setCredential: (input: z.input<typeof API_ROUTES.credentialSet.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.credentialSet.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.credentialSet.method,
+      API_ROUTES.credentialSet.path,
+      credentialSetOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   downloadWhisperModel: (input: z.input<typeof API_ROUTES.whisperModelDownload.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.whisperModelDownload.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));
@@ -293,6 +355,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  installWhisperRuntime: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.whisperRuntimeInstall.method,
+      API_ROUTES.whisperRuntimeInstall.path,
+      jobAcceptedOutputSchema,
+      {},
+      signal,
+    ),
   pullLocalAiModel: (input: z.input<typeof API_ROUTES.localAiPull.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.localAiPull.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

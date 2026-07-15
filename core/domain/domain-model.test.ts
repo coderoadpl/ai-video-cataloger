@@ -8,6 +8,7 @@ import {
   WHISPER_MODELS,
   configSchema,
   getLocalAiSupportLevel,
+  analyzerProviderConfigSchema,
   videoStatusSchema,
 } from './index.js';
 
@@ -21,6 +22,9 @@ describe('domain taxonomy', () => {
       'invalid_file_type',
       'not_a_file',
       'missing_api_key',
+      'provider_auth_failed',
+      'rate_limited',
+      'provider_error',
       'prerequisites_failed',
       'invalid_model',
       'model_not_found',
@@ -63,6 +67,7 @@ describe('domain taxonomy', () => {
 describe('config schema', () => {
   it('applies INV defaults', () => {
     expect(CONFIG_DEFAULTS).toEqual({
+      whisper_binary_path: '',
       whisper_model: 'base',
       whisper_mode: 'local',
       frames: 3,
@@ -70,6 +75,13 @@ describe('config schema', () => {
       skip_rename: false,
       analyzer_backend: 'claude',
       local_model: 'gemma3:12b',
+      analyzer_provider: {
+        family: 'harness',
+        providerId: 'claude-code',
+        command: 'claude',
+        argsTemplate: ['--add-dir', '{videoDir}', '-p', '{prompt}'],
+        promptStyle: 'file-urls',
+      },
     });
   });
 
@@ -91,6 +103,75 @@ describe('config schema', () => {
     expect(configSchema.safeParse({ whisper_mode: 'none' }).success).toBe(false);
     expect(configSchema.safeParse({ analyzer_backend: 'remote' }).success).toBe(false);
     expect(configSchema.safeParse({ skip_rename: 'maybe' }).success).toBe(false);
+  });
+});
+
+describe('analyzer provider schema', () => {
+  it.each([
+    {
+      family: 'api',
+      providerId: 'openrouter',
+      baseUrl: 'https://openrouter.ai/api/v1',
+      apiKeyRef: 'openrouter-main',
+      model: 'openai/gpt-4.1-mini',
+      maxImageDetail: 'high',
+      pricePerMTokensInput: 2.5,
+      pricePerMTokensOutput: 10,
+    },
+    {
+      family: 'harness',
+      providerId: 'custom-agent',
+      command: '/opt/bin/custom-agent',
+      argsTemplate: ['run', '{prompt}', '--directory', '{videoDir}'],
+      promptStyle: 'dir-access',
+    },
+    {
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+    },
+  ])('round-trips a closed $family provider config', (provider) => {
+    expect(analyzerProviderConfigSchema.parse(provider)).toEqual(provider);
+  });
+
+  it('rejects fields from another family and unsupported harness placeholders', () => {
+    expect(analyzerProviderConfigSchema.safeParse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      apiKeyRef: 'must-not-cross-families',
+    }).success).toBe(false);
+    expect(analyzerProviderConfigSchema.safeParse({
+      family: 'harness',
+      providerId: 'custom',
+      command: 'agent',
+      argsTemplate: ['{query}'],
+      promptStyle: 'file-urls',
+    }).success).toBe(false);
+  });
+
+  it('defaults API providers to the OpenAI-compatible v1 base URL', () => {
+    const provider = analyzerProviderConfigSchema.parse({
+      family: 'api',
+      providerId: 'openai',
+      apiKeyRef: 'openai',
+      model: 'vision-model',
+      maxImageDetail: 'auto',
+    });
+
+    expect(provider).toMatchObject({ baseUrl: 'https://api.openai.com/v1' });
+  });
+
+  it('maps legacy analyzer aliases to canonical provider configs', () => {
+    expect(configSchema.parse({ analyzer_backend: 'claude' }).analyzer_provider).toMatchObject({
+      family: 'harness',
+      providerId: 'claude-code',
+    });
+    expect(configSchema.parse({ analyzer_backend: 'local', local_model: 'gemma3:27b' }).analyzer_provider).toEqual({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:27b',
+    });
   });
 });
 

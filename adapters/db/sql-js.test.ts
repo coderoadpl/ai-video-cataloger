@@ -4,7 +4,7 @@ import path from 'node:path';
 import initSqlJs from 'sql.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import type { Video } from '@core/domain/index.js';
+import { configSchema, type Video } from '@core/domain/index.js';
 
 import { JsonConfigStore, SqlJsCatalogRepositoryFactory } from './sql-js.js';
 
@@ -208,6 +208,22 @@ describe('JsonConfigStore', () => {
     expect(loaded.value).toBe('small');
     const raw = await readFile(path.join(home, '.ai-video-cataloger', 'config.json'), 'utf8');
     expect(JSON.parse(raw)).toEqual({ whisper_model: 'small' });
+  });
+
+  it('loads and normalizes a v1 config.json fixture without rewriting it', async () => {
+    const folder = await tempRoot();
+    const configDirectory = path.join(folder, '.ai-video-cataloger');
+    await mkdir(configDirectory, { recursive: true });
+    const fixture = await readFile(new URL('./fixtures/v1-config.json', import.meta.url), 'utf8');
+    await writeFile(path.join(configDirectory, 'config.json'), fixture, 'utf8');
+
+    const loaded = await new JsonConfigStore().getAll({ kind: 'folder', folder });
+    if (!loaded.ok) throw new Error(loaded.error.message);
+    const normalized = configSchema.parse(loaded.value);
+
+    expect(normalized.analyzer_backend).toBe('claude');
+    expect(normalized.analyzer_provider).toMatchObject({ family: 'harness', providerId: 'claude-code' });
+    expect(await readFile(path.join(configDirectory, 'config.json'), 'utf8')).toBe(fixture);
   });
 
   it('logs malformed legacy config loudly while preserving the legacy empty fallback', async () => {

@@ -20,6 +20,7 @@ import { LocalAiSection } from './LocalAiSection.js';
 import { WhisperModelRow } from './WhisperModelRow.js';
 import { useLocalAi } from './use-local-ai.js';
 import { useWhisperModels } from './use-whisper-models.js';
+import { useWhisperRuntime } from './use-whisper-runtime.js';
 
 interface ModelManagerModalProps {
   open: boolean;
@@ -30,6 +31,7 @@ interface ModelManagerModalProps {
 
 export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelManagerModalProps) => {
   const whisper = useWhisperModels({ open, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
+  const runtime = useWhisperRuntime({ open, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
   const localAi = useLocalAi({ open, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
   const [deleteTarget, setDeleteTarget] = useState<WhisperModelName | null>(null);
 
@@ -41,6 +43,33 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <Typography variant="h2">Whisper transcription models</Typography>
+              {runtime.isLoading ? (
+                <Typography variant="caption">Checking whisper.cpp runtime…</Typography>
+              ) : runtime.error !== null ? (
+                <Alert severity="error">{runtime.error}</Alert>
+              ) : runtime.available ? (
+                <Alert severity="success" data-testid="whisper-runtime-status">
+                  Runtime: {runtime.source} ({runtime.path})
+                </Alert>
+              ) : (
+                <Alert
+                  severity="warning"
+                  action={
+                    <Button
+                      size="small"
+                      onClick={runtime.install}
+                      disabled={!runtime.buildToolsAvailable || runtime.isInstalling}
+                      data-testid="whisper-runtime-install"
+                    >
+                      {runtime.isInstalling ? 'Installing…' : 'Install'}
+                    </Button>
+                  }
+                >
+                  {runtime.buildToolsAvailable
+                    ? 'whisper.cpp runtime is not installed.'
+                    : `Managed build requires ${runtime.missingBuildTools.join(' and ')}.`}
+                </Alert>
+              )}
               {whisper.isLoading ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
                   <CircularProgress size={16} />

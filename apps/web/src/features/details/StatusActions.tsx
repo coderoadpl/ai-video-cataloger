@@ -7,12 +7,13 @@ interface StatusActionsProps {
   video: DetailsVideo;
   analyzing: boolean;
   onAnalyze?: ((video: DetailsVideo) => void) | undefined;
+  disabledReason?: string | undefined;
 }
 
 const spinner = <CircularProgress size={16} color="inherit" />;
 const play = <PlayCircleIcon fontSize="small" />;
 
-export const StatusActions = ({ video, analyzing, onAnalyze }: StatusActionsProps) => {
+export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: StatusActionsProps) => {
   if (onAnalyze === undefined) return null;
   const run = () => onAnalyze(video);
 
@@ -23,14 +24,14 @@ export const StatusActions = ({ video, analyzing, onAnalyze }: StatusActionsProp
           data-testid="analyze-button"
           variant="contained"
           fullWidth
-          disabled={analyzing}
+          disabled={analyzing || disabledReason !== undefined}
           startIcon={analyzing ? spinner : play}
           onClick={run}
         >
           {analyzing ? 'Analyzing…' : 'Analyze Video'}
         </Button>
         <Typography variant="caption" align="center">
-          This will extract frames, transcribe audio, and generate a summary using AI.
+          {disabledReason ?? 'This will extract frames, transcribe audio, and generate a summary using AI.'}
         </Typography>
       </Box>
     );
@@ -52,7 +53,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze }: StatusActionsProp
           variant="outlined"
           color="inherit"
           fullWidth
-          disabled={analyzing}
+          disabled={analyzing || disabledReason !== undefined}
           startIcon={analyzing ? spinner : play}
           onClick={run}
         >
@@ -75,7 +76,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze }: StatusActionsProp
             variant="outlined"
             color="inherit"
             size="small"
-            disabled={analyzing}
+            disabled={analyzing || disabledReason !== undefined}
             startIcon={analyzing ? spinner : undefined}
             onClick={run}
           >

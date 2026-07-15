@@ -14,6 +14,7 @@ interface BatchToolbarProps {
   batchProgress: BatchProgressView | null;
   onAnalyzeAll: () => void;
   onStop: () => void;
+  disabledReason?: string | undefined;
 }
 
 export const BatchToolbar = ({
@@ -22,6 +23,7 @@ export const BatchToolbar = ({
   batchProgress,
   onAnalyzeAll,
   onStop,
+  disabledReason,
 }: BatchToolbarProps) => {
   if (batchProgress !== null) {
     const value = (batchProgress.currentIndex / batchProgress.totalCount) * 100;
@@ -53,15 +55,21 @@ export const BatchToolbar = ({
   if (pendingCount === 0 || isBusy) return null;
 
   return (
-    <Button
-      data-testid="analyze-all-button"
-      variant="contained"
-      fullWidth
-      size="small"
-      startIcon={<PlayCircleIcon fontSize="small" />}
-      onClick={onAnalyzeAll}
-    >
-      Analyze All ({pendingCount})
-    </Button>
+    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+      <Button
+        data-testid="analyze-all-button"
+        variant="contained"
+        fullWidth
+        size="small"
+        disabled={disabledReason !== undefined}
+        startIcon={<PlayCircleIcon fontSize="small" />}
+        onClick={onAnalyzeAll}
+      >
+        Analyze All ({pendingCount})
+      </Button>
+      {disabledReason === undefined ? null : (
+        <Typography variant="caption" color="text.secondary">{disabledReason}</Typography>
+      )}
+    </Box>
   );
 };

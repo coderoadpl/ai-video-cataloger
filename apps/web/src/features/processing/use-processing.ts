@@ -47,6 +47,7 @@ export interface UseProcessingOptions {
   videos: readonly ProcessVideo[];
   addLine: AddLogLine;
   intervalMs?: number;
+  checkReadiness?: (() => Promise<boolean>) | undefined;
 }
 
 const isPending = (status: ProcessVideo['status']): boolean =>
@@ -70,6 +71,7 @@ export const useProcessing = ({
   videos,
   addLine,
   intervalMs = 1000,
+  checkReadiness,
 }: UseProcessingOptions): ProcessingState => {
   const queryClient = useQueryClient();
   const process = useMutation(actions.processVideo);
@@ -158,9 +160,14 @@ export const useProcessing = ({
       if (busyRef.current) return;
       busyRef.current = true;
       cancelBatchRef.current = false;
-      setAnalyzingPath(video.path);
-      addLine(`Starting analysis of ${video.filename}…`, 'info');
       void (async () => {
+        if (checkReadiness !== undefined && !await checkReadiness()) {
+          addLine('Processing setup is incomplete. Open Settings or run the Setup Wizard.', 'error');
+          busyRef.current = false;
+          return;
+        }
+        setAnalyzingPath(video.path);
+        addLine(`Starting analysis of ${video.filename}…`, 'info');
         await runVideo(video);
         busyRef.current = false;
         setAnalyzingPath(null);
@@ -168,7 +175,7 @@ export const useProcessing = ({
         await queryClient.invalidateQueries();
       })();
     },
-    [runVideo, addLine, queryClient],
+    [runVideo, addLine, queryClient, checkReadiness],
   );
 
   const batchAnalyze = useCallback(() => {
@@ -180,8 +187,13 @@ export const useProcessing = ({
     }
     busyRef.current = true;
     cancelBatchRef.current = false;
-    addLine(`=== Starting batch analysis of ${String(pending.length)} video(s) ===`, 'info');
     void (async () => {
+      if (checkReadiness !== undefined && !await checkReadiness()) {
+        addLine('Processing setup is incomplete. Open Settings or run the Setup Wizard.', 'error');
+        busyRef.current = false;
+        return;
+      }
+      addLine(`=== Starting batch analysis of ${String(pending.length)} video(s) ===`, 'info');
       const results: BatchResultItem[] = [];
       for (const [index, video] of pending.entries()) {
         if (cancelBatchRef.current) {
@@ -219,7 +231,7 @@ export const useProcessing = ({
       await queryClient.invalidateQueries();
       setBatchSummary({ open: true, results });
     })();
-  }, [runVideo, addLine, queryClient]);
+  }, [runVideo, addLine, queryClient, checkReadiness]);
 
   const requestCancel = useCallback(() => {
     pendingCancelIsBatchRef.current = false;

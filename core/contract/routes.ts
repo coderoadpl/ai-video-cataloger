@@ -9,6 +9,8 @@ import {
   VIDEO_STATUSES,
   WHISPER_MODEL_NAMES,
   WHISPER_MODES,
+  analyzerProviderConfigSchema,
+  analyzerProviderDescriptorSchema,
   configKeySchema,
   videoStatusSchema,
 } from '@core/domain/index.js';
@@ -84,7 +86,7 @@ export const processInputSchema = videoPathInputSchema.extend({
   whisperExplicit: z.boolean().optional(),
   whisperModel: z.enum(WHISPER_MODEL_NAMES).optional(),
   whisperModelExplicit: z.boolean().optional(),
-  analyzer: z.enum(ANALYZER_BACKENDS).optional(),
+  analyzer: z.enum([...ANALYZER_BACKENDS, 'api']).optional(),
   localModel: z.string().min(1).optional(),
   batch: z.object({ current: z.number().int().positive(), total: z.number().int().positive() }).optional(),
 }).transform((input) => ({
@@ -188,6 +190,7 @@ export const configGetInputSchema = z.object({
 });
 
 export const storedConfigSchema = z.object({
+  whisper_binary_path: z.string().nullable(),
   whisper_model: z.string().nullable(),
   whisper_mode: z.string().nullable(),
   frames: z.string().nullable(),
@@ -195,9 +198,11 @@ export const storedConfigSchema = z.object({
   skip_rename: z.string().nullable(),
   analyzer_backend: z.string().nullable(),
   local_model: z.string().nullable(),
+  analyzer_provider: z.string().nullable(),
 });
 
 export const storedConfigDefaultsSchema = z.object({
+  whisper_binary_path: z.string(),
   whisper_model: z.string(),
   whisper_mode: z.string(),
   frames: z.string(),
@@ -205,6 +210,7 @@ export const storedConfigDefaultsSchema = z.object({
   skip_rename: z.string(),
   analyzer_backend: z.string(),
   local_model: z.string(),
+  analyzer_provider: z.string(),
 });
 
 export const configEntrySchema = z.object({
@@ -233,6 +239,53 @@ export const configSetOutputSchema = z.object({
   value: z.string(),
   previousValue: z.string().nullable(),
 });
+
+export const credentialSetInputSchema = z.object({
+  providerId: z.string().trim().min(1),
+  credential: z.string().min(1),
+});
+
+export const credentialSetOutputSchema = z.object({
+  providerId: z.string().min(1),
+  stored: z.literal(true),
+});
+
+export const providersListOutputSchema = z.object({
+  providers: z.array(analyzerProviderDescriptorSchema),
+});
+
+export const providerTestInputSchema = analyzerProviderConfigSchema;
+
+const providerTestBaseSchema = z.object({
+  providerId: z.string().min(1),
+  latencyMs: z.number().int().nonnegative().nullable(),
+  message: z.string(),
+});
+
+export const apiProviderTestOutputSchema = providerTestBaseSchema.extend({
+  family: z.literal('api'),
+  reachable: z.boolean(),
+  authenticated: z.boolean(),
+}).strict();
+
+export const harnessProviderTestOutputSchema = providerTestBaseSchema.extend({
+  family: z.literal('harness'),
+  available: z.boolean(),
+  version: z.string().nullable(),
+}).strict();
+
+export const localProviderTestOutputSchema = providerTestBaseSchema.extend({
+  family: z.literal('local'),
+  runtimeAvailable: z.boolean(),
+  modelAvailable: z.boolean(),
+  version: z.string().nullable(),
+}).strict();
+
+export const providerTestOutputSchema = z.discriminatedUnion('family', [
+  apiProviderTestOutputSchema,
+  harnessProviderTestOutputSchema,
+  localProviderTestOutputSchema,
+]);
 
 export const whisperModelListEntrySchema = z.object({
   name: z.enum(WHISPER_MODEL_NAMES),
@@ -273,6 +326,22 @@ export const whisperModelUseOutputSchema = z.object({
   model: z.enum(WHISPER_MODEL_NAMES),
   size: z.string().optional(),
   downloaded: z.boolean(),
+});
+
+export const whisperRuntimeStatusOutputSchema = z.object({
+  available: z.boolean(),
+  path: z.string().nullable(),
+  source: z.union([z.literal('configured'), z.literal('managed'), z.literal('system')]).nullable(),
+  version: z.string().nullable(),
+  managedInstalled: z.boolean(),
+  buildToolsAvailable: z.boolean(),
+  missingBuildTools: z.array(z.string()),
+});
+
+export const whisperRuntimeInstallOutputSchema = z.object({
+  path: z.string(),
+  version: z.string(),
+  installed: z.boolean(),
 });
 
 export const machineSchema = z.object({
@@ -321,16 +390,52 @@ export const dependencyStatusSchema = z.object({
   name: z.string(),
   available: z.boolean(),
   version: z.string().nullable(),
-  source: z.union([z.literal('bundled'), z.literal('system')]).nullable(),
+  source: z.union([
+    z.literal('bundled'),
+    z.literal('configured'),
+    z.literal('managed'),
+    z.literal('system'),
+  ]).nullable(),
   path: z.string().nullable(),
   installHint: z.string(),
 });
 
+export const readinessComponentSchema = z.object({
+  kind: z.enum(['analyzer', 'transcriber']),
+  name: z.string(),
+  available: z.boolean(),
+  message: z.string(),
+  suggestedAction: z.string().nullable(),
+});
+
+export const readinessOutputSchema = z.object({
+  ready: z.boolean(),
+  analyzer: readinessComponentSchema.extend({
+    kind: z.literal('analyzer'),
+    family: z.enum(['api', 'harness', 'local']),
+    providerId: z.string(),
+  }),
+  transcriber: readinessComponentSchema.extend({
+    kind: z.literal('transcriber'),
+    mode: z.enum(WHISPER_MODES),
+    model: z.enum(WHISPER_MODEL_NAMES).nullable(),
+  }),
+  missingPieces: z.array(readinessComponentSchema),
+  suggestedAction: z.string().nullable(),
+});
+
+export const readinessInputSchema = z.object({
+  folder: z.string().min(1).optional(),
+  refresh: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+});
+
 export const doctorOutputSchema = z.object({
   dependencies: z.array(dependencyStatusSchema),
+  harnesses: z.array(harnessProviderTestOutputSchema),
   machine: machineSchema,
   recommendedLocalModel: z.string().nullable(),
   allAvailable: z.boolean(),
+  configured: readinessOutputSchema,
 });
 
 export const checkOutputSchema = z.object({
@@ -341,7 +446,7 @@ export const checkOutputSchema = z.object({
 });
 
 export const jobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']);
-export const jobKindSchema = z.enum(['process', 'whisper_download', 'local_ai_pull']);
+export const jobKindSchema = z.enum(['process', 'whisper_download', 'whisper_runtime_install', 'local_ai_pull']);
 export const jobProgressStepSchema = z.enum([
   'extracting_frames',
   'extracting_audio',
@@ -372,6 +477,7 @@ export const sequencedJobProgressSchema = z.object({
 export const jobResultSchema = z.union([
   processCompletedOutputSchema,
   whisperModelDownloadOutputSchema,
+  whisperRuntimeInstallOutputSchema,
   localAiPullOutputSchema,
 ]);
 
@@ -424,6 +530,24 @@ export const API_ROUTES = {
   },
   configGet: { method: 'GET', path: '/api/config', input: configGetInputSchema, output: configGetOutputSchema },
   configSet: { method: 'POST', path: '/api/config', input: configSetInputSchema, output: configSetOutputSchema },
+  credentialSet: {
+    method: 'POST',
+    path: '/api/credentials',
+    input: credentialSetInputSchema,
+    output: credentialSetOutputSchema,
+  },
+  providersList: {
+    method: 'GET',
+    path: '/api/providers',
+    input: emptyInputSchema,
+    output: providersListOutputSchema,
+  },
+  providerTest: {
+    method: 'POST',
+    path: '/api/providers/test',
+    input: providerTestInputSchema,
+    output: providerTestOutputSchema,
+  },
   whisperModelsList: {
     method: 'GET',
     path: '/api/models/whisper',
@@ -447,6 +571,18 @@ export const API_ROUTES = {
     path: '/api/models/whisper/use',
     input: whisperModelInputSchema,
     output: whisperModelUseOutputSchema,
+  },
+  whisperRuntimeStatus: {
+    method: 'GET',
+    path: '/api/models/whisper-runtime',
+    input: emptyInputSchema,
+    output: whisperRuntimeStatusOutputSchema,
+  },
+  whisperRuntimeInstall: {
+    method: 'POST',
+    path: '/api/models/whisper-runtime/install',
+    input: emptyInputSchema,
+    output: jobAcceptedOutputSchema,
   },
   localAiRequirements: {
     method: 'GET',
@@ -473,6 +609,7 @@ export const API_ROUTES = {
     output: localAiDaemonStopOutputSchema,
   },
   doctor: { method: 'GET', path: '/api/doctor', input: emptyInputSchema, output: doctorOutputSchema },
+  readiness: { method: 'GET', path: '/api/readiness', input: readinessInputSchema, output: readinessOutputSchema },
   check: { method: 'GET', path: '/api/check', input: folderInputSchema, output: checkOutputSchema },
   jobStatus: { method: 'GET', path: '/api/jobs/status', input: jobIdInputSchema, output: jobOutputSchema },
   jobsList: { method: 'GET', path: '/api/jobs', input: emptyInputSchema, output: jobsListOutputSchema },
@@ -493,15 +630,20 @@ export const API_PATHS = {
   resetSingle: API_ROUTES.resetSingle.path,
   configGet: API_ROUTES.configGet.path,
   configSet: API_ROUTES.configSet.path,
+  providersList: API_ROUTES.providersList.path,
+  providerTest: API_ROUTES.providerTest.path,
   whisperModelsList: API_ROUTES.whisperModelsList.path,
   whisperModelDownload: API_ROUTES.whisperModelDownload.path,
   whisperModelDelete: API_ROUTES.whisperModelDelete.path,
   whisperModelUse: API_ROUTES.whisperModelUse.path,
+  whisperRuntimeStatus: API_ROUTES.whisperRuntimeStatus.path,
+  whisperRuntimeInstall: API_ROUTES.whisperRuntimeInstall.path,
   localAiRequirements: API_ROUTES.localAiRequirements.path,
   localAiPull: API_ROUTES.localAiPull.path,
   localAiRm: API_ROUTES.localAiRm.path,
   localAiDaemonStop: API_ROUTES.localAiDaemonStop.path,
   doctor: API_ROUTES.doctor.path,
+  readiness: API_ROUTES.readiness.path,
   check: API_ROUTES.check.path,
   jobStatus: API_ROUTES.jobStatus.path,
   jobsList: API_ROUTES.jobsList.path,

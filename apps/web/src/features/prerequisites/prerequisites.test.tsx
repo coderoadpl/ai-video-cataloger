@@ -19,23 +19,51 @@ const renderThemed = (ui: ReactElement) =>
 
 type DoctorResult = z.output<typeof doctorOutputSchema>;
 
+const configured: DoctorResult['configured'] = {
+  ready: true,
+  analyzer: {
+    kind: 'analyzer',
+    family: 'harness',
+    providerId: 'claude-code',
+    name: 'claude-code',
+    available: true,
+    message: 'claude-code is available',
+    suggestedAction: null,
+  },
+  transcriber: {
+    kind: 'transcriber',
+    mode: 'local',
+    model: 'base',
+    name: 'whisper-base',
+    available: true,
+    message: 'whisper-base is available',
+    suggestedAction: null,
+  },
+  missingPieces: [],
+  suggestedAction: null,
+};
+
 const machine = { platform: 'darwin', arch: 'arm64', totalMemGB: 16, appleSilicon: true };
 
 const allGood: DoctorResult = {
+  configured,
   dependencies: [
     { name: 'ffmpeg', available: true, version: '6.0', source: 'bundled', path: '/opt/ffmpeg', installHint: '' },
     { name: 'whisper', available: true, version: null, source: 'system', path: null, installHint: '' },
   ],
+  harnesses: [],
   machine,
   recommendedLocalModel: 'gemma3:12b',
   allAvailable: true,
 };
 
 const withMissing: DoctorResult = {
+  configured,
   dependencies: [
     { name: 'ffmpeg', available: true, version: '6.0', source: 'bundled', path: '/opt/ffmpeg', installHint: '' },
     { name: 'claude', available: false, version: null, source: null, path: null, installHint: 'Install Claude CLI' },
   ],
+  harnesses: [],
   machine,
   recommendedLocalModel: null,
   allAvailable: false,

@@ -1,21 +1,29 @@
 import path from 'node:path';
 import packageJson from '../../../package.json' with { type: 'json' };
 
-import { ClaudeCliAnalyzerAdapter, OllamaAnalyzerAdapter } from '@adapters/analyzers/index.js';
+import {
+  HarnessAnalyzerAdapter,
+  OllamaAnalyzerAdapter,
+  OpenAiCompatibleAnalyzerAdapter,
+} from '@adapters/analyzers/index.js';
+import { JsonCredentialsStore } from '@adapters/credentials/index.js';
 import { JsonConfigStore, SqlJsCatalogRepositoryFactory } from '@adapters/db/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { ManagedOllamaRuntimeAdapter } from '@adapters/ollama-runtime/index.js';
+import { ManagedWhisperRuntimeAdapter } from '@adapters/whisper-runtime/index.js';
 import { HuggingFaceWhisperModelDownloader, WhisperTranscriberAdapter } from '@adapters/whisper/index.js';
 import {
   appError,
   ok,
+  type AnalyzerProviderConfig,
   type AppError,
   type ConfigKey,
   type Result,
   type WhisperModelName,
 } from '@core/domain/index.js';
+import { ReadinessCache } from '@core/server/index.js';
 import type {
   AnalysisOutput,
   AnalyzeInput,
@@ -26,6 +34,7 @@ import type {
   CatalogVideo,
   ConfigScope,
   ConfigStore,
+  CredentialsStore,
   DependencyStatus,
   DirectoryEntry,
   FileStat,
@@ -34,21 +43,28 @@ import type {
   LocalAiRuntimePort,
   MediaPort,
   ModelDownloadPort,
+  ProvidersPort,
+  ProviderTestResult,
   ThumbnailGeneration,
   TranscriberPort,
+  WhisperRuntimePort,
 } from '@core/server/index.js';
 
 export interface AppDeps {
   version: string;
   catalogs: CatalogRepositoryFactory;
   config: ConfigStore;
+  credentials: CredentialsStore;
   fs: FileSystemPort;
   media: MediaPort;
   transcriber: TranscriberPort;
+  whisperRuntime: WhisperRuntimePort;
   analyzer: AnalyzerPort;
+  providers: ProvidersPort;
   localAi: LocalAiRuntimePort;
   downloads: ModelDownloadPort;
   jobs: JobsPort;
+  readiness: ReadinessCache;
 }
 
 export interface AppConfig {
@@ -63,50 +79,132 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   const workingDirectory = config.workingDirectory ?? process.cwd();
   const homeDirectory = config.homeDirectory;
   const jobs = new InProcessJobsPort();
+  const readiness = new ReadinessCache();
   if (dbDriver === 'memory') {
+    const configStore = new InvalidatingConfigStore(new InMemoryConfigStore(), readiness);
+    const credentials = new InvalidatingCredentialsStore(new InMemoryCredentialsStore(), readiness);
     return {
       version: config.version ?? packageJson.version,
       catalogs: new InMemoryCatalogRepositoryFactory(),
-      config: new InMemoryConfigStore(),
+      config: configStore,
+      credentials,
       fs: new InMemoryFileSystemPort(workingDirectory),
       media: new InMemoryMediaPort(),
       transcriber: new InMemoryTranscriberPort(),
+      whisperRuntime: new InMemoryWhisperRuntimePort(),
       analyzer: new InMemoryAnalyzerPort(),
+      providers: new ProvidersNotWiredPort(),
       localAi: new InMemoryLocalAiRuntimePort(),
       downloads: new InMemoryModelDownloadPort(),
       jobs,
+      readiness,
     };
   }
   const localAi = new ManagedOllamaRuntimeAdapter({ homeDirectory });
+  const credentials = new InvalidatingCredentialsStore(new JsonCredentialsStore({ homeDirectory }), readiness);
+  const harness = new HarnessAnalyzerAdapter({ homeDirectory });
+  const configStore = new InvalidatingConfigStore(new JsonConfigStore({ homeDirectory }), readiness);
+  const whisperRuntime = new ManagedWhisperRuntimeAdapter({ config: configStore, homeDirectory });
+  const ollamaAnalyzer = new OllamaAnalyzerAdapter({ runtime: localAi });
+  const apiAnalyzer = new OpenAiCompatibleAnalyzerAdapter({ credentials });
   return {
     version: config.version ?? packageJson.version,
     catalogs: new SqlJsCatalogRepositoryFactory(),
-    config: new JsonConfigStore({ homeDirectory }),
+    config: configStore,
+    credentials,
     fs: new NodeFileSystemPort({ workingDirectory }),
     media: new FfmpegMediaAdapter(),
-    transcriber: new WhisperTranscriberAdapter({ homeDirectory }),
-    analyzer: new BackendRoutingAnalyzerAdapter(
-      new ClaudeCliAnalyzerAdapter({ homeDirectory }),
-      new OllamaAnalyzerAdapter({ runtime: localAi }),
-    ),
+    transcriber: new WhisperTranscriberAdapter({ homeDirectory, runtime: whisperRuntime }),
+    whisperRuntime,
+    analyzer: new ProviderRoutingAnalyzerAdapter(harness, ollamaAnalyzer, apiAnalyzer),
+    providers: new ProviderRoutingProvidersPort(harness, ollamaAnalyzer, apiAnalyzer),
     localAi,
     downloads: new HuggingFaceWhisperModelDownloader({ homeDirectory }),
     jobs,
+    readiness,
   };
 };
 
-class BackendRoutingAnalyzerAdapter implements AnalyzerPort {
+class InvalidatingConfigStore implements ConfigStore {
   constructor(
-    private readonly cloud: AnalyzerPort,
+    private readonly store: ConfigStore,
+    private readonly readiness: ReadinessCache,
+  ) {}
+
+  get(scope: ConfigScope, key: ConfigKey): Promise<Result<string | null, AppError>> {
+    return this.store.get(scope, key);
+  }
+
+  getAll(scope: ConfigScope): Promise<Result<Partial<Record<ConfigKey, string>>, AppError>> {
+    return this.store.getAll(scope);
+  }
+
+  async set(
+    scope: ConfigScope,
+    key: ConfigKey,
+    value: string,
+  ): Promise<Result<{ previousValue: string | null }, AppError>> {
+    const result = await this.store.set(scope, key, value);
+    if (result.ok) this.readiness.invalidate();
+    return result;
+  }
+}
+
+class InvalidatingCredentialsStore implements CredentialsStore {
+  constructor(
+    private readonly store: CredentialsStore,
+    private readonly readiness: ReadinessCache,
+  ) {}
+
+  get(providerId: string): Promise<Result<string | null, AppError>> {
+    return this.store.get(providerId);
+  }
+
+  async set(providerId: string, credential: string): Promise<Result<void, AppError>> {
+    const result = await this.store.set(providerId, credential);
+    if (result.ok) this.readiness.invalidate();
+    return result;
+  }
+}
+
+class ProvidersNotWiredPort implements ProvidersPort {
+  test(): Promise<Result<ProviderTestResult, AppError>> {
+    return Promise.resolve({
+      ok: false,
+      error: appError('internal', 'Provider connectivity checks are not wired until provider adapters land'),
+    });
+  }
+}
+
+class ProviderRoutingProvidersPort implements ProvidersPort {
+  constructor(
+    private readonly harness: ProvidersPort,
+    private readonly local: ProvidersPort,
+    private readonly api: ProvidersPort,
+  ) {}
+
+  test(config: AnalyzerProviderConfig): Promise<Result<ProviderTestResult, AppError>> {
+    if (config.family === 'api') return this.api.test(config);
+    if (config.family === 'local') return this.local.test(config);
+    return this.harness.test(config);
+  }
+}
+
+class ProviderRoutingAnalyzerAdapter implements AnalyzerPort {
+  constructor(
+    private readonly harness: AnalyzerPort,
     private readonly local: AnalyzerPort,
+    private readonly api: AnalyzerPort,
   ) {}
 
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
-    return input.backend === 'local' ? this.local.analyze(input) : this.cloud.analyze(input);
+    if (input.provider?.family === 'api') return this.api.analyze(input);
+    return input.backend === 'local' ? this.local.analyze(input) : this.harness.analyze(input);
   }
 
-  dependency(input?: { backend: AnalyzeInput['backend'] }): Promise<Result<DependencyStatus, AppError>> {
-    return input?.backend === 'local' ? this.local.dependency() : this.cloud.dependency();
+  dependency(input?: { backend: AnalyzeInput['backend']; provider?: AnalyzeInput['provider'] }): Promise<Result<DependencyStatus, AppError>> {
+    if (input?.provider?.family === 'api') return this.api.dependency(input);
+    return input?.backend === 'local' ? this.local.dependency(input) : this.harness.dependency(input);
   }
 }
 
@@ -229,6 +327,19 @@ class InMemoryConfigStore implements ConfigStore {
   }
 }
 
+class InMemoryCredentialsStore implements CredentialsStore {
+  private readonly values = new Map<string, string>();
+
+  get(providerId: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.values.get(providerId) ?? null));
+  }
+
+  set(providerId: string, credential: string): Promise<Result<void, AppError>> {
+    this.values.set(providerId, credential);
+    return Promise.resolve(ok(undefined));
+  }
+}
+
 class InMemoryFileSystemPort implements FileSystemPort {
   constructor(private readonly workingDirectory: string) {}
 
@@ -338,6 +449,32 @@ class InMemoryTranscriberPort implements TranscriberPort {
 
   dependency(): Promise<Result<DependencyStatus, AppError>> {
     return Promise.resolve(ok(dependency('whisper', false)));
+  }
+}
+
+class InMemoryWhisperRuntimePort implements WhisperRuntimePort {
+  status(): Promise<Result<{
+    available: boolean;
+    path: string | null;
+    source: 'configured' | 'managed' | 'system' | null;
+    version: string | null;
+    managedInstalled: boolean;
+    buildToolsAvailable: boolean;
+    missingBuildTools: string[];
+  }, AppError>> {
+    return Promise.resolve(ok({
+      available: false,
+      path: null,
+      source: null,
+      version: null,
+      managedInstalled: false,
+      buildToolsAvailable: true,
+      missingBuildTools: [],
+    }));
+  }
+
+  install(): Promise<Result<{ path: string; version: string; installed: boolean }, AppError>> {
+    return Promise.resolve(ok({ path: '.ai-video-cataloger/bin/whisper', version: 'test', installed: true }));
   }
 }
 

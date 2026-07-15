@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   AppError,
+  AnalyzerProviderConfig,
   ConfigKey,
   MachineProfile,
   Result,
@@ -44,6 +45,11 @@ export interface ConfigStore {
   set(scope: ConfigScope, key: ConfigKey, value: string): Promise<Result<{ previousValue: string | null }, AppError>>;
 }
 
+export interface CredentialsStore {
+  get(providerId: string): Promise<Result<string | null, AppError>>;
+  set(providerId: string, credential: string): Promise<Result<void, AppError>>;
+}
+
 export interface DirectoryEntry {
   name: string;
   path: string;
@@ -81,7 +87,7 @@ export interface DependencyStatus {
   name: string;
   available: boolean;
   version: string | null;
-  source: 'bundled' | 'system' | null;
+  source: 'bundled' | 'configured' | 'managed' | 'system' | null;
   path: string | null;
   installHint: string;
 }
@@ -141,7 +147,31 @@ export interface TranscribeInput {
 
 export interface TranscriberPort {
   transcribe(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>>;
-  dependency(): Promise<Result<DependencyStatus, AppError>>;
+  dependency(input?: {
+    mode: AppConfig['whisper_mode'];
+    model: WhisperModelName;
+  }): Promise<Result<DependencyStatus, AppError>>;
+}
+
+export type WhisperRuntimeSource = 'configured' | 'managed' | 'system';
+
+export interface WhisperRuntimeStatus {
+  available: boolean;
+  path: string | null;
+  source: WhisperRuntimeSource | null;
+  version: string | null;
+  managedInstalled: boolean;
+  buildToolsAvailable: boolean;
+  missingBuildTools: string[];
+}
+
+export interface WhisperRuntimePort {
+  status(): Promise<Result<WhisperRuntimeStatus, AppError>>;
+  install(options?: { signal?: AbortSignal | undefined }): Promise<Result<{
+    path: string;
+    version: string;
+    installed: boolean;
+  }, AppError>>;
 }
 
 export interface AnalyzeInput {
@@ -150,6 +180,7 @@ export interface AnalyzeInput {
   transcript: string | null;
   backend: AppConfig['analyzer_backend'];
   localModel: string;
+  provider?: AnalyzerProviderConfig | undefined;
   timeoutSeconds: number;
   verbose: boolean;
   signal?: AbortSignal | undefined;
@@ -161,7 +192,41 @@ export interface AnalysisOutput {
 
 export interface AnalyzerPort {
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>>;
-  dependency(input?: { backend: AppConfig['analyzer_backend'] }): Promise<Result<DependencyStatus, AppError>>;
+  dependency(input?: {
+    backend: AppConfig['analyzer_backend'];
+    provider?: AnalyzerProviderConfig | undefined;
+  }): Promise<Result<DependencyStatus, AppError>>;
+}
+
+export type ProviderTestResult =
+  | {
+      family: 'api';
+      providerId: string;
+      reachable: boolean;
+      authenticated: boolean;
+      latencyMs: number | null;
+      message: string;
+    }
+  | {
+      family: 'harness';
+      providerId: string;
+      available: boolean;
+      version: string | null;
+      latencyMs: number | null;
+      message: string;
+    }
+  | {
+      family: 'local';
+      providerId: string;
+      runtimeAvailable: boolean;
+      modelAvailable: boolean;
+      version: string | null;
+      latencyMs: number | null;
+      message: string;
+    };
+
+export interface ProvidersPort {
+  test(config: AnalyzerProviderConfig): Promise<Result<ProviderTestResult, AppError>>;
 }
 
 export interface LocalAiRuntimeStatus {
@@ -215,7 +280,7 @@ export interface ModelDownloadPort {
   ): Promise<Result<{ model: WhisperModelName; path: string; deleted: boolean }, AppError>>;
 }
 
-export type JobKind = 'process' | 'whisper_download' | 'local_ai_pull';
+export type JobKind = 'process' | 'whisper_download' | 'whisper_runtime_install' | 'local_ai_pull';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =

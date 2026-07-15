@@ -34,6 +34,31 @@ const jobSnapshot = (jobId: string) => {
 };
 
 describe('useProcessing batch', () => {
+  it('refuses a run when the immediate readiness refresh is unready', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const checked = vi.fn().mockResolvedValue(false);
+    const processed = vi.fn();
+    server.use(http.post('/api/process', processed));
+    const { result } = renderHook(() => useProcessing({
+      videos,
+      addLine: vi.fn(),
+      intervalMs: 0,
+      checkReadiness: checked,
+    }), { wrapper });
+    const video = videos[0];
+    if (video === undefined) throw new Error('Expected video fixture');
+
+    act(() => {
+      result.current.analyze(video);
+    });
+    await waitFor(() => expect(checked).toHaveBeenCalledOnce());
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+    expect(processed).not.toHaveBeenCalled();
+  });
+
   it('continues past a failure and reports every result', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (

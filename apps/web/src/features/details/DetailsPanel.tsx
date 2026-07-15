@@ -7,6 +7,7 @@ interface DetailsPanelProps {
   video: DetailsVideo | null;
   analyzing: boolean;
   onAnalyze?: ((video: DetailsVideo) => void) | undefined;
+  disabledReason?: string | undefined;
 }
 
 const STEPS = [
@@ -43,9 +44,9 @@ const Welcome = () => (
   </Box>
 );
 
-export const DetailsPanel = ({ video, analyzing, onAnalyze }: DetailsPanelProps) =>
+export const DetailsPanel = ({ video, analyzing, onAnalyze, disabledReason }: DetailsPanelProps) =>
   video === null ? (
     <Welcome />
   ) : (
-    <VideoDetails video={video} analyzing={analyzing} onAnalyze={onAnalyze} />
+    <VideoDetails video={video} analyzing={analyzing} onAnalyze={onAnalyze} disabledReason={disabledReason} />
   );

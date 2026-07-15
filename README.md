@@ -11,6 +11,15 @@ A local-first Electron and CLI app that analyzes, transcribes, summarizes, and r
 
 Supported formats: MP4, MOV, AVI, MKV, WebM.
 
+## What's New in v1.1
+
+- Choose an OpenAI-compatible API, Claude Code, Codex, Cursor Agent, a custom
+  agent harness, or a local Ollama model for analysis.
+- Use the guided Setup Wizard in the desktop app or run
+  `ai-video-cataloger setup` in a terminal.
+- Install and use a managed whisper.cpp runtime, or point the app at an
+  existing whisper.cpp executable.
+
 ## GUI Quick Start
 
 ```bash
@@ -26,7 +35,16 @@ Package the app:
 npm run electron:package
 ```
 
-The packaged macOS app is written under `dist-electron/`. The `.app` also stages a standalone CLI at `resources/cli`; for development, use `npm run cli` or the staged `dist/cli/index.js` from this repo.
+The DMG and packaged macOS app are written under `release/`. The `.app` also
+stages a standalone CLI at `resources/cli`; for development, use `npm run cli`
+or the staged `dist/cli/index.js` from this repo.
+
+## First Open on macOS
+
+The app is not yet signed or notarized. After copying it to Applications,
+right-click **AI Video Cataloger**, choose **Open**, then confirm **Open**. If
+macOS still blocks it, open **System Settings → Privacy & Security**, find the
+message about AI Video Cataloger, and choose **Open Anyway**.
 
 ## CLI Usage
 
@@ -70,6 +88,14 @@ models list|requirements|pull|rm|daemon-stop|use|download|delete
 ```
 
 Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`.
+
+OpenAI-compatible analyzers use `analyzer_provider` JSON configuration. API
+credentials are deliberately stored as a plain owner-readable file at
+`~/.ai-video-cataloger/credentials.json` (mode `0600`), never alongside video
+folders. Store one with `ai-video-cataloger config set-credential <providerId>`;
+the command prompts without echo or reads `AI_VIDEO_CATALOGER_API_KEY`
+(`OPENAI_API_KEY` is also accepted for provider `openai`). macOS Keychain is a
+named future upgrade.
 
 For Claude analysis, install Claude Code CLI and authenticate it:
 

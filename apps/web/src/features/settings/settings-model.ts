@@ -16,7 +16,8 @@ type StoredConfig = z.output<typeof storedConfigSchema>;
 type StoredDefaults = z.output<typeof storedConfigDefaultsSchema>;
 
 export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults): SettingsDraft => {
-  const raw: Record<ConfigKey, string> = {
+  const raw = {
+    whisper_binary_path: config.whisper_binary_path ?? defaults.whisper_binary_path,
     whisper_model: config.whisper_model ?? defaults.whisper_model,
     whisper_mode: config.whisper_mode ?? defaults.whisper_mode,
     frames: config.frames ?? defaults.frames,
@@ -24,6 +25,7 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
     skip_rename: config.skip_rename ?? defaults.skip_rename,
     analyzer_backend: config.analyzer_backend ?? defaults.analyzer_backend,
     local_model: config.local_model ?? defaults.local_model,
+    ...(config.analyzer_provider === null ? {} : { analyzer_provider: config.analyzer_provider }),
   };
   const parsed = configSchema.safeParse(raw);
   return parsed.success ? parsed.data : CONFIG_DEFAULTS;
@@ -32,7 +34,10 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
 export const changedKeys = (draft: SettingsDraft, original: SettingsDraft): ConfigKey[] =>
   CONFIG_KEYS.filter((key) => draft[key] !== original[key]);
 
-export const serializeValue = (draft: SettingsDraft, key: ConfigKey): string => String(draft[key]);
+export const serializeValue = (draft: SettingsDraft, key: ConfigKey): string => {
+  const value = draft[key];
+  return typeof value === 'object' ? JSON.stringify(value) : String(value);
+};
 
 export interface WhisperModeOption {
   value: AppConfig['whisper_mode'];

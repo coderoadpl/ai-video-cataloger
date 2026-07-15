@@ -1,4 +1,5 @@
-import { stat } from 'node:fs/promises';
+import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import path from 'node:path';
 
 import {
@@ -138,6 +139,36 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
     if (scopedPath === null) return;
     shell.showItemInFolder(scopedPath);
   });
+
+  ipcMain.handle(CHANNELS.onboardingGetCompleted, async (event): Promise<boolean> => {
+    if (!isTrustedSender(event)) return true;
+    return readOnboardingCompleted();
+  });
+
+  ipcMain.handle(CHANNELS.onboardingSetCompleted, async (event): Promise<void> => {
+    if (!isTrustedSender(event)) return;
+    await writeOnboardingCompleted();
+  });
+};
+
+const onboardingFlagPath = (): string =>
+  path.join(homedir(), '.ai-video-cataloger', 'onboarding.json');
+
+const onboardingFlagSchema = z.object({ completed: z.boolean() });
+
+const readOnboardingCompleted = async (): Promise<boolean> => {
+  try {
+    const parsed = onboardingFlagSchema.safeParse(JSON.parse(await readFile(onboardingFlagPath(), 'utf8')));
+    return parsed.success && parsed.data.completed;
+  } catch {
+    return false;
+  }
+};
+
+const writeOnboardingCompleted = async (): Promise<void> => {
+  const flagPath = onboardingFlagPath();
+  await mkdir(path.dirname(flagPath), { recursive: true });
+  await writeFile(flagPath, JSON.stringify({ completed: true }), 'utf8');
 };
 
 export const cleanupIpcHandlers = (): void => {
@@ -151,6 +182,8 @@ export const cleanupIpcHandlers = (): void => {
   ipcMain.removeHandler(CHANNELS.folderRemoveRecent);
   ipcMain.removeHandler(CHANNELS.folderClearRecent);
   ipcMain.removeHandler(CHANNELS.revealInFinder);
+  ipcMain.removeHandler(CHANNELS.onboardingGetCompleted);
+  ipcMain.removeHandler(CHANNELS.onboardingSetCompleted);
 };
 
 const updateMenu = async (deps: IpcDeps): Promise<void> => {

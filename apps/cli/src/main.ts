@@ -9,9 +9,13 @@ import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
 import {
   CONFIG_KEYS,
   WHISPER_MODEL_NAMES,
+  apiCostSignal,
+  analyzerProviderConfigSchema,
+  estimateApiTokens,
   appError,
   configKeySchema,
   err,
+  type AnalyzerProviderConfig,
   type AppError,
   type Result,
   type WhisperModelName,
@@ -28,6 +32,13 @@ import {
   isJsonMode,
 } from './output.js';
 import { waitForJob } from './job-wait.js';
+import {
+  executeSetup,
+  type SetupAnalyzer,
+  type SetupOptions,
+  type SetupPrompter,
+  type SetupTranscription,
+} from './setup.js';
 
 interface JsonOption {
   json?: boolean | undefined;
@@ -44,7 +55,7 @@ interface ProcessOptions extends JsonOption {
   timeout: number;
   whisper: 'local' | 'api' | 'skip';
   whisperModel: string;
-  analyzer?: 'claude' | 'local' | undefined;
+  analyzer?: 'claude' | 'local' | 'api' | undefined;
   localModel?: string | undefined;
 }
 
@@ -54,6 +65,10 @@ interface CliJobProgress {
   current?: number | undefined;
   total?: number | undefined;
   data?: unknown;
+}
+
+interface CredentialOptions extends JsonOption {
+  env?: string | undefined;
 }
 
 const cliWorkingDirectory = process.env.AVC_WORKING_DIRECTORY ?? process.cwd();
@@ -78,6 +93,28 @@ const parseWhisperModel = (modelName: string): Result<WhisperModelName, AppError
     if (modelName === model) return { ok: true, value: model };
   }
   return err(appError('invalid_model', `Invalid model: ${modelName}`));
+};
+
+const setupAnalyzerOption = (value: string): SetupAnalyzer => {
+  if (value === 'local' || value === 'api' || value === 'harness') return value;
+  throw new InvalidArgumentError(`Invalid analyzer family: ${value}. Valid families: local, api, harness`);
+};
+
+const setupTranscriptionOption = (value: string): SetupTranscription => {
+  if (value === 'managed' || value === 'own' || value === 'api' || value === 'skip') return value;
+  throw new InvalidArgumentError(`Invalid transcription source: ${value}. Valid sources: managed, own, api, skip`);
+};
+
+const setupWhisperModelOption = (value: string): WhisperModelName => {
+  const parsed = parseWhisperModel(value);
+  if (parsed.ok) return parsed.value;
+  throw new InvalidArgumentError(parsed.error.message);
+};
+
+const nonNegativeNumberOption = (value: string): number => {
+  const parsed = Number(value);
+  if (Number.isFinite(parsed) && parsed >= 0) return parsed;
+  throw new InvalidArgumentError(`Expected a non-negative number: ${value}`);
 };
 
 const runSimple = async <T>(
@@ -120,6 +157,43 @@ const waitForJobAndEmit = async (
   });
 };
 
+program
+  .command('setup')
+  .description('Configure an analyzer, transcription, and optional managed downloads')
+  .option('--analyzer <family>', 'analyzer family: local, api, or harness', setupAnalyzerOption)
+  .option('--local-model <tag>', 'local Ollama model tag')
+  .option('--api-base-url <url>', 'OpenAI-compatible API base URL')
+  .option('--api-model <model>', 'OpenAI-compatible API model')
+  .option('--api-key-env <name>', 'environment variable containing the API key')
+  .option('--api-input-price <amount>', 'price per 1M input tokens', nonNegativeNumberOption)
+  .option('--api-output-price <amount>', 'price per 1M output tokens', nonNegativeNumberOption)
+  .option('--harness <providerId>', 'built-in harness: claude-code, codex, or cursor-agent')
+  .option('--transcription <source>', 'managed, own, api, or skip', setupTranscriptionOption)
+  .option('--whisper-path <path>', 'path to an existing whisper.cpp executable')
+  .option('--whisper-model <model>', 'managed Whisper model', setupWhisperModelOption)
+  .option('--yes', 'accept downloads and run without prompts', false)
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (options: SetupOptions) => {
+    const json = isJsonMode(options);
+    const prompter = options.yes === true || !process.stdin.isTTY ? undefined : createSetupPrompter();
+    await executeSetup({
+      api,
+      folder: cliWorkingDirectory,
+      options,
+      ...(prompter === undefined ? {} : { prompter }),
+      environment: process.env,
+      output: {
+        started: (data) => emitStarted(json, 'setup', data),
+        progress: (data) => emitProgress(json, data),
+        completed: (data, human) => emitCompleted(json, data, human),
+        error: (error) => emitError(json, error),
+        write: (message) => {
+          if (!json) process.stdout.write(`${message}\n`);
+        },
+      },
+    });
+  });
+
 const progressEvent = (progress: CliJobProgress): {
   step: string;
   percentage?: number | undefined;
@@ -144,6 +218,34 @@ program
   });
 
 const models = program.command('models').description('Manage Whisper and local AI models');
+const whisperRuntime = models.command('whisper-runtime').description('Manage the whisper.cpp runtime');
+
+whisperRuntime
+  .command('status')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'models_whisper_runtime_status',
+      () => api.whisperRuntimeStatus(),
+      whisperRuntimeStatusHuman,
+    );
+  });
+
+whisperRuntime
+  .command('install')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'models_whisper_runtime_install');
+    const result = await api.installWhisperRuntime();
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, whisperRuntimeInstallHuman);
+  });
 
 models
   .command('list')
@@ -362,6 +464,7 @@ program
       whisperModel: options.whisperModel,
     };
     emitStarted(json, 'process_single', { videoPath: validatedPath.value, options: commandOptions });
+    await emitApiCostNotice(json, options.analyzer, options.frames);
     let whisperModel: WhisperModelName | undefined;
     if (options.whisper === 'local') {
       const model = parseWhisperModel(options.whisperModel);
@@ -370,10 +473,6 @@ program
         return;
       }
       whisperModel = model.value;
-    }
-    if (options.whisper === 'api' && (process.env.OPENAI_API_KEY ?? '').length === 0) {
-      emitError(json, appError('missing_api_key', 'OPENAI_API_KEY environment variable is required when using OpenAI Whisper API'));
-      return;
     }
     const result = await api.processVideo({
       videoPath: validatedPath.value,
@@ -461,6 +560,27 @@ config
     emitCompleted(json, result.value, `Set ${result.value.key}=${result.value.value}`);
   });
 
+config
+  .command('set-credential')
+  .argument('<providerId>')
+  .option('--env <name>', 'read the credential from an environment variable')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (providerId: string, options: CredentialOptions) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'config_set_credential', { providerId });
+    const credential = credentialFromEnvironment(providerId, options.env) ?? await promptHiddenCredential();
+    if (credential === null || credential.length === 0) {
+      emitError(json, appError('missing_api_key', 'No API credential was provided'));
+      return;
+    }
+    const result = await api.setCredential({ providerId, credential });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    emitCompleted(json, result.value, `Stored credential for ${providerId}`);
+  });
+
 program
   .command('check')
   .argument('[folder]')
@@ -509,6 +629,78 @@ const configKey = (key: string | undefined) => {
   return parsed.success ? parsed.data : null;
 };
 
+const credentialFromEnvironment = (providerId: string, requestedName: string | undefined): string | null => {
+  if (requestedName !== undefined) return process.env[requestedName] ?? null;
+  const generic = process.env.AI_VIDEO_CATALOGER_API_KEY;
+  if (generic !== undefined && generic.length > 0) return generic;
+  if (providerId === 'openai') return process.env.OPENAI_API_KEY ?? null;
+  return null;
+};
+
+const promptHiddenCredential = async (): Promise<string | null> => {
+  if (!process.stdin.isTTY) return null;
+  const readline = createInterface({ input: process.stdin, output: process.stdout });
+  try {
+    process.stdout.write('API credential: \u001B[8m');
+    const credential = await readline.question('');
+    process.stdout.write('\u001B[28m\n');
+    return credential.trim();
+  } finally {
+    process.stdout.write('\u001B[28m');
+    readline.close();
+  }
+};
+
+const createSetupPrompter = (): SetupPrompter => {
+  const readline = createInterface({ input: process.stdin, output: process.stderr });
+  return {
+    question: (message) => readline.question(message),
+    secret: async (message) => {
+      process.stderr.write(`${message}\u001B[8m`);
+      try {
+        return (await readline.question('')).trim();
+      } finally {
+        process.stderr.write('\u001B[28m\n');
+      }
+    },
+    close: () => readline.close(),
+  };
+};
+
+const emitApiCostNotice = async (
+  json: boolean,
+  explicitAnalyzer: ProcessOptions['analyzer'],
+  frameCount: number,
+): Promise<void> => {
+  if (explicitAnalyzer !== undefined && explicitAnalyzer !== 'api') return;
+  let provider: Extract<AnalyzerProviderConfig, { family: 'api' }> | null | undefined =
+    explicitAnalyzer === 'api' ? null : undefined;
+  const stored = await api.config({ folder: cliWorkingDirectory, key: 'analyzer_provider' });
+  if (stored.ok && 'key' in stored.value && stored.value.value !== null) {
+    try {
+      const parsed = analyzerProviderConfigSchema.parse(JSON.parse(stored.value.value));
+      if (parsed.family === 'api') provider = parsed;
+    } catch {
+      provider = undefined;
+    }
+  }
+  if (explicitAnalyzer !== 'api' && provider === undefined) return;
+  const selected = provider ?? {
+    family: 'api',
+    providerId: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKeyRef: 'openai',
+    model: 'gpt-4.1-mini',
+    maxImageDetail: 'auto',
+  } as const;
+  const signal = apiCostSignal(selected, estimateApiTokens({ transcriptCharacters: 0, frameCount }));
+  if (json) {
+    emitProgress(true, { step: 'api_cost_notice', data: signal });
+    return;
+  }
+  process.stdout.write(`Notice: ${signal.message}\n`);
+};
+
 const modelsListHuman = (
   data: Awaited<ReturnType<ApiClient['modelsWhisper']>> extends Result<infer T, AppError> ? T : never,
   localAi: Awaited<ReturnType<ApiClient['localAiRequirements']>> extends Result<infer T, AppError> ? T : never,
@@ -542,6 +734,21 @@ const requirementsHuman = (data: Awaited<ReturnType<ApiClient['localAiRequiremen
   return lines.join('\n');
 };
 
+const whisperRuntimeStatusHuman = (
+  data: Awaited<ReturnType<ApiClient['whisperRuntimeStatus']>> extends Result<infer T, AppError> ? T : never,
+): string => {
+  if (data.available) return `Whisper runtime: ${data.source ?? 'unknown'} (${data.path ?? 'unknown path'})`;
+  if (!data.buildToolsAvailable) return `Whisper runtime missing; managed build requires ${data.missingBuildTools.join(' and ')}`;
+  return 'Whisper runtime missing; run models whisper-runtime install';
+};
+
+const whisperRuntimeInstallHuman = (data: unknown): string => {
+  if (!isRecord(data)) return 'Installed managed whisper.cpp runtime';
+  return data.installed === false
+    ? 'Managed whisper.cpp runtime is already installed'
+    : `Installed managed whisper.cpp runtime${typeof data.path === 'string' ? ` at ${data.path}` : ''}`;
+};
+
 const statusHuman = (data: Awaited<ReturnType<ApiClient['status']>> extends Result<infer T, AppError> ? T : never): string =>
   `Completed: ${data.summary.completed}\nIn Progress: ${data.summary.inProgress}\nPending: ${data.summary.pending}\nError: ${data.summary.error}`;
 
@@ -557,6 +764,10 @@ const scanHuman = (data: Awaited<ReturnType<ApiClient['scan']>> extends Result<i
 const doctorHuman = (data: Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never): string => {
   const lines = data.dependencies.map((dependency) => `${dependency.name}: ${dependency.available ? 'available' : 'missing'}`);
   lines.push(`All available: ${data.allAvailable ? 'yes' : 'no'}`);
+  lines.push('Configured processing:');
+  lines.push(`Analyzer (${data.configured.analyzer.providerId}): ${data.configured.analyzer.available ? 'available' : 'missing'}`);
+  lines.push(`Transcriber (${data.configured.transcriber.mode}): ${data.configured.transcriber.available ? 'available' : 'missing'}`);
+  if (data.configured.suggestedAction !== null) lines.push(data.configured.suggestedAction);
   return lines.join('\n');
 };
 

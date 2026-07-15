@@ -1,0 +1,9 @@
+{
+  "whisper_model": "small",
+  "whisper_mode": "local",
+  "frames": "4",
+  "timeout": "180",
+  "skip_rename": "false",
+  "analyzer_backend": "claude",
+  "local_model": "gemma3:12b"
+}
