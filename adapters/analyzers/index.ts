@@ -439,7 +439,7 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       version: status.value.runtimeVersion,
       source: null,
       path: null,
-      installHint: `Run: ai-video-cataloger models pull ${input.provider.modelTag}`,
+      installHint: `Download the model. Run: ai-video-cataloger models pull ${input.provider.modelTag}`,
     });
   }
 }

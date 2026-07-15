@@ -188,6 +188,25 @@ describe('SetupWizard', () => {
     expect(providerWrite?.value).toContain('"family":"local"');
   });
 
+  it('shows a missing local model as a download and offers to install it', async () => {
+    installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    clickNext();
+
+    await screen.findByTestId('wizard-step-analyzer');
+    await waitFor(() =>
+      expect(screen.getByTestId('wizard-local-model-select').textContent).toContain('8 GB download'),
+    );
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-skip'));
+    clickNext();
+
+    await screen.findByTestId('wizard-step-downloads');
+    expect(screen.getAllByTestId('download-task')).toHaveLength(1);
+    expect(screen.getByTestId('wizard-next').textContent).toBe('Install & continue');
+  });
+
   it('shows the mandatory cost notice and stores the key when API is chosen', async () => {
     const recorders = installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
@@ -249,6 +268,28 @@ describe('SetupWizard', () => {
 
     await screen.findByTestId('wizard-step-downloads');
     expect(screen.getByTestId('downloads-none')).toBeDefined();
+    expect(screen.getByTestId('wizard-next').textContent).toBe('Continue');
+  });
+
+  it('describes frames-only mode honestly when transcription was skipped', async () => {
+    installHandlers({ ready: true });
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-skip'));
+    clickNext();
+    await screen.findByTestId('wizard-step-downloads');
+    clickNext();
+    await screen.findByTestId('readiness-ready');
+    clickNext();
+
+    const done = await screen.findByTestId('wizard-step-done');
+    expect(done.textContent).toContain('frames-only mode');
+    expect(done.textContent).not.toContain('transcription are ready');
   });
 
   it('lets the user configure later without finishing', async () => {

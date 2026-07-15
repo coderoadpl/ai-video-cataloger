@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -294,10 +293,32 @@ describe('OllamaAnalyzerAdapter', () => {
       value: {
         name: 'gemma3:12b',
         available: false,
-        installHint: 'Run: ai-video-cataloger models pull gemma3:12b',
+        installHint: 'Download the model. Run: ai-video-cataloger models pull gemma3:12b',
       },
     });
     expect(ready).toMatchObject({ ok: true, value: { available: true } });
+  });
+
+  it('keeps local readiness unavailable when feasibility is true but the runtime is down', async () => {
+    const runtime = new FakeLocalAiRuntime();
+    runtime.statusValue = {
+      runtimeUp: false,
+      runtimeVersion: '1.0.0',
+      installedModels: ['gemma3:12b'],
+    };
+    const adapter = new OllamaAnalyzerAdapter({ runtime });
+    const provider = { family: 'local', providerId: 'local', modelTag: 'gemma3:12b' } as const;
+
+    const result = await adapter.dependency({ backend: 'local', provider });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        name: 'gemma3:12b',
+        available: false,
+        installHint: expect.stringContaining('Download the model'),
+      },
+    });
   });
 
   it('prechecks installed models before calling Ollama', async () => {
@@ -331,7 +352,7 @@ describe('OllamaAnalyzerAdapter', () => {
     const server = await startFakeOllamaServer({ message: { content: 'DESCRIPTION: Local.\nFILENAME: local-clip' } });
     const runtime = new FakeLocalAiRuntime();
     runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: ['gemma3:12b'] };
-    const adapter = new OllamaAnalyzerAdapter({ runtime, baseUrl: server.origin });
+    const adapter = new OllamaAnalyzerAdapter({ runtime, baseUrl: server.origin, fetchImpl: server.fetchImpl });
 
     try {
       const result = await adapter.analyze({
@@ -369,6 +390,7 @@ describe('OllamaAnalyzerAdapter', () => {
     const adapter = new OllamaAnalyzerAdapter({
       runtime,
       baseUrl: server.origin,
+      fetchImpl: server.fetchImpl,
       readFrame: () => Promise.resolve(Buffer.from('frame')),
     });
 
@@ -448,7 +470,10 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
     const server = await startFakeApiServer(200, {
       choices: [{ message: { content: 'DESCRIPTION: API clip.\nFILENAME: api-clip' } }],
     });
-    const adapter = new OpenAiCompatibleAnalyzerAdapter({ credentials: new FakeCredentialsStore('top-secret') });
+    const adapter = new OpenAiCompatibleAnalyzerAdapter({
+      credentials: new FakeCredentialsStore('top-secret'),
+      fetchImpl: server.fetchImpl,
+    });
 
     try {
       const result = await adapter.analyze({
@@ -494,6 +519,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
     const server = await startFakeApiServer(status, { error: 'failure top-secret' }, { 'retry-after': '2' });
     const adapter = new OpenAiCompatibleAnalyzerAdapter({
       credentials: new FakeCredentialsStore('top-secret'),
+      fetchImpl: server.fetchImpl,
       readFrame: () => Promise.resolve(Buffer.from('frame')),
     });
     try {
@@ -519,6 +545,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
     const server = await startFakeApiServer(200, { choices: [] }, {}, 10_000);
     const adapter = new OpenAiCompatibleAnalyzerAdapter({
       credentials: new FakeCredentialsStore('top-secret'),
+      fetchImpl: server.fetchImpl,
       readFrame: () => Promise.resolve(Buffer.from('frame')),
     });
     const controller = new AbortController();
@@ -763,77 +790,76 @@ const startFakeApiServer = async (
 ): Promise<{
   origin: string;
   requests: Array<{ url: string; authorization: string | undefined; body: unknown }>;
+  fetchImpl: typeof fetch;
   close: () => Promise<void>;
 }> => {
   const requests: Array<{ url: string; authorization: string | undefined; body: unknown }> = [];
-  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    void readRequestBody(request).then((body) => {
-      requests.push({
-        url: request.url ?? '',
-        authorization: request.headers.authorization,
-        body,
-      });
-      setTimeout(() => {
-        if (response.destroyed) return;
-        response.writeHead(status, { 'content-type': 'application/json', ...headers });
-        response.end(JSON.stringify(responseBody));
-      }, delayMs);
+  const origin = 'https://fake-api.example';
+  let closed = false;
+  const fetchImpl: typeof fetch = (input, init) => new Promise((resolve, reject) => {
+    if (closed) {
+      reject(new Error('Fake API server is closed'));
+      return;
+    }
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const requestHeaders = new Headers(init?.headers);
+    requests.push({
+      url: `${url.pathname}${url.search}`,
+      authorization: requestHeaders.get('authorization') ?? undefined,
+      body: init?.body === undefined || init.body === null ? null : JSON.parse(String(init.body)),
     });
+    const signal = init?.signal;
+    const timer = setTimeout(() => {
+      resolve(new Response(JSON.stringify(responseBody), {
+        status,
+        headers: { 'content-type': 'application/json', ...headers },
+      }));
+    }, delayMs);
+    signal?.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new Error('aborted'));
+    }, { once: true });
   });
-  await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
-  const address = server.address();
-  if (address === null || typeof address === 'string') throw new Error('Server did not expose a TCP port');
   return {
-    origin: `http://127.0.0.1:${address.port}`,
+    origin,
     requests,
-    close: () => new Promise((resolve, reject) => server.close((error) => error === undefined ? resolve() : reject(error))),
+    fetchImpl,
+    close: async () => {
+      closed = true;
+    },
   };
 };
 
 const startFakeOllamaServer = async (
   responseBody: unknown,
-): Promise<{ origin: string; requests: Array<{ method: string; url: string; body: unknown }>; close: () => Promise<void> }> => {
+): Promise<{
+  origin: string;
+  requests: Array<{ method: string; url: string; body: unknown }>;
+  fetchImpl: typeof fetch;
+  close: () => Promise<void>;
+}> => {
   const requests: Array<{ method: string; url: string; body: unknown }> = [];
-  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    void readRequestBody(request).then((body) => {
-      requests.push({ method: request.method ?? '', url: request.url ?? '', body });
-      response.setHeader('content-type', 'application/json');
-      response.statusCode = 200;
-      response.end(JSON.stringify(responseBody));
+  const origin = 'http://fake-ollama.example';
+  let closed = false;
+  const fetchImpl: typeof fetch = (input, init) => {
+    if (closed) return Promise.reject(new Error('Fake Ollama server is closed'));
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    requests.push({
+      method: init?.method ?? 'GET',
+      url: `${url.pathname}${url.search}`,
+      body: init?.body === undefined || init.body === null ? null : JSON.parse(String(init.body)),
     });
-  });
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  if (address === null || typeof address === 'string') {
-    throw new Error('Server did not expose a TCP port');
-  }
-  return {
-    origin: `http://127.0.0.1:${address.port}`,
-    requests,
-    close: () => new Promise((resolve, reject) => {
-      server.close((error) => {
-        if (error !== undefined) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    }),
+    return Promise.resolve(new Response(JSON.stringify(responseBody), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }));
   };
-};
-
-const readRequestBody = async (request: IncomingMessage): Promise<unknown> => {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    if (Buffer.isBuffer(chunk)) {
-      chunks.push(chunk);
-    } else {
-      chunks.push(Buffer.from(chunk));
-    }
-  }
-  const raw = Buffer.concat(chunks).toString('utf8');
-  if (raw.length === 0) return null;
-  return JSON.parse(raw);
+  return {
+    origin,
+    requests,
+    fetchImpl,
+    close: async () => {
+      closed = true;
+    },
+  };
 };

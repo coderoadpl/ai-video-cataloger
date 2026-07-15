@@ -1,6 +1,5 @@
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer, type IncomingMessage, type Server, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
@@ -21,6 +20,8 @@ import {
 
 const tempRoots: string[] = [];
 const closers: Array<() => Promise<void>> = [];
+const fakeEndpoints = new Map<string, (url: URL, init?: RequestInit) => Promise<Response>>();
+let nextFakePort = 20_000;
 
 describe('ManagedOllamaRuntimeAdapter', () => {
   afterEach(async () => {
@@ -42,7 +43,7 @@ describe('ManagedOllamaRuntimeAdapter', () => {
       version: 'v0.31.1',
       binaryPath: managedBinaryPath(home),
     }), 'utf8');
-    const adapter = new ManagedOllamaRuntimeAdapter({ homeDirectory: home, systemBaseUrl: system.origin });
+    const adapter = new ManagedOllamaRuntimeAdapter({ homeDirectory: home, systemBaseUrl: system.origin, fetchImpl: fakeFetch });
 
     const status = await adapter.status();
 
@@ -61,7 +62,11 @@ describe('ManagedOllamaRuntimeAdapter', () => {
       version: 'v0.31.1',
       binaryPath: managedBinaryPath(home),
     }), 'utf8');
-    const adapter = new ManagedOllamaRuntimeAdapter({ homeDirectory: home, systemBaseUrl: 'http://127.0.0.1:1' });
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      systemBaseUrl: 'http://127.0.0.1:1',
+      fetchImpl: fakeFetch,
+    });
 
     const status = await adapter.status();
 
@@ -76,6 +81,7 @@ describe('ManagedOllamaRuntimeAdapter', () => {
       homeDirectory: home,
       systemBaseUrl: 'http://127.0.0.1:1',
       releaseUrl: `${release.origin}/download.tmp.tgz`,
+      fetchImpl: fakeFetch,
     });
 
     const result = await adapter.pull('gemma3:12b');
@@ -97,6 +103,7 @@ describe('ManagedOllamaRuntimeAdapter', () => {
       systemBaseUrl: 'http://127.0.0.1:1',
       processManager,
       randomPort: () => 9786,
+      fetchImpl: fakeFetch,
       sleep: (milliseconds) => new Promise((resolve) => {
         setTimeout(resolve, Math.min(milliseconds, 5));
       }),
@@ -141,6 +148,7 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     const adapter = new ManagedOllamaRuntimeAdapter({
       systemBaseUrl: server.origin,
       onPullProgress: (event) => progress.push(event),
+      fetchImpl: fakeFetch,
     });
 
     const result = await adapter.pull('gemma3:12b');
@@ -246,6 +254,27 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     }));
   });
 
+  it('reports no installed models from an unreachable runtime without starting it', async () => {
+    const home = await tempRoot();
+    const processManager = new AutoStartOllamaProcessManager();
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      fetchImpl: () => Promise.reject(new Error('offline')),
+      processManager,
+      machineProfile: () => ({ platform: 'darwin', arch: 'arm64', ramGb: 16 }),
+    });
+
+    const result = await adapter.status();
+
+    expect(result).toEqual(ok({
+      runtimeUp: false,
+      runtimeVersion: 'v0.31.1',
+      installedModels: [],
+    }));
+    expect(processManager.spawnCalls).toEqual([]);
+    expect(existsSync(managedRuntimeDirectory(home))).toBe(false);
+  });
+
   it('reports local AI unavailable with a platform hint off Apple Silicon', async () => {
     const adapter = new ManagedOllamaRuntimeAdapter({
       machineProfile: () => ({ platform: 'linux', arch: 'x64', ramGb: 16 }),
@@ -300,6 +329,7 @@ describe('ManagedOllamaRuntimeAdapter', () => {
       systemBaseUrl: 'http://127.0.0.1:1',
       processManager,
       randomPort: () => 9787,
+      fetchImpl: fakeFetch,
     });
 
     const result = await adapter.pull('gemma3:12b');
@@ -314,6 +344,7 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     const adapter = new ManagedOllamaRuntimeAdapter({
       systemBaseUrl: system.origin,
       processManager,
+      fetchImpl: fakeFetch,
     });
 
     const removed = await adapter.rm('gemma3:12b');
@@ -362,43 +393,12 @@ const startFakeOllamaServer = async (options: {
     pullStatus: 200,
     deleteStatus: 200,
   };
-  const server = createServer((request, response) => {
-    void readJsonBody(request).then((body) => {
-      requests.push({ method: request.method ?? '', url: request.url ?? '', body });
-      if (request.url === '/api/version') {
-        respondJson(response, 200, { version: options.version });
-        return;
-      }
-      if (request.url === '/api/tags') {
-        respondJson(response, 200, { models: options.models.map((name) => ({ name })) });
-        return;
-      }
-      if (request.url === '/api/pull') {
-        response.statusCode = mutable.pullStatus;
-        response.setHeader('content-type', 'application/x-ndjson');
-        if (mutable.pullStatus !== 200) {
-          response.end('');
-          return;
-        }
-        for (const line of options.pullLines ?? [{ status: 'success' }]) {
-          response.write(`${JSON.stringify(line)}\n`);
-        }
-        response.end();
-        return;
-      }
-      if (request.url === '/api/delete') {
-        respondJson(response, mutable.deleteStatus, {});
-        return;
-      }
-      respondJson(response, 404, {});
-    });
-  });
-  await listen(server, 0);
-  const address = server.address();
-  if (address === null || typeof address === 'string') throw new Error('Expected TCP server address');
+  const port = nextFakePort++;
+  const origin = `http://127.0.0.1:${port}`;
+  const unregister = registerFakeOllamaEndpoint(origin, options, mutable, requests);
   const fake: FakeOllamaServer = {
-    origin: `http://127.0.0.1:${address.port}`,
-    port: address.port,
+    origin,
+    port,
     requests,
     get pullStatus() {
       return mutable.pullStatus;
@@ -412,7 +412,7 @@ const startFakeOllamaServer = async (options: {
     set deleteStatus(value: number) {
       mutable.deleteStatus = value;
     },
-    close: () => closeServer(server),
+    close: async () => unregister(),
   };
   closers.push(fake.close);
   return fake;
@@ -422,19 +422,20 @@ const startStaticServer = async (
   body: Buffer,
 ): Promise<{ origin: string; requests: Array<{ method: string; url: string }>; close: () => Promise<void> }> => {
   const requests: Array<{ method: string; url: string }> = [];
-  const server = createServer((request, response) => {
-    requests.push({ method: request.method ?? '', url: request.url ?? '' });
-    response.statusCode = 200;
-    response.setHeader('content-length', String(body.length));
-    response.end(body);
+  const origin = `http://127.0.0.1:${nextFakePort++}`;
+  fakeEndpoints.set(origin, (url, init) => {
+    requests.push({ method: init?.method ?? 'GET', url: `${url.pathname}${url.search}` });
+    return Promise.resolve(new Response(Uint8Array.from(body).buffer, {
+      status: 200,
+      headers: { 'content-length': String(body.length) },
+    }));
   });
-  await listen(server, 0);
-  const address = server.address();
-  if (address === null || typeof address === 'string') throw new Error('Expected TCP server address');
   const fake = {
-    origin: `http://127.0.0.1:${address.port}`,
+    origin,
     requests,
-    close: () => closeServer(server),
+    close: async () => {
+      fakeEndpoints.delete(origin);
+    },
   };
   closers.push(fake.close);
   return fake;
@@ -443,7 +444,7 @@ const startStaticServer = async (
 class AutoStartOllamaProcessManager implements RuntimeProcessManager {
   readonly spawnCalls: Array<{ command: string; args: string[]; host: string | null; models: string | null; detached: boolean }> = [];
   readonly killed: Array<{ pid: number; signal: 'SIGTERM' }> = [];
-  private readonly servers: Server[] = [];
+  private readonly unregisterEndpoints: Array<() => void> = [];
 
   constructor(private readonly pid: number | undefined = 4321) {}
 
@@ -454,20 +455,13 @@ class AutoStartOllamaProcessManager implements RuntimeProcessManager {
     if (host !== null && (this.pid ?? 0) > 0) {
       const portText = host.split(':')[1];
       if (portText === undefined) throw new Error('Expected OLLAMA_HOST port');
-      const server = createServer((request, response) => {
-        if (request.url === '/api/version') {
-          respondJson(response, 200, { version: '0.31.1' });
-          return;
-        }
-        if (request.url === '/api/pull') {
-          response.statusCode = 200;
-          response.end(`${JSON.stringify({ status: 'success' })}\n`);
-          return;
-        }
-        respondJson(response, 200, { models: [] });
-      });
-      server.listen(Number(portText), '127.0.0.1');
-      this.servers.push(server);
+      const origin = `http://127.0.0.1:${portText}`;
+      this.unregisterEndpoints.push(registerFakeOllamaEndpoint(
+        origin,
+        { version: '0.31.1', models: [], pullLines: [{ status: 'success' }] },
+        { pullStatus: 200, deleteStatus: 200 },
+        [],
+      ));
     }
     return {
       pid: this.pid,
@@ -484,8 +478,8 @@ class AutoStartOllamaProcessManager implements RuntimeProcessManager {
   }
 
   async close(): Promise<void> {
-    await Promise.all(this.servers.map((server) => closeServer(server)));
-    this.servers.length = 0;
+    this.unregisterEndpoints.forEach((unregister) => unregister());
+    this.unregisterEndpoints.length = 0;
   }
 }
 
@@ -510,34 +504,44 @@ class ManualProcessManager implements RuntimeProcessManager {
   }
 }
 
-const listen = (server: Server, port: number): Promise<void> =>
-  new Promise((resolve) => {
-    server.listen(port, '127.0.0.1', resolve);
-  });
-
-const closeServer = (server: Server): Promise<void> =>
-  new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error !== undefined) {
-        reject(error);
-        return;
-      }
-      resolve();
-    });
-  });
-
-const respondJson = (response: ServerResponse, status: number, body: unknown): void => {
-  response.statusCode = status;
-  response.setHeader('content-type', 'application/json');
-  response.end(JSON.stringify(body));
+const fakeFetch: typeof fetch = (input, init) => {
+  const url = new URL(input instanceof Request ? input.url : String(input));
+  const endpoint = fakeEndpoints.get(url.origin);
+  return endpoint === undefined
+    ? Promise.reject(new Error(`No fake endpoint registered for ${url.origin}`))
+    : endpoint(url, init);
 };
 
-const readJsonBody = async (request: IncomingMessage): Promise<unknown> => {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  const raw = Buffer.concat(chunks).toString('utf8');
-  if (raw.length === 0) return null;
-  return JSON.parse(raw);
+const registerFakeOllamaEndpoint = (
+  origin: string,
+  options: { version: string; models: string[]; pullLines?: Array<Record<string, string | number>> | undefined },
+  mutable: { pullStatus: number; deleteStatus: number },
+  requests: RequestRecord[],
+): (() => void) => {
+  fakeEndpoints.set(origin, (url, init) => {
+    const body: unknown = init?.body === undefined || init.body === null ? null : JSON.parse(String(init.body));
+    const requestPath = `${url.pathname}${url.search}`;
+    requests.push({ method: init?.method ?? 'GET', url: requestPath, body });
+    if (url.pathname === '/api/version') return Promise.resolve(jsonResponse(200, { version: options.version }));
+    if (url.pathname === '/api/tags') {
+      return Promise.resolve(jsonResponse(200, { models: options.models.map((name) => ({ name })) }));
+    }
+    if (url.pathname === '/api/pull') {
+      const responseBody = mutable.pullStatus === 200
+        ? `${(options.pullLines ?? [{ status: 'success' }]).map((line) => JSON.stringify(line)).join('\n')}\n`
+        : '';
+      return Promise.resolve(new Response(responseBody, {
+        status: mutable.pullStatus,
+        headers: { 'content-type': 'application/x-ndjson' },
+      }));
+    }
+    if (url.pathname === '/api/delete') return Promise.resolve(jsonResponse(mutable.deleteStatus, {}));
+    return Promise.resolve(jsonResponse(404, {}));
+  });
+  return () => fakeEndpoints.delete(origin);
 };
+
+const jsonResponse = (status: number, body: unknown): Response => new Response(JSON.stringify(body), {
+  status,
+  headers: { 'content-type': 'application/json' },
+});

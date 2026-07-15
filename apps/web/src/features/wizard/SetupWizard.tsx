@@ -29,7 +29,6 @@ const NEXT_LABEL: Record<string, string> = {
   welcome: 'Get started',
   analyzer: 'Continue',
   transcription: 'Continue',
-  downloads: 'Install & continue',
   readiness: 'Continue',
   done: 'Finish',
 };
@@ -38,6 +37,9 @@ export const SetupWizard = ({ open, folder, onClose }: SetupWizardProps) => {
   const controller = useWizard({ open, folder, onFinish: onClose });
   const { step } = controller;
   const activeStep = WIZARD_STEPS.indexOf(step);
+  const nextLabel = step === 'downloads'
+    ? controller.plannedDownloadLabels.length === 0 ? 'Continue' : 'Install & continue'
+    : NEXT_LABEL[step] ?? 'Continue';
 
   const nextDisabled =
     controller.validation === 'testing' ||
@@ -80,7 +82,7 @@ export const SetupWizard = ({ open, folder, onClose }: SetupWizardProps) => {
             disabled={nextDisabled}
             data-testid="wizard-next"
           >
-            {NEXT_LABEL[step] ?? 'Continue'}
+            {nextLabel}
           </Button>
         </Box>
       </DialogActions>

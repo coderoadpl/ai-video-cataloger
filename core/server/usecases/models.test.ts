@@ -95,6 +95,19 @@ describe('model use-cases', () => {
     expect(stopped).toEqual({ ok: true, value: { stopped: true } });
   });
 
+  it('does not report stale model data as installed while the runtime is unreachable', async () => {
+    const localAi = new InMemoryLocalAi();
+    localAi.statusValue = { runtimeUp: false, runtimeVersion: '2.0.0', installedModels: ['gemma3:12b'] };
+    const deps = { config: new InMemoryConfig(), downloads: new InMemoryDownloads(), jobs: new InMemoryJobs(), localAi };
+
+    const requirements = await localAiRequirements(deps);
+
+    expect(requirements.ok).toBe(true);
+    if (!requirements.ok) throw new Error(requirements.error.message);
+    expect(requirements.value.runtimeUp).toBe(false);
+    expect(requirements.value.tiers.find((tier) => tier.tag === 'gemma3:12b')).toMatchObject({ installed: false });
+  });
+
   it('blocks known local model pulls when hardware is insufficient', async () => {
     const localAi = new InMemoryLocalAi();
     localAi.machineValue = { platform: 'darwin', arch: 'arm64', ramGb: 8 };

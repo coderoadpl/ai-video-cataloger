@@ -10,6 +10,7 @@ import { buildApp } from '@server/src/app.js';
 import { createDeps } from '@server/src/composition.js';
 import { executeSetup, type SetupOutput } from '../../apps/cli/src/setup.js';
 import {
+  dependency,
   InMemoryAnalyzer,
   InMemoryDownloads,
   InMemoryJobs,
@@ -165,5 +166,53 @@ describe('setup command workflow', () => {
     expect(second).toBe(true);
     expect(localAi.pulled).toEqual(['gemma3:12b']);
     expect(errors).toEqual([]);
+  });
+
+  it('keeps non-interactive local setup not ready when the runtime is unreachable', async () => {
+    const home = createTestDir();
+    const folder = createTestDir();
+    roots.push(home, folder);
+    const deps = createDeps({ homeDirectory: home, workingDirectory: folder });
+    const localAi = new InMemoryLocalAi();
+    localAi.statusValue = {
+      runtimeUp: false,
+      runtimeVersion: '1.0.0',
+      installedModels: ['gemma3:12b'],
+    };
+    deps.localAi = localAi;
+    deps.jobs = new InMemoryJobs();
+    const analyzer = new InMemoryAnalyzer();
+    analyzer.dependencyValue = dependency('gemma3:12b', false);
+    deps.analyzer = analyzer;
+    deps.transcriber = new InMemoryTranscriber();
+    const api = createApiClient({ baseUrl: '', fetchImpl: (input, init) => buildApp(deps).request(input, init) });
+    const completions: Array<{ data: unknown; human: string }> = [];
+    const errors: AppError[] = [];
+
+    const completed = await executeSetup({
+      api,
+      folder,
+      options: { analyzer: 'local', localModel: 'gemma3:12b', transcription: 'skip', yes: true, json: true },
+      output: {
+        started: () => undefined,
+        progress: () => undefined,
+        completed: (data, human) => completions.push({ data, human }),
+        error: (error) => errors.push(error),
+        write: () => undefined,
+      },
+      environment: { HOME: home },
+    });
+
+    expect(completed).toBe(true);
+    expect(localAi.pulled).toEqual(['gemma3:12b']);
+    expect(errors).toEqual([]);
+    expect(completions).toMatchObject([{
+      data: {
+        ready: false,
+        analyzer: { available: false },
+        suggestedAction: expect.stringContaining('setup'),
+      },
+      human: expect.stringContaining('processing is not ready'),
+    }]);
   });
 });
