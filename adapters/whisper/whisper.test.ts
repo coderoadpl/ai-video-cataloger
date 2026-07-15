@@ -175,6 +175,37 @@ describe('WhisperTranscriberAdapter', () => {
     expect(existsSync(path.join(root, 'transcripts', 'f1abec7d-Clip One.txt'))).toBe(false);
   });
 
+  it('retries a failed whisper.cpp run once with --no-gpu', async () => {
+    const root = await tempRoot();
+    const transcriptPath = path.join(root, 'transcripts', 'Clip One.txt');
+    const runner = new FakeCommandRunner({ '/bundled/whisper': 'whisper installed' });
+    runner.onRun = async (command, args) => {
+      if (command !== '/bundled/whisper' || args[0] === '--help') return ok({ stdout: '', stderr: '' });
+      if (!args.includes('--no-gpu')) {
+        return { ok: false, error: appError('processing_error', 'ggml_metal_buffer_init: failed to allocate buffer') };
+      }
+      await writeWhisperOutput(args, 'cpu transcript\n');
+      return ok({ stdout: '', stderr: '' });
+    };
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      commandRunner: runner,
+      binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
+    });
+
+    const result = await adapter.transcribe({
+      audioPath: path.join(root, 'audio', 'Clip One.wav'),
+      transcriptPath,
+      mode: 'local',
+      model: 'base',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'cpu transcript' }));
+    const whisperRuns = runner.commands.filter((entry) => entry.command === '/bundled/whisper' && entry.args[0] !== '--help');
+    expect(whisperRuns).toHaveLength(2);
+    expect(whisperRuns[1]?.args).toContain('--no-gpu');
+  });
+
   it('passes cancellation to the local whisper process', async () => {
     const root = await tempRoot();
     const runner = new FakeCommandRunner({ '/bundled/whisper': 'whisper installed' });

@@ -168,13 +168,20 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     }
     try {
       await mkdir(path.dirname(input.transcriptPath), { recursive: true });
-      const run = await this.commandRunner.run(
+      let run = await this.commandRunner.run(
         binary.path,
         binary.source === 'system'
           ? openAiWhisperArgs(input)
           : whisperCppArgs(this.homeDirectory, input),
         { signal: input.signal },
       );
+      if (!run.ok && binary.source !== 'system' && input.signal?.aborted !== true) {
+        run = await this.commandRunner.run(
+          binary.path,
+          [...whisperCppArgs(this.homeDirectory, input), '--no-gpu'],
+          { signal: input.signal },
+        );
+      }
       if (!run.ok) return run;
       if (binary.source === 'system') {
         const producedPath = path.join(
