@@ -121,8 +121,15 @@ whether anything leaves the process.
 - `ConfigStore` — per-folder `config.json` (schema in `core/domain`).
 - `MediaPort` — probe/frames/audio/thumbnail. Adapters: bundled
   ffmpeg-static, system ffmpeg (platform difference is real).
-- `TranscriberPort` — whisper.cpp / OpenAI API / skip (three modes today).
-- `AnalyzerPort` — claude-cli / ollama (two backends today).
+- `TranscriberPort` — whisper.cpp (configured path / managed download /
+  system) / OpenAI API / skip. The managed whisper binary follows the same
+  pinned-release + SHA-256 pattern as the Ollama runtime (v1.1).
+- `AnalyzerPort` — three families behind one port (v1.1,
+  `tasks/prd-providers-onboarding.md`): OpenAI-compatible API adapter
+  (BYO base URL + key; credentials live in the home scope only), a
+  data-driven agent-harness adapter (Claude Code / Codex / Cursor Agent
+  built-ins + user-defined), and the local ollama adapter. Legacy config
+  values `claude|local` remain valid aliases.
 - `LocalAiRuntimePort` — system Ollama / managed pinned runtime.
 - `ModelDownloadPort` — HuggingFace whisper models; Ollama pulls go through
   the runtime port.

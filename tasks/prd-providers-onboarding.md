@@ -273,14 +273,13 @@ terminal.
 - All three built-in harnesses pass `providers/test` on the owner's machine.
 - v1 parity e2e suite stays green throughout.
 
-## Open Questions
+## Resolved Questions (owner, 2026-07-15)
 
-1. API family scope: is OpenAI-compatible enough for v1.1 (covers OpenAI,
-   OpenRouter, LM Studio, many proxies), or add native Anthropic Messages
-   API as a fourth built-in provider?
-2. Cost table: ship editable price fields only (proposed), or also a small
-   built-in price table for the big providers (goes stale, needs upkeep)?
-3. Prerequisite gate frequency: proposed = every launch + before every run,
-   cached per process (owner said "first run or every run — unsure").
-4. Managed whisper source: ship whisper.cpp official release binaries, or
-   build/pin our own arm64 binary with Metal enabled for GPU transcription?
+1. API family scope: **OpenAI-compatible only** in v1.1 (Anthropic reachable
+   via OpenRouter/proxies); native Anthropic adapter is a later option.
+2. Cost table: **editable price fields only**, no built-in price table.
+3. Prerequisite gate frequency: **every launch + before every run**, cached
+   per process with invalidation on settings writes.
+4. Managed whisper source: **official whisper.cpp GitHub release binaries**,
+   pinned version + SHA-256.
+5. Implementation starts immediately (parallel to the owner's v1 review).
