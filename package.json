@@ -16,7 +16,7 @@
     "test": "vitest run",
     "check": "npm run typecheck && npm run lint && npm run depcruise && npm run test",
     "cli": "tsx apps/cli/src/main.ts",
-    "smoke": "tsx scripts/smoke.ts",
+    "smoke": "node --import tsx scripts/smoke.ts",
     "electron:build:renderer": "vite build --config apps/web/vite.config.ts",
     "electron:build:desktop": "node scripts/build-electron.mjs",
     "package:stage": "node scripts/build-packaged-cli.mjs",

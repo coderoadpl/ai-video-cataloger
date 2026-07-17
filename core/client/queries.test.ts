@@ -113,6 +113,32 @@ describe('query descriptors', () => {
     expect(seenInputs).toEqual(['/api/readiness?folder=%2Fvideos%2Ffirst&refresh=true']);
   });
 
+  it('keys and requests home-scoped readiness explicitly', async () => {
+    const seenInputs: string[] = [];
+    const client = createApiClient({
+      baseUrl: '',
+      fetchImpl: async (input) => {
+        seenInputs.push(String(input));
+        return jsonResponse({
+          ok: true,
+          data: {
+            ready: true,
+            analyzer: { kind: 'analyzer', name: 'local', available: true, message: 'ready', suggestedAction: null, family: 'local', providerId: 'local' },
+            transcriber: { kind: 'transcriber', name: 'skip', available: true, message: 'ready', suggestedAction: null, mode: 'skip', model: null },
+            missingPieces: [],
+            suggestedAction: null,
+          },
+        });
+      },
+    });
+    const descriptor = readinessQuery(client, { scope: 'home', refresh: 'true' });
+
+    await new QueryClient().fetchQuery(descriptor);
+
+    expect(descriptor.queryKey).toEqual(['readiness', 'home', null]);
+    expect(seenInputs).toEqual(['/api/readiness?scope=home&refresh=true']);
+  });
+
   it('provides descriptors for provider list and connectivity checks', async () => {
     const calls: Array<{ url: string; method: string | undefined; body: string | null }> = [];
     const fetchImpl: typeof fetch = async (input, init) => {

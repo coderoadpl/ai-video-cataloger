@@ -244,4 +244,12 @@ describe('route schemas', () => {
     expect(API_ROUTES.whisperModelDelete.method).toBe('DELETE');
     expect(API_ROUTES.localAiRm.method).toBe('DELETE');
   });
+
+  it('accepts an explicit home readiness scope without a folder', () => {
+    expect(API_ROUTES.readiness.input.parse({ scope: 'home', refresh: 'true' })).toEqual({
+      scope: 'home',
+      refresh: true,
+    });
+    expect(API_ROUTES.readiness.input.safeParse({ folder: '/videos', scope: 'home' }).success).toBe(false);
+  });
 });

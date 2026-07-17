@@ -122,7 +122,7 @@ export const ANALYZER_PROVIDERS: readonly AnalyzerProviderDescriptor[] = analyze
     providerId: 'codex',
     label: 'Codex',
     command: 'codex',
-    argsTemplate: ['exec', '--sandbox', 'read-only', '--cd', '{videoDir}', '{prompt}'],
+    argsTemplate: ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--cd', '{videoDir}', '{prompt}'],
     promptStyle: 'dir-access',
   },
   {
@@ -130,7 +130,7 @@ export const ANALYZER_PROVIDERS: readonly AnalyzerProviderDescriptor[] = analyze
     providerId: 'cursor-agent',
     label: 'Cursor Agent',
     command: 'cursor-agent',
-    argsTemplate: ['--print', '--mode', 'ask', '--workspace', '{videoDir}', '{prompt}'],
+    argsTemplate: ['--print', '--trust', '--mode', 'ask', '--workspace', '{videoDir}', '{prompt}'],
     promptStyle: 'file-urls',
   },
   {

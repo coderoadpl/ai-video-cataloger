@@ -5,6 +5,8 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { runCli, parseJsonEvents, findEvent } from '../helpers/cli-runner.js';
 import { createTestDir, cleanupTestDir } from '../setup.js';
 import { createDbDir } from '../helpers/fixtures.js';
@@ -73,6 +75,32 @@ describe('config command', () => {
   });
 
   describe('config set', () => {
+    it('uses home scope when cwd is HOME and reports failures without changing the file', async () => {
+      const environment = { HOME: testDir };
+      const provider = JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'gemma3:4b' });
+      const saved = await runCli(['config', 'set', 'analyzer_provider', provider, '--json'], {
+        cwd: testDir,
+        env: environment,
+      });
+      const configPath = join(testDir, '.ai-video-cataloger', 'config.json');
+      const before = readFileSync(configPath, 'utf8');
+      const loaded = await runCli(['config', 'get', 'analyzer_provider', '--json'], {
+        cwd: testDir,
+        env: environment,
+      });
+      const failed = await runCli(['config', 'set', 'not_a_config_key', 'value', '--json'], {
+        cwd: testDir,
+        env: environment,
+      });
+
+      expect(saved.exitCode).toBe(0);
+      expect(JSON.parse(before)).toEqual({ analyzer_provider: provider });
+      expect(parseJsonEvents(loaded.stdout).some((event) => event.source === 'home')).toBe(true);
+      expect(failed.exitCode).toBe(24);
+      expect(parseJsonEvents(failed.stdout)).toContainEqual(expect.objectContaining({ type: 'error', code: 'UNKNOWN_CONFIG_KEY' }));
+      expect(readFileSync(configPath, 'utf8')).toBe(before);
+    });
+
     it('should set a valid string value', async () => {
       const result = await runCli(['config', 'set', 'whisper_mode', 'api', '--json'], { cwd: testDir });
 

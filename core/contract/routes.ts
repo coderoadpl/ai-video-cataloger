@@ -443,7 +443,10 @@ export const readinessOutputSchema = z.object({
 
 export const readinessInputSchema = z.object({
   folder: z.string().min(1).optional(),
+  scope: z.literal('home').optional(),
   refresh: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
+}).refine((input) => input.folder === undefined || input.scope === undefined, {
+  message: 'folder and home scope are mutually exclusive',
 });
 
 export const doctorOutputSchema = z.object({

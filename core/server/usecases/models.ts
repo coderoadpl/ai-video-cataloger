@@ -217,7 +217,7 @@ export const localAiRequirements = async (
       downloadGB: tier.downloadGb,
       minTotalMemGB: tier.minimumRamGb,
       supportLevel: getLocalAiSupportLevel(tier, machine.value),
-      installed: status.value.runtimeUp && isInstalled(status.value.installedModels, tier.tag),
+      installed: isInstalled(status.value.installedModels, tier.tag),
       recommended: recommended?.tag === tier.tag,
     })),
   });

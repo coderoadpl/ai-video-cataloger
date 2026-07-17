@@ -224,7 +224,7 @@ describe('setup command workflow', () => {
     localAi.statusValue = {
       runtimeUp: false,
       runtimeVersion: '1.0.0',
-      installedModels: ['gemma3:12b'],
+      installedModels: [],
     };
     deps.localAi = localAi;
     deps.jobs = new InMemoryJobs();

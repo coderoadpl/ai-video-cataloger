@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { closeSync, existsSync, openSync } from 'node:fs';
-import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { homedir, totalmem } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -139,7 +139,11 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
   async status(): Promise<Result<LocalAiRuntimeStatus, AppError>> {
     const runtime = await this.findRunningRuntime();
     if (runtime === null) {
-      return ok({ runtimeUp: false, runtimeVersion: OLLAMA_PINNED_VERSION, installedModels: [] });
+      return ok({
+        runtimeUp: false,
+        runtimeVersion: OLLAMA_PINNED_VERSION,
+        installedModels: await installedModelsFromManifests(this.homeDirectory),
+      });
     }
     const installed = await this.listModels(runtime.baseUrl);
     if (!installed.ok) return installed;
@@ -578,6 +582,37 @@ export const managedBinaryPath = (homeDirectory: string): string =>
 
 export const managedModelsDirectory = (homeDirectory: string): string =>
   path.join(appDirectory(homeDirectory), 'models', 'ollama');
+
+const installedModelsFromManifests = async (homeDirectory: string): Promise<string[]> => {
+  const files = await manifestFiles(path.join(managedModelsDirectory(homeDirectory), 'manifests'), []);
+  const models = files.flatMap((segments) => {
+    if (segments.length < 4) return [];
+    const tag = segments.at(-1);
+    if (tag === undefined) return [];
+    const repository = segments.slice(1, -1);
+    const model = repository[0] === 'library' ? repository.slice(1) : repository;
+    return model.length === 0 ? [] : [`${model.join('/')}:${tag}`];
+  });
+  return [...new Set(models)].sort();
+};
+
+const manifestFiles = async (directory: string, segments: string[]): Promise<string[][]> => {
+  try {
+    const entries = await readdir(directory, { withFileTypes: true });
+    const files: string[][] = [];
+    for (const entry of entries) {
+      const nextSegments = [...segments, entry.name];
+      if (entry.isDirectory()) {
+        files.push(...await manifestFiles(path.join(directory, entry.name), nextSegments));
+      } else if (entry.isFile()) {
+        files.push(nextSegments);
+      }
+    }
+    return files;
+  } catch {
+    return [];
+  }
+};
 
 export const stateFilePath = (homeDirectory: string): string =>
   path.join(appDirectory(homeDirectory), 'ollama-runtime.json');

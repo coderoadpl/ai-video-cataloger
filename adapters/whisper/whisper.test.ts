@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer, type IncomingMessage, type ServerResponse } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ReadStream } from 'node:fs';
@@ -365,6 +364,7 @@ describe('HuggingFaceWhisperModelDownloader', () => {
     const downloader = new HuggingFaceWhisperModelDownloader({
       homeDirectory: home,
       urlForModel: (model) => `${fake.origin}/ggml-${model}.bin`,
+      fetchImpl: fake.fetchImpl,
       nowMs: () => {
         now += 500;
         return now;
@@ -400,6 +400,7 @@ describe('HuggingFaceWhisperModelDownloader', () => {
     const downloader = new HuggingFaceWhisperModelDownloader({
       homeDirectory: home,
       urlForModel: (model) => `${fake.origin}/ggml-${model}.bin`,
+      fetchImpl: fake.fetchImpl,
     });
 
     try {
@@ -421,6 +422,7 @@ describe('HuggingFaceWhisperModelDownloader', () => {
     const downloader = new HuggingFaceWhisperModelDownloader({
       homeDirectory: home,
       urlForModel: (model) => `${fake.origin}/ggml-${model}.bin`,
+      fetchImpl: fake.fetchImpl,
     });
 
     try {
@@ -532,38 +534,30 @@ class ApiStatusError extends Error {
 const startFakeModelServer = async (
   body: Buffer,
   checksum: string,
-): Promise<{ origin: string; requests: Array<{ method: string; url: string }>; close: () => Promise<void> }> => {
+): Promise<{
+  origin: string;
+  requests: Array<{ method: string; url: string }>;
+  fetchImpl: typeof fetch;
+  close: () => Promise<void>;
+}> => {
   const requests: Array<{ method: string; url: string }> = [];
-  const server = createServer((request: IncomingMessage, response: ServerResponse) => {
-    requests.push({ method: request.method ?? '', url: request.url ?? '' });
-    response.setHeader('content-length', body.length.toString());
-    response.setHeader('x-linked-etag', checksum);
-    if (request.method === 'HEAD') {
-      response.statusCode = 200;
-      response.end();
-      return;
-    }
-    response.statusCode = 200;
-    response.end(body);
-  });
-  await new Promise<void>((resolve) => {
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  if (address === null || typeof address === 'string') {
-    throw new Error('Server did not expose a TCP port');
-  }
+  const fetchImpl: typeof fetch = (input, init) => {
+    const request = new Request(input, init);
+    const requestUrl = new URL(request.url);
+    requests.push({ method: request.method, url: requestUrl.pathname });
+    const headers = {
+      'content-length': body.length.toString(),
+      'x-linked-etag': checksum,
+    };
+    const responseBody = request.method === 'HEAD'
+      ? null
+      : Uint8Array.from(body).buffer;
+    return Promise.resolve(new Response(responseBody, { headers }));
+  };
   return {
-    origin: `http://127.0.0.1:${address.port}`,
+    origin: 'https://models.test',
     requests,
-    close: () => new Promise((resolve, reject) => {
-      server.close((error) => {
-        if (error !== undefined) {
-          reject(error);
-          return;
-        }
-        resolve();
-      });
-    }),
+    fetchImpl,
+    close: () => Promise.resolve(),
   };
 };

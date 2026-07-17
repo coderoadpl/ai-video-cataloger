@@ -121,7 +121,8 @@ export const doctorScopes = {
 
 export const readinessScopes = {
   all: () => ['readiness'] as const,
-  folder: (folder: string | undefined) => ['readiness', 'folder', folder ?? null] as const,
+  target: (input: z.output<typeof API_ROUTES.readiness.input>) =>
+    ['readiness', input.scope === 'home' ? 'home' : 'folder', input.folder ?? null] as const,
 };
 
 export const checkScopes = {
@@ -241,10 +242,11 @@ export const readinessQuery = (api: ApiClient, input: ReadinessInput = {}) => {
   const parsed = API_ROUTES.readiness.input.parse(input);
   const requestInput: ReadinessInput = {
     ...(parsed.folder === undefined ? {} : { folder: parsed.folder }),
+    ...(parsed.scope === undefined ? {} : { scope: parsed.scope }),
     refresh: parsed.refresh ? 'true' : 'false',
   };
   return defineQuery({
-    queryKey: readinessScopes.folder(parsed.folder),
+    queryKey: readinessScopes.target(parsed),
     staleTime: 0,
     call: ({ signal }) => api.readiness(requestInput, signal),
   });

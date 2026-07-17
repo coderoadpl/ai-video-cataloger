@@ -1,5 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
+import { managedModelsDirectory } from '@adapters/ollama-runtime/index.js';
 import { ok, type AppError, type Result } from '@core/domain/index.js';
 import type {
   AnalysisOutput,
@@ -51,6 +55,55 @@ class ReadyTranscriber implements TranscriberPort {
 }
 
 describe('readiness route cache invalidation', () => {
+  it('resolves wizard home writes and a 4b manifest in a fresh folder', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'avc-wizard-readiness-'));
+    const home = path.join(root, 'home');
+    const folder = path.join(root, 'fresh-folder');
+    const manifest = path.join(managedModelsDirectory(home), 'manifests', 'registry.ollama.ai', 'library', 'gemma3', '4b');
+    await mkdir(path.dirname(manifest), { recursive: true });
+    await mkdir(folder, { recursive: true });
+    await writeFile(manifest, '{}', 'utf8');
+    vi.stubEnv('OLLAMA_HOST', 'http://127.0.0.1:1');
+    try {
+      const deps = createDeps({ homeDirectory: home, workingDirectory: home });
+      deps.transcriber = new ReadyTranscriber();
+      const app = buildApp(deps);
+      const writes = [
+        ['analyzer_provider', JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'gemma3:4b' })],
+        ['analyzer_backend', 'local'],
+        ['local_model', 'gemma3:4b'],
+        ['whisper_mode', 'local'],
+        ['whisper_model', 'base'],
+        ['whisper_binary_path', ''],
+      ] as const;
+      for (const [key, value] of writes) {
+        const response = await app.request('/api/config', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ key, value }),
+        });
+        expect(response.status).toBe(200);
+      }
+
+      const response = await app.request(`/api/readiness?folder=${encodeURIComponent(folder)}&refresh=true`);
+      const raw = JSON.parse(await readFile(path.join(home, '.ai-video-cataloger', 'config.json'), 'utf8'));
+
+      expect(raw).toEqual(Object.fromEntries(writes));
+      expect(await response.json()).toMatchObject({
+        ok: true,
+        data: {
+          ready: true,
+          analyzer: { name: 'local', available: true, family: 'local', providerId: 'local' },
+          missingPieces: [],
+          suggestedAction: null,
+        },
+      });
+    } finally {
+      vi.unstubAllEnvs();
+      await rm(root, { recursive: true, force: true });
+    }
+  });
+
   it.each(['whisper_download', 'whisper_runtime_install', 'local_ai_pull'] satisfies JobKind[])(
     'invalidates cached readiness after a successful %s job',
     async (kind) => {

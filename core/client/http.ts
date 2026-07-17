@@ -214,6 +214,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.readiness.method,
       queryPath(API_ROUTES.readiness.path, [
         ['folder', parsed.value.folder],
+        ['scope', parsed.value.scope],
         ['refresh', String(parsed.value.refresh)],
       ]),
       readinessOutputSchema,

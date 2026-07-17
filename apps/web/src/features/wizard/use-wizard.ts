@@ -345,7 +345,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     void (async () => {
       try {
         const result = await queryClient.fetchQuery(
-          actions.readiness(folder === null ? { refresh: 'true' } : { folder, refresh: 'true' }),
+          actions.readiness(folder === null ? { scope: 'home', refresh: 'true' } : { folder, refresh: 'true' }),
         );
         setReadiness(result);
       } catch (error) {

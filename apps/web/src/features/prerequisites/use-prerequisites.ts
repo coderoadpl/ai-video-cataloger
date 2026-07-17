@@ -22,7 +22,7 @@ const messageOf = (error: unknown): string => {
 export const usePrerequisites = ({ open, folder }: { open: boolean; folder: string | null }): PrerequisitesState => {
   const doctorQuery = useQuery({ ...actions.doctor, enabled: open });
   const readinessQuery = useQuery({
-    ...actions.readiness(folder === null ? {} : { folder }),
+    ...actions.readiness(folder === null ? { scope: 'home' } : { folder }),
     enabled: open,
   });
   const queryError = doctorQuery.error ?? readinessQuery.error;

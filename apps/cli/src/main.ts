@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { stat } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { createInterface } from 'node:readline/promises';
 
 import { Command, InvalidArgumentError } from 'commander';
@@ -73,7 +74,11 @@ interface CredentialOptions extends JsonOption {
 }
 
 const cliWorkingDirectory = process.env.AVC_WORKING_DIRECTORY ?? process.cwd();
-const app = createApp({ workingDirectory: cliWorkingDirectory });
+const cliHomeDirectory = homedir();
+const cliConfigFolder = path.resolve(cliWorkingDirectory) === path.resolve(cliHomeDirectory)
+  ? undefined
+  : cliWorkingDirectory;
+const app = createApp({ workingDirectory: cliWorkingDirectory, homeDirectory: cliHomeDirectory });
 const api = createApiClient({
   baseUrl: '',
   fetchImpl: async (input, init) => app.honoApp.request(input, init),
@@ -532,7 +537,10 @@ config
       emitError(json, appError('unknown_config_key', `Unknown config key: ${key}`));
       return;
     }
-    const result = await api.config({ folder: cliWorkingDirectory, key: parsedKey });
+    const result = await api.config({
+      ...(cliConfigFolder === undefined ? {} : { folder: cliConfigFolder }),
+      key: parsedKey,
+    });
     if (!result.ok) {
       emitError(json, result.error);
       return;
@@ -554,7 +562,11 @@ config
       emitError(json, appError('unknown_config_key', `Unknown config key: ${key}`));
       return;
     }
-    const result = await api.setConfig({ folder: cliWorkingDirectory, key: parsedKey, value });
+    const result = await api.setConfig({
+      ...(cliConfigFolder === undefined ? {} : { folder: cliConfigFolder }),
+      key: parsedKey,
+      value,
+    });
     if (!result.ok) {
       emitError(json, result.error);
       return;

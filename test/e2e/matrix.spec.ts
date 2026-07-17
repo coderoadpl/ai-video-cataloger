@@ -46,6 +46,21 @@ test.describe.configure({ mode: 'serial' });
 
 const cacheHome = matrixHome(process.env);
 
+const CLI_AUTH_DIRS = ['.claude', '.claude.json', '.codex', '.cursor'] as const;
+
+const linkCliAuthIntoCacheHome = (): void => {
+  const realHome = process.env.MATRIX_REAL_HOME ?? process.env.HOME;
+  if (realHome === undefined || realHome === cacheHome) return;
+  mkdirSync(cacheHome, { recursive: true });
+  for (const entry of CLI_AUTH_DIRS) {
+    const source = join(realHome, entry);
+    const target = join(cacheHome, entry);
+    if (existsSync(source) && !existsSync(target)) symlinkSync(source, target);
+  }
+};
+
+linkCliAuthIntoCacheHome();
+
 const sampleById = (id: string): VideoSample => {
   const sample = SAMPLES.find((candidate) => candidate.id === id);
   if (sample === undefined) throw new Error(`Missing sample: ${id}`);
@@ -217,11 +232,17 @@ test('local-managed × managed-whisper', async () => {
       PIPELINE_TIMEOUT_MS,
       environment,
     );
-    expect(probe.events.some((event) => event.type === 'error' && event.code === 'model_not_installed')).toBe(true);
-    expect(probe.events.some((event) => event.code === 'ollama_unavailable')).toBe(false);
+    expect(probe.events.some((event) => event.type === 'error' && event.code === 'MODEL_NOT_INSTALLED')).toBe(true);
+    expect(probe.events.some((event) => event.code === 'OLLAMA_UNAVAILABLE')).toBe(false);
   } finally {
     rmSync(missingModelWorkdir, { recursive: true, force: true });
   }
+
+  if (!existsSync(managedWhisperBinaryPath(cacheHome))) {
+    const installed = await runCli(['models', 'whisper-runtime', 'install', '--json'], cacheHome, PIPELINE_TIMEOUT_MS, environment);
+    expect(installed.code, installed.stderr).toBe(0);
+  }
+  expect(existsSync(managedWhisperBinaryPath(cacheHome))).toBe(true);
 
   await runCliCell(
     cell,
@@ -276,7 +297,10 @@ for (const harness of [
 ] as const) {
   test(harness.cell, async () => {
     test.setTimeout(CELL_TIMEOUT_MS);
-    const environment = cellEnvironment(cacheHome);
+    const realHome = process.env.HOME;
+    if (realHome === undefined) failOrSkip(harness.cell, 'HOME is not set');
+    // agent CLIs resolve auth stores (keychain paths incl.) via HOME; a faked HOME logs them out
+    const environment = cellEnvironment(realHome);
     requireCommandAuthentication(harness.cell, harness.command, harness.auth, environment);
     await runCliCell(
       harness.cell,

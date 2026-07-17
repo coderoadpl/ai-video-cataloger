@@ -370,12 +370,14 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     const status = await this.runtime.status();
     if (!status.ok) return status;
     const runtimeAvailable = status.value.runtimeUp;
-    const modelAvailable = runtimeAvailable && isModelInstalled(status.value.installedModels, config.modelTag);
-    const message = !runtimeAvailable
-      ? 'Local AI runtime is not running and starts on demand during pull or analysis'
-      : modelAvailable
+    const modelAvailable = isModelInstalled(status.value.installedModels, config.modelTag);
+    const message = modelAvailable
+      ? runtimeAvailable
         ? `Local AI model ${config.modelTag} is installed`
-        : `Local AI model ${config.modelTag} is not installed. Run: ai-video-cataloger models pull ${config.modelTag}`;
+        : `Local AI model ${config.modelTag} is installed; the runtime starts on demand during analysis`
+      : runtimeAvailable
+        ? `Local AI model ${config.modelTag} is not installed. Run: ai-video-cataloger models pull ${config.modelTag}`
+        : 'Local AI runtime is not running and starts on demand during pull or analysis';
     return ok({
       family: 'local',
       providerId: config.providerId,
@@ -442,8 +444,7 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     if (!runtime.ok || !runtime.value.available || input?.provider?.family !== 'local') return runtime;
     const status = await this.runtime.status();
     if (!status.ok) return status;
-    const modelAvailable = status.value.runtimeUp
-      && isModelInstalled(status.value.installedModels, input.provider.modelTag);
+    const modelAvailable = isModelInstalled(status.value.installedModels, input.provider.modelTag);
     if (modelAvailable) return runtime;
     return ok({
       name: input.provider.modelTag,

@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto';
 import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { createServer, type Server } from 'node:http';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -22,14 +21,11 @@ import {
 } from './index.js';
 
 const roots: string[] = [];
-const servers: Server[] = [];
 
 describe('ManagedWhisperRuntimeAdapter', () => {
   afterEach(async () => {
     await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
-    await Promise.all(servers.map(closeServer));
     roots.length = 0;
-    servers.length = 0;
   });
 
   it('resolves configured path before managed and system runtimes', async () => {
@@ -117,14 +113,15 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     const home = await tempHome();
     const fixtures = bottleFixtures();
     const requests: RequestRecord[] = [];
-    const server = await bottleServer(fixtures.specs, fixtures.bodies, requests);
+    const fetchImpl = bottleFetch(fixtures.specs, fixtures.bodies, requests);
     const runner = new FakeRunner(fixtures.specs);
     const progress: string[] = [];
     const adapter = new ManagedWhisperRuntimeAdapter({
       config: new InMemoryConfig(),
       homeDirectory: home,
       commandRunner: runner,
-      registryUrl: server.url,
+      fetchImpl,
+      registryUrl: 'https://registry.test',
       bottleSpecs: fixtures.specs,
     });
 
@@ -165,14 +162,15 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     const fixtures = bottleFixtures();
     const wrongBodies = new Map(fixtures.bodies);
     wrongBodies.set(fixtures.specs[0]?.repository ?? '', Buffer.from('wrong archive'));
-    const server = await bottleServer(fixtures.specs, wrongBodies, []);
+    const fetchImpl = bottleFetch(fixtures.specs, wrongBodies, []);
     const runner = new FakeRunner(fixtures.specs);
     runner.missingTools.add('cmake');
     const adapter = new ManagedWhisperRuntimeAdapter({
       config: new InMemoryConfig(),
       homeDirectory: home,
       commandRunner: runner,
-      registryUrl: server.url,
+      fetchImpl,
+      registryUrl: 'https://registry.test',
       bottleSpecs: fixtures.specs,
     });
 
@@ -200,16 +198,12 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     const home = await tempHome();
     const source = Buffer.from('source archive');
     const sourceSha256 = digest(source);
-    const server = createServer((request, response) => {
-      if (request.url === '/source') {
-        response.end(source);
-        return;
-      }
-      response.statusCode = 503;
-      response.end();
-    });
-    const url = await listen(server);
-    servers.push(server);
+    const fetchImpl: typeof fetch = (input) => {
+      const requestUrl = new URL(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+      return Promise.resolve(requestUrl.pathname === '/source'
+        ? new Response(responseBody(source))
+        : new Response(null, { status: 503 }));
+    };
     const runner = new FakeRunner(WHISPER_BOTTLE_SPECS);
     runner.sourceBuild = true;
     const progress: string[] = [];
@@ -217,8 +211,9 @@ describe('ManagedWhisperRuntimeAdapter', () => {
       config: new InMemoryConfig(),
       homeDirectory: home,
       commandRunner: runner,
-      registryUrl: url,
-      sourceUrl: `${url}/source`,
+      fetchImpl,
+      registryUrl: 'https://registry.test',
+      sourceUrl: 'https://registry.test/source',
       sourceSha256,
     });
 
@@ -293,33 +288,29 @@ const bottleFixtures = (): { specs: readonly WhisperBottleSpec[]; bodies: Readon
   return { specs, bodies };
 };
 
-const bottleServer = async (
+const bottleFetch = (
   specs: readonly WhisperBottleSpec[],
   bodies: ReadonlyMap<string, Buffer>,
   requests: RequestRecord[],
-): Promise<{ url: string }> => {
-  const server = createServer((request, response) => {
-    const requestUrl = new URL(request.url ?? '/', 'http://127.0.0.1');
+): typeof fetch =>
+  (input, init) => {
+    const request = new Request(input, init);
+    const requestUrl = new URL(request.url);
     requests.push({
       path: requestUrl.pathname,
       service: requestUrl.searchParams.get('service'),
       scope: requestUrl.searchParams.get('scope'),
-      authorization: request.headers.authorization,
+      authorization: request.headers.get('authorization') ?? undefined,
     });
     if (requestUrl.pathname === '/token') {
-      response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({ token: 'test-token' }));
-      return;
+      return Promise.resolve(Response.json({ token: 'test-token' }));
     }
     const spec = specs.find((candidate) => requestUrl.pathname.includes(`/v2/${candidate.repository}/`));
     if (spec === undefined) {
-      response.statusCode = 404;
-      response.end();
-      return;
+      return Promise.resolve(new Response(null, { status: 404 }));
     }
     if (requestUrl.pathname.endsWith(`/manifests/${spec.version}`)) {
-      response.setHeader('content-type', 'application/json');
-      response.end(JSON.stringify({
+      return Promise.resolve(Response.json({
         schemaVersion: 2,
         manifests: [{
           digest: `sha256:${spec.manifestSha256}`,
@@ -329,20 +320,13 @@ const bottleServer = async (
           },
         }],
       }));
-      return;
     }
     const body = bodies.get(spec.repository);
     if (body === undefined) {
-      response.statusCode = 404;
-      response.end();
-      return;
+      return Promise.resolve(new Response(null, { status: 404 }));
     }
-    response.end(body);
-  });
-  const url = await listen(server);
-  servers.push(server);
-  return { url };
-};
+    return Promise.resolve(new Response(responseBody(body)));
+  };
 
 interface RequestRecord {
   path: string;
@@ -350,30 +334,6 @@ interface RequestRecord {
   scope: string | null;
   authorization: string | undefined;
 }
-
-const listen = (server: Server): Promise<string> =>
-  new Promise((resolve, reject) => {
-    server.once('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      if (address === null || typeof address === 'string') {
-        reject(new Error('HTTP test server has no TCP address'));
-        return;
-      }
-      resolve(`http://127.0.0.1:${String(address.port)}`);
-    });
-  });
-
-const closeServer = (server: Server): Promise<void> =>
-  new Promise((resolve, reject) => {
-    server.close((error) => {
-      if (error !== undefined) {
-        reject(error);
-        return;
-      }
-      resolve();
-    });
-  });
 
 const tempHome = async (): Promise<string> => {
   const root = await mkdtemp(path.join(tmpdir(), 'managed-whisper-runtime-'));
@@ -398,3 +358,6 @@ const exists = async (filePath: string): Promise<boolean> => {
 
 const digest = (value: Buffer): string =>
   createHash('sha256').update(value).digest('hex');
+
+const responseBody = (value: Buffer): ArrayBuffer =>
+  Uint8Array.from(value).buffer;

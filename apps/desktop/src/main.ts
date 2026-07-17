@@ -4,8 +4,8 @@ import { fileURLToPath } from 'node:url';
 import { app, BrowserWindow } from 'electron';
 
 import type { App } from '@server/src/create-app.js';
-import { createApp } from '@server/src/create-app.js';
 
+import { createDesktopApp } from './composition.js';
 import { folderStorePath, FolderStore } from './folder-store.js';
 import { buildDesktopPath, userDataDirectoryOverride } from './environment.js';
 import { cleanupIpcHandlers, registerIpcHandlers } from './ipc.js';
@@ -83,7 +83,7 @@ const loadRenderer = async (window: BrowserWindow): Promise<void> => {
 };
 
 const bootstrap = async (): Promise<void> => {
-  desktopApp = createApp({ version: app.getVersion(), workingDirectory: app.getPath('home') });
+  desktopApp = createDesktopApp({ version: app.getVersion() });
   folderStore = new FolderStore(folderStorePath(app.getPath('userData')));
   registerIpcHandlers({
     desktopApp,

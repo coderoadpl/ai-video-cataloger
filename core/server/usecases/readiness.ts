@@ -64,15 +64,16 @@ export class ReadinessCache {
 
 export const getReadiness = (
   deps: ReadinessDeps,
-  input: { folder?: string | undefined; refresh?: boolean | undefined } = {},
+  input: { folder?: string | undefined; scope?: 'home' | undefined; refresh?: boolean | undefined } = {},
 ): Promise<Result<ReadinessOutput, AppError>> => {
-  const folder = deps.fs.resolve(input.folder ?? deps.fs.cwd());
-  return deps.readiness.read(folder, input.refresh === true, () => evaluateConfiguredReadiness(deps, folder));
+  const folder = input.scope === 'home' ? undefined : deps.fs.resolve(input.folder ?? deps.fs.cwd());
+  const cacheKey = folder ?? 'home';
+  return deps.readiness.read(cacheKey, input.refresh === true, () => evaluateConfiguredReadiness(deps, folder));
 };
 
 const evaluateConfiguredReadiness = async (
   deps: Pick<ReadinessDeps, 'config' | 'transcriber' | 'analyzer'>,
-  folder: string,
+  folder?: string | undefined,
 ): Promise<Result<ReadinessOutput, AppError>> => {
   const stored = await resolveConfigValues(deps.config, folder);
   if (!stored.ok) return stored;

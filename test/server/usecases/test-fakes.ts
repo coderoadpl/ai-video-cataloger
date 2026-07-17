@@ -428,6 +428,7 @@ export class InMemoryAnalyzer implements AnalyzerPort {
   dependencyValue: DependencyStatus = dependency('claude', true);
   analyzeError: AppError | null = null;
   readonly dependencyInputs: Array<AppConfig['analyzer_backend'] | null> = [];
+  readonly dependencyProviders: Array<AnalyzerProviderConfig | null> = [];
   readonly inputs: Array<{
     videoPath: string;
     framePaths: string[];
@@ -453,8 +454,12 @@ export class InMemoryAnalyzer implements AnalyzerPort {
     return Promise.resolve(ok({ rawResponse: this.rawResponse }));
   }
 
-  dependency(input?: { backend: AppConfig['analyzer_backend'] }): Promise<Result<DependencyStatus, AppError>> {
+  dependency(input?: {
+    backend: AppConfig['analyzer_backend'];
+    provider?: AnalyzerProviderConfig | undefined;
+  }): Promise<Result<DependencyStatus, AppError>> {
     this.dependencyInputs.push(input?.backend ?? null);
+    this.dependencyProviders.push(input?.provider ?? null);
     return Promise.resolve(ok(this.dependencyValue));
   }
 }

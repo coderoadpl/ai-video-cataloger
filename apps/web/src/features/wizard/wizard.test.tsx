@@ -56,6 +56,7 @@ interface Recorders {
   credentialWrites: { providerId: string }[];
   providerTests: { family: string; providerId: string }[];
   readinessRefreshed: boolean;
+  readinessScopes: Array<string | null>;
 }
 
 const configBodySchema = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
@@ -70,6 +71,7 @@ const installHandlers = (
     harnessAvailable?: (providerId: string) => boolean;
     ready?: boolean;
     rejectWhisperPath?: boolean;
+    rejectConfigKey?: string;
   } = {},
 ): Recorders => {
   const recorders: Recorders = {
@@ -77,6 +79,7 @@ const installHandlers = (
     credentialWrites: [],
     providerTests: [],
     readinessRefreshed: false,
+    readinessScopes: [],
   };
   server.use(
     http.get('/api/models/local-ai/requirements', () =>
@@ -135,9 +138,9 @@ const installHandlers = (
     http.post('/api/config', async ({ request }) => {
       const body = configBodySchema.parse(await request.json());
       recorders.configWrites.push(body);
-      if (overrides.rejectWhisperPath === true && body.key === 'whisper_binary_path') {
+      if ((overrides.rejectWhisperPath === true && body.key === 'whisper_binary_path') || body.key === overrides.rejectConfigKey) {
         return HttpResponse.json(
-          { ok: false, error: { code: 'invalid_config_value', message: `Whisper binary is not executable: ${body.value}` } },
+          { ok: false, error: { code: 'invalid_config_value', message: `Could not persist ${body.key}: ${body.value}` } },
           { status: 400 },
         );
       }
@@ -156,7 +159,9 @@ const installHandlers = (
       return ok(completedJob(jobId));
     }),
     http.get('/api/readiness', ({ request }) => {
-      if (new URL(request.url).searchParams.get('refresh') === 'true') recorders.readinessRefreshed = true;
+      const url = new URL(request.url);
+      if (url.searchParams.get('refresh') === 'true') recorders.readinessRefreshed = true;
+      recorders.readinessScopes.push(url.searchParams.get('scope'));
       return ok(readiness(overrides.ready ?? true));
     }),
   );
@@ -178,6 +183,8 @@ describe('SetupWizard', () => {
     await waitFor(() =>
       expect(screen.getByTestId('analyzer-family-local').textContent).toContain('recommended'),
     );
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: /Gemma 3 4B/ }));
     clickNext();
 
     await screen.findByTestId('wizard-step-transcription');
@@ -198,7 +205,8 @@ describe('SetupWizard', () => {
 
     const providerWrite = recorders.configWrites.find((write) => write.key === 'analyzer_provider');
     expect(providerWrite).toBeDefined();
-    expect(providerWrite?.value).toContain('"family":"local"');
+    expect(providerWrite?.value).toContain('"modelTag":"gemma3:4b"');
+    expect(recorders.configWrites).toContainEqual({ key: 'local_model', value: 'gemma3:4b' });
     expect(recorders.configWrites).toContainEqual({ key: 'whisper_binary_path', value: '' });
     expect(recorders.configWrites.every((write) => write.folder === undefined)).toBe(true);
   });
@@ -253,6 +261,43 @@ describe('SetupWizard', () => {
 
     await screen.findByTestId('analyzer-validation-error');
     expect(screen.getByTestId('wizard-step-analyzer')).toBeDefined();
+  });
+
+  it('surfaces a failed analyzer config write without advancing', async () => {
+    const recorders = installHandlers({ rejectConfigKey: 'local_model' });
+    renderWithProviders(<SetupWizard open folder={null} onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.mouseDown(screen.getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: /Gemma 3 4B/ }));
+
+    clickNext();
+
+    expect((await screen.findByTestId('analyzer-validation-error')).textContent).toContain('local_model');
+    expect(screen.getByTestId('wizard-step-analyzer')).toBeDefined();
+    expect(recorders.configWrites.map((write) => write.key)).toEqual([
+      'analyzer_provider',
+      'analyzer_backend',
+      'local_model',
+    ]);
+  });
+
+  it('requests explicit home readiness when no folder is selected', async () => {
+    const recorders = installHandlers({ ready: true });
+    renderWithProviders(<SetupWizard open folder={null} onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-skip'));
+    clickNext();
+    await screen.findByTestId('wizard-step-downloads');
+    clickNext();
+
+    await screen.findByTestId('readiness-ready');
+    expect(recorders.readinessScopes).toContain('home');
   });
 
   it('stores an OpenAI credential when API transcription is chosen', async () => {
@@ -356,7 +401,7 @@ describe('SetupWizard', () => {
 
     clickNext();
 
-    expect((await screen.findByTestId('transcription-validation-error')).textContent).toContain('not executable');
+    expect((await screen.findByTestId('transcription-validation-error')).textContent).toContain('whisper_binary_path');
     expect(recorders.configWrites.some((write) => write.key === 'whisper_mode')).toBe(false);
   });
 

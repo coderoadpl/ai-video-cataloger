@@ -171,8 +171,8 @@ describe('HarnessAnalyzerAdapter', () => {
 
     expect(runner.calls.map(({ command, args }) => ({ command, args: args.slice(0, -1) }))).toEqual([
       { command: 'claude', args: ['--add-dir', '/work/videos', '-p'] },
-      { command: 'codex', args: ['exec', '--sandbox', 'read-only', '--cd', '/work/videos'] },
-      { command: 'cursor-agent', args: ['--print', '--mode', 'ask', '--workspace', '/work/videos'] },
+      { command: 'codex', args: ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--cd', '/work/videos'] },
+      { command: 'cursor-agent', args: ['--print', '--trust', '--mode', 'ask', '--workspace', '/work/videos'] },
     ]);
     expect(runner.calls[0]?.args.at(-1)).toContain('file:///work/videos/frames/frame-001.jpg');
     expect(runner.calls[1]?.args.at(-1)).toContain('Read these 1 frame file(s)');
@@ -331,7 +331,7 @@ describe('OllamaAnalyzerAdapter', () => {
     expect(runtime.ensureSignals).toEqual([]);
   });
 
-  it('keeps local readiness unavailable when feasibility is true but the runtime is down', async () => {
+  it('keeps local readiness available for a manifest-backed model while the runtime is down', async () => {
     const runtime = new FakeLocalAiRuntime();
     runtime.statusValue = {
       runtimeUp: false,
@@ -346,9 +346,8 @@ describe('OllamaAnalyzerAdapter', () => {
     expect(result).toMatchObject({
       ok: true,
       value: {
-        name: 'gemma3:12b',
-        available: false,
-        installHint: expect.stringContaining('Download the model'),
+        name: 'ollama',
+        available: true,
       },
     });
   });

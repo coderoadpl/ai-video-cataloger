@@ -356,6 +356,46 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     expect(existsSync(managedRuntimeDirectory(home))).toBe(false);
   });
 
+  it('reports manifest-backed models from an unreachable runtime without starting it', async () => {
+    const home = await tempRoot();
+    const manifest = path.join(managedModelsDirectory(home), 'manifests', 'registry.ollama.ai', 'library', 'gemma3', '4b');
+    await mkdir(path.dirname(manifest), { recursive: true });
+    await writeFile(manifest, '{}', 'utf8');
+    const processManager = new AutoStartOllamaProcessManager();
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      fetchImpl: () => Promise.reject(new Error('offline')),
+      processManager,
+      machineProfile: () => ({ platform: 'darwin', arch: 'arm64', ramGb: 16 }),
+    });
+
+    const result = await adapter.status();
+
+    expect(result).toEqual(ok({
+      runtimeUp: false,
+      runtimeVersion: 'v0.31.1',
+      installedModels: ['gemma3:4b'],
+    }));
+    expect(processManager.spawnCalls).toEqual([]);
+  });
+
+  it('ignores stale manifests when a reachable daemon does not list the model', async () => {
+    const home = await tempRoot();
+    const manifest = path.join(managedModelsDirectory(home), 'manifests', 'registry.ollama.ai', 'library', 'gemma3', '4b');
+    await mkdir(path.dirname(manifest), { recursive: true });
+    await writeFile(manifest, '{}', 'utf8');
+    const system = await startFakeOllamaServer({ version: 'system', models: [] });
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      systemBaseUrl: system.origin,
+      fetchImpl: fakeFetch,
+    });
+
+    const result = await adapter.status();
+
+    expect(result).toEqual(ok({ runtimeUp: true, runtimeVersion: 'system', installedModels: [] }));
+  });
+
   it('reports local AI unavailable with a platform hint off Apple Silicon', async () => {
     const adapter = new ManagedOllamaRuntimeAdapter({
       machineProfile: () => ({ platform: 'linux', arch: 'x64', ramGb: 16 }),

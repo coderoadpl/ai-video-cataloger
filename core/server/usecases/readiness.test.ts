@@ -116,6 +116,31 @@ describe('configured readiness', () => {
     expect(transcriber.dependencyInputs[0]).toMatchObject({ mode: 'skip', model: 'base', binaryPath: '' });
   });
 
+  it('does not resolve a home-scoped readiness request through cwd folder config', async () => {
+    const homeProvider = providers.find((candidate) => candidate.family === 'local');
+    if (homeProvider === undefined) throw new Error('Expected local provider fixture');
+    const config = new InMemoryConfig();
+    await config.set({ kind: 'home' }, 'analyzer_provider', JSON.stringify({ ...homeProvider, modelTag: 'gemma3:4b' }));
+    await config.set({ kind: 'home' }, 'local_model', 'gemma3:4b');
+    await config.set({ kind: 'home' }, 'whisper_mode', 'skip');
+    await config.set({ kind: 'folder', folder: '/home-alias' }, 'local_model', 'gemma3:12b');
+    const analyzer = new InMemoryAnalyzer();
+    analyzer.dependencyValue = dependency('local', true);
+    const transcriber = new InMemoryTranscriber();
+    transcriber.dependencyValue = dependency('transcription-skip', true);
+
+    const result = await getReadiness({
+      config,
+      fs: new InMemoryFileSystem('/home-alias'),
+      analyzer,
+      transcriber,
+      readiness: new ReadinessCache(),
+    }, { scope: 'home', refresh: true });
+
+    expect(result).toMatchObject({ ok: true, value: { ready: true } });
+    expect(analyzer.dependencyProviders[0]).toMatchObject({ family: 'local', modelTag: 'gemma3:4b' });
+  });
+
   it('lets folder readiness settings override home defaults point-wise', async () => {
     const homeProvider = providers.find((candidate) => candidate.family === 'harness');
     const folderProvider = providers.find((candidate) => candidate.family === 'api');

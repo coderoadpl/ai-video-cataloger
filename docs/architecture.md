@@ -132,12 +132,20 @@ the missing pieces, and setup guidance through `GET /api/readiness`. Media
 dependencies remain in the existing process prerequisite gate so the v1
 refusal behavior stays intact.
 
+Local-model installed state comes from the reachable Ollama daemon when one
+exists. When no daemon is reachable, read-only status checks fall back to the
+managed models directory's Ollama manifests without starting the daemon.
+
 Readiness results are cached by resolved folder within each CLI or Electron
 main process. The composition root owns that cache and wraps both `ConfigStore`
 and `CredentialsStore` so every successful write invalidates it, including
 writes outside the settings route. Callers can also request a refresh; the GUI
 does so immediately before each run. Doctor embeds this configured view while
 retaining its legacy dependency array, `allAvailable` meaning, and exit code.
+Folderless onboarding requests use an explicit home readiness scope so the
+desktop process working directory can never masquerade as a higher-precedence
+folder. Desktop composition passes one canonical home path to persistence,
+managed runtimes, and its working-directory fallback.
 
 ## Ports (complete list for this app)
 
