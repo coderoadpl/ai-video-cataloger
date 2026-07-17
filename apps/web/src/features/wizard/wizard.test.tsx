@@ -254,6 +254,27 @@ describe('SetupWizard', () => {
     expect(screen.getByTestId('wizard-step-analyzer')).toBeDefined();
   });
 
+  it('stores an OpenAI credential when API transcription is chosen', async () => {
+    const recorders = installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-api'));
+    const credential = screen.getByLabelText('OpenAI API key');
+    expect(credential.getAttribute('type')).toBe('password');
+    fireEvent.change(credential, { target: { value: 'whisper-secret' } });
+
+    clickNext();
+    await screen.findByTestId('wizard-step-downloads');
+
+    expect(recorders.credentialWrites).toEqual([{ providerId: 'openai' }]);
+    expect(recorders.configWrites).toContainEqual({ key: 'whisper_mode', value: 'api' });
+  });
+
   it('shows detected-installed badges for agent harnesses', async () => {
     installHandlers({ harnessAvailable: (providerId) => providerId === 'claude-code' });
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);

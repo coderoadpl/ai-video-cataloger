@@ -35,6 +35,21 @@ describe('process command', () => {
     expect(events[0]?.type).toBe('error');
   });
 
+  it('resolves a relative video path from AVC_WORKING_DIRECTORY', async () => {
+    createFakeVideoFile(testDir, 'relative.mp4');
+
+    const result = await runCli(['process', 'relative.mp4', '--json'], {
+      cwd: testDir,
+      env: { PATH: '/nonexistent' },
+    });
+    const events = parseJsonEvents(result.stdout);
+
+    expect(findEvent(events, 'started')).toMatchObject({
+      data: { videoPath: join(testDir, 'relative.mp4') },
+    });
+    expect(findEvent(events, 'error')?.code).not.toBe('FILE_NOT_FOUND');
+  });
+
   it('should error on non-video file', async () => {
     const textFile = createNonVideoFile(testDir, 'test.txt');
 

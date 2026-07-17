@@ -8,7 +8,12 @@ import {
   Typography,
 } from '@mui/material';
 
-import { apiCostSignal, estimateApiTokens, type AnalyzerProviderConfig } from '@core/domain/index.js';
+import {
+  apiCostSignal,
+  apiProviderIdForBaseUrl,
+  estimateApiTokens,
+  type AnalyzerProviderConfig,
+} from '@core/domain/index.js';
 
 import type { LocalAiTier, SettingsDraft } from './settings-model.js';
 
@@ -123,7 +128,7 @@ export const SettingsAnalyzerSection = ({
             size="small"
             label="Base URL"
             value={provider.baseUrl}
-            onChange={(event) => onProviderChange({ ...provider, baseUrl: event.target.value })}
+            onChange={(event) => onProviderChange(withApiBaseUrl(provider, event.target.value))}
           />
           <TextField
             size="small"
@@ -170,6 +175,16 @@ const defaultApiProvider = (): Extract<AnalyzerProviderConfig, { family: 'api' }
   model: 'gpt-4.1-mini',
   maxImageDetail: 'auto',
 });
+
+const withApiBaseUrl = (
+  provider: Extract<AnalyzerProviderConfig, { family: 'api' }>,
+  baseUrl: string,
+): Extract<AnalyzerProviderConfig, { family: 'api' }> => {
+  const providerId = apiProviderIdForBaseUrl(baseUrl);
+  return providerId === null
+    ? { ...provider, baseUrl }
+    : { ...provider, providerId, apiKeyRef: providerId, baseUrl };
+};
 
 const withInputPrice = (
   provider: Extract<AnalyzerProviderConfig, { family: 'api' }>,

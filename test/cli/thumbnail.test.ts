@@ -33,6 +33,20 @@ describe('thumbnail command', () => {
     expect(errorEvent?.code).toBe('FILE_NOT_FOUND');
   });
 
+  it('resolves a relative video path from AVC_WORKING_DIRECTORY', async () => {
+    createFakeVideoFile(testDir, 'relative.mp4');
+
+    const result = await runCli(['thumbnail', 'relative.mp4', '--json'], {
+      cwd: testDir,
+      env: { AI_VIDEO_CATALOGER_MOCK: 'true' },
+    });
+    const started = findEvent(parseJsonEvents(result.stdout), 'started');
+
+    expect(started).toMatchObject({
+      data: { videoPath: join(testDir, 'relative.mp4') },
+    });
+  });
+
   it('should error on non-video file', async () => {
     const textFile = createNonVideoFile(testDir, 'test.txt');
 

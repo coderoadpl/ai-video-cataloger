@@ -378,9 +378,11 @@ const readConfig = (filePath: string): Result<Record<string, string>, AppError> 
 };
 
 const writeConfig = (filePath: string, values: Record<string, string>): Result<void, AppError> => {
+  const tempPath = `${filePath}.tmp`;
   try {
     mkdirSync(path.dirname(filePath), { recursive: true });
-    writeFileSync(filePath, JSON.stringify(values, null, 2), 'utf8');
+    writeFileSync(tempPath, JSON.stringify(values, null, 2), 'utf8');
+    renameSync(tempPath, filePath);
     return ok(undefined);
   } catch (cause) {
     return repositoryFailure(cause);

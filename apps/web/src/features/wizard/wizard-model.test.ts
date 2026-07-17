@@ -57,6 +57,16 @@ describe('wizard-model builders', () => {
     expect(provider.pricePerMTokensOutput).toBe(0.6);
   });
 
+  it('uses the endpoint hostname as the credential slot for compatible APIs', () => {
+    const provider = buildApiProvider({
+      ...emptyApiDraft(),
+      baseUrl: 'https://openrouter.ai/api/v1',
+    });
+
+    expect(provider.providerId).toBe('openrouter.ai');
+    expect(provider.apiKeyRef).toBe('openrouter.ai');
+  });
+
   it('prefers the recommended tier, then the first supported one', () => {
     expect(recommendedTier([tier({ recommended: false }), tier({ tag: 'gemma3:4b', recommended: true })])?.tag).toBe(
       'gemma3:4b',

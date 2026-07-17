@@ -3,6 +3,7 @@ import { access, constants } from 'node:fs/promises';
 
 import {
   WHISPER_MODEL_NAMES,
+  apiProviderIdForBaseUrl,
   analyzerProviderConfigSchema,
   appError,
   builtInHarnessProviders,
@@ -231,9 +232,14 @@ const selectApiAnalyzer = async (
     'Output price per 1M tokens (optional)',
     current?.pricePerMTokensOutput,
   );
+  const providerId = apiProviderIdForBaseUrl(baseUrl);
+  if (providerId === null) {
+    context.output.error(appError('invalid_config_value', `Invalid API base URL: ${baseUrl}`));
+    return null;
+  }
   const credential = credentialFromEnvironment(context);
   if (credential !== null) {
-    const saved = await context.api.setCredential({ providerId: 'openai', credential });
+    const saved = await context.api.setCredential({ providerId, credential });
     if (!saved.ok) {
       context.output.error(saved.error);
       return null;
@@ -241,7 +247,7 @@ const selectApiAnalyzer = async (
   } else if (context.options.yes !== true) {
     const entered = await context.prompter?.secret('API key (leave blank to keep the stored key): ') ?? '';
     if (entered.trim().length > 0) {
-      const saved = await context.api.setCredential({ providerId: 'openai', credential: entered.trim() });
+      const saved = await context.api.setCredential({ providerId, credential: entered.trim() });
       if (!saved.ok) {
         context.output.error(saved.error);
         return null;
@@ -251,9 +257,9 @@ const selectApiAnalyzer = async (
   context.output.write('Notice: usage will be charged by your API provider.');
   const provider: AnalyzerProviderConfig = {
     family: 'api',
-    providerId: 'openai',
+    providerId,
     baseUrl,
-    apiKeyRef: 'openai',
+    apiKeyRef: providerId,
     model,
     maxImageDetail: current?.maxImageDetail ?? 'auto',
     ...(inputPrice === undefined ? {} : { pricePerMTokensInput: inputPrice }),

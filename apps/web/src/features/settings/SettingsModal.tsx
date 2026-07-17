@@ -138,6 +138,17 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
                   slotProps={{ htmlInput: { 'data-testid': 'whisper-binary-path' } }}
                 />
               </>
+            ) : draft.whisper_mode === 'api' ? (
+              <TextField
+                fullWidth
+                size="small"
+                label="OpenAI Whisper API key"
+                type="password"
+                value={settings.whisperApiCredential}
+                autoComplete="new-password"
+                helperText="Leave blank to keep the stored OpenAI credential."
+                onChange={(event) => settings.setWhisperApiCredential(event.target.value)}
+              />
             ) : null}
 
             <SettingsAnalyzerSection

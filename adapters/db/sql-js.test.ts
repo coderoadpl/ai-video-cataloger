@@ -210,6 +210,21 @@ describe('JsonConfigStore', () => {
     expect(JSON.parse(raw)).toEqual({ whisper_model: 'small' });
   });
 
+  it('keeps the existing config intact when its atomic temp write fails', async () => {
+    const folder = await tempRoot();
+    const store = new JsonConfigStore();
+    const first = await store.set({ kind: 'folder', folder }, 'frames', '7');
+    if (!first.ok) throw new Error(first.error.message);
+    const filePath = path.join(folder, '.ai-video-cataloger', 'config.json');
+    const before = await readFile(filePath, 'utf8');
+    await mkdir(`${filePath}.tmp`);
+
+    const failed = await store.set({ kind: 'folder', folder }, 'frames', '8');
+
+    expect(failed).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(await readFile(filePath, 'utf8')).toBe(before);
+  });
+
   it('loads and normalizes a v1 config.json fixture without rewriting it', async () => {
     const folder = await tempRoot();
     const configDirectory = path.join(folder, '.ai-video-cataloger');

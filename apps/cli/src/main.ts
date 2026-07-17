@@ -505,8 +505,9 @@ program
   .option('--json', 'machine-readable JSON output', false)
   .action(async (videoPath: string, options: ForceJsonOption) => {
     const json = isJsonMode(options);
-    emitStarted(json, 'thumbnail', { videoPath: path.resolve(videoPath), force: options.force === true });
-    const result = await api.generateThumbnail({ videoPath, force: options.force === true });
+    const resolvedVideoPath = path.resolve(cliWorkingDirectory, videoPath);
+    emitStarted(json, 'thumbnail', { videoPath: resolvedVideoPath, force: options.force === true });
+    const result = await api.generateThumbnail({ videoPath: resolvedVideoPath, force: options.force === true });
     if (!result.ok) {
       emitError(json, result.error);
       return;
@@ -799,7 +800,7 @@ const validateProcessPath = async (inputPath: string): Promise<
   | { ok: true; value: string }
   | { ok: false; error: AppError; data: { path: string; extension?: string; supportedExtensions?: readonly string[] } }
 > => {
-  const absolutePath = path.resolve(inputPath);
+  const absolutePath = path.resolve(cliWorkingDirectory, inputPath);
   let fileStat;
   try {
     fileStat = await stat(absolutePath);

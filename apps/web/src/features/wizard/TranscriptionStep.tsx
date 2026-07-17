@@ -63,6 +63,18 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
       />
     ) : null}
 
+    {controller.transcriptionMode === 'api' ? (
+      <TextField
+        size="small"
+        label="OpenAI API key"
+        type="password"
+        value={controller.whisperApiCredential}
+        autoComplete="new-password"
+        helperText="Leave blank to keep an existing OpenAI credential."
+        onChange={(event) => controller.setWhisperApiCredential(event.target.value)}
+      />
+    ) : null}
+
     {controller.validation === 'error' && controller.validationMessage !== null ? (
       <Alert severity="error" data-testid="transcription-validation-error">
         {controller.validationMessage}

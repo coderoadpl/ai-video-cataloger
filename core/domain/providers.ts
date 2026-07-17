@@ -55,6 +55,16 @@ export const analyzerProviderConfigSchema = z.discriminatedUnion('family', [
 
 export type AnalyzerProviderConfig = z.output<typeof analyzerProviderConfigSchema>;
 
+export const apiProviderIdForBaseUrl = (baseUrl: string): string | null => {
+  try {
+    const hostname = new URL(baseUrl).hostname;
+    if (hostname.length === 0) return null;
+    return hostname === 'api.openai.com' ? 'openai' : hostname;
+  } catch {
+    return null;
+  }
+};
+
 export const apiProviderDescriptorSchema = z.object({
   family: z.literal('api'),
   providerId: providerIdSchema,

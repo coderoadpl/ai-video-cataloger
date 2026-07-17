@@ -168,6 +168,58 @@ describe('setup command workflow', () => {
     expect(errors).toEqual([]);
   });
 
+  it('stores compatible API credentials under the endpoint hostname', async () => {
+    const home = createTestDir();
+    const folder = createTestDir();
+    roots.push(home, folder);
+    const deps = createDeps({ homeDirectory: home, workingDirectory: folder });
+    deps.providers = {
+      test: (provider) => Promise.resolve(ok({
+        family: 'api',
+        providerId: provider.providerId,
+        reachable: true,
+        authenticated: true,
+        latencyMs: 1,
+        message: 'Available',
+      })),
+    };
+    deps.analyzer = new InMemoryAnalyzer();
+    deps.transcriber = new InMemoryTranscriber();
+    const api = createApiClient({ baseUrl: '', fetchImpl: (input, init) => buildApp(deps).request(input, init) });
+    const errors: AppError[] = [];
+
+    const completed = await executeSetup({
+      api,
+      folder,
+      options: {
+        analyzer: 'api',
+        apiBaseUrl: 'https://openrouter.ai/api/v1',
+        apiModel: 'vision-model',
+        apiKeyEnv: 'ROUTER_KEY',
+        transcription: 'skip',
+        yes: true,
+      },
+      output: {
+        started: () => undefined,
+        progress: () => undefined,
+        completed: () => undefined,
+        error: (error) => errors.push(error),
+        write: () => undefined,
+      },
+      environment: { HOME: home, ROUTER_KEY: 'router-secret' },
+    });
+    const credential = await deps.credentials.get('openrouter.ai');
+    const config = await deps.config.get({ kind: 'folder', folder }, 'analyzer_provider');
+
+    expect(completed).toBe(true);
+    expect(errors).toEqual([]);
+    expect(credential).toEqual(ok('router-secret'));
+    expect(config).toMatchObject({
+      ok: true,
+      value: expect.stringContaining('"apiKeyRef":"openrouter.ai"'),
+    });
+  });
+
   it('keeps non-interactive local setup not ready when the runtime is unreachable', async () => {
     const home = createTestDir();
     const folder = createTestDir();

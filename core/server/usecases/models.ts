@@ -54,6 +54,7 @@ export const installWhisperRuntime = (
   deps.jobs.enqueue({
     kind: 'whisper_runtime_install',
     payload: {},
+    resourceKey: 'whisper-runtime-install',
     run: async (context) => {
       const started = await context.reportProgress({ step: 'runtime_setup', percentage: 0 });
       if (!started.ok) return started;
@@ -136,6 +137,7 @@ export const downloadWhisperModel = async (
   deps.jobs.enqueue({
     kind: 'whisper_download',
     payload: { modelName: input.modelName, force: input.force },
+    resourceKey: `whisper-model:${input.modelName}`,
     run: async (context) => {
       const started = await context.reportProgress({ step: 'downloading', percentage: 0 });
       if (!started.ok) return started;
@@ -240,6 +242,7 @@ export const pullLocalAiModel = async (
   return deps.jobs.enqueue({
     kind: 'local_ai_pull',
     payload: { tag: input.tag },
+    resourceKey: `local-ai:${input.tag}`,
     run: async (context) => {
       const runtime = await context.reportProgress({ step: 'runtime_setup', percentage: 0 });
       if (!runtime.ok) return runtime;

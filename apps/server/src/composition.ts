@@ -118,7 +118,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     credentials,
     fs: new NodeFileSystemPort({ workingDirectory }),
     media: new FfmpegMediaAdapter(),
-    transcriber: new WhisperTranscriberAdapter({ homeDirectory, runtime: whisperRuntime }),
+    transcriber: new WhisperTranscriberAdapter({ credentials, homeDirectory, runtime: whisperRuntime }),
     whisperRuntime,
     analyzer: new ProviderRoutingAnalyzerAdapter(harness, ollamaAnalyzer, apiAnalyzer),
     providers: new ProviderRoutingProvidersPort(harness, ollamaAnalyzer, apiAnalyzer),

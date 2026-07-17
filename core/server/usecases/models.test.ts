@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deleteWhisperModel,
   downloadWhisperModel,
+  installWhisperRuntime,
   listWhisperModels,
   localAiRequirements,
   pullLocalAiModel,
@@ -11,6 +12,7 @@ import {
   useWhisperModel,
 } from './models.js';
 import { InMemoryConfig, InMemoryDownloads, InMemoryJobs, InMemoryLocalAi } from '../../../test/server/usecases/test-fakes.js';
+import { ok } from '@core/domain/index.js';
 
 describe('model use-cases', () => {
   it('lists whisper models with downloaded and active flags', async () => {
@@ -38,9 +40,81 @@ describe('model use-cases', () => {
 
     const whisper = await downloadWhisperModel(deps, { modelName: 'base', force: false });
     const local = await pullLocalAiModel(deps, { tag: 'gemma3:12b' });
+    const runtime = await installWhisperRuntime({
+      ...deps,
+      whisperRuntime: {
+        status: () => Promise.resolve(ok({
+          available: false,
+          path: null,
+          source: null,
+          version: null,
+          managedInstalled: false,
+          buildToolsAvailable: true,
+          missingBuildTools: [],
+        })),
+        install: () => Promise.resolve(ok({ path: '/bin/whisper', version: 'v1.9.1', installed: true })),
+      },
+    });
+    const listed = await deps.jobs.list();
 
     expect(whisper).toEqual({ ok: true, value: { jobId: 'job-1' } });
     expect(local).toEqual({ ok: true, value: { jobId: 'job-2' } });
+    expect(runtime).toEqual({ ok: true, value: { jobId: 'job-3' } });
+    expect(listed).toMatchObject({
+      ok: true,
+      value: [
+        { resourceKey: 'whisper-model:base' },
+        { resourceKey: 'local-ai:gemma3:12b' },
+        { resourceKey: 'whisper-runtime-install' },
+      ],
+    });
+  });
+
+  it('rejects duplicate jobs that target the same model or runtime resource', async () => {
+    const jobs = new InMemoryJobs();
+    for (const [jobId, kind, resourceKey] of [
+      ['existing-whisper', 'whisper_download', 'whisper-model:base'],
+      ['existing-local', 'local_ai_pull', 'local-ai:gemma3:12b'],
+      ['existing-runtime', 'whisper_runtime_install', 'whisper-runtime-install'],
+    ] as const) {
+      jobs.addJob({
+        jobId,
+        kind,
+        resourceKey,
+        status: 'running',
+        progress: null,
+        progressEvents: [],
+        error: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      });
+    }
+    const deps = {
+      config: new InMemoryConfig(),
+      downloads: new InMemoryDownloads(),
+      jobs,
+      localAi: new InMemoryLocalAi(),
+    };
+    const whisperRuntime = {
+      status: () => Promise.resolve(ok({
+        available: false,
+        path: null,
+        source: null,
+        version: null,
+        managedInstalled: false,
+        buildToolsAvailable: true,
+        missingBuildTools: [],
+      })),
+      install: () => Promise.resolve(ok({ path: '/bin/whisper', version: 'v1.9.1', installed: true })),
+    };
+
+    const whisper = await downloadWhisperModel(deps, { modelName: 'base', force: false });
+    const local = await pullLocalAiModel(deps, { tag: 'gemma3:12b' });
+    const runtime = await installWhisperRuntime({ ...deps, whisperRuntime });
+
+    expect(whisper).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(local).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(runtime).toMatchObject({ ok: false, error: { code: 'conflict' } });
   });
 
   it('sets the active whisper model and reports whether it is downloaded', async () => {

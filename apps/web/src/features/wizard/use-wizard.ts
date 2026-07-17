@@ -66,6 +66,7 @@ export interface WizardController {
   harnessId: string;
   transcriptionMode: TranscriptionMode;
   whisperBinaryPath: string;
+  whisperApiCredential: string;
   validation: ValidationStatus;
   validationMessage: string | null;
   downloads: DownloadProgress[];
@@ -81,6 +82,7 @@ export interface WizardController {
   setHarnessId: (id: string) => void;
   setTranscriptionMode: (mode: TranscriptionMode) => void;
   setWhisperBinaryPath: (path: string) => void;
+  setWhisperApiCredential: (credential: string) => void;
   next: () => void;
   back: () => void;
   finish: () => void;
@@ -117,6 +119,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const [harnessAvailability, setHarnessAvailability] = useState<Record<string, HarnessAvailability>>({});
   const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>('managed');
   const [whisperBinaryPath, setWhisperBinaryPath] = useState<string>('');
+  const [whisperApiCredential, setWhisperApiCredential] = useState<string>('');
   const [validation, setValidation] = useState<ValidationStatus>('idle');
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
@@ -217,13 +220,16 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         await writeConfig('whisper_mode', 'local');
         return;
       case 'api':
+        if (whisperApiCredential.trim().length > 0) {
+          await setCredential.mutateAsync({ providerId: 'openai', credential: whisperApiCredential.trim() });
+        }
         await writeConfig('whisper_mode', 'api');
         return;
       case 'skip':
         await writeConfig('whisper_mode', 'skip');
         return;
     }
-  }, [transcriptionMode, whisperBinaryPath, writeConfig]);
+  }, [setCredential, transcriptionMode, whisperApiCredential, whisperBinaryPath, writeConfig]);
 
   const advanceTranscription = useCallback(async (): Promise<void> => {
     setValidation('testing');
@@ -450,6 +456,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     harnessId,
     transcriptionMode,
     whisperBinaryPath,
+    whisperApiCredential,
     validation,
     validationMessage,
     downloads,
@@ -465,6 +472,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     setHarnessId,
     setTranscriptionMode,
     setWhisperBinaryPath,
+    setWhisperApiCredential,
     next,
     back,
     finish,

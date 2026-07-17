@@ -1,6 +1,7 @@
 import type { z } from 'zod';
 
 import {
+  apiProviderIdForBaseUrl,
   builtInHarnessProviders,
   type AnalyzerProviderConfig,
 } from '@core/domain/index.js';
@@ -78,11 +79,13 @@ const optionalPrice = (value: string): number | undefined => {
 export const buildApiProvider = (draft: ApiDraft): ApiProviderConfig => {
   const priceInput = optionalPrice(draft.pricePerMTokensInput);
   const priceOutput = optionalPrice(draft.pricePerMTokensOutput);
+  const baseUrl = draft.baseUrl.trim();
+  const providerId = apiProviderIdForBaseUrl(baseUrl) ?? 'openai';
   return {
     family: 'api',
-    providerId: 'openai',
-    baseUrl: draft.baseUrl.trim(),
-    apiKeyRef: 'openai',
+    providerId,
+    baseUrl,
+    apiKeyRef: providerId,
     model: draft.model.trim(),
     maxImageDetail: 'auto',
     ...(priceInput === undefined ? {} : { pricePerMTokensInput: priceInput }),

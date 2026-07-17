@@ -294,6 +294,25 @@ describe('WhisperTranscriberAdapter', () => {
     expect(apiClient.calls[0]?.file).toBeInstanceOf(ReadStream);
   });
 
+  it('uses the stored OpenAI credential when the environment key is absent', async () => {
+    const root = await tempRoot();
+    const audioPath = path.join(root, 'audio.wav');
+    const transcriptPath = path.join(root, 'transcripts', 'audio.txt');
+    await writeFile(audioPath, 'audio', 'utf8');
+    const apiClient = new FakeWhisperApiClient('stored credential transcript');
+    const credentials = {
+      get: (providerId: string) => Promise.resolve(ok(providerId === 'openai' ? 'stored-key' : null)),
+      set: () => Promise.resolve(ok(undefined)),
+    };
+    const adapter = new WhisperTranscriberAdapter({ apiKey: '', apiClient, credentials });
+
+    const dependency = await adapter.dependency({ mode: 'api', model: 'base' });
+    const result = await adapter.transcribe({ audioPath, transcriptPath, mode: 'api', model: 'base' });
+
+    expect(dependency).toMatchObject({ ok: true, value: { available: true } });
+    expect(result).toEqual(ok({ transcriptPath, content: 'stored credential transcript' }));
+  });
+
   it('maps OpenAI API status errors to the app taxonomy', async () => {
     const root = await tempRoot();
     const audioPath = path.join(root, 'audio.wav');

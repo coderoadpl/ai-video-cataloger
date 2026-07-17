@@ -20,7 +20,9 @@ export interface SettingsState {
   isSaving: boolean;
   tiers: LocalAiTier[] | null;
   apiCredential: string;
+  whisperApiCredential: string;
   setApiCredential: (credential: string) => void;
+  setWhisperApiCredential: (credential: string) => void;
   setDraft: (patch: Partial<SettingsDraft>) => void;
   save: () => void;
   reset: () => void;
@@ -50,6 +52,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [apiCredential, setApiCredential] = useState('');
+  const [whisperApiCredential, setWhisperApiCredential] = useState('');
 
   const data = configQuery.data;
   useEffect(() => {
@@ -58,6 +61,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       setOriginal(null);
       setSaveError(null);
       setApiCredential('');
+      setWhisperApiCredential('');
       return;
     }
     if (draft !== null || data === undefined || !('config' in data)) return;
@@ -78,7 +82,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const save = useCallback(() => {
     if (draft === null || original === null || folder === null) return;
     const keys = changedKeys(draft, original);
-    if (keys.length === 0 && apiCredential.length === 0) return;
+    if (keys.length === 0 && apiCredential.length === 0 && whisperApiCredential.length === 0) return;
     void (async () => {
       setIsSaving(true);
       setSaveError(null);
@@ -103,16 +107,39 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
           setSaveError(messageOf(error));
         }
       }
+      if (whisperApiCredential.length > 0 && draft.whisper_mode === 'api') {
+        try {
+          await setCredential.mutateAsync({ providerId: 'openai', credential: whisperApiCredential });
+          setWhisperApiCredential('');
+        } catch (error) {
+          allOk = false;
+          setSaveError(messageOf(error));
+        }
+      }
       setIsSaving(false);
       if (!allOk) return;
       setOriginal(draft);
       await configQuery.refetch();
       onSaved?.();
     })();
-  }, [draft, original, folder, setConfig, setCredential, apiCredential, configQuery, onSaved]);
+  }, [
+    apiCredential,
+    configQuery,
+    draft,
+    folder,
+    onSaved,
+    original,
+    setConfig,
+    setCredential,
+    whisperApiCredential,
+  ]);
 
   const hasChanges =
-    draft !== null && original !== null && (changedKeys(draft, original).length > 0 || apiCredential.length > 0);
+    draft !== null && original !== null && (
+      changedKeys(draft, original).length > 0
+      || apiCredential.length > 0
+      || whisperApiCredential.length > 0
+    );
 
   return {
     isLoading: enabled && draft === null && configQuery.error === null,
@@ -122,7 +149,9 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     isSaving,
     tiers: requirementsQuery.data?.tiers ?? null,
     apiCredential,
+    whisperApiCredential,
     setApiCredential,
+    setWhisperApiCredential,
     setDraft,
     save,
     reset,

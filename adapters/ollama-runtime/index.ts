@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { existsSync, openSync } from 'node:fs';
+import { closeSync, existsSync, openSync } from 'node:fs';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { homedir, totalmem } from 'node:os';
 import path from 'node:path';
@@ -94,6 +94,8 @@ export interface ManagedOllamaRuntimeAdapterOptions {
   onPullProgress?: ((progress: OllamaPullProgress) => void) | undefined;
   releaseUrl?: string | undefined;
   systemBaseUrl?: string | undefined;
+  openLogFile?: ((path: string) => number) | undefined;
+  closeLogFile?: ((fd: number) => void) | undefined;
 }
 
 export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
@@ -108,6 +110,9 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
   private readonly onPullProgress: ((progress: OllamaPullProgress) => void) | undefined;
   private readonly releaseUrl: string;
   private readonly systemBaseUrl: string;
+  private readonly openLogFile: (path: string) => number;
+  private readonly closeLogFile: (fd: number) => void;
+  private ensureRuntimeInFlight: Promise<Result<RunningRuntime, AppError>> | null = null;
 
   constructor(options: ManagedOllamaRuntimeAdapterOptions = {}) {
     this.homeDirectory = options.homeDirectory ?? homedir();
@@ -123,6 +128,8 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     this.onPullProgress = options.onPullProgress;
     this.releaseUrl = options.releaseUrl ?? OLLAMA_RELEASE_URL;
     this.systemBaseUrl = normalizeBaseUrl(options.systemBaseUrl ?? process.env.OLLAMA_HOST ?? SYSTEM_OLLAMA_BASE_URL);
+    this.openLogFile = options.openLogFile ?? ((filePath) => openSync(filePath, 'a'));
+    this.closeLogFile = options.closeLogFile ?? closeSync;
   }
 
   machine(): Promise<Result<MachineProfile, AppError>> {
@@ -226,7 +233,19 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     });
   }
 
-  private async ensureRuntime(signal?: AbortSignal): Promise<Result<RunningRuntime, AppError>> {
+  private ensureRuntime(signal?: AbortSignal): Promise<Result<RunningRuntime, AppError>> {
+    const inFlight = this.ensureRuntimeInFlight;
+    if (inFlight !== null) return inFlight;
+    const started = this.resolveRuntime(signal);
+    this.ensureRuntimeInFlight = started;
+    const clearInFlight = (): void => {
+      if (this.ensureRuntimeInFlight === started) this.ensureRuntimeInFlight = null;
+    };
+    void started.then(clearInFlight, clearInFlight);
+    return started;
+  }
+
+  private async resolveRuntime(signal?: AbortSignal): Promise<Result<RunningRuntime, AppError>> {
     const system = await this.probeRuntime(this.systemBaseUrl, false, null, signal);
     if (system !== null) return ok(system);
 
@@ -277,28 +296,42 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     const installed = await this.installManagedBinary(signal);
     if (!installed.ok) return installed;
 
+    const first = await this.startManagedRuntimeAttempt(installed.value, signal);
+    if (first.ok || !isStartupTimeout(first.error)) return first;
+    return this.startManagedRuntimeAttempt(installed.value, signal);
+  }
+
+  private async startManagedRuntimeAttempt(
+    binaryPath: string,
+    signal?: AbortSignal,
+  ): Promise<Result<RunningRuntime, AppError>> {
     const port = this.randomPort();
     const baseUrl = baseUrlForPort(port);
     const modelsDir = managedModelsDirectory(this.homeDirectory);
     try {
       await mkdir(modelsDir, { recursive: true });
       await mkdir(appDirectory(this.homeDirectory), { recursive: true });
-      const logFd = openSync(logFilePath(this.homeDirectory), 'a');
-      const child = this.processManager.spawn(installed.value, ['serve'], {
-        env: {
-          ...process.env,
-          OLLAMA_HOST: `127.0.0.1:${port}`,
-          OLLAMA_MODELS: modelsDir,
-        },
-        detached: true,
-        stdio: ['ignore', logFd, logFd],
-      });
+      const logFd = this.openLogFile(logFilePath(this.homeDirectory));
+      let child: RuntimeProcess;
+      try {
+        child = this.processManager.spawn(binaryPath, ['serve'], {
+          env: {
+            ...process.env,
+            OLLAMA_HOST: `127.0.0.1:${port}`,
+            OLLAMA_MODELS: modelsDir,
+          },
+          detached: true,
+          stdio: ['ignore', logFd, logFd],
+        });
+      } finally {
+        this.closeLogFile(logFd);
+      }
       child.unref();
       const pid = child.pid;
       if (pid === undefined || pid <= 0) {
         return { ok: false, error: appError('ollama_unavailable', 'Local AI runtime started without a valid process id') };
       }
-      await this.writeState({ port, pid, version: OLLAMA_PINNED_VERSION, binaryPath: installed.value });
+      await this.writeState({ port, pid, version: OLLAMA_PINNED_VERSION, binaryPath });
       const deadline = this.nowMs() + serveStartTimeoutMs;
       while (this.nowMs() < deadline) {
         if (signal?.aborted === true) {
@@ -598,6 +631,9 @@ const unavailableMessage = (baseUrl: string, cause: unknown): string =>
 
 const errorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? cause.message : fallback;
+
+const isStartupTimeout = (error: AppError): boolean =>
+  error.code === 'ollama_unavailable' && error.message === `Local AI runtime did not start within ${serveStartTimeoutMs / 1000}s`;
 
 const signalInit = (signal: AbortSignal | undefined): { signal?: AbortSignal } =>
   signal === undefined ? {} : { signal };

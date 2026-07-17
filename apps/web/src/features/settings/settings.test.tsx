@@ -188,4 +188,63 @@ describe('settings modal', () => {
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(credentialBodies).toEqual([{ providerId: 'openrouter', credential: 'secret-from-ui' }]);
   });
+
+  it('derives the API credential slot when the endpoint changes', async () => {
+    const credentialBodies: unknown[] = [];
+    stubEndpoints({
+      ...emptyConfig,
+      analyzer_provider: JSON.stringify({
+        family: 'api',
+        providerId: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKeyRef: 'openai',
+        model: 'vision-model',
+        maxImageDetail: 'auto',
+      }),
+    });
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = z.object({ key: z.string(), value: z.string() }).parse(await request.json());
+        return HttpResponse.json({ ok: true, data: { ...body, previousValue: null } });
+      }),
+      http.post('/api/credentials', async ({ request }) => {
+        const body = await request.json();
+        credentialBodies.push(body);
+        return HttpResponse.json({ ok: true, data: { providerId: 'openrouter.ai', stored: true } });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    fireEvent.change(await screen.findByLabelText('Base URL'), {
+      target: { value: 'https://openrouter.ai/api/v1' },
+    });
+    fireEvent.change(screen.getByLabelText('API credential'), { target: { value: 'router-secret' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(credentialBodies).toEqual([
+      { providerId: 'openrouter.ai', credential: 'router-secret' },
+    ]));
+  });
+
+  it('stores an OpenAI credential for API transcription', async () => {
+    const credentialBodies: unknown[] = [];
+    stubEndpoints({ ...emptyConfig, whisper_mode: 'api' });
+    server.use(
+      http.post('/api/credentials', async ({ request }) => {
+        const body = await request.json();
+        credentialBodies.push(body);
+        return HttpResponse.json({ ok: true, data: { providerId: 'openai', stored: true } });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const credential = await screen.findByLabelText('OpenAI Whisper API key');
+    expect(credential.getAttribute('type')).toBe('password');
+    fireEvent.change(credential, { target: { value: 'whisper-secret' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(credentialBodies).toEqual([
+      { providerId: 'openai', credential: 'whisper-secret' },
+    ]));
+  });
 });

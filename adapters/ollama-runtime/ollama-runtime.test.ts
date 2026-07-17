@@ -165,6 +165,56 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     ]);
   });
 
+  it('shares one managed startup across concurrent callers', async () => {
+    const home = await tempRoot();
+    await mkdir(path.dirname(managedBinaryPath(home)), { recursive: true });
+    await writeFile(managedBinaryPath(home), 'binary', 'utf8');
+    const processManager = new AutoStartOllamaProcessManager();
+    closers.push(() => processManager.close());
+    let port = 9400;
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      systemBaseUrl: 'http://127.0.0.1:1',
+      processManager,
+      randomPort: () => {
+        port += 1;
+        return port;
+      },
+      fetchImpl: fakeFetch,
+      sleep: () => Promise.resolve(),
+    });
+
+    const [first, second] = await Promise.all([adapter.ensure(), adapter.ensure()]);
+
+    expect(first).toEqual(ok({ baseUrl: 'http://127.0.0.1:9401' }));
+    expect(second).toEqual(first);
+    expect(processManager.spawnCalls).toHaveLength(1);
+  });
+
+  it('closes the parent log descriptor after spawning the managed daemon', async () => {
+    const home = await tempRoot();
+    await mkdir(path.dirname(managedBinaryPath(home)), { recursive: true });
+    await writeFile(managedBinaryPath(home), 'binary', 'utf8');
+    const processManager = new AutoStartOllamaProcessManager();
+    closers.push(() => processManager.close());
+    const closed: number[] = [];
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      systemBaseUrl: 'http://127.0.0.1:1',
+      processManager,
+      randomPort: () => 9402,
+      fetchImpl: fakeFetch,
+      openLogFile: () => 73,
+      closeLogFile: (fd) => closed.push(fd),
+      sleep: () => Promise.resolve(),
+    });
+
+    const result = await adapter.ensure();
+
+    expect(result).toEqual(ok({ baseUrl: 'http://127.0.0.1:9402' }));
+    expect(closed).toEqual([73]);
+  });
+
   it('reports pull progress from completed and total and maps pull errors', async () => {
     const progress: OllamaPullProgress[] = [];
     const server = await startFakeOllamaServer({
@@ -401,15 +451,16 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     await writeFile(managedBinaryPath(home), 'binary', 'utf8');
     const processManager = new ManualProcessManager(managedBinaryPath(home));
     let now = 0;
+    const ports = [9789, 9790];
     const adapter = new ManagedOllamaRuntimeAdapter({
       homeDirectory: home,
       systemBaseUrl: 'http://127.0.0.1:1',
       processManager,
-      randomPort: () => 9789,
+      randomPort: () => ports.shift() ?? 9790,
       fetchImpl: () => Promise.reject(new Error('not ready')),
       nowMs: () => now,
       sleep: () => {
-        now = 30_000;
+        now += 30_000;
         return Promise.resolve();
       },
     });
@@ -418,8 +469,11 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     const state = JSON.parse(await readFile(stateFilePath(home), 'utf8'));
 
     expect(result).toMatchObject({ ok: false, error: { message: 'Local AI runtime did not start within 30s' } });
-    expect(state).toMatchObject({ port: 9789, pid: 1, binaryPath: managedBinaryPath(home) });
-    expect(processManager.killed).toEqual([{ pid: 1, signal: 'SIGTERM' }]);
+    expect(state).toMatchObject({ port: 9790, pid: 1, binaryPath: managedBinaryPath(home) });
+    expect(processManager.killed).toEqual([
+      { pid: 1, signal: 'SIGTERM' },
+      { pid: 1, signal: 'SIGTERM' },
+    ]);
   });
 
   it('maps delete errors and does not stop a user-owned system daemon', async () => {

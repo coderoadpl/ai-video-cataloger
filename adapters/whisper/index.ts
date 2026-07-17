@@ -16,6 +16,7 @@ import {
 } from '@core/domain/index.js';
 import type {
   DependencyStatus,
+  CredentialsStore,
   ModelDownloadPort,
   TranscribeInput,
   TranscriberPort,
@@ -54,6 +55,7 @@ export interface WhisperTranscriberOptions {
   binaryResolver?: WhisperBinaryResolver | undefined;
   runtime?: WhisperRuntimePort | undefined;
   apiClient?: WhisperApiClient | undefined;
+  credentials?: CredentialsStore | undefined;
 }
 
 export interface WhisperModelDownloaderOptions {
@@ -72,6 +74,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
   private readonly binaryResolver: WhisperBinaryResolver;
   private readonly runtime: WhisperRuntimePort | undefined;
   private readonly apiClient: WhisperApiClient | undefined;
+  private readonly credentials: CredentialsStore | undefined;
 
   constructor(options: WhisperTranscriberOptions = {}) {
     this.homeDirectory = options.homeDirectory ?? homedir();
@@ -80,6 +83,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     this.binaryResolver = options.binaryResolver ?? homeWhisperBinaryResolver(this.homeDirectory);
     this.runtime = options.runtime;
     this.apiClient = options.apiClient;
+    this.credentials = options.credentials;
   }
 
   async transcribe(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
@@ -103,14 +107,16 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
       });
     }
     if (input?.mode === 'api') {
-      const available = this.apiKey !== undefined && this.apiKey.length > 0;
+      const apiKey = await this.resolveApiKey();
+      if (!apiKey.ok) return apiKey;
+      const available = apiKey.value !== null;
       return ok({
         name: 'openai-whisper-api',
         available,
         version: null,
         source: null,
         path: null,
-        installHint: available ? '' : 'Set the OPENAI_API_KEY environment variable',
+        installHint: available ? '' : 'Add an OpenAI API credential in Settings or set OPENAI_API_KEY',
       });
     }
     const runtime = await this.localRuntimeDependency();
@@ -208,15 +214,17 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
   }
 
   private async transcribeWithApi(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
-    if (this.apiKey === undefined || this.apiKey.length === 0) {
+    const apiKey = await this.resolveApiKey();
+    if (!apiKey.ok) return apiKey;
+    if (apiKey.value === null) {
       return {
         ok: false,
-        error: appError('missing_api_key', 'OPENAI_API_KEY environment variable is required when using OpenAI Whisper API'),
+        error: appError('missing_api_key', 'An OpenAI API credential or OPENAI_API_KEY is required when using OpenAI Whisper API'),
       };
     }
     try {
       await mkdir(path.dirname(input.transcriptPath), { recursive: true });
-      const client = this.apiClient ?? createOpenAiWhisperClient(this.apiKey);
+      const client = this.apiClient ?? createOpenAiWhisperClient(apiKey.value);
       const transcription = await client.createTranscription({
         file: createReadStream(input.audioPath),
         model: 'whisper-1',
@@ -227,6 +235,14 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     } catch (cause) {
       return openAiFailure(cause);
     }
+  }
+
+  private async resolveApiKey(): Promise<Result<string | null, AppError>> {
+    if (this.apiKey !== undefined && this.apiKey.length > 0) return ok(this.apiKey);
+    if (this.credentials === undefined) return ok(null);
+    const stored = await this.credentials.get('openai');
+    if (!stored.ok) return stored;
+    return ok(stored.value === null || stored.value.length === 0 ? null : stored.value);
   }
 }
 
