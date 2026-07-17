@@ -339,3 +339,8 @@ or "wizard writes a scope nothing reads" cannot ship again.
    `@loader_path` so the binary runs without a Homebrew installation.
    The source-build path remains as a fallback when build tools exist.
 5. Implementation starts immediately (parallel to the owner's v1 review).
+6. (2026-07-17, resolving the audit-loop owner items) Config scope
+   precedence: **flag > folder > home > default** per key; wizard and
+   `models use` write home-scope global defaults; folder config overrides
+   point-wise. GUI Prerequisites reads configured-readiness from
+   `/api/readiness` with the selected folder; doctor contract unchanged.

@@ -71,6 +71,15 @@ Two scopes, both preserved from the old app byte-for-byte
 Existing databases and on-disk artifacts written by the old implementation
 must remain readable with no migration.
 
+Processing-config resolution (owner decision 2026-07-17): **explicit CLI
+flag > folder config > home config > built-in default**, per key. The home
+scope holds global defaults (the wizard and `models use` write there when no
+folder is in play); a folder's own config overrides point-wise, preserving
+per-folder parity — a folder that sets a key always wins. The GUI
+Prerequisites modal reads the configured-readiness section from
+`/api/readiness` with the selected folder; the doctor contract stays
+unchanged.
+
 ## Delta 4 — Electron shape (t3code model)
 
 `apps/desktop` (main process) is a composition root, nothing else. Platform
