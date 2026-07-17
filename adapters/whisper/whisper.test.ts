@@ -107,6 +107,35 @@ describe('WhisperTranscriberAdapter', () => {
     });
   });
 
+  it('transcribes with a direct-layout whisper.cpp model when the GGML-prefixed path is absent', async () => {
+    const root = await tempRoot();
+    const transcriptPath = path.join(root, 'transcripts', 'Clip One.txt');
+    const directPath = directModelPath(root, 'small');
+    await mkdir(path.dirname(directPath), { recursive: true });
+    await writeFile(directPath, 'model', 'utf8');
+    const runner = new FakeCommandRunner({ '/bundled/whisper': 'whisper installed' });
+    runner.onRun = async (command, args) => {
+      if (command === '/bundled/whisper' && args[0] !== '--help') await writeWhisperOutput(args, 'direct model transcript\n');
+      return ok({ stdout: '', stderr: '' });
+    };
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      commandRunner: runner,
+      binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
+    });
+
+    const result = await adapter.transcribe({
+      audioPath: path.join(root, 'audio.wav'),
+      transcriptPath,
+      mode: 'local',
+      model: 'small',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'direct model transcript' }));
+    const run = runner.commands.find((entry) => entry.command === '/bundled/whisper' && entry.args[0] !== '--help');
+    expect(run?.args[run.args.indexOf('-m') + 1]).toBe(directPath);
+  });
+
   it('relocates the whisper output when the temp audio name differs from the transcript name', async () => {
     const root = await tempRoot();
     const transcriptPath = path.join(root, 'transcripts', 'Clip One.txt');
@@ -173,6 +202,24 @@ describe('WhisperTranscriberAdapter', () => {
       ],
     });
     expect(existsSync(path.join(root, 'transcripts', 'f1abec7d-Clip One.txt'))).toBe(false);
+  });
+
+  it('does not accept an OpenAI Whisper cache file for a whisper.cpp runtime', async () => {
+    const root = await tempRoot();
+    const cachedPath = legacyModelPath(root, 'medium');
+    await mkdir(path.dirname(cachedPath), { recursive: true });
+    await writeFile(cachedPath, 'model', 'utf8');
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
+    });
+
+    const result = await adapter.dependency({ mode: 'local', model: 'medium' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { name: 'whisper-medium', available: false, path: primaryModelPath(root, 'medium') },
+    });
   });
 
   it('retries a failed whisper.cpp run once with --no-gpu', async () => {

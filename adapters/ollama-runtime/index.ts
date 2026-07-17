@@ -122,7 +122,7 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
     this.machineProfile = options.machineProfile ?? currentMachineProfile;
     this.onPullProgress = options.onPullProgress;
     this.releaseUrl = options.releaseUrl ?? OLLAMA_RELEASE_URL;
-    this.systemBaseUrl = trimTrailingSlash(options.systemBaseUrl ?? SYSTEM_OLLAMA_BASE_URL);
+    this.systemBaseUrl = normalizeBaseUrl(options.systemBaseUrl ?? process.env.OLLAMA_HOST ?? SYSTEM_OLLAMA_BASE_URL);
   }
 
   machine(): Promise<Result<MachineProfile, AppError>> {
@@ -141,6 +141,12 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
       runtimeVersion: runtime.version,
       installedModels: installed.value,
     });
+  }
+
+  async ensure(signal?: AbortSignal): Promise<Result<{ baseUrl: string }, AppError>> {
+    const runtime = await this.ensureRuntime(signal);
+    if (!runtime.ok) return runtime;
+    return ok({ baseUrl: runtime.value.baseUrl });
   }
 
   async pull(
@@ -572,6 +578,9 @@ const baseUrlForPort = (port: number): string =>
 
 const trimTrailingSlash = (value: string): string =>
   value.endsWith('/') ? value.slice(0, -1) : value;
+
+const normalizeBaseUrl = (value: string): string =>
+  trimTrailingSlash(value.startsWith('http://') || value.startsWith('https://') ? value : `http://${value}`);
 
 const randomManagedPort = (): number =>
   9000 + Math.floor(Math.random() * 1000);

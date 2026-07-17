@@ -186,6 +186,7 @@ describe('SetupWizard', () => {
     const providerWrite = recorders.configWrites.find((write) => write.key === 'analyzer_provider');
     expect(providerWrite).toBeDefined();
     expect(providerWrite?.value).toContain('"family":"local"');
+    expect(recorders.configWrites).toContainEqual({ key: 'whisper_binary_path', value: '' });
   });
 
   it('shows a missing local model as a download and offers to install it', async () => {

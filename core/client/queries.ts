@@ -239,10 +239,14 @@ export const doctorQuery = (api: ApiClient) =>
 
 export const readinessQuery = (api: ApiClient, input: ReadinessInput = {}) => {
   const parsed = API_ROUTES.readiness.input.parse(input);
+  const requestInput: ReadinessInput = {
+    ...(parsed.folder === undefined ? {} : { folder: parsed.folder }),
+    refresh: parsed.refresh ? 'true' : 'false',
+  };
   return defineQuery({
     queryKey: readinessScopes.folder(parsed.folder),
     staleTime: 0,
-    call: ({ signal }) => api.readiness(input, signal),
+    call: ({ signal }) => api.readiness(requestInput, signal),
   });
 };
 

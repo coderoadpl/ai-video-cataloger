@@ -118,7 +118,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     const modelPath = primaryModelPath(this.homeDirectory, input.model);
     const modelAvailable = await pathExists(modelPath)
       || await pathExists(directModelPath(this.homeDirectory, input.model))
-      || await pathExists(legacyModelPath(this.homeDirectory, input.model));
+      || (runtime.value.source === 'system' && await pathExists(legacyModelPath(this.homeDirectory, input.model)));
     if (modelAvailable) return runtime;
     return ok({
       name: `whisper-${input.model}`,
@@ -168,17 +168,18 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     }
     try {
       await mkdir(path.dirname(input.transcriptPath), { recursive: true });
+      const modelPath = await resolveWhisperCppModelPath(this.homeDirectory, input.model);
       let run = await this.commandRunner.run(
         binary.path,
         binary.source === 'system'
           ? openAiWhisperArgs(input)
-          : whisperCppArgs(this.homeDirectory, input),
+          : whisperCppArgs(modelPath, input),
         { signal: input.signal },
       );
       if (!run.ok && binary.source !== 'system' && input.signal?.aborted !== true) {
         run = await this.commandRunner.run(
           binary.path,
-          [...whisperCppArgs(this.homeDirectory, input), '--no-gpu'],
+          [...whisperCppArgs(modelPath, input), '--no-gpu'],
           { signal: input.signal },
         );
       }
@@ -418,11 +419,18 @@ const homeWhisperBinaryResolver = (homeDirectory: string): WhisperBinaryResolver
   },
 });
 
-const whisperCppArgs = (homeDirectory: string, input: TranscribeInput): readonly string[] => {
+const resolveWhisperCppModelPath = async (homeDirectory: string, model: WhisperModelName): Promise<string> => {
+  const primary = primaryModelPath(homeDirectory, model);
+  if (await pathExists(primary)) return primary;
+  const direct = directModelPath(homeDirectory, model);
+  return await pathExists(direct) ? direct : primary;
+};
+
+const whisperCppArgs = (modelPath: string, input: TranscribeInput): readonly string[] => {
   const outputPrefix = input.transcriptPath.slice(0, -path.extname(input.transcriptPath).length);
   return [
     '-m',
-    primaryModelPath(homeDirectory, input.model),
+    modelPath,
     '-f',
     input.audioPath,
     '-otxt',

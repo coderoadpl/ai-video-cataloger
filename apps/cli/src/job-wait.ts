@@ -21,7 +21,7 @@ export const waitForJob = async (jobId: string, options: WaitForJobOptions): Pro
   let lastActivityAt = now();
   let lastProgressSequence = 0;
 
-  while (now() - lastActivityAt < inactivityMs) {
+  while (true) {
     const job = await options.fetchJob(jobId);
     if (!job.ok) {
       options.onError(job.error);
@@ -48,9 +48,12 @@ export const waitForJob = async (jobId: string, options: WaitForJobOptions): Pro
       options.onError(appError('processing_error', 'Job cancelled'));
       return;
     }
+    if (job.value.kind !== 'process' && now() - lastActivityAt >= inactivityMs) {
+      options.onError(appError('internal', `Job made no progress for 10 minutes: ${jobId}`));
+      return;
+    }
     await delay(pollIntervalMs);
   }
-  options.onError(appError('internal', `Job made no progress for 10 minutes: ${jobId}`));
 };
 
 const sleep = (milliseconds: number): Promise<void> =>

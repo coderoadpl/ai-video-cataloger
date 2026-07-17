@@ -497,6 +497,10 @@ class InMemoryLocalAiRuntimePort implements LocalAiRuntimePort {
     return Promise.resolve(ok({ runtimeUp: false, runtimeVersion: '0.0.0', installedModels: [] }));
   }
 
+  ensure(): Promise<Result<{ baseUrl: string }, AppError>> {
+    return Promise.resolve(ok({ baseUrl: 'http://127.0.0.1:11434' }));
+  }
+
   async pull(
     tag: string,
     options?: { onRuntimeReady?: (() => Promise<Result<void, AppError>>) | undefined },

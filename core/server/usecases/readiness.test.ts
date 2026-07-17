@@ -97,4 +97,21 @@ describe('configured readiness', () => {
     expect(cached).toMatchObject({ ok: true, value: { ready: false } });
     expect(refreshed).toMatchObject({ ok: true, value: { ready: true } });
   });
+
+  it('retries a loader after a cached readiness promise rejects', async () => {
+    const cache = new ReadinessCache();
+    let attempts = 0;
+    const load = () => {
+      attempts += 1;
+      if (attempts === 1) return Promise.reject(new Error('temporary failure'));
+      return Promise.resolve({ ok: false, error: { code: 'internal', message: 'recovered loader' } } as const);
+    };
+
+    await expect(cache.read('/work', false, load)).rejects.toThrow('temporary failure');
+    await expect(cache.read('/work', false, load)).resolves.toMatchObject({
+      ok: false,
+      error: { message: 'recovered loader' },
+    });
+    expect(attempts).toBe(2);
+  });
 });

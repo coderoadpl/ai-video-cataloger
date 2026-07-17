@@ -134,6 +134,37 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     expect(existsSync(stateFilePath(home))).toBe(false);
   });
 
+  it('starts the managed daemon on demand and returns its dynamic base URL', async () => {
+    const home = await tempRoot();
+    await mkdir(path.dirname(managedBinaryPath(home)), { recursive: true });
+    await writeFile(managedBinaryPath(home), 'binary', 'utf8');
+    const processManager = new AutoStartOllamaProcessManager();
+    closers.push(() => processManager.close());
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      systemBaseUrl: 'http://127.0.0.1:1',
+      processManager,
+      randomPort: () => 9347,
+      fetchImpl: fakeFetch,
+      sleep: (milliseconds) => new Promise((resolve) => {
+        setTimeout(resolve, Math.min(milliseconds, 5));
+      }),
+    });
+
+    const result = await adapter.ensure();
+
+    expect(result).toEqual(ok({ baseUrl: 'http://127.0.0.1:9347' }));
+    expect(processManager.spawnCalls).toEqual([
+      {
+        command: managedBinaryPath(home),
+        args: ['serve'],
+        host: '127.0.0.1:9347',
+        models: managedModelsDirectory(home),
+        detached: true,
+      },
+    ]);
+  });
+
   it('reports pull progress from completed and total and maps pull errors', async () => {
     const progress: OllamaPullProgress[] = [];
     const server = await startFakeOllamaServer({

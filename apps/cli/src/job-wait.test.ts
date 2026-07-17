@@ -71,4 +71,47 @@ describe('waitForJob', () => {
     expect(completed).toHaveBeenCalledTimes(1);
     expect(failed).not.toHaveBeenCalled();
   });
+
+  it('allows process steps longer than ten minutes without progress updates', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const completed = vi.fn();
+    const failed = vi.fn();
+    const waiting = waitForJob('job-1', {
+      fetchJob: () => Promise.resolve(ok(job({
+        status: Date.now() >= 12 * 60 * 1000 ? 'completed' : 'running',
+      }))),
+      onProgress: () => undefined,
+      onCompleted: completed,
+      onError: failed,
+      pollIntervalMs: 60 * 1000,
+    });
+
+    await vi.advanceTimersByTimeAsync(13 * 60 * 1000);
+    await waiting;
+    vi.useRealTimers();
+
+    expect(completed).toHaveBeenCalledTimes(1);
+    expect(failed).not.toHaveBeenCalled();
+  });
+
+  it('retains the inactivity watchdog for download jobs', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(0);
+    const failed = vi.fn();
+    const waiting = waitForJob('job-1', {
+      fetchJob: () => Promise.resolve(ok(job({ kind: 'whisper_download' }))),
+      onProgress: () => undefined,
+      onCompleted: () => undefined,
+      onError: failed,
+      pollIntervalMs: 60 * 1000,
+      inactivityMs: 2 * 60 * 1000,
+    });
+
+    await vi.advanceTimersByTimeAsync(3 * 60 * 1000);
+    await waiting;
+    vi.useRealTimers();
+
+    expect(failed).toHaveBeenCalledWith(expect.objectContaining({ code: 'internal' }));
+  });
 });

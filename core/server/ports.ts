@@ -255,6 +255,7 @@ export interface LocalAiPullProgress {
 export interface LocalAiRuntimePort {
   machine(): Promise<Result<MachineProfile, AppError>>;
   status(): Promise<Result<LocalAiRuntimeStatus, AppError>>;
+  ensure(signal?: AbortSignal): Promise<Result<{ baseUrl: string }, AppError>>;
   pull(
     tag: string,
     options?: {

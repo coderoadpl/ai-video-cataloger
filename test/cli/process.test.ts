@@ -90,7 +90,6 @@ describe('process command', () => {
   it('should error on missing API key when using whisper api mode', async () => {
     const videoPath = createFakeVideoFile(testDir, 'test.mp4');
 
-    // Remove OPENAI_API_KEY from environment
     const result = await runCli(['process', videoPath, '--whisper', 'api', '--json'], {
       cwd: testDir,
       env: { OPENAI_API_KEY: '' },
@@ -102,9 +101,8 @@ describe('process command', () => {
     const errorEvent = findEvent(events, 'error');
 
     expect(errorEvent).toBeDefined();
-    expect(errorEvent?.code).toBe('PREREQUISITES_FAILED');
-    expect(errorEvent?.message).toContain('openai-whisper-api');
-    expect(errorEvent?.message).toContain('ai-video-cataloger setup');
+    expect(errorEvent?.code).toBe('MISSING_API_KEY');
+    expect(errorEvent?.message).toContain('OPENAI_API_KEY');
   });
 
   it('should have proper JSON output structure', async () => {

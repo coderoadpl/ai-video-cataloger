@@ -326,7 +326,6 @@ describe('OllamaAnalyzerAdapter', () => {
     runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: [] };
     const adapter = new OllamaAnalyzerAdapter({
       runtime,
-      baseUrl: 'http://127.0.0.1:1',
       fetchImpl: () => Promise.reject(new Error('fetch should not be called')),
     });
 
@@ -352,7 +351,8 @@ describe('OllamaAnalyzerAdapter', () => {
     const server = await startFakeOllamaServer({ message: { content: 'DESCRIPTION: Local.\nFILENAME: local-clip' } });
     const runtime = new FakeLocalAiRuntime();
     runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: ['gemma3:12b'] };
-    const adapter = new OllamaAnalyzerAdapter({ runtime, baseUrl: server.origin, fetchImpl: server.fetchImpl });
+    runtime.baseUrl = server.origin;
+    const adapter = new OllamaAnalyzerAdapter({ runtime, fetchImpl: server.fetchImpl });
 
     try {
       const result = await adapter.analyze({
@@ -378,6 +378,7 @@ describe('OllamaAnalyzerAdapter', () => {
         Buffer.from('frame-one').toString('base64'),
         Buffer.from('frame-two').toString('base64'),
       ]);
+      expect(runtime.ensureSignals).toEqual([undefined]);
     } finally {
       await server.close();
     }
@@ -387,9 +388,9 @@ describe('OllamaAnalyzerAdapter', () => {
     const server = await startFakeOllamaServer({ message: { content: '' } });
     const runtime = new FakeLocalAiRuntime();
     runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: ['gemma3:12b'] };
+    runtime.baseUrl = server.origin;
     const adapter = new OllamaAnalyzerAdapter({
       runtime,
-      baseUrl: server.origin,
       fetchImpl: server.fetchImpl,
       readFrame: () => Promise.resolve(Buffer.from('frame')),
     });
@@ -451,7 +452,38 @@ describe('OllamaAnalyzerAdapter', () => {
     const result = await analyzing;
 
     expect(requestSignals[0]?.aborted).toBe(true);
-    expect(result).toMatchObject({ ok: false, error: { code: 'ollama_unavailable' } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'processing_error', message: 'Local analysis cancelled' } });
+    expect(runtime.ensureSignals).toEqual([controller.signal]);
+  });
+
+  it('reports a local chat timeout separately from an unreachable runtime', async () => {
+    const runtime = new FakeLocalAiRuntime();
+    runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: ['gemma3:12b'] };
+    const fetchImpl: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!(signal instanceof AbortSignal)) {
+        reject(new Error('Missing signal'));
+        return;
+      }
+      signal.addEventListener('abort', () => reject(new Error('timed out')), { once: true });
+    });
+    const adapter = new OllamaAnalyzerAdapter({
+      runtime,
+      fetchImpl,
+      readFrame: () => Promise.resolve(Buffer.from('frame')),
+    });
+
+    const result = await adapter.analyze({
+      videoPath: '/work/clip.mp4',
+      framePaths: ['/work/frame.jpg'],
+      transcript: null,
+      backend: 'local',
+      localModel: 'gemma3:12b',
+      timeoutSeconds: 0.01,
+      verbose: false,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'provider_error', message: 'Local AI request timed out' } });
   });
 });
 
@@ -699,6 +731,8 @@ class FakeAnalyzerCommandRunner implements AnalyzerCommandRunner {
 class FakeLocalAiRuntime implements LocalAiRuntimePort {
   machineValue: MachineProfile = { platform: 'darwin', arch: 'arm64', ramGb: 16 };
   statusValue: LocalAiRuntimeStatus = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: [] };
+  baseUrl = 'http://127.0.0.1:11434';
+  ensureSignals: Array<AbortSignal | undefined> = [];
 
   machine(): Promise<Result<MachineProfile, AppError>> {
     return Promise.resolve(ok(this.machineValue));
@@ -706,6 +740,11 @@ class FakeLocalAiRuntime implements LocalAiRuntimePort {
 
   status(): Promise<Result<LocalAiRuntimeStatus, AppError>> {
     return Promise.resolve(ok(this.statusValue));
+  }
+
+  ensure(signal?: AbortSignal): Promise<Result<{ baseUrl: string }, AppError>> {
+    this.ensureSignals.push(signal);
+    return Promise.resolve(ok({ baseUrl: this.baseUrl }));
   }
 
   async pull(

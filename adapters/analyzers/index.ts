@@ -112,7 +112,6 @@ const harnessRuntimeDefinitions: readonly HarnessRuntimeDefinition[] = [
 
 export interface OllamaAnalyzerAdapterOptions {
   runtime: LocalAiRuntimePort;
-  baseUrl?: string | undefined;
   fetchImpl?: typeof fetch | undefined;
   readFrame?: ((framePath: string) => Promise<Uint8Array>) | undefined;
   verbose?: boolean | undefined;
@@ -341,7 +340,6 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
 
 export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
   private readonly runtime: LocalAiRuntimePort;
-  private readonly baseUrl: string;
   private readonly fetchImpl: typeof fetch;
   private readonly readFrame: (framePath: string) => Promise<Uint8Array>;
   private readonly verbose: boolean;
@@ -349,7 +347,6 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
 
   constructor(options: OllamaAnalyzerAdapterOptions) {
     this.runtime = options.runtime;
-    this.baseUrl = normalizeOllamaBaseUrl(options.baseUrl ?? process.env.OLLAMA_HOST ?? 'http://127.0.0.1:11434');
     this.fetchImpl = options.fetchImpl ?? fetch;
     this.readFrame = options.readFrame ?? readFile;
     this.verbose = options.verbose ?? false;
@@ -363,6 +360,8 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       return { ok: false, error: appError('invalid_config_value', 'Local provider configuration is required') };
     }
     const startedAt = performance.now();
+    const ensured = await this.runtime.ensure();
+    if (!ensured.ok) return ensured;
     const status = await this.runtime.status();
     if (!status.ok) return status;
     const runtimeAvailable = status.value.runtimeUp;
@@ -385,6 +384,9 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
 
   async analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
     const verbose = this.verbose || input.verbose;
+    const ensured = await this.runtime.ensure(input.signal);
+    if (!ensured.ok) return ensured;
+    const baseUrl = normalizeOllamaBaseUrl(ensured.value.baseUrl);
     const status = await this.runtime.status();
     if (!status.ok) return status;
     if (!status.value.runtimeUp) {
@@ -407,10 +409,10 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       frameMode: 'attached-images',
     });
     if (verbose) {
-      this.writeStdout(`[verbose] Local analysis via ${this.baseUrl} model ${input.localModel}\n`);
+      this.writeStdout(`[verbose] Local analysis via ${baseUrl} model ${input.localModel}\n`);
       this.writeStdout(`[verbose] ${input.framePaths.length} frame(s), prompt below:\n${prompt}\n`);
     }
-    const response = await postOllamaChat(this.fetchImpl, this.baseUrl, {
+    const response = await postOllamaChat(this.fetchImpl, baseUrl, {
       model: input.localModel,
       prompt,
       images,
@@ -684,6 +686,9 @@ const postOllamaChat = async (
   request: { model: string; prompt: string; images: string[]; timeoutMs: number; signal?: AbortSignal | undefined },
 ): Promise<Result<string, AppError>> => {
   let response: Response;
+  const signal = request.signal === undefined
+    ? AbortSignal.timeout(request.timeoutMs)
+    : AbortSignal.any([request.signal, AbortSignal.timeout(request.timeoutMs)]);
   try {
     response = await fetchImpl(`${baseUrl}/api/chat`, {
       method: 'POST',
@@ -695,11 +700,15 @@ const postOllamaChat = async (
         options: { temperature: 0.2 },
         messages: [{ role: 'user', content: request.prompt, images: request.images }],
       }),
-      signal: request.signal === undefined
-        ? AbortSignal.timeout(request.timeoutMs)
-        : AbortSignal.any([request.signal, AbortSignal.timeout(request.timeoutMs)]),
+      signal,
     });
   } catch (cause) {
+    if (request.signal?.aborted === true) {
+      return { ok: false, error: appError('processing_error', 'Local analysis cancelled') };
+    }
+    if (signal.aborted) {
+      return { ok: false, error: appError('provider_error', 'Local AI request timed out') };
+    }
     return { ok: false, error: appError('ollama_unavailable', unavailableMessage(baseUrl, cause), cause) };
   }
   if (!response.ok) {

@@ -209,6 +209,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       case 'managed':
         await writeConfig('whisper_mode', 'local');
         await writeConfig('whisper_model', DEFAULT_WHISPER_MODEL);
+        await writeConfig('whisper_binary_path', '');
         return;
       case 'own':
         await writeConfig('whisper_mode', 'local');

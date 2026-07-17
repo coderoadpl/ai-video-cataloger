@@ -140,6 +140,12 @@ export const checkProcessPrerequisites = async (
       model: resolved.value.whisperModel,
     });
     if (!transcriber.ok) return prerequisitesFailure(transcriber.error.message, transcriber.error);
+    if (!transcriber.value.available) {
+      return {
+        ok: false,
+        error: appError('missing_api_key', 'OPENAI_API_KEY environment variable is required when using OpenAI Whisper API'),
+      };
+    }
     required.push(transcriber.value);
   }
   const analyzer = await deps.analyzer.dependency({

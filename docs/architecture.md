@@ -160,7 +160,9 @@ retaining its legacy dependency array, `allAvailable` meaning, and exit code.
   data-driven agent-harness adapter (Claude Code / Codex / Cursor Agent
   built-ins + user-defined), and the local ollama adapter. Legacy config
   values `claude|local` remain valid aliases.
-- `LocalAiRuntimePort` — system Ollama / managed pinned runtime.
+- `LocalAiRuntimePort` — system Ollama / managed pinned runtime. Analyzer
+  execution starts the runtime on demand through this port and receives the
+  resolved daemon base URL, including the managed runtime's dynamic port.
 - `ModelDownloadPort` — HuggingFace whisper models; Ollama pulls go through
   the runtime port.
 - `JobsPort` — in-process executor (see Delta 5).

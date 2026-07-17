@@ -9,6 +9,7 @@ import {
   jobQuery,
   modelsWhisperScopes,
   providersQuery,
+  readinessQuery,
   scanQuery,
   useWhisperModelMutation,
   testProviderMutation,
@@ -81,6 +82,35 @@ describe('query descriptors', () => {
     expect(modelsWhisperScopes.all()).toEqual(['models', 'whisper']);
     expect(jobQuery(api, { jobId: 'job-1' }).queryKey).toEqual(['jobs', 'detail', 'job-1']);
     expect(providersQuery(api).queryKey).toEqual(['providers']);
+  });
+
+  it('uses the parsed readiness input captured with its query key', async () => {
+    const seenInputs: string[] = [];
+    const api = createApiClient({
+      baseUrl: '',
+      fetchImpl: async (input) => {
+        seenInputs.push(String(input));
+        return jsonResponse({
+          ok: true,
+          data: {
+            ready: true,
+            analyzer: { kind: 'analyzer', name: 'local', available: true, message: 'ready', suggestedAction: null, family: 'local', providerId: 'local' },
+            transcriber: { kind: 'transcriber', name: 'skip', available: true, message: 'ready', suggestedAction: null, mode: 'skip', model: null },
+            missingPieces: [],
+            suggestedAction: null,
+          },
+        });
+      },
+    });
+    const input = { folder: '/videos/first', refresh: 'true' } as const;
+    const descriptor = readinessQuery(api, input);
+    Object.assign(input, { folder: '/videos/second', refresh: 'false' });
+    const queryClient = new QueryClient();
+
+    await queryClient.fetchQuery(descriptor);
+
+    expect(descriptor.queryKey).toEqual(['readiness', 'folder', '/videos/first']);
+    expect(seenInputs).toEqual(['/api/readiness?folder=%2Fvideos%2Ffirst&refresh=true']);
   });
 
   it('provides descriptors for provider list and connectivity checks', async () => {

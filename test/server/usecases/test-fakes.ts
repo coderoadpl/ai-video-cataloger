@@ -480,6 +480,10 @@ export class InMemoryLocalAi implements LocalAiRuntimePort {
     return Promise.resolve(ok(this.statusValue));
   }
 
+  ensure(): Promise<Result<{ baseUrl: string }, AppError>> {
+    return Promise.resolve(ok({ baseUrl: 'http://127.0.0.1:11434' }));
+  }
+
   async pull(
     tag: string,
     options?: {
