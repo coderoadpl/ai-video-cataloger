@@ -122,10 +122,10 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     }
     const runtime = await this.localRuntimeDependency(input?.binaryPath);
     if (!runtime.ok || input === undefined || !runtime.value.available) return runtime;
+    if (runtime.value.source === 'system') return runtime;
     const modelPath = primaryModelPath(this.homeDirectory, input.model);
     const modelAvailable = await pathExists(modelPath)
-      || await pathExists(directModelPath(this.homeDirectory, input.model))
-      || (runtime.value.source === 'system' && await pathExists(legacyModelPath(this.homeDirectory, input.model)));
+      || await pathExists(directModelPath(this.homeDirectory, input.model));
     if (modelAvailable) return runtime;
     return ok({
       name: `whisper-${input.model}`,

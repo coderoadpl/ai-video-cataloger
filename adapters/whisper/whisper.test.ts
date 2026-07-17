@@ -7,6 +7,7 @@ import { ReadStream } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
+import type { WhisperRuntimePort, WhisperRuntimeStatus } from '@core/server/index.js';
 
 import {
   HuggingFaceWhisperModelDownloader,
@@ -218,6 +219,43 @@ describe('WhisperTranscriberAdapter', () => {
     expect(result).toMatchObject({
       ok: true,
       value: { name: 'whisper-medium', available: false, path: primaryModelPath(root, 'medium') },
+    });
+  });
+
+  it('accepts a system Whisper runtime without a downloaded GGML model', async () => {
+    const root = await tempRoot();
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      runtime: runtimeWithSource('system'),
+    });
+
+    const result = await adapter.dependency({ mode: 'local', model: 'base' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { name: 'whisper', available: true, source: 'system', path: 'whisper' },
+    });
+  });
+
+  it('requires a downloaded GGML model for a managed Whisper runtime', async () => {
+    const root = await tempRoot();
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      runtime: runtimeWithSource('managed'),
+    });
+
+    const missing = await adapter.dependency({ mode: 'local', model: 'base' });
+    await mkdir(path.dirname(primaryModelPath(root, 'base')), { recursive: true });
+    await writeFile(primaryModelPath(root, 'base'), 'model', 'utf8');
+    const available = await adapter.dependency({ mode: 'local', model: 'base' });
+
+    expect(missing).toMatchObject({
+      ok: true,
+      value: { name: 'whisper-base', available: false, path: primaryModelPath(root, 'base') },
+    });
+    expect(available).toMatchObject({
+      ok: true,
+      value: { name: 'whisper', available: true, source: 'managed', path: '/managed/whisper' },
     });
   });
 
@@ -491,6 +529,22 @@ const tempRoot = async (): Promise<string> => {
   const root = await mkdtemp(path.join(tmpdir(), 'whisper-adapter-'));
   tempRoots.push(root);
   return root;
+};
+
+const runtimeWithSource = (source: 'managed' | 'system'): WhisperRuntimePort => {
+  const status: WhisperRuntimeStatus = {
+    available: true,
+    path: source === 'system' ? 'whisper' : '/managed/whisper',
+    source,
+    version: '1.0.0',
+    managedInstalled: source === 'managed',
+    buildToolsAvailable: true,
+    missingBuildTools: [],
+  };
+  return {
+    status: () => Promise.resolve(ok(status)),
+    install: () => Promise.resolve(ok({ path: status.path ?? 'whisper', version: '1.0.0', installed: false })),
+  };
 };
 
 class FakeCommandRunner implements CommandRunner {
