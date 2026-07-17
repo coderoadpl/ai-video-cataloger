@@ -21,11 +21,12 @@ import { usePrerequisites } from './use-prerequisites.js';
 
 interface PrerequisitesModalProps {
   open: boolean;
+  folder: string | null;
   onClose: () => void;
 }
 
-export const PrerequisitesModal = ({ open, onClose }: PrerequisitesModalProps) => {
-  const { isLoading, error, result, check } = usePrerequisites({ open });
+export const PrerequisitesModal = ({ open, folder, onClose }: PrerequisitesModalProps) => {
+  const { isLoading, error, doctor, readiness, check } = usePrerequisites({ open, folder });
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" data-testid="prerequisites-modal">
@@ -43,19 +44,31 @@ export const PrerequisitesModal = ({ open, onClose }: PrerequisitesModalProps) =
               Retry
             </Button>
           </Box>
-        ) : result !== null ? (
+        ) : doctor !== null && readiness !== null ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {result.allAvailable ? (
+            {doctor.allAvailable && readiness.ready ? (
               <Alert severity="success" data-testid="prerequisites-banner">
                 All prerequisites are satisfied!
               </Alert>
             ) : (
               <Alert severity="warning" data-testid="prerequisites-banner">
-                {missingCount(result)} prerequisite(s) missing
+                {missingCount(doctor, readiness)} prerequisite(s) missing
               </Alert>
             )}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              {result.dependencies.map((dependency) => (
+              <Typography variant="subtitle2">Selected folder configuration</Typography>
+              <Alert
+                severity={readiness.ready ? 'success' : 'warning'}
+                data-testid="configured-readiness"
+              >
+                {readiness.ready
+                  ? 'The selected folder is ready for analysis.'
+                  : readiness.suggestedAction ?? `${readiness.missingPieces.map((piece) => piece.name).join(', ')} must be configured.`}
+              </Alert>
+            </Box>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+              <Typography variant="subtitle2">System dependencies</Typography>
+              {doctor.dependencies.map((dependency) => (
                 <DependencyRow key={dependency.name} dependency={dependency} />
               ))}
             </Box>
@@ -69,7 +82,7 @@ export const PrerequisitesModal = ({ open, onClose }: PrerequisitesModalProps) =
         <Button
           variant="outlined"
           onClick={check}
-          disabled={isLoading || result === null}
+          disabled={isLoading || doctor === null || readiness === null}
           data-testid="prerequisites-check-again"
         >
           Check Again

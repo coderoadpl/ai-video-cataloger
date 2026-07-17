@@ -2,11 +2,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
+import { CONFIG_KEYS } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
 import {
   changedKeys,
-  draftFromStored,
+  draftFromEffective,
   serializeValue,
   type LocalAiTier,
   type SettingsDraft,
@@ -21,6 +22,7 @@ export interface SettingsState {
   tiers: LocalAiTier[] | null;
   apiCredential: string;
   whisperApiCredential: string;
+  inherited: string[];
   setApiCredential: (credential: string) => void;
   setWhisperApiCredential: (credential: string) => void;
   setDraft: (patch: Partial<SettingsDraft>) => void;
@@ -65,7 +67,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       return;
     }
     if (draft !== null || data === undefined || !('config' in data)) return;
-    const seeded = draftFromStored(data.config, data.defaults);
+    const seeded = draftFromEffective(data.effective);
     setDraftState(seeded);
     setOriginal(seeded);
   }, [open, data, draft]);
@@ -150,6 +152,11 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     tiers: requirementsQuery.data?.tiers ?? null,
     apiCredential,
     whisperApiCredential,
+    inherited: data !== undefined && 'config' in data
+      ? CONFIG_KEYS
+        .filter((key) => data.sources[key] !== 'folder')
+        .map((key) => `${key}: ${data.effective[key]} (${data.sources[key]})`)
+      : [],
     setApiCredential,
     setWhisperApiCredential,
     setDraft,

@@ -95,6 +95,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
   async dependency(input?: {
     mode: 'local' | 'api' | 'skip';
     model: WhisperModelName;
+    binaryPath?: string | undefined;
   }): Promise<Result<DependencyStatus, AppError>> {
     if (input?.mode === 'skip') {
       return ok({
@@ -119,7 +120,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
         installHint: available ? '' : 'Add an OpenAI API credential in Settings or set OPENAI_API_KEY',
       });
     }
-    const runtime = await this.localRuntimeDependency();
+    const runtime = await this.localRuntimeDependency(input?.binaryPath);
     if (!runtime.ok || input === undefined || !runtime.value.available) return runtime;
     const modelPath = primaryModelPath(this.homeDirectory, input.model);
     const modelAvailable = await pathExists(modelPath)
@@ -136,9 +137,9 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     });
   }
 
-  private async localRuntimeDependency(): Promise<Result<DependencyStatus, AppError>> {
+  private async localRuntimeDependency(binaryPath?: string | undefined): Promise<Result<DependencyStatus, AppError>> {
     if (this.runtime !== undefined) {
-      const runtime = await this.runtime.status();
+      const runtime = await this.runtime.status({ configuredPath: binaryPath });
       if (!runtime.ok) return runtime;
       return ok(runtimeDependency(runtime.value));
     }
@@ -165,7 +166,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
   }
 
   private async transcribeWithLocal(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
-    const binary = await this.resolvedBinary();
+    const binary = await this.resolvedBinary(input.binaryPath);
     if (!binary.available) {
       return {
         ok: false,
@@ -204,9 +205,9 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     }
   }
 
-  private async resolvedBinary(): Promise<ResolvedWhisperBinary> {
+  private async resolvedBinary(binaryPath?: string | undefined): Promise<ResolvedWhisperBinary> {
     if (this.runtime === undefined) return resolveWhisperBinary(this.binaryResolver, this.commandRunner);
-    const runtime = await this.runtime.status();
+    const runtime = await this.runtime.status({ configuredPath: binaryPath });
     if (!runtime.ok || !runtime.value.available || runtime.value.path === null) {
       return { path: 'whisper', source: null, available: false };
     }

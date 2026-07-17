@@ -8,6 +8,7 @@ import {
 } from '@core/domain/index.js';
 
 import type { ConfigStore, FileSystemPort } from '../ports.js';
+import { resolveConfigValues, type ConfigValueSource } from './config-resolution.js';
 import {
   configKeys,
   configValueForKey,
@@ -25,12 +26,16 @@ export type ConfigGetOutput =
   | {
       config: Record<ConfigKey, string | null>;
       defaults: Record<ConfigKey, string>;
+      effective: Record<ConfigKey, string>;
+      sources: Record<ConfigKey, ConfigValueSource>;
     }
   | {
       key: ConfigKey;
       value: string | null;
       defaultValue: string;
       description: string;
+      effectiveValue: string;
+      source: ConfigValueSource;
     };
 
 export interface ConfigSetOutput {
@@ -43,28 +48,33 @@ export const getConfig = async (
   deps: ConfigDeps,
   input: { folder?: string | undefined; key: ConfigKey | null },
 ): Promise<Result<ConfigGetOutput, AppError>> => {
-  const folderScope = { kind: 'folder', folder: deps.fs.resolve(input.folder ?? deps.fs.cwd()) } as const;
+  const folder = input.folder === undefined ? undefined : deps.fs.resolve(input.folder);
+  const scope = folder === undefined ? { kind: 'home' } as const : { kind: 'folder', folder } as const;
+  const resolved = await resolveConfigValues(deps.config, folder);
+  if (!resolved.ok) return resolved;
   if (input.key !== null) {
-    const value = await deps.config.get(configScope(folderScope, input.key), input.key);
+    const value = await deps.config.get(scope, input.key);
     if (!value.ok) return value;
     return ok({
       key: input.key,
       value: value.value,
       defaultValue: storedDefaults()[input.key],
       description: configDescriptions[input.key],
+      effectiveValue: resolved.value.effective[input.key],
+      source: resolved.value.sources[input.key],
     });
   }
 
-  const values = await deps.config.getAll(folderScope);
-  if (!values.ok) return values;
-  const whisperBinaryPath = await deps.config.get({ kind: 'home' }, 'whisper_binary_path');
-  if (!whisperBinaryPath.ok) return whisperBinaryPath;
   const config = emptyStoredConfig();
   for (const key of configKeys()) {
-    config[key] = values.value[key] ?? null;
+    config[key] = (folder === undefined ? resolved.value.home[key] : resolved.value.folder[key]) ?? null;
   }
-  config.whisper_binary_path = whisperBinaryPath.value;
-  return ok({ config, defaults: storedDefaults() });
+  return ok({
+    config,
+    defaults: storedDefaults(),
+    effective: resolved.value.effective,
+    sources: resolved.value.sources,
+  });
 };
 
 export const setConfig = async (
@@ -84,15 +94,10 @@ export const setConfig = async (
     };
   }
 
-  const folderScope = { kind: 'folder', folder: deps.fs.resolve(input.folder ?? deps.fs.cwd()) } as const;
-  const scope = configScope(folderScope, input.key);
+  const scope = input.folder === undefined
+    ? { kind: 'home' } as const
+    : { kind: 'folder', folder: deps.fs.resolve(input.folder) } as const;
   const stored = await deps.config.set(scope, input.key, normalized);
   if (!stored.ok) return stored;
   return ok({ key: input.key, value: normalized, previousValue: stored.value.previousValue });
 };
-
-const configScope = (
-  folderScope: { kind: 'folder'; folder: string },
-  key: ConfigKey,
-): { kind: 'home' } | { kind: 'folder'; folder: string } =>
-  key === 'whisper_binary_path' ? { kind: 'home' } : folderScope;

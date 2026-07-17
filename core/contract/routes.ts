@@ -213,17 +213,33 @@ export const storedConfigDefaultsSchema = z.object({
   analyzer_provider: z.string(),
 });
 
+export const configValueSourcesSchema = z.object({
+  whisper_binary_path: z.enum(['folder', 'home', 'default']),
+  whisper_model: z.enum(['folder', 'home', 'default']),
+  whisper_mode: z.enum(['folder', 'home', 'default']),
+  frames: z.enum(['folder', 'home', 'default']),
+  timeout: z.enum(['folder', 'home', 'default']),
+  skip_rename: z.enum(['folder', 'home', 'default']),
+  analyzer_backend: z.enum(['folder', 'home', 'default']),
+  local_model: z.enum(['folder', 'home', 'default']),
+  analyzer_provider: z.enum(['folder', 'home', 'default']),
+});
+
 export const configEntrySchema = z.object({
   key: configKeySchema,
   value: z.string().nullable(),
   defaultValue: z.string(),
   description: z.string(),
+  effectiveValue: z.string(),
+  source: z.enum(['folder', 'home', 'default']),
 });
 
 export const configGetOutputSchema = z.union([
   z.object({
     config: storedConfigSchema,
     defaults: storedConfigDefaultsSchema,
+    effective: storedConfigDefaultsSchema,
+    sources: configValueSourcesSchema,
   }),
   configEntrySchema,
 ]);

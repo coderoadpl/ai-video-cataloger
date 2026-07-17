@@ -171,7 +171,7 @@ const loadExisting = async (context: SetupContext): Promise<ExistingSetup | null
     context.output.error(appError('internal', 'Setup expected the complete configuration'));
     return null;
   }
-  const providerValue = result.value.config.analyzer_provider;
+  const providerValue = result.value.effective.analyzer_provider;
   let provider: AnalyzerProviderConfig | null = null;
   if (providerValue !== null) {
     try {
@@ -181,13 +181,13 @@ const loadExisting = async (context: SetupContext): Promise<ExistingSetup | null
       provider = null;
     }
   }
-  const whisperMode = parseWhisperMode(result.value.config.whisper_mode ?? result.value.defaults.whisper_mode);
-  const whisperModel = parseWhisperModel(result.value.config.whisper_model ?? result.value.defaults.whisper_model);
+  const whisperMode = parseWhisperMode(result.value.effective.whisper_mode);
+  const whisperModel = parseWhisperModel(result.value.effective.whisper_model);
   return {
     provider,
     whisperMode,
     whisperModel,
-    whisperPath: result.value.config.whisper_binary_path ?? '',
+    whisperPath: result.value.effective.whisper_binary_path,
   };
 };
 

@@ -143,9 +143,9 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
 
   const writeConfig = useCallback(
     async (key: ConfigKey, value: string): Promise<void> => {
-      await setConfig.mutateAsync(folder === null ? { key, value } : { folder, key, value });
+      await setConfig.mutateAsync({ key, value });
     },
-    [setConfig, folder],
+    [setConfig],
   );
 
   const persistAnalyzer = useCallback(

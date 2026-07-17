@@ -774,8 +774,8 @@ const doctorHuman = (data: Awaited<ReturnType<ApiClient['doctor']>> extends Resu
 };
 
 const configGetHuman = (data: Awaited<ReturnType<ApiClient['config']>> extends Result<infer T, AppError> ? T : never): string => {
-  if ('key' in data) return `${data.key}=${data.value ?? data.defaultValue}`;
-  return CONFIG_KEYS.map((key) => `${key}=${data.config[key] ?? data.defaults[key]}`).join('\n');
+  if ('key' in data) return `${data.key}=${data.effectiveValue}`;
+  return CONFIG_KEYS.map((key) => `${key}=${data.effective[key]}`).join('\n');
 };
 
 const processHuman = (data: unknown): string => {

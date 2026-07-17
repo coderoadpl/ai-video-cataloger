@@ -35,6 +35,15 @@ Ground-up rewrite on the agentproofarch foundation
 **Done = check green AND smoke green.** Never weaken lint to get there; every
 new lint rule must first fail on a violating probe file.
 
+## On-demand real-provider suite
+
+- `npm run test:e2e:matrix` = batch-end/pre-release real-provider suite. It
+  uses the persistent `~/repositories/claude-tmp/avc-e2e-matrix-home` cache,
+  exercises managed/system/API/harness analyzers and every transcription
+  source, fails on unavailable legs unless `E2E_MATRIX_ALLOW_SKIP=1` is set,
+  and is intentionally outside `check`, `smoke`, and parity. Run it after a
+  completed work batch and before a release; never add it to a normal gate.
+
 ## House rules
 
 - No `any`, no `as` (except `as const`); zod-parse at every boundary;

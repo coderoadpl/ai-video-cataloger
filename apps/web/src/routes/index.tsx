@@ -124,7 +124,11 @@ export const IndexRoute = () => {
             onSaved={() => { void readiness.refresh(); }}
           />
           <ModelManagerModal open={modal === 'models'} onClose={close} addLine={terminal.addLine} />
-          <PrerequisitesModal open={modal === 'prerequisites'} onClose={close} />
+          <PrerequisitesModal
+            open={modal === 'prerequisites'}
+            folder={shell.currentFolder}
+            onClose={close}
+          />
           <SetupWizard
             open={modal === 'setup'}
             folder={shell.currentFolder}

@@ -10,6 +10,7 @@ import {
   InMemoryTranscriber,
 } from '../../../test/server/usecases/test-fakes.js';
 import { getReadiness, ReadinessCache } from './readiness.js';
+import { setConfig } from './config.js';
 
 const providers: AnalyzerProviderConfig[] = [
   {
@@ -82,6 +83,68 @@ describe('configured readiness', () => {
     });
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.suggestedAction).toContain('ai-video-cataloger setup');
+  });
+
+  it('uses wizard home defaults for readiness in a fresh folder', async () => {
+    const provider = providers.find((candidate) => candidate.family === 'harness');
+    if (provider === undefined) throw new Error('Expected harness provider fixture');
+    const config = new InMemoryConfig();
+    const fs = new InMemoryFileSystem('/fresh-videos');
+    await setConfig({ config, fs }, { key: 'analyzer_provider', value: JSON.stringify(provider) });
+    await setConfig({ config, fs }, { key: 'whisper_mode', value: 'skip' });
+    const analyzer = new InMemoryAnalyzer();
+    analyzer.dependencyValue = dependency(provider.providerId, true);
+    const transcriber = new InMemoryTranscriber();
+    transcriber.dependencyValue = dependency('transcription-skip', true);
+
+    const result = await getReadiness({
+      config,
+      fs,
+      analyzer,
+      transcriber,
+      readiness: new ReadinessCache(),
+    }, { folder: '/fresh-videos', refresh: true });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        ready: true,
+        analyzer: { providerId: 'custom-agent' },
+        transcriber: { mode: 'skip' },
+      },
+    });
+    expect(transcriber.dependencyInputs[0]).toMatchObject({ mode: 'skip', model: 'base', binaryPath: '' });
+  });
+
+  it('lets folder readiness settings override home defaults point-wise', async () => {
+    const homeProvider = providers.find((candidate) => candidate.family === 'harness');
+    const folderProvider = providers.find((candidate) => candidate.family === 'api');
+    if (homeProvider === undefined || folderProvider === undefined) throw new Error('Expected provider fixtures');
+    const config = new InMemoryConfig();
+    await config.set({ kind: 'home' }, 'analyzer_provider', JSON.stringify(homeProvider));
+    await config.set({ kind: 'home' }, 'whisper_mode', 'skip');
+    await config.set({ kind: 'folder', folder: '/work' }, 'analyzer_provider', JSON.stringify(folderProvider));
+    await config.set({ kind: 'folder', folder: '/work' }, 'whisper_mode', 'api');
+    const analyzer = new InMemoryAnalyzer();
+    analyzer.dependencyValue = dependency(folderProvider.providerId, true);
+    const transcriber = new InMemoryTranscriber();
+    transcriber.dependencyValue = dependency('openai-whisper-api', true);
+
+    const result = await getReadiness({
+      config,
+      fs: new InMemoryFileSystem('/work'),
+      analyzer,
+      transcriber,
+      readiness: new ReadinessCache(),
+    });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        analyzer: { providerId: 'compatible' },
+        transcriber: { mode: 'api' },
+      },
+    });
   });
 
   it('caches by folder and refreshes on demand', async () => {

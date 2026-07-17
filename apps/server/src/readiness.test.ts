@@ -121,7 +121,7 @@ describe('configured Whisper validation', () => {
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify({ folder: '/work', key: 'whisper_binary_path', value: '/missing/whisper' }),
     });
-    const stored = await deps.config.get({ kind: 'home' }, 'whisper_binary_path');
+    const stored = await deps.config.get({ kind: 'folder', folder: '/work' }, 'whisper_binary_path');
 
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({

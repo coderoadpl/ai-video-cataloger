@@ -40,6 +40,7 @@ import type {
   ProviderTestResult,
   ThumbnailGeneration,
   ThumbnailInput,
+  TranscribeInput,
   TranscriberPort,
 } from '../../../core/server/ports.js';
 
@@ -396,19 +397,29 @@ export class InMemoryMedia implements MediaPort {
 
 export class InMemoryTranscriber implements TranscriberPort {
   dependencyValue: DependencyStatus = dependency('whisper', true);
-  readonly inputs: Array<{ audioPath: string; transcriptPath: string; mode: string; model: string }> = [];
+  readonly inputs: TranscribeInput[] = [];
+  readonly dependencyInputs: Array<{
+    mode: AppConfig['whisper_mode'];
+    model: WhisperModelName;
+    binaryPath?: string | undefined;
+  } | undefined> = [];
   transcript = 'transcript';
 
   constructor(private readonly fs: FileSystemPort = new InMemoryFileSystem()) {}
 
-  async transcribe(input: { audioPath: string; transcriptPath: string; mode: AppConfig['whisper_mode']; model: WhisperModelName }): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+  async transcribe(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
     this.inputs.push(input);
     const written = await this.fs.writeTextFile(input.transcriptPath, this.transcript);
     if (!written.ok) return written;
     return ok({ transcriptPath: input.transcriptPath, content: this.transcript });
   }
 
-  dependency(): Promise<Result<DependencyStatus, AppError>> {
+  dependency(input?: {
+    mode: AppConfig['whisper_mode'];
+    model: WhisperModelName;
+    binaryPath?: string | undefined;
+  }): Promise<Result<DependencyStatus, AppError>> {
+    this.dependencyInputs.push(input);
     return Promise.resolve(ok(this.dependencyValue));
   }
 }

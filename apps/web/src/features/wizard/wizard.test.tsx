@@ -52,13 +52,13 @@ const readiness = (ready: boolean) => ({
 });
 
 interface Recorders {
-  configWrites: { key: string; value: string }[];
+  configWrites: { folder?: string | undefined; key: string; value: string }[];
   credentialWrites: { providerId: string }[];
   providerTests: { family: string; providerId: string }[];
   readinessRefreshed: boolean;
 }
 
-const configBodySchema = z.object({ key: z.string(), value: z.string() });
+const configBodySchema = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
 const credentialBodySchema = z.object({ providerId: z.string() });
 const providerBodySchema = z.object({ family: z.string(), providerId: z.string() });
 
@@ -200,6 +200,7 @@ describe('SetupWizard', () => {
     expect(providerWrite).toBeDefined();
     expect(providerWrite?.value).toContain('"family":"local"');
     expect(recorders.configWrites).toContainEqual({ key: 'whisper_binary_path', value: '' });
+    expect(recorders.configWrites.every((write) => write.folder === undefined)).toBe(true);
   });
 
   it('shows a missing local model as a download and offers to install it', async () => {

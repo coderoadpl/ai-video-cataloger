@@ -9,6 +9,7 @@ import {
 } from '@core/domain/index.js';
 
 import type { AnalyzerPort, ConfigStore, DependencyStatus, FileSystemPort, TranscriberPort } from '../ports.js';
+import { resolveConfigValues } from './config-resolution.js';
 
 export type ReadinessComponent = {
   kind: 'analyzer' | 'transcriber';
@@ -73,9 +74,9 @@ const evaluateConfiguredReadiness = async (
   deps: Pick<ReadinessDeps, 'config' | 'transcriber' | 'analyzer'>,
   folder: string,
 ): Promise<Result<ReadinessOutput, AppError>> => {
-  const stored = await deps.config.getAll({ kind: 'folder', folder });
+  const stored = await resolveConfigValues(deps.config, folder);
   if (!stored.ok) return stored;
-  const configured = configSchema.safeParse(stored.value);
+  const configured = configSchema.safeParse(stored.value.effective);
   if (!configured.success) {
     return {
       ok: false,
@@ -92,6 +93,7 @@ const evaluateConfiguredReadiness = async (
   const transcriberDependency = await deps.transcriber.dependency({
     mode: configured.data.whisper_mode,
     model: configured.data.whisper_model,
+    binaryPath: configured.data.whisper_binary_path,
   });
   if (!transcriberDependency.ok) return transcriberDependency;
 

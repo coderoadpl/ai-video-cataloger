@@ -3,12 +3,13 @@ import { useQuery } from '@tanstack/react-query';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import type { DoctorResult } from './prerequisites-model.js';
+import type { DoctorResult, ReadinessResult } from './prerequisites-model.js';
 
 export interface PrerequisitesState {
   isLoading: boolean;
   error: string | null;
-  result: DoctorResult | null;
+  doctor: DoctorResult | null;
+  readiness: ReadinessResult | null;
   check: () => void;
 }
 
@@ -18,12 +19,21 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-export const usePrerequisites = ({ open }: { open: boolean }): PrerequisitesState => {
-  const query = useQuery({ ...actions.doctor, enabled: open });
+export const usePrerequisites = ({ open, folder }: { open: boolean; folder: string | null }): PrerequisitesState => {
+  const doctorQuery = useQuery({ ...actions.doctor, enabled: open });
+  const readinessQuery = useQuery({
+    ...actions.readiness(folder === null ? {} : { folder }),
+    enabled: open,
+  });
+  const queryError = doctorQuery.error ?? readinessQuery.error;
   return {
-    isLoading: open && query.isLoading,
-    error: query.error === null ? null : messageOf(query.error),
-    result: query.data ?? null,
-    check: () => void query.refetch(),
+    isLoading: open && (doctorQuery.isLoading || readinessQuery.isLoading),
+    error: queryError === null ? null : messageOf(queryError),
+    doctor: doctorQuery.data ?? null,
+    readiness: readinessQuery.data ?? null,
+    check: () => {
+      void doctorQuery.refetch();
+      void readinessQuery.refetch();
+    },
   };
 };

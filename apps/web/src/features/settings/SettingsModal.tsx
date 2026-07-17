@@ -63,6 +63,11 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, py: 1 }}>
             {settings.error === null ? null : <Alert severity="error">{settings.error}</Alert>}
+            {settings.inherited.length === 0 ? null : (
+              <Typography variant="caption" color="text.secondary" data-testid="settings-inherited-hint">
+                Inherited values: {settings.inherited.join(', ')}. Changing a value here creates a folder override.
+              </Typography>
+            )}
 
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

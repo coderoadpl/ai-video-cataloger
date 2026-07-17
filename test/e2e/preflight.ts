@@ -79,8 +79,9 @@ async function verifyLocalAnalyzer(model: string): Promise<void> {
 }
 
 export default async function preflight(): Promise<void> {
-  const samples = selectedSamples();
   const argv = process.argv.join(' ');
+  if (/--project[= ]matrix(\s|$)/.test(argv)) return;
+  const samples = selectedSamples();
   const guiSelected = !/--project[= ]cli(\s|$)/.test(argv) || /--project[= ]gui/.test(argv);
 
   if (!existsSync(CLI_DIST)) {

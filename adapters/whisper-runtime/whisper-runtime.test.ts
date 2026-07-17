@@ -77,6 +77,25 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     expect(runner.commands.some((entry) => entry.command === 'whisper')).toBe(false);
   });
 
+  it('uses a resolved folder path instead of the home configured path', async () => {
+    const home = await tempHome();
+    const homePath = path.join(home, 'home-whisper');
+    const folderPath = path.join(home, 'folder-whisper');
+    await executable(homePath, 'home');
+    await executable(folderPath, 'folder');
+    const config = new InMemoryConfig();
+    await config.set({ kind: 'home' }, 'whisper_binary_path', homePath);
+    const adapter = new ManagedWhisperRuntimeAdapter({
+      config,
+      homeDirectory: home,
+      commandRunner: new FakeRunner(WHISPER_BOTTLE_SPECS),
+    });
+
+    const status = await adapter.status({ configuredPath: folderPath });
+
+    expect(status).toMatchObject({ ok: true, value: { path: folderPath, source: 'configured' } });
+  });
+
   it('detects managed before system and detects system when managed is absent', async () => {
     const home = await tempHome();
     const config = new InMemoryConfig();

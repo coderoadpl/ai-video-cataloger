@@ -72,10 +72,12 @@ const withMissing: DoctorResult = {
 describe('prerequisites modal', () => {
   it('shows the loading state then the all-satisfied banner and dependency rows', async () => {
     server.use(http.get('/api/doctor', () => HttpResponse.json({ ok: true, data: allGood })));
-    renderThemed(<PrerequisitesModal open onClose={vi.fn()} />);
+    server.use(http.get('/api/readiness', () => HttpResponse.json({ ok: true, data: configured })));
+    renderThemed(<PrerequisitesModal open folder="/videos/selected" onClose={vi.fn()} />);
 
     expect(screen.getByText('Checking prerequisites…')).toBeDefined();
     expect(await screen.findByText('All prerequisites are satisfied!')).toBeDefined();
+    expect(screen.getByText('The selected folder is ready for analysis.')).toBeDefined();
     expect(screen.getAllByTestId('dependency-row')).toHaveLength(2);
     expect(screen.getByText('FFmpeg')).toBeDefined();
     expect(screen.getByText('bundled')).toBeDefined();
@@ -83,10 +85,44 @@ describe('prerequisites modal', () => {
 
   it('reports the missing count and shows the install hint', async () => {
     server.use(http.get('/api/doctor', () => HttpResponse.json({ ok: true, data: withMissing })));
-    renderThemed(<PrerequisitesModal open onClose={vi.fn()} />);
+    server.use(http.get('/api/readiness', () => HttpResponse.json({ ok: true, data: configured })));
+    renderThemed(<PrerequisitesModal open folder="/videos/selected" onClose={vi.fn()} />);
 
     expect(await screen.findByText('1 prerequisite(s) missing')).toBeDefined();
     expect(screen.getByText('Install Claude CLI')).toBeDefined();
+  });
+
+  it('uses readiness for the selected folder instead of the doctor embedded view', async () => {
+    const selectedReadiness: DoctorResult['configured'] = {
+      ...configured,
+      ready: false,
+      analyzer: {
+        ...configured.analyzer,
+        available: false,
+        message: 'openrouter is unavailable',
+        suggestedAction: 'Add the selected folder API key',
+      },
+      missingPieces: [{
+        kind: 'analyzer',
+        name: 'openrouter',
+        available: false,
+        message: 'openrouter is unavailable',
+        suggestedAction: 'Add the selected folder API key',
+      }],
+      suggestedAction: 'Add the selected folder API key',
+    };
+    const readinessFolders: Array<string | null> = [];
+    server.use(http.get('/api/doctor', () => HttpResponse.json({ ok: true, data: allGood })));
+    server.use(http.get('/api/readiness', ({ request }) => {
+      readinessFolders.push(new URL(request.url).searchParams.get('folder'));
+      return HttpResponse.json({ ok: true, data: selectedReadiness });
+    }));
+
+    renderThemed(<PrerequisitesModal open folder="/videos/selected" onClose={vi.fn()} />);
+
+    expect(await screen.findByText('Add the selected folder API key')).toBeDefined();
+    expect(screen.queryByText('The selected folder is ready for analysis.')).toBeNull();
+    expect(readinessFolders).toEqual(['/videos/selected']);
   });
 
   it('surfaces an error with retry, then recovers on retry', async () => {
@@ -102,8 +138,9 @@ describe('prerequisites modal', () => {
         }
         return HttpResponse.json({ ok: true, data: allGood });
       }),
+      http.get('/api/readiness', () => HttpResponse.json({ ok: true, data: configured })),
     );
-    renderThemed(<PrerequisitesModal open onClose={vi.fn()} />);
+    renderThemed(<PrerequisitesModal open folder="/videos/selected" onClose={vi.fn()} />);
 
     fireEvent.click(await screen.findByTestId('prerequisites-retry'));
 

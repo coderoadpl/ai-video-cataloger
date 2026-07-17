@@ -31,6 +31,11 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
   return parsed.success ? parsed.data : CONFIG_DEFAULTS;
 };
 
+export const draftFromEffective = (effective: StoredDefaults): SettingsDraft => {
+  const parsed = configSchema.safeParse(effective);
+  return parsed.success ? parsed.data : CONFIG_DEFAULTS;
+};
+
 export const changedKeys = (draft: SettingsDraft, original: SettingsDraft): ConfigKey[] =>
   CONFIG_KEYS.filter((key) => draft[key] !== original[key]);
 

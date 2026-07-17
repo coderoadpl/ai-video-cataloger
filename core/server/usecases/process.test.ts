@@ -468,6 +468,33 @@ describe('process pipeline rename and jobs', () => {
     expect(deps.analyzer.dependencyInputs).toEqual(['local']);
   });
 
+  it('reports a configured missing local model with the parity error code before enqueueing', async () => {
+    const deps = makeDeps('pending');
+    const jobs = new InMemoryJobs();
+    deps.analyzer.dependencyValue = {
+      name: 'gemma3:4b',
+      available: false,
+      version: '0.11.0',
+      source: null,
+      path: null,
+      installHint: 'Download the model',
+    };
+    await deps.config.set(
+      { kind: 'folder', folder: '/work' },
+      'analyzer_provider',
+      JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'gemma3:4b' }),
+    );
+
+    const result = await enqueueProcess({ ...deps, jobs }, {
+      ...baseInput,
+      whisper: 'skip',
+      whisperExplicit: true,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'model_not_installed' } });
+    expect(await jobs.list()).toEqual({ ok: true, value: [] });
+  });
+
   it('preserves an analyzer error code instead of laundering it into processing_error', async () => {
     const deps = makeDeps('transcribed');
     seedFrames(deps.fs);
@@ -642,6 +669,47 @@ describe('process pipeline rename and jobs', () => {
     expect(explicitDeps.analyzer.inputs[0]?.timeoutSeconds).toBe(180);
   });
 
+  it('lets an explicit local model override the persisted local provider model', async () => {
+    const deps = makeDeps('transcribed');
+    seedFrames(deps.fs);
+    seedTranscript(deps.fs);
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'analyzer_provider', JSON.stringify({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'configured:model',
+    }));
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'local_model', 'configured:model');
+
+    await processVideoPipeline(deps, { ...baseInput, localModel: 'flag:model' });
+
+    expect(deps.analyzer.inputs[0]).toMatchObject({
+      backend: 'local',
+      localModel: 'flag:model',
+      provider: { family: 'local', modelTag: 'flag:model' },
+    });
+  });
+
+  it('lets a folder local model override a home local provider model', async () => {
+    const deps = makeDeps('transcribed');
+    seedFrames(deps.fs);
+    seedTranscript(deps.fs);
+    await deps.config.set({ kind: 'home' }, 'analyzer_provider', JSON.stringify({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'home:model',
+    }));
+    await deps.config.set({ kind: 'home' }, 'local_model', 'home:model');
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'local_model', 'folder:model');
+
+    await processVideoPipeline(deps, baseInput);
+
+    expect(deps.analyzer.inputs[0]).toMatchObject({
+      backend: 'local',
+      localModel: 'folder:model',
+      provider: { family: 'local', modelTag: 'folder:model' },
+    });
+  });
+
   it('resolves process keys from folder config when flags are absent', async () => {
     const deps = makeDeps('pending');
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'frames', '5');
@@ -654,6 +722,63 @@ describe('process pipeline rename and jobs', () => {
     expect(deps.media.frameInputs[0]?.frameCount).toBe(5);
     expect(deps.transcriber.inputs[0]).toMatchObject({ mode: 'api', model: 'small' });
     expect(await deps.fs.exists('/work/Clip One.mp4')).toEqual({ ok: true, value: true });
+  });
+
+  it('falls back to home config for every processing key when the folder is silent', async () => {
+    const deps = makeDeps('pending');
+    await deps.config.set({ kind: 'home' }, 'frames', '4');
+    await deps.config.set({ kind: 'home' }, 'whisper_mode', 'api');
+    await deps.config.set({ kind: 'home' }, 'whisper_model', 'small');
+    await deps.config.set({ kind: 'home' }, 'whisper_binary_path', '/home/whisper');
+    await deps.config.set({ kind: 'home' }, 'skip_rename', 'true');
+    await deps.config.set({ kind: 'home' }, 'analyzer_backend', 'local');
+    await deps.config.set({ kind: 'home' }, 'local_model', 'home:model');
+    await deps.config.set({ kind: 'home' }, 'timeout', '180');
+
+    await processVideoPipeline(deps, baseInput);
+
+    expect(deps.media.frameInputs[0]?.frameCount).toBe(4);
+    expect(deps.transcriber.inputs[0]).toMatchObject({
+      mode: 'api',
+      model: 'small',
+      binaryPath: '/home/whisper',
+    });
+    expect(deps.analyzer.inputs[0]).toMatchObject({
+      backend: 'local',
+      localModel: 'home:model',
+      timeoutSeconds: 180,
+    });
+    expect(await deps.fs.exists(videoPath)).toEqual({ ok: true, value: true });
+  });
+
+  it('lets folder config override home config for every processing key', async () => {
+    const deps = makeDeps('pending');
+    for (const scope of [{ kind: 'home' } as const, { kind: 'folder', folder: '/work' } as const]) {
+      const folder = scope.kind === 'folder';
+      await deps.config.set(scope, 'frames', folder ? '6' : '4');
+      await deps.config.set(scope, 'whisper_mode', folder ? 'local' : 'api');
+      await deps.config.set(scope, 'whisper_model', folder ? 'tiny' : 'small');
+      await deps.config.set(scope, 'whisper_binary_path', folder ? '/folder/whisper' : '/home/whisper');
+      await deps.config.set(scope, 'skip_rename', folder ? 'false' : 'true');
+      await deps.config.set(scope, 'analyzer_backend', folder ? 'claude' : 'local');
+      await deps.config.set(scope, 'local_model', folder ? 'folder:model' : 'home:model');
+      await deps.config.set(scope, 'timeout', folder ? '210' : '180');
+    }
+
+    await processVideoPipeline(deps, baseInput);
+
+    expect(deps.media.frameInputs[0]?.frameCount).toBe(6);
+    expect(deps.transcriber.inputs[0]).toMatchObject({
+      mode: 'local',
+      model: 'tiny',
+      binaryPath: '/folder/whisper',
+    });
+    expect(deps.analyzer.inputs[0]).toMatchObject({
+      backend: 'claude',
+      localModel: 'folder:model',
+      timeoutSeconds: 210,
+    });
+    expect(await deps.fs.exists('/work/2024-05-06_useful-clip.mp4')).toEqual({ ok: true, value: true });
   });
 
   it('lets explicit process flags override folder config', async () => {

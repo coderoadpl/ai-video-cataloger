@@ -142,18 +142,13 @@ describe('setup command workflow', () => {
       local_model: 'gemma3:12b',
       whisper_mode: 'local',
       whisper_model: 'base',
+      whisper_binary_path: '',
     });
     expect(analyzerProviderConfigSchema.parse(JSON.parse(folderConfig.analyzer_provider ?? ''))).toEqual({
       family: 'local',
       providerId: 'local',
       modelTag: 'gemma3:12b',
     });
-    expect(z.record(z.string()).parse(
-      JSON.parse(readFileSync(join(home, '.ai-video-cataloger', 'config.json'), 'utf8')),
-    )).toEqual({
-      whisper_binary_path: '',
-    });
-
     localAi.statusValue.installedModels = ['gemma3:12b'];
     const second = await executeSetup({
       api,

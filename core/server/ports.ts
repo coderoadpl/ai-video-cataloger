@@ -142,6 +142,7 @@ export interface TranscribeInput {
   transcriptPath: string;
   mode: AppConfig['whisper_mode'];
   model: WhisperModelName;
+  binaryPath?: string | undefined;
   signal?: AbortSignal | undefined;
 }
 
@@ -150,6 +151,7 @@ export interface TranscriberPort {
   dependency(input?: {
     mode: AppConfig['whisper_mode'];
     model: WhisperModelName;
+    binaryPath?: string | undefined;
   }): Promise<Result<DependencyStatus, AppError>>;
 }
 
@@ -173,7 +175,7 @@ export interface WhisperRuntimeInstallProgress {
 }
 
 export interface WhisperRuntimePort {
-  status(): Promise<Result<WhisperRuntimeStatus, AppError>>;
+  status(input?: { configuredPath?: string | undefined }): Promise<Result<WhisperRuntimeStatus, AppError>>;
   install(options?: {
     signal?: AbortSignal | undefined;
     onProgress?: ((progress: WhisperRuntimeInstallProgress) => Promise<Result<void, AppError>>) | undefined;

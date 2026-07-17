@@ -74,11 +74,37 @@ const requirements = (tiers: Tier[]): Requirements => ({
   tiers,
 });
 
-const stubEndpoints = (config: StoredConfig, tiers: Tier[] = []) => {
+const stubEndpoints = (
+  config: StoredConfig,
+  tiers: Tier[] = [],
+  inherited?: { effective: typeof defaults; sources: Record<keyof StoredConfig, 'folder' | 'home' | 'default'> } | undefined,
+) => {
+  const effective = inherited?.effective ?? {
+    whisper_binary_path: config.whisper_binary_path ?? defaults.whisper_binary_path,
+    whisper_model: config.whisper_model ?? defaults.whisper_model,
+    whisper_mode: config.whisper_mode ?? defaults.whisper_mode,
+    frames: config.frames ?? defaults.frames,
+    timeout: config.timeout ?? defaults.timeout,
+    skip_rename: config.skip_rename ?? defaults.skip_rename,
+    analyzer_backend: config.analyzer_backend ?? defaults.analyzer_backend,
+    local_model: config.local_model ?? defaults.local_model,
+    analyzer_provider: config.analyzer_provider ?? defaults.analyzer_provider,
+  };
+  const sources = inherited?.sources ?? {
+    whisper_binary_path: config.whisper_binary_path === null ? 'default' : 'folder',
+    whisper_model: config.whisper_model === null ? 'default' : 'folder',
+    whisper_mode: config.whisper_mode === null ? 'default' : 'folder',
+    frames: config.frames === null ? 'default' : 'folder',
+    timeout: config.timeout === null ? 'default' : 'folder',
+    skip_rename: config.skip_rename === null ? 'default' : 'folder',
+    analyzer_backend: config.analyzer_backend === null ? 'default' : 'folder',
+    local_model: config.local_model === null ? 'default' : 'folder',
+    analyzer_provider: config.analyzer_provider === null ? 'default' : 'folder',
+  } as const;
   server.use(
     http.get('/api/config', ({ request }) => {
       expect(new URL(request.url).searchParams.get('folder')).toBe(FOLDER);
-      return HttpResponse.json({ ok: true, data: { config, defaults } });
+      return HttpResponse.json({ ok: true, data: { config, defaults, effective, sources } });
     }),
     http.get('/api/models/local-ai/requirements', () =>
       HttpResponse.json({ ok: true, data: requirements(tiers) }),
@@ -99,6 +125,29 @@ describe('settings modal', () => {
     await screen.findByTestId('whisper-mode-select');
     expect(screen.getByTestId('whisper-model-control')).toBeDefined();
     expect(screen.getByText('3 frames')).toBeDefined();
+  });
+
+  it('shows effective inherited values without creating folder overrides', async () => {
+    const effective = { ...defaults, frames: '7', whisper_model: 'small' };
+    const sources = {
+      whisper_binary_path: 'default',
+      whisper_model: 'home',
+      whisper_mode: 'default',
+      frames: 'home',
+      timeout: 'default',
+      skip_rename: 'default',
+      analyzer_backend: 'default',
+      local_model: 'default',
+      analyzer_provider: 'default',
+    } as const;
+    stubEndpoints(emptyConfig, [], { effective, sources });
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    expect(await screen.findByText('7 frames')).toBeDefined();
+    const hint = screen.getByTestId('settings-inherited-hint');
+    expect(hint.textContent).toContain('frames: 7 (home)');
+    expect(hint.textContent).toContain('whisper_model: small (home)');
+    expect(screen.getByTestId('settings-save').getAttribute('disabled')).not.toBeNull();
   });
 
   it('hides the whisper model control when transcription is skipped', async () => {

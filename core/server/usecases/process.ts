@@ -34,6 +34,7 @@ import {
   summaryDataSchema,
   type SummaryData,
 } from './shared.js';
+import { resolveConfigValues } from './config-resolution.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
@@ -131,6 +132,7 @@ export const checkProcessPrerequisites = async (
     const transcriber = await deps.transcriber.dependency({
       mode: resolved.value.whisper,
       model: resolved.value.whisperModel,
+      binaryPath: resolved.value.whisperBinaryPath,
     });
     if (!transcriber.ok) return prerequisitesFailure(transcriber.error.message, transcriber.error);
     required.push(transcriber.value);
@@ -138,6 +140,7 @@ export const checkProcessPrerequisites = async (
     const transcriber = await deps.transcriber.dependency({
       mode: resolved.value.whisper,
       model: resolved.value.whisperModel,
+      binaryPath: resolved.value.whisperBinaryPath,
     });
     if (!transcriber.ok) return prerequisitesFailure(transcriber.error.message, transcriber.error);
     if (!transcriber.value.available) {
@@ -153,6 +156,19 @@ export const checkProcessPrerequisites = async (
     provider: resolved.value.analyzer.provider,
   });
   if (!analyzer.ok) return prerequisitesFailure(analyzer.error.message, analyzer.error);
+  if (
+    resolved.value.analyzer.provider.family === 'local'
+    && !analyzer.value.available
+    && analyzer.value.name === resolved.value.analyzer.provider.modelTag
+  ) {
+    return {
+      ok: false,
+      error: appError(
+        'model_not_installed',
+        `Local AI model "${resolved.value.analyzer.provider.modelTag}" is not installed. Run: ai-video-cataloger models pull ${resolved.value.analyzer.provider.modelTag}`,
+      ),
+    };
+  }
   required.push(analyzer.value);
   const missing = required.filter((entry) => !entry.available).map((entry) => entry.name);
   if (missing.length > 0) {
@@ -440,6 +456,7 @@ interface ResolvedProcessOptions {
   verbose: boolean;
   whisper: AppConfig['whisper_mode'];
   whisperModel: WhisperModelName;
+  whisperBinaryPath: string;
   analyzer: ResolvedAnalyzer;
   batch: ProcessBatchContext;
 }
@@ -449,22 +466,25 @@ const resolveProcessOptions = async (
   folder: string,
   input: ProcessPipelineInput,
 ): Promise<Result<ResolvedProcessOptions, AppError>> => {
-  const stored = await config.getAll({ kind: 'folder', folder });
+  const stored = await resolveConfigValues(config, folder);
   if (!stored.ok) return stored;
-  const frames = input.framesExplicit === true ? input.frames : storedFrames(stored.value.frames) ?? CONFIG_DEFAULTS.frames;
+  const effective = stored.value.effective;
+  const frames = input.framesExplicit === true ? input.frames : storedFrames(effective.frames) ?? CONFIG_DEFAULTS.frames;
   const skipRename =
-    input.skipRenameExplicit === true ? input.skipRename : storedSkipRename(stored.value.skip_rename) ?? CONFIG_DEFAULTS.skip_rename;
-  const whisper = input.whisperExplicit === true ? input.whisper : storedWhisperMode(stored.value.whisper_mode) ?? CONFIG_DEFAULTS.whisper_mode;
+    input.skipRenameExplicit === true ? input.skipRename : storedSkipRename(effective.skip_rename) ?? CONFIG_DEFAULTS.skip_rename;
+  const whisper = input.whisperExplicit === true ? input.whisper : storedWhisperMode(effective.whisper_mode) ?? CONFIG_DEFAULTS.whisper_mode;
   const whisperModel =
     input.whisperModelExplicit === true
       ? input.whisperModel
-      : storedWhisperModel(stored.value.whisper_model) ?? CONFIG_DEFAULTS.whisper_model;
-  const localModel = trimmedValue(input.localModel) ?? trimmedValue(stored.value.local_model) ?? CONFIG_DEFAULTS.local_model;
-  const persistedProvider = storedAnalyzerProvider(stored.value.analyzer_provider);
-  const legacyBackend = storedAnalyzerBackend(stored.value.analyzer_backend) ?? CONFIG_DEFAULTS.analyzer_backend;
-  const provider = resolveAnalyzerProvider(input.analyzer, persistedProvider, legacyBackend, localModel);
+      : storedWhisperModel(effective.whisper_model) ?? CONFIG_DEFAULTS.whisper_model;
+  const whisperBinaryPath = effective.whisper_binary_path;
+  const localModel = trimmedValue(input.localModel) ?? trimmedValue(effective.local_model) ?? CONFIG_DEFAULTS.local_model;
+  const persistedProvider = storedAnalyzerProvider(effective.analyzer_provider);
+  const legacyBackend = storedAnalyzerBackend(effective.analyzer_backend) ?? CONFIG_DEFAULTS.analyzer_backend;
+  const selectedProvider = resolveAnalyzerProvider(input.analyzer, persistedProvider, legacyBackend, localModel);
+  const provider = resolvedLocalProvider(selectedProvider, localModel, input.localModel);
   const backend = provider.family === 'local' ? 'local' : 'claude';
-  const storedTimeout = storedTimeoutValue(stored.value.timeout);
+  const storedTimeout = stored.value.sources.timeout === 'default' ? null : storedTimeoutValue(effective.timeout);
   const timeoutSeconds =
     input.timeoutExplicit === true
       ? input.timeout
@@ -475,6 +495,7 @@ const resolveProcessOptions = async (
     verbose: input.verbose,
     whisper,
     whisperModel,
+    whisperBinaryPath,
     analyzer: {
       backend,
       localModel: provider.family === 'local' ? provider.modelTag : localModel,
@@ -483,6 +504,15 @@ const resolveProcessOptions = async (
     },
     batch: input.batch ?? { current: 1, total: 1 },
   });
+};
+
+const resolvedLocalProvider = (
+  provider: AnalyzerProviderConfig,
+  localModel: string,
+  explicitLocalModel: string | undefined,
+): AnalyzerProviderConfig => {
+  if (provider.family !== 'local') return provider;
+  return trimmedValue(explicitLocalModel) === null ? provider : { ...provider, modelTag: localModel };
 };
 
 const storedAnalyzerProvider = (value: string | undefined): AnalyzerProviderConfig | null => {
@@ -624,6 +654,7 @@ const transcribe = async (
     transcriptPath,
     mode: resolved.whisper,
     model: resolved.whisperModel,
+    binaryPath: resolved.whisperBinaryPath,
     signal,
   });
   const cleanup = await deps.fs.deleteFile(finalAudioPath);

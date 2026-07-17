@@ -173,25 +173,28 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
     this.bottleSpecs = options.bottleSpecs ?? WHISPER_BOTTLE_SPECS;
   }
 
-  async status(): Promise<Result<WhisperRuntimeStatus, AppError>> {
+  async status(input?: { configuredPath?: string | undefined }): Promise<Result<WhisperRuntimeStatus, AppError>> {
     const managedPath = managedWhisperBinaryPath(this.homeDirectory);
     const managedInstalled = await executableExists(managedPath);
     const buildTools = await this.detectBuildTools();
-    const configured = await this.config.get({ kind: 'home' }, 'whisper_binary_path');
-    if (!configured.ok) return configured;
-    if (configured.value !== null && configured.value.length > 0) {
-      if (await executableExists(configured.value)) {
-        return ok(await this.availableStatus(configured.value, 'configured', managedInstalled, buildTools));
+    const storedConfigured = input?.configuredPath === undefined
+      ? await this.config.get({ kind: 'home' }, 'whisper_binary_path')
+      : ok(input.configuredPath);
+    if (!storedConfigured.ok) return storedConfigured;
+    const configured = storedConfigured.value ?? '';
+    if (configured.length > 0) {
+      if (await executableExists(configured)) {
+        return ok(await this.availableStatus(configured, 'configured', managedInstalled, buildTools));
       }
       return ok({
         available: false,
-        path: configured.value,
+        path: configured,
         source: 'configured',
         version: null,
         managedInstalled,
         buildToolsAvailable: buildTools.missing.length === 0,
         missingBuildTools: buildTools.missing,
-        message: `Configured Whisper binary is not executable: ${configured.value}`,
+        message: `Configured Whisper binary is not executable: ${configured}`,
       });
     }
     if (managedInstalled) {

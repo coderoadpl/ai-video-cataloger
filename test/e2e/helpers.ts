@@ -83,11 +83,16 @@ export interface CliResult {
   stderr: string;
 }
 
-export function runCli(args: string[], cwd: string, timeoutMs = 300_000): Promise<CliResult> {
+export function runCli(
+  args: string[],
+  cwd: string,
+  timeoutMs = 300_000,
+  env: NodeJS.ProcessEnv = process.env,
+): Promise<CliResult> {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, [CLI_DIST, ...args], {
       cwd,
-      env: process.env,
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
