@@ -72,6 +72,7 @@ export interface HarnessAnalyzerAdapterOptions {
   verbose?: boolean | undefined;
   writeStdout?: ((chunk: string) => void) | undefined;
   writeStderr?: ((chunk: string) => void) | undefined;
+  prepare?: ((definition: HarnessRuntimeDefinition, homeDirectory: string, videoDirectory: string) => Promise<void>) | undefined;
 }
 
 interface HarnessRuntimeDefinition {
@@ -225,6 +226,7 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
   private readonly verbose: boolean;
   private readonly writeStdout: (chunk: string) => void;
   private readonly writeStderr: (chunk: string) => void;
+  private readonly prepare: (definition: HarnessRuntimeDefinition, homeDirectory: string, videoDirectory: string) => Promise<void>;
 
   constructor(options: HarnessAnalyzerAdapterOptions = {}) {
     this.commandRunner = options.commandRunner ?? childProcessAnalyzerCommandRunner;
@@ -237,6 +239,7 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     this.writeStderr = options.writeStderr ?? ((chunk) => {
       process.stderr.write(chunk);
     });
+    this.prepare = options.prepare ?? runHarnessPreparation;
   }
 
   async analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
@@ -253,7 +256,11 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       frameMode: provider.promptStyle === 'file-urls' ? 'file-url' : 'dir-access',
     });
     const runtime = harnessRuntimeDefinition(provider.providerId);
-    await runHarnessPreparation(runtime, this.homeDirectory, videoDir);
+    try {
+      await this.prepare(runtime, this.homeDirectory, videoDir);
+    } catch {
+      return { ok: false, error: appError('read_error', 'Could not prepare harness analysis') };
+    }
     const args = expandHarnessArgs(provider.argsTemplate, { prompt, videoDir });
     const invocation = runtime.verboseInvocation === null
       ? `${provider.command} ${expandHarnessArgs(provider.argsTemplate, { prompt: '<prompt>', videoDir }).map((argument) => JSON.stringify(argument)).join(' ')}`
@@ -401,7 +408,12 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
         ),
       };
     }
-    const images = await Promise.all(input.framePaths.map(async (framePath) => bytesToBase64(await this.readFrame(framePath))));
+    let images: string[];
+    try {
+      images = await Promise.all(input.framePaths.map(async (framePath) => bytesToBase64(await this.readFrame(framePath))));
+    } catch {
+      return { ok: false, error: appError('read_error', 'Could not read frames for local analysis') };
+    }
     const prompt = buildAnalyzerPrompt({
       videoName: path.basename(input.videoPath),
       transcript: input.transcript,
@@ -716,7 +728,8 @@ const postOllamaChat = async (
     if (/not found/i.test(text)) {
       return { ok: false, error: appError('model_not_installed', `Model not installed: ${request.model}`) };
     }
-    return { ok: false, error: appError('ollama_unavailable', `Local AI runtime not reachable at ${baseUrl}: HTTP ${response.status}`) };
+    const detail = text.length > 0 ? `: ${text.slice(0, 300)}` : '';
+    return { ok: false, error: appError('ollama_unavailable', `Local AI runtime not reachable at ${baseUrl}: HTTP ${response.status}${detail}`) };
   }
   let body: unknown;
   try {

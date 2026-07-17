@@ -152,4 +152,41 @@ describe('useProcessing batch', () => {
     });
     await waitFor(() => expect(processed).toEqual(['/v/good1.mp4', '/v/good2.mp4']));
   });
+
+  it('releases the busy guard after a job poll rejects', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const processed: string[] = [];
+    let polls = 0;
+    server.use(
+      http.post('/api/process', async ({ request }) => {
+        const { videoPath } = processBodySchema.parse(await request.json());
+        processed.push(videoPath);
+        return HttpResponse.json({ ok: true, data: { jobId: `job:${videoPath}` } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        polls += 1;
+        if (polls === 1) return HttpResponse.json({ ok: false, error: { code: 'internal', message: 'poll unavailable' } });
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({ ok: true, data: jobSnapshot(jobId) });
+      }),
+    );
+    const { result } = renderHook(() => useProcessing({ videos, addLine: vi.fn(), intervalMs: 0 }), { wrapper });
+    const first = videos[1];
+    const second = videos[2];
+    if (first === undefined || second === undefined) throw new Error('Expected processing fixtures');
+
+    act(() => {
+      result.current.analyze(first);
+    });
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+    act(() => {
+      result.current.analyze(second);
+    });
+
+    await waitFor(() => expect(processed).toEqual(['/v/good1.mp4', '/v/good2.mp4']));
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+  });
 });

@@ -215,4 +215,46 @@ describe('setup command workflow', () => {
       human: expect.stringContaining('processing is not ready'),
     }]);
   });
+
+  it('downloads the whisper model for an own binary setup', async () => {
+    const home = createTestDir();
+    const folder = createTestDir();
+    roots.push(home, folder);
+    const deps = createDeps({ homeDirectory: home, workingDirectory: folder });
+    const downloads = new InMemoryDownloads();
+    const localAi = new InMemoryLocalAi();
+    localAi.statusValue.installedModels = ['gemma3:12b'];
+    deps.downloads = downloads;
+    deps.localAi = localAi;
+    deps.jobs = new InMemoryJobs();
+    deps.analyzer = new InMemoryAnalyzer();
+    deps.transcriber = new InMemoryTranscriber();
+    const api = createApiClient({ baseUrl: '', fetchImpl: (input, init) => buildApp(deps).request(input, init) });
+    const errors: AppError[] = [];
+
+    const completed = await executeSetup({
+      api,
+      folder,
+      options: {
+        analyzer: 'local',
+        localModel: 'gemma3:12b',
+        transcription: 'own',
+        whisperPath: '/opt/whisper',
+        whisperModel: 'base',
+        yes: true,
+      },
+      output: {
+        started: () => undefined,
+        progress: () => undefined,
+        completed: () => undefined,
+        error: (error) => errors.push(error),
+        write: () => undefined,
+      },
+      environment: { HOME: home },
+    });
+
+    expect(completed).toBe(true);
+    expect(errors).toEqual([]);
+    expect(downloads.downloaded).toContain('base');
+  });
 });

@@ -115,41 +115,47 @@ export const useProcessing = ({
       }
 
       activeJobIdRef.current = jobId;
-      const final = await pollJobUntilTerminal(jobId, {
-        intervalMs,
-        delay: sleep,
-        fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
-        isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-        onSnapshot: (job) => {
-          if (job.progress === null) return;
-          const view = toProgressView(job.progress);
-          setProgress(view);
-          const key = `${view.step}:${String(view.percentage)}`;
-          if (key !== lastProgressKeyRef.current) {
-            lastProgressKeyRef.current = key;
-            addLine(`[${String(view.percentage)}%] ${view.stepLabel}`, 'info');
-            addLine(JSON.stringify(job.progress), 'info', true);
+      try {
+        const final = await pollJobUntilTerminal(jobId, {
+          intervalMs,
+          delay: sleep,
+          fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
+          isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+          onSnapshot: (job) => {
+            if (job.progress === null) return;
+            const view = toProgressView(job.progress);
+            setProgress(view);
+            const key = `${view.step}:${String(view.percentage)}`;
+            if (key !== lastProgressKeyRef.current) {
+              lastProgressKeyRef.current = key;
+              addLine(`[${String(view.percentage)}%] ${view.stepLabel}`, 'info');
+              addLine(JSON.stringify(job.progress), 'info', true);
+            }
+          },
+        });
+        switch (final.status) {
+          case 'completed':
+            addLine(`✓ Analysis completed for ${video.filename}`, 'success');
+            return { success: true };
+          case 'cancelled':
+            addLine('Cancelled by user', 'info');
+            return { success: false, error: 'Cancelled by user' };
+          case 'failed': {
+            const message = final.error?.message ?? 'Processing failed';
+            addLine(`Error: ${message}`, 'error');
+            if (final.error !== null) addLine(JSON.stringify(final.error), 'error', true);
+            return { success: false, error: message };
           }
-        },
-      });
-      activeJobIdRef.current = null;
-
-      switch (final.status) {
-        case 'completed':
-          addLine(`✓ Analysis completed for ${video.filename}`, 'success');
-          return { success: true };
-        case 'cancelled':
-          addLine('Cancelled by user', 'info');
-          return { success: false, error: 'Cancelled by user' };
-        case 'failed': {
-          const message = final.error?.message ?? 'Processing failed';
-          addLine(`Error: ${message}`, 'error');
-          if (final.error !== null) addLine(JSON.stringify(final.error), 'error', true);
-          return { success: false, error: message };
+          case 'queued':
+          case 'running':
+            return { success: false, error: 'Processing did not finish' };
         }
-        case 'queued':
-        case 'running':
-          return { success: false, error: 'Processing did not finish' };
+      } catch (error) {
+        const message = messageOf(error);
+        addLine(`Error: ${message}`, 'error');
+        return { success: false, error: message };
+      } finally {
+        activeJobIdRef.current = null;
       }
     },
     [processAsync, queryClient, addLine, intervalMs],

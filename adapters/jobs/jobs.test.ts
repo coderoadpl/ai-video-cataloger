@@ -6,6 +6,33 @@ import type { JobRecord } from '@core/server/index.js';
 import { InProcessJobsPort } from './index.js';
 
 describe('InProcessJobsPort', () => {
+  it('atomically rejects duplicate active resource keys', async () => {
+    const jobs = new InProcessJobsPort();
+    let release: (() => void) | undefined;
+    const waiting = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = await jobs.enqueue({
+      kind: 'process',
+      payload: { videoPath: '/work/clip.mp4' },
+      resourceKey: '/work/clip.mp4',
+      run: async () => {
+        await waiting;
+        return ok({});
+      },
+    });
+    const second = await jobs.enqueue({
+      kind: 'process',
+      payload: { videoPath: '/work/clip.mp4' },
+      resourceKey: '/work/clip.mp4',
+      run: () => Promise.resolve(ok({})),
+    });
+    release?.();
+
+    expect(first).toMatchObject({ ok: true });
+    expect(second).toMatchObject({ ok: false, error: { code: 'conflict' } });
+  });
+
   it('records typed progress sequence from an async in-process job', async () => {
     const jobs = new InProcessJobsPort({ nowIso: tickingClock() });
 

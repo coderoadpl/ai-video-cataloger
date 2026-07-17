@@ -114,4 +114,17 @@ describe('configured readiness', () => {
     });
     expect(attempts).toBe(2);
   });
+
+  it('retries a loader after a resolved error result', async () => {
+    const cache = new ReadinessCache();
+    let attempts = 0;
+    const load = () => {
+      attempts += 1;
+      return Promise.resolve({ ok: false, error: { code: 'internal', message: `failure ${attempts}` } } as const);
+    };
+
+    await expect(cache.read('/work', false, load)).resolves.toMatchObject({ error: { message: 'failure 1' } });
+    await expect(cache.read('/work', false, load)).resolves.toMatchObject({ error: { message: 'failure 2' } });
+    expect(attempts).toBe(2);
+  });
 });

@@ -48,7 +48,9 @@ export class ReadinessCache {
     }
     const pending = load();
     this.entries.set(key, pending);
-    void pending.catch(() => {
+    void pending.then((result) => {
+      if (!result.ok && this.entries.get(key) === pending) this.entries.delete(key);
+    }, () => {
       if (this.entries.get(key) === pending) this.entries.delete(key);
     });
     return pending;

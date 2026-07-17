@@ -66,7 +66,7 @@ const makeDeps = (status: VideoStatus = 'pending', fs = new InMemoryFileSystem('
     config: new InMemoryConfig(),
     fs,
     media: new InMemoryMedia(),
-    transcriber: new InMemoryTranscriber(),
+    transcriber: new InMemoryTranscriber(fs),
     analyzer: new InMemoryAnalyzer(),
   };
 };
@@ -195,6 +195,15 @@ describe('process pipeline resume behavior', () => {
     expect(deps.media.audioInputs).toHaveLength(0);
     expect(deps.transcriber.inputs).toHaveLength(0);
     expect(deps.analyzer.inputs[0]?.transcript).toBe('existing transcript');
+  });
+
+  it('passes a freshly transcribed local transcript to the analyzer', async () => {
+    const deps = makeDeps('pending');
+
+    const result = await processVideoPipeline(deps, { ...baseInput, skipRename: true, skipRenameExplicit: true });
+
+    expect(result).toMatchObject({ ok: true });
+    expect(deps.analyzer.inputs[0]?.transcript).toBe('transcript');
   });
 
   it('does not extract audio when whisper is skipped', async () => {
@@ -406,6 +415,28 @@ describe('process pipeline resume behavior', () => {
 });
 
 describe('process pipeline rename and jobs', () => {
+  it('rejects a concurrent process job for the same resolved video path', async () => {
+    const deps = makeDeps('pending');
+    const jobs = new InMemoryJobs();
+    jobs.addJob({
+      jobId: 'existing',
+      kind: 'process',
+      status: 'running',
+      progress: null,
+      progressEvents: [],
+      error: null,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      updatedAt: '2026-01-01T00:00:00.000Z',
+      resourceKey: videoPath,
+    });
+
+    const result = await enqueueProcess({ ...deps, jobs }, { ...baseInput, videoPath: './Clip One.mp4' });
+    const records = await jobs.list();
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect(records).toMatchObject({ ok: true, value: [{ jobId: 'existing' }] });
+  });
+
   it('fails prerequisites before enqueueing or opening a catalog', async () => {
     const deps = makeDeps('pending');
     const jobs = new InMemoryJobs();

@@ -39,6 +39,16 @@ export const enqueueProcess = async (
   ) {
     return { ok: false, error: appError('internal', 'Process job dependencies are incomplete') };
   }
+  const resourceKey = deps.fs.resolve(input.videoPath);
+  const listed = await deps.jobs.list();
+  if (!listed.ok) return listed;
+  const duplicate = listed.value.some((job) =>
+    job.kind === 'process'
+    && (job.status === 'queued' || job.status === 'running')
+    && job.resourceKey === resourceKey);
+  if (duplicate) {
+    return { ok: false, error: appError('conflict', `A process job is already running for ${resourceKey}`) };
+  }
   const processDeps: ProcessDeps = {
     catalogs: deps.catalogs,
     config: deps.config,
@@ -52,6 +62,7 @@ export const enqueueProcess = async (
   return deps.jobs.enqueue({
     kind: 'process',
     payload: input,
+    resourceKey,
     run: (context) => processVideoPipeline(processDeps, input, context),
   });
 };

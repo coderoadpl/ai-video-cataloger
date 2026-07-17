@@ -65,6 +65,7 @@ const providerBodySchema = z.object({ family: z.string(), providerId: z.string()
 const installHandlers = (
   overrides: {
     runtimeAvailable?: boolean;
+    whisperDownloaded?: boolean;
     apiAuthenticated?: boolean;
     harnessAvailable?: (providerId: string) => boolean;
     ready?: boolean;
@@ -89,6 +90,11 @@ const installHandlers = (
         managedInstalled: false,
         buildToolsAvailable: true,
         missingBuildTools: [],
+      }),
+    ),
+    http.get('/api/models/whisper', () =>
+      ok({
+        models: [{ name: 'base', size: '142 MB', downloaded: overrides.whisperDownloaded ?? false, active: true }],
       }),
     ),
     http.post('/api/providers/test', async ({ request }) => {
@@ -270,6 +276,40 @@ describe('SetupWizard', () => {
     await screen.findByTestId('wizard-step-downloads');
     expect(screen.getByTestId('downloads-none')).toBeDefined();
     expect(screen.getByTestId('wizard-next').textContent).toBe('Continue');
+  });
+
+  it('downloads the whisper model when using an own binary', async () => {
+    installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-own'));
+    fireEvent.change(screen.getByLabelText('Whisper binary path'), { target: { value: '/opt/whisper' } });
+    clickNext();
+
+    await screen.findByTestId('wizard-step-downloads');
+    expect(screen.getAllByTestId('download-task')).toHaveLength(1);
+    expect(screen.getByTestId('download-task').textContent).toContain('whisper model base');
+  });
+
+  it('does not list a managed whisper model that is already downloaded', async () => {
+    installHandlers({ runtimeAvailable: true, whisperDownloaded: true });
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    clickNext();
+
+    await screen.findByTestId('wizard-step-downloads');
+    expect(screen.getByTestId('downloads-none')).toBeDefined();
   });
 
   it('describes frames-only mode honestly when transcription was skipped', async () => {

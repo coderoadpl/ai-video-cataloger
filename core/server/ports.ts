@@ -326,6 +326,7 @@ export interface JobRecord {
   error: AppError | null;
   createdAt: string;
   updatedAt: string;
+  resourceKey?: string | undefined;
 }
 
 export interface JobExecutionContext {
@@ -337,6 +338,7 @@ export interface JobsPort {
   enqueue(input: {
     kind: JobKind;
     payload: unknown;
+    resourceKey?: string | undefined;
     run?: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>;
   }): Promise<Result<{ jobId: string }, AppError>>;
   get(jobId: string): Promise<Result<JobRecord | null, AppError>>;

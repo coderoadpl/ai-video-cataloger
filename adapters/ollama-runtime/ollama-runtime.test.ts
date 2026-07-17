@@ -369,6 +369,59 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     expect(existsSync(stateFilePath(home))).toBe(false);
   });
 
+  it('records and terminates a managed daemon when startup is cancelled', async () => {
+    const home = await tempRoot();
+    await mkdir(path.dirname(managedBinaryPath(home)), { recursive: true });
+    await writeFile(managedBinaryPath(home), 'binary', 'utf8');
+    const processManager = new ManualProcessManager(managedBinaryPath(home));
+    const controller = new AbortController();
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      systemBaseUrl: 'http://127.0.0.1:1',
+      processManager,
+      randomPort: () => 9788,
+      fetchImpl: () => Promise.reject(new Error('not ready')),
+      sleep: () => {
+        controller.abort();
+        return Promise.resolve();
+      },
+    });
+
+    const result = await adapter.ensure(controller.signal);
+    const state = JSON.parse(await readFile(stateFilePath(home), 'utf8'));
+
+    expect(result).toMatchObject({ ok: false, error: { message: 'Local AI runtime start cancelled' } });
+    expect(state).toMatchObject({ port: 9788, pid: 1, binaryPath: managedBinaryPath(home) });
+    expect(processManager.killed).toEqual([{ pid: 1, signal: 'SIGTERM' }]);
+  });
+
+  it('records and terminates a managed daemon when startup times out', async () => {
+    const home = await tempRoot();
+    await mkdir(path.dirname(managedBinaryPath(home)), { recursive: true });
+    await writeFile(managedBinaryPath(home), 'binary', 'utf8');
+    const processManager = new ManualProcessManager(managedBinaryPath(home));
+    let now = 0;
+    const adapter = new ManagedOllamaRuntimeAdapter({
+      homeDirectory: home,
+      systemBaseUrl: 'http://127.0.0.1:1',
+      processManager,
+      randomPort: () => 9789,
+      fetchImpl: () => Promise.reject(new Error('not ready')),
+      nowMs: () => now,
+      sleep: () => {
+        now = 30_000;
+        return Promise.resolve();
+      },
+    });
+
+    const result = await adapter.ensure();
+    const state = JSON.parse(await readFile(stateFilePath(home), 'utf8'));
+
+    expect(result).toMatchObject({ ok: false, error: { message: 'Local AI runtime did not start within 30s' } });
+    expect(state).toMatchObject({ port: 9789, pid: 1, binaryPath: managedBinaryPath(home) });
+    expect(processManager.killed).toEqual([{ pid: 1, signal: 'SIGTERM' }]);
+  });
+
   it('maps delete errors and does not stop a user-owned system daemon', async () => {
     const system = await startFakeOllamaServer({ version: '0.31.1', models: ['gemma3:12b'] });
     const processManager = new ManualProcessManager();

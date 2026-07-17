@@ -2,7 +2,7 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import {
@@ -139,6 +139,19 @@ describe('HarnessAnalyzerAdapter', () => {
     });
 
     expect(runner.calls[0]?.options.signal).toBe(controller.signal);
+  });
+
+  it('maps harness preparation failures to read_error without running the command', async () => {
+    const runner = new FakeAnalyzerCommandRunner('response');
+    const adapter = new HarnessAnalyzerAdapter({
+      commandRunner: runner,
+      prepare: () => Promise.reject(new Error('EPERM')),
+    });
+
+    const result = await adapter.analyze(analyzeInput(customHarnessProvider()));
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'read_error' } });
+    expect(runner.calls).toEqual([]);
   });
 
   it('constructs every built-in invocation from provider data', async () => {
@@ -410,6 +423,55 @@ describe('OllamaAnalyzerAdapter', () => {
     } finally {
       await server.close();
     }
+  });
+
+  it('maps unreadable local-analysis frames to read_error without making a chat request', async () => {
+    const runtime = new FakeLocalAiRuntime();
+    runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: ['gemma3:12b'] };
+    const fetchImpl = vi.fn<typeof fetch>();
+    const adapter = new OllamaAnalyzerAdapter({
+      runtime,
+      fetchImpl,
+      readFrame: () => Promise.reject(new Error('ENOENT')),
+    });
+
+    const result = await adapter.analyze({
+      videoPath: '/work/clip.mp4',
+      framePaths: ['/work/missing.jpg'],
+      transcript: null,
+      backend: 'local',
+      localModel: 'gemma3:12b',
+      timeoutSeconds: 300,
+      verbose: false,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'read_error' } });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it('includes the Ollama error body in non-model HTTP failures', async () => {
+    const runtime = new FakeLocalAiRuntime();
+    runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: ['gemma3:12b'] };
+    const adapter = new OllamaAnalyzerAdapter({
+      runtime,
+      fetchImpl: () => Promise.resolve(new Response('images are not supported by this model', { status: 400 })),
+      readFrame: () => Promise.resolve(Buffer.from('frame')),
+    });
+
+    const result = await adapter.analyze({
+      videoPath: '/work/clip.mp4',
+      framePaths: ['/work/frame.jpg'],
+      transcript: null,
+      backend: 'local',
+      localModel: 'gemma3:12b',
+      timeoutSeconds: 300,
+      verbose: false,
+    });
+
+    expect(result).toMatchObject({
+      ok: false,
+      error: { code: 'ollama_unavailable', message: expect.stringContaining('HTTP 400: images are not supported by this model') },
+    });
   });
 
   it('aborts the Ollama chat request when analysis is cancelled', async () => {

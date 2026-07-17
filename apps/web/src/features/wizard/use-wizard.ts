@@ -97,6 +97,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const queryClient = useQueryClient();
   const requirements = useQuery({ ...actions.localAiRequirements, enabled: open });
   const whisperRuntime = useQuery({ ...actions.whisperRuntime, enabled: open });
+  const whisperModels = useQuery({ ...actions.modelsWhisper, enabled: open });
   const setConfig = useMutation(actions.setConfig);
   const setCredential = useMutation(actions.setCredential);
   const testProvider = useMutation(actions.testProvider);
@@ -281,10 +282,15 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       if (!(whisperRuntime.data?.available ?? false)) {
         tasks.push({ kind: 'whisper-runtime', label: 'Building the managed whisper.cpp runtime' });
       }
+    }
+    if (transcriptionMode === 'managed' || transcriptionMode === 'own') {
+      const model = whisperModels.data?.models.find((entry) => entry.name === DEFAULT_WHISPER_MODEL);
+      if (model?.downloaded !== true) {
       tasks.push({ kind: 'whisper-model', label: `Downloading whisper model ${DEFAULT_WHISPER_MODEL}` });
+      }
     }
     return tasks;
-  }, [analyzerFamily, effectiveLocalTag, tiers, transcriptionMode, whisperRuntime.data]);
+  }, [analyzerFamily, effectiveLocalTag, tiers, transcriptionMode, whisperModels.data, whisperRuntime.data]);
 
   const runDownloads = useCallback(async (): Promise<void> => {
     setIsDownloading(true);

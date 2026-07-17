@@ -399,9 +399,13 @@ export class InMemoryTranscriber implements TranscriberPort {
   readonly inputs: Array<{ audioPath: string; transcriptPath: string; mode: string; model: string }> = [];
   transcript = 'transcript';
 
-  transcribe(input: { audioPath: string; transcriptPath: string; mode: AppConfig['whisper_mode']; model: WhisperModelName }): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+  constructor(private readonly fs: FileSystemPort = new InMemoryFileSystem()) {}
+
+  async transcribe(input: { audioPath: string; transcriptPath: string; mode: AppConfig['whisper_mode']; model: WhisperModelName }): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
     this.inputs.push(input);
-    return Promise.resolve(ok({ transcriptPath: input.transcriptPath, content: this.transcript }));
+    const written = await this.fs.writeTextFile(input.transcriptPath, this.transcript);
+    if (!written.ok) return written;
+    return ok({ transcriptPath: input.transcriptPath, content: this.transcript });
   }
 
   dependency(): Promise<Result<DependencyStatus, AppError>> {
@@ -554,11 +558,24 @@ export class InMemoryJobs implements JobsPort {
   private nextId = 1;
   readonly progressEvents: JobProgress[] = [];
 
+  addJob(record: JobRecord): void {
+    this.records.set(record.jobId, record);
+  }
+
   async enqueue(input: {
     kind: JobKind;
     payload: unknown;
+    resourceKey?: string | undefined;
     run?: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>;
   }): Promise<Result<{ jobId: string }, AppError>> {
+    if (input.resourceKey !== undefined && [...this.records.values()].some((record) =>
+      record.resourceKey === input.resourceKey
+      && (record.status === 'queued' || record.status === 'running'))) {
+      return {
+        ok: false,
+        error: appError('conflict', `A ${input.kind} job is already running for ${input.resourceKey}`),
+      };
+    }
     const jobId = `job-${this.nextId}`;
     this.nextId += 1;
     this.records.set(jobId, {
@@ -570,6 +587,7 @@ export class InMemoryJobs implements JobsPort {
       error: null,
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
+      resourceKey: input.resourceKey,
     });
     if (input.run !== undefined) {
       const queued = this.records.get(jobId);

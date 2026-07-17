@@ -298,18 +298,20 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
       if (pid === undefined || pid <= 0) {
         return { ok: false, error: appError('ollama_unavailable', 'Local AI runtime started without a valid process id') };
       }
+      await this.writeState({ port, pid, version: OLLAMA_PINNED_VERSION, binaryPath: installed.value });
       const deadline = this.nowMs() + serveStartTimeoutMs;
       while (this.nowMs() < deadline) {
         if (signal?.aborted === true) {
+          this.processManager.kill(pid, 'SIGTERM');
           return { ok: false, error: appError('ollama_unavailable', 'Local AI runtime start cancelled') };
         }
         const runtime = await this.probeRuntime(baseUrl, true, OLLAMA_PINNED_VERSION, signal);
         if (runtime !== null) {
-          await this.writeState({ port, pid, version: OLLAMA_PINNED_VERSION, binaryPath: installed.value });
           return ok(runtime);
         }
         await this.sleep(250);
       }
+      this.processManager.kill(pid, 'SIGTERM');
       return {
         ok: false,
         error: appError('ollama_unavailable', `Local AI runtime did not start within ${serveStartTimeoutMs / 1000}s`),

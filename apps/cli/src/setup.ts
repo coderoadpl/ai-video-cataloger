@@ -372,13 +372,15 @@ const plannedDownloads = async (
     const installed = requirements?.tiers.find((tier) => tier.tag === analyzer.modelTag)?.installed ?? false;
     if (!installed) tasks.push({ kind: 'local-model', label: `Local model ${analyzer.modelTag}` });
   }
-  if (transcription.mode !== 'managed') return tasks;
-  const runtime = await context.api.whisperRuntimeStatus();
-  if (!runtime.ok) {
-    context.output.error(runtime.error);
-    return null;
+  if (transcription.mode !== 'managed' && transcription.mode !== 'own') return tasks;
+  if (transcription.mode === 'managed') {
+    const runtime = await context.api.whisperRuntimeStatus();
+    if (!runtime.ok) {
+      context.output.error(runtime.error);
+      return null;
+    }
+    if (!runtime.value.available) tasks.push({ kind: 'whisper-runtime', label: 'Managed whisper.cpp runtime' });
   }
-  if (!runtime.value.available) tasks.push({ kind: 'whisper-runtime', label: 'Managed whisper.cpp runtime' });
   const models = await context.api.modelsWhisper();
   if (!models.ok) {
     context.output.error(models.error);

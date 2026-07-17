@@ -41,8 +41,16 @@ export class InProcessJobsPort implements JobsPort {
   enqueue(input: {
     kind: JobKind;
     payload: unknown;
+    resourceKey?: string | undefined;
     run?: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>;
   }): Promise<Result<{ jobId: string }, AppError>> {
+    if (input.resourceKey !== undefined && [...this.records.values()].some((record) =>
+      record.resourceKey === input.resourceKey && !isTerminal(record))) {
+      return Promise.resolve({
+        ok: false,
+        error: appError('conflict', `A ${input.kind} job is already running for ${input.resourceKey}`),
+      });
+    }
     const jobId = this.nextId();
     const now = this.nowIso();
     this.records.set(jobId, {
@@ -54,6 +62,7 @@ export class InProcessJobsPort implements JobsPort {
       error: null,
       createdAt: now,
       updatedAt: now,
+      resourceKey: input.resourceKey,
     });
     const run = input.run;
     if (run === undefined) {

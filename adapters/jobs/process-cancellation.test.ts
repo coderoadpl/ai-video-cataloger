@@ -76,7 +76,7 @@ const makeDeps = (): ProcessDeps & {
     config: new InMemoryConfig(),
     fs,
     media: new InMemoryMedia(),
-    transcriber: new InMemoryTranscriber(),
+    transcriber: new InMemoryTranscriber(fs),
     analyzer: new InMemoryAnalyzer(),
   };
 };

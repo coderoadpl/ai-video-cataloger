@@ -218,6 +218,34 @@ terminal.
 - [ ] Backlog task recorded for Developer ID signing + notarization
   (deferred by owner decision — requires Apple Developer account)
 
+### Phase E — configuration-matrix e2e (owner-mandated 2026-07-17)
+
+#### US-611: E2E configuration matrix
+**Description:** As the owner, I want every analyzer/transcription
+configuration family exercised end-to-end so wiring bugs like "managed
+runtime unreachable from the analyzer" or "wizard writes a scope nothing
+reads" cannot ship again.
+
+**Acceptance Criteria:**
+- [ ] New e2e project (`test/e2e/matrix.spec.ts`) covering, per family:
+  - managed-Ollama: start the REAL managed runtime (no model) and assert an
+    analysis attempt reaches it on its dynamic port failing with
+    `model_not_installed` — never `ollama_unavailable`/wrong-port; a full
+    inference variant runs only when `E2E_LOCAL_MODEL` is present
+  - API: an in-process fake OpenAI-compatible server drives a full pipeline
+    run (frames → analysis → rename) with zero external network
+  - harness: a custom harness definition pointing at a stub script proves
+    the family end-to-end without invoking real agent CLIs
+  - transcription: managed whisper install path (temp HOME), API fake, skip
+- [ ] Wizard→folder GUI scenario: fresh HOME → wizard completes with an
+  actually-usable configuration (API-fake or stub-harness) → open a folder →
+  readiness gate reflects the wizard choices → a process run starts
+- [ ] Preflight extended per scenario (skip cleanly with a loud reason when
+  an environmental leg is impossible, never silently pass)
+- [ ] The matrix runs in `test:e2e:*` scripts, not `npm run check`
+- [ ] Each cell asserts through user-observable behavior (catalog/NDJSON/UI
+  state), not internals
+
 ## Functional Requirements
 
 - FR-1: Analyzer configuration is a closed, versioned schema covering the
