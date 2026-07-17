@@ -32,6 +32,7 @@ import {
   isJsonMode,
 } from './output.js';
 import { waitForJob } from './job-wait.js';
+import { runProgram } from './run-program.js';
 import {
   executeSetup,
   type SetupAnalyzer,
@@ -838,8 +839,9 @@ const confirmReset = async (message: string): Promise<boolean> => {
   }
 };
 
-try {
-  await program.parseAsync(process.argv);
-} finally {
-  await app.dispose();
-}
+const fatalExitCode = await runProgram(
+  () => program.parseAsync(process.argv),
+  () => app.dispose(),
+  (message) => process.stderr.write(message),
+);
+if (fatalExitCode !== null) process.exitCode = fatalExitCode;

@@ -163,6 +163,7 @@ export interface WhisperRuntimeStatus {
   managedInstalled: boolean;
   buildToolsAvailable: boolean;
   missingBuildTools: string[];
+  message?: string | undefined;
 }
 
 export interface WhisperRuntimeInstallProgress {

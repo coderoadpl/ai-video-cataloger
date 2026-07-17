@@ -179,8 +179,20 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
     const buildTools = await this.detectBuildTools();
     const configured = await this.config.get({ kind: 'home' }, 'whisper_binary_path');
     if (!configured.ok) return configured;
-    if (configured.value !== null && configured.value.length > 0 && await executableExists(configured.value)) {
-      return ok(await this.availableStatus(configured.value, 'configured', managedInstalled, buildTools));
+    if (configured.value !== null && configured.value.length > 0) {
+      if (await executableExists(configured.value)) {
+        return ok(await this.availableStatus(configured.value, 'configured', managedInstalled, buildTools));
+      }
+      return ok({
+        available: false,
+        path: configured.value,
+        source: 'configured',
+        version: null,
+        managedInstalled,
+        buildToolsAvailable: buildTools.missing.length === 0,
+        missingBuildTools: buildTools.missing,
+        message: `Configured Whisper binary is not executable: ${configured.value}`,
+      });
     }
     if (managedInstalled) {
       return ok(await this.availableStatus(managedPath, 'managed', true, buildTools));

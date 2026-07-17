@@ -367,14 +367,12 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       return { ok: false, error: appError('invalid_config_value', 'Local provider configuration is required') };
     }
     const startedAt = performance.now();
-    const ensured = await this.runtime.ensure();
-    if (!ensured.ok) return ensured;
     const status = await this.runtime.status();
     if (!status.ok) return status;
     const runtimeAvailable = status.value.runtimeUp;
     const modelAvailable = runtimeAvailable && isModelInstalled(status.value.installedModels, config.modelTag);
     const message = !runtimeAvailable
-      ? 'Local AI runtime is not running'
+      ? 'Local AI runtime is not running and starts on demand during pull or analysis'
       : modelAvailable
         ? `Local AI model ${config.modelTag} is installed`
         : `Local AI model ${config.modelTag} is not installed. Run: ai-video-cataloger models pull ${config.modelTag}`;

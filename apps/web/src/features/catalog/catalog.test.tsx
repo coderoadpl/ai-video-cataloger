@@ -186,4 +186,52 @@ describe('catalog', () => {
     await waitFor(() => expect(scanCalls).toBeGreaterThanOrEqual(2));
     expect(await screen.findByRole('img', { name: 'a.mp4' })).toBeDefined();
   });
+
+  it('clears the generating indicator when a scan refetch supersedes the active thumbnail run', async () => {
+    let scanCalls = 0;
+    let release: (() => void) | undefined;
+    const pending = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    server.use(
+      http.get('/api/scan', () => {
+        scanCalls += 1;
+        return HttpResponse.json({
+          ok: true,
+          data: makeScan([{
+            ...makeVideo({
+              path: '/videos/a.mp4',
+              contentHash: 'hash-a',
+              status: scanCalls === 1 ? 'pending' : 'analyzed',
+            }),
+            artifacts: {
+              ...makeVideo({ path: '/videos/a.mp4' }).artifacts,
+              thumbnailPath: null,
+              thumbnailMtime: null,
+            },
+          }]),
+        });
+      }),
+      http.post('/api/thumbnail', async () => {
+        await pending;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            video: 'a.mp4',
+            path: '/videos/a.mp4',
+            thumbnailPath: THUMB,
+            generated: true,
+            skipped: false,
+          },
+        });
+      }),
+    );
+
+    const { queryClient } = renderThemed(<Harness folder={FOLDER} />);
+
+    expect(await screen.findByText('Generating thumbnails…')).toBeDefined();
+    await queryClient.invalidateQueries();
+    await waitFor(() => expect(screen.queryByText('Generating thumbnails…')).toBeNull());
+    release?.();
+  });
 });

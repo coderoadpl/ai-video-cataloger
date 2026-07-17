@@ -69,6 +69,7 @@ const installHandlers = (
     apiAuthenticated?: boolean;
     harnessAvailable?: (providerId: string) => boolean;
     ready?: boolean;
+    rejectWhisperPath?: boolean;
   } = {},
 ): Recorders => {
   const recorders: Recorders = {
@@ -134,6 +135,12 @@ const installHandlers = (
     http.post('/api/config', async ({ request }) => {
       const body = configBodySchema.parse(await request.json());
       recorders.configWrites.push(body);
+      if (overrides.rejectWhisperPath === true && body.key === 'whisper_binary_path') {
+        return HttpResponse.json(
+          { ok: false, error: { code: 'invalid_config_value', message: `Whisper binary is not executable: ${body.value}` } },
+          { status: 400 },
+        );
+      }
       return ok({ key: body.key, value: body.value, previousValue: null });
     }),
     http.post('/api/credentials', async ({ request }) => {
@@ -295,6 +302,40 @@ describe('SetupWizard', () => {
     await screen.findByTestId('wizard-step-downloads');
     expect(screen.getAllByTestId('download-task')).toHaveLength(1);
     expect(screen.getByTestId('download-task').textContent).toContain('whisper model base');
+  });
+
+  it('disables advancing and does not persist an empty own-binary path', async () => {
+    const recorders = installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-own'));
+
+    expect(screen.getByTestId('wizard-next')).toHaveProperty('disabled', true);
+    expect(screen.getByTestId('wizard-step-transcription')).toBeDefined();
+    expect(recorders.configWrites.some((write) => write.key === 'whisper_binary_path')).toBe(false);
+  });
+
+  it('surfaces a non-executable own-binary path before persisting transcription mode', async () => {
+    const recorders = installHandlers({ rejectWhisperPath: true });
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-own'));
+    fireEvent.change(screen.getByLabelText('Whisper binary path'), { target: { value: '/missing/whisper' } });
+
+    clickNext();
+
+    expect((await screen.findByTestId('transcription-validation-error')).textContent).toContain('not executable');
+    expect(recorders.configWrites.some((write) => write.key === 'whisper_mode')).toBe(false);
   });
 
   it('does not list a managed whisper model that is already downloaded', async () => {

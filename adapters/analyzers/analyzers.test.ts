@@ -312,6 +312,25 @@ describe('OllamaAnalyzerAdapter', () => {
     expect(ready).toMatchObject({ ok: true, value: { available: true } });
   });
 
+  it('tests local connectivity without starting the managed runtime', async () => {
+    const runtime = new FakeLocalAiRuntime();
+    runtime.statusValue = { runtimeUp: false, runtimeVersion: '', installedModels: [] };
+    const adapter = new OllamaAnalyzerAdapter({ runtime });
+    const provider = { family: 'local', providerId: 'local', modelTag: 'gemma3:12b' } as const;
+
+    const result = await adapter.test(provider);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        runtimeAvailable: false,
+        modelAvailable: false,
+        message: expect.stringContaining('starts on demand'),
+      },
+    });
+    expect(runtime.ensureSignals).toEqual([]);
+  });
+
   it('keeps local readiness unavailable when feasibility is true but the runtime is down', async () => {
     const runtime = new FakeLocalAiRuntime();
     runtime.statusValue = {

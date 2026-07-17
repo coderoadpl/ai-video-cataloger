@@ -137,4 +137,17 @@ describe('process command', () => {
     expect(parseJsonEvents(result.stdout)).toEqual([]);
     expect(result.stderr).toContain('Invalid whisper mode: bogus');
   });
+
+  it('accepts legacy process flag values outside stored-config ranges', async () => {
+    const videoPath = createFakeVideoFile(testDir, 'test.mp4');
+
+    const result = await runCli(['process', videoPath, '--frames', '12', '--timeout', '20', '--json'], {
+      cwd: testDir,
+      env: { PATH: '/nonexistent' },
+    });
+    const started = findEvent(parseJsonEvents(result.stdout), 'started');
+
+    expect(started).toMatchObject({ data: { options: { frames: 12, timeout: 20 } } });
+    expect(findEvent(parseJsonEvents(result.stdout), 'error')?.code).not.toBe('VALIDATION');
+  });
 });

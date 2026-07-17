@@ -213,8 +213,8 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         await writeConfig('whisper_binary_path', '');
         return;
       case 'own':
-        await writeConfig('whisper_mode', 'local');
         await writeConfig('whisper_binary_path', whisperBinaryPath.trim());
+        await writeConfig('whisper_mode', 'local');
         return;
       case 'api':
         await writeConfig('whisper_mode', 'api');
@@ -228,6 +228,11 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const advanceTranscription = useCallback(async (): Promise<void> => {
     setValidation('testing');
     setValidationMessage(null);
+    if (transcriptionMode === 'own' && whisperBinaryPath.trim().length === 0) {
+      setValidation('error');
+      setValidationMessage('Whisper binary path is required');
+      return;
+    }
     try {
       await persistTranscription();
       setValidation('ok');
@@ -236,7 +241,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       setValidation('error');
       setValidationMessage(messageOf(error));
     }
-  }, [persistTranscription]);
+  }, [persistTranscription, transcriptionMode, whisperBinaryPath]);
 
   const pollJob = useCallback(
     async (jobId: string, label: string, index: number): Promise<boolean> => {

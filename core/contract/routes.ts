@@ -75,12 +75,12 @@ export const scanOutputSchema = z.object({
 });
 
 export const processInputSchema = videoPathInputSchema.extend({
-  frames: z.number().int().min(1).max(10).optional(),
+  frames: z.number().int().optional(),
   framesExplicit: z.boolean().optional(),
   skipRename: z.boolean().optional(),
   skipRenameExplicit: z.boolean().optional(),
   verbose: z.boolean().default(false),
-  timeout: z.number().int().min(30).max(600).optional(),
+  timeout: z.number().int().optional(),
   timeoutExplicit: z.boolean().optional(),
   whisper: z.enum(WHISPER_MODES).optional(),
   whisperExplicit: z.boolean().optional(),
@@ -336,6 +336,7 @@ export const whisperRuntimeStatusOutputSchema = z.object({
   managedInstalled: z.boolean(),
   buildToolsAvailable: z.boolean(),
   missingBuildTools: z.array(z.string()),
+  message: z.string().optional(),
 });
 
 export const whisperRuntimeInstallOutputSchema = z.object({

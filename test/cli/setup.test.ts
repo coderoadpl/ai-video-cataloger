@@ -223,6 +223,9 @@ describe('setup command workflow', () => {
     const deps = createDeps({ homeDirectory: home, workingDirectory: folder });
     const downloads = new InMemoryDownloads();
     const localAi = new InMemoryLocalAi();
+    const whisperPath = join(home, 'whisper');
+    writeFileSync(whisperPath, '#!/bin/sh\n');
+    chmodSync(whisperPath, 0o755);
     localAi.statusValue.installedModels = ['gemma3:12b'];
     deps.downloads = downloads;
     deps.localAi = localAi;
@@ -239,7 +242,7 @@ describe('setup command workflow', () => {
         analyzer: 'local',
         localModel: 'gemma3:12b',
         transcription: 'own',
-        whisperPath: '/opt/whisper',
+        whisperPath,
         whisperModel: 'base',
         yes: true,
       },
@@ -256,5 +259,41 @@ describe('setup command workflow', () => {
     expect(completed).toBe(true);
     expect(errors).toEqual([]);
     expect(downloads.downloaded).toContain('base');
+  });
+
+  it('rejects a non-executable own Whisper path before persisting it', async () => {
+    const home = createTestDir();
+    const folder = createTestDir();
+    roots.push(home, folder);
+    const deps = createDeps({ homeDirectory: home, workingDirectory: folder });
+    deps.analyzer = new InMemoryAnalyzer();
+    const api = createApiClient({ baseUrl: '', fetchImpl: (input, init) => buildApp(deps).request(input, init) });
+    const errors: AppError[] = [];
+    const missingPath = join(home, 'missing-whisper');
+
+    const completed = await executeSetup({
+      api,
+      folder,
+      options: {
+        analyzer: 'local',
+        localModel: 'gemma3:12b',
+        transcription: 'own',
+        whisperPath: missingPath,
+        yes: true,
+      },
+      output: {
+        started: () => undefined,
+        progress: () => undefined,
+        completed: () => undefined,
+        error: (error) => errors.push(error),
+        write: () => undefined,
+      },
+      environment: { HOME: home },
+    });
+    const stored = await deps.config.get({ kind: 'home' }, 'whisper_binary_path');
+
+    expect(completed).toBe(false);
+    expect(errors).toMatchObject([{ code: 'invalid_config_value', message: expect.stringContaining(missingPath) }]);
+    expect(stored).toEqual(ok(null));
   });
 });

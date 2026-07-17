@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { access, constants } from 'node:fs/promises';
 import packageJson from '../../../package.json' with { type: 'json' };
 
 import {
@@ -40,6 +41,9 @@ import type {
   FileStat,
   FileSystemPort,
   JobsPort,
+  JobExecutionContext,
+  JobKind,
+  JobRecord,
   LocalAiRuntimePort,
   MediaPort,
   ModelDownloadPort,
@@ -78,8 +82,8 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   const dbDriver = config.dbDriver ?? dbDriverFromEnv(process.env.DB_DRIVER);
   const workingDirectory = config.workingDirectory ?? process.cwd();
   const homeDirectory = config.homeDirectory;
-  const jobs = new InProcessJobsPort();
   const readiness = new ReadinessCache();
+  const jobs = new InvalidatingJobsPort(new InProcessJobsPort(), readiness);
   if (dbDriver === 'memory') {
     const configStore = new InvalidatingConfigStore(new InMemoryConfigStore(), readiness);
     const credentials = new InvalidatingCredentialsStore(new InMemoryCredentialsStore(), readiness);
@@ -144,9 +148,56 @@ class InvalidatingConfigStore implements ConfigStore {
     key: ConfigKey,
     value: string,
   ): Promise<Result<{ previousValue: string | null }, AppError>> {
+    if (key === 'whisper_binary_path' && value.length > 0) {
+      try {
+        await access(value, constants.X_OK);
+      } catch {
+        return {
+          ok: false,
+          error: appError('invalid_config_value', `Whisper binary is not executable: ${value}`),
+        };
+      }
+    }
     const result = await this.store.set(scope, key, value);
     if (result.ok) this.readiness.invalidate();
     return result;
+  }
+}
+
+class InvalidatingJobsPort implements JobsPort {
+  constructor(
+    private readonly jobs: JobsPort,
+    private readonly readiness: ReadinessCache,
+  ) {}
+
+  enqueue(input: {
+    kind: JobKind;
+    payload: unknown;
+    resourceKey?: string | undefined;
+    run?: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>;
+  }): Promise<Result<{ jobId: string }, AppError>> {
+    const run = input.run;
+    if (run === undefined || input.kind === 'process') return this.jobs.enqueue(input);
+    return this.jobs.enqueue({
+      ...input,
+      run: async (context) => {
+        const result = await run(context);
+        if (result.ok) this.readiness.invalidate();
+        return result;
+      },
+    });
+  }
+
+  get(jobId: string): Promise<Result<JobRecord | null, AppError>> {
+    return this.jobs.get(jobId);
+  }
+
+  list(): Promise<Result<JobRecord[], AppError>> {
+    return this.jobs.list();
+  }
+
+  cancel(jobId: string): Promise<Result<{ jobId: string; cancelled: boolean }, AppError>> {
+    return this.jobs.cancel(jobId);
   }
 }
 

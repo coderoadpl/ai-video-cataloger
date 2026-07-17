@@ -13,10 +13,12 @@ export interface ShellState {
   currentFolder: string | null;
   recentFolders: string[];
   isCheckingFolder: boolean;
+  folderError: string | null;
   openFolder: () => void;
   selectRecentFolder: (folderPath: string) => void;
   nestedDb: NestedDbState;
   closeNestedDb: () => void;
+  closeFolderError: () => void;
 }
 
 export const useShell = (): ShellState => {
@@ -26,6 +28,7 @@ export const useShell = (): ShellState => {
   const [recentFolders, setRecentFolders] = useState<string[]>([]);
   const [isCheckingFolder, setIsCheckingFolder] = useState(false);
   const [nestedDb, setNestedDb] = useState<NestedDbState>({ open: false, paths: [] });
+  const [folderError, setFolderError] = useState<string | null>(null);
 
   const refreshFolders = useCallback(async () => {
     const [current, recent] = await Promise.all([
@@ -51,16 +54,16 @@ export const useShell = (): ShellState => {
   const acceptFolder = useCallback(
     async (folderPath: string) => {
       setIsCheckingFolder(true);
+      setFolderError(null);
       try {
-        let nestedPaths: string[] | null = null;
         try {
           const check = await queryClient.fetchQuery(actions.check({ folder: folderPath }));
-          if (check.hasNestedDatabases) nestedPaths = check.nestedPaths;
-        } catch {
-          nestedPaths = null;
-        }
-        if (nestedPaths !== null) {
-          setNestedDb({ open: true, paths: nestedPaths });
+          if (check.hasNestedDatabases) {
+            setNestedDb({ open: true, paths: check.nestedPaths });
+            return;
+          }
+        } catch (error) {
+          setFolderError(error instanceof Error ? error.message : String(error));
           return;
         }
         await bridge.folder.setCurrent(folderPath);
@@ -75,6 +78,8 @@ export const useShell = (): ShellState => {
   const closeNestedDb = useCallback(() => {
     setNestedDb((current) => ({ ...current, open: false }));
   }, []);
+
+  const closeFolderError = useCallback(() => setFolderError(null), []);
 
   const openFolder = useCallback(() => {
     void (async () => {
@@ -113,9 +118,11 @@ export const useShell = (): ShellState => {
     currentFolder,
     recentFolders,
     isCheckingFolder,
+    folderError,
     openFolder,
     selectRecentFolder,
     nestedDb,
     closeNestedDb,
+    closeFolderError,
   };
 };

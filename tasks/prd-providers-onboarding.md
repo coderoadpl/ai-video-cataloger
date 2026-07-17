@@ -220,31 +220,54 @@ terminal.
 
 ### Phase E — configuration-matrix e2e (owner-mandated 2026-07-17)
 
-#### US-611: E2E configuration matrix
-**Description:** As the owner, I want every analyzer/transcription
-configuration family exercised end-to-end so wiring bugs like "managed
-runtime unreachable from the analyzer" or "wizard writes a scope nothing
-reads" cannot ship again.
+#### US-611: Full real E2E configuration matrix (owner: "real, complete —
+not cheap"; runs on demand after a work batch, never in the gates)
+
+**Description:** As the owner, I want EVERY analyzer/transcription
+configuration exercised end-to-end with the REAL thing — real managed
+runtimes, real model downloads, real inference, real API calls, real agent
+CLIs — so wiring bugs like "managed runtime unreachable from the analyzer"
+or "wizard writes a scope nothing reads" cannot ship again.
 
 **Acceptance Criteria:**
-- [ ] New e2e project (`test/e2e/matrix.spec.ts`) covering, per family:
-  - managed-Ollama: start the REAL managed runtime (no model) and assert an
-    analysis attempt reaches it on its dynamic port failing with
-    `model_not_installed` — never `ollama_unavailable`/wrong-port; a full
-    inference variant runs only when `E2E_LOCAL_MODEL` is present
-  - API: an in-process fake OpenAI-compatible server drives a full pipeline
-    run (frames → analysis → rename) with zero external network
-  - harness: a custom harness definition pointing at a stub script proves
-    the family end-to-end without invoking real agent CLIs
-  - transcription: managed whisper install path (temp HOME), API fake, skip
-- [ ] Wizard→folder GUI scenario: fresh HOME → wizard completes with an
-  actually-usable configuration (API-fake or stub-harness) → open a folder →
-  readiness gate reflects the wizard choices → a process run starts
-- [ ] Preflight extended per scenario (skip cleanly with a loud reason when
-  an environmental leg is impossible, never silently pass)
-- [ ] The matrix runs in `test:e2e:*` scripts, not `npm run check`
-- [ ] Each cell asserts through user-observable behavior (catalog/NDJSON/UI
-  state), not internals
+- [ ] New Playwright project `matrix` (`test/e2e/matrix.spec.ts`), invoked
+  by `npm run test:e2e:matrix` — deliberately NOT part of `check`/`smoke`/
+  the parity projects; documented in CLAUDE.md as the batch-end/pre-release
+  suite.
+- [ ] Analyzer cells, all REAL, each driving the full pipeline on a sample
+  video and asserting user-observable results (catalog status, rename,
+  summary content, NDJSON/UI states):
+  - **local-managed**: real managed Ollama runtime (downloaded/started by
+    the app on its dynamic port) + real vision model (`gemma3:4b` as the
+    matrix model — smallest supported tier) + real inference; also asserts
+    the no-model intermediate state fails as `model_not_installed`, never
+    unreachable/wrong-port
+  - **local-system**: system daemon path (existing S1-local coverage,
+    folded into the matrix)
+  - **api**: real OpenAI-compatible round-trip through the api adapter
+    against Ollama's native `/v1` endpoint (default: local daemon +
+    `gemma3:4b`, dummy key — Ollama ignores auth; real inference, real
+    protocol). `E2E_API_BASE_URL`/`E2E_API_KEY`/`E2E_API_MODEL` switch the
+    same cell to a real cloud provider when the owner supplies a key
+    (per-call cost accepted then); 401-mapping stays unit-covered
+  - **harness × 3**: real `claude`, real `codex`, real `cursor-agent`
+    non-interactive invocations, one cell each
+- [ ] Transcription cells, all REAL: managed whisper.cpp (app-installed
+  binary + real model), configured-path binary, OpenAI whisper API (real
+  key), and skip — crossed with at least one analyzer each rather than the
+  full cross-product where redundant.
+- [ ] Wizard→folder GUI cell: fresh app HOME → wizard completes a REAL
+  working configuration → open a folder → readiness gate reflects the
+  choices → a real process run succeeds.
+- [ ] **Big-artifact caching**: model/runtime downloads land in a persistent
+  matrix cache (`~/repositories/claude-tmp/avc-e2e-matrix-home/`), reused
+  across runs — first run pays the downloads (~4 GB), later runs are
+  minutes; per-test folder state stays isolated per run.
+- [ ] Preflight per cell: a cell whose environmental leg is missing (no API
+  key, CLI not installed/authenticated) FAILS LOUDLY with the reason —
+  never silently skips to green; an explicit `E2E_MATRIX_ALLOW_SKIP` env
+  exists for machines that genuinely lack a leg.
+- [ ] A summary table is printed at the end: cell × result × duration.
 
 ## Functional Requirements
 

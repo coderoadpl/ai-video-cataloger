@@ -1,4 +1,6 @@
 import type { ApiClient } from '@core/client/index.js';
+import { access, constants } from 'node:fs/promises';
+
 import {
   WHISPER_MODEL_NAMES,
   analyzerProviderConfigSchema,
@@ -340,6 +342,14 @@ const selectTranscription = async (
   if (mode === 'own' && whisperPath.trim().length === 0) {
     context.output.error(appError('invalid_config_value', 'The own transcription source requires --whisper-path'));
     return null;
+  }
+  if (mode === 'own') {
+    try {
+      await access(whisperPath.trim(), constants.X_OK);
+    } catch {
+      context.output.error(appError('invalid_config_value', `Whisper binary is not executable: ${whisperPath.trim()}`));
+      return null;
+    }
   }
   return { mode, whisperPath: whisperPath.trim(), whisperModel: context.options.whisperModel ?? existing.whisperModel };
 };

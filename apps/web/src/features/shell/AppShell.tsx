@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
+import { Alert, Snackbar } from '@mui/material';
 
 import { AppHeader } from '../../components/ui/AppHeader.js';
 import { AppLayout } from '../../components/ui/AppLayout.js';
@@ -111,6 +112,9 @@ export const AppShell = ({
         paths={shell.nestedDb.paths}
         onClose={shell.closeNestedDb}
       />
+      <Snackbar open={shell.folderError !== null} onClose={shell.closeFolderError}>
+        <Alert severity="error" onClose={shell.closeFolderError}>{shell.folderError}</Alert>
+      </Snackbar>
       {overlays}
       {renderModals?.({ modal, close: () => setModal(null) })}
     </>

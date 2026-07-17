@@ -27,7 +27,10 @@ export const useThumbnailGeneration = (
     const missing = videos.filter(
       (video) => video.artifacts.thumbnailPath === null && !attemptedRef.current.has(video.path),
     );
-    if (missing.length === 0) return;
+    if (missing.length === 0) {
+      setIsGenerating(false);
+      return;
+    }
 
     const runId = (runIdRef.current += 1);
     let cancelled = false;

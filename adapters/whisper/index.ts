@@ -489,6 +489,8 @@ const runtimeDependency = (runtime: WhisperRuntimeStatus): DependencyStatus => (
   path: runtime.path,
   installHint: runtime.available
     ? ''
+    : runtime.message !== undefined
+      ? runtime.message
     : runtime.buildToolsAvailable
       ? 'Install the managed whisper.cpp runtime or configure whisper_binary_path'
       : `Managed whisper.cpp requires ${runtime.missingBuildTools.join(' and ')}`,
