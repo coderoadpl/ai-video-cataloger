@@ -1,5 +1,6 @@
 "use client";
 
+import { DOWNLOAD_URL } from "@/lib/download";
 import Marquee from "@/components/magicui/marquee";
 import { buttonVariants } from "@/components/ui/button";
 import type { Dictionary } from "@/lib/i18n";
@@ -66,7 +67,7 @@ export default function CallToActionSection({ dict }: { dict: Dictionary }) {
                   {dict.cta.line}
                 </p>
                 <a
-                  href="/downloads/AI-Video-Cataloger-0.1.0-arm64.dmg"
+                  href={DOWNLOAD_URL}
                   download
                   className={cn(
                     buttonVariants({

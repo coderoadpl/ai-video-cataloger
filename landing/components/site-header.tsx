@@ -1,5 +1,6 @@
 "use client";
 
+import { DOWNLOAD_URL } from "@/lib/download";
 import { buttonVariants } from "@/components/ui/button";
 import type { Dictionary } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
@@ -83,7 +84,7 @@ export function SiteHeader({ dict }: { dict: Dictionary }) {
           </button>
           <a
             className={cn(buttonVariants({ size: "sm" }), "rounded-lg text-xs")}
-            href="/downloads/AI-Video-Cataloger-0.1.0-arm64.dmg"
+            href={DOWNLOAD_URL}
             download
           >
             {dict.header.download}

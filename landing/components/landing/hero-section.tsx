@@ -1,5 +1,6 @@
 "use client";
 
+import { DOWNLOAD_URL } from "@/lib/download";
 import { BorderBeam } from "@/components/magicui/border-beam";
 import TextShimmer from "@/components/magicui/text-shimmer";
 import { Button } from "@/components/ui/button";
@@ -35,7 +36,7 @@ export default function HeroSection({ dict }: { dict: Dictionary }) {
           size="lg"
         >
           <a
-            href="/downloads/AI-Video-Cataloger-0.1.0-arm64.dmg"
+            href={DOWNLOAD_URL}
             download
           >
             <span>{dict.hero.primaryButton}</span>
