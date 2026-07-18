@@ -1,29 +1,15 @@
+import type { Dictionary } from "@/lib/i18n";
 import { ArrowRight } from "lucide-react";
 
-const renames = [
-  {
-    oldName: "IMG_4021.mp4",
-    newName: "2026-07-18_jellyfish-underwater-scene.mp4",
-  },
-  {
-    oldName: "VID_20250612_183355.mp4",
-    newName: "2026-07-18_gatekeeper-desert-dragon.mp4",
-  },
-  {
-    oldName: "clip_final_v2.mp4",
-    newName: "2026-07-18_pasta-with-tomato-sauce.mp4",
-  },
-];
-
-export default function BeforeAfterSection() {
+export default function BeforeAfterSection({ dict }: { dict: Dictionary }) {
   return (
     <section className="mx-auto max-w-[80rem] px-6 py-24 md:px-8">
       <div className="mx-auto max-w-3xl text-center translate-y-[-1rem] animate-fade-in opacity-0">
-        <h2 className="bg-gradient-to-br from-white from-30% to-white/40 bg-clip-text text-3xl font-medium tracking-tight text-transparent sm:text-4xl md:text-5xl">
-          From camera noise to a searchable library
+        <h2 className="bg-gradient-to-br from-black from-30% to-black/40 bg-clip-text text-3xl font-medium tracking-tight text-transparent dark:from-white dark:to-white/40 sm:text-4xl md:text-5xl">
+          {dict.beforeAfter.heading}
         </h2>
-        <p className="mt-4 text-base text-gray-400 md:text-lg">
-          Real output from the app - these are actual renames it produced:
+        <p className="mt-4 text-base text-gray-600 dark:text-gray-400 md:text-lg">
+          {dict.beforeAfter.subline}
         </p>
       </div>
       <div className="relative mx-auto mt-10 max-w-5xl overflow-hidden rounded-xl border border-white/10 bg-zinc-950/80 shadow-2xl shadow-black/40 backdrop-blur translate-y-[-1rem] animate-fade-in opacity-0 [--animation-delay:160ms]">
@@ -33,7 +19,7 @@ export default function BeforeAfterSection() {
           <span className="size-3 rounded-full bg-green-500/80" />
         </div>
         <div className="divide-y divide-white/10 font-mono text-sm">
-          {renames.map((rename, index) => (
+          {dict.beforeAfter.renames.map((rename, index) => (
             <div
               key={rename.oldName}
               className="flex flex-col gap-3 px-4 py-5 sm:flex-row sm:items-center sm:px-6"

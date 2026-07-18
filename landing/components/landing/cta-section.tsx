@@ -2,6 +2,7 @@
 
 import Marquee from "@/components/magicui/marquee";
 import { buttonVariants } from "@/components/ui/button";
+import type { Dictionary } from "@/lib/i18n";
 import { cn } from "@/lib/utils";
 import {
   Bot,
@@ -31,7 +32,7 @@ function Tile({ icon: Icon }: { icon: (typeof tiles)[number] }) {
   );
 }
 
-export default function CallToActionSection() {
+export default function CallToActionSection({ dict }: { dict: Dictionary }) {
   return (
     <section id="cta">
       <div className="py-14">
@@ -58,10 +59,10 @@ export default function CallToActionSection() {
               </div>
               <div className="z-10 mt-4 flex flex-col items-center text-center text-primary">
                 <h2 className="text-3xl font-bold lg:text-4xl">
-                  Ready to clean up your video folders?
+                  {dict.cta.heading}
                 </h2>
                 <p className="mt-2">
-                  Early alpha. macOS today - Windows and Linux coming soon.
+                  {dict.cta.line}
                 </p>
                 <a
                   href="/downloads/AI-Video-Cataloger-0.1.0-arm64.dmg"
@@ -74,7 +75,7 @@ export default function CallToActionSection() {
                     "group mt-4 rounded-[2rem] px-6"
                   )}
                 >
-                  Download for macOS
+                  {dict.cta.button}
                   <ChevronRight className="ml-1 size-4 transition-all duration-300 ease-out group-hover:translate-x-1" />
                 </a>
               </div>
