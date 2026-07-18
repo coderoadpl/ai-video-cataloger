@@ -1,0 +1,20 @@
+import Link from "next/link";
+
+export function SiteBanner() {
+  return (
+    <div className="relative top-0 bg-gradient-to-r from-[#2563eb] to-[#7c3aed] text-white py-3 md:py-0">
+      <div className="container flex flex-col items-center justify-center gap-4 md:h-12 md:flex-row">
+        <Link
+          href="/downloads/AI-Video-Cataloger-0.1.0-arm64.dmg"
+          download
+          className="text-center text-sm leading-loose text-muted-background"
+        >
+          <span className="font-bold">
+            macOS only - Apple Silicon - free download
+          </span>
+        </Link>
+      </div>
+      <hr className="absolute bottom-0 m-0 h-px w-full bg-neutral-200/30" />
+    </div>
+  );
+}
