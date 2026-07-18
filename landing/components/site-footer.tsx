@@ -8,7 +8,15 @@ export function SiteFooter() {
           <img src="/logo.svg" alt="" aria-hidden="true" className="h-7 w-7" />
           <span>AI Video Cataloger - built by CodeRoad</span>
         </Link>
-        <span>v0.1.0 early alpha - macOS only (Apple Silicon)</span>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+          <span>v0.1.0 early alpha - macOS only (Apple Silicon)</span>
+          <a
+            href="mailto:kontakt@coderoad.pl?subject=AI%20Video%20Cataloger%20feedback"
+            className="text-gray-300 underline underline-offset-4 transition-colors hover:text-white"
+          >
+            Send feedback
+          </a>
+        </div>
       </div>
     </footer>
   );

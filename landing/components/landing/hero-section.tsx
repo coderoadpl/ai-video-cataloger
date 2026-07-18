@@ -48,7 +48,14 @@ export default function HeroSection() {
         </p>
         <p className="max-w-md text-xs text-gray-600 dark:text-gray-500">
           The app is not notarized yet: on first launch, right-click the app and
-          choose Open. Expect rough edges - and please report them.
+          choose Open. Expect rough edges - and{" "}
+          <a
+            href="mailto:kontakt@coderoad.pl?subject=AI%20Video%20Cataloger%20feedback"
+            className="text-gray-300 underline underline-offset-4 transition-colors hover:text-white"
+          >
+            please report them
+          </a>
+          .
         </p>
       </div>
       <div
@@ -68,8 +75,9 @@ export default function HeroSection() {
             colorTo="var(--color-two)"
           />
           <img
-            src="/hero-dark.png"
+            src="/hero-dark.webp"
             alt="AI Video Cataloger app window"
+            fetchPriority="high"
             className="relative w-full h-full rounded-[inherit] border object-contain"
           />
         </div>

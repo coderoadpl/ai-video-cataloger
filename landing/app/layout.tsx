@@ -9,9 +9,26 @@ const fontSans = FontSans({
   variable: "--font-sans",
 });
 export const metadata: Metadata = {
+  metadataBase: new URL("https://ai-video-cataloger.web.app"),
   title: "AI Video Cataloger - AI-organized video library for macOS",
   description:
     "Local-first macOS app that watches, transcribes, summarizes and renames videos by what is inside, with local Ollama, OpenAI-compatible APIs, or agent CLIs.",
+  openGraph: {
+    title: "AI Video Cataloger - AI-organized video library for macOS",
+    description:
+      "Local-first macOS app that watches, transcribes, summarizes and renames videos by what is inside, with local Ollama, OpenAI-compatible APIs, or agent CLIs.",
+    url: "/",
+    siteName: "AI Video Cataloger",
+    images: [{ url: "/hero-dark.png", width: 2320, height: 1624 }],
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "AI Video Cataloger - AI-organized video library for macOS",
+    description:
+      "Local-first macOS app that watches, transcribes, summarizes and renames videos by what is inside, with local Ollama, OpenAI-compatible APIs, or agent CLIs.",
+    images: ["/hero-dark.png"],
+  },
   icons: {
     icon: "/logo.svg",
   },
