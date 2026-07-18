@@ -39,6 +39,9 @@ export function SiteHeader({ dict }: { dict: Dictionary }) {
             <a className="transition-colors hover:text-black dark:hover:text-white" href="#features">
               {dict.header.nav.features}
             </a>
+            <a className="transition-colors hover:text-black dark:hover:text-white" href="#privacy">
+              {dict.header.nav.privacy}
+            </a>
             <a className="transition-colors hover:text-black dark:hover:text-white" href="#faq">
               {dict.header.nav.faq}
             </a>

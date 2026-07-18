@@ -13,6 +13,7 @@ export type Dictionary = {
     nav: {
       howItWorks: string;
       features: string;
+      privacy: string;
       faq: string;
     };
     languageLabel: string;
@@ -52,10 +53,35 @@ export type Dictionary = {
     title: string;
     description: string;
   }>;
+  privacy: {
+    heading: string;
+    intro: string;
+    cards: Array<{
+      title: string;
+      description: string;
+    }>;
+  };
   cli: {
     heading: string;
     subline: string;
     lines: string[];
+  };
+  requirements: {
+    heading: string;
+    baseline: string;
+    tiers: Array<{
+      size: string;
+      badge: string;
+      description: string;
+    }>;
+    warning: string;
+    diskHeading: string;
+    diskItems: Array<{
+      label: string;
+      size: string;
+      sizeMb: number;
+    }>;
+    closing: string;
   };
   faq: {
     heading: string;
@@ -112,6 +138,7 @@ export const en: Dictionary = {
     nav: {
       howItWorks: "How it works",
       features: "Features",
+      privacy: "Privacy",
       faq: "FAQ",
     },
     languageLabel: "Language",
@@ -192,11 +219,83 @@ export const en: Dictionary = {
         "A clean desktop app plus a first-class CLI with JSON output for scripts and automation.",
     },
   ],
+  privacy: {
+    heading: "Private by design",
+    intro: "Your footage is personal. The app is built so it can stay that way.",
+    cards: [
+      {
+        title: "Runs on your Mac",
+        description:
+          "Frames, audio, transcripts, summaries and the catalog live inside your folders. With local models, nothing ever leaves the machine.",
+      },
+      {
+        title: "Cloud only when you say so",
+        description:
+          "An OpenAI-compatible API or an agent CLI is used only if you configure it - your key, your choice, and only for the analysis step.",
+      },
+      {
+        title: "No telemetry by default",
+        description:
+          "No analytics, no tracking, no phoning home. The app works fully offline with local models.",
+      },
+    ],
+  },
   cli: {
     heading: "Scriptable to the bone",
     subline:
       "The same engine ships as a first-class CLI: NDJSON events, honest exit codes, perfect for cron jobs and automations.",
     lines: sharedCliLines,
+  },
+  requirements: {
+    heading: "Will it run on your Mac?",
+    baseline:
+      "Apple Silicon Mac (M1 or newer) - macOS - the app itself is a ~153 MB download",
+    tiers: [
+      {
+        size: "8 GB",
+        badge: "minimum",
+        description:
+          "Fine with the API or agent-CLI backends and the smallest local models - expect the Mac to be busy while it analyzes.",
+      },
+      {
+        size: "16 GB",
+        badge: "recommended",
+        description:
+          "Comfortable local analysis on mid-size models while you keep working.",
+      },
+      {
+        size: "24 GB+",
+        badge: "headroom",
+        description: "Room for larger, noticeably smarter local models.",
+      },
+    ],
+    warning:
+      "A local model has to fit in memory next to macOS and your other apps - the system alone uses several GB of RAM.",
+    diskHeading: "Disk space for models",
+    diskItems: [
+      {
+        label: "Whisper tiny",
+        size: "75 MB",
+        sizeMb: 75,
+      },
+      {
+        label: "Whisper large",
+        size: "1.5 GB",
+        sizeMb: 1500,
+      },
+      {
+        label: "Vision model (4B)",
+        size: "~3.3 GB",
+        sizeMb: 3300,
+      },
+      {
+        label: "Vision model (12B)",
+        size: "~8 GB",
+        sizeMb: 8000,
+      },
+    ],
+    closing:
+      "You choose what to install in the setup wizard - nothing is downloaded without asking.",
   },
   faq: {
     heading: "Questions, answered",
@@ -264,6 +363,7 @@ export const pl: Dictionary = {
     nav: {
       howItWorks: "Jak to działa",
       features: "Funkcje",
+      privacy: "Prywatność",
       faq: "FAQ",
     },
     languageLabel: "Język",
@@ -345,11 +445,85 @@ export const pl: Dictionary = {
         "Porządna aplikacja desktopowa plus pełnoprawne CLI z wyjściem JSON do skryptów i automatyzacji.",
     },
   ],
+  privacy: {
+    heading: "Prywatność w standardzie",
+    intro:
+      "Twoje nagrania to prywatna sprawa. Aplikacja jest zbudowana tak, żeby mogła nią pozostać.",
+    cards: [
+      {
+        title: "Działa na Twoim Macu",
+        description:
+          "Klatki, audio, transkrypcje, streszczenia i katalog żyją w Twoich folderach. Z modelami lokalnymi nic nigdy nie opuszcza komputera.",
+      },
+      {
+        title: "Chmura tylko na Twoje życzenie",
+        description:
+          "API zgodne z OpenAI albo agentowe CLI działają wyłącznie wtedy, gdy je skonfigurujesz - Twój klucz, Twoja decyzja i tylko etap analizy.",
+      },
+      {
+        title: "Zero telemetrii domyślnie",
+        description:
+          "Bez analityki, bez śledzenia, bez dzwonienia do domu. Z modelami lokalnymi aplikacja działa w pełni offline.",
+      },
+    ],
+  },
   cli: {
     heading: "Skryptowalny do szpiku",
     subline:
       "Ten sam silnik działa jako pełnoprawne CLI: zdarzenia NDJSON, uczciwe kody wyjścia - idealne do crona i automatyzacji.",
     lines: sharedCliLines,
+  },
+  requirements: {
+    heading: "Czy to ruszy na Twoim Macu?",
+    baseline:
+      "Mac z Apple Silicon (M1 lub nowszy) - macOS - sama aplikacja to pobranie ok. 153 MB",
+    tiers: [
+      {
+        size: "8 GB",
+        badge: "minimum",
+        description:
+          "Wystarczy dla backendu API lub agentowego CLI i najmniejszych modeli lokalnych - podczas analizy Mac będzie wyraźnie zajęty.",
+      },
+      {
+        size: "16 GB",
+        badge: "zalecane",
+        description:
+          "Komfortowa analiza lokalna na średnich modelach bez przerywania pracy.",
+      },
+      {
+        size: "24 GB+",
+        badge: "zapas",
+        description:
+          "Miejsce na większe, zauważalnie mądrzejsze modele lokalne.",
+      },
+    ],
+    warning:
+      "Model lokalny musi zmieścić się w pamięci obok macOS i Twoich pozostałych aplikacji - sam system zajmuje kilka GB RAM-u.",
+    diskHeading: "Miejsce na dysku na modele",
+    diskItems: [
+      {
+        label: "Whisper tiny",
+        size: "75 MB",
+        sizeMb: 75,
+      },
+      {
+        label: "Whisper large",
+        size: "1,5 GB",
+        sizeMb: 1500,
+      },
+      {
+        label: "Model wizyjny (4B)",
+        size: "ok. 3,3 GB",
+        sizeMb: 3300,
+      },
+      {
+        label: "Model wizyjny (12B)",
+        size: "ok. 8 GB",
+        sizeMb: 8000,
+      },
+    ],
+    closing:
+      "O tym, co zainstalować, decydujesz w kreatorze - nic nie pobiera się bez pytania.",
   },
   faq: {
     heading: "Pytania i odpowiedzi",

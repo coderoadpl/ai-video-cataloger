@@ -5,6 +5,8 @@ import FaqSection from "@/components/landing/faq-section";
 import FeaturesSection from "@/components/landing/features-section";
 import HeroSection from "@/components/landing/hero-section";
 import HowItWorksSection from "@/components/landing/how-it-works-section";
+import PrivacySection from "@/components/landing/privacy-section";
+import RequirementsSection from "@/components/landing/requirements-section";
 import Particles from "@/components/magicui/particles";
 import type { Dictionary } from "@/lib/i18n";
 
@@ -15,7 +17,9 @@ export default function LandingPage({ dict }: { dict: Dictionary }) {
       <BeforeAfterSection dict={dict} />
       <HowItWorksSection dict={dict} />
       <FeaturesSection dict={dict} />
+      <PrivacySection dict={dict} />
       <CliSection dict={dict} />
+      <RequirementsSection dict={dict} />
       <FaqSection dict={dict} />
       <CallToActionSection dict={dict} />
       <Particles
