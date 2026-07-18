@@ -7,9 +7,9 @@ export default function RequirementsSection({ dict }: { dict: Dictionary }) {
   );
 
   return (
-    <section id="requirements" className="mx-auto max-w-[80rem] px-6 py-24 md:px-8">
+    <section id="requirements" className="mx-auto max-w-[80rem] px-6 py-28 md:px-8">
       <div className="mx-auto max-w-3xl text-center translate-y-[-1rem] animate-fade-in opacity-0">
-        <h2 className="bg-gradient-to-br from-black from-30% to-black/40 bg-clip-text text-3xl font-medium tracking-tight text-transparent dark:from-white dark:to-white/40 sm:text-4xl md:text-5xl">
+        <h2 className="bg-gradient-to-br from-black from-30% to-gray-600 bg-clip-text text-3xl font-medium tracking-tight text-transparent text-balance dark:from-white dark:to-white/70 sm:text-4xl md:text-5xl">
           {dict.requirements.heading}
         </h2>
       </div>
@@ -37,30 +37,48 @@ export default function RequirementsSection({ dict }: { dict: Dictionary }) {
         {dict.requirements.tiers.map((tier, index) => (
           <div
             key={tier.size}
-            className="relative overflow-hidden rounded-lg border bg-background/60 p-6 shadow-sm backdrop-blur translate-y-[-1rem] animate-fade-in opacity-0"
+            className={`relative overflow-hidden rounded-lg shadow-sm backdrop-blur translate-y-[-1rem] animate-fade-in opacity-0 ${
+              index === 1
+                ? "border border-transparent bg-gradient-to-r from-[var(--color-one)] to-[var(--color-two)] p-px shadow-lg shadow-blue-500/10"
+                : "border bg-background/60 p-6"
+            }`}
             style={{
               animationDelay: `${120 + index * 100}ms`,
             }}
           >
-            <div className="flex items-start justify-between gap-4">
-              <div className="flex size-11 items-center justify-center rounded-lg border bg-white/70 text-foreground shadow-sm dark:bg-white/10 dark:text-white">
-                <Cpu className="size-5" />
+            <div
+              className={
+                index === 1
+                  ? "rounded-[7px] bg-background/95 p-6 backdrop-blur dark:bg-zinc-950/90"
+                  : ""
+              }
+            >
+              <div className="flex items-start justify-between gap-4">
+                <div className="flex size-11 items-center justify-center rounded-lg border bg-white/70 text-foreground shadow-sm dark:bg-white/10 dark:text-white">
+                  <Cpu className="size-5" />
+                </div>
+                <span
+                  className={
+                    index === 1
+                      ? "rounded-full bg-gradient-to-r from-[#2563eb] to-[#7c3aed] px-2.5 py-1 text-xs font-medium text-white shadow-sm shadow-blue-500/20"
+                      : "rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200"
+                  }
+                >
+                  {tier.badge}
+                </span>
               </div>
-              <span className="rounded-full border border-blue-200 bg-blue-50 px-2.5 py-1 text-xs font-medium text-blue-700 dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-200">
-                {tier.badge}
-              </span>
+              <h3 className="mt-6 text-3xl font-medium tracking-tight">
+                {tier.size}
+              </h3>
+              <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">
+                {tier.description}
+              </p>
+              <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[var(--color-one)] to-transparent" />
             </div>
-            <h3 className="mt-6 text-3xl font-medium tracking-tight">
-              {tier.size}
-            </h3>
-            <p className="mt-3 text-sm leading-6 text-gray-500 dark:text-gray-400">
-              {tier.description}
-            </p>
-            <div className="absolute inset-x-0 bottom-0 h-px bg-gradient-to-r from-transparent via-[var(--color-one)] to-transparent" />
           </div>
         ))}
       </div>
-      <div className="mx-auto mt-5 flex max-w-3xl items-start gap-3 rounded-lg border border-amber-300/70 bg-amber-50 px-4 py-3 text-sm leading-6 text-amber-950 shadow-sm translate-y-[-1rem] animate-fade-in opacity-0 [--animation-delay:420ms] dark:border-amber-400/20 dark:bg-amber-400/10 dark:text-amber-100">
+      <div className="mx-auto mt-5 flex max-w-3xl items-start gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm leading-6 text-blue-950 shadow-sm translate-y-[-1rem] animate-fade-in opacity-0 [--animation-delay:420ms] dark:border-blue-400/20 dark:bg-blue-400/10 dark:text-blue-100">
         <AlertTriangle className="mt-0.5 size-4 shrink-0" />
         <p>{dict.requirements.warning}</p>
       </div>
@@ -79,7 +97,7 @@ export default function RequirementsSection({ dict }: { dict: Dictionary }) {
         </div>
         <div className="space-y-5">
           {dict.requirements.diskItems.map((item) => {
-            const width = Math.max(10, (item.sizeMb / maxSizeMb) * 100);
+            const width = Math.max(8, (item.sizeMb / maxSizeMb) * 100);
 
             return (
               <div key={item.label}>

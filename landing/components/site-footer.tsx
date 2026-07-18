@@ -5,8 +5,8 @@ export function SiteFooter({ dict }: { dict: Dictionary }) {
   const homeHref = dict.locale === "en" ? "/" : "/pl/";
 
   return (
-    <footer>
-      <div className="mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-8 py-10 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between dark:text-gray-400">
+    <footer className="border-t border-neutral-200 dark:border-white/10">
+      <div className="mx-auto flex w-full max-w-screen-xl flex-col gap-4 px-8 py-12 text-sm text-gray-500 sm:flex-row sm:items-center sm:justify-between dark:text-gray-400">
         <Link href={homeHref} className="flex items-center gap-2">
           <img src="/logo.svg" alt="" aria-hidden="true" className="h-7 w-7" />
           <span>{dict.footer.builtBy}</span>

@@ -17,12 +17,12 @@ export default function HeroSection({ dict }: { dict: Dictionary }) {
       id="hero"
       className="relative mx-auto mt-[5.5rem] max-w-[80rem] px-6 text-center md:px-8"
     >
-      <div className="backdrop-filter-[12px] inline-flex h-7 items-center justify-between rounded-full border border-border bg-black/5 px-3 text-xs text-black transition-all ease-in hover:cursor-pointer hover:bg-black/10 group gap-1 translate-y-[-1rem] animate-fade-in opacity-0 dark:bg-white/10 dark:text-black dark:hover:bg-white/20">
-        <TextShimmer className="inline-flex items-center justify-center">
+      <div className="backdrop-filter-[12px] inline-flex h-7 items-center justify-between rounded-full border border-border bg-black/5 px-3 text-xs text-gray-700 transition-all ease-in hover:cursor-pointer hover:bg-black/10 group gap-1 translate-y-[-1rem] animate-fade-in opacity-0 dark:border-white/15 dark:bg-white/10 dark:text-gray-200 dark:hover:bg-white/20">
+        <TextShimmer className="inline-flex items-center justify-center text-gray-700 dark:text-gray-200">
           <span>{dict.hero.badge}</span>
         </TextShimmer>
       </div>
-      <h1 className="bg-gradient-to-br dark:from-white from-black from-30% dark:to-white/40 to-black/40 bg-clip-text py-6 text-5xl font-medium leading-none tracking-tighter text-transparent text-balance sm:text-6xl md:text-7xl lg:text-8xl translate-y-[-1rem] animate-fade-in opacity-0 [--animation-delay:200ms]">
+      <h1 className="bg-gradient-to-br dark:from-white from-black from-30% dark:to-white/70 to-gray-600 bg-clip-text py-6 text-5xl font-medium leading-none tracking-tighter text-transparent text-balance sm:text-6xl md:text-7xl lg:text-8xl translate-y-[-1rem] animate-fade-in opacity-0 [--animation-delay:200ms]">
         {dict.hero.title}
       </h1>
       <p className="mx-auto mb-8 max-w-3xl text-lg tracking-tight text-gray-500 md:text-xl dark:text-gray-400 text-balance translate-y-[-1rem] animate-fade-in opacity-0 [--animation-delay:400ms]">
@@ -45,7 +45,7 @@ export default function HeroSection({ dict }: { dict: Dictionary }) {
         <p className="text-sm text-gray-500 dark:text-gray-400">
           {dict.hero.subNote}
         </p>
-        <p className="max-w-md text-xs text-gray-600 dark:text-gray-500">
+        <p className="max-w-md text-xs text-gray-600 text-balance dark:text-gray-500">
           {dict.hero.gatekeeperPrefix}
           <a
             href="mailto:kontakt@coderoad.pl?subject=AI%20Video%20Cataloger%20feedback"

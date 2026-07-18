@@ -82,7 +82,7 @@ export function SiteHeader({ dict }: { dict: Dictionary }) {
             {isDark ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </button>
           <a
-            className={cn(buttonVariants({ variant: "secondary" }), "text-sm")}
+            className={cn(buttonVariants({ size: "sm" }), "rounded-lg text-xs")}
             href="/downloads/AI-Video-Cataloger-0.1.0-arm64.dmg"
             download
           >

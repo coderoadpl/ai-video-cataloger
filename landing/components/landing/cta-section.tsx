@@ -35,7 +35,7 @@ function Tile({ icon: Icon }: { icon: (typeof tiles)[number] }) {
 export default function CallToActionSection({ dict }: { dict: Dictionary }) {
   return (
     <section id="cta">
-      <div className="py-14">
+      <div className="py-28">
         <div className="flex w-full flex-col items-center justify-center">
           <div className="relative flex w-full flex-col items-center justify-center overflow-hidden">
             <Marquee reverse className="-delay-[200ms] [--duration:24s]" repeat={5}>
@@ -43,22 +43,23 @@ export default function CallToActionSection({ dict }: { dict: Dictionary }) {
                 <Tile key={index} icon={icon} />
               ))}
             </Marquee>
-            <Marquee reverse className="[--duration:34s]" repeat={5}>
+            <Marquee reverse className="opacity-15 [--duration:34s]" repeat={5}>
               {[...tiles].reverse().map((icon, index) => (
                 <Tile key={index} icon={icon} />
               ))}
             </Marquee>
-            <Marquee reverse className="-delay-[200ms] [--duration:24s]" repeat={5}>
+            <Marquee reverse className="-delay-[200ms] opacity-15 [--duration:24s]" repeat={5}>
               {tiles.map((icon, index) => (
                 <Tile key={index} icon={icon} />
               ))}
             </Marquee>
-            <div className="absolute z-10 px-6">
+            <div className="absolute z-20 px-6 py-12">
+              <div className="pointer-events-none absolute left-1/2 top-1/2 -z-10 h-72 w-[min(44rem,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 rounded-[999px] bg-background/95 blur-3xl dark:bg-background/95" />
               <div className="mx-auto size-24 rounded-[2rem] border bg-background/10 p-3 shadow-2xl backdrop-blur-md dark:bg-background/10 lg:size-32">
                 <Tags className="mx-auto size-16 text-foreground dark:text-foreground lg:size-24" />
               </div>
               <div className="z-10 mt-4 flex flex-col items-center text-center text-primary">
-                <h2 className="text-3xl font-bold lg:text-4xl">
+                <h2 className="text-3xl font-bold text-balance lg:text-4xl">
                   {dict.cta.heading}
                 </h2>
                 <p className="mt-2">
@@ -70,9 +71,9 @@ export default function CallToActionSection({ dict }: { dict: Dictionary }) {
                   className={cn(
                     buttonVariants({
                       size: "lg",
-                      variant: "outline",
+                      variant: "default",
                     }),
-                    "group mt-4 rounded-[2rem] px-6"
+                    "group mt-4 rounded-lg px-8"
                   )}
                 >
                   {dict.cta.button}

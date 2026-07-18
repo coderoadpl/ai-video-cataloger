@@ -49,10 +49,14 @@ export type Dictionary = {
       description: string;
     }>;
   };
-  features: Array<{
-    title: string;
-    description: string;
-  }>;
+  features: {
+    heading: string;
+    subheading: string;
+    items: Array<{
+      title: string;
+      description: string;
+    }>;
+  };
   privacy: {
     heading: string;
     intro: string;
@@ -124,9 +128,9 @@ const sharedRenames = [
 
 const sharedCliLines = [
   "$ ai-video-cataloger process ~/Movies/IMG_4021.mp4 --json",
-  '{"type":"started","data":{"video":"IMG_4021.mp4"}}',
-  '{"type":"progress","step":"transcribing_audio","percentage":60}',
-  '{"type":"completed","data":{"video":"2026-07-18_jellyfish-underwater-scene.mp4","status":"completed"}}',
+  '{"type":"started","timestamp":"2026-07-18T10:15:00.000Z","command":"process_single","data":{"videoPath":"/Users/.../Movies/IMG_4021.mp4","options":{"frames":3,"skipRename":false,"timeout":120,"whisper":"local","whisperModel":"base"}}}',
+  '{"type":"progress","timestamp":"2026-07-18T10:15:24.000Z","step":"transcribing_audio","percentage":60}',
+  '{"type":"completed","timestamp":"2026-07-18T10:16:12.000Z","data":{"video":"IMG_4021.mp4","path":"/Users/.../Movies/2026-07-18_jellyfish-underwater-scene.mp4","status":"completed"}}',
 ];
 
 export const en: Dictionary = {
@@ -162,13 +166,13 @@ export const en: Dictionary = {
     subNote:
       "v0.1.0 early alpha - free - macOS (Apple Silicon) - .dmg, about 153 MB",
     gatekeeperPrefix:
-      "The app is not notarized yet: on first launch, right-click the app and choose Open. Expect rough edges - and ",
+      "The app is not notarized yet: on first launch, right-click the app and choose Open. If macOS still refuses, allow it in System Settings -> Privacy & Security -> Open Anyway. Expect rough edges - and ",
     gatekeeperLink: "please report them",
     gatekeeperSuffix: ".",
     imageAlt: "AI Video Cataloger app window",
   },
   beforeAfter: {
-    heading: "From camera noise to a searchable library",
+    heading: "From camera noise to an organized library",
     subline: "Real output from the app - these are actual renames it produced:",
     renames: sharedRenames,
   },
@@ -183,47 +187,51 @@ export const en: Dictionary = {
       {
         title: "AI watches and listens",
         description:
-          "Frames are sampled, speech is transcribed with Whisper, and your chosen AI writes a summary and tags.",
+          "Frames are sampled, speech is transcribed with Whisper, and your chosen AI writes a summary.",
       },
       {
-        title: "Named and searchable",
+        title: "Named and organized",
         description:
-          "Every file gets a content-based name and lands in a catalog you can browse and search.",
+          "Every file gets a content-based name and lands in a catalog you can browse.",
       },
     ],
   },
-  features: [
-    {
-      title: "Names with meaning",
-      description:
-        "IMG_4021.mp4 becomes jellyfish-underwater-scene.mp4. Filenames are written from what the AI actually sees and hears.",
-    },
-    {
-      title: "Local-first privacy",
-      description:
-        "Runs entirely on your Mac with local models via Ollama. Nothing leaves your machine unless you opt into an API.",
-    },
-    {
-      title: "Whisper transcription",
-      description:
-        "Every spoken word becomes searchable text, transcribed on-device with Whisper.",
-    },
-    {
-      title: "Bring your own AI",
-      description:
-        "Local models, any OpenAI-compatible API with your key, or the agent CLIs you already use: Claude Code, Codex, Cursor.",
-    },
-    {
-      title: "One-click batches",
-      description:
-        "Point at a folder and press one button: frames, audio, transcript, summary and rename for every video in it.",
-    },
-    {
-      title: "GUI and CLI",
-      description:
-        "A clean desktop app plus a first-class CLI with JSON output for scripts and automation.",
-    },
-  ],
+  features: {
+    heading: "What it does",
+    subheading: "Six things you stop doing by hand.",
+    items: [
+      {
+        title: "Names with meaning",
+        description:
+          "IMG_4021.mp4 becomes 2026-07-18_jellyfish-underwater-scene.mp4. Filenames are written from what the AI actually sees and hears.",
+      },
+      {
+        title: "Local-first privacy",
+        description:
+          "Runs entirely on your Mac with local models via Ollama. Nothing leaves your machine unless you opt into an API.",
+      },
+      {
+        title: "Whisper transcription",
+        description:
+          "Every spoken word is transcribed on-device into a transcript saved next to your video.",
+      },
+      {
+        title: "Bring your own AI",
+        description:
+          "Local models, any OpenAI-compatible API with your key, or the agent CLIs you already use: Claude Code, Codex, Cursor Agent.",
+      },
+      {
+        title: "One-click batches",
+        description:
+          "Point at a folder and press one button: frames, audio, transcript, summary and rename for every video in it.",
+      },
+      {
+        title: "GUI and CLI",
+        description:
+          "A clean desktop app plus a first-class CLI with JSON output for scripts and automation.",
+      },
+    ],
+  },
   privacy: {
     heading: "Private by design",
     intro: "Your footage is personal. The app is built so it can stay that way.",
@@ -231,17 +239,17 @@ export const en: Dictionary = {
       {
         title: "Runs on your Mac",
         description:
-          "Frames, audio, transcripts, summaries and the catalog live inside your folders. With local models, nothing ever leaves the machine.",
+          "Frames, transcripts, summaries and the catalog live inside your folders. With local models, nothing ever leaves the machine.",
       },
       {
         title: "Cloud only when you say so",
         description:
-          "An OpenAI-compatible API or an agent CLI is used only if you configure it - your key, your choice, and only for the analysis step.",
+          "An OpenAI-compatible API or an agent CLI handles only the steps you route to it - analysis, and transcription if you pick the Whisper API mode. Your key, your choice.",
       },
       {
-        title: "No telemetry by default",
+        title: "No telemetry",
         description:
-          "No analytics, no tracking, no phoning home. The app works fully offline with local models.",
+          "No analytics, no tracking, no phoning home. After the initial setup the app works fully offline with local models.",
       },
     ],
   },
@@ -255,7 +263,7 @@ export const en: Dictionary = {
     heading: "Will it run on your Mac?",
     cloudCallout: {
       title: "With cloud models it always runs",
-      body: "Connect your own OpenAI-compatible API key or an agent CLI and any Apple Silicon Mac is enough - the heavy lifting happens elsewhere. Everything below applies to local models only.",
+      body: "Connect your own OpenAI-compatible API key or an agent CLI and any Apple Silicon Mac is enough - the heavy lifting happens elsewhere. Everything below applies to local models only. Transcription still runs locally by default with the small Whisper models, which any M-series Mac handles.",
     },
     baseline:
       "Apple Silicon Mac (M1 or newer) - macOS - the app itself is a ~153 MB download",
@@ -270,12 +278,12 @@ export const en: Dictionary = {
         size: "16 GB RAM",
         badge: "recommended",
         description:
-          "Comfortable local analysis on mid-size models while you keep working.",
+          "Runs the mid-size 12B models - the sweet spot of quality vs. resources.",
       },
       {
-        size: "24 GB+ RAM",
+        size: "32 GB+ RAM",
         badge: "headroom",
-        description: "Room for larger, noticeably smarter local models.",
+        description: "Unlocks the largest local models - up to the 17 GB 27B tier.",
       },
     ],
     warning:
@@ -290,9 +298,9 @@ export const en: Dictionary = {
         sizeMb: 75,
       },
       {
-        label: "Whisper large",
-        size: "1.5 GB",
-        sizeMb: 1500,
+        label: "Whisper large-v3",
+        size: "3.1 GB",
+        sizeMb: 3174,
       },
       {
         label: "Vision model (4B)",
@@ -304,6 +312,11 @@ export const en: Dictionary = {
         size: "~8 GB",
         sizeMb: 8000,
       },
+      {
+        label: "Vision model (27B)",
+        size: "~17 GB",
+        sizeMb: 17408,
+      },
     ],
     closing:
       "You choose what to install in the setup wizard - nothing is downloaded without asking.",
@@ -314,27 +327,27 @@ export const en: Dictionary = {
       {
         question: "Is my footage private?",
         answer:
-          "With local models - the default - everything runs on your Mac: frames, audio, transcripts and summaries never leave your machine. If you connect an OpenAI-compatible API or an agent CLI, only the analysis step goes through that provider, with your key and by your explicit choice. No telemetry by default.",
+          "With local models - the setup the wizard recommends - everything runs on your Mac: frames, audio, transcripts and summaries never leave your machine. If you connect an OpenAI-compatible API or an agent CLI, only the steps you route there go through that provider. The app contains no telemetry at all.",
       },
       {
         question: "What do I need to run it?",
         answer:
-          "An Apple Silicon Mac. The setup wizard handles the rest on first launch: it installs a local AI runtime (Ollama) and Whisper, and ffmpeg is bundled with the app.",
+          "An Apple Silicon Mac. On first launch the setup wizard installs whatever your choices need - for the fully local setup that means the local AI runtime (Ollama) and Whisper. ffmpeg is bundled with the app.",
       },
       {
         question: "How much disk space do local models take?",
         answer:
-          "Whisper models range from about 75 MB to 1.5 GB; local analysis models via Ollama are typically 2-8 GB. You choose what to install in the wizard.",
+          "Whisper models range from about 75 MB to 3.1 GB; local vision models from about 3.3 GB to 17 GB. You choose what to install in the wizard.",
       },
       {
         question: "Does it work offline?",
         answer:
-          "Yes - with local models the whole pipeline is offline. API and agent-CLI backends need network.",
+          "Yes - once the initial setup has downloaded your chosen models, the whole local pipeline runs offline. API and agent-CLI backends need network.",
       },
       {
         question: "Does it change my files?",
         answer:
-          "It renames videos to the content-based name and keeps the original name in its catalog, stored in a hidden .ai-video-cataloger folder inside your folder. Nothing is uploaded and nothing is deleted.",
+          "It renames videos to the content-based name and keeps the original name in its catalog. Alongside your videos it creates frames/, transcripts/ and summaries/ folders with the extracted artifacts, plus a hidden .ai-video-cataloger folder with the catalog - all deletable at any time. It scans only the top level of the folder (mp4, mov, avi, mkv, webm). Nothing is uploaded and nothing is deleted.",
       },
       {
         question: "Is it really free?",
@@ -344,13 +357,13 @@ export const en: Dictionary = {
       {
         question: "Why does macOS warn me on first launch?",
         answer:
-          "The app is not yet notarized by Apple - that requires a paid developer account and is on our roadmap. macOS shows this warning for any app downloaded outside the App Store. Right-click the app, choose Open and confirm - you only need to do it once.",
+          "The app is not yet notarized by Apple - that requires a paid developer account and is on our roadmap. macOS shows this warning for apps that are not notarized. Right-click the app and choose Open; if the option does not appear, go to System Settings -> Privacy & Security and click Open Anyway. You only need to do it once.",
       },
     ],
   },
   cta: {
     heading: "Ready to clean up your video folders?",
-    line: "Early alpha. macOS today - Windows and Linux coming soon.",
+    line: "Early alpha. macOS today - Windows and Linux in the future.",
     button: "Download for macOS",
   },
   footer: {
@@ -365,7 +378,7 @@ export const pl: Dictionary = {
   metadata: {
     title: "AI Video Cataloger - biblioteka wideo porządkowana przez AI na macOS",
     description:
-      "Lokalna aplikacja na macOS, która ogląda, transkrybuje i streszcza Twoje wideo, a potem nadaje im nazwy oparte na treści. Bez chmury.",
+      "Lokalna aplikacja na macOS, która ogląda, transkrybuje i streszcza Twoje wideo, a potem nadaje im nazwy oparte na treści - z lokalną Ollamą, dowolnym API zgodnym z OpenAI albo agentowym CLI. Chmura niewymagana.",
   },
   siteBanner: {
     text: "Wczesna alfa - tylko macOS (Apple Silicon) - pobierz za darmo",
@@ -388,18 +401,18 @@ export const pl: Dictionary = {
     badge: "Lokalna AI dla Twojej biblioteki wideo",
     title: "Nadaj każdemu wideo nazwę, która coś znaczy.",
     description:
-      "AI Video Cataloger ogląda, transkrybuje i streszcza filmy w dowolnym folderze - a potem zmienia im nazwy na takie, które mówią, co jest w środku. Wszystko na Twoim Macu. Bez chmury.",
+      "AI Video Cataloger ogląda, transkrybuje i streszcza filmy w dowolnym folderze - a potem zmienia im nazwy na takie, które mówią, co jest w środku. Wszystko na Twoim Macu. Chmura - tylko jeśli sam chcesz.",
     primaryButton: "Pobierz na macOS",
     subNote:
       "v0.1.0 wczesna alfa - za darmo - macOS (Apple Silicon) - .dmg, ok. 153 MB",
     gatekeeperPrefix:
-      "Aplikacja nie jest jeszcze notaryzowana: przy pierwszym uruchomieniu kliknij prawym przyciskiem i wybierz Otwórz. Spodziewaj się niedoróbek - i ",
+      "Aplikacja nie jest jeszcze notaryzowana: przy pierwszym uruchomieniu kliknij prawym przyciskiem i wybierz Otwórz. Jeśli macOS dalej odmawia, zezwól w Ustawienia systemowe -> Prywatność i ochrona -> Otwórz mimo to. Spodziewaj się niedoróbek - i ",
     gatekeeperLink: "daj nam o nich znać",
     gatekeeperSuffix: ".",
     imageAlt: "Okno aplikacji AI Video Cataloger",
   },
   beforeAfter: {
-    heading: "Z chaosu z kamery do przeszukiwalnej biblioteki",
+    heading: "Z chaosu z kamery do uporządkowanej biblioteki",
     subline:
       "Prawdziwe wyniki działania aplikacji - dokładnie takie zmiany nazw wykonała:",
     renames: sharedRenames,
@@ -415,47 +428,51 @@ export const pl: Dictionary = {
       {
         title: "AI ogląda i słucha",
         description:
-          "Aplikacja próbkuje klatki, transkrybuje mowę Whisperem, a wybrana AI pisze streszczenie i tagi.",
+          "Aplikacja próbkuje klatki, transkrybuje mowę Whisperem, a wybrana AI pisze streszczenie.",
       },
       {
-        title: "Nazwane i przeszukiwalne",
+        title: "Nazwane i uporządkowane",
         description:
-          "Każdy plik dostaje nazwę opartą na treści i trafia do katalogu, który można przeglądać i przeszukiwać.",
+          "Każdy plik dostaje nazwę opartą na treści i trafia do katalogu, który możesz przeglądać.",
       },
     ],
   },
-  features: [
-    {
-      title: "Nazwy z sensem",
-      description:
-        "IMG_4021.mp4 staje się jellyfish-underwater-scene.mp4. Nazwy plików powstają z tego, co AI naprawdę widzi i słyszy.",
-    },
-    {
-      title: "Prywatność lokalnie",
-      description:
-        "Działa w całości na Twoim Macu z lokalnymi modelami przez Ollamę. Nic nie opuszcza komputera, chyba że sam włączysz API.",
-    },
-    {
-      title: "Transkrypcja Whisperem",
-      description:
-        "Każde wypowiedziane słowo staje się przeszukiwalnym tekstem - transkrypcja w całości na urządzeniu.",
-    },
-    {
-      title: "Twoja własna AI",
-      description:
-        "Modele lokalne, dowolne API zgodne z OpenAI na Twój klucz albo agentowe CLI, których już używasz: Claude Code, Codex, Cursor.",
-    },
-    {
-      title: "Partie jednym kliknięciem",
-      description:
-        "Wskaż folder i wciśnij jeden przycisk: klatki, audio, transkrypcja, streszczenie i zmiana nazwy dla każdego wideo.",
-    },
-    {
-      title: "GUI i CLI",
-      description:
-        "Porządna aplikacja desktopowa plus pełnoprawne CLI z wyjściem JSON do skryptów i automatyzacji.",
-    },
-  ],
+  features: {
+    heading: "Co potrafi",
+    subheading: "Sześć rzeczy, których nie robisz już ręcznie.",
+    items: [
+      {
+        title: "Nazwy z sensem",
+        description:
+          "IMG_4021.mp4 staje się 2026-07-18_jellyfish-underwater-scene.mp4. Nazwy plików powstają z tego, co AI naprawdę widzi i słyszy.",
+      },
+      {
+        title: "Prywatność lokalnie",
+        description:
+          "Działa w całości na Twoim Macu z lokalnymi modelami przez Ollamę. Nic nie opuszcza komputera, chyba że sam włączysz API.",
+      },
+      {
+        title: "Transkrypcja Whisperem",
+        description:
+          "Każde wypowiedziane słowo trafia do transkrypcji zapisywanej obok wideo - w całości na urządzeniu.",
+      },
+      {
+        title: "Twoja własna AI",
+        description:
+          "Modele lokalne, dowolne API zgodne z OpenAI z użyciem Twojego klucza albo agentowe CLI, których już używasz: Claude Code, Codex, Cursor Agent.",
+      },
+      {
+        title: "Cały folder jednym kliknięciem",
+        description:
+          "Wskaż folder i wciśnij jeden przycisk: klatki, audio, transkrypcja, streszczenie i zmiana nazwy dla każdego wideo.",
+      },
+      {
+        title: "GUI i CLI",
+        description:
+          "Porządna aplikacja desktopowa plus pełnoprawne CLI z wyjściem JSON do skryptów i automatyzacji.",
+      },
+    ],
+  },
   privacy: {
     heading: "Prywatność w standardzie",
     intro:
@@ -464,22 +481,22 @@ export const pl: Dictionary = {
       {
         title: "Działa na Twoim Macu",
         description:
-          "Klatki, audio, transkrypcje, streszczenia i katalog żyją w Twoich folderach. Z modelami lokalnymi nic nigdy nie opuszcza komputera.",
+          "Klatki, transkrypcje, streszczenia i katalog żyją w Twoich folderach. Z modelami lokalnymi nic nigdy nie opuszcza komputera.",
       },
       {
         title: "Chmura tylko na Twoje życzenie",
         description:
-          "API zgodne z OpenAI albo agentowe CLI działają wyłącznie wtedy, gdy je skonfigurujesz - Twój klucz, Twoja decyzja i tylko etap analizy.",
+          "API zgodne z OpenAI albo agentowe CLI obsługują tylko te kroki, które sam im wskażesz - analizę, a przy trybie Whisper API także transkrypcję. Twój klucz, Twoja decyzja.",
       },
       {
-        title: "Zero telemetrii domyślnie",
+        title: "Zero telemetrii",
         description:
-          "Bez analityki, bez śledzenia, bez dzwonienia do domu. Z modelami lokalnymi aplikacja działa w pełni offline.",
+          "Bez analityki, bez śledzenia, bez łączenia się z naszymi serwerami. Po pierwszej konfiguracji aplikacja działa z modelami lokalnymi w pełni offline.",
       },
     ],
   },
   cli: {
-    heading: "Skryptowalny do szpiku",
+    heading: "Skryptowalny do szpiku kości",
     subline:
       "Ten sam silnik działa jako pełnoprawne CLI: zdarzenia NDJSON, uczciwe kody wyjścia - idealne do crona i automatyzacji.",
     lines: sharedCliLines,
@@ -488,7 +505,7 @@ export const pl: Dictionary = {
     heading: "Czy to ruszy na Twoim Macu?",
     cloudCallout: {
       title: "Z modelami chmurowymi zadziała zawsze",
-      body: "Podłącz własny klucz API zgodny z OpenAI albo agentowe CLI, a wystarczy dowolny Mac z Apple Silicon - ciężka robota dzieje się gdzie indziej. Wszystko poniżej dotyczy wyłącznie modeli lokalnych.",
+      body: "Podłącz własny klucz API zgodny z OpenAI albo agentowe CLI, a wystarczy dowolny Mac z Apple Silicon - ciężka robota dzieje się gdzie indziej. Wszystko poniżej dotyczy wyłącznie modeli lokalnych. Transkrypcja nadal działa domyślnie lokalnie na małych modelach Whispera, z którymi poradzi sobie każdy Mac z serii M.",
     },
     baseline:
       "Mac z Apple Silicon (M1 lub nowszy) - macOS - sama aplikacja to pobranie ok. 153 MB",
@@ -503,13 +520,13 @@ export const pl: Dictionary = {
         size: "16 GB RAM",
         badge: "zalecane",
         description:
-          "Komfortowa analiza lokalna na średnich modelach bez przerywania pracy.",
+          "Uruchamia średnie modele 12B - najlepszy stosunek jakości do zasobów.",
       },
       {
-        size: "24 GB+ RAM",
+        size: "32 GB+ RAM",
         badge: "zapas",
         description:
-          "Miejsce na większe, zauważalnie mądrzejsze modele lokalne.",
+          "Odblokowuje największe modele lokalne - aż po 17-gigabajtowy wariant 27B.",
       },
     ],
     warning:
@@ -524,9 +541,9 @@ export const pl: Dictionary = {
         sizeMb: 75,
       },
       {
-        label: "Whisper large",
-        size: "1,5 GB",
-        sizeMb: 1500,
+        label: "Whisper large-v3",
+        size: "3,1 GB",
+        sizeMb: 3174,
       },
       {
         label: "Model wizyjny (4B)",
@@ -538,6 +555,11 @@ export const pl: Dictionary = {
         size: "ok. 8 GB",
         sizeMb: 8000,
       },
+      {
+        label: "Model wizyjny (27B)",
+        size: "ok. 17 GB",
+        sizeMb: 17408,
+      },
     ],
     closing:
       "O tym, co zainstalować, decydujesz w kreatorze - nic nie pobiera się bez pytania.",
@@ -548,27 +570,27 @@ export const pl: Dictionary = {
       {
         question: "Czy moje nagrania są prywatne?",
         answer:
-          "Z modelami lokalnymi - ustawieniem domyślnym - wszystko dzieje się na Twoim Macu: klatki, audio, transkrypcje i streszczenia nigdy nie opuszczają komputera. Jeśli podłączysz API zgodne z OpenAI albo agentowe CLI, przez dostawcę przechodzi wyłącznie etap analizy - na Twój klucz i za Twoją wyraźną zgodą. Telemetria jest domyślnie wyłączona.",
+          "Z modelami lokalnymi - konfiguracją, którą poleca kreator - wszystko dzieje się na Twoim Macu: klatki, audio, transkrypcje i streszczenia nie opuszczają komputera. Jeśli podłączysz API zgodne z OpenAI albo agentowe CLI, przez dostawcę przechodzą tylko wskazane przez Ciebie kroki. Aplikacja nie zawiera żadnej telemetrii.",
       },
       {
         question: "Czego potrzebuję, żeby to uruchomić?",
         answer:
-          "Maca z Apple Silicon. Resztą zajmuje się kreator przy pierwszym uruchomieniu: instaluje lokalny runtime AI (Ollama) i Whispera, a ffmpeg jest dołączony do aplikacji.",
+          "Maca z Apple Silicon. Przy pierwszym uruchomieniu kreator instaluje to, czego wymagają Twoje wybory - przy w pełni lokalnej konfiguracji to lokalne środowisko AI (Ollama) i Whisper. ffmpeg jest dołączony do aplikacji.",
       },
       {
         question: "Ile miejsca zajmują modele lokalne?",
         answer:
-          "Modele Whispera to od ok. 75 MB do 1,5 GB; lokalne modele do analizy przez Ollamę to zwykle 2-8 GB. W kreatorze wybierasz, co zainstalować.",
+          "Modele Whispera to od ok. 75 MB do 3,1 GB; lokalne modele wizyjne od ok. 3,3 GB do 17 GB. W kreatorze wybierasz, co zainstalować.",
       },
       {
         question: "Czy działa offline?",
         answer:
-          "Tak - z modelami lokalnymi cały proces działa offline. Backendy API i agentowych CLI wymagają sieci.",
+          "Tak - gdy kreator pobierze wybrane modele, cały lokalny proces działa offline. Backendy API i agentowe CLI wymagają sieci.",
       },
       {
         question: "Czy zmienia moje pliki?",
         answer:
-          "Zmienia nazwy wideo na oparte na treści, a oryginalną nazwę zachowuje w katalogu zapisanym w ukrytym folderze .ai-video-cataloger wewnątrz Twojego folderu. Nic nie jest wysyłane ani usuwane.",
+          "Zmienia nazwy wideo na oparte na treści, a oryginalną nazwę zachowuje w katalogu. Obok wideo tworzy foldery frames/, transcripts/ i summaries/ z artefaktami oraz ukryty folder .ai-video-cataloger z katalogiem - wszystko można w każdej chwili usunąć. Skanuje tylko pierwszy poziom folderu (mp4, mov, avi, mkv, webm). Nic nie jest wysyłane ani usuwane.",
       },
       {
         question: "Czy to naprawdę darmowe?",
@@ -578,13 +600,13 @@ export const pl: Dictionary = {
       {
         question: "Dlaczego macOS ostrzega przy pierwszym uruchomieniu?",
         answer:
-          "Aplikacja nie jest jeszcze notaryzowana przez Apple - wymaga to płatnego konta deweloperskiego i jest w planach. macOS pokazuje takie ostrzeżenie przy każdej aplikacji spoza App Store. Kliknij aplikację prawym przyciskiem, wybierz Otwórz i potwierdź - wystarczy raz.",
+          "Aplikacja nie jest jeszcze notaryzowana przez Apple - wymaga to płatnego konta deweloperskiego i jest w planach. macOS pokazuje takie ostrzeżenie przy aplikacjach bez notaryzacji. Kliknij prawym przyciskiem i wybierz Otwórz; jeśli opcja się nie pojawi, wejdź w Ustawienia systemowe -> Prywatność i ochrona i kliknij Otwórz mimo to. Wystarczy raz.",
       },
     ],
   },
   cta: {
-    heading: "Gotowy uporządkować foldery z wideo?",
-    line: "Wczesna alfa. Dziś macOS - Windows i Linux wkrótce.",
+    heading: "Czas uporządkować foldery z wideo?",
+    line: "Wczesna alfa. Obecnie macOS - Windows i Linux w przyszłości.",
     button: "Pobierz na macOS",
   },
   footer: {

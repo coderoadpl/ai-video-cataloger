@@ -2,9 +2,9 @@ import type { Dictionary } from "@/lib/i18n";
 
 export default function CliSection({ dict }: { dict: Dictionary }) {
   return (
-    <section className="mx-auto max-w-[80rem] px-6 py-24 md:px-8">
+    <section className="mx-auto max-w-[80rem] px-6 py-28 md:px-8">
       <div className="mx-auto max-w-3xl text-center translate-y-[-1rem] animate-fade-in opacity-0">
-        <h2 className="bg-gradient-to-br from-black from-30% to-black/40 bg-clip-text text-3xl font-medium tracking-tight text-transparent dark:from-white dark:to-white/40 sm:text-4xl md:text-5xl">
+        <h2 className="bg-gradient-to-br from-black from-30% to-gray-600 bg-clip-text text-3xl font-medium tracking-tight text-transparent text-balance dark:from-white dark:to-white/70 sm:text-4xl md:text-5xl">
           {dict.cli.heading}
         </h2>
         <p className="mt-4 text-base text-gray-600 dark:text-gray-400 md:text-lg">

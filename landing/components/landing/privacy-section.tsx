@@ -5,9 +5,9 @@ const icons = [HardDrive, KeyRound, ShieldCheck];
 
 export default function PrivacySection({ dict }: { dict: Dictionary }) {
   return (
-    <section id="privacy" className="mx-auto max-w-[80rem] px-6 py-24 md:px-8">
+    <section id="privacy" className="mx-auto max-w-[80rem] px-6 py-28 md:px-8">
       <div className="mx-auto max-w-3xl text-center translate-y-[-1rem] animate-fade-in opacity-0">
-        <h2 className="bg-gradient-to-br from-black from-30% to-black/40 bg-clip-text text-3xl font-medium tracking-tight text-transparent dark:from-white dark:to-white/40 sm:text-4xl md:text-5xl">
+        <h2 className="bg-gradient-to-br from-black from-30% to-gray-600 bg-clip-text text-3xl font-medium tracking-tight text-transparent text-balance dark:from-white dark:to-white/70 sm:text-4xl md:text-5xl">
           {dict.privacy.heading}
         </h2>
         <p className="mt-4 text-base text-gray-600 dark:text-gray-400 md:text-lg">

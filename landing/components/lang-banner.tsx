@@ -37,7 +37,7 @@ export function LangBanner() {
   }
 
   return (
-    <div className="w-full border-y border-white/10 bg-zinc-950 text-white">
+    <div className="w-full border-y border-white/10 bg-zinc-950 text-white dark:border-b-white/10">
       <div className="container mx-auto flex min-h-11 flex-col items-center justify-center gap-3 px-4 py-2 text-center text-sm sm:flex-row sm:text-left">
         <span className="text-gray-200">Ta strona jest dostępna po polsku.</span>
         <div className="flex flex-wrap items-center justify-center gap-2">

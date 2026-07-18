@@ -3,9 +3,9 @@ import { ArrowRight } from "lucide-react";
 
 export default function BeforeAfterSection({ dict }: { dict: Dictionary }) {
   return (
-    <section className="mx-auto max-w-[80rem] px-6 py-24 md:px-8">
+    <section className="mx-auto max-w-[80rem] px-6 py-28 md:px-8">
       <div className="mx-auto max-w-3xl text-center translate-y-[-1rem] animate-fade-in opacity-0">
-        <h2 className="bg-gradient-to-br from-black from-30% to-black/40 bg-clip-text text-3xl font-medium tracking-tight text-transparent dark:from-white dark:to-white/40 sm:text-4xl md:text-5xl">
+        <h2 className="bg-gradient-to-br from-black from-30% to-gray-600 bg-clip-text text-3xl font-medium tracking-tight text-transparent text-balance dark:from-white dark:to-white/70 sm:text-4xl md:text-5xl">
           {dict.beforeAfter.heading}
         </h2>
         <p className="mt-4 text-base text-gray-600 dark:text-gray-400 md:text-lg">
@@ -30,7 +30,7 @@ export default function BeforeAfterSection({ dict }: { dict: Dictionary }) {
               <span className="min-w-0 flex-1 break-all text-gray-500">
                 {rename.oldName}
               </span>
-              <ArrowRight className="hidden size-4 shrink-0 text-blue-600 sm:block dark:text-gray-600" />
+              <ArrowRight className="hidden size-4 shrink-0 text-blue-600 sm:block dark:text-blue-400" />
               <span className="min-w-0 flex-1 break-all text-neutral-950 dark:text-white">
                 {rename.newName}
               </span>

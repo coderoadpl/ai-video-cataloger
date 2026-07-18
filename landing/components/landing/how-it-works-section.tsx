@@ -2,8 +2,8 @@ import type { Dictionary } from "@/lib/i18n";
 
 export default function HowItWorksSection({ dict }: { dict: Dictionary }) {
   return (
-    <section id="how-it-works" className="mx-auto max-w-[80rem] px-6 py-24 md:px-8">
-      <h2 className="bg-gradient-to-br from-black from-30% to-black/40 bg-clip-text text-center text-3xl font-medium tracking-tight text-transparent dark:from-white dark:to-white/40 sm:text-4xl md:text-5xl translate-y-[-1rem] animate-fade-in opacity-0">
+    <section id="how-it-works" className="mx-auto max-w-[80rem] px-6 py-28 md:px-8">
+      <h2 className="bg-gradient-to-br from-black from-30% to-gray-600 bg-clip-text text-center text-3xl font-medium tracking-tight text-transparent text-balance dark:from-white dark:to-white/70 sm:text-4xl md:text-5xl translate-y-[-1rem] animate-fade-in opacity-0">
         {dict.howItWorks.heading}
       </h2>
       <div className="mt-12 grid gap-4 md:grid-cols-3">
