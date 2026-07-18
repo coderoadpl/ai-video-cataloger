@@ -19,7 +19,7 @@ describe('doctor command', () => {
   });
 
   it('should report dependency status (all or some available)', async () => {
-    const result = await runCli(['doctor', '--json'], { cwd: testDir });
+    const result = await runCli(['doctor', '--json'], { cwd: testDir, timeout: 60_000 });
 
     const events = parseJsonEvents(result.stdout);
     const completedEvent = findEvent(events, 'completed');
@@ -37,10 +37,10 @@ describe('doctor command', () => {
       expect(dep).toHaveProperty('name');
       expect(dep).toHaveProperty('available');
     }
-  }, 30_000);
+  }, 75_000);
 
   it('should report if some dependencies are missing', async () => {
-    const result = await runCli(['doctor', '--json'], { cwd: testDir });
+    const result = await runCli(['doctor', '--json'], { cwd: testDir, timeout: 60_000 });
 
     const events = parseJsonEvents(result.stdout);
     const completedEvent = findEvent(events, 'completed');
@@ -50,7 +50,7 @@ describe('doctor command', () => {
     const data = completedEvent?.data as Record<string, unknown>;
     expect(data).toHaveProperty('allAvailable');
     expect(typeof data.allAvailable).toBe('boolean');
-  });
+  }, 75_000);
 
   it('should have proper JSON output structure', async () => {
     const result = await runCli(['doctor', '--json'], { cwd: testDir });

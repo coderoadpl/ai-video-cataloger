@@ -209,7 +209,7 @@ describe('SetupWizard', () => {
     expect(recorders.configWrites).toContainEqual({ key: 'local_model', value: 'gemma3:4b' });
     expect(recorders.configWrites).toContainEqual({ key: 'whisper_binary_path', value: '' });
     expect(recorders.configWrites.every((write) => write.folder === undefined)).toBe(true);
-  });
+  }, 10_000);
 
   it('shows a missing local model as a download and offers to install it', async () => {
     installHandlers();

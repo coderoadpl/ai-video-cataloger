@@ -113,6 +113,7 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
       MuiChip: {
         styleOverrides: {
           root: { borderRadius: RADIUS - 2, fontWeight: 600, fontSize: '0.72rem' },
+          icon: { marginLeft: 6 },
         },
       },
       MuiPaper: {

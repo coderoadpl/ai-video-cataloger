@@ -134,6 +134,7 @@ export default tseslint.config(
       'release/**',
       'test/**',
       'scripts/ralph/**',
+      'landing/**',
     ],
   },
   {

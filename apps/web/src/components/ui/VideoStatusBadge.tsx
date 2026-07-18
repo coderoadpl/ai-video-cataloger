@@ -32,11 +32,11 @@ const isIntermediate = (status: VideoStatusValue): status is IntermediateStatus 
   status === 'transcribed' ||
   status === 'analyzed';
 
-const labelFor = (status: VideoStatusValue, variant: BadgeVariant): string => {
+const labelFor = (status: VideoStatusValue): string => {
   if (isIntermediate(status)) return 'Incomplete';
   switch (status) {
     case 'completed':
-      return variant === 'details' ? 'Completed' : 'Done';
+      return 'Completed';
     case 'error':
       return 'Error';
     case 'pending':
@@ -96,7 +96,7 @@ export const VideoStatusBadge = ({
     <Chip
       size="small"
       icon={<StatusGlyph status={status} />}
-      label={labelFor(status, variant)}
+      label={labelFor(status)}
       sx={(theme) => ({
         bgcolor: theme.palette.status[token].soft,
         color: theme.palette.status[token].main,
