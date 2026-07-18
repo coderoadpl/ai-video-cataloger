@@ -5,6 +5,7 @@ import { app, BrowserWindow } from 'electron';
 
 import type { App } from '@server/src/create-app.js';
 
+import { resolveDesktopAppVersion } from './app-version.js';
 import { createDesktopApp } from './composition.js';
 import { folderStorePath, FolderStore } from './folder-store.js';
 import { buildDesktopPath, userDataDirectoryOverride } from './environment.js';
@@ -83,10 +84,15 @@ const loadRenderer = async (window: BrowserWindow): Promise<void> => {
 };
 
 const bootstrap = async (): Promise<void> => {
-  desktopApp = createDesktopApp({ version: app.getVersion() });
+  const appVersion = resolveDesktopAppVersion({
+    isPackaged: app.isPackaged,
+    packagedVersion: app.getVersion(),
+  });
+  desktopApp = createDesktopApp({ version: appVersion });
   folderStore = new FolderStore(folderStorePath(app.getPath('userData')));
   registerIpcHandlers({
     desktopApp,
+    appVersion,
     folderStore,
     getMainWindow: () => mainWindow,
   });

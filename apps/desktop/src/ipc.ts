@@ -3,7 +3,6 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 
 import {
-  app,
   BrowserWindow,
   dialog,
   ipcMain,
@@ -27,6 +26,7 @@ import { updateRecentFoldersMenu } from './menu.js';
 
 export interface IpcDeps {
   desktopApp: App;
+  appVersion: string;
   folderStore: FolderStore;
   getMainWindow(): BrowserWindow | null;
 }
@@ -42,7 +42,7 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
 
   ipcMain.handle(CHANNELS.appGetVersion, (event): string => {
     if (!isTrustedSender(event)) throw new Error('Unauthorized IPC sender');
-    return app.getVersion();
+    return deps.appVersion;
   });
 
   ipcMain.handle(CHANNELS.apiRequest, async (event, input: unknown): Promise<DesktopFetchResponse> => {
