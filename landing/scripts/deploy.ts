@@ -16,4 +16,4 @@ try {
 await mkdir(dirname(target), { recursive: true });
 await copyFile(source, target);
 await $`pnpm build`;
-await $`npx -y firebase-tools deploy --only hosting`;
+await $`npx -y firebase-tools deploy --only hosting --account kontakt@coderoad.pl`;
