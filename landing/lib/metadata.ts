@@ -5,7 +5,7 @@ export function getRootMetadata(locale: Locale): Metadata {
   const dict = getDict(locale);
 
   return {
-    metadataBase: new URL("https://ai-video-cataloger.web.app"),
+    metadataBase: new URL("https://ai-video-cataloger.coderoad.pl"),
     title: dict.metadata.title,
     description: dict.metadata.description,
     openGraph: {
