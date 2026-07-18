@@ -231,6 +231,11 @@ export const en: Dictionary = {
         answer:
           "The alpha is free. Local analysis costs nothing; if you bring an API key, your provider bills your usage.",
       },
+      {
+        question: "Why does macOS warn me on first launch?",
+        answer:
+          "The app is not yet notarized by Apple - that requires a paid developer account and is on our roadmap. macOS shows this warning for any app downloaded outside the App Store. Right-click the app, choose Open and confirm - you only need to do it once.",
+      },
     ],
   },
   cta: {
@@ -378,6 +383,11 @@ export const pl: Dictionary = {
         question: "Czy to naprawdę darmowe?",
         answer:
           "Alfa jest darmowa. Analiza lokalna nic nie kosztuje; jeśli podasz klucz API, za zużycie rozlicza Cię Twój dostawca.",
+      },
+      {
+        question: "Dlaczego macOS ostrzega przy pierwszym uruchomieniu?",
+        answer:
+          "Aplikacja nie jest jeszcze notaryzowana przez Apple - wymaga to płatnego konta deweloperskiego i jest w planach. macOS pokazuje takie ostrzeżenie przy każdej aplikacji spoza App Store. Kliknij aplikację prawym przyciskiem, wybierz Otwórz i potwierdź - wystarczy raz.",
       },
     ],
   },

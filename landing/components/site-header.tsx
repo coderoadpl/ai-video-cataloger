@@ -20,7 +20,7 @@ export function SiteHeader({ dict }: { dict: Dictionary }) {
   }, []);
 
   return (
-    <header className="fixed left-0 top-[calc(3rem+var(--avc-lang-banner-height,0px))] z-50 w-full border-b bg-background/80 px-4 opacity-0 backdrop-blur-[12px] animate-fade-in [--animation-delay:600ms] dark:bg-transparent">
+    <header className="sticky top-0 z-50 w-full border-b bg-background/80 px-4 opacity-0 backdrop-blur-[12px] animate-fade-in [--animation-delay:600ms] dark:bg-transparent">
       <div className="container mx-auto flex h-[var(--navigation-height)] w-full items-center justify-between">
         <div className="flex items-center gap-8">
           <Link className="text-md flex items-center gap-2" href={homeHref}>

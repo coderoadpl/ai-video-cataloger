@@ -12,13 +12,13 @@ export default function BeforeAfterSection({ dict }: { dict: Dictionary }) {
           {dict.beforeAfter.subline}
         </p>
       </div>
-      <div className="relative mx-auto mt-10 max-w-5xl overflow-hidden rounded-xl border border-white/10 bg-zinc-950/80 shadow-2xl shadow-black/40 backdrop-blur translate-y-[-1rem] animate-fade-in opacity-0 [--animation-delay:160ms]">
-        <div className="flex h-11 items-center gap-2 border-b border-white/10 px-4">
+      <div className="relative mx-auto mt-10 max-w-5xl overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-2xl shadow-neutral-200/70 backdrop-blur translate-y-[-1rem] animate-fade-in opacity-0 [--animation-delay:160ms] dark:border-white/10 dark:bg-zinc-950/80 dark:shadow-black/40">
+        <div className="flex h-11 items-center gap-2 border-b border-neutral-200 px-4 dark:border-white/10">
           <span className="size-3 rounded-full bg-red-500/80" />
           <span className="size-3 rounded-full bg-yellow-400/80" />
           <span className="size-3 rounded-full bg-green-500/80" />
         </div>
-        <div className="divide-y divide-white/10 font-mono text-sm">
+        <div className="divide-y divide-neutral-200 font-mono text-sm dark:divide-white/10">
           {dict.beforeAfter.renames.map((rename, index) => (
             <div
               key={rename.oldName}
@@ -30,8 +30,8 @@ export default function BeforeAfterSection({ dict }: { dict: Dictionary }) {
               <span className="min-w-0 flex-1 break-all text-gray-500">
                 {rename.oldName}
               </span>
-              <ArrowRight className="hidden size-4 shrink-0 text-gray-600 sm:block" />
-              <span className="min-w-0 flex-1 break-all text-white">
+              <ArrowRight className="hidden size-4 shrink-0 text-blue-600 sm:block dark:text-gray-600" />
+              <span className="min-w-0 flex-1 break-all text-neutral-950 dark:text-white">
                 {rename.newName}
               </span>
             </div>

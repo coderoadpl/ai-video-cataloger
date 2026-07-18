@@ -27,7 +27,7 @@ function Tile({ icon: Icon }: { icon: (typeof tiles)[number] }) {
   return (
     <div className="relative size-20 overflow-hidden rounded-lg border bg-white p-4 shadow-sm dark:bg-transparent dark:[border:1px_solid_rgba(255,255,255,.1)] dark:[box-shadow:0_-20px_80px_-20px_#ffffff1f_inset]">
       <Icon className="size-full" />
-      <div className="pointer-events-none absolute left-1/2 top-1/2 h-1/2 w-1/2 -translate-x-1/2 -translate-y-1/2 overflow-visible rounded-full bg-gradient-to-r from-orange-600 via-rose-600 to-violet-600 opacity-60 blur-[20px] filter" />
+      <div className="pointer-events-none absolute left-1/2 top-1/2 h-1/2 w-1/2 -translate-x-1/2 -translate-y-1/2 overflow-visible rounded-full bg-gradient-to-r from-[#2563eb] to-[#7c3aed] opacity-40 blur-[20px] filter dark:opacity-60" />
     </div>
   );
 }

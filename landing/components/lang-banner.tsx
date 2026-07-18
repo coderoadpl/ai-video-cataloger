@@ -3,7 +3,6 @@
 import { useEffect, useState } from "react";
 
 const choiceKey = "avc-lang-choice";
-const bannerHeight = "2.75rem";
 
 export function LangBanner() {
   const [visible, setVisible] = useState(false);
@@ -19,18 +18,8 @@ export function LangBanner() {
     );
 
     if (storedChoice === "pl" || (!storedChoice && prefersPolish)) {
-      document.documentElement.style.setProperty(
-        "--avc-lang-banner-height",
-        bannerHeight
-      );
       setVisible(true);
     }
-
-    return () => {
-      document.documentElement.style.removeProperty(
-        "--avc-lang-banner-height"
-      );
-    };
   }, []);
 
   function choosePolish() {
@@ -40,7 +29,6 @@ export function LangBanner() {
 
   function stayEnglish() {
     window.localStorage.setItem(choiceKey, "en");
-    document.documentElement.style.removeProperty("--avc-lang-banner-height");
     setVisible(false);
   }
 
@@ -49,7 +37,7 @@ export function LangBanner() {
   }
 
   return (
-    <div className="fixed left-0 top-12 z-50 w-full border-y border-white/10 bg-zinc-950 text-white">
+    <div className="w-full border-y border-white/10 bg-zinc-950 text-white">
       <div className="container mx-auto flex min-h-11 flex-col items-center justify-center gap-3 px-4 py-2 text-center text-sm sm:flex-row sm:text-left">
         <span className="text-gray-200">Ta strona jest dostępna po polsku.</span>
         <div className="flex flex-wrap items-center justify-center gap-2">
