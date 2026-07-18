@@ -44,7 +44,11 @@ export default function HeroSection() {
           </a>
         </Button>
         <p className="text-sm text-gray-500 dark:text-gray-400">
-          Free - macOS (Apple Silicon) - .dmg, about 153 MB
+          v0.1.0 early alpha - free - macOS (Apple Silicon) - .dmg, about 153 MB
+        </p>
+        <p className="max-w-md text-xs text-gray-600 dark:text-gray-500">
+          The app is not notarized yet: on first launch, right-click the app and
+          choose Open. Expect rough edges - and please report them.
         </p>
       </div>
       <div

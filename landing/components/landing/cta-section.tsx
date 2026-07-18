@@ -61,7 +61,7 @@ export default function CallToActionSection() {
                   Ready to clean up your video folders?
                 </h2>
                 <p className="mt-2">
-                  macOS only. Windows and Linux are not supported.
+                  Early alpha. macOS today - Windows and Linux coming soon.
                 </p>
                 <a
                   href="/downloads/AI-Video-Cataloger-0.1.0-arm64.dmg"

@@ -10,7 +10,7 @@ export function SiteBanner() {
           className="text-center text-sm leading-loose text-muted-background"
         >
           <span className="font-bold">
-            macOS only - Apple Silicon - free download
+            Early alpha - macOS only (Apple Silicon) - free download
           </span>
         </Link>
       </div>

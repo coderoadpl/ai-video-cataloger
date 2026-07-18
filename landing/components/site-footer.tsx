@@ -8,7 +8,7 @@ export function SiteFooter() {
           <img src="/logo.svg" alt="" aria-hidden="true" className="h-7 w-7" />
           <span>AI Video Cataloger - built by CodeRoad</span>
         </Link>
-        <span>macOS only - Apple Silicon - free download</span>
+        <span>v0.1.0 early alpha - macOS only (Apple Silicon)</span>
       </div>
     </footer>
   );
