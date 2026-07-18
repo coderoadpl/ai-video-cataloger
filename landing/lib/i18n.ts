@@ -68,6 +68,10 @@ export type Dictionary = {
   };
   requirements: {
     heading: string;
+    cloudCallout: {
+      title: string;
+      body: string;
+    };
     baseline: string;
     tiers: Array<{
       size: string;
@@ -75,6 +79,7 @@ export type Dictionary = {
       description: string;
     }>;
     warning: string;
+    memoryNote: string;
     diskHeading: string;
     diskItems: Array<{
       label: string;
@@ -248,29 +253,35 @@ export const en: Dictionary = {
   },
   requirements: {
     heading: "Will it run on your Mac?",
+    cloudCallout: {
+      title: "With cloud models it always runs",
+      body: "Connect your own OpenAI-compatible API key or an agent CLI and any Apple Silicon Mac is enough - the heavy lifting happens elsewhere. Everything below applies to local models only.",
+    },
     baseline:
       "Apple Silicon Mac (M1 or newer) - macOS - the app itself is a ~153 MB download",
     tiers: [
       {
-        size: "8 GB",
+        size: "8 GB RAM",
         badge: "minimum",
         description:
-          "Fine with the API or agent-CLI backends and the smallest local models - expect the Mac to be busy while it analyzes.",
+          "Enough for the smallest local models - expect the Mac to be busy while it analyzes.",
       },
       {
-        size: "16 GB",
+        size: "16 GB RAM",
         badge: "recommended",
         description:
           "Comfortable local analysis on mid-size models while you keep working.",
       },
       {
-        size: "24 GB+",
+        size: "24 GB+ RAM",
         badge: "headroom",
         description: "Room for larger, noticeably smarter local models.",
       },
     ],
     warning:
       "A local model has to fit in memory next to macOS and your other apps - the system alone uses several GB of RAM.",
+    memoryNote:
+      "On Apple Silicon there is no separate VRAM - the GPU shares unified memory with the system, so total RAM is the number that matters.",
     diskHeading: "Disk space for models",
     diskItems: [
       {
@@ -475,23 +486,27 @@ export const pl: Dictionary = {
   },
   requirements: {
     heading: "Czy to ruszy na Twoim Macu?",
+    cloudCallout: {
+      title: "Z modelami chmurowymi zadziała zawsze",
+      body: "Podłącz własny klucz API zgodny z OpenAI albo agentowe CLI, a wystarczy dowolny Mac z Apple Silicon - ciężka robota dzieje się gdzie indziej. Wszystko poniżej dotyczy wyłącznie modeli lokalnych.",
+    },
     baseline:
       "Mac z Apple Silicon (M1 lub nowszy) - macOS - sama aplikacja to pobranie ok. 153 MB",
     tiers: [
       {
-        size: "8 GB",
+        size: "8 GB RAM",
         badge: "minimum",
         description:
-          "Wystarczy dla backendu API lub agentowego CLI i najmniejszych modeli lokalnych - podczas analizy Mac będzie wyraźnie zajęty.",
+          "Wystarczy dla najmniejszych modeli lokalnych - podczas analizy Mac będzie wyraźnie zajęty.",
       },
       {
-        size: "16 GB",
+        size: "16 GB RAM",
         badge: "zalecane",
         description:
           "Komfortowa analiza lokalna na średnich modelach bez przerywania pracy.",
       },
       {
-        size: "24 GB+",
+        size: "24 GB+ RAM",
         badge: "zapas",
         description:
           "Miejsce na większe, zauważalnie mądrzejsze modele lokalne.",
@@ -499,6 +514,8 @@ export const pl: Dictionary = {
     ],
     warning:
       "Model lokalny musi zmieścić się w pamięci obok macOS i Twoich pozostałych aplikacji - sam system zajmuje kilka GB RAM-u.",
+    memoryNote:
+      "W Apple Silicon nie ma osobnego VRAM-u - GPU dzieli pamięć zunifikowaną z systemem, więc liczy się łączny RAM.",
     diskHeading: "Miejsce na dysku na modele",
     diskItems: [
       {
