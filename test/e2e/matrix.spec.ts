@@ -338,12 +338,18 @@ test('local-system × openai-whisper-api', async () => {
   const key = process.env.OPENAI_API_KEY;
   if (key === undefined || key.length === 0) failOrSkip(cell, 'OPENAI_API_KEY is required for the real Whisper API leg');
   const baseUrl = process.env.E2E_SYSTEM_OLLAMA_URL ?? 'http://127.0.0.1:11434';
+  const whisperApiBaseUrl = process.env.E2E_WHISPER_API_BASE_URL;
+  const whisperApiModel = process.env.E2E_WHISPER_API_MODEL;
   await requireSystemOllamaModel(cell, baseUrl, MATRIX_MODEL);
   await runCliCell(
     cell,
     sampleById('speech'),
     cellEnvironment(cacheHome, { OLLAMA_HOST: baseUrl, OPENAI_API_KEY: key }),
-    ['--analyzer', 'local', '--local-model', MATRIX_MODEL, '--transcription', 'api'],
+    [
+      '--analyzer', 'local', '--local-model', MATRIX_MODEL, '--transcription', 'api',
+      ...(whisperApiBaseUrl === undefined ? [] : ['--whisper-api-base-url', whisperApiBaseUrl]),
+      ...(whisperApiModel === undefined ? [] : ['--whisper-api-model', whisperApiModel]),
+    ],
     true,
   );
 });
