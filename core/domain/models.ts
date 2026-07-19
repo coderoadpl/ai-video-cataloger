@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const WHISPER_MODEL_NAMES = ['tiny', 'base', 'small', 'medium', 'large-v3'] as const;
+export const WHISPER_MODEL_NAMES = ['tiny', 'base', 'small', 'medium', 'large-v3', 'large-v3-turbo'] as const;
 export const whisperModelNameSchema = z.enum(WHISPER_MODEL_NAMES);
 export type WhisperModelName = z.output<typeof whisperModelNameSchema>;
 
@@ -16,6 +16,7 @@ export const WHISPER_MODELS: Record<WhisperModelName, WhisperModel> = {
   small: { name: 'small', size: '466MB', sizeMb: 466 },
   medium: { name: 'medium', size: '1.5GB', sizeMb: 1536 },
   'large-v3': { name: 'large-v3', size: '3.1GB', sizeMb: 3174 },
+  'large-v3-turbo': { name: 'large-v3-turbo', size: '1.6GB', sizeMb: 1549 },
 };
 
 export const LOCAL_AI_MODEL_TAGS = ['gemma3:4b', 'gemma3:12b', 'gemma3:27b', 'qwen2.5vl:7b'] as const;

@@ -1,6 +1,13 @@
 import type { z } from 'zod';
 
-import { CONFIG_DEFAULTS, CONFIG_KEYS, configSchema, type AppConfig, type ConfigKey } from '@core/domain/index.js';
+import {
+  CONFIG_DEFAULTS,
+  CONFIG_KEYS,
+  WHISPER_MODEL_NAMES,
+  configSchema,
+  type AppConfig,
+  type ConfigKey,
+} from '@core/domain/index.js';
 import type {
   localAiTierSchema,
   machineSchema,
@@ -62,10 +69,16 @@ export interface WhisperModelOption {
   description: string;
 }
 
-export const WHISPER_MODEL_OPTIONS: WhisperModelOption[] = [
-  { value: 'tiny', label: 'Tiny', description: 'Fastest, lowest accuracy' },
-  { value: 'base', label: 'Base', description: 'Good balance of speed and accuracy' },
-  { value: 'small', label: 'Small', description: 'Better accuracy, slower' },
-  { value: 'medium', label: 'Medium', description: 'High accuracy, slow' },
-  { value: 'large-v3', label: 'Large v3', description: 'Best accuracy, slowest' },
-];
+const WHISPER_MODEL_DETAILS: Record<AppConfig['whisper_model'], Omit<WhisperModelOption, 'value'>> = {
+  tiny: { label: 'Tiny', description: 'Fastest, lowest accuracy' },
+  base: { label: 'Base', description: 'Good balance of speed and accuracy' },
+  small: { label: 'Small', description: 'Better accuracy, slower' },
+  medium: { label: 'Medium', description: 'High accuracy, slow' },
+  'large-v3': { label: 'Large v3', description: 'Best accuracy, slowest' },
+  'large-v3-turbo': { label: 'Large v3 turbo', description: 'Large v3 accuracy, faster and smaller' },
+};
+
+export const WHISPER_MODEL_OPTIONS: WhisperModelOption[] = WHISPER_MODEL_NAMES.map((value) => ({
+  value,
+  ...WHISPER_MODEL_DETAILS[value],
+}));

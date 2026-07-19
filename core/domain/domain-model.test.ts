@@ -5,6 +5,7 @@ import {
   ERROR_CODES,
   LOCAL_AI_HARDWARE_TIERS,
   VIDEO_STATUSES,
+  WHISPER_MODEL_NAMES,
   WHISPER_MODELS,
   configSchema,
   getLocalAiSupportLevel,
@@ -177,12 +178,14 @@ describe('analyzer provider schema', () => {
 
 describe('model catalogs', () => {
   it('contains the INV whisper model catalog', () => {
+    expect(WHISPER_MODEL_NAMES).toEqual(['tiny', 'base', 'small', 'medium', 'large-v3', 'large-v3-turbo']);
     expect(WHISPER_MODELS).toEqual({
       tiny: { name: 'tiny', size: '75MB', sizeMb: 75 },
       base: { name: 'base', size: '142MB', sizeMb: 142 },
       small: { name: 'small', size: '466MB', sizeMb: 466 },
       medium: { name: 'medium', size: '1.5GB', sizeMb: 1536 },
       'large-v3': { name: 'large-v3', size: '3.1GB', sizeMb: 3174 },
+      'large-v3-turbo': { name: 'large-v3-turbo', size: '1.6GB', sizeMb: 1549 },
     });
   });
 

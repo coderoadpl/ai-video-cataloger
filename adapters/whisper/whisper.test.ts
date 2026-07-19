@@ -6,7 +6,7 @@ import path from 'node:path';
 import { ReadStream } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
+import { appError, ok, type AppError, type Result, type WhisperModelName } from '@core/domain/index.js';
 import type { WhisperRuntimePort, WhisperRuntimeStatus } from '@core/server/index.js';
 
 import {
@@ -389,7 +389,13 @@ describe('HuggingFaceWhisperModelDownloader', () => {
     const downloader = new HuggingFaceWhisperModelDownloader({ homeDirectory: home });
 
     expect(whisperModelDownloadUrl('large-v3')).toBe('https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3.bin');
+    expect(whisperModelDownloadUrl('large-v3-turbo')).toBe(
+      'https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-large-v3-turbo.bin',
+    );
     expect(downloader.whisperModelPath('base')).toBe(path.join(home, '.ai-video-cataloger', 'models', 'whisper', 'ggml-base.bin'));
+    expect(downloader.whisperModelPath('large-v3-turbo')).toBe(
+      path.join(home, '.ai-video-cataloger', 'models', 'whisper', 'ggml-large-v3-turbo.bin'),
+    );
   });
 
   it('downloads through a temp file, verifies sha256, then renames to the final model path', async () => {
@@ -514,8 +520,8 @@ const apiFailureStatus = async (audioPath: string, status: number): Promise<Resu
 };
 
 const statusForPath = async (
-  pathForModel: (homeDirectory: string, model: 'base' | 'small' | 'medium') => string,
-  model: 'base' | 'small' | 'medium',
+  pathForModel: (homeDirectory: string, model: WhisperModelName) => string,
+  model: WhisperModelName,
 ): Promise<boolean> => {
   const home = await tempRoot();
   await mkdir(path.dirname(pathForModel(home, model)), { recursive: true });

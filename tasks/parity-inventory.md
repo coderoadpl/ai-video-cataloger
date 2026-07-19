@@ -26,6 +26,7 @@ Source: `src/index.ts`, `src/services/models.ts`, `src/services/local-ai-models.
   - Lists Whisper models and, in human mode only, local AI models.
   - Uses global home database, not cwd: `initDatabase(homedir())`.
   - Whisper models: `tiny` 75MB, `base` 142MB, `small` 466MB, `medium` 1.5GB, `large-v3` 3.1GB.
+  - Post-parity addition: `large-v3-turbo` 1.6GB is a sanctioned deviation, owner-approved 2026-07-19.
   - Download status checks:
     - `~/.ai-video-cataloger/models/whisper/ggml-{name}.bin`
     - `~/.ai-video-cataloger/models/whisper/{name}.bin`

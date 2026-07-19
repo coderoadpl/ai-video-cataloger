@@ -4,6 +4,7 @@ import {
   appError,
   getLocalAiSupportLevel,
   ok,
+  whisperModelNameSchema,
   type AppError,
   type ConfigKey,
   type LocalAiHardwareTier,
@@ -281,9 +282,8 @@ export const stopLocalAiDaemon = async (
   deps.localAi.stopManagedDaemon();
 
 const normalizeActiveModel = (value: string | null): WhisperModelName => {
-  if (value === 'tiny' || value === 'base' || value === 'small' || value === 'medium' || value === 'large-v3') {
-    return value;
-  }
+  const parsed = whisperModelNameSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
   return 'base';
 };
 

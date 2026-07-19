@@ -1,4 +1,4 @@
-import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
+import { appError, ok, type AppError, type Result, type WhisperModelName } from '@core/domain/index.js';
 
 import type { JobRecord, JobsPort } from '../ports.js';
 import { checkProcessPrerequisites, processVideoPipeline, type ProcessDeps } from './process.js';
@@ -18,7 +18,7 @@ export interface ProcessInput {
   timeoutExplicit?: boolean | undefined;
   whisper: 'local' | 'api' | 'skip';
   whisperExplicit?: boolean | undefined;
-  whisperModel: 'tiny' | 'base' | 'small' | 'medium' | 'large-v3';
+  whisperModel: WhisperModelName;
   whisperModelExplicit?: boolean | undefined;
   analyzer?: 'claude' | 'local' | 'api' | undefined;
   localModel?: string | undefined;
