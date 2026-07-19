@@ -302,14 +302,8 @@ for (const harness of [
     // agent CLIs resolve auth stores (keychain paths incl.) via HOME; a faked HOME logs them out
     const environment = cellEnvironment(realHome);
     requireCommandAuthentication(harness.cell, harness.command, harness.auth, environment);
-    if (harness.provider === 'cursor-agent') {
-      const probe = spawnSync(harness.command, ['--print', '--mode', 'ask', 'Reply with the single word: pong'], {
-        env: environment,
-        encoding: 'utf8',
-        timeout: 90_000,
-      });
-      const probeOutput = `${probe.stdout ?? ''}${probe.stderr ?? ''}`;
-      if (probeOutput.includes('usage limit')) failOrSkip(harness.cell, 'cursor-agent plan usage limit is exhausted');
+    if (harness.provider === 'cursor-agent' && process.env.E2E_SKIP_CURSOR === '1') {
+      failOrSkip(harness.cell, 'cursor-agent leg skipped by operator (E2E_SKIP_CURSOR=1, e.g. plan usage exhausted)');
     }
     await runCliCell(
       harness.cell,
