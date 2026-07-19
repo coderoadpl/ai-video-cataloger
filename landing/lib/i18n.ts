@@ -164,7 +164,7 @@ export const en: Dictionary = {
       "AI Video Cataloger watches, transcribes and summarizes the videos in any folder - then renames them by what is actually inside. All on your Mac. No cloud required.",
     primaryButton: "Download for macOS",
     subNote:
-      "v0.2.0 early alpha - free - macOS (Apple Silicon) - .dmg, about 153 MB",
+      "v0.3.0 early alpha - free - macOS (Apple Silicon) - .dmg, about 153 MB",
     gatekeeperPrefix:
       "The app is not notarized yet: on first launch, right-click the app and choose Open. If macOS still refuses, allow it in System Settings -> Privacy & Security -> Open Anyway. Expect rough edges - and ",
     gatekeeperLink: "please report them",
@@ -368,7 +368,7 @@ export const en: Dictionary = {
   },
   footer: {
     builtBy: "AI Video Cataloger - built by CodeRoad",
-    version: "v0.2.0 early alpha - macOS only (Apple Silicon)",
+    version: "v0.3.0 early alpha - macOS only (Apple Silicon)",
     feedback: "Send feedback",
   },
 };
@@ -404,7 +404,7 @@ export const pl: Dictionary = {
       "AI Video Cataloger ogląda, transkrybuje i streszcza filmy w dowolnym folderze - a potem zmienia im nazwy na takie, które mówią, co jest w środku. Wszystko na Twoim Macu. Chmura - tylko jeśli sam chcesz.",
     primaryButton: "Pobierz na macOS",
     subNote:
-      "v0.2.0 wczesna alfa - za darmo - macOS (Apple Silicon) - .dmg, ok. 153 MB",
+      "v0.3.0 wczesna alfa - za darmo - macOS (Apple Silicon) - .dmg, ok. 153 MB",
     gatekeeperPrefix:
       "Aplikacja nie jest jeszcze notaryzowana: przy pierwszym uruchomieniu kliknij prawym przyciskiem i wybierz Otwórz. Jeśli macOS dalej odmawia, zezwól w Ustawienia systemowe -> Prywatność i ochrona -> Otwórz mimo to. Spodziewaj się niedoróbek - i ",
     gatekeeperLink: "daj nam o nich znać",
@@ -611,7 +611,7 @@ export const pl: Dictionary = {
   },
   footer: {
     builtBy: "AI Video Cataloger - tworzone przez CodeRoad",
-    version: "v0.2.0 wczesna alfa - tylko macOS (Apple Silicon)",
+    version: "v0.3.0 wczesna alfa - tylko macOS (Apple Silicon)",
     feedback: "Zgłoś uwagi",
   },
 };

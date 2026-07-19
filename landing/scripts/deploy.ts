@@ -2,9 +2,9 @@ import { copyFile, mkdir, stat } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { $ } from "bun";
 
-const source = resolve("../release/AI Video Cataloger-0.2.0-arm64.dmg");
+const source = resolve("../release/AI Video Cataloger-0.3.0-arm64.dmg");
 const target = resolve(
-  "public/downloads/AI-Video-Cataloger-0.2.0-arm64.dmg"
+  "public/downloads/AI-Video-Cataloger-0.3.0-arm64.dmg"
 );
 
 try {
