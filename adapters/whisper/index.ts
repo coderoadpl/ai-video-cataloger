@@ -8,6 +8,7 @@ import path from 'node:path';
 import { z } from 'zod';
 
 import {
+  apiProviderIdForBaseUrl,
   appError,
   ok,
   type AppError,
@@ -45,7 +46,12 @@ export interface ResolvedWhisperBinary {
 }
 
 export interface WhisperApiClient {
-  createTranscription(input: { file: ReadStream; model: 'whisper-1' }, options?: { signal?: AbortSignal | undefined }): Promise<{ text: string }>;
+  createTranscription(input: { file: ReadStream; model: string }, options?: { signal?: AbortSignal | undefined }): Promise<{ text: string }>;
+}
+
+export interface OpenAiWhisperClientOptions {
+  apiKey: string;
+  baseURL?: string | undefined;
 }
 
 export interface WhisperTranscriberOptions {
@@ -95,6 +101,8 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
   async dependency(input?: {
     mode: 'local' | 'api' | 'skip';
     model: WhisperModelName;
+    apiBaseUrl?: string | undefined;
+    apiModel?: string | undefined;
     binaryPath?: string | undefined;
   }): Promise<Result<DependencyStatus, AppError>> {
     if (input?.mode === 'skip') {
@@ -108,7 +116,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
       });
     }
     if (input?.mode === 'api') {
-      const apiKey = await this.resolveApiKey();
+      const apiKey = await this.resolveApiKey(input.apiBaseUrl);
       if (!apiKey.ok) return apiKey;
       const available = apiKey.value !== null;
       return ok({
@@ -215,7 +223,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
   }
 
   private async transcribeWithApi(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
-    const apiKey = await this.resolveApiKey();
+    const apiKey = await this.resolveApiKey(input.apiBaseUrl ?? DEFAULT_WHISPER_API_BASE_URL);
     if (!apiKey.ok) return apiKey;
     if (apiKey.value === null) {
       return {
@@ -225,10 +233,10 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     }
     try {
       await mkdir(path.dirname(input.transcriptPath), { recursive: true });
-      const client = this.apiClient ?? createOpenAiWhisperClient(apiKey.value);
+      const client = this.apiClient ?? createOpenAiWhisperClient(apiKey.value, input.apiBaseUrl ?? DEFAULT_WHISPER_API_BASE_URL);
       const transcription = await client.createTranscription({
         file: createReadStream(input.audioPath),
-        model: 'whisper-1',
+        model: input.apiModel ?? DEFAULT_WHISPER_API_MODEL,
       }, { signal: input.signal });
       const content = transcription.text.trim();
       await writeFile(input.transcriptPath, content, 'utf8');
@@ -238,10 +246,12 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     }
   }
 
-  private async resolveApiKey(): Promise<Result<string | null, AppError>> {
+  private async resolveApiKey(baseUrl = DEFAULT_WHISPER_API_BASE_URL): Promise<Result<string | null, AppError>> {
     if (this.apiKey !== undefined && this.apiKey.length > 0) return ok(this.apiKey);
     if (this.credentials === undefined) return ok(null);
-    const stored = await this.credentials.get('openai');
+    const providerId = apiProviderIdForBaseUrl(baseUrl);
+    if (providerId === null) return { ok: false, error: appError('invalid_config_value', `Invalid Whisper API base URL: ${baseUrl}`) };
+    const stored = await this.credentials.get(providerId);
     if (!stored.ok) return stored;
     return ok(stored.value === null || stored.value.length === 0 ? null : stored.value);
   }
@@ -486,8 +496,16 @@ const childProcessCommandRunner: CommandRunner = {
     }),
 };
 
-const createOpenAiWhisperClient = (apiKey: string): WhisperApiClient => {
-  const client = new OpenAI({ apiKey });
+const DEFAULT_WHISPER_API_BASE_URL = 'https://api.openai.com/v1';
+const DEFAULT_WHISPER_API_MODEL = 'whisper-1';
+
+export const openAiWhisperClientOptions = (apiKey: string, baseURL: string): OpenAiWhisperClientOptions => ({
+  apiKey,
+  ...(baseURL === DEFAULT_WHISPER_API_BASE_URL ? {} : { baseURL }),
+});
+
+export const createOpenAiWhisperClient = (apiKey: string, baseURL: string): WhisperApiClient => {
+  const client = new OpenAI(openAiWhisperClientOptions(apiKey, baseURL));
   return {
     createTranscription: (input, options) => client.audio.transcriptions.create(input, options),
   };

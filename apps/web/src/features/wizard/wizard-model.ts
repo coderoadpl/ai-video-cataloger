@@ -62,12 +62,13 @@ export const buildLocalProvider = (modelTag: string): AnalyzerProviderConfig => 
   modelTag,
 });
 
-export const buildHarnessProvider = (descriptor: HarnessDescriptor): AnalyzerProviderConfig => ({
+export const buildHarnessProvider = (descriptor: HarnessDescriptor, model = ''): AnalyzerProviderConfig => ({
   family: 'harness',
   providerId: descriptor.providerId,
   command: descriptor.command,
   argsTemplate: [...descriptor.argsTemplate],
   promptStyle: descriptor.promptStyle,
+  ...(model.trim().length === 0 ? {} : { model: model.trim() }),
 });
 
 const optionalPrice = (value: string): number | undefined => {

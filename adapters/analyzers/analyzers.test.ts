@@ -21,6 +21,7 @@ import {
   OllamaAnalyzerAdapter,
   OpenAiCompatibleAnalyzerAdapter,
   buildAnalyzerPrompt,
+  buildHarnessArgs,
   childProcessAnalyzerCommandRunner,
   claudeProjectHistoryPath,
   expandHarnessArgs,
@@ -177,6 +178,65 @@ describe('HarnessAnalyzerAdapter', () => {
     expect(runner.calls[0]?.args.at(-1)).toContain('file:///work/videos/frames/frame-001.jpg');
     expect(runner.calls[1]?.args.at(-1)).toContain('Read these 1 frame file(s)');
     expect(runner.calls[2]?.args.at(-1)).toContain('file:///work/videos/frames/frame-001.jpg');
+  });
+
+  it('inserts model and effort flags for built-in harnesses before prompt arguments', () => {
+    const prompt = 'prompt text';
+    const videoDir = '/work/videos';
+    const providers = builtInHarnessProviders();
+    const claude = providers.find((provider) => provider.providerId === 'claude-code');
+    const codex = providers.find((provider) => provider.providerId === 'codex');
+    const cursor = providers.find((provider) => provider.providerId === 'cursor-agent');
+    if (claude === undefined || codex === undefined || cursor === undefined) {
+      throw new Error('Expected built-in harness descriptors');
+    }
+
+    expect(buildHarnessArgs({
+      ...claude,
+      model: 'claude-sonnet-4-20250514',
+      reasoningEffort: 'high',
+    }, { prompt, videoDir })).toEqual([
+      '--add-dir',
+      videoDir,
+      '--model',
+      'claude-sonnet-4-20250514',
+      '--effort',
+      'high',
+      '-p',
+      prompt,
+    ]);
+    expect(buildHarnessArgs({
+      ...codex,
+      model: 'gpt-5-codex',
+      reasoningEffort: 'xhigh',
+    }, { prompt, videoDir })).toEqual([
+      'exec',
+      '--sandbox',
+      'read-only',
+      '--skip-git-repo-check',
+      '--cd',
+      videoDir,
+      '-m',
+      'gpt-5-codex',
+      '-c',
+      'model_reasoning_effort=xhigh',
+      prompt,
+    ]);
+    expect(buildHarnessArgs({
+      ...cursor,
+      model: 'cursor-large-high',
+      reasoningEffort: 'low',
+    }, { prompt, videoDir })).toEqual([
+      '--print',
+      '--trust',
+      '--mode',
+      'ask',
+      '--workspace',
+      videoDir,
+      '--model',
+      'cursor-large-high',
+      prompt,
+    ]);
   });
 
   it('keeps quotes, command substitutions, and backticks inert inside argument values', async () => {
@@ -745,7 +805,7 @@ describe('analyzer helpers', () => {
     });
 
     expect(prompt).toContain('Attached are 1 frame(s) extracted from the video (as images).');
-    expect(prompt).toContain('DESCRIPTION: <your 2-3 sentence description here>');
+    expect(prompt).toContain('DESCRIPTION: <text>');
   });
 });
 

@@ -3,10 +3,12 @@ import { z } from 'zod';
 export const ANALYZER_PROVIDER_FAMILIES = ['api', 'harness', 'local'] as const;
 export const MAX_IMAGE_DETAILS = ['low', 'high', 'auto'] as const;
 export const HARNESS_PROMPT_STYLES = ['file-urls', 'dir-access'] as const;
+export const HARNESS_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
 
 export const analyzerProviderFamilySchema = z.enum(ANALYZER_PROVIDER_FAMILIES);
 export const maxImageDetailSchema = z.enum(MAX_IMAGE_DETAILS);
 export const harnessPromptStyleSchema = z.enum(HARNESS_PROMPT_STYLES);
+export const harnessReasoningEffortSchema = z.enum(HARNESS_REASONING_EFFORTS);
 
 const providerIdSchema = z.string().trim().min(1);
 const labelSchema = z.string().trim().min(1);
@@ -39,6 +41,8 @@ export const harnessAnalyzerProviderConfigSchema = z.object({
   command: z.string().trim().min(1),
   argsTemplate: argsTemplateSchema,
   promptStyle: harnessPromptStyleSchema,
+  model: z.string().trim().min(1).optional(),
+  reasoningEffort: harnessReasoningEffortSchema.optional(),
 }).strict();
 
 export const localAnalyzerProviderConfigSchema = z.object({

@@ -55,7 +55,8 @@ port.
   'local', providerId, ...family-specific fields }` (zod, closed unions)
 - [ ] API family fields: baseUrl, apiKeyRef (see US-604), model,
   maxImageDetail; harness family fields: command, argsTemplate (placeholders
-  `{prompt}`, `{videoDir}`), promptStyle; local family unchanged
+  `{prompt}`, `{videoDir}`), promptStyle, optional model and reasoningEffort;
+  local family unchanged
   (modelTag)
 - [ ] Per-folder config keys extended backward-compatibly:
   `analyzer_backend` keeps accepting `claude|local` (legacy aliases mapping
@@ -126,7 +127,8 @@ Code, Codex, Cursor Agent) or define my own command as the analyzer.
   becomes this definition), `codex` (`codex exec` non-interactive with
   workspace read access), `cursor-agent` (its non-interactive print mode) —
   exact flags verified against the installed CLIs during implementation, not
-  assumed
+  assumed; optional model/reasoningEffort config maps to built-in CLI flags
+  where supported
 - [ ] Custom harness: user provides name/command/args template in Settings
   (GUI) or config (CLI); validated (command exists) via providers/test
 - [ ] Availability detection per harness (binary on PATH + version) feeds

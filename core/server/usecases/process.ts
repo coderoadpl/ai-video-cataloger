@@ -132,6 +132,8 @@ export const checkProcessPrerequisites = async (
     const transcriber = await deps.transcriber.dependency({
       mode: resolved.value.whisper,
       model: resolved.value.whisperModel,
+      apiBaseUrl: resolved.value.whisperApiBaseUrl,
+      apiModel: resolved.value.whisperApiModel,
       binaryPath: resolved.value.whisperBinaryPath,
     });
     if (!transcriber.ok) return prerequisitesFailure(transcriber.error.message, transcriber.error);
@@ -140,6 +142,8 @@ export const checkProcessPrerequisites = async (
     const transcriber = await deps.transcriber.dependency({
       mode: resolved.value.whisper,
       model: resolved.value.whisperModel,
+      apiBaseUrl: resolved.value.whisperApiBaseUrl,
+      apiModel: resolved.value.whisperApiModel,
       binaryPath: resolved.value.whisperBinaryPath,
     });
     if (!transcriber.ok) return prerequisitesFailure(transcriber.error.message, transcriber.error);
@@ -457,6 +461,8 @@ interface ResolvedProcessOptions {
   whisper: AppConfig['whisper_mode'];
   whisperModel: WhisperModelName;
   whisperBinaryPath: string;
+  whisperApiBaseUrl: string;
+  whisperApiModel: string;
   analyzer: ResolvedAnalyzer;
   batch: ProcessBatchContext;
 }
@@ -478,6 +484,8 @@ const resolveProcessOptions = async (
       ? input.whisperModel
       : storedWhisperModel(effective.whisper_model) ?? CONFIG_DEFAULTS.whisper_model;
   const whisperBinaryPath = effective.whisper_binary_path;
+  const whisperApiBaseUrl = effective.whisper_api_base_url;
+  const whisperApiModel = effective.whisper_api_model;
   const localModel = trimmedValue(input.localModel) ?? trimmedValue(effective.local_model) ?? CONFIG_DEFAULTS.local_model;
   const persistedProvider = storedAnalyzerProvider(effective.analyzer_provider);
   const legacyBackend = storedAnalyzerBackend(effective.analyzer_backend) ?? CONFIG_DEFAULTS.analyzer_backend;
@@ -496,6 +504,8 @@ const resolveProcessOptions = async (
     whisper,
     whisperModel,
     whisperBinaryPath,
+    whisperApiBaseUrl,
+    whisperApiModel,
     analyzer: {
       backend,
       localModel: provider.family === 'local' ? provider.modelTag : localModel,
@@ -654,6 +664,8 @@ const transcribe = async (
     transcriptPath,
     mode: resolved.whisper,
     model: resolved.whisperModel,
+    apiBaseUrl: resolved.whisperApiBaseUrl,
+    apiModel: resolved.whisperApiModel,
     binaryPath: resolved.whisperBinaryPath,
     signal,
   });

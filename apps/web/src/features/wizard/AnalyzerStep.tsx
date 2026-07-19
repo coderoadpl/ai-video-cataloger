@@ -151,6 +151,12 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
               </ToggleButton>
             );
           })}
+          <TextField
+            label="Model (optional)"
+            value={controller.harnessModel}
+            onChange={(event) => controller.setHarnessModel(event.target.value)}
+            size="small"
+          />
         </Box>
       ) : null}
 

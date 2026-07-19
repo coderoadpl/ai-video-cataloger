@@ -94,6 +94,8 @@ const evaluateConfiguredReadiness = async (
   const transcriberDependency = await deps.transcriber.dependency({
     mode: configured.data.whisper_mode,
     model: configured.data.whisper_model,
+    apiBaseUrl: configured.data.whisper_api_base_url,
+    apiModel: configured.data.whisper_api_model,
     binaryPath: configured.data.whisper_binary_path,
   });
   if (!transcriberDependency.ok) return transcriberDependency;

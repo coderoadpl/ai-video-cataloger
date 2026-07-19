@@ -215,6 +215,108 @@ describe('setup command workflow', () => {
     });
   });
 
+  it('stores harness model and effort plus Whisper API endpoint settings', async () => {
+    const home = createTestDir();
+    const folder = createTestDir();
+    roots.push(home, folder);
+    const deps = createDeps({ homeDirectory: home, workingDirectory: folder });
+    deps.providers = {
+      test: (provider) => provider.family === 'harness'
+        ? Promise.resolve(ok({
+            family: 'harness',
+            providerId: provider.providerId,
+            available: true,
+            version: 'fake 1.0',
+            latencyMs: 1,
+            message: 'Available',
+          }))
+        : Promise.resolve(ok({
+            family: 'api',
+            providerId: provider.providerId,
+            reachable: true,
+            authenticated: true,
+            latencyMs: 1,
+            message: 'Available',
+          })),
+    };
+    deps.analyzer = new InMemoryAnalyzer();
+    deps.transcriber = new InMemoryTranscriber();
+    const api = createApiClient({ baseUrl: '', fetchImpl: (input, init) => buildApp(deps).request(input, init) });
+    const errors: AppError[] = [];
+
+    const completed = await executeSetup({
+      api,
+      folder,
+      options: {
+        analyzer: 'harness',
+        harness: 'codex',
+        harnessModel: 'gpt-5-codex',
+        harnessEffort: 'high',
+        transcription: 'api',
+        whisperApiBaseUrl: 'https://transcribe.example.com/v1',
+        whisperApiModel: 'whisper-large-v3',
+        yes: true,
+      },
+      output: {
+        started: () => undefined,
+        progress: () => undefined,
+        completed: () => undefined,
+        error: (error) => errors.push(error),
+        write: () => undefined,
+      },
+      environment: { HOME: home, OPENAI_API_KEY: 'whisper-secret' },
+    });
+    const provider = await deps.config.get({ kind: 'folder', folder }, 'analyzer_provider');
+    const whisperBaseUrl = await deps.config.get({ kind: 'folder', folder }, 'whisper_api_base_url');
+    const whisperModel = await deps.config.get({ kind: 'folder', folder }, 'whisper_api_model');
+    const credential = await deps.credentials.get('transcribe.example.com');
+
+    expect(completed).toBe(true);
+    expect(errors).toEqual([]);
+    expect(provider).toMatchObject({
+      ok: true,
+      value: expect.stringContaining('"model":"gpt-5-codex"'),
+    });
+    expect(provider).toMatchObject({
+      ok: true,
+      value: expect.stringContaining('"reasoningEffort":"high"'),
+    });
+    expect(whisperBaseUrl).toEqual(ok('https://transcribe.example.com/v1'));
+    expect(whisperModel).toEqual(ok('whisper-large-v3'));
+    expect(credential).toEqual(ok('whisper-secret'));
+  });
+
+  it('rejects setup flags scoped to the wrong family', async () => {
+    const folder = createTestDir();
+    roots.push(folder);
+    const deps = createDeps({ workingDirectory: folder });
+    const api = createApiClient({ baseUrl: '', fetchImpl: (input, init) => buildApp(deps).request(input, init) });
+    const errors: AppError[] = [];
+    const output: SetupOutput = {
+      started: () => undefined,
+      progress: () => undefined,
+      completed: () => undefined,
+      error: (error) => errors.push(error),
+      write: () => undefined,
+    };
+
+    expect(await executeSetup({
+      api,
+      folder,
+      options: { analyzer: 'local', harnessModel: 'ignored', transcription: 'skip', yes: true },
+      output,
+      environment: {},
+    })).toBe(false);
+    expect(await executeSetup({
+      api,
+      folder,
+      options: { analyzer: 'local', transcription: 'skip', whisperApiModel: 'custom', yes: true },
+      output,
+      environment: {},
+    })).toBe(false);
+    expect(errors.map((error) => error.code)).toEqual(['invalid_config_value', 'invalid_config_value']);
+  });
+
   it('keeps non-interactive local setup not ready when the runtime is unreachable', async () => {
     const home = createTestDir();
     const folder = createTestDir();

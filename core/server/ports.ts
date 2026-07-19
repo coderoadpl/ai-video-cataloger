@@ -142,6 +142,8 @@ export interface TranscribeInput {
   transcriptPath: string;
   mode: AppConfig['whisper_mode'];
   model: WhisperModelName;
+  apiBaseUrl?: string | undefined;
+  apiModel?: string | undefined;
   binaryPath?: string | undefined;
   signal?: AbortSignal | undefined;
 }
@@ -151,6 +153,8 @@ export interface TranscriberPort {
   dependency(input?: {
     mode: AppConfig['whisper_mode'];
     model: WhisperModelName;
+    apiBaseUrl?: string | undefined;
+    apiModel?: string | undefined;
     binaryPath?: string | undefined;
   }): Promise<Result<DependencyStatus, AppError>>;
 }

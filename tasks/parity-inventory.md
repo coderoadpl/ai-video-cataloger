@@ -569,6 +569,7 @@ Source: each file in `src/services/**`.
 - `src/services/analyzer-providers/claude-cli.ts`: Claude Code CLI analyzer provider using `claude --add-dir <dir> -p <prompt>`.
 - `src/services/analyzer-providers/ollama.ts`: Local multimodal analyzer provider using managed/system Ollama.
 - `src/services/analyzer-providers/response-format.ts`: Shared `DESCRIPTION:`/`FILENAME:` prompt contract and parser.
+- Sanctioned 2026-07-19 deviation: analyzer prompt now prioritizes visible text and distinctive verifiable details across all provider families.
 - `src/services/analyzer-providers/types.ts`: Analyzer provider interfaces and backend types.
 
 ## 5. Data
@@ -712,7 +713,7 @@ Source: `src/services/whisper-setup.ts`, `src/services/models.ts`, `src/services
 - Transcription local command:
   - `whisper <audioPath> --model <model> --output_dir <transcriptsDir> --output_format txt`.
 - API transcription:
-  - OpenAI client with `audio.transcriptions.create({file, model:'whisper-1'})`.
+  - OpenAI-compatible client with configurable base URL and `audio.transcriptions.create({file, model})`, defaulting to `whisper-1`.
   - Requires `OPENAI_API_KEY`.
   - Handles API errors 401, 429, 413.
 

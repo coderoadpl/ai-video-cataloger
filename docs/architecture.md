@@ -175,7 +175,8 @@ managed runtimes, and its working-directory fallback.
   `tasks/prd-providers-onboarding.md`): OpenAI-compatible API adapter
   (BYO base URL + key; credentials live in the home scope only), a
   data-driven agent-harness adapter (Claude Code / Codex / Cursor Agent
-  built-ins + user-defined), and the local ollama adapter. Legacy config
+  built-ins + user-defined, with optional built-in model/reasoning-effort
+  flags), and the local ollama adapter. Legacy config
   values `claude|local` remain valid aliases.
 - `LocalAiRuntimePort` — system Ollama / managed pinned runtime. Analyzer
   execution starts the runtime on demand through this port and receives the
@@ -195,6 +196,8 @@ on the built-in definition rather than a separate adapter. Provider tests run
 the configured command's version invocation; doctor exposes those harness
 availability results separately from its legacy dependency list so optional
 harnesses do not change the existing `allAvailable` meaning or CLI exit code.
+OpenAI Whisper API transcription can override the compatible base URL and
+model while keeping credentials in the home-scope provider credential store.
 
 Port rule unchanged: no port without a second implementation or platform
 difference; zod, `@tanstack/query-core` and `@opentelemetry/api` remain

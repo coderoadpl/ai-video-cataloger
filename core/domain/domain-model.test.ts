@@ -71,6 +71,8 @@ describe('config schema', () => {
       whisper_binary_path: '',
       whisper_model: 'base',
       whisper_mode: 'local',
+      whisper_api_base_url: 'https://api.openai.com/v1',
+      whisper_api_model: 'whisper-1',
       frames: 3,
       timeout: 120,
       skip_rename: false,
@@ -125,6 +127,8 @@ describe('analyzer provider schema', () => {
       command: '/opt/bin/custom-agent',
       argsTemplate: ['run', '{prompt}', '--directory', '{videoDir}'],
       promptStyle: 'dir-access',
+      model: 'custom-model',
+      reasoningEffort: 'medium',
     },
     {
       family: 'local',

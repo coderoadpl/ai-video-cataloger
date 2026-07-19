@@ -9,6 +9,7 @@ import { createApiClient, type ApiClient } from '@core/client/index.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
 import {
   CONFIG_KEYS,
+  HARNESS_REASONING_EFFORTS,
   WHISPER_MODEL_NAMES,
   apiCostSignal,
   analyzerProviderConfigSchema,
@@ -117,6 +118,13 @@ const setupWhisperModelOption = (value: string): WhisperModelName => {
   throw new InvalidArgumentError(parsed.error.message);
 };
 
+const setupHarnessEffortOption = (value: string): SetupOptions['harnessEffort'] => {
+  for (const effort of HARNESS_REASONING_EFFORTS) {
+    if (value === effort) return effort;
+  }
+  throw new InvalidArgumentError(`Invalid harness effort: ${value}. Valid efforts: ${HARNESS_REASONING_EFFORTS.join(', ')}`);
+};
+
 const nonNegativeNumberOption = (value: string): number => {
   const parsed = Number(value);
   if (Number.isFinite(parsed) && parsed >= 0) return parsed;
@@ -174,9 +182,13 @@ program
   .option('--api-input-price <amount>', 'price per 1M input tokens', nonNegativeNumberOption)
   .option('--api-output-price <amount>', 'price per 1M output tokens', nonNegativeNumberOption)
   .option('--harness <providerId>', 'built-in harness: claude-code, codex, or cursor-agent')
+  .option('--harness-model <model>', 'model passed to built-in harnesses that support it')
+  .option('--harness-effort <effort>', 'reasoning effort: low, medium, high, or xhigh', setupHarnessEffortOption)
   .option('--transcription <source>', 'managed, own, api, or skip', setupTranscriptionOption)
   .option('--whisper-path <path>', 'path to an existing whisper.cpp executable')
   .option('--whisper-model <model>', 'managed Whisper model', setupWhisperModelOption)
+  .option('--whisper-api-base-url <url>', 'OpenAI-compatible Whisper API base URL')
+  .option('--whisper-api-model <model>', 'OpenAI-compatible Whisper API model')
   .option('--yes', 'accept downloads and run without prompts', false)
   .option('--json', 'machine-readable NDJSON output', false)
   .action(async (options: SetupOptions) => {

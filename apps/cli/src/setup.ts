@@ -7,6 +7,7 @@ import {
   analyzerProviderConfigSchema,
   appError,
   builtInHarnessProviders,
+  harnessReasoningEffortSchema,
   type AnalyzerProviderConfig,
   type AppError,
   type WhisperModelName,
@@ -26,9 +27,13 @@ export interface SetupOptions {
   apiInputPrice?: number | undefined;
   apiOutputPrice?: number | undefined;
   harness?: string | undefined;
+  harnessModel?: string | undefined;
+  harnessEffort?: 'low' | 'medium' | 'high' | 'xhigh' | undefined;
   transcription?: SetupTranscription | undefined;
   whisperPath?: string | undefined;
   whisperModel?: WhisperModelName | undefined;
+  whisperApiBaseUrl?: string | undefined;
+  whisperApiModel?: string | undefined;
   yes?: boolean | undefined;
   json?: boolean | undefined;
 }
@@ -87,6 +92,8 @@ interface ExistingSetup {
   whisperMode: 'local' | 'api' | 'skip';
   whisperModel: WhisperModelName;
   whisperPath: string;
+  whisperApiBaseUrl: string;
+  whisperApiModel: string;
 }
 
 interface DownloadTask {
@@ -113,6 +120,8 @@ export const executeSetup = async (context: SetupContext): Promise<boolean> => {
       context.output.error(appError('invalid_config_value', 'Non-interactive setup requires --analyzer'));
       return false;
     }
+    const validatedOptions = validateSetupOptions(context);
+    if (!validatedOptions) return false;
 
     const existing = await loadExisting(context);
     if (existing === null) return false;
@@ -188,6 +197,8 @@ const loadExisting = async (context: SetupContext): Promise<ExistingSetup | null
     whisperMode,
     whisperModel,
     whisperPath: result.value.effective.whisper_binary_path,
+    whisperApiBaseUrl: result.value.effective.whisper_api_base_url,
+    whisperApiModel: result.value.effective.whisper_api_model,
   };
 };
 
@@ -299,7 +310,10 @@ const selectHarnessAnalyzer = async (
     context.output.error(appError('invalid_config_value', `Unknown built-in harness: ${providerId}`));
     return null;
   }
-  const provider = toHarnessConfig(descriptor);
+  const existingModel = existing.provider?.family === 'harness' ? existing.provider.model ?? '' : '';
+  const model = context.options.harnessModel ?? await askOptional(context, 'Model (optional)', existingModel);
+  const effort = context.options.harnessEffort ?? (existing.provider?.family === 'harness' ? existing.provider.reasoningEffort : undefined);
+  const provider = toHarnessConfig(descriptor, model, effort);
   const tested = await context.api.testProvider(provider);
   if (!tested.ok) {
     context.output.error(tested.error);
@@ -312,12 +326,18 @@ const selectHarnessAnalyzer = async (
   return provider;
 };
 
-const toHarnessConfig = (descriptor: ReturnType<typeof builtInHarnessProviders>[number]): AnalyzerProviderConfig => ({
+const toHarnessConfig = (
+  descriptor: ReturnType<typeof builtInHarnessProviders>[number],
+  model?: string | undefined,
+  reasoningEffort?: 'low' | 'medium' | 'high' | 'xhigh' | undefined,
+): AnalyzerProviderConfig => ({
   family: 'harness',
   providerId: descriptor.providerId,
   command: descriptor.command,
   argsTemplate: [...descriptor.argsTemplate],
   promptStyle: descriptor.promptStyle,
+  ...(model === undefined || model.trim().length === 0 ? {} : { model: model.trim() }),
+  ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
 });
 
 const persistAnalyzer = async (context: SetupContext, provider: AnalyzerProviderConfig): Promise<boolean> => {
@@ -329,7 +349,13 @@ const persistAnalyzer = async (context: SetupContext, provider: AnalyzerProvider
 const selectTranscription = async (
   context: SetupContext,
   existing: ExistingSetup,
-): Promise<{ mode: SetupTranscription; whisperPath: string; whisperModel: WhisperModelName } | null> => {
+): Promise<{
+  mode: SetupTranscription;
+  whisperPath: string;
+  whisperModel: WhisperModelName;
+  whisperApiBaseUrl: string;
+  whisperApiModel: string;
+} | null> => {
   const existingMode: SetupTranscription = existing.whisperMode === 'local'
     ? existing.whisperPath.length > 0 ? 'own' : 'managed'
     : existing.whisperMode;
@@ -357,12 +383,24 @@ const selectTranscription = async (
       return null;
     }
   }
-  return { mode, whisperPath: whisperPath.trim(), whisperModel: context.options.whisperModel ?? existing.whisperModel };
+  return {
+    mode,
+    whisperPath: whisperPath.trim(),
+    whisperModel: context.options.whisperModel ?? existing.whisperModel,
+    whisperApiBaseUrl: context.options.whisperApiBaseUrl ?? existing.whisperApiBaseUrl,
+    whisperApiModel: context.options.whisperApiModel ?? existing.whisperApiModel,
+  };
 };
 
 const persistTranscription = async (
   context: SetupContext,
-  transcription: { mode: SetupTranscription; whisperPath: string; whisperModel: WhisperModelName },
+  transcription: {
+    mode: SetupTranscription;
+    whisperPath: string;
+    whisperModel: WhisperModelName;
+    whisperApiBaseUrl: string;
+    whisperApiModel: string;
+  },
 ): Promise<boolean> => {
   if (transcription.mode === 'managed') {
     return await setConfig(context, 'whisper_binary_path', '')
@@ -373,6 +411,24 @@ const persistTranscription = async (
     return await setConfig(context, 'whisper_binary_path', transcription.whisperPath)
       && await setConfig(context, 'whisper_mode', 'local')
       && await setConfig(context, 'whisper_model', transcription.whisperModel);
+  }
+  if (transcription.mode === 'api') {
+    const providerId = apiProviderIdForBaseUrl(transcription.whisperApiBaseUrl);
+    if (providerId === null) {
+      context.output.error(appError('invalid_config_value', `Invalid Whisper API base URL: ${transcription.whisperApiBaseUrl}`));
+      return false;
+    }
+    const credential = credentialFromEnvironment(context);
+    if (credential !== null) {
+      const saved = await context.api.setCredential({ providerId, credential });
+      if (!saved.ok) {
+        context.output.error(saved.error);
+        return false;
+      }
+    }
+    return await setConfig(context, 'whisper_api_base_url', transcription.whisperApiBaseUrl)
+      && await setConfig(context, 'whisper_api_model', transcription.whisperApiModel)
+      && await setConfig(context, 'whisper_mode', 'api');
   }
   return setConfig(context, 'whisper_mode', transcription.mode);
 };
@@ -462,6 +518,13 @@ const ask = async (context: SetupContext, message: string, defaultValue: string)
   return answer.trim().length === 0 ? defaultValue : answer.trim();
 };
 
+const askOptional = async (context: SetupContext, message: string, current: string): Promise<string | undefined> => {
+  if (context.options.yes === true) return current.trim().length === 0 ? undefined : current;
+  const answer = await context.prompter?.question(`${message}${current.length === 0 ? '' : ` [${current}]`}: `) ?? '';
+  const value = answer.trim().length === 0 ? current : answer.trim();
+  return value.length === 0 ? undefined : value;
+};
+
 const confirm = async (context: SetupContext, message: string, defaultValue: boolean): Promise<boolean> => {
   const suffix = defaultValue ? '[Y/n]' : '[y/N]';
   const answer = await context.prompter?.question(`${message} ${suffix} `) ?? '';
@@ -501,6 +564,28 @@ const parseWhisperModel = (value: string): WhisperModelName => {
     if (value === model) return model;
   }
   return 'base';
+};
+
+const validateSetupOptions = (context: SetupContext): boolean => {
+  if ((context.options.harnessModel !== undefined || context.options.harnessEffort !== undefined) && context.options.analyzer !== 'harness') {
+    context.output.error(appError('invalid_config_value', '--harness-model and --harness-effort require --analyzer harness'));
+    return false;
+  }
+  if (
+    (context.options.whisperApiBaseUrl !== undefined || context.options.whisperApiModel !== undefined)
+    && context.options.transcription !== 'api'
+  ) {
+    context.output.error(appError('invalid_config_value', '--whisper-api-base-url and --whisper-api-model require --transcription api'));
+    return false;
+  }
+  if (context.options.harnessEffort !== undefined) {
+    const parsed = harnessReasoningEffortSchema.safeParse(context.options.harnessEffort);
+    if (!parsed.success) {
+      context.output.error(appError('invalid_config_value', `Invalid harness effort: ${context.options.harnessEffort}`));
+      return false;
+    }
+  }
+  return true;
 };
 
 const messageOf = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);

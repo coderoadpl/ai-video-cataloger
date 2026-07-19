@@ -64,6 +64,7 @@ export interface WizardController {
   localModelTag: string;
   apiDraft: ApiDraft;
   harnessId: string;
+  harnessModel: string;
   transcriptionMode: TranscriptionMode;
   whisperBinaryPath: string;
   whisperApiCredential: string;
@@ -80,6 +81,7 @@ export interface WizardController {
   setLocalModelTag: (tag: string) => void;
   setApiDraft: (patch: Partial<ApiDraft>) => void;
   setHarnessId: (id: string) => void;
+  setHarnessModel: (model: string) => void;
   setTranscriptionMode: (mode: TranscriptionMode) => void;
   setWhisperBinaryPath: (path: string) => void;
   setWhisperApiCredential: (credential: string) => void;
@@ -116,6 +118,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const [localModelTag, setLocalModelTag] = useState<string>('');
   const [apiDraft, setApiDraftState] = useState<ApiDraft>(emptyApiDraft);
   const [harnessId, setHarnessId] = useState<string>('claude-code');
+  const [harnessModel, setHarnessModelState] = useState<string>('');
   const [harnessAvailability, setHarnessAvailability] = useState<Record<string, HarnessAvailability>>({});
   const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>('managed');
   const [whisperBinaryPath, setWhisperBinaryPath] = useState<string>('');
@@ -137,6 +140,12 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
 
   const setAnalyzerFamily = useCallback((family: AnalyzerFamily) => {
     setAnalyzerFamilyState(family);
+    setValidation('idle');
+    setValidationMessage(null);
+  }, []);
+
+  const setHarnessModel = useCallback((model: string) => {
+    setHarnessModelState(model);
     setValidation('idle');
     setValidationMessage(null);
   }, []);
@@ -180,7 +189,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
           setValidationMessage('No harness is available');
           return;
         }
-        const provider = buildHarnessProvider(descriptor);
+        const provider = buildHarnessProvider(descriptor, harnessModel);
         const result = await testProvider.mutateAsync(provider);
         if (result.family !== 'harness' || !result.available) {
           setValidation('error');
@@ -202,6 +211,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     apiDraft,
     effectiveLocalTag,
     harnessId,
+    harnessModel,
     harnesses,
     persistAnalyzer,
     setCredential,
@@ -454,6 +464,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     localModelTag: effectiveLocalTag,
     apiDraft,
     harnessId,
+    harnessModel,
     transcriptionMode,
     whisperBinaryPath,
     whisperApiCredential,
@@ -470,6 +481,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     setLocalModelTag,
     setApiDraft,
     setHarnessId,
+    setHarnessModel,
     setTranscriptionMode,
     setWhisperBinaryPath,
     setWhisperApiCredential,

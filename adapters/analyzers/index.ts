@@ -261,9 +261,9 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     } catch {
       return { ok: false, error: appError('read_error', 'Could not prepare harness analysis') };
     }
-    const args = expandHarnessArgs(provider.argsTemplate, { prompt, videoDir });
+    const args = buildHarnessArgs(provider, { prompt, videoDir });
     const invocation = runtime.verboseInvocation === null
-      ? `${provider.command} ${expandHarnessArgs(provider.argsTemplate, { prompt: '<prompt>', videoDir }).map((argument) => JSON.stringify(argument)).join(' ')}`
+      ? `${provider.command} ${buildHarnessArgs(provider, { prompt: '<prompt>', videoDir }).map((argument) => JSON.stringify(argument)).join(' ')}`
       : runtime.verboseInvocation.replaceAll('{videoDir}', videoDir);
     const verbosePrefix = verbose
       ? [
@@ -474,6 +474,51 @@ export const expandHarnessArgs = (
   .replaceAll('{prompt}', values.prompt)
   .replaceAll('{videoDir}', values.videoDir));
 
+export const buildHarnessArgs = (
+  provider: Extract<AnalyzerProviderConfig, { family: 'harness' }>,
+  values: { prompt: string; videoDir: string },
+): string[] => expandHarnessArgs(expandedHarnessArgsTemplate(provider), values);
+
+const expandedHarnessArgsTemplate = (
+  provider: Extract<AnalyzerProviderConfig, { family: 'harness' }>,
+): readonly string[] => {
+  const flags = harnessRuntimeFlags(provider);
+  if (flags.length === 0) return provider.argsTemplate;
+  const promptIndex = provider.argsTemplate.findIndex((argument) => argument.includes('{prompt}'));
+  if (promptIndex < 0) return [...provider.argsTemplate, ...flags];
+  const insertionIndex = promptIndex > 0 && provider.argsTemplate[promptIndex - 1] === '-p'
+    ? promptIndex - 1
+    : promptIndex;
+  return [
+    ...provider.argsTemplate.slice(0, insertionIndex),
+    ...flags,
+    ...provider.argsTemplate.slice(insertionIndex),
+  ];
+};
+
+const harnessRuntimeFlags = (
+  provider: Extract<AnalyzerProviderConfig, { family: 'harness' }>,
+): readonly string[] => {
+  const model = provider.model;
+  const effort = provider.reasoningEffort;
+  switch (provider.providerId) {
+    case 'claude-code':
+      return [
+        ...(model === undefined ? [] : ['--model', model]),
+        ...(effort === undefined ? [] : ['--effort', effort]),
+      ];
+    case 'codex':
+      return [
+        ...(model === undefined ? [] : ['-m', model]),
+        ...(effort === undefined ? [] : ['-c', `model_reasoning_effort=${effort}`]),
+      ];
+    case 'cursor-agent':
+      return model === undefined ? [] : ['--model', model];
+    default:
+      return [];
+  }
+};
+
 export const claudeProjectHistoryPath = (homeDirectory: string, videoDirectory: string): string =>
   path.join(homeDirectory, '.claude', 'projects', `-${videoDirectory.replaceAll('/', '-').replace(/^-/, '')}`);
 
@@ -495,16 +540,12 @@ export const buildAnalyzerPrompt = (input: {
 };
 
 const responseContractInstructions = (hasTranscript: boolean): string =>
-  `Based on the visual content from the frames${hasTranscript ? ' and the audio transcript' : ''}, please provide:
-
-1. A 2-3 sentence description of what this video is about
-2. A suggested filename (3-5 words, kebab-case format like "cat-playing-with-yarn")
-
-Please format your response EXACTLY as follows:
-DESCRIPTION: <your 2-3 sentence description here>
-FILENAME: <your-suggested-filename-in-kebab-case>
-
-Focus on being descriptive and accurate. The filename should capture the essence of the video content.`;
+  `You are analyzing a video from its extracted frames${hasTranscript ? ' and the audio transcript' : ''}. Be a careful observer: read any visible text, signs, placards or labels in the frames and use them; prefer concrete, verifiable details over generic scene descriptions. Provide:
+1. DESCRIPTION: 2-4 sentences describing what the video actually shows - specific objects, named things (from visible text or the transcript), actions and setting. Do not speculate beyond what you can see or hear; never invent names or facts.
+2. FILENAME: a lowercase kebab-case filename (3-8 words, no dates, no extension) built from the MOST distinctive verifiable details - a name someone could use to find this exact clip among hundreds. Generic names like museum-exhibit or boat-display are wrong when anything more specific is visible.
+Respond exactly in the format:
+DESCRIPTION: <text>
+FILENAME: <kebab-case-name>`;
 
 const clearClaudeProjectHistory = async (homeDirectory: string, videoDirectory: string): Promise<void> => {
   await rm(claudeProjectHistoryPath(homeDirectory, videoDirectory), { recursive: true, force: true });

@@ -14,6 +14,7 @@ import {
   WhisperTranscriberAdapter,
   directModelPath,
   legacyModelPath,
+  openAiWhisperClientOptions,
   primaryModelPath,
   resolveWhisperBinary,
   whisperModelDownloadUrl,
@@ -331,6 +332,44 @@ describe('WhisperTranscriberAdapter', () => {
     expect(apiClient.calls[0]?.file).toBeInstanceOf(ReadStream);
   });
 
+  it('uses custom Whisper API model and base URL credential host', async () => {
+    const root = await tempRoot();
+    const audioPath = path.join(root, 'audio.wav');
+    const transcriptPath = path.join(root, 'transcripts', 'audio.txt');
+    await writeFile(audioPath, 'audio', 'utf8');
+    const apiClient = new FakeWhisperApiClient('custom transcript');
+    const credentialLookups: string[] = [];
+    const credentials = {
+      get: (providerId: string) => {
+        credentialLookups.push(providerId);
+        return Promise.resolve(ok(providerId === 'transcribe.example.com' ? 'stored-key' : null));
+      },
+      set: () => Promise.resolve(ok(undefined)),
+    };
+    const adapter = new WhisperTranscriberAdapter({ apiKey: '', apiClient, credentials });
+
+    const result = await adapter.transcribe({
+      audioPath,
+      transcriptPath,
+      mode: 'api',
+      model: 'base',
+      apiBaseUrl: 'https://transcribe.example.com/v1',
+      apiModel: 'whisper-large-v3',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'custom transcript' }));
+    expect(credentialLookups).toEqual(['transcribe.example.com']);
+    expect(apiClient.calls[0]?.model).toBe('whisper-large-v3');
+  });
+
+  it('constructs OpenAI Whisper client options with optional baseURL', () => {
+    expect(openAiWhisperClientOptions('key', 'https://api.openai.com/v1')).toEqual({ apiKey: 'key' });
+    expect(openAiWhisperClientOptions('key', 'https://transcribe.example.com/v1')).toEqual({
+      apiKey: 'key',
+      baseURL: 'https://transcribe.example.com/v1',
+    });
+  });
+
   it('uses the stored OpenAI credential when the environment key is absent', async () => {
     const root = await tempRoot();
     const audioPath = path.join(root, 'audio.wav');
@@ -575,11 +614,11 @@ class FakeCommandRunner implements CommandRunner {
 }
 
 class FakeWhisperApiClient implements WhisperApiClient {
-  readonly calls: Array<{ file: ReadStream; model: 'whisper-1' }> = [];
+  readonly calls: Array<{ file: ReadStream; model: string }> = [];
 
   constructor(private readonly text: string) {}
 
-  createTranscription(input: { file: ReadStream; model: 'whisper-1' }): Promise<{ text: string }> {
+  createTranscription(input: { file: ReadStream; model: string }): Promise<{ text: string }> {
     this.calls.push(input);
     return Promise.resolve({ text: this.text });
   }

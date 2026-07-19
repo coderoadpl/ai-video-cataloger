@@ -129,6 +129,10 @@ export const configValueForKey = (key: ConfigKey, value: string): AppConfig[Conf
       return whisperModelNameSchema.parse(value);
     case 'whisper_mode':
       return whisperModeSchema.parse(value);
+    case 'whisper_api_base_url':
+      return configValueSchema.shape.whisper_api_base_url.parse(value);
+    case 'whisper_api_model':
+      return configValueSchema.shape.whisper_api_model.parse(value);
     case 'frames':
       return configValueSchema.shape.frames.parse(value);
     case 'timeout':
@@ -156,6 +160,8 @@ export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
   whisper_binary_path: null,
   whisper_model: null,
   whisper_mode: null,
+  whisper_api_base_url: null,
+  whisper_api_model: null,
   frames: null,
   timeout: null,
   skip_rename: null,
@@ -168,6 +174,8 @@ export const storedDefaults = (): Record<ConfigKey, string> => ({
   whisper_binary_path: stringifyConfigDefault('whisper_binary_path'),
   whisper_model: stringifyConfigDefault('whisper_model'),
   whisper_mode: stringifyConfigDefault('whisper_mode'),
+  whisper_api_base_url: stringifyConfigDefault('whisper_api_base_url'),
+  whisper_api_model: stringifyConfigDefault('whisper_api_model'),
   frames: stringifyConfigDefault('frames'),
   timeout: stringifyConfigDefault('timeout'),
   skip_rename: stringifyConfigDefault('skip_rename'),
