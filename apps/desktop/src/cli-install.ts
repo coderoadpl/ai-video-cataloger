@@ -5,7 +5,9 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 
 const execFileAsync = promisify(execFile);
-const installPath = '/usr/local/bin/ai-video-cataloger';
+const packagedCommandName = 'ai-video-cataloger';
+const devCommandName = 'ai-video-cataloger-dev';
+const installDirectory = '/usr/local/bin';
 
 export type CliInstallOutcome = { ok: true; path: string } | { ok: false; reason: string };
 
@@ -64,12 +66,17 @@ export const devCliPaths = (): DevCliWrapperPaths => {
 export const wrapperScriptForRuntime = (isPackaged: boolean): string =>
   isPackaged ? buildCliWrapperScript(packagedCliPaths()) : buildDevCliWrapperScript(devCliPaths());
 
-export const installCommandLineTool = async (scriptContent: string): Promise<CliInstallOutcome> => {
+export const commandNameForRuntime = (isPackaged: boolean): string => (isPackaged ? packagedCommandName : devCommandName);
+
+export const installPathForRuntime = (isPackaged: boolean): string =>
+  path.join(installDirectory, commandNameForRuntime(isPackaged));
+
+export const installCommandLineTool = async (scriptContent: string, targetPath: string): Promise<CliInstallOutcome> => {
   try {
-    await mkdir(path.dirname(installPath), { recursive: true });
-    await writeFile(installPath, scriptContent, { encoding: 'utf8', mode: 0o755 });
-    await chmod(installPath, 0o755);
-    return { ok: true, path: installPath };
+    await mkdir(path.dirname(targetPath), { recursive: true });
+    await writeFile(targetPath, scriptContent, { encoding: 'utf8', mode: 0o755 });
+    await chmod(targetPath, 0o755);
+    return { ok: true, path: targetPath };
   } catch (error) {
     if (!isPermissionError(error)) return { ok: false, reason: failureReason(error) };
   }
@@ -80,13 +87,13 @@ export const installCommandLineTool = async (scriptContent: string): Promise<Cli
   } catch (error) {
     return { ok: false, reason: failureReason(error) };
   }
-  const temporaryScriptPath = path.join(temporaryDirectory, 'ai-video-cataloger');
+  const temporaryScriptPath = path.join(temporaryDirectory, path.basename(targetPath));
   try {
     await writeFile(temporaryScriptPath, scriptContent, { encoding: 'utf8', mode: 0o755 });
     await chmod(temporaryScriptPath, 0o755);
-    const command = buildPrivilegedInstallShellCommand(temporaryScriptPath, installPath);
+    const command = buildPrivilegedInstallShellCommand(temporaryScriptPath, targetPath);
     await execFileAsync('osascript', ['-e', buildOsascriptExpression(command)]);
-    return { ok: true, path: installPath };
+    return { ok: true, path: targetPath };
   } catch (error) {
     return { ok: false, reason: failureReason(error) };
   } finally {
@@ -95,7 +102,7 @@ export const installCommandLineTool = async (scriptContent: string): Promise<Cli
 };
 
 export const installCurrentRuntimeCommandLineTool = async (isPackaged: boolean): Promise<CliInstallOutcome> =>
-  installCommandLineTool(wrapperScriptForRuntime(isPackaged));
+  installCommandLineTool(wrapperScriptForRuntime(isPackaged), installPathForRuntime(isPackaged));
 
 const isPermissionError = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM');

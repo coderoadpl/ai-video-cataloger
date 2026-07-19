@@ -61,9 +61,7 @@ const appMenu = (mainWindow: BrowserWindow | null): MenuItemConstructorOptions =
 
 const installCliTool = async (mainWindow: BrowserWindow | null): Promise<void> => {
   const result = await installCurrentRuntimeCommandLineTool(app.isPackaged);
-  const message = result.ok
-    ? `Installed. Run ai-video-cataloger in your terminal.\n\n${result.path}`
-    : result.reason;
+  const message = result.ok ? cliInstallSuccessMessage(result.path) : result.reason;
   const options = {
     type: result.ok ? 'info' : 'error',
     message,
@@ -74,6 +72,9 @@ const installCliTool = async (mainWindow: BrowserWindow | null): Promise<void> =
   }
   await dialog.showMessageBox(mainWindow, options);
 };
+
+export const cliInstallSuccessMessage = (installedPath: string): string =>
+  `Installed. Run ${path.basename(installedPath)} in your terminal.\n\n${installedPath}`;
 
 const fileMenu = (
   mainWindow: BrowserWindow | null,

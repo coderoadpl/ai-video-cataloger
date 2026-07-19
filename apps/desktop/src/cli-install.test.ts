@@ -5,6 +5,8 @@ import {
   buildDevCliWrapperScript,
   buildOsascriptExpression,
   buildPrivilegedInstallShellCommand,
+  commandNameForRuntime,
+  installPathForRuntime,
 } from './cli-install.js';
 
 describe('CLI installer', () => {
@@ -52,5 +54,15 @@ describe('CLI installer', () => {
     expect(buildOsascriptExpression(command)).toBe(
       'do shell script "mkdir -p \'/usr/local/bin\' && cp \'/private/tmp/avc cli/owner\'\\\\\'\'s script\' \'/usr/local/bin/ai video cataloger\'\\\\\'\'s cli\' && chmod 755 \'/usr/local/bin/ai video cataloger\'\\\\\'\'s cli\'" with administrator privileges',
     );
+  });
+
+  it('uses the production command name for packaged runtime installs', () => {
+    expect(commandNameForRuntime(true)).toBe('ai-video-cataloger');
+    expect(installPathForRuntime(true)).toBe('/usr/local/bin/ai-video-cataloger');
+  });
+
+  it('uses the development command name for unpackaged runtime installs', () => {
+    expect(commandNameForRuntime(false)).toBe('ai-video-cataloger-dev');
+    expect(installPathForRuntime(false)).toBe('/usr/local/bin/ai-video-cataloger-dev');
   });
 });
