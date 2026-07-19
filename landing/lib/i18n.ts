@@ -256,7 +256,7 @@ export const en: Dictionary = {
   cli: {
     heading: "Scriptable to the bone",
     subline:
-      "The same engine ships as a first-class CLI: NDJSON events, honest exit codes, perfect for cron jobs and automations.",
+      "The same engine ships as a first-class CLI: NDJSON events, honest exit codes, perfect for cron jobs and automations. Install it from the app menu: AI Video Cataloger -> Install Command Line Tool.",
     lines: sharedCliLines,
   },
   requirements: {
@@ -498,7 +498,7 @@ export const pl: Dictionary = {
   cli: {
     heading: "Skryptowalny do szpiku kości",
     subline:
-      "Ten sam silnik działa jako pełnoprawne CLI: zdarzenia NDJSON, uczciwe kody wyjścia - idealne do crona i automatyzacji.",
+      "Ten sam silnik działa jako pełnoprawne CLI: zdarzenia NDJSON, uczciwe kody wyjścia - idealne do crona i automatyzacji. Zainstalujesz je z menu aplikacji: AI Video Cataloger -> Install Command Line Tool.",
     lines: sharedCliLines,
   },
   requirements: {

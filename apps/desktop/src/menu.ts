@@ -1,8 +1,9 @@
 import path from 'node:path';
 
-import { app, type BrowserWindow, Menu, type MenuItemConstructorOptions, shell } from 'electron';
+import { app, type BrowserWindow, dialog, Menu, type MenuItemConstructorOptions, shell } from 'electron';
 
 import { CHANNELS } from './channels.js';
+import { installCurrentRuntimeCommandLineTool } from './cli-install.js';
 
 export const createApplicationMenu = (mainWindow: BrowserWindow | null, recentFolders: readonly string[]): void => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(mainWindow, recentFolders)));
@@ -41,6 +42,12 @@ const appMenu = (mainWindow: BrowserWindow | null): MenuItemConstructorOptions =
       accelerator: 'Cmd+,',
       click: () => sendToRenderer(mainWindow, CHANNELS.menuShowSettings),
     },
+    {
+      label: 'Install Command Line Tool…',
+      click: () => {
+        void installCliTool(mainWindow);
+      },
+    },
     { type: 'separator' },
     { role: 'services' },
     { type: 'separator' },
@@ -51,6 +58,22 @@ const appMenu = (mainWindow: BrowserWindow | null): MenuItemConstructorOptions =
     { role: 'quit' },
   ],
 });
+
+const installCliTool = async (mainWindow: BrowserWindow | null): Promise<void> => {
+  const result = await installCurrentRuntimeCommandLineTool(app.isPackaged);
+  const message = result.ok
+    ? `Installed. Run ai-video-cataloger in your terminal.\n\n${result.path}`
+    : result.reason;
+  const options = {
+    type: result.ok ? 'info' : 'error',
+    message,
+  } as const;
+  if (mainWindow === null) {
+    await dialog.showMessageBox(options);
+    return;
+  }
+  await dialog.showMessageBox(mainWindow, options);
+};
 
 const fileMenu = (
   mainWindow: BrowserWindow | null,
