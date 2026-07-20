@@ -92,6 +92,19 @@ export type Dictionary = {
     }>;
     closing: string;
   };
+  recommendations: {
+    heading: string;
+    disclaimer: string;
+    scenarios: Array<{
+      heading: string;
+      rows: Array<{
+        label: string;
+        description: string;
+      }>;
+    }>;
+    tosCallout: string;
+    whisperCallout: string;
+  };
   faq: {
     heading: string;
     items: Array<{
@@ -320,6 +333,57 @@ export const en: Dictionary = {
     ],
     closing:
       "You choose what to install in the setup wizard - nothing is downloaded without asking.",
+  },
+  recommendations: {
+    heading: "Which setup should you choose?",
+    disclaimer:
+      "These recommendations assume short, social-media-style clips (tens of seconds up to ~2 minutes) - that is what we benchmarked internally (July 2026). The app works on longer videos too, but we have not benchmarked them.",
+    scenarios: [
+      {
+        heading: "A small batch - e.g. one day of footage (a few dozen clips)",
+        rows: [
+          {
+            label: "Claude subscription",
+            description:
+              "Best quality: the Claude Code harness with Fable - in our internal benchmark the only setup that beat a hand-curated reference. Cost-efficient: Opus 4.8. Around 40 s per clip, so a day of footage takes minutes.",
+          },
+          {
+            label: "ChatGPT subscription",
+            description:
+              "The Codex harness with gpt-5.6-luna - the best Codex quality in our benchmark and the lightest on plan limits.",
+          },
+          {
+            label: "Fully local",
+            description:
+              "Depends on your Mac. 16 GB+ - gemma3:12b gives a decent draft you will want to touch up; 8 GB - gemma3:4b works, but treat the names as placeholders.",
+          },
+        ],
+      },
+      {
+        heading: "A whole drive (1-2 TB)",
+        rows: [
+          {
+            label: "Default route",
+            description:
+              "Your own API key (gpt-5.5) + local Whisper - about 14 s per clip (~30-40 h per TB running in the background), pennies per clip, quality close to the harnesses.",
+          },
+          {
+            label: "Subscription harnesses",
+            description:
+              "Not suited to bulk processing: ~40 s per clip plus plan limits. A sensible hybrid: run the whole drive through the API, then re-run your 50-100 most important clips through the harness.",
+          },
+          {
+            label: "Fully local",
+            description:
+              "16 GB+ can run gemma3:12b overnight (~60-75 h per TB), free and offline, but expect draft-quality names.",
+          },
+        ],
+      },
+    ],
+    tosCallout:
+      "Harness modes drive your subscription tool (Claude Code / Codex CLI) automatically. Occasional batches are normal plan usage; mass processing may conflict with your plan's terms and limits - check your provider's ToS. For large volumes, an API key is the honest route.",
+    whisperCallout:
+      "Independent of everything above: keep transcription local. Whisper large-v3-turbo runs on any Apple Silicon GPU at 2-4 s per clip, free and offline - there is no reason to pay for cloud transcription or upload your audio.",
   },
   faq: {
     heading: "Questions, answered",
@@ -563,6 +627,57 @@ export const pl: Dictionary = {
     ],
     closing:
       "O tym, co zainstalować, decydujesz w kreatorze - nic nie pobiera się bez pytania.",
+  },
+  recommendations: {
+    heading: "Którą konfigurację wybrać?",
+    disclaimer:
+      "Rekomendacje zakładają krótkie klipy w stylu social media (kilkadziesiąt sekund do ~2 minut) - takie testowaliśmy w wewnętrznym benchmarku (lipiec 2026). Aplikacja działa też na dłuższych nagraniach, ale ich nie benchmarkowaliśmy.",
+    scenarios: [
+      {
+        heading: "Mały zrzut - np. nagrania z jednego dnia (kilkadziesiąt klipów)",
+        rows: [
+          {
+            label: "Subskrypcja Claude",
+            description:
+              "Najlepsza jakość: harness Claude Code z Fable - w naszym wewnętrznym benchmarku jako jedyny pobił ręcznie przygotowaną referencję. Oszczędnie: Opus 4.8. Około 40 s na klip, więc zrzut z całego dnia zajmuje minuty.",
+          },
+          {
+            label: "Subskrypcja ChatGPT",
+            description:
+              "Harness Codex z gpt-5.6-luna - najlepsza jakość spośród modeli Codexa w naszym benchmarku i najlżejsza dla limitów planu.",
+          },
+          {
+            label: "W pełni lokalnie",
+            description:
+              "Zależy od Maca. 16 GB+ - gemma3:12b daje przyzwoity szkic do ręcznej korekty; 8 GB - gemma3:4b zadziała, ale nazwy traktuj jako robocze.",
+          },
+        ],
+      },
+      {
+        heading: "Cały dysk (1-2 TB)",
+        rows: [
+          {
+            label: "Domyślna droga",
+            description:
+              "Własny klucz API (gpt-5.5) + lokalny Whisper - ok. 14 s na klip (~30-40 h na terabajt w tle), groszowe koszty, jakość o włos od harnessów.",
+          },
+          {
+            label: "Harnessy subskrypcyjne",
+            description:
+              "Nie nadają się do masówki: ~40 s na klip plus limity planu. Sensowna hybryda: cały dysk przez API, a potem 50-100 najważniejszych klipów jeszcze raz przez harness.",
+          },
+          {
+            label: "W pełni lokalnie",
+            description:
+              "16 GB+ udźwignie gemma3:12b nockami (~60-75 h na terabajt), za darmo i offline, ale nazwy będą szkicowe.",
+          },
+        ],
+      },
+    ],
+    tosCallout:
+      "Tryby harness sterują Twoim narzędziem subskrypcyjnym (Claude Code / Codex CLI) automatycznie. Okazjonalne partie to normalne użycie planu, ale masowe przetwarzanie może być niezgodne z warunkami i limitami subskrypcji - sprawdź ToS dostawcy. Do dużych wolumenów uczciwą drogą jest klucz API.",
+    whisperCallout:
+      "Niezależnie od wszystkiego powyżej: transkrypcję rób lokalnie. Whisper large-v3-turbo działa na GPU każdego Apple Silicon w 2-4 s na klip, za darmo i offline - nie ma po co płacić za transkrypcję w chmurze ani wysyłać audio.",
   },
   faq: {
     heading: "Pytania i odpowiedzi",
