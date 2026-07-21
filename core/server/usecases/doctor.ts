@@ -10,6 +10,7 @@ import {
 
 import type {
   AnalyzerPort,
+  CredentialsStore,
   DependencyStatus,
   LocalAiRuntimePort,
   MediaPort,
@@ -30,6 +31,7 @@ export interface DoctorDeps {
   config: ConfigStore;
   fs: FileSystemPort;
   readiness: ReadinessCache;
+  credentials?: CredentialsStore | undefined;
 }
 
 export interface DoctorWarning {
@@ -66,6 +68,8 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
   const harnesses = await detectHarnesses(deps.providers);
   const configured = await getReadiness(deps);
   if (!configured.ok) return configured;
+  const migrations = await secretMigrationWarnings(deps.credentials);
+  if (!migrations.ok) return migrations;
 
   const dependencies = [...media.value, transcriber.value, analyzer.value, localAiDependency(localAi.value, machine.value)];
   return ok({
@@ -78,7 +82,7 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
     },
     recommendedLocalModel: recommendedLocalModel(machine.value),
     allAvailable: dependencies.every((dependency) => dependency.available),
-    warnings: dependencyWarnings(dependencies),
+    warnings: [...dependencyWarnings(dependencies), ...migrations.value],
     harnesses,
     configured: configured.value,
   });
@@ -87,6 +91,18 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
 const dependencyWarnings = (dependencies: DependencyStatus[]): DoctorWarning[] =>
   dependencies.flatMap((dependency) =>
     dependency.warning === undefined ? [] : [{ code: `${dependency.name}_warning`, message: dependency.warning }]);
+
+const secretMigrationWarnings = async (
+  credentials: CredentialsStore | undefined,
+): Promise<Result<DoctorWarning[], AppError>> => {
+  if (credentials?.legacyPlaintextProviders === undefined) return ok([]);
+  const providers = await credentials.legacyPlaintextProviders();
+  if (!providers.ok) return providers;
+  return ok(providers.value.map((providerId) => ({
+    code: 'secret_migration',
+    message: `The API key for "${providerId}" is stored in plaintext config. Run: ai-video-cataloger setup to move it into the macOS Keychain.`,
+  })));
+};
 
 const detectHarnesses = async (
   providers: ProvidersPort,

@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { ok } from '@core/domain/index.js';
+
 import { runDoctor } from './doctor.js';
 import { ReadinessCache } from './readiness.js';
 import {
@@ -88,6 +90,32 @@ describe('runDoctor', () => {
     expect(result.ok && result.value.warnings).toEqual([
       { code: 'whisper_warning', message: 'Transcription is running on a slow CPU implementation' },
     ]);
+  });
+
+  it('warns when a plaintext credential can be migrated to the keychain', async () => {
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      credentials: {
+        get: () => Promise.resolve(ok(null)),
+        set: () => Promise.resolve(ok(undefined)),
+        legacyPlaintextProviders: () => Promise.resolve(ok(['openai'])),
+      },
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.warnings).toContainEqual({
+      code: 'secret_migration',
+      message: 'The API key for "openai" is stored in plaintext config. Run: ai-video-cataloger setup to move it into the macOS Keychain.',
+    });
   });
 
   it('keeps doctor successful on Apple Silicon when local AI starts on demand', async () => {

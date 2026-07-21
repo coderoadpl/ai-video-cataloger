@@ -7,7 +7,8 @@ import {
   OllamaAnalyzerAdapter,
   OpenAiCompatibleAnalyzerAdapter,
 } from '@adapters/analyzers/index.js';
-import { JsonCredentialsStore } from '@adapters/credentials/index.js';
+import { JsonCredentialsStore, KeychainCredentialsStore } from '@adapters/credentials/index.js';
+import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
 import { JsonConfigStore, SqlJsCatalogRepositoryFactory, SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
@@ -115,7 +116,10 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     };
   }
   const localAi = new ManagedOllamaRuntimeAdapter({ homeDirectory });
-  const credentials = new InvalidatingCredentialsStore(new JsonCredentialsStore({ homeDirectory }), readiness);
+  const credentials = new InvalidatingCredentialsStore(
+    new KeychainCredentialsStore(new KeychainSecretsAdapter(), new JsonCredentialsStore({ homeDirectory })),
+    readiness,
+  );
   const harness = new HarnessAnalyzerAdapter({ homeDirectory });
   const configStore = new InvalidatingConfigStore(new JsonConfigStore({ homeDirectory }), readiness);
   const whisperRuntime = new ManagedWhisperRuntimeAdapter({ config: configStore, homeDirectory });
@@ -226,6 +230,19 @@ class InvalidatingCredentialsStore implements CredentialsStore {
     const result = await this.store.set(providerId, credential);
     if (result.ok) this.readiness.invalidate();
     return result;
+  }
+
+  async delete(providerId: string): Promise<Result<void, AppError>> {
+    if (this.store.delete === undefined) {
+      return { ok: false, error: appError('internal', 'Credential deletion is not supported by this store') };
+    }
+    const result = await this.store.delete(providerId);
+    if (result.ok) this.readiness.invalidate();
+    return result;
+  }
+
+  legacyPlaintextProviders(): Promise<Result<string[], AppError>> {
+    return this.store.legacyPlaintextProviders?.() ?? Promise.resolve(ok([]));
   }
 }
 

@@ -12,6 +12,9 @@ import { z } from 'zod';
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
 const cliEntry = join(rootDir, 'apps/cli/src/main.ts');
 
+// Gates must never read or write the developer's real macOS Keychain.
+process.env.AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN = '1';
+
 class SmokeFailure extends Error {}
 
 const fail = (message: string): never => {

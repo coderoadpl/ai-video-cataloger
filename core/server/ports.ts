@@ -88,6 +88,15 @@ export interface ConfigStore {
 export interface CredentialsStore {
   get(providerId: string): Promise<Result<string | null, AppError>>;
   set(providerId: string, credential: string): Promise<Result<void, AppError>>;
+  delete?(providerId: string): Promise<Result<void, AppError>>;
+  legacyPlaintextProviders?(): Promise<Result<string[], AppError>>;
+}
+
+export interface SecretsStore {
+  isAvailable(): Promise<boolean>;
+  get(account: string): Promise<Result<string | null, AppError>>;
+  set(account: string, secret: string): Promise<Result<void, AppError>>;
+  delete(account: string): Promise<Result<void, AppError>>;
 }
 
 export interface DirectoryEntry {
