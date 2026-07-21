@@ -11,6 +11,8 @@ export default defineConfig({
     },
   },
   test: {
+    // Gates must never read or write the developer's real macOS Keychain.
+    env: { AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1' },
     projects: [
       {
         extends: true,
