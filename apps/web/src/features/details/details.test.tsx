@@ -58,6 +58,7 @@ describe('details panel', () => {
           description: 'A cooking tutorial about pasta.',
           suggestedFilename: 'cooking-tutorial-pasta',
           fullAnalysis: 'The full analysis text.',
+          tags: [],
           analyzedAt: '2026-01-01T00:00:00.000Z',
         },
         summaryPath: '/videos/summaries/clip.json',

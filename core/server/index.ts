@@ -15,4 +15,5 @@ export * from './usecases/readiness.js';
 export * from './usecases/reset.js';
 export * from './usecases/scan.js';
 export * from './usecases/status.js';
+export * from './usecases/tags.js';
 export * from './usecases/thumbnail.js';

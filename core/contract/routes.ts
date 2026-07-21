@@ -32,6 +32,7 @@ export const summarySchema = z.object({
   description: z.string(),
   suggestedFilename: z.string(),
   fullAnalysis: z.string(),
+  tags: z.array(z.string()).default([]),
   analyzedAt: z.string(),
 });
 
@@ -559,6 +560,24 @@ export const indexRebuildOutputSchema = z.object({
   folders: z.array(indexStatusFolderSchema),
 });
 
+export const tagsListOutputSchema = z.object({
+  tags: z.array(z.object({
+    name: z.string().min(1),
+    count: z.number().int().nonnegative(),
+  })),
+});
+
+export const tagsAliasInputSchema = z.object({
+  from: z.string().min(1),
+  to: z.string().min(1),
+});
+
+export const tagsAliasOutputSchema = z.object({
+  alias: z.string().min(1),
+  canonical: z.string().min(1),
+  remappedFiles: z.number().int().nonnegative(),
+});
+
 export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.ZodTypeAny> {
   method: 'GET' | 'POST' | 'DELETE';
   path: string;
@@ -667,6 +686,8 @@ export const API_ROUTES = {
   jobCancel: { method: 'POST', path: '/api/jobs/cancel', input: jobIdInputSchema, output: jobCancelOutputSchema },
   indexStatus: { method: 'GET', path: '/api/index/status', input: emptyInputSchema, output: indexStatusOutputSchema },
   indexRebuild: { method: 'POST', path: '/api/index/rebuild', input: emptyInputSchema, output: indexRebuildOutputSchema },
+  tagsList: { method: 'GET', path: '/api/tags', input: emptyInputSchema, output: tagsListOutputSchema },
+  tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -703,4 +724,6 @@ export const API_PATHS = {
   jobCancel: API_ROUTES.jobCancel.path,
   indexStatus: API_ROUTES.indexStatus.path,
   indexRebuild: API_ROUTES.indexRebuild.path,
+  tagsList: API_ROUTES.tagsList.path,
+  tagsAlias: API_ROUTES.tagsAlias.path,
 } as const;

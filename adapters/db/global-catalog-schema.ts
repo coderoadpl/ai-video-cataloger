@@ -1,4 +1,4 @@
-import { integer, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const folders = sqliteTable('folders', {
   folderId: text('folder_id').primaryKey(),
@@ -14,6 +14,8 @@ export const files = sqliteTable('files', {
   fileName: text('file_name').notNull(),
   size: integer('size').notNull(),
   durationS: real('duration_s'),
+  gpsLat: real('gps_lat'),
+  gpsLon: real('gps_lon'),
   processedAt: text('processed_at').notNull(),
   analyzer: text('analyzer'),
   model: text('model'),
@@ -31,7 +33,24 @@ export const schemaMeta = sqliteTable('schema_meta', {
   version: integer('version').primaryKey(),
 });
 
-export const globalCatalogSchema = { folders, files, analyses, schemaMeta };
+export const tags = sqliteTable('tags', {
+  tagId: integer('tag_id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+});
+
+export const fileTags = sqliteTable('file_tags', {
+  fingerprint: text('fingerprint').notNull(),
+  tagId: integer('tag_id').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.fingerprint, table.tagId] }),
+]);
+
+export const tagAliases = sqliteTable('tag_aliases', {
+  alias: text('alias').primaryKey(),
+  tagId: integer('tag_id').notNull(),
+});
+
+export const globalCatalogSchema = { folders, files, analyses, schemaMeta, tags, fileTags, tagAliases };
 
 export const createGlobalCatalogSchemaSqlV1 = [
   `CREATE TABLE IF NOT EXISTS folders (
@@ -60,5 +79,26 @@ export const createGlobalCatalogSchemaSqlV1 = [
     )`,
   `CREATE TABLE IF NOT EXISTS schema_meta (
       version INTEGER PRIMARY KEY
+    )`,
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV2 = [
+  'ALTER TABLE files ADD COLUMN gps_lat REAL',
+  'ALTER TABLE files ADD COLUMN gps_lon REAL',
+  `CREATE TABLE IF NOT EXISTS tags (
+      tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE
+    )`,
+  `CREATE TABLE IF NOT EXISTS file_tags (
+      fingerprint TEXT NOT NULL,
+      tag_id INTEGER NOT NULL,
+      PRIMARY KEY (fingerprint, tag_id),
+      FOREIGN KEY (fingerprint) REFERENCES files(fingerprint) ON DELETE CASCADE,
+      FOREIGN KEY (tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE
+    )`,
+  `CREATE TABLE IF NOT EXISTS tag_aliases (
+      alias TEXT PRIMARY KEY,
+      tag_id INTEGER NOT NULL,
+      FOREIGN KEY (tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE
     )`,
 ] as const;

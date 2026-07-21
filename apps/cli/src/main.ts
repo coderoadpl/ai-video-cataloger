@@ -670,6 +670,26 @@ index
     await runSimple(json, 'index_rebuild', () => api.indexRebuild(), indexRebuildHuman, { raw: true });
   });
 
+const tags = program.command('tags').description('Inspect and manage catalog tags');
+
+tags
+  .command('list')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'tags_list', () => api.listTags(), tagsListHuman, { raw: true });
+  });
+
+tags
+  .command('alias')
+  .argument('<from>')
+  .argument('<to>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (from: string, to: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'tags_alias', () => api.aliasTag({ from, to }), tagsAliasHuman, { raw: true });
+  });
+
 const configKey = (key: string | undefined) => {
   if (key === undefined) return null;
   const parsed = configKeySchema.safeParse(key);
@@ -821,6 +841,12 @@ const indexStatusHuman = (data: Awaited<ReturnType<ApiClient['indexStatus']>> ex
 
 const indexRebuildHuman = (data: Awaited<ReturnType<ApiClient['indexRebuild']>> extends Result<infer T, AppError> ? T : never): string =>
   `Reconciled ${data.reconciledFolders} folders, imported ${data.importedFiles} files`;
+
+const tagsListHuman = (data: Awaited<ReturnType<ApiClient['listTags']>> extends Result<infer T, AppError> ? T : never): string =>
+  data.tags.length === 0 ? 'No tags found' : data.tags.map((tag) => `${tag.name}\t${tag.count}`).join('\n');
+
+const tagsAliasHuman = (data: Awaited<ReturnType<ApiClient['aliasTag']>> extends Result<infer T, AppError> ? T : never): string =>
+  `Aliased ${data.alias} -> ${data.canonical}; remapped ${data.remappedFiles} files`;
 
 const doctorHuman = (data: Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never): string => {
   const lines = data.dependencies.map((dependency) => `${dependency.name}: ${dependency.available ? 'available' : 'missing'}`);

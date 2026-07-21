@@ -22,6 +22,8 @@ export interface ProcessedVideoInput {
   fileName: string;
   size: number;
   durationS: number | null;
+  gpsLat: number | null;
+  gpsLon: number | null;
   processedAt: string;
   analyzer: string | null;
   model: string | null;
@@ -29,6 +31,7 @@ export interface ProcessedVideoInput {
   description: string | null;
   transcript: string | null;
   language: string | null;
+  tags: string[];
 }
 
 export interface IndexStatusFolder {
@@ -99,6 +102,8 @@ export const upsertProcessedVideo = async (
     fileName: input.fileName,
     size: input.size,
     durationS: input.durationS,
+    gpsLat: input.gpsLat,
+    gpsLon: input.gpsLon,
     processedAt: input.processedAt,
     analyzer: input.analyzer,
     model: input.model,
@@ -112,6 +117,7 @@ export const upsertProcessedVideo = async (
     description: input.description,
     transcript: input.transcript,
     language: input.language,
+    tags: input.tags,
   };
   const upsertedAnalysis = await deps.globalCatalog.upsertAnalysis(analysis);
   if (!upsertedAnalysis.ok) return upsertedAnalysis;

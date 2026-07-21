@@ -36,6 +36,8 @@ import type {
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
+  CatalogTagAliasResult,
+  CatalogTagSummary,
   CatalogVideo,
   ConfigScope,
   ConfigStore,
@@ -406,6 +408,18 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(records));
   }
 
+  listTags(): Promise<Result<CatalogTagSummary[], AppError>> {
+    const counts = new Map<string, number>();
+    for (const analysis of this.analyses.values()) {
+      for (const tag of analysis.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return Promise.resolve(ok([...counts.entries()].map(([name, count]) => ({ name, count }))));
+  }
+
+  aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>> {
+    return Promise.resolve(ok({ alias: input.from, canonical: input.to, remappedFiles: 0 }));
+  }
+
   counts(): Promise<Result<GlobalCatalogCounts, AppError>> {
     return Promise.resolve(ok({
       folders: this.folders.size,
@@ -537,8 +551,8 @@ class InMemoryFileSystemPort implements FileSystemPort {
 }
 
 class InMemoryMediaPort implements MediaPort {
-  probe(): Promise<Result<{ duration: number | null }, AppError>> {
-    return Promise.resolve(ok({ duration: null }));
+  probe(): Promise<Result<{ duration: number | null; gpsLat: number | null; gpsLon: number | null }, AppError>> {
+    return Promise.resolve(ok({ duration: null, gpsLat: null, gpsLon: null }));
   }
 
   extractFrames(): Promise<Result<{ framePaths: string[] }, AppError>> {

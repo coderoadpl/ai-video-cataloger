@@ -21,6 +21,8 @@ import type {
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
+  CatalogTagAliasResult,
+  CatalogTagSummary,
   GlobalCatalogCounts,
   GlobalCatalogStore,
   AnalyzerPort,
@@ -371,11 +373,17 @@ export class InMemoryMedia implements MediaPort {
   readonly frameInputs: Array<{ videoPath: string; outputDirectory: string; frameCount: number }> = [];
   readonly audioInputs: Array<{ videoPath: string; outputPath: string }> = [];
   readonly durations = new Map<string, number | null>();
+  readonly locations = new Map<string, { gpsLat: number; gpsLon: number }>();
   dependenciesValue: DependencyStatus[] = [dependency('ffmpeg', true), dependency('ffprobe', true)];
   hasAudio = true;
 
   probe(input: { videoPath: string }): Promise<Result<MediaProbe, AppError>> {
-    return Promise.resolve(ok({ duration: this.durations.get(input.videoPath) ?? null }));
+    const location = this.locations.get(input.videoPath);
+    return Promise.resolve(ok({
+      duration: this.durations.get(input.videoPath) ?? null,
+      gpsLat: location?.gpsLat ?? null,
+      gpsLon: location?.gpsLon ?? null,
+    }));
   }
 
   extractFrames(input: { videoPath: string; outputDirectory: string; frameCount: number }): Promise<Result<{ framePaths: string[] }, AppError>> {
@@ -687,6 +695,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly folders = new Map<string, CatalogFolder>();
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
+  private readonly aliases = new Map<string, string>();
 
   constructor(private readonly path = '/home/.ai-video-cataloger/catalog.db') {}
 
@@ -721,7 +730,10 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>> {
-    this.analyses.set(analysis.fingerprint, analysis);
+    this.analyses.set(analysis.fingerprint, {
+      ...analysis,
+      tags: analysis.tags.map((tag) => this.aliases.get(tag) ?? tag),
+    });
     return Promise.resolve(ok(undefined));
   }
 
@@ -730,6 +742,28 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .filter((file) => file.folderId === folderId)
       .map((file) => ({ file, analysis: this.analyses.get(file.fingerprint) ?? null }));
     return Promise.resolve(ok(records));
+  }
+
+  listTags(): Promise<Result<CatalogTagSummary[], AppError>> {
+    const counts = new Map<string, number>();
+    for (const analysis of this.analyses.values()) {
+      for (const tag of analysis.tags) counts.set(tag, (counts.get(tag) ?? 0) + 1);
+    }
+    return Promise.resolve(ok([...counts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name))));
+  }
+
+  aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>> {
+    let remappedFiles = 0;
+    for (const analysis of this.analyses.values()) {
+      if (!analysis.tags.includes(input.from)) continue;
+      remappedFiles += 1;
+      const tags = analysis.tags.map((tag) => tag === input.from ? input.to : tag);
+      this.analyses.set(analysis.fingerprint, { ...analysis, tags: [...new Set(tags)] });
+    }
+    this.aliases.set(input.from, input.to);
+    return Promise.resolve(ok({ alias: input.from, canonical: input.to, remappedFiles }));
   }
 
   counts(): Promise<Result<GlobalCatalogCounts, AppError>> {

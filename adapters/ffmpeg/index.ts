@@ -31,9 +31,11 @@ const configuredRuntimes = new WeakMap<FfmpegRuntime, string>();
 export interface FfmpegMetadata {
   format: {
     duration?: number | null | undefined;
+    tags?: Record<string, string | number | null | undefined> | undefined;
   };
   streams: Array<{
     codec_type?: string | undefined;
+    tags?: Record<string, string | number | null | undefined> | undefined;
   }>;
 }
 
@@ -100,7 +102,12 @@ export class FfmpegMediaAdapter implements MediaPort {
     if (!configured.ok) return configured;
     const metadata = await probeMetadata(this.runtime, input.videoPath);
     if (!metadata.ok) return metadata;
-    return ok({ duration: metadata.value.format.duration ?? null });
+    const gps = gpsFromMetadata(metadata.value);
+    return ok({
+      duration: metadata.value.format.duration ?? null,
+      gpsLat: gps?.lat ?? null,
+      gpsLon: gps?.lon ?? null,
+    });
   }
 
   async extractFrames(input: ExtractFramesInput): Promise<Result<{ framePaths: string[] }, AppError>> {
@@ -226,6 +233,17 @@ export const tempAudioPathForVideo = (videoPath: string, tempRoot = tmpdir()): s
 export const thumbnailPathForVideo = (videoPath: string): string =>
   path.join(path.dirname(videoPath), '.ai-video-cataloger', 'thumbnails', `${path.basename(videoPath, path.extname(videoPath))}.jpg`);
 
+export const parseIso6709Location = (value: string): { lat: number; lon: number } | null => {
+  const trimmed = value.trim();
+  const match = /^([+-]\d{2}(?:\.\d+)?)([+-]\d{3}(?:\.\d+)?)(?:[+-]\d+(?:\.\d+)?)?\/?$/.exec(trimmed);
+  if (match === null) return null;
+  const lat = Number(match[1]);
+  const lon = Number(match[2]);
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return { lat, lon };
+};
+
 const resolveBinary = async (
   systemCommand: 'ffmpeg' | 'ffprobe',
   bundledPath: string | null,
@@ -268,6 +286,30 @@ const probeDuration = async (runtime: FfmpegRuntime, videoPath: string): Promise
     return { ok: false, error: appError('processing_error', 'Could not determine video duration') };
   }
   return ok(duration);
+};
+
+const gpsFromMetadata = (metadata: FfmpegMetadata): { lat: number; lon: number } | null => {
+  for (const tags of [metadata.format.tags, ...metadata.streams.map((stream) => stream.tags)]) {
+    const gps = gpsFromTags(tags);
+    if (gps !== null) return gps;
+  }
+  return null;
+};
+
+const gpsFromTags = (tagsValue: Record<string, string | number | null | undefined> | undefined): { lat: number; lon: number } | null => {
+  if (tagsValue === undefined) return null;
+  const keys = [
+    'com.apple.quicktime.location.ISO6709',
+    'location',
+    'location-eng',
+  ];
+  for (const key of keys) {
+    const value = tagsValue[key];
+    if (typeof value !== 'string') continue;
+    const parsed = parseIso6709Location(value);
+    if (parsed !== null) return parsed;
+  }
+  return null;
 };
 
 const runCommand = (command: FfmpegCommand, signal?: AbortSignal): Promise<Result<void, AppError>> =>

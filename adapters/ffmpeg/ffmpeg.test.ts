@@ -10,6 +10,7 @@ import {
   FfmpegMediaAdapter,
   frameOutputPath,
   framesDirectoryForVideo,
+  parseIso6709Location,
   resolveFfmpegBinaries,
   tempAudioPathForVideo,
   thumbnailPathForVideo,
@@ -84,8 +85,8 @@ describe('FfmpegMediaAdapter', () => {
     const second = await adapter.probe({ videoPath: '/video/clip.mp4' });
     const dependencies = await adapter.dependencies();
 
-    expect(first).toEqual(ok({ duration: 100 }));
-    expect(second).toEqual(ok({ duration: 100 }));
+    expect(first).toEqual(ok({ duration: 100, gpsLat: null, gpsLon: null }));
+    expect(second).toEqual(ok({ duration: 100, gpsLat: null, gpsLon: null }));
     expect(runtime.configurations).toEqual([{ ffmpegPath: '/bundled/ffmpeg', ffprobePath: '/bundled/ffprobe' }]);
     expect(dependencies).toEqual(ok([
       {
@@ -250,6 +251,36 @@ describe('FfmpegMediaAdapter', () => {
     expect(frameOutputPath(path.join('/work', 'frames', 'Clip One'), 7)).toBe(path.join('/work', 'frames', 'Clip One', 'frame-007.jpg'));
     expect(tempAudioPathForVideo(videoPath, '/tmp')).toBe(path.join('/tmp', 'ai-video-cataloger', 'audio', '1903b0a3-Clip One.wav'));
     expect(thumbnailPathForVideo(videoPath)).toBe(path.join('/work', '.ai-video-cataloger', 'thumbnails', 'Clip One.jpg'));
+  });
+
+  it('extracts GPS coordinates from QuickTime ISO6709 metadata', async () => {
+    const runtime = new FakeFfmpegRuntime();
+    runtime.metadata = {
+      format: {
+        duration: 100,
+        tags: { 'com.apple.quicktime.location.ISO6709': '+69.6492+018.9553+010.500/' },
+      },
+      streams: [{ codec_type: 'video' }],
+    };
+    const adapter = adapterWithFakeRuntime(runtime);
+
+    const result = await adapter.probe({ videoPath: '/video/clip.mov' });
+
+    expect(result).toEqual(ok({ duration: 100, gpsLat: 69.6492, gpsLon: 18.9553 }));
+  });
+});
+
+describe('parseIso6709Location', () => {
+  it('parses both hemispheres and optional altitude', () => {
+    expect(parseIso6709Location('+69.6492+018.9553+010.500/')).toEqual({ lat: 69.6492, lon: 18.9553 });
+    expect(parseIso6709Location('-33.8568+151.2153/')).toEqual({ lat: -33.8568, lon: 151.2153 });
+    expect(parseIso6709Location('+37.3317-122.0307/')).toEqual({ lat: 37.3317, lon: -122.0307 });
+  });
+
+  it('rejects garbage and out-of-range coordinates', () => {
+    expect(parseIso6709Location('not a location')).toBeNull();
+    expect(parseIso6709Location('+91.0000+018.0000/')).toBeNull();
+    expect(parseIso6709Location('+69.0000+181.0000/')).toBeNull();
   });
 });
 

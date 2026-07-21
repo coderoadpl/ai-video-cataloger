@@ -45,6 +45,17 @@ export interface CatalogFileRecord {
   analysis: CatalogAnalysis | null;
 }
 
+export interface CatalogTagSummary {
+  name: string;
+  count: number;
+}
+
+export interface CatalogTagAliasResult {
+  alias: string;
+  canonical: string;
+  remappedFiles: number;
+}
+
 export interface GlobalCatalogCounts {
   folders: number;
   files: number;
@@ -61,6 +72,8 @@ export interface GlobalCatalogStore {
   getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>>;
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>>;
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
+  listTags(): Promise<Result<CatalogTagSummary[], AppError>>;
+  aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>>;
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
 }
 
@@ -121,6 +134,8 @@ export interface DependencyStatus {
 
 export interface MediaProbe {
   duration: number | null;
+  gpsLat: number | null;
+  gpsLon: number | null;
 }
 
 export interface ExtractFramesInput {

@@ -8,6 +8,7 @@ import {
   resolveFolderIntoIndex,
   upsertProcessedVideo,
 } from './catalog-index.js';
+import { aliasTag, listTags } from './tags.js';
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
 
 const processedInput = (folderPath: string) => ({
@@ -16,6 +17,8 @@ const processedInput = (folderPath: string) => ({
   fileName: 'clip.mp4',
   size: 4096,
   durationS: null,
+  gpsLat: null,
+  gpsLon: null,
   processedAt: '2026-02-01T00:00:00.000Z',
   analyzer: 'openai',
   model: 'gpt-4.1-mini',
@@ -23,6 +26,7 @@ const processedInput = (folderPath: string) => ({
   description: 'A clip',
   transcript: 'spoken words',
   language: null,
+  tags: ['useful-clip'],
 });
 
 describe('folder identity marker', () => {
@@ -106,5 +110,33 @@ describe('index status and rebuild', () => {
     expect(rebuilt.value.reconciledFolders).toBe(1);
     const importedFile = await recoveredStore.getFile('fp-1');
     expect(importedFile.ok && importedFile.value?.fileName).toBe('clip.mp4');
+  });
+});
+
+describe('tag aliases', () => {
+  it('remaps existing file tags and applies the alias on later ingest', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const store = new InMemoryGlobalCatalogStore();
+    await upsertProcessedVideo({ globalCatalog: store, fs }, {
+      ...processedInput('/work'),
+      tags: ['automobile', 'wide-shot'],
+    });
+
+    const aliased = await aliasTag({ globalCatalog: store }, { from: 'automobile', to: 'car' });
+    const tagsAfterAlias = await listTags({ globalCatalog: store });
+    await upsertProcessedVideo({ globalCatalog: store, fs }, {
+      ...processedInput('/work'),
+      fingerprint: 'fp-2',
+      tags: ['automobile'],
+    });
+    const ingested = await store.getAnalysis('fp-2');
+
+    expect(aliased).toEqual({ ok: true, value: { alias: 'automobile', canonical: 'car', remappedFiles: 1 } });
+    expect(tagsAfterAlias.ok && tagsAfterAlias.value.tags).toEqual([
+      { name: 'car', count: 1 },
+      { name: 'wide-shot', count: 1 },
+    ]);
+    expect(ingested.ok && ingested.value?.tags).toEqual(['car']);
   });
 });

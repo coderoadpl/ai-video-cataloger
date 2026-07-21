@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { appError, type AppError, type Result, type VideoStatus } from '@core/domain/index.js';
 
 import { enqueueProcess } from './jobs.js';
-import { normalizeKebabSlug, parseAnalysisResponse, processVideoPipeline, tempAudioPath, type ProcessDeps } from './process.js';
+import { normalizeKebabSlug, parseAnalysisResponse, parseTagsLine, processVideoPipeline, tempAudioPath, type ProcessDeps } from './process.js';
 import { scanFolder } from './scan.js';
 import {
   InMemoryAnalyzer,
@@ -98,14 +98,16 @@ describe('analysis response parser', () => {
   it('captures multi-line descriptions and normalizes filenames', () => {
     const result = parseAnalysisResponse(`DESCRIPTION: First line
 second line
-FILENAME: My Nice_Clip!!!`);
+FILENAME: My Nice_Clip!!!
+TAGS: Red Car, City Street, Wide Shot, red-car`);
 
     expect(result).toEqual({
       ok: true,
       value: {
         description: 'First line second line',
         suggestedFilename: 'my-niceclip',
-        fullAnalysis: 'DESCRIPTION: First line\nsecond line\nFILENAME: My Nice_Clip!!!',
+        fullAnalysis: 'DESCRIPTION: First line\nsecond line\nFILENAME: My Nice_Clip!!!\nTAGS: Red Car, City Street, Wide Shot, red-car',
+        tags: ['red-car', 'city-street', 'wide-shot'],
       },
     });
   });
@@ -121,9 +123,23 @@ FILENAME: !!!`);
 
     expect(fallback).toMatchObject({
       ok: true,
-      value: { description: 'Some long analysis\nFILENAME: !!!', suggestedFilename: 'video' },
+      value: { description: 'Some long analysis\nFILENAME: !!!', suggestedFilename: 'video', tags: [] },
     });
     expect(normalizeKebabSlug('!!!')).toBe('video');
+  });
+
+  it('tolerates missing and malformed tags without failing analysis', () => {
+    const missing = parseAnalysisResponse('DESCRIPTION: A clip\nFILENAME: a-clip');
+    const malformed = parseAnalysisResponse('DESCRIPTION: A clip\nFILENAME: a-clip\nTAGS: !!!, Drone Shot, @@@');
+
+    expect(missing).toMatchObject({ ok: true, value: { tags: [] } });
+    expect(malformed).toMatchObject({ ok: true, value: { tags: ['drone-shot'] } });
+  });
+
+  it('normalizes, dedupes, truncates and caps parsed tags', () => {
+    expect(parseTagsLine('One Tag, one-tag, TWO_TAG, tag-4, tag-5, tag-6, tag-7, tag-8, tag-9, tag-10, tag-11, tag-12, tag-13'))
+      .toEqual(['one-tag', 'two-tag', 'tag-4', 'tag-5', 'tag-6', 'tag-7', 'tag-8', 'tag-9', 'tag-10', 'tag-11', 'tag-12', 'tag-13']);
+    expect(parseTagsLine('abcdefghijklmnopqrstuvwxyzabcdefghijklmnopqrstuvwxyz')).toEqual(['abcdefghijklmnopqrstuvwxyzabcdefghijklmn']);
   });
 });
 
@@ -442,6 +458,8 @@ describe('process pipeline global catalog idempotency', () => {
         fileName: 'Clip One.mp4',
         size: 1000,
         durationS: null,
+        gpsLat: null,
+        gpsLon: null,
         processedAt: '2026-01-02T00:00:00.000Z',
         analyzer: 'claude',
         model: null,
@@ -452,6 +470,7 @@ describe('process pipeline global catalog idempotency', () => {
         description: 'Done elsewhere',
         transcript: null,
         language: null,
+        tags: [],
       },
     });
     fs.addFile('/work/.ai-video-cataloger/catalog.ndjson', { content: `${header}\n${record}\n` });
@@ -480,12 +499,32 @@ describe('process pipeline global catalog idempotency', () => {
       description: 'old',
       transcript: null,
       language: null,
+      tags: [],
     });
 
     const result = await processVideoPipeline({ ...deps, globalCatalog }, { ...baseInput, force: true });
 
     expect(result.ok).toBe(true);
     expect(deps.analyzer.inputs).toHaveLength(1);
+  });
+
+  it('records analyzer tags and GPS coordinates in the global catalog', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    deps.analyzer.rawResponse = 'DESCRIPTION: A clip.\nFILENAME: gps-clip\nTAGS: DJI Drone, Coastal Cliff, Wide Shot';
+    deps.media.durations.set('/work/Clip One.mp4', 42);
+    deps.media.locations.set('/work/Clip One.mp4', { gpsLat: 69.6492, gpsLon: 18.9553 });
+
+    const result = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...baseInput, skipRename: true, skipRenameExplicit: true },
+    );
+
+    const file = await globalCatalog.getFile('hash-clip');
+    const analysis = await globalCatalog.getAnalysis('hash-clip');
+    expect(result.ok).toBe(true);
+    expect(file.ok && file.value).toMatchObject({ durationS: 42, gpsLat: 69.6492, gpsLon: 18.9553 });
+    expect(analysis.ok && analysis.value?.tags).toEqual(['dji-drone', 'coastal-cliff', 'wide-shot']);
   });
 });
 

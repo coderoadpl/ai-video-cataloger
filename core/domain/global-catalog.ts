@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 1;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 2;
 
 export const folderMarkerSchema = z.object({
   folderId: z.string().uuid(),
@@ -26,6 +26,8 @@ export const catalogFileSchema = z.object({
   fileName: z.string().min(1),
   size: z.number().int().nonnegative(),
   durationS: z.number().nonnegative().nullable(),
+  gpsLat: z.number().min(-90).max(90).nullable().default(null),
+  gpsLon: z.number().min(-180).max(180).nullable().default(null),
   processedAt: z.string().datetime(),
   analyzer: z.string().nullable(),
   model: z.string().nullable(),
@@ -39,6 +41,7 @@ export const catalogAnalysisSchema = z.object({
   description: z.string().nullable(),
   transcript: z.string().nullable(),
   language: z.string().nullable(),
+  tags: z.array(z.string()).default([]),
 });
 
 export type CatalogAnalysis = z.output<typeof catalogAnalysisSchema>;
@@ -73,3 +76,26 @@ export type SnapshotRecordLine = z.output<typeof snapshotRecordLineSchema>;
 
 export const newerWins = (existingProcessedAt: string, incomingProcessedAt: string): boolean =>
   Date.parse(incomingProcessedAt) > Date.parse(existingProcessedAt);
+
+export const normalizeTagName = (value: string): string =>
+  value
+    .toLowerCase()
+    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/\s+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    .slice(0, 40)
+    .replace(/-$/g, '');
+
+export const normalizeTagList = (values: readonly string[]): string[] => {
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const value of values) {
+    const tag = normalizeTagName(value);
+    if (tag.length === 0 || seen.has(tag)) continue;
+    seen.add(tag);
+    normalized.push(tag);
+    if (normalized.length === 12) break;
+  }
+  return normalized;
+};

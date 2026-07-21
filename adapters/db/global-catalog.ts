@@ -19,6 +19,8 @@ import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
   appError,
+  normalizeTagList,
+  normalizeTagName,
   ok,
   type AppError,
   type CatalogAnalysis,
@@ -28,6 +30,8 @@ import {
 } from '@core/domain/index.js';
 import type {
   CatalogFileRecord,
+  CatalogTagAliasResult,
+  CatalogTagSummary,
   GlobalCatalogCounts,
   GlobalCatalogStore,
 } from '@core/server/index.js';
@@ -35,10 +39,14 @@ import type {
 import {
   analyses,
   createGlobalCatalogSchemaSqlV1,
+  fileTags,
   files,
   folders,
   globalCatalogSchema,
+  migrateGlobalCatalogSchemaSqlV2,
   schemaMeta,
+  tagAliases,
+  tags,
 } from './global-catalog-schema.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
@@ -119,6 +127,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
             fileName: file.fileName,
             size: file.size,
             durationS: file.durationS,
+            gpsLat: file.gpsLat,
+            gpsLon: file.gpsLon,
             processedAt: file.processedAt,
             analyzer: file.analyzer,
             model: file.model,
@@ -131,7 +141,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   async getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>> {
     return this.read((db) => {
       const row = db.select().from(analyses).where(eq(analyses.fingerprint, fingerprint)).get();
-      return row === undefined ? null : rowToAnalysis(row);
+      return row === undefined ? null : rowToAnalysis(row, tagsForFingerprint(db, fingerprint));
     });
   }
 
@@ -149,6 +159,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           },
         })
         .run();
+      setAnalysisTags(db, analysis.fingerprint, analysis.tags);
     });
   }
 
@@ -159,9 +170,56 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         const analysisRow = db.select().from(analyses).where(eq(analyses.fingerprint, fileRow.fingerprint)).get();
         return {
           file: rowToFile(fileRow),
-          analysis: analysisRow === undefined ? null : rowToAnalysis(analysisRow),
+          analysis: analysisRow === undefined ? null : rowToAnalysis(analysisRow, tagsForFingerprint(db, fileRow.fingerprint)),
         };
       });
+    });
+  }
+
+  async listTags(): Promise<Result<CatalogTagSummary[], AppError>> {
+    return this.read((db) => {
+      const tagRows = db.select().from(tags).all();
+      const fileTagRows = db.select().from(fileTags).all();
+      return tagRows
+        .map((tag) => ({
+          name: tag.name,
+          count: fileTagRows.filter((fileTag) => fileTag.tagId === tag.tagId).length,
+        }))
+        .filter((tag) => tag.count > 0)
+        .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
+    });
+  }
+
+  async aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>> {
+    const alias = normalizeTagName(input.from);
+    const canonical = normalizeTagName(input.to);
+    if (alias.length === 0 || canonical.length === 0) {
+      return { ok: false, error: appError('validation', 'Tag aliases must normalize to non-empty tag names') };
+    }
+    return this.write((db) => {
+      const canonicalTag = ensureTag(db, canonical);
+      const aliasTag = db.select().from(tags).where(eq(tags.name, alias)).get();
+      let remappedFiles = 0;
+      if (aliasTag !== undefined && aliasTag.tagId !== canonicalTag.tagId) {
+        const rows = db.select().from(fileTags).where(eq(fileTags.tagId, aliasTag.tagId)).all();
+        remappedFiles = rows.length;
+        for (const row of rows) {
+          db.insert(fileTags)
+            .values({ fingerprint: row.fingerprint, tagId: canonicalTag.tagId })
+            .onConflictDoNothing()
+            .run();
+        }
+        db.delete(fileTags).where(eq(fileTags.tagId, aliasTag.tagId)).run();
+        db.delete(tags).where(eq(tags.tagId, aliasTag.tagId)).run();
+      }
+      db.insert(tagAliases)
+        .values({ alias, tagId: canonicalTag.tagId })
+        .onConflictDoUpdate({
+          target: tagAliases.alias,
+          set: { tagId: canonicalTag.tagId },
+        })
+        .run();
+      return { alias, canonical: canonicalTag.name, remappedFiles };
     });
   }
 
@@ -203,8 +261,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     const SQL = this.state?.SQL ?? await initSqlJs(sqlJsWasmConfig());
     const client = existsSync(this.filePath) ? new SQL.Database(readFileSync(this.filePath)) : new SQL.Database();
     const created = !existsSync(this.filePath);
-    migrate(client);
-    if (created) persistDatabase(this.filePath, client);
+    const migrated = migrate(client);
+    if (created || migrated) persistDatabase(this.filePath, client);
     this.state?.client.close();
     this.state = {
       SQL,
@@ -216,16 +274,33 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 }
 
-const migrate = (client: Database): void => {
+const migrate = (client: Database): boolean => {
   client.run('CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER PRIMARY KEY)');
   const currentVersion = readSchemaVersion(client);
+  let migrated = false;
   if (currentVersion < 1) {
     for (const statement of createGlobalCatalogSchemaSqlV1) client.run(statement);
+    migrated = true;
+  }
+  if (currentVersion < 2) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV2) runMigrationStatement(client, statement);
+    migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
     const db = drizzle(client, { schema: globalCatalogSchema });
     db.insert(schemaMeta).values({ version: GLOBAL_CATALOG_SCHEMA_VERSION }).run();
+    migrated = true;
+  }
+  return migrated;
+};
+
+const runMigrationStatement = (client: Database, statement: string): void => {
+  try {
+    client.run(statement);
+  } catch (cause) {
+    if (cause instanceof Error && cause.message.includes('duplicate column name')) return;
+    throw cause;
   }
 };
 
@@ -283,6 +358,8 @@ const rowToFile = (row: typeof files.$inferSelect): CatalogFile => ({
   fileName: row.fileName,
   size: row.size,
   durationS: row.durationS,
+  gpsLat: row.gpsLat,
+  gpsLon: row.gpsLon,
   processedAt: row.processedAt,
   analyzer: row.analyzer,
   model: row.model,
@@ -294,18 +371,58 @@ const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
   fileName: file.fileName,
   size: file.size,
   durationS: file.durationS,
+  gpsLat: file.gpsLat,
+  gpsLon: file.gpsLon,
   processedAt: file.processedAt,
   analyzer: file.analyzer,
   model: file.model,
 });
 
-const rowToAnalysis = (row: typeof analyses.$inferSelect): CatalogAnalysis => ({
+const rowToAnalysis = (row: typeof analyses.$inferSelect, analysisTags: string[]): CatalogAnalysis => ({
   fingerprint: row.fingerprint,
   finalName: row.finalName,
   description: row.description,
   transcript: row.transcript,
   language: row.language,
+  tags: analysisTags,
 });
+
+const setAnalysisTags = (db: GlobalDrizzle, fingerprint: string, values: readonly string[]): void => {
+  db.delete(fileTags).where(eq(fileTags.fingerprint, fingerprint)).run();
+  for (const name of normalizeTagList(values)) {
+    const tag = resolveCanonicalTag(db, name);
+    db.insert(fileTags)
+      .values({ fingerprint, tagId: tag.tagId })
+      .onConflictDoNothing()
+      .run();
+  }
+};
+
+const resolveCanonicalTag = (db: GlobalDrizzle, name: string): typeof tags.$inferSelect => {
+  const alias = db.select().from(tagAliases).where(eq(tagAliases.alias, name)).get();
+  if (alias !== undefined) {
+    const canonical = db.select().from(tags).where(eq(tags.tagId, alias.tagId)).get();
+    if (canonical !== undefined) return canonical;
+  }
+  return ensureTag(db, name);
+};
+
+const ensureTag = (db: GlobalDrizzle, name: string): typeof tags.$inferSelect => {
+  db.insert(tags).values({ name }).onConflictDoNothing().run();
+  const row = db.select().from(tags).where(eq(tags.name, name)).get();
+  if (row === undefined) throw new Error(`Could not create tag: ${name}`);
+  return row;
+};
+
+const tagsForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] => {
+  const rows = db.select().from(fileTags).where(eq(fileTags.fingerprint, fingerprint)).all();
+  const names: string[] = [];
+  for (const row of rows) {
+    const tag = db.select().from(tags).where(eq(tags.tagId, row.tagId)).get();
+    if (tag !== undefined) names.push(tag.name);
+  }
+  return names.sort((left, right) => left.localeCompare(right));
+};
 
 const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined => {
   const wasmPath = findSqlJsWasmPath();

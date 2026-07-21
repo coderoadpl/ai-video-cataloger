@@ -3,6 +3,7 @@ import {
   WHISPER_MODES,
   CONFIG_DEFAULTS,
   appError,
+  normalizeTagList,
   ok,
   type AppConfig,
   type AppError,
@@ -80,6 +81,7 @@ export interface ParsedAnalysis {
   description: string;
   suggestedFilename: string;
   fullAnalysis: string;
+  tags: string[];
 }
 
 type ResumeStage = 'frames' | 'audio' | 'transcribe' | 'analyze' | 'rename' | 'done';
@@ -199,6 +201,7 @@ export const parseAnalysisResponse = (response: string): Result<ParsedAnalysis, 
   const lines = response.trim().split('\n');
   let description = '';
   let suggestedFilename = '';
+  let tags: string[] = [];
   let capturingDescription = false;
 
   for (const line of lines) {
@@ -210,7 +213,10 @@ export const parseAnalysisResponse = (response: string): Result<ParsedAnalysis, 
     } else if (upper.startsWith('FILENAME:')) {
       suggestedFilename = normalizeKebabSlug(trimmed.slice('FILENAME:'.length));
       capturingDescription = false;
-    } else if (capturingDescription && trimmed.length > 0 && !upper.startsWith('FILENAME')) {
+    } else if (upper.startsWith('TAGS:')) {
+      tags = parseTagsLine(trimmed.slice('TAGS:'.length));
+      capturingDescription = false;
+    } else if (capturingDescription && trimmed.length > 0 && !upper.startsWith('FILENAME') && !upper.startsWith('TAGS')) {
       description = `${description} ${trimmed}`.trim();
     }
   }
@@ -226,7 +232,13 @@ export const parseAnalysisResponse = (response: string): Result<ParsedAnalysis, 
     description: description.length === 0 ? response.trim().slice(0, 500) : description.trim(),
     suggestedFilename,
     fullAnalysis: response,
+    tags,
   });
+};
+
+export const parseTagsLine = (value: string): string[] => {
+  const hasSeparators = value.includes(',') || value.includes(';');
+  return normalizeTagList(hasSeparators ? value.split(/[;,]/) : value.split(/\s+/));
 };
 
 export const normalizeKebabSlug = (value: string): string => {
@@ -421,6 +433,7 @@ const runPipelineSteps = async (
       description: parsed.description,
       suggestedFilename: parsed.suggestedFilename,
       fullAnalysis: parsed.fullAnalysis,
+      tags: parsed.tags,
       analyzedAt: new Date().toISOString(),
     });
     if (!summary.ok) return summary;
@@ -730,6 +743,7 @@ const loadSummary = async (fs: FileSystemPort, summaryJsonPath: string): Promise
     description: parsed.data.description,
     suggestedFilename: parsed.data.suggestedFilename,
     fullAnalysis: parsed.data.fullAnalysis,
+    tags: parsed.data.tags,
   });
 };
 
@@ -781,6 +795,9 @@ ${data.description}
 
 SUGGESTED FILENAME:
 ${data.suggestedFilename}
+
+TAGS:
+${data.tags.join(', ')}
 
 FULL ANALYSIS:
 ${data.fullAnalysis}
@@ -969,6 +986,8 @@ const recordGlobalCatalog = async (
   if (fingerprint.value === null) return ok(undefined);
   const stat = await deps.fs.stat(finalPath);
   if (!stat.ok) return stat;
+  const probe = await deps.media.probe({ videoPath: finalPath });
+  if (!probe.ok) return probe;
   const videoRow = await repository.findVideoByPath(finalPath);
   if (!videoRow.ok) return videoRow;
   const newName = videoRow.value?.newName ?? null;
@@ -985,7 +1004,9 @@ const recordGlobalCatalog = async (
       fingerprint: fingerprint.value,
       fileName: deps.fs.basename(finalPath),
       size: stat.value.size,
-      durationS: null,
+      durationS: probe.value.duration,
+      gpsLat: probe.value.gpsLat,
+      gpsLon: probe.value.gpsLon,
       processedAt: new Date().toISOString(),
       analyzer: provider.providerId,
       model: analyzerModel(provider),
@@ -993,6 +1014,7 @@ const recordGlobalCatalog = async (
       description: summary.value?.description ?? null,
       transcript: transcript.value,
       language: null,
+      tags: summary.value?.tags ?? [],
     },
   );
 };

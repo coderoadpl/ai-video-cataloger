@@ -228,6 +228,7 @@ describe('route schemas', () => {
     expect(API_ROUTES.check.method).toBe('GET');
     expect(API_ROUTES.jobStatus.method).toBe('GET');
     expect(API_ROUTES.jobsList.method).toBe('GET');
+    expect(API_ROUTES.tagsList.method).toBe('GET');
 
     expect(API_ROUTES.process.method).toBe('POST');
     expect(API_ROUTES.thumbnail.method).toBe('POST');
@@ -240,6 +241,7 @@ describe('route schemas', () => {
     expect(API_ROUTES.localAiPull.method).toBe('POST');
     expect(API_ROUTES.localAiDaemonStop.method).toBe('POST');
     expect(API_ROUTES.jobCancel.method).toBe('POST');
+    expect(API_ROUTES.tagsAlias.method).toBe('POST');
 
     expect(API_ROUTES.whisperModelDelete.method).toBe('DELETE');
     expect(API_ROUTES.localAiRm.method).toBe('DELETE');

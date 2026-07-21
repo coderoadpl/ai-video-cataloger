@@ -25,6 +25,8 @@ import {
   resetSingleOutputSchema,
   scanOutputSchema,
   statusOutputSchema,
+  tagsAliasOutputSchema,
+  tagsListOutputSchema,
   thumbnailOutputSchema,
   type HttpMethod,
   type ReadMethod,
@@ -430,6 +432,27 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  listTags: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tagsList.method,
+      API_ROUTES.tagsList.path,
+      tagsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  aliasTag: (input: z.input<typeof API_ROUTES.tagsAlias.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.tagsAlias.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.tagsAlias.method,
+      API_ROUTES.tagsAlias.path,
+      tagsAliasOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;

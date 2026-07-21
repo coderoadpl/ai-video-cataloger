@@ -29,6 +29,7 @@ export const summaryDataSchema = z.object({
   description: z.string(),
   suggestedFilename: z.string(),
   fullAnalysis: z.string(),
+  tags: z.array(z.string()).default([]),
   analyzedAt: z.string(),
 });
 

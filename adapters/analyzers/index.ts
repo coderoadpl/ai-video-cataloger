@@ -543,9 +543,11 @@ const responseContractInstructions = (hasTranscript: boolean): string =>
   `You are analyzing a video from its extracted frames${hasTranscript ? ' and the audio transcript' : ''}. Be a careful observer: read any visible text, signs, placards or labels in the frames and use them; prefer concrete, verifiable details over generic scene descriptions. Provide:
 1. DESCRIPTION: 2-4 sentences describing what the video actually shows - specific objects, named things (from visible text or the transcript), actions and setting. Do not speculate beyond what you can see or hear; never invent names or facts.
 2. FILENAME: a lowercase kebab-case filename (3-8 words, no dates, no extension) built from the MOST distinctive verifiable details - a name someone could use to find this exact clip among hundreds. Generic names like museum-exhibit or boat-display are wrong when anything more specific is visible.
+3. TAGS: 3-8 comma-separated kebab-case tags covering concrete objects, activities, place type and shot type. Prefer specific tags over generic ones; proper nouns are allowed.
 Respond exactly in the format:
 DESCRIPTION: <text>
-FILENAME: <kebab-case-name>`;
+FILENAME: <kebab-case-name>
+TAGS: <tag-one>, <tag-two>, <tag-three>`;
 
 const clearClaudeProjectHistory = async (homeDirectory: string, videoDirectory: string): Promise<void> => {
   await rm(claudeProjectHistoryPath(homeDirectory, videoDirectory), { recursive: true, force: true });

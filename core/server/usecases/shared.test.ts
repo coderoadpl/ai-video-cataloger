@@ -12,8 +12,8 @@ const summary = {
 
 describe('shared summary data contract', () => {
   it('validates and parses the persisted summary shape through the same contract', () => {
-    expect(summaryDataSchema.parse(summary)).toEqual(summary);
-    expect(parseSummary(JSON.stringify(summary))).toEqual(summary);
+    expect(summaryDataSchema.parse(summary)).toEqual({ ...summary, tags: [] });
+    expect(parseSummary(JSON.stringify(summary))).toEqual({ ...summary, tags: [] });
   });
 
   it('rejects malformed persisted summaries', () => {
