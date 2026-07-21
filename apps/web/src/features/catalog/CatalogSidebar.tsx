@@ -52,6 +52,9 @@ export const CatalogSidebar = ({
         <Typography variant="caption" noWrap title={folder}>
           {folder}
         </Typography>
+        <Typography variant="caption" color="text.secondary">
+          Only this folder is scanned; subfolders are ignored.
+        </Typography>
         {catalog.isGeneratingThumbnails ? (
           <Typography variant="caption" sx={{ color: 'primary.main' }}>
             Generating thumbnails…

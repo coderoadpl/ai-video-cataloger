@@ -82,6 +82,14 @@ describe('catalog', () => {
     expect(screen.getByText('1.0 KB')).toBeDefined();
   });
 
+  it('notes that subfolders are not scanned', async () => {
+    server.use(scanOk(makeScan([makeVideo({ path: '/videos/a.mp4', contentHash: 'hash-a' })])));
+
+    renderThemed(<Harness folder={FOLDER} />);
+
+    expect(await screen.findByText('Only this folder is scanned; subfolders are ignored.')).toBeDefined();
+  });
+
   it('shows the loading state, then the empty state for a folder with no videos', async () => {
     server.use(scanOk(makeScan([])));
 
