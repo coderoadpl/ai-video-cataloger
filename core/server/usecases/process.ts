@@ -36,7 +36,7 @@ import {
   type SummaryData,
 } from './shared.js';
 import { resolveConfigValues } from './config-resolution.js';
-import { hasProcessedAnalysis, upsertProcessedVideo } from './catalog-index.js';
+import { hasProcessedAnalysis, resolveFolderIntoIndex, upsertProcessedVideo } from './catalog-index.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
@@ -106,7 +106,7 @@ export const processVideoPipeline = async (
   const video = await findOrCreateVideo(deps, repository.value, videoPath);
   if (!video.ok) return video;
 
-  const skipped = await alreadyIndexed(deps, videoPath, input.force === true);
+  const skipped = await alreadyIndexed(deps, folder, videoPath, input.force === true);
   if (!skipped.ok) return skipped;
   if (skipped.value) return ok(completedOutput(deps.fs, video.value));
 
@@ -939,15 +939,19 @@ const completedOutput = (fs: FileSystemPort, video: Video): ProcessCompletedOutp
 
 const alreadyIndexed = async (
   deps: ProcessDeps,
+  folder: string,
   videoPath: string,
   force: boolean,
 ): Promise<Result<boolean, AppError>> => {
   const globalCatalog = deps.globalCatalog;
   if (globalCatalog === undefined || force) return ok(false);
+  const catalogDeps = { globalCatalog, fs: deps.fs };
+  const resolved = await resolveFolderIntoIndex(catalogDeps, folder);
+  if (!resolved.ok) return resolved;
   const fingerprint = await deps.fs.partialContentHash(videoPath);
   if (!fingerprint.ok) return fingerprint;
   if (fingerprint.value === null) return ok(false);
-  return hasProcessedAnalysis({ globalCatalog, fs: deps.fs }, fingerprint.value);
+  return hasProcessedAnalysis(catalogDeps, fingerprint.value);
 };
 
 const recordGlobalCatalog = async (

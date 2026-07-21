@@ -10,6 +10,7 @@ import {
   InMemoryCatalogs,
   InMemoryConfig,
   InMemoryFileSystem,
+  InMemoryGlobalCatalogStore,
   InMemoryJobs,
   InMemoryMedia,
   InMemoryTranscriber,
@@ -411,6 +412,80 @@ describe('process pipeline resume behavior', () => {
     expect(first).not.toBe(second);
     expect(first).toMatch(/-clip\.wav$/);
     expect(second).toMatch(/-clip\.wav$/);
+  });
+});
+
+describe('process pipeline global catalog idempotency', () => {
+  const folderId = '33333333-3333-4333-8333-333333333333';
+
+  const seedForeignDriveArtifacts = (fs: InMemoryFileSystem): void => {
+    fs.addFile('/work/.ai-video-cataloger/folder-id', {
+      content: JSON.stringify({ folderId, schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' }),
+    });
+    const header = JSON.stringify({
+      type: 'header',
+      version: 1,
+      folder: {
+        folderId,
+        currentPath: '/work',
+        displayName: 'work',
+        firstSeenAt: '2026-01-01T00:00:00.000Z',
+        lastSeenAt: '2026-01-02T00:00:00.000Z',
+      },
+      exportedAt: '2026-01-02T00:00:00.000Z',
+    });
+    const record = JSON.stringify({
+      type: 'record',
+      file: {
+        fingerprint: 'hash-clip',
+        folderId,
+        fileName: 'Clip One.mp4',
+        size: 1000,
+        durationS: null,
+        processedAt: '2026-01-02T00:00:00.000Z',
+        analyzer: 'claude',
+        model: null,
+      },
+      analysis: {
+        fingerprint: 'hash-clip',
+        finalName: null,
+        description: 'Done elsewhere',
+        transcript: null,
+        language: null,
+      },
+    });
+    fs.addFile('/work/.ai-video-cataloger/catalog.ndjson', { content: `${header}\n${record}\n` });
+  };
+
+  it('imports a foreign folder snapshot before deciding to skip', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    seedForeignDriveArtifacts(deps.fs);
+
+    const result = await processVideoPipeline({ ...deps, globalCatalog }, baseInput);
+
+    expect(result).toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(deps.analyzer.inputs).toHaveLength(0);
+    expect(deps.transcriber.inputs).toHaveLength(0);
+    const analysis = await globalCatalog.getAnalysis('hash-clip');
+    expect(analysis.ok && analysis.value?.description).toBe('Done elsewhere');
+  });
+
+  it('reprocesses an already indexed fingerprint when force is set', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    await globalCatalog.upsertAnalysis({
+      fingerprint: 'hash-clip',
+      finalName: null,
+      description: 'old',
+      transcript: null,
+      language: null,
+    });
+
+    const result = await processVideoPipeline({ ...deps, globalCatalog }, { ...baseInput, force: true });
+
+    expect(result.ok).toBe(true);
+    expect(deps.analyzer.inputs).toHaveLength(1);
   });
 });
 
