@@ -58,15 +58,21 @@ via `drizzle-orm/sql-js`) — the old app already ships it, the files are
 ordinary SQLite so compatibility is structural, and it avoids native-module
 rebuilds in Electron packaging; `better-sqlite3` is the named alternative if
 sql.js performance ever hurts (that swap is exactly what the port is for).
-Two scopes, both preserved from the old app byte-for-byte
-(parity-inventory §5):
+Two scopes remain, with catalog ownership revised by
+[ADR-0002](decisions/0002-global-catalog-layer.md):
 
-- **Per-folder catalog** — `{folder}/.ai-video-cataloger/catalog.db` via a
-  `CatalogRepository` *factory* keyed by folder path (the foundation assumed
-  one database; this app opens one per working folder, plus config.json
-  alongside it).
-- **Home scope** — `~/.ai-video-cataloger/` for global model state, managed
-  runtime files, whisper models.
+- **Global catalog index** — `~/.ai-video-cataloger/catalog.db` is the
+  canonical working store for catalog rows. Folder identity is a UUID marker
+  stored inside `{folder}/.ai-video-cataloger/`; paths are attributes that can
+  change, not identities. The repository dimension is one global database keyed
+  by folder id and content fingerprint.
+- **Per-folder sidecar artifacts** — `{folder}/.ai-video-cataloger/config.json`
+  stays folder-scoped. `{folder}/.ai-video-cataloger/catalog.ndjson` is a
+  derived snapshot written after processing and imported when a marked folder
+  is unknown to the local index. Existing per-folder `catalog.db` files remain
+  readable for migration but are not the canonical write target.
+- **Home scope** — `~/.ai-video-cataloger/` also holds global model state,
+  managed runtime files, whisper models, and provider credentials.
 
 Existing databases and on-disk artifacts written by the old implementation
 must remain readable with no migration.
@@ -149,7 +155,8 @@ managed runtimes, and its working-directory fallback.
 
 ## Ports (complete list for this app)
 
-- `CatalogRepository` (per-folder factory) + home-scope repository — drizzle.
+- `CatalogRepository` (global catalog index with folder-id dimension) +
+  home-scope repository — drizzle.
 - `ConfigStore` — per-folder `config.json` (schema in `core/domain`).
 - `CredentialsStore` — home-scoped provider secrets in
   `~/.ai-video-cataloger/credentials.json`; per-folder configuration contains
