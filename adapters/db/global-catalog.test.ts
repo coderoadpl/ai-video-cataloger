@@ -84,7 +84,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(counts.ok && counts.value.files).toBe(1);
   });
 
-  it('migrates an existing v1 database to v2 and persists the migrated schema immediately', async () => {
+  it('migrates an existing v1 database to v3 and persists the migrated schema immediately', async () => {
     const home = await tempHome();
     await writeV1Catalog(home);
 
@@ -98,10 +98,53 @@ describe('SqlJsGlobalCatalogStore', () => {
     const columnResult = reopened.exec('PRAGMA table_info(files)');
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(2);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(3);
     const columnNames = columnResult[0]?.values.map((row) => row[1]).filter((value) => typeof value === 'string') ?? [];
     expect(columnNames).toContain('gps_lat');
     expect(columnNames).toContain('gps_lon');
+  });
+
+  it('migrates an existing v2 database to v3 and persists drive run bookkeeping immediately', async () => {
+    const home = await tempHome();
+    await writeV2Catalog(home);
+
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const started = await store.startDriveRun({
+      runId: 'run-1',
+      root: '/drive',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: null,
+      foldersTotal: 2,
+      foldersDone: 0,
+      filesDone: 0,
+      filesSkipped: 0,
+      filesFailed: 0,
+      lastActivityAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(started.ok).toBe(true);
+    const updated = await store.updateDriveRun({
+      runId: 'run-1',
+      root: '/drive',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: '2026-01-01T00:10:00.000Z',
+      foldersTotal: 2,
+      foldersDone: 2,
+      filesDone: 3,
+      filesSkipped: 1,
+      filesFailed: 1,
+      lastActivityAt: '2026-01-01T00:10:00.000Z',
+    });
+    expect(updated.ok).toBe(true);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const latest = await reopened.latestDriveRun();
+    expect(latest.ok && latest.value).toMatchObject({
+      runId: 'run-1',
+      foldersDone: 2,
+      filesDone: 3,
+      filesSkipped: 1,
+      filesFailed: 1,
+    });
   });
 });
 
@@ -110,6 +153,32 @@ const writeV1Catalog = async (home: string): Promise<void> => {
   const client = new SQL.Database();
   for (const statement of createGlobalCatalogSchemaSqlV1) client.run(statement);
   client.run('INSERT INTO schema_meta(version) VALUES (1)');
+  const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+  await mkdir(path.dirname(databasePath), { recursive: true });
+  await writeFile(databasePath, Buffer.from(client.export()));
+  client.close();
+};
+
+const writeV2Catalog = async (home: string): Promise<void> => {
+  const SQL = await initSqlJs();
+  const client = new SQL.Database();
+  for (const statement of createGlobalCatalogSchemaSqlV1) client.run(statement);
+  client.run('ALTER TABLE files ADD COLUMN gps_lat REAL');
+  client.run('ALTER TABLE files ADD COLUMN gps_lon REAL');
+  client.run(`CREATE TABLE tags (
+      tag_id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE
+    )`);
+  client.run(`CREATE TABLE file_tags (
+      fingerprint TEXT NOT NULL,
+      tag_id INTEGER NOT NULL,
+      PRIMARY KEY (fingerprint, tag_id)
+    )`);
+  client.run(`CREATE TABLE tag_aliases (
+      alias TEXT PRIMARY KEY,
+      tag_id INTEGER NOT NULL
+    )`);
+  client.run('INSERT INTO schema_meta(version) VALUES (2)');
   const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
   await mkdir(path.dirname(databasePath), { recursive: true });
   await writeFile(databasePath, Buffer.from(client.export()));

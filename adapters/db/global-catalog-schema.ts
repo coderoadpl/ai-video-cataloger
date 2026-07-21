@@ -50,7 +50,20 @@ export const tagAliases = sqliteTable('tag_aliases', {
   tagId: integer('tag_id').notNull(),
 });
 
-export const globalCatalogSchema = { folders, files, analyses, schemaMeta, tags, fileTags, tagAliases };
+export const driveRuns = sqliteTable('drive_runs', {
+  runId: text('run_id').primaryKey(),
+  root: text('root').notNull(),
+  startedAt: text('started_at').notNull(),
+  finishedAt: text('finished_at'),
+  foldersTotal: integer('folders_total').notNull(),
+  foldersDone: integer('folders_done').notNull(),
+  filesDone: integer('files_done').notNull(),
+  filesSkipped: integer('files_skipped').notNull(),
+  filesFailed: integer('files_failed').notNull(),
+  lastActivityAt: text('last_activity_at').notNull(),
+});
+
+export const globalCatalogSchema = { folders, files, analyses, schemaMeta, tags, fileTags, tagAliases, driveRuns };
 
 export const createGlobalCatalogSchemaSqlV1 = [
   `CREATE TABLE IF NOT EXISTS folders (
@@ -100,5 +113,20 @@ export const migrateGlobalCatalogSchemaSqlV2 = [
       alias TEXT PRIMARY KEY,
       tag_id INTEGER NOT NULL,
       FOREIGN KEY (tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE
+    )`,
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV3 = [
+  `CREATE TABLE IF NOT EXISTS drive_runs (
+      run_id TEXT PRIMARY KEY,
+      root TEXT NOT NULL,
+      started_at TEXT NOT NULL,
+      finished_at TEXT,
+      folders_total INTEGER NOT NULL,
+      folders_done INTEGER NOT NULL,
+      files_done INTEGER NOT NULL,
+      files_skipped INTEGER NOT NULL,
+      files_failed INTEGER NOT NULL,
+      last_activity_at TEXT NOT NULL
     )`,
 ] as const;

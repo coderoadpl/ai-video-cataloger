@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 2;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 3;
 
 export const folderMarkerSchema = z.object({
   folderId: z.string().uuid(),

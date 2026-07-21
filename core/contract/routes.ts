@@ -110,6 +110,40 @@ export const processInputSchema = videoPathInputSchema.extend({
   ...(input.batch === undefined ? {} : { batch: input.batch }),
 }));
 
+export const processDriveInputSchema = z.object({
+  root: z.string().min(1),
+  frames: z.number().int().optional(),
+  framesExplicit: z.boolean().optional(),
+  skipRename: z.boolean().optional(),
+  skipRenameExplicit: z.boolean().optional(),
+  verbose: z.boolean().default(false),
+  timeout: z.number().int().optional(),
+  timeoutExplicit: z.boolean().optional(),
+  whisper: z.enum(WHISPER_MODES).optional(),
+  whisperExplicit: z.boolean().optional(),
+  whisperModel: z.enum(WHISPER_MODEL_NAMES).optional(),
+  whisperModelExplicit: z.boolean().optional(),
+  analyzer: z.enum([...ANALYZER_BACKENDS, 'api']).optional(),
+  localModel: z.string().min(1).optional(),
+  force: z.boolean().optional(),
+}).transform((input) => ({
+  root: input.root,
+  frames: input.frames ?? CONFIG_DEFAULTS.frames,
+  framesExplicit: input.framesExplicit ?? input.frames !== undefined,
+  skipRename: input.skipRename ?? CONFIG_DEFAULTS.skip_rename,
+  skipRenameExplicit: input.skipRenameExplicit ?? input.skipRename !== undefined,
+  verbose: input.verbose,
+  timeout: input.timeout ?? CONFIG_DEFAULTS.timeout,
+  timeoutExplicit: input.timeoutExplicit ?? input.timeout !== undefined,
+  whisper: input.whisper ?? CONFIG_DEFAULTS.whisper_mode,
+  whisperExplicit: input.whisperExplicit ?? input.whisper !== undefined,
+  whisperModel: input.whisperModel ?? CONFIG_DEFAULTS.whisper_model,
+  whisperModelExplicit: input.whisperModelExplicit ?? input.whisperModel !== undefined,
+  ...(input.analyzer === undefined ? {} : { analyzer: input.analyzer }),
+  ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
+  ...(input.force === undefined ? {} : { force: input.force }),
+}));
+
 export const jobAcceptedOutputSchema = z.object({
   jobId: z.string(),
 });
@@ -118,6 +152,28 @@ export const processCompletedOutputSchema = z.object({
   video: z.string(),
   path: z.string(),
   status: z.literal('completed'),
+});
+
+export const driveRunFailureSchema = z.object({
+  path: z.string().min(1),
+  scope: z.enum(['folder', 'file']),
+  code: z.enum(ERROR_CODES),
+  message: z.string(),
+});
+
+export const driveRunSummarySchema = z.object({
+  runId: z.string().min(1),
+  root: z.string().min(1),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  foldersTotal: z.number().int().nonnegative(),
+  foldersDone: z.number().int().nonnegative(),
+  filesTotal: z.number().int().nonnegative(),
+  filesDone: z.number().int().nonnegative(),
+  filesSkipped: z.number().int().nonnegative(),
+  filesFailed: z.number().int().nonnegative(),
+  elapsedMs: z.number().int().nonnegative(),
+  failures: z.array(driveRunFailureSchema),
 });
 
 export const thumbnailInputSchema = videoPathInputSchema.merge(forceInputSchema);
@@ -482,8 +538,12 @@ export const checkOutputSchema = z.object({
 });
 
 export const jobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']);
-export const jobKindSchema = z.enum(['process', 'whisper_download', 'whisper_runtime_install', 'local_ai_pull']);
+export const jobKindSchema = z.enum(['process', 'process_drive', 'whisper_download', 'whisper_runtime_install', 'local_ai_pull']);
 export const jobProgressStepSchema = z.enum([
+  'run-started',
+  'folder-started',
+  'folder-done',
+  'run-summary',
   'extracting_frames',
   'extracting_audio',
   'transcribing_audio',
@@ -512,6 +572,7 @@ export const sequencedJobProgressSchema = z.object({
 
 export const jobResultSchema = z.union([
   processCompletedOutputSchema,
+  driveRunSummarySchema,
   whisperModelDownloadOutputSchema,
   whisperRuntimeInstallOutputSchema,
   localAiPullOutputSchema,
@@ -558,6 +619,18 @@ export const indexStatusOutputSchema = z.object({
     analyses: z.number().int().nonnegative(),
   }),
   folders: z.array(indexStatusFolderSchema),
+  latestRun: z.object({
+    runId: z.string().min(1),
+    root: z.string().min(1),
+    startedAt: z.string(),
+    finishedAt: z.string().nullable(),
+    foldersTotal: z.number().int().nonnegative(),
+    foldersDone: z.number().int().nonnegative(),
+    filesDone: z.number().int().nonnegative(),
+    filesSkipped: z.number().int().nonnegative(),
+    filesFailed: z.number().int().nonnegative(),
+    lastActivityAt: z.string(),
+  }).nullable(),
 });
 
 export const indexRebuildOutputSchema = z.object({
@@ -596,6 +669,7 @@ export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health', input: emptyInputSchema, output: healthOutputSchema },
   scan: { method: 'GET', path: '/api/scan', input: folderInputSchema, output: scanOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
+  processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
   thumbnail: { method: 'POST', path: '/api/thumbnail', input: thumbnailInputSchema, output: thumbnailOutputSchema },
   status: { method: 'GET', path: '/api/status', input: optionalFolderInputSchema, output: statusOutputSchema },
   resetAll: { method: 'POST', path: '/api/reset/all', input: resetAllInputSchema, output: resetAllOutputSchema },
@@ -705,6 +779,7 @@ export const API_PATHS = {
   health: API_ROUTES.health.path,
   scan: API_ROUTES.scan.path,
   process: API_ROUTES.process.path,
+  processDrive: API_ROUTES.processDrive.path,
   thumbnail: API_ROUTES.thumbnail.path,
   status: API_ROUTES.status.path,
   resetAll: API_ROUTES.resetAll.path,

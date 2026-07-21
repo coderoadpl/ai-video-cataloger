@@ -1,3 +1,4 @@
+import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
 import { stat } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -63,6 +64,10 @@ interface ProcessOptions extends JsonOption {
   force?: boolean | undefined;
 }
 
+interface ProcessDriveOptions extends ProcessOptions {
+  keepAwake?: boolean | undefined;
+}
+
 interface CliJobProgress {
   step: string;
   percentage?: number | undefined;
@@ -70,6 +75,8 @@ interface CliJobProgress {
   total?: number | undefined;
   data?: unknown;
 }
+
+const driveEventSteps = ['run-started', 'folder-started', 'folder-done', 'run-summary'] as const;
 
 interface CredentialOptions extends JsonOption {
   env?: string | undefined;
@@ -168,6 +175,21 @@ const waitForJobAndEmit = async (
       if (raw) emitRaw(json, data, '');
       emitCompleted(json, data, completedHuman(data));
     },
+    onError: (error) => emitError(json, error),
+  });
+};
+
+const waitForDriveJobAndEmit = async (json: boolean, jobId: string): Promise<void> => {
+  await waitForJob(jobId, {
+    fetchJob: (id) => api.job({ jobId: id }),
+    onProgress: (progress) => {
+      if (isDriveEventStep(progress.step)) {
+        emitDriveEvent(json, progress.step, progress.data);
+        return;
+      }
+      emitProgress(json, progressEvent(progress));
+    },
+    onCompleted: (data) => emitCompleted(json, data, processDriveHuman(data)),
     onError: (error) => emitError(json, error),
   });
 };
@@ -519,6 +541,76 @@ program
   });
 
 program
+  .command('process-drive')
+  .argument('<root>')
+  .option('-f, --frames <number>', 'number of frames', numberOption, 3)
+  .option('-s, --skip-rename', 'skip renaming', false)
+  .option('-v, --verbose', 'verbose output', false)
+  .option('-t, --timeout <seconds>', 'analysis timeout', numberOption, 120)
+  .option('-w, --whisper <mode>', 'whisper mode', whisperOption, 'local')
+  .option('--whisper-model <model>', 'whisper model', 'base')
+  .option('--analyzer <backend>', 'analyzer backend')
+  .option('--local-model <tag>', 'local AI model')
+  .option('--force', 'reprocess even if the global index already has an analysis', false)
+  .option('--keep-awake', 'keep macOS awake while the drive run is active', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string, options: ProcessDriveOptions, command: Command) => {
+    const json = isJsonMode(options);
+    const validatedRoot = await validateProcessRoot(root);
+    if (!validatedRoot.ok) {
+      emitError(json, validatedRoot.error, validatedRoot.data);
+      return;
+    }
+    const explicit = (name: string): boolean => command.getOptionValueSource(name) === 'cli';
+    const commandOptions = {
+      frames: options.frames,
+      skipRename: options.skipRename === true,
+      timeout: options.timeout,
+      whisper: options.whisper,
+      whisperModel: options.whisperModel,
+      force: options.force === true,
+    };
+    emitStarted(json, 'process_drive', { root: validatedRoot.value, options: commandOptions });
+    await emitApiCostNotice(json, options.analyzer, options.frames);
+    let whisperModel: WhisperModelName | undefined;
+    if (options.whisper === 'local') {
+      const model = parseWhisperModel(options.whisperModel);
+      if (!model.ok) {
+        emitError(json, model.error);
+        return;
+      }
+      whisperModel = model.value;
+    }
+    const keepAwake = startKeepAwake(options.keepAwake === true);
+    try {
+      const result = await api.processDrive({
+        root: validatedRoot.value,
+        frames: options.frames,
+        framesExplicit: explicit('frames'),
+        skipRename: options.skipRename === true,
+        skipRenameExplicit: explicit('skipRename'),
+        verbose: options.verbose === true,
+        timeout: options.timeout,
+        timeoutExplicit: explicit('timeout'),
+        whisper: options.whisper,
+        whisperExplicit: explicit('whisper'),
+        ...(whisperModel === undefined ? {} : { whisperModel }),
+        whisperModelExplicit: explicit('whisperModel'),
+        ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
+        ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
+        ...(options.force === true ? { force: true } : {}),
+      });
+      if (!result.ok) {
+        emitError(json, result.error);
+        return;
+      }
+      await waitForDriveJobAndEmit(json, result.value.jobId);
+    } finally {
+      keepAwake?.kill();
+    }
+  });
+
+program
   .command('thumbnail')
   .argument('<video-path>')
   .option('--force', 'regenerate thumbnail', false)
@@ -835,6 +927,12 @@ const indexStatusHuman = (data: Awaited<ReturnType<ApiClient['indexStatus']>> ex
     `Files: ${data.counts.files}`,
     `Analyses: ${data.counts.analyses}`,
   ];
+  if (data.latestRun !== null) {
+    const finished = data.latestRun.finishedAt ?? 'running';
+    lines.push(
+      `Latest drive run: ${data.latestRun.root} folders=${data.latestRun.foldersDone}/${data.latestRun.foldersTotal} files=${data.latestRun.filesDone} skipped=${data.latestRun.filesSkipped} failed=${data.latestRun.filesFailed} finished=${finished}`,
+    );
+  }
   for (const folder of data.folders) lines.push(`  ${folder.displayName} -> ${folder.currentPath}`);
   return lines.join('\n');
 };
@@ -869,6 +967,14 @@ const processHuman = (data: unknown): string => {
   return 'Completed processing';
 };
 
+const processDriveHuman = (data: unknown): string => {
+  if (!isRecord(data)) return 'Completed drive processing';
+  const done = typeof data.filesDone === 'number' ? data.filesDone : 0;
+  const skipped = typeof data.filesSkipped === 'number' ? data.filesSkipped : 0;
+  const failed = typeof data.filesFailed === 'number' ? data.filesFailed : 0;
+  return `Drive run complete: done=${done} skipped=${skipped} failed=${failed}`;
+};
+
 const downloadedHuman = (data: unknown, model: string): string => {
   if (isRecord(data) && data.skipped === true) return `Model already downloaded: ${model}`;
   return `Downloaded ${model}`;
@@ -881,6 +987,26 @@ const installedHuman = (data: unknown, tag: string): string => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const isDriveEventStep = (step: string): step is (typeof driveEventSteps)[number] =>
+  driveEventSteps.some((candidate) => candidate === step);
+
+const emitDriveEvent = (json: boolean, type: (typeof driveEventSteps)[number], data: unknown): void => {
+  if (!json) return;
+  const payload = isRecord(data) ? data : {};
+  process.stdout.write(`${JSON.stringify({ type, timestamp: new Date().toISOString(), ...payload })}\n`);
+};
+
+const startKeepAwake = (enabled: boolean): ChildProcess | null => {
+  if (!enabled || process.platform !== 'darwin') return null;
+  try {
+    const child = spawn('caffeinate', ['-i', '-w', String(process.pid)], { stdio: 'ignore' });
+    child.on('error', () => undefined);
+    return child;
+  } catch {
+    return null;
+  }
+};
 
 const validateProcessPath = async (inputPath: string): Promise<
   | { ok: true; value: string }
@@ -909,6 +1035,31 @@ const validateProcessPath = async (inputPath: string): Promise<
     return {
       ok: false,
       error: appError('not_a_file', `Path is not a file: ${absolutePath}`),
+      data: { path: absolutePath },
+    };
+  }
+  return { ok: true, value: absolutePath };
+};
+
+const validateProcessRoot = async (inputPath: string): Promise<
+  | { ok: true; value: string }
+  | { ok: false; error: AppError; data: { path: string } }
+> => {
+  const absolutePath = path.resolve(cliWorkingDirectory, inputPath);
+  let rootStat;
+  try {
+    rootStat = await stat(absolutePath);
+  } catch {
+    return {
+      ok: false,
+      error: appError('folder_not_found', `Root not found: ${absolutePath}`),
+      data: { path: absolutePath },
+    };
+  }
+  if (!rootStat.isDirectory()) {
+    return {
+      ok: false,
+      error: appError('not_a_directory', `Root is not a directory: ${absolutePath}`),
       data: { path: absolutePath },
     };
   }

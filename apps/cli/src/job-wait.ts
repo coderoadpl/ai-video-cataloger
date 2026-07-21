@@ -48,7 +48,7 @@ export const waitForJob = async (jobId: string, options: WaitForJobOptions): Pro
       options.onError(appError('processing_error', 'Job cancelled'));
       return;
     }
-    if (job.value.kind !== 'process' && now() - lastActivityAt >= inactivityMs) {
+    if (job.value.kind !== 'process' && job.value.kind !== 'process_drive' && now() - lastActivityAt >= inactivityMs) {
       options.onError(appError('internal', `Job made no progress for 10 minutes: ${jobId}`));
       return;
     }

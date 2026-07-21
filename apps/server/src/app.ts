@@ -11,6 +11,7 @@ import {
   deleteWhisperModel,
   downloadWhisperModel,
   enqueueProcess,
+  enqueueProcessDrive,
   generateThumbnail,
   getConfig,
   getJobStatus,
@@ -111,6 +112,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.process.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.process.output);
     return respond(await enqueueProcess(deps, input.value), API_ROUTES.process.output);
+  });
+
+  app.post(API_ROUTES.processDrive.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.processDrive.output);
+    const input = parseInput(API_ROUTES.processDrive.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.processDrive.output);
+    return respond(await enqueueProcessDrive(deps, input.value), API_ROUTES.processDrive.output);
   });
 
   app.post(API_ROUTES.thumbnail.path, async (context) => {

@@ -264,6 +264,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  processDrive: (input: z.input<typeof API_ROUTES.processDrive.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.processDrive.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.processDrive.method,
+      API_ROUTES.processDrive.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   generateThumbnail: (input: z.input<typeof API_ROUTES.thumbnail.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.thumbnail.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

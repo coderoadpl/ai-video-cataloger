@@ -45,6 +45,7 @@ import type {
   CredentialsStore,
   DependencyStatus,
   DirectoryEntry,
+  DriveRunRecord,
   FileStat,
   FileSystemPort,
   GlobalCatalogCounts,
@@ -382,6 +383,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly folders = new Map<string, CatalogFolder>();
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
+  private readonly driveRuns = new Map<string, DriveRunRecord>();
 
   databasePath(): string {
     return path.join('.ai-video-cataloger', 'catalog.db');
@@ -443,6 +445,21 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       files: this.files.size,
       analyses: this.analyses.size,
     }));
+  }
+
+  startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
+    this.driveRuns.set(run.runId, run);
+    return Promise.resolve(ok(undefined));
+  }
+
+  updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
+    this.driveRuns.set(run.runId, run);
+    return Promise.resolve(ok(undefined));
+  }
+
+  latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>> {
+    const runs = [...this.driveRuns.values()].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+    return Promise.resolve(ok(runs[0] ?? null));
   }
 }
 

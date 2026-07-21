@@ -62,6 +62,19 @@ export interface GlobalCatalogCounts {
   analyses: number;
 }
 
+export interface DriveRunRecord {
+  runId: string;
+  root: string;
+  startedAt: string;
+  finishedAt: string | null;
+  foldersTotal: number;
+  foldersDone: number;
+  filesDone: number;
+  filesSkipped: number;
+  filesFailed: number;
+  lastActivityAt: string;
+}
+
 export interface GlobalCatalogStore {
   databasePath(): string;
   listFolders(): Promise<Result<CatalogFolder[], AppError>>;
@@ -75,6 +88,9 @@ export interface GlobalCatalogStore {
   listTags(): Promise<Result<CatalogTagSummary[], AppError>>;
   aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>>;
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
+  startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
+  updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
+  latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>>;
 }
 
 export type ConfigScope = { kind: 'folder'; folder: string } | { kind: 'home' };
@@ -102,7 +118,7 @@ export interface SecretsStore {
 export interface DirectoryEntry {
   name: string;
   path: string;
-  kind: 'file' | 'directory';
+  kind: 'file' | 'directory' | 'symlink';
 }
 
 export interface FileStat {
@@ -353,10 +369,14 @@ export interface ModelDownloadPort {
   ): Promise<Result<{ model: WhisperModelName; path: string; deleted: boolean }, AppError>>;
 }
 
-export type JobKind = 'process' | 'whisper_download' | 'whisper_runtime_install' | 'local_ai_pull';
+export type JobKind = 'process' | 'process_drive' | 'whisper_download' | 'whisper_runtime_install' | 'local_ai_pull';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
+  | 'run-started'
+  | 'folder-started'
+  | 'folder-done'
+  | 'run-summary'
   | 'extracting_frames'
   | 'extracting_audio'
   | 'transcribing_audio'

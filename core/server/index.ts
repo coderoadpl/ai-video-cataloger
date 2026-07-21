@@ -10,6 +10,7 @@ export * from './usecases/health.js';
 export * from './usecases/jobs.js';
 export * from './usecases/models.js';
 export * from './usecases/process.js';
+export * from './usecases/process-drive.js';
 export * from './usecases/providers.js';
 export * from './usecases/readiness.js';
 export * from './usecases/reset.js';

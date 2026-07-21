@@ -32,6 +32,7 @@ import type {
   CatalogFileRecord,
   CatalogTagAliasResult,
   CatalogTagSummary,
+  DriveRunRecord,
   GlobalCatalogCounts,
   GlobalCatalogStore,
 } from '@core/server/index.js';
@@ -39,11 +40,13 @@ import type {
 import {
   analyses,
   createGlobalCatalogSchemaSqlV1,
+  driveRuns,
   fileTags,
   files,
   folders,
   globalCatalogSchema,
   migrateGlobalCatalogSchemaSqlV2,
+  migrateGlobalCatalogSchemaSqlV3,
   schemaMeta,
   tagAliases,
   tags,
@@ -231,6 +234,42 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     }));
   }
 
+  async startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      db.insert(driveRuns).values(driveRunToRow(run)).run();
+    });
+  }
+
+  async updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      db.insert(driveRuns)
+        .values(driveRunToRow(run))
+        .onConflictDoUpdate({
+          target: driveRuns.runId,
+          set: {
+            root: run.root,
+            startedAt: run.startedAt,
+            finishedAt: run.finishedAt,
+            foldersTotal: run.foldersTotal,
+            foldersDone: run.foldersDone,
+            filesDone: run.filesDone,
+            filesSkipped: run.filesSkipped,
+            filesFailed: run.filesFailed,
+            lastActivityAt: run.lastActivityAt,
+          },
+        })
+        .run();
+    });
+  }
+
+  async latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>> {
+    return this.read((db) => {
+      const rows = db.select().from(driveRuns).all();
+      const latest = rows.sort((left, right) => right.startedAt.localeCompare(left.startedAt))[0];
+      return latest === undefined ? null : rowToDriveRun(latest);
+    });
+  }
+
   private async read<T>(operation: (db: GlobalDrizzle) => T): Promise<Result<T, AppError>> {
     try {
       const state = await this.ensureOpen();
@@ -284,6 +323,10 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 2) {
     for (const statement of migrateGlobalCatalogSchemaSqlV2) runMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 3) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV3) runMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
@@ -385,6 +428,32 @@ const rowToAnalysis = (row: typeof analyses.$inferSelect, analysisTags: string[]
   transcript: row.transcript,
   language: row.language,
   tags: analysisTags,
+});
+
+const rowToDriveRun = (row: typeof driveRuns.$inferSelect): DriveRunRecord => ({
+  runId: row.runId,
+  root: row.root,
+  startedAt: row.startedAt,
+  finishedAt: row.finishedAt,
+  foldersTotal: row.foldersTotal,
+  foldersDone: row.foldersDone,
+  filesDone: row.filesDone,
+  filesSkipped: row.filesSkipped,
+  filesFailed: row.filesFailed,
+  lastActivityAt: row.lastActivityAt,
+});
+
+const driveRunToRow = (run: DriveRunRecord): typeof driveRuns.$inferInsert => ({
+  runId: run.runId,
+  root: run.root,
+  startedAt: run.startedAt,
+  finishedAt: run.finishedAt,
+  foldersTotal: run.foldersTotal,
+  foldersDone: run.foldersDone,
+  filesDone: run.filesDone,
+  filesSkipped: run.filesSkipped,
+  filesFailed: run.filesFailed,
+  lastActivityAt: run.lastActivityAt,
 });
 
 const setAnalysisTags = (db: GlobalDrizzle, fingerprint: string, values: readonly string[]): void => {

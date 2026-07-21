@@ -2,6 +2,7 @@ import { appError, ok, type AppError, type Result, type WhisperModelName } from 
 
 import type { JobRecord, JobsPort } from '../ports.js';
 import { checkProcessPrerequisites, processVideoPipeline, type ProcessDeps } from './process.js';
+import { processDrive, type ProcessDriveInput } from './process-drive.js';
 
 export interface JobsDeps extends Partial<ProcessDeps> {
   jobs: JobsPort;
@@ -66,6 +67,39 @@ export const enqueueProcess = async (
     payload: input,
     resourceKey,
     run: (context) => processVideoPipeline(processDeps, input, context),
+  });
+};
+
+export const enqueueProcessDrive = async (
+  deps: JobsDeps,
+  input: ProcessDriveInput,
+): Promise<Result<{ jobId: string }, AppError>> => {
+  if (
+    deps.catalogs === undefined ||
+    deps.config === undefined ||
+    deps.fs === undefined ||
+    deps.media === undefined ||
+    deps.transcriber === undefined ||
+    deps.analyzer === undefined ||
+    deps.globalCatalog === undefined
+  ) {
+    return { ok: false, error: appError('internal', 'Drive process job dependencies are incomplete') };
+  }
+  const resourceKey = deps.fs.resolve(input.root);
+  const processDeps: ProcessDeps = {
+    catalogs: deps.catalogs,
+    config: deps.config,
+    fs: deps.fs,
+    media: deps.media,
+    transcriber: deps.transcriber,
+    analyzer: deps.analyzer,
+    globalCatalog: deps.globalCatalog,
+  };
+  return deps.jobs.enqueue({
+    kind: 'process_drive',
+    payload: input,
+    resourceKey,
+    run: (context) => processDrive(processDeps, input, context),
   });
 };
 

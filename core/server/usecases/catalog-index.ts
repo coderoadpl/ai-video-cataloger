@@ -7,7 +7,7 @@ import {
   type Result,
 } from '@core/domain/index.js';
 
-import type { FileSystemPort, GlobalCatalogStore } from '../ports.js';
+import type { DriveRunRecord, FileSystemPort, GlobalCatalogStore } from '../ports.js';
 import { ensureFolderMarker, readFolderMarker } from './folder-identity.js';
 import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
 
@@ -44,6 +44,7 @@ export interface IndexStatusOutput {
   databasePath: string;
   counts: { folders: number; files: number; analyses: number };
   folders: IndexStatusFolder[];
+  latestRun: DriveRunRecord | null;
 }
 
 export interface IndexRebuildOutput {
@@ -144,10 +145,13 @@ export const indexStatus = async (deps: CatalogIndexDeps): Promise<Result<IndexS
   if (!counts.ok) return counts;
   const folders = await deps.globalCatalog.listFolders();
   if (!folders.ok) return folders;
+  const latestRun = await deps.globalCatalog.latestDriveRun();
+  if (!latestRun.ok) return latestRun;
   return ok({
     databasePath: deps.globalCatalog.databasePath(),
     counts: counts.value,
     folders: folders.value.map(toStatusFolder),
+    latestRun: latestRun.value,
   });
 };
 

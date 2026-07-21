@@ -95,7 +95,7 @@ export class NodeFileSystemPort implements FileSystemPort {
       return ok(entries.map((entry) => ({
         name: entry.name,
         path: path.join(value, entry.name),
-        kind: entry.isDirectory() ? 'directory' : 'file',
+        kind: directoryEntryKind(entry),
       })));
     } catch (cause) {
       if (isMissing(cause)) return ok([]);
@@ -190,6 +190,12 @@ export class NodeFileSystemPort implements FileSystemPort {
 
 const isMissing = (cause: unknown): boolean =>
   cause instanceof Error && 'code' in cause && cause.code === 'ENOENT';
+
+const directoryEntryKind = (entry: { isDirectory(): boolean; isSymbolicLink(): boolean }): DirectoryEntry['kind'] => {
+  if (entry.isSymbolicLink()) return 'symlink';
+  if (entry.isDirectory()) return 'directory';
+  return 'file';
+};
 
 const failure = <T>(code: 'read_error' | 'internal', cause: unknown, fallbackMessage: string): Result<T, AppError> => ({
   ok: false,

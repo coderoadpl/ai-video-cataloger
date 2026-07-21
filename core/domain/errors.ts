@@ -24,6 +24,8 @@ export const ERROR_CODES = [
   'not_a_directory',
   'read_error',
   'nested_databases_found',
+  'drive_root_empty',
+  'drive_run_aborted',
   'thumbnail_error',
   'processing_error',
   'analysis_parse_failed',

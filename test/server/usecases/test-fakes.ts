@@ -31,6 +31,7 @@ import type {
   ConfigStore,
   DependencyStatus,
   DirectoryEntry,
+  DriveRunRecord,
   FileStat,
   FileSystemPort,
   JobExecutionContext,
@@ -62,6 +63,7 @@ interface FakeFile {
 export class InMemoryFileSystem implements FileSystemPort {
   private readonly files = new Map<string, FakeFile>();
   private readonly directories = new Set<string>();
+  private readonly symlinks = new Set<string>();
 
   constructor(private readonly workingDirectory = '/work') {
     this.addDirectory(workingDirectory);
@@ -86,6 +88,12 @@ export class InMemoryFileSystem implements FileSystemPort {
       mtimeMs: options.mtimeMs ?? 0,
       hash: options.hash ?? null,
     });
+  }
+
+  addSymlink(value: string): void {
+    const normalized = this.normalize(value);
+    this.addDirectory(path.dirname(normalized));
+    this.symlinks.add(normalized);
   }
 
   cwd(): string {
@@ -142,6 +150,10 @@ export class InMemoryFileSystem implements FileSystemPort {
     for (const filePath of this.files.keys()) {
       if (path.dirname(filePath) !== normalized) continue;
       entries.push({ name: path.basename(filePath), path: filePath, kind: 'file' });
+    }
+    for (const linkPath of this.symlinks) {
+      if (path.dirname(linkPath) !== normalized) continue;
+      entries.push({ name: path.basename(linkPath), path: linkPath, kind: 'symlink' });
     }
     return Promise.resolve(ok(entries));
   }
@@ -696,6 +708,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
   private readonly aliases = new Map<string, string>();
+  readonly driveRuns = new Map<string, DriveRunRecord>();
 
   constructor(private readonly path = '/home/.ai-video-cataloger/catalog.db') {}
 
@@ -772,6 +785,21 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       files: this.files.size,
       analyses: this.analyses.size,
     }));
+  }
+
+  startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
+    this.driveRuns.set(run.runId, run);
+    return Promise.resolve(ok(undefined));
+  }
+
+  updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
+    this.driveRuns.set(run.runId, run);
+    return Promise.resolve(ok(undefined));
+  }
+
+  latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>> {
+    const runs = [...this.driveRuns.values()].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+    return Promise.resolve(ok(runs[0] ?? null));
   }
 }
 
