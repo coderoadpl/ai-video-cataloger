@@ -61,12 +61,23 @@ describe('WhisperTranscriberAdapter', () => {
     expect(runner.commands).toEqual([]);
   });
 
-  it('falls back to system whisper when bundled whisper is absent', async () => {
+  it('prefers system whisper-cli over the python whisper CLI when bundled whisper is absent', async () => {
+    const runner = new FakeCommandRunner({ 'whisper-cli': 'whisper.cpp 1.9.1', whisper: 'whisper 1.2.3' });
+    const resolved = await resolveWhisperBinary({ bundledWhisperPath: () => null }, runner);
+
+    expect(resolved).toEqual({ path: 'whisper-cli', source: 'system', available: true });
+    expect(runner.commands).toEqual([{ command: 'whisper-cli', args: ['--help'] }]);
+  });
+
+  it('falls back to the python whisper CLI when whisper-cli is absent', async () => {
     const runner = new FakeCommandRunner({ whisper: 'whisper 1.2.3' });
     const resolved = await resolveWhisperBinary({ bundledWhisperPath: () => null }, runner);
 
     expect(resolved).toEqual({ path: 'whisper', source: 'system', available: true });
-    expect(runner.commands).toEqual([{ command: 'whisper', args: ['--help'] }]);
+    expect(runner.commands).toEqual([
+      { command: 'whisper-cli', args: ['--help'] },
+      { command: 'whisper', args: ['--help'] },
+    ]);
   });
 
   it('constructs the local whisper command and reads the transcript file', async () => {
@@ -171,6 +182,7 @@ describe('WhisperTranscriberAdapter', () => {
     const transcriptPath = path.join(root, 'transcripts', 'Clip One.txt');
     const runner = new FakeCommandRunner({ whisper: 'usage: whisper [--model MODEL] audio [audio ...]' });
     runner.onRun = async (command, args) => {
+      if (command === 'whisper-cli') return { ok: false, error: appError('processing_error', 'whisper-cli not found') };
       if (command === 'whisper' && args[0] !== '--help') {
         await writeOpenAiWhisperOutput(args, ' system transcript \n');
       }

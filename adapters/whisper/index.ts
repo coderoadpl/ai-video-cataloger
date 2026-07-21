@@ -184,14 +184,15 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     try {
       await mkdir(path.dirname(input.transcriptPath), { recursive: true });
       const modelPath = await resolveWhisperCppModelPath(this.homeDirectory, input.model);
+      const openAiDialect = usesOpenAiWhisperDialect(binary);
       let run = await this.commandRunner.run(
         binary.path,
-        binary.source === 'system'
+        openAiDialect
           ? openAiWhisperArgs(input)
           : whisperCppArgs(modelPath, input),
         { signal: input.signal },
       );
-      if (!run.ok && binary.source !== 'system' && input.signal?.aborted !== true) {
+      if (!run.ok && !openAiDialect && input.signal?.aborted !== true) {
         run = await this.commandRunner.run(
           binary.path,
           [...whisperCppArgs(modelPath, input), '--no-gpu'],
@@ -199,7 +200,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
         );
       }
       if (!run.ok) return run;
-      if (binary.source === 'system') {
+      if (openAiDialect) {
         const producedPath = path.join(
           path.dirname(input.transcriptPath),
           `${path.basename(input.audioPath, path.extname(input.audioPath))}.txt`,
@@ -422,10 +423,15 @@ export const resolveWhisperBinary = async (
 ): Promise<ResolvedWhisperBinary> => {
   const bundled = resolver.bundledWhisperPath();
   if (bundled !== null) return { path: bundled, source: 'bundled', available: true };
+  const cli = await runner.run('whisper-cli', ['--help']);
+  if (cli.ok) return { path: 'whisper-cli', source: 'system', available: true };
   const system = await runner.run('whisper', ['--help']);
   if (system.ok) return { path: 'whisper', source: 'system', available: true };
   return { path: 'whisper', source: null, available: false };
 };
+
+const usesOpenAiWhisperDialect = (binary: ResolvedWhisperBinary): boolean =>
+  binary.source === 'system' && path.basename(binary.path) === 'whisper';
 
 export const whisperModelDownloadUrl = (model: WhisperModelName): string =>
   `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-${model}.bin`;
@@ -529,6 +535,7 @@ const runtimeDependency = (runtime: WhisperRuntimeStatus): DependencyStatus => (
     : runtime.buildToolsAvailable
       ? 'Install the managed whisper.cpp runtime or configure whisper_binary_path'
       : `Managed whisper.cpp requires ${runtime.missingBuildTools.join(' and ')}`,
+  ...(runtime.warning === undefined ? {} : { warning: runtime.warning }),
 });
 
 const openAiFailure = (cause: unknown): Result<never, AppError> => {

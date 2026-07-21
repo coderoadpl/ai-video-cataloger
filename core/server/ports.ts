@@ -130,6 +130,7 @@ export interface DependencyStatus {
   source: 'bundled' | 'configured' | 'managed' | 'system' | null;
   path: string | null;
   installHint: string;
+  warning?: string | undefined;
 }
 
 export interface MediaProbe {
@@ -203,6 +204,8 @@ export interface TranscriberPort {
 
 export type WhisperRuntimeSource = 'configured' | 'managed' | 'system';
 
+export type WhisperImplementation = 'whisper-cli' | 'openai-whisper';
+
 export interface WhisperRuntimeStatus {
   available: boolean;
   path: string | null;
@@ -212,6 +215,8 @@ export interface WhisperRuntimeStatus {
   buildToolsAvailable: boolean;
   missingBuildTools: string[];
   message?: string | undefined;
+  implementation?: WhisperImplementation | undefined;
+  warning?: string | undefined;
 }
 
 export interface WhisperRuntimeInstallProgress {

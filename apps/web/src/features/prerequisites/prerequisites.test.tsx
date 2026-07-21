@@ -55,6 +55,7 @@ const allGood: DoctorResult = {
   machine,
   recommendedLocalModel: 'gemma3:12b',
   allAvailable: true,
+  warnings: [],
 };
 
 const withMissing: DoctorResult = {
@@ -67,6 +68,7 @@ const withMissing: DoctorResult = {
   machine,
   recommendedLocalModel: null,
   allAvailable: false,
+  warnings: [],
 };
 
 describe('prerequisites modal', () => {

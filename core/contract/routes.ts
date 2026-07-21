@@ -424,6 +424,12 @@ export const dependencyStatusSchema = z.object({
   ]).nullable(),
   path: z.string().nullable(),
   installHint: z.string(),
+  warning: z.string().optional(),
+});
+
+export const doctorWarningSchema = z.object({
+  code: z.string(),
+  message: z.string(),
 });
 
 export const readinessComponentSchema = z.object({
@@ -464,6 +470,7 @@ export const doctorOutputSchema = z.object({
   machine: machineSchema,
   recommendedLocalModel: z.string().nullable(),
   allAvailable: z.boolean(),
+  warnings: z.array(doctorWarningSchema).default([]),
   configured: readinessOutputSchema,
 });
 

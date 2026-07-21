@@ -30,6 +30,9 @@ export const WHISPER_CPP_SOURCE_URL =
 export const WHISPER_CPP_SOURCE_SHA256 = '147267177eef7b22ec3d2476dd514d1b12e160e176230b740e3d1bd600118447';
 export const GHCR_REGISTRY_URL = 'https://ghcr.io';
 
+export const SLOW_CPU_WHISPER_WARNING =
+  'Transcription is falling back to the OpenAI "whisper" CLI, which runs on CPU and is far slower than whisper.cpp. Install the managed runtime with: ai-video-cataloger models whisper-runtime install';
+
 const tokenResponseSchema = z.object({
   token: z.string().min(1),
 });
@@ -200,27 +203,47 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
     if (managedInstalled) {
       return ok(await this.availableStatus(managedPath, 'managed', true, buildTools));
     }
-    const system = await this.commandRunner.run('whisper', ['--help']);
-    if (system.ok) {
-      return ok({
+    return ok(await this.systemStatus(buildTools));
+  }
+
+  private async systemStatus(buildTools: { missing: string[] }): Promise<WhisperRuntimeStatus> {
+    const buildToolsAvailable = buildTools.missing.length === 0;
+    const cli = await this.commandRunner.run('whisper-cli', ['--help']);
+    if (cli.ok) {
+      return {
+        available: true,
+        path: 'whisper-cli',
+        source: 'system',
+        version: parseVersion(`${cli.value.stdout}\n${cli.value.stderr}`),
+        managedInstalled: false,
+        buildToolsAvailable,
+        missingBuildTools: buildTools.missing,
+        implementation: 'whisper-cli',
+      };
+    }
+    const python = await this.commandRunner.run('whisper', ['--help']);
+    if (python.ok) {
+      return {
         available: true,
         path: 'whisper',
         source: 'system',
-        version: parseVersion(`${system.value.stdout}\n${system.value.stderr}`),
+        version: parseVersion(`${python.value.stdout}\n${python.value.stderr}`),
         managedInstalled: false,
-        buildToolsAvailable: buildTools.missing.length === 0,
+        buildToolsAvailable,
         missingBuildTools: buildTools.missing,
-      });
+        implementation: 'openai-whisper',
+        warning: SLOW_CPU_WHISPER_WARNING,
+      };
     }
-    return ok({
+    return {
       available: false,
       path: null,
       source: null,
       version: null,
       managedInstalled: false,
-      buildToolsAvailable: buildTools.missing.length === 0,
+      buildToolsAvailable,
       missingBuildTools: buildTools.missing,
-    });
+    };
   }
 
   async install(options?: {
@@ -457,6 +480,7 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
       managedInstalled,
       buildToolsAvailable: buildTools.missing.length === 0,
       missingBuildTools: buildTools.missing,
+      implementation: 'whisper-cli',
     };
   }
 

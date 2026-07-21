@@ -32,6 +32,11 @@ export interface DoctorDeps {
   readiness: ReadinessCache;
 }
 
+export interface DoctorWarning {
+  code: string;
+  message: string;
+}
+
 export interface DoctorOutput {
   dependencies: DependencyStatus[];
   machine: {
@@ -42,6 +47,7 @@ export interface DoctorOutput {
   };
   recommendedLocalModel: string | null;
   allAvailable: boolean;
+  warnings: DoctorWarning[];
   harnesses: Array<Extract<ProviderTestResult, { family: 'harness' }>>;
   configured: ReadinessOutput;
 }
@@ -72,10 +78,15 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
     },
     recommendedLocalModel: recommendedLocalModel(machine.value),
     allAvailable: dependencies.every((dependency) => dependency.available),
+    warnings: dependencyWarnings(dependencies),
     harnesses,
     configured: configured.value,
   });
 };
+
+const dependencyWarnings = (dependencies: DependencyStatus[]): DoctorWarning[] =>
+  dependencies.flatMap((dependency) =>
+    dependency.warning === undefined ? [] : [{ code: `${dependency.name}_warning`, message: dependency.warning }]);
 
 const detectHarnesses = async (
   providers: ProvidersPort,

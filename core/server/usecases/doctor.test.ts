@@ -65,6 +65,31 @@ describe('runDoctor', () => {
     expect(result).toMatchObject({ ok: true, value: { allAvailable: false } });
   });
 
+  it('surfaces a dependency warning as a doctor warning', async () => {
+    const transcriber = new InMemoryTranscriber();
+    transcriber.dependencyValue = {
+      ...dependency('whisper', true),
+      warning: 'Transcription is running on a slow CPU implementation',
+    };
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber,
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.warnings).toEqual([
+      { code: 'whisper_warning', message: 'Transcription is running on a slow CPU implementation' },
+    ]);
+  });
+
   it('keeps doctor successful on Apple Silicon when local AI starts on demand', async () => {
     const localAi = new InMemoryLocalAi();
     localAi.machineValue = { platform: 'darwin', arch: 'arm64', ramGb: 16 };

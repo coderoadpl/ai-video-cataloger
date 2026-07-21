@@ -10,6 +10,7 @@ import { InMemoryConfig } from '../../test/server/usecases/test-fakes.js';
 
 import {
   ManagedWhisperRuntimeAdapter,
+  SLOW_CPU_WHISPER_WARNING,
   WHISPER_BOTTLE_SPECS,
   managedWhisperBinaryPath,
   whisperInstallNamePatches,
@@ -92,7 +93,7 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     expect(status).toMatchObject({ ok: true, value: { path: folderPath, source: 'configured' } });
   });
 
-  it('detects managed before system and detects system when managed is absent', async () => {
+  it('detects managed before system and prefers whisper-cli when managed is absent', async () => {
     const home = await tempHome();
     const config = new InMemoryConfig();
     const runner = new FakeRunner(WHISPER_BOTTLE_SPECS);
@@ -105,8 +106,35 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     await rm(managedPath, { force: true });
     const system = await adapter.status();
 
-    expect(managed).toMatchObject({ ok: true, value: { source: 'managed', path: managedPath } });
-    expect(system).toMatchObject({ ok: true, value: { source: 'system', path: 'whisper' } });
+    expect(managed).toMatchObject({ ok: true, value: { source: 'managed', path: managedPath, implementation: 'whisper-cli' } });
+    expect(system).toMatchObject({ ok: true, value: { source: 'system', path: 'whisper-cli', implementation: 'whisper-cli' } });
+    expect(system.ok && system.value.warning).toBeUndefined();
+  });
+
+  it('falls back to the CPU-only python whisper as a last resort with a slow-CPU warning', async () => {
+    const home = await tempHome();
+    const config = new InMemoryConfig();
+    const runner = new FakeRunner(WHISPER_BOTTLE_SPECS);
+    runner.systemWhisperAvailable = true;
+    runner.missingTools.add('whisper-cli');
+    const adapter = new ManagedWhisperRuntimeAdapter({ config, homeDirectory: home, commandRunner: runner });
+
+    const status = await adapter.status();
+
+    expect(status).toMatchObject({
+      ok: true,
+      value: {
+        available: true,
+        source: 'system',
+        path: 'whisper',
+        implementation: 'openai-whisper',
+        warning: SLOW_CPU_WHISPER_WARNING,
+      },
+    });
+    const whisperCliProbe = runner.commands.findIndex((entry) => entry.command === 'whisper-cli');
+    const whisperProbe = runner.commands.findIndex((entry) => entry.command === 'whisper');
+    expect(whisperCliProbe).toBeGreaterThanOrEqual(0);
+    expect(whisperCliProbe).toBeLessThan(whisperProbe);
   });
 
   it('installs through token, manifest, and blob requests against an HTTP server', async () => {

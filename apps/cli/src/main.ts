@@ -851,6 +851,7 @@ const tagsAliasHuman = (data: Awaited<ReturnType<ApiClient['aliasTag']>> extends
 const doctorHuman = (data: Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never): string => {
   const lines = data.dependencies.map((dependency) => `${dependency.name}: ${dependency.available ? 'available' : 'missing'}`);
   lines.push(`All available: ${data.allAvailable ? 'yes' : 'no'}`);
+  for (const warning of data.warnings) lines.push(`Warning: ${warning.message}`);
   lines.push('Configured processing:');
   lines.push(`Analyzer (${data.configured.analyzer.providerId}): ${data.configured.analyzer.available ? 'available' : 'missing'}`);
   lines.push(`Transcriber (${data.configured.transcriber.mode}): ${data.configured.transcriber.available ? 'available' : 'missing'}`);
