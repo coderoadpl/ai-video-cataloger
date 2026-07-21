@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, chmod, copyFile, mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, copyFile, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
@@ -32,6 +32,9 @@ export const GHCR_REGISTRY_URL = 'https://ghcr.io';
 
 export const SLOW_CPU_WHISPER_WARNING =
   'Transcription is falling back to the OpenAI "whisper" CLI, which runs on CPU and is far slower than whisper.cpp. Install the managed runtime with: ai-video-cataloger models whisper-runtime install';
+
+export const MANAGED_WHISPER_INCOMPLETE_MESSAGE =
+  'The managed whisper.cpp runtime is present but incomplete (the whisper-cli binary is missing or empty). Reinstall it with: ai-video-cataloger models whisper-runtime install';
 
 const tokenResponseSchema = z.object({
   token: z.string().min(1),
@@ -178,7 +181,8 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
 
   async status(input?: { configuredPath?: string | undefined }): Promise<Result<WhisperRuntimeStatus, AppError>> {
     const managedPath = managedWhisperBinaryPath(this.homeDirectory);
-    const managedInstalled = await executableExists(managedPath);
+    const managedState = await managedRuntimeState(this.homeDirectory);
+    const managedInstalled = managedState === 'installed';
     const buildTools = await this.detectBuildTools();
     const storedConfigured = input?.configuredPath === undefined
       ? await this.config.get({ kind: 'home' }, 'whisper_binary_path')
@@ -203,10 +207,14 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
     if (managedInstalled) {
       return ok(await this.availableStatus(managedPath, 'managed', true, buildTools));
     }
-    return ok(await this.systemStatus(buildTools));
+    const incompleteMessage = managedState === 'incomplete' ? MANAGED_WHISPER_INCOMPLETE_MESSAGE : undefined;
+    return ok(await this.systemStatus(buildTools, incompleteMessage));
   }
 
-  private async systemStatus(buildTools: { missing: string[] }): Promise<WhisperRuntimeStatus> {
+  private async systemStatus(
+    buildTools: { missing: string[] },
+    incompleteMessage: string | undefined,
+  ): Promise<WhisperRuntimeStatus> {
     const buildToolsAvailable = buildTools.missing.length === 0;
     const cli = await this.commandRunner.run('whisper-cli', ['--help']);
     if (cli.ok) {
@@ -219,6 +227,7 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
         buildToolsAvailable,
         missingBuildTools: buildTools.missing,
         implementation: 'whisper-cli',
+        ...(incompleteMessage === undefined ? {} : { warning: incompleteMessage }),
       };
     }
     const python = await this.commandRunner.run('whisper', ['--help']);
@@ -232,7 +241,9 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
         buildToolsAvailable,
         missingBuildTools: buildTools.missing,
         implementation: 'openai-whisper',
-        warning: SLOW_CPU_WHISPER_WARNING,
+        warning: incompleteMessage === undefined
+          ? SLOW_CPU_WHISPER_WARNING
+          : `${incompleteMessage} ${SLOW_CPU_WHISPER_WARNING}`,
       };
     }
     return {
@@ -243,6 +254,7 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
       managedInstalled: false,
       buildToolsAvailable,
       missingBuildTools: buildTools.missing,
+      ...(incompleteMessage === undefined ? {} : { message: incompleteMessage }),
     };
   }
 
@@ -251,7 +263,7 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
     onProgress?: ((progress: WhisperRuntimeInstallProgress) => Promise<Result<void, AppError>>) | undefined;
   }): Promise<Result<{ path: string; version: string; installed: boolean }, AppError>> {
     const binaryPath = managedWhisperBinaryPath(this.homeDirectory);
-    if (await executableExists(binaryPath)) {
+    if (await nonEmptyExecutable(binaryPath)) {
       return ok({ path: binaryPath, version: WHISPER_CPP_PINNED_VERSION, installed: false });
     }
     const bottle = await this.installBottle(options);
@@ -520,6 +532,31 @@ const executableExists = async (candidate: string): Promise<boolean> => {
   } catch {
     return false;
   }
+};
+
+const nonEmptyExecutable = async (candidate: string): Promise<boolean> => {
+  if (!await executableExists(candidate)) return false;
+  try {
+    return (await stat(candidate)).size > 0;
+  } catch {
+    return false;
+  }
+};
+
+const pathExists = async (candidate: string): Promise<boolean> => {
+  try {
+    await access(candidate);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+const managedRuntimeState = async (homeDirectory: string): Promise<'installed' | 'incomplete' | 'absent'> => {
+  const binaryPath = managedWhisperBinaryPath(homeDirectory);
+  if (await nonEmptyExecutable(binaryPath)) return 'installed';
+  if (await pathExists(binaryPath) || await pathExists(whisperRuntimeDirectory(homeDirectory))) return 'incomplete';
+  return 'absent';
 };
 
 const parseVersion = (output: string): string => {

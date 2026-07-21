@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { closeSync, existsSync, openSync } from 'node:fs';
-import { mkdir, readFile, readdir, rm, writeFile } from 'node:fs/promises';
+import { closeSync, openSync } from 'node:fs';
+import { mkdir, readFile, readdir, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, totalmem } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
@@ -360,7 +360,7 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
 
   private async installManagedBinary(signal?: AbortSignal): Promise<Result<string, AppError>> {
     const binaryPath = managedBinaryPath(this.homeDirectory);
-    if (existsSync(binaryPath)) return ok(binaryPath);
+    if (await nonEmptyFile(binaryPath)) return ok(binaryPath);
 
     const runtimeDir = managedRuntimeDirectory(this.homeDirectory);
     const tempTarball = path.join(runtimeDir, 'download.tmp.tgz');
@@ -387,7 +387,7 @@ export class ManagedOllamaRuntimeAdapter implements LocalAiRuntimePort {
       const extracted = await this.extractArchive(tempTarball, runtimeDir);
       await rm(tempTarball, { force: true });
       if (!extracted.ok) return extracted;
-      if (!existsSync(binaryPath)) {
+      if (!await nonEmptyFile(binaryPath)) {
         return { ok: false, error: appError('ollama_unavailable', 'Local AI runtime archive did not contain the expected binary') };
       }
       return ok(binaryPath);
@@ -666,6 +666,14 @@ const unavailableMessage = (baseUrl: string, cause: unknown): string =>
 
 const errorMessage = (cause: unknown, fallback: string): string =>
   cause instanceof Error ? cause.message : fallback;
+
+const nonEmptyFile = async (candidate: string): Promise<boolean> => {
+  try {
+    return (await stat(candidate)).size > 0;
+  } catch {
+    return false;
+  }
+};
 
 const isStartupTimeout = (error: AppError): boolean =>
   error.code === 'ollama_unavailable' && error.message === `Local AI runtime did not start within ${serveStartTimeoutMs / 1000}s`;

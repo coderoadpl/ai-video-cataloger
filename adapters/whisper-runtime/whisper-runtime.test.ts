@@ -10,6 +10,7 @@ import { InMemoryConfig } from '../../test/server/usecases/test-fakes.js';
 
 import {
   ManagedWhisperRuntimeAdapter,
+  MANAGED_WHISPER_INCOMPLETE_MESSAGE,
   SLOW_CPU_WHISPER_WARNING,
   WHISPER_BOTTLE_SPECS,
   managedWhisperBinaryPath,
@@ -135,6 +136,52 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     const whisperProbe = runner.commands.findIndex((entry) => entry.command === 'whisper');
     expect(whisperCliProbe).toBeGreaterThanOrEqual(0);
     expect(whisperCliProbe).toBeLessThan(whisperProbe);
+  });
+
+  it('treats an empty managed binary as not installed and explains the incomplete runtime', async () => {
+    const home = await tempHome();
+    const managedPath = managedWhisperBinaryPath(home);
+    await mkdir(path.dirname(managedPath), { recursive: true });
+    await writeFile(managedPath, '', 'utf8');
+    await chmod(managedPath, 0o755);
+    const runner = new FakeRunner(WHISPER_BOTTLE_SPECS);
+    runner.missingTools.add('whisper-cli');
+    const adapter = new ManagedWhisperRuntimeAdapter({ config: new InMemoryConfig(), homeDirectory: home, commandRunner: runner });
+
+    const status = await adapter.status();
+
+    expect(status).toMatchObject({
+      ok: true,
+      value: {
+        available: false,
+        source: null,
+        managedInstalled: false,
+        message: MANAGED_WHISPER_INCOMPLETE_MESSAGE,
+      },
+    });
+  });
+
+  it('surfaces the incomplete managed runtime as a warning when system whisper-cli is present', async () => {
+    const home = await tempHome();
+    const managedPath = managedWhisperBinaryPath(home);
+    await mkdir(path.dirname(managedPath), { recursive: true });
+    await writeFile(managedPath, '', 'utf8');
+    await chmod(managedPath, 0o755);
+    const runner = new FakeRunner(WHISPER_BOTTLE_SPECS);
+    const adapter = new ManagedWhisperRuntimeAdapter({ config: new InMemoryConfig(), homeDirectory: home, commandRunner: runner });
+
+    const status = await adapter.status();
+
+    expect(status).toMatchObject({
+      ok: true,
+      value: {
+        available: true,
+        source: 'system',
+        path: 'whisper-cli',
+        managedInstalled: false,
+        warning: MANAGED_WHISPER_INCOMPLETE_MESSAGE,
+      },
+    });
   });
 
   it('installs through token, manifest, and blob requests against an HTTP server', async () => {
