@@ -8,7 +8,7 @@ import {
   OpenAiCompatibleAnalyzerAdapter,
 } from '@adapters/analyzers/index.js';
 import { JsonCredentialsStore } from '@adapters/credentials/index.js';
-import { JsonConfigStore, SqlJsCatalogRepositoryFactory } from '@adapters/db/index.js';
+import { JsonConfigStore, SqlJsCatalogRepositoryFactory, SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
@@ -20,6 +20,9 @@ import {
   ok,
   type AnalyzerProviderConfig,
   type AppError,
+  type CatalogAnalysis,
+  type CatalogFile,
+  type CatalogFolder,
   type ConfigKey,
   type Result,
   type WhisperModelName,
@@ -29,6 +32,7 @@ import type {
   AnalysisOutput,
   AnalyzeInput,
   AnalyzerPort,
+  CatalogFileRecord,
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
@@ -40,6 +44,8 @@ import type {
   DirectoryEntry,
   FileStat,
   FileSystemPort,
+  GlobalCatalogCounts,
+  GlobalCatalogStore,
   JobsPort,
   JobExecutionContext,
   JobKind,
@@ -57,6 +63,7 @@ import type {
 export interface AppDeps {
   version: string;
   catalogs: CatalogRepositoryFactory;
+  globalCatalog: GlobalCatalogStore;
   config: ConfigStore;
   credentials: CredentialsStore;
   fs: FileSystemPort;
@@ -90,6 +97,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     return {
       version: config.version ?? packageJson.version,
       catalogs: new InMemoryCatalogRepositoryFactory(),
+      globalCatalog: new InMemoryGlobalCatalogStore(),
       config: configStore,
       credentials,
       fs: new InMemoryFileSystemPort(workingDirectory),
@@ -114,6 +122,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   return {
     version: config.version ?? packageJson.version,
     catalogs: new SqlJsCatalogRepositoryFactory(),
+    globalCatalog: new SqlJsGlobalCatalogStore({ homeDirectory }),
     config: configStore,
     credentials,
     fs: new NodeFileSystemPort({ workingDirectory }),
@@ -347,6 +356,62 @@ class InMemoryCatalogRepository implements CatalogRepository {
     };
     this.videos = this.videos.map((video) => (video.id === before.id ? after : video));
     return Promise.resolve(ok({ before, after }));
+  }
+}
+
+class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
+  private readonly folders = new Map<string, CatalogFolder>();
+  private readonly files = new Map<string, CatalogFile>();
+  private readonly analyses = new Map<string, CatalogAnalysis>();
+
+  databasePath(): string {
+    return path.join('.ai-video-cataloger', 'catalog.db');
+  }
+
+  listFolders(): Promise<Result<CatalogFolder[], AppError>> {
+    return Promise.resolve(ok([...this.folders.values()]));
+  }
+
+  getFolder(folderId: string): Promise<Result<CatalogFolder | null, AppError>> {
+    return Promise.resolve(ok(this.folders.get(folderId) ?? null));
+  }
+
+  upsertFolder(folder: CatalogFolder): Promise<Result<void, AppError>> {
+    this.folders.set(folder.folderId, folder);
+    return Promise.resolve(ok(undefined));
+  }
+
+  getFile(fingerprint: string): Promise<Result<CatalogFile | null, AppError>> {
+    return Promise.resolve(ok(this.files.get(fingerprint) ?? null));
+  }
+
+  upsertFile(file: CatalogFile): Promise<Result<void, AppError>> {
+    this.files.set(file.fingerprint, file);
+    return Promise.resolve(ok(undefined));
+  }
+
+  getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>> {
+    return Promise.resolve(ok(this.analyses.get(fingerprint) ?? null));
+  }
+
+  upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>> {
+    this.analyses.set(analysis.fingerprint, analysis);
+    return Promise.resolve(ok(undefined));
+  }
+
+  listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>> {
+    const records = [...this.files.values()]
+      .filter((file) => file.folderId === folderId)
+      .map((file) => ({ file, analysis: this.analyses.get(file.fingerprint) ?? null }));
+    return Promise.resolve(ok(records));
+  }
+
+  counts(): Promise<Result<GlobalCatalogCounts, AppError>> {
+    return Promise.resolve(ok({
+      folders: this.folders.size,
+      files: this.files.size,
+      analyses: this.analyses.size,
+    }));
   }
 }
 

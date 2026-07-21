@@ -22,6 +22,7 @@ export interface ProcessInput {
   whisperModelExplicit?: boolean | undefined;
   analyzer?: 'claude' | 'local' | 'api' | undefined;
   localModel?: string | undefined;
+  force?: boolean | undefined;
   batch?: { current: number; total: number } | undefined;
 }
 
@@ -56,6 +57,7 @@ export const enqueueProcess = async (
     media: deps.media,
     transcriber: deps.transcriber,
     analyzer: deps.analyzer,
+    ...(deps.globalCatalog === undefined ? {} : { globalCatalog: deps.globalCatalog }),
   };
   const prerequisites = await checkProcessPrerequisites(processDeps, input);
   if (!prerequisites.ok) return prerequisites;

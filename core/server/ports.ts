@@ -2,6 +2,9 @@ import type {
   AppConfig,
   AppError,
   AnalyzerProviderConfig,
+  CatalogAnalysis,
+  CatalogFile,
+  CatalogFolder,
   ConfigKey,
   MachineProfile,
   Result,
@@ -35,6 +38,30 @@ export interface CatalogRepository {
 
 export interface CatalogRepositoryFactory {
   open(folder: string): Promise<Result<CatalogRepository, AppError>>;
+}
+
+export interface CatalogFileRecord {
+  file: CatalogFile;
+  analysis: CatalogAnalysis | null;
+}
+
+export interface GlobalCatalogCounts {
+  folders: number;
+  files: number;
+  analyses: number;
+}
+
+export interface GlobalCatalogStore {
+  databasePath(): string;
+  listFolders(): Promise<Result<CatalogFolder[], AppError>>;
+  getFolder(folderId: string): Promise<Result<CatalogFolder | null, AppError>>;
+  upsertFolder(folder: CatalogFolder): Promise<Result<void, AppError>>;
+  getFile(fingerprint: string): Promise<Result<CatalogFile | null, AppError>>;
+  upsertFile(file: CatalogFile): Promise<Result<void, AppError>>;
+  getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>>;
+  upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>>;
+  listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
+  counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
 }
 
 export type ConfigScope = { kind: 'folder'; folder: string } | { kind: 'home' };

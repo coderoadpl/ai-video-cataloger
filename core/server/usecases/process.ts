@@ -23,6 +23,7 @@ import {
   type CatalogRepositoryFactory,
   type ConfigStore,
   type FileSystemPort,
+  type GlobalCatalogStore,
   type JobExecutionContext,
   type JobProgress,
   type MediaPort,
@@ -35,6 +36,7 @@ import {
   type SummaryData,
 } from './shared.js';
 import { resolveConfigValues } from './config-resolution.js';
+import { hasProcessedAnalysis, upsertProcessedVideo } from './catalog-index.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
@@ -46,6 +48,7 @@ export interface ProcessDeps {
   media: MediaPort;
   transcriber: TranscriberPort;
   analyzer: AnalyzerPort;
+  globalCatalog?: GlobalCatalogStore | undefined;
 }
 
 export interface ProcessPipelineInput {
@@ -63,6 +66,7 @@ export interface ProcessPipelineInput {
   whisperModelExplicit?: boolean | undefined;
   analyzer?: AppConfig['analyzer_backend'] | 'api' | undefined;
   localModel?: string | undefined;
+  force?: boolean | undefined;
   batch?: ProcessBatchContext | undefined;
 }
 
@@ -102,6 +106,10 @@ export const processVideoPipeline = async (
   const video = await findOrCreateVideo(deps, repository.value, videoPath);
   if (!video.ok) return video;
 
+  const skipped = await alreadyIndexed(deps, videoPath, input.force === true);
+  if (!skipped.ok) return skipped;
+  if (skipped.value) return ok(completedOutput(deps.fs, video.value));
+
   const resolved = await resolveProcessOptions(deps.config, folder, input);
   if (!resolved.ok) return resolved;
 
@@ -112,6 +120,9 @@ export const processVideoPipeline = async (
     }
     return runResult;
   }
+
+  const recorded = await recordGlobalCatalog(deps, repository.value, resolved.value, runResult.value);
+  if (!recorded.ok) return recorded;
   return runResult;
 };
 
@@ -925,3 +936,82 @@ const completedOutput = (fs: FileSystemPort, video: Video): ProcessCompletedOutp
   path: video.newName === null ? video.originalPath : fs.join(fs.dirname(video.originalPath), video.newName),
   status: 'completed',
 });
+
+const alreadyIndexed = async (
+  deps: ProcessDeps,
+  videoPath: string,
+  force: boolean,
+): Promise<Result<boolean, AppError>> => {
+  const globalCatalog = deps.globalCatalog;
+  if (globalCatalog === undefined || force) return ok(false);
+  const fingerprint = await deps.fs.partialContentHash(videoPath);
+  if (!fingerprint.ok) return fingerprint;
+  if (fingerprint.value === null) return ok(false);
+  return hasProcessedAnalysis({ globalCatalog, fs: deps.fs }, fingerprint.value);
+};
+
+const recordGlobalCatalog = async (
+  deps: ProcessDeps,
+  repository: CatalogRepository,
+  resolved: ResolvedProcessOptions,
+  completed: ProcessCompletedOutput,
+): Promise<Result<void, AppError>> => {
+  const globalCatalog = deps.globalCatalog;
+  if (globalCatalog === undefined) return ok(undefined);
+  const finalPath = completed.path;
+  const folder = deps.fs.dirname(finalPath);
+  const fingerprint = await deps.fs.partialContentHash(finalPath);
+  if (!fingerprint.ok) return fingerprint;
+  if (fingerprint.value === null) return ok(undefined);
+  const stat = await deps.fs.stat(finalPath);
+  if (!stat.ok) return stat;
+  const videoRow = await repository.findVideoByPath(finalPath);
+  if (!videoRow.ok) return videoRow;
+  const newName = videoRow.value?.newName ?? null;
+  const paths = artifactPaths(deps.fs, folder, finalPath, newName);
+  const summary = await loadOptionalSummary(deps.fs, paths.summaryJsonPath);
+  if (!summary.ok) return summary;
+  const transcript = await readTranscript(deps.fs, paths.transcriptPath);
+  if (!transcript.ok) return transcript;
+  const provider = resolved.analyzer.provider;
+  return upsertProcessedVideo(
+    { globalCatalog, fs: deps.fs },
+    {
+      folderPath: folder,
+      fingerprint: fingerprint.value,
+      fileName: deps.fs.basename(finalPath),
+      size: stat.value.size,
+      durationS: null,
+      processedAt: new Date().toISOString(),
+      analyzer: provider.providerId,
+      model: analyzerModel(provider),
+      finalName: newName,
+      description: summary.value?.description ?? null,
+      transcript: transcript.value,
+      language: null,
+    },
+  );
+};
+
+const analyzerModel = (provider: AnalyzerProviderConfig): string | null => {
+  if (provider.family === 'local') return provider.modelTag;
+  if (provider.family === 'api') return provider.model;
+  return provider.model ?? null;
+};
+
+const loadOptionalSummary = async (
+  fs: FileSystemPort,
+  summaryJsonPath: string,
+): Promise<Result<SummaryData | null, AppError>> => {
+  const content = await fs.readTextFile(summaryJsonPath);
+  if (!content.ok) return content;
+  if (content.value === null) return ok(null);
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(content.value);
+  } catch {
+    return ok(null);
+  }
+  const parsed = summaryDataSchema.safeParse(decoded);
+  return ok(parsed.success ? parsed.data : null);
+};

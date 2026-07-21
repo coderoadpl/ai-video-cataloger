@@ -10,3 +10,15 @@ export {
   schema,
   videos,
 } from './schema.js';
+export {
+  SqlJsGlobalCatalogStore,
+  type GlobalCatalogAdapterOptions,
+} from './global-catalog.js';
+export {
+  analyses,
+  createGlobalCatalogSchemaSqlV1,
+  files,
+  folders,
+  globalCatalogSchema,
+  schemaMeta,
+} from './global-catalog-schema.js';

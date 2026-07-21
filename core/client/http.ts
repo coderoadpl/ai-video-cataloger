@@ -8,6 +8,8 @@ import {
   credentialSetOutputSchema,
   doctorOutputSchema,
   healthOutputSchema,
+  indexRebuildOutputSchema,
+  indexStatusOutputSchema,
   jobAcceptedOutputSchema,
   jobCancelOutputSchema,
   jobOutputSchema,
@@ -410,6 +412,24 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  indexStatus: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.indexStatus.method,
+      API_ROUTES.indexStatus.path,
+      indexStatusOutputSchema,
+      undefined,
+      signal,
+    ),
+  indexRebuild: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.indexRebuild.method,
+      API_ROUTES.indexRebuild.path,
+      indexRebuildOutputSchema,
+      {},
+      signal,
+    ),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;

@@ -16,6 +16,8 @@ import {
   getJobStatus,
   getReadiness,
   getStatus,
+  indexRebuild,
+  indexStatus,
   installWhisperRuntime,
   listJobs,
   listProviders,
@@ -266,6 +268,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!input.ok) return respond(input, API_ROUTES.jobCancel.output);
     return respond(await cancelJob(deps, input.value), API_ROUTES.jobCancel.output);
   });
+
+  app.get(API_ROUTES.indexStatus.path, async () =>
+    respond(await indexStatus(deps), API_ROUTES.indexStatus.output),
+  );
+
+  app.post(API_ROUTES.indexRebuild.path, async () =>
+    respond(await indexRebuild(deps), API_ROUTES.indexRebuild.output),
+  );
 
   return app;
 };

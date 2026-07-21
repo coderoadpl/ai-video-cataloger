@@ -15,7 +15,7 @@ import type {
   FileSystemPort,
 } from '@core/server/index.js';
 
-const PARTIAL_HASH_CHUNK_SIZE = 64 * 1024;
+const PARTIAL_HASH_CHUNK_SIZE = 1024 * 1024;
 
 export interface NodeFileSystemPortOptions {
   workingDirectory?: string | undefined;

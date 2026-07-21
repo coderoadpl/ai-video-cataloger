@@ -88,6 +88,7 @@ export const processInputSchema = videoPathInputSchema.extend({
   whisperModelExplicit: z.boolean().optional(),
   analyzer: z.enum([...ANALYZER_BACKENDS, 'api']).optional(),
   localModel: z.string().min(1).optional(),
+  force: z.boolean().optional(),
   batch: z.object({ current: z.number().int().positive(), total: z.number().int().positive() }).optional(),
 }).transform((input) => ({
   videoPath: input.videoPath,
@@ -104,6 +105,7 @@ export const processInputSchema = videoPathInputSchema.extend({
   whisperModelExplicit: input.whisperModelExplicit ?? input.whisperModel !== undefined,
   ...(input.analyzer === undefined ? {} : { analyzer: input.analyzer }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
+  ...(input.force === undefined ? {} : { force: input.force }),
   ...(input.batch === undefined ? {} : { batch: input.batch }),
 }));
 
@@ -534,6 +536,29 @@ export const jobCancelOutputSchema = z.object({
   cancelled: z.boolean(),
 });
 
+export const indexStatusFolderSchema = z.object({
+  folderId: z.string().min(1),
+  currentPath: z.string().min(1),
+  displayName: z.string(),
+});
+
+export const indexStatusOutputSchema = z.object({
+  databasePath: z.string(),
+  counts: z.object({
+    folders: z.number().int().nonnegative(),
+    files: z.number().int().nonnegative(),
+    analyses: z.number().int().nonnegative(),
+  }),
+  folders: z.array(indexStatusFolderSchema),
+});
+
+export const indexRebuildOutputSchema = z.object({
+  databasePath: z.string(),
+  reconciledFolders: z.number().int().nonnegative(),
+  importedFiles: z.number().int().nonnegative(),
+  folders: z.array(indexStatusFolderSchema),
+});
+
 export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.ZodTypeAny> {
   method: 'GET' | 'POST' | 'DELETE';
   path: string;
@@ -640,6 +665,8 @@ export const API_ROUTES = {
   jobStatus: { method: 'GET', path: '/api/jobs/status', input: jobIdInputSchema, output: jobOutputSchema },
   jobsList: { method: 'GET', path: '/api/jobs', input: emptyInputSchema, output: jobsListOutputSchema },
   jobCancel: { method: 'POST', path: '/api/jobs/cancel', input: jobIdInputSchema, output: jobCancelOutputSchema },
+  indexStatus: { method: 'GET', path: '/api/index/status', input: emptyInputSchema, output: indexStatusOutputSchema },
+  indexRebuild: { method: 'POST', path: '/api/index/rebuild', input: emptyInputSchema, output: indexRebuildOutputSchema },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -674,4 +701,6 @@ export const API_PATHS = {
   jobStatus: API_ROUTES.jobStatus.path,
   jobsList: API_ROUTES.jobsList.path,
   jobCancel: API_ROUTES.jobCancel.path,
+  indexStatus: API_ROUTES.indexStatus.path,
+  indexRebuild: API_ROUTES.indexRebuild.path,
 } as const;

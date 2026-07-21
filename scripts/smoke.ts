@@ -165,6 +165,14 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
   assert(status.code === 0, `status: expected exit 0, got ${status.code}.\nstdout: ${status.stdout}\nstderr: ${status.stderr}`);
   z.object({ videos: z.array(z.unknown()), summary: z.object({ total: z.number() }) }).parse(completedData(status, 'status'));
 
+  const indexStatus = await run(['index', 'status', '--json'], env, folder);
+  assert(indexStatus.code === 0, `index status: expected exit 0, got ${indexStatus.code}.\nstdout: ${indexStatus.stdout}\nstderr: ${indexStatus.stderr}`);
+  z.object({
+    databasePath: z.string(),
+    counts: z.object({ folders: z.number(), files: z.number(), analyses: z.number() }),
+    folders: z.array(z.unknown()),
+  }).parse(completedData(indexStatus, 'index status'));
+
   const missingFolder = join(folder, 'missing');
   const missing = await run(['scan', missingFolder, '--json'], env, folder);
   const expected = EXIT_CODE_BY_ERROR_CODE.folder_not_found;

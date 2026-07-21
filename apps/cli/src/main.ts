@@ -60,6 +60,7 @@ interface ProcessOptions extends JsonOption {
   whisperModel: string;
   analyzer?: 'claude' | 'local' | 'api' | undefined;
   localModel?: string | undefined;
+  force?: boolean | undefined;
 }
 
 interface CliJobProgress {
@@ -465,6 +466,7 @@ program
   .option('--whisper-model <model>', 'whisper model', 'base')
   .option('--analyzer <backend>', 'analyzer backend')
   .option('--local-model <tag>', 'local AI model')
+  .option('--force', 'reprocess even if the global index already has an analysis', false)
   .option('--json', 'machine-readable JSON output', false)
   .action(async (videoPath: string, options: ProcessOptions, command: Command) => {
     const json = isJsonMode(options);
@@ -507,6 +509,7 @@ program
       whisperModelExplicit: explicit('whisperModel'),
       ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
       ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
+      ...(options.force === true ? { force: true } : {}),
     });
     if (!result.ok) {
       emitError(json, result.error);
@@ -649,6 +652,24 @@ program
     );
   });
 
+const index = program.command('index').description('Inspect and rebuild the global catalog index');
+
+index
+  .command('status')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'index_status', () => api.indexStatus(), indexStatusHuman, { raw: true });
+  });
+
+index
+  .command('rebuild')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'index_rebuild', () => api.indexRebuild(), indexRebuildHuman, { raw: true });
+  });
+
 const configKey = (key: string | undefined) => {
   if (key === undefined) return null;
   const parsed = configKeySchema.safeParse(key);
@@ -786,6 +807,20 @@ const checkHuman = (data: Awaited<ReturnType<ApiClient['check']>> extends Result
 
 const scanHuman = (data: Awaited<ReturnType<ApiClient['scan']>> extends Result<infer T, AppError> ? T : never): string =>
   `Found ${data.summary.total} video files`;
+
+const indexStatusHuman = (data: Awaited<ReturnType<ApiClient['indexStatus']>> extends Result<infer T, AppError> ? T : never): string => {
+  const lines = [
+    `Database: ${data.databasePath}`,
+    `Folders: ${data.counts.folders}`,
+    `Files: ${data.counts.files}`,
+    `Analyses: ${data.counts.analyses}`,
+  ];
+  for (const folder of data.folders) lines.push(`  ${folder.displayName} -> ${folder.currentPath}`);
+  return lines.join('\n');
+};
+
+const indexRebuildHuman = (data: Awaited<ReturnType<ApiClient['indexRebuild']>> extends Result<infer T, AppError> ? T : never): string =>
+  `Reconciled ${data.reconciledFolders} folders, imported ${data.importedFiles} files`;
 
 const doctorHuman = (data: Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never): string => {
   const lines = data.dependencies.map((dependency) => `${dependency.name}: ${dependency.available ? 'available' : 'missing'}`);
