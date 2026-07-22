@@ -215,6 +215,60 @@ describe('setup command workflow', () => {
     });
   });
 
+  it('never probes local AI requirements when the analyzer is api', async () => {
+    const home = createTestDir();
+    const folder = createTestDir();
+    roots.push(home, folder);
+    const deps = createDeps({ homeDirectory: home, workingDirectory: folder });
+    deps.providers = {
+      test: (provider) => Promise.resolve(ok({
+        family: 'api',
+        providerId: provider.providerId,
+        reachable: true,
+        authenticated: true,
+        latencyMs: 1,
+        message: 'Available',
+      })),
+    };
+    deps.analyzer = new InMemoryAnalyzer();
+    deps.transcriber = new InMemoryTranscriber();
+    const api = createApiClient({ baseUrl: '', fetchImpl: (input, init) => buildApp(deps).request(input, init) });
+    let localRequirementsCalls = 0;
+    const guardedApi = {
+      ...api,
+      localAiRequirements: (): ReturnType<typeof api.localAiRequirements> => {
+        localRequirementsCalls += 1;
+        return new Promise(() => undefined);
+      },
+    };
+    const errors: AppError[] = [];
+
+    const completed = await executeSetup({
+      api: guardedApi,
+      folder,
+      options: {
+        analyzer: 'api',
+        apiBaseUrl: 'https://openrouter.ai/api/v1',
+        apiModel: 'vision-model',
+        apiKeyEnv: 'ROUTER_KEY',
+        transcription: 'skip',
+        yes: true,
+      },
+      output: {
+        started: () => undefined,
+        progress: () => undefined,
+        completed: () => undefined,
+        error: (error) => errors.push(error),
+        write: () => undefined,
+      },
+      environment: { HOME: home, ROUTER_KEY: 'router-secret' },
+    });
+
+    expect(completed).toBe(true);
+    expect(errors).toEqual([]);
+    expect(localRequirementsCalls).toBe(0);
+  });
+
   it('stores harness model and effort plus Whisper API endpoint settings', async () => {
     const home = createTestDir();
     const folder = createTestDir();

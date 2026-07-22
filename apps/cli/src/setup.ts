@@ -125,11 +125,8 @@ export const executeSetup = async (context: SetupContext): Promise<boolean> => {
 
     const existing = await loadExisting(context);
     if (existing === null) return false;
-    const requirements = await context.api.localAiRequirements();
-    const recommendedModel = requirements.ok
-      ? requirements.value.tiers.find((tier) => tier.recommended)?.tag ?? DEFAULT_LOCAL_MODEL
-      : DEFAULT_LOCAL_MODEL;
-    const analyzer = await selectAnalyzer(context, existing, recommendedModel);
+    const requirements = createRequirementsLoader(context);
+    const analyzer = await selectAnalyzer(context, existing, requirements);
     if (analyzer === null) return false;
     const persistedAnalyzer = await persistAnalyzer(context, analyzer);
     if (!persistedAnalyzer) return false;
@@ -139,7 +136,7 @@ export const executeSetup = async (context: SetupContext): Promise<boolean> => {
     const persistedTranscription = await persistTranscription(context, transcription);
     if (!persistedTranscription) return false;
 
-    const downloads = await plannedDownloads(context, analyzer, transcription, requirements.ok ? requirements.value : null);
+    const downloads = await plannedDownloads(context, analyzer, transcription, requirements);
     if (downloads === null) return false;
     const shouldDownload = downloads.length > 0 && (
       context.options.yes === true
@@ -205,7 +202,7 @@ const loadExisting = async (context: SetupContext): Promise<ExistingSetup | null
 const selectAnalyzer = async (
   context: SetupContext,
   existing: ExistingSetup,
-  recommendedModel: string,
+  requirements: RequirementsLoader,
 ): Promise<AnalyzerProviderConfig | null> => {
   const existingFamily = existing.provider?.family ?? 'local';
   const family = context.options.analyzer ?? parseAnalyzer(await ask(
@@ -218,6 +215,8 @@ const selectAnalyzer = async (
     return null;
   }
   if (family === 'local') {
+    const loaded = await requirements();
+    const recommendedModel = loaded?.tiers.find((tier) => tier.recommended)?.tag ?? DEFAULT_LOCAL_MODEL;
     const existingModel = existing.provider?.family === 'local' ? existing.provider.modelTag : recommendedModel;
     const modelTag = context.options.localModel ?? await ask(context, 'Local model', existingModel);
     return { family: 'local', providerId: 'local', modelTag };
@@ -437,11 +436,12 @@ const plannedDownloads = async (
   context: SetupContext,
   analyzer: AnalyzerProviderConfig,
   transcription: { mode: SetupTranscription; whisperModel: WhisperModelName },
-  requirements: LocalAiRequirements | null,
+  requirements: RequirementsLoader,
 ): Promise<DownloadTask[] | null> => {
   const tasks: DownloadTask[] = [];
   if (analyzer.family === 'local') {
-    const installed = requirements?.tiers.find((tier) => tier.tag === analyzer.modelTag)?.installed ?? false;
+    const loaded = await requirements();
+    const installed = loaded?.tiers.find((tier) => tier.tag === analyzer.modelTag)?.installed ?? false;
     if (!installed) tasks.push({ kind: 'local-model', label: `Local model ${analyzer.modelTag}` });
   }
   if (transcription.mode !== 'managed' && transcription.mode !== 'own') return tasks;
@@ -586,6 +586,18 @@ const validateSetupOptions = (context: SetupContext): boolean => {
     }
   }
   return true;
+};
+
+type RequirementsLoader = () => Promise<LocalAiRequirements | null>;
+
+const createRequirementsLoader = (context: SetupContext): RequirementsLoader => {
+  let cached: LocalAiRequirements | null | undefined;
+  return async () => {
+    if (cached !== undefined) return cached;
+    const result = await context.api.localAiRequirements();
+    cached = result.ok ? result.value : null;
+    return cached;
+  };
 };
 
 const messageOf = (cause: unknown): string => cause instanceof Error ? cause.message : String(cause);
