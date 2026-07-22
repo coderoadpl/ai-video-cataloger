@@ -69,6 +69,7 @@ const sampleById = (id: string): VideoSample => {
 
 const cellEnvironment = (home: string, overrides: NodeJS.ProcessEnv = {}): NodeJS.ProcessEnv => ({
   ...process.env,
+  AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
   ...overrides,
   HOME: home,
   USERPROFILE: home,
