@@ -123,7 +123,7 @@ export const processVideoPipeline = async (
     return runResult;
   }
 
-  const recorded = await recordGlobalCatalog(deps, repository.value, resolved.value, runResult.value);
+  const recorded = await recordGlobalCatalog(deps, repository.value, resolved.value, runResult.value, progress);
   if (!recorded.ok) return recorded;
   return runResult;
 };
@@ -976,6 +976,7 @@ const recordGlobalCatalog = async (
   repository: CatalogRepository,
   resolved: ResolvedProcessOptions,
   completed: ProcessCompletedOutput,
+  progress: JobExecutionContext | undefined,
 ): Promise<Result<void, AppError>> => {
   const globalCatalog = deps.globalCatalog;
   if (globalCatalog === undefined) return ok(undefined);
@@ -983,7 +984,13 @@ const recordGlobalCatalog = async (
   const folder = deps.fs.dirname(finalPath);
   const fingerprint = await deps.fs.partialContentHash(finalPath);
   if (!fingerprint.ok) return fingerprint;
-  if (fingerprint.value === null) return ok(undefined);
+  if (fingerprint.value === null) {
+    if (progress === undefined) return ok(undefined);
+    return progress.reportProgress({
+      step: 'catalog_index_skipped',
+      data: { video: finalPath, reason: 'fingerprint_unavailable' },
+    });
+  }
   const stat = await deps.fs.stat(finalPath);
   if (!stat.ok) return stat;
   const probe = await deps.media.probe({ videoPath: finalPath });

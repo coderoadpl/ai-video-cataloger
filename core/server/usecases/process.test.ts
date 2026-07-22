@@ -526,6 +526,30 @@ describe('process pipeline global catalog idempotency', () => {
     expect(file.ok && file.value).toMatchObject({ durationS: 42, gpsLat: 69.6492, gpsLon: 18.9553 });
     expect(analysis.ok && analysis.value?.tags).toEqual(['dji-drone', 'coastal-cliff', 'wide-shot']);
   });
+
+  it('emits a warning event and does not index when the fingerprint cannot be computed', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    deps.fs.addFile('/work/Clip One.mp4', { size: 1000, mtimeMs: new Date('2024-05-06T12:00:00.000Z').getTime() });
+
+    const events: string[] = [];
+    const result = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...baseInput, skipRename: true, skipRenameExplicit: true },
+      {
+        signal: idleSignal,
+        reportProgress: (event) => {
+          events.push(event.step);
+          return Promise.resolve({ ok: true, value: undefined });
+        },
+      },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(events).toContain('catalog_index_skipped');
+    const counts = await globalCatalog.counts();
+    expect(counts.ok && counts.value.files).toBe(0);
+  });
 });
 
 describe('process pipeline rename and jobs', () => {

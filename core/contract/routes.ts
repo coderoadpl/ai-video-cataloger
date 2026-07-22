@@ -593,6 +593,7 @@ export const jobProgressStepSchema = z.enum([
   'faces_detecting',
   'faces_clustering',
   'faces_done',
+  'catalog_index_skipped',
 ]);
 
 export const jobProgressSchema = z.object({

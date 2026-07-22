@@ -492,7 +492,8 @@ export type ProcessJobStep =
   | 'faces_extracting_frames'
   | 'faces_detecting'
   | 'faces_clustering'
-  | 'faces_done';
+  | 'faces_done'
+  | 'catalog_index_skipped';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';
