@@ -50,6 +50,7 @@ describe('domain taxonomy', () => {
       'ollama_unavailable',
       'hw_requirements_not_met',
       'faces_disabled',
+      'snapshot_incompatible',
       'internal',
     ]);
   });

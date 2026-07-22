@@ -195,7 +195,7 @@ export class InMemoryFileSystem implements FileSystemPort {
   renamePath(from: string, to: string): Promise<Result<void, AppError>> {
     const normalizedFrom = this.normalize(from);
     const normalizedTo = this.normalize(to);
-    if (this.files.has(normalizedTo) || this.directories.has(normalizedTo)) {
+    if (this.directories.has(normalizedTo)) {
       return Promise.resolve({ ok: false, error: appError('conflict', `Path already exists: ${normalizedTo}`) });
     }
     const file = this.files.get(normalizedFrom);

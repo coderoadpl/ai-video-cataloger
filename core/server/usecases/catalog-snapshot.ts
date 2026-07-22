@@ -1,5 +1,6 @@
 import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
+  appError,
   newerWins,
   ok,
   snapshotLineSchema,
@@ -45,20 +46,24 @@ export const exportFolderSnapshot = async (
   const snapshotPath = folderSnapshotPath(deps.fs, folder.currentPath);
   const ensured = await deps.fs.ensureDirectory(deps.fs.dirname(snapshotPath));
   if (!ensured.ok) return ensured;
-  const written = await deps.fs.writeTextFile(snapshotPath, `${lines.join('\n')}\n`);
+  const tempPath = `${snapshotPath}.tmp`;
+  const written = await deps.fs.writeTextFile(tempPath, `${lines.join('\n')}\n`);
   if (!written.ok) return written;
+  const renamed = await deps.fs.renamePath(tempPath, snapshotPath);
+  if (!renamed.ok) return renamed;
   return ok({ path: snapshotPath, records: records.value.length });
 };
 
 export const importFolderSnapshot = async (
   deps: CatalogSyncDeps,
   folderPath: string,
-): Promise<Result<{ imported: number; header: CatalogFolder | null }, AppError>> => {
+): Promise<Result<{ imported: number; header: CatalogFolder | null; malformedLines: number }, AppError>> => {
   const content = await deps.fs.readTextFile(folderSnapshotPath(deps.fs, folderPath));
   if (!content.ok) return content;
-  if (content.value === null) return ok({ imported: 0, header: null });
+  if (content.value === null) return ok({ imported: 0, header: null, malformedLines: 0 });
 
   let imported = 0;
+  let malformedLines = 0;
   let header: CatalogFolder | null = null;
   for (const rawLine of content.value.split('\n')) {
     const trimmed = rawLine.trim();
@@ -67,11 +72,24 @@ export const importFolderSnapshot = async (
     try {
       decoded = JSON.parse(trimmed);
     } catch {
+      malformedLines += 1;
       continue;
     }
     const parsed = snapshotLineSchema.safeParse(decoded);
-    if (!parsed.success) continue;
+    if (!parsed.success) {
+      malformedLines += 1;
+      continue;
+    }
     if (parsed.data.type === 'header') {
+      if (parsed.data.version > GLOBAL_CATALOG_SCHEMA_VERSION) {
+        return {
+          ok: false,
+          error: appError(
+            'snapshot_incompatible',
+            `Snapshot schema version ${String(parsed.data.version)} is newer than the supported version ${String(GLOBAL_CATALOG_SCHEMA_VERSION)}; upgrade the app to import it`,
+          ),
+        };
+      }
       header = parsed.data.folder;
       continue;
     }
@@ -79,7 +97,7 @@ export const importFolderSnapshot = async (
     if (!applied.ok) return applied;
     if (applied.value) imported += 1;
   }
-  return ok({ imported, header });
+  return ok({ imported, header, malformedLines });
 };
 
 const applyRecord = async (

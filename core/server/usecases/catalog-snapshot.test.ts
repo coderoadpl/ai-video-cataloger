@@ -170,6 +170,69 @@ describe('catalog snapshot roundtrip', () => {
     expect(winner.ok && winner.value?.processedAt).toBe('2026-06-01T00:00:00.000Z');
   });
 
+  it('exports atomically without leaving a temp file and overwrites a prior snapshot', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const source = new InMemoryGlobalCatalogStore();
+    await source.upsertFolder(folder('/work'));
+    await source.upsertFile(file('abc123', '2026-01-05T00:00:00.000Z'));
+
+    const first = await exportFolderSnapshot({ globalCatalog: source, fs }, folder('/work'));
+    expect(first.ok).toBe(true);
+    await source.upsertFile(file('def456', '2026-02-05T00:00:00.000Z'));
+    const second = await exportFolderSnapshot({ globalCatalog: source, fs }, folder('/work'));
+    expect(second.ok && second.value.records).toBe(2);
+
+    const tempLeftBehind = await fs.readTextFile(`${folderSnapshotPath(fs, '/work')}.tmp`);
+    expect(tempLeftBehind.ok && tempLeftBehind.value).toBeNull();
+    const snapshot = await fs.readTextFile(folderSnapshotPath(fs, '/work'));
+    expect(snapshot.ok && snapshot.value).toContain('def456');
+  });
+
+  it('rejects a snapshot whose header version is newer than the supported version', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const header = JSON.stringify({
+      type: 'header',
+      version: GLOBAL_CATALOG_SCHEMA_VERSION + 1,
+      folder: folder('/work'),
+      exportedAt: '2026-01-02T00:00:00.000Z',
+    });
+    fs.addFile(folderSnapshotPath(fs, '/work'), { content: `${header}\n` });
+    const target = new InMemoryGlobalCatalogStore();
+
+    const imported = await importFolderSnapshot({ globalCatalog: target, fs }, '/work');
+    expect(imported.ok).toBe(false);
+    if (imported.ok) return;
+    expect(imported.error.code).toBe('snapshot_incompatible');
+  });
+
+  it('counts malformed snapshot lines instead of silently skipping them', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const header = JSON.stringify({
+      type: 'header',
+      version: GLOBAL_CATALOG_SCHEMA_VERSION,
+      folder: folder('/work'),
+      exportedAt: '2026-01-02T00:00:00.000Z',
+    });
+    const validRecord = JSON.stringify({
+      type: 'record',
+      file: file('good', '2026-01-05T00:00:00.000Z'),
+      analysis: null,
+    });
+    const brokenJson = '{ this is not json';
+    const wrongShape = JSON.stringify({ type: 'record', file: { fingerprint: 'x' } });
+    fs.addFile(folderSnapshotPath(fs, '/work'), { content: `${header}\n${validRecord}\n${brokenJson}\n${wrongShape}\n` });
+    const target = new InMemoryGlobalCatalogStore();
+
+    const imported = await importFolderSnapshot({ globalCatalog: target, fs }, '/work');
+    expect(imported.ok).toBe(true);
+    if (!imported.ok) return;
+    expect(imported.value.imported).toBe(1);
+    expect(imported.value.malformedLines).toBe(2);
+  });
+
   it('imports a snapshot row that is newer than the stored row', async () => {
     const fs = new InMemoryFileSystem('/work');
     fs.addDirectory('/work');
