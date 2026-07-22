@@ -84,6 +84,12 @@ export const faceObservations = sqliteTable('face_observations', {
   cropPath: text('crop_path'),
 });
 
+export const faceIndexState = sqliteTable('face_index_state', {
+  fingerprint: text('fingerprint').primaryKey(),
+  completedAt: text('completed_at').notNull(),
+  engineVersion: integer('engine_version').notNull(),
+});
+
 export const globalCatalogSchema = {
   folders,
   files,
@@ -95,6 +101,7 @@ export const globalCatalogSchema = {
   driveRuns,
   people,
   faceObservations,
+  faceIndexState,
 };
 
 export const createGlobalCatalogSchemaSqlV1 = [
@@ -206,4 +213,15 @@ export const migrateGlobalCatalogSchemaSqlV5 = [
       FOREIGN KEY (fingerprint) REFERENCES files(fingerprint) ON DELETE CASCADE,
       FOREIGN KEY (person_id) REFERENCES people(person_id) ON DELETE SET NULL
     )`,
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV6 = [
+  `CREATE TABLE IF NOT EXISTS face_index_state (
+      fingerprint TEXT PRIMARY KEY,
+      completed_at TEXT NOT NULL,
+      engine_version INTEGER NOT NULL,
+      FOREIGN KEY (fingerprint) REFERENCES files(fingerprint) ON DELETE CASCADE
+    )`,
+  `INSERT OR IGNORE INTO face_index_state (fingerprint, completed_at, engine_version)
+      SELECT DISTINCT fingerprint, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 1 FROM face_observations`,
 ] as const;

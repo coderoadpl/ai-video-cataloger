@@ -74,7 +74,7 @@ const YUNET_STRIDES: readonly [8, 16, 32] = [8, 16, 32];
 const YUNET_NMS_THRESHOLD = 0.3;
 const YUNET_TOP_K = 5000;
 
-const sfaceTemplate: readonly FacePoint[] = [
+export const SFACE_ALIGNMENT_TEMPLATE: readonly FacePoint[] = [
   { x: 38.2946, y: 51.6963 },
   { x: 73.5318, y: 51.5014 },
   { x: 56.0252, y: 71.7366 },
@@ -140,7 +140,7 @@ export class OnnxFaceEngineAdapter implements FaceEnginePort {
   async align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
     const frame = await this.readFrame(frameJpegPath);
     if (!frame.ok) return frame;
-    const transform = estimateSimilarityTransform(landmarkPoints(detection.landmarks), sfaceTemplate);
+    const transform = estimateSimilarityTransform(faceAlignmentSource(detection.landmarks), SFACE_ALIGNMENT_TEMPLATE);
     const transformedNose = applySimilarityTransform(transform, detection.landmarks.nose);
     if (!Number.isFinite(transformedNose.x) || !Number.isFinite(transformedNose.y)) {
       return { ok: false, error: appError('processing_error', 'Face alignment failed') };
@@ -290,9 +290,9 @@ export const createSFaceTensor = (frame: RgbFrame): Float32Array => {
     for (let x = 0; x < frame.width; x += 1) {
       const source = rgbIndex(frame.width, x, y);
       const target = y * frame.width + x;
-      tensor[target] = frame.data[source + 2] ?? 0;
+      tensor[target] = frame.data[source] ?? 0;
       tensor[plane + target] = frame.data[source + 1] ?? 0;
-      tensor[2 * plane + target] = frame.data[source] ?? 0;
+      tensor[2 * plane + target] = frame.data[source + 2] ?? 0;
     }
   }
   return tensor;
@@ -498,12 +498,12 @@ const firstTensor = (outputs: Record<string, OrtTensor>): OrtTensor | null => {
   return first ?? null;
 };
 
-const landmarkPoints = (landmarks: FaceLandmarks): readonly FacePoint[] => [
-  landmarks.leftEye,
+export const faceAlignmentSource = (landmarks: FaceLandmarks): readonly FacePoint[] => [
   landmarks.rightEye,
+  landmarks.leftEye,
   landmarks.nose,
-  landmarks.leftMouth,
   landmarks.rightMouth,
+  landmarks.leftMouth,
 ];
 
 const normalizeFrameInput = (frame: FaceFrameInput | string): FaceFrameInput =>

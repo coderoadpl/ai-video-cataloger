@@ -810,6 +810,7 @@ export const facesStatusOutputSchema = z.object({
   assignedObservations: z.number().int().nonnegative(),
   unassignedObservations: z.number().int().nonnegative(),
   filesIndexed: z.number().int().nonnegative(),
+  staleVersionFiles: z.number().int().nonnegative(),
 });
 
 export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.ZodTypeAny> {

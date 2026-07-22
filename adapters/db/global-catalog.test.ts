@@ -11,6 +11,8 @@ import {
   createGlobalCatalogSchemaSqlV1,
   migrateGlobalCatalogSchemaSqlV2,
   migrateGlobalCatalogSchemaSqlV3,
+  migrateGlobalCatalogSchemaSqlV4,
+  migrateGlobalCatalogSchemaSqlV5,
 } from './global-catalog-schema.js';
 
 const tempRoots: string[] = [];
@@ -168,7 +170,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(status.ok && status.value.observations).toBe(0);
   });
 
-  it('migrates an existing v1 database to v5 and persists the migrated schema immediately', async () => {
+  it('migrates an existing v1 database to v6 and persists the migrated schema immediately', async () => {
     const home = await tempHome();
     await writeV1Catalog(home);
 
@@ -181,15 +183,36 @@ describe('SqlJsGlobalCatalogStore', () => {
     const versionResult = reopened.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
     const columnResult = reopened.exec('PRAGMA table_info(files)');
     const facesTablesResult = reopened.exec(
-      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('people', 'face_observations') ORDER BY name",
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('face_index_state', 'people', 'face_observations') ORDER BY name",
     );
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(5);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(6);
     const columnNames = columnResult[0]?.values.map((row) => row[1]).filter((value) => typeof value === 'string') ?? [];
     expect(columnNames).toContain('gps_lat');
     expect(columnNames).toContain('gps_lon');
-    expect(facesTablesResult[0]?.values.map((row) => row[0])).toEqual(['face_observations', 'people']);
+    expect(facesTablesResult[0]?.values.map((row) => row[0])).toEqual(['face_index_state', 'face_observations', 'people']);
+  });
+
+  it('migrates an existing v5 database to v6 and backfills stale face index state', async () => {
+    const home = await tempHome();
+    await writeV5Catalog(home);
+
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const status = await store.faceStatus();
+    expect(status.ok).toBe(true);
+    if (!status.ok) throw new Error(status.error.message);
+    expect(status.value.observations).toBe(1);
+    expect(status.value.staleVersionFiles).toBe(1);
+
+    const SQL = await initSqlJs();
+    const reopened = new SQL.Database(await readFile(store.databasePath()));
+    const versionResult = reopened.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
+    const stateResult = reopened.exec('SELECT fingerprint, engine_version FROM face_index_state');
+    reopened.close();
+
+    expect(versionResult[0]?.values[0]?.[0]).toBe(6);
+    expect(stateResult[0]?.values).toEqual([['fp-abc', 1]]);
   });
 
   it('migrates an existing v2 database to v5 and persists drive run bookkeeping immediately', async () => {
@@ -380,6 +403,50 @@ const writeV3Catalog = async (home: string): Promise<void> => {
   client.run('INSERT INTO tags(name) VALUES (?)', ['coast']);
   client.run('INSERT INTO file_tags(fingerprint, tag_id) VALUES (?, ?)', ['fp-v3', 1]);
   client.run('INSERT INTO schema_meta(version) VALUES (3)');
+  const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+  await mkdir(path.dirname(databasePath), { recursive: true });
+  await writeFile(databasePath, Buffer.from(client.export()));
+  client.close();
+};
+
+const writeV5Catalog = async (home: string): Promise<void> => {
+  const SQL = await initSqlJs();
+  const client = new SQL.Database();
+  for (const statement of createGlobalCatalogSchemaSqlV1) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV2) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV3) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV4) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV5) client.run(statement);
+  client.run('INSERT INTO folders(folder_id, current_path, display_name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)', [
+    folder.folderId,
+    folder.currentPath,
+    folder.displayName,
+    folder.firstSeenAt,
+    folder.lastSeenAt,
+  ]);
+  client.run('INSERT INTO files(fingerprint, folder_id, file_name, size, duration_s, processed_at, analyzer, model, gps_lat, gps_lon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+    file.fingerprint,
+    folder.folderId,
+    file.fileName,
+    file.size,
+    null,
+    file.processedAt,
+    null,
+    null,
+    null,
+    null,
+  ]);
+  client.run('INSERT INTO face_observations(obs_id, fingerprint, kind, frame_ts_s, bbox_json, quality, person_id, crop_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+    `${file.fingerprint}:face:1:1`,
+    file.fingerprint,
+    'face',
+    1,
+    '{"x":0,"y":0,"width":50,"height":50}',
+    0.9,
+    null,
+    null,
+  ]);
+  client.run('INSERT INTO schema_meta(version) VALUES (5)');
   const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
   await mkdir(path.dirname(databasePath), { recursive: true });
   await writeFile(databasePath, Buffer.from(client.export()));

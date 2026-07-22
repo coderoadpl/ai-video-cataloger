@@ -18,6 +18,7 @@ import { ManagedOllamaRuntimeAdapter } from '@adapters/ollama-runtime/index.js';
 import { ManagedWhisperRuntimeAdapter } from '@adapters/whisper-runtime/index.js';
 import { HuggingFaceWhisperModelDownloader, WhisperTranscriberAdapter } from '@adapters/whisper/index.js';
 import {
+  FACE_ENGINE_VERSION,
   appError,
   ok,
   type AnalyzerProviderConfig,
@@ -401,6 +402,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly driveRuns = new Map<string, DriveRunRecord>();
   private readonly people = new Map<string, Person>();
   private readonly faceObservations = new Map<string, FaceObservation>();
+  private readonly faceIndexState = new Map<string, { completedAt: string; engineVersion: number }>();
 
   databasePath(): string {
     return path.join('.ai-video-cataloger', 'catalog.db');
@@ -526,10 +528,27 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       const analysis = this.analyses.get(file.fingerprint);
       if (folder === undefined || analysis === undefined) continue;
       if (folder.currentPath !== rootPath && !folder.currentPath.startsWith(`${rootPath}${path.sep}`)) continue;
-      if ([...this.faceObservations.values()].some((observation) => observation.fingerprint === file.fingerprint)) continue;
-      candidates.push({ file, analysis, folder });
+      const state = this.faceIndexState.get(file.fingerprint);
+      if (state !== undefined && state.engineVersion >= FACE_ENGINE_VERSION) continue;
+      candidates.push({ file, analysis, folder, previousEngineVersion: state?.engineVersion ?? null });
     }
     return Promise.resolve(ok(candidates));
+  }
+
+  completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>> {
+    this.faceIndexState.set(fingerprint, { completedAt: new Date().toISOString(), engineVersion });
+    return Promise.resolve(ok(undefined));
+  }
+
+  deleteFaceObservationsForFile(fingerprint: string): Promise<Result<void, AppError>> {
+    for (const observation of this.faceObservations.values()) {
+      if (observation.fingerprint === fingerprint) this.faceObservations.delete(observation.obsId);
+    }
+    return Promise.resolve(ok(undefined));
+  }
+
+  listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>> {
+    return Promise.resolve(ok([...this.faceObservations.values()].filter((observation) => observation.personId === null)));
   }
 
   listPeople(): Promise<Result<Person[], AppError>> {
@@ -624,6 +643,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       assignedObservations: observations.filter((observation) => observation.personId !== null).length,
       unassignedObservations: observations.filter((observation) => observation.personId === null).length,
       filesIndexed: new Set(observations.map((observation) => observation.fingerprint)).size,
+      staleVersionFiles: [...this.faceIndexState.values()].filter((state) => state.engineVersion < FACE_ENGINE_VERSION).length,
     }));
   }
 

@@ -91,6 +91,7 @@ export interface FaceIndexCandidate {
   file: CatalogFile;
   analysis: CatalogAnalysis;
   folder: CatalogFolder;
+  previousEngineVersion: number | null;
 }
 
 export interface FaceStatusCounts {
@@ -99,6 +100,7 @@ export interface FaceStatusCounts {
   assignedObservations: number;
   unassignedObservations: number;
   filesIndexed: number;
+  staleVersionFiles: number;
 }
 
 export interface DriveRunRecord {
@@ -134,6 +136,9 @@ export interface GlobalCatalogStore {
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>>;
   listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>>;
+  completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
+  deleteFaceObservationsForFile(fingerprint: string): Promise<Result<void, AppError>>;
+  listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>>;
   listPeople(): Promise<Result<Person[], AppError>>;
   getPerson(personId: string): Promise<Result<Person | null, AppError>>;
   upsertPerson(person: Person): Promise<Result<void, AppError>>;

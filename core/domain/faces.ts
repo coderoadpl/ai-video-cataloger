@@ -6,6 +6,8 @@ export type SubjectKind = z.output<typeof subjectKindSchema>;
 
 export const FACE_EMBEDDING_DIM = 128;
 
+export const FACE_ENGINE_VERSION = 2;
+
 export const FACE_CLUSTERING = {
   autoAssignSimilarity: 0.45,
   autoAssignMargin: 0.05,

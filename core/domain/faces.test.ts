@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   FACE_CLUSTERING,
   FACE_EMBEDDING_DIM,
+  FACE_ENGINE_VERSION,
   FACE_QUALITY,
   classifyFace,
   cosineSimilarity,
@@ -174,5 +175,9 @@ describe('research thresholds are pinned', () => {
       autoMergeMinPairs: 2,
     });
     expect(FACE_EMBEDDING_DIM).toBe(128);
+  });
+
+  it('pins the corrected embedding-space engine version', () => {
+    expect(FACE_ENGINE_VERSION).toBe(2);
   });
 });

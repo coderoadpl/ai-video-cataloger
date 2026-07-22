@@ -1022,7 +1022,8 @@ const facesStatusHuman = (
 ): string =>
   `Faces: ${data.enabled ? 'enabled' : 'disabled'}, models ${data.artifactsReady ? 'ready' : 'missing'}\n`
   + `People: ${data.people}\nObservations: ${data.observations} (${data.assignedObservations} assigned, ${data.unassignedObservations} unassigned)\n`
-  + `Files indexed: ${data.filesIndexed}`;
+  + `Files indexed: ${data.filesIndexed}`
+  + (data.staleVersionFiles > 0 ? `\nStale-version files (need re-index): ${data.staleVersionFiles}` : '');
 
 const facesIndexHuman = (data: unknown): string => {
   if (!isRecord(data)) return 'Face indexing complete';

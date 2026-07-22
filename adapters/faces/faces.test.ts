@@ -6,6 +6,7 @@ import {
   estimateSimilarityTransform,
   ok,
   type AppError,
+  type FaceLandmarks,
   type FacePoint,
   type FileArtifact,
   type Result,
@@ -16,10 +17,12 @@ import type { WhisperModelName } from '@core/domain/index.js';
 
 import {
   OnnxFaceEngineAdapter,
+  SFACE_ALIGNMENT_TEMPLATE,
   createSFaceTensor,
   createYuNetTensor,
   decodeYuNetOutputs,
   executionProviders,
+  faceAlignmentSource,
   nonMaxSuppression,
   parseDetections,
   warpAlignedFaceRgb,
@@ -181,9 +184,9 @@ describe('pixel preprocessing', () => {
     expect(prepared.meta).toMatchObject({ scale: 640, offsetX: 0, offsetY: 0, resizedWidth: 640, resizedHeight: 640 });
   });
 
-  it('pins SFace input as BGR NCHW float values without normalization', () => {
+  it('pins SFace input as RGB NCHW float values without normalization', () => {
     const tensor = createSFaceTensor(onePixelFrame(11, 22, 33));
-    expect([...tensor]).toEqual([33, 22, 11]);
+    expect([...tensor]).toEqual([11, 22, 33]);
   });
 
   it('letterboxes wide frames and maps OpenCV rows back to source coordinates', () => {
@@ -291,6 +294,37 @@ describe('similarity transform alignment', () => {
       expect(mapped.x).toBeCloseTo(template[index]?.x ?? 0, 3);
       expect(mapped.y).toBeCloseTo(template[index]?.y ?? 0, 3);
     }
+  });
+
+  const templateLandmarks: FaceLandmarks = {
+    rightEye: SFACE_ALIGNMENT_TEMPLATE[0] ?? { x: 0, y: 0 },
+    leftEye: SFACE_ALIGNMENT_TEMPLATE[1] ?? { x: 0, y: 0 },
+    nose: SFACE_ALIGNMENT_TEMPLATE[2] ?? { x: 0, y: 0 },
+    rightMouth: SFACE_ALIGNMENT_TEMPLATE[3] ?? { x: 0, y: 0 },
+    leftMouth: SFACE_ALIGNMENT_TEMPLATE[4] ?? { x: 0, y: 0 },
+  };
+
+  const reprojectionError = (landmarks: FaceLandmarks): number => {
+    const source = faceAlignmentSource(landmarks);
+    const transform = estimateSimilarityTransform(source, SFACE_ALIGNMENT_TEMPLATE);
+    return SFACE_ALIGNMENT_TEMPLATE.reduce((worst, target) => {
+      const matched = source[SFACE_ALIGNMENT_TEMPLATE.indexOf(target)] ?? { x: 0, y: 0 };
+      const mapped = applySimilarityTransform(transform, matched);
+      return Math.max(worst, Math.hypot(mapped.x - target.x, mapped.y - target.y));
+    }, 0);
+  };
+
+  it('yields a near-identity transform when landmarks sit on the reference template positions', () => {
+    expect(reprojectionError(templateLandmarks)).toBeLessThan(1e-6);
+  });
+
+  it('does not yield an identity transform when the eyes are swapped', () => {
+    const swappedEyes: FaceLandmarks = {
+      ...templateLandmarks,
+      rightEye: templateLandmarks.leftEye,
+      leftEye: templateLandmarks.rightEye,
+    };
+    expect(reprojectionError(swappedEyes)).toBeGreaterThan(5);
   });
 });
 

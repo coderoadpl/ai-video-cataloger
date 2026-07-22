@@ -17,6 +17,7 @@ import path from 'node:path';
 import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js';
 
 import {
+  FACE_ENGINE_VERSION,
   GLOBAL_CATALOG_SCHEMA_VERSION,
   appError,
   normalizeTagList,
@@ -47,6 +48,7 @@ import {
   analyses,
   createGlobalCatalogSchemaSqlV1,
   driveRuns,
+  faceIndexState,
   faceObservations,
   fileTags,
   files,
@@ -56,6 +58,7 @@ import {
   migrateGlobalCatalogSchemaSqlV3,
   migrateGlobalCatalogSchemaSqlV4,
   migrateGlobalCatalogSchemaSqlV5,
+  migrateGlobalCatalogSchemaSqlV6,
   schemaMeta,
   tagAliases,
   tags,
@@ -347,18 +350,45 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         for (const fileRow of fileRows) {
           const analysisRow = db.select().from(analyses).where(eq(analyses.fingerprint, fileRow.fingerprint)).get();
           if (analysisRow === undefined) continue;
-          const existing = db.select().from(faceObservations).where(eq(faceObservations.fingerprint, fileRow.fingerprint)).get();
-          if (existing !== undefined) continue;
+          const stateRow = db.select().from(faceIndexState).where(eq(faceIndexState.fingerprint, fileRow.fingerprint)).get();
+          if (stateRow !== undefined && stateRow.engineVersion >= FACE_ENGINE_VERSION) continue;
           candidates.push({
             file: rowToFile(fileRow),
             analysis: rowToAnalysis(analysisRow, tagsForFingerprint(db, fileRow.fingerprint)),
             folder: rowToFolder(folderRow),
+            previousEngineVersion: stateRow?.engineVersion ?? null,
           });
         }
       }
       return candidates.sort((left, right) => left.folder.currentPath.localeCompare(right.folder.currentPath)
         || left.file.fileName.localeCompare(right.file.fileName));
     });
+  }
+
+  async completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      db.insert(faceIndexState)
+        .values({ fingerprint, completedAt: new Date().toISOString(), engineVersion })
+        .onConflictDoUpdate({
+          target: faceIndexState.fingerprint,
+          set: { completedAt: new Date().toISOString(), engineVersion },
+        })
+        .run();
+    });
+  }
+
+  async deleteFaceObservationsForFile(fingerprint: string): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      db.delete(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).run();
+      syncSearchDocument(db, client, fingerprint);
+    });
+  }
+
+  async listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>> {
+    return this.read((db) =>
+      db.select().from(faceObservations).all()
+        .map(rowToFaceObservation)
+        .filter((observation) => observation.personId === null));
   }
 
   async listPeople(): Promise<Result<Person[], AppError>> {
@@ -499,12 +529,14 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   async faceStatus(): Promise<Result<FaceStatusCounts, AppError>> {
     return this.read((db) => {
       const observationRows = db.select().from(faceObservations).all();
+      const stateRows = db.select().from(faceIndexState).all();
       return {
         people: db.select().from(people).all().length,
         observations: observationRows.length,
         assignedObservations: observationRows.filter((row) => row.personId !== null).length,
         unassignedObservations: observationRows.filter((row) => row.personId === null).length,
         filesIndexed: new Set(observationRows.map((row) => row.fingerprint)).size,
+        staleVersionFiles: stateRows.filter((row) => row.engineVersion < FACE_ENGINE_VERSION).length,
       };
     });
   }
@@ -581,6 +613,10 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 5) {
     for (const statement of migrateGlobalCatalogSchemaSqlV5) runMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 6) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV6) runMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < 4) {

@@ -18,7 +18,7 @@ import {
   InMemoryJobs,
   InMemoryMedia,
 } from '../../../test/server/usecases/test-fakes.js';
-import { normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
+import { appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
 import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput } from '../ports.js';
 
 const unit128 = (offset = 0): number[] =>
@@ -70,6 +70,57 @@ class FakeFaceEngine implements FaceEnginePort {
 
   dispose(): Promise<Result<void, AppError>> {
     this.disposeCalls += 1;
+    return Promise.resolve(ok(undefined));
+  }
+
+  dependency(): Promise<Result<DependencyStatus, AppError>> {
+    return Promise.resolve(ok({ name: 'faces', available: true, version: null, source: 'managed', path: null, installHint: '' }));
+  }
+}
+
+class ScriptedFaceEngine implements FaceEnginePort {
+  detectCalls = 0;
+  failAtCall: number | null = null;
+  maxDetections = Number.POSITIVE_INFINITY;
+  embedding = unit128();
+  detection: FaceDetection = {
+    bbox: { x: 0, y: 0, width: 200, height: 200 },
+    landmarks: {
+      leftEye: { x: 130, y: 90 },
+      rightEye: { x: 70, y: 90 },
+      nose: { x: 100, y: 120 },
+      leftMouth: { x: 120, y: 160 },
+      rightMouth: { x: 80, y: 160 },
+    },
+    score: 0.95,
+  };
+
+  load(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  detect(): Promise<Result<FaceDetection[], AppError>> {
+    this.detectCalls += 1;
+    if (this.failAtCall !== null && this.detectCalls === this.failAtCall) {
+      return Promise.resolve({ ok: false, error: appError('processing_error', 'scripted detect failure') });
+    }
+    if (this.detectCalls > this.maxDetections) return Promise.resolve(ok([]));
+    return Promise.resolve(ok([this.detection]));
+  }
+
+  align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
+    return Promise.resolve(ok({ frameJpegPath, detection, width: 112, height: 112, data: new Uint8Array(112 * 112 * 3) }));
+  }
+
+  embed(): Promise<Result<Float32Array, AppError>> {
+    return Promise.resolve(ok(new Float32Array(this.embedding)));
+  }
+
+  writeCrop(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  dispose(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
   }
 
@@ -337,5 +388,163 @@ describe('facesIndex', () => {
     const record = status.value.at(-1);
     expect(record?.status).toBe('failed');
     expect(record?.error?.code).toBe('model_not_installed');
+  });
+});
+
+const folderId = '11111111-1111-1111-1111-111111111111';
+
+const buildScriptableDeps = (): FacesDeps => {
+  const downloads = new InMemoryDownloads();
+  downloads.downloadedArtifacts.add('face-detector/yunet-2023mar');
+  downloads.downloadedArtifacts.add('face-embedder/sface-2021dec');
+  return {
+    config: new InMemoryConfig(),
+    downloads,
+    globalCatalog: new InMemoryGlobalCatalogStore(),
+    fs: new InMemoryFileSystem(),
+    media: new InMemoryMedia(),
+    jobs: new InMemoryJobs(),
+    faceEngine: new ScriptedFaceEngine(),
+  };
+};
+
+const seedFolder = async (deps: FacesDeps): Promise<void> => {
+  await deps.globalCatalog.upsertFolder({
+    folderId,
+    currentPath: '/work/videos',
+    displayName: 'videos',
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:00:00.000Z',
+  });
+};
+
+const seedFile = async (deps: FacesDeps, fingerprint: string, fileName: string): Promise<void> => {
+  await deps.globalCatalog.upsertFile({
+    fingerprint,
+    folderId,
+    fileName,
+    size: 1,
+    durationS: 10,
+    gpsLat: null,
+    gpsLon: null,
+    processedAt: '2026-01-01T00:00:00.000Z',
+    analyzer: 'claude',
+    model: 'sonnet',
+  });
+  await deps.globalCatalog.upsertAnalysis({
+    fingerprint,
+    finalName: fileName,
+    description: 'a clip',
+    transcript: null,
+    language: null,
+    tags: [],
+  });
+};
+
+describe('facesIndex resume after interruption', () => {
+  it('recovers every face of a file that was interrupted after storing one observation', async () => {
+    const deps = buildScriptableDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    await seedFile(deps, 'fp-clip', 'clip.mp4');
+
+    const interrupting = new ScriptedFaceEngine();
+    interrupting.failAtCall = 2;
+    deps.faceEngine = interrupting;
+    const firstRun = await facesIndex(deps, { root: '/work/videos' });
+    expect(firstRun.ok).toBe(true);
+
+    const afterInterrupt = await facesStatus(deps);
+    expect(afterInterrupt.ok).toBe(true);
+    if (!afterInterrupt.ok) throw new Error(afterInterrupt.error.message);
+    expect(afterInterrupt.value.observations).toBe(1);
+    expect(afterInterrupt.value.people).toBe(0);
+
+    const resuming = new ScriptedFaceEngine();
+    resuming.maxDetections = 3;
+    deps.faceEngine = resuming;
+    const secondRun = await facesIndex(deps, { root: '/work/videos' });
+    expect(secondRun.ok).toBe(true);
+
+    const afterResume = await facesStatus(deps);
+    expect(afterResume.ok).toBe(true);
+    if (!afterResume.ok) throw new Error(afterResume.error.message);
+    expect(afterResume.value.observations).toBe(3);
+    expect(afterResume.value.people).toBe(1);
+    expect(afterResume.value.unassignedObservations).toBe(0);
+  });
+});
+
+describe('facesIndex cross-run clustering', () => {
+  it('reloads persisted unassigned observations so a person forms across two runs', async () => {
+    const deps = buildScriptableDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    await seedFile(deps, 'fp-a', 'a.mp4');
+
+    const firstEngine = new ScriptedFaceEngine();
+    firstEngine.maxDetections = 2;
+    deps.faceEngine = firstEngine;
+    const firstRun = await facesIndex(deps, { root: '/work/videos' });
+    expect(firstRun.ok).toBe(true);
+
+    const afterFirst = await facesStatus(deps);
+    expect(afterFirst.ok && afterFirst.value.people).toBe(0);
+    expect(afterFirst.ok && afterFirst.value.unassignedObservations).toBe(2);
+
+    await seedFile(deps, 'fp-b', 'b.mp4');
+    const secondEngine = new ScriptedFaceEngine();
+    secondEngine.maxDetections = 1;
+    deps.faceEngine = secondEngine;
+    const secondRun = await facesIndex(deps, { root: '/work/videos' });
+    expect(secondRun.ok).toBe(true);
+
+    const afterSecond = await facesStatus(deps);
+    expect(afterSecond.ok).toBe(true);
+    if (!afterSecond.ok) throw new Error(afterSecond.error.message);
+    expect(afterSecond.value.people).toBe(1);
+    expect(afterSecond.value.assignedObservations).toBe(3);
+    expect(afterSecond.value.unassignedObservations).toBe(0);
+
+    const reloaded = await deps.globalCatalog.listFaceObservations({ fingerprint: 'fp-a' });
+    expect(reloaded.ok).toBe(true);
+    if (!reloaded.ok) throw new Error(reloaded.error.message);
+    expect(reloaded.value.every((observation) => observation.personId !== null)).toBe(true);
+  });
+});
+
+describe('facesIndex stale-version re-indexing', () => {
+  it('deletes wrong-space observations and re-indexes a file marked with an older engine version', async () => {
+    const deps = buildScriptableDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    await seedFile(deps, 'fp-clip', 'clip.mp4');
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'fp-clip:face:9:9',
+      fingerprint: 'fp-clip',
+      embedding: unit128(5),
+    }));
+    await deps.globalCatalog.completeFaceIndex('fp-clip', 1);
+
+    const beforeStatus = await facesStatus(deps);
+    expect(beforeStatus.ok && beforeStatus.value.staleVersionFiles).toBe(1);
+
+    const engine = new ScriptedFaceEngine();
+    engine.maxDetections = 3;
+    deps.faceEngine = engine;
+    const run = await facesIndex(deps, { root: '/work/videos' });
+    expect(run.ok).toBe(true);
+
+    const observations = await deps.globalCatalog.listFaceObservations({ fingerprint: 'fp-clip' });
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error(observations.error.message);
+    expect(observations.value.map((observation) => observation.obsId)).not.toContain('fp-clip:face:9:9');
+    expect(observations.value.length).toBe(3);
+
+    const afterStatus = await facesStatus(deps);
+    expect(afterStatus.ok).toBe(true);
+    if (!afterStatus.ok) throw new Error(afterStatus.error.message);
+    expect(afterStatus.value.staleVersionFiles).toBe(0);
+    expect(afterStatus.value.people).toBe(1);
   });
 });
