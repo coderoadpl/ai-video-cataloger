@@ -1,6 +1,6 @@
 # ADR-0002: Global catalog index as canonical store, per-folder snapshot as backup
 
-Date: 2026-07-20 · Status: accepted (owner-decided)
+Date: 2026-07-20 · Status: accepted (owner-decided) · Amended 2026-07-22 to match the implementation
 
 ## Context
 
@@ -21,8 +21,8 @@ The concrete constraints that force a decision now:
   metadata for a disconnected drive.
 - Two composition roots (`apps/desktop`, `apps/cli`) write concurrently. A
   single canonical write path avoids reconciling divergent sidecars.
-- Full-text search (FTS5) and, later, face embeddings need one real, indexed
-  database — not many small files scanned linearly.
+- Full-text search (FTS4; see the rationale in (a)) and, later, face embeddings
+  need one real, indexed database — not many small files scanned linearly.
 
 ## Decision
 
@@ -32,8 +32,16 @@ A single global SQLite database in the home scope
 (`~/.ai-video-cataloger/`, the path already owned by desktop/CLI composition)
 becomes the **canonical working store** for catalog rows (the `videos` table of
 `adapters/db/schema.ts`, extended with a folder dimension) and for search
-indexes (FTS5, later embeddings). All reads and writes in `CatalogRepository`
+indexes (FTS, later embeddings). All reads and writes in `CatalogRepository`
 (`core/server/ports.ts`) target the global index.
+
+The full-text index is **FTS4**, not FTS5 (`search_documents_fts` in
+`adapters/db/global-catalog-schema.ts`). The store runs on `sql.js` (SQLite
+compiled to WebAssembly); the bundled `sql.js` build ships with FTS3/FTS4
+enabled but not the FTS5 module, so FTS4 is the empirically available full-text
+option in this runtime. A separate `search_documents` shadow table holds the
+raw column values and a stable `docid`, keeping ranking and snippet generation
+independent of FTS5-only features.
 
 Each folder keeps a **derived NDJSON snapshot**
 (`{folder}/.ai-video-cataloger/catalog.ndjson`, one video row per line) written
@@ -44,7 +52,7 @@ lets the index be rebuilt if lost.
 This **inverts** the naive sidecar-canonical alternative (per-folder DB is
 truth, global is optional cache). The inversion is deliberate: whole-drive and
 offline-drive search need one queryable DB (constraints above); a single write
-path removes GUI/CLI reconciliation; FTS5 and embeddings require a real DB, not
+path removes GUI/CLI reconciliation; full-text search and embeddings require a real DB, not
 sidecar files. NDJSON (not a second SQLite file) is the snapshot because it is
 append-friendly, diff-friendly, forward-compatible, and trivially
 re-importable; a sidecar DB would reintroduce two canonical stores.
@@ -61,38 +69,62 @@ to the same catalog without rescanning.
 ### (c) File identity via content fingerprint
 
 A video's identity is a content fingerprint, not its path: file **size** plus a
-SHA-256 over the **first and last 1 MiB** of the file. This is the standardized
-form of the existing `FileSystemPort.partialContentHash`
-(`adapters/fs/index.ts`), stored as `videos.file_hash` and already used by
-`scanFolder` (`core/server/usecases/scan.ts`) as the fallback match after
-path match (`findVideoByPath` → `findVideoByHash`). The global layer fixes the
-window at 1 MiB (today's adapter hashes 64 KiB windows) so a fingerprint is
-stable across machines and cheap on multi-GB files: a moved or renamed video
-keeps its catalog entry; re-encodes and truncations get a new identity.
+SHA-256 over the **first and last 1 MiB** of the file, **truncated to the first
+16 hex characters** of the digest (`FileSystemPort.partialContentHash`,
+`adapters/fs/index.ts` — `hash.digest('hex').substring(0, 16)`). The 16-hex
+(64-bit) truncation keeps fingerprints short as table keys while remaining
+collision-safe for a personal catalog. The fingerprint is stable across
+machines and cheap on multi-GB files: a moved or renamed video keeps its catalog
+entry; re-encodes and truncations get a new identity. If the file cannot be
+hashed (unreadable window, size read failure) the adapter yields `null` and the
+file is not indexed — the process pipeline emits a `catalog_index_skipped`
+warning event rather than recording it.
 
 ### (d) Snapshot import and conflict resolution
 
 On encountering a folder whose `folderId` (from the marker file) is unknown to
 the global index, the layer **imports the folder's NDJSON snapshot** into the
 index — this is how a drive from another machine, or a rebuilt index, recovers
-its catalog. When an imported row and an existing indexed row collide (same
-`folderId` + `fileHash`), the row with the newer `processed_at` wins
-(`processed_at` = the catalog `updated_at` timestamp on `videoSchema`,
-`core/domain/video.ts`). This is a **last-writer-wins** rule and is only sound
-under the **single-user assumption** already fixed by ADR-0001 (one implicit
-local user, no identity): there is no second actor whose concurrent edit could
-be silently lost, so a coarse timestamp comparison is sufficient and no merge
-or vector-clock machinery is warranted.
+its catalog.
+
+The `files` table's **primary key is the fingerprint alone** (not
+`folderId` + `fileHash`); `folderId` is a plain column
+(`adapters/db/global-catalog-schema.ts`). One row therefore exists per distinct
+content, regardless of how many folders hold a copy. **Duplicate-content
+semantics** follow from this: identical content in two folders resolves to one
+`files` row, recorded under whichever folder processed or imported it last (the
+upsert overwrites `folderId`); the same content encountered in another folder is
+detected as already-indexed by fingerprint and **skipped** there rather than
+duplicated.
+
+When an imported row and an existing indexed row collide (same fingerprint), the
+row with the newer `processed_at` wins (`newerWins`,
+`core/domain/global-catalog.ts`). This is a **last-writer-wins** rule and is
+only sound under the **single-user assumption** already fixed by ADR-0001 (one
+implicit local user, no identity): there is no second actor whose concurrent
+edit could be silently lost, so a coarse timestamp comparison is sufficient and
+no merge or vector-clock machinery is warranted.
+
+The NDJSON snapshot carries **only** the folder header and its file/analysis
+records. It does **not** carry `tag_aliases` or `drive_runs` rows; those live
+solely in the global index. Recovery caveat: rebuilding the index purely from
+snapshots restores files, analyses, and tags but not tag-alias mappings or
+drive-run bookkeeping, which are re-derived by re-running rather than restored.
 
 ### (e) Privacy stance for the future faces feature
 
-This layer enables — but does not yet implement — a faces feature. When built,
-face embeddings and labels are: computed and stored **100% locally** (in the
-global index, never sent anywhere, consistent with the default-OFF telemetry of
-`docs/architecture.md` Delta 6); **opt-in**; individually **deletable**; and
-**excluded from the NDJSON snapshot and every export/interchange path**. Faces
-data never leaves the machine and never travels with a drive. This is recorded
-here as a consequence the data layer must keep open, not as work in this ADR.
+The faces feature is now implemented. Face embeddings and labels are: computed
+and stored **100% locally** (in the global index, never sent anywhere,
+consistent with the default-OFF telemetry of `docs/architecture.md` Delta 6);
+**opt-in**; individually **deletable**; and **excluded from the NDJSON snapshot
+and every export/interchange path**. Faces data never leaves the machine and
+never travels with a drive.
+
+Deletion is real: `forgetPerson` (`adapters/db/global-catalog.ts`) **deletes**
+the person's `face_observations` rows — embeddings and bounding boxes included —
+together with the person row and its exemplar crops, so a "forget" removes the
+biometric data rather than leaving it as unassigned observations that could
+re-cluster. `purgeFaces` clears all people and observations.
 
 ## Alternatives considered
 
@@ -103,7 +135,7 @@ here as a consequence the data layer must keep open, not as work in this ADR.
 - **Sidecar-canonical (per-folder DB is truth; status quo of Delta 3).**
   Rejected: does not scale to whole-drive search (linear open of many DBs), does
   not support offline-drive search, forces GUI/CLI reconciliation across
-  divergent sidecars, and gives FTS5/embeddings no single DB to index.
+  divergent sidecars, and gives full-text search and embeddings no single DB to index.
 
 ## Consequences
 
@@ -117,13 +149,18 @@ here as a consequence the data layer must keep open, not as work in this ADR.
   an unknown-`folderId` import branch. The fingerprint window changes from 64
   KiB to 1 MiB in `partialContentHash`; existing rows keep their stored hash and
   are re-fingerprinted lazily on next scan.
-- Backward compatibility: existing per-folder `catalog.db` files are read once
-  and imported into the global index; they are not written to after migration.
+- Backward compatibility: there is **no one-time legacy importer**. Existing
+  per-folder `catalog.db` files are not read into the global index by a dedicated
+  migration; legacy folders are absorbed lazily when they are re-processed or the
+  index is rebuilt (fingerprints re-derived, snapshots imported on first sight of
+  an unknown `folderId`).
 - The single global index is the new single point of failure; the per-folder
   NDJSON snapshots are its recovery source, so snapshot writes must be durable
-  and must follow every catalog mutation.
-- Search (FTS5) and the faces feature become buildable on one indexed store
-  without a further storage-model decision.
+  (written atomically via temp-file + rename) and follow catalog mutations. The
+  snapshot omits `tag_aliases`/`drive_runs` (see (d)), so recovery from snapshots
+  alone does not restore those.
+- Search (FTS4) and the faces feature are built on one indexed store without a
+  further storage-model decision.
 
 Changing this decision means editing this ADR and `docs/architecture.md`
 Delta 3 first, then the code.
