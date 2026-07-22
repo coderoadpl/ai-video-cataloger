@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
 
-import { OnnxFaceEngineAdapter, executionProviders, type OrtSession, type OrtSessionFactory, type OrtTensor } from './index.js';
 import {
   FILE_ARTIFACTS,
   applySimilarityTransform,
@@ -11,29 +10,107 @@ import {
   type FileArtifact,
   type Result,
 } from '@core/domain/index.js';
-import type { ModelDownloadPort } from '@core/server/index.js';
+import type { AlignedFaceCrop, FaceDetection, ModelDownloadPort } from '@core/server/index.js';
+import type { RgbFrame } from '@adapters/ffmpeg/index.js';
 import type { WhisperModelName } from '@core/domain/index.js';
 
-const detectorTensor: OrtTensor = {
-  data: new Float32Array([10, 20, 200, 180, 70, 90, 130, 90, 100, 120, 80, 160, 120, 160, 0.9]),
-  dims: [1, 15],
-};
+import {
+  OnnxFaceEngineAdapter,
+  createSFaceTensor,
+  createYuNetTensor,
+  decodeYuNetOutputs,
+  executionProviders,
+  nonMaxSuppression,
+  parseDetections,
+  warpAlignedFaceRgb,
+  type FaceImageIO,
+  type LetterboxMeta,
+  type OrtSession,
+  type OrtSessionFactory,
+  type OrtTensor,
+} from './index.js';
 
-const embedderTensor: OrtTensor = {
-  data: new Float32Array(Array.from({ length: 128 }, (_value, index) => index + 1)),
-  dims: [1, 128],
-};
-
-const fakeSession = (output: OrtTensor): OrtSession => ({
-  inputNames: ['input'],
-  outputNames: ['output'],
-  run: () => Promise.resolve({ output }),
+const onePixelFrame = (r: number, g: number, b: number): RgbFrame => ({
+  width: 1,
+  height: 1,
+  data: new Uint8Array([r, g, b]),
 });
 
-const fakeSessionFactory: OrtSessionFactory = {
-  create: (modelPath) => Promise.resolve(fakeSession(modelPath.includes('yunet') ? detectorTensor : embedderTensor)),
-  tensor: (data, dims) => ({ data, dims }),
+const detectorOutputs = (): Record<string, OrtTensor> => {
+  const outputs: Record<string, OrtTensor> = {};
+  for (const stride of [8, 16, 32]) {
+    const cells = (320 / stride) * (320 / stride);
+    outputs[`cls_${stride}`] = { data: new Float32Array(cells), dims: [1, cells, 1] };
+    outputs[`obj_${stride}`] = { data: new Float32Array(cells), dims: [1, cells, 1] };
+    outputs[`bbox_${stride}`] = { data: new Float32Array(cells * 4), dims: [1, cells, 4] };
+    outputs[`kps_${stride}`] = { data: new Float32Array(cells * 10), dims: [1, cells, 10] };
+  }
+  const stride = 8;
+  const cols = 320 / stride;
+  const row = 15;
+  const col = 20;
+  const anchor = row * cols + col;
+  const cls = outputs.cls_8;
+  const obj = outputs.obj_8;
+  const bbox = outputs.bbox_8;
+  const kps = outputs.kps_8;
+  if (cls === undefined || obj === undefined || bbox === undefined || kps === undefined) throw new Error('missing heads');
+  const clsData = tensorData(cls);
+  const objData = tensorData(obj);
+  const bboxData = tensorData(bbox);
+  const kpsData = tensorData(kps);
+  clsData[anchor] = 0.95;
+  objData[anchor] = 0.95;
+  const boxOffset = anchor * 4;
+  bboxData[boxOffset] = 0.5;
+  bboxData[boxOffset + 1] = 0.5;
+  bboxData[boxOffset + 2] = Math.log(48 / stride);
+  bboxData[boxOffset + 3] = Math.log(40 / stride);
+  const landmarkOffset = anchor * 10;
+  const landmarks = [
+    [0.2, 0.1],
+    [0.8, 0.1],
+    [0.5, 0.5],
+    [0.3, 0.8],
+    [0.7, 0.8],
+  ];
+  landmarks.forEach((point, index) => {
+    kpsData[landmarkOffset + index * 2] = point[0] ?? 0;
+    kpsData[landmarkOffset + index * 2 + 1] = point[1] ?? 0;
+  });
+  return outputs;
 };
+
+const embedderTensor = (value: 'ramp' | 'zero' = 'ramp'): OrtTensor => ({
+  data: new Float32Array(Array.from({ length: 128 }, (_item, index) => (value === 'zero' ? 0 : index + 1))),
+  dims: [1, 128],
+});
+
+const tensorData = (tensor: OrtTensor): Float32Array => {
+  if (tensor.data instanceof Float32Array) return tensor.data;
+  throw new Error('expected Float32Array');
+};
+
+const fakeSession = (run: OrtSession['run']): OrtSession => ({
+  inputNames: ['input'],
+  outputNames: ['output'],
+  run,
+});
+
+const fakeImageIO = (frame: RgbFrame): FaceImageIO => ({
+  decodeFrameRgb: () => Promise.resolve(ok(frame)),
+  encodeJpeg: () => Promise.resolve(ok(undefined)),
+});
+
+const fakeSessionFactory = (
+  detectorRun: OrtSession['run'],
+  embedderOutput: OrtTensor = embedderTensor(),
+): OrtSessionFactory => ({
+  create: (modelPath) => Promise.resolve(
+    fakeSession(modelPath.includes('yunet') ? detectorRun : () => Promise.resolve({ output: embedderOutput })),
+  ),
+  tensor: (data, dims) => ({ data, dims }),
+});
 
 class StubDownloads implements ModelDownloadPort {
   whisperModelPath(model: WhisperModelName): string {
@@ -67,8 +144,12 @@ class StubDownloads implements ModelDownloadPort {
   }
 }
 
-const buildAdapter = (): OnnxFaceEngineAdapter =>
-  new OnnxFaceEngineAdapter({ downloads: new StubDownloads(), sessionFactory: fakeSessionFactory });
+const buildAdapter = (inputFrame: RgbFrame, detectorRun: OrtSession['run'], embedderOutput = embedderTensor()): OnnxFaceEngineAdapter =>
+  new OnnxFaceEngineAdapter({
+    downloads: new StubDownloads(),
+    sessionFactory: fakeSessionFactory(detectorRun, embedderOutput),
+    imageIO: fakeImageIO(inputFrame),
+  });
 
 describe('registry entries are pinned', () => {
   it('pins the YuNet detector artifact', () => {
@@ -87,6 +168,100 @@ describe('registry entries are pinned', () => {
     expect(embedder.sha256).toBe('0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79');
     expect(embedder.url).toBe('https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx');
     expect(embedder.license).toBe('Apache-2.0');
+  });
+});
+
+describe('pixel preprocessing', () => {
+  it('pins YuNet input as BGR NCHW float values without normalization', () => {
+    const prepared = createYuNetTensor(onePixelFrame(10, 20, 30));
+    const plane = 320 * 320;
+    expect(prepared.tensor[0]).toBe(30);
+    expect(prepared.tensor[plane]).toBe(20);
+    expect(prepared.tensor[2 * plane]).toBe(10);
+    expect(prepared.meta).toMatchObject({ scale: 320, offsetX: 0, offsetY: 0, resizedWidth: 320, resizedHeight: 320 });
+  });
+
+  it('pins SFace input as BGR NCHW float values without normalization', () => {
+    const tensor = createSFaceTensor(onePixelFrame(11, 22, 33));
+    expect([...tensor]).toEqual([33, 22, 11]);
+  });
+
+  it('letterboxes wide frames and maps OpenCV rows back to source coordinates', () => {
+    const meta: LetterboxMeta = {
+      sourceWidth: 640,
+      sourceHeight: 320,
+      targetWidth: 320,
+      targetHeight: 320,
+      resizedWidth: 320,
+      resizedHeight: 160,
+      offsetX: 0,
+      offsetY: 80,
+      scale: 0.5,
+    };
+    const detections = parseDetections({
+      output: {
+        data: new Float32Array([160, 120, 80, 40, 170, 130, 190, 130, 180, 140, 172, 155, 188, 155, 0.9]),
+        dims: [1, 15],
+      },
+    }, meta);
+    expect(detections[0]?.bbox).toEqual({ x: 320, y: 80, width: 160, height: 80 });
+    expect(detections[0]?.landmarks.nose).toEqual({ x: 360, y: 120 });
+    expect(detections[0]?.landmarks.rightEye).toEqual({ x: 340, y: 100 });
+    expect(detections[0]?.landmarks.leftEye).toEqual({ x: 380, y: 100 });
+    expect(detections[0]?.landmarks.rightMouth).toEqual({ x: 344, y: 150 });
+    expect(detections[0]?.landmarks.leftMouth).toEqual({ x: 376, y: 150 });
+  });
+
+  it('warps with bilinear sampling on a synthetic gradient', () => {
+    const frame: RgbFrame = {
+      width: 2,
+      height: 2,
+      data: new Uint8Array([
+        0, 0, 0,
+        100, 0, 0,
+        200, 0, 0,
+        255, 0, 0,
+      ]),
+    };
+    const warped = warpAlignedFaceRgb(frame, { a: 1, b: 0, tx: -0.5, ty: -0.5 }, 1, 1);
+    expect(warped[0]).toBe(139);
+    expect(warped[1]).toBe(0);
+    expect(warped[2]).toBe(0);
+  });
+});
+
+describe('YuNet postprocessing', () => {
+  const meta: LetterboxMeta = {
+    sourceWidth: 320,
+    sourceHeight: 320,
+    targetWidth: 320,
+    targetHeight: 320,
+    resizedWidth: 320,
+    resizedHeight: 320,
+    offsetX: 0,
+    offsetY: 0,
+    scale: 1,
+  };
+
+  it('decodes strided heads into boxes, landmarks, and scores', () => {
+    const detections = decodeYuNetOutputs(detectorOutputs(), meta, 0.7, 0.3);
+    expect(detections).toHaveLength(1);
+    expect(detections[0]?.score).toBeCloseTo(0.95, 5);
+    expect(detections[0]?.bbox.x).toBeCloseTo(140, 5);
+    expect(detections[0]?.bbox.y).toBeCloseTo(104, 5);
+    expect(detections[0]?.bbox.width).toBeCloseTo(48, 5);
+    expect(detections[0]?.landmarks.rightEye.x).toBeCloseTo(161.6, 5);
+    expect(detections[0]?.landmarks.leftEye.x).toBeCloseTo(166.4, 5);
+  });
+
+  it('suppresses overlapping detections by IoU', () => {
+    const detections: FaceDetection[] = [
+      detection({ x: 0, y: 0, width: 100, height: 100 }, 0.9),
+      detection({ x: 10, y: 10, width: 100, height: 100 }, 0.8),
+      detection({ x: 220, y: 220, width: 40, height: 40 }, 0.7),
+    ];
+    const kept = nonMaxSuppression(detections, 0.3);
+    expect(kept.map((item) => item.score)).toEqual([0.9, 0.7]);
   });
 });
 
@@ -119,46 +294,97 @@ describe('similarity transform alignment', () => {
   });
 });
 
-describe('OnnxFaceEngineAdapter with a fake ort session', () => {
-  it('parses detection rows from the detector output tensor', async () => {
-    const adapter = buildAdapter();
+describe('OnnxFaceEngineAdapter with fake ort sessions', () => {
+  it('feeds real decoded pixels to the detector and parses detections', async () => {
+    let inputSum = 0;
+    const adapter = buildAdapter(onePixelFrame(10, 20, 30), (feeds) => {
+      const input = feeds.input;
+      if (input === undefined) throw new Error('missing input');
+      inputSum = Array.from(input.data).reduce((sum, value) => sum + Number(value), 0);
+      return Promise.resolve(detectorOutputs());
+    });
+
     const result = await adapter.detect('/tmp/frame.jpg');
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.message);
+    expect(inputSum).toBeGreaterThan(0);
     expect(result.value).toHaveLength(1);
-    expect(result.value[0]?.bbox).toEqual({ x: 10, y: 20, width: 200, height: 180 });
-    expect(result.value[0]?.score).toBeCloseTo(0.9, 5);
   });
 
-  it('aligns to a 112x112 crop from landmarks', async () => {
-    const adapter = buildAdapter();
-    const detection = (await adapter.detect('/tmp/frame.jpg'));
-    if (!detection.ok) throw new Error(detection.error.message);
-    const first = detection.value[0];
-    if (first === undefined) throw new Error('expected a detection');
-    const aligned = await adapter.align('/tmp/frame.jpg', first);
+  it('reuses direct video RGB decode for alignment when a fallback frame path is provided', async () => {
+    const decodedInputs: string[] = [];
+    const imageIO: FaceImageIO = {
+      decodeFrameRgb: (input) => {
+        decodedInputs.push(input.kind === 'image-path' ? input.frameJpegPath : `${input.videoPath}@${input.timestampS}`);
+        return Promise.resolve(ok({
+          width: 160,
+          height: 160,
+          data: new Uint8Array(160 * 160 * 3).fill(12),
+        }));
+      },
+      encodeJpeg: () => Promise.resolve(ok(undefined)),
+    };
+    const adapter = new OnnxFaceEngineAdapter({
+      downloads: new StubDownloads(),
+      sessionFactory: fakeSessionFactory(() => Promise.resolve(detectorOutputs())),
+      imageIO,
+    });
+    const detected = await adapter.detect({
+      kind: 'video-timestamp',
+      videoPath: '/tmp/video.mp4',
+      timestampS: 2,
+      fallbackFrameJpegPath: '/tmp/frame.jpg',
+    });
+    expect(detected.ok).toBe(true);
+    if (!detected.ok) throw new Error(detected.error.message);
+    const aligned = await adapter.align('/tmp/frame.jpg', centeredDetection());
+    expect(aligned.ok).toBe(true);
+    expect(decodedInputs).toEqual(['/tmp/video.mp4@2']);
+  });
+
+  it('aligns to a real 112x112 RGB crop and writes it through image IO', async () => {
+    const writes: string[] = [];
+    const imageIO: FaceImageIO = {
+      decodeFrameRgb: () => Promise.resolve(ok({
+        width: 160,
+        height: 160,
+        data: new Uint8Array(Array.from({ length: 160 * 160 * 3 }, (_item, index) => index % 251)),
+      })),
+      encodeJpeg: (_frame, outputPath) => {
+        writes.push(outputPath);
+        return Promise.resolve(ok(undefined));
+      },
+    };
+    const adapter = new OnnxFaceEngineAdapter({
+      downloads: new StubDownloads(),
+      sessionFactory: fakeSessionFactory(() => Promise.resolve(detectorOutputs())),
+      imageIO,
+    });
+    const aligned = await adapter.align('/tmp/frame.jpg', centeredDetection());
     expect(aligned.ok).toBe(true);
     if (!aligned.ok) throw new Error(aligned.error.message);
-    expect(aligned.value.width).toBe(112);
-    expect(aligned.value.height).toBe(112);
+    expect(aligned.value.data).toHaveLength(112 * 112 * 3);
+    expect(aligned.value.data?.some((value) => value !== 0)).toBe(true);
+    const written = await adapter.writeCrop(aligned.value, '/tmp/crop.jpg');
+    expect(written.ok).toBe(true);
+    expect(writes).toEqual(['/tmp/crop.jpg']);
   });
 
-  it('returns a normalized 128-dimensional embedding', async () => {
-    const adapter = buildAdapter();
-    const aligned = { frameJpegPath: '/tmp/frame.jpg', width: 112, height: 112, detection: {
-      bbox: { x: 0, y: 0, width: 1, height: 1 },
-      landmarks: {
-        leftEye: { x: 0, y: 0 }, rightEye: { x: 1, y: 0 }, nose: { x: 0, y: 1 },
-        leftMouth: { x: 0, y: 0 }, rightMouth: { x: 1, y: 1 },
-      },
-      score: 0.9,
-    } };
+  it('returns a normalized 128-dimensional embedding and guards zero-norm output', async () => {
+    const aligned: AlignedFaceCrop = { frameJpegPath: '/tmp/frame.jpg', width: 112, height: 112, detection: centeredDetection(), data: new Uint8Array(112 * 112 * 3).fill(1) };
+    const adapter = buildAdapter(onePixelFrame(1, 2, 3), () => Promise.resolve(detectorOutputs()));
     const result = await adapter.embed(aligned);
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value).toHaveLength(128);
     const magnitude = Math.sqrt([...result.value].reduce((sum, value) => sum + value * value, 0));
     expect(magnitude).toBeCloseTo(1, 5);
+
+    const zeroAdapter = buildAdapter(onePixelFrame(1, 2, 3), () => Promise.resolve(detectorOutputs()), embedderTensor('zero'));
+    const zero = await zeroAdapter.embed(aligned);
+    expect(zero.ok).toBe(true);
+    if (!zero.ok) throw new Error(zero.error.message);
+    expect([...zero.value].every((value) => value === 0)).toBe(true);
   });
 });
 
@@ -167,4 +393,22 @@ describe('executionProviders', () => {
     const providers = executionProviders();
     expect(providers.at(-1)).toBe('cpu');
   });
+});
+
+const centeredDetection = (): FaceDetection => ({
+  bbox: { x: 40, y: 40, width: 80, height: 80 },
+  landmarks: {
+    leftEye: { x: 65, y: 75 },
+    rightEye: { x: 95, y: 75 },
+    nose: { x: 80, y: 92 },
+    leftMouth: { x: 68, y: 112 },
+    rightMouth: { x: 92, y: 112 },
+  },
+  score: 0.95,
+});
+
+const detection = (bbox: FaceDetection['bbox'], score: number): FaceDetection => ({
+  bbox,
+  landmarks: centeredDetection().landmarks,
+  score,
 });

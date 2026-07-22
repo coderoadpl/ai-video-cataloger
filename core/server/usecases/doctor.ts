@@ -14,12 +14,14 @@ import type {
   DependencyStatus,
   LocalAiRuntimePort,
   MediaPort,
+  FaceEnginePort,
   ProvidersPort,
   ProviderTestResult,
   TranscriberPort,
   ConfigStore,
   FileSystemPort,
 } from '../ports.js';
+import { resolveConfigValues } from './config-resolution.js';
 import { getReadiness, type ReadinessCache, type ReadinessOutput } from './readiness.js';
 
 export interface DoctorDeps {
@@ -32,6 +34,7 @@ export interface DoctorDeps {
   fs: FileSystemPort;
   readiness: ReadinessCache;
   credentials?: CredentialsStore | undefined;
+  faceEngine?: FaceEnginePort | undefined;
 }
 
 export interface DoctorWarning {
@@ -70,8 +73,18 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
   if (!configured.ok) return configured;
   const migrations = await secretMigrationWarnings(deps.credentials);
   if (!migrations.ok) return migrations;
+  const resolvedConfig = await resolveConfigValues(deps.config, deps.fs.resolve(deps.fs.cwd()));
+  if (!resolvedConfig.ok) return resolvedConfig;
+  const faceDependency = await optionalFaceDependency(deps, resolvedConfig.value.effective.faces_enabled);
+  if (!faceDependency.ok) return faceDependency;
 
-  const dependencies = [...media.value, transcriber.value, analyzer.value, localAiDependency(localAi.value, machine.value)];
+  const dependencies = [
+    ...media.value,
+    transcriber.value,
+    analyzer.value,
+    localAiDependency(localAi.value, machine.value),
+    ...faceDependency.value,
+  ];
   return ok({
     dependencies,
     machine: {
@@ -86,6 +99,17 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
     harnesses,
     configured: configured.value,
   });
+};
+
+const optionalFaceDependency = async (
+  deps: Pick<DoctorDeps, 'faceEngine'>,
+  facesEnabled: string,
+): Promise<Result<DependencyStatus[], AppError>> => {
+  if (!isEnabled(facesEnabled) || deps.faceEngine === undefined) return ok([]);
+  const dependency = await deps.faceEngine.dependency();
+  if (!dependency.ok) return dependency;
+  if (dependency.value.available) return ok([dependency.value]);
+  return ok([{ ...dependency.value, available: true, warning: dependency.value.installHint }]);
 };
 
 const dependencyWarnings = (dependencies: DependencyStatus[]): DoctorWarning[] =>
@@ -103,6 +127,9 @@ const secretMigrationWarnings = async (
     message: `The API key for "${providerId}" is stored in plaintext config. Run: ai-video-cataloger setup to move it into the macOS Keychain.`,
   })));
 };
+
+const isEnabled = (value: string): boolean =>
+  value === 'true' || value === 'yes' || value === '1';
 
 const detectHarnesses = async (
   providers: ProvidersPort,

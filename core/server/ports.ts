@@ -259,18 +259,24 @@ export interface FaceDetection {
   score: number;
 }
 
+export type FaceFrameInput =
+  | { kind: 'image-path'; frameJpegPath: string }
+  | { kind: 'video-timestamp'; videoPath: string; timestampS: number; fallbackFrameJpegPath?: string | undefined };
+
 export interface AlignedFaceCrop {
   frameJpegPath: string;
   detection: FaceDetection;
   width: number;
   height: number;
+  data?: Uint8Array | undefined;
 }
 
 export interface FaceEnginePort {
   load(): Promise<Result<void, AppError>>;
-  detect(frameJpegPath: string): Promise<Result<FaceDetection[], AppError>>;
+  detect(frame: FaceFrameInput | string): Promise<Result<FaceDetection[], AppError>>;
   align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>>;
   embed(alignedCrop: AlignedFaceCrop): Promise<Result<Float32Array, AppError>>;
+  writeCrop(alignedCrop: AlignedFaceCrop, outputPath: string): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
   dependency(): Promise<Result<DependencyStatus, AppError>>;
 }

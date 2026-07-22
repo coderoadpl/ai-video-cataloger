@@ -15,6 +15,7 @@ import {
 } from '@core/domain/index.js';
 
 import type {
+  AlignedFaceCrop,
   FaceDetection,
   FaceEnginePort,
   FileSystemPort,
@@ -57,8 +58,7 @@ export interface FacesStatusOutput {
 
 interface ObservationContext {
   observation: FaceObservation;
-  videoPath: string;
-  frameIndex: number;
+  alignedCrop: AlignedFaceCrop;
 }
 
 export const facesIndex = async (
@@ -196,9 +196,12 @@ const runFacesIndex = async (
         signal: progress.signal,
       });
       if (!frames.ok) return frames;
+      const probe = await deps.media.probe({ videoPath });
+      if (!probe.ok) return probe;
       const added = await indexFramesForFile(deps, {
         fingerprint: candidate.file.fingerprint,
         videoPath,
+        durationS: probe.value.duration,
         framePaths: frames.value.framePaths,
       }, contexts, progress);
       if (!added.ok) return added;
@@ -227,7 +230,7 @@ const runFacesIndex = async (
 
 const indexFramesForFile = async (
   deps: FacesDeps,
-  input: { fingerprint: string; videoPath: string; framePaths: string[] },
+  input: { fingerprint: string; videoPath: string; durationS: number | null; framePaths: string[] },
   contexts: ObservationContext[],
   progress: JobExecutionContext,
 ): Promise<Result<{ observationsAdded: number; peopleCreated: number }, AppError>> => {
@@ -243,11 +246,17 @@ const indexFramesForFile = async (
       data: { fingerprint: input.fingerprint, framePath },
     });
     if (!detecting.ok) return detecting;
-    const detections = await deps.faceEngine.detect(framePath);
+    const timestampS = frameTimestamp(input.durationS, frameIndex, input.framePaths.length);
+    const detections = await deps.faceEngine.detect({
+      kind: 'video-timestamp',
+      videoPath: input.videoPath,
+      timestampS,
+      fallbackFrameJpegPath: framePath,
+    });
     if (!detections.ok) return detections;
     let detectionIndex = 0;
     for (const detection of detections.value) {
-      const indexed = await indexDetection(deps, input, framePath, frameIndex, detectionIndex, detection, contexts);
+      const indexed = await indexDetection(deps, { fingerprint: input.fingerprint, frameTsS: timestampS }, framePath, frameIndex, detectionIndex, detection, contexts);
       if (!indexed.ok) return indexed;
       observationsAdded += indexed.value.observationsAdded;
       peopleCreated += indexed.value.peopleCreated;
@@ -259,7 +268,7 @@ const indexFramesForFile = async (
 
 const indexDetection = async (
   deps: FacesDeps,
-  input: { fingerprint: string; videoPath: string },
+  input: { fingerprint: string; frameTsS: number },
   framePath: string,
   frameIndex: number,
   detectionIndex: number,
@@ -277,13 +286,13 @@ const indexDetection = async (
   if (!people.ok) return people;
   const assignment = classifyFace(embedding, people.value.map((person) => ({ personId: person.personId, centroid: person.centroid })));
   const assignedPersonId = assignment.decision === 'assign' ? assignment.personId : null;
-  const cropPath = assignedPersonId === null ? null : await nextCropPath(deps, assignedPersonId, input.videoPath, frameIndex);
+  const cropPath = assignedPersonId === null ? null : await nextCropPath(deps, assignedPersonId, aligned.value);
   if (typeof cropPath !== 'string' && cropPath !== null) return cropPath;
   const observation: FaceObservation = {
     obsId: `${input.fingerprint}:face:${frameIndex + 1}:${detectionIndex + 1}`,
     fingerprint: input.fingerprint,
     kind: 'face',
-    frameTsS: frameIndex + 1,
+    frameTsS: input.frameTsS,
     bbox: detection.bbox,
     embedding,
     quality: detection.score,
@@ -292,7 +301,7 @@ const indexDetection = async (
   };
   const stored = await deps.globalCatalog.upsertFaceObservation(observation);
   if (!stored.ok) return stored;
-  contexts.push({ observation, videoPath: input.videoPath, frameIndex });
+  contexts.push({ observation, alignedCrop: aligned.value });
   if (assignedPersonId !== null) {
     const updated = await updatePersonCentroid(deps.globalCatalog, assignedPersonId, embedding);
     if (!updated.ok) return updated;
@@ -327,7 +336,7 @@ const seedNewPersonIfReady = async (
     const context = unassigned[index];
     if (context === undefined) continue;
     const cropPath = assigned < FACE_LIMITS.maxExemplarsPerPerson
-      ? await nextCropPath(deps, personId, context.videoPath, context.frameIndex)
+      ? await nextCropPath(deps, personId, context.alignedCrop)
       : null;
     if (typeof cropPath !== 'string' && cropPath !== null) return cropPath;
     const observation = { ...context.observation, personId, cropPath };
@@ -338,6 +347,9 @@ const seedNewPersonIfReady = async (
   }
   return ok(1);
 };
+
+const frameTimestamp = (durationS: number | null, frameIndex: number, frameCount: number): number =>
+  durationS === null ? frameIndex + 1 : durationS * ((frameIndex + 1) / (frameCount + 1));
 
 const updatePersonCentroid = async (
   store: GlobalCatalogStore,
@@ -357,8 +369,7 @@ const updatePersonCentroid = async (
 const nextCropPath = async (
   deps: FacesDeps,
   personId: string,
-  videoPath: string,
-  frameIndex: number,
+  alignedCrop: AlignedFaceCrop,
 ): Promise<string | null | Result<never, AppError>> => {
   const observations = await deps.globalCatalog.listFaceObservations({ personId });
   if (!observations.ok) return observations;
@@ -368,15 +379,8 @@ const nextCropPath = async (
   const ensured = await deps.fs.ensureDirectory(directory);
   if (!ensured.ok) return ensured;
   const cropPath = deps.fs.join(directory, `exemplar-${String(crops + 1).padStart(3, '0')}.jpg`);
-  const generated = await deps.media.thumbnail({
-    videoPath,
-    thumbnailPath: cropPath,
-    seekPercent: (frameIndex + 1) / (FACE_LIMITS.maxFramesPerVideo + 1),
-    width: FACE_LIMITS.exemplarCropMaxPx,
-    height: FACE_LIMITS.exemplarCropMaxPx,
-    force: true,
-  });
-  if (!generated.ok) return generated;
+  const written = await deps.faceEngine.writeCrop(alignedCrop, cropPath);
+  if (!written.ok) return written;
   return cropPath;
 };
 

@@ -931,6 +931,10 @@ class InMemoryFaceEnginePort implements FaceEnginePort {
     return Promise.resolve(ok(new Float32Array(128)));
   }
 
+  writeCrop(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
   dispose(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
   }

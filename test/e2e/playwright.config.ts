@@ -11,6 +11,6 @@ export default defineConfig({
   projects: [
     { name: 'cli', testMatch: /scenarios\.spec\.ts/ },
     { name: 'gui', testMatch: /scenarios\.spec\.ts/ },
-    { name: 'matrix', testMatch: /matrix\.spec\.ts/ },
+    { name: 'matrix', testMatch: /(matrix|faces-matrix)\.spec\.ts/ },
   ],
 });

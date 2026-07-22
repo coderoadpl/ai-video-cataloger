@@ -294,12 +294,14 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     tempRoots.length = 0;
   });
 
-  it.skipIf(!canRunRealSmoke)('probes and generates one thumbnail with real binaries', async () => {
+  it.skipIf(!canRunRealSmoke)('probes, decodes RGB, encodes JPEG, and generates one thumbnail with real binaries', async () => {
     const root = await tempRoot();
     const adapter = new FfmpegMediaAdapter();
     const thumbnailPath = path.join(root, 'thumb.jpg');
+    const cropPath = path.join(root, 'crop.jpg');
 
     const probe = await adapter.probe({ videoPath: realSample });
+    const decoded = await adapter.decodeFrameRgb({ kind: 'video-timestamp', videoPath: realSample, timestampS: 1 });
     const thumbnail = await adapter.thumbnail({
       videoPath: realSample,
       thumbnailPath,
@@ -310,8 +312,25 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     });
 
     if (!probe.ok) throw new Error(probe.error.message);
+    if (!decoded.ok) throw new Error(decoded.error.message);
+    const encoded = await adapter.encodeRgbJpeg({
+      width: 2,
+      height: 2,
+      data: new Uint8Array([
+        255, 0, 0,
+        0, 255, 0,
+        0, 0, 255,
+        255, 255, 255,
+      ]),
+    }, cropPath);
+    if (!encoded.ok) throw new Error(encoded.error.message);
     if (!thumbnail.ok) throw new Error(thumbnail.error.message);
     expect(probe.value.duration).toBeGreaterThan(0);
+    expect(decoded.value.width).toBeGreaterThan(0);
+    expect(decoded.value.height).toBeGreaterThan(0);
+    expect(decoded.value.data).toHaveLength(decoded.value.width * decoded.value.height * 3);
+    expect(decoded.value.data.some((value) => value !== 0)).toBe(true);
+    expect(existsSync(cropPath)).toBe(true);
     expect(existsSync(thumbnailPath)).toBe(true);
   });
 });

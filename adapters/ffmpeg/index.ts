@@ -1,5 +1,6 @@
 import ffmpeg from 'fluent-ffmpeg';
 import { execFile } from 'node:child_process';
+import { spawn } from 'node:child_process';
 import { existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
@@ -26,6 +27,12 @@ import type {
 const require = createRequire(import.meta.url);
 const execFileAsync = promisify(execFile);
 const ffprobeInstallerSchema = z.object({ path: z.string() });
+const ffprobeDimensionsSchema = z.object({
+  streams: z.array(z.object({
+    width: z.number().int().positive().optional(),
+    height: z.number().int().positive().optional(),
+  })),
+});
 const configuredRuntimes = new WeakMap<FfmpegRuntime, string>();
 
 export interface FfmpegMetadata {
@@ -35,6 +42,8 @@ export interface FfmpegMetadata {
   };
   streams: Array<{
     codec_type?: string | undefined;
+    width?: number | undefined;
+    height?: number | undefined;
     tags?: Record<string, string | number | null | undefined> | undefined;
   }>;
 }
@@ -85,6 +94,17 @@ export interface ResolvedFfmpegBinaries {
   ffmpeg: ResolvedBinary;
   ffprobe: ResolvedBinary;
 }
+
+export interface RgbFrame {
+  width: number;
+  height: number;
+  data: Uint8Array;
+}
+
+export type DecodeFrameRgbInput =
+  | { kind: 'image-path'; imagePath: string }
+  | { kind: 'jpeg-buffer'; jpegBuffer: Uint8Array }
+  | { kind: 'video-timestamp'; videoPath: string; timestampS: number };
 
 export class FfmpegMediaAdapter implements MediaPort {
   private readonly runtime: FfmpegRuntime;
@@ -201,6 +221,51 @@ export class FfmpegMediaAdapter implements MediaPort {
     return ok([ffmpegStatus, ffprobeStatus]);
   }
 
+  async decodeFrameRgb(input: DecodeFrameRgbInput): Promise<Result<RgbFrame, AppError>> {
+    const configured = await this.configure();
+    if (!configured.ok) return configured;
+    const binaries = await resolveFfmpegBinaries(this.binaryResolver, this.commandProbe);
+    if (!binaries.ffmpeg.available || !binaries.ffprobe.available) {
+      return { ok: false, error: appError('prerequisites_failed', 'FFmpeg and ffprobe are required to decode RGB frames') };
+    }
+    const dimensions = await frameDimensions(input, this.runtime, binaries.ffprobe.path);
+    if (!dimensions.ok) return dimensions;
+    const decoded = await decodeRawRgb(input, binaries.ffmpeg.path);
+    if (!decoded.ok) return decoded;
+    const expected = dimensions.value.width * dimensions.value.height * 3;
+    if (decoded.value.length !== expected) {
+      return { ok: false, error: appError('processing_error', `Decoded RGB frame size mismatch: expected ${expected}, got ${decoded.value.length}`) };
+    }
+    return ok({ ...dimensions.value, data: decoded.value });
+  }
+
+  async encodeRgbJpeg(frame: RgbFrame, outputPath: string): Promise<Result<void, AppError>> {
+    const configured = await this.configure();
+    if (!configured.ok) return configured;
+    const binaries = await resolveFfmpegBinaries(this.binaryResolver, this.commandProbe);
+    if (!binaries.ffmpeg.available) {
+      return { ok: false, error: appError('prerequisites_failed', 'FFmpeg is required to encode RGB JPEG crops') };
+    }
+    mkdirSync(path.dirname(outputPath), { recursive: true });
+    const encoded = await runProcess(
+      binaries.ffmpeg.path,
+      [
+        '-v', 'error',
+        '-f', 'rawvideo',
+        '-pix_fmt', 'rgb24',
+        '-s', `${frame.width}x${frame.height}`,
+        '-i', 'pipe:0',
+        '-frames:v', '1',
+        '-q:v', '2',
+        '-y',
+        outputPath,
+      ],
+      frame.data,
+    );
+    if (!encoded.ok) return encoded;
+    return ok(undefined);
+  }
+
   private async configure(): Promise<Result<void, AppError>> {
     const binaries = await resolveFfmpegBinaries(this.binaryResolver, this.commandProbe);
     configureRuntimeOnce(this.runtime, binaries);
@@ -288,6 +353,66 @@ const probeDuration = async (runtime: FfmpegRuntime, videoPath: string): Promise
   return ok(duration);
 };
 
+const frameDimensions = async (
+  input: DecodeFrameRgbInput,
+  runtime: FfmpegRuntime,
+  ffprobePath: string,
+): Promise<Result<{ width: number; height: number }, AppError>> => {
+  if (input.kind === 'jpeg-buffer') return probeBufferDimensions(ffprobePath, input.jpegBuffer);
+  const mediaPath = input.kind === 'image-path' ? input.imagePath : input.videoPath;
+  const metadata = await probeMetadata(runtime, mediaPath);
+  if (!metadata.ok) return metadata;
+  const stream = metadata.value.streams.find((candidate) =>
+    candidate.codec_type === 'video' && typeof candidate.width === 'number' && typeof candidate.height === 'number');
+  if (stream === undefined || stream.width === undefined || stream.height === undefined) {
+    return { ok: false, error: appError('processing_error', 'Could not determine frame dimensions') };
+  }
+  return ok({ width: stream.width, height: stream.height });
+};
+
+const probeBufferDimensions = async (
+  ffprobePath: string,
+  jpegBuffer: Uint8Array,
+): Promise<Result<{ width: number; height: number }, AppError>> => {
+  const probed = await runProcess(
+    ffprobePath,
+    [
+      '-v', 'error',
+      '-f', 'image2pipe',
+      '-i', 'pipe:0',
+      '-select_streams', 'v:0',
+      '-show_entries', 'stream=width,height',
+      '-of', 'json',
+    ],
+    jpegBuffer,
+  );
+  if (!probed.ok) return probed;
+  try {
+    const parsed = ffprobeDimensionsSchema.parse(JSON.parse(Buffer.from(probed.value).toString('utf8')));
+    const first = parsed.streams[0];
+    if (first?.width === undefined || first.height === undefined) {
+      return { ok: false, error: appError('processing_error', 'Could not determine JPEG dimensions') };
+    }
+    return ok({ width: first.width, height: first.height });
+  } catch (cause) {
+    return mediaFailure(cause, 'Could not parse JPEG dimensions');
+  }
+};
+
+const decodeRawRgb = async (input: DecodeFrameRgbInput, ffmpegPath: string): Promise<Result<Uint8Array, AppError>> => {
+  const args = decodeArgs(input);
+  const decoded = await runProcess(ffmpegPath, args, input.kind === 'jpeg-buffer' ? input.jpegBuffer : undefined);
+  if (!decoded.ok) return decoded;
+  return ok(decoded.value);
+};
+
+const decodeArgs = (input: DecodeFrameRgbInput): string[] => {
+  const outputArgs = ['-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', 'pipe:1'];
+  if (input.kind === 'image-path') return ['-v', 'error', '-i', input.imagePath, ...outputArgs];
+  if (input.kind === 'jpeg-buffer') return ['-v', 'error', '-f', 'image2pipe', '-i', 'pipe:0', ...outputArgs];
+  return ['-v', 'error', '-ss', String(input.timestampS), '-i', input.videoPath, ...outputArgs];
+};
+
 const gpsFromMetadata = (metadata: FfmpegMetadata): { lat: number; lon: number } | null => {
   for (const tags of [metadata.format.tags, ...metadata.streams.map((stream) => stream.tags)]) {
     const gps = gpsFromTags(tags);
@@ -330,6 +455,30 @@ const runCommand = (command: FfmpegCommand, signal?: AbortSignal): Promise<Resul
       .run();
     if (signal?.aborted === true) abort();
     else signal?.addEventListener('abort', abort, { once: true });
+  });
+
+const runProcess = (
+  command: string,
+  args: readonly string[],
+  input?: Uint8Array | undefined,
+): Promise<Result<Uint8Array, AppError>> =>
+  new Promise((resolve) => {
+    const child = spawn(command, [...args], { stdio: ['pipe', 'pipe', 'pipe'] });
+    const stdout: Buffer[] = [];
+    const stderr: Buffer[] = [];
+    child.stdout.on('data', (chunk: Buffer) => stdout.push(chunk));
+    child.stderr.on('data', (chunk: Buffer) => stderr.push(chunk));
+    child.on('error', (error) => resolve(mediaFailure(error, `Failed to run ${command}`)));
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve(ok(new Uint8Array(Buffer.concat(stdout))));
+        return;
+      }
+      const message = Buffer.concat(stderr).toString('utf8').trim();
+      resolve({ ok: false, error: appError('processing_error', message.length === 0 ? `Failed to run ${command}` : message) });
+    });
+    if (input !== undefined) child.stdin.end(Buffer.from(input));
+    else child.stdin.end();
   });
 
 const pathHash = (value: string): string => {

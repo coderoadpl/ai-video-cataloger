@@ -30,7 +30,10 @@ import type {
   CatalogTagAliasResult,
   CatalogTagSummary,
   FaceIndexCandidate,
+  FaceDetection,
+  FaceEnginePort,
   FaceStatusCounts,
+  AlignedFaceCrop,
   FileArtifactDownloadProgress,
   GlobalCatalogCounts,
   GlobalCatalogStore,
@@ -427,6 +430,40 @@ export class InMemoryMedia implements MediaPort {
 
   dependencies(): Promise<Result<DependencyStatus[], AppError>> {
     return Promise.resolve(ok(this.dependenciesValue));
+  }
+}
+
+export class InMemoryFaceEngine implements FaceEnginePort {
+  dependencyValue: DependencyStatus = dependency('faces', true);
+  readonly cropWrites: string[] = [];
+
+  load(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  detect(): Promise<Result<FaceDetection[], AppError>> {
+    return Promise.resolve(ok([]));
+  }
+
+  align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
+    return Promise.resolve(ok({ frameJpegPath, detection, width: 112, height: 112, data: new Uint8Array(112 * 112 * 3) }));
+  }
+
+  embed(): Promise<Result<Float32Array, AppError>> {
+    return Promise.resolve(ok(new Float32Array(128)));
+  }
+
+  writeCrop(_alignedCrop: AlignedFaceCrop, outputPath: string): Promise<Result<void, AppError>> {
+    this.cropWrites.push(outputPath);
+    return Promise.resolve(ok(undefined));
+  }
+
+  dispose(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  dependency(): Promise<Result<DependencyStatus, AppError>> {
+    return Promise.resolve(ok(this.dependencyValue));
   }
 }
 

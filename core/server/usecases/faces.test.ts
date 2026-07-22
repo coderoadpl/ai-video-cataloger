@@ -19,7 +19,7 @@ import {
   InMemoryMedia,
 } from '../../../test/server/usecases/test-fakes.js';
 import { normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
-import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort } from '../ports.js';
+import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput } from '../ports.js';
 
 const unit128 = (offset = 0): number[] =>
   normalizeEmbedding(Array.from({ length: 128 }, (_value, index) => (index === offset ? 1 : 0.001)));
@@ -27,6 +27,8 @@ const unit128 = (offset = 0): number[] =>
 class FakeFaceEngine implements FaceEnginePort {
   loadCalls = 0;
   disposeCalls = 0;
+  readonly cropWrites: string[] = [];
+  readonly detectInputs: Array<FaceFrameInput | string> = [];
   detection: FaceDetection = {
     bbox: { x: 0, y: 0, width: 200, height: 200 },
     landmarks: {
@@ -45,7 +47,8 @@ class FakeFaceEngine implements FaceEnginePort {
     return Promise.resolve(ok(undefined));
   }
 
-  detect(): Promise<Result<FaceDetection[], AppError>> {
+  detect(input: FaceFrameInput | string): Promise<Result<FaceDetection[], AppError>> {
+    this.detectInputs.push(input);
     return Promise.resolve(ok([this.detection]));
   }
 
@@ -55,6 +58,11 @@ class FakeFaceEngine implements FaceEnginePort {
 
   embed(): Promise<Result<Float32Array, AppError>> {
     return Promise.resolve(ok(new Float32Array(this.embedding)));
+  }
+
+  writeCrop(_alignedCrop: AlignedFaceCrop, outputPath: string): Promise<Result<void, AppError>> {
+    this.cropWrites.push(outputPath);
+    return Promise.resolve(ok(undefined));
   }
 
   dispose(): Promise<Result<void, AppError>> {
@@ -254,6 +262,7 @@ describe('facesIndex', () => {
     const deps = buildDeps();
     await enableFaces(deps);
     await seedCatalog(deps);
+    deps.media.durations.set('/work/videos/clip.mp4', 14);
 
     const first = await facesIndex(deps, { root: '/work/videos' });
     expect(first.ok).toBe(true);
@@ -263,6 +272,12 @@ describe('facesIndex', () => {
     if (!afterFirst.ok) throw new Error(afterFirst.error.message);
     expect(afterFirst.value.observations).toBe(6);
     expect(afterFirst.value.people).toBe(1);
+    expect(deps.faceEngine.detectInputs[0]).toEqual({
+      kind: 'video-timestamp',
+      videoPath: '/work/videos/clip.mp4',
+      timestampS: 2,
+      fallbackFrameJpegPath: '/tmp/ai-video-cataloger/faces/fp-clip/frame-001.jpg',
+    });
 
     const second = await facesIndex(deps, { root: '/work/videos' });
     expect(second.ok).toBe(true);

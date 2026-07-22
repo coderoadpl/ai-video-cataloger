@@ -13,6 +13,7 @@ import {
   InMemoryTranscriber,
   InMemoryConfig,
   InMemoryFileSystem,
+  InMemoryFaceEngine,
 } from '../../../test/server/usecases/test-fakes.js';
 
 describe('runDoctor', () => {
@@ -170,6 +171,64 @@ describe('runDoctor', () => {
     expect(result.value.dependencies.find((item) => item.name === 'local-ai')).toMatchObject({
       available: false,
       installHint: expect.stringContaining('Apple Silicon'),
+    });
+  });
+
+  it('does not report faces while faces_enabled is disabled', async () => {
+    const faceEngine = new InMemoryFaceEngine();
+    faceEngine.dependencyValue = dependency('faces', false);
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      faceEngine,
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.dependencies.some((item) => item.name === 'faces')).toBe(false);
+    expect(result.value.allAvailable).toBe(true);
+  });
+
+  it('reports missing face artifacts as an optional warning when faces are enabled', async () => {
+    const faceEngine = new InMemoryFaceEngine();
+    faceEngine.dependencyValue = {
+      ...dependency('faces', false),
+      installHint: 'Run: ai-video-cataloger models faces install',
+    };
+    const config = new InMemoryConfig();
+    await config.set({ kind: 'home' }, 'faces_enabled', 'true');
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config,
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      faceEngine,
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.allAvailable).toBe(true);
+    expect(result.value.dependencies.find((item) => item.name === 'faces')).toMatchObject({
+      available: true,
+      warning: 'Run: ai-video-cataloger models faces install',
+    });
+    expect(result.value.warnings).toContainEqual({
+      code: 'faces_warning',
+      message: 'Run: ai-video-cataloger models faces install',
     });
   });
 });
