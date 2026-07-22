@@ -196,6 +196,39 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(rebuilt.ok && rebuilt.value.indexed).toBe(1);
     expect(afterRebuild.ok && afterRebuild.value[0]?.fingerprint).toBe(file.fingerprint);
   });
+
+  it('drops stale terms from the FTS index when a document is re-analyzed', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: 'sunrise over the mountains',
+      transcript: 'zeppelin narration',
+      language: null,
+      tags: ['dawn'],
+    });
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: 'twilight over the valley',
+      transcript: 'kayak narration',
+      language: null,
+      tags: ['dusk'],
+    });
+
+    const stale = await store.search({ match: 'sunrise*', rankingTerms: ['sunrise'], limit: 10, offset: 0 });
+    const staleTag = await store.search({ match: 'dawn*', rankingTerms: ['dawn'], limit: 10, offset: 0 });
+    const staleTranscript = await store.search({ match: 'zeppelin*', rankingTerms: ['zeppelin'], limit: 10, offset: 0 });
+    const current = await store.search({ match: 'twilight*', rankingTerms: ['twilight'], limit: 10, offset: 0 });
+
+    expect(stale.ok && stale.value).toEqual([]);
+    expect(staleTag.ok && staleTag.value).toEqual([]);
+    expect(staleTranscript.ok && staleTranscript.value).toEqual([]);
+    expect(current.ok && current.value[0]?.fingerprint).toBe(file.fingerprint);
+  });
 });
 
 const writeV1Catalog = async (home: string): Promise<void> => {

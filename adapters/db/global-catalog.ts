@@ -560,6 +560,10 @@ const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: st
     transcript: analysis?.transcript ?? '',
     tagsText: tagsForFingerprint(db, fingerprint).join('\n'),
   };
+  const existingDocid = searchDocumentId(client, fingerprint);
+  if (existingDocid !== null) {
+    client.run('DELETE FROM search_documents_fts WHERE docid = $docid', { $docid: existingDocid });
+  }
   client.run(
     `INSERT INTO search_documents (fingerprint, file_name, final_name, description, transcript, tags_text)
       VALUES ($fingerprint, $fileName, $finalName, $description, $transcript, $tagsText)
@@ -580,7 +584,6 @@ const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: st
   );
   const docid = searchDocumentId(client, fingerprint);
   if (docid === null) throw new Error(`Could not create search document: ${fingerprint}`);
-  client.run('DELETE FROM search_documents_fts WHERE docid = $docid', { $docid: docid });
   client.run(
     `INSERT INTO search_documents_fts (docid, file_name, final_name, description, transcript, tags_text)
       VALUES ($docid, $fileName, $finalName, $description, $transcript, $tagsText)`,
