@@ -145,7 +145,7 @@ const assertPipeline = async (
 ): Promise<void> => {
   await addSampleTo(workdir, sample);
   const result = await runCli(
-    ['process', join(workdir, sample.file), '--frames', '1', '--timeout', '900', '--json'],
+    ['process', join(workdir, sample.file), '--frames', '1', '--timeout', '900', '--force', '--json'],
     workdir,
     PIPELINE_TIMEOUT_MS,
     environment,
