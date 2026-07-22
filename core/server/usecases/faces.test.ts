@@ -28,6 +28,7 @@ class FakeFaceEngine implements FaceEnginePort {
   loadCalls = 0;
   disposeCalls = 0;
   readonly cropWrites: string[] = [];
+  readonly producedCrops: AlignedFaceCrop[] = [];
   readonly detectInputs: Array<FaceFrameInput | string> = [];
   detection: FaceDetection = {
     bbox: { x: 0, y: 0, width: 200, height: 200 },
@@ -53,7 +54,9 @@ class FakeFaceEngine implements FaceEnginePort {
   }
 
   align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
-    return Promise.resolve(ok({ frameJpegPath, detection, width: 112, height: 112 }));
+    const crop: AlignedFaceCrop = { frameJpegPath, detection, width: 112, height: 112, data: new Uint8Array(112 * 112 * 3) };
+    this.producedCrops.push(crop);
+    return Promise.resolve(ok(crop));
   }
 
   embed(): Promise<Result<Float32Array, AppError>> {
@@ -305,6 +308,19 @@ describe('facesIndex', () => {
     if (!observations.ok) throw new Error(observations.error.message);
     const crops = observations.value.filter((observation) => observation.cropPath !== null).length;
     expect(crops).toBe(5);
+  });
+
+  it('releases aligned crop pixel data so memory does not grow with the whole run', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedCatalog(deps);
+
+    const result = await facesIndex(deps, { root: '/work/videos' });
+    expect(result.ok).toBe(true);
+
+    expect(deps.faceEngine.producedCrops.length).toBeGreaterThan(0);
+    const retainingPixels = deps.faceEngine.producedCrops.filter((crop) => crop.data !== undefined);
+    expect(retainingPixels).toHaveLength(0);
   });
 
   it('reports the distinct disabled error when the models are missing', async () => {

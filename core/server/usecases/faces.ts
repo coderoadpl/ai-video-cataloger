@@ -215,6 +215,7 @@ const runFacesIndex = async (
       observationsAdded += added.value.observationsAdded;
       peopleCreated += added.value.peopleCreated;
       filesIndexed += 1;
+      for (const context of contexts) releaseCropPixels(context.alignedCrop);
     }
   } finally {
     await deps.faceEngine.dispose();
@@ -308,6 +309,7 @@ const indexDetection = async (
   };
   const stored = await deps.globalCatalog.upsertFaceObservation(observation);
   if (!stored.ok) return stored;
+  if (assignedPersonId !== null) releaseCropPixels(aligned.value);
   contexts.push({ observation, alignedCrop: aligned.value });
   if (assignedPersonId !== null) {
     const updated = await updatePersonCentroid(deps.globalCatalog, assignedPersonId, embedding);
@@ -342,7 +344,7 @@ const seedNewPersonIfReady = async (
   for (const index of seed) {
     const context = unassigned[index];
     if (context === undefined) continue;
-    const cropPath = assigned < FACE_LIMITS.maxExemplarsPerPerson
+    const cropPath = assigned < FACE_LIMITS.maxExemplarsPerPerson && context.alignedCrop.data !== undefined
       ? await nextCropPath(deps, personId, context.alignedCrop)
       : null;
     if (typeof cropPath !== 'string' && cropPath !== null) return cropPath;
@@ -350,6 +352,7 @@ const seedNewPersonIfReady = async (
     const updated = await deps.globalCatalog.upsertFaceObservation(observation);
     if (!updated.ok) return updated;
     context.observation = observation;
+    releaseCropPixels(context.alignedCrop);
     assigned += 1;
   }
   return ok(1);
@@ -419,6 +422,10 @@ const personView = (person: Person, observations: readonly FaceObservation[]): F
     observationCount: matching.length,
     exemplarCropPath: exemplar?.cropPath ?? null,
   };
+};
+
+const releaseCropPixels = (crop: AlignedFaceCrop): void => {
+  crop.data = undefined;
 };
 
 const deleteCropPaths = async (fs: FileSystemPort, cropPaths: readonly string[]): Promise<Result<number, AppError>> => {
