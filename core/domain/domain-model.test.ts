@@ -87,6 +87,7 @@ describe('config schema', () => {
         argsTemplate: ['--add-dir', '{videoDir}', '-p', '{prompt}'],
         promptStyle: 'file-urls',
       },
+      faces_enabled: false,
     });
   });
 

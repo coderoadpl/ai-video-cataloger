@@ -45,6 +45,7 @@ const defaults = {
     argsTemplate: ['--add-dir', '{videoDir}', '-p', '{prompt}'],
     promptStyle: 'file-urls',
   }),
+  faces_enabled: 'false',
 };
 
 const emptyConfig: StoredConfig = {
@@ -59,6 +60,7 @@ const emptyConfig: StoredConfig = {
   analyzer_backend: null,
   local_model: null,
   analyzer_provider: null,
+  faces_enabled: null,
 };
 
 const makeTier = (overrides: Partial<Tier> & { tag: Tier['tag'] }): Tier => ({
@@ -95,6 +97,7 @@ const stubEndpoints = (
     analyzer_backend: config.analyzer_backend ?? defaults.analyzer_backend,
     local_model: config.local_model ?? defaults.local_model,
     analyzer_provider: config.analyzer_provider ?? defaults.analyzer_provider,
+    faces_enabled: config.faces_enabled ?? defaults.faces_enabled,
   };
   const sources = inherited?.sources ?? {
     whisper_binary_path: config.whisper_binary_path === null ? 'default' : 'folder',
@@ -108,6 +111,7 @@ const stubEndpoints = (
     analyzer_backend: config.analyzer_backend === null ? 'default' : 'folder',
     local_model: config.local_model === null ? 'default' : 'folder',
     analyzer_provider: config.analyzer_provider === null ? 'default' : 'folder',
+    faces_enabled: config.faces_enabled === null ? 'default' : 'folder',
   } as const;
   server.use(
     http.get('/api/config', ({ request }) => {
@@ -149,6 +153,7 @@ describe('settings modal', () => {
       analyzer_backend: 'default',
       local_model: 'default',
       analyzer_provider: 'default',
+      faces_enabled: 'default',
     } as const;
     stubEndpoints(emptyConfig, [], { effective, sources });
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);

@@ -265,6 +265,7 @@ export const storedConfigSchema = z.object({
   analyzer_backend: z.string().nullable(),
   local_model: z.string().nullable(),
   analyzer_provider: z.string().nullable(),
+  faces_enabled: z.string().nullable(),
 });
 
 export const storedConfigDefaultsSchema = z.object({
@@ -279,6 +280,7 @@ export const storedConfigDefaultsSchema = z.object({
   analyzer_backend: z.string(),
   local_model: z.string(),
   analyzer_provider: z.string(),
+  faces_enabled: z.string(),
 });
 
 export const configValueSourcesSchema = z.object({
@@ -293,6 +295,7 @@ export const configValueSourcesSchema = z.object({
   analyzer_backend: z.enum(['folder', 'home', 'default']),
   local_model: z.enum(['folder', 'home', 'default']),
   analyzer_provider: z.enum(['folder', 'home', 'default']),
+  faces_enabled: z.enum(['folder', 'home', 'default']),
 });
 
 export const configEntrySchema = z.object({

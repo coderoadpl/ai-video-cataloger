@@ -1,4 +1,4 @@
-import { integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
+import { blob, integer, primaryKey, real, sqliteTable, text } from 'drizzle-orm/sqlite-core';
 
 export const folders = sqliteTable('folders', {
   folderId: text('folder_id').primaryKey(),
@@ -63,7 +63,39 @@ export const driveRuns = sqliteTable('drive_runs', {
   lastActivityAt: text('last_activity_at').notNull(),
 });
 
-export const globalCatalogSchema = { folders, files, analyses, schemaMeta, tags, fileTags, tagAliases, driveRuns };
+export const people = sqliteTable('people', {
+  personId: text('person_id').primaryKey(),
+  displayName: text('display_name'),
+  kind: text('kind').notNull().default('face'),
+  createdAt: text('created_at').notNull(),
+  centroid: blob('centroid'),
+  exemplarCount: integer('exemplar_count').notNull().default(0),
+});
+
+export const faceObservations = sqliteTable('face_observations', {
+  obsId: text('obs_id').primaryKey(),
+  fingerprint: text('fingerprint').notNull(),
+  kind: text('kind').notNull().default('face'),
+  frameTsS: real('frame_ts_s'),
+  bboxJson: text('bbox_json'),
+  embedding: blob('embedding'),
+  quality: real('quality'),
+  personId: text('person_id'),
+  cropPath: text('crop_path'),
+});
+
+export const globalCatalogSchema = {
+  folders,
+  files,
+  analyses,
+  schemaMeta,
+  tags,
+  fileTags,
+  tagAliases,
+  driveRuns,
+  people,
+  faceObservations,
+};
 
 export const createGlobalCatalogSchemaSqlV1 = [
   `CREATE TABLE IF NOT EXISTS folders (
@@ -149,5 +181,29 @@ export const migrateGlobalCatalogSchemaSqlV4 = [
       transcript,
       tags_text,
       tokenize=unicode61
+    )`,
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV5 = [
+  `CREATE TABLE IF NOT EXISTS people (
+      person_id TEXT PRIMARY KEY,
+      display_name TEXT,
+      kind TEXT NOT NULL DEFAULT 'face',
+      created_at TEXT NOT NULL,
+      centroid BLOB,
+      exemplar_count INTEGER NOT NULL DEFAULT 0
+    )`,
+  `CREATE TABLE IF NOT EXISTS face_observations (
+      obs_id TEXT PRIMARY KEY,
+      fingerprint TEXT NOT NULL,
+      kind TEXT NOT NULL DEFAULT 'face',
+      frame_ts_s REAL,
+      bbox_json TEXT,
+      embedding BLOB,
+      quality REAL,
+      person_id TEXT,
+      crop_path TEXT,
+      FOREIGN KEY (fingerprint) REFERENCES files(fingerprint) ON DELETE CASCADE,
+      FOREIGN KEY (person_id) REFERENCES people(person_id) ON DELETE SET NULL
     )`,
 ] as const;

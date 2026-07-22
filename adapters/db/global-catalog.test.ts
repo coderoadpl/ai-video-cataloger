@@ -96,7 +96,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(search.ok && search.value.map((row) => row.fileName)).toEqual(['renamed.mp4']);
   });
 
-  it('migrates an existing v1 database to v4 and persists the migrated schema immediately', async () => {
+  it('migrates an existing v1 database to v5 and persists the migrated schema immediately', async () => {
     const home = await tempHome();
     await writeV1Catalog(home);
 
@@ -110,13 +110,13 @@ describe('SqlJsGlobalCatalogStore', () => {
     const columnResult = reopened.exec('PRAGMA table_info(files)');
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(4);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(5);
     const columnNames = columnResult[0]?.values.map((row) => row[1]).filter((value) => typeof value === 'string') ?? [];
     expect(columnNames).toContain('gps_lat');
     expect(columnNames).toContain('gps_lon');
   });
 
-  it('migrates an existing v2 database to v4 and persists drive run bookkeeping immediately', async () => {
+  it('migrates an existing v2 database to v5 and persists drive run bookkeeping immediately', async () => {
     const home = await tempHome();
     await writeV2Catalog(home);
 
@@ -159,7 +159,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     });
   });
 
-  it('migrates an existing v3 database to v4 with a persisted FTS backfill', async () => {
+  it('migrates an existing v3 database to v5 with a persisted FTS backfill', async () => {
     const home = await tempHome();
     await writeV3Catalog(home);
 

@@ -50,6 +50,7 @@ import {
   migrateGlobalCatalogSchemaSqlV2,
   migrateGlobalCatalogSchemaSqlV3,
   migrateGlobalCatalogSchemaSqlV4,
+  migrateGlobalCatalogSchemaSqlV5,
   schemaMeta,
   tagAliases,
   tags,
@@ -379,6 +380,10 @@ const migrate = (client: Database): boolean => {
     for (const statement of migrateGlobalCatalogSchemaSqlV4) runMigrationStatement(client, statement);
     const db = drizzle(client, { schema: globalCatalogSchema });
     rebuildSearchIndex(db, client);
+    migrated = true;
+  }
+  if (currentVersion < 5) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV5) runMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {

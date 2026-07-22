@@ -84,6 +84,30 @@ describe('catalog snapshot roundtrip', () => {
     expect(gpsAnalysis.ok && gpsAnalysis.value?.tags).toEqual(['dji-drone', 'wide-shot']);
   });
 
+  it('never writes faces data into an exported snapshot', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const source = new InMemoryGlobalCatalogStore();
+    await source.upsertFolder(folder('/work'));
+    await source.upsertFile(file('abc123', '2026-01-05T00:00:00.000Z'));
+    await source.upsertAnalysis({
+      fingerprint: 'abc123',
+      finalName: 'clip.mp4',
+      description: 'A clip',
+      transcript: 'hello world',
+      language: null,
+      tags: ['a-clip'],
+    });
+
+    const exported = await exportFolderSnapshot({ globalCatalog: source, fs }, folder('/work'));
+    expect(exported.ok).toBe(true);
+    const snapshot = await fs.readTextFile(folderSnapshotPath(fs, '/work'));
+    const contents = snapshot.ok && snapshot.value !== null ? snapshot.value : '';
+    for (const forbidden of ['embedding', 'person', 'crop', 'centroid', 'face_observation', 'bbox']) {
+      expect(contents.includes(forbidden)).toBe(false);
+    }
+  });
+
   it('imports a v1 snapshot with missing tags and GPS as empty values', async () => {
     const fs = new InMemoryFileSystem('/work');
     fs.addDirectory('/work');

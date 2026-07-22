@@ -92,6 +92,7 @@ describe('config use-cases', () => {
       analyzer_backend: 'local',
       local_model: 'home:model',
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'home:model' }),
+      faces_enabled: 'true',
     } as const;
     for (const key of CONFIG_KEYS) {
       await setConfig(deps, { key, value: homeValues[key] });
@@ -117,6 +118,7 @@ describe('config use-cases', () => {
           analyzer_backend: 'home',
           local_model: 'home',
           analyzer_provider: 'home',
+          faces_enabled: 'home',
         },
       },
     });
@@ -137,6 +139,7 @@ describe('config use-cases', () => {
       analyzer_backend: 'local',
       local_model: 'home:model',
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'home:model' }),
+      faces_enabled: 'false',
     } as const;
     const folderValues = {
       whisper_binary_path: '/folder/whisper',
@@ -150,6 +153,7 @@ describe('config use-cases', () => {
       analyzer_backend: 'claude',
       local_model: 'folder:model',
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'folder:model' }),
+      faces_enabled: 'true',
     } as const;
     for (const key of CONFIG_KEYS) {
       expect(await setConfig(deps, { key, value: homeValues[key] })).toMatchObject({ ok: true });
@@ -175,6 +179,7 @@ describe('config use-cases', () => {
           analyzer_backend: 'folder',
           local_model: 'folder',
           analyzer_provider: 'folder',
+          faces_enabled: 'folder',
         },
       },
     });

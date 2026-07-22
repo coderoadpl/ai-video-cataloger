@@ -46,6 +46,7 @@ export const configValueSchema = z.object({
   analyzer_backend: analyzerBackendSchema.default('claude'),
   local_model: z.string().min(1).default('gemma3:12b'),
   analyzer_provider: z.preprocess(providerFromPersistedValue, analyzerProviderConfigSchema.optional()),
+  faces_enabled: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
 });
 
 export const configSchema = configValueSchema.transform((config) => ({
@@ -68,6 +69,7 @@ export const CONFIG_KEYS = [
   'analyzer_backend',
   'local_model',
   'analyzer_provider',
+  'faces_enabled',
 ] as const;
 
 export const configKeySchema = z.enum(CONFIG_KEYS);
@@ -89,4 +91,5 @@ export const configDescriptions: Record<ConfigKey, string> = {
   analyzer_backend: 'AI analyzer backend',
   local_model: 'Local AI model tag',
   analyzer_provider: 'Analyzer provider configuration',
+  faces_enabled: 'Experimental local face grouping (opt-in, all data stays on this machine)',
 };
