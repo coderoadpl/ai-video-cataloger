@@ -39,14 +39,14 @@ const onePixelFrame = (r: number, g: number, b: number): RgbFrame => ({
 const detectorOutputs = (): Record<string, OrtTensor> => {
   const outputs: Record<string, OrtTensor> = {};
   for (const stride of [8, 16, 32]) {
-    const cells = (320 / stride) * (320 / stride);
+    const cells = (640 / stride) * (640 / stride);
     outputs[`cls_${stride}`] = { data: new Float32Array(cells), dims: [1, cells, 1] };
     outputs[`obj_${stride}`] = { data: new Float32Array(cells), dims: [1, cells, 1] };
     outputs[`bbox_${stride}`] = { data: new Float32Array(cells * 4), dims: [1, cells, 4] };
     outputs[`kps_${stride}`] = { data: new Float32Array(cells * 10), dims: [1, cells, 10] };
   }
   const stride = 8;
-  const cols = 320 / stride;
+  const cols = 640 / stride;
   const row = 15;
   const col = 20;
   const anchor = row * cols + col;
@@ -174,11 +174,11 @@ describe('registry entries are pinned', () => {
 describe('pixel preprocessing', () => {
   it('pins YuNet input as BGR NCHW float values without normalization', () => {
     const prepared = createYuNetTensor(onePixelFrame(10, 20, 30));
-    const plane = 320 * 320;
+    const plane = 640 * 640;
     expect(prepared.tensor[0]).toBe(30);
     expect(prepared.tensor[plane]).toBe(20);
     expect(prepared.tensor[2 * plane]).toBe(10);
-    expect(prepared.meta).toMatchObject({ scale: 320, offsetX: 0, offsetY: 0, resizedWidth: 320, resizedHeight: 320 });
+    expect(prepared.meta).toMatchObject({ scale: 640, offsetX: 0, offsetY: 0, resizedWidth: 640, resizedHeight: 640 });
   });
 
   it('pins SFace input as BGR NCHW float values without normalization', () => {
@@ -232,12 +232,12 @@ describe('pixel preprocessing', () => {
 
 describe('YuNet postprocessing', () => {
   const meta: LetterboxMeta = {
-    sourceWidth: 320,
-    sourceHeight: 320,
-    targetWidth: 320,
-    targetHeight: 320,
-    resizedWidth: 320,
-    resizedHeight: 320,
+    sourceWidth: 640,
+    sourceHeight: 640,
+    targetWidth: 640,
+    targetHeight: 640,
+    resizedWidth: 640,
+    resizedHeight: 640,
     offsetX: 0,
     offsetY: 0,
     scale: 1,

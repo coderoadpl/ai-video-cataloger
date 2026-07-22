@@ -68,7 +68,7 @@ interface RgbSample {
   b: number;
 }
 
-const YUNET_INPUT_SIZE = 320;
+const YUNET_INPUT_SIZE = 640;
 const SFACE_INPUT_SIZE = 112;
 const YUNET_STRIDES: readonly [8, 16, 32] = [8, 16, 32];
 const YUNET_NMS_THRESHOLD = 0.3;

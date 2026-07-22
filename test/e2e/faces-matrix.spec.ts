@@ -52,9 +52,9 @@ test('real YuNet and SFace sessions on synthetic inputs', async () => {
     expect([...first.value]).toEqual([...firstAgain.value]);
     expect(cosineSimilarity([...first.value], [...second.value])).toBeLessThan(0.999);
 
-    const prepared = createYuNetTensor({ width: 640, height: 320, data: new Uint8Array(640 * 320 * 3).fill(7) });
+    const prepared = createYuNetTensor({ width: 1280, height: 640, data: new Uint8Array(1280 * 640 * 3).fill(7) });
     expect(prepared.meta.scale).toBe(0.5);
-    expect(prepared.meta.offsetY).toBe(80);
+    expect(prepared.meta.offsetY).toBe(160);
     const warped = warpAlignedFaceRgb(
       { width: 2, height: 2, data: new Uint8Array([0, 0, 0, 100, 0, 0, 200, 0, 0, 255, 0, 0]) },
       { a: 1, b: 0, tx: -0.5, ty: -0.5 },
