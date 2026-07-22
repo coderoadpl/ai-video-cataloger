@@ -406,6 +406,10 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return path.join('.ai-video-cataloger', 'catalog.db');
   }
 
+  flush(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
   listFolders(): Promise<Result<CatalogFolder[], AppError>> {
     return Promise.resolve(ok([...this.folders.values()]));
   }

@@ -133,6 +133,7 @@ export const processDrive = async (
   if (deps.globalCatalog === undefined) {
     return { ok: false, error: appError('internal', 'Global catalog is required for drive processing') };
   }
+  const globalCatalog = deps.globalCatalog;
   const discovery = await discoverCatalogFolders(deps.fs, { root: input.root });
   if (!discovery.ok) return discovery;
   if (discovery.value.folders.length === 0) {
@@ -236,6 +237,8 @@ export const processDrive = async (
     state.run.foldersDone += 1;
     const persisted = await persistRun(deps, state, now);
     if (!persisted.ok) return persisted;
+    const flushedFolder = await globalCatalog.flush();
+    if (!flushedFolder.ok) return flushedFolder;
     const done = await reportFolderDone(progress, folder.path, folderCounts);
     if (!done.ok) return done;
   }
@@ -243,6 +246,8 @@ export const processDrive = async (
   state.run.finishedAt = now().toISOString();
   const persisted = await persistRun(deps, state, now);
   if (!persisted.ok) return persisted;
+  const flushedRun = await globalCatalog.flush();
+  if (!flushedRun.ok) return flushedRun;
   return reportSummary(deps, state, progress, now);
 };
 

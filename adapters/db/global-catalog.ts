@@ -64,6 +64,7 @@ import {
 
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'catalog.db';
+const AUTO_FLUSH_MUTATION_COUNT = 25;
 
 type GlobalSchema = typeof globalCatalogSchema;
 type GlobalDrizzle = SQLJsDatabase<GlobalSchema>;
@@ -79,6 +80,7 @@ export interface GlobalCatalogAdapterOptions {
 
 export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private readonly filePath: string;
+  private dirtyCount = 0;
   private state: {
     SQL: SqlJsStatic;
     client: Database;
@@ -92,6 +94,18 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   databasePath(): string {
     return this.filePath;
+  }
+
+  async flush(): Promise<Result<void, AppError>> {
+    if (this.state === null || this.dirtyCount === 0) return ok(undefined);
+    try {
+      this.persist(this.state);
+      return ok(undefined);
+    } catch (cause) {
+      this.state = null;
+      this.dirtyCount = 0;
+      return failure(cause);
+    }
   }
 
   async listFolders(): Promise<Result<CatalogFolder[], AppError>> {
@@ -508,17 +522,24 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     try {
       const state = await this.ensureOpen();
       const value = operation(state.db, state.client);
-      persistDatabase(this.filePath, state.client);
-      state.fileState = fileStateOf(this.filePath);
+      this.dirtyCount += 1;
+      if (this.dirtyCount >= AUTO_FLUSH_MUTATION_COUNT) this.persist(state);
       return ok(value);
     } catch (cause) {
       this.state = null;
+      this.dirtyCount = 0;
       return failure(cause);
     }
   }
 
+  private persist(state: NonNullable<SqlJsGlobalCatalogStore['state']>): void {
+    persistDatabase(this.filePath, state.client);
+    state.fileState = fileStateOf(this.filePath);
+    this.dirtyCount = 0;
+  }
+
   private async ensureOpen(): Promise<NonNullable<SqlJsGlobalCatalogStore['state']>> {
-    if (this.state !== null && sameFileState(this.state.fileState, fileStateOf(this.filePath))) {
+    if (this.state !== null && (this.dirtyCount > 0 || sameFileState(this.state.fileState, fileStateOf(this.filePath)))) {
       return this.state;
     }
     mkdirSync(path.dirname(this.filePath), { recursive: true });

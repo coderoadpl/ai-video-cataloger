@@ -116,6 +116,7 @@ export interface DriveRunRecord {
 
 export interface GlobalCatalogStore {
   databasePath(): string;
+  flush(): Promise<Result<void, AppError>>;
   listFolders(): Promise<Result<CatalogFolder[], AppError>>;
   getFolder(folderId: string): Promise<Result<CatalogFolder | null, AppError>>;
   upsertFolder(folder: CatalogFolder): Promise<Result<void, AppError>>;

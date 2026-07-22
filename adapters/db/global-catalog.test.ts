@@ -63,6 +63,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       language: 'en',
       tags: ['a-clip'],
     })).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
 
     const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     const counts = await reopened.counts();
@@ -96,6 +97,39 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(search.ok && search.value.map((row) => row.fileName)).toEqual(['renamed.mp4']);
   });
 
+  it('batches writes: a crash before flush loses only un-flushed rows and a re-run heals', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+
+    const afterCrash = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const crashedCounts = await afterCrash.counts();
+    expect(crashedCounts.ok && crashedCounts.value).toEqual({ folders: 0, files: 0, analyses: 0 });
+
+    const healed = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await healed.upsertFolder(folder);
+    await healed.upsertFile(file);
+    expect((await healed.flush()).ok).toBe(true);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value).toEqual({ folders: 1, files: 1, analyses: 0 });
+  });
+
+  it('auto-flushes once the batched mutation count is reached', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    for (let index = 0; index < 25; index += 1) {
+      await store.upsertFile({ ...file, fingerprint: `fp-${String(index)}`, fileName: `clip-${String(index)}.mp4` });
+    }
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value.files).toBeGreaterThanOrEqual(24);
+  });
+
   it('forgetPerson deletes the person and its face observations including embeddings', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -123,6 +157,7 @@ describe('SqlJsGlobalCatalogStore', () => {
 
     const forgotten = await store.forgetPerson('person-1');
     expect(forgotten.ok && forgotten.value.deleted).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
 
     const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     const people = await reopened.listPeople();
@@ -188,6 +223,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       lastActivityAt: '2026-01-01T00:10:00.000Z',
     });
     expect(updated.ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
 
     const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     const latest = await reopened.latestDriveRun();

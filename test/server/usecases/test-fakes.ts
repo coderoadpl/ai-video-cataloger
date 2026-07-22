@@ -782,8 +782,15 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   constructor(private readonly path = '/home/.ai-video-cataloger/catalog.db') {}
 
+  flushCount = 0;
+
   databasePath(): string {
     return this.path;
+  }
+
+  flush(): Promise<Result<void, AppError>> {
+    this.flushCount += 1;
+    return Promise.resolve(ok(undefined));
   }
 
   listFolders(): Promise<Result<CatalogFolder[], AppError>> {

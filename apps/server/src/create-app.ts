@@ -16,6 +16,8 @@ export const createApp = (config: AppConfig = {}): App => {
   return {
     honoApp: buildApp(deps),
     jobs: deps.jobs,
-    dispose: () => Promise.resolve(),
+    dispose: async () => {
+      await deps.globalCatalog.flush();
+    },
   };
 };
