@@ -91,7 +91,11 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       let allOk = true;
       for (const key of keys) {
         try {
-          await setConfig.mutateAsync({ folder, key, value: serializeValue(draft, key) });
+          await setConfig.mutateAsync({
+            ...(key === 'faces_enabled' ? {} : { folder }),
+            key,
+            value: serializeValue(draft, key),
+          });
         } catch (error) {
           allOk = false;
           setSaveError(messageOf(error));

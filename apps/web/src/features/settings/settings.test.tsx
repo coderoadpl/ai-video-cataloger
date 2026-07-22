@@ -202,6 +202,34 @@ describe('settings modal', () => {
     expect(bodies).toEqual([{ folder: FOLDER, key: 'skip_rename', value: 'true' }]);
   });
 
+  it('shows local face grouping copy and saves the opt-in globally', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { folder?: string | undefined; key: string; value: string }[] = [];
+    stubEndpoints(emptyConfig);
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push(body);
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null },
+        });
+      }),
+    );
+    const onClose = vi.fn();
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={onClose} />);
+
+    expect(await screen.findByText('Local face grouping (experimental)')).toBeDefined();
+    expect(screen.getByText(/face grouping is opt-in/u).textContent).toContain('grouping');
+    expect(screen.queryByText(/recognition/iu)).toBeNull();
+
+    fireEvent.click(screen.getByTestId('faces-enabled-switch'));
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(bodies).toEqual([{ key: 'faces_enabled', value: 'true' }]);
+  });
+
   it('warns when the selected local model is unsupported', async () => {
     stubEndpoints({ ...emptyConfig, analyzer_backend: 'local', local_model: 'gemma3:27b' }, [
       makeTier({ tag: 'gemma3:27b', supportLevel: 'insufficient-ram', installed: false }),

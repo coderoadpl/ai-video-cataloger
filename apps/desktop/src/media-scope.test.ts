@@ -59,6 +59,16 @@ describe('resolveScopedImage', () => {
     expect(await resolveScopedImage(outsideImage, root)).toBeNull();
     expect(await resolveScopedImage(linkPath, root)).toBeNull();
   });
+
+  it('allows images inside an extra faces scope', async () => {
+    const root = await tempRoot();
+    const facesRoot = await tempRoot();
+    const cropPath = path.join(facesRoot, 'p1', 'exemplar-001.jpg');
+    await mkdir(path.dirname(cropPath), { recursive: true });
+    await writeFile(cropPath, 'image', 'utf8');
+
+    expect(await resolveScopedImage(cropPath, root, undefined, [facesRoot])).toBe(await realpath(cropPath));
+  });
 });
 
 describe('resolveScopedPath', () => {

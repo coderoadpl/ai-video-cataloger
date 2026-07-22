@@ -78,6 +78,12 @@ export type CancelJobInput = z.input<typeof API_ROUTES.jobCancel.input>;
 export type TestProviderInput = z.input<typeof API_ROUTES.providerTest.input>;
 export type ReadinessInput = z.input<typeof API_ROUTES.readiness.input>;
 export type SearchInput = z.input<typeof API_ROUTES.searchQuery.input>;
+export type InstallFaceArtifactsInput = z.input<typeof API_ROUTES.faceArtifactsInstall.input>;
+export type FacesIndexInput = z.input<typeof API_ROUTES.facesIndex.input>;
+export type FacesNameInput = z.input<typeof API_ROUTES.facesName.input>;
+export type FacesMergeInput = z.input<typeof API_ROUTES.facesMerge.input>;
+export type FacesForgetInput = z.input<typeof API_ROUTES.facesForget.input>;
+export type FacesPurgeInput = z.input<typeof API_ROUTES.facesPurge.input>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
 
@@ -144,6 +150,16 @@ export const searchScopes = {
     ['search', input.query, input.limit, input.offset] as const,
 };
 
+export const faceArtifactsScopes = {
+  all: () => ['models', 'faces'] as const,
+};
+
+export const facesScopes = {
+  all: () => ['faces'] as const,
+  status: () => ['faces', 'status'] as const,
+  people: () => ['faces', 'people'] as const,
+};
+
 export const mutationScopes = {
   processVideo: () => ['processVideo'] as const,
   generateThumbnail: () => ['generateThumbnail'] as const,
@@ -160,6 +176,12 @@ export const mutationScopes = {
   stopLocalAiDaemon: () => ['stopLocalAiDaemon'] as const,
   cancelJob: () => ['cancelJob'] as const,
   testProvider: () => ['testProvider'] as const,
+  installFaceArtifacts: () => ['installFaceArtifacts'] as const,
+  facesIndex: () => ['facesIndex'] as const,
+  facesName: () => ['facesName'] as const,
+  facesMerge: () => ['facesMerge'] as const,
+  facesForget: () => ['facesForget'] as const,
+  facesPurge: () => ['facesPurge'] as const,
 };
 
 interface RefetchQuery<TData> {
@@ -293,6 +315,26 @@ export const searchQuery = (api: ApiClient, input: SearchInput) => {
   });
 };
 
+export const faceArtifactsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: faceArtifactsScopes.all(),
+    call: ({ signal }) => api.faceArtifactsStatus(signal),
+  });
+
+export const facesStatusQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: facesScopes.status(),
+    staleTime: 0,
+    call: ({ signal }) => api.facesStatus(signal),
+  });
+
+export const facesPeopleQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: facesScopes.people(),
+    staleTime: 0,
+    call: ({ signal }) => api.facesPeople(signal),
+  });
+
 export const processVideoMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.processVideo(),
@@ -381,4 +423,40 @@ export const cancelJobMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.cancelJob(),
     call: (variables: CancelJobInput) => api.cancelJob(variables),
+  });
+
+export const installFaceArtifactsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.installFaceArtifacts(),
+    call: (variables: InstallFaceArtifactsInput) => api.installFaceArtifacts(variables),
+  });
+
+export const facesIndexMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.facesIndex(),
+    call: (variables: FacesIndexInput) => api.facesIndex(variables),
+  });
+
+export const facesNameMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.facesName(),
+    call: (variables: FacesNameInput) => api.facesName(variables),
+  });
+
+export const facesMergeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.facesMerge(),
+    call: (variables: FacesMergeInput) => api.facesMerge(variables),
+  });
+
+export const facesForgetMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.facesForget(),
+    call: (variables: FacesForgetInput) => api.facesForget(variables),
+  });
+
+export const facesPurgeMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.facesPurge(),
+    call: (variables: FacesPurgeInput) => api.facesPurge(variables),
   });

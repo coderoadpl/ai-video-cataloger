@@ -32,6 +32,7 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
     skip_rename: config.skip_rename ?? defaults.skip_rename,
     analyzer_backend: config.analyzer_backend ?? defaults.analyzer_backend,
     local_model: config.local_model ?? defaults.local_model,
+    faces_enabled: config.faces_enabled ?? defaults.faces_enabled,
     ...(config.analyzer_provider === null ? {} : { analyzer_provider: config.analyzer_provider }),
   };
   const parsed = configSchema.safeParse(raw);

@@ -20,7 +20,7 @@ await Promise.all([
     platform: 'node',
     format: 'esm',
     target: 'node22',
-    external: ['electron'],
+    external: ['electron', 'onnxruntime-node'],
     banner: { js: requireShim },
   }),
   build({

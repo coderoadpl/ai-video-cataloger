@@ -61,6 +61,11 @@ interface ObservationContext {
   alignedCrop: AlignedFaceCrop;
 }
 
+interface FacePersonView extends Person {
+  observationCount: number;
+  exemplarCropPath: string | null;
+}
+
 export const facesIndex = async (
   deps: FacesDeps,
   input: { root: string },
@@ -75,12 +80,14 @@ export const facesIndex = async (
   });
 };
 
-export const facesPeople = async (deps: FacesDeps): Promise<Result<{ people: Person[] }, AppError>> => {
+export const facesPeople = async (deps: FacesDeps): Promise<Result<{ people: FacePersonView[] }, AppError>> => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
   const people = await deps.globalCatalog.listPeople();
   if (!people.ok) return people;
-  return ok({ people: people.value });
+  const observations = await deps.globalCatalog.listFaceObservations();
+  if (!observations.ok) return observations;
+  return ok({ people: people.value.map((person) => personView(person, observations.value)) });
 };
 
 export const facesName = async (
@@ -402,6 +409,16 @@ const faceArtifactsReady = async (downloads: ModelDownloadPort): Promise<Result<
     if (!downloaded.value) return ok(false);
   }
   return ok(true);
+};
+
+const personView = (person: Person, observations: readonly FaceObservation[]): FacePersonView => {
+  const matching = observations.filter((observation) => observation.personId === person.personId);
+  const exemplar = matching.find((observation) => observation.cropPath !== null);
+  return {
+    ...person,
+    observationCount: matching.length,
+    exemplarCropPath: exemplar?.cropPath ?? null,
+  };
 };
 
 const deleteCropPaths = async (fs: FileSystemPort, cropPaths: readonly string[]): Promise<Result<number, AppError>> => {

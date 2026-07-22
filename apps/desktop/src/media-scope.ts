@@ -20,11 +20,14 @@ export const resolveScopedImage = async (
   requestedPath: string,
   rootFolder: string | null,
   maxBytes = MAX_MEDIA_BYTES,
+  extraRoots: readonly string[] = [],
 ): Promise<string | null> => {
-  if (rootFolder === null) return null;
   if (!ALLOWED_EXTENSIONS.has(path.extname(requestedPath).toLowerCase())) return null;
 
-  const realRequested = await resolveScopedPath(requestedPath, rootFolder);
+  const realRequested = await resolveAnyScopedPath(
+    requestedPath,
+    rootFolder === null ? extraRoots : [rootFolder, ...extraRoots],
+  );
   if (realRequested === null) return null;
 
   try {
@@ -36,6 +39,17 @@ export const resolveScopedImage = async (
   }
 
   return realRequested;
+};
+
+const resolveAnyScopedPath = async (
+  requestedPath: string,
+  rootFolders: readonly string[],
+): Promise<string | null> => {
+  for (const rootFolder of rootFolders) {
+    const scoped = await resolveScopedPath(requestedPath, rootFolder);
+    if (scoped !== null) return scoped;
+  }
+  return null;
 };
 
 export const resolveScopedPath = async (

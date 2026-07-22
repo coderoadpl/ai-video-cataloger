@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow } from 'electron';
@@ -101,6 +102,7 @@ const bootstrap = async (): Promise<void> => {
       if (folderStore === null) return Promise.resolve(null);
       return folderStore.getCurrent();
     },
+    getFacesRoot: () => Promise.resolve(path.join(homedir(), '.ai-video-cataloger', 'faces')),
   });
   await createWindow();
 };

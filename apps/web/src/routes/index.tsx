@@ -1,4 +1,5 @@
-import { Box } from '@mui/material';
+import { useState } from 'react';
+import { Box, Button, ButtonGroup } from '@mui/material';
 
 import { BatchToolbar } from '../components/ui/BatchToolbar.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
@@ -9,6 +10,7 @@ import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
+import { PeopleView } from '../features/people/PeopleView.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
 import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
 import { useReadiness } from '../features/readiness/use-readiness.js';
@@ -22,6 +24,8 @@ import { AppShell } from '../features/shell/AppShell.js';
 import { useShell } from '../features/shell/use-shell.js';
 
 export const IndexRoute = () => {
+  const [activeView, setActiveView] = useState<'videos' | 'people'>('videos');
+  const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const shell = useShell();
   const globalSearch = useGlobalSearch();
   const terminal = useTerminalLog();
@@ -59,7 +63,7 @@ export const IndexRoute = () => {
     />
   );
 
-  const detailContent = globalSearch.active ? (
+  const detailContent = activeView === 'people' ? null : globalSearch.active ? (
     <SearchResults search={globalSearch} onOpenFolder={shell.selectRecentFolder} />
   ) : (
     <DetailsPanel
@@ -71,7 +75,7 @@ export const IndexRoute = () => {
   );
 
   const content = (
-    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+    <Box sx={{ display: activeView === 'videos' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
       <Box
         data-testid="analysis-state"
         data-analyzing={processing.isBusy ? 'true' : 'false'}
@@ -84,6 +88,25 @@ export const IndexRoute = () => {
         {detailContent}
       </Box>
     </Box>
+  );
+
+  const navigation = (
+    <ButtonGroup fullWidth size="small" variant="outlined" aria-label="Main view">
+      <Button
+        variant={activeView === 'videos' ? 'contained' : 'outlined'}
+        onClick={() => setActiveView('videos')}
+        data-testid="nav-videos"
+      >
+        Videos
+      </Button>
+      <Button
+        variant={activeView === 'people' ? 'contained' : 'outlined'}
+        onClick={() => setActiveView('people')}
+        data-testid="nav-people"
+      >
+        People
+      </Button>
+    </ButtonGroup>
   );
 
   const overlays = (
@@ -105,7 +128,19 @@ export const IndexRoute = () => {
     <AppShell
       shell={shell}
       sidebar={sidebar}
-      content={content}
+      navigation={navigation}
+      modalRequest={modalRequest}
+      onModalRequestConsumed={() => setModalRequest(null)}
+      content={
+        activeView === 'people' ? (
+          <PeopleView
+            active={activeView === 'people'}
+            folder={shell.currentFolder}
+            addLine={terminal.addLine}
+            onOpenSettings={() => setModalRequest('settings')}
+          />
+        ) : content
+      }
       searchQuery={globalSearch.query}
       onSearchQueryChange={globalSearch.setQuery}
       autoOpenSetup={firstLaunch.shouldAutoOpen}

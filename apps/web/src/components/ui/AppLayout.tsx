@@ -14,6 +14,7 @@ interface AppLayoutProps {
   header: ReactNode;
   sidebar: ReactNode;
   content: ReactNode;
+  navigation?: ReactNode;
   terminal: ReactNode;
   sidebarCollapsed: boolean;
   terminalCollapsed: boolean;
@@ -29,6 +30,7 @@ export const AppLayout = ({
   header,
   sidebar,
   content,
+  navigation,
   terminal,
   sidebarCollapsed,
   terminalCollapsed,
@@ -67,18 +69,27 @@ export const AppLayout = ({
             <Box
               sx={{
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                flexDirection: 'column',
+                gap: 1,
                 px: 2,
                 py: 1.25,
                 borderBottom: 1,
                 borderColor: 'divider',
               }}
             >
-              <Typography variant="h2">Videos</Typography>
-              <Button size="small" color="inherit" onClick={onToggleSidebar}>
-                Hide
-              </Button>
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Typography variant="h2">Videos</Typography>
+                <Button size="small" color="inherit" onClick={onToggleSidebar}>
+                  Hide
+                </Button>
+              </Box>
+              {navigation}
             </Box>
             <Box sx={{ flex: 1, overflow: 'auto' }}>{sidebar}</Box>
           </Box>

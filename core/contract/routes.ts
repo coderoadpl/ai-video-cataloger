@@ -750,6 +750,8 @@ export const facePersonSchema = z.object({
   createdAt: z.string().datetime(),
   centroid: z.array(z.number()).length(128),
   exemplarCount: z.number().int().nonnegative(),
+  observationCount: z.number().int().nonnegative(),
+  exemplarCropPath: z.string().min(1).nullable(),
 });
 
 export const facesPeopleOutputSchema = z.object({

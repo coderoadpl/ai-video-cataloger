@@ -5,6 +5,7 @@ import { parseMediaUrl, resolveScopedImage } from './media-scope.js';
 
 export interface MediaProtocolDeps {
   getCurrentFolder(): Promise<string | null>;
+  getFacesRoot?(): Promise<string | null>;
 }
 
 export const registerMediaScheme = (): void => {
@@ -18,7 +19,13 @@ export const registerMediaProtocolHandler = (deps: MediaProtocolDeps): void => {
     const requestedPath = parseMediaUrl(request.url);
     if (requestedPath === null) return new Response(null, { status: 403 });
 
-    const realPath = await resolveScopedImage(requestedPath, await deps.getCurrentFolder());
+    const facesRoot = await deps.getFacesRoot?.();
+    const realPath = await resolveScopedImage(
+      requestedPath,
+      await deps.getCurrentFolder(),
+      undefined,
+      facesRoot === undefined || facesRoot === null ? [] : [facesRoot],
+    );
     if (realPath === null) return new Response(null, { status: 403 });
 
     return net.fetch(pathToFileURL(realPath).toString());

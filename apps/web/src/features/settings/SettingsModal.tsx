@@ -65,7 +65,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
             {settings.error === null ? null : <Alert severity="error">{settings.error}</Alert>}
             {settings.inherited.length === 0 ? null : (
               <Typography variant="caption" color="text.secondary" data-testid="settings-inherited-hint">
-                Inherited values: {settings.inherited.join(', ')}. Changing a value here creates a folder override.
+                Inherited values: {settings.inherited.join(', ')}. Most changed values create a folder override.
               </Typography>
             )}
 
@@ -168,6 +168,25 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
               onProviderChange={(provider) => patch({ analyzer_provider: provider })}
               onApiCredentialChange={settings.setApiCredential}
             />
+
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                Local face grouping (experimental)
+              </Typography>
+              <FormControlLabel
+                control={
+                  <Switch
+                    checked={draft.faces_enabled}
+                    data-testid="faces-enabled-switch"
+                    onChange={(event) => patch({ faces_enabled: event.target.checked })}
+                  />
+                }
+                label="Enable local face grouping"
+              />
+              <Typography variant="caption">
+                Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.
+              </Typography>
+            </Box>
 
             <FormControlLabel
               control={

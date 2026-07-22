@@ -27,10 +27,13 @@ interface AppShellProps {
   shell: ShellState;
   sidebar: ReactNode;
   content: ReactNode;
+  navigation?: ReactNode;
   terminal?: TerminalPanelState;
   overlays?: ReactNode;
   renderModals?: (state: ShellModalState) => ReactNode;
   renderBanner?: (openModal: (modal: ShellModal) => void) => ReactNode;
+  modalRequest?: ShellModal | null;
+  onModalRequestConsumed?: () => void;
   autoOpenSetup?: boolean;
   onAutoOpenSetupConsumed?: () => void;
   searchQuery?: string;
@@ -41,10 +44,13 @@ export const AppShell = ({
   shell,
   sidebar,
   content,
+  navigation,
   terminal,
   overlays,
   renderModals,
   renderBanner,
+  modalRequest = null,
+  onModalRequestConsumed,
   autoOpenSetup = false,
   onAutoOpenSetupConsumed,
   searchQuery = '',
@@ -74,6 +80,12 @@ export const AppShell = ({
     consumedCallback.current?.();
   }, [autoOpenSetup]);
 
+  useEffect(() => {
+    if (modalRequest === null) return;
+    setModal(modalRequest);
+    onModalRequestConsumed?.();
+  }, [modalRequest, onModalRequestConsumed]);
+
   return (
     <>
       <AppLayout
@@ -92,6 +104,7 @@ export const AppShell = ({
           />
         }
         sidebar={sidebar}
+        navigation={navigation}
         content={
           <>
             {renderBanner?.(setModal)}

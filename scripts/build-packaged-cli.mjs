@@ -20,6 +20,7 @@ await build({
   platform: 'node',
   format: 'esm',
   target: 'node22',
+  external: ['onnxruntime-node'],
   banner: { js: requireShim },
 });
 await writeFile(
