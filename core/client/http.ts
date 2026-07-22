@@ -24,6 +24,7 @@ import {
   resetAllOutputSchema,
   resetSingleOutputSchema,
   scanOutputSchema,
+  searchOutputSchema,
   statusOutputSchema,
   tagsAliasOutputSchema,
   tagsListOutputSchema,
@@ -453,6 +454,22 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  search: (input: z.input<typeof API_ROUTES.searchQuery.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.searchQuery.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.searchQuery.method,
+      queryPath(API_ROUTES.searchQuery.path, [
+        ['query', parsed.value.query],
+        ['limit', String(parsed.value.limit)],
+        ['offset', String(parsed.value.offset)],
+      ]),
+      searchOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   aliasTag: (input: z.input<typeof API_ROUTES.tagsAlias.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.tagsAlias.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

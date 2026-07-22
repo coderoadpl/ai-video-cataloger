@@ -56,6 +56,25 @@ export interface CatalogTagAliasResult {
   remappedFiles: number;
 }
 
+export interface CatalogSearchInput {
+  match: string;
+  rankingTerms: string[];
+  limit: number;
+  offset: number;
+}
+
+export interface CatalogSearchRow {
+  fingerprint: string;
+  fileName: string;
+  finalName: string | null;
+  description: string | null;
+  snippet: string;
+  tags: string[];
+  folder: CatalogFolder;
+  gps: { lat: number; lon: number } | null;
+  score: number;
+}
+
 export interface GlobalCatalogCounts {
   folders: number;
   files: number;
@@ -87,6 +106,8 @@ export interface GlobalCatalogStore {
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
   listTags(): Promise<Result<CatalogTagSummary[], AppError>>;
   aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>>;
+  search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>>;
+  rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;

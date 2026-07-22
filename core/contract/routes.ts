@@ -26,6 +26,11 @@ const optionalFolderInputSchema = z.object({ folder: z.string().min(1).optional(
 const videoPathInputSchema = z.object({ videoPath: z.string().min(1) });
 const forceInputSchema = z.object({ force: z.boolean().default(false) });
 const jobIdInputSchema = z.object({ jobId: z.string().min(1) });
+const queryInteger = (fallback: number, min: number, max: number) =>
+  z.preprocess(
+    (value) => typeof value === 'string' && value.length > 0 ? Number.parseInt(value, 10) : value,
+    z.number().int().min(min).max(max).default(fallback),
+  );
 
 export const summarySchema = z.object({
   schemaVersion: z.literal(1),
@@ -658,6 +663,39 @@ export const tagsAliasOutputSchema = z.object({
   remappedFiles: z.number().int().nonnegative(),
 });
 
+export const searchInputSchema = z.object({
+  query: z.string().min(1),
+  limit: queryInteger(50, 1, 200),
+  offset: queryInteger(0, 0, 100_000),
+});
+
+export const searchResultSchema = z.object({
+  fingerprint: z.string().min(1),
+  fileName: z.string().min(1),
+  finalName: z.string().nullable(),
+  description: z.string().nullable(),
+  snippet: z.string(),
+  tags: z.array(z.string()),
+  folder: z.object({
+    folderId: z.string().uuid(),
+    currentPath: z.string().min(1),
+    displayName: z.string(),
+    online: z.boolean(),
+  }),
+  gps: z.object({
+    lat: z.number().min(-90).max(90),
+    lon: z.number().min(-180).max(180),
+  }).nullable(),
+});
+
+export const searchOutputSchema = z.object({
+  query: z.string(),
+  limit: z.number().int().positive(),
+  offset: z.number().int().nonnegative(),
+  count: z.number().int().nonnegative(),
+  results: z.array(searchResultSchema),
+});
+
 export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.ZodTypeAny> {
   method: 'GET' | 'POST' | 'DELETE';
   path: string;
@@ -769,6 +807,7 @@ export const API_ROUTES = {
   indexRebuild: { method: 'POST', path: '/api/index/rebuild', input: emptyInputSchema, output: indexRebuildOutputSchema },
   tagsList: { method: 'GET', path: '/api/tags', input: emptyInputSchema, output: tagsListOutputSchema },
   tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
+  searchQuery: { method: 'GET', path: '/api/search', input: searchInputSchema, output: searchOutputSchema },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -808,4 +847,5 @@ export const API_PATHS = {
   indexRebuild: API_ROUTES.indexRebuild.path,
   tagsList: API_ROUTES.tagsList.path,
   tagsAlias: API_ROUTES.tagsAlias.path,
+  searchQuery: API_ROUTES.searchQuery.path,
 } as const;

@@ -133,6 +133,26 @@ describe('createApiClient route calls', () => {
     await expect(client.scan({ folder: '/videos/A B' })).resolves.toMatchObject({ ok: true });
   });
 
+  it('sends search input as GET query params', async () => {
+    const fetchImpl: typeof fetch = async (input, init) => {
+      expect(input).toBe('/api/search?query=drone+clip&limit=25&offset=5');
+      expect(init).toMatchObject({ method: 'GET' });
+      return jsonResponse({
+        ok: true,
+        data: {
+          query: 'drone clip',
+          limit: 25,
+          offset: 5,
+          count: 0,
+          results: [],
+        },
+      });
+    };
+    const client = createApiClient({ baseUrl: '', fetchImpl });
+
+    await expect(client.search({ query: 'drone clip', limit: 25, offset: 5 })).resolves.toMatchObject({ ok: true });
+  });
+
   it('zod-parses command input before sending JSON bodies', async () => {
     const fetchImpl: typeof fetch = async (input, init) => {
       expect(input).toBe('/api/process');

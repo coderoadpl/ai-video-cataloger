@@ -14,7 +14,7 @@ import {
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import path from 'node:path';
-import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
+import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js';
 
 import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
@@ -30,6 +30,8 @@ import {
 } from '@core/domain/index.js';
 import type {
   CatalogFileRecord,
+  CatalogSearchInput,
+  CatalogSearchRow,
   CatalogTagAliasResult,
   CatalogTagSummary,
   DriveRunRecord,
@@ -47,6 +49,7 @@ import {
   globalCatalogSchema,
   migrateGlobalCatalogSchemaSqlV2,
   migrateGlobalCatalogSchemaSqlV3,
+  migrateGlobalCatalogSchemaSqlV4,
   schemaMeta,
   tagAliases,
   tags,
@@ -120,7 +123,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async upsertFile(file: CatalogFile): Promise<Result<void, AppError>> {
-    return this.write((db) => {
+    return this.write((db, client) => {
       db.insert(files)
         .values(fileToRow(file))
         .onConflictDoUpdate({
@@ -138,6 +141,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           },
         })
         .run();
+      syncSearchDocument(db, client, file.fingerprint);
     });
   }
 
@@ -149,7 +153,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>> {
-    return this.write((db) => {
+    return this.write((db, client) => {
       db.insert(analyses)
         .values(analysis)
         .onConflictDoUpdate({
@@ -163,6 +167,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         })
         .run();
       setAnalysisTags(db, analysis.fingerprint, analysis.tags);
+      syncSearchDocument(db, client, analysis.fingerprint);
     });
   }
 
@@ -199,14 +204,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     if (alias.length === 0 || canonical.length === 0) {
       return { ok: false, error: appError('validation', 'Tag aliases must normalize to non-empty tag names') };
     }
-    return this.write((db) => {
+    return this.write((db, client) => {
       const canonicalTag = ensureTag(db, canonical);
       const aliasTag = db.select().from(tags).where(eq(tags.name, alias)).get();
       let remappedFiles = 0;
+      const affected = new Set<string>();
       if (aliasTag !== undefined && aliasTag.tagId !== canonicalTag.tagId) {
         const rows = db.select().from(fileTags).where(eq(fileTags.tagId, aliasTag.tagId)).all();
         remappedFiles = rows.length;
         for (const row of rows) {
+          affected.add(row.fingerprint);
           db.insert(fileTags)
             .values({ fingerprint: row.fingerprint, tagId: canonicalTag.tagId })
             .onConflictDoNothing()
@@ -219,11 +226,50 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .values({ alias, tagId: canonicalTag.tagId })
         .onConflictDoUpdate({
           target: tagAliases.alias,
-          set: { tagId: canonicalTag.tagId },
-        })
-        .run();
+        set: { tagId: canonicalTag.tagId },
+      })
+      .run();
+      for (const fingerprint of affected) syncSearchDocument(db, client, fingerprint);
       return { alias, canonical: canonicalTag.name, remappedFiles };
     });
+  }
+
+  async search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>> {
+    return this.read((db, client) => {
+      const result = client.exec(
+        `SELECT
+          f.fingerprint,
+          f.file_name,
+          a.final_name,
+          a.description,
+          snippet(search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12),
+          f.gps_lat,
+          f.gps_lon,
+          fo.folder_id,
+          fo.current_path,
+          fo.display_name,
+          fo.first_seen_at,
+          fo.last_seen_at,
+          sd.tags_text,
+          sd.transcript
+        FROM search_documents_fts
+        JOIN search_documents sd ON sd.docid = search_documents_fts.docid
+        JOIN files f ON f.fingerprint = sd.fingerprint
+        JOIN folders fo ON fo.folder_id = f.folder_id
+        LEFT JOIN analyses a ON a.fingerprint = f.fingerprint
+        WHERE search_documents_fts MATCH $match`,
+        { $match: input.match },
+      );
+      const values = result[0]?.values ?? [];
+      return values
+        .map((row) => searchRowFromValues(row, input.rankingTerms))
+        .sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
+        .slice(input.offset, input.offset + input.limit);
+    });
+  }
+
+  async rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>> {
+    return this.write((db, client) => rebuildSearchIndex(db, client));
   }
 
   async counts(): Promise<Result<GlobalCatalogCounts, AppError>> {
@@ -270,19 +316,19 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
-  private async read<T>(operation: (db: GlobalDrizzle) => T): Promise<Result<T, AppError>> {
+  private async read<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
       const state = await this.ensureOpen();
-      return ok(operation(state.db));
+      return ok(operation(state.db, state.client));
     } catch (cause) {
       return failure(cause);
     }
   }
 
-  private async write<T>(operation: (db: GlobalDrizzle) => T): Promise<Result<T, AppError>> {
+  private async write<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
       const state = await this.ensureOpen();
-      const value = operation(state.db);
+      const value = operation(state.db, state.client);
       persistDatabase(this.filePath, state.client);
       state.fileState = fileStateOf(this.filePath);
       return ok(value);
@@ -327,6 +373,12 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 3) {
     for (const statement of migrateGlobalCatalogSchemaSqlV3) runMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 4) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV4) runMigrationStatement(client, statement);
+    const db = drizzle(client, { schema: globalCatalogSchema });
+    rebuildSearchIndex(db, client);
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
@@ -492,6 +544,150 @@ const tagsForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] =>
   }
   return names.sort((left, right) => left.localeCompare(right));
 };
+
+const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: string): void => {
+  const file = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();
+  if (file === undefined) {
+    deleteSearchDocument(client, fingerprint);
+    return;
+  }
+  const analysis = db.select().from(analyses).where(eq(analyses.fingerprint, fingerprint)).get();
+  const document = {
+    fingerprint,
+    fileName: file.fileName,
+    finalName: analysis?.finalName ?? '',
+    description: analysis?.description ?? '',
+    transcript: analysis?.transcript ?? '',
+    tagsText: tagsForFingerprint(db, fingerprint).join('\n'),
+  };
+  client.run(
+    `INSERT INTO search_documents (fingerprint, file_name, final_name, description, transcript, tags_text)
+      VALUES ($fingerprint, $fileName, $finalName, $description, $transcript, $tagsText)
+      ON CONFLICT(fingerprint) DO UPDATE SET
+        file_name = excluded.file_name,
+        final_name = excluded.final_name,
+        description = excluded.description,
+        transcript = excluded.transcript,
+        tags_text = excluded.tags_text`,
+    {
+      $fingerprint: document.fingerprint,
+      $fileName: document.fileName,
+      $finalName: document.finalName,
+      $description: document.description,
+      $transcript: document.transcript,
+      $tagsText: document.tagsText,
+    },
+  );
+  const docid = searchDocumentId(client, fingerprint);
+  if (docid === null) throw new Error(`Could not create search document: ${fingerprint}`);
+  client.run('DELETE FROM search_documents_fts WHERE docid = $docid', { $docid: docid });
+  client.run(
+    `INSERT INTO search_documents_fts (docid, file_name, final_name, description, transcript, tags_text)
+      VALUES ($docid, $fileName, $finalName, $description, $transcript, $tagsText)`,
+    {
+      $docid: docid,
+      $fileName: document.fileName,
+      $finalName: document.finalName,
+      $description: document.description,
+      $transcript: document.transcript,
+      $tagsText: document.tagsText,
+    },
+  );
+};
+
+const deleteSearchDocument = (client: Database, fingerprint: string): void => {
+  const docid = searchDocumentId(client, fingerprint);
+  if (docid === null) return;
+  client.run('DELETE FROM search_documents_fts WHERE docid = $docid', { $docid: docid });
+  client.run('DELETE FROM search_documents WHERE docid = $docid', { $docid: docid });
+};
+
+const rebuildSearchIndex = (db: GlobalDrizzle, client: Database): { indexed: number } => {
+  client.run('DELETE FROM search_documents_fts');
+  client.run('DELETE FROM search_documents');
+  const fileRows = db.select().from(files).all();
+  for (const file of fileRows) syncSearchDocument(db, client, file.fingerprint);
+  return { indexed: fileRows.length };
+};
+
+const searchDocumentId = (client: Database, fingerprint: string): number | null => {
+  const result = client.exec('SELECT docid FROM search_documents WHERE fingerprint = $fingerprint', { $fingerprint: fingerprint });
+  const value = result[0]?.values[0]?.[0];
+  return typeof value === 'number' ? value : null;
+};
+
+const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): CatalogSearchRow => {
+  const fileName = stringValue(row[1]);
+  const finalName = nullableStringValue(row[2]);
+  const description = nullableStringValue(row[3]);
+  const snippet = stringValue(row[4]);
+  const gpsLat = nullableNumberValue(row[5]);
+  const gpsLon = nullableNumberValue(row[6]);
+  const tagsText = stringValue(row[12]);
+  const transcript = stringValue(row[13]);
+  return {
+    fingerprint: stringValue(row[0]),
+    fileName,
+    finalName,
+    description,
+    snippet: snippet.length > 0 ? snippet : description ?? fileName,
+    tags: tagsText.split('\n').filter((tag) => tag.length > 0),
+    folder: {
+      folderId: stringValue(row[7]),
+      currentPath: stringValue(row[8]),
+      displayName: stringValue(row[9]),
+      firstSeenAt: stringValue(row[10]),
+      lastSeenAt: stringValue(row[11]),
+    },
+    gps: gpsLat === null || gpsLon === null ? null : { lat: gpsLat, lon: gpsLon },
+    score: weightedSearchScore({
+      fileName,
+      finalName: finalName ?? '',
+      description: description ?? '',
+      tagsText,
+      transcript,
+    }, rankingTerms),
+  };
+};
+
+const weightedSearchScore = (
+  columns: { fileName: string; finalName: string; description: string; tagsText: string; transcript: string },
+  rankingTerms: readonly string[],
+): number => {
+  let score = 0;
+  for (const term of rankingTerms) {
+    score += countTerm(columns.fileName, term) * 80;
+    score += countTerm(columns.finalName, term) * 70;
+    score += countTerm(columns.tagsText, term) * 45;
+    score += countTerm(columns.description, term) * 30;
+    score += countTerm(columns.transcript, term) * 5;
+  }
+  return score;
+};
+
+const countTerm = (value: string, term: string): number => {
+  const haystack = value.toLocaleLowerCase();
+  const needle = term.toLocaleLowerCase();
+  if (needle.length === 0) return 0;
+  let count = 0;
+  let offset = 0;
+  while (offset < haystack.length) {
+    const index = haystack.indexOf(needle, offset);
+    if (index === -1) return count;
+    count += 1;
+    offset = index + needle.length;
+  }
+  return count;
+};
+
+const stringValue = (value: SqlValue | undefined): string => typeof value === 'string' ? value : '';
+
+const nullableStringValue = (value: SqlValue | undefined): string | null => {
+  if (value === null || value === undefined) return null;
+  return typeof value === 'string' ? value : null;
+};
+
+const nullableNumberValue = (value: SqlValue | undefined): number | null => typeof value === 'number' ? value : null;
 
 const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined => {
   const wasmPath = findSqlJsWasmPath();

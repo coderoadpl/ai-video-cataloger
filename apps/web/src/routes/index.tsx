@@ -12,6 +12,8 @@ import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
 import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
 import { useReadiness } from '../features/readiness/use-readiness.js';
+import { SearchResults } from '../features/search/SearchResults.js';
+import { useGlobalSearch } from '../features/search/use-global-search.js';
 import { SetupWizard } from '../features/wizard/SetupWizard.js';
 import { useFirstLaunch } from '../features/wizard/use-first-launch.js';
 import { useProcessing } from '../features/processing/use-processing.js';
@@ -21,6 +23,7 @@ import { useShell } from '../features/shell/use-shell.js';
 
 export const IndexRoute = () => {
   const shell = useShell();
+  const globalSearch = useGlobalSearch();
   const terminal = useTerminalLog();
   const catalog = useCatalog(shell.currentFolder);
   const readiness = useReadiness(shell.currentFolder);
@@ -56,6 +59,17 @@ export const IndexRoute = () => {
     />
   );
 
+  const detailContent = globalSearch.active ? (
+    <SearchResults search={globalSearch} onOpenFolder={shell.selectRecentFolder} />
+  ) : (
+    <DetailsPanel
+      video={selected}
+      analyzing={analyzing}
+      onAnalyze={processing.analyze}
+      disabledReason={disabledReason}
+    />
+  );
+
   const content = (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box
@@ -67,12 +81,7 @@ export const IndexRoute = () => {
         <ProcessingOverlay progress={overlay} onCancel={processing.requestCancel} />
       )}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        <DetailsPanel
-          video={selected}
-          analyzing={analyzing}
-          onAnalyze={processing.analyze}
-          disabledReason={disabledReason}
-        />
+        {detailContent}
       </Box>
     </Box>
   );
@@ -97,6 +106,8 @@ export const IndexRoute = () => {
       shell={shell}
       sidebar={sidebar}
       content={content}
+      searchQuery={globalSearch.query}
+      onSearchQueryChange={globalSearch.setQuery}
       autoOpenSetup={firstLaunch.shouldAutoOpen}
       onAutoOpenSetupConsumed={firstLaunch.markSeen}
       terminal={{

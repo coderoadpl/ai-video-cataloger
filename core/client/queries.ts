@@ -77,7 +77,9 @@ export type RemoveLocalAiModelInput = z.input<typeof API_ROUTES.localAiRm.input>
 export type CancelJobInput = z.input<typeof API_ROUTES.jobCancel.input>;
 export type TestProviderInput = z.input<typeof API_ROUTES.providerTest.input>;
 export type ReadinessInput = z.input<typeof API_ROUTES.readiness.input>;
+export type SearchInput = z.input<typeof API_ROUTES.searchQuery.input>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
+export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
 
 export const healthScopes = {
   all: () => ['health'] as const,
@@ -134,6 +136,12 @@ export const jobScopes = {
   all: () => ['jobs'] as const,
   list: () => ['jobs', 'list'] as const,
   detail: (input: z.output<typeof API_ROUTES.jobStatus.input>) => ['jobs', 'detail', input.jobId] as const,
+};
+
+export const searchScopes = {
+  all: () => ['search'] as const,
+  query: (input: z.output<typeof API_ROUTES.searchQuery.input>) =>
+    ['search', input.query, input.limit, input.offset] as const,
 };
 
 export const mutationScopes = {
@@ -275,6 +283,15 @@ export const jobsQuery = (api: ApiClient) =>
     queryKey: jobScopes.list(),
     call: ({ signal }) => api.jobs(signal),
   });
+
+export const searchQuery = (api: ApiClient, input: SearchInput) => {
+  const parsed = API_ROUTES.searchQuery.input.parse(input);
+  return defineQuery({
+    queryKey: searchScopes.query(parsed),
+    staleTime: 0,
+    call: ({ signal }) => api.search(parsed, signal),
+  });
+};
 
 export const processVideoMutation = (api: ApiClient) =>
   defineMutation({

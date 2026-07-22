@@ -32,6 +32,7 @@ import {
   resetSingle,
   runDoctor,
   scanFolder,
+  search,
   setConfig,
   setCredential,
   stopLocalAiDaemon,
@@ -298,6 +299,12 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.tagsAlias.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.tagsAlias.output);
     return respond(await aliasTag(deps, input.value), API_ROUTES.tagsAlias.output);
+  });
+
+  app.get(API_ROUTES.searchQuery.path, async (context) => {
+    const input = parseInput(API_ROUTES.searchQuery.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.searchQuery.output);
+    return respond(await search(deps, input.value), API_ROUTES.searchQuery.output);
   });
 
   return app;

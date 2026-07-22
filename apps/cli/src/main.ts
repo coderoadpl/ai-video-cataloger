@@ -82,6 +82,10 @@ interface CredentialOptions extends JsonOption {
   env?: string | undefined;
 }
 
+interface SearchOptions extends JsonOption {
+  limit: number;
+}
+
 const cliWorkingDirectory = process.env.AVC_WORKING_DIRECTORY ?? process.cwd();
 const cliHomeDirectory = homedir();
 const cliConfigFolder = path.resolve(cliWorkingDirectory) === path.resolve(cliHomeDirectory)
@@ -729,6 +733,16 @@ program
   });
 
 program
+  .command('search')
+  .argument('<query>')
+  .option('--limit <number>', 'maximum result count', numberOption, 50)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (query: string, options: SearchOptions) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'search', () => api.search({ query, limit: options.limit, offset: 0 }), searchHuman, { raw: true });
+  });
+
+program
   .command('doctor')
   .option('--json', 'machine-readable JSON output', false)
   .action(async (options: JsonOption) => {
@@ -945,6 +959,19 @@ const tagsListHuman = (data: Awaited<ReturnType<ApiClient['listTags']>> extends 
 
 const tagsAliasHuman = (data: Awaited<ReturnType<ApiClient['aliasTag']>> extends Result<infer T, AppError> ? T : never): string =>
   `Aliased ${data.alias} -> ${data.canonical}; remapped ${data.remappedFiles} files`;
+
+const searchHuman = (data: Awaited<ReturnType<ApiClient['search']>> extends Result<infer T, AppError> ? T : never): string => {
+  if (data.results.length === 0) return 'No results found';
+  const rows = data.results.map((result) => {
+    const offline = result.folder.online ? '' : ' [drive not connected]';
+    return [
+      `${result.folder.currentPath}/${result.fileName}${offline}`,
+      result.finalName ?? result.fileName,
+      result.snippet.replace(/<\/?mark>/g, ''),
+    ].join('\t');
+  });
+  return [...rows, `${data.count} result(s)`].join('\n');
+};
 
 const doctorHuman = (data: Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never): string => {
   const lines = data.dependencies.map((dependency) => `${dependency.name}: ${dependency.available ? 'available' : 'missing'}`);

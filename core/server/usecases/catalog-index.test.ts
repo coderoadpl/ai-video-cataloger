@@ -110,6 +110,13 @@ describe('index status and rebuild', () => {
     expect(rebuilt.value.reconciledFolders).toBe(1);
     const importedFile = await recoveredStore.getFile('fp-1');
     expect(importedFile.ok && importedFile.value?.fileName).toBe('clip.mp4');
+    const importedSearch = await recoveredStore.search({
+      match: 'clip*',
+      rankingTerms: ['clip'],
+      limit: 10,
+      offset: 0,
+    });
+    expect(importedSearch.ok && importedSearch.value[0]?.fingerprint).toBe('fp-1');
   });
 });
 

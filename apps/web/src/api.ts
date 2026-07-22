@@ -22,6 +22,7 @@ import {
   resetAllMutation,
   resetSingleMutation,
   scanQuery,
+  searchQuery,
   setConfigMutation,
   setCredentialMutation,
   statusQuery,
@@ -32,6 +33,7 @@ import {
   type ConfigInput,
   type JobInput,
   type ScanInput,
+  type SearchInput,
   type ReadinessInput,
   type StatusInput,
 } from '@core/client/index.js';
@@ -111,6 +113,7 @@ export const actions = {
   readiness: (input?: ReadinessInput) => readinessQuery(apiClient, input),
   jobs: jobsQuery(apiClient),
   scan: (input: ScanInput) => scanQuery(apiClient, input),
+  search: (input: SearchInput) => searchQuery(apiClient, input),
   config: (input?: ConfigInput) => configQuery(apiClient, input),
   check: (input: CheckInput) => checkQuery(apiClient, input),
   job: (input: JobInput) => jobQuery(apiClient, input),

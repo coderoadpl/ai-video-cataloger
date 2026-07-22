@@ -171,6 +171,9 @@ export const indexRebuild = async (deps: CatalogIndexDeps): Promise<Result<Index
     importedFiles += synced.value.imported;
   }
 
+  const rebuiltSearch = await deps.globalCatalog.rebuildSearchIndex();
+  if (!rebuiltSearch.ok) return rebuiltSearch;
+
   const refreshed = await deps.globalCatalog.listFolders();
   if (!refreshed.ok) return refreshed;
   return ok({

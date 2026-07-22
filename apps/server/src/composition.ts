@@ -34,6 +34,8 @@ import type {
   AnalyzeInput,
   AnalyzerPort,
   CatalogFileRecord,
+  CatalogSearchInput,
+  CatalogSearchRow,
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
@@ -437,6 +439,42 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>> {
     return Promise.resolve(ok({ alias: input.from, canonical: input.to, remappedFiles: 0 }));
+  }
+
+  search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>> {
+    const rows = [...this.files.values()]
+      .map((file) => {
+        const analysis = this.analyses.get(file.fingerprint) ?? null;
+        const folder = this.folders.get(file.folderId);
+        if (folder === undefined) return null;
+        const searchable = [
+          file.fileName,
+          analysis?.finalName ?? '',
+          analysis?.description ?? '',
+          analysis?.transcript ?? '',
+          ...(analysis?.tags ?? []),
+        ].join(' ').toLocaleLowerCase();
+        const matches = input.rankingTerms.every((term) => searchable.includes(term.toLocaleLowerCase()));
+        if (!matches) return null;
+        return {
+          fingerprint: file.fingerprint,
+          fileName: file.fileName,
+          finalName: analysis?.finalName ?? null,
+          description: analysis?.description ?? null,
+          snippet: analysis?.description ?? file.fileName,
+          tags: analysis?.tags ?? [],
+          folder,
+          gps: file.gpsLat === null || file.gpsLon === null ? null : { lat: file.gpsLat, lon: file.gpsLon },
+          score: 1,
+        };
+      })
+      .filter((row): row is CatalogSearchRow => row !== null)
+      .slice(input.offset, input.offset + input.limit);
+    return Promise.resolve(ok(rows));
+  }
+
+  rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>> {
+    return Promise.resolve(ok({ indexed: this.files.size }));
   }
 
   counts(): Promise<Result<GlobalCatalogCounts, AppError>> {

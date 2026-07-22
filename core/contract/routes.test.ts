@@ -7,6 +7,7 @@ import {
   scanOutputSchema,
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
+  searchOutputSchema,
 } from './routes.js';
 
 describe('route schemas', () => {
@@ -158,6 +159,31 @@ describe('route schemas', () => {
     expect(parsed.models[1]?.active).toBe(true);
   });
 
+  it('round-trips a search response with folder online state', () => {
+    const parsed = searchOutputSchema.parse({
+      query: 'drone',
+      limit: 50,
+      offset: 0,
+      count: 1,
+      results: [{
+        fingerprint: 'fp-1',
+        fileName: 'clip.mp4',
+        finalName: 'drone-clip.mp4',
+        description: 'A drone clip',
+        snippet: '<mark>drone</mark> clip',
+        tags: ['aerial'],
+        folder: {
+          folderId: '11111111-1111-4111-8111-111111111111',
+          currentPath: '/drive',
+          displayName: 'drive',
+          online: true,
+        },
+        gps: { lat: 51, lon: 17 },
+      }],
+    });
+    expect(parsed.results[0]?.folder.online).toBe(true);
+  });
+
   it('defines family-specific cheap provider check results', () => {
     expect(providerTestOutputSchema.parse({
       family: 'api',
@@ -229,6 +255,7 @@ describe('route schemas', () => {
     expect(API_ROUTES.jobStatus.method).toBe('GET');
     expect(API_ROUTES.jobsList.method).toBe('GET');
     expect(API_ROUTES.tagsList.method).toBe('GET');
+    expect(API_ROUTES.searchQuery).toMatchObject({ method: 'GET', path: '/api/search' });
 
     expect(API_ROUTES.process.method).toBe('POST');
     expect(API_ROUTES.thumbnail.method).toBe('POST');

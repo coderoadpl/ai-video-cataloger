@@ -130,3 +130,24 @@ export const migrateGlobalCatalogSchemaSqlV3 = [
       last_activity_at TEXT NOT NULL
     )`,
 ] as const;
+
+export const migrateGlobalCatalogSchemaSqlV4 = [
+  `CREATE TABLE IF NOT EXISTS search_documents (
+      docid INTEGER PRIMARY KEY,
+      fingerprint TEXT NOT NULL UNIQUE,
+      file_name TEXT NOT NULL,
+      final_name TEXT NOT NULL,
+      description TEXT NOT NULL,
+      transcript TEXT NOT NULL,
+      tags_text TEXT NOT NULL
+    )`,
+  `CREATE VIRTUAL TABLE IF NOT EXISTS search_documents_fts USING fts4(
+      content="search_documents",
+      file_name,
+      final_name,
+      description,
+      transcript,
+      tags_text,
+      tokenize=unicode61
+    )`,
+] as const;

@@ -66,3 +66,9 @@ export const CancelIcon = (props: SvgIconProps) => (
     <path d="M12 2C6.47 2 2 6.47 2 12s4.47 10 10 10 10-4.47 10-10S17.53 2 12 2zm5 13.59L15.59 17 12 13.41 8.41 17 7 15.59 10.59 12 7 8.41 8.41 7 12 10.59 15.59 7 17 8.41 13.41 12 17 15.59z" />
   </SvgIcon>
 );
+
+export const SearchIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M9.5 3a6.5 6.5 0 0 1 5.16 10.45l4.44 4.45-1.2 1.2-4.45-4.44A6.5 6.5 0 1 1 9.5 3zm0 1.7a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z" />
+  </SvgIcon>
+);

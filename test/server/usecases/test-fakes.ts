@@ -18,6 +18,8 @@ import {
 
 import type {
   CatalogFileRecord,
+  CatalogSearchInput,
+  CatalogSearchRow,
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
@@ -779,6 +781,43 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok({ alias: input.from, canonical: input.to, remappedFiles }));
   }
 
+  search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>> {
+    const rows = [...this.files.values()]
+      .map((file) => {
+        const analysis = this.analyses.get(file.fingerprint) ?? null;
+        const folder = this.folders.get(file.folderId);
+        if (folder === undefined) return null;
+        const searchable = [
+          file.fileName,
+          analysis?.finalName ?? '',
+          analysis?.description ?? '',
+          analysis?.transcript ?? '',
+          ...(analysis?.tags ?? []),
+        ].join(' ').toLocaleLowerCase();
+        const matches = input.rankingTerms.every((term) => searchable.includes(term.toLocaleLowerCase()));
+        if (!matches) return null;
+        return {
+          fingerprint: file.fingerprint,
+          fileName: file.fileName,
+          finalName: analysis?.finalName ?? null,
+          description: analysis?.description ?? null,
+          snippet: analysis?.description ?? file.fileName,
+          tags: analysis?.tags ?? [],
+          folder,
+          gps: file.gpsLat === null || file.gpsLon === null ? null : { lat: file.gpsLat, lon: file.gpsLon },
+          score: scoreFor(file, analysis, input.rankingTerms),
+        };
+      })
+      .filter((row): row is CatalogSearchRow => row !== null)
+      .sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
+      .slice(input.offset, input.offset + input.limit);
+    return Promise.resolve(ok(rows));
+  }
+
+  rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>> {
+    return Promise.resolve(ok({ indexed: this.files.size }));
+  }
+
   counts(): Promise<Result<GlobalCatalogCounts, AppError>> {
     return Promise.resolve(ok({
       folders: this.folders.size,
@@ -802,6 +841,25 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(runs[0] ?? null));
   }
 }
+
+const scoreFor = (
+  file: CatalogFile,
+  analysis: CatalogAnalysis | null,
+  rankingTerms: readonly string[],
+): number => {
+  let score = 0;
+  for (const term of rankingTerms) {
+    score += includesScore(file.fileName, term, 80);
+    score += includesScore(analysis?.finalName ?? '', term, 70);
+    score += includesScore((analysis?.tags ?? []).join(' '), term, 45);
+    score += includesScore(analysis?.description ?? '', term, 30);
+    score += includesScore(analysis?.transcript ?? '', term, 5);
+  }
+  return score;
+};
+
+const includesScore = (value: string, term: string, weight: number): number =>
+  value.toLocaleLowerCase().includes(term.toLocaleLowerCase()) ? weight : 0;
 
 export const dependency = (name: string, available: boolean): DependencyStatus => ({
   name,

@@ -33,6 +33,8 @@ interface AppShellProps {
   renderBanner?: (openModal: (modal: ShellModal) => void) => ReactNode;
   autoOpenSetup?: boolean;
   onAutoOpenSetupConsumed?: () => void;
+  searchQuery?: string;
+  onSearchQueryChange?: (query: string) => void;
 }
 
 export const AppShell = ({
@@ -45,6 +47,8 @@ export const AppShell = ({
   renderBanner,
   autoOpenSetup = false,
   onAutoOpenSetupConsumed,
+  searchQuery = '',
+  onSearchQueryChange = () => undefined,
 }: AppShellProps) => {
   const [modal, setModal] = useState<ShellModal | null>(null);
   const [showJson, setShowJson] = useState(false);
@@ -83,6 +87,8 @@ export const AppShell = ({
             onShowSettings={() => setModal('settings')}
             onShowModelManager={() => setModal('models')}
             onShowPrerequisites={() => setModal('prerequisites')}
+            searchQuery={searchQuery}
+            onSearchQueryChange={onSearchQueryChange}
           />
         }
         sidebar={sidebar}
