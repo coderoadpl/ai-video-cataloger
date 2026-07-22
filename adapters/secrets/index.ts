@@ -8,6 +8,7 @@ import type { SecretsStore } from '@core/server/index.js';
 export const DEFAULT_KEYCHAIN_SERVICE = 'com.ai-video-cataloger.app';
 
 const KEYCHAIN_ITEM_NOT_FOUND = 44;
+const SECURITY_COMMAND_TIMEOUT_MS = 10_000;
 
 export interface SecretsCommandResult {
   code: number;
@@ -56,6 +57,9 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async set(account: string, secret: string): Promise<Result<void, AppError>> {
+    // security add-generic-password has no stdin form for the password; -w takes it as
+    // an argument, briefly exposing it in this process's argv. The alternative bare -w
+    // prompts interactively and would hang headless runs, so argv is the only viable path.
     const result = await this.commandRunner.run('security', [
       'add-generic-password', '-U', '-s', this.service, '-a', account, '-w', secret,
     ]);
@@ -92,7 +96,11 @@ const keychainError = (action: string, result: SecretsCommandResult): Result<nev
 const securityCommandRunner: SecretsCommandRunner = {
   run: (command, args) =>
     new Promise((resolve) => {
-      execFile(command, [...args], (error, stdout, stderr) => {
+      execFile(command, [...args], { timeout: SECURITY_COMMAND_TIMEOUT_MS }, (error, stdout, stderr) => {
+        if (error !== null && isTimeout(error)) {
+          resolve({ code: 1, stdout: String(stdout), stderr: `security timed out after ${String(SECURITY_COMMAND_TIMEOUT_MS)}ms` });
+          return;
+        }
         resolve({
           code: error === null ? 0 : exitCode(error),
           stdout: String(stdout),
@@ -100,6 +108,13 @@ const securityCommandRunner: SecretsCommandRunner = {
         });
       });
     }),
+};
+
+const timeoutErrorSchema = z.object({ killed: z.boolean(), signal: z.string().nullable() });
+
+const isTimeout = (error: unknown): boolean => {
+  const parsed = timeoutErrorSchema.safeParse(error);
+  return parsed.success && parsed.data.killed && parsed.data.signal !== null;
 };
 
 const execErrorSchema = z.object({ code: z.number() });

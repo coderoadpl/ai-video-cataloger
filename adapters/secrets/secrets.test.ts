@@ -21,6 +21,7 @@ class FakeSecurity implements SecretsCommandRunner {
 
 const found = (secret: string): SecretsCommandResult => ({ code: 0, stdout: `${secret}\n`, stderr: '' });
 const notFound = (): SecretsCommandResult => ({ code: 44, stdout: '', stderr: 'not found' });
+const timedOut = (): SecretsCommandResult => ({ code: 1, stdout: '', stderr: 'security timed out after 10000ms' });
 
 describe('KeychainSecretsAdapter', () => {
   it('is unavailable on non-darwin platforms', async () => {
@@ -86,5 +87,20 @@ describe('KeychainSecretsAdapter', () => {
     const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
 
     expect(await adapter.delete('openai')).toEqual({ ok: true, value: undefined });
+  });
+
+  it('reports unavailable when the keychain probe times out', async () => {
+    const runner = new FakeSecurity(() => timedOut());
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+
+    expect(await adapter.isAvailable()).toBe(false);
+  });
+
+  it('surfaces an error when a read times out so callers can fall back', async () => {
+    const runner = new FakeSecurity(() => timedOut());
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+
+    const result = await adapter.get('openai');
+    expect(result.ok).toBe(false);
   });
 });
