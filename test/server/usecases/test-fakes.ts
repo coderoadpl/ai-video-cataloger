@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
   appError,
+  normalizeEmbedding,
   ok,
   type AppConfig,
   type AppError,
@@ -10,7 +11,10 @@ import {
   type CatalogFile,
   type CatalogFolder,
   type ConfigKey,
+  type FaceObservation,
+  type FileArtifact,
   type MachineProfile,
+  type Person,
   type Result,
   type Video,
   type WhisperModelName,
@@ -25,6 +29,9 @@ import type {
   CatalogResetSingleResult,
   CatalogTagAliasResult,
   CatalogTagSummary,
+  FaceIndexCandidate,
+  FaceStatusCounts,
+  FileArtifactDownloadProgress,
   GlobalCatalogCounts,
   GlobalCatalogStore,
   AnalyzerPort,
@@ -564,9 +571,31 @@ export class InMemoryLocalAi implements LocalAiRuntimePort {
 
 export class InMemoryDownloads implements ModelDownloadPort {
   readonly downloaded = new Set<WhisperModelName>();
+  readonly downloadedArtifacts = new Set<string>();
 
   whisperModelPath(model: WhisperModelName): string {
     return `/models/${model}.bin`;
+  }
+
+  fileArtifactPath(artifact: FileArtifact): string {
+    return `/models/artifacts/${artifact.filename}`;
+  }
+
+  isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>> {
+    return Promise.resolve(ok(this.downloadedArtifacts.has(artifact.id)));
+  }
+
+  downloadFileArtifact(
+    artifact: FileArtifact,
+    options: { force: boolean; onProgress?: (progress: FileArtifactDownloadProgress) => void; signal?: AbortSignal | undefined },
+  ): Promise<Result<{ artifactId: FileArtifact['id']; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>> {
+    const artifactPath = this.fileArtifactPath(artifact);
+    if (this.downloadedArtifacts.has(artifact.id) && !options.force) {
+      return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: false, skipped: true }));
+    }
+    this.downloadedArtifacts.add(artifact.id);
+    options.onProgress?.({ artifactId: artifact.id, downloadedBytes: artifact.bytes ?? 0, totalBytes: artifact.bytes, percentage: 100, speed: 0 });
+    return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: true, skipped: false }));
   }
 
   isWhisperModelDownloaded(model: WhisperModelName): Promise<Result<boolean, AppError>> {
@@ -710,6 +739,8 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
   private readonly aliases = new Map<string, string>();
+  private readonly people = new Map<string, Person>();
+  private readonly faceObservations = new Map<string, FaceObservation>();
   readonly driveRuns = new Map<string, DriveRunRecord>();
 
   constructor(private readonly path = '/home/.ai-video-cataloger/catalog.db') {}
@@ -840,6 +871,110 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const runs = [...this.driveRuns.values()].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
     return Promise.resolve(ok(runs[0] ?? null));
   }
+
+  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {
+    const candidates: FaceIndexCandidate[] = [];
+    for (const file of this.files.values()) {
+      const analysis = this.analyses.get(file.fingerprint);
+      if (analysis === undefined) continue;
+      const folder = this.folders.get(file.folderId);
+      if (folder === undefined) continue;
+      if (folder.currentPath !== rootPath && !folder.currentPath.startsWith(`${rootPath}${path.sep}`)) continue;
+      if ([...this.faceObservations.values()].some((observation) => observation.fingerprint === file.fingerprint)) continue;
+      candidates.push({ file, analysis, folder });
+    }
+    return Promise.resolve(ok(candidates.sort((left, right) => left.folder.currentPath.localeCompare(right.folder.currentPath)
+      || left.file.fileName.localeCompare(right.file.fileName))));
+  }
+
+  listPeople(): Promise<Result<Person[], AppError>> {
+    return Promise.resolve(ok([...this.people.values()]));
+  }
+
+  getPerson(personId: string): Promise<Result<Person | null, AppError>> {
+    return Promise.resolve(ok(this.people.get(personId) ?? null));
+  }
+
+  upsertPerson(person: Person): Promise<Result<void, AppError>> {
+    this.people.set(person.personId, person);
+    return Promise.resolve(ok(undefined));
+  }
+
+  setPersonName(personId: string, displayName: string): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>> {
+    const existing = this.people.get(personId);
+    if (existing === undefined) return Promise.resolve({ ok: false, error: appError('not_found', `Person not found: ${personId}`) });
+    this.people.set(personId, { ...existing, displayName });
+    return Promise.resolve(ok({ personId, displayName, affectedFingerprints: this.fingerprintsForPerson(personId) }));
+  }
+
+  listFaceObservations(input: { fingerprint?: string | undefined; personId?: string | undefined } = {}): Promise<Result<FaceObservation[], AppError>> {
+    let rows = [...this.faceObservations.values()];
+    if (input.fingerprint !== undefined) rows = rows.filter((observation) => observation.fingerprint === input.fingerprint);
+    else if (input.personId !== undefined) rows = rows.filter((observation) => observation.personId === input.personId);
+    return Promise.resolve(ok(rows));
+  }
+
+  upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>> {
+    this.faceObservations.set(observation.obsId, observation);
+    return Promise.resolve(ok(undefined));
+  }
+
+  assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>> {
+    const observation = this.faceObservations.get(obsId);
+    if (observation === undefined) return Promise.resolve({ ok: false, error: appError('not_found', `Face observation not found: ${obsId}`) });
+    this.faceObservations.set(obsId, { ...observation, personId });
+    return Promise.resolve(ok(undefined));
+  }
+
+  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> {
+    const from = this.people.get(input.fromPersonId);
+    const to = this.people.get(input.toPersonId);
+    if (from === undefined || to === undefined) return Promise.resolve({ ok: false, error: appError('not_found', 'Person not found') });
+    const moved = [...this.faceObservations.values()].filter((observation) => observation.personId === input.fromPersonId);
+    const affectedFingerprints = uniqueFingerprints(moved);
+    for (const observation of moved) this.faceObservations.set(observation.obsId, { ...observation, personId: input.toPersonId });
+    const embeddings = [...this.faceObservations.values()]
+      .filter((observation) => observation.personId === input.toPersonId)
+      .map((observation) => observation.embedding);
+    this.people.set(input.toPersonId, { ...to, centroid: fakeCentroid(embeddings), exemplarCount: embeddings.length });
+    this.people.delete(input.fromPersonId);
+    return Promise.resolve(ok({ fromPersonId: input.fromPersonId, toPersonId: input.toPersonId, movedObservations: moved.length, affectedFingerprints }));
+  }
+
+  forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>> {
+    const existing = this.people.get(personId);
+    if (existing === undefined) return Promise.resolve(ok({ personId, deleted: false, cropPaths: [], affectedFingerprints: [] }));
+    const rows = [...this.faceObservations.values()].filter((observation) => observation.personId === personId);
+    const cropPaths = rows.map((observation) => observation.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
+    const affectedFingerprints = uniqueFingerprints(rows);
+    for (const observation of rows) this.faceObservations.set(observation.obsId, { ...observation, personId: null, cropPath: null });
+    this.people.delete(personId);
+    return Promise.resolve(ok({ personId, deleted: true, cropPaths, affectedFingerprints }));
+  }
+
+  purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>> {
+    const observationRows = [...this.faceObservations.values()];
+    const peopleRows = [...this.people.values()];
+    const cropPaths = observationRows.map((observation) => observation.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
+    this.faceObservations.clear();
+    this.people.clear();
+    return Promise.resolve(ok({ peopleDeleted: peopleRows.length, observationsDeleted: observationRows.length, cropPaths }));
+  }
+
+  faceStatus(): Promise<Result<FaceStatusCounts, AppError>> {
+    const observationRows = [...this.faceObservations.values()];
+    return Promise.resolve(ok({
+      people: this.people.size,
+      observations: observationRows.length,
+      assignedObservations: observationRows.filter((observation) => observation.personId !== null).length,
+      unassignedObservations: observationRows.filter((observation) => observation.personId === null).length,
+      filesIndexed: new Set(observationRows.map((observation) => observation.fingerprint)).size,
+    }));
+  }
+
+  private fingerprintsForPerson(personId: string): string[] {
+    return uniqueFingerprints([...this.faceObservations.values()].filter((observation) => observation.personId === personId));
+  }
 }
 
 const scoreFor = (
@@ -860,6 +995,21 @@ const scoreFor = (
 
 const includesScore = (value: string, term: string, weight: number): number =>
   value.toLocaleLowerCase().includes(term.toLocaleLowerCase()) ? weight : 0;
+
+const uniqueFingerprints = (rows: readonly FaceObservation[]): string[] =>
+  [...new Set(rows.map((row) => row.fingerprint))];
+
+const fakeCentroid = (embeddings: readonly (readonly number[])[]): number[] => {
+  if (embeddings.length === 0) return Array.from({ length: 128 }, () => 0);
+  const totals = Array.from({ length: 128 }, () => 0);
+  for (const embedding of embeddings) {
+    embedding.forEach((value, index) => {
+      const current = totals[index];
+      if (current !== undefined) totals[index] = current + value;
+    });
+  }
+  return normalizeEmbedding(totals.map((value) => value / embeddings.length));
+};
 
 export const dependency = (name: string, available: boolean): DependencyStatus => ({
   name,

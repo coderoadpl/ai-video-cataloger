@@ -6,7 +6,13 @@ import type {
   CatalogFile,
   CatalogFolder,
   ConfigKey,
+  FaceBox,
+  FaceLandmarks,
+  FaceObservation,
+  FileArtifact,
+  FileArtifactId,
   MachineProfile,
+  Person,
   Result,
   Video,
   WhisperModelName,
@@ -81,6 +87,20 @@ export interface GlobalCatalogCounts {
   analyses: number;
 }
 
+export interface FaceIndexCandidate {
+  file: CatalogFile;
+  analysis: CatalogAnalysis;
+  folder: CatalogFolder;
+}
+
+export interface FaceStatusCounts {
+  people: number;
+  observations: number;
+  assignedObservations: number;
+  unassignedObservations: number;
+  filesIndexed: number;
+}
+
 export interface DriveRunRecord {
   runId: string;
   root: string;
@@ -112,6 +132,21 @@ export interface GlobalCatalogStore {
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>>;
+  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>>;
+  listPeople(): Promise<Result<Person[], AppError>>;
+  getPerson(personId: string): Promise<Result<Person | null, AppError>>;
+  upsertPerson(person: Person): Promise<Result<void, AppError>>;
+  setPersonName(personId: string, displayName: string): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>>;
+  listFaceObservations(input?: {
+    fingerprint?: string | undefined;
+    personId?: string | undefined;
+  }): Promise<Result<FaceObservation[], AppError>>;
+  upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>>;
+  assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>>;
+  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>>;
+  forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>>;
+  purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>>;
+  faceStatus(): Promise<Result<FaceStatusCounts, AppError>>;
 }
 
 export type ConfigScope = { kind: 'folder'; folder: string } | { kind: 'home' };
@@ -216,6 +251,28 @@ export interface ThumbnailGeneration {
   path: string;
   generated: boolean;
   skipped: boolean;
+}
+
+export interface FaceDetection {
+  bbox: FaceBox;
+  landmarks: FaceLandmarks;
+  score: number;
+}
+
+export interface AlignedFaceCrop {
+  frameJpegPath: string;
+  detection: FaceDetection;
+  width: number;
+  height: number;
+}
+
+export interface FaceEnginePort {
+  load(): Promise<Result<void, AppError>>;
+  detect(frameJpegPath: string): Promise<Result<FaceDetection[], AppError>>;
+  align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>>;
+  embed(alignedCrop: AlignedFaceCrop): Promise<Result<Float32Array, AppError>>;
+  dispose(): Promise<Result<void, AppError>>;
+  dependency(): Promise<Result<DependencyStatus, AppError>>;
 }
 
 export interface MediaPort {
@@ -377,6 +434,14 @@ export interface WhisperDownloadProgress {
   speed: number | null;
 }
 
+export interface FileArtifactDownloadProgress {
+  artifactId: FileArtifactId;
+  downloadedBytes: number;
+  totalBytes: number | null;
+  percentage: number | null;
+  speed: number | null;
+}
+
 export interface ModelDownloadPort {
   whisperModelPath(model: WhisperModelName): string;
   isWhisperModelDownloaded(model: WhisperModelName): Promise<Result<boolean, AppError>>;
@@ -388,9 +453,22 @@ export interface ModelDownloadPort {
     model: WhisperModelName,
     options: { force: boolean },
   ): Promise<Result<{ model: WhisperModelName; path: string; deleted: boolean }, AppError>>;
+  fileArtifactPath(artifact: FileArtifact): string;
+  isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>>;
+  downloadFileArtifact(
+    artifact: FileArtifact,
+    options: { force: boolean; onProgress?: (progress: FileArtifactDownloadProgress) => void; signal?: AbortSignal | undefined },
+  ): Promise<Result<{ artifactId: FileArtifactId; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>>;
 }
 
-export type JobKind = 'process' | 'process_drive' | 'whisper_download' | 'whisper_runtime_install' | 'local_ai_pull';
+export type JobKind =
+  | 'process'
+  | 'process_drive'
+  | 'whisper_download'
+  | 'whisper_runtime_install'
+  | 'local_ai_pull'
+  | 'face_artifact_download'
+  | 'faces_index';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -403,7 +481,12 @@ export type ProcessJobStep =
   | 'transcribing_audio'
   | 'analyzing_with_claude'
   | 'renaming_video'
-  | 'skipping_rename';
+  | 'skipping_rename'
+  | 'faces_scanning'
+  | 'faces_extracting_frames'
+  | 'faces_detecting'
+  | 'faces_clustering'
+  | 'faces_done';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

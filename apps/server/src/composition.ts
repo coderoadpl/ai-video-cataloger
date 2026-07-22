@@ -10,6 +10,7 @@ import {
 import { JsonCredentialsStore, KeychainCredentialsStore } from '@adapters/credentials/index.js';
 import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
 import { JsonConfigStore, SqlJsCatalogRepositoryFactory, SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
+import { OnnxFaceEngineAdapter } from '@adapters/faces/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
@@ -25,7 +26,10 @@ import {
   type CatalogFile,
   type CatalogFolder,
   type ConfigKey,
+  type FaceObservation,
+  type FileArtifact,
   type Result,
+  type Person,
   type WhisperModelName,
 } from '@core/domain/index.js';
 import { ReadinessCache } from '@core/server/index.js';
@@ -48,6 +52,11 @@ import type {
   DependencyStatus,
   DirectoryEntry,
   DriveRunRecord,
+  FaceDetection,
+  FaceStatusCounts,
+  FaceIndexCandidate,
+  AlignedFaceCrop,
+  FaceEnginePort,
   FileStat,
   FileSystemPort,
   GlobalCatalogCounts,
@@ -80,6 +89,7 @@ export interface AppDeps {
   providers: ProvidersPort;
   localAi: LocalAiRuntimePort;
   downloads: ModelDownloadPort;
+  faceEngine: FaceEnginePort;
   jobs: JobsPort;
   readiness: ReadinessCache;
 }
@@ -114,6 +124,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
       providers: new ProvidersNotWiredPort(),
       localAi: new InMemoryLocalAiRuntimePort(),
       downloads: new InMemoryModelDownloadPort(),
+      faceEngine: new InMemoryFaceEnginePort(),
       jobs,
       readiness,
     };
@@ -128,6 +139,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   const whisperRuntime = new ManagedWhisperRuntimeAdapter({ config: configStore, homeDirectory });
   const ollamaAnalyzer = new OllamaAnalyzerAdapter({ runtime: localAi });
   const apiAnalyzer = new OpenAiCompatibleAnalyzerAdapter({ credentials });
+  const downloads = new HuggingFaceWhisperModelDownloader({ homeDirectory });
   return {
     version: config.version ?? packageJson.version,
     catalogs: new SqlJsCatalogRepositoryFactory(),
@@ -141,7 +153,8 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     analyzer: new ProviderRoutingAnalyzerAdapter(harness, ollamaAnalyzer, apiAnalyzer),
     providers: new ProviderRoutingProvidersPort(harness, ollamaAnalyzer, apiAnalyzer),
     localAi,
-    downloads: new HuggingFaceWhisperModelDownloader({ homeDirectory }),
+    downloads,
+    faceEngine: new OnnxFaceEngineAdapter({ downloads }),
     jobs,
     readiness,
   };
@@ -386,6 +399,8 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
   private readonly driveRuns = new Map<string, DriveRunRecord>();
+  private readonly people = new Map<string, Person>();
+  private readonly faceObservations = new Map<string, FaceObservation>();
 
   databasePath(): string {
     return path.join('.ai-video-cataloger', 'catalog.db');
@@ -498,6 +513,120 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>> {
     const runs = [...this.driveRuns.values()].sort((left, right) => right.startedAt.localeCompare(left.startedAt));
     return Promise.resolve(ok(runs[0] ?? null));
+  }
+
+  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {
+    const candidates: FaceIndexCandidate[] = [];
+    for (const file of this.files.values()) {
+      const folder = this.folders.get(file.folderId);
+      const analysis = this.analyses.get(file.fingerprint);
+      if (folder === undefined || analysis === undefined) continue;
+      if (folder.currentPath !== rootPath && !folder.currentPath.startsWith(`${rootPath}${path.sep}`)) continue;
+      if ([...this.faceObservations.values()].some((observation) => observation.fingerprint === file.fingerprint)) continue;
+      candidates.push({ file, analysis, folder });
+    }
+    return Promise.resolve(ok(candidates));
+  }
+
+  listPeople(): Promise<Result<Person[], AppError>> {
+    return Promise.resolve(ok([...this.people.values()]));
+  }
+
+  getPerson(personId: string): Promise<Result<Person | null, AppError>> {
+    return Promise.resolve(ok(this.people.get(personId) ?? null));
+  }
+
+  upsertPerson(person: Person): Promise<Result<void, AppError>> {
+    this.people.set(person.personId, person);
+    return Promise.resolve(ok(undefined));
+  }
+
+  setPersonName(personId: string, displayName: string): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>> {
+    const person = this.people.get(personId);
+    if (person === undefined) return Promise.resolve({ ok: false, error: appError('not_found', `Person not found: ${personId}`) });
+    this.people.set(personId, { ...person, displayName });
+    return Promise.resolve(ok({ personId, displayName, affectedFingerprints: this.affectedFingerprints(personId) }));
+  }
+
+  listFaceObservations(input: { fingerprint?: string | undefined; personId?: string | undefined } = {}): Promise<Result<FaceObservation[], AppError>> {
+    const observations = [...this.faceObservations.values()].filter((observation) =>
+      (input.fingerprint === undefined || observation.fingerprint === input.fingerprint)
+      && (input.personId === undefined || observation.personId === input.personId));
+    return Promise.resolve(ok(observations));
+  }
+
+  upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>> {
+    this.faceObservations.set(observation.obsId, observation);
+    return Promise.resolve(ok(undefined));
+  }
+
+  assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>> {
+    const observation = this.faceObservations.get(obsId);
+    if (observation === undefined) return Promise.resolve({ ok: false, error: appError('not_found', `Face observation not found: ${obsId}`) });
+    this.faceObservations.set(obsId, { ...observation, personId });
+    return Promise.resolve(ok(undefined));
+  }
+
+  mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> {
+    const from = this.people.get(input.fromPersonId);
+    const to = this.people.get(input.toPersonId);
+    if (from === undefined || to === undefined) return Promise.resolve({ ok: false, error: appError('not_found', 'Person not found') });
+    let movedObservations = 0;
+    const affected = new Set<string>();
+    for (const observation of this.faceObservations.values()) {
+      if (observation.personId !== input.fromPersonId) continue;
+      this.faceObservations.set(observation.obsId, { ...observation, personId: input.toPersonId });
+      affected.add(observation.fingerprint);
+      movedObservations += 1;
+    }
+    this.people.delete(input.fromPersonId);
+    return Promise.resolve(ok({
+      fromPersonId: input.fromPersonId,
+      toPersonId: input.toPersonId,
+      movedObservations,
+      affectedFingerprints: [...affected],
+    }));
+  }
+
+  forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>> {
+    const deleted = this.people.delete(personId);
+    const cropPaths: string[] = [];
+    const affected = new Set<string>();
+    for (const observation of this.faceObservations.values()) {
+      if (observation.personId !== personId) continue;
+      if (observation.cropPath !== null) cropPaths.push(observation.cropPath);
+      this.faceObservations.set(observation.obsId, { ...observation, personId: null, cropPath: null });
+      affected.add(observation.fingerprint);
+    }
+    return Promise.resolve(ok({ personId, deleted, cropPaths, affectedFingerprints: [...affected] }));
+  }
+
+  purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>> {
+    const cropPaths = [...this.faceObservations.values()]
+      .map((observation) => observation.cropPath)
+      .filter((value): value is string => value !== null);
+    const peopleDeleted = this.people.size;
+    const observationsDeleted = this.faceObservations.size;
+    this.people.clear();
+    this.faceObservations.clear();
+    return Promise.resolve(ok({ peopleDeleted, observationsDeleted, cropPaths }));
+  }
+
+  faceStatus(): Promise<Result<FaceStatusCounts, AppError>> {
+    const observations = [...this.faceObservations.values()];
+    return Promise.resolve(ok({
+      people: this.people.size,
+      observations: observations.length,
+      assignedObservations: observations.filter((observation) => observation.personId !== null).length,
+      unassignedObservations: observations.filter((observation) => observation.personId === null).length,
+      filesIndexed: new Set(observations.map((observation) => observation.fingerprint)).size,
+    }));
+  }
+
+  private affectedFingerprints(personId: string): string[] {
+    return [...new Set([...this.faceObservations.values()]
+      .filter((observation) => observation.personId === personId)
+      .map((observation) => observation.fingerprint))];
   }
 }
 
@@ -727,6 +856,7 @@ class InMemoryLocalAiRuntimePort implements LocalAiRuntimePort {
 
 class InMemoryModelDownloadPort implements ModelDownloadPort {
   private readonly downloaded = new Set<WhisperModelName>();
+  private readonly fileArtifacts = new Set<string>();
 
   whisperModelPath(model: WhisperModelName): string {
     return path.join('.ai-video-cataloger', 'models', 'whisper', `ggml-${model}.bin`);
@@ -758,6 +888,55 @@ class InMemoryModelDownloadPort implements ModelDownloadPort {
     }
     this.downloaded.delete(model);
     return Promise.resolve(ok({ model, path: this.whisperModelPath(model), deleted: true }));
+  }
+
+  fileArtifactPath(artifact: FileArtifact): string {
+    return path.join('.ai-video-cataloger', 'models', ...artifact.id.split('/'), artifact.filename);
+  }
+
+  isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>> {
+    return Promise.resolve(ok(this.fileArtifacts.has(artifact.id)));
+  }
+
+  downloadFileArtifact(
+    artifact: FileArtifact,
+    options: { force: boolean },
+  ): Promise<Result<{ artifactId: FileArtifact['id']; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>> {
+    const artifactPath = this.fileArtifactPath(artifact);
+    if (this.fileArtifacts.has(artifact.id) && !options.force) {
+      return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: false, skipped: true }));
+    }
+    this.fileArtifacts.add(artifact.id);
+    if (artifact.bytes === null) {
+      return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: true, skipped: false }));
+    }
+    return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: true, skipped: false, sizeBytes: artifact.bytes }));
+  }
+}
+
+class InMemoryFaceEnginePort implements FaceEnginePort {
+  load(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  detect(): Promise<Result<FaceDetection[], AppError>> {
+    return Promise.resolve(ok([]));
+  }
+
+  align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
+    return Promise.resolve(ok({ frameJpegPath, detection, width: 112, height: 112 }));
+  }
+
+  embed(): Promise<Result<Float32Array, AppError>> {
+    return Promise.resolve(ok(new Float32Array(128)));
+  }
+
+  dispose(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  dependency(): Promise<Result<DependencyStatus, AppError>> {
+    return Promise.resolve(ok(dependency('faces', false)));
   }
 }
 

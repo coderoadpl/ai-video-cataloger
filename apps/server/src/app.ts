@@ -12,7 +12,16 @@ import {
   downloadWhisperModel,
   enqueueProcess,
   enqueueProcessDrive,
+  faceArtifactsStatus,
+  facesForget,
+  facesIndex,
+  facesMerge,
+  facesName,
+  facesPeople,
+  facesPurge,
+  facesStatus,
   generateThumbnail,
+  installFaceArtifacts,
   getConfig,
   getJobStatus,
   getReadiness,
@@ -306,6 +315,66 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!input.ok) return respond(input, API_ROUTES.searchQuery.output);
     return respond(await search(deps, input.value), API_ROUTES.searchQuery.output);
   });
+
+  app.get(API_ROUTES.faceArtifactsStatus.path, async () =>
+    respond(await faceArtifactsStatus(deps), API_ROUTES.faceArtifactsStatus.output),
+  );
+
+  app.post(API_ROUTES.faceArtifactsInstall.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.faceArtifactsInstall.output);
+    const input = parseInput(API_ROUTES.faceArtifactsInstall.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.faceArtifactsInstall.output);
+    return respond(await installFaceArtifacts(deps, input.value), API_ROUTES.faceArtifactsInstall.output);
+  });
+
+  app.post(API_ROUTES.facesIndex.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesIndex.output);
+    const input = parseInput(API_ROUTES.facesIndex.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesIndex.output);
+    return respond(await facesIndex(deps, input.value), API_ROUTES.facesIndex.output);
+  });
+
+  app.get(API_ROUTES.facesPeople.path, async () =>
+    respond(await facesPeople(deps), API_ROUTES.facesPeople.output),
+  );
+
+  app.post(API_ROUTES.facesName.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesName.output);
+    const input = parseInput(API_ROUTES.facesName.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesName.output);
+    return respond(await facesName(deps, input.value), API_ROUTES.facesName.output);
+  });
+
+  app.post(API_ROUTES.facesMerge.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesMerge.output);
+    const input = parseInput(API_ROUTES.facesMerge.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesMerge.output);
+    return respond(await facesMerge(deps, input.value), API_ROUTES.facesMerge.output);
+  });
+
+  app.post(API_ROUTES.facesForget.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesForget.output);
+    const input = parseInput(API_ROUTES.facesForget.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesForget.output);
+    return respond(await facesForget(deps, input.value), API_ROUTES.facesForget.output);
+  });
+
+  app.post(API_ROUTES.facesPurge.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesPurge.output);
+    const input = parseInput(API_ROUTES.facesPurge.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesPurge.output);
+    return respond(await facesPurge(deps, input.value), API_ROUTES.facesPurge.output);
+  });
+
+  app.get(API_ROUTES.facesStatus.path, async () =>
+    respond(await facesStatus(deps), API_ROUTES.facesStatus.output),
+  );
 
   return app;
 };

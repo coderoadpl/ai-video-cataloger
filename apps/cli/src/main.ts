@@ -428,6 +428,31 @@ models
     emitCompleted(json, result.value, result.value.deleted ? `Deleted ${result.value.model}` : `Skipped ${result.value.model}`);
   });
 
+const modelsFaces = models.command('faces').description('Manage the face detection and recognition models');
+
+modelsFaces
+  .command('status')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'models_faces_status', () => api.faceArtifactsStatus(), faceArtifactsStatusHuman, { raw: true });
+  });
+
+modelsFaces
+  .command('install')
+  .option('--force', 'download even if already present', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: ForceJsonOption) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'models_faces_install', { force: options.force === true });
+    const result = await api.installFaceArtifacts({ force: options.force === true });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, () => 'Face models installed', true);
+  });
+
 program
   .command('status')
   .option('--json', 'machine-readable JSON output', false)
@@ -796,6 +821,105 @@ tags
     await runSimple(json, 'tags_alias', () => api.aliasTag({ from, to }), tagsAliasHuman, { raw: true });
   });
 
+const faces = program.command('faces').description('Index and manage people detected across the catalog');
+
+faces
+  .command('index')
+  .argument('<root>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    const resolvedRoot = path.resolve(cliWorkingDirectory, root);
+    emitStarted(json, 'faces_index', { root: resolvedRoot });
+    const result = await api.facesIndex({ root: resolvedRoot });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, facesIndexHuman, true);
+  });
+
+faces
+  .command('people')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'faces_people', () => api.facesPeople(), facesPeopleHuman, { raw: true });
+  });
+
+faces
+  .command('name')
+  .argument('<personId>')
+  .argument('<displayName>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (personId: string, displayName: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'faces_name',
+      () => api.facesName({ personId, displayName }),
+      (data) => `Named ${data.personId} "${data.displayName}" (${data.affectedFingerprints.length} files re-synced)`,
+      { raw: true },
+    );
+  });
+
+faces
+  .command('merge')
+  .argument('<fromPersonId>')
+  .argument('<toPersonId>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (fromPersonId: string, toPersonId: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'faces_merge',
+      () => api.facesMerge({ fromPersonId, toPersonId }),
+      (data) => `Merged ${data.fromPersonId} into ${data.toPersonId} (${data.movedObservations} observations moved)`,
+      { raw: true },
+    );
+  });
+
+faces
+  .command('forget')
+  .argument('<personId>')
+  .option('--force', 'delete the person without prompting', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (personId: string, options: ForceJsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'faces_forget',
+      () => api.facesForget({ personId, force: options.force === true }),
+      (data) => data.deleted
+        ? `Forgot ${data.personId} (${data.cropPathsDeleted} crops deleted)`
+        : `Forget requires --force flag`,
+      { raw: true },
+    );
+  });
+
+faces
+  .command('purge')
+  .option('--force', 'wipe all people and observations without prompting', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: ForceJsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'faces_purge',
+      () => api.facesPurge({ force: options.force === true }),
+      (data) => `Purged ${data.peopleDeleted} people and ${data.observationsDeleted} observations (${data.cropPathsDeleted} crops deleted)`,
+      { raw: true },
+    );
+  });
+
+faces
+  .command('status')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'faces_status', () => api.facesStatus(), facesStatusHuman, { raw: true });
+  });
+
 const configKey = (key: string | undefined) => {
   if (key === undefined) return null;
   const parsed = configKeySchema.safeParse(key);
@@ -872,6 +996,40 @@ const emitApiCostNotice = async (
     return;
   }
   process.stdout.write(`Notice: ${signal.message}\n`);
+};
+
+const faceArtifactsStatusHuman = (
+  data: Awaited<ReturnType<ApiClient['faceArtifactsStatus']>> extends Result<infer T, AppError> ? T : never,
+): string => {
+  const lines = [`Face models: ${data.ready ? 'ready' : 'not installed'}`];
+  for (const artifact of data.artifacts) {
+    lines.push(`${artifact.downloaded ? '*' : ' '} ${artifact.artifactId} (${artifact.license})`);
+  }
+  return lines.join('\n');
+};
+
+const facesPeopleHuman = (
+  data: Awaited<ReturnType<ApiClient['facesPeople']>> extends Result<infer T, AppError> ? T : never,
+): string => {
+  if (data.people.length === 0) return 'No people indexed yet';
+  return data.people
+    .map((person) => `${person.personId} ${person.displayName ?? '(unnamed)'} - ${person.exemplarCount} exemplars`)
+    .join('\n');
+};
+
+const facesStatusHuman = (
+  data: Awaited<ReturnType<ApiClient['facesStatus']>> extends Result<infer T, AppError> ? T : never,
+): string =>
+  `Faces: ${data.enabled ? 'enabled' : 'disabled'}, models ${data.artifactsReady ? 'ready' : 'missing'}\n`
+  + `People: ${data.people}\nObservations: ${data.observations} (${data.assignedObservations} assigned, ${data.unassignedObservations} unassigned)\n`
+  + `Files indexed: ${data.filesIndexed}`;
+
+const facesIndexHuman = (data: unknown): string => {
+  if (!isRecord(data)) return 'Face indexing complete';
+  const indexed = typeof data.filesIndexed === 'number' ? data.filesIndexed : 0;
+  const observations = typeof data.observationsAdded === 'number' ? data.observationsAdded : 0;
+  const people = typeof data.peopleCreated === 'number' ? data.peopleCreated : 0;
+  return `Indexed ${indexed} files, added ${observations} observations, created ${people} people`;
 };
 
 const modelsListHuman = (

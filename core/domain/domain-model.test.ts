@@ -49,6 +49,7 @@ describe('domain taxonomy', () => {
       'model_not_installed',
       'ollama_unavailable',
       'hw_requirements_not_met',
+      'faces_disabled',
       'internal',
     ]);
   });

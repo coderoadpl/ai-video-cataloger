@@ -34,6 +34,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   model_not_installed: 404,
   ollama_unavailable: 503,
   hw_requirements_not_met: 422,
+  faces_disabled: 409,
   internal: 500,
 };
 
@@ -71,6 +72,7 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   model_not_installed: 33,
   ollama_unavailable: 34,
   hw_requirements_not_met: 35,
+  faces_disabled: 41,
   internal: 10,
 };
 
@@ -108,5 +110,6 @@ export const LEGACY_ERROR_CODE_BY_ERROR_CODE: Record<ErrorCode, string> = {
   model_not_installed: 'MODEL_NOT_INSTALLED',
   ollama_unavailable: 'OLLAMA_UNAVAILABLE',
   hw_requirements_not_met: 'HW_REQUIREMENTS_NOT_MET',
+  faces_disabled: 'FACES_DISABLED',
   internal: 'INTERNAL',
 };

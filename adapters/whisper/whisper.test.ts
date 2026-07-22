@@ -6,7 +6,7 @@ import path from 'node:path';
 import { ReadStream } from 'node:fs';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { appError, ok, type AppError, type Result, type WhisperModelName } from '@core/domain/index.js';
+import { appError, ok, type AppError, type FileArtifact, type Result, type WhisperModelName } from '@core/domain/index.js';
 import type { WhisperRuntimePort, WhisperRuntimeStatus } from '@core/server/index.js';
 
 import {
@@ -527,6 +527,53 @@ describe('HuggingFaceWhisperModelDownloader', () => {
       expect(skipped).toEqual(ok({ model: 'tiny', path: primaryModelPath(home, 'tiny'), downloaded: false, skipped: true }));
       expect(forced).toMatchObject({ ok: true, value: { downloaded: true, skipped: false, sizeBytes: 3 } });
       expect(await readFile(primaryModelPath(home, 'tiny'), 'utf8')).toBe('new');
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('downloads a face artifact through a temp file and verifies its pinned sha256', async () => {
+    const home = await tempRoot();
+    const body = Buffer.from('yunet-onnx-bytes');
+    const checksum = createHash('sha256').update(body).digest('hex');
+    const fake = await startFakeModelServer(body, checksum);
+    const downloader = new HuggingFaceWhisperModelDownloader({ homeDirectory: home, fetchImpl: fake.fetchImpl });
+    const artifact: FileArtifact = {
+      id: 'face-detector/yunet-2023mar',
+      filename: 'face_detection_yunet_2023mar.onnx',
+      bytes: body.length,
+      sha256: checksum,
+      url: 'https://models.test/yunet.onnx',
+      license: 'MIT',
+    };
+
+    try {
+      const result = await downloader.downloadFileArtifact(artifact, { force: false });
+      expect(result).toMatchObject({ ok: true, value: { downloaded: true, skipped: false } });
+      expect(existsSync(downloader.fileArtifactPath(artifact))).toBe(true);
+    } finally {
+      await fake.close();
+    }
+  });
+
+  it('rejects a face artifact whose bytes do not match the pinned sha256', async () => {
+    const home = await tempRoot();
+    const fake = await startFakeModelServer(Buffer.from('tampered-bytes'), '0'.repeat(64));
+    const downloader = new HuggingFaceWhisperModelDownloader({ homeDirectory: home, fetchImpl: fake.fetchImpl });
+    const artifact: FileArtifact = {
+      id: 'face-embedder/sface-2021dec',
+      filename: 'face_recognition_sface_2021dec.onnx',
+      bytes: null,
+      sha256: '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79',
+      url: 'https://models.test/sface.onnx',
+      license: 'Apache-2.0',
+    };
+
+    try {
+      const result = await downloader.downloadFileArtifact(artifact, { force: false });
+      expect(result).toMatchObject({ ok: false, error: { code: 'download_error' } });
+      expect(existsSync(downloader.fileArtifactPath(artifact))).toBe(false);
+      expect(existsSync(`${downloader.fileArtifactPath(artifact)}.tmp`)).toBe(false);
     } finally {
       await fake.close();
     }

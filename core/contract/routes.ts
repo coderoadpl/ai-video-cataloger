@@ -4,6 +4,7 @@ import {
   ANALYZER_BACKENDS,
   CONFIG_DEFAULTS,
   ERROR_CODES,
+  FILE_ARTIFACT_IDS,
   LOCAL_AI_MODEL_TAGS,
   LOCAL_AI_SUPPORT_LEVELS,
   VIDEO_STATUSES,
@@ -434,6 +435,24 @@ export const whisperRuntimeInstallOutputSchema = z.object({
   installed: z.boolean(),
 });
 
+export const faceArtifactEntrySchema = z.object({
+  artifactId: z.enum(FILE_ARTIFACT_IDS),
+  filename: z.string().min(1),
+  bytes: z.number().int().positive().nullable(),
+  sha256: z.string().regex(/^[a-f0-9]{64}$/),
+  url: z.string().url(),
+  license: z.string().min(1),
+  path: z.string().min(1),
+  downloaded: z.boolean(),
+});
+
+export const faceArtifactsStatusOutputSchema = z.object({
+  artifacts: z.array(faceArtifactEntrySchema),
+  ready: z.boolean(),
+});
+
+export const faceArtifactsInstallInputSchema = forceInputSchema;
+
 export const machineSchema = z.object({
   platform: z.string(),
   arch: z.string(),
@@ -546,7 +565,15 @@ export const checkOutputSchema = z.object({
 });
 
 export const jobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed', 'cancelled']);
-export const jobKindSchema = z.enum(['process', 'process_drive', 'whisper_download', 'whisper_runtime_install', 'local_ai_pull']);
+export const jobKindSchema = z.enum([
+  'process',
+  'process_drive',
+  'whisper_download',
+  'whisper_runtime_install',
+  'local_ai_pull',
+  'face_artifact_download',
+  'faces_index',
+]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
   'folder-started',
@@ -561,6 +588,11 @@ export const jobProgressStepSchema = z.enum([
   'downloading',
   'runtime_setup',
   'model_download',
+  'faces_scanning',
+  'faces_extracting_frames',
+  'faces_detecting',
+  'faces_clustering',
+  'faces_done',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -584,6 +616,14 @@ export const jobResultSchema = z.union([
   whisperModelDownloadOutputSchema,
   whisperRuntimeInstallOutputSchema,
   localAiPullOutputSchema,
+  faceArtifactsStatusOutputSchema,
+  z.object({
+    root: z.string().min(1),
+    filesScanned: z.number().int().nonnegative(),
+    filesIndexed: z.number().int().nonnegative(),
+    observationsAdded: z.number().int().nonnegative(),
+    peopleCreated: z.number().int().nonnegative(),
+  }),
 ]);
 
 export const jobOutputSchema = z.object({
@@ -699,6 +739,76 @@ export const searchOutputSchema = z.object({
   results: z.array(searchResultSchema),
 });
 
+export const facesIndexInputSchema = z.object({
+  root: z.string().min(1),
+});
+
+export const facePersonSchema = z.object({
+  personId: z.string().min(1),
+  displayName: z.string().nullable(),
+  kind: z.literal('face'),
+  createdAt: z.string().datetime(),
+  centroid: z.array(z.number()).length(128),
+  exemplarCount: z.number().int().nonnegative(),
+});
+
+export const facesPeopleOutputSchema = z.object({
+  people: z.array(facePersonSchema),
+});
+
+export const facesNameInputSchema = z.object({
+  personId: z.string().min(1),
+  displayName: z.string().trim().min(1),
+});
+
+export const facesNameOutputSchema = z.object({
+  personId: z.string().min(1),
+  displayName: z.string().min(1),
+  affectedFingerprints: z.array(z.string()),
+});
+
+export const facesMergeInputSchema = z.object({
+  fromPersonId: z.string().min(1),
+  toPersonId: z.string().min(1),
+});
+
+export const facesMergeOutputSchema = z.object({
+  fromPersonId: z.string().min(1),
+  toPersonId: z.string().min(1),
+  movedObservations: z.number().int().nonnegative(),
+  affectedFingerprints: z.array(z.string()),
+});
+
+export const facesForgetInputSchema = z.object({
+  personId: z.string().min(1),
+  force: z.boolean().default(false),
+});
+
+export const facesForgetOutputSchema = z.object({
+  personId: z.string().min(1),
+  deleted: z.boolean(),
+  cropPathsDeleted: z.number().int().nonnegative(),
+  affectedFingerprints: z.array(z.string()),
+});
+
+export const facesPurgeInputSchema = forceInputSchema;
+
+export const facesPurgeOutputSchema = z.object({
+  peopleDeleted: z.number().int().nonnegative(),
+  observationsDeleted: z.number().int().nonnegative(),
+  cropPathsDeleted: z.number().int().nonnegative(),
+});
+
+export const facesStatusOutputSchema = z.object({
+  enabled: z.boolean(),
+  artifactsReady: z.boolean(),
+  people: z.number().int().nonnegative(),
+  observations: z.number().int().nonnegative(),
+  assignedObservations: z.number().int().nonnegative(),
+  unassignedObservations: z.number().int().nonnegative(),
+  filesIndexed: z.number().int().nonnegative(),
+});
+
 export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.ZodTypeAny> {
   method: 'GET' | 'POST' | 'DELETE';
   path: string;
@@ -776,6 +886,18 @@ export const API_ROUTES = {
     input: emptyInputSchema,
     output: jobAcceptedOutputSchema,
   },
+  faceArtifactsStatus: {
+    method: 'GET',
+    path: '/api/models/faces',
+    input: emptyInputSchema,
+    output: faceArtifactsStatusOutputSchema,
+  },
+  faceArtifactsInstall: {
+    method: 'POST',
+    path: '/api/models/faces/install',
+    input: faceArtifactsInstallInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
   localAiRequirements: {
     method: 'GET',
     path: '/api/models/local-ai/requirements',
@@ -811,6 +933,13 @@ export const API_ROUTES = {
   tagsList: { method: 'GET', path: '/api/tags', input: emptyInputSchema, output: tagsListOutputSchema },
   tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
   searchQuery: { method: 'GET', path: '/api/search', input: searchInputSchema, output: searchOutputSchema },
+  facesIndex: { method: 'POST', path: '/api/faces/index', input: facesIndexInputSchema, output: jobAcceptedOutputSchema },
+  facesPeople: { method: 'GET', path: '/api/faces/people', input: emptyInputSchema, output: facesPeopleOutputSchema },
+  facesName: { method: 'POST', path: '/api/faces/name', input: facesNameInputSchema, output: facesNameOutputSchema },
+  facesMerge: { method: 'POST', path: '/api/faces/merge', input: facesMergeInputSchema, output: facesMergeOutputSchema },
+  facesForget: { method: 'POST', path: '/api/faces/forget', input: facesForgetInputSchema, output: facesForgetOutputSchema },
+  facesPurge: { method: 'POST', path: '/api/faces/purge', input: facesPurgeInputSchema, output: facesPurgeOutputSchema },
+  facesStatus: { method: 'GET', path: '/api/faces/status', input: emptyInputSchema, output: facesStatusOutputSchema },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -836,6 +965,8 @@ export const API_PATHS = {
   whisperModelUse: API_ROUTES.whisperModelUse.path,
   whisperRuntimeStatus: API_ROUTES.whisperRuntimeStatus.path,
   whisperRuntimeInstall: API_ROUTES.whisperRuntimeInstall.path,
+  faceArtifactsStatus: API_ROUTES.faceArtifactsStatus.path,
+  faceArtifactsInstall: API_ROUTES.faceArtifactsInstall.path,
   localAiRequirements: API_ROUTES.localAiRequirements.path,
   localAiPull: API_ROUTES.localAiPull.path,
   localAiRm: API_ROUTES.localAiRm.path,
@@ -851,4 +982,11 @@ export const API_PATHS = {
   tagsList: API_ROUTES.tagsList.path,
   tagsAlias: API_ROUTES.tagsAlias.path,
   searchQuery: API_ROUTES.searchQuery.path,
+  facesIndex: API_ROUTES.facesIndex.path,
+  facesPeople: API_ROUTES.facesPeople.path,
+  facesName: API_ROUTES.facesName.path,
+  facesMerge: API_ROUTES.facesMerge.path,
+  facesForget: API_ROUTES.facesForget.path,
+  facesPurge: API_ROUTES.facesPurge.path,
+  facesStatus: API_ROUTES.facesStatus.path,
 } as const;

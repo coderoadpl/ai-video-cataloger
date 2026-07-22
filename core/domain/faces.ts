@@ -35,6 +35,21 @@ export const faceBoxSchema = z.object({
 });
 export type FaceBox = z.output<typeof faceBoxSchema>;
 
+export const facePointSchema = z.object({
+  x: z.number(),
+  y: z.number(),
+});
+export type FacePoint = z.output<typeof facePointSchema>;
+
+export const faceLandmarksSchema = z.object({
+  leftEye: facePointSchema,
+  rightEye: facePointSchema,
+  nose: facePointSchema,
+  leftMouth: facePointSchema,
+  rightMouth: facePointSchema,
+});
+export type FaceLandmarks = z.output<typeof faceLandmarksSchema>;
+
 export const faceEmbeddingSchema = z.array(z.number()).length(FACE_EMBEDDING_DIM);
 export type FaceEmbedding = z.output<typeof faceEmbeddingSchema>;
 
@@ -60,6 +75,13 @@ export const faceObservationSchema = z.object({
   cropPath: z.string().min(1).nullable(),
 });
 export type FaceObservation = z.output<typeof faceObservationSchema>;
+
+export interface SimilarityTransform {
+  a: number;
+  b: number;
+  tx: number;
+  ty: number;
+}
 
 export const passesFaceQuality = (candidate: { score: number; boxPx: number }): boolean =>
   candidate.score >= FACE_QUALITY.minScore && candidate.boxPx >= FACE_QUALITY.minBoxPx;
@@ -164,4 +186,50 @@ export const shouldMergePeople = (
     }
   }
   return supportingPairs >= FACE_CLUSTERING.autoMergeMinPairs;
+};
+
+export const estimateSimilarityTransform = (
+  source: readonly FacePoint[],
+  target: readonly FacePoint[],
+): SimilarityTransform => {
+  if (source.length !== target.length || source.length === 0) return { a: 1, b: 0, tx: 0, ty: 0 };
+  const sourceMean = meanPoint(source);
+  const targetMean = meanPoint(target);
+  let numeratorA = 0;
+  let numeratorB = 0;
+  let denominator = 0;
+  for (let index = 0; index < source.length; index += 1) {
+    const sourcePoint = source[index];
+    const targetPoint = target[index];
+    if (sourcePoint === undefined || targetPoint === undefined) continue;
+    const sx = sourcePoint.x - sourceMean.x;
+    const sy = sourcePoint.y - sourceMean.y;
+    const tx = targetPoint.x - targetMean.x;
+    const ty = targetPoint.y - targetMean.y;
+    numeratorA += sx * tx + sy * ty;
+    numeratorB += sx * ty - sy * tx;
+    denominator += sx * sx + sy * sy;
+  }
+  if (denominator === 0) return { a: 1, b: 0, tx: targetMean.x - sourceMean.x, ty: targetMean.y - sourceMean.y };
+  const a = numeratorA / denominator;
+  const b = numeratorB / denominator;
+  return {
+    a,
+    b,
+    tx: targetMean.x - a * sourceMean.x + b * sourceMean.y,
+    ty: targetMean.y - b * sourceMean.x - a * sourceMean.y,
+  };
+};
+
+export const applySimilarityTransform = (transform: SimilarityTransform, point: FacePoint): FacePoint => ({
+  x: transform.a * point.x - transform.b * point.y + transform.tx,
+  y: transform.b * point.x + transform.a * point.y + transform.ty,
+});
+
+const meanPoint = (points: readonly FacePoint[]): FacePoint => {
+  const sum = points.reduce((accumulator, point) => ({
+    x: accumulator.x + point.x,
+    y: accumulator.y + point.y,
+  }), { x: 0, y: 0 });
+  return { x: sum.x / points.length, y: sum.y / points.length };
 };

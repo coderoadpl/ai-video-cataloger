@@ -26,10 +26,14 @@ import {
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
+  type FaceObservation,
+  type Person,
   type Result,
 } from '@core/domain/index.js';
 import type {
   CatalogFileRecord,
+  FaceIndexCandidate,
+  FaceStatusCounts,
   CatalogSearchInput,
   CatalogSearchRow,
   CatalogTagAliasResult,
@@ -43,6 +47,7 @@ import {
   analyses,
   createGlobalCatalogSchemaSqlV1,
   driveRuns,
+  faceObservations,
   fileTags,
   files,
   folders,
@@ -54,6 +59,7 @@ import {
   schemaMeta,
   tagAliases,
   tags,
+  people,
 } from './global-catalog-schema.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
@@ -317,6 +323,178 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {
+    return this.read((db) => {
+      const candidates: FaceIndexCandidate[] = [];
+      const folderRows = db.select().from(folders).all()
+        .filter((folder) => folder.currentPath === rootPath || folder.currentPath.startsWith(`${rootPath}${path.sep}`));
+      for (const folderRow of folderRows) {
+        const fileRows = db.select().from(files).where(eq(files.folderId, folderRow.folderId)).all();
+        for (const fileRow of fileRows) {
+          const analysisRow = db.select().from(analyses).where(eq(analyses.fingerprint, fileRow.fingerprint)).get();
+          if (analysisRow === undefined) continue;
+          const existing = db.select().from(faceObservations).where(eq(faceObservations.fingerprint, fileRow.fingerprint)).get();
+          if (existing !== undefined) continue;
+          candidates.push({
+            file: rowToFile(fileRow),
+            analysis: rowToAnalysis(analysisRow, tagsForFingerprint(db, fileRow.fingerprint)),
+            folder: rowToFolder(folderRow),
+          });
+        }
+      }
+      return candidates.sort((left, right) => left.folder.currentPath.localeCompare(right.folder.currentPath)
+        || left.file.fileName.localeCompare(right.file.fileName));
+    });
+  }
+
+  async listPeople(): Promise<Result<Person[], AppError>> {
+    return this.read((db) => db.select().from(people).all().map(rowToPerson));
+  }
+
+  async getPerson(personId: string): Promise<Result<Person | null, AppError>> {
+    return this.read((db) => {
+      const row = db.select().from(people).where(eq(people.personId, personId)).get();
+      return row === undefined ? null : rowToPerson(row);
+    });
+  }
+
+  async upsertPerson(person: Person): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      db.insert(people)
+        .values(personToRow(person))
+        .onConflictDoUpdate({
+          target: people.personId,
+          set: {
+            displayName: person.displayName,
+            kind: person.kind,
+            centroid: embeddingToBlob(person.centroid),
+            exemplarCount: person.exemplarCount,
+          },
+        })
+        .run();
+    });
+  }
+
+  async setPersonName(personId: string, displayName: string): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>> {
+    return this.write((db, client) => {
+      const existing = db.select().from(people).where(eq(people.personId, personId)).get();
+      if (existing === undefined) throw new CatalogAppError(appError('not_found', `Person not found: ${personId}`));
+      db.update(people).set({ displayName }).where(eq(people.personId, personId)).run();
+      const affectedFingerprints = uniqueFingerprints(db.select().from(faceObservations).where(eq(faceObservations.personId, personId)).all());
+      for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
+      return { personId, displayName, affectedFingerprints };
+    });
+  }
+
+  async listFaceObservations(input: { fingerprint?: string | undefined; personId?: string | undefined } = {}): Promise<Result<FaceObservation[], AppError>> {
+    return this.read((db) => {
+      if (input.fingerprint !== undefined) {
+        return db.select().from(faceObservations).where(eq(faceObservations.fingerprint, input.fingerprint)).all().map(rowToFaceObservation);
+      }
+      if (input.personId !== undefined) {
+        return db.select().from(faceObservations).where(eq(faceObservations.personId, input.personId)).all().map(rowToFaceObservation);
+      }
+      return db.select().from(faceObservations).all().map(rowToFaceObservation);
+    });
+  }
+
+  async upsertFaceObservation(observation: FaceObservation): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      db.insert(faceObservations)
+        .values(faceObservationToRow(observation))
+        .onConflictDoUpdate({
+          target: faceObservations.obsId,
+          set: {
+            fingerprint: observation.fingerprint,
+            kind: observation.kind,
+            frameTsS: observation.frameTsS,
+            bboxJson: JSON.stringify(observation.bbox),
+            embedding: embeddingToBlob(observation.embedding),
+            quality: observation.quality,
+            personId: observation.personId,
+            cropPath: observation.cropPath,
+          },
+        })
+        .run();
+      syncSearchDocument(db, client, observation.fingerprint);
+    });
+  }
+
+  async assignFaceObservation(obsId: string, personId: string | null): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      const observation = db.select().from(faceObservations).where(eq(faceObservations.obsId, obsId)).get();
+      if (observation === undefined) throw new CatalogAppError(appError('not_found', `Face observation not found: ${obsId}`));
+      db.update(faceObservations).set({ personId }).where(eq(faceObservations.obsId, obsId)).run();
+      syncSearchDocument(db, client, observation.fingerprint);
+    });
+  }
+
+  async mergePeople(input: { fromPersonId: string; toPersonId: string }): Promise<Result<{ fromPersonId: string; toPersonId: string; movedObservations: number; affectedFingerprints: string[] }, AppError>> {
+    return this.write((db, client) => {
+      const from = db.select().from(people).where(eq(people.personId, input.fromPersonId)).get();
+      const to = db.select().from(people).where(eq(people.personId, input.toPersonId)).get();
+      if (from === undefined || to === undefined) throw new CatalogAppError(appError('not_found', 'Person not found'));
+      const rows = db.select().from(faceObservations).where(eq(faceObservations.personId, input.fromPersonId)).all();
+      const affectedFingerprints = uniqueFingerprints(rows);
+      db.update(faceObservations).set({ personId: input.toPersonId }).where(eq(faceObservations.personId, input.fromPersonId)).run();
+      const embeddings = db.select().from(faceObservations).where(eq(faceObservations.personId, input.toPersonId)).all()
+        .map((row) => rowToFaceObservation(row).embedding);
+      const centroid = centroidFor(embeddings);
+      db.update(people).set({
+        centroid: embeddingToBlob(centroid),
+        exemplarCount: embeddings.length,
+      }).where(eq(people.personId, input.toPersonId)).run();
+      db.delete(people).where(eq(people.personId, input.fromPersonId)).run();
+      for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
+      return {
+        fromPersonId: input.fromPersonId,
+        toPersonId: input.toPersonId,
+        movedObservations: rows.length,
+        affectedFingerprints,
+      };
+    });
+  }
+
+  async forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>> {
+    return this.write((db, client) => {
+      const existing = db.select().from(people).where(eq(people.personId, personId)).get();
+      if (existing === undefined) return { personId, deleted: false, cropPaths: [], affectedFingerprints: [] };
+      const rows = db.select().from(faceObservations).where(eq(faceObservations.personId, personId)).all();
+      const cropPaths = rows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
+      const affectedFingerprints = uniqueFingerprints(rows);
+      db.update(faceObservations).set({ personId: null, cropPath: null }).where(eq(faceObservations.personId, personId)).run();
+      db.delete(people).where(eq(people.personId, personId)).run();
+      for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
+      return { personId, deleted: true, cropPaths, affectedFingerprints };
+    });
+  }
+
+  async purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>> {
+    return this.write((db, client) => {
+      const observationRows = db.select().from(faceObservations).all();
+      const peopleRows = db.select().from(people).all();
+      const cropPaths = observationRows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
+      const affectedFingerprints = uniqueFingerprints(observationRows);
+      db.delete(faceObservations).run();
+      db.delete(people).run();
+      for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
+      return { peopleDeleted: peopleRows.length, observationsDeleted: observationRows.length, cropPaths };
+    });
+  }
+
+  async faceStatus(): Promise<Result<FaceStatusCounts, AppError>> {
+    return this.read((db) => {
+      const observationRows = db.select().from(faceObservations).all();
+      return {
+        people: db.select().from(people).all().length,
+        observations: observationRows.length,
+        assignedObservations: observationRows.filter((row) => row.personId !== null).length,
+        unassignedObservations: observationRows.filter((row) => row.personId === null).length,
+        filesIndexed: new Set(observationRows.map((row) => row.fingerprint)).size,
+      };
+    });
+  }
+
   private async read<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
       const state = await this.ensureOpen();
@@ -378,13 +556,14 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 4) {
     for (const statement of migrateGlobalCatalogSchemaSqlV4) runMigrationStatement(client, statement);
-    const db = drizzle(client, { schema: globalCatalogSchema });
-    rebuildSearchIndex(db, client);
     migrated = true;
   }
   if (currentVersion < 5) {
     for (const statement of migrateGlobalCatalogSchemaSqlV5) runMigrationStatement(client, statement);
     migrated = true;
+  }
+  if (currentVersion < 4) {
+    rebuildSearchIndex(drizzle(client, { schema: globalCatalogSchema }), client);
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
@@ -487,6 +666,84 @@ const rowToAnalysis = (row: typeof analyses.$inferSelect, analysisTags: string[]
   tags: analysisTags,
 });
 
+const rowToPerson = (row: typeof people.$inferSelect): Person => ({
+  personId: row.personId,
+  displayName: row.displayName,
+  kind: 'face',
+  createdAt: row.createdAt,
+  centroid: blobToEmbedding(row.centroid),
+  exemplarCount: row.exemplarCount,
+});
+
+const personToRow = (person: Person): typeof people.$inferInsert => ({
+  personId: person.personId,
+  displayName: person.displayName,
+  kind: person.kind,
+  createdAt: person.createdAt,
+  centroid: embeddingToBlob(person.centroid),
+  exemplarCount: person.exemplarCount,
+});
+
+const rowToFaceObservation = (row: typeof faceObservations.$inferSelect): FaceObservation => ({
+  obsId: row.obsId,
+  fingerprint: row.fingerprint,
+  kind: 'face',
+  frameTsS: row.frameTsS ?? 0,
+  bbox: parseBbox(row.bboxJson),
+  embedding: blobToEmbedding(row.embedding),
+  quality: row.quality ?? 0,
+  personId: row.personId,
+  cropPath: row.cropPath,
+});
+
+const faceObservationToRow = (observation: FaceObservation): typeof faceObservations.$inferInsert => ({
+  obsId: observation.obsId,
+  fingerprint: observation.fingerprint,
+  kind: observation.kind,
+  frameTsS: observation.frameTsS,
+  bboxJson: JSON.stringify(observation.bbox),
+  embedding: embeddingToBlob(observation.embedding),
+  quality: observation.quality,
+  personId: observation.personId,
+  cropPath: observation.cropPath,
+});
+
+const parseBbox = (value: string | null): FaceObservation['bbox'] => {
+  if (value === null) return { x: 0, y: 0, width: 1, height: 1 };
+  try {
+    const parsed: unknown = JSON.parse(value);
+    if (
+      typeof parsed === 'object'
+      && parsed !== null
+      && 'x' in parsed
+      && 'y' in parsed
+      && 'width' in parsed
+      && 'height' in parsed
+      && typeof parsed.x === 'number'
+      && typeof parsed.y === 'number'
+      && typeof parsed.width === 'number'
+      && typeof parsed.height === 'number'
+    ) {
+      return { x: parsed.x, y: parsed.y, width: parsed.width, height: parsed.height };
+    }
+  } catch {
+    return { x: 0, y: 0, width: 1, height: 1 };
+  }
+  return { x: 0, y: 0, width: 1, height: 1 };
+};
+
+const embeddingToBlob = (embedding: readonly number[]): Buffer => {
+  const array = new Float32Array(embedding);
+  return Buffer.from(array.buffer, array.byteOffset, array.byteLength);
+};
+
+const blobToEmbedding = (value: unknown): number[] => {
+  if (!(value instanceof Uint8Array)) return Array.from({ length: 128 }, () => 0);
+  const bytes = new Uint8Array(value.buffer, value.byteOffset, value.byteLength);
+  const floats = new Float32Array(bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength));
+  return [...floats];
+};
+
 const rowToDriveRun = (row: typeof driveRuns.$inferSelect): DriveRunRecord => ({
   runId: row.runId,
   root: row.root,
@@ -550,6 +807,19 @@ const tagsForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] =>
   return names.sort((left, right) => left.localeCompare(right));
 };
 
+const faceNamesForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] => {
+  const observationRows = db.select().from(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).all();
+  const names = new Set<string>();
+  for (const observation of observationRows) {
+    if (observation.personId === null) continue;
+    const person = db.select().from(people).where(eq(people.personId, observation.personId)).get();
+    if (person?.displayName !== null && person?.displayName !== undefined && person.displayName.length > 0) {
+      names.add(person.displayName);
+    }
+  }
+  return [...names].sort((left, right) => left.localeCompare(right));
+};
+
 const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: string): void => {
   const file = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();
   if (file === undefined) {
@@ -563,7 +833,7 @@ const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: st
     finalName: analysis?.finalName ?? '',
     description: analysis?.description ?? '',
     transcript: analysis?.transcript ?? '',
-    tagsText: tagsForFingerprint(db, fingerprint).join('\n'),
+    tagsText: [...tagsForFingerprint(db, fingerprint), ...faceNamesForFingerprint(db, fingerprint)].join('\n'),
   };
   const existingDocid = searchDocumentId(client, fingerprint);
   if (existingDocid !== null) {
@@ -697,6 +967,30 @@ const nullableStringValue = (value: SqlValue | undefined): string | null => {
 
 const nullableNumberValue = (value: SqlValue | undefined): number | null => typeof value === 'number' ? value : null;
 
+const uniqueFingerprints = (rows: readonly (typeof faceObservations.$inferSelect)[]): string[] =>
+  [...new Set(rows.map((row) => row.fingerprint))].sort((left, right) => left.localeCompare(right));
+
+const centroidFor = (embeddings: readonly (readonly number[])[]): number[] => {
+  if (embeddings.length === 0) return Array.from({ length: 128 }, () => 0);
+  const totals = Array.from({ length: 128 }, () => 0);
+  for (const embedding of embeddings) {
+    embedding.forEach((value, index) => {
+      const current = totals[index];
+      if (current !== undefined) totals[index] = current + value;
+    });
+  }
+  const mean = totals.map((value) => value / embeddings.length);
+  const magnitude = Math.sqrt(mean.reduce((sum, value) => sum + value * value, 0));
+  if (magnitude === 0) return mean;
+  return mean.map((value) => value / magnitude);
+};
+
+class CatalogAppError extends Error {
+  constructor(readonly appError: AppError) {
+    super(appError.message);
+  }
+}
+
 const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined => {
   const wasmPath = findSqlJsWasmPath();
   return wasmPath === null ? undefined : { locateFile: () => wasmPath };
@@ -725,6 +1019,7 @@ const findSqlJsWasmPath = (): string | null => {
 };
 
 const failure = <T>(cause: unknown): Result<T, AppError> => {
+  if (cause instanceof CatalogAppError) return { ok: false, error: cause.appError };
   const message = cause instanceof Error ? cause.message : 'Global catalog operation failed';
   return { ok: false, error: appError('internal', message, cause) };
 };

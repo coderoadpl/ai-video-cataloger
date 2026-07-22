@@ -19,6 +19,41 @@ export const WHISPER_MODELS: Record<WhisperModelName, WhisperModel> = {
   'large-v3-turbo': { name: 'large-v3-turbo', size: '1.6GB', sizeMb: 1549 },
 };
 
+export const FILE_ARTIFACT_IDS = [
+  'face-detector/yunet-2023mar',
+  'face-embedder/sface-2021dec',
+] as const;
+export const fileArtifactIdSchema = z.enum(FILE_ARTIFACT_IDS);
+export type FileArtifactId = z.output<typeof fileArtifactIdSchema>;
+
+export interface FileArtifact {
+  id: FileArtifactId;
+  filename: string;
+  bytes: number | null;
+  sha256: string;
+  url: string;
+  license: string;
+}
+
+export const FILE_ARTIFACTS: Record<FileArtifactId, FileArtifact> = {
+  'face-detector/yunet-2023mar': {
+    id: 'face-detector/yunet-2023mar',
+    filename: 'face_detection_yunet_2023mar.onnx',
+    bytes: 232589,
+    sha256: '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4',
+    url: 'https://huggingface.co/opencv/face_detection_yunet/resolve/main/face_detection_yunet_2023mar.onnx',
+    license: 'MIT',
+  },
+  'face-embedder/sface-2021dec': {
+    id: 'face-embedder/sface-2021dec',
+    filename: 'face_recognition_sface_2021dec.onnx',
+    bytes: null,
+    sha256: '0ba9fbfa01b5270c96627c4ef784da859931e02f04419c829e83484087c34e79',
+    url: 'https://huggingface.co/opencv/face_recognition_sface/resolve/main/face_recognition_sface_2021dec.onnx',
+    license: 'Apache-2.0',
+  },
+};
+
 export const LOCAL_AI_MODEL_TAGS = ['gemma3:4b', 'gemma3:12b', 'gemma3:27b', 'qwen2.5vl:7b'] as const;
 export const localAiModelTagSchema = z.enum(LOCAL_AI_MODEL_TAGS);
 export type LocalAiModelTag = z.output<typeof localAiModelTagSchema>;

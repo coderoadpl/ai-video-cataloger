@@ -1,4 +1,5 @@
 import {
+  FILE_ARTIFACTS,
   LOCAL_AI_HARDWARE_TIERS,
   WHISPER_MODELS,
   appError,
@@ -7,6 +8,8 @@ import {
   whisperModelNameSchema,
   type AppError,
   type ConfigKey,
+  type FileArtifact,
+  type FileArtifactId,
   type LocalAiHardwareTier,
   type Result,
   type WhisperModelName,
@@ -40,6 +43,22 @@ export interface WhisperModelListEntry {
 
 export interface WhisperModelsListOutput {
   models: WhisperModelListEntry[];
+}
+
+export interface FaceArtifactListEntry {
+  artifactId: FileArtifactId;
+  filename: string;
+  bytes: number | null;
+  sha256: string;
+  url: string;
+  license: string;
+  path: string;
+  downloaded: boolean;
+}
+
+export interface FaceArtifactsStatusOutput {
+  artifacts: FaceArtifactListEntry[];
+  ready: boolean;
 }
 
 export interface JobAcceptedOutput {
@@ -130,6 +149,62 @@ export const listWhisperModels = async (deps: ModelsDeps): Promise<Result<Whispe
 
   return ok({ models });
 };
+
+export const faceArtifactsStatus = async (deps: ModelsDeps): Promise<Result<FaceArtifactsStatusOutput, AppError>> => {
+  const artifacts: FaceArtifactListEntry[] = [];
+  for (const artifact of Object.values(FILE_ARTIFACTS)) {
+    const downloaded = await deps.downloads.isFileArtifactDownloaded(artifact);
+    if (!downloaded.ok) return downloaded;
+    artifacts.push(faceArtifactEntry(deps, artifact, downloaded.value));
+  }
+  return ok({
+    artifacts,
+    ready: artifacts.every((artifact) => artifact.downloaded),
+  });
+};
+
+export const installFaceArtifacts = async (
+  deps: ModelsDeps,
+  input: { force: boolean },
+): Promise<Result<JobAcceptedOutput, AppError>> =>
+  deps.jobs.enqueue({
+    kind: 'face_artifact_download',
+    payload: { force: input.force },
+    resourceKey: 'face-artifacts',
+    run: async (context) => {
+      const started = await context.reportProgress({ step: 'downloading', percentage: 0 });
+      if (!started.ok) return started;
+      let index = 0;
+      for (const artifact of Object.values(FILE_ARTIFACTS)) {
+        index += 1;
+        const downloaded = await deps.downloads.downloadFileArtifact(artifact, {
+          force: input.force,
+          signal: context.signal,
+          onProgress: (progress) => {
+            void context.reportProgress({
+              step: 'downloading',
+              ...(progress.percentage === null ? {} : { percentage: progress.percentage }),
+              current: index,
+              total: Object.values(FILE_ARTIFACTS).length,
+              data: {
+                artifactId: progress.artifactId,
+                downloadedBytes: progress.downloadedBytes,
+                totalBytes: progress.totalBytes,
+                speed: progress.speed,
+              },
+            });
+          },
+        });
+        if (context.signal.aborted) return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
+        if (!downloaded.ok) return downloaded;
+      }
+      const status = await faceArtifactsStatus(deps);
+      if (!status.ok) return status;
+      const completed = await context.reportProgress({ step: 'downloading', percentage: 100 });
+      if (!completed.ok) return completed;
+      return ok(status.value);
+    },
+  });
 
 export const downloadWhisperModel = async (
   deps: ModelsDeps,
@@ -292,6 +367,21 @@ const isInstalled = (installedModels: string[], tag: string): boolean =>
 
 const findTier = (tag: string): LocalAiHardwareTier | null =>
   Object.values(LOCAL_AI_HARDWARE_TIERS).find((tier) => tier.tag === tag) ?? null;
+
+const faceArtifactEntry = (
+  deps: Pick<ModelsDeps, 'downloads'>,
+  artifact: FileArtifact,
+  downloaded: boolean,
+): FaceArtifactListEntry => ({
+  artifactId: artifact.id,
+  filename: artifact.filename,
+  bytes: artifact.bytes,
+  sha256: artifact.sha256,
+  url: artifact.url,
+  license: artifact.license,
+  path: deps.downloads.fileArtifactPath(artifact),
+  downloaded,
+});
 
 const recommendTier = (machine: { platform: string; arch: string; ramGb: number }): LocalAiHardwareTier | null => {
   const supported = Object.values(LOCAL_AI_HARDWARE_TIERS).filter(

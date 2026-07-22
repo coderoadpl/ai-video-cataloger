@@ -12,12 +12,15 @@ import {
   appError,
   ok,
   type AppError,
+  type FileArtifact,
+  type FileArtifactId,
   type Result,
   type WhisperModelName,
 } from '@core/domain/index.js';
 import type {
   DependencyStatus,
   CredentialsStore,
+  FileArtifactDownloadProgress,
   ModelDownloadPort,
   TranscribeInput,
   TranscriberPort,
@@ -342,6 +345,48 @@ export class HuggingFaceWhisperModelDownloader implements ModelDownloadPort {
     }
   }
 
+  fileArtifactPath(artifact: FileArtifact): string {
+    return fileArtifactPath(this.homeDirectory, artifact);
+  }
+
+  async isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>> {
+    try {
+      return ok(await pathExists(this.fileArtifactPath(artifact)));
+    } catch (cause) {
+      return downloadFailure(cause, 'Failed to check artifact status');
+    }
+  }
+
+  async downloadFileArtifact(
+    artifact: FileArtifact,
+    options: { force: boolean; onProgress?: (progress: FileArtifactDownloadProgress) => void; signal?: AbortSignal | undefined },
+  ): Promise<Result<{ artifactId: FileArtifactId; path: string; downloaded: boolean; skipped: boolean; sizeBytes?: number }, AppError>> {
+    const artifactPath = this.fileArtifactPath(artifact);
+    const downloaded = await this.isFileArtifactDownloaded(artifact);
+    if (!downloaded.ok) return downloaded;
+    if (downloaded.value && !options.force) {
+      return ok({ artifactId: artifact.id, path: artifactPath, downloaded: false, skipped: true });
+    }
+
+    const tempPath = `${artifactPath}.tmp`;
+    try {
+      await mkdir(path.dirname(artifactPath), { recursive: true });
+      await rm(tempPath, { force: true });
+      const response = await this.fetchImpl(artifact.url, signalInit(options.signal));
+      if (!response.ok) {
+        return { ok: false, error: appError('download_error', `HTTP error: ${response.status} ${response.statusText}`) };
+      }
+      const written = await this.streamVerifiedArtifactTempFile(artifact, response, tempPath, options.onProgress);
+      if (!written.ok) return written;
+      await rm(artifactPath, { force: true });
+      await rename(tempPath, artifactPath);
+      return ok({ artifactId: artifact.id, path: artifactPath, downloaded: true, skipped: false, sizeBytes: written.value.sizeBytes });
+    } catch (cause) {
+      await rm(tempPath, { force: true });
+      return downloadFailure(cause, 'Failed to download artifact');
+    }
+  }
+
   private async expectedSha256(url: string, signal?: AbortSignal): Promise<string | null> {
     try {
       const head = await this.fetchImpl(url, { method: 'HEAD', redirect: 'manual', ...signalInit(signal) });
@@ -415,6 +460,76 @@ export class HuggingFaceWhisperModelDownloader implements ModelDownloadPort {
     }
     return ok({ sizeBytes: downloadedBytes });
   }
+
+  private async streamVerifiedArtifactTempFile(
+    artifact: FileArtifact,
+    response: Response,
+    tempPath: string,
+    onProgress: ((progress: FileArtifactDownloadProgress) => void) | undefined,
+  ): Promise<Result<{ sizeBytes: number }, AppError>> {
+    const body = response.body;
+    if (body === null) return { ok: false, error: appError('download_error', 'Download response body is empty') };
+    const totalBytes = contentLength(response.headers);
+    const hash = createHash('sha256');
+    const fileStream = createWriteStream(tempPath);
+    const reader = body.getReader();
+    let downloadedBytes = 0;
+    let lastBytes = 0;
+    let lastProgressAt = this.nowMs();
+    const emit = (now: number): void => {
+      const elapsed = (now - lastProgressAt) / 1000;
+      onProgress?.({
+        artifactId: artifact.id,
+        downloadedBytes,
+        totalBytes,
+        percentage: totalBytes === null || totalBytes === 0 ? null : Math.round((downloadedBytes / totalBytes) * 100),
+        speed: elapsed > 0 ? (downloadedBytes - lastBytes) / elapsed : null,
+      });
+      lastBytes = downloadedBytes;
+      lastProgressAt = now;
+    };
+
+    try {
+      while (true) {
+        const read = await reader.read();
+        if (read.done) break;
+        hash.update(read.value);
+        downloadedBytes += read.value.length;
+        await writeChunk(fileStream, read.value);
+        const now = this.nowMs();
+        if (now - lastProgressAt >= 500) emit(now);
+      }
+      await endStream(fileStream);
+    } catch (cause) {
+      fileStream.destroy();
+      await rm(tempPath, { force: true });
+      return downloadFailure(cause, 'Failed to download artifact');
+    }
+
+    emit(this.nowMs());
+    const actualSha256 = hash.digest('hex');
+    if (actualSha256 !== artifact.sha256) {
+      await rm(tempPath, { force: true });
+      return {
+        ok: false,
+        error: appError('download_error', `Downloaded artifact checksum mismatch for ${artifact.id}`, {
+          expectedSha256: artifact.sha256,
+          actualSha256,
+        }),
+      };
+    }
+    if (artifact.bytes !== null && downloadedBytes !== artifact.bytes) {
+      await rm(tempPath, { force: true });
+      return {
+        ok: false,
+        error: appError('download_error', `Downloaded artifact size mismatch for ${artifact.id}`, {
+          expectedBytes: artifact.bytes,
+          actualBytes: downloadedBytes,
+        }),
+      };
+    }
+    return ok({ sizeBytes: downloadedBytes });
+  }
 }
 
 export const resolveWhisperBinary = async (
@@ -444,6 +559,9 @@ export const directModelPath = (homeDirectory: string, model: WhisperModelName):
 
 export const legacyModelPath = (homeDirectory: string, model: WhisperModelName): string =>
   path.join(homeDirectory, '.cache', 'whisper', `${model}.pt`);
+
+export const fileArtifactPath = (homeDirectory: string, artifact: FileArtifact): string =>
+  path.join(homeDirectory, '.ai-video-cataloger', 'models', ...artifact.id.split('/'), artifact.filename);
 
 const homeWhisperBinaryResolver = (homeDirectory: string): WhisperBinaryResolver => ({
   bundledWhisperPath: () => {

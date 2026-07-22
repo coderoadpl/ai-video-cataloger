@@ -5,6 +5,7 @@ export * from './usecases/folder-identity.js';
 export * from './usecases/check.js';
 export * from './usecases/config.js';
 export * from './usecases/credentials.js';
+export * from './usecases/faces.js';
 export * from './usecases/doctor.js';
 export * from './usecases/health.js';
 export * from './usecases/jobs.js';

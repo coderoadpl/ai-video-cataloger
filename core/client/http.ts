@@ -7,6 +7,13 @@ import {
   configSetOutputSchema,
   credentialSetOutputSchema,
   doctorOutputSchema,
+  faceArtifactsStatusOutputSchema,
+  facesForgetOutputSchema,
+  facesMergeOutputSchema,
+  facesNameOutputSchema,
+  facesPeopleOutputSchema,
+  facesPurgeOutputSchema,
+  facesStatusOutputSchema,
   healthOutputSchema,
   indexRebuildOutputSchema,
   indexStatusOutputSchema,
@@ -482,6 +489,105 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  faceArtifactsStatus: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.faceArtifactsStatus.method,
+      API_ROUTES.faceArtifactsStatus.path,
+      faceArtifactsStatusOutputSchema,
+      undefined,
+      signal,
+    ),
+  installFaceArtifacts: (input: z.input<typeof API_ROUTES.faceArtifactsInstall.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.faceArtifactsInstall.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.faceArtifactsInstall.method,
+      API_ROUTES.faceArtifactsInstall.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  facesIndex: (input: z.input<typeof API_ROUTES.facesIndex.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesIndex.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.facesIndex.method,
+      API_ROUTES.facesIndex.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  facesPeople: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.facesPeople.method,
+      API_ROUTES.facesPeople.path,
+      facesPeopleOutputSchema,
+      undefined,
+      signal,
+    ),
+  facesName: (input: z.input<typeof API_ROUTES.facesName.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesName.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.facesName.method,
+      API_ROUTES.facesName.path,
+      facesNameOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  facesMerge: (input: z.input<typeof API_ROUTES.facesMerge.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesMerge.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.facesMerge.method,
+      API_ROUTES.facesMerge.path,
+      facesMergeOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  facesForget: (input: z.input<typeof API_ROUTES.facesForget.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesForget.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.facesForget.method,
+      API_ROUTES.facesForget.path,
+      facesForgetOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  facesPurge: (input: z.input<typeof API_ROUTES.facesPurge.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesPurge.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.facesPurge.method,
+      API_ROUTES.facesPurge.path,
+      facesPurgeOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  facesStatus: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.facesStatus.method,
+      API_ROUTES.facesStatus.path,
+      facesStatusOutputSchema,
+      undefined,
+      signal,
+    ),
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;
