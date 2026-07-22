@@ -88,6 +88,11 @@ describe('findNewClusterSeed', () => {
     const members = findNewClusterSeed([unitAtCosine(0), unitAtCosine(0.02), unitAtCosine(0.99)]);
     expect(members).toEqual([]);
   });
+
+  it('does not seed a cluster from a similarity chain that is not pairwise similar', () => {
+    const members = findNewClusterSeed([unitAtCosine(0), unitAtCosine(0.62), unitAtCosine(0.95)]);
+    expect(members).toEqual([]);
+  });
 });
 
 describe('shouldMergePeople', () => {

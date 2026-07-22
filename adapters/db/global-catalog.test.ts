@@ -108,12 +108,16 @@ describe('SqlJsGlobalCatalogStore', () => {
     const reopened = new SQL.Database(await readFile(store.databasePath()));
     const versionResult = reopened.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
     const columnResult = reopened.exec('PRAGMA table_info(files)');
+    const facesTablesResult = reopened.exec(
+      "SELECT name FROM sqlite_master WHERE type = 'table' AND name IN ('people', 'face_observations') ORDER BY name",
+    );
     reopened.close();
 
     expect(versionResult[0]?.values[0]?.[0]).toBe(5);
     const columnNames = columnResult[0]?.values.map((row) => row[1]).filter((value) => typeof value === 'string') ?? [];
     expect(columnNames).toContain('gps_lat');
     expect(columnNames).toContain('gps_lon');
+    expect(facesTablesResult[0]?.values.map((row) => row[0])).toEqual(['face_observations', 'people']);
   });
 
   it('migrates an existing v2 database to v5 and persists drive run bookkeeping immediately', async () => {

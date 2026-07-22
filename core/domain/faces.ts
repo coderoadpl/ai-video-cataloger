@@ -128,6 +128,16 @@ export const classifyFace = (
   return { decision: 'unassigned', similarity: best.similarity, margin };
 };
 
+const isPairwiseSimilar = (embeddings: readonly (readonly number[])[], indices: readonly number[]): boolean =>
+  indices.every((left, position) =>
+    indices
+      .slice(position + 1)
+      .every(
+        (right) =>
+          cosineSimilarity(embeddings[left] ?? [], embeddings[right] ?? []) >= FACE_CLUSTERING.newClusterSimilarity,
+      ),
+  );
+
 export const findNewClusterSeed = (embeddings: readonly (readonly number[])[]): number[] => {
   const members: number[] = [];
   embeddings.forEach((candidate, index) => {
@@ -137,6 +147,8 @@ export const findNewClusterSeed = (embeddings: readonly (readonly number[])[]): 
     );
     if (supporters.length + 1 >= FACE_CLUSTERING.newClusterMinObservations) members.push(index);
   });
+  if (members.length < FACE_CLUSTERING.newClusterMinObservations) return [];
+  if (!isPairwiseSimilar(embeddings, members)) return [];
   return members;
 };
 
