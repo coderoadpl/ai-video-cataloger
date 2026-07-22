@@ -984,7 +984,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const rows = [...this.faceObservations.values()].filter((observation) => observation.personId === personId);
     const cropPaths = rows.map((observation) => observation.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
     const affectedFingerprints = uniqueFingerprints(rows);
-    for (const observation of rows) this.faceObservations.set(observation.obsId, { ...observation, personId: null, cropPath: null });
+    for (const observation of rows) this.faceObservations.delete(observation.obsId);
     this.people.delete(personId);
     return Promise.resolve(ok({ personId, deleted: true, cropPaths, affectedFingerprints }));
   }

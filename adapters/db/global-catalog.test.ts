@@ -96,6 +96,43 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(search.ok && search.value.map((row) => row.fileName)).toEqual(['renamed.mp4']);
   });
 
+  it('forgetPerson deletes the person and its face observations including embeddings', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertPerson({
+      personId: 'person-1',
+      displayName: 'Ada',
+      kind: 'face',
+      createdAt: '2026-01-04T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.1),
+      exemplarCount: 1,
+    });
+    await store.upsertFaceObservation({
+      obsId: 'obs-1',
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-1',
+      cropPath: null,
+    });
+
+    const forgotten = await store.forgetPerson('person-1');
+    expect(forgotten.ok && forgotten.value.deleted).toBe(true);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const people = await reopened.listPeople();
+    expect(people.ok && people.value.length).toBe(0);
+    const observations = await reopened.listFaceObservations();
+    expect(observations.ok && observations.value.length).toBe(0);
+    const status = await reopened.faceStatus();
+    expect(status.ok && status.value.observations).toBe(0);
+  });
+
   it('migrates an existing v1 database to v5 and persists the migrated schema immediately', async () => {
     const home = await tempHome();
     await writeV1Catalog(home);

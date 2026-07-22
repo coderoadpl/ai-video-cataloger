@@ -462,7 +462,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const rows = db.select().from(faceObservations).where(eq(faceObservations.personId, personId)).all();
       const cropPaths = rows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
       const affectedFingerprints = uniqueFingerprints(rows);
-      db.update(faceObservations).set({ personId: null, cropPath: null }).where(eq(faceObservations.personId, personId)).run();
+      db.delete(faceObservations).where(eq(faceObservations.personId, personId)).run();
       db.delete(people).where(eq(people.personId, personId)).run();
       for (const fingerprint of affectedFingerprints) syncSearchDocument(db, client, fingerprint);
       return { personId, deleted: true, cropPaths, affectedFingerprints };

@@ -207,6 +207,8 @@ describe('faces forget and purge delete crop files', () => {
     expect(exists.ok && exists.value).toBe(false);
     const people = await deps.globalCatalog.listPeople();
     expect(people.ok && people.value.length).toBe(0);
+    const observations = await deps.globalCatalog.listFaceObservations({ fingerprint: 'fp-a' });
+    expect(observations.ok && observations.value.length).toBe(0);
   });
 
   it('purge wipes all faces rows and their crop files', async () => {

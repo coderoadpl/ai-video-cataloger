@@ -231,7 +231,7 @@ export const PeopleView = ({
       <ConfirmDialog
         open={forgetTarget !== null}
         title="Delete face grouping"
-        body="This removes this person's grouping, assignments, and exemplar crops. It cannot be undone."
+        body="This permanently deletes this person's grouping, face observations (including embeddings), and exemplar crops. It cannot be undone."
         confirmLabel="Delete"
         testId="people-forget-confirm"
         disabled={people.isBusy}
