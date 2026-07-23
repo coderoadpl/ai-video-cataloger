@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { ensureFolderMarker, folderMarkerPath, readFolderMarker } from './folder-identity.js';
 import {
+  folderCatalogRecords,
   forgetCatalogEntry,
   hasProcessedAnalysis,
   indexRebuild,
@@ -167,6 +168,38 @@ describe('missing-file reconciliation', () => {
     expect(analysisGone.ok && analysisGone.value).toBe(null);
     const refreshedSnapshot = await fs.readTextFile(folderSnapshotPath(fs, '/work'));
     expect(refreshedSnapshot.ok && refreshedSnapshot.value?.includes('fp-1')).toBe(false);
+  });
+
+  it('lists a folder catalog records with the missing flag and last-seen timestamp', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const store = new InMemoryGlobalCatalogStore();
+    await upsertProcessedVideo({ globalCatalog: store, fs }, processedInput('/work'));
+    await reconcileFolderPresence({ globalCatalog: store, fs }, {
+      folderPath: '/work',
+      presentFingerprints: [],
+      now: 333,
+    });
+
+    const listed = await folderCatalogRecords({ globalCatalog: store, fs }, { folder: '/work' });
+    expect(listed.ok && listed.value.records).toEqual([
+      {
+        fingerprint: 'fp-1',
+        fileName: 'clip.mp4',
+        finalName: '2026-02-01_a-clip.mp4',
+        missing: true,
+        missingAt: 333,
+      },
+    ]);
+  });
+
+  it('returns no records for a folder that was never cataloged', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const store = new InMemoryGlobalCatalogStore();
+
+    const listed = await folderCatalogRecords({ globalCatalog: store, fs }, { folder: '/work' });
+    expect(listed.ok && listed.value.records).toEqual([]);
   });
 });
 

@@ -110,6 +110,18 @@ export const catalogTreeOutputSchema = z.object({
   processedTotal: z.number().int().nonnegative(),
 });
 
+export const catalogFolderRecordSchema = z.object({
+  fingerprint: z.string().min(1),
+  fileName: z.string(),
+  finalName: z.string().nullable(),
+  missing: z.boolean(),
+  missingAt: z.number().nullable(),
+});
+
+export const catalogFolderOutputSchema = z.object({
+  records: z.array(catalogFolderRecordSchema),
+});
+
 export const processInputSchema = videoPathInputSchema.extend({
   frames: z.number().int().optional(),
   framesExplicit: z.boolean().optional(),
@@ -871,6 +883,7 @@ export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health', input: emptyInputSchema, output: healthOutputSchema },
   scan: { method: 'GET', path: '/api/scan', input: folderInputSchema, output: scanOutputSchema },
   catalogTree: { method: 'GET', path: '/api/catalog-tree', input: folderInputSchema, output: catalogTreeOutputSchema },
+  catalogFolder: { method: 'GET', path: '/api/catalog-folder', input: folderInputSchema, output: catalogFolderOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
   processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
   thumbnail: { method: 'POST', path: '/api/thumbnail', input: thumbnailInputSchema, output: thumbnailOutputSchema },
@@ -1003,6 +1016,7 @@ export const API_PATHS = {
   health: API_ROUTES.health.path,
   scan: API_ROUTES.scan.path,
   catalogTree: API_ROUTES.catalogTree.path,
+  catalogFolder: API_ROUTES.catalogFolder.path,
   process: API_ROUTES.process.path,
   processDrive: API_ROUTES.processDrive.path,
   thumbnail: API_ROUTES.thumbnail.path,

@@ -4,6 +4,7 @@ import { Box, Typography } from '@mui/material';
 import { FolderIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
+import { AbsentFilesSection } from './AbsentFilesSection.js';
 import { CatalogTree } from './CatalogTree.js';
 import { type CatalogState } from './use-catalog.js';
 import { type CatalogTreeState } from './use-catalog-tree.js';
@@ -74,16 +75,19 @@ export const CatalogSidebar = ({
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {treeRoot === null ? (
-          <VideoList
-            videos={catalog.videos}
-            selectedKey={catalog.selectedKey}
-            analyzingPath={analyzingPath}
-            isLoading={catalog.isLoading}
-            isError={catalog.isError}
-            error={catalog.error}
-            onSelect={catalog.select}
-            skippedPaths={skippedPaths}
-          />
+          <>
+            <VideoList
+              videos={catalog.videos}
+              selectedKey={catalog.selectedKey}
+              analyzingPath={analyzingPath}
+              isLoading={catalog.isLoading}
+              isError={catalog.isError}
+              error={catalog.error}
+              onSelect={catalog.select}
+              skippedPaths={skippedPaths}
+            />
+            <AbsentFilesSection folder={folder} />
+          </>
         ) : (
           <CatalogTree
             root={treeRoot}

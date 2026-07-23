@@ -160,6 +160,34 @@ export const reconcileFolderPresence = async (
   });
 };
 
+export interface CatalogFolderRecord {
+  fingerprint: string;
+  fileName: string;
+  finalName: string | null;
+  missing: boolean;
+  missingAt: number | null;
+}
+
+export const folderCatalogRecords = async (
+  deps: CatalogIndexDeps,
+  input: { folder: string },
+): Promise<Result<{ records: CatalogFolderRecord[] }, AppError>> => {
+  const marker = await readFolderMarker(deps.fs, input.folder);
+  if (!marker.ok) return marker;
+  if (marker.value === null) return ok({ records: [] });
+  const records = await deps.globalCatalog.listFolderRecords(marker.value.folderId);
+  if (!records.ok) return records;
+  return ok({
+    records: records.value.map((record) => ({
+      fingerprint: record.file.fingerprint,
+      fileName: record.file.fileName,
+      finalName: record.analysis?.finalName ?? null,
+      missing: record.file.missingAt !== null,
+      missingAt: record.file.missingAt,
+    })),
+  });
+};
+
 export const forgetCatalogEntry = async (
   deps: CatalogIndexDeps,
   input: { fingerprint: string },

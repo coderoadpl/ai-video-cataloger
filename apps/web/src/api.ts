@@ -1,5 +1,6 @@
 import {
   cancelJobMutation,
+  catalogFolderQuery,
   catalogTreeQuery,
   checkQuery,
   configQuery,
@@ -17,6 +18,7 @@ import {
   facesStatusQuery,
   generateThumbnailMutation,
   healthQuery,
+  indexForgetMutation,
   installFaceArtifactsMutation,
   installWhisperRuntimeMutation,
   jobQuery,
@@ -41,6 +43,7 @@ import {
   tagsListQuery,
   useWhisperModelMutation as bindActivateWhisperModel,
   whisperRuntimeQuery,
+  type CatalogFolderInput,
   type CatalogTreeInput,
   type CheckInput,
   type ConfigInput,
@@ -128,6 +131,7 @@ export const actions = {
   jobs: jobsQuery(apiClient),
   scan: (input: ScanInput) => scanQuery(apiClient, input),
   catalogTree: (input: CatalogTreeInput) => catalogTreeQuery(apiClient, input),
+  catalogFolder: (input: CatalogFolderInput) => catalogFolderQuery(apiClient, input),
   search: (input: SearchInput) => searchQuery(apiClient, input),
   tagsList: tagsListQuery(apiClient),
   facesStatus: facesStatusQuery(apiClient),
@@ -156,6 +160,7 @@ export const actions = {
   removeLocalAiModel: removeLocalAiModelMutation(apiClient),
   stopLocalAiDaemon: stopLocalAiDaemonMutation(apiClient),
   cancelJob: cancelJobMutation(apiClient),
+  indexForget: indexForgetMutation(apiClient),
 };
 
 declare global {
