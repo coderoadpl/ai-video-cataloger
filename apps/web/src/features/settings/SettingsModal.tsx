@@ -53,35 +53,35 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" data-testid="settings-modal">
-      <DialogTitle>Settings</DialogTitle>
+      <DialogTitle>{dictionary.settingsModal.title}</DialogTitle>
       <DialogContent dividers>
         {folder === null ? (
           <DialogContentText data-testid="settings-no-folder">
-            Please select a folder first to configure settings.
+            {dictionary.settingsModal.selectFolderFirst}
           </DialogContentText>
         ) : settings.isLoading || draft === null ? (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 4 }}>
             <CircularProgress size={20} />
-            <Typography variant="body2">Loading settings…</Typography>
+            <Typography variant="body2">{dictionary.settingsModal.loading}</Typography>
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, py: 1 }}>
             {settings.error === null ? null : <Alert severity="error">{settings.error}</Alert>}
             {settings.inherited.length === 0 ? null : (
               <Typography variant="caption" color="text.secondary" data-testid="settings-inherited-hint">
-                Inherited values: {settings.inherited.join(', ')}. Most changed values create a folder override.
+                {dictionary.settingsModal.inheritedHint(settings.inherited.join(', '))}
               </Typography>
             )}
 
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
                 <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  Frame Count
+                  {dictionary.settingsModal.frameCount}
                 </Typography>
-                <Typography variant="caption">{draft.frames} frames</Typography>
+                <Typography variant="caption">{dictionary.settingsModal.frameCountValue(draft.frames)}</Typography>
               </Box>
               <Slider
-                aria-label="Frame Count"
+                aria-label={dictionary.settingsModal.frameCount}
                 data-testid="frames-slider"
                 min={1}
                 max={10}
@@ -92,15 +92,15 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
                 }
               />
               <Typography variant="caption">
-                Number of frames to extract from each video for analysis.
+                {dictionary.settingsModal.frameCountHelper}
               </Typography>
             </Box>
 
             <FormControl fullWidth size="small">
-              <InputLabel id="whisper-mode-label">Transcription Mode</InputLabel>
+              <InputLabel id="whisper-mode-label">{dictionary.settingsModal.transcriptionMode}</InputLabel>
               <Select
                 labelId="whisper-mode-label"
-                label="Transcription Mode"
+                label={dictionary.settingsModal.transcriptionMode}
                 value={draft.whisper_mode}
                 data-testid="whisper-mode-select"
                 onChange={(event) => {
@@ -119,10 +119,10 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
             {draft.whisper_mode === 'local' ? (
               <>
                 <FormControl fullWidth size="small" data-testid="whisper-model-control">
-                  <InputLabel id="whisper-model-label">Whisper Model</InputLabel>
+                  <InputLabel id="whisper-model-label">{dictionary.settingsModal.whisperModel}</InputLabel>
                   <Select
                     labelId="whisper-model-label"
-                    label="Whisper Model"
+                    label={dictionary.settingsModal.whisperModel}
                     value={draft.whisper_model}
                     data-testid="whisper-model-select"
                     onChange={(event) => {
@@ -140,10 +140,10 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
                 <TextField
                   fullWidth
                   size="small"
-                  label="Custom whisper.cpp path"
+                  label={dictionary.settingsModal.customWhisperPath}
                   value={draft.whisper_binary_path}
                   onChange={(event) => patch({ whisper_binary_path: event.target.value })}
-                  helperText="Optional. Takes precedence over the managed and system runtimes."
+                  helperText={dictionary.settingsModal.customWhisperPathHelper}
                   slotProps={{ htmlInput: { 'data-testid': 'whisper-binary-path' } }}
                 />
               </>
@@ -151,11 +151,11 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
               <TextField
                 fullWidth
                 size="small"
-                label="OpenAI Whisper API key"
+                label={dictionary.settingsModal.openAiWhisperApiKey}
                 type="password"
                 value={settings.whisperApiCredential}
                 autoComplete="new-password"
-                helperText="Leave blank to keep the stored OpenAI credential."
+                helperText={dictionary.settingsModal.openAiWhisperApiKeyHelper}
                 onChange={(event) => settings.setWhisperApiCredential(event.target.value)}
               />
             ) : null}
@@ -217,7 +217,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                Local face grouping (experimental)
+                {dictionary.settingsModal.facesSectionTitle}
               </Typography>
               <FormControlLabel
                 control={
@@ -227,10 +227,10 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
                     onChange={(event) => patch({ faces_enabled: event.target.checked })}
                   />
                 }
-                label="Enable local face grouping"
+                label={dictionary.settingsModal.facesEnableLabel}
               />
               <Typography variant="caption">
-                Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.
+                {dictionary.settingsModal.facesHelper}
               </Typography>
             </Box>
 
@@ -242,7 +242,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
                   onChange={(event) => patch({ skip_rename: event.target.checked })}
                 />
               }
-              label="Skip Auto-Rename"
+              label={dictionary.settingsModal.skipAutoRename}
             />
           </Box>
         )}
@@ -250,11 +250,11 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
       <DialogActions>
         {settings.hasChanges ? (
           <Button color="inherit" onClick={settings.reset} disabled={settings.isSaving} data-testid="settings-reset">
-            Reset
+            {dictionary.settingsModal.reset}
           </Button>
         ) : null}
         <Button color="inherit" onClick={onClose} disabled={settings.isSaving} data-testid="settings-cancel">
-          Cancel
+          {dictionary.common.cancel}
         </Button>
         <Button
           variant="contained"
@@ -262,7 +262,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
           disabled={!settings.hasChanges || settings.isSaving || folder === null}
           data-testid="settings-save"
         >
-          {settings.isSaving ? 'Saving…' : 'Save'}
+          {settings.isSaving ? dictionary.settingsModal.saving : dictionary.common.save}
         </Button>
       </DialogActions>
     </Dialog>

@@ -17,6 +17,7 @@ import {
 } from '@core/domain/index.js';
 
 import { HarnessModelPicker } from '../../components/ui/HarnessModelPicker.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { LocalAiTier, SettingsDraft } from './settings-model.js';
 
 type HarnessProvider = Extract<AnalyzerProviderConfig, { family: 'harness' }>;
@@ -76,6 +77,7 @@ export const SettingsAnalyzerSection = ({
   onProviderChange,
   onApiCredentialChange,
 }: SettingsAnalyzerSectionProps) => {
+  const dictionary = useDictionary();
   const selectedBackend = provider.family === 'api' ? 'api' : backend;
   const selectedTier = tiers?.find((tier) => tier.tag === localModel) ?? null;
   const showUnsupportedHint =
@@ -86,10 +88,10 @@ export const SettingsAnalyzerSection = ({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }} data-testid="settings-analyzer-section">
       <FormControl fullWidth size="small">
-        <InputLabel id="analyzer-backend-label">AI Analyzer</InputLabel>
+        <InputLabel id="analyzer-backend-label">{dictionary.settingsAnalyzer.aiAnalyzer}</InputLabel>
         <Select
           labelId="analyzer-backend-label"
-          label="AI Analyzer"
+          label={dictionary.settingsAnalyzer.aiAnalyzer}
           value={selectedBackend}
           data-testid="analyzer-backend-select"
           onChange={(event) => {
@@ -113,19 +115,19 @@ export const SettingsAnalyzerSection = ({
             });
           }}
         >
-          <MenuItem value="claude">Claude (CLI)</MenuItem>
-          <MenuItem value="local">Local (Ollama)</MenuItem>
-          <MenuItem value="api">OpenAI-compatible API</MenuItem>
+          <MenuItem value="claude">{dictionary.settingsAnalyzer.claudeCli}</MenuItem>
+          <MenuItem value="local">{dictionary.settingsAnalyzer.localOllama}</MenuItem>
+          <MenuItem value="api">{dictionary.settingsAnalyzer.openAiCompatibleApi}</MenuItem>
         </Select>
       </FormControl>
 
       {backend === 'local' ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <FormControl fullWidth size="small">
-            <InputLabel id="local-model-label">Local model</InputLabel>
+            <InputLabel id="local-model-label">{dictionary.settingsAnalyzer.localModel}</InputLabel>
             <Select
               labelId="local-model-label"
-              label="Local model"
+              label={dictionary.settingsAnalyzer.localModel}
               value={localModel}
               data-testid="local-model-select"
               onChange={(event) => {
@@ -136,19 +138,19 @@ export const SettingsAnalyzerSection = ({
               {(tiers ?? []).map((tier) => (
                 <MenuItem key={tier.tag} value={tier.tag} disabled={tier.supportLevel !== 'ok'}>
                   {tier.tag}
-                  {tier.recommended ? ' (recommended)' : ''}
-                  {tier.installed ? ' — installed' : ''}
+                  {tier.recommended ? dictionary.settingsAnalyzer.recommendedSuffix : ''}
+                  {tier.installed ? dictionary.settingsAnalyzer.installedSuffix : ''}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
           {showUnsupportedHint ? (
             <Typography variant="caption" color="error" data-testid="local-model-unsupported-hint">
-              This model exceeds what this machine supports.
+              {dictionary.settingsAnalyzer.unsupportedHint}
             </Typography>
           ) : showNotInstalledHint ? (
             <Typography variant="caption" sx={{ color: 'status.pending.main' }} data-testid="local-model-missing-hint">
-              This model is not downloaded yet — open the Models manager to download it.
+              {dictionary.settingsAnalyzer.notDownloadedHint}
             </Typography>
           ) : null}
         </Box>
@@ -171,19 +173,19 @@ export const SettingsAnalyzerSection = ({
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="api-provider-settings">
           <TextField
             size="small"
-            label="Base URL"
+            label={dictionary.settingsAnalyzer.baseUrl}
             value={provider.baseUrl}
             onChange={(event) => onProviderChange(withApiBaseUrl(provider, event.target.value))}
           />
           <TextField
             size="small"
-            label="Model"
+            label={dictionary.settingsAnalyzer.model}
             value={provider.model}
             onChange={(event) => onProviderChange({ ...provider, model: event.target.value })}
           />
           <TextField
             size="small"
-            label="API credential"
+            label={dictionary.settingsAnalyzer.apiCredential}
             type="password"
             value={apiCredential}
             autoComplete="new-password"
@@ -191,14 +193,14 @@ export const SettingsAnalyzerSection = ({
           />
           <TextField
             size="small"
-            label="Input price per 1M tokens"
+            label={dictionary.settingsAnalyzer.inputPrice}
             type="number"
             value={provider.pricePerMTokensInput ?? ''}
             onChange={(event) => onProviderChange(withInputPrice(provider, event.target.value))}
           />
           <TextField
             size="small"
-            label="Output price per 1M tokens"
+            label={dictionary.settingsAnalyzer.outputPrice}
             type="number"
             value={provider.pricePerMTokensOutput ?? ''}
             onChange={(event) => onProviderChange(withOutputPrice(provider, event.target.value))}

@@ -10,6 +10,7 @@ export interface Dictionary {
     next: string;
     saved: string;
     openSettings: string;
+    ok: string;
   };
   language: {
     stepTitle: string;
@@ -360,6 +361,88 @@ export interface Dictionary {
     rename: string;
     delete: string;
   };
+  settingsModal: {
+    title: string;
+    selectFolderFirst: string;
+    loading: string;
+    inheritedHint: (values: string) => string;
+    frameCount: string;
+    frameCountValue: (count: number) => string;
+    frameCountHelper: string;
+    transcriptionMode: string;
+    whisperModel: string;
+    customWhisperPath: string;
+    customWhisperPathHelper: string;
+    openAiWhisperApiKey: string;
+    openAiWhisperApiKeyHelper: string;
+    facesSectionTitle: string;
+    facesEnableLabel: string;
+    facesHelper: string;
+    skipAutoRename: string;
+    reset: string;
+    saving: string;
+  };
+  settingsAnalyzer: {
+    aiAnalyzer: string;
+    claudeCli: string;
+    localOllama: string;
+    openAiCompatibleApi: string;
+    localModel: string;
+    recommendedSuffix: string;
+    installedSuffix: string;
+    unsupportedHint: string;
+    notDownloadedHint: string;
+    baseUrl: string;
+    model: string;
+    apiCredential: string;
+    inputPrice: string;
+    outputPrice: string;
+  };
+  folderBar: {
+    openFolder: string;
+    checking: string;
+    recentFolders: string;
+  };
+  videoStatus: {
+    incomplete: string;
+    completed: string;
+    error: string;
+    pending: string;
+    notTracked: string;
+    processing: string;
+  };
+  nestedDbDialog: {
+    title: string;
+    bodyBefore: string;
+    bodyAfter: string;
+  };
+  batchSummary: {
+    title: string;
+    successful: string;
+    failed: string;
+    failedVideos: string;
+    unknownError: string;
+  };
+  harnessModelPicker: {
+    model: string;
+    default: string;
+    customEscapeHatch: string;
+    customModelId: string;
+    unvalidated: string;
+    reasoningEffort: string;
+    effortDefault: string;
+  };
+  cancelDialog: {
+    batchTitle: string;
+    singleTitle: string;
+    batchBody: string;
+    batchAlert: string;
+    singleBody: string;
+    singleAlert: string;
+    continueProcessing: string;
+    stopBatch: string;
+    cancelAnalysis: string;
+  };
 }
 
 export const en: Dictionary = {
@@ -372,6 +455,7 @@ export const en: Dictionary = {
     next: 'Next',
     saved: 'Saved',
     openSettings: 'Open Settings',
+    ok: 'OK',
   },
   language: {
     stepTitle: 'Language',
@@ -750,6 +834,88 @@ export const en: Dictionary = {
     rename: 'Rename',
     delete: 'Delete',
   },
+  settingsModal: {
+    title: 'Settings',
+    selectFolderFirst: 'Please select a folder first to configure settings.',
+    loading: 'Loading settings…',
+    inheritedHint: (values) => `Inherited values: ${values}. Most changed values create a folder override.`,
+    frameCount: 'Frame Count',
+    frameCountValue: (count) => `${count} frames`,
+    frameCountHelper: 'Number of frames to extract from each video for analysis.',
+    transcriptionMode: 'Transcription Mode',
+    whisperModel: 'Whisper Model',
+    customWhisperPath: 'Custom whisper.cpp path',
+    customWhisperPathHelper: 'Optional. Takes precedence over the managed and system runtimes.',
+    openAiWhisperApiKey: 'OpenAI Whisper API key',
+    openAiWhisperApiKeyHelper: 'Leave blank to keep the stored OpenAI credential.',
+    facesSectionTitle: 'Local face grouping (experimental)',
+    facesEnableLabel: 'Enable local face grouping',
+    facesHelper: 'Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.',
+    skipAutoRename: 'Skip Auto-Rename',
+    reset: 'Reset',
+    saving: 'Saving…',
+  },
+  settingsAnalyzer: {
+    aiAnalyzer: 'AI Analyzer',
+    claudeCli: 'Claude (CLI)',
+    localOllama: 'Local (Ollama)',
+    openAiCompatibleApi: 'OpenAI-compatible API',
+    localModel: 'Local model',
+    recommendedSuffix: ' (recommended)',
+    installedSuffix: ' — installed',
+    unsupportedHint: 'This model exceeds what this machine supports.',
+    notDownloadedHint: 'This model is not downloaded yet — open the Models manager to download it.',
+    baseUrl: 'Base URL',
+    model: 'Model',
+    apiCredential: 'API credential',
+    inputPrice: 'Input price per 1M tokens',
+    outputPrice: 'Output price per 1M tokens',
+  },
+  folderBar: {
+    openFolder: 'Open Folder',
+    checking: 'Checking…',
+    recentFolders: 'recent folders',
+  },
+  videoStatus: {
+    incomplete: 'Incomplete',
+    completed: 'Completed',
+    error: 'Error',
+    pending: 'Pending',
+    notTracked: 'Not Tracked',
+    processing: 'Processing',
+  },
+  nestedDbDialog: {
+    title: 'Nested Databases Detected',
+    bodyBefore: 'The selected folder contains nested ',
+    bodyAfter: ' folders. This can cause data conflicts and unexpected behavior. Please remove or merge these nested databases before continuing:',
+  },
+  batchSummary: {
+    title: 'Batch Analysis Complete',
+    successful: 'successful',
+    failed: 'failed',
+    failedVideos: 'Failed videos:',
+    unknownError: 'Unknown error',
+  },
+  harnessModelPicker: {
+    model: 'Model',
+    default: 'Default (CLI-configured)',
+    customEscapeHatch: 'Advanced: custom model id…',
+    customModelId: 'Custom model id',
+    unvalidated: 'Unvalidated — this id is passed to the CLI as-is and is not checked against a known list.',
+    reasoningEffort: 'Reasoning effort',
+    effortDefault: 'Default',
+  },
+  cancelDialog: {
+    batchTitle: 'Cancel Batch Processing?',
+    singleTitle: 'Cancel Processing?',
+    batchBody: 'Are you sure you want to cancel the batch analysis? This will stop after the current video finishes processing.',
+    batchAlert: 'The current video may be left in an incomplete state. Already processed videos will keep their results.',
+    singleBody: 'Are you sure you want to cancel the current video analysis?',
+    singleAlert: 'This may leave the video in an incomplete state. Partial data (extracted frames, audio, etc.) may remain and you may need to re-analyze the video from the beginning.',
+    continueProcessing: 'Continue Processing',
+    stopBatch: 'Stop Batch',
+    cancelAnalysis: 'Cancel Analysis',
+  },
 };
 
 export const pl: Dictionary = {
@@ -762,6 +928,7 @@ export const pl: Dictionary = {
     next: 'Dalej',
     saved: 'Zapisano',
     openSettings: 'Otwórz ustawienia',
+    ok: 'OK',
   },
   language: {
     stepTitle: 'Język',
@@ -1139,6 +1306,88 @@ export const pl: Dictionary = {
     observationCount: (count) => `${count} obserwacji`,
     rename: 'Zmień nazwę',
     delete: 'Usuń',
+  },
+  settingsModal: {
+    title: 'Ustawienia',
+    selectFolderFirst: 'Najpierw wybierz folder, aby skonfigurować ustawienia.',
+    loading: 'Ładowanie ustawień…',
+    inheritedHint: (values) => `Wartości dziedziczone: ${values}. Większość zmienionych wartości tworzy nadpisanie dla folderu.`,
+    frameCount: 'Liczba klatek',
+    frameCountValue: (count) => `${count} klatek`,
+    frameCountHelper: 'Liczba klatek wyodrębnianych z każdego filmu do analizy.',
+    transcriptionMode: 'Tryb transkrypcji',
+    whisperModel: 'Model Whisper',
+    customWhisperPath: 'Własna ścieżka whisper.cpp',
+    customWhisperPathHelper: 'Opcjonalne. Ma pierwszeństwo przed zarządzanym i systemowym runtime.',
+    openAiWhisperApiKey: 'Klucz OpenAI Whisper API',
+    openAiWhisperApiKeyHelper: 'Pozostaw puste, aby zachować zapisane dane OpenAI.',
+    facesSectionTitle: 'Lokalne grupowanie twarzy (eksperymentalne)',
+    facesEnableLabel: 'Włącz lokalne grupowanie twarzy',
+    facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',
+    skipAutoRename: 'Pomiń automatyczną zmianę nazw',
+    reset: 'Resetuj',
+    saving: 'Zapisywanie…',
+  },
+  settingsAnalyzer: {
+    aiAnalyzer: 'Analizator AI',
+    claudeCli: 'Claude (CLI)',
+    localOllama: 'Lokalny (Ollama)',
+    openAiCompatibleApi: 'API zgodne z OpenAI',
+    localModel: 'Model lokalny',
+    recommendedSuffix: ' (zalecane)',
+    installedSuffix: ' — zainstalowany',
+    unsupportedHint: 'Ten model przekracza możliwości tego komputera.',
+    notDownloadedHint: 'Ten model nie został jeszcze pobrany — otwórz Menedżer modeli, aby go pobrać.',
+    baseUrl: 'Bazowy URL',
+    model: 'Model',
+    apiCredential: 'Dane logowania API',
+    inputPrice: 'Cena wejścia za 1M tokenów',
+    outputPrice: 'Cena wyjścia za 1M tokenów',
+  },
+  folderBar: {
+    openFolder: 'Otwórz folder',
+    checking: 'Sprawdzanie…',
+    recentFolders: 'ostatnie foldery',
+  },
+  videoStatus: {
+    incomplete: 'Nieukończony',
+    completed: 'Ukończony',
+    error: 'Błąd',
+    pending: 'Oczekuje',
+    notTracked: 'Nieśledzony',
+    processing: 'Przetwarzanie',
+  },
+  nestedDbDialog: {
+    title: 'Wykryto zagnieżdżone bazy danych',
+    bodyBefore: 'Wybrany folder zawiera zagnieżdżone foldery ',
+    bodyAfter: '. Może to powodować konflikty danych i nieoczekiwane zachowanie. Usuń lub scal te zagnieżdżone bazy danych przed kontynuowaniem:',
+  },
+  batchSummary: {
+    title: 'Analiza wsadowa ukończona',
+    successful: 'udanych',
+    failed: 'nieudanych',
+    failedVideos: 'Nieudane filmy:',
+    unknownError: 'Nieznany błąd',
+  },
+  harnessModelPicker: {
+    model: 'Model',
+    default: 'Domyślny (konfiguracja CLI)',
+    customEscapeHatch: 'Zaawansowane: własny identyfikator modelu…',
+    customModelId: 'Własny identyfikator modelu',
+    unvalidated: 'Niezweryfikowany — ten identyfikator jest przekazywany do CLI bez zmian i nie jest sprawdzany względem znanej listy.',
+    reasoningEffort: 'Wysiłek rozumowania',
+    effortDefault: 'Domyślny',
+  },
+  cancelDialog: {
+    batchTitle: 'Anulować przetwarzanie wsadowe?',
+    singleTitle: 'Anulować przetwarzanie?',
+    batchBody: 'Czy na pewno chcesz anulować analizę wsadową? Zatrzyma się po zakończeniu przetwarzania bieżącego filmu.',
+    batchAlert: 'Bieżący film może pozostać w stanie nieukończonym. Już przetworzone filmy zachowają swoje wyniki.',
+    singleBody: 'Czy na pewno chcesz anulować analizę bieżącego filmu?',
+    singleAlert: 'Może to pozostawić film w stanie nieukończonym. Częściowe dane (wyodrębnione klatki, audio itp.) mogą pozostać i konieczne może być ponowne przeanalizowanie filmu od początku.',
+    continueProcessing: 'Kontynuuj przetwarzanie',
+    stopBatch: 'Zatrzymaj wsad',
+    cancelAnalysis: 'Anuluj analizę',
   },
 };
 

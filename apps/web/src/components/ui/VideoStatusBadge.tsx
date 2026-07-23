@@ -1,5 +1,7 @@
 import { Chip, CircularProgress } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
+import type { Dictionary } from '../../i18n/dictionary.js';
 import type { StatusToken } from '../../theme.js';
 import { CheckCircleIcon, ClockIcon, ErrorIcon, FilmIcon, WarningIcon } from './icons.js';
 
@@ -32,17 +34,17 @@ const isIntermediate = (status: VideoStatusValue): status is IntermediateStatus 
   status === 'transcribed' ||
   status === 'analyzed';
 
-const labelFor = (status: VideoStatusValue): string => {
-  if (isIntermediate(status)) return 'Incomplete';
+const labelFor = (status: VideoStatusValue, dictionary: Dictionary): string => {
+  if (isIntermediate(status)) return dictionary.videoStatus.incomplete;
   switch (status) {
     case 'completed':
-      return 'Completed';
+      return dictionary.videoStatus.completed;
     case 'error':
-      return 'Error';
+      return dictionary.videoStatus.error;
     case 'pending':
-      return 'Pending';
+      return dictionary.videoStatus.pending;
     case 'not_tracked':
-      return 'Not Tracked';
+      return dictionary.videoStatus.notTracked;
   }
 };
 
@@ -73,12 +75,13 @@ export const VideoStatusBadge = ({
   analyzing = false,
   variant = 'list',
 }: VideoStatusBadgeProps) => {
+  const dictionary = useDictionary();
   if (analyzing) {
     return (
       <Chip
         size="small"
         icon={<CircularProgress size={12} thickness={6} color="inherit" />}
-        label="Processing"
+        label={dictionary.videoStatus.processing}
         sx={(theme) => ({
           bgcolor: theme.palette.status.pending.soft,
           color: theme.palette.status.pending.main,
@@ -96,7 +99,7 @@ export const VideoStatusBadge = ({
     <Chip
       size="small"
       icon={<StatusGlyph status={status} />}
-      label={labelFor(status)}
+      label={labelFor(status, dictionary)}
       sx={(theme) => ({
         bgcolor: theme.palette.status[token].soft,
         color: theme.palette.status[token].main,

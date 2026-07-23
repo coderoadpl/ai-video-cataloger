@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { Box, Button, ButtonGroup, Menu, MenuItem, Typography } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
 
 interface FolderBarProps {
@@ -18,6 +19,7 @@ export const FolderBar = ({
 }: FolderBarProps) => {
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
+  const dictionary = useDictionary();
 
   const select = (folderPath: string) => {
     setOpen(false);
@@ -28,11 +30,11 @@ export const FolderBar = ({
     <Box>
       <ButtonGroup ref={anchorRef} variant="contained" size="small" disableElevation>
         <Button onClick={onOpenFolder} disabled={isCheckingFolder}>
-          {isCheckingFolder ? 'Checking…' : 'Open Folder'}
+          {isCheckingFolder ? dictionary.folderBar.checking : dictionary.folderBar.openFolder}
         </Button>
         <Button
           size="small"
-          aria-label="recent folders"
+          aria-label={dictionary.folderBar.recentFolders}
           aria-haspopup="menu"
           disabled={recentFolders.length === 0}
           onClick={() => setOpen(true)}

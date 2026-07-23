@@ -1,6 +1,8 @@
 import { useState } from 'react';
 import { Box, FormControl, InputLabel, MenuItem, Select, TextField, Typography } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
+
 const DEFAULT_VALUE = '';
 const CUSTOM_VALUE = '__custom__';
 
@@ -25,6 +27,7 @@ export const HarnessModelPicker = ({
   effort,
   onEffortChange,
 }: HarnessModelPickerProps) => {
+  const dictionary = useDictionary();
   const trimmed = model.trim();
   const isCurated = curatedModels.includes(trimmed);
   const [customMode, setCustomMode] = useState(trimmed.length > 0 && !isCurated);
@@ -33,10 +36,10 @@ export const HarnessModelPicker = ({
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }} data-testid="harness-model-picker">
       <FormControl fullWidth size="small">
-        <InputLabel id={`harness-model-${harnessId}`}>Model</InputLabel>
+        <InputLabel id={`harness-model-${harnessId}`}>{dictionary.harnessModelPicker.model}</InputLabel>
         <Select
           labelId={`harness-model-${harnessId}`}
-          label="Model"
+          label={dictionary.harnessModelPicker.model}
           value={selectValue}
           data-testid="harness-model-select"
           onChange={(event) => {
@@ -49,40 +52,40 @@ export const HarnessModelPicker = ({
             onModelChange(value === DEFAULT_VALUE ? '' : value);
           }}
         >
-          <MenuItem value={DEFAULT_VALUE}>Default (CLI-configured)</MenuItem>
+          <MenuItem value={DEFAULT_VALUE}>{dictionary.harnessModelPicker.default}</MenuItem>
           {curatedModels.map((id) => (
             <MenuItem key={id} value={id}>
               {id}
             </MenuItem>
           ))}
-          <MenuItem value={CUSTOM_VALUE}>Advanced: custom model id…</MenuItem>
+          <MenuItem value={CUSTOM_VALUE}>{dictionary.harnessModelPicker.customEscapeHatch}</MenuItem>
         </Select>
       </FormControl>
       {customMode ? (
         <>
           <TextField
             size="small"
-            label="Custom model id"
+            label={dictionary.harnessModelPicker.customModelId}
             value={model}
             data-testid="harness-model-custom"
             onChange={(event) => onModelChange(event.target.value)}
           />
           <Typography variant="caption" color="warning.main" data-testid="harness-model-unvalidated">
-            Unvalidated — this id is passed to the CLI as-is and is not checked against a known list.
+            {dictionary.harnessModelPicker.unvalidated}
           </Typography>
         </>
       ) : null}
       {onEffortChange === undefined ? null : (
         <FormControl fullWidth size="small">
-          <InputLabel id={`harness-effort-${harnessId}`}>Reasoning effort</InputLabel>
+          <InputLabel id={`harness-effort-${harnessId}`}>{dictionary.harnessModelPicker.reasoningEffort}</InputLabel>
           <Select
             labelId={`harness-effort-${harnessId}`}
-            label="Reasoning effort"
+            label={dictionary.harnessModelPicker.reasoningEffort}
             value={effort !== undefined && isEffortOption(effort) ? effort : DEFAULT_VALUE}
             data-testid="harness-effort-select"
             onChange={(event) => onEffortChange(event.target.value === DEFAULT_VALUE ? '' : event.target.value)}
           >
-            <MenuItem value={DEFAULT_VALUE}>Default</MenuItem>
+            <MenuItem value={DEFAULT_VALUE}>{dictionary.harnessModelPicker.effortDefault}</MenuItem>
             {EFFORT_OPTIONS.map((option) => (
               <MenuItem key={option} value={option}>
                 {option}

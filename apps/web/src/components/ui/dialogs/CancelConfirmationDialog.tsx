@@ -8,6 +8,8 @@ import {
   DialogTitle,
 } from '@mui/material';
 
+import { useDictionary } from '../../../i18n/use-dictionary.js';
+
 export interface CancelConfirmation {
   open: boolean;
   isBatch: boolean;
@@ -23,47 +25,44 @@ export const CancelConfirmationDialog = ({
   confirmation,
   onClose,
   onConfirm,
-}: CancelConfirmationDialogProps) => (
-  <Dialog open={confirmation.open} onClose={onClose} maxWidth="xs" fullWidth>
-    <DialogTitle>
-      {confirmation.isBatch ? 'Cancel Batch Processing?' : 'Cancel Processing?'}
-    </DialogTitle>
-    <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-      {confirmation.isBatch ? (
-        <>
-          <DialogContentText>
-            Are you sure you want to cancel the batch analysis? This will stop after the current
-            video finishes processing.
-          </DialogContentText>
-          <Alert severity="warning" icon={false}>
-            The current video may be left in an incomplete state. Already processed videos will keep
-            their results.
-          </Alert>
-        </>
-      ) : (
-        <>
-          <DialogContentText>
-            Are you sure you want to cancel the current video analysis?
-          </DialogContentText>
-          <Alert severity="warning" icon={false}>
-            This may leave the video in an incomplete state. Partial data (extracted frames, audio,
-            etc.) may remain and you may need to re-analyze the video from the beginning.
-          </Alert>
-        </>
-      )}
-    </DialogContent>
-    <DialogActions>
-      <Button color="inherit" onClick={onClose}>
-        Continue Processing
-      </Button>
-      <Button
-        data-testid="confirm-cancel-button"
-        color="error"
-        variant="contained"
-        onClick={onConfirm}
-      >
-        {confirmation.isBatch ? 'Stop Batch' : 'Cancel Analysis'}
-      </Button>
-    </DialogActions>
-  </Dialog>
-);
+}: CancelConfirmationDialogProps) => {
+  const dictionary = useDictionary();
+
+  return (
+    <Dialog open={confirmation.open} onClose={onClose} maxWidth="xs" fullWidth>
+      <DialogTitle>
+        {confirmation.isBatch ? dictionary.cancelDialog.batchTitle : dictionary.cancelDialog.singleTitle}
+      </DialogTitle>
+      <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+        {confirmation.isBatch ? (
+          <>
+            <DialogContentText>{dictionary.cancelDialog.batchBody}</DialogContentText>
+            <Alert severity="warning" icon={false}>
+              {dictionary.cancelDialog.batchAlert}
+            </Alert>
+          </>
+        ) : (
+          <>
+            <DialogContentText>{dictionary.cancelDialog.singleBody}</DialogContentText>
+            <Alert severity="warning" icon={false}>
+              {dictionary.cancelDialog.singleAlert}
+            </Alert>
+          </>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button color="inherit" onClick={onClose}>
+          {dictionary.cancelDialog.continueProcessing}
+        </Button>
+        <Button
+          data-testid="confirm-cancel-button"
+          color="error"
+          variant="contained"
+          onClick={onConfirm}
+        >
+          {confirmation.isBatch ? dictionary.cancelDialog.stopBatch : dictionary.cancelDialog.cancelAnalysis}
+        </Button>
+      </DialogActions>
+    </Dialog>
+  );
+};

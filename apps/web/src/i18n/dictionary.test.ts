@@ -35,7 +35,7 @@ describe('dictionary', () => {
   });
 
   it('keeps swept UI literals inside the dictionary', () => {
-    const literals = ['Search catalog', 'Analyze All', 'Getting Started', 'Only this folder', 'Not detected'];
+    const literals = ['Search catalog', 'Analyze All', 'Getting Started', 'Only this folder', 'Not detected', 'Open Folder', 'Not Tracked'];
     const standaloneSaved = /(?<![A-Za-z])Saved(?![A-Za-z])/;
 
     const srcRoot = join(import.meta.dirname, '..');

@@ -1,15 +1,16 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { renderWithProviders as renderWithClient } from '../../test/render.js';
 import { createAppTheme } from '../../theme.js';
 import { HarnessModelPicker } from './HarnessModelPicker.js';
 
 const CLAUDE_MODELS = ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-5'];
 
 const theme = createAppTheme('light');
-const renderWithProviders = (ui: ReactElement) => render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
+const renderWithProviders = (ui: ReactElement) => renderWithClient(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
 
 describe('HarnessModelPicker', () => {
   it('lists the curated models plus a default and a custom escape hatch', () => {
