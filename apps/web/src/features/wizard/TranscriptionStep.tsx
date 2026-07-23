@@ -1,9 +1,13 @@
 import {
   Alert,
   Box,
+  FormControl,
   FormControlLabel,
+  InputLabel,
+  MenuItem,
   Radio,
   RadioGroup,
+  Select,
   TextField,
   Typography,
 } from '@mui/material';
@@ -46,6 +50,30 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
         />
       ))}
     </RadioGroup>
+
+    {(controller.transcriptionMode === 'managed' || controller.transcriptionMode === 'own')
+      && controller.whisperModelOptions.length > 0 ? (
+      <FormControl fullWidth size="small" data-testid="transcription-model-control">
+        <InputLabel id="wizard-whisper-model">Whisper model</InputLabel>
+        <Select
+          labelId="wizard-whisper-model"
+          label="Whisper model"
+          value={controller.whisperModel}
+          data-testid="wizard-whisper-model-select"
+          onChange={(event) => {
+            const next = controller.whisperModelOptions.find((model) => model.name === event.target.value);
+            if (next !== undefined) controller.setWhisperModel(next.name);
+          }}
+        >
+          {controller.whisperModelOptions.map((model) => (
+            <MenuItem key={model.name} value={model.name}>
+              {model.name} · {model.size}
+              {model.downloaded ? ' (installed)' : ''}
+            </MenuItem>
+          ))}
+        </Select>
+      </FormControl>
+    ) : null}
 
     {controller.transcriptionMode === 'managed' && controller.whisperBuildToolsMissing.length > 0 ? (
       <Alert severity="warning" data-testid="whisper-build-tools-warning">

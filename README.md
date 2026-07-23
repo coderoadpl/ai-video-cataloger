@@ -11,6 +11,13 @@ A local-first Electron and CLI app that analyzes, transcribes, summarizes, and r
 
 Supported formats: MP4, MOV, AVI, MKV, WebM.
 
+## Privacy
+
+The app itself sends nothing to the cloud. Your data — frames and transcripts —
+leaves this machine only if you choose to send it to your own providers: an API
+key you enter, or an agent CLI harness you already use (Claude Code, Codex,
+Cursor). A fully local Ollama model keeps everything on your Mac.
+
 ## What's New in v1.1
 
 - Choose an OpenAI-compatible API, Claude Code, Codex, Cursor Agent, a custom

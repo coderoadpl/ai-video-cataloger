@@ -8,12 +8,14 @@ import type {
   ConfigKey,
   WhisperModelName,
 } from '@core/domain/index.js';
-import type { readinessOutputSchema } from '@core/contract/index.js';
+import type { doctorOutputSchema, readinessOutputSchema } from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { savedToastStore } from '../../lib/saved-toast.js';
 import {
   analyzerBackendFor,
+  bestInstalledWhisperModel,
   buildApiProvider,
   buildHarnessProvider,
   buildLocalProvider,
@@ -26,10 +28,13 @@ import {
   type LocalAiTier,
   type Machine,
   type TranscriptionMode,
+  type WhisperModelChoice,
   type WizardStep,
 } from './wizard-model.js';
+import { buildReadinessChecklist, type ChecklistAction, type ChecklistRow } from './readiness-checklist.js';
 
 type Readiness = z.output<typeof readinessOutputSchema>;
+type Doctor = z.output<typeof doctorOutputSchema>;
 
 export type ValidationStatus = 'idle' | 'testing' | 'ok' | 'error';
 
@@ -44,7 +49,7 @@ export interface DownloadProgress {
   status: 'running' | 'done' | 'error';
 }
 
-const DEFAULT_WHISPER_MODEL: WhisperModelName = 'base';
+const FALLBACK_WHISPER_MODEL: WhisperModelName = 'base';
 
 const messageOf = (error: unknown): string => {
   if (error instanceof ApiError) return error.appError.message;
@@ -65,7 +70,10 @@ export interface WizardController {
   apiDraft: ApiDraft;
   harnessId: string;
   harnessModel: string;
+  harnessEffort: string;
   transcriptionMode: TranscriptionMode;
+  whisperModel: WhisperModelName;
+  whisperModelOptions: WhisperModelChoice[];
   whisperBinaryPath: string;
   whisperApiCredential: string;
   validation: ValidationStatus;
@@ -74,6 +82,8 @@ export interface WizardController {
   plannedDownloadLabels: string[];
   isDownloading: boolean;
   readiness: Readiness | null;
+  readinessChecklist: ChecklistRow[];
+  applyChecklistAction: (action: ChecklistAction) => void;
   isCheckingReadiness: boolean;
   checkReadiness: () => void;
   canGoBack: boolean;
@@ -82,7 +92,9 @@ export interface WizardController {
   setApiDraft: (patch: Partial<ApiDraft>) => void;
   setHarnessId: (id: string) => void;
   setHarnessModel: (model: string) => void;
+  setHarnessEffort: (effort: string) => void;
   setTranscriptionMode: (mode: TranscriptionMode) => void;
+  setWhisperModel: (model: WhisperModelName) => void;
   setWhisperBinaryPath: (path: string) => void;
   setWhisperApiCredential: (credential: string) => void;
   next: () => void;
@@ -108,6 +120,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const installWhisperRuntime = useMutation(actions.installWhisperRuntime);
   const pullLocalAiModel = useMutation(actions.pullLocalAiModel);
   const downloadWhisperModel = useMutation(actions.downloadWhisperModel);
+  const activateWhisperModel = useMutation(actions.useWhisperModel);
 
   const tiers = useMemo(() => requirements.data?.tiers ?? [], [requirements.data]);
   const machine = requirements.data?.machine ?? null;
@@ -119,8 +132,10 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const [apiDraft, setApiDraftState] = useState<ApiDraft>(emptyApiDraft);
   const [harnessId, setHarnessId] = useState<string>('claude-code');
   const [harnessModel, setHarnessModelState] = useState<string>('');
+  const [harnessEffort, setHarnessEffortState] = useState<string>('');
   const [harnessAvailability, setHarnessAvailability] = useState<Record<string, HarnessAvailability>>({});
   const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>('managed');
+  const [whisperModelChoice, setWhisperModelChoice] = useState<WhisperModelName | null>(null);
   const [whisperBinaryPath, setWhisperBinaryPath] = useState<string>('');
   const [whisperApiCredential, setWhisperApiCredential] = useState<string>('');
   const [validation, setValidation] = useState<ValidationStatus>('idle');
@@ -128,9 +143,21 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
   const [isDownloading, setIsDownloading] = useState(false);
   const [readiness, setReadiness] = useState<Readiness | null>(null);
+  const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [isCheckingReadiness, setIsCheckingReadiness] = useState(false);
 
   const effectiveLocalTag = localModelTag.length > 0 ? localModelTag : recommendedTier(tiers)?.tag ?? 'gemma3:12b';
+
+  const whisperModelOptions = useMemo<WhisperModelChoice[]>(
+    () => (whisperModels.data?.models ?? []).map((model) => ({
+      name: model.name,
+      size: model.size,
+      downloaded: model.downloaded,
+    })),
+    [whisperModels.data],
+  );
+  const effectiveWhisperModel: WhisperModelName =
+    whisperModelChoice ?? bestInstalledWhisperModel(whisperModelOptions) ?? FALLBACK_WHISPER_MODEL;
 
   const setApiDraft = useCallback((patch: Partial<ApiDraft>) => {
     setApiDraftState((current) => ({ ...current, ...patch }));
@@ -150,11 +177,18 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     setValidationMessage(null);
   }, []);
 
+  const setHarnessEffort = useCallback((effort: string) => {
+    setHarnessEffortState(effort);
+    setValidation('idle');
+    setValidationMessage(null);
+  }, []);
+
   const writeConfig = useCallback(
     async (key: ConfigKey, value: string): Promise<void> => {
       await setConfig.mutateAsync({ key, value });
+      await queryClient.invalidateQueries();
     },
-    [setConfig],
+    [queryClient, setConfig],
   );
 
   const persistAnalyzer = useCallback(
@@ -189,7 +223,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
           setValidationMessage('No harness is available');
           return;
         }
-        const provider = buildHarnessProvider(descriptor, harnessModel);
+        const provider = buildHarnessProvider(descriptor, harnessModel, harnessEffort);
         const result = await testProvider.mutateAsync(provider);
         if (result.family !== 'harness' || !result.available) {
           setValidation('error');
@@ -201,6 +235,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         await persistAnalyzer(buildLocalProvider(effectiveLocalTag));
       }
       setValidation('ok');
+      savedToastStore.show('Analyzer saved');
       setStep('transcription');
     } catch (error) {
       setValidation('error');
@@ -212,6 +247,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     effectiveLocalTag,
     harnessId,
     harnessModel,
+    harnessEffort,
     harnesses,
     persistAnalyzer,
     setCredential,
@@ -222,11 +258,12 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     switch (transcriptionMode) {
       case 'managed':
         await writeConfig('whisper_mode', 'local');
-        await writeConfig('whisper_model', DEFAULT_WHISPER_MODEL);
+        await writeConfig('whisper_model', effectiveWhisperModel);
         await writeConfig('whisper_binary_path', '');
         return;
       case 'own':
         await writeConfig('whisper_binary_path', whisperBinaryPath.trim());
+        await writeConfig('whisper_model', effectiveWhisperModel);
         await writeConfig('whisper_mode', 'local');
         return;
       case 'api':
@@ -239,7 +276,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         await writeConfig('whisper_mode', 'skip');
         return;
     }
-  }, [setCredential, transcriptionMode, whisperApiCredential, whisperBinaryPath, writeConfig]);
+  }, [effectiveWhisperModel, setCredential, transcriptionMode, whisperApiCredential, whisperBinaryPath, writeConfig]);
 
   const advanceTranscription = useCallback(async (): Promise<void> => {
     setValidation('testing');
@@ -252,6 +289,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     try {
       await persistTranscription();
       setValidation('ok');
+      savedToastStore.show('Transcription saved');
       setStep('downloads');
     } catch (error) {
       setValidation('error');
@@ -305,13 +343,13 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       }
     }
     if (transcriptionMode === 'managed' || transcriptionMode === 'own') {
-      const model = whisperModels.data?.models.find((entry) => entry.name === DEFAULT_WHISPER_MODEL);
+      const model = whisperModelOptions.find((entry) => entry.name === effectiveWhisperModel);
       if (model?.downloaded !== true) {
-      tasks.push({ kind: 'whisper-model', label: `Downloading whisper model ${DEFAULT_WHISPER_MODEL}` });
+        tasks.push({ kind: 'whisper-model', label: `Downloading whisper model ${effectiveWhisperModel}` });
       }
     }
     return tasks;
-  }, [analyzerFamily, effectiveLocalTag, tiers, transcriptionMode, whisperModels.data, whisperRuntime.data]);
+  }, [analyzerFamily, effectiveLocalTag, effectiveWhisperModel, tiers, transcriptionMode, whisperModelOptions, whisperRuntime.data]);
 
   const runDownloads = useCallback(async (): Promise<void> => {
     setIsDownloading(true);
@@ -327,7 +365,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         } else if (task.kind === 'whisper-runtime') {
           jobId = (await installWhisperRuntime.mutateAsync(undefined)).jobId;
         } else {
-          jobId = (await downloadWhisperModel.mutateAsync({ modelName: DEFAULT_WHISPER_MODEL })).jobId;
+          jobId = (await downloadWhisperModel.mutateAsync({ modelName: effectiveWhisperModel })).jobId;
         }
         const ok = await pollJob(jobId, task.label, index);
         if (!ok) {
@@ -335,6 +373,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
           return;
         }
       }
+      await queryClient.invalidateQueries();
       setIsDownloading(false);
       setStep('readiness');
     } catch (error) {
@@ -344,10 +383,12 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   }, [
     downloadWhisperModel,
     effectiveLocalTag,
+    effectiveWhisperModel,
     installWhisperRuntime,
     plannedDownloads,
     pollJob,
     pullLocalAiModel,
+    queryClient,
   ]);
 
   const checkReadiness = useCallback((): void => {
@@ -358,6 +399,8 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
           actions.readiness(folder === null ? { scope: 'home', refresh: 'true' } : { folder, refresh: 'true' }),
         );
         setReadiness(result);
+        const doctorResult = await queryClient.fetchQuery(actions.doctor).catch(() => null);
+        setDoctor(doctorResult);
       } catch (error) {
         setValidationMessage(messageOf(error));
       } finally {
@@ -365,6 +408,36 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       }
     })();
   }, [folder, queryClient]);
+
+  const applyChecklistAction = useCallback((action: ChecklistAction): void => {
+    switch (action.kind) {
+      case 'goto-analyzer':
+        setValidation('idle');
+        setStep('analyzer');
+        return;
+      case 'goto-transcription':
+        setValidation('idle');
+        setStep('transcription');
+        return;
+      case 'download-whisper':
+        setStep('downloads');
+        return;
+      case 'activate-whisper':
+        setIsCheckingReadiness(true);
+        void (async () => {
+          try {
+            await activateWhisperModel.mutateAsync({ modelName: action.model });
+            await queryClient.invalidateQueries();
+            savedToastStore.show(`${action.model} is now active`);
+            checkReadiness();
+          } catch (error) {
+            setValidationMessage(messageOf(error));
+            setIsCheckingReadiness(false);
+          }
+        })();
+        return;
+    }
+  }, [activateWhisperModel, checkReadiness, queryClient]);
 
   const next = useCallback(() => {
     switch (step) {
@@ -452,6 +525,11 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     [harnesses, harnessAvailability, detectHarness, setAnalyzerFamily],
   );
 
+  const readinessChecklist = useMemo(
+    () => buildReadinessChecklist(doctor, readiness, whisperModelOptions),
+    [doctor, readiness, whisperModelOptions],
+  );
+
   return {
     step,
     machine,
@@ -465,7 +543,10 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     apiDraft,
     harnessId,
     harnessModel,
+    harnessEffort,
     transcriptionMode,
+    whisperModel: effectiveWhisperModel,
+    whisperModelOptions,
     whisperBinaryPath,
     whisperApiCredential,
     validation,
@@ -474,6 +555,8 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     plannedDownloadLabels: plannedDownloads.map((task) => task.label),
     isDownloading,
     readiness,
+    readinessChecklist,
+    applyChecklistAction,
     isCheckingReadiness,
     checkReadiness,
     canGoBack: step !== 'welcome' && step !== 'done' && !isDownloading,
@@ -482,7 +565,9 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     setApiDraft,
     setHarnessId,
     setHarnessModel,
+    setHarnessEffort,
     setTranscriptionMode,
+    setWhisperModel: setWhisperModelChoice,
     setWhisperBinaryPath,
     setWhisperApiCredential,
     next,

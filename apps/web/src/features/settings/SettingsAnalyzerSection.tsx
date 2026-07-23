@@ -11,11 +11,43 @@ import {
 import {
   apiCostSignal,
   apiProviderIdForBaseUrl,
+  curatedHarnessModels,
   estimateApiTokens,
   type AnalyzerProviderConfig,
 } from '@core/domain/index.js';
 
+import { HarnessModelPicker } from '../../components/ui/HarnessModelPicker.js';
 import type { LocalAiTier, SettingsDraft } from './settings-model.js';
+
+type HarnessProvider = Extract<AnalyzerProviderConfig, { family: 'harness' }>;
+
+const HARNESS_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
+
+const asHarnessEffort = (value: string): (typeof HARNESS_EFFORTS)[number] | undefined =>
+  HARNESS_EFFORTS.find((option) => option === value.trim());
+
+const baseHarness = (provider: HarnessProvider): HarnessProvider => ({
+  family: 'harness',
+  providerId: provider.providerId,
+  command: provider.command,
+  argsTemplate: provider.argsTemplate,
+  promptStyle: provider.promptStyle,
+});
+
+const withHarnessModel = (provider: HarnessProvider, model: string): HarnessProvider => ({
+  ...baseHarness(provider),
+  ...(model.trim().length === 0 ? {} : { model: model.trim() }),
+  ...(provider.reasoningEffort === undefined ? {} : { reasoningEffort: provider.reasoningEffort }),
+});
+
+const withHarnessEffort = (provider: HarnessProvider, effort: string): HarnessProvider => {
+  const reasoningEffort = asHarnessEffort(effort);
+  return {
+    ...baseHarness(provider),
+    ...(provider.model === undefined ? {} : { model: provider.model }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+  };
+};
 
 type AnalyzerBackend = SettingsDraft['analyzer_backend'];
 
@@ -119,6 +151,19 @@ export const SettingsAnalyzerSection = ({
               This model is not downloaded yet — open the Models manager to download it.
             </Typography>
           ) : null}
+        </Box>
+      ) : null}
+
+      {provider.family === 'harness' ? (
+        <Box data-testid="settings-harness-model">
+          <HarnessModelPicker
+            harnessId={provider.providerId}
+            curatedModels={curatedHarnessModels(provider.providerId)}
+            model={provider.model ?? ''}
+            onModelChange={(model) => onProviderChange(withHarnessModel(provider, model))}
+            effort={provider.reasoningEffort ?? ''}
+            onEffortChange={(effort) => onProviderChange(withHarnessEffort(provider, effort))}
+          />
         </Box>
       ) : null}
 

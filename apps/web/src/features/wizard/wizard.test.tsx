@@ -1,4 +1,4 @@
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
@@ -164,6 +164,29 @@ const installHandlers = (
       recorders.readinessScopes.push(url.searchParams.get('scope'));
       return ok(readiness(overrides.ready ?? true));
     }),
+    http.get('/api/doctor', () =>
+      ok({
+        dependencies: [
+          { name: 'ffmpeg', available: true, version: '6.0', source: 'system', path: '/usr/bin/ffmpeg', installHint: '' },
+          { name: 'ffprobe', available: true, version: '6.0', source: 'system', path: '/usr/bin/ffprobe', installHint: '' },
+          {
+            name: 'whisper',
+            available: overrides.runtimeAvailable ?? true,
+            version: overrides.runtimeAvailable === false ? null : '1.5.0',
+            source: overrides.runtimeAvailable === false ? null : 'managed',
+            path: null,
+            installHint: 'Managed whisper runtime',
+          },
+          { name: 'local-ai', available: true, version: 'managed', source: 'bundled', path: null, installHint: '' },
+        ],
+        harnesses: [],
+        machine,
+        recommendedLocalModel: 'gemma3:12b',
+        allAvailable: overrides.ready ?? true,
+        warnings: [],
+        configured: readiness(overrides.ready ?? true),
+      }),
+    ),
   );
   return recorders;
 };
@@ -447,5 +470,117 @@ describe('SetupWizard', () => {
     renderWithProviders(<SetupWizard open folder="/videos" onClose={onClose} />);
     fireEvent.click(screen.getByTestId('wizard-configure-later'));
     expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  const advanceToReadiness = async () => {
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-skip'));
+    clickNext();
+    await screen.findByTestId('wizard-step-downloads');
+    clickNext();
+    await screen.findByTestId('wizard-step-readiness');
+  };
+
+  it('renders a full readiness checklist with per-item status and no CLI command strings', async () => {
+    installHandlers({ ready: true });
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await advanceToReadiness();
+    await screen.findByTestId('readiness-ready');
+
+    const checklist = await screen.findByTestId('readiness-checklist');
+    const rowIds = within(checklist)
+      .getAllByTestId('readiness-row')
+      .map((row) => row.getAttribute('data-row-id'));
+    expect(rowIds).toEqual(
+      expect.arrayContaining(['dep-ffmpeg', 'dep-ffprobe', 'dep-whisper', 'dep-local-ai', 'configured-analyzer']),
+    );
+
+    const step = screen.getByTestId('wizard-step-readiness');
+    expect(step.textContent).not.toContain('ai-video-cataloger');
+    expect(step.textContent).not.toContain('Run:');
+  });
+
+  it('offers to use the best installed model when the configured whisper model is absent', async () => {
+    const activations: string[] = [];
+    installHandlers({ ready: true });
+    let missing = true;
+    server.use(
+      http.get('/api/models/whisper', () =>
+        ok({
+          models: [
+            { name: 'base', size: '142 MB', downloaded: false, active: true },
+            { name: 'large-v3-turbo', size: '1.6 GB', downloaded: true, active: false },
+          ],
+        }),
+      ),
+      http.get('/api/readiness', () =>
+        ok({
+          ready: !missing,
+          analyzer: {
+            kind: 'analyzer', family: 'harness', providerId: 'claude-code', name: 'claude-code',
+            available: true, message: 'ok', suggestedAction: null,
+          },
+          transcriber: {
+            kind: 'transcriber', mode: 'local', model: 'base', name: 'whisper-base',
+            available: !missing, message: missing ? 'missing' : 'ok', suggestedAction: null,
+          },
+          missingPieces: missing
+            ? [{ kind: 'transcriber', name: 'whisper-base', available: false, message: 'missing', suggestedAction: null }]
+            : [],
+          suggestedAction: null,
+        }),
+      ),
+      http.post('/api/models/whisper/use', async ({ request }) => {
+        const body = await request.json();
+        activations.push(typeof body === 'object' && body !== null && 'modelName' in body ? String(body.modelName) : '');
+        missing = false;
+        return ok({ model: 'large-v3-turbo', downloaded: true });
+      }),
+    );
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await advanceToReadiness();
+    await screen.findByTestId('readiness-not-ready');
+
+    const checklist = await screen.findByTestId('readiness-checklist');
+    const whisperRow = within(checklist)
+      .getAllByTestId('readiness-row')
+      .find((row) => row.getAttribute('data-row-id') === 'configured-whisper-model');
+    if (whisperRow === undefined) throw new Error('expected a configured-whisper-model row');
+    const action = within(whisperRow).getByTestId('readiness-row-action');
+    expect(action.textContent).toBe('Use large-v3-turbo');
+
+    fireEvent.click(action);
+    await waitFor(() => expect(activations).toEqual(['large-v3-turbo']));
+    await screen.findByTestId('readiness-ready');
+  }, 10_000);
+
+  it('defaults the managed whisper model picker to the best already-installed model', async () => {
+    installHandlers({ runtimeAvailable: true });
+    server.use(
+      http.get('/api/models/whisper', () =>
+        ok({
+          models: [
+            { name: 'base', size: '142 MB', downloaded: false, active: false },
+            { name: 'small', size: '466 MB', downloaded: true, active: false },
+          ],
+        }),
+      ),
+    );
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+
+    const picker = await screen.findByTestId('wizard-whisper-model-select');
+    await waitFor(() => expect(picker.textContent).toContain('small'));
+    expect(picker.textContent).not.toContain('base');
   });
 });

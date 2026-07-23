@@ -15,9 +15,11 @@ import {
 import {
   API_USAGE_CHARGE_NOTICE,
   apiCostSignal,
+  curatedHarnessModels,
   estimateApiTokens,
 } from '@core/domain/index.js';
 
+import { HarnessModelPicker } from '../../components/ui/HarnessModelPicker.js';
 import { buildApiProvider } from './wizard-model.js';
 import type { WizardController } from './use-wizard.js';
 
@@ -151,11 +153,13 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
               </ToggleButton>
             );
           })}
-          <TextField
-            label="Model (optional)"
-            value={controller.harnessModel}
-            onChange={(event) => controller.setHarnessModel(event.target.value)}
-            size="small"
+          <HarnessModelPicker
+            harnessId={controller.harnessId}
+            curatedModels={curatedHarnessModels(controller.harnessId)}
+            model={controller.harnessModel}
+            onModelChange={controller.setHarnessModel}
+            effort={controller.harnessEffort}
+            onEffortChange={controller.setHarnessEffort}
           />
         </Box>
       ) : null}

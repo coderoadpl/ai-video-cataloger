@@ -161,3 +161,12 @@ export const legacyAnalyzerProvider = (
 export const builtInHarnessProviders = (): Extract<AnalyzerProviderDescriptor, { family: 'harness' }>[] =>
   ANALYZER_PROVIDERS.filter((provider): provider is Extract<AnalyzerProviderDescriptor, { family: 'harness' }> =>
     provider.family === 'harness');
+
+export const HARNESS_MODEL_OPTIONS: Record<string, readonly string[]> = {
+  'claude-code': ['claude-fable-5', 'claude-opus-4-8', 'claude-sonnet-5'],
+  codex: ['gpt-5.5', 'gpt-5.6-luna', 'gpt-5.6-sol'],
+  'cursor-agent': [],
+};
+
+export const curatedHarnessModels = (providerId: string): readonly string[] =>
+  HARNESS_MODEL_OPTIONS[providerId] ?? [];

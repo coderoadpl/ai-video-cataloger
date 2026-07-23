@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useMutation, useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
 import { CONFIG_KEYS } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { savedToastStore } from '../../lib/saved-toast.js';
 import {
   changedKeys,
   draftFromEffective,
@@ -44,6 +45,7 @@ const messageOf = (error: unknown): string => {
 
 export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): SettingsState => {
   const enabled = open && folder !== null;
+  const queryClient = useQueryClient();
   const configQuery = useQuery({ ...actions.config(folder === null ? {} : { folder }), enabled });
   const requirementsQuery = useQuery({ ...actions.localAiRequirements, enabled });
   const setConfig = useMutation(actions.setConfig);
@@ -126,6 +128,8 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       if (!allOk) return;
       setOriginal(draft);
       await configQuery.refetch();
+      await queryClient.invalidateQueries();
+      savedToastStore.show('Settings saved');
       onSaved?.();
     })();
   }, [
@@ -135,6 +139,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     folder,
     onSaved,
     original,
+    queryClient,
     setConfig,
     setCredential,
     whisperApiCredential,

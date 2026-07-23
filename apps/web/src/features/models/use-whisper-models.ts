@@ -8,6 +8,7 @@ import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { actions } from '../../api.js';
 import { formatMb, whisperDiskUsageMb, type WhisperModelEntry } from './models-model.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { savedToastStore } from '../../lib/saved-toast.js';
 
 export interface WhisperDownloadProgress {
   modelName: WhisperModelName;
@@ -81,6 +82,8 @@ export const useWhisperModels = ({
           if (final.status === 'completed') {
             addLine(`Model ${modelName} downloaded successfully`, 'success');
             await refetch();
+            await queryClient.invalidateQueries();
+            savedToastStore.show(`Downloaded ${modelName}`);
           } else {
             addLine(`Failed to download ${modelName}: ${final.error?.message ?? 'unknown error'}`, 'error');
           }
@@ -104,6 +107,8 @@ export const useWhisperModels = ({
           await activateMutation.mutateAsync({ modelName });
           addLine(`Model ${modelName} is now active`, 'success');
           await refetch();
+          await queryClient.invalidateQueries();
+          savedToastStore.show(`${modelName} is now active`);
         } catch (error) {
           addLine(`Failed to activate ${modelName}: ${messageOf(error)}`, 'error');
         } finally {
@@ -111,7 +116,7 @@ export const useWhisperModels = ({
         }
       })();
     },
-    [isBusy, addLine, activateMutation, refetch],
+    [isBusy, addLine, activateMutation, queryClient, refetch],
   );
 
   const remove = useCallback(
@@ -124,6 +129,8 @@ export const useWhisperModels = ({
           await deleteMutation.mutateAsync({ modelName, force: true });
           addLine(`Model ${modelName} deleted`, 'success');
           await refetch();
+          await queryClient.invalidateQueries();
+          savedToastStore.show(`Deleted ${modelName}`);
         } catch (error) {
           addLine(`Failed to delete ${modelName}: ${messageOf(error)}`, 'error');
         } finally {
@@ -131,7 +138,7 @@ export const useWhisperModels = ({
         }
       })();
     },
-    [isBusy, addLine, deleteMutation, refetch],
+    [isBusy, addLine, deleteMutation, queryClient, refetch],
   );
 
   const models = listQuery.data?.models ?? [];

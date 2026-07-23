@@ -7,6 +7,7 @@ import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { actions } from '../../api.js';
 import type { LocalAiTier, Machine } from './models-model.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { savedToastStore } from '../../lib/saved-toast.js';
 
 export interface LocalAiPullProgress {
   tag: string;
@@ -72,6 +73,8 @@ export const useLocalAi = ({ open, addLine, intervalMs = 1000 }: UseLocalAiOptio
           if (final.status === 'completed') {
             addLine(`Model ${tier.tag} is ready`, 'success');
             await refetch();
+            await queryClient.invalidateQueries();
+            savedToastStore.show(`Downloaded ${tier.tag}`);
           } else {
             addLine(`Failed to download ${tier.tag}: ${final.error?.message ?? 'unknown error'}`, 'error');
           }
@@ -95,6 +98,8 @@ export const useLocalAi = ({ open, addLine, intervalMs = 1000 }: UseLocalAiOptio
           await removeMutation.mutateAsync({ tag: tier.tag });
           addLine(`Removed ${tier.tag}`, 'success');
           await refetch();
+          await queryClient.invalidateQueries();
+          savedToastStore.show(`Removed ${tier.tag}`);
         } catch (error) {
           addLine(`Failed to remove ${tier.tag}: ${messageOf(error)}`, 'error');
         } finally {
@@ -102,7 +107,7 @@ export const useLocalAi = ({ open, addLine, intervalMs = 1000 }: UseLocalAiOptio
         }
       })();
     },
-    [isBusy, addLine, removeMutation, refetch],
+    [isBusy, addLine, removeMutation, queryClient, refetch],
   );
 
   const tiers = requirementsQuery.data?.tiers ?? null;

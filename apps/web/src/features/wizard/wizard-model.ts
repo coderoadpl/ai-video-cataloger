@@ -4,6 +4,7 @@ import {
   apiProviderIdForBaseUrl,
   builtInHarnessProviders,
   type AnalyzerProviderConfig,
+  type WhisperModelName,
 } from '@core/domain/index.js';
 import type { localAiTierSchema, machineSchema } from '@core/contract/index.js';
 
@@ -53,6 +54,32 @@ export const emptyApiDraft = (): ApiDraft => ({
 
 export const harnessDescriptors = (): readonly HarnessDescriptor[] => builtInHarnessProviders();
 
+export interface WhisperModelChoice {
+  name: WhisperModelName;
+  size: string;
+  downloaded: boolean;
+}
+
+const WHISPER_QUALITY_ORDER: readonly WhisperModelName[] = [
+  'tiny',
+  'base',
+  'small',
+  'medium',
+  'large-v3-turbo',
+  'large-v3',
+];
+
+export const bestInstalledWhisperModel = (
+  models: readonly WhisperModelChoice[],
+): WhisperModelName | null => {
+  const installed = new Set(models.filter((model) => model.downloaded).map((model) => model.name));
+  for (let index = WHISPER_QUALITY_ORDER.length - 1; index >= 0; index -= 1) {
+    const candidate = WHISPER_QUALITY_ORDER[index];
+    if (candidate !== undefined && installed.has(candidate)) return candidate;
+  }
+  return null;
+};
+
 export const recommendedTier = (tiers: readonly LocalAiTier[]): LocalAiTier | null =>
   tiers.find((tier) => tier.recommended) ?? tiers.find((tier) => tier.supportLevel === 'ok') ?? null;
 
@@ -62,14 +89,27 @@ export const buildLocalProvider = (modelTag: string): AnalyzerProviderConfig => 
   modelTag,
 });
 
-export const buildHarnessProvider = (descriptor: HarnessDescriptor, model = ''): AnalyzerProviderConfig => ({
-  family: 'harness',
-  providerId: descriptor.providerId,
-  command: descriptor.command,
-  argsTemplate: [...descriptor.argsTemplate],
-  promptStyle: descriptor.promptStyle,
-  ...(model.trim().length === 0 ? {} : { model: model.trim() }),
-});
+const HARNESS_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
+
+const asReasoningEffort = (effort: string): (typeof HARNESS_EFFORTS)[number] | undefined =>
+  HARNESS_EFFORTS.find((option) => option === effort.trim());
+
+export const buildHarnessProvider = (
+  descriptor: HarnessDescriptor,
+  model = '',
+  effort = '',
+): AnalyzerProviderConfig => {
+  const reasoningEffort = asReasoningEffort(effort);
+  return {
+    family: 'harness',
+    providerId: descriptor.providerId,
+    command: descriptor.command,
+    argsTemplate: [...descriptor.argsTemplate],
+    promptStyle: descriptor.promptStyle,
+    ...(model.trim().length === 0 ? {} : { model: model.trim() }),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
+  };
+};
 
 const optionalPrice = (value: string): number | undefined => {
   if (value.trim().length === 0) return undefined;
