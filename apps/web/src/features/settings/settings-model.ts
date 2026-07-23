@@ -33,6 +33,7 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
     analyzer_backend: config.analyzer_backend ?? defaults.analyzer_backend,
     local_model: config.local_model ?? defaults.local_model,
     faces_enabled: config.faces_enabled ?? defaults.faces_enabled,
+    output_language: config.output_language ?? defaults.output_language,
     ...(config.analyzer_provider === null ? {} : { analyzer_provider: config.analyzer_provider }),
   };
   const parsed = configSchema.safeParse(raw);
@@ -51,6 +52,17 @@ export const serializeValue = (draft: SettingsDraft, key: ConfigKey): string => 
   const value = draft[key];
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 };
+
+export interface OutputLanguageOption {
+  value: string;
+  label: string;
+}
+
+export const OUTPUT_LANGUAGE_OPTIONS: OutputLanguageOption[] = [
+  { value: 'auto', label: 'Automatic (model chooses)' },
+  { value: 'en', label: 'English' },
+  { value: 'pl', label: 'Polish' },
+];
 
 export interface WhisperModeOption {
   value: AppConfig['whisper_mode'];

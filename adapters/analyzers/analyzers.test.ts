@@ -69,6 +69,7 @@ describe('HarnessAnalyzerAdapter', () => {
       backend: 'claude',
       localModel: 'gemma3:12b',
       timeoutSeconds: 120,
+      outputLanguage: 'auto',
       verbose: false,
     });
 
@@ -112,6 +113,7 @@ describe('HarnessAnalyzerAdapter', () => {
       backend: 'claude',
       localModel: 'gemma3:12b',
       timeoutSeconds: 30,
+      outputLanguage: 'auto',
       verbose: true,
     });
 
@@ -135,6 +137,7 @@ describe('HarnessAnalyzerAdapter', () => {
       backend: 'claude',
       localModel: 'unused',
       timeoutSeconds: 30,
+      outputLanguage: 'auto',
       verbose: false,
       signal: controller.signal,
     });
@@ -427,6 +430,7 @@ describe('OllamaAnalyzerAdapter', () => {
       backend: 'local',
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
+      outputLanguage: 'auto',
       verbose: false,
     });
 
@@ -453,6 +457,7 @@ describe('OllamaAnalyzerAdapter', () => {
         backend: 'local',
         localModel: 'gemma3:12b',
         timeoutSeconds: 300,
+        outputLanguage: 'auto',
         verbose: false,
       });
 
@@ -494,6 +499,7 @@ describe('OllamaAnalyzerAdapter', () => {
         backend: 'local',
         localModel: 'gemma3:12b',
         timeoutSeconds: 300,
+        outputLanguage: 'auto',
         verbose: false,
       });
 
@@ -520,6 +526,7 @@ describe('OllamaAnalyzerAdapter', () => {
       backend: 'local',
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
+      outputLanguage: 'auto',
       verbose: false,
     });
 
@@ -543,6 +550,7 @@ describe('OllamaAnalyzerAdapter', () => {
       backend: 'local',
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
+      outputLanguage: 'auto',
       verbose: false,
     });
 
@@ -582,6 +590,7 @@ describe('OllamaAnalyzerAdapter', () => {
       backend: 'local',
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
+      outputLanguage: 'auto',
       verbose: false,
       signal: controller.signal,
     });
@@ -620,6 +629,7 @@ describe('OllamaAnalyzerAdapter', () => {
       backend: 'local',
       localModel: 'gemma3:12b',
       timeoutSeconds: 0.01,
+      outputLanguage: 'auto',
       verbose: false,
     });
 
@@ -656,6 +666,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
         localModel: 'unused',
         provider: apiProvider(server.origin),
         timeoutSeconds: 30,
+        outputLanguage: 'auto',
         verbose: false,
       });
 
@@ -703,6 +714,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
         localModel: 'unused',
         provider: apiProvider(server.origin),
         timeoutSeconds: 30,
+        outputLanguage: 'auto',
         verbose: false,
       });
       expect(result).toMatchObject({ ok: false, error: { code } });
@@ -729,6 +741,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
       localModel: 'unused',
       provider: apiProvider(server.origin),
       timeoutSeconds: 30,
+      outputLanguage: 'auto',
       verbose: false,
       signal: controller.signal,
     });
@@ -762,6 +775,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
       localModel: 'unused',
       provider: apiProvider('https://provider.example'),
       timeoutSeconds: 0.01,
+      outputLanguage: 'auto',
       verbose: false,
     });
 
@@ -802,10 +816,44 @@ describe('analyzer helpers', () => {
       transcript: null,
       framePaths: ['/frame.jpg'],
       frameMode: 'attached-images',
+      outputLanguage: 'auto',
     });
 
     expect(prompt).toContain('Attached are 1 frame(s) extracted from the video (as images).');
     expect(prompt).toContain('DESCRIPTION: <text>');
+  });
+
+  it('omits any language directive when the output language is auto', () => {
+    const prompt = buildAnalyzerPrompt({
+      videoName: 'Clip.mp4',
+      transcript: null,
+      framePaths: ['/frame.jpg'],
+      frameMode: 'attached-images',
+      outputLanguage: 'auto',
+    });
+
+    expect(prompt).not.toContain('Write the DESCRIPTION');
+  });
+
+  it('instructs the model to write description and filename in the configured language while keeping tags in English', () => {
+    const polish = buildAnalyzerPrompt({
+      videoName: 'Clip.mp4',
+      transcript: null,
+      framePaths: ['/frame.jpg'],
+      frameMode: 'attached-images',
+      outputLanguage: 'pl',
+    });
+    const custom = buildAnalyzerPrompt({
+      videoName: 'Clip.mp4',
+      transcript: null,
+      framePaths: ['/frame.jpg'],
+      frameMode: 'attached-images',
+      outputLanguage: 'pt-BR',
+    });
+
+    expect(polish).toContain('Write the DESCRIPTION and the FILENAME in Polish.');
+    expect(polish).toContain('Keep the TAGS in ASCII kebab-case English');
+    expect(custom).toContain('Write the DESCRIPTION and the FILENAME in pt-BR.');
   });
 });
 
@@ -817,6 +865,7 @@ const analyzeInput = (provider: Extract<AnalyzerProviderConfig, { family: 'harne
   localModel: 'unused',
   provider,
   timeoutSeconds: 30,
+  outputLanguage: 'auto',
   verbose: false,
 });
 

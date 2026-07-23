@@ -90,6 +90,7 @@ describe('config schema', () => {
         promptStyle: 'file-urls',
       },
       faces_enabled: false,
+      output_language: 'auto',
     });
   });
 
@@ -111,6 +112,19 @@ describe('config schema', () => {
     expect(configSchema.safeParse({ whisper_mode: 'none' }).success).toBe(false);
     expect(configSchema.safeParse({ analyzer_backend: 'remote' }).success).toBe(false);
     expect(configSchema.safeParse({ skip_rename: 'maybe' }).success).toBe(false);
+  });
+
+  it('accepts auto, known, and BCP-47-like output languages', () => {
+    expect(configSchema.parse({}).output_language).toBe('auto');
+    for (const value of ['auto', 'en', 'pl', 'pt-BR', 'zh-Hant']) {
+      expect(configSchema.parse({ output_language: value }).output_language).toBe(value);
+    }
+  });
+
+  it('rejects malformed output languages', () => {
+    for (const value of ['english', '', 'e', 'EN', 'pl_PL', 'p-l', '123']) {
+      expect(configSchema.safeParse({ output_language: value }).success).toBe(false);
+    }
   });
 });
 

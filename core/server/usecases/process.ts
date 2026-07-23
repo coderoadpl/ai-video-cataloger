@@ -12,7 +12,7 @@ import {
   type Video,
   type WhisperModelName,
 } from '@core/domain/index.js';
-import { analyzerBackendSchema, configValueSchema } from '@core/domain/config.js';
+import { analyzerBackendSchema, configValueSchema, outputLanguageSchema } from '@core/domain/config.js';
 import { whisperModelNameSchema } from '@core/domain/models.js';
 import { analyzerProviderConfigSchema, legacyAnalyzerProvider } from '@core/domain/providers.js';
 import { z } from 'zod';
@@ -412,6 +412,7 @@ const runPipelineSteps = async (
       transcript: transcript.value,
       backend: resolved.analyzer.backend,
       localModel: resolved.analyzer.localModel,
+      outputLanguage: resolved.analyzer.outputLanguage,
       provider: resolved.analyzer.provider,
       timeoutSeconds: resolved.analyzer.timeoutSeconds,
       verbose: resolved.verbose,
@@ -479,6 +480,7 @@ interface ResolvedAnalyzer {
   backend: AppConfig['analyzer_backend'];
   localModel: string;
   timeoutSeconds: number;
+  outputLanguage: AppConfig['output_language'];
   provider: AnalyzerProviderConfig;
 }
 
@@ -538,6 +540,7 @@ const resolveProcessOptions = async (
       backend,
       localModel: provider.family === 'local' ? provider.modelTag : localModel,
       timeoutSeconds,
+      outputLanguage: outputLanguageSchema.parse(effective.output_language ?? CONFIG_DEFAULTS.output_language),
       provider,
     },
     batch: input.batch ?? { current: 1, total: 1 },

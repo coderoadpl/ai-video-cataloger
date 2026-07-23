@@ -59,6 +59,7 @@ const configData = (facesEnabled: boolean) => ({
     local_model: null,
     analyzer_provider: null,
     faces_enabled: facesEnabled ? 'true' : 'false',
+    output_language: null,
   },
   defaults: defaults(facesEnabled),
   effective: defaults(facesEnabled),
@@ -75,6 +76,7 @@ const configData = (facesEnabled: boolean) => ({
     local_model: 'default',
     analyzer_provider: 'default',
     faces_enabled: 'home',
+    output_language: 'default',
   },
 });
 
@@ -97,6 +99,7 @@ const defaults = (facesEnabled: boolean) => ({
     promptStyle: 'file-urls',
   }),
   faces_enabled: facesEnabled ? 'true' : 'false',
+  output_language: 'auto',
 });
 
 const stubPeople = (input: {

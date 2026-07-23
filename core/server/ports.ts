@@ -364,6 +364,7 @@ export interface AnalyzeInput {
   localModel: string;
   provider?: AnalyzerProviderConfig | undefined;
   timeoutSeconds: number;
+  outputLanguage: AppConfig['output_language'];
   verbose: boolean;
   signal?: AbortSignal | undefined;
 }

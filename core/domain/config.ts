@@ -9,6 +9,21 @@ export const ANALYZER_BACKENDS = ['claude', 'local'] as const;
 export const whisperModeSchema = z.enum(WHISPER_MODES);
 export const analyzerBackendSchema = z.enum(ANALYZER_BACKENDS);
 
+export const OUTPUT_LANGUAGES = ['auto', 'en', 'pl'] as const;
+const bcp47LikePattern = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
+export const outputLanguageSchema = z
+  .string()
+  .trim()
+  .refine((value) => value === 'auto' || bcp47LikePattern.test(value), {
+    message: 'Output language must be "auto" or a BCP-47-like code (e.g. en, pl, pt-BR)',
+  });
+export type OutputLanguage = z.output<typeof outputLanguageSchema>;
+
+export const LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
+  en: 'English',
+  pl: 'Polish',
+};
+
 const integerFromPersistedValue = (value: unknown): unknown => {
   if (typeof value === 'number') return value;
   if (typeof value !== 'string') return value;
@@ -47,6 +62,7 @@ export const configValueSchema = z.object({
   local_model: z.string().min(1).default('gemma3:12b'),
   analyzer_provider: z.preprocess(providerFromPersistedValue, analyzerProviderConfigSchema.optional()),
   faces_enabled: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
+  output_language: outputLanguageSchema.default('auto'),
 });
 
 export const configSchema = configValueSchema.transform((config) => ({
@@ -70,6 +86,7 @@ export const CONFIG_KEYS = [
   'local_model',
   'analyzer_provider',
   'faces_enabled',
+  'output_language',
 ] as const;
 
 export const configKeySchema = z.enum(CONFIG_KEYS);
@@ -92,4 +109,5 @@ export const configDescriptions: Record<ConfigKey, string> = {
   local_model: 'Local AI model tag',
   analyzer_provider: 'Analyzer provider configuration',
   faces_enabled: 'Experimental local face grouping (opt-in, all data stays on this machine)',
+  output_language: 'Language for generated descriptions and filenames (auto, en, pl, or a BCP-47 code)',
 };

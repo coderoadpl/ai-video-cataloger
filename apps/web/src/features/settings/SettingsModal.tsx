@@ -21,6 +21,7 @@ import {
 
 import { SettingsAnalyzerSection } from './SettingsAnalyzerSection.js';
 import {
+  OUTPUT_LANGUAGE_OPTIONS,
   WHISPER_MODEL_OPTIONS,
   WHISPER_MODE_OPTIONS,
   type SettingsDraft,
@@ -168,6 +169,23 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
               onProviderChange={(provider) => patch({ analyzer_provider: provider })}
               onApiCredentialChange={settings.setApiCredential}
             />
+
+            <FormControl fullWidth size="small">
+              <InputLabel id="output-language-label">Description language</InputLabel>
+              <Select
+                labelId="output-language-label"
+                label="Description language"
+                value={draft.output_language}
+                data-testid="output-language-select"
+                onChange={(event) => patch({ output_language: event.target.value })}
+              >
+                {OUTPUT_LANGUAGE_OPTIONS.map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {option.label}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>

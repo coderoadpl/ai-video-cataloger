@@ -13,6 +13,7 @@ import {
   type AnalyzerProviderConfig,
   type Result,
 } from '@core/domain/index.js';
+import { LANGUAGE_DISPLAY_NAMES } from '@core/domain/config.js';
 import type {
   AnalysisOutput,
   AnalyzeInput,
@@ -179,6 +180,7 @@ export class OpenAiCompatibleAnalyzerAdapter implements AnalyzerPort, ProvidersP
       transcript: input.transcript,
       framePaths: input.framePaths,
       frameMode: 'attached-images',
+      outputLanguage: input.outputLanguage,
     });
     const result = await postOpenAiCompatibleChat(this.fetchImpl, {
       provider,
@@ -259,6 +261,7 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       transcript: input.transcript,
       framePaths: input.framePaths,
       frameMode: provider.promptStyle === 'file-urls' ? 'file-url' : 'dir-access',
+      outputLanguage: input.outputLanguage,
     });
     const runtime = harnessRuntimeDefinition(provider.providerId);
     try {
@@ -427,6 +430,7 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       transcript: input.transcript,
       framePaths: input.framePaths,
       frameMode: 'attached-images',
+      outputLanguage: input.outputLanguage,
     });
     if (verbose) {
       this.writeStdout(`[verbose] Local analysis via ${baseUrl} model ${input.localModel}\n`);
@@ -590,6 +594,7 @@ export const buildAnalyzerPrompt = (input: {
   transcript: string | null;
   framePaths: readonly string[];
   frameMode: 'file-url' | 'dir-access' | 'attached-images';
+  outputLanguage: string;
 }): string => {
   const transcriptBlock = input.transcript === null
     ? 'This video has no audio or transcript available.\n\n'
@@ -599,7 +604,13 @@ export const buildAnalyzerPrompt = (input: {
     : input.frameMode === 'dir-access'
       ? `Read these ${input.framePaths.length} frame file(s) from the accessible video workspace:\n${input.framePaths.join('\n')}\n\n`
       : `Attached are ${input.framePaths.length} frame(s) extracted from the video (as images).\n\n`;
-  return `You are analyzing a video file named "${input.videoName}".\n\n${transcriptBlock}${frameBlock}${responseContractInstructions(input.transcript !== null)}`;
+  return `You are analyzing a video file named "${input.videoName}".\n\n${transcriptBlock}${frameBlock}${responseContractInstructions(input.transcript !== null)}${outputLanguageInstruction(input.outputLanguage)}`;
+};
+
+const outputLanguageInstruction = (outputLanguage: string): string => {
+  if (outputLanguage === 'auto') return '';
+  const languageName = LANGUAGE_DISPLAY_NAMES[outputLanguage] ?? outputLanguage;
+  return `\n\nWrite the DESCRIPTION and the FILENAME in ${languageName}. Keep the TAGS in ASCII kebab-case English regardless of the description language.`;
 };
 
 const responseContractInstructions = (hasTranscript: boolean): string =>
