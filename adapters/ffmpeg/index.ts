@@ -53,6 +53,7 @@ export interface FfmpegCommand {
   seekInput(seconds: number): FfmpegCommand;
   frames(count: number): FfmpegCommand;
   size(size: string): FfmpegCommand;
+  videoFilters(filters: string | string[]): FfmpegCommand;
   noVideo(): FfmpegCommand;
   audioCodec(codec: string): FfmpegCommand;
   audioFrequency(frequency: number): FfmpegCommand;
@@ -209,7 +210,7 @@ export class FfmpegMediaAdapter implements MediaPort {
           .command(input.videoPath)
           .seekInput(duration.value * input.seekPercent)
           .frames(1)
-          .size(`${input.width}x${input.height}`)
+          .videoFilters(thumbnailScaleFilter(input.width, input.height))
           .output(input.thumbnailPath),
       );
       if (!generated.ok) return generated;
@@ -302,6 +303,9 @@ export const tempAudioPathForVideo = (videoPath: string, tempRoot = tmpdir()): s
 
 export const thumbnailPathForVideo = (videoPath: string): string =>
   path.join(path.dirname(videoPath), '.ai-video-cataloger', 'thumbnails', `${path.basename(videoPath, path.extname(videoPath))}.jpg`);
+
+export const thumbnailScaleFilter = (width: number, height: number): string =>
+  `scale=w='trunc(min(${width}/iw\\,${height}/ih)*iw/2)*2':h='trunc(min(${width}/iw\\,${height}/ih)*ih/2)*2'`;
 
 export const parseIso6709Location = (value: string): { lat: number; lon: number } | null => {
   const trimmed = value.trim();

@@ -1,4 +1,5 @@
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,6 +15,7 @@ import {
   resolveFfmpegBinaries,
   tempAudioPathForVideo,
   thumbnailPathForVideo,
+  thumbnailScaleFilter,
   type BinaryResolver,
   type CommandProbe,
   type FfmpegCommand,
@@ -237,11 +239,21 @@ describe('FfmpegMediaAdapter', () => {
     expect(runtime.commands[0]?.operations).toEqual([
       { name: 'seekInput', value: 25 },
       { name: 'frames', value: 1 },
-      { name: 'size', value: '128x72' },
+      { name: 'videoFilters', value: thumbnailScaleFilter(128, 72) },
       { name: 'output', value: thumbnailPath },
       { name: 'run' },
     ]);
     expect(runtime.commands).toHaveLength(1);
+  });
+
+  it('builds an aspect-preserving even-dimension scale filter bounded by the requested box', () => {
+    const filter = thumbnailScaleFilter(128, 72);
+
+    expect(filter).toBe(
+      "scale=w='trunc(min(128/iw\\,72/ih)*iw/2)*2':h='trunc(min(128/iw\\,72/ih)*ih/2)*2'",
+    );
+    expect(filter).toContain('min(');
+    expect(filter).toContain('/2)*2');
   });
 
   it('constructs parity output paths for frames, temp audio, and thumbnails', () => {
@@ -318,7 +330,30 @@ describe('parseIso6709Location', () => {
 
 const realBinaries = await resolveFfmpegBinaries();
 const realSample = path.resolve('test/BigBuckBunny480p30s.mp4');
-const canRunRealSmoke = realBinaries.ffmpeg.available && realBinaries.ffprobe.available && existsSync(realSample);
+const canRunRealBinaries = realBinaries.ffmpeg.available && realBinaries.ffprobe.available;
+const canRunRealSmoke = canRunRealBinaries && existsSync(realSample);
+
+const probeDimensions = (videoPath: string): { width: number; height: number } => {
+  const csv = execFileSync(realBinaries.ffprobe.path, [
+    '-v', 'error',
+    '-select_streams', 'v:0',
+    '-show_entries', 'stream=width,height',
+    '-of', 'csv=p=0',
+    videoPath,
+  ]).toString().trim();
+  const [width, height] = csv.split(',').map((value) => Number.parseInt(value, 10));
+  return { width: width ?? 0, height: height ?? 0 };
+};
+
+const synthesizeVideo = (outputPath: string, size: string): void => {
+  execFileSync(realBinaries.ffmpeg.path, [
+    '-y', '-v', 'error',
+    '-f', 'lavfi',
+    '-i', `testsrc=size=${size}:rate=30:duration=2`,
+    '-pix_fmt', 'yuv420p',
+    outputPath,
+  ]);
+};
 
 describe('FfmpegMediaAdapter optional real-binary smoke', () => {
   afterEach(async () => {
@@ -364,6 +399,50 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     expect(decoded.value.data.some((value) => value !== 0)).toBe(true);
     expect(existsSync(cropPath)).toBe(true);
     expect(existsSync(thumbnailPath)).toBe(true);
+  });
+
+  it.skipIf(!canRunRealBinaries)('preserves source orientation and even dimensions when generating thumbnails', async () => {
+    const root = await tempRoot();
+    const adapter = new FfmpegMediaAdapter();
+    const landscapeVideo = path.join(root, 'landscape.mp4');
+    const portraitVideo = path.join(root, 'portrait.mp4');
+    synthesizeVideo(landscapeVideo, '64x36');
+    synthesizeVideo(portraitVideo, '36x64');
+    const landscapeThumb = path.join(root, 'landscape.jpg');
+    const portraitThumb = path.join(root, 'portrait.jpg');
+
+    const landscape = await adapter.thumbnail({
+      videoPath: landscapeVideo,
+      thumbnailPath: landscapeThumb,
+      seekPercent: 0.5,
+      width: 128,
+      height: 72,
+      force: true,
+    });
+    const portrait = await adapter.thumbnail({
+      videoPath: portraitVideo,
+      thumbnailPath: portraitThumb,
+      seekPercent: 0.5,
+      width: 128,
+      height: 72,
+      force: true,
+    });
+
+    if (!landscape.ok) throw new Error(landscape.error.message);
+    if (!portrait.ok) throw new Error(portrait.error.message);
+
+    const landscapeDims = probeDimensions(landscapeThumb);
+    const portraitDims = probeDimensions(portraitThumb);
+
+    expect(landscapeDims.width).toBeGreaterThan(landscapeDims.height);
+    expect(portraitDims.height).toBeGreaterThan(portraitDims.width);
+    expect(landscapeDims.width).toBeLessThanOrEqual(128);
+    expect(landscapeDims.height).toBeLessThanOrEqual(72);
+    expect(portraitDims.width).toBeLessThanOrEqual(128);
+    expect(portraitDims.height).toBeLessThanOrEqual(72);
+    for (const dimension of [landscapeDims.width, landscapeDims.height, portraitDims.width, portraitDims.height]) {
+      expect(dimension % 2).toBe(0);
+    }
   });
 });
 
@@ -454,6 +533,7 @@ type CommandOperation =
   | { name: 'seekInput'; value: number }
   | { name: 'frames'; value: number }
   | { name: 'size'; value: string }
+  | { name: 'videoFilters'; value: string }
   | { name: 'noVideo' }
   | { name: 'audioCodec'; value: string }
   | { name: 'audioFrequency'; value: number }
@@ -481,6 +561,11 @@ class FakeFfmpegCommand implements FfmpegCommand {
 
   size(size: string): FfmpegCommand {
     this.operations.push({ name: 'size', value: size });
+    return this;
+  }
+
+  videoFilters(filters: string | string[]): FfmpegCommand {
+    this.operations.push({ name: 'videoFilters', value: Array.isArray(filters) ? filters.join(',') : filters });
     return this;
   }
 
