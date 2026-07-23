@@ -502,6 +502,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>> {
     const present = new Set(input.presentFingerprints);
     const elsewhere = new Set(input.fingerprintsPresentElsewhere ?? []);
+    const markMissing = input.markMissing ?? true;
     let marked = 0;
     let cleared = 0;
     for (const file of this.files.values()) {
@@ -512,7 +513,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
           this.files.set(file.fingerprint, { ...file, missingAt: null });
           cleared += 1;
         }
-      } else if (file.missingAt === null) {
+      } else if (markMissing && file.missingAt === null) {
         this.files.set(file.fingerprint, { ...file, missingAt: input.now });
         marked += 1;
       }
@@ -522,14 +523,17 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
     const file = this.files.get(fingerprint);
-    if (file === undefined) return Promise.resolve(ok({ fingerprint, deleted: false, folderId: null }));
+    if (file === undefined) return Promise.resolve(ok({ fingerprint, deleted: false, folderId: null, cropPaths: [] }));
+    const cropPaths: string[] = [];
     for (const observation of this.faceObservations.values()) {
-      if (observation.fingerprint === fingerprint) this.faceObservations.delete(observation.obsId);
+      if (observation.fingerprint !== fingerprint) continue;
+      if (typeof observation.cropPath === 'string' && observation.cropPath.length > 0) cropPaths.push(observation.cropPath);
+      this.faceObservations.delete(observation.obsId);
     }
     this.faceIndexState.delete(fingerprint);
     this.analyses.delete(fingerprint);
     this.files.delete(fingerprint);
-    return Promise.resolve(ok({ fingerprint, deleted: true, folderId: file.folderId }));
+    return Promise.resolve(ok({ fingerprint, deleted: true, folderId: file.folderId, cropPaths }));
   }
 
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>> {

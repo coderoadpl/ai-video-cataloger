@@ -172,7 +172,7 @@ export const processDrive = async (
 
   let consecutiveFailures = 0;
   let fileIndex = 0;
-  const folderPresences: { folderPath: string; presentFingerprints: string[] }[] = [];
+  const folderPresences: { folderPath: string; presentFingerprints: string[]; hashUnavailable: boolean }[] = [];
   for (const folder of discovery.value.folders) {
     const folderStarted = await report(progress, 'folder-started', {
       path: folder.path,
@@ -242,7 +242,8 @@ export const processDrive = async (
     const presentFingerprints = scan.value.videos
       .map((video) => video.contentHash)
       .filter((hash): hash is string => hash !== null);
-    folderPresences.push({ folderPath: folder.path, presentFingerprints });
+    const hashUnavailable = scan.value.videos.some((video) => video.contentHash === null);
+    folderPresences.push({ folderPath: folder.path, presentFingerprints, hashUnavailable });
 
     state.run.foldersDone += 1;
     const persisted = await persistRun(deps, state, now);
@@ -261,6 +262,7 @@ export const processDrive = async (
         folderPath: entry.folderPath,
         presentFingerprints: entry.presentFingerprints,
         fingerprintsPresentElsewhere: presentAcrossRun,
+        markMissing: !entry.hashUnavailable,
         now: now().getTime(),
       },
     );

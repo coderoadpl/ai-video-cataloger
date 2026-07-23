@@ -27,5 +27,9 @@ export const aliasTag = async (
   if (from.length === 0 || to.length === 0) {
     return { ok: false, error: appError('validation', 'Tag aliases must normalize to non-empty tag names') };
   }
-  return deps.globalCatalog.aliasTag({ from, to });
+  const aliased = await deps.globalCatalog.aliasTag({ from, to });
+  if (!aliased.ok) return aliased;
+  const flushed = await deps.globalCatalog.flush();
+  if (!flushed.ok) return flushed;
+  return aliased;
 };

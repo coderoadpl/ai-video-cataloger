@@ -86,6 +86,7 @@ export interface ReconcileFolderInput {
   folderId: string;
   presentFingerprints: readonly string[];
   fingerprintsPresentElsewhere?: readonly string[];
+  markMissing?: boolean;
   now: number;
 }
 
@@ -98,6 +99,7 @@ export interface ForgetEntryResult {
   fingerprint: string;
   deleted: boolean;
   folderId: string | null;
+  cropPaths: string[];
 }
 
 export interface GlobalCatalogCounts {

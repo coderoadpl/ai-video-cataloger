@@ -98,7 +98,11 @@ export const facesName = async (
 ): Promise<Result<{ personId: string; displayName: string; affectedFingerprints: string[] }, AppError>> => {
   const enabled = await ensureFacesEnabled(deps);
   if (!enabled.ok) return enabled;
-  return deps.globalCatalog.setPersonName(input.personId, input.displayName.trim());
+  const named = await deps.globalCatalog.setPersonName(input.personId, input.displayName.trim());
+  if (!named.ok) return named;
+  const flushed = await deps.globalCatalog.flush();
+  if (!flushed.ok) return flushed;
+  return named;
 };
 
 export const facesMerge = async (
@@ -122,6 +126,8 @@ export const facesForget = async (
   if (!input.force) return { ok: false, error: appError('confirmation_required', 'Forget requires --force flag') };
   const forgotten = await deps.globalCatalog.forgetPerson(input.personId);
   if (!forgotten.ok) return forgotten;
+  const flushed = await deps.globalCatalog.flush();
+  if (!flushed.ok) return flushed;
   const deleted = await deleteCropPaths(deps.fs, forgotten.value.cropPaths);
   if (!deleted.ok) return deleted;
   return ok({
@@ -141,6 +147,8 @@ export const facesPurge = async (
   if (!input.force) return { ok: false, error: appError('confirmation_required', 'Purge requires --force flag') };
   const purged = await deps.globalCatalog.purgeFaces();
   if (!purged.ok) return purged;
+  const flushed = await deps.globalCatalog.flush();
+  if (!flushed.ok) return flushed;
   const deleted = await deleteCropPaths(deps.fs, purged.value.cropPaths);
   if (!deleted.ok) return deleted;
   return ok({

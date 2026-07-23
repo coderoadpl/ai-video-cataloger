@@ -172,6 +172,27 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(status.ok && status.value.observations).toBe(0);
   });
 
+  it('forgetEntry returns the crop paths of the removed face observations', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertFaceObservation({
+      obsId: 'obs-1',
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-1',
+      cropPath: '/home/faces/person-1/exemplar-001.jpg',
+    });
+
+    const forgotten = await store.forgetEntry(file.fingerprint);
+    expect(forgotten.ok && forgotten.value.cropPaths).toEqual(['/home/faces/person-1/exemplar-001.jpg']);
+  });
+
   it('reconcileFolder marks absent files, clears returning files, and skips duplicates elsewhere', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -216,6 +237,45 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(stillPresent.ok && stillPresent.value?.missingAt).toBe(null);
   });
 
+  it('reconcileFolder never marks files missing when markMissing is false', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+
+    const guarded = await store.reconcileFolder({
+      folderId: folder.folderId,
+      presentFingerprints: [],
+      markMissing: false,
+      now: 1000,
+    });
+    expect(guarded.ok && guarded.value).toEqual({ marked: 0, cleared: 0 });
+    const stillPresent = await store.getFile(file.fingerprint);
+    expect(stillPresent.ok && stillPresent.value?.missingAt).toBe(null);
+
+    const marked = await store.reconcileFolder({
+      folderId: folder.folderId,
+      presentFingerprints: [],
+      now: 2000,
+    });
+    expect(marked.ok && marked.value.marked).toBe(1);
+  });
+
+  it('keeps buffered acknowledged mutations after a controlled operation error', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect((await store.upsertFolder(folder)).ok).toBe(true);
+    expect((await store.upsertFile(file)).ok).toBe(true);
+
+    const failed = await store.setPersonName('missing-person', 'Nobody');
+    expect(failed.ok).toBe(false);
+
+    expect((await store.flush()).ok).toBe(true);
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value).toEqual({ folders: 1, files: 1, analyses: 0 });
+  });
+
   it('search exposes the missing flag from reconciliation', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -257,6 +317,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       fingerprint: file.fingerprint,
       deleted: true,
       folderId: folder.folderId,
+      cropPaths: [],
     });
     expect((await store.flush()).ok).toBe(true);
 
@@ -275,7 +336,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(ftsRows[0]?.values[0]?.[0]).toBe(0);
 
     const forgetMissing = await reopened.forgetEntry('nope');
-    expect(forgetMissing.ok && forgetMissing.value).toEqual({ fingerprint: 'nope', deleted: false, folderId: null });
+    expect(forgetMissing.ok && forgetMissing.value).toEqual({ fingerprint: 'nope', deleted: false, folderId: null, cropPaths: [] });
   });
 
   it('migrates an existing v6 database to v7 and persists a reconciled missing_at value', async () => {

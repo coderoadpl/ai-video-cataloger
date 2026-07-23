@@ -116,7 +116,7 @@ interface DriveHandlers {
   addLine: AddLogLine;
   onFolderProgress: (view: DriveProgressView) => void;
   onFileProgress: (view: BatchProgressView) => void;
-  onFileComplete: () => void;
+  onFolderComplete: () => void;
   onSkipped: (path: string) => void;
 }
 
@@ -150,13 +150,13 @@ const renderDriveEvent = (
       'success',
     );
     handlers.onFolderProgress({ ...counts });
+    handlers.onFolderComplete();
     return;
   }
   if (step === 'file-skipped') {
     const video = strField(data, 'video');
     handlers.addLine(handlers.dictionary.processing.driveFileSkipped(basename(video)), 'info');
     handlers.onSkipped(video);
-    handlers.onFileComplete();
     return;
   }
   if (step === 'run-summary') {
@@ -178,7 +178,6 @@ const renderDriveEvent = (
     const totalCount = progress.total ?? 0;
     handlers.onFileProgress({ currentIndex, totalCount, currentFilename: filename });
     handlers.addLine(handlers.dictionary.processing.fileProgressLine(currentIndex, totalCount, stepLabel(step), filename), 'info');
-    if (step === 'renaming_video' || step === 'skipping_rename') handlers.onFileComplete();
   }
 };
 
@@ -394,7 +393,7 @@ export const useProcessing = ({
                 addLine,
                 onFolderProgress: setDriveProgress,
                 onFileProgress: setDriveFileProgress,
-                onFileComplete: () => {
+                onFolderComplete: () => {
                   void queryClient.invalidateQueries();
                 },
                 onSkipped: (path) => {

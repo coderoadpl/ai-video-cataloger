@@ -126,8 +126,10 @@ export const processVideoPipeline = async (
 
   const recorded = await recordGlobalCatalog(deps, repository.value, resolved.value, runResult.value, progress);
   if (!recorded.ok) return recorded;
-  const flushed = await flushGlobalCatalog(deps);
-  if (!flushed.ok) return flushed;
+  if (input.batch === undefined) {
+    const flushed = await flushGlobalCatalog(deps);
+    if (!flushed.ok) return flushed;
+  }
   return runResult;
 };
 

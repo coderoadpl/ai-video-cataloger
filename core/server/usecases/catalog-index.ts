@@ -144,6 +144,7 @@ export const reconcileFolderPresence = async (
     folderPath: string;
     presentFingerprints: readonly string[];
     fingerprintsPresentElsewhere?: readonly string[];
+    markMissing?: boolean;
     now?: number;
   },
 ): Promise<Result<ReconcileFolderResult, AppError>> => {
@@ -156,6 +157,7 @@ export const reconcileFolderPresence = async (
     ...(input.fingerprintsPresentElsewhere === undefined
       ? {}
       : { fingerprintsPresentElsewhere: input.fingerprintsPresentElsewhere }),
+    ...(input.markMissing === undefined ? {} : { markMissing: input.markMissing }),
     now: input.now ?? Date.now(),
   });
 };
@@ -194,6 +196,12 @@ export const forgetCatalogEntry = async (
 ): Promise<Result<ForgetEntryResult, AppError>> => {
   const forgotten = await deps.globalCatalog.forgetEntry(input.fingerprint);
   if (!forgotten.ok) return forgotten;
+  const flushed = await deps.globalCatalog.flush();
+  if (!flushed.ok) return flushed;
+  for (const cropPath of forgotten.value.cropPaths) {
+    const deleted = await deps.fs.deleteFile(cropPath);
+    if (!deleted.ok) return deleted;
+  }
   if (forgotten.value.folderId !== null) {
     const folder = await deps.globalCatalog.getFolder(forgotten.value.folderId);
     if (!folder.ok) return folder;

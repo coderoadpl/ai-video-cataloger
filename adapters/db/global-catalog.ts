@@ -315,6 +315,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     return this.write((db) => {
       const present = new Set(input.presentFingerprints);
       const elsewhere = new Set(input.fingerprintsPresentElsewhere ?? []);
+      const markMissing = input.markMissing ?? true;
       const rows = db.select().from(files).where(eq(files.folderId, input.folderId)).all();
       let marked = 0;
       let cleared = 0;
@@ -325,7 +326,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
             db.update(files).set({ missingAt: null }).where(eq(files.fingerprint, row.fingerprint)).run();
             cleared += 1;
           }
-        } else if (row.missingAt === null) {
+        } else if (markMissing && row.missingAt === null) {
           db.update(files).set({ missingAt: input.now }).where(eq(files.fingerprint, row.fingerprint)).run();
           marked += 1;
         }
@@ -337,14 +338,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   async forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
     return this.write((db, client) => {
       const fileRow = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();
-      if (fileRow === undefined) return { fingerprint, deleted: false, folderId: null };
+      if (fileRow === undefined) return { fingerprint, deleted: false, folderId: null, cropPaths: [] };
+      const observationRows = db.select().from(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).all();
+      const cropPaths = observationRows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
       deleteSearchDocument(client, fingerprint);
       db.delete(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).run();
       db.delete(faceIndexState).where(eq(faceIndexState.fingerprint, fingerprint)).run();
       db.delete(fileTags).where(eq(fileTags.fingerprint, fingerprint)).run();
       db.delete(analyses).where(eq(analyses.fingerprint, fingerprint)).run();
       db.delete(files).where(eq(files.fingerprint, fingerprint)).run();
-      return { fingerprint, deleted: true, folderId: fileRow.folderId };
+      return { fingerprint, deleted: true, folderId: fileRow.folderId, cropPaths };
     });
   }
 
@@ -602,8 +605,10 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       if (this.dirtyCount >= AUTO_FLUSH_MUTATION_COUNT) this.persist(state);
       return ok(value);
     } catch (cause) {
-      this.state = null;
-      this.dirtyCount = 0;
+      if (!(cause instanceof CatalogAppError)) {
+        this.state = null;
+        this.dirtyCount = 0;
+      }
       return failure(cause);
     }
   }

@@ -170,6 +170,31 @@ describe('missing-file reconciliation', () => {
     expect(refreshedSnapshot.ok && refreshedSnapshot.value?.includes('fp-1')).toBe(false);
   });
 
+  it('deletes orphaned face crop files when forgetting a catalog entry', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const cropPath = '/home/faces/person-1/exemplar-001.jpg';
+    fs.addFile(cropPath, { content: 'jpeg' });
+    const store = new InMemoryGlobalCatalogStore();
+    await upsertProcessedVideo({ globalCatalog: store, fs }, processedInput('/work'));
+    await store.upsertFaceObservation({
+      obsId: 'obs-1',
+      fingerprint: 'fp-1',
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-1',
+      cropPath,
+    });
+
+    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs }, { fingerprint: 'fp-1' });
+    expect(forgotten.ok && forgotten.value.deleted).toBe(true);
+    const cropExists = await fs.exists(cropPath);
+    expect(cropExists.ok && cropExists.value).toBe(false);
+  });
+
   it('lists a folder catalog records with the missing flag and last-seen timestamp', async () => {
     const fs = new InMemoryFileSystem('/work');
     fs.addDirectory('/work');

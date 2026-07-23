@@ -117,7 +117,7 @@ describe('useProcessing drive', () => {
     updatedAt: '2026-01-01T00:00:00.000Z',
   });
 
-  it('renders per-file progress lines, tracks skipped files, and invalidates on each completion', async () => {
+  it('renders per-file progress lines, tracks skipped files, and invalidates on folder completion', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
@@ -146,7 +146,7 @@ describe('useProcessing drive', () => {
     expect(lines.some((line) => line.includes('[1/2] Extracting frames: one.mp4'))).toBe(true);
     expect(lines.some((line) => line.includes('Skipped (already analyzed): two.mp4'))).toBe(true);
     expect(result.current.skippedPaths.has('/videos/a/two.mp4')).toBe(true);
-    expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(3);
+    expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
   it('stops an active drive run without a confirmation dialog', async () => {

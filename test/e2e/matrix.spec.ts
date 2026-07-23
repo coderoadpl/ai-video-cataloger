@@ -399,6 +399,8 @@ test('wizard-folder-gui × local-managed × managed-whisper', { tag: '@gui' }, a
     await page.waitForFunction(() => window.desktopBridge !== undefined);
     await expect(page.getByTestId('setup-wizard')).toBeVisible({ timeout: 60_000 });
     await page.getByTestId('wizard-next').click();
+    await expect(page.getByTestId('wizard-step-language')).toBeVisible();
+    await page.getByTestId('wizard-next').click();
     await expect(page.getByTestId('wizard-step-analyzer')).toBeVisible();
     await page.getByTestId('wizard-local-model-select').click();
     await page.getByRole('option', { name: /Gemma 3 4B/i }).click();
