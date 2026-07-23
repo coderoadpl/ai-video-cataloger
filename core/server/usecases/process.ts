@@ -36,6 +36,7 @@ import {
   summaryDataSchema,
   type SummaryData,
 } from './shared.js';
+import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
 import { resolveConfigValues } from './config-resolution.js';
 import { hasProcessedAnalysis, resolveFolderIntoIndex, upsertProcessedVideo } from './catalog-index.js';
 
@@ -403,7 +404,7 @@ const runPipelineSteps = async (
     if (frames.value.length === 0) {
       return { ok: false, error: appError('processing_error', 'No frames found for analysis') };
     }
-    const transcript = await readTranscript(deps.fs, paths.transcriptPath);
+    const transcript = await readFilteredTranscript(deps.fs, paths.transcriptPath, paths.transcriptJsonPath);
     if (!transcript.ok) return transcript;
     const analyzed = await deps.analyzer.analyze({
       videoPath: video.originalPath,
@@ -730,6 +731,27 @@ const readTranscript = async (fs: FileSystemPort, transcriptPath: string): Promi
   return ok(content.value.trim());
 };
 
+const readFilteredTranscript = async (
+  fs: FileSystemPort,
+  transcriptPath: string,
+  transcriptJsonPath: string,
+): Promise<Result<string | null, AppError>> => {
+  const content = await fs.readTextFile(transcriptPath);
+  if (!content.ok) return content;
+  if (content.value === null) return ok(null);
+  const json = await fs.readTextFile(transcriptJsonPath);
+  if (!json.ok) return json;
+  let segments = null;
+  if (json.value !== null) {
+    try {
+      segments = parseRichSegments(JSON.parse(json.value));
+    } catch {
+      segments = null;
+    }
+  }
+  return ok(filterTranscript(content.value.trim(), segments).text);
+};
+
 const loadSummary = async (fs: FileSystemPort, summaryJsonPath: string): Promise<Result<ParsedAnalysis, AppError>> => {
   const content = await fs.readTextFile(summaryJsonPath);
   if (!content.ok) return content;
@@ -1007,7 +1029,7 @@ const recordGlobalCatalog = async (
   const paths = artifactPaths(deps.fs, folder, finalPath, newName);
   const summary = await loadOptionalSummary(deps.fs, paths.summaryJsonPath);
   if (!summary.ok) return summary;
-  const transcript = await readTranscript(deps.fs, paths.transcriptPath);
+  const transcript = await readFilteredTranscript(deps.fs, paths.transcriptPath, paths.transcriptJsonPath);
   if (!transcript.ok) return transcript;
   const provider = resolved.analyzer.provider;
   return upsertProcessedVideo(
