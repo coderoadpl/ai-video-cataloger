@@ -1,30 +1,26 @@
-import { Box, Typography } from '@mui/material';
+import { Box, Chip, Typography } from '@mui/material';
 
-import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { ArtifactsSection } from './ArtifactsSection.js';
 import { type DetailsVideo } from './details-video.js';
 import { MetadataCard } from './MetadataCard.js';
 import { StatusActions } from './StatusActions.js';
 import { statusDescription } from './status-info.js';
+import { VideoPlayer } from './VideoPlayer.js';
 
 interface VideoDetailsProps {
   video: DetailsVideo;
   analyzing: boolean;
   onAnalyze?: ((video: DetailsVideo) => void) | undefined;
   disabledReason?: string | undefined;
+  onTagSearch?: ((tag: string) => void) | undefined;
 }
 
-export const VideoDetails = ({ video, analyzing, onAnalyze, disabledReason }: VideoDetailsProps) => (
+export const VideoDetails = ({ video, analyzing, onAnalyze, disabledReason, onTagSearch }: VideoDetailsProps) => (
   <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 780 }}>
+    <VideoPlayer video={video} />
+
     <Box sx={{ display: 'flex', gap: 2 }}>
-      <MediaThumbnail
-        path={video.artifacts.thumbnailPath}
-        mtime={video.artifacts.thumbnailMtime}
-        alt={video.filename}
-        width={128}
-        height={80}
-      />
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
         <Typography variant="h1" noWrap title={video.filename}>
           {video.filename}
@@ -40,6 +36,8 @@ export const VideoDetails = ({ video, analyzing, onAnalyze, disabledReason }: Vi
 
     <MetadataCard video={video} />
 
+    <TagRow tags={video.artifacts.summary?.tags ?? []} onTagSearch={onTagSearch} />
+
     <Typography variant="body2" color="text.secondary">
       {statusDescription(video.status, analyzing)}
     </Typography>
@@ -49,3 +47,24 @@ export const VideoDetails = ({ video, analyzing, onAnalyze, disabledReason }: Vi
     <ArtifactsSection video={video} />
   </Box>
 );
+
+const TagRow = ({
+  tags,
+  onTagSearch,
+}: {
+  tags: readonly string[];
+  onTagSearch?: ((tag: string) => void) | undefined;
+}) =>
+  tags.length === 0 ? null : (
+    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.75 }} aria-label="Video tags">
+      {tags.map((tag) => (
+        <Chip
+          key={tag}
+          label={tag}
+          size="small"
+          clickable={onTagSearch !== undefined}
+          onClick={onTagSearch === undefined ? undefined : () => onTagSearch(tag)}
+        />
+      ))}
+    </Box>
+  );

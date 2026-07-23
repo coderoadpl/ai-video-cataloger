@@ -89,6 +89,7 @@ export const artifactPaths = (
 ): {
   framesDir: string;
   transcriptPath: string;
+  transcriptJsonPath: string;
   summaryPath: string;
   summaryJsonPath: string;
   debugLogPath: string;
@@ -98,6 +99,7 @@ export const artifactPaths = (
   return {
     framesDir: fs.join(folder, 'frames', baseName),
     transcriptPath: fs.join(folder, 'transcripts', `${baseName}.txt`),
+    transcriptJsonPath: fs.join(folder, 'transcripts', `${baseName}.json`),
     summaryPath: fs.join(folder, 'summaries', `${baseName}.txt`),
     summaryJsonPath: fs.join(folder, 'summaries', `${baseName}.json`),
     debugLogPath: fs.join(folder, 'summaries', `${baseName}-debug.log`),

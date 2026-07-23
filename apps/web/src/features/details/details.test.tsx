@@ -78,6 +78,52 @@ describe('details panel', () => {
     expect(screen.getByText('Full AI Analysis')).toBeDefined();
   });
 
+  it('renders tag chips and routes chip clicks to search', () => {
+    const onTagSearch = vi.fn();
+    const video = makeVideo({
+      artifacts: {
+        ...makeVideo().artifacts,
+        summary: {
+          schemaVersion: 1,
+          description: 'A cooking tutorial about pasta.',
+          suggestedFilename: 'cooking-tutorial-pasta',
+          fullAnalysis: 'The full analysis text.',
+          tags: ['cooking', 'pasta'],
+          analyzedAt: '2026-01-01T00:00:00.000Z',
+        },
+      },
+    });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} onTagSearch={onTagSearch} />);
+
+    fireEvent.click(screen.getByText('pasta'));
+    expect(onTagSearch).toHaveBeenCalledWith('pasta');
+  });
+
+  it('renders the inline player with media source and no subtitles when segments are absent', () => {
+    renderThemed(<DetailsPanel video={makeVideo({ status: 'pending' })} analyzing={false} />);
+
+    const player = screen.getByTestId('detail-video-player');
+    if (!(player instanceof HTMLVideoElement)) throw new Error('expected a video element');
+    expect(player.getAttribute('src')).toBe('media://local/%2Fvideos%2Fclip.mp4');
+    expect(player.autoplay).toBe(false);
+    expect(screen.queryByTestId('detail-subtitles-track')).toBeNull();
+  });
+
+  it('renders a subtitles track when timestamped transcript segments exist', () => {
+    const video = makeVideo({
+      artifacts: {
+        ...makeVideo().artifacts,
+        transcriptSegments: [{ start: 0, end: 1, text: 'hello' }],
+      },
+    });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} />);
+
+    const track = screen.getByTestId('detail-subtitles-track');
+    expect(track.getAttribute('src')).toContain('WEBVTT');
+  });
+
   it('shows the missing-summary empty state for an analyzed video without a summary', () => {
     renderThemed(<DetailsPanel video={makeVideo({ status: 'analyzed' })} analyzing={false} />);
     expect(screen.getByText(/No summary available/)).toBeDefined();

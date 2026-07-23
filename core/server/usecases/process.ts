@@ -380,6 +380,7 @@ const runPipelineSteps = async (
       video.originalPath,
       resolved,
       paths.transcriptPath,
+      paths.transcriptJsonPath,
       audioPath,
       skipTranscription,
       progress?.signal,
@@ -676,6 +677,7 @@ const transcribe = async (
   videoPath: string,
   resolved: ResolvedProcessOptions,
   transcriptPath: string,
+  transcriptJsonPath: string,
   audioPath: string | null,
   skip: boolean,
   signal: AbortSignal | undefined,
@@ -688,6 +690,7 @@ const transcribe = async (
   const result = await deps.transcriber.transcribe({
     audioPath: finalAudioPath,
     transcriptPath,
+    transcriptJsonPath,
     mode: resolved.whisper,
     model: resolved.whisperModel,
     apiBaseUrl: resolved.whisperApiBaseUrl,
@@ -825,6 +828,7 @@ const renameVideoAndArtifacts = async (
     { from: video.originalPath, to: newPath, required: true },
     { from: oldArtifacts.framesDir, to: fs.join(folder, 'frames', newBase), required: false },
     { from: oldArtifacts.transcriptPath, to: fs.join(folder, 'transcripts', `${newBase}.txt`), required: false },
+    { from: oldArtifacts.transcriptJsonPath, to: fs.join(folder, 'transcripts', `${newBase}.json`), required: false },
     { from: oldArtifacts.summaryPath, to: fs.join(folder, 'summaries', `${newBase}.txt`), required: false },
     { from: oldArtifacts.summaryJsonPath, to: fs.join(folder, 'summaries', `${newBase}.json`), required: false },
     {

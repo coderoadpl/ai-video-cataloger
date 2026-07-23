@@ -27,6 +27,23 @@ const stubMatchMedia = (query: string): MediaQueryList => ({
 });
 globalThis.matchMedia = stubMatchMedia;
 
+const storage = new Map<string, string>();
+Object.defineProperty(window, 'localStorage', {
+  value: {
+    getItem: (key: string) => storage.get(key) ?? null,
+    setItem: (key: string, value: string) => {
+      storage.set(key, value);
+    },
+    removeItem: (key: string) => {
+      storage.delete(key);
+    },
+    clear: () => {
+      storage.clear();
+    },
+  },
+  configurable: true,
+});
+
 /**
  * jsdom and undici expose AbortSignal from different realms, so the signal
  * TanStack Query attaches fails undici's `instanceof` check inside MSW's fetch

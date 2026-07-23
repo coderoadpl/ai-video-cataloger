@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from 'react';
 import { Alert, Snackbar } from '@mui/material';
 
-import { AppHeader } from '../../components/ui/AppHeader.js';
+import { AppHeader, type AppHeaderTag } from '../../components/ui/AppHeader.js';
 import { AppLayout } from '../../components/ui/AppLayout.js';
 import { NestedDbDialog } from '../../components/ui/dialogs/NestedDbDialog.js';
 import { TerminalLog } from '../../components/ui/TerminalLog.js';
@@ -38,6 +38,11 @@ interface AppShellProps {
   onAutoOpenSetupConsumed?: () => void;
   searchQuery?: string;
   onSearchQueryChange?: (query: string) => void;
+  onSearchSubmit?: (query: string) => void;
+  recentSearches?: readonly string[];
+  onRemoveRecentSearch?: (query: string) => void;
+  topTags?: readonly AppHeaderTag[];
+  onSearchFocus?: () => void;
 }
 
 export const AppShell = ({
@@ -55,6 +60,11 @@ export const AppShell = ({
   onAutoOpenSetupConsumed,
   searchQuery = '',
   onSearchQueryChange = () => undefined,
+  onSearchSubmit = () => undefined,
+  recentSearches = [],
+  onRemoveRecentSearch = () => undefined,
+  topTags = [],
+  onSearchFocus = () => undefined,
 }: AppShellProps) => {
   const [modal, setModal] = useState<ShellModal | null>(null);
   const [showJson, setShowJson] = useState(false);
@@ -101,6 +111,11 @@ export const AppShell = ({
             onShowPrerequisites={() => setModal('prerequisites')}
             searchQuery={searchQuery}
             onSearchQueryChange={onSearchQueryChange}
+            onSearchSubmit={onSearchSubmit}
+            recentSearches={recentSearches}
+            onRemoveRecentSearch={onRemoveRecentSearch}
+            topTags={topTags}
+            onSearchFocus={onSearchFocus}
           />
         }
         sidebar={sidebar}

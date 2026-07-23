@@ -123,6 +123,27 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
           },
         },
       },
+      MuiAutocomplete: {
+        styleOverrides: {
+          paper: {
+            border: `1px solid ${c.border}`,
+            boxShadow: mode === 'dark'
+              ? '0 14px 36px rgba(0, 0, 0, 0.36)'
+              : '0 14px 36px rgba(29, 29, 31, 0.14)',
+          },
+          groupLabel: {
+            fontSize: '0.72rem',
+            fontWeight: 700,
+            color: c.inkSoft,
+            lineHeight: 1.8,
+          },
+          option: {
+            gap: 8,
+            minHeight: 34,
+            fontSize: '0.8125rem',
+          },
+        },
+      },
       MuiPaper: {
         defaultProps: { elevation: 0 },
         styleOverrides: {

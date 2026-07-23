@@ -85,8 +85,8 @@ describe('FfmpegMediaAdapter', () => {
     const second = await adapter.probe({ videoPath: '/video/clip.mp4' });
     const dependencies = await adapter.dependencies();
 
-    expect(first).toEqual(ok({ duration: 100, gpsLat: null, gpsLon: null }));
-    expect(second).toEqual(ok({ duration: 100, gpsLat: null, gpsLon: null }));
+    expect(first).toEqual(ok({ duration: 100, width: null, height: null, rotation: null, gpsLat: null, gpsLon: null }));
+    expect(second).toEqual(ok({ duration: 100, width: null, height: null, rotation: null, gpsLat: null, gpsLon: null }));
     expect(runtime.configurations).toEqual([{ ffmpegPath: '/bundled/ffmpeg', ffprobePath: '/bundled/ffprobe' }]);
     expect(dependencies).toEqual(ok([
       {
@@ -266,7 +266,39 @@ describe('FfmpegMediaAdapter', () => {
 
     const result = await adapter.probe({ videoPath: '/video/clip.mov' });
 
-    expect(result).toEqual(ok({ duration: 100, gpsLat: 69.6492, gpsLon: 18.9553 }));
+    expect(result).toEqual(ok({
+      duration: 100,
+      width: null,
+      height: null,
+      rotation: null,
+      gpsLat: 69.6492,
+      gpsLon: 18.9553,
+    }));
+  });
+
+  it('extracts video dimensions and rotation metadata', async () => {
+    const runtime = new FakeFfmpegRuntime();
+    runtime.metadata = {
+      format: { duration: 100 },
+      streams: [{
+        codec_type: 'video',
+        width: 1920,
+        height: 1080,
+        tags: { rotate: '90' },
+      }],
+    };
+    const adapter = adapterWithFakeRuntime(runtime);
+
+    const result = await adapter.probe({ videoPath: '/video/portrait.mov' });
+
+    expect(result).toEqual(ok({
+      duration: 100,
+      width: 1920,
+      height: 1080,
+      rotation: 90,
+      gpsLat: null,
+      gpsLon: null,
+    }));
   });
 });
 

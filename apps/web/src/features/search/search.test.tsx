@@ -7,7 +7,13 @@ import { bridge } from '../../api.js';
 import { renderWithProviders } from '../../test/render.js';
 import { createAppTheme } from '../../theme.js';
 import { SearchResults } from './SearchResults.js';
-import type { GlobalSearchState } from './use-global-search.js';
+import {
+  readRecentSearches,
+  RECENT_SEARCHES_KEY,
+  storeRecentSearch,
+  writeRecentSearches,
+  type GlobalSearchState,
+} from './use-global-search.js';
 
 const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) =>
@@ -16,8 +22,13 @@ const renderThemed = (ui: ReactElement) =>
 const searchState: GlobalSearchState = {
   query: 'drone',
   setQuery: () => undefined,
+  submitSearch: () => undefined,
   debouncedQuery: 'drone',
   active: true,
+  recentSearches: [],
+  removeRecentSearch: () => undefined,
+  topTags: [],
+  onSearchFocus: () => undefined,
   isLoading: false,
   isError: false,
   error: null,
@@ -86,5 +97,24 @@ describe('SearchResults', () => {
 
     expect(reveal).toHaveBeenCalledWith('/online/clip.mp4');
     reveal.mockRestore();
+  });
+});
+
+describe('recent searches', () => {
+  it('stores newest first, dedupes, persists, and caps at 10', () => {
+    const stored = Array.from({ length: 12 }, (_, index) => `q-${index}`)
+      .reduce<readonly string[]>((current, value) => storeRecentSearch(current, value), []);
+
+    expect(stored).toHaveLength(10);
+    expect(stored[0]).toBe('q-11');
+    expect(stored.at(-1)).toBe('q-2');
+
+    const deduped = storeRecentSearch(stored, 'q-5');
+    expect(deduped[0]).toBe('q-5');
+    expect(deduped.filter((entry) => entry === 'q-5')).toHaveLength(1);
+
+    writeRecentSearches(deduped);
+    expect(JSON.parse(window.localStorage.getItem(RECENT_SEARCHES_KEY) ?? '[]')).toHaveLength(10);
+    expect(readRecentSearches()).toEqual(deduped);
   });
 });

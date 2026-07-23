@@ -11,10 +11,17 @@ import {
   type SummaryData,
 } from './shared.js';
 
+export interface TranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface ScanArtifacts {
   framePaths: string[] | null;
   transcriptContent: string | null;
   transcriptPath: string | null;
+  transcriptSegments?: TranscriptSegment[] | null;
   summary: SummaryData | null;
   summaryPath: string | null;
   thumbnailPath: string | null;
@@ -32,6 +39,11 @@ export interface ScanVideo {
   status: VideoStatus | 'not_tracked';
   errorMessage?: string | null;
   contentHash: string | null;
+  source?: {
+    width: number | null;
+    height: number | null;
+    rotation: number | null;
+  };
   artifacts: ScanArtifacts;
 }
 
@@ -130,6 +142,13 @@ const scanVideo = async (
     status,
     errorMessage: matched?.errorMessage ?? null,
     contentHash: matched?.fileHash ?? initialHash,
+    source: probe.ok
+      ? {
+          width: probe.value.width,
+          height: probe.value.height,
+          rotation: probe.value.rotation,
+        }
+      : { width: null, height: null, rotation: null },
     artifacts: artifacts.value,
   });
 };
@@ -146,6 +165,7 @@ const loadArtifacts = async (
     framePaths: null,
     transcriptContent: null,
     transcriptPath: null,
+    transcriptSegments: null,
     summary: null,
     summaryPath: null,
     thumbnailPath: null,
@@ -180,6 +200,7 @@ const loadArtifacts = async (
     if (transcript.ok && transcript.value !== null) {
       artifacts.transcriptContent = transcript.value;
       artifacts.transcriptPath = paths.transcriptPath;
+      artifacts.transcriptSegments = await loadTranscriptSegments(fs, paths.transcriptJsonPath);
     }
   }
 
@@ -203,6 +224,36 @@ const hasTranscript = (status: VideoStatus): boolean =>
 
 const hasSummary = (status: VideoStatus): boolean =>
   status === 'analyzed' || status === 'completed' || status === 'error';
+
+const loadTranscriptSegments = async (fs: FileSystemPort, transcriptJsonPath: string): Promise<TranscriptSegment[] | null> => {
+  const content = await fs.readTextFile(transcriptJsonPath);
+  if (!content.ok || content.value === null) return null;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(content.value);
+  } catch {
+    return null;
+  }
+  const rawSegments = Array.isArray(decoded)
+    ? decoded
+    : isRecord(decoded) && Array.isArray(decoded.segments)
+      ? decoded.segments
+      : null;
+  if (rawSegments === null) return null;
+  const segments: TranscriptSegment[] = [];
+  for (const raw of rawSegments) {
+    if (!isRecord(raw)) continue;
+    const start = Number(raw.start);
+    const end = Number(raw.end);
+    const text = typeof raw.text === 'string' ? raw.text.trim() : '';
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start < 0 || end <= start || text.length === 0) continue;
+    segments.push({ start, end, text });
+  }
+  return segments.length === 0 ? null : segments;
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null;
 
 const summarize = (videos: ScanVideo[]): ScanOutput['summary'] => {
   const summary: ScanOutput['summary'] = {

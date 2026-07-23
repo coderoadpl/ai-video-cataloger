@@ -94,6 +94,7 @@ export const IndexRoute = () => {
       analyzing={analyzing}
       onAnalyze={processing.analyze}
       disabledReason={disabledReason}
+      onTagSearch={globalSearch.submitSearch}
     />
   );
 
@@ -166,6 +167,11 @@ export const IndexRoute = () => {
       }
       searchQuery={globalSearch.query}
       onSearchQueryChange={globalSearch.setQuery}
+      onSearchSubmit={globalSearch.submitSearch}
+      recentSearches={globalSearch.recentSearches}
+      onRemoveRecentSearch={globalSearch.removeRecentSearch}
+      topTags={globalSearch.topTags}
+      onSearchFocus={globalSearch.onSearchFocus}
       autoOpenSetup={firstLaunch.shouldAutoOpen}
       onAutoOpenSetupConsumed={firstLaunch.markSeen}
       terminal={{

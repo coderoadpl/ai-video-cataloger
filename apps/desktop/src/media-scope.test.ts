@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { parseMediaUrl, resolveScopedImage, resolveScopedPath } from './media-scope.js';
+import { parseMediaUrl, resolveScopedImage, resolveScopedMedia, resolveScopedPath } from './media-scope.js';
 
 const tempRoots: string[] = [];
 
@@ -96,6 +96,25 @@ describe('resolveScopedPath', () => {
     expect(await resolveScopedPath(outsideTarget, root)).toBeNull();
     expect(await resolveScopedPath(linkPath, root)).toBeNull();
     expect(await resolveScopedPath(path.join(root, 'missing.txt'), root)).toBeNull();
+  });
+});
+
+describe('resolveScopedMedia', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('allows supported video files inside the current folder and rejects videos from extra roots', async () => {
+    const root = await tempRoot();
+    const facesRoot = await tempRoot();
+    const videoPath = path.join(root, 'clip.mp4');
+    const outsideVideoPath = path.join(facesRoot, 'clip.mp4');
+    await writeFile(videoPath, 'video', 'utf8');
+    await writeFile(outsideVideoPath, 'video', 'utf8');
+
+    expect(await resolveScopedMedia(videoPath, root, [facesRoot])).toBe(await realpath(videoPath));
+    expect(await resolveScopedMedia(outsideVideoPath, root, [facesRoot])).toBeNull();
   });
 });
 

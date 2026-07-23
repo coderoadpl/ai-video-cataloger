@@ -1,7 +1,7 @@
 import { net, protocol } from 'electron';
 import { pathToFileURL } from 'node:url';
 
-import { parseMediaUrl, resolveScopedImage } from './media-scope.js';
+import { parseMediaUrl, resolveScopedMedia } from './media-scope.js';
 
 export interface MediaProtocolDeps {
   getCurrentFolder(): Promise<string | null>;
@@ -20,10 +20,9 @@ export const registerMediaProtocolHandler = (deps: MediaProtocolDeps): void => {
     if (requestedPath === null) return new Response(null, { status: 403 });
 
     const facesRoot = await deps.getFacesRoot?.();
-    const realPath = await resolveScopedImage(
+    const realPath = await resolveScopedMedia(
       requestedPath,
       await deps.getCurrentFolder(),
-      undefined,
       facesRoot === undefined || facesRoot === null ? [] : [facesRoot],
     );
     if (realPath === null) return new Response(null, { status: 403 });

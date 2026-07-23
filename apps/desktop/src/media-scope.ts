@@ -2,6 +2,7 @@ import { realpath, stat } from 'node:fs/promises';
 import path from 'node:path';
 
 const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+const ALLOWED_VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm']);
 const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
 
 export const parseMediaUrl = (urlValue: string): string | null => {
@@ -34,6 +35,31 @@ export const resolveScopedImage = async (
     const stats = await stat(realRequested);
     if (!stats.isFile()) return null;
     if (stats.size > maxBytes) return null;
+  } catch {
+    return null;
+  }
+
+  return realRequested;
+};
+
+export const resolveScopedMedia = async (
+  requestedPath: string,
+  rootFolder: string | null,
+  extraRoots: readonly string[] = [],
+): Promise<string | null> => {
+  const extension = path.extname(requestedPath).toLowerCase();
+  if (ALLOWED_EXTENSIONS.has(extension)) return resolveScopedImage(requestedPath, rootFolder, MAX_MEDIA_BYTES, extraRoots);
+  if (!ALLOWED_VIDEO_EXTENSIONS.has(extension)) return null;
+
+  const realRequested = await resolveAnyScopedPath(
+    requestedPath,
+    rootFolder === null ? [] : [rootFolder],
+  );
+  if (realRequested === null) return null;
+
+  try {
+    const stats = await stat(realRequested);
+    if (!stats.isFile()) return null;
   } catch {
     return null;
   }

@@ -80,7 +80,7 @@ const VideoRow = ({
       mtime={video.artifacts.thumbnailMtime}
       alt={video.filename}
       width={64}
-      height={36}
+      source={video.source}
       selected={selected}
     />
     <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>

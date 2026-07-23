@@ -45,6 +45,7 @@ export interface FfmpegMetadata {
     width?: number | undefined;
     height?: number | undefined;
     tags?: Record<string, string | number | null | undefined> | undefined;
+    side_data_list?: Array<Record<string, string | number | null | undefined>> | undefined;
   }>;
 }
 
@@ -123,8 +124,12 @@ export class FfmpegMediaAdapter implements MediaPort {
     const metadata = await probeMetadata(this.runtime, input.videoPath);
     if (!metadata.ok) return metadata;
     const gps = gpsFromMetadata(metadata.value);
+    const dimensions = videoDimensionsFromMetadata(metadata.value);
     return ok({
       duration: metadata.value.format.duration ?? null,
+      width: dimensions.width,
+      height: dimensions.height,
+      rotation: dimensions.rotation,
       gpsLat: gps?.lat ?? null,
       gpsLon: gps?.lon ?? null,
     });
@@ -351,6 +356,45 @@ const probeDuration = async (runtime: FfmpegRuntime, videoPath: string): Promise
     return { ok: false, error: appError('processing_error', 'Could not determine video duration') };
   }
   return ok(duration);
+};
+
+const videoDimensionsFromMetadata = (metadata: FfmpegMetadata): {
+  width: number | null;
+  height: number | null;
+  rotation: number | null;
+} => {
+  const stream = metadata.streams.find((candidate) =>
+    candidate.codec_type === 'video' && typeof candidate.width === 'number' && typeof candidate.height === 'number');
+  if (stream === undefined || stream.width === undefined || stream.height === undefined) {
+    return { width: null, height: null, rotation: null };
+  }
+  return {
+    width: stream.width,
+    height: stream.height,
+    rotation: rotationFromStream(stream),
+  };
+};
+
+const rotationFromStream = (stream: FfmpegMetadata['streams'][number]): number | null => {
+  const tagged = numericMetadataValue(stream.tags?.rotate);
+  if (tagged !== null) return normalizeRotation(tagged);
+  for (const item of stream.side_data_list ?? []) {
+    const rotation = numericMetadataValue(item.rotation);
+    if (rotation !== null) return normalizeRotation(rotation);
+  }
+  return null;
+};
+
+const numericMetadataValue = (value: string | number | null | undefined): number | null => {
+  if (typeof value === 'number') return Number.isFinite(value) ? value : null;
+  if (typeof value !== 'string') return null;
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+};
+
+const normalizeRotation = (value: number): number => {
+  const normalized = value % 360;
+  return normalized < 0 ? normalized + 360 : normalized;
 };
 
 const frameDimensions = async (

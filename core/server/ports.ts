@@ -222,6 +222,9 @@ export interface DependencyStatus {
 
 export interface MediaProbe {
   duration: number | null;
+  width: number | null;
+  height: number | null;
+  rotation: number | null;
   gpsLat: number | null;
   gpsLon: number | null;
 }
@@ -298,6 +301,7 @@ export interface MediaPort {
 export interface TranscribeInput {
   audioPath: string;
   transcriptPath: string;
+  transcriptJsonPath?: string | undefined;
   mode: AppConfig['whisper_mode'];
   model: WhisperModelName;
   apiBaseUrl?: string | undefined;

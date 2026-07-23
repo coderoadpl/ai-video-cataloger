@@ -82,6 +82,20 @@ describe('catalog', () => {
     expect(screen.getByText('1.0 KB')).toBeDefined();
   });
 
+  it('renders thumbnails with source-derived aspect dimensions', async () => {
+    server.use(scanOk(makeScan([
+      makeVideo({ path: '/videos/landscape.mp4', contentHash: 'hash-a', source: { width: 1920, height: 1080, rotation: 0 } }),
+      makeVideo({ path: '/videos/portrait.mp4', contentHash: 'hash-b', source: { width: 1920, height: 1080, rotation: 90 } }),
+    ])));
+
+    renderThemed(<Harness folder={FOLDER} />);
+
+    await screen.findByText('landscape.mp4');
+    const thumbnails = screen.getAllByTestId('media-thumbnail');
+    expect(thumbnails[0]?.getAttribute('data-thumbnail-height')).toBe('36');
+    expect(thumbnails[1]?.getAttribute('data-thumbnail-height')).toBe('64');
+  });
+
   it('shows the opened folder name and path in the header', async () => {
     server.use(scanOk(makeScan([makeVideo({ path: '/videos/a.mp4', contentHash: 'hash-a' })])));
 

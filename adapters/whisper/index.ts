@@ -1,4 +1,5 @@
 import OpenAI from 'openai';
+import type { TranscriptionCreateParamsNonStreaming } from 'openai/resources/audio/transcriptions.js';
 import { execFile } from 'node:child_process';
 import { accessSync, createReadStream, createWriteStream, type ReadStream, type WriteStream } from 'node:fs';
 import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
@@ -49,7 +50,10 @@ export interface ResolvedWhisperBinary {
 }
 
 export interface WhisperApiClient {
-  createTranscription(input: { file: ReadStream; model: string }, options?: { signal?: AbortSignal | undefined }): Promise<{ text: string }>;
+  createTranscription(
+    input: { file: ReadStream; model: string; response_format?: 'verbose_json'; timestamp_granularities?: ['segment'] },
+    options?: { signal?: AbortSignal | undefined },
+  ): Promise<{ text: string; segments?: Array<{ start: number; end: number; text: string }> | undefined }>;
 }
 
 export interface OpenAiWhisperClientOptions {
@@ -204,11 +208,10 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
       }
       if (!run.ok) return run;
       if (openAiDialect) {
-        const producedPath = path.join(
-          path.dirname(input.transcriptPath),
-          `${path.basename(input.audioPath, path.extname(input.audioPath))}.txt`,
-        );
-        if (producedPath !== input.transcriptPath) await rename(producedPath, input.transcriptPath);
+        await relocateOpenAiWhisperOutput(input, 'txt', input.transcriptPath);
+        if (input.transcriptJsonPath !== undefined) {
+          await relocateOpenAiWhisperOutput(input, 'json', input.transcriptJsonPath);
+        }
       }
       const content = (await readFile(input.transcriptPath, 'utf8')).trim();
       return ok({ transcriptPath: input.transcriptPath, content });
@@ -241,9 +244,14 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
       const transcription = await client.createTranscription({
         file: createReadStream(input.audioPath),
         model: input.apiModel ?? DEFAULT_WHISPER_API_MODEL,
+        response_format: 'verbose_json',
+        timestamp_granularities: ['segment'],
       }, { signal: input.signal });
       const content = transcription.text.trim();
       await writeFile(input.transcriptPath, content, 'utf8');
+      if (input.transcriptJsonPath !== undefined && transcription.segments !== undefined) {
+        await writeFile(input.transcriptJsonPath, JSON.stringify({ text: content, segments: transcription.segments }, null, 2), 'utf8');
+      }
       return ok({ transcriptPath: input.transcriptPath, content });
     } catch (cause) {
       return openAiFailure(cause);
@@ -585,6 +593,7 @@ const whisperCppArgs = (modelPath: string, input: TranscribeInput): readonly str
     '-f',
     input.audioPath,
     '-otxt',
+    ...(input.transcriptJsonPath === undefined ? [] : ['-oj']),
     '-of',
     outputPrefix,
     '--no-prints',
@@ -598,8 +607,20 @@ const openAiWhisperArgs = (input: TranscribeInput): readonly string[] => [
   '--output_dir',
   path.dirname(input.transcriptPath),
   '--output_format',
-  'txt',
+  input.transcriptJsonPath === undefined ? 'txt' : 'all',
 ];
+
+const relocateOpenAiWhisperOutput = async (
+  input: TranscribeInput,
+  extension: 'txt' | 'json',
+  targetPath: string,
+): Promise<void> => {
+  const producedPath = path.join(
+    path.dirname(input.transcriptPath),
+    `${path.basename(input.audioPath, path.extname(input.audioPath))}.${extension}`,
+  );
+  if (producedPath !== targetPath) await rename(producedPath, targetPath);
+};
 
 const childProcessCommandRunner: CommandRunner = {
   run: (command, args, options) =>
@@ -631,7 +652,10 @@ export const openAiWhisperClientOptions = (apiKey: string, baseURL: string): Ope
 export const createOpenAiWhisperClient = (apiKey: string, baseURL: string): WhisperApiClient => {
   const client = new OpenAI(openAiWhisperClientOptions(apiKey, baseURL));
   return {
-    createTranscription: (input, options) => client.audio.transcriptions.create(input, options),
+    createTranscription: (input, options) => client.audio.transcriptions.create({
+      ...input,
+      stream: false,
+    } satisfies TranscriptionCreateParamsNonStreaming<'verbose_json' | undefined>, options),
   };
 };
 

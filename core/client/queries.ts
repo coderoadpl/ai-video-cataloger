@@ -88,6 +88,7 @@ export type FacesForgetInput = z.input<typeof API_ROUTES.facesForget.input>;
 export type FacesPurgeInput = z.input<typeof API_ROUTES.facesPurge.input>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
+export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
 
 export const healthScopes = {
   all: () => ['health'] as const,
@@ -156,6 +157,10 @@ export const searchScopes = {
   all: () => ['search'] as const,
   query: (input: z.output<typeof API_ROUTES.searchQuery.input>) =>
     ['search', input.query, input.limit, input.offset] as const,
+};
+
+export const tagsScopes = {
+  all: () => ['tags'] as const,
 };
 
 export const faceArtifactsScopes = {
@@ -331,6 +336,12 @@ export const searchQuery = (api: ApiClient, input: SearchInput) => {
     call: ({ signal }) => api.search(parsed, signal),
   });
 };
+
+export const tagsListQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: tagsScopes.all(),
+    call: ({ signal }) => api.listTags(signal),
+  });
 
 export const faceArtifactsQuery = (api: ApiClient) =>
   defineQuery({

@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Box } from '@mui/material';
 
 import { mediaUrl } from '../../lib/media-url.js';
+import { thumbnailBoxForSource, type SourceAspectInput } from '../../lib/thumbnail-aspect.js';
 import { FilmIcon } from './icons.js';
 
 interface MediaThumbnailProps {
@@ -9,7 +10,8 @@ interface MediaThumbnailProps {
   mtime: number | null;
   alt: string;
   width: number;
-  height: number;
+  height?: number | undefined;
+  source?: SourceAspectInput | undefined;
   selected?: boolean;
 }
 
@@ -19,10 +21,12 @@ export const MediaThumbnail = ({
   alt,
   width,
   height,
+  source,
   selected = false,
 }: MediaThumbnailProps) => {
   const src = path === null ? null : mediaUrl(path, mtime);
   const [failed, setFailed] = useState(false);
+  const box = height === undefined ? thumbnailBoxForSource(source, width) : { width, height };
 
   useEffect(() => {
     setFailed(false);
@@ -34,8 +38,8 @@ export const MediaThumbnail = ({
     <Box
       sx={(theme) => ({
         position: 'relative',
-        width,
-        height,
+        width: box.width,
+        height: box.height,
         flexShrink: 0,
         borderRadius: 1,
         overflow: 'hidden',
@@ -47,6 +51,9 @@ export const MediaThumbnail = ({
           ? { outline: `2px solid ${theme.palette.primary.main}`, outlineOffset: 1 }
           : {}),
       })}
+      data-testid="media-thumbnail"
+      data-thumbnail-width={box.width}
+      data-thumbnail-height={box.height}
     >
       {showFallback ? (
         <FilmIcon fontSize="small" sx={{ color: 'text.secondary' }} />

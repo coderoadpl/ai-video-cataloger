@@ -68,6 +68,7 @@ import type {
   JobRecord,
   LocalAiRuntimePort,
   MediaPort,
+  MediaProbe,
   ModelDownloadPort,
   ProvidersPort,
   ProviderTestResult,
@@ -776,8 +777,15 @@ class InMemoryFileSystemPort implements FileSystemPort {
 }
 
 class InMemoryMediaPort implements MediaPort {
-  probe(): Promise<Result<{ duration: number | null; gpsLat: number | null; gpsLon: number | null }, AppError>> {
-    return Promise.resolve(ok({ duration: null, gpsLat: null, gpsLon: null }));
+  probe(): Promise<Result<MediaProbe, AppError>> {
+    return Promise.resolve(ok({
+      duration: null,
+      width: null,
+      height: null,
+      rotation: null,
+      gpsLat: null,
+      gpsLon: null,
+    }));
   }
 
   extractFrames(): Promise<Result<{ framePaths: string[] }, AppError>> {

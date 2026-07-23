@@ -42,10 +42,17 @@ export const summarySchema = z.object({
   analyzedAt: z.string(),
 });
 
+export const transcriptSegmentSchema = z.object({
+  start: z.number().nonnegative(),
+  end: z.number().nonnegative(),
+  text: z.string(),
+});
+
 export const scanVideoArtifactsSchema = z.object({
   framePaths: z.array(z.string()).nullable(),
   transcriptContent: z.string().nullable(),
   transcriptPath: z.string().nullable(),
+  transcriptSegments: z.array(transcriptSegmentSchema).nullable().optional(),
   summary: summarySchema.nullable(),
   summaryPath: z.string().nullable(),
   thumbnailPath: z.string().nullable(),
@@ -63,6 +70,11 @@ export const scanVideoSchema = z.object({
   status: z.union([videoStatusSchema, z.literal('not_tracked')]),
   errorMessage: z.string().nullable().optional(),
   contentHash: z.string().nullable(),
+  source: z.object({
+    width: z.number().int().positive().nullable(),
+    height: z.number().int().positive().nullable(),
+    rotation: z.number().nullable(),
+  }).optional(),
   artifacts: scanVideoArtifactsSchema,
 });
 

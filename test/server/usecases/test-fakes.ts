@@ -406,6 +406,9 @@ export class InMemoryMedia implements MediaPort {
     const location = this.locations.get(input.videoPath);
     return Promise.resolve(ok({
       duration: this.durations.get(input.videoPath) ?? null,
+      width: null,
+      height: null,
+      rotation: null,
       gpsLat: location?.gpsLat ?? null,
       gpsLon: location?.gpsLon ?? null,
     }));
