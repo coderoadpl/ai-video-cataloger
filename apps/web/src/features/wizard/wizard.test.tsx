@@ -3,7 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
-import { en } from '../../i18n/dictionary.js';
+import { en, pl } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { SetupWizard } from './SetupWizard.js';
@@ -83,6 +83,7 @@ const installHandlers = (
     readinessScopes: [],
   };
   server.use(
+    http.get('/api/config', () => ok(configView('en', 'auto'))),
     http.get('/api/models/local-ai/requirements', () =>
       ok({ machine, runtimeUp: true, runtimeVersion: '0.1.0', tiers }),
     ),
@@ -194,6 +195,50 @@ const installHandlers = (
 
 const clickNext = () => fireEvent.click(screen.getByTestId('wizard-next'));
 
+const configDefaults = {
+  whisper_binary_path: '',
+  whisper_model: 'base',
+  whisper_mode: 'local',
+  whisper_api_base_url: 'https://api.openai.com/v1',
+  whisper_api_model: 'whisper-1',
+  frames: '3',
+  timeout: '120',
+  skip_rename: 'false',
+  analyzer_backend: 'claude',
+  local_model: 'gemma3:12b',
+  analyzer_provider: JSON.stringify({
+    family: 'harness',
+    providerId: 'claude-code',
+    command: 'claude',
+    argsTemplate: ['--add-dir', '{videoDir}', '-p', '{prompt}'],
+    promptStyle: 'file-urls',
+  }),
+  faces_enabled: 'false',
+  output_language: 'auto',
+  ui_language: 'en',
+};
+
+const configView = (uiLanguage: string, outputLanguage: string) => {
+  const effective = { ...configDefaults, ui_language: uiLanguage, output_language: outputLanguage };
+  const config = Object.fromEntries(Object.keys(configDefaults).map((key) => [key, null]));
+  const sources = Object.fromEntries(Object.keys(configDefaults).map((key) => [key, 'default']));
+  return { config, defaults: configDefaults, effective, sources };
+};
+
+const openSelect = (testId: string) =>
+  fireEvent.mouseDown(within(screen.getByTestId(testId)).getByRole('combobox'));
+
+const enterLanguageStep = async () => {
+  clickNext();
+  await screen.findByTestId('wizard-step-language');
+};
+
+const passLanguageStep = async () => {
+  await enterLanguageStep();
+  clickNext();
+  await screen.findByTestId('wizard-step-analyzer');
+};
+
 describe('SetupWizard', () => {
   it('takes a fresh Apple-Silicon user through a fully local setup to a ready state', async () => {
     const recorders = installHandlers({ ready: true });
@@ -201,9 +246,7 @@ describe('SetupWizard', () => {
     renderWithProviders(<SetupWizard open folder="/videos" onClose={onClose} />);
 
     expect(screen.getByTestId('wizard-step-welcome')).toBeDefined();
-    clickNext();
-
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     await waitFor(() =>
       expect(screen.getByTestId('analyzer-family-local').textContent).toContain('recommended'),
     );
@@ -238,9 +281,7 @@ describe('SetupWizard', () => {
   it('shows a missing local model as a download and offers to install it', async () => {
     installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     await waitFor(() =>
       expect(screen.getByTestId('wizard-local-model-select').textContent).toContain('8 GB download'),
     );
@@ -257,8 +298,7 @@ describe('SetupWizard', () => {
   it('shows the mandatory cost notice and stores the key when API is chosen', async () => {
     const recorders = installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
 
     fireEvent.click(screen.getByTestId('analyzer-family-api'));
     expect(screen.getByTestId('api-cost-notice').textContent).toContain('charged by your API provider');
@@ -277,8 +317,7 @@ describe('SetupWizard', () => {
   it('blocks advancing when the API key fails validation', async () => {
     installHandlers({ apiAuthenticated: false });
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-api'));
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'bad' } });
     clickNext();
@@ -290,8 +329,7 @@ describe('SetupWizard', () => {
   it('surfaces a failed analyzer config write without advancing', async () => {
     const recorders = installHandlers({ rejectConfigKey: 'local_model' });
     renderWithProviders(<SetupWizard open folder={null} onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.mouseDown(screen.getByRole('combobox'));
     fireEvent.click(await screen.findByRole('option', { name: /Gemma 3 4B/ }));
 
@@ -300,6 +338,7 @@ describe('SetupWizard', () => {
     expect((await screen.findByTestId('analyzer-validation-error')).textContent).toContain('local_model');
     expect(screen.getByTestId('wizard-step-analyzer')).toBeDefined();
     expect(recorders.configWrites.map((write) => write.key)).toEqual([
+      'output_language',
       'analyzer_provider',
       'analyzer_backend',
       'local_model',
@@ -309,8 +348,7 @@ describe('SetupWizard', () => {
   it('requests explicit home readiness when no folder is selected', async () => {
     const recorders = installHandlers({ ready: true });
     renderWithProviders(<SetupWizard open folder={null} onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -327,8 +365,7 @@ describe('SetupWizard', () => {
   it('stores an OpenAI credential when API transcription is chosen', async () => {
     const recorders = installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -348,8 +385,7 @@ describe('SetupWizard', () => {
   it('shows detected-installed badges for agent harnesses', async () => {
     installHandlers({ harnessAvailable: (providerId) => providerId === 'claude-code' });
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
 
     const claude = await screen.findByTestId('harness-claude-code');
@@ -361,8 +397,7 @@ describe('SetupWizard', () => {
   it('skips downloads when transcription is skipped and a harness is available', async () => {
     installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -379,8 +414,7 @@ describe('SetupWizard', () => {
   it('downloads the whisper model when using an own binary', async () => {
     installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -398,8 +432,7 @@ describe('SetupWizard', () => {
   it('disables advancing and does not persist an empty own-binary path', async () => {
     const recorders = installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -414,8 +447,7 @@ describe('SetupWizard', () => {
   it('surfaces a non-executable own-binary path before persisting transcription mode', async () => {
     const recorders = installHandlers({ rejectWhisperPath: true });
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -432,8 +464,7 @@ describe('SetupWizard', () => {
   it('does not list a managed whisper model that is already downloaded', async () => {
     installHandlers({ runtimeAvailable: true, whisperDownloaded: true });
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -447,8 +478,7 @@ describe('SetupWizard', () => {
   it('describes frames-only mode honestly when transcription was skipped', async () => {
     installHandlers({ ready: true });
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -474,8 +504,7 @@ describe('SetupWizard', () => {
   });
 
   const advanceToReadiness = async () => {
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -573,8 +602,7 @@ describe('SetupWizard', () => {
       ),
     );
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
-    clickNext();
-    await screen.findByTestId('wizard-step-analyzer');
+    await passLanguageStep();
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
     await screen.findByTestId('harness-claude-code');
     clickNext();
@@ -583,5 +611,60 @@ describe('SetupWizard', () => {
     const picker = await screen.findByTestId('wizard-whisper-model-select');
     await waitFor(() => expect(picker.textContent).toContain('small'));
     expect(picker.textContent).not.toContain('base');
+  });
+
+  it('places the language step immediately after welcome', async () => {
+    installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await screen.findByTestId('wizard-step-welcome');
+    await enterLanguageStep();
+    expect(screen.getByTestId('wizard-step-language')).toBeDefined();
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    fireEvent.click(screen.getByTestId('wizard-back'));
+    await screen.findByTestId('wizard-step-language');
+    fireEvent.click(screen.getByTestId('wizard-back'));
+    await screen.findByTestId('wizard-step-welcome');
+  });
+
+  it('switches the wizard UI language live when the app language changes', async () => {
+    const recorders = installHandlers();
+    let uiLanguage = 'en';
+    server.use(
+      http.get('/api/config', () => ok(configView(uiLanguage, 'auto'))),
+      http.post('/api/config', async ({ request }) => {
+        const body = configBodySchema.parse(await request.json());
+        recorders.configWrites.push(body);
+        if (body.key === 'ui_language') uiLanguage = body.value;
+        return ok({ key: body.key, value: body.value, previousValue: null });
+      }),
+    );
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await enterLanguageStep();
+    await waitFor(() =>
+      expect(screen.getByTestId('wizard-step-language').textContent).toContain(en.language.stepTitle),
+    );
+
+    openSelect('wizard-ui-language-select');
+    fireEvent.click(await screen.findByRole('option', { name: en.language.optionPolish }));
+
+    await waitFor(() =>
+      expect(screen.getByTestId('wizard-step-language').textContent).toContain(pl.language.stepTitle),
+    );
+    expect(recorders.configWrites).toContainEqual({ key: 'ui_language', value: 'pl' });
+  });
+
+  it('persists the chosen output language when advancing from the language step', async () => {
+    const recorders = installHandlers();
+    server.use(http.get('/api/config', () => ok(configView('en', 'auto'))));
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await enterLanguageStep();
+
+    openSelect('wizard-output-language-select');
+    fireEvent.click(await screen.findByRole('option', { name: en.language.optionPolish }));
+
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+    expect(recorders.configWrites).toContainEqual({ key: 'output_language', value: 'pl' });
   });
 });

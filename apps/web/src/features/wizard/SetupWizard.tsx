@@ -14,6 +14,7 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { useWizard } from './use-wizard.js';
 import { WIZARD_STEPS, wizardNextLabel, wizardStepLabels } from './wizard-model.js';
 import { WelcomeStep } from './WelcomeStep.js';
+import { LanguageStep } from './LanguageStep.js';
 import { AnalyzerStep } from './AnalyzerStep.js';
 import { TranscriptionStep } from './TranscriptionStep.js';
 import { DownloadsStep } from './DownloadsStep.js';
@@ -55,6 +56,7 @@ export const SetupWizard = ({ open, folder, onClose }: SetupWizardProps) => {
           ))}
         </Stepper>
         {step === 'welcome' ? <WelcomeStep /> : null}
+        {step === 'language' ? <LanguageStep controller={controller} /> : null}
         {step === 'analyzer' ? <AnalyzerStep controller={controller} /> : null}
         {step === 'transcription' ? <TranscriptionStep controller={controller} /> : null}
         {step === 'downloads' ? <DownloadsStep controller={controller} /> : null}

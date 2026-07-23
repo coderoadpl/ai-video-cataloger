@@ -11,7 +11,8 @@ import type {
 import type { doctorOutputSchema, readinessOutputSchema } from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
-import { useDictionary } from '../../i18n/use-dictionary.js';
+import type { Locale } from '../../i18n/dictionary.js';
+import { useDictionary, useUiLanguage } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { savedToastStore } from '../../lib/saved-toast.js';
 import {
@@ -88,6 +89,10 @@ export interface WizardController {
   isCheckingReadiness: boolean;
   checkReadiness: () => void;
   canGoBack: boolean;
+  uiLanguage: Locale;
+  outputLanguage: string;
+  setUiLanguage: (locale: Locale) => void;
+  setOutputLanguage: (value: string) => void;
   setAnalyzerFamily: (family: AnalyzerFamily) => void;
   setLocalModelTag: (tag: string) => void;
   setApiDraft: (patch: Partial<ApiDraft>) => void;
@@ -112,7 +117,9 @@ export interface UseWizardOptions {
 
 export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWizardOptions): WizardController => {
   const dictionary = useDictionary();
+  const uiLanguage = useUiLanguage();
   const queryClient = useQueryClient();
+  const configQuery = useQuery({ ...actions.config({}), enabled: open });
   const requirements = useQuery({ ...actions.localAiRequirements, enabled: open });
   const whisperRuntime = useQuery({ ...actions.whisperRuntime, enabled: open });
   const whisperModels = useQuery({ ...actions.modelsWhisper, enabled: open });
@@ -129,6 +136,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const harnesses = useMemo(() => harnessDescriptors(), []);
 
   const [step, setStep] = useState<WizardStep>('welcome');
+  const [outputLanguageChoice, setOutputLanguageChoice] = useState<string | null>(null);
   const [analyzerFamily, setAnalyzerFamilyState] = useState<AnalyzerFamily>('local');
   const [localModelTag, setLocalModelTag] = useState<string>('');
   const [apiDraft, setApiDraftState] = useState<ApiDraft>(emptyApiDraft);
@@ -192,6 +200,24 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     },
     [queryClient, setConfig],
   );
+
+  const effectiveOutputLanguage =
+    configQuery.data !== undefined && 'effective' in configQuery.data
+      ? configQuery.data.effective.output_language
+      : undefined;
+  const outputLanguage = outputLanguageChoice ?? effectiveOutputLanguage ?? 'auto';
+
+  const setUiLanguage = useCallback(
+    (locale: Locale): void => {
+      void writeConfig('ui_language', locale);
+    },
+    [writeConfig],
+  );
+
+  const advanceLanguage = useCallback(async (): Promise<void> => {
+    await writeConfig('output_language', outputLanguage);
+    setStep('analyzer');
+  }, [writeConfig, outputLanguage]);
 
   const persistAnalyzer = useCallback(
     async (provider: AnalyzerProviderConfig): Promise<void> => {
@@ -445,7 +471,10 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const next = useCallback(() => {
     switch (step) {
       case 'welcome':
-        setStep('analyzer');
+        setStep('language');
+        return;
+      case 'language':
+        void advanceLanguage();
         return;
       case 'analyzer':
         void validateAndAdvanceAnalyzer();
@@ -463,14 +492,17 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         onFinish();
         return;
     }
-  }, [step, validateAndAdvanceAnalyzer, advanceTranscription, runDownloads, onFinish]);
+  }, [step, advanceLanguage, validateAndAdvanceAnalyzer, advanceTranscription, runDownloads, onFinish]);
 
   const back = useCallback(() => {
     setValidation('idle');
     setValidationMessage(null);
     switch (step) {
-      case 'analyzer':
+      case 'language':
         setStep('welcome');
+        return;
+      case 'analyzer':
+        setStep('language');
         return;
       case 'transcription':
         setStep('analyzer');
@@ -563,6 +595,10 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     isCheckingReadiness,
     checkReadiness,
     canGoBack: step !== 'welcome' && step !== 'done' && !isDownloading,
+    uiLanguage,
+    outputLanguage,
+    setUiLanguage,
+    setOutputLanguage: setOutputLanguageChoice,
     setAnalyzerFamily: setAnalyzerFamilyWithDetection,
     setLocalModelTag,
     setApiDraft,

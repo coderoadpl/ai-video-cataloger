@@ -104,6 +104,7 @@ export interface Dictionary {
   wizard: {
     stepLabels: {
       welcome: string;
+      language: string;
       analyzer: string;
       transcription: string;
       downloads: string;
@@ -464,6 +465,7 @@ export const en: Dictionary = {
   wizard: {
     stepLabels: {
       welcome: 'Welcome',
+      language: 'Language',
       analyzer: 'Analyzer',
       transcription: 'Transcription',
       downloads: 'Downloads',
@@ -846,6 +848,7 @@ export const pl: Dictionary = {
   wizard: {
     stepLabels: {
       welcome: 'Witaj',
+      language: 'Język',
       analyzer: 'Analizator',
       transcription: 'Transkrypcja',
       downloads: 'Pobieranie',

@@ -15,10 +15,18 @@ export type Machine = z.output<typeof machineSchema>;
 export type HarnessDescriptor = ReturnType<typeof builtInHarnessProviders>[number];
 export type ApiProviderConfig = Extract<AnalyzerProviderConfig, { family: 'api' }>;
 
-export type WizardStep = 'welcome' | 'analyzer' | 'transcription' | 'downloads' | 'readiness' | 'done';
+export type WizardStep =
+  | 'welcome'
+  | 'language'
+  | 'analyzer'
+  | 'transcription'
+  | 'downloads'
+  | 'readiness'
+  | 'done';
 
 export const WIZARD_STEPS: readonly WizardStep[] = [
   'welcome',
+  'language',
   'analyzer',
   'transcription',
   'downloads',
@@ -27,6 +35,9 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
 ];
 
 export const wizardStepLabels = (dictionary: Dictionary): Record<WizardStep, string> => dictionary.wizard.stepLabels;
+
+export const WIZARD_UI_LANGUAGE_OPTIONS = ['en', 'pl'] as const;
+export const WIZARD_OUTPUT_LANGUAGE_OPTIONS = ['auto', 'en', 'pl'] as const;
 
 export const wizardNextLabel = (
   dictionary: Dictionary,
