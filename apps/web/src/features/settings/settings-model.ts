@@ -34,6 +34,7 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
     local_model: config.local_model ?? defaults.local_model,
     faces_enabled: config.faces_enabled ?? defaults.faces_enabled,
     output_language: config.output_language ?? defaults.output_language,
+    ui_language: config.ui_language ?? defaults.ui_language,
     ...(config.analyzer_provider === null ? {} : { analyzer_provider: config.analyzer_provider }),
   };
   const parsed = configSchema.safeParse(raw);
@@ -62,6 +63,11 @@ export const OUTPUT_LANGUAGE_OPTIONS: OutputLanguageOption[] = [
   { value: 'auto', label: 'Automatic (model chooses)' },
   { value: 'en', label: 'English' },
   { value: 'pl', label: 'Polish' },
+];
+
+export const UI_LANGUAGE_OPTIONS: Array<{ value: AppConfig['ui_language'] }> = [
+  { value: 'en' },
+  { value: 'pl' },
 ];
 
 export interface WhisperModeOption {

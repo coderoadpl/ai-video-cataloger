@@ -104,4 +104,5 @@ const defaultSources = (): Record<ConfigKey, ConfigValueSource> => ({
   analyzer_provider: 'default',
   faces_enabled: 'default',
   output_language: 'default',
+  ui_language: 'default',
 });

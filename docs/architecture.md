@@ -104,6 +104,12 @@ parity-inventory §10) is a main-process adapter.
 The old GUI shelled out to a staged CLI and parsed NDJSON; that machinery is
 deleted. Renderer and CLI are peers on the same contract.
 
+Renderer user-facing copy lives in a typed dictionary layer (`apps/web/src/i18n`,
+lint boundary `web-i18n`): `en`/`pl` dictionaries with structural parity, and a
+`useDictionary` hook that reads the effective `ui_language` config value so a
+config change re-renders every consumer without a restart. `web-i18n` may import
+`web-api` and `core-*`; `web-features` and `web-main` may consume it.
+
 ## Delta 5 — long-running work
 
 The Electron main process (and the CLI process, for its lifetime) is a

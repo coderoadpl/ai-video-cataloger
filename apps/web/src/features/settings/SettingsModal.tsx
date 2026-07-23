@@ -22,10 +22,12 @@ import {
 import { SettingsAnalyzerSection } from './SettingsAnalyzerSection.js';
 import {
   OUTPUT_LANGUAGE_OPTIONS,
+  UI_LANGUAGE_OPTIONS,
   WHISPER_MODEL_OPTIONS,
   WHISPER_MODE_OPTIONS,
   type SettingsDraft,
 } from './settings-model.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { useSettings } from './use-settings.js';
 
 interface SettingsModalProps {
@@ -45,6 +47,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
     },
   });
   const { draft } = settings;
+  const dictionary = useDictionary();
 
   const patch = (value: Partial<SettingsDraft>) => settings.setDraft(value);
 
@@ -170,22 +173,47 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
               onApiCredentialChange={settings.setApiCredential}
             />
 
-            <FormControl fullWidth size="small">
-              <InputLabel id="output-language-label">Description language</InputLabel>
-              <Select
-                labelId="output-language-label"
-                label="Description language"
-                value={draft.output_language}
-                data-testid="output-language-select"
-                onChange={(event) => patch({ output_language: event.target.value })}
-              >
-                {OUTPUT_LANGUAGE_OPTIONS.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
-                    {option.label}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
+            <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+              <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                {dictionary.settings.languageSectionTitle}
+              </Typography>
+              <FormControl fullWidth size="small">
+                <InputLabel id="ui-language-label">{dictionary.language.uiLabel}</InputLabel>
+                <Select
+                  labelId="ui-language-label"
+                  label={dictionary.language.uiLabel}
+                  value={draft.ui_language}
+                  data-testid="ui-language-select"
+                  onChange={(event) => patch({ ui_language: event.target.value === 'pl' ? 'pl' : 'en' })}
+                >
+                  {UI_LANGUAGE_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.value === 'pl' ? dictionary.language.optionPolish : dictionary.language.optionEnglish}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+              <FormControl fullWidth size="small">
+                <InputLabel id="output-language-label">{dictionary.language.outputLabel}</InputLabel>
+                <Select
+                  labelId="output-language-label"
+                  label={dictionary.language.outputLabel}
+                  value={draft.output_language}
+                  data-testid="output-language-select"
+                  onChange={(event) => patch({ output_language: event.target.value })}
+                >
+                  {OUTPUT_LANGUAGE_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.value === 'auto'
+                        ? dictionary.language.optionAuto
+                        : option.value === 'pl'
+                          ? dictionary.language.optionPolish
+                          : dictionary.language.optionEnglish}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>

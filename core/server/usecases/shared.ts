@@ -154,6 +154,8 @@ export const configValueForKey = (key: ConfigKey, value: string): AppConfig[Conf
       return configValueSchema.shape.faces_enabled.parse(value);
     case 'output_language':
       return configValueSchema.shape.output_language.parse(value);
+    case 'ui_language':
+      return configValueSchema.shape.ui_language.parse(value);
   }
 };
 
@@ -177,6 +179,7 @@ export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
   analyzer_provider: null,
   faces_enabled: null,
   output_language: null,
+  ui_language: null,
 });
 
 export const storedDefaults = (): Record<ConfigKey, string> => ({
@@ -193,6 +196,7 @@ export const storedDefaults = (): Record<ConfigKey, string> => ({
   analyzer_provider: stringifyConfigDefault('analyzer_provider'),
   faces_enabled: stringifyConfigDefault('faces_enabled'),
   output_language: stringifyConfigDefault('output_language'),
+  ui_language: stringifyConfigDefault('ui_language'),
 });
 
 export const configKeys = (): readonly ConfigKey[] => CONFIG_KEYS;

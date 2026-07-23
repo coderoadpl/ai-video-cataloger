@@ -47,6 +47,7 @@ const defaults = {
   }),
   faces_enabled: 'false',
   output_language: 'auto',
+  ui_language: 'en',
 };
 
 const emptyConfig: StoredConfig = {
@@ -63,6 +64,7 @@ const emptyConfig: StoredConfig = {
   analyzer_provider: null,
   faces_enabled: null,
   output_language: null,
+  ui_language: null,
 };
 
 const makeTier = (overrides: Partial<Tier> & { tag: Tier['tag'] }): Tier => ({
@@ -101,6 +103,7 @@ const stubEndpoints = (
     analyzer_provider: config.analyzer_provider ?? defaults.analyzer_provider,
     faces_enabled: config.faces_enabled ?? defaults.faces_enabled,
     output_language: config.output_language ?? defaults.output_language,
+    ui_language: config.ui_language ?? defaults.ui_language,
   };
   const sources = inherited?.sources ?? {
     whisper_binary_path: config.whisper_binary_path === null ? 'default' : 'folder',
@@ -116,10 +119,12 @@ const stubEndpoints = (
     analyzer_provider: config.analyzer_provider === null ? 'default' : 'folder',
     faces_enabled: config.faces_enabled === null ? 'default' : 'folder',
     output_language: config.output_language === null ? 'default' : 'folder',
+    ui_language: config.ui_language === null ? 'default' : 'folder',
   } as const;
   server.use(
     http.get('/api/config', ({ request }) => {
-      expect(new URL(request.url).searchParams.get('folder')).toBe(FOLDER);
+      const requestedFolder = new URL(request.url).searchParams.get('folder');
+      if (requestedFolder !== null) expect(requestedFolder).toBe(FOLDER);
       return HttpResponse.json({ ok: true, data: { config, defaults, effective, sources } });
     }),
     http.get('/api/models/local-ai/requirements', () =>
@@ -159,6 +164,7 @@ describe('settings modal', () => {
       analyzer_provider: 'default',
       faces_enabled: 'default',
       output_language: 'default',
+      ui_language: 'default',
     } as const;
     stubEndpoints(emptyConfig, [], { effective, sources });
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);

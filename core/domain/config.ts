@@ -24,6 +24,10 @@ export const LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
   pl: 'Polish',
 };
 
+export const UI_LANGUAGES = ['en', 'pl'] as const;
+export const uiLanguageSchema = z.enum(UI_LANGUAGES);
+export type UiLanguage = z.output<typeof uiLanguageSchema>;
+
 const integerFromPersistedValue = (value: unknown): unknown => {
   if (typeof value === 'number') return value;
   if (typeof value !== 'string') return value;
@@ -63,6 +67,7 @@ export const configValueSchema = z.object({
   analyzer_provider: z.preprocess(providerFromPersistedValue, analyzerProviderConfigSchema.optional()),
   faces_enabled: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
   output_language: outputLanguageSchema.default('auto'),
+  ui_language: uiLanguageSchema.default('en'),
 });
 
 export const configSchema = configValueSchema.transform((config) => ({
@@ -87,6 +92,7 @@ export const CONFIG_KEYS = [
   'analyzer_provider',
   'faces_enabled',
   'output_language',
+  'ui_language',
 ] as const;
 
 export const configKeySchema = z.enum(CONFIG_KEYS);
@@ -110,4 +116,5 @@ export const configDescriptions: Record<ConfigKey, string> = {
   analyzer_provider: 'Analyzer provider configuration',
   faces_enabled: 'Experimental local face grouping (opt-in, all data stays on this machine)',
   output_language: 'Language for generated descriptions and filenames (auto, en, pl, or a BCP-47 code)',
+  ui_language: 'Language of the desktop app interface (en, pl)',
 };

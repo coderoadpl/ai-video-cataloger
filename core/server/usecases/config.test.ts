@@ -94,6 +94,7 @@ describe('config use-cases', () => {
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'home:model' }),
       faces_enabled: 'true',
       output_language: 'pl',
+      ui_language: 'pl',
     } as const;
     for (const key of CONFIG_KEYS) {
       await setConfig(deps, { key, value: homeValues[key] });
@@ -121,6 +122,7 @@ describe('config use-cases', () => {
           analyzer_provider: 'home',
           faces_enabled: 'home',
           output_language: 'home',
+          ui_language: 'home',
         },
       },
     });
@@ -143,6 +145,7 @@ describe('config use-cases', () => {
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'home:model' }),
       faces_enabled: 'false',
       output_language: 'en',
+      ui_language: 'en',
     } as const;
     const folderValues = {
       whisper_binary_path: '/folder/whisper',
@@ -158,6 +161,7 @@ describe('config use-cases', () => {
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'folder:model' }),
       faces_enabled: 'true',
       output_language: 'pl',
+      ui_language: 'pl',
     } as const;
     for (const key of CONFIG_KEYS) {
       expect(await setConfig(deps, { key, value: homeValues[key] })).toMatchObject({ ok: true });
@@ -185,6 +189,7 @@ describe('config use-cases', () => {
           analyzer_provider: 'folder',
           faces_enabled: 'folder',
           output_language: 'folder',
+          ui_language: 'folder',
         },
       },
     });

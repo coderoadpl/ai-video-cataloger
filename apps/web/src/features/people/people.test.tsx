@@ -60,6 +60,7 @@ const configData = (facesEnabled: boolean) => ({
     analyzer_provider: null,
     faces_enabled: facesEnabled ? 'true' : 'false',
     output_language: null,
+    ui_language: null,
   },
   defaults: defaults(facesEnabled),
   effective: defaults(facesEnabled),
@@ -77,6 +78,7 @@ const configData = (facesEnabled: boolean) => ({
     analyzer_provider: 'default',
     faces_enabled: 'home',
     output_language: 'default',
+    ui_language: 'default',
   },
 });
 
@@ -100,6 +102,7 @@ const defaults = (facesEnabled: boolean) => ({
   }),
   faces_enabled: facesEnabled ? 'true' : 'false',
   output_language: 'auto',
+  ui_language: 'en',
 });
 
 const stubPeople = (input: {

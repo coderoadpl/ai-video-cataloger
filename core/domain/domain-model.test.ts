@@ -91,6 +91,7 @@ describe('config schema', () => {
       },
       faces_enabled: false,
       output_language: 'auto',
+      ui_language: 'en',
     });
   });
 
