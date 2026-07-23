@@ -5,6 +5,7 @@ import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 
 import { actions } from '../../api.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 
 export interface WhisperRuntimeState {
@@ -36,6 +37,7 @@ export const useWhisperRuntime = ({
   addLine,
   intervalMs = 1000,
 }: UseWhisperRuntimeOptions): WhisperRuntimeState => {
+  const dictionary = useDictionary();
   const queryClient = useQueryClient();
   const status = useQuery({ ...actions.whisperRuntime, enabled: open });
   const mutation = useMutation(actions.installWhisperRuntime);
@@ -45,7 +47,7 @@ export const useWhisperRuntime = ({
   const install = useCallback(() => {
     if (isInstalling) return;
     setIsInstalling(true);
-    addLine('Building the managed whisper.cpp runtime…', 'info');
+    addLine(dictionary.models.terminal.buildingWhisperRuntime, 'info');
     void (async () => {
       try {
         const accepted = await mutation.mutateAsync(undefined);
@@ -57,18 +59,23 @@ export const useWhisperRuntime = ({
           onSnapshot: () => undefined,
         });
         if (final.status === 'completed') {
-          addLine('Managed whisper.cpp runtime is ready', 'success');
+          addLine(dictionary.models.terminal.whisperRuntimeReady, 'success');
           await refetch();
         } else {
-          addLine(`Failed to install whisper.cpp: ${final.error?.message ?? 'unknown error'}`, 'error');
+          addLine(
+            dictionary.models.terminal.failedWhisperRuntimeInstall(
+              final.error?.message ?? dictionary.models.terminal.unknownError,
+            ),
+            'error',
+          );
         }
       } catch (error) {
-        addLine(`Failed to install whisper.cpp: ${messageOf(error)}`, 'error');
+        addLine(dictionary.models.terminal.failedWhisperRuntimeInstall(messageOf(error)), 'error');
       } finally {
         setIsInstalling(false);
       }
     })();
-  }, [isInstalling, addLine, mutation, intervalMs, queryClient, refetch]);
+  }, [isInstalling, addLine, mutation, intervalMs, queryClient, refetch, dictionary]);
 
   return {
     available: status.data?.available ?? false,

@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import { Autocomplete, Box, Button, IconButton, InputAdornment, TextField, Typography } from '@mui/material';
 
 import { versionLabel } from '../../lib/format.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { FolderBar } from './FolderBar.js';
 import { CancelIcon, SearchIcon } from './icons.js';
 
@@ -49,6 +50,7 @@ export const AppHeader = ({
   topTags,
   onSearchFocus,
 }: AppHeaderProps) => {
+  const dictionary = useDictionary();
   const [focused, setFocused] = useState(false);
   const options = useMemo<SearchOption[]>(() => [
     ...recentSearches.slice(0, 10).map((label) => ({ kind: 'recent' as const, label })),
@@ -82,7 +84,7 @@ export const AppHeader = ({
           inputValue={searchQuery}
           open={open}
           options={options}
-          groupBy={(option) => option.kind === 'recent' ? 'Recent searches' : 'Top tags'}
+          groupBy={(option) => option.kind === 'recent' ? dictionary.appHeader.recentSearches : dictionary.appHeader.topTags}
           getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
           onInputChange={(_, value, reason) => {
             if (reason === 'input' || reason === 'clear') onSearchQueryChange(value);
@@ -107,7 +109,7 @@ export const AppHeader = ({
                   <Typography variant="caption">{option.count}</Typography>
                 ) : (
                   <IconButton
-                    aria-label={`Remove ${option.label}`}
+                    aria-label={dictionary.appHeader.removeRecentSearch(option.label)}
                     size="small"
                     onMouseDown={(event) => {
                       event.preventDefault();
@@ -127,7 +129,7 @@ export const AppHeader = ({
           renderInput={(params) => (
             <TextField
               {...params}
-              placeholder="Search catalog"
+              placeholder={dictionary.appHeader.searchPlaceholder}
               size="small"
               onKeyDown={(event) => {
                 if (event.key === 'Enter') onSearchSubmit(searchQuery);
@@ -159,13 +161,13 @@ export const AppHeader = ({
           onSelectRecentFolder={onSelectRecentFolder}
         />
         <Button variant="outlined" size="small" color="inherit" onClick={onShowSettings}>
-          Settings
+          {dictionary.appHeader.settings}
         </Button>
         <Button variant="outlined" size="small" color="inherit" onClick={onShowModelManager}>
-          Models
+          {dictionary.appHeader.models}
         </Button>
         <Button variant="text" size="small" color="inherit" onClick={onShowPrerequisites}>
-          Prerequisites
+          {dictionary.appHeader.prerequisites}
         </Button>
       </Box>
     </Box>

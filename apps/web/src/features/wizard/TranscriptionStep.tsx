@@ -12,22 +12,43 @@ import {
   Typography,
 } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { TranscriptionMode } from './wizard-model.js';
 import type { WizardController } from './use-wizard.js';
 
-const OPTIONS: { value: TranscriptionMode; label: string; description: string }[] = [
-  { value: 'managed', label: 'Managed whisper.cpp', description: 'The app downloads and builds a local whisper runtime.' },
-  { value: 'own', label: 'My own whisper binary', description: 'Point at an existing or GPU-optimized install.' },
-  { value: 'api', label: 'OpenAI Whisper API', description: 'Transcribe through the OpenAI API (usage is charged).' },
-  { value: 'skip', label: 'Skip transcription', description: 'Analyze frames only, no audio transcript.' },
-];
+const TRANSCRIPTION_MODES: readonly TranscriptionMode[] = ['managed', 'own', 'api', 'skip'];
 
 const asTranscriptionMode = (value: string): TranscriptionMode | null =>
-  OPTIONS.find((option) => option.value === value)?.value ?? null;
+  TRANSCRIPTION_MODES.find((option) => option === value) ?? null;
 
-export const TranscriptionStep = ({ controller }: { controller: WizardController }) => (
+export const TranscriptionStep = ({ controller }: { controller: WizardController }) => {
+  const dictionary = useDictionary();
+  const options: { value: TranscriptionMode; label: string; description: string }[] = [
+    {
+      value: 'managed',
+      label: dictionary.wizard.transcription.managedLabel,
+      description: dictionary.wizard.transcription.managedDescription,
+    },
+    {
+      value: 'own',
+      label: dictionary.wizard.transcription.ownLabel,
+      description: dictionary.wizard.transcription.ownDescription,
+    },
+    {
+      value: 'api',
+      label: dictionary.wizard.transcription.apiLabel,
+      description: dictionary.wizard.transcription.apiDescription,
+    },
+    {
+      value: 'skip',
+      label: dictionary.wizard.transcription.skipLabel,
+      description: dictionary.wizard.transcription.skipDescription,
+    },
+  ];
+
+  return (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="wizard-step-transcription">
-    <Typography variant="h2">Choose transcription</Typography>
+    <Typography variant="h2">{dictionary.wizard.transcription.title}</Typography>
     <RadioGroup
       value={controller.transcriptionMode}
       onChange={(event) => {
@@ -35,7 +56,7 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
         if (mode !== null) controller.setTranscriptionMode(mode);
       }}
     >
-      {OPTIONS.map((option) => (
+      {options.map((option) => (
         <FormControlLabel
           key={option.value}
           value={option.value}
@@ -54,10 +75,10 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
     {(controller.transcriptionMode === 'managed' || controller.transcriptionMode === 'own')
       && controller.whisperModelOptions.length > 0 ? (
       <FormControl fullWidth size="small" data-testid="transcription-model-control">
-        <InputLabel id="wizard-whisper-model">Whisper model</InputLabel>
+        <InputLabel id="wizard-whisper-model">{dictionary.wizard.transcription.whisperModel}</InputLabel>
         <Select
           labelId="wizard-whisper-model"
-          label="Whisper model"
+          label={dictionary.wizard.transcription.whisperModel}
           value={controller.whisperModel}
           data-testid="wizard-whisper-model-select"
           onChange={(event) => {
@@ -68,7 +89,7 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
           {controller.whisperModelOptions.map((model) => (
             <MenuItem key={model.name} value={model.name}>
               {model.name} · {model.size}
-              {model.downloaded ? ' (installed)' : ''}
+              {model.downloaded ? dictionary.wizard.transcription.installedSuffix : ''}
             </MenuItem>
           ))}
         </Select>
@@ -77,14 +98,14 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
 
     {controller.transcriptionMode === 'managed' && controller.whisperBuildToolsMissing.length > 0 ? (
       <Alert severity="warning" data-testid="whisper-build-tools-warning">
-        Building whisper needs: {controller.whisperBuildToolsMissing.join(', ')}.
+        {dictionary.wizard.transcription.buildToolsWarning(controller.whisperBuildToolsMissing.join(', '))}
       </Alert>
     ) : null}
 
     {controller.transcriptionMode === 'own' ? (
       <TextField
         size="small"
-        label="Whisper binary path"
+        label={dictionary.wizard.transcription.whisperBinaryPath}
         value={controller.whisperBinaryPath}
         data-testid="whisper-binary-path"
         onChange={(event) => controller.setWhisperBinaryPath(event.target.value)}
@@ -94,11 +115,11 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
     {controller.transcriptionMode === 'api' ? (
       <TextField
         size="small"
-        label="OpenAI API key"
+        label={dictionary.wizard.transcription.openAiApiKey}
         type="password"
         value={controller.whisperApiCredential}
         autoComplete="new-password"
-        helperText="Leave blank to keep an existing OpenAI credential."
+        helperText={dictionary.wizard.transcription.openAiApiKeyHelper}
         onChange={(event) => controller.setWhisperApiCredential(event.target.value)}
       />
     ) : null}
@@ -109,4 +130,5 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
       </Alert>
     ) : null}
   </Box>
-);
+  );
+};

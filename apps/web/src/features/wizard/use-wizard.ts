@@ -11,6 +11,7 @@ import type {
 import type { doctorOutputSchema, readinessOutputSchema } from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { savedToastStore } from '../../lib/saved-toast.js';
 import {
@@ -110,6 +111,7 @@ export interface UseWizardOptions {
 }
 
 export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWizardOptions): WizardController => {
+  const dictionary = useDictionary();
   const queryClient = useQueryClient();
   const requirements = useQuery({ ...actions.localAiRequirements, enabled: open });
   const whisperRuntime = useQuery({ ...actions.whisperRuntime, enabled: open });
@@ -220,7 +222,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         const descriptor = harnesses.find((entry) => entry.providerId === harnessId) ?? harnesses[0];
         if (descriptor === undefined) {
           setValidation('error');
-          setValidationMessage('No harness is available');
+          setValidationMessage(dictionary.wizard.controller.noHarnessAvailable);
           return;
         }
         const provider = buildHarnessProvider(descriptor, harnessModel, harnessEffort);
@@ -235,7 +237,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         await persistAnalyzer(buildLocalProvider(effectiveLocalTag));
       }
       setValidation('ok');
-      savedToastStore.show('Analyzer saved');
+      savedToastStore.show(dictionary.wizard.controller.analyzerSaved);
       setStep('transcription');
     } catch (error) {
       setValidation('error');
@@ -252,6 +254,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     persistAnalyzer,
     setCredential,
     testProvider,
+    dictionary,
   ]);
 
   const persistTranscription = useCallback(async (): Promise<void> => {
@@ -283,19 +286,19 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     setValidationMessage(null);
     if (transcriptionMode === 'own' && whisperBinaryPath.trim().length === 0) {
       setValidation('error');
-      setValidationMessage('Whisper binary path is required');
+      setValidationMessage(dictionary.wizard.controller.whisperBinaryPathRequired);
       return;
     }
     try {
       await persistTranscription();
       setValidation('ok');
-      savedToastStore.show('Transcription saved');
+      savedToastStore.show(dictionary.wizard.controller.transcriptionSaved);
       setStep('downloads');
     } catch (error) {
       setValidation('error');
       setValidationMessage(messageOf(error));
     }
-  }, [persistTranscription, transcriptionMode, whisperBinaryPath]);
+  }, [persistTranscription, transcriptionMode, whisperBinaryPath, dictionary]);
 
   const pollJob = useCallback(
     async (jobId: string, label: string, index: number): Promise<boolean> => {
@@ -323,10 +326,10 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
             : task,
         ),
       );
-      if (!ok) setValidationMessage(final.error?.message ?? 'Download failed');
+      if (!ok) setValidationMessage(final.error?.message ?? dictionary.wizard.controller.downloadFailed);
       return ok;
     },
-    [intervalMs, queryClient],
+    [intervalMs, queryClient, dictionary],
   );
 
   const plannedDownloads = useMemo(() => {
@@ -334,22 +337,22 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     if (analyzerFamily === 'local') {
       const tier = tiers.find((entry) => entry.tag === effectiveLocalTag);
       if (tier === undefined || !tier.installed) {
-        tasks.push({ kind: 'local-ai', label: `Downloading local model ${effectiveLocalTag}` });
+        tasks.push({ kind: 'local-ai', label: dictionary.wizard.controller.downloadingLocalModel(effectiveLocalTag) });
       }
     }
     if (transcriptionMode === 'managed') {
       if (!(whisperRuntime.data?.available ?? false)) {
-        tasks.push({ kind: 'whisper-runtime', label: 'Building the managed whisper.cpp runtime' });
+        tasks.push({ kind: 'whisper-runtime', label: dictionary.wizard.controller.buildingManagedWhisperRuntime });
       }
     }
     if (transcriptionMode === 'managed' || transcriptionMode === 'own') {
       const model = whisperModelOptions.find((entry) => entry.name === effectiveWhisperModel);
       if (model?.downloaded !== true) {
-        tasks.push({ kind: 'whisper-model', label: `Downloading whisper model ${effectiveWhisperModel}` });
+        tasks.push({ kind: 'whisper-model', label: dictionary.wizard.controller.downloadingWhisperModel(effectiveWhisperModel) });
       }
     }
     return tasks;
-  }, [analyzerFamily, effectiveLocalTag, effectiveWhisperModel, tiers, transcriptionMode, whisperModelOptions, whisperRuntime.data]);
+  }, [analyzerFamily, effectiveLocalTag, effectiveWhisperModel, tiers, transcriptionMode, whisperModelOptions, whisperRuntime.data, dictionary]);
 
   const runDownloads = useCallback(async (): Promise<void> => {
     setIsDownloading(true);
@@ -428,7 +431,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
           try {
             await activateWhisperModel.mutateAsync({ modelName: action.model });
             await queryClient.invalidateQueries();
-            savedToastStore.show(`${action.model} is now active`);
+            savedToastStore.show(dictionary.wizard.controller.whisperModelActive(action.model));
             checkReadiness();
           } catch (error) {
             setValidationMessage(messageOf(error));
@@ -437,7 +440,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         })();
         return;
     }
-  }, [activateWhisperModel, checkReadiness, queryClient]);
+  }, [activateWhisperModel, checkReadiness, queryClient, dictionary]);
 
   const next = useCallback(() => {
     switch (step) {
@@ -526,8 +529,8 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   );
 
   const readinessChecklist = useMemo(
-    () => buildReadinessChecklist(doctor, readiness, whisperModelOptions),
-    [doctor, readiness, whisperModelOptions],
+    () => buildReadinessChecklist(dictionary, doctor, readiness, whisperModelOptions),
+    [dictionary, doctor, readiness, whisperModelOptions],
   );
 
   return {

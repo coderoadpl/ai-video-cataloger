@@ -1,5 +1,6 @@
 import { Alert, Box, Button, Chip, CircularProgress, LinearProgress, Typography } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { tierSupportBadge, type LocalAiTier } from './models-model.js';
 import type { LocalAiState } from './use-local-ai.js';
 
@@ -7,30 +8,33 @@ interface LocalAiSectionProps {
   state: LocalAiState;
 }
 
-export const LocalAiSection = ({ state }: LocalAiSectionProps) => (
+export const LocalAiSection = ({ state }: LocalAiSectionProps) => {
+  const dictionary = useDictionary();
+
+  return (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="local-ai-section">
     <Box>
-      <Typography variant="h2">Local AI models (Ollama)</Typography>
+      <Typography variant="h2">{dictionary.models.localAiTitle}</Typography>
       <Typography variant="caption">
-        Used by the Local analyzer. The runtime installs and starts automatically.
+        {dictionary.models.localAiDescription}
       </Typography>
     </Box>
 
     {state.machine !== null ? (
       <Typography variant="caption" data-testid="local-ai-machine">
-        Your Mac:{' '}
+        {dictionary.models.yourMac}:{' '}
         {state.machine.appleSilicon
-          ? 'Apple Silicon'
+          ? dictionary.models.appleSilicon
           : `${state.machine.platform}/${state.machine.arch}`}
         , {state.machine.totalMemGB} GB RAM
-        {state.recommendedTag === null ? null : <> — recommended: {state.recommendedTag}</>}
+        {state.recommendedTag === null ? null : <> — {dictionary.models.recommended}: {state.recommendedTag}</>}
       </Typography>
     ) : null}
 
     {state.isLoading ? (
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
         <CircularProgress size={16} />
-        <Typography variant="body2">Loading local AI models…</Typography>
+        <Typography variant="body2">{dictionary.models.loadingLocalAi}</Typography>
       </Box>
     ) : null}
     {state.error === null ? null : <Alert severity="error">{state.error}</Alert>}
@@ -47,10 +51,12 @@ export const LocalAiSection = ({ state }: LocalAiSectionProps) => (
             disabled={state.isBusy}
             onDownload={() => state.pull(tier)}
             onDelete={() => state.remove(tier)}
+            dictionary={dictionary}
           />
         ))}
   </Box>
-);
+  );
+};
 
 interface LocalAiTierRowProps {
   tier: LocalAiTier;
@@ -60,6 +66,7 @@ interface LocalAiTierRowProps {
   disabled: boolean;
   onDownload: () => void;
   onDelete: () => void;
+  dictionary: ReturnType<typeof useDictionary>;
 }
 
 const LocalAiTierRow = ({
@@ -70,8 +77,9 @@ const LocalAiTierRow = ({
   disabled,
   onDownload,
   onDelete,
+  dictionary,
 }: LocalAiTierRowProps) => {
-  const badge = tierSupportBadge(tier);
+  const badge = tierSupportBadge(dictionary, tier);
   const canDownload = tier.supportLevel === 'ok' && !tier.installed && !disabled;
 
   return (
@@ -87,12 +95,12 @@ const LocalAiTierRow = ({
             {tier.tag}
             {tier.recommended ? (
               <Typography component="span" variant="caption" sx={{ ml: 1, color: 'status.completed.main' }}>
-                (recommended)
+                ({dictionary.models.recommended})
               </Typography>
             ) : null}
           </Typography>
           <Typography variant="caption">
-            {tier.label} · {tier.downloadGB} GB download
+            {tier.label} · {dictionary.models.downloadGb(tier.downloadGB)}
           </Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexShrink: 0 }}>
@@ -109,7 +117,7 @@ const LocalAiTierRow = ({
               data-testid="local-ai-delete-button"
               onClick={onDelete}
             >
-              {removing ? <CircularProgress size={16} /> : 'Delete'}
+              {removing ? <CircularProgress size={16} /> : dictionary.models.delete}
             </Button>
           ) : (
             <Button
@@ -119,7 +127,7 @@ const LocalAiTierRow = ({
               data-testid="local-ai-download-button"
               onClick={onDownload}
             >
-              {pulling ? 'Downloading' : 'Download'}
+              {pulling ? dictionary.models.downloading : dictionary.models.download}
             </Button>
           )}
         </Box>

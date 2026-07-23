@@ -14,6 +14,7 @@ import {
 import type { WhisperModelName } from '@core/domain/index.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { StorageIcon } from '../../components/ui/icons.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 
 import { DeleteModelDialog } from './DeleteModelDialog.js';
 import { LocalAiSection } from './LocalAiSection.js';
@@ -30,6 +31,7 @@ interface ModelManagerModalProps {
 }
 
 export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelManagerModalProps) => {
+  const dictionary = useDictionary();
   const whisper = useWhisperModels({ open, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
   const runtime = useWhisperRuntime({ open, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
   const localAi = useLocalAi({ open, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
@@ -38,18 +40,18 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
   return (
     <>
       <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" data-testid="model-manager-modal">
-        <DialogTitle>Model Manager</DialogTitle>
+        <DialogTitle>{dictionary.models.managerTitle}</DialogTitle>
         <DialogContent dividers>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-              <Typography variant="h2">Whisper transcription models</Typography>
+              <Typography variant="h2">{dictionary.models.whisperModelsTitle}</Typography>
               {runtime.isLoading ? (
-                <Typography variant="caption">Checking whisper.cpp runtime…</Typography>
+                <Typography variant="caption">{dictionary.models.checkingWhisperRuntime}</Typography>
               ) : runtime.error !== null ? (
                 <Alert severity="error">{runtime.error}</Alert>
               ) : runtime.available ? (
                 <Alert severity="success" data-testid="whisper-runtime-status">
-                  Runtime: {runtime.source} ({runtime.path})
+                  {dictionary.models.runtimeStatus(runtime.source, runtime.path)}
                 </Alert>
               ) : (
                 <Alert
@@ -61,25 +63,25 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
                       disabled={!runtime.buildToolsAvailable || runtime.isInstalling}
                       data-testid="whisper-runtime-install"
                     >
-                      {runtime.isInstalling ? 'Installing…' : 'Install'}
+                      {runtime.isInstalling ? dictionary.models.installing : dictionary.models.install}
                     </Button>
                   }
                 >
                   {runtime.buildToolsAvailable
-                    ? 'whisper.cpp runtime is not installed.'
-                    : `Managed build requires ${runtime.missingBuildTools.join(' and ')}.`}
+                    ? dictionary.models.runtimeNotInstalled
+                    : dictionary.models.managedBuildRequires(runtime.missingBuildTools.join(' and '))}
                 </Alert>
               )}
               {whisper.isLoading ? (
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 1 }}>
                   <CircularProgress size={16} />
-                  <Typography variant="body2">Loading models…</Typography>
+                  <Typography variant="body2">{dictionary.models.loadingModels}</Typography>
                 </Box>
               ) : whisper.error !== null ? (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                   <Alert severity="error">{whisper.error}</Alert>
                   <Button size="small" onClick={whisper.retry}>
-                    Retry
+                    {dictionary.models.retry}
                   </Button>
                 </Box>
               ) : (
@@ -89,7 +91,7 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
                     data-testid="whisper-disk-usage"
                   >
                     <StorageIcon fontSize="small" />
-                    <Typography variant="caption">Disk space used: {whisper.diskUsageLabel}</Typography>
+                    <Typography variant="caption">{dictionary.models.diskSpaceUsed(whisper.diskUsageLabel)}</Typography>
                   </Box>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
                     {whisper.models.map((model) => (

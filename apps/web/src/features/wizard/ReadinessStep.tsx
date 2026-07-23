@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material';
 
 import { CheckCircleIcon, ErrorIcon, WarningIcon } from '../../components/ui/icons.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { ChecklistRow, ChecklistStatus } from './readiness-checklist.js';
 import type { WizardController } from './use-wizard.js';
 
@@ -50,6 +51,7 @@ const ChecklistItem = ({
 };
 
 export const ReadinessStep = ({ controller }: { controller: WizardController }) => {
+  const dictionary = useDictionary();
   const { readiness, readinessChecklist, isCheckingReadiness, checkReadiness, applyChecklistAction } = controller;
   useEffect(() => {
     if (readiness === null && !isCheckingReadiness) checkReadiness();
@@ -57,21 +59,21 @@ export const ReadinessStep = ({ controller }: { controller: WizardController }) 
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="wizard-step-readiness">
-      <Typography variant="h2">Final check</Typography>
+      <Typography variant="h2">{dictionary.wizard.readiness.title}</Typography>
       {isCheckingReadiness || readiness === null ? (
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }} data-testid="readiness-checking">
           <CircularProgress size={18} />
-          <Typography variant="body2">Checking your configuration…</Typography>
+          <Typography variant="body2">{dictionary.wizard.readiness.checking}</Typography>
         </Box>
       ) : (
         <>
           {readiness.ready ? (
             <Alert severity="success" data-testid="readiness-ready">
-              Everything is configured. You are ready to analyze videos.
+              {dictionary.wizard.readiness.ready}
             </Alert>
           ) : (
             <Alert severity="warning" data-testid="readiness-not-ready">
-              Some checks need attention. Use the actions below to fix them.
+              {dictionary.wizard.readiness.notReady}
             </Alert>
           )}
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25 }} data-testid="readiness-checklist">

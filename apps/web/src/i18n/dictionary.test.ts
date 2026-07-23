@@ -1,3 +1,6 @@
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { en, getDict, pl } from './dictionary.js';
@@ -29,5 +32,35 @@ describe('dictionary', () => {
   it('resolves the polish dictionary only for the pl locale', () => {
     expect(getDict('pl')).toBe(pl);
     expect(getDict('en')).toBe(en);
+  });
+
+  it('keeps swept UI literals inside the dictionary', () => {
+    const literals = ['Search catalog', 'Analyze All', 'Getting Started', 'Only this folder', 'Not detected'];
+    const standaloneSaved = /(?<![A-Za-z])Saved(?![A-Za-z])/;
+
+    const srcRoot = join(import.meta.dirname, '..');
+    const violations: string[] = [];
+
+    const walk = (dir: string) => {
+      for (const entry of readdirSync(dir)) {
+        const fullPath = join(dir, entry);
+        if (fullPath.includes(`${join('src', 'i18n')}`)) continue;
+        const stats = statSync(fullPath);
+        if (stats.isDirectory()) {
+          walk(fullPath);
+          continue;
+        }
+        if (!/\.(ts|tsx)$/.test(entry)) continue;
+        const content = readFileSync(fullPath, 'utf8');
+        for (const literal of literals) {
+          if (content.includes(literal)) violations.push(`${fullPath}: ${literal}`);
+        }
+        if (standaloneSaved.test(content)) violations.push(`${fullPath}: Saved`);
+      }
+    };
+
+    walk(srcRoot);
+
+    expect(violations).toEqual([]);
   });
 });

@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -8,6 +8,7 @@ import type { z } from 'zod';
 
 import type { scanVideoSchema } from '@core/contract/index.js';
 
+import { renderWithProviders } from '../../test/render.js';
 import { createAppTheme } from '../../theme.js';
 import { CatalogTree } from './CatalogTree.js';
 import { type CatalogTreeNode } from './catalog-tree-model.js';
@@ -15,7 +16,7 @@ import { type CatalogTreeNode } from './catalog-tree-model.js';
 type ScanVideo = z.output<typeof scanVideoSchema>;
 
 const theme = createAppTheme('light');
-const renderThemed = (ui: ReactElement) => render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
+const renderThemed = (ui: ReactElement) => renderWithProviders(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
 
 const makeVideo = (path: string): ScanVideo => ({
   path,

@@ -20,27 +20,40 @@ import {
 } from '@core/domain/index.js';
 
 import { HarnessModelPicker } from '../../components/ui/HarnessModelPicker.js';
+import { type Dictionary } from '../../i18n/dictionary.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { buildApiProvider } from './wizard-model.js';
 import type { WizardController } from './use-wizard.js';
 
-const availabilityChip = (status: 'unknown' | 'available' | 'unavailable', version: string | null) => {
+const availabilityChip = (
+  dictionary: Dictionary,
+  status: 'unknown' | 'available' | 'unavailable',
+  version: string | null,
+) => {
   switch (status) {
     case 'available':
-      return <Chip size="small" label={version === null ? 'Installed' : `Installed · ${version}`} color="success" />;
+      return (
+        <Chip
+          size="small"
+          label={version === null ? dictionary.wizard.analyzer.installed : dictionary.wizard.analyzer.installedVersion(version)}
+          color="success"
+        />
+      );
     case 'unavailable':
-      return <Chip size="small" label="Not detected" color="error" variant="outlined" />;
+      return <Chip size="small" label={dictionary.wizard.analyzer.notDetected} color="error" variant="outlined" />;
     case 'unknown':
-      return <Chip size="small" label="Checking…" variant="outlined" />;
+      return <Chip size="small" label={dictionary.wizard.analyzer.checking} variant="outlined" />;
   }
 };
 
 export const AnalyzerStep = ({ controller }: { controller: WizardController }) => {
+  const dictionary = useDictionary();
   const { analyzerFamily, machine, tiers, apiDraft } = controller;
   const costSignal = apiCostSignal(buildApiProvider(apiDraft), estimateApiTokens({ transcriptCharacters: 0, frameCount: 3 }));
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }} data-testid="wizard-step-analyzer">
-      <Typography variant="h2">Choose an analyzer</Typography>
+      <Typography variant="h2">{dictionary.wizard.analyzer.title}</Typography>
       <ToggleButtonGroup
         exclusive
         size="small"
@@ -48,29 +61,30 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
         onChange={(_event, value: unknown) => {
           if (value === 'local' || value === 'api' || value === 'harness') controller.setAnalyzerFamily(value);
         }}
-        aria-label="analyzer family"
+        aria-label={dictionary.wizard.analyzer.familyLabel}
       >
         <ToggleButton value="local" data-testid="analyzer-family-local">
-          Local{machine?.appleSilicon === true ? ' (recommended)' : ''}
+          {dictionary.wizard.analyzer.local}
+          {machine?.appleSilicon === true ? dictionary.wizard.analyzer.recommendedSuffix : ''}
         </ToggleButton>
         <ToggleButton value="api" data-testid="analyzer-family-api">
-          API
+          {dictionary.wizard.analyzer.api}
         </ToggleButton>
         <ToggleButton value="harness" data-testid="analyzer-family-harness">
-          Agent harness
+          {dictionary.wizard.analyzer.harness}
         </ToggleButton>
       </ToggleButtonGroup>
 
       {analyzerFamily === 'local' ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }} data-testid="analyzer-local">
           {machine?.appleSilicon === false ? (
-            <Alert severity="warning">Local models need Apple Silicon; pick API or a harness on this machine.</Alert>
+            <Alert severity="warning">{dictionary.wizard.analyzer.localAppleSiliconWarning}</Alert>
           ) : null}
           <FormControl fullWidth size="small">
-            <InputLabel id="wizard-local-model">Local model</InputLabel>
+            <InputLabel id="wizard-local-model">{dictionary.wizard.analyzer.localModel}</InputLabel>
             <Select
               labelId="wizard-local-model"
-              label="Local model"
+              label={dictionary.wizard.analyzer.localModel}
               value={tiers.some((tier) => tier.tag === controller.localModelTag) ? controller.localModelTag : ''}
               data-testid="wizard-local-model-select"
               onChange={(event) => controller.setLocalModelTag(event.target.value)}
@@ -78,8 +92,8 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
               {tiers.map((tier) => (
                 <MenuItem key={tier.tag} value={tier.tag} disabled={tier.supportLevel !== 'ok'}>
                   {tier.label}
-                  {tier.recommended ? ' — recommended for this Mac' : ''}
-                  {tier.installed ? ' (installed)' : ` · ${tier.downloadGB} GB download`}
+                  {tier.recommended ? dictionary.wizard.analyzer.recommendedForThisMac : ''}
+                  {tier.installed ? dictionary.wizard.analyzer.installedSuffix : dictionary.wizard.analyzer.downloadGb(tier.downloadGB)}
                 </MenuItem>
               ))}
             </Select>
@@ -91,20 +105,20 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="analyzer-api">
           <TextField
             size="small"
-            label="Base URL"
+            label={dictionary.wizard.analyzer.baseUrl}
             value={apiDraft.baseUrl}
             onChange={(event) => controller.setApiDraft({ baseUrl: event.target.value })}
           />
           <TextField
             size="small"
-            label="Model"
+            label={dictionary.wizard.analyzer.model}
             value={apiDraft.model}
             onChange={(event) => controller.setApiDraft({ model: event.target.value })}
           />
           <TextField
             size="small"
             type="password"
-            label="API key"
+            label={dictionary.wizard.analyzer.apiKey}
             autoComplete="new-password"
             value={apiDraft.credential}
             onChange={(event) => controller.setApiDraft({ credential: event.target.value })}
@@ -113,14 +127,14 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
             <TextField
               size="small"
               type="number"
-              label="Input price / 1M tokens"
+              label={dictionary.wizard.analyzer.inputPrice}
               value={apiDraft.pricePerMTokensInput}
               onChange={(event) => controller.setApiDraft({ pricePerMTokensInput: event.target.value })}
             />
             <TextField
               size="small"
               type="number"
-              label="Output price / 1M tokens"
+              label={dictionary.wizard.analyzer.outputPrice}
               value={apiDraft.pricePerMTokensOutput}
               onChange={(event) => controller.setApiDraft({ pricePerMTokensOutput: event.target.value })}
             />
@@ -149,7 +163,7 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
                 data-testid={`harness-${descriptor.providerId}`}
               >
                 <span>{descriptor.label}</span>
-                {availabilityChip(availability.status, availability.version)}
+                {availabilityChip(dictionary, availability.status, availability.version)}
               </ToggleButton>
             );
           })}

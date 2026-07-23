@@ -1,23 +1,28 @@
+import { type Dictionary } from '../../i18n/dictionary.js';
 import { type DetailsVideo } from './details-video.js';
 
-export const statusDescription = (status: DetailsVideo['status'], analyzing: boolean): string => {
-  if (analyzing) return 'Video is being processed…';
+export const statusDescription = (
+  dictionary: Dictionary,
+  status: DetailsVideo['status'],
+  analyzing: boolean,
+): string => {
+  if (analyzing) return dictionary.details.status.analyzing;
   switch (status) {
     case 'completed':
-      return 'Analysis complete. Summary, transcript, and frames are available.';
+      return dictionary.details.status.completed;
     case 'error':
-      return 'An error occurred during processing.';
+      return dictionary.details.status.error;
     case 'pending':
-      return 'Ready to be analyzed.';
+      return dictionary.details.status.pending;
     case 'frames_extracted':
-      return 'Processing was interrupted at frames extraction step. Click Analyze to continue.';
+      return dictionary.details.status.framesExtracted;
     case 'audio_extracted':
-      return 'Processing was interrupted at audio extraction step. Click Analyze to continue.';
+      return dictionary.details.status.audioExtracted;
     case 'transcribed':
-      return 'Processing was interrupted at transcription step. Click Analyze to continue.';
+      return dictionary.details.status.transcribed;
     case 'analyzed':
-      return 'Processing was interrupted at analysis step. Click Analyze to continue.';
+      return dictionary.details.status.analyzed;
     case 'not_tracked':
-      return 'This video has not been processed yet.';
+      return dictionary.details.status.notTracked;
   }
 };

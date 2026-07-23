@@ -10,8 +10,9 @@ import {
   Stepper,
 } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { useWizard } from './use-wizard.js';
-import { WIZARD_STEPS, WIZARD_STEP_LABELS } from './wizard-model.js';
+import { WIZARD_STEPS, wizardNextLabel, wizardStepLabels } from './wizard-model.js';
 import { WelcomeStep } from './WelcomeStep.js';
 import { AnalyzerStep } from './AnalyzerStep.js';
 import { TranscriptionStep } from './TranscriptionStep.js';
@@ -25,21 +26,13 @@ export interface SetupWizardProps {
   onClose: () => void;
 }
 
-const NEXT_LABEL: Record<string, string> = {
-  welcome: 'Get started',
-  analyzer: 'Continue',
-  transcription: 'Continue',
-  readiness: 'Continue',
-  done: 'Finish',
-};
-
 export const SetupWizard = ({ open, folder, onClose }: SetupWizardProps) => {
+  const dictionary = useDictionary();
   const controller = useWizard({ open, folder, onFinish: onClose });
   const { step } = controller;
   const activeStep = WIZARD_STEPS.indexOf(step);
-  const nextLabel = step === 'downloads'
-    ? controller.plannedDownloadLabels.length === 0 ? 'Continue' : 'Install & continue'
-    : NEXT_LABEL[step] ?? 'Continue';
+  const stepLabels = wizardStepLabels(dictionary);
+  const nextLabel = wizardNextLabel(dictionary, step, controller.plannedDownloadLabels.length > 0);
 
   const nextDisabled =
     controller.validation === 'testing' ||
@@ -52,12 +45,12 @@ export const SetupWizard = ({ open, folder, onClose }: SetupWizardProps) => {
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" data-testid="setup-wizard">
-      <DialogTitle>Setup Wizard</DialogTitle>
+      <DialogTitle>{dictionary.wizard.setupWizard}</DialogTitle>
       <DialogContent dividers>
         <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}>
           {WIZARD_STEPS.map((wizardStep) => (
             <Step key={wizardStep}>
-              <StepLabel>{WIZARD_STEP_LABELS[wizardStep]}</StepLabel>
+              <StepLabel>{stepLabels[wizardStep]}</StepLabel>
             </Step>
           ))}
         </Stepper>
@@ -70,11 +63,11 @@ export const SetupWizard = ({ open, folder, onClose }: SetupWizardProps) => {
       </DialogContent>
       <DialogActions sx={{ justifyContent: 'space-between' }}>
         <Button onClick={onClose} color="inherit" data-testid="wizard-configure-later">
-          Configure later
+          {dictionary.wizard.configureLater}
         </Button>
         <Box sx={{ display: 'flex', gap: 1 }}>
           <Button onClick={controller.back} disabled={!controller.canGoBack} data-testid="wizard-back">
-            Back
+            {dictionary.wizard.back}
           </Button>
           <Button
             variant="contained"

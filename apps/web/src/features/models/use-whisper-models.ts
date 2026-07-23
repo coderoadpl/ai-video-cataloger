@@ -6,6 +6,7 @@ import type { WhisperModelName } from '@core/domain/index.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 
 import { actions } from '../../api.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatMb, whisperDiskUsageMb, type WhisperModelEntry } from './models-model.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { savedToastStore } from '../../lib/saved-toast.js';
@@ -47,6 +48,7 @@ export const useWhisperModels = ({
   addLine,
   intervalMs = 1000,
 }: UseWhisperModelsOptions): WhisperModelsState => {
+  const dictionary = useDictionary();
   const queryClient = useQueryClient();
   const listQuery = useQuery({ ...actions.modelsWhisper, enabled: open });
   const downloadMutation = useMutation(actions.downloadWhisperModel);
@@ -64,7 +66,7 @@ export const useWhisperModels = ({
     (modelName: WhisperModelName) => {
       if (isBusy) return;
       setDownloadProgress({ modelName, percentage: 0 });
-      addLine(`Downloading Whisper model: ${modelName}…`, 'info');
+      addLine(dictionary.models.terminal.downloadingWhisper(modelName), 'info');
       void (async () => {
         try {
           const accepted = await downloadMutation.mutateAsync({ modelName });
@@ -80,65 +82,71 @@ export const useWhisperModels = ({
             },
           });
           if (final.status === 'completed') {
-            addLine(`Model ${modelName} downloaded successfully`, 'success');
+            addLine(dictionary.models.terminal.whisperDownloaded(modelName), 'success');
             await refetch();
             await queryClient.invalidateQueries();
-            savedToastStore.show(`Downloaded ${modelName}`);
+            savedToastStore.show(dictionary.models.terminal.downloadedToast(modelName));
           } else {
-            addLine(`Failed to download ${modelName}: ${final.error?.message ?? 'unknown error'}`, 'error');
+            addLine(
+              dictionary.models.terminal.failedDownload(
+                modelName,
+                final.error?.message ?? dictionary.models.terminal.unknownError,
+              ),
+              'error',
+            );
           }
         } catch (error) {
-          addLine(`Failed to download ${modelName}: ${messageOf(error)}`, 'error');
+          addLine(dictionary.models.terminal.failedDownload(modelName, messageOf(error)), 'error');
         } finally {
           setDownloadProgress(null);
         }
       })();
     },
-    [isBusy, addLine, downloadMutation, intervalMs, queryClient, refetch],
+    [isBusy, addLine, downloadMutation, intervalMs, queryClient, refetch, dictionary],
   );
 
   const activate = useCallback(
     (modelName: WhisperModelName) => {
       if (isBusy) return;
       setActivatingModel(modelName);
-      addLine(`Setting active model: ${modelName}…`, 'info');
+      addLine(dictionary.models.terminal.settingActive(modelName), 'info');
       void (async () => {
         try {
           await activateMutation.mutateAsync({ modelName });
-          addLine(`Model ${modelName} is now active`, 'success');
+          addLine(dictionary.models.terminal.modelActive(modelName), 'success');
           await refetch();
           await queryClient.invalidateQueries();
-          savedToastStore.show(`${modelName} is now active`);
+          savedToastStore.show(dictionary.wizard.controller.whisperModelActive(modelName));
         } catch (error) {
-          addLine(`Failed to activate ${modelName}: ${messageOf(error)}`, 'error');
+          addLine(dictionary.models.terminal.failedActivate(modelName, messageOf(error)), 'error');
         } finally {
           setActivatingModel(null);
         }
       })();
     },
-    [isBusy, addLine, activateMutation, queryClient, refetch],
+    [isBusy, addLine, activateMutation, queryClient, refetch, dictionary],
   );
 
   const remove = useCallback(
     (modelName: WhisperModelName) => {
       if (isBusy) return;
       setDeletingModel(modelName);
-      addLine(`Deleting model: ${modelName}…`, 'info');
+      addLine(dictionary.models.terminal.deletingModel(modelName), 'info');
       void (async () => {
         try {
           await deleteMutation.mutateAsync({ modelName, force: true });
-          addLine(`Model ${modelName} deleted`, 'success');
+          addLine(dictionary.models.terminal.modelDeleted(modelName), 'success');
           await refetch();
           await queryClient.invalidateQueries();
-          savedToastStore.show(`Deleted ${modelName}`);
+          savedToastStore.show(dictionary.models.terminal.deletedToast(modelName));
         } catch (error) {
-          addLine(`Failed to delete ${modelName}: ${messageOf(error)}`, 'error');
+          addLine(dictionary.models.terminal.failedDelete(modelName, messageOf(error)), 'error');
         } finally {
           setDeletingModel(null);
         }
       })();
     },
-    [isBusy, addLine, deleteMutation, queryClient, refetch],
+    [isBusy, addLine, deleteMutation, queryClient, refetch, dictionary],
   );
 
   const models = listQuery.data?.models ?? [];

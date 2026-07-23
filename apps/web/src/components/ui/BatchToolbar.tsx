@@ -1,5 +1,6 @@
 import { Box, Button, LinearProgress, Typography } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { CancelIcon, PlayCircleIcon } from './icons.js';
 
 export interface BatchProgressView {
@@ -25,13 +26,15 @@ export const BatchToolbar = ({
   onStop,
   disabledReason,
 }: BatchToolbarProps) => {
+  const dictionary = useDictionary();
+
   if (batchProgress !== null) {
     const value = (batchProgress.currentIndex / batchProgress.totalCount) * 100;
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
           <Typography variant="caption">
-            Processing {batchProgress.currentIndex} of {batchProgress.totalCount}
+            {dictionary.batchToolbar.processingCount(batchProgress.currentIndex, batchProgress.totalCount)}
           </Typography>
           <Button
             data-testid="batch-stop-button"
@@ -41,7 +44,7 @@ export const BatchToolbar = ({
             onClick={onStop}
             sx={{ minWidth: 0, py: 0 }}
           >
-            Stop
+            {dictionary.batchToolbar.stop}
           </Button>
         </Box>
         <LinearProgress variant="determinate" value={value} />
@@ -65,7 +68,7 @@ export const BatchToolbar = ({
         startIcon={<PlayCircleIcon fontSize="small" />}
         onClick={onAnalyzeAll}
       >
-        Analyze All ({pendingCount})
+        {dictionary.batchToolbar.analyzeAll(pendingCount)}
       </Button>
       {disabledReason === undefined ? null : (
         <Typography variant="caption" color="text.secondary">{disabledReason}</Typography>

@@ -4,6 +4,8 @@ import { Box, Button, Chip, CircularProgress, Divider, List, ListItemButton, Typ
 import { ApiError, type SearchOutput } from '@core/client/index.js';
 
 import { FolderIcon, SearchIcon } from '../../components/ui/icons.js';
+import { type Dictionary } from '../../i18n/dictionary.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
 import { bridge } from '../../api.js';
 import type { GlobalSearchState, SearchGroup } from './use-global-search.js';
@@ -31,15 +33,17 @@ const Centered = ({ children }: { children: ReactNode }) => (
   </Box>
 );
 
-const errorMessage = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : 'Could not search the catalog.';
+const errorMessage = (error: unknown, dictionary: Dictionary): string =>
+  error instanceof ApiError ? error.appError.message : dictionary.search.genericError;
 
 export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
+  const dictionary = useDictionary();
+
   if (search.isLoading) {
     return (
       <Centered>
         <CircularProgress size={22} />
-        <Typography variant="body2">Searching catalog…</Typography>
+        <Typography variant="body2">{dictionary.search.searchingCatalog}</Typography>
       </Centered>
     );
   }
@@ -52,7 +56,7 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
           role="alert"
           sx={(theme) => ({ color: theme.palette.status.error.main })}
         >
-          {errorMessage(search.error)}
+          {errorMessage(search.error, dictionary)}
         </Typography>
       </Centered>
     );
@@ -62,7 +66,7 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
     return (
       <Centered>
         <SearchIcon />
-        <Typography variant="body2">No results found</Typography>
+        <Typography variant="body2">{dictionary.search.noResultsFound}</Typography>
       </Centered>
     );
   }
@@ -70,8 +74,8 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
   return (
     <Box sx={{ height: '100%', overflow: 'auto' }}>
       <Box sx={{ px: 3, py: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h2">{search.count} result(s)</Typography>
-        <Typography variant="caption">Search results for {search.debouncedQuery}</Typography>
+        <Typography variant="h2">{dictionary.search.resultCount(search.count)}</Typography>
+        <Typography variant="caption">{dictionary.search.resultsFor(search.debouncedQuery)}</Typography>
       </Box>
       <Box sx={{ px: 2, py: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
         {search.groups.map((group) => (
@@ -79,6 +83,7 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
             key={group.folder.folderId}
             group={group}
             onOpenFolder={onOpenFolder}
+            dictionary={dictionary}
           />
         ))}
       </Box>
@@ -89,9 +94,11 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
 const SearchFolderGroup = ({
   group,
   onOpenFolder,
+  dictionary,
 }: {
   group: SearchGroup;
   onOpenFolder: (folderPath: string) => void;
+  dictionary: Dictionary;
 }) => (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
     <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0, px: 1 }}>
@@ -110,7 +117,7 @@ const SearchFolderGroup = ({
       {group.folder.online ? null : (
         <Chip
           size="small"
-          label="drive not connected"
+          label={dictionary.search.driveNotConnected}
           sx={(theme) => ({
             bgcolor: theme.palette.status.notTracked.soft,
             color: theme.palette.status.notTracked.main,

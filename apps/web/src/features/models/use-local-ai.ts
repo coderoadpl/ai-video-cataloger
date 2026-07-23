@@ -5,6 +5,7 @@ import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 
 import { actions } from '../../api.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { LocalAiTier, Machine } from './models-model.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { savedToastStore } from '../../lib/saved-toast.js';
@@ -40,6 +41,7 @@ const messageOf = (error: unknown): string => {
 };
 
 export const useLocalAi = ({ open, addLine, intervalMs = 1000 }: UseLocalAiOptions): LocalAiState => {
+  const dictionary = useDictionary();
   const queryClient = useQueryClient();
   const requirementsQuery = useQuery({ ...actions.localAiRequirements, enabled: open });
   const pullMutation = useMutation(actions.pullLocalAiModel);
@@ -55,7 +57,7 @@ export const useLocalAi = ({ open, addLine, intervalMs = 1000 }: UseLocalAiOptio
     (tier: LocalAiTier) => {
       if (isBusy) return;
       setPullProgress({ tag: tier.tag, percentage: 0 });
-      addLine(`Downloading local AI model ${tier.tag} (${tier.downloadGB} GB)…`, 'info');
+      addLine(dictionary.models.terminal.downloadingLocalAi(tier.tag, tier.downloadGB), 'info');
       void (async () => {
         try {
           const accepted = await pullMutation.mutateAsync({ tag: tier.tag });
@@ -71,43 +73,49 @@ export const useLocalAi = ({ open, addLine, intervalMs = 1000 }: UseLocalAiOptio
             },
           });
           if (final.status === 'completed') {
-            addLine(`Model ${tier.tag} is ready`, 'success');
+            addLine(dictionary.models.terminal.localAiReady(tier.tag), 'success');
             await refetch();
             await queryClient.invalidateQueries();
-            savedToastStore.show(`Downloaded ${tier.tag}`);
+            savedToastStore.show(dictionary.models.terminal.downloadedToast(tier.tag));
           } else {
-            addLine(`Failed to download ${tier.tag}: ${final.error?.message ?? 'unknown error'}`, 'error');
+            addLine(
+              dictionary.models.terminal.failedLocalAiDownload(
+                tier.tag,
+                final.error?.message ?? dictionary.models.terminal.unknownError,
+              ),
+              'error',
+            );
           }
         } catch (error) {
-          addLine(`Failed to download ${tier.tag}: ${messageOf(error)}`, 'error');
+          addLine(dictionary.models.terminal.failedLocalAiDownload(tier.tag, messageOf(error)), 'error');
         } finally {
           setPullProgress(null);
         }
       })();
     },
-    [isBusy, addLine, pullMutation, intervalMs, queryClient, refetch],
+    [isBusy, addLine, pullMutation, intervalMs, queryClient, refetch, dictionary],
   );
 
   const remove = useCallback(
     (tier: LocalAiTier) => {
       if (isBusy) return;
       setRemovingTag(tier.tag);
-      addLine(`Removing local AI model ${tier.tag}…`, 'info');
+      addLine(dictionary.models.terminal.removingLocalAi(tier.tag), 'info');
       void (async () => {
         try {
           await removeMutation.mutateAsync({ tag: tier.tag });
-          addLine(`Removed ${tier.tag}`, 'success');
+          addLine(dictionary.models.terminal.removedLocalAi(tier.tag), 'success');
           await refetch();
           await queryClient.invalidateQueries();
-          savedToastStore.show(`Removed ${tier.tag}`);
+          savedToastStore.show(dictionary.models.terminal.removedLocalAi(tier.tag));
         } catch (error) {
-          addLine(`Failed to remove ${tier.tag}: ${messageOf(error)}`, 'error');
+          addLine(dictionary.models.terminal.failedLocalAiRemove(tier.tag, messageOf(error)), 'error');
         } finally {
           setRemovingTag(null);
         }
       })();
     },
-    [isBusy, addLine, removeMutation, queryClient, refetch],
+    [isBusy, addLine, removeMutation, queryClient, refetch, dictionary],
   );
 
   const tiers = requirementsQuery.data?.tiers ?? null;

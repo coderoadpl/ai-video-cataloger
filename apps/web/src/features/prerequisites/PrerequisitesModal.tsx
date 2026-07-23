@@ -12,6 +12,8 @@ import {
 } from '@mui/material';
 
 import { CheckCircleIcon, ErrorIcon } from '../../components/ui/icons.js';
+import { type Dictionary } from '../../i18n/dictionary.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import {
   dependencyDisplayName,
   missingCount,
@@ -26,50 +28,52 @@ interface PrerequisitesModalProps {
 }
 
 export const PrerequisitesModal = ({ open, folder, onClose }: PrerequisitesModalProps) => {
+  const dictionary = useDictionary();
   const { isLoading, error, doctor, readiness, check } = usePrerequisites({ open, folder });
 
   return (
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" data-testid="prerequisites-modal">
-      <DialogTitle>System Prerequisites</DialogTitle>
+      <DialogTitle>{dictionary.prerequisites.title}</DialogTitle>
       <DialogContent dividers>
         {isLoading ? (
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 4 }}>
             <CircularProgress size={20} />
-            <Typography variant="body2">Checking prerequisites…</Typography>
+            <Typography variant="body2">{dictionary.prerequisites.checking}</Typography>
           </Box>
         ) : error !== null ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, py: 2 }}>
             <Alert severity="error">{error}</Alert>
             <Button variant="outlined" onClick={check} data-testid="prerequisites-retry">
-              Retry
+              {dictionary.prerequisites.retry}
             </Button>
           </Box>
         ) : doctor !== null && readiness !== null ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             {doctor.allAvailable && readiness.ready ? (
               <Alert severity="success" data-testid="prerequisites-banner">
-                All prerequisites are satisfied!
+                {dictionary.prerequisites.allSatisfied}
               </Alert>
             ) : (
               <Alert severity="warning" data-testid="prerequisites-banner">
-                {missingCount(doctor, readiness)} prerequisite(s) missing
+                {dictionary.prerequisites.missingCount(missingCount(doctor, readiness))}
               </Alert>
             )}
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Typography variant="subtitle2">Selected folder configuration</Typography>
+              <Typography variant="subtitle2">{dictionary.prerequisites.selectedFolderConfiguration}</Typography>
               <Alert
                 severity={readiness.ready ? 'success' : 'warning'}
                 data-testid="configured-readiness"
               >
                 {readiness.ready
-                  ? 'The selected folder is ready for analysis.'
-                  : readiness.suggestedAction ?? `${readiness.missingPieces.map((piece) => piece.name).join(', ')} must be configured.`}
+                  ? dictionary.prerequisites.selectedFolderReady
+                  : readiness.suggestedAction
+                    ?? dictionary.prerequisites.mustBeConfigured(readiness.missingPieces.map((piece) => piece.name).join(', '))}
               </Alert>
             </Box>
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-              <Typography variant="subtitle2">System dependencies</Typography>
+              <Typography variant="subtitle2">{dictionary.prerequisites.systemDependencies}</Typography>
               {doctor.dependencies.map((dependency) => (
-                <DependencyRow key={dependency.name} dependency={dependency} />
+                <DependencyRow key={dependency.name} dependency={dependency} dictionary={dictionary} />
               ))}
             </Box>
           </Box>
@@ -77,7 +81,7 @@ export const PrerequisitesModal = ({ open, folder, onClose }: PrerequisitesModal
       </DialogContent>
       <DialogActions>
         <Button color="inherit" onClick={onClose}>
-          Close
+          {dictionary.prerequisites.close}
         </Button>
         <Button
           variant="outlined"
@@ -85,14 +89,14 @@ export const PrerequisitesModal = ({ open, folder, onClose }: PrerequisitesModal
           disabled={isLoading || doctor === null || readiness === null}
           data-testid="prerequisites-check-again"
         >
-          Check Again
+          {dictionary.prerequisites.checkAgain}
         </Button>
       </DialogActions>
     </Dialog>
   );
 };
 
-const DependencyRow = ({ dependency }: { dependency: DependencyStatus }) => (
+const DependencyRow = ({ dependency, dictionary }: { dependency: DependencyStatus; dictionary: Dictionary }) => (
   <Box
     data-testid="dependency-row"
     data-dependency-name={dependency.name}
@@ -106,7 +110,7 @@ const DependencyRow = ({ dependency }: { dependency: DependencyStatus }) => (
     <Box sx={{ minWidth: 0, flex: 1 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Typography variant="body2" sx={{ fontWeight: 600 }}>
-          {dependencyDisplayName(dependency.name)}
+          {dependencyDisplayName(dictionary, dependency.name)}
         </Typography>
         {dependency.available && dependency.source !== null ? (
           <Chip size="small" label={dependency.source} variant="outlined" />
@@ -115,7 +119,7 @@ const DependencyRow = ({ dependency }: { dependency: DependencyStatus }) => (
       {dependency.available ? (
         <>
           <Typography variant="caption" sx={{ display: 'block' }}>
-            {dependency.version === null ? 'Available' : `Version: ${dependency.version}`}
+            {dependency.version === null ? dictionary.prerequisites.available : dictionary.prerequisites.version(dependency.version)}
           </Typography>
           {dependency.path === null ? null : (
             <Typography variant="caption" color="text.secondary" noWrap title={dependency.path} sx={{ display: 'block' }}>
@@ -126,7 +130,7 @@ const DependencyRow = ({ dependency }: { dependency: DependencyStatus }) => (
       ) : (
         <>
           <Typography variant="caption" color="error" sx={{ display: 'block' }}>
-            Not found
+            {dictionary.prerequisites.notFound}
           </Typography>
           <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
             {dependency.installHint}

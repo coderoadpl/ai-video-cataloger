@@ -2,6 +2,7 @@ import { type ReactNode } from 'react';
 import { Box, Typography } from '@mui/material';
 
 import { FolderIcon } from '../../components/ui/icons.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
 import { CatalogTree } from './CatalogTree.js';
 import { type CatalogState } from './use-catalog.js';
@@ -27,13 +28,15 @@ export const CatalogSidebar = ({
   skippedPaths = EMPTY_SKIPPED,
   toolbar,
 }: CatalogSidebarProps) => {
+  const dictionary = useDictionary();
+
   if (folder === null) {
     return (
       <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         <Typography variant="body2" color="text.secondary">
-          No folder selected
+          {dictionary.catalog.noFolderSelected}
         </Typography>
-        <Typography variant="caption">Open a folder to catalog its videos.</Typography>
+        <Typography variant="caption">{dictionary.catalog.openFolderHint}</Typography>
       </Box>
     );
   }
@@ -64,7 +67,7 @@ export const CatalogSidebar = ({
         </Typography>
         {catalog.isGeneratingThumbnails ? (
           <Typography variant="caption" sx={{ color: 'primary.main' }}>
-            Generating thumbnails…
+            {dictionary.catalog.generatingThumbnails}
           </Typography>
         ) : null}
         {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}

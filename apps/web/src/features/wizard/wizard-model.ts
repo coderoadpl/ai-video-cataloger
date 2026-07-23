@@ -8,6 +8,8 @@ import {
 } from '@core/domain/index.js';
 import type { localAiTierSchema, machineSchema } from '@core/contract/index.js';
 
+import { type Dictionary } from '../../i18n/dictionary.js';
+
 export type LocalAiTier = z.output<typeof localAiTierSchema>;
 export type Machine = z.output<typeof machineSchema>;
 export type HarnessDescriptor = ReturnType<typeof builtInHarnessProviders>[number];
@@ -24,13 +26,19 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
   'done',
 ];
 
-export const WIZARD_STEP_LABELS: Record<WizardStep, string> = {
-  welcome: 'Welcome',
-  analyzer: 'Analyzer',
-  transcription: 'Transcription',
-  downloads: 'Downloads',
-  readiness: 'Readiness',
-  done: 'Done',
+export const wizardStepLabels = (dictionary: Dictionary): Record<WizardStep, string> => dictionary.wizard.stepLabels;
+
+export const wizardNextLabel = (
+  dictionary: Dictionary,
+  step: WizardStep,
+  hasPlannedDownloads: boolean,
+): string => {
+  if (step === 'downloads') {
+    return hasPlannedDownloads ? dictionary.wizard.nextLabels.installAndContinue : dictionary.wizard.nextLabels.continue;
+  }
+  if (step === 'welcome') return dictionary.wizard.nextLabels.getStarted;
+  if (step === 'done') return dictionary.wizard.nextLabels.finish;
+  return dictionary.wizard.nextLabels.continue;
 };
 
 export type AnalyzerFamily = 'local' | 'api' | 'harness';

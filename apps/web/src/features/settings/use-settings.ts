@@ -5,6 +5,7 @@ import { ApiError } from '@core/client/index.js';
 import { CONFIG_KEYS } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { savedToastStore } from '../../lib/saved-toast.js';
 import {
   changedKeys,
@@ -44,6 +45,7 @@ const messageOf = (error: unknown): string => {
 };
 
 export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): SettingsState => {
+  const dictionary = useDictionary();
   const enabled = open && folder !== null;
   const queryClient = useQueryClient();
   const configQuery = useQuery({ ...actions.config(folder === null ? {} : { folder }), enabled });
@@ -129,12 +131,13 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       setOriginal(draft);
       await configQuery.refetch();
       await queryClient.invalidateQueries();
-      savedToastStore.show('Settings saved');
+      savedToastStore.show(dictionary.settings.savedToast);
       onSaved?.();
     })();
   }, [
     apiCredential,
     configQuery,
+    dictionary,
     draft,
     folder,
     onSaved,

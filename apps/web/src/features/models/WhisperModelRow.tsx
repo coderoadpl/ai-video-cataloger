@@ -1,6 +1,7 @@
 import { Box, Button, Chip, CircularProgress, LinearProgress, Typography } from '@mui/material';
 
 import { CheckCircleIcon } from '../../components/ui/icons.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { WhisperModelEntry } from './models-model.js';
 
 interface WhisperModelRowProps {
@@ -24,6 +25,7 @@ export const WhisperModelRow = ({
   onDownload,
   onDelete,
 }: WhisperModelRowProps) => {
+  const dictionary = useDictionary();
   const clickable = model.downloaded && !model.active && !disabled;
   const isDownloading = downloadPercentage !== null;
 
@@ -60,15 +62,15 @@ export const WhisperModelRow = ({
             <Typography variant="body2" sx={{ fontWeight: 600, textTransform: 'capitalize' }}>
               {model.name}
             </Typography>
-            {model.active ? <Chip size="small" color="primary" label="Active" /> : null}
+            {model.active ? <Chip size="small" color="primary" label={dictionary.models.active} /> : null}
           </Box>
           <Typography variant="caption">
             {model.size} ·{' '}
             {model.downloaded
               ? model.active
-                ? 'Downloaded'
-                : 'Click to activate'
-              : 'Not downloaded'}
+                ? dictionary.models.downloaded
+                : dictionary.models.clickToActivate
+              : dictionary.models.notDownloaded}
           </Typography>
         </Box>
       </Box>
@@ -92,7 +94,7 @@ export const WhisperModelRow = ({
               onDelete();
             }}
           >
-            {deleting ? <CircularProgress size={16} /> : 'Delete'}
+            {deleting ? <CircularProgress size={16} /> : dictionary.models.delete}
           </Button>
         ) : (
           <Button
@@ -105,7 +107,7 @@ export const WhisperModelRow = ({
               onDownload();
             }}
           >
-            Download
+            {dictionary.models.download}
           </Button>
         )}
       </Box>

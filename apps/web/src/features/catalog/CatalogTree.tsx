@@ -2,6 +2,7 @@ import { useCallback, useState } from 'react';
 import { Box, Collapse, List, ListItemButton, Typography } from '@mui/material';
 
 import { ChevronRightIcon, ExpandMoreIcon, FolderIcon } from '../../components/ui/icons.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type CatalogVideo } from './catalog-video.js';
 import { type CatalogTreeNode } from './catalog-tree-model.js';
 import { VideoList } from './VideoList.js';
@@ -14,11 +15,15 @@ interface CatalogTreeProps {
   onSelect: (video: CatalogVideo) => void;
 }
 
-const FolderCounts = ({ pending, processed }: { pending: number; processed: number }) => (
-  <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', flexShrink: 0 }}>
-    {pending} pending · {processed} done
-  </Typography>
-);
+const FolderCounts = ({ pending, processed }: { pending: number; processed: number }) => {
+  const dictionary = useDictionary();
+
+  return (
+    <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', flexShrink: 0 }}>
+      {dictionary.catalog.folderCounts(pending, processed)}
+    </Typography>
+  );
+};
 
 interface NodeProps extends Omit<CatalogTreeProps, 'root'> {
   node: CatalogTreeNode;

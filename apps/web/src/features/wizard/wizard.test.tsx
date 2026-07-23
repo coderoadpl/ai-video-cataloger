@@ -3,6 +3,7 @@ import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
+import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { SetupWizard } from './SetupWizard.js';
@@ -352,9 +353,9 @@ describe('SetupWizard', () => {
     fireEvent.click(screen.getByTestId('analyzer-family-harness'));
 
     const claude = await screen.findByTestId('harness-claude-code');
-    await waitFor(() => expect(claude.textContent).toContain('Installed'));
+    await waitFor(() => expect(claude.textContent).toContain(en.wizard.analyzer.installed));
     const codex = screen.getByTestId('harness-codex');
-    await waitFor(() => expect(codex.textContent).toContain('Not detected'));
+    await waitFor(() => expect(codex.textContent).toContain(en.wizard.analyzer.notDetected));
   });
 
   it('skips downloads when transcription is skipped and a harness is available', async () => {

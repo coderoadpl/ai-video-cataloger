@@ -15,7 +15,7 @@ export const savedToastStore = {
   snapshot(): string | null {
     return current;
   },
-  show(message = 'Saved'): void {
+  show(message: string): void {
     current = message;
     emit();
   },

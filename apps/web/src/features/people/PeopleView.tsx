@@ -20,6 +20,8 @@ import {
 
 import { ImageIcon } from '../../components/ui/icons.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
+import { type Dictionary } from '../../i18n/dictionary.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { type FacePerson, usePeople } from './use-people.js';
 
@@ -36,8 +38,8 @@ interface RenameState {
   value: string;
 }
 
-const displayName = (person: FacePerson, index: number): string =>
-  person.displayName ?? `Person ${String(index + 1)}`;
+const displayName = (dictionary: Dictionary, person: FacePerson, index: number): string =>
+  person.displayName ?? dictionary.people.personName(index);
 
 export const PeopleView = ({
   active,
@@ -46,6 +48,7 @@ export const PeopleView = ({
   onOpenSettings,
   intervalMs,
 }: PeopleViewProps) => {
+  const dictionary = useDictionary();
   const people = usePeople({ active, folder, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
   const [rename, setRename] = useState<RenameState | null>(null);
   const [forgetTarget, setForgetTarget] = useState<FacePerson | null>(null);
@@ -69,8 +72,8 @@ export const PeopleView = ({
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', p: 3, gap: 2.5 }}>
       <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
         <Box>
-          <Typography variant="h1">People</Typography>
-          <Typography variant="caption">Local face grouping across indexed catalog videos.</Typography>
+          <Typography variant="h1">{dictionary.people.title}</Typography>
+          <Typography variant="caption">{dictionary.people.subtitle}</Typography>
         </Box>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
           <Button
@@ -80,7 +83,7 @@ export const PeopleView = ({
             onClick={() => setMergeOpen(true)}
             data-testid="people-merge-selected"
           >
-            Merge selected
+            {dictionary.people.mergeSelected}
           </Button>
           <Button
             variant="contained"
@@ -89,7 +92,7 @@ export const PeopleView = ({
             onClick={people.indexFaces}
             data-testid="people-index"
           >
-            Index faces
+            {dictionary.people.indexFaces}
           </Button>
         </Box>
       </Box>
@@ -103,15 +106,15 @@ export const PeopleView = ({
         <LoadingState />
       ) : people.facesEnabled === false ? (
         <EmptyState
-          title="Local face grouping is off"
-          body="Turn on local face grouping in Settings to group faces on this Mac."
-          action={<Button variant="contained" onClick={onOpenSettings}>Open Settings</Button>}
+          title={dictionary.people.localFaceGroupingOffTitle}
+          body={dictionary.people.localFaceGroupingOffBody}
+          action={<Button variant="contained" onClick={onOpenSettings}>{dictionary.common.openSettings}</Button>}
           testId="people-disabled-state"
         />
       ) : people.artifactsReady === false ? (
         <EmptyState
-          title="Face grouping models are not installed"
-          body="Install the local model files before indexing face groupings."
+          title={dictionary.people.modelsMissingTitle}
+          body={dictionary.people.modelsMissingBody}
           action={
             <Button
               variant="contained"
@@ -119,20 +122,20 @@ export const PeopleView = ({
               disabled={people.isBusy}
               data-testid="people-install-models"
             >
-              Install models
+              {dictionary.people.installModels}
             </Button>
           }
           testId="people-no-models-state"
         />
       ) : people.observations === 0 && people.people.length === 0 ? (
         <EmptyState
-          title="No face groupings yet"
+          title={dictionary.people.noFaceGroupingsTitle}
           body={folder === null
-            ? 'Select a folder, then run ai-video-cataloger faces index <folder>.'
-            : 'Run indexing to create local face groupings for this folder.'}
+            ? dictionary.people.noFolderBody
+            : dictionary.people.runIndexingBody}
           action={folder === null ? null : (
             <Button variant="contained" onClick={people.indexFaces} disabled={people.isBusy}>
-              Index faces
+              {dictionary.people.indexFaces}
             </Button>
           )}
           testId="people-empty-state"
@@ -151,20 +154,20 @@ export const PeopleView = ({
               <PersonCard
                 key={person.personId}
                 person={person}
-                name={displayName(person, index)}
+                name={displayName(dictionary, person, index)}
                 selected={people.selectedPersonIds.includes(person.personId)}
                 disabled={people.isBusy}
                 onToggle={() => people.toggleSelected(person.personId)}
-                onRename={() => setRename({ person, value: displayName(person, index) })}
+                onRename={() => setRename({ person, value: displayName(dictionary, person, index) })}
                 onForget={() => setForgetTarget(person)}
               />
             ))}
           </Box>
           <Divider />
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }} data-testid="people-danger-area">
-            <Typography variant="body2" sx={{ fontWeight: 600 }}>Danger area</Typography>
+            <Typography variant="body2" sx={{ fontWeight: 600 }}>{dictionary.people.dangerArea}</Typography>
             <Typography variant="caption">
-              Delete all local face data if you want to remove every grouping and exemplar crop.
+              {dictionary.people.dangerBody}
             </Typography>
             <Box>
               <Button
@@ -175,7 +178,7 @@ export const PeopleView = ({
                 onClick={() => setPurgeOpen(true)}
                 data-testid="people-purge"
               >
-                Delete all face data
+                {dictionary.people.deleteAllFaceData}
               </Button>
             </Box>
           </Box>
@@ -183,12 +186,12 @@ export const PeopleView = ({
       )}
 
       <Dialog open={rename !== null} onClose={() => setRename(null)} fullWidth maxWidth="xs">
-        <DialogTitle>Rename grouping</DialogTitle>
+        <DialogTitle>{dictionary.people.renameGrouping}</DialogTitle>
         <DialogContent>
           <TextField
             fullWidth
             size="small"
-            label="Display name"
+            label={dictionary.people.displayName}
             value={rename?.value ?? ''}
             onChange={(event) => {
               const current = rename;
@@ -198,7 +201,7 @@ export const PeopleView = ({
           />
         </DialogContent>
         <DialogActions>
-          <Button color="inherit" onClick={() => setRename(null)}>Cancel</Button>
+          <Button color="inherit" onClick={() => setRename(null)}>{dictionary.common.cancel}</Button>
           <Button
             variant="contained"
             disabled={rename === null || rename.value.trim().length === 0 || people.isBusy}
@@ -209,16 +212,21 @@ export const PeopleView = ({
             }}
             data-testid="people-rename-save"
           >
-            Save
+            {dictionary.common.save}
           </Button>
         </DialogActions>
       </Dialog>
 
       <ConfirmDialog
         open={mergeOpen && mergeTarget !== null}
-        title="Merge groupings"
-        body={mergeTarget === null ? '' : `Merge ${displayName(mergeTarget.from.person, mergeTarget.from.index)} into ${displayName(mergeTarget.to.person, mergeTarget.to.index)}? This cannot be undone.`}
-        confirmLabel="Merge"
+        title={dictionary.people.mergeGroupings}
+        body={mergeTarget === null
+          ? ''
+          : dictionary.people.mergeBody(
+            displayName(dictionary, mergeTarget.from.person, mergeTarget.from.index),
+            displayName(dictionary, mergeTarget.to.person, mergeTarget.to.index),
+          )}
+        confirmLabel={dictionary.people.merge}
         testId="people-merge-confirm"
         disabled={people.isBusy}
         onClose={() => setMergeOpen(false)}
@@ -230,9 +238,9 @@ export const PeopleView = ({
 
       <ConfirmDialog
         open={forgetTarget !== null}
-        title="Delete face grouping"
-        body="This permanently deletes this person's grouping, face observations (including embeddings), and exemplar crops. It cannot be undone."
-        confirmLabel="Delete"
+        title={dictionary.people.deleteFaceGrouping}
+        body={dictionary.people.deleteFaceGroupingBody}
+        confirmLabel={dictionary.people.delete}
         testId="people-forget-confirm"
         disabled={people.isBusy}
         onClose={() => setForgetTarget(null)}
@@ -244,9 +252,9 @@ export const PeopleView = ({
 
       <ConfirmDialog
         open={purgeOpen}
-        title="Delete all face data"
-        body="This permanently deletes all local face grouping data and exemplar crops. It cannot be undone."
-        confirmLabel="Delete all"
+        title={dictionary.people.deleteAllFaceData}
+        body={dictionary.people.deleteAllFaceDataBody}
+        confirmLabel={dictionary.people.deleteAll}
         testId="people-purge-confirm"
         disabled={people.isBusy}
         onClose={() => setPurgeOpen(false)}
@@ -259,12 +267,16 @@ export const PeopleView = ({
   );
 };
 
-const LoadingState = () => (
-  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 8 }}>
-    <CircularProgress size={20} />
-    <Typography variant="body2">Loading people...</Typography>
-  </Box>
-);
+const LoadingState = () => {
+  const dictionary = useDictionary();
+
+  return (
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1.5, py: 8 }}>
+      <CircularProgress size={20} />
+      <Typography variant="body2">{dictionary.people.loadingPeople}</Typography>
+    </Box>
+  );
+};
 
 interface EmptyStateProps {
   title: string;
@@ -312,7 +324,10 @@ const PersonCard = ({
   onToggle,
   onRename,
   onForget,
-}: PersonCardProps) => (
+}: PersonCardProps) => {
+  const dictionary = useDictionary();
+
+  return (
   <Card
     variant="outlined"
     data-testid="people-card"
@@ -333,7 +348,7 @@ const PersonCard = ({
         checked={selected}
         disabled={disabled}
         onChange={onToggle}
-        slotProps={{ input: { 'aria-label': `Select ${name}` } }}
+        slotProps={{ input: { 'aria-label': dictionary.people.selectPerson(name) } }}
         sx={{ position: 'absolute', top: 4, left: 4, bgcolor: 'background.paper', borderRadius: 1 }}
       />
       {person.exemplarCropPath === null ? (
@@ -349,18 +364,19 @@ const PersonCard = ({
     </Box>
     <CardContent sx={{ p: 1.25, flex: 1 }}>
       <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={name}>{name}</Typography>
-      <Typography variant="caption">{person.observationCount} observation(s)</Typography>
+      <Typography variant="caption">{dictionary.people.observationCount(person.observationCount)}</Typography>
     </CardContent>
     <CardActions sx={{ px: 1, py: 0.75 }}>
       <Button size="small" onClick={onRename} disabled={disabled} data-testid="people-rename">
-        Rename
+        {dictionary.people.rename}
       </Button>
       <Button size="small" color="error" onClick={onForget} disabled={disabled} data-testid="people-forget">
-        Delete
+        {dictionary.people.delete}
       </Button>
     </CardActions>
   </Card>
-);
+  );
+};
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -382,17 +398,21 @@ const ConfirmDialog = ({
   disabled,
   onClose,
   onConfirm,
-}: ConfirmDialogProps) => (
+}: ConfirmDialogProps) => {
+  const dictionary = useDictionary();
+
+  return (
   <Dialog open={open} onClose={onClose} fullWidth maxWidth="xs">
     <DialogTitle>{title}</DialogTitle>
     <DialogContent>
       <DialogContentText>{body}</DialogContentText>
     </DialogContent>
     <DialogActions>
-      <Button color="inherit" onClick={onClose}>Cancel</Button>
+      <Button color="inherit" onClick={onClose}>{dictionary.common.cancel}</Button>
       <Button color="error" variant="contained" onClick={onConfirm} disabled={disabled} data-testid={testId}>
         {confirmLabel}
       </Button>
     </DialogActions>
   </Dialog>
-);
+  );
+};

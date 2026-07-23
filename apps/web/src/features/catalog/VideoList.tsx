@@ -5,6 +5,8 @@ import { ApiError } from '@core/client/index.js';
 
 import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
+import { type Dictionary } from '../../i18n/dictionary.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type CatalogVideo, keyOf } from './catalog-video.js';
 
 const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
@@ -20,10 +22,10 @@ interface VideoListProps {
   skippedPaths?: ReadonlySet<string>;
 }
 
-export const SkippedBadge = () => (
+export const SkippedBadge = ({ dictionary }: { dictionary: Dictionary }) => (
   <Chip
     size="small"
-    label="Skipped"
+    label={dictionary.catalog.skipped}
     data-testid="skipped-badge"
     sx={(theme) => ({
       bgcolor: theme.palette.status.notTracked.soft,
@@ -50,8 +52,8 @@ const Centered = ({ children }: { children: ReactNode }) => (
   </Box>
 );
 
-const errorMessage = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : 'Could not scan this folder.';
+const errorMessage = (error: unknown, dictionary: Dictionary): string =>
+  error instanceof ApiError ? error.appError.message : dictionary.catalog.genericScanError;
 
 const VideoRow = ({
   video,
@@ -59,12 +61,14 @@ const VideoRow = ({
   analyzing,
   skipped,
   onSelect,
+  dictionary,
 }: {
   video: CatalogVideo;
   selected: boolean;
   analyzing: boolean;
   skipped: boolean;
   onSelect: (video: CatalogVideo) => void;
+  dictionary: Dictionary;
 }) => (
   <ListItemButton
     selected={selected}
@@ -94,7 +98,7 @@ const VideoRow = ({
       </Typography>
       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
         <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
-        {skipped ? <SkippedBadge /> : null}
+        {skipped ? <SkippedBadge dictionary={dictionary} /> : null}
       </Box>
       {video.status === 'error' && video.errorMessage != null && video.errorMessage.length > 0 ? (
         <Typography
@@ -120,11 +124,13 @@ export const VideoList = ({
   onSelect,
   skippedPaths = EMPTY_SKIPPED,
 }: VideoListProps) => {
+  const dictionary = useDictionary();
+
   if (isLoading) {
     return (
       <Centered>
         <CircularProgress size={22} />
-        <Typography variant="body2">Scanning folder…</Typography>
+        <Typography variant="body2">{dictionary.catalog.scanningFolder}</Typography>
       </Centered>
     );
   }
@@ -137,7 +143,7 @@ export const VideoList = ({
           role="alert"
           sx={(theme) => ({ color: theme.palette.status.error.main })}
         >
-          {errorMessage(error)}
+          {errorMessage(error, dictionary)}
         </Typography>
       </Centered>
     );
@@ -146,7 +152,7 @@ export const VideoList = ({
   if (videos.length === 0) {
     return (
       <Centered>
-        <Typography variant="body2">No videos found</Typography>
+        <Typography variant="body2">{dictionary.catalog.noVideosFound}</Typography>
       </Centered>
     );
   }
@@ -161,6 +167,7 @@ export const VideoList = ({
           analyzing={video.path === analyzingPath}
           skipped={skippedPaths.has(video.path)}
           onSelect={onSelect}
+          dictionary={dictionary}
         />
       ))}
     </List>

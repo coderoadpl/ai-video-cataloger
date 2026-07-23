@@ -1,6 +1,7 @@
 import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material';
 
 import { PlayCircleIcon } from '../../components/ui/icons.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type DetailsVideo, isIncomplete } from './details-video.js';
 
 interface StatusActionsProps {
@@ -14,6 +15,8 @@ const spinner = <CircularProgress size={16} color="inherit" />;
 const play = <PlayCircleIcon fontSize="small" />;
 
 export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: StatusActionsProps) => {
+  const dictionary = useDictionary();
+
   if (onAnalyze === undefined) return null;
   const run = () => onAnalyze(video);
 
@@ -28,10 +31,10 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: S
           startIcon={analyzing ? spinner : play}
           onClick={run}
         >
-          {analyzing ? 'Analyzing…' : 'Analyze Video'}
+          {analyzing ? dictionary.details.analyzingButton : dictionary.details.analyzeVideo}
         </Button>
         <Typography variant="caption" align="center">
-          {disabledReason ?? 'This will extract frames, transcribe audio, and generate a summary using AI.'}
+          {disabledReason ?? dictionary.details.analyzeHint}
         </Typography>
       </Box>
     );
@@ -44,9 +47,9 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: S
         icon={false}
         sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
       >
-        <Typography variant="h2">Processing Incomplete</Typography>
+        <Typography variant="h2">{dictionary.details.processingIncomplete}</Typography>
         <Typography variant="body2">
-          A previous processing attempt was interrupted. Click the button below to restart.
+          {dictionary.details.incompleteHint}
         </Typography>
         <Button
           data-testid="analyze-button"
@@ -57,7 +60,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: S
           startIcon={analyzing ? spinner : play}
           onClick={run}
         >
-          {analyzing ? 'Processing…' : 'Continue Analysis'}
+          {analyzing ? dictionary.details.processingButton : dictionary.details.continueAnalysis}
         </Button>
       </Alert>
     );
@@ -66,7 +69,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: S
   if (video.status === 'error') {
     return (
       <Alert severity="error" icon={false} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Typography variant="h2">Processing Failed</Typography>
+        <Typography variant="h2">{dictionary.details.processingFailed}</Typography>
         {video.errorMessage != null && video.errorMessage.length > 0 ? (
           <Typography variant="body2">{video.errorMessage}</Typography>
         ) : null}
@@ -80,7 +83,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: S
             startIcon={analyzing ? spinner : undefined}
             onClick={run}
           >
-            {analyzing ? 'Retrying…' : 'Retry Analysis'}
+            {analyzing ? dictionary.details.retrying : dictionary.details.retryAnalysis}
           </Button>
         </Box>
       </Alert>

@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { en } from '../../i18n/dictionary.js';
 import { buildReadinessChecklist } from './readiness-checklist.js';
 import type { WhisperModelChoice } from './wizard-model.js';
 
@@ -65,6 +66,7 @@ const installed = (names: WhisperModelChoice['name'][]): WhisperModelChoice[] =>
 describe('buildReadinessChecklist', () => {
   it('marks every checked item green when everything is available', () => {
     const rows = buildReadinessChecklist(
+      en,
       doctor(
         [dependency({ name: 'ffmpeg', available: true }), dependency({ name: 'whisper', available: true })],
         readiness({ ready: true }),
@@ -80,6 +82,7 @@ describe('buildReadinessChecklist', () => {
 
   it('flags a dependency warning as a warning row, not an error', () => {
     const rows = buildReadinessChecklist(
+      en,
       doctor([dependency({ name: 'faces', available: true, warning: 'model not downloaded' })], readiness({})),
       readiness({}),
       installed(['base']),
@@ -90,6 +93,7 @@ describe('buildReadinessChecklist', () => {
 
   it('offers to activate the best installed model when the configured model is missing', () => {
     const rows = buildReadinessChecklist(
+      en,
       null,
       readiness({ ready: false, transcriberModel: 'base', transcriberAvailable: false }),
       installed(['small']),
@@ -102,6 +106,7 @@ describe('buildReadinessChecklist', () => {
 
   it('offers to download the configured model when nothing better is installed', () => {
     const rows = buildReadinessChecklist(
+      en,
       null,
       readiness({ ready: false, transcriberModel: 'base', transcriberAvailable: false }),
       [],
@@ -114,6 +119,7 @@ describe('buildReadinessChecklist', () => {
   it('reflects the same configured whisper model that downloads would target', () => {
     const configuredModel = 'small';
     const rows = buildReadinessChecklist(
+      en,
       null,
       readiness({ transcriberModel: configuredModel, transcriberAvailable: true }),
       installed(['small']),

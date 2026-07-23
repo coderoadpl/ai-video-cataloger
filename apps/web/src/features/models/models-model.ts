@@ -8,6 +8,8 @@ import type {
   whisperModelListEntrySchema,
 } from '@core/contract/index.js';
 
+import { type Dictionary } from '../../i18n/dictionary.js';
+
 export type WhisperModelEntry = z.output<typeof whisperModelListEntrySchema>;
 export type LocalAiTier = z.output<typeof localAiTierSchema>;
 export type Machine = z.output<typeof machineSchema>;
@@ -21,13 +23,16 @@ export const whisperDiskUsageMb = (models: readonly WhisperModelEntry[]): number
 export const formatMb = (mb: number): string =>
   mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 
-export const tierSupportBadge = (tier: LocalAiTier): { text: string; token: 'completed' | 'error' } => {
+export const tierSupportBadge = (
+  dictionary: Dictionary,
+  tier: LocalAiTier,
+): { text: string; token: 'completed' | 'error' } => {
   switch (tier.supportLevel) {
     case 'ok':
-      return { text: 'Compatible', token: 'completed' };
+      return { text: dictionary.models.compatible, token: 'completed' };
     case 'insufficient-ram':
-      return { text: `Needs ${tier.minTotalMemGB} GB RAM`, token: 'error' };
+      return { text: dictionary.models.needsRam(tier.minTotalMemGB), token: 'error' };
     case 'unsupported-platform':
-      return { text: 'Apple Silicon required', token: 'error' };
+      return { text: dictionary.models.appleSiliconRequired, token: 'error' };
   }
 };

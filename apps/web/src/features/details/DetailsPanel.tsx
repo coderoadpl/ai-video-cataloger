@@ -1,5 +1,7 @@
 import { Box, List, ListItem, Paper, Typography } from '@mui/material';
 
+import { type Dictionary } from '../../i18n/dictionary.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type DetailsVideo } from './details-video.js';
 import { VideoDetails } from './VideoDetails.js';
 
@@ -11,29 +13,20 @@ interface DetailsPanelProps {
   onTagSearch?: ((tag: string) => void) | undefined;
 }
 
-const STEPS = [
-  'Click "Open Folder" to select a folder with video files',
-  'The sidebar will show all detected videos',
-  'Select a video to view details and analysis results',
-  'Click "Analyze" to process individual videos',
-  'Terminal output shows real-time progress',
-] as const;
-
-const Welcome = () => (
+const Welcome = ({ dictionary }: { dictionary: Dictionary }) => (
   <Box sx={{ p: 4, maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 3 }}>
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography variant="h1">Welcome to AI Video Cataloger</Typography>
+      <Typography variant="h1">{dictionary.details.welcomeTitle}</Typography>
       <Typography variant="body2" color="text.secondary">
-        Select a folder containing videos to get started. The app analyzes your videos locally to
-        generate summaries, transcriptions, and smart file names.
+        {dictionary.details.welcomeBody}
       </Typography>
     </Box>
     <Paper variant="outlined" sx={{ p: 2 }}>
       <Typography variant="h2" gutterBottom>
-        Getting Started
+        {dictionary.details.gettingStarted}
       </Typography>
       <List dense sx={{ listStyleType: 'decimal', pl: 2.5 }}>
-        {STEPS.map((step) => (
+        {dictionary.details.gettingStartedSteps.map((step) => (
           <ListItem key={step} sx={{ display: 'list-item', py: 0.25, px: 0 }} disableGutters>
             <Typography variant="body2" color="text.secondary">
               {step}
@@ -45,9 +38,11 @@ const Welcome = () => (
   </Box>
 );
 
-export const DetailsPanel = ({ video, analyzing, onAnalyze, disabledReason, onTagSearch }: DetailsPanelProps) =>
-  video === null ? (
-    <Welcome />
+export const DetailsPanel = ({ video, analyzing, onAnalyze, disabledReason, onTagSearch }: DetailsPanelProps) => {
+  const dictionary = useDictionary();
+
+  return video === null ? (
+    <Welcome dictionary={dictionary} />
   ) : (
     <VideoDetails
       video={video}
@@ -57,3 +52,4 @@ export const DetailsPanel = ({ video, analyzing, onAnalyze, disabledReason, onTa
       onTagSearch={onTagSearch}
     />
   );
+};

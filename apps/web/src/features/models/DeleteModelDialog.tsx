@@ -7,6 +7,8 @@ import {
   DialogTitle,
 } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
+
 interface DeleteModelDialogProps {
   open: boolean;
   modelName: string | null;
@@ -14,22 +16,25 @@ interface DeleteModelDialogProps {
   onConfirm: () => void;
 }
 
-export const DeleteModelDialog = ({ open, modelName, onClose, onConfirm }: DeleteModelDialogProps) => (
+export const DeleteModelDialog = ({ open, modelName, onClose, onConfirm }: DeleteModelDialogProps) => {
+  const dictionary = useDictionary();
+
+  return (
   <Dialog open={open} onClose={onClose} maxWidth="xs" fullWidth data-testid="delete-model-dialog">
-    <DialogTitle>Delete model</DialogTitle>
+    <DialogTitle>{dictionary.models.deleteModelTitle}</DialogTitle>
     <DialogContent>
       <DialogContentText>
-        Delete the <strong>{modelName}</strong> Whisper model from disk? You can download it again
-        later.
+        {dictionary.models.deleteModelText(modelName)}
       </DialogContentText>
     </DialogContent>
     <DialogActions>
       <Button color="inherit" onClick={onClose}>
-        Cancel
+        {dictionary.common.cancel}
       </Button>
       <Button color="error" variant="contained" onClick={onConfirm} data-testid="delete-model-confirm">
-        Delete
+        {dictionary.models.delete}
       </Button>
     </DialogActions>
   </Dialog>
-);
+  );
+};

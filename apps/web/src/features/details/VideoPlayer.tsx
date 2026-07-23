@@ -1,6 +1,7 @@
 import { useMemo } from 'react';
 import { Box } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { buildWebVtt } from './subtitles.js';
 import { type DetailsVideo } from './details-video.js';
@@ -10,6 +11,7 @@ interface VideoPlayerProps {
 }
 
 export const VideoPlayer = ({ video }: VideoPlayerProps) => {
+  const dictionary = useDictionary();
   const vtt = useMemo(() => buildWebVtt(video.artifacts.transcriptSegments ?? []), [video.artifacts.transcriptSegments]);
   const trackUrl = vtt === null ? null : `data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`;
 
@@ -29,7 +31,13 @@ export const VideoPlayer = ({ video }: VideoPlayerProps) => {
       }}
     >
       {trackUrl === null ? null : (
-        <track kind="subtitles" src={trackUrl} srcLang="en" label="Transcript" data-testid="detail-subtitles-track" />
+        <track
+          kind="subtitles"
+          src={trackUrl}
+          srcLang="en"
+          label={dictionary.details.transcript}
+          data-testid="detail-subtitles-track"
+        />
       )}
     </Box>
   );

@@ -1,13 +1,15 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { en } from '../../i18n/dictionary.js';
 import { createAppTheme } from '../../theme.js';
+import { renderWithProviders } from '../../test/render.js';
 import { AppHeader } from './AppHeader.js';
 
 const theme = createAppTheme('light');
-const renderThemed = (ui: ReactElement) => render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
+const renderThemed = (ui: ReactElement) => renderWithProviders(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
 
 const renderHeader = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) => {
   const props: Parameters<typeof AppHeader>[0] = {
@@ -45,12 +47,12 @@ describe('AppHeader search dropdown', () => {
       onSearchFocus: searchFocus,
     });
 
-    fireEvent.focus(screen.getByPlaceholderText('Search catalog'));
+    fireEvent.focus(screen.getByPlaceholderText(en.appHeader.searchPlaceholder));
     expect(searchFocus).toHaveBeenCalled();
 
-    expect(await screen.findByText('Top tags')).toBeDefined();
+    expect(await screen.findByText(en.appHeader.topTags)).toBeDefined();
     expect(screen.getByText('drone')).toBeDefined();
-    fireEvent.click(screen.getByLabelText('Remove drone'));
+    fireEvent.click(screen.getByLabelText(en.appHeader.removeRecentSearch('drone')));
     expect(removeRecent).toHaveBeenCalledWith('drone');
 
     fireEvent.click(screen.getByText('cooking'));
@@ -62,7 +64,7 @@ describe('AppHeader search dropdown', () => {
     const change = vi.fn();
     renderHeader({ searchQuery: 'drone', onSearchSubmit: submit, onSearchQueryChange: change });
 
-    const input = screen.getByPlaceholderText('Search catalog');
+    const input = screen.getByPlaceholderText(en.appHeader.searchPlaceholder);
     fireEvent.change(input, { target: { value: 'drone' } });
     fireEvent.keyDown(input, { key: 'Enter' });
 

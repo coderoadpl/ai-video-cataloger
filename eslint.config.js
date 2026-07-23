@@ -294,7 +294,7 @@ export default tseslint.config(
             },
             {
               from: ['web-ui'],
-              allow: ['web-ui', 'web-lib', 'web-theme'],
+              allow: ['web-ui', 'web-lib', 'web-theme', 'web-i18n', 'web-test'],
             },
             {
               from: ['web-lib'],
