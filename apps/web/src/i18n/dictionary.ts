@@ -888,7 +888,7 @@ export const pl: Dictionary = {
     welcome: {
       title: 'Witaj w AI Video Cataloger',
       body: 'Ten kreator konfiguruje analizator i transkrypcję, aby pierwsza analiza działała od początku do końca. Wszystko możesz później zmienić w Ustawieniach.',
-      privacy: 'Wybierz w pełni lokalny model (bez konta), dostawcę API albo jedną z zainstalowanych agent CLI. Sama aplikacja niczego nie wysyła do chmury. Twoje dane — klatki i transkrypcje — opuszczają ten komputer tylko wtedy, gdy wybierzesz własnych dostawców: wpisany klucz API albo używany już harness agent CLI (Claude Code, Codex, Cursor). W pełni lokalny model trzyma wszystko na Macu.',
+      privacy: 'Wybierz w pełni lokalny model (bez konta), dostawcę API albo jednego z zainstalowanych agentów CLI. Sama aplikacja niczego nie wysyła do chmury. Twoje dane — klatki i transkrypcje — opuszczają ten komputer tylko wtedy, gdy wybierzesz własnych dostawców: wpisany klucz API albo używany już harness agent CLI (Claude Code, Codex, Cursor). W pełni lokalny model trzyma wszystko na Macu.',
     },
     analyzer: {
       title: 'Wybierz analizator',
