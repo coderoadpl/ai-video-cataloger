@@ -49,6 +49,7 @@ const config = {
       { target: 'dir', arch: ['arm64'] },
       { target: 'dmg', arch: ['arm64'] },
     ],
+    icon: 'build/icon.icns',
     category: 'public.app-category.utilities',
     darkModeSupport: true,
     hardenedRuntime: true,

@@ -27,6 +27,10 @@ if (userDataDirectory !== null) {
 
 process.env.PATH = buildDesktopPath(process.env.PATH);
 
+if (process.platform === 'darwin' && !app.isPackaged) {
+  app.dock?.setIcon(path.join(currentDirectory, '..', 'build', 'icon.png'));
+}
+
 registerMediaScheme();
 
 let mainWindow: BrowserWindow | null = null;
