@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import {
   appError,
+  isModelValidForHarness,
   legacyAnalyzerProvider,
   ok,
   type AppError,
@@ -250,10 +251,13 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
   }
 
   async analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
-    const provider = input.provider ?? legacyAnalyzerProvider('claude');
-    if (provider.family !== 'harness') {
+    const configured = input.provider ?? legacyAnalyzerProvider('claude');
+    if (configured.family !== 'harness') {
       return { ok: false, error: appError('invalid_config_value', 'Harness analyzer provider configuration is required') };
     }
+    const safe = harnessProviderWithSafeModel(configured);
+    const provider = safe.provider;
+    if (safe.warning !== null) input.onWarning?.(safe.warning);
     const verbose = this.verbose || input.verbose;
     const videoDir = path.dirname(input.videoPath);
     const prompt = buildAnalyzerPrompt({
@@ -545,6 +549,27 @@ export const buildHarnessArgs = (
   provider: Extract<AnalyzerProviderConfig, { family: 'harness' }>,
   values: { prompt: string; videoDir: string },
 ): string[] => expandHarnessArgs(expandedHarnessArgsTemplate(provider), values);
+
+export const harnessProviderWithSafeModel = (
+  provider: Extract<AnalyzerProviderConfig, { family: 'harness' }>,
+): { provider: Extract<AnalyzerProviderConfig, { family: 'harness' }>; warning: string | null } => {
+  const model = provider.model;
+  if (model === undefined || isModelValidForHarness(provider.providerId, model)) {
+    return { provider, warning: null };
+  }
+  const safe: Extract<AnalyzerProviderConfig, { family: 'harness' }> = {
+    family: 'harness',
+    providerId: provider.providerId,
+    command: provider.command,
+    argsTemplate: provider.argsTemplate,
+    promptStyle: provider.promptStyle,
+    ...(provider.reasoningEffort === undefined ? {} : { reasoningEffort: provider.reasoningEffort }),
+  };
+  return {
+    provider: safe,
+    warning: `Model "${model}" is not valid for the ${provider.providerId} harness; falling back to its default model.`,
+  };
+};
 
 const expandedHarnessArgsTemplate = (
   provider: Extract<AnalyzerProviderConfig, { family: 'harness' }>,

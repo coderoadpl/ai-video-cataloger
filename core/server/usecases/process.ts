@@ -408,6 +408,7 @@ const runPipelineSteps = async (
     }
     const transcript = await readFilteredTranscript(deps.fs, paths.transcriptPath, paths.transcriptJsonPath);
     if (!transcript.ok) return transcript;
+    const warnings: string[] = [];
     const analyzed = await deps.analyzer.analyze({
       videoPath: video.originalPath,
       framePaths: frames.value,
@@ -419,7 +420,12 @@ const runPipelineSteps = async (
       timeoutSeconds: resolved.analyzer.timeoutSeconds,
       verbose: resolved.verbose,
       signal: progress?.signal,
+      onWarning: (warning) => warnings.push(warning),
     });
+    for (const warning of warnings) {
+      const reported = await reportAnalyzerWarning(progress, warning, video.originalPath, resolved.batch);
+      if (!reported.ok) return reported;
+    }
     const notCancelled = cancellationBoundary(progress);
     if (!notCancelled.ok) return notCancelled;
     if (!analyzed.ok) return analyzed;
@@ -944,6 +950,23 @@ const report = async (
       stepNumber,
       totalSteps: TOTAL_STEPS,
     },
+  });
+  if (!reported.ok) return reported;
+  return cancellationBoundary(progress);
+};
+
+const reportAnalyzerWarning = async (
+  progress: JobExecutionContext | undefined,
+  warning: string,
+  videoPath: string,
+  batch: ProcessBatchContext,
+): Promise<Result<void, AppError>> => {
+  if (progress === undefined) return ok(undefined);
+  const reported = await progress.reportProgress({
+    step: 'analyzing_with_claude',
+    current: batch.current,
+    total: batch.total,
+    data: { video: videoPath, warning },
   });
   if (!reported.ok) return reported;
   return cancellationBoundary(progress);

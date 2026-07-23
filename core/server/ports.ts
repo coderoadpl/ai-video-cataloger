@@ -390,6 +390,7 @@ export interface AnalyzeInput {
   outputLanguage: AppConfig['output_language'];
   verbose: boolean;
   signal?: AbortSignal | undefined;
+  onWarning?: ((warning: string) => void) | undefined;
 }
 
 export interface AnalysisOutput {

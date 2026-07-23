@@ -242,6 +242,62 @@ describe('HarnessAnalyzerAdapter', () => {
     ]);
   });
 
+  it('drops a cross-provider model id, falls back to the harness default, and warns', async () => {
+    const runner = new FakeAnalyzerCommandRunner('response');
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner, resolveCommand: (command) => command });
+    const codex = builtInHarnessProviders().find((provider) => provider.providerId === 'codex');
+    if (codex === undefined) throw new Error('Expected codex harness descriptor');
+    const warnings: string[] = [];
+
+    const result = await adapter.analyze({
+      ...analyzeInput({
+        family: 'harness',
+        providerId: codex.providerId,
+        command: codex.command,
+        argsTemplate: codex.argsTemplate,
+        promptStyle: codex.promptStyle,
+        model: 'claude-fable-5',
+      }),
+      onWarning: (warning) => warnings.push(warning),
+    });
+
+    expect(result).toEqual(ok({ rawResponse: 'response' }));
+    const call = runner.calls[0];
+    if (call === undefined) throw new Error('Expected codex command call');
+    expect(call.command).toBe('codex');
+    expect(call.args).not.toContain('claude-fable-5');
+    expect(call.args).not.toContain('-m');
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('claude-fable-5');
+    expect(warnings[0]).toContain('codex');
+  });
+
+  it('keeps a genuine custom model id via the escape hatch', async () => {
+    const runner = new FakeAnalyzerCommandRunner('response');
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner, resolveCommand: (command) => command });
+    const codex = builtInHarnessProviders().find((provider) => provider.providerId === 'codex');
+    if (codex === undefined) throw new Error('Expected codex harness descriptor');
+    const warnings: string[] = [];
+
+    await adapter.analyze({
+      ...analyzeInput({
+        family: 'harness',
+        providerId: codex.providerId,
+        command: codex.command,
+        argsTemplate: codex.argsTemplate,
+        promptStyle: codex.promptStyle,
+        model: 'gpt-5-codex',
+      }),
+      onWarning: (warning) => warnings.push(warning),
+    });
+
+    const call = runner.calls[0];
+    if (call === undefined) throw new Error('Expected codex command call');
+    expect(call.args).toContain('-m');
+    expect(call.args).toContain('gpt-5-codex');
+    expect(warnings).toEqual([]);
+  });
+
   it('keeps quotes, command substitutions, and backticks inert inside argument values', async () => {
     const runner = new FakeAnalyzerCommandRunner('response');
     const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });

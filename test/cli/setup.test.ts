@@ -340,6 +340,64 @@ describe('setup command workflow', () => {
     expect(credential).toEqual(ok('whisper-secret'));
   });
 
+  it('scopes the harness model per harness so switching harnesses drops the previous model id', async () => {
+    const home = createTestDir();
+    const folder = createTestDir();
+    roots.push(home, folder);
+    const deps = createDeps({ homeDirectory: home, workingDirectory: folder });
+    deps.providers = {
+      test: (provider) => provider.family === 'harness'
+        ? Promise.resolve(ok({
+            family: 'harness',
+            providerId: provider.providerId,
+            available: true,
+            version: 'fake 1.0',
+            latencyMs: 1,
+            message: 'Available',
+          }))
+        : Promise.resolve(ok({
+            family: 'api',
+            providerId: provider.providerId,
+            reachable: true,
+            authenticated: true,
+            latencyMs: 1,
+            message: 'Available',
+          })),
+    };
+    deps.analyzer = new InMemoryAnalyzer();
+    deps.transcriber = new InMemoryTranscriber();
+    const api = createApiClient({ baseUrl: '', fetchImpl: (input, init) => buildApp(deps).request(input, init) });
+    const output: SetupOutput = {
+      started: () => undefined,
+      progress: () => undefined,
+      completed: () => undefined,
+      error: () => undefined,
+      write: () => undefined,
+    };
+
+    expect(await executeSetup({
+      api,
+      folder,
+      options: { analyzer: 'harness', harness: 'claude-code', harnessModel: 'claude-fable-5', transcription: 'skip', yes: true },
+      output,
+      environment: { HOME: home },
+    })).toBe(true);
+
+    expect(await executeSetup({
+      api,
+      folder,
+      options: { analyzer: 'harness', harness: 'codex', transcription: 'skip', yes: true },
+      output,
+      environment: { HOME: home },
+    })).toBe(true);
+
+    const stored = await deps.config.get({ kind: 'folder', folder }, 'analyzer_provider');
+    if (!stored.ok || stored.value === null) throw new Error('Expected a stored analyzer provider');
+    const parsed = analyzerProviderConfigSchema.parse(JSON.parse(stored.value));
+    expect(parsed).toMatchObject({ family: 'harness', providerId: 'codex' });
+    expect(parsed.family === 'harness' ? parsed.model : 'set').toBeUndefined();
+  });
+
   it('rejects setup flags scoped to the wrong family', async () => {
     const folder = createTestDir();
     roots.push(folder);

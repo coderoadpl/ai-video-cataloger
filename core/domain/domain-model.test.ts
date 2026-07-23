@@ -10,6 +10,7 @@ import {
   configSchema,
   getLocalAiSupportLevel,
   analyzerProviderConfigSchema,
+  isModelValidForHarness,
   videoStatusSchema,
 } from './index.js';
 
@@ -211,6 +212,15 @@ describe('model catalogs', () => {
       'large-v3': { name: 'large-v3', size: '3.1GB', sizeMb: 3174 },
       'large-v3-turbo': { name: 'large-v3-turbo', size: '1.6GB', sizeMb: 1549 },
     });
+  });
+
+  it('accepts curated and genuinely custom harness models but rejects cross-provider ids', () => {
+    expect(isModelValidForHarness('codex', 'gpt-5.5')).toBe(true);
+    expect(isModelValidForHarness('claude-code', 'claude-fable-5')).toBe(true);
+    expect(isModelValidForHarness('codex', 'gpt-5-codex')).toBe(true);
+    expect(isModelValidForHarness('cursor-agent', 'cursor-large-high')).toBe(true);
+    expect(isModelValidForHarness('codex', 'claude-fable-5')).toBe(false);
+    expect(isModelValidForHarness('claude-code', 'gpt-5.6-sol')).toBe(false);
   });
 
   it('evaluates local AI support as Apple-Silicon-only with RAM thresholds', () => {

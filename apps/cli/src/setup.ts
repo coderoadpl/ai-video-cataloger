@@ -309,9 +309,14 @@ const selectHarnessAnalyzer = async (
     context.output.error(appError('invalid_config_value', `Unknown built-in harness: ${providerId}`));
     return null;
   }
-  const existingModel = existing.provider?.family === 'harness' ? existing.provider.model ?? '' : '';
+  // model/effort are scoped per harness: only inherit them when the stored provider is
+  // the SAME harness, so switching harnesses never carries another provider's model id.
+  const existingHarness = existing.provider?.family === 'harness' && existing.provider.providerId === descriptor.providerId
+    ? existing.provider
+    : null;
+  const existingModel = existingHarness?.model ?? '';
   const model = context.options.harnessModel ?? await askOptional(context, 'Model (optional)', existingModel);
-  const effort = context.options.harnessEffort ?? (existing.provider?.family === 'harness' ? existing.provider.reasoningEffort : undefined);
+  const effort = context.options.harnessEffort ?? existingHarness?.reasoningEffort;
   const provider = toHarnessConfig(descriptor, model, effort);
   const tested = await context.api.testProvider(provider);
   if (!tested.ok) {

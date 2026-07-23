@@ -170,3 +170,12 @@ export const HARNESS_MODEL_OPTIONS: Record<string, readonly string[]> = {
 
 export const curatedHarnessModels = (providerId: string): readonly string[] =>
   HARNESS_MODEL_OPTIONS[providerId] ?? [];
+
+// Valid = curated for this provider, or a genuine custom id (the escape hatch); an id
+// claimed by a different provider's curated set is a cross-provider leak and rejected.
+export const isModelValidForHarness = (providerId: string, model: string): boolean => {
+  const curated = HARNESS_MODEL_OPTIONS[providerId];
+  if (curated !== undefined && curated.includes(model)) return true;
+  return !Object.entries(HARNESS_MODEL_OPTIONS)
+    .some(([id, models]) => id !== providerId && models.includes(model));
+};
