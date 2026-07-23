@@ -172,6 +172,7 @@ export const processDrive = async (
 
   let consecutiveFailures = 0;
   let fileIndex = 0;
+  const folderPresences: { folderPath: string; presentFingerprints: string[] }[] = [];
   for (const folder of discovery.value.folders) {
     const folderStarted = await report(progress, 'folder-started', {
       path: folder.path,
@@ -241,11 +242,7 @@ export const processDrive = async (
     const presentFingerprints = scan.value.videos
       .map((video) => video.contentHash)
       .filter((hash): hash is string => hash !== null);
-    const reconciled = await reconcileFolderPresence(
-      { globalCatalog, fs: deps.fs },
-      { folderPath: folder.path, presentFingerprints, now: now().getTime() },
-    );
-    if (!reconciled.ok) return reconciled;
+    folderPresences.push({ folderPath: folder.path, presentFingerprints });
 
     state.run.foldersDone += 1;
     const persisted = await persistRun(deps, state, now);
@@ -254,6 +251,20 @@ export const processDrive = async (
     if (!flushedFolder.ok) return flushedFolder;
     const done = await reportFolderDone(progress, folder.path, folderCounts);
     if (!done.ok) return done;
+  }
+
+  const presentAcrossRun = [...new Set(folderPresences.flatMap((entry) => entry.presentFingerprints))];
+  for (const entry of folderPresences) {
+    const reconciled = await reconcileFolderPresence(
+      { globalCatalog, fs: deps.fs },
+      {
+        folderPath: entry.folderPath,
+        presentFingerprints: entry.presentFingerprints,
+        fingerprintsPresentElsewhere: presentAcrossRun,
+        now: now().getTime(),
+      },
+    );
+    if (!reconciled.ok) return reconciled;
   }
 
   state.run.finishedAt = now().toISOString();

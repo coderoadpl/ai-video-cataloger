@@ -140,7 +140,12 @@ export const upsertProcessedVideo = async (
 
 export const reconcileFolderPresence = async (
   deps: CatalogIndexDeps,
-  input: { folderPath: string; presentFingerprints: readonly string[]; now?: number },
+  input: {
+    folderPath: string;
+    presentFingerprints: readonly string[];
+    fingerprintsPresentElsewhere?: readonly string[];
+    now?: number;
+  },
 ): Promise<Result<ReconcileFolderResult, AppError>> => {
   const marker = await readFolderMarker(deps.fs, input.folderPath);
   if (!marker.ok) return marker;
@@ -148,6 +153,9 @@ export const reconcileFolderPresence = async (
   return deps.globalCatalog.reconcileFolder({
     folderId: marker.value.folderId,
     presentFingerprints: input.presentFingerprints,
+    ...(input.fingerprintsPresentElsewhere === undefined
+      ? {}
+      : { fingerprintsPresentElsewhere: input.fingerprintsPresentElsewhere }),
     now: input.now ?? Date.now(),
   });
 };

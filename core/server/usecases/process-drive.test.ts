@@ -119,6 +119,21 @@ describe('drive processing', () => {
     expect(deps.analyzer.inputs).toHaveLength(callsAfterFirst);
   });
 
+  it('does not mark a file missing after it moves to another cataloged folder', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/a/clip.mp4', 'hash-clip');
+    addVideo(deps.fs, '/drive/a/keep.mp4', 'hash-keep');
+    addVideo(deps.fs, '/drive/b/clip.mp4', 'hash-clip');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    await deps.fs.deleteFile('/drive/a/clip.mp4');
+    const second = await processDrive(deps, baseInput, undefined, { runId: 'run-move' });
+
+    const moved = await deps.globalCatalog.getFile('hash-clip');
+    expect(second.ok).toBe(true);
+    expect(moved.ok && moved.value?.missingAt).toBe(null);
+  });
+
   it('continues after file and folder failures and persists run counters', async () => {
     const fs = new ScanFailureFileSystem('/drive');
     const analyzer = new PathResponseAnalyzer();
