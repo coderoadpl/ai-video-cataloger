@@ -18,6 +18,12 @@ describe('WebVTT subtitles', () => {
     ])).toBe('WEBVTT\n\n1\n00:00:00.000 --> 00:00:00.500\nedge\n');
   });
 
+  it('escapes cue markup and collapses newlines', () => {
+    expect(buildWebVtt([
+      { start: 0, end: 1, text: 'rock & roll <b> 5 > 3\nnext' },
+    ])).toBe('WEBVTT\n\n1\n00:00:00.000 --> 00:00:01.000\nrock &amp; roll &lt;b&gt; 5 &gt; 3 next\n');
+  });
+
   it('formats hour and millisecond edges', () => {
     expect(formatVttTime(3661.007)).toBe('01:01:01.007');
     expect(formatVttTime(-2)).toBe('00:00:00.000');

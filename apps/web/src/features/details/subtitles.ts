@@ -15,9 +15,16 @@ export const buildWebVtt = (segments: readonly TranscriptSegment[]): string | nu
 
   if (cues.length === 0) return null;
   return `WEBVTT\n\n${cues
-    .map((cue, index) => `${index + 1}\n${formatVttTime(cue.start)} --> ${formatVttTime(cue.end)}\n${cue.text}`)
+    .map((cue, index) => `${index + 1}\n${formatVttTime(cue.start)} --> ${formatVttTime(cue.end)}\n${escapeCueText(cue.text)}`)
     .join('\n\n')}\n`;
 };
+
+const escapeCueText = (text: string): string =>
+  text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/\r?\n/g, ' ');
 
 export const formatVttTime = (seconds: number): string => {
   const clamped = Math.max(0, seconds);
