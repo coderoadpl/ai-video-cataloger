@@ -32,6 +32,7 @@ const file = (fingerprint: string, folderId: string, fileName: string): CatalogF
   processedAt: '2026-01-02T00:00:00.000Z',
   analyzer: null,
   model: null,
+  missingAt: null,
 });
 
 const analysis = (

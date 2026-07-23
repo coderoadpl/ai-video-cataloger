@@ -725,6 +725,16 @@ export const indexRebuildOutputSchema = z.object({
   folders: z.array(indexStatusFolderSchema),
 });
 
+export const indexForgetInputSchema = z.object({
+  fingerprint: z.string().min(1),
+});
+
+export const indexForgetOutputSchema = z.object({
+  fingerprint: z.string().min(1),
+  deleted: z.boolean(),
+  folderId: z.string().uuid().nullable(),
+});
+
 export const tagsListOutputSchema = z.object({
   tags: z.array(z.object({
     name: z.string().min(1),
@@ -766,6 +776,7 @@ export const searchResultSchema = z.object({
     lat: z.number().min(-90).max(90),
     lon: z.number().min(-180).max(180),
   }).nullable(),
+  missing: z.boolean(),
 });
 
 export const searchOutputSchema = z.object({
@@ -971,6 +982,7 @@ export const API_ROUTES = {
   jobCancel: { method: 'POST', path: '/api/jobs/cancel', input: jobIdInputSchema, output: jobCancelOutputSchema },
   indexStatus: { method: 'GET', path: '/api/index/status', input: emptyInputSchema, output: indexStatusOutputSchema },
   indexRebuild: { method: 'POST', path: '/api/index/rebuild', input: emptyInputSchema, output: indexRebuildOutputSchema },
+  indexForget: { method: 'POST', path: '/api/index/forget', input: indexForgetInputSchema, output: indexForgetOutputSchema },
   tagsList: { method: 'GET', path: '/api/tags', input: emptyInputSchema, output: tagsListOutputSchema },
   tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
   searchQuery: { method: 'GET', path: '/api/search', input: searchInputSchema, output: searchOutputSchema },
@@ -1021,6 +1033,7 @@ export const API_PATHS = {
   jobCancel: API_ROUTES.jobCancel.path,
   indexStatus: API_ROUTES.indexStatus.path,
   indexRebuild: API_ROUTES.indexRebuild.path,
+  indexForget: API_ROUTES.indexForget.path,
   tagsList: API_ROUTES.tagsList.path,
   tagsAlias: API_ROUTES.tagsAlias.path,
   searchQuery: API_ROUTES.searchQuery.path,

@@ -2,12 +2,15 @@ import { describe, expect, it } from 'vitest';
 
 import { ensureFolderMarker, folderMarkerPath, readFolderMarker } from './folder-identity.js';
 import {
+  forgetCatalogEntry,
   hasProcessedAnalysis,
   indexRebuild,
   indexStatus,
+  reconcileFolderPresence,
   resolveFolderIntoIndex,
   upsertProcessedVideo,
 } from './catalog-index.js';
+import { folderSnapshotPath } from './catalog-snapshot.js';
 import { aliasTag, listTags } from './tags.js';
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
 
@@ -117,6 +120,53 @@ describe('index status and rebuild', () => {
       offset: 0,
     });
     expect(importedSearch.ok && importedSearch.value[0]?.fingerprint).toBe('fp-1');
+  });
+});
+
+describe('missing-file reconciliation', () => {
+  it('marks catalog files missing when absent from the disk listing and clears them on return', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const store = new InMemoryGlobalCatalogStore();
+    await upsertProcessedVideo({ globalCatalog: store, fs }, processedInput('/work'));
+
+    const marked = await reconcileFolderPresence({ globalCatalog: store, fs }, {
+      folderPath: '/work',
+      presentFingerprints: [],
+      now: 111,
+    });
+    expect(marked.ok && marked.value.marked).toBe(1);
+    const missing = await store.getFile('fp-1');
+    expect(missing.ok && missing.value?.missingAt).toBe(111);
+
+    const cleared = await reconcileFolderPresence({ globalCatalog: store, fs }, {
+      folderPath: '/work',
+      presentFingerprints: ['fp-1'],
+      now: 222,
+    });
+    expect(cleared.ok && cleared.value.cleared).toBe(1);
+    const healed = await store.getFile('fp-1');
+    expect(healed.ok && healed.value?.missingAt).toBe(null);
+  });
+
+  it('forgets a catalog entry everywhere and refreshes the folder snapshot', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const store = new InMemoryGlobalCatalogStore();
+    await upsertProcessedVideo({ globalCatalog: store, fs }, processedInput('/work'));
+
+    const seededSnapshot = await fs.readTextFile(folderSnapshotPath(fs, '/work'));
+    expect(seededSnapshot.ok && seededSnapshot.value).toContain('fp-1');
+
+    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs }, { fingerprint: 'fp-1' });
+    expect(forgotten.ok && forgotten.value.deleted).toBe(true);
+
+    const gone = await store.getFile('fp-1');
+    expect(gone.ok && gone.value).toBe(null);
+    const analysisGone = await store.getAnalysis('fp-1');
+    expect(analysisGone.ok && analysisGone.value).toBe(null);
+    const refreshedSnapshot = await fs.readTextFile(folderSnapshotPath(fs, '/work'));
+    expect(refreshedSnapshot.ok && refreshedSnapshot.value?.includes('fp-1')).toBe(false);
   });
 });
 

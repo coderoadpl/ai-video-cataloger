@@ -303,6 +303,7 @@ describe('facesIndex', () => {
       processedAt: '2026-01-01T00:00:00.000Z',
       analyzer: 'claude',
       model: 'sonnet',
+      missingAt: null,
     });
     await deps.globalCatalog.upsertAnalysis({
       fingerprint: 'fp-clip',
@@ -430,6 +431,7 @@ const seedFile = async (deps: FacesDeps, fingerprint: string, fileName: string):
     processedAt: '2026-01-01T00:00:00.000Z',
     analyzer: 'claude',
     model: 'sonnet',
+    missingAt: null,
   });
   await deps.globalCatalog.upsertAnalysis({
     fingerprint,

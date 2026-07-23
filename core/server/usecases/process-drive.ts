@@ -17,7 +17,7 @@ import {
   type ProcessJobStep,
 } from '../ports.js';
 import type { ProcessDeps, ProcessPipelineInput } from './process.js';
-import { hasProcessedAnalysis } from './catalog-index.js';
+import { hasProcessedAnalysis, reconcileFolderPresence } from './catalog-index.js';
 import { processVideoPipeline } from './process.js';
 import { scanFolder, type ScanVideo } from './scan.js';
 import { isSupportedVideoExtension } from './shared.js';
@@ -237,6 +237,15 @@ export const processDrive = async (
         };
       }
     }
+
+    const presentFingerprints = scan.value.videos
+      .map((video) => video.contentHash)
+      .filter((hash): hash is string => hash !== null);
+    const reconciled = await reconcileFolderPresence(
+      { globalCatalog, fs: deps.fs },
+      { folderPath: folder.path, presentFingerprints, now: now().getTime() },
+    );
+    if (!reconciled.ok) return reconciled;
 
     state.run.foldersDone += 1;
     const persisted = await persistRun(deps, state, now);

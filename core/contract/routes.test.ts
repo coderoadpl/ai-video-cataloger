@@ -179,6 +179,7 @@ describe('route schemas', () => {
           online: true,
         },
         gps: { lat: 51, lon: 17 },
+        missing: false,
       }],
     });
     expect(parsed.results[0]?.folder.online).toBe(true);

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 6;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 7;
 
 export const folderMarkerSchema = z.object({
   folderId: z.string().uuid(),
@@ -31,6 +31,7 @@ export const catalogFileSchema = z.object({
   processedAt: z.string().datetime(),
   analyzer: z.string().nullable(),
   model: z.string().nullable(),
+  missingAt: z.number().int().nonnegative().nullable().default(null),
 });
 
 export type CatalogFile = z.output<typeof catalogFileSchema>;

@@ -27,6 +27,7 @@ export interface SearchResult {
     online: boolean;
   };
   gps: { lat: number; lon: number } | null;
+  missing: boolean;
 }
 
 export interface SearchOutput {
@@ -73,6 +74,7 @@ export const search = async (
         online: online.value,
       },
       gps: row.gps,
+      missing: row.missing,
     });
   }
   return ok({

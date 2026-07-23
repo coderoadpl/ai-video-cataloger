@@ -801,6 +801,23 @@ index
     await runSimple(json, 'index_rebuild', () => api.indexRebuild(), indexRebuildHuman, { raw: true });
   });
 
+index
+  .command('forget')
+  .argument('<fingerprint>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (fingerprint: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'index_forget',
+      () => api.indexForget({ fingerprint }),
+      (data) => data.deleted
+        ? `Forgot ${data.fingerprint}`
+        : `No catalog entry for ${data.fingerprint}`,
+      { raw: true },
+    );
+  });
+
 const tags = program.command('tags').description('Inspect and manage catalog tags');
 
 tags

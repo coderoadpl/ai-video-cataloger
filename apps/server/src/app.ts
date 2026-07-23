@@ -28,6 +28,7 @@ import {
   getStatus,
   indexRebuild,
   indexStatus,
+  forgetCatalogEntry,
   installWhisperRuntime,
   aliasTag,
   listTags,
@@ -304,6 +305,14 @@ export const buildApp = (deps: AppDeps): Hono => {
   app.post(API_ROUTES.indexRebuild.path, async () =>
     respond(await indexRebuild(deps), API_ROUTES.indexRebuild.output),
   );
+
+  app.post(API_ROUTES.indexForget.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.indexForget.output);
+    const input = parseInput(API_ROUTES.indexForget.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.indexForget.output);
+    return respond(await forgetCatalogEntry(deps, input.value), API_ROUTES.indexForget.output);
+  });
 
   app.get(API_ROUTES.tagsList.path, async () =>
     respond(await listTags(deps), API_ROUTES.tagsList.output),

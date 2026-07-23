@@ -41,8 +41,11 @@ import type {
   CatalogTagAliasResult,
   CatalogTagSummary,
   DriveRunRecord,
+  ForgetEntryResult,
   GlobalCatalogCounts,
   GlobalCatalogStore,
+  ReconcileFolderInput,
+  ReconcileFolderResult,
 } from '@core/server/index.js';
 
 import {
@@ -60,6 +63,7 @@ import {
   migrateGlobalCatalogSchemaSqlV4,
   migrateGlobalCatalogSchemaSqlV5,
   migrateGlobalCatalogSchemaSqlV6,
+  migrateGlobalCatalogSchemaSqlV7,
   schemaMeta,
   tagAliases,
   tags,
@@ -163,6 +167,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
             processedAt: file.processedAt,
             analyzer: file.analyzer,
             model: file.model,
+            missingAt: file.missingAt,
           },
         })
         .run();
@@ -276,7 +281,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           fo.first_seen_at,
           fo.last_seen_at,
           sd.tags_text,
-          sd.transcript
+          sd.transcript,
+          f.missing_at
         FROM search_documents_fts
         JOIN search_documents sd ON sd.docid = search_documents_fts.docid
         JOIN files f ON f.fingerprint = sd.fingerprint
@@ -303,6 +309,43 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       files: db.select().from(files).all().length,
       analyses: db.select().from(analyses).all().length,
     }));
+  }
+
+  async reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>> {
+    return this.write((db) => {
+      const present = new Set(input.presentFingerprints);
+      const elsewhere = new Set(input.fingerprintsPresentElsewhere ?? []);
+      const rows = db.select().from(files).where(eq(files.folderId, input.folderId)).all();
+      let marked = 0;
+      let cleared = 0;
+      for (const row of rows) {
+        const onDisk = present.has(row.fingerprint) || elsewhere.has(row.fingerprint);
+        if (onDisk) {
+          if (row.missingAt !== null) {
+            db.update(files).set({ missingAt: null }).where(eq(files.fingerprint, row.fingerprint)).run();
+            cleared += 1;
+          }
+        } else if (row.missingAt === null) {
+          db.update(files).set({ missingAt: input.now }).where(eq(files.fingerprint, row.fingerprint)).run();
+          marked += 1;
+        }
+      }
+      return { marked, cleared };
+    });
+  }
+
+  async forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
+    return this.write((db, client) => {
+      const fileRow = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();
+      if (fileRow === undefined) return { fingerprint, deleted: false, folderId: null };
+      deleteSearchDocument(client, fingerprint);
+      db.delete(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).run();
+      db.delete(faceIndexState).where(eq(faceIndexState.fingerprint, fingerprint)).run();
+      db.delete(fileTags).where(eq(fileTags.fingerprint, fingerprint)).run();
+      db.delete(analyses).where(eq(analyses.fingerprint, fingerprint)).run();
+      db.delete(files).where(eq(files.fingerprint, fingerprint)).run();
+      return { fingerprint, deleted: true, folderId: fileRow.folderId };
+    });
   }
 
   async startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
@@ -620,6 +663,10 @@ const migrate = (client: Database): boolean => {
     for (const statement of migrateGlobalCatalogSchemaSqlV6) runMigrationStatement(client, statement);
     migrated = true;
   }
+  if (currentVersion < 7) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV7) runMigrationStatement(client, statement);
+    migrated = true;
+  }
   if (currentVersion < 4) {
     rebuildSearchIndex(drizzle(client, { schema: globalCatalogSchema }), client);
   }
@@ -700,6 +747,7 @@ const rowToFile = (row: typeof files.$inferSelect): CatalogFile => ({
   processedAt: row.processedAt,
   analyzer: row.analyzer,
   model: row.model,
+  missingAt: row.missingAt,
 });
 
 const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
@@ -713,6 +761,7 @@ const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
   processedAt: file.processedAt,
   analyzer: file.analyzer,
   model: file.model,
+  missingAt: file.missingAt,
 });
 
 const rowToAnalysis = (row: typeof analyses.$inferSelect, analysisTags: string[]): CatalogAnalysis => ({
@@ -976,6 +1025,7 @@ const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): 
       lastSeenAt: stringValue(row[11]),
     },
     gps: gpsLat === null || gpsLon === null ? null : { lat: gpsLat, lon: gpsLon },
+    missing: nullableNumberValue(row[14]) !== null,
     score: weightedSearchScore({
       fileName,
       finalName: finalName ?? '',

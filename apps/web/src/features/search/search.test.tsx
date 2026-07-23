@@ -55,6 +55,7 @@ const searchState: GlobalSearchState = {
           online: true,
         },
         gps: null,
+        missing: false,
       }],
     },
     {
@@ -78,6 +79,7 @@ const searchState: GlobalSearchState = {
           online: false,
         },
         gps: null,
+        missing: false,
       }],
     },
   ],

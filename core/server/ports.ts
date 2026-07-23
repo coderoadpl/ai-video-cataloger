@@ -78,7 +78,26 @@ export interface CatalogSearchRow {
   tags: string[];
   folder: CatalogFolder;
   gps: { lat: number; lon: number } | null;
+  missing: boolean;
   score: number;
+}
+
+export interface ReconcileFolderInput {
+  folderId: string;
+  presentFingerprints: readonly string[];
+  fingerprintsPresentElsewhere?: readonly string[];
+  now: number;
+}
+
+export interface ReconcileFolderResult {
+  marked: number;
+  cleared: number;
+}
+
+export interface ForgetEntryResult {
+  fingerprint: string;
+  deleted: boolean;
+  folderId: string | null;
 }
 
 export interface GlobalCatalogCounts {
@@ -132,6 +151,8 @@ export interface GlobalCatalogStore {
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
+  reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>>;
+  forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>>;
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>>;

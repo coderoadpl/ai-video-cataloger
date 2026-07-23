@@ -7,7 +7,13 @@ import {
   type Result,
 } from '@core/domain/index.js';
 
-import type { DriveRunRecord, FileSystemPort, GlobalCatalogStore } from '../ports.js';
+import type {
+  DriveRunRecord,
+  FileSystemPort,
+  ForgetEntryResult,
+  GlobalCatalogStore,
+  ReconcileFolderResult,
+} from '../ports.js';
 import { ensureFolderMarker, readFolderMarker } from './folder-identity.js';
 import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
 
@@ -108,6 +114,7 @@ export const upsertProcessedVideo = async (
     processedAt: input.processedAt,
     analyzer: input.analyzer,
     model: input.model,
+    missingAt: null,
   };
   const upsertedFile = await deps.globalCatalog.upsertFile(file);
   if (!upsertedFile.ok) return upsertedFile;
@@ -129,6 +136,37 @@ export const upsertProcessedVideo = async (
   const snapshot = await exportFolderSnapshot(deps, folder.value);
   if (!snapshot.ok) return snapshot;
   return ok(undefined);
+};
+
+export const reconcileFolderPresence = async (
+  deps: CatalogIndexDeps,
+  input: { folderPath: string; presentFingerprints: readonly string[]; now?: number },
+): Promise<Result<ReconcileFolderResult, AppError>> => {
+  const marker = await readFolderMarker(deps.fs, input.folderPath);
+  if (!marker.ok) return marker;
+  if (marker.value === null) return ok({ marked: 0, cleared: 0 });
+  return deps.globalCatalog.reconcileFolder({
+    folderId: marker.value.folderId,
+    presentFingerprints: input.presentFingerprints,
+    now: input.now ?? Date.now(),
+  });
+};
+
+export const forgetCatalogEntry = async (
+  deps: CatalogIndexDeps,
+  input: { fingerprint: string },
+): Promise<Result<ForgetEntryResult, AppError>> => {
+  const forgotten = await deps.globalCatalog.forgetEntry(input.fingerprint);
+  if (!forgotten.ok) return forgotten;
+  if (forgotten.value.folderId !== null) {
+    const folder = await deps.globalCatalog.getFolder(forgotten.value.folderId);
+    if (!folder.ok) return folder;
+    if (folder.value !== null) {
+      const snapshot = await exportFolderSnapshot(deps, folder.value);
+      if (!snapshot.ok) return snapshot;
+    }
+  }
+  return ok(forgotten.value);
 };
 
 export const hasProcessedAnalysis = async (

@@ -52,6 +52,12 @@ export interface Dictionary {
     genericScanError: string;
     scanningFolder: string;
     noVideosFound: string;
+    absentSectionTitle: string;
+    absentLastSeen: (date: string) => string;
+    forgetEntry: string;
+    forgetEntryConfirmTitle: string;
+    forgetEntryConfirmBody: (name: string) => string;
+    forgetEntryConfirm: string;
   };
   details: {
     welcomeTitle: string;
@@ -100,6 +106,7 @@ export interface Dictionary {
     resultCount: (count: number) => string;
     resultsFor: (query: string) => string;
     driveNotConnected: string;
+    fileMissing: string;
   };
   wizard: {
     stepLabels: {
@@ -407,6 +414,12 @@ export const en: Dictionary = {
     genericScanError: 'Could not scan this folder.',
     scanningFolder: 'Scanning folder…',
     noVideosFound: 'No videos found',
+    absentSectionTitle: 'Previously cataloged, now absent',
+    absentLastSeen: (date) => `Last seen ${date}`,
+    forgetEntry: 'Forget',
+    forgetEntryConfirmTitle: 'Forget catalog entry',
+    forgetEntryConfirmBody: (name) => `Permanently remove ${name} from the catalog? This deletes its analysis and search data. It cannot be undone.`,
+    forgetEntryConfirm: 'Forget',
   },
   details: {
     welcomeTitle: 'Welcome to AI Video Cataloger',
@@ -461,6 +474,7 @@ export const en: Dictionary = {
     resultCount: (count) => `${count} result(s)`,
     resultsFor: (query) => `Search results for ${query}`,
     driveNotConnected: 'drive not connected',
+    fileMissing: 'file missing',
   },
   wizard: {
     stepLabels: {
@@ -790,6 +804,12 @@ export const pl: Dictionary = {
     genericScanError: 'Nie udało się przeskanować tego folderu.',
     scanningFolder: 'Skanowanie folderu…',
     noVideosFound: 'Nie znaleziono filmów',
+    absentSectionTitle: 'Wcześniej skatalogowane, obecnie nieobecne',
+    absentLastSeen: (date) => `Ostatnio widziano ${date}`,
+    forgetEntry: 'Zapomnij',
+    forgetEntryConfirmTitle: 'Zapomnij wpis katalogu',
+    forgetEntryConfirmBody: (name) => `Trwale usunąć ${name} z katalogu? Spowoduje to usunięcie danych analizy i wyszukiwania. Tego nie można cofnąć.`,
+    forgetEntryConfirm: 'Zapomnij',
   },
   details: {
     welcomeTitle: 'Witaj w AI Video Cataloger',
@@ -844,6 +864,7 @@ export const pl: Dictionary = {
     resultCount: (count) => `${count} wynik(i)`,
     resultsFor: (query) => `Wyniki wyszukiwania dla ${query}`,
     driveNotConnected: 'dysk niepodłączony',
+    fileMissing: 'brak pliku',
   },
   wizard: {
     stepLabels: {

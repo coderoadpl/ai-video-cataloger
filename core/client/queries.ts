@@ -86,6 +86,7 @@ export type FacesNameInput = z.input<typeof API_ROUTES.facesName.input>;
 export type FacesMergeInput = z.input<typeof API_ROUTES.facesMerge.input>;
 export type FacesForgetInput = z.input<typeof API_ROUTES.facesForget.input>;
 export type FacesPurgeInput = z.input<typeof API_ROUTES.facesPurge.input>;
+export type IndexForgetInput = z.input<typeof API_ROUTES.indexForget.input>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
 export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
@@ -196,6 +197,7 @@ export const mutationScopes = {
   facesMerge: () => ['facesMerge'] as const,
   facesForget: () => ['facesForget'] as const,
   facesPurge: () => ['facesPurge'] as const,
+  indexForget: () => ['indexForget'] as const,
 };
 
 interface RefetchQuery<TData> {
@@ -493,4 +495,10 @@ export const facesPurgeMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.facesPurge(),
     call: (variables: FacesPurgeInput) => api.facesPurge(variables),
+  });
+
+export const indexForgetMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.indexForget(),
+    call: (variables: IndexForgetInput) => api.indexForget(variables),
   });

@@ -36,8 +36,11 @@ import type {
   FaceStatusCounts,
   AlignedFaceCrop,
   FileArtifactDownloadProgress,
+  ForgetEntryResult,
   GlobalCatalogCounts,
   GlobalCatalogStore,
+  ReconcileFolderInput,
+  ReconcileFolderResult,
   AnalyzerPort,
   AnalysisOutput,
   ConfigScope,
@@ -885,6 +888,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
           tags: analysis?.tags ?? [],
           folder,
           gps: file.gpsLat === null || file.gpsLon === null ? null : { lat: file.gpsLat, lon: file.gpsLon },
+          missing: file.missingAt !== null,
           score: scoreFor(file, analysis, input.rankingTerms),
         };
       })
@@ -904,6 +908,39 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       files: this.files.size,
       analyses: this.analyses.size,
     }));
+  }
+
+  reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>> {
+    const present = new Set(input.presentFingerprints);
+    const elsewhere = new Set(input.fingerprintsPresentElsewhere ?? []);
+    let marked = 0;
+    let cleared = 0;
+    for (const file of this.files.values()) {
+      if (file.folderId !== input.folderId) continue;
+      const onDisk = present.has(file.fingerprint) || elsewhere.has(file.fingerprint);
+      if (onDisk) {
+        if (file.missingAt !== null) {
+          this.files.set(file.fingerprint, { ...file, missingAt: null });
+          cleared += 1;
+        }
+      } else if (file.missingAt === null) {
+        this.files.set(file.fingerprint, { ...file, missingAt: input.now });
+        marked += 1;
+      }
+    }
+    return Promise.resolve(ok({ marked, cleared }));
+  }
+
+  forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
+    const file = this.files.get(fingerprint);
+    if (file === undefined) return Promise.resolve(ok({ fingerprint, deleted: false, folderId: null }));
+    for (const observation of this.faceObservations.values()) {
+      if (observation.fingerprint === fingerprint) this.faceObservations.delete(observation.obsId);
+    }
+    this.faceIndexState.delete(fingerprint);
+    this.analyses.delete(fingerprint);
+    this.files.delete(fingerprint);
+    return Promise.resolve(ok({ fingerprint, deleted: true, folderId: file.folderId }));
   }
 
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {

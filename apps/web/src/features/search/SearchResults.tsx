@@ -129,28 +129,47 @@ const SearchFolderGroup = ({
       {group.results.map((result, index) => (
         <Fragment key={result.fingerprint}>
           {index === 0 ? null : <Divider component="li" />}
-          <SearchResultRow result={result} />
+          <SearchResultRow result={result} dictionary={dictionary} />
         </Fragment>
       ))}
     </List>
   </Box>
 );
 
-const SearchResultRow = ({ result }: { result: SearchOutput['results'][number] }) => {
+const SearchResultRow = ({
+  result,
+  dictionary,
+}: {
+  result: SearchOutput['results'][number];
+  dictionary: Dictionary;
+}) => {
   const filePath = `${result.folder.currentPath}/${result.fileName}`;
   return (
     <ListItemButton
-      disabled={!result.folder.online}
+      disabled={!result.folder.online || result.missing}
       onClick={() => {
-        if (result.folder.online) void bridge.revealInFinder(filePath);
+        if (result.folder.online && !result.missing) void bridge.revealInFinder(filePath);
       }}
       title={filePath}
       sx={{ alignItems: 'flex-start', borderRadius: 1, py: 1, gap: 1.5 }}
     >
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.65 }}>
-        <Typography variant="body2" noWrap sx={{ fontWeight: 600 }}>
-          {result.finalName ?? result.fileName}
-        </Typography>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
+          <Typography variant="body2" noWrap sx={{ fontWeight: 600, minWidth: 0 }}>
+            {result.finalName ?? result.fileName}
+          </Typography>
+          {result.missing ? (
+            <Chip
+              size="small"
+              label={dictionary.search.fileMissing}
+              sx={(theme) => ({
+                flexShrink: 0,
+                bgcolor: theme.palette.status.notTracked.soft,
+                color: theme.palette.status.notTracked.main,
+              })}
+            />
+          ) : null}
+        </Box>
         <Typography variant="caption" component="div" sx={{ whiteSpace: 'normal' }}>
           <HighlightedSnippet value={result.snippet} />
         </Typography>

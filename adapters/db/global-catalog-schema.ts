@@ -19,6 +19,7 @@ export const files = sqliteTable('files', {
   processedAt: text('processed_at').notNull(),
   analyzer: text('analyzer'),
   model: text('model'),
+  missingAt: integer('missing_at'),
 });
 
 export const analyses = sqliteTable('analyses', {
@@ -224,4 +225,8 @@ export const migrateGlobalCatalogSchemaSqlV6 = [
     )`,
   `INSERT OR IGNORE INTO face_index_state (fingerprint, completed_at, engine_version)
       SELECT DISTINCT fingerprint, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), 1 FROM face_observations`,
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV7 = [
+  'ALTER TABLE files ADD COLUMN missing_at INTEGER',
 ] as const;

@@ -16,6 +16,7 @@ import {
   facesPurgeOutputSchema,
   facesStatusOutputSchema,
   healthOutputSchema,
+  indexForgetOutputSchema,
   indexRebuildOutputSchema,
   indexStatusOutputSchema,
   jobAcceptedOutputSchema,
@@ -465,6 +466,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       {},
       signal,
     ),
+  indexForget: (input: z.input<typeof API_ROUTES.indexForget.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.indexForget.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.indexForget.method,
+      API_ROUTES.indexForget.path,
+      indexForgetOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   listTags: (signal?: AbortSignal) =>
     request(
       options,

@@ -26,6 +26,7 @@ const file = (fingerprint: string, processedAt: string): CatalogFile => ({
   processedAt,
   analyzer: 'openai',
   model: 'gpt-4.1-mini',
+  missingAt: null,
 });
 
 describe('catalog snapshot roundtrip', () => {
@@ -146,7 +147,30 @@ describe('catalog snapshot roundtrip', () => {
 
     expect(imported.ok && imported.value.imported).toBe(1);
     expect(importedFile.ok && importedFile.value?.gpsLat).toBeNull();
+    expect(importedFile.ok && importedFile.value?.missingAt).toBeNull();
     expect(importedAnalysis.ok && importedAnalysis.value?.tags).toEqual([]);
+  });
+
+  it('carries the missing flag through an export/import roundtrip', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const source = new InMemoryGlobalCatalogStore();
+    await source.upsertFolder(folder('/work'));
+    await source.upsertFile({ ...file('absent', '2026-01-05T00:00:00.000Z'), missingAt: 4242 });
+    await source.upsertFile(file('present', '2026-01-06T00:00:00.000Z'));
+
+    const exported = await exportFolderSnapshot({ globalCatalog: source, fs }, folder('/work'));
+    expect(exported.ok).toBe(true);
+    const snapshot = await fs.readTextFile(folderSnapshotPath(fs, '/work'));
+    expect(snapshot.ok && snapshot.value).toContain('"missingAt":4242');
+
+    const target = new InMemoryGlobalCatalogStore();
+    const imported = await importFolderSnapshot({ globalCatalog: target, fs }, '/work');
+    expect(imported.ok && imported.value.imported).toBe(2);
+    const absent = await target.getFile('absent');
+    expect(absent.ok && absent.value?.missingAt).toBe(4242);
+    const present = await target.getFile('present');
+    expect(present.ok && present.value?.missingAt).toBeNull();
   });
 
   it('keeps the newer processed_at row when importing a conflicting snapshot', async () => {

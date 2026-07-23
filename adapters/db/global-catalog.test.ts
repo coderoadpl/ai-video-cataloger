@@ -13,6 +13,7 @@ import {
   migrateGlobalCatalogSchemaSqlV3,
   migrateGlobalCatalogSchemaSqlV4,
   migrateGlobalCatalogSchemaSqlV5,
+  migrateGlobalCatalogSchemaSqlV6,
 } from './global-catalog-schema.js';
 
 const tempRoots: string[] = [];
@@ -42,6 +43,7 @@ const file: CatalogFile = {
   processedAt: '2026-01-03T00:00:00.000Z',
   analyzer: 'openai',
   model: 'gpt-4.1-mini',
+  missingAt: null,
 };
 
 describe('SqlJsGlobalCatalogStore', () => {
@@ -170,6 +172,138 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(status.ok && status.value.observations).toBe(0);
   });
 
+  it('reconcileFolder marks absent files, clears returning files, and skips duplicates elsewhere', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    const other: CatalogFile = { ...file, fingerprint: 'fp-two', fileName: 'two.mp4' };
+    await store.upsertFile(other);
+
+    const present = await store.reconcileFolder({
+      folderId: folder.folderId,
+      presentFingerprints: [file.fingerprint, other.fingerprint],
+      now: 1000,
+    });
+    expect(present.ok && present.value).toEqual({ marked: 0, cleared: 0 });
+
+    const marked = await store.reconcileFolder({
+      folderId: folder.folderId,
+      presentFingerprints: [file.fingerprint],
+      now: 2000,
+    });
+    expect(marked.ok && marked.value.marked).toBe(1);
+    const missingRow = await store.getFile(other.fingerprint);
+    expect(missingRow.ok && missingRow.value?.missingAt).toBe(2000);
+
+    const cleared = await store.reconcileFolder({
+      folderId: folder.folderId,
+      presentFingerprints: [file.fingerprint, other.fingerprint],
+      now: 3000,
+    });
+    expect(cleared.ok && cleared.value.cleared).toBe(1);
+    const healed = await store.getFile(other.fingerprint);
+    expect(healed.ok && healed.value?.missingAt).toBe(null);
+
+    const elsewhere = await store.reconcileFolder({
+      folderId: folder.folderId,
+      presentFingerprints: [file.fingerprint],
+      fingerprintsPresentElsewhere: [other.fingerprint],
+      now: 4000,
+    });
+    expect(elsewhere.ok && elsewhere.value.marked).toBe(0);
+    const stillPresent = await store.getFile(other.fingerprint);
+    expect(stillPresent.ok && stillPresent.value?.missingAt).toBe(null);
+  });
+
+  it('search exposes the missing flag from reconciliation', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: 'a-clip.mp4',
+      description: 'A clip',
+      transcript: 'words',
+      language: 'en',
+      tags: ['a-clip'],
+    });
+
+    const before = await store.search({ match: 'clip*', rankingTerms: ['clip'], limit: 10, offset: 0 });
+    expect(before.ok && before.value[0]?.missing).toBe(false);
+
+    await store.reconcileFolder({ folderId: folder.folderId, presentFingerprints: [], now: 5000 });
+    const after = await store.search({ match: 'clip*', rankingTerms: ['clip'], limit: 10, offset: 0 });
+    expect(after.ok && after.value[0]?.missing).toBe(true);
+  });
+
+  it('forgetEntry deletes the file, analysis, and search rows including FTS', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: 'a-clip.mp4',
+      description: 'A clip',
+      transcript: 'words',
+      language: 'en',
+      tags: ['a-clip'],
+    });
+
+    const forgotten = await store.forgetEntry(file.fingerprint);
+    expect(forgotten.ok && forgotten.value).toEqual({
+      fingerprint: file.fingerprint,
+      deleted: true,
+      folderId: folder.folderId,
+    });
+    expect((await store.flush()).ok).toBe(true);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value).toEqual({ folders: 1, files: 0, analyses: 0 });
+    const search = await reopened.search({ match: 'clip*', rankingTerms: ['clip'], limit: 10, offset: 0 });
+    expect(search.ok && search.value.length).toBe(0);
+
+    const SQL = await initSqlJs();
+    const raw = new SQL.Database(await readFile(reopened.databasePath()));
+    const docRows = raw.exec('SELECT COUNT(*) FROM search_documents');
+    const ftsRows = raw.exec('SELECT COUNT(*) FROM search_documents_fts');
+    raw.close();
+    expect(docRows[0]?.values[0]?.[0]).toBe(0);
+    expect(ftsRows[0]?.values[0]?.[0]).toBe(0);
+
+    const forgetMissing = await reopened.forgetEntry('nope');
+    expect(forgetMissing.ok && forgetMissing.value).toEqual({ fingerprint: 'nope', deleted: false, folderId: null });
+  });
+
+  it('migrates an existing v6 database to v7 and persists a reconciled missing_at value', async () => {
+    const home = await tempHome();
+    await writeV6Catalog(home);
+
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const reconciled = await store.reconcileFolder({
+      folderId: folder.folderId,
+      presentFingerprints: [],
+      now: 7000,
+    });
+    expect(reconciled.ok && reconciled.value.marked).toBe(1);
+    expect((await store.flush()).ok).toBe(true);
+
+    const SQL = await initSqlJs();
+    const reopened = new SQL.Database(await readFile(store.databasePath()));
+    const versionResult = reopened.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
+    const columnResult = reopened.exec('PRAGMA table_info(files)');
+    const missingResult = reopened.exec('SELECT missing_at FROM files WHERE fingerprint = ?', [file.fingerprint]);
+    reopened.close();
+
+    expect(versionResult[0]?.values[0]?.[0]).toBe(7);
+    const columnNames = columnResult[0]?.values.map((row) => row[1]) ?? [];
+    expect(columnNames).toContain('missing_at');
+    expect(missingResult[0]?.values[0]?.[0]).toBe(7000);
+  });
+
   it('migrates an existing v1 database to v6 and persists the migrated schema immediately', async () => {
     const home = await tempHome();
     await writeV1Catalog(home);
@@ -187,10 +321,11 @@ describe('SqlJsGlobalCatalogStore', () => {
     );
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(6);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(7);
     const columnNames = columnResult[0]?.values.map((row) => row[1]).filter((value) => typeof value === 'string') ?? [];
     expect(columnNames).toContain('gps_lat');
     expect(columnNames).toContain('gps_lon');
+    expect(columnNames).toContain('missing_at');
     expect(facesTablesResult[0]?.values.map((row) => row[0])).toEqual(['face_index_state', 'face_observations', 'people']);
   });
 
@@ -211,7 +346,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     const stateResult = reopened.exec('SELECT fingerprint, engine_version FROM face_index_state');
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(6);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(7);
     expect(stateResult[0]?.values).toEqual([['fp-abc', 1]]);
   });
 
@@ -447,6 +582,41 @@ const writeV5Catalog = async (home: string): Promise<void> => {
     null,
   ]);
   client.run('INSERT INTO schema_meta(version) VALUES (5)');
+  const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+  await mkdir(path.dirname(databasePath), { recursive: true });
+  await writeFile(databasePath, Buffer.from(client.export()));
+  client.close();
+};
+
+const writeV6Catalog = async (home: string): Promise<void> => {
+  const SQL = await initSqlJs();
+  const client = new SQL.Database();
+  for (const statement of createGlobalCatalogSchemaSqlV1) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV2) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV3) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV4) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV5) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV6) client.run(statement);
+  client.run('INSERT INTO folders(folder_id, current_path, display_name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)', [
+    folder.folderId,
+    folder.currentPath,
+    folder.displayName,
+    folder.firstSeenAt,
+    folder.lastSeenAt,
+  ]);
+  client.run('INSERT INTO files(fingerprint, folder_id, file_name, size, duration_s, processed_at, analyzer, model, gps_lat, gps_lon) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)', [
+    file.fingerprint,
+    folder.folderId,
+    file.fileName,
+    file.size,
+    null,
+    file.processedAt,
+    null,
+    null,
+    null,
+    null,
+  ]);
+  client.run('INSERT INTO schema_meta(version) VALUES (6)');
   const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
   await mkdir(path.dirname(databasePath), { recursive: true });
   await writeFile(databasePath, Buffer.from(client.export()));
