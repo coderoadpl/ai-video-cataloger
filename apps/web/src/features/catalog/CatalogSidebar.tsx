@@ -3,23 +3,29 @@ import { Box, Typography } from '@mui/material';
 
 import { FolderIcon } from '../../components/ui/icons.js';
 import { folderName } from '../../lib/format.js';
+import { CatalogTree } from './CatalogTree.js';
 import { type CatalogState } from './use-catalog.js';
+import { type CatalogTreeState } from './use-catalog-tree.js';
 import { VideoList } from './VideoList.js';
+
+const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
 
 interface CatalogSidebarProps {
   folder: string | null;
   catalog: CatalogState;
+  tree?: CatalogTreeState;
   analyzingPath?: string | null;
+  skippedPaths?: ReadonlySet<string>;
   toolbar?: ReactNode;
-  driveToolbar?: ReactNode;
 }
 
 export const CatalogSidebar = ({
   folder,
   catalog,
+  tree,
   analyzingPath = null,
+  skippedPaths = EMPTY_SKIPPED,
   toolbar,
-  driveToolbar,
 }: CatalogSidebarProps) => {
   if (folder === null) {
     return (
@@ -31,6 +37,8 @@ export const CatalogSidebar = ({
       </Box>
     );
   }
+
+  const treeRoot = tree?.root ?? null;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -54,27 +62,34 @@ export const CatalogSidebar = ({
         <Typography variant="caption" noWrap title={folder}>
           {folder}
         </Typography>
-        <Typography variant="caption" color="text.secondary">
-          Analyze All covers only this folder; use “Analyze all including subfolders” for the whole tree.
-        </Typography>
         {catalog.isGeneratingThumbnails ? (
           <Typography variant="caption" sx={{ color: 'primary.main' }}>
             Generating thumbnails…
           </Typography>
         ) : null}
         {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}
-        {driveToolbar === undefined ? null : <Box sx={{ mt: 1 }}>{driveToolbar}</Box>}
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        <VideoList
-          videos={catalog.videos}
-          selectedKey={catalog.selectedKey}
-          analyzingPath={analyzingPath}
-          isLoading={catalog.isLoading}
-          isError={catalog.isError}
-          error={catalog.error}
-          onSelect={catalog.select}
-        />
+        {treeRoot === null ? (
+          <VideoList
+            videos={catalog.videos}
+            selectedKey={catalog.selectedKey}
+            analyzingPath={analyzingPath}
+            isLoading={catalog.isLoading}
+            isError={catalog.isError}
+            error={catalog.error}
+            onSelect={catalog.select}
+            skippedPaths={skippedPaths}
+          />
+        ) : (
+          <CatalogTree
+            root={treeRoot}
+            selectedKey={catalog.selectedKey}
+            analyzingPath={analyzingPath}
+            skippedPaths={skippedPaths}
+            onSelect={catalog.select}
+          />
+        )}
       </Box>
     </Box>
   );

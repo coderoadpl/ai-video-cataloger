@@ -1,11 +1,13 @@
 import { type ReactNode } from 'react';
-import { Box, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
+import { Box, Chip, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
 
 import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type CatalogVideo, keyOf } from './catalog-video.js';
+
+const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
 
 interface VideoListProps {
   videos: readonly CatalogVideo[];
@@ -15,7 +17,20 @@ interface VideoListProps {
   isError: boolean;
   error: unknown;
   onSelect: (video: CatalogVideo) => void;
+  skippedPaths?: ReadonlySet<string>;
 }
+
+export const SkippedBadge = () => (
+  <Chip
+    size="small"
+    label="Skipped"
+    data-testid="skipped-badge"
+    sx={(theme) => ({
+      bgcolor: theme.palette.status.notTracked.soft,
+      color: theme.palette.status.notTracked.main,
+    })}
+  />
+);
 
 const Centered = ({ children }: { children: ReactNode }) => (
   <Box
@@ -42,11 +57,13 @@ const VideoRow = ({
   video,
   selected,
   analyzing,
+  skipped,
   onSelect,
 }: {
   video: CatalogVideo;
   selected: boolean;
   analyzing: boolean;
+  skipped: boolean;
   onSelect: (video: CatalogVideo) => void;
 }) => (
   <ListItemButton
@@ -75,8 +92,9 @@ const VideoRow = ({
         {video.durationFormatted === null ? null : <span> · </span>}
         <span>{video.sizeFormatted}</span>
       </Typography>
-      <Box>
+      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
         <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
+        {skipped ? <SkippedBadge /> : null}
       </Box>
       {video.status === 'error' && video.errorMessage != null && video.errorMessage.length > 0 ? (
         <Typography
@@ -100,6 +118,7 @@ export const VideoList = ({
   isError,
   error,
   onSelect,
+  skippedPaths = EMPTY_SKIPPED,
 }: VideoListProps) => {
   if (isLoading) {
     return (
@@ -140,6 +159,7 @@ export const VideoList = ({
           video={video}
           selected={keyOf(video) === selectedKey}
           analyzing={video.path === analyzingPath}
+          skipped={skippedPaths.has(video.path)}
           onSelect={onSelect}
         />
       ))}

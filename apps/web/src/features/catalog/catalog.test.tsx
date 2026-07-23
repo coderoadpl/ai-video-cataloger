@@ -82,16 +82,13 @@ describe('catalog', () => {
     expect(screen.getByText('1.0 KB')).toBeDefined();
   });
 
-  it('points to the whole-tree analyze action for subfolders', async () => {
+  it('shows the opened folder name and path in the header', async () => {
     server.use(scanOk(makeScan([makeVideo({ path: '/videos/a.mp4', contentHash: 'hash-a' })])));
 
     renderThemed(<Harness folder={FOLDER} />);
 
-    expect(
-      await screen.findByText(
-        'Analyze All covers only this folder; use “Analyze all including subfolders” for the whole tree.',
-      ),
-    ).toBeDefined();
+    expect(await screen.findByText('videos')).toBeDefined();
+    expect(screen.getByText(FOLDER)).toBeDefined();
   });
 
   it('shows the loading state, then the empty state for a folder with no videos', async () => {

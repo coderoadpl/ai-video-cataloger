@@ -1,6 +1,7 @@
 export * from './ports.js';
 export * from './usecases/catalog-index.js';
 export * from './usecases/catalog-snapshot.js';
+export * from './usecases/catalog-tree.js';
 export * from './usecases/folder-identity.js';
 export * from './usecases/check.js';
 export * from './usecases/config.js';

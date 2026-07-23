@@ -244,6 +244,7 @@ describe('route schemas', () => {
   it('tags reads with GET and writes with POST or DELETE', () => {
     expect(API_ROUTES.health.method).toBe('GET');
     expect(API_ROUTES.scan.method).toBe('GET');
+    expect(API_ROUTES.catalogTree).toMatchObject({ method: 'GET', path: '/api/catalog-tree' });
     expect(API_ROUTES.status.method).toBe('GET');
     expect(API_ROUTES.configGet.method).toBe('GET');
     expect(API_ROUTES.providersList.method).toBe('GET');

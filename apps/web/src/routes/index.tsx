@@ -1,14 +1,14 @@
 import { useState } from 'react';
 import { Box, Button, ButtonGroup } from '@mui/material';
 
-import { BatchToolbar } from '../components/ui/BatchToolbar.js';
-import { DriveToolbar } from '../components/ui/DriveToolbar.js';
+import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
 import { CancelConfirmationDialog } from '../components/ui/dialogs/CancelConfirmationDialog.js';
 import { ProcessingOverlay } from '../components/ui/ProcessingOverlay.js';
 import { useTerminalLog } from '../components/ui/use-terminal-log.js';
 import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
+import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { PeopleView } from '../features/people/PeopleView.js';
@@ -27,10 +27,12 @@ import { useShell } from '../features/shell/use-shell.js';
 export const IndexRoute = () => {
   const [activeView, setActiveView] = useState<'videos' | 'people'>('videos');
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
+  const [scope, setScope] = useState<AnalyzeScope>('folder');
   const shell = useShell();
   const globalSearch = useGlobalSearch();
   const terminal = useTerminalLog();
   const catalog = useCatalog(shell.currentFolder);
+  const tree = useCatalogTree(shell.currentFolder);
   const readiness = useReadiness(shell.currentFolder);
   const firstLaunch = useFirstLaunch();
   const processing = useProcessing({
@@ -46,28 +48,32 @@ export const IndexRoute = () => {
   const analyzing = selected !== null && selected.path === processing.analyzingPath;
   const overlay = analyzing ? processing.progress : null;
 
+  const driveRunning = processing.driveFileProgress !== null;
+  const activeProgress = processing.batchProgress ?? processing.driveFileProgress;
+  const scopedPendingCount = scope === 'tree' ? tree.pendingTotal : processing.pendingCount;
+
   const sidebar = (
     <CatalogSidebar
       folder={shell.currentFolder}
       catalog={catalog}
+      tree={tree}
       analyzingPath={processing.analyzingPath}
+      skippedPaths={processing.skippedPaths}
       toolbar={
-        <BatchToolbar
-          pendingCount={processing.pendingCount}
+        <ScopeAnalyzeToolbar
+          scope={scope}
+          onScopeChange={setScope}
+          pendingCount={scopedPendingCount}
           isBusy={processing.isBusy}
-          batchProgress={processing.batchProgress}
-          onAnalyzeAll={processing.batchAnalyze}
-          onStop={processing.requestBatchCancel}
-          disabledReason={disabledReason}
-        />
-      }
-      driveToolbar={
-        <DriveToolbar
-          onAnalyzeTree={() => {
-            if (shell.currentFolder !== null) processing.driveAnalyze(shell.currentFolder);
+          progress={activeProgress}
+          onAnalyze={() => {
+            if (scope === 'tree') {
+              if (shell.currentFolder !== null) processing.driveAnalyze(shell.currentFolder);
+            } else {
+              processing.batchAnalyze();
+            }
           }}
-          isBusy={processing.isBusy}
-          progress={processing.driveProgress}
+          onStop={driveRunning ? processing.driveCancel : processing.requestBatchCancel}
           disabledReason={disabledReason}
         />
       }

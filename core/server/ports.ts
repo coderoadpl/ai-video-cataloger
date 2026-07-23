@@ -487,6 +487,7 @@ export type ProcessJobStep =
   | 'run-started'
   | 'folder-started'
   | 'folder-done'
+  | 'file-skipped'
   | 'run-summary'
   | 'extracting_frames'
   | 'extracting_audio'

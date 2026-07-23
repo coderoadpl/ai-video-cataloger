@@ -59,6 +59,7 @@ export const defineMutation = <TData, TVariables>(
 };
 
 export type ScanInput = z.input<typeof API_ROUTES.scan.input>;
+export type CatalogTreeInput = z.input<typeof API_ROUTES.catalogTree.input>;
 export type StatusInput = z.input<typeof API_ROUTES.status.input>;
 export type ConfigInput = z.input<typeof API_ROUTES.configGet.input>;
 export type CheckInput = z.input<typeof API_ROUTES.check.input>;
@@ -95,6 +96,12 @@ export const healthScopes = {
 export const scanScopes = {
   all: () => ['scan'] as const,
   folder: (input: z.output<typeof API_ROUTES.scan.input>) => ['scan', 'folder', input.folder] as const,
+};
+
+export const catalogTreeScopes = {
+  all: () => ['catalog-tree'] as const,
+  folder: (input: z.output<typeof API_ROUTES.catalogTree.input>) =>
+    ['catalog-tree', 'folder', input.folder] as const,
 };
 
 export const statusScopes = {
@@ -221,6 +228,14 @@ export const scanQuery = (api: ApiClient, input: ScanInput) => {
   return defineQuery({
     queryKey: scanScopes.folder(parsed),
     call: ({ signal }) => api.scan(parsed, signal),
+  });
+};
+
+export const catalogTreeQuery = (api: ApiClient, input: CatalogTreeInput) => {
+  const parsed = API_ROUTES.catalogTree.input.parse(input);
+  return defineQuery({
+    queryKey: catalogTreeScopes.folder(parsed),
+    call: ({ signal }) => api.catalogTree(parsed, signal),
   });
 };
 

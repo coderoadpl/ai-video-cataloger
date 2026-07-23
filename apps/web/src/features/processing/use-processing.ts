@@ -6,7 +6,6 @@ import type { z } from 'zod';
 import type { scanVideoSchema } from '@core/contract/index.js';
 
 import type { BatchProgressView } from '../../components/ui/BatchToolbar.js';
-import type { DriveProgressView } from '../../components/ui/DriveToolbar.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
 import type { BatchResultItem } from '../../components/ui/dialogs/BatchSummaryDialog.js';
 import type { ProgressView } from '../../components/ui/ProcessingOverlay.js';
@@ -16,6 +15,13 @@ import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { stepLabel } from './step-labels.js';
 
 type ProcessVideo = Pick<z.output<typeof scanVideoSchema>, 'path' | 'filename' | 'status'>;
+
+export interface DriveProgressView {
+  currentFolder: number;
+  totalFolders: number;
+  filesDone: number;
+  filesSkipped: number;
+}
 
 interface RunOutcome {
   success: boolean;
@@ -34,11 +40,14 @@ export interface ProcessingState {
   pendingCount: number;
   batchProgress: BatchProgressView | null;
   driveProgress: DriveProgressView | null;
+  driveFileProgress: BatchProgressView | null;
+  skippedPaths: ReadonlySet<string>;
   cancelConfirmation: CancelConfirmation;
   batchSummary: BatchSummaryState;
   analyze: (video: ProcessVideo) => void;
   batchAnalyze: () => void;
   driveAnalyze: (root: string) => void;
+  driveCancel: () => void;
   requestCancel: () => void;
   requestBatchCancel: () => void;
   confirmCancel: () => void;
@@ -55,6 +64,17 @@ export interface UseProcessingOptions {
 
 const isPending = (status: ProcessVideo['status']): boolean =>
   status === 'pending' || status === 'not_tracked';
+
+const basename = (path: string): string => path.split(/[\\/]/).pop() ?? path;
+
+const PER_FILE_STEPS = new Set([
+  'extracting_frames',
+  'extracting_audio',
+  'transcribing_audio',
+  'analyzing_with_claude',
+  'renaming_video',
+  'skipping_rename',
+]);
 
 const messageOf = (error: unknown): string => {
   if (error instanceof ApiError) return error.appError.message;
@@ -89,16 +109,23 @@ const strField = (data: Record<string, unknown> | undefined, key: string): strin
   return typeof value === 'string' ? value : '';
 };
 
+interface DriveHandlers {
+  addLine: AddLogLine;
+  onFolderProgress: (view: DriveProgressView) => void;
+  onFileProgress: (view: BatchProgressView) => void;
+  onFileComplete: () => void;
+  onSkipped: (path: string) => void;
+}
+
 const renderDriveEvent = (
   progress: DriveEventProgress,
   counts: DriveCounts,
-  addLine: AddLogLine,
-  onProgress: (view: DriveProgressView) => void,
+  handlers: DriveHandlers,
 ): void => {
   const { step, data } = progress;
   if (step === 'run-started') {
     counts.totalFolders = numField(data, 'foldersTotal');
-    addLine(
+    handlers.addLine(
       `Scanning ${String(counts.totalFolders)} folder(s), ${String(numField(data, 'filesTotal'))} file(s)…`,
       'info',
     );
@@ -106,28 +133,44 @@ const renderDriveEvent = (
   }
   if (step === 'folder-started') {
     counts.currentFolder += 1;
-    addLine(`→ ${strField(data, 'path')} (${String(numField(data, 'filesTotal'))} file(s))`, 'info');
-    onProgress({ ...counts });
+    handlers.addLine(`→ ${strField(data, 'path')} (${String(numField(data, 'filesTotal'))} file(s))`, 'info');
+    handlers.onFolderProgress({ ...counts });
     return;
   }
   if (step === 'folder-done') {
     counts.filesDone += numField(data, 'filesDone');
     counts.filesSkipped += numField(data, 'filesSkipped');
-    addLine(
+    handlers.addLine(
       `✓ ${strField(data, 'path')}: ${String(numField(data, 'filesDone'))} done, ` +
         `${String(numField(data, 'filesSkipped'))} skipped, ${String(numField(data, 'filesFailed'))} failed`,
       'success',
     );
-    onProgress({ ...counts });
+    handlers.onFolderProgress({ ...counts });
+    return;
+  }
+  if (step === 'file-skipped') {
+    const video = strField(data, 'video');
+    handlers.addLine(`↷ Skipped (already analyzed): ${basename(video)}`, 'info');
+    handlers.onSkipped(video);
+    handlers.onFileComplete();
     return;
   }
   if (step === 'run-summary') {
-    addLine(
+    handlers.addLine(
       `=== Drive run complete: ${String(numField(data, 'foldersDone'))}/${String(numField(data, 'foldersTotal'))} ` +
         `folder(s), ${String(numField(data, 'filesDone'))} done, ${String(numField(data, 'filesSkipped'))} skipped, ` +
         `${String(numField(data, 'filesFailed'))} failed ===`,
       'info',
     );
+    return;
+  }
+  if (PER_FILE_STEPS.has(step)) {
+    const filename = basename(strField(data, 'video'));
+    const currentIndex = progress.current ?? 0;
+    const totalCount = progress.total ?? 0;
+    handlers.onFileProgress({ currentIndex, totalCount, currentFilename: filename });
+    handlers.addLine(`[${String(currentIndex)}/${String(totalCount)}] ${stepLabel(step)}: ${filename}`, 'info');
+    if (step === 'renaming_video' || step === 'skipping_rename') handlers.onFileComplete();
   }
 };
 
@@ -149,6 +192,8 @@ export const useProcessing = ({
   const [progress, setProgress] = useState<ProgressView | null>(null);
   const [batchProgress, setBatchProgress] = useState<BatchProgressView | null>(null);
   const [driveProgress, setDriveProgress] = useState<DriveProgressView | null>(null);
+  const [driveFileProgress, setDriveFileProgress] = useState<BatchProgressView | null>(null);
+  const [skippedPaths, setSkippedPaths] = useState<ReadonlySet<string>>(new Set());
   const [driveActive, setDriveActive] = useState(false);
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({
     open: false,
@@ -310,6 +355,7 @@ export const useProcessing = ({
   const runDrive = useCallback(
     async (root: string): Promise<RunOutcome> => {
       setDriveProgress(null);
+      setDriveFileProgress(null);
 
       let jobId: string;
       try {
@@ -334,7 +380,17 @@ export const useProcessing = ({
             for (const event of job.progressEvents) {
               if (rendered.has(event.sequence)) continue;
               rendered.add(event.sequence);
-              renderDriveEvent(event.progress, counts, addLine, setDriveProgress);
+              renderDriveEvent(event.progress, counts, {
+                addLine,
+                onFolderProgress: setDriveProgress,
+                onFileProgress: setDriveFileProgress,
+                onFileComplete: () => {
+                  void queryClient.invalidateQueries();
+                },
+                onSkipped: (path) => {
+                  setSkippedPaths((current) => new Set(current).add(path));
+                },
+              });
             }
           },
         });
@@ -378,16 +434,25 @@ export const useProcessing = ({
           return;
         }
         setDriveActive(true);
+        setSkippedPaths(new Set());
         addLine(`=== Analyzing folder tree: ${root} ===`, 'info');
         await runDrive(root);
         busyRef.current = false;
         setDriveActive(false);
         setDriveProgress(null);
+        setDriveFileProgress(null);
         await queryClient.invalidateQueries();
       })();
     },
     [runDrive, addLine, queryClient, checkReadiness],
   );
+
+  const driveCancel = useCallback(() => {
+    const jobId = activeJobIdRef.current;
+    if (jobId === null) return;
+    addLine('Stopping folder tree analysis…', 'info');
+    void cancelAsync({ jobId });
+  }, [addLine, cancelAsync]);
 
   const requestCancel = useCallback(() => {
     pendingCancelIsBatchRef.current = false;
@@ -430,11 +495,14 @@ export const useProcessing = ({
     pendingCount,
     batchProgress,
     driveProgress,
+    driveFileProgress,
+    skippedPaths,
     cancelConfirmation,
     batchSummary,
     analyze,
     batchAnalyze,
     driveAnalyze,
+    driveCancel,
     requestCancel,
     requestBatchCancel,
     confirmCancel,

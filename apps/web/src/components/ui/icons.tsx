@@ -73,6 +73,18 @@ export const AccountTreeIcon = (props: SvgIconProps) => (
   </SvgIcon>
 );
 
+export const ExpandMoreIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M16.59 8.59L12 13.17 7.41 8.59 6 10l6 6 6-6z" />
+  </SvgIcon>
+);
+
+export const ChevronRightIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" />
+  </SvgIcon>
+);
+
 export const SearchIcon = (props: SvgIconProps) => (
   <SvgIcon {...props}>
     <path d="M9.5 3a6.5 6.5 0 0 1 5.16 10.45l4.44 4.45-1.2 1.2-4.45-4.44A6.5 6.5 0 1 1 9.5 3zm0 1.7a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z" />

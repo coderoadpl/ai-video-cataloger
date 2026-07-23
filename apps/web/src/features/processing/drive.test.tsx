@@ -86,6 +86,116 @@ describe('useProcessing drive', () => {
     expect(invalidate).toHaveBeenCalled();
   });
 
+  const perFileJob = (jobId: string) => ({
+    jobId,
+    kind: 'process_drive',
+    status: 'completed',
+    progress: null,
+    progressEvents: [
+      { sequence: 1, progress: { step: 'run-started', data: { runId: 'r1', root: '/videos', foldersTotal: 1, filesTotal: 2 } } },
+      { sequence: 2, progress: { step: 'folder-started', data: { path: '/videos/a', filesTotal: 2 } } },
+      {
+        sequence: 3,
+        progress: { step: 'extracting_frames', percentage: 20, current: 1, total: 2, stepNumber: 1, totalSteps: 5, data: { video: '/videos/a/one.mp4' } },
+      },
+      {
+        sequence: 4,
+        progress: { step: 'skipping_rename', percentage: 100, current: 1, total: 2, stepNumber: 5, totalSteps: 5, data: { video: '/videos/a/one.mp4' } },
+      },
+      { sequence: 5, progress: { step: 'file-skipped', data: { video: '/videos/a/two.mp4' } } },
+      { sequence: 6, progress: { step: 'folder-done', data: { path: '/videos/a', filesDone: 1, filesSkipped: 1, filesFailed: 0 } } },
+      {
+        sequence: 7,
+        progress: {
+          step: 'run-summary',
+          data: { runId: 'r1', root: '/videos', foldersTotal: 1, foldersDone: 1, filesTotal: 2, filesDone: 1, filesSkipped: 1, filesFailed: 0, elapsedMs: 1000, failures: [] },
+        },
+      },
+    ],
+    error: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('renders per-file progress lines, tracks skipped files, and invalidates on each completion', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    server.use(
+      http.post('/api/process-drive', () => HttpResponse.json({ ok: true, data: { jobId: 'job:drive' } })),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({ ok: true, data: perFileJob(jobId) });
+      }),
+    );
+    const lines: string[] = [];
+    const addLine = vi.fn((content: string) => {
+      lines.push(content);
+    });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useProcessing({ videos: [], addLine, intervalMs: 0 }), { wrapper });
+
+    act(() => {
+      result.current.driveAnalyze('/videos');
+    });
+
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+
+    expect(lines.some((line) => line.includes('[1/2] Extracting frames: one.mp4'))).toBe(true);
+    expect(lines.some((line) => line.includes('Skipped (already analyzed): two.mp4'))).toBe(true);
+    expect(result.current.skippedPaths.has('/videos/a/two.mp4')).toBe(true);
+    expect(invalidate).toHaveBeenCalled();
+  });
+
+  it('stops an active drive run without a confirmation dialog', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    let cancelled = false;
+    let polls = 0;
+    server.use(
+      http.post('/api/process-drive', () => HttpResponse.json({ ok: true, data: { jobId: 'job:drive' } })),
+      http.post('/api/jobs/cancel', () => {
+        cancelled = true;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job:drive', cancelled: true } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        polls += 1;
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            jobId,
+            kind: 'process_drive',
+            status: cancelled ? 'cancelled' : 'running',
+            progress: null,
+            progressEvents: [],
+            error: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useProcessing({ videos: [], addLine: vi.fn(), intervalMs: 0 }), { wrapper });
+
+    act(() => {
+      result.current.driveAnalyze('/videos');
+    });
+
+    await waitFor(() => expect(polls).toBeGreaterThan(0));
+    act(() => {
+      result.current.driveCancel();
+    });
+
+    await waitFor(() => expect(cancelled).toBe(true));
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+  });
+
   it('refuses a drive run when the immediate readiness refresh is unready', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (

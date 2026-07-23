@@ -1,5 +1,6 @@
 import {
   cancelJobMutation,
+  catalogTreeQuery,
   checkQuery,
   configQuery,
   createApiClient,
@@ -39,6 +40,7 @@ import {
   stopLocalAiDaemonMutation,
   useWhisperModelMutation as bindActivateWhisperModel,
   whisperRuntimeQuery,
+  type CatalogTreeInput,
   type CheckInput,
   type ConfigInput,
   type JobInput,
@@ -124,6 +126,7 @@ export const actions = {
   readiness: (input?: ReadinessInput) => readinessQuery(apiClient, input),
   jobs: jobsQuery(apiClient),
   scan: (input: ScanInput) => scanQuery(apiClient, input),
+  catalogTree: (input: CatalogTreeInput) => catalogTreeQuery(apiClient, input),
   search: (input: SearchInput) => searchQuery(apiClient, input),
   facesStatus: facesStatusQuery(apiClient),
   facesPeople: facesPeopleQuery(apiClient),

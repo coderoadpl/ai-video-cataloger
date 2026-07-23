@@ -2,6 +2,7 @@ import { type z } from 'zod';
 
 import {
   API_ROUTES,
+  catalogTreeOutputSchema,
   checkOutputSchema,
   configGetOutputSchema,
   configSetOutputSchema,
@@ -137,6 +138,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.scan.method,
       queryPath(API_ROUTES.scan.path, [['folder', parsed.value.folder]]),
       scanOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  catalogTree: (input: z.input<typeof API_ROUTES.catalogTree.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.catalogTree.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.catalogTree.method,
+      queryPath(API_ROUTES.catalogTree.path, [['folder', parsed.value.folder]]),
+      catalogTreeOutputSchema,
       undefined,
       signal,
     );

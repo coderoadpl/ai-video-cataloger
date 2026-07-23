@@ -81,6 +81,23 @@ export const scanOutputSchema = z.object({
   }),
 });
 
+export const catalogTreeFolderSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  relativePath: z.string(),
+  depth: z.number().int().nonnegative(),
+  videos: z.array(scanVideoSchema),
+  pendingCount: z.number().int().nonnegative(),
+  processedCount: z.number().int().nonnegative(),
+});
+
+export const catalogTreeOutputSchema = z.object({
+  root: z.string(),
+  folders: z.array(catalogTreeFolderSchema),
+  pendingTotal: z.number().int().nonnegative(),
+  processedTotal: z.number().int().nonnegative(),
+});
+
 export const processInputSchema = videoPathInputSchema.extend({
   frames: z.number().int().optional(),
   framesExplicit: z.boolean().optional(),
@@ -578,6 +595,7 @@ export const jobProgressStepSchema = z.enum([
   'run-started',
   'folder-started',
   'folder-done',
+  'file-skipped',
   'run-summary',
   'extracting_frames',
   'extracting_audio',
@@ -823,6 +841,7 @@ export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.Zo
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health', input: emptyInputSchema, output: healthOutputSchema },
   scan: { method: 'GET', path: '/api/scan', input: folderInputSchema, output: scanOutputSchema },
+  catalogTree: { method: 'GET', path: '/api/catalog-tree', input: folderInputSchema, output: catalogTreeOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
   processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
   thumbnail: { method: 'POST', path: '/api/thumbnail', input: thumbnailInputSchema, output: thumbnailOutputSchema },
@@ -953,6 +972,7 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 export const API_PATHS = {
   health: API_ROUTES.health.path,
   scan: API_ROUTES.scan.path,
+  catalogTree: API_ROUTES.catalogTree.path,
   process: API_ROUTES.process.path,
   processDrive: API_ROUTES.processDrive.path,
   thumbnail: API_ROUTES.thumbnail.path,

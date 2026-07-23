@@ -201,6 +201,10 @@ export const processDrive = async (
       fileIndex += 1;
       const skipped = await alreadyProcessed(deps, input, video);
       if (!skipped.ok) return skipped;
+      if (skipped.value) {
+        const skipReported = await report(progress, 'file-skipped', { video: video.path });
+        if (!skipReported.ok) return skipReported;
+      }
       const result = await runDriveFile(deps, input, video.path, fileIndex, state.filesTotal, skipped.value, progress, options);
       if (result.ok) {
         consecutiveFailures = 0;
