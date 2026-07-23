@@ -11,6 +11,7 @@ interface CatalogSidebarProps {
   catalog: CatalogState;
   analyzingPath?: string | null;
   toolbar?: ReactNode;
+  driveToolbar?: ReactNode;
 }
 
 export const CatalogSidebar = ({
@@ -18,6 +19,7 @@ export const CatalogSidebar = ({
   catalog,
   analyzingPath = null,
   toolbar,
+  driveToolbar,
 }: CatalogSidebarProps) => {
   if (folder === null) {
     return (
@@ -53,7 +55,7 @@ export const CatalogSidebar = ({
           {folder}
         </Typography>
         <Typography variant="caption" color="text.secondary">
-          Only this folder is scanned; subfolders are ignored.
+          Analyze All covers only this folder; use “Analyze all including subfolders” for the whole tree.
         </Typography>
         {catalog.isGeneratingThumbnails ? (
           <Typography variant="caption" sx={{ color: 'primary.main' }}>
@@ -61,6 +63,7 @@ export const CatalogSidebar = ({
           </Typography>
         ) : null}
         {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}
+        {driveToolbar === undefined ? null : <Box sx={{ mt: 1 }}>{driveToolbar}</Box>}
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         <VideoList

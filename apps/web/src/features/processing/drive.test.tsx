@@ -1,0 +1,111 @@
+import { type ReactNode } from 'react';
+import { QueryClientProvider } from '@tanstack/react-query';
+import { act, renderHook, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
+
+import { createTestQueryClient } from '../../test/render.js';
+import { server } from '../../test/server.js';
+import { useProcessing } from './use-processing.js';
+
+const driveBodySchema = z.object({ root: z.string() });
+
+const driveJob = (jobId: string) => ({
+  jobId,
+  kind: 'process_drive',
+  status: 'completed',
+  progress: null,
+  progressEvents: [
+    { sequence: 1, progress: { step: 'run-started', data: { runId: 'r1', root: '/videos', foldersTotal: 2, filesTotal: 3 } } },
+    { sequence: 2, progress: { step: 'folder-started', data: { path: '/videos/a', filesTotal: 2 } } },
+    { sequence: 3, progress: { step: 'folder-done', data: { path: '/videos/a', filesDone: 1, filesSkipped: 1, filesFailed: 0 } } },
+    { sequence: 4, progress: { step: 'folder-started', data: { path: '/videos/b', filesTotal: 1 } } },
+    { sequence: 5, progress: { step: 'folder-done', data: { path: '/videos/b', filesDone: 1, filesSkipped: 0, filesFailed: 0 } } },
+    {
+      sequence: 6,
+      progress: {
+        step: 'run-summary',
+        data: {
+          runId: 'r1',
+          root: '/videos',
+          foldersTotal: 2,
+          foldersDone: 2,
+          filesTotal: 3,
+          filesDone: 2,
+          filesSkipped: 1,
+          filesFailed: 0,
+          elapsedMs: 1000,
+          failures: [],
+        },
+      },
+    },
+  ],
+  error: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:00.000Z',
+});
+
+describe('useProcessing drive', () => {
+  it('runs the drive route on the folder root and renders folder + summary lines', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const roots: string[] = [];
+    server.use(
+      http.post('/api/process-drive', async ({ request }) => {
+        const { root } = driveBodySchema.parse(await request.json());
+        roots.push(root);
+        return HttpResponse.json({ ok: true, data: { jobId: 'job:drive' } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({ ok: true, data: driveJob(jobId) });
+      }),
+    );
+    const lines: string[] = [];
+    const addLine = vi.fn((content: string) => {
+      lines.push(content);
+    });
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useProcessing({ videos: [], addLine, intervalMs: 0 }), { wrapper });
+
+    act(() => {
+      result.current.driveAnalyze('/videos');
+    });
+
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+
+    expect(roots).toEqual(['/videos']);
+    expect(lines.some((line) => line.includes('/videos/a'))).toBe(true);
+    expect(lines.some((line) => line.includes('/videos/b'))).toBe(true);
+    expect(lines.some((line) => line.includes('2 done, 1 skipped, 0 failed'))).toBe(true);
+    expect(lines.some((line) => line.startsWith('=== Drive run complete:'))).toBe(true);
+    expect(invalidate).toHaveBeenCalled();
+  });
+
+  it('refuses a drive run when the immediate readiness refresh is unready', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const checked = vi.fn().mockResolvedValue(false);
+    const started = vi.fn();
+    server.use(http.post('/api/process-drive', started));
+
+    const { result } = renderHook(
+      () => useProcessing({ videos: [], addLine: vi.fn(), intervalMs: 0, checkReadiness: checked }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.driveAnalyze('/videos');
+    });
+
+    await waitFor(() => expect(checked).toHaveBeenCalledOnce());
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+    expect(started).not.toHaveBeenCalled();
+  });
+});

@@ -64,6 +64,7 @@ export type ConfigInput = z.input<typeof API_ROUTES.configGet.input>;
 export type CheckInput = z.input<typeof API_ROUTES.check.input>;
 export type JobInput = z.input<typeof API_ROUTES.jobStatus.input>;
 export type ProcessVideoInput = z.input<typeof API_ROUTES.process.input>;
+export type ProcessDriveInput = z.input<typeof API_ROUTES.processDrive.input>;
 export type GenerateThumbnailInput = z.input<typeof API_ROUTES.thumbnail.input>;
 export type ResetAllInput = z.input<typeof API_ROUTES.resetAll.input>;
 export type ResetSingleInput = z.input<typeof API_ROUTES.resetSingle.input>;
@@ -162,6 +163,7 @@ export const facesScopes = {
 
 export const mutationScopes = {
   processVideo: () => ['processVideo'] as const,
+  processDrive: () => ['processDrive'] as const,
   generateThumbnail: () => ['generateThumbnail'] as const,
   resetAll: () => ['resetAll'] as const,
   resetSingle: () => ['resetSingle'] as const,
@@ -339,6 +341,12 @@ export const processVideoMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.processVideo(),
     call: (variables: ProcessVideoInput) => api.processVideo(variables),
+  });
+
+export const processDriveMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.processDrive(),
+    call: (variables: ProcessDriveInput) => api.processDrive(variables),
   });
 
 export const generateThumbnailMutation = (api: ApiClient) =>

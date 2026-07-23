@@ -67,6 +67,12 @@ export const CancelIcon = (props: SvgIconProps) => (
   </SvgIcon>
 );
 
+export const AccountTreeIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M22 11V3h-7v3H9V3H2v8h7V8h2v10h4v3h7v-8h-7v3h-2V8h2v3h7zM7 9H4V5h3v4zm10 6h3v4h-3v-4zm0-10h3v4h-3V5z" />
+  </SvgIcon>
+);
+
 export const SearchIcon = (props: SvgIconProps) => (
   <SvgIcon {...props}>
     <path d="M9.5 3a6.5 6.5 0 0 1 5.16 10.45l4.44 4.45-1.2 1.2-4.45-4.44A6.5 6.5 0 1 1 9.5 3zm0 1.7a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z" />

@@ -6,6 +6,7 @@ import type { z } from 'zod';
 import type { scanVideoSchema } from '@core/contract/index.js';
 
 import type { BatchProgressView } from '../../components/ui/BatchToolbar.js';
+import type { DriveProgressView } from '../../components/ui/DriveToolbar.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
 import type { BatchResultItem } from '../../components/ui/dialogs/BatchSummaryDialog.js';
 import type { ProgressView } from '../../components/ui/ProcessingOverlay.js';
@@ -32,10 +33,12 @@ export interface ProcessingState {
   isBusy: boolean;
   pendingCount: number;
   batchProgress: BatchProgressView | null;
+  driveProgress: DriveProgressView | null;
   cancelConfirmation: CancelConfirmation;
   batchSummary: BatchSummaryState;
   analyze: (video: ProcessVideo) => void;
   batchAnalyze: () => void;
+  driveAnalyze: (root: string) => void;
   requestCancel: () => void;
   requestBatchCancel: () => void;
   confirmCancel: () => void;
@@ -67,6 +70,67 @@ const toProgressView = (progress: NonNullable<JobOutput['progress']>): ProgressV
   totalSteps: progress.totalSteps ?? 5,
 });
 
+type DriveEventProgress = JobOutput['progressEvents'][number]['progress'];
+
+interface DriveCounts {
+  currentFolder: number;
+  totalFolders: number;
+  filesDone: number;
+  filesSkipped: number;
+}
+
+const numField = (data: Record<string, unknown> | undefined, key: string): number => {
+  const value = data?.[key];
+  return typeof value === 'number' ? value : 0;
+};
+
+const strField = (data: Record<string, unknown> | undefined, key: string): string => {
+  const value = data?.[key];
+  return typeof value === 'string' ? value : '';
+};
+
+const renderDriveEvent = (
+  progress: DriveEventProgress,
+  counts: DriveCounts,
+  addLine: AddLogLine,
+  onProgress: (view: DriveProgressView) => void,
+): void => {
+  const { step, data } = progress;
+  if (step === 'run-started') {
+    counts.totalFolders = numField(data, 'foldersTotal');
+    addLine(
+      `Scanning ${String(counts.totalFolders)} folder(s), ${String(numField(data, 'filesTotal'))} file(s)…`,
+      'info',
+    );
+    return;
+  }
+  if (step === 'folder-started') {
+    counts.currentFolder += 1;
+    addLine(`→ ${strField(data, 'path')} (${String(numField(data, 'filesTotal'))} file(s))`, 'info');
+    onProgress({ ...counts });
+    return;
+  }
+  if (step === 'folder-done') {
+    counts.filesDone += numField(data, 'filesDone');
+    counts.filesSkipped += numField(data, 'filesSkipped');
+    addLine(
+      `✓ ${strField(data, 'path')}: ${String(numField(data, 'filesDone'))} done, ` +
+        `${String(numField(data, 'filesSkipped'))} skipped, ${String(numField(data, 'filesFailed'))} failed`,
+      'success',
+    );
+    onProgress({ ...counts });
+    return;
+  }
+  if (step === 'run-summary') {
+    addLine(
+      `=== Drive run complete: ${String(numField(data, 'foldersDone'))}/${String(numField(data, 'foldersTotal'))} ` +
+        `folder(s), ${String(numField(data, 'filesDone'))} done, ${String(numField(data, 'filesSkipped'))} skipped, ` +
+        `${String(numField(data, 'filesFailed'))} failed ===`,
+      'info',
+    );
+  }
+};
+
 export const useProcessing = ({
   videos,
   addLine,
@@ -75,13 +139,17 @@ export const useProcessing = ({
 }: UseProcessingOptions): ProcessingState => {
   const queryClient = useQueryClient();
   const process = useMutation(actions.processVideo);
+  const processDrive = useMutation(actions.processDrive);
   const cancel = useMutation(actions.cancelJob);
   const processAsync = process.mutateAsync;
+  const processDriveAsync = processDrive.mutateAsync;
   const cancelAsync = cancel.mutateAsync;
 
   const [analyzingPath, setAnalyzingPath] = useState<string | null>(null);
   const [progress, setProgress] = useState<ProgressView | null>(null);
   const [batchProgress, setBatchProgress] = useState<BatchProgressView | null>(null);
+  const [driveProgress, setDriveProgress] = useState<DriveProgressView | null>(null);
+  const [driveActive, setDriveActive] = useState(false);
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({
     open: false,
     isBatch: false,
@@ -239,6 +307,88 @@ export const useProcessing = ({
     })();
   }, [runVideo, addLine, queryClient, checkReadiness]);
 
+  const runDrive = useCallback(
+    async (root: string): Promise<RunOutcome> => {
+      setDriveProgress(null);
+
+      let jobId: string;
+      try {
+        const accepted = await processDriveAsync({ root });
+        jobId = accepted.jobId;
+      } catch (error) {
+        const message = messageOf(error);
+        addLine(`Error: ${message}`, 'error');
+        return { success: false, error: message };
+      }
+
+      activeJobIdRef.current = jobId;
+      const rendered = new Set<number>();
+      const counts: DriveCounts = { currentFolder: 0, totalFolders: 0, filesDone: 0, filesSkipped: 0 };
+      try {
+        const final = await pollJobUntilTerminal(jobId, {
+          intervalMs,
+          delay: sleep,
+          fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
+          isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+          onSnapshot: (job) => {
+            for (const event of job.progressEvents) {
+              if (rendered.has(event.sequence)) continue;
+              rendered.add(event.sequence);
+              renderDriveEvent(event.progress, counts, addLine, setDriveProgress);
+            }
+          },
+        });
+        switch (final.status) {
+          case 'completed':
+            addLine('✓ Folder tree analysis completed', 'success');
+            return { success: true };
+          case 'cancelled':
+            addLine('Cancelled by user', 'info');
+            return { success: false, error: 'Cancelled by user' };
+          case 'failed': {
+            const message = final.error?.message ?? 'Drive processing failed';
+            addLine(`Error: ${message}`, 'error');
+            if (final.error !== null) addLine(JSON.stringify(final.error), 'error', true);
+            return { success: false, error: message };
+          }
+          case 'queued':
+          case 'running':
+            return { success: false, error: 'Drive processing did not finish' };
+        }
+      } catch (error) {
+        const message = messageOf(error);
+        addLine(`Error: ${message}`, 'error');
+        return { success: false, error: message };
+      } finally {
+        activeJobIdRef.current = null;
+      }
+    },
+    [processDriveAsync, queryClient, addLine, intervalMs],
+  );
+
+  const driveAnalyze = useCallback(
+    (root: string) => {
+      if (busyRef.current) return;
+      busyRef.current = true;
+      cancelBatchRef.current = false;
+      void (async () => {
+        if (checkReadiness !== undefined && !await checkReadiness()) {
+          addLine('Processing setup is incomplete. Open Settings or run the Setup Wizard.', 'error');
+          busyRef.current = false;
+          return;
+        }
+        setDriveActive(true);
+        addLine(`=== Analyzing folder tree: ${root} ===`, 'info');
+        await runDrive(root);
+        busyRef.current = false;
+        setDriveActive(false);
+        setDriveProgress(null);
+        await queryClient.invalidateQueries();
+      })();
+    },
+    [runDrive, addLine, queryClient, checkReadiness],
+  );
+
   const requestCancel = useCallback(() => {
     pendingCancelIsBatchRef.current = false;
     setCancelConfirmation({ open: true, isBatch: false });
@@ -276,13 +426,15 @@ export const useProcessing = ({
   return {
     analyzingPath,
     progress,
-    isBusy: analyzingPath !== null,
+    isBusy: analyzingPath !== null || driveActive,
     pendingCount,
     batchProgress,
+    driveProgress,
     cancelConfirmation,
     batchSummary,
     analyze,
     batchAnalyze,
+    driveAnalyze,
     requestCancel,
     requestBatchCancel,
     confirmCancel,

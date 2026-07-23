@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Box, Button, ButtonGroup } from '@mui/material';
 
 import { BatchToolbar } from '../components/ui/BatchToolbar.js';
+import { DriveToolbar } from '../components/ui/DriveToolbar.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
 import { CancelConfirmationDialog } from '../components/ui/dialogs/CancelConfirmationDialog.js';
 import { ProcessingOverlay } from '../components/ui/ProcessingOverlay.js';
@@ -57,6 +58,16 @@ export const IndexRoute = () => {
           batchProgress={processing.batchProgress}
           onAnalyzeAll={processing.batchAnalyze}
           onStop={processing.requestBatchCancel}
+          disabledReason={disabledReason}
+        />
+      }
+      driveToolbar={
+        <DriveToolbar
+          onAnalyzeTree={() => {
+            if (shell.currentFolder !== null) processing.driveAnalyze(shell.currentFolder);
+          }}
+          isBusy={processing.isBusy}
+          progress={processing.driveProgress}
           disabledReason={disabledReason}
         />
       }
