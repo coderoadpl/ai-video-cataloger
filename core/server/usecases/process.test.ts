@@ -527,6 +527,19 @@ describe('process pipeline global catalog idempotency', () => {
     expect(analysis.ok && analysis.value?.tags).toEqual(['dji-drone', 'coastal-cliff', 'wide-shot']);
   });
 
+  it('flushes the global catalog to disk when a single-file job completes', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+
+    const result = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...baseInput, skipRename: true, skipRenameExplicit: true },
+    );
+
+    expect(result.ok).toBe(true);
+    expect(globalCatalog.flushCount).toBeGreaterThan(0);
+  });
+
   it('emits a warning event and does not index when the fingerprint cannot be computed', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();

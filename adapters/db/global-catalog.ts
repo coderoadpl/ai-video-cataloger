@@ -14,6 +14,7 @@ import {
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js';
 
 import {
@@ -1054,6 +1055,8 @@ const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined
 };
 
 const findSqlJsWasmPath = (): string | null => {
+  const bundled = path.join(path.dirname(fileURLToPath(import.meta.url)), 'sql-wasm.wasm');
+  if (existsSync(bundled)) return bundled;
   const resourcesPath = process.resourcesPath;
   if (typeof resourcesPath === 'string' && resourcesPath.length > 0) {
     const packaged = [

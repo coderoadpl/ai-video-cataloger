@@ -125,6 +125,8 @@ export const processVideoPipeline = async (
 
   const recorded = await recordGlobalCatalog(deps, repository.value, resolved.value, runResult.value, progress);
   if (!recorded.ok) return recorded;
+  const flushed = await flushGlobalCatalog(deps);
+  if (!flushed.ok) return flushed;
   return runResult;
 };
 
@@ -1024,6 +1026,11 @@ const recordGlobalCatalog = async (
       tags: summary.value?.tags ?? [],
     },
   );
+};
+
+const flushGlobalCatalog = async (deps: ProcessDeps): Promise<Result<void, AppError>> => {
+  if (deps.globalCatalog === undefined) return ok(undefined);
+  return deps.globalCatalog.flush();
 };
 
 const analyzerModel = (provider: AnalyzerProviderConfig): string | null => {

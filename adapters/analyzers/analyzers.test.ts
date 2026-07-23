@@ -157,7 +157,7 @@ describe('HarnessAnalyzerAdapter', () => {
 
   it('constructs every built-in invocation from provider data', async () => {
     const runner = new FakeAnalyzerCommandRunner('response');
-    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner });
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner, resolveCommand: (command) => command });
 
     for (const descriptor of builtInHarnessProviders()) {
       const provider = {

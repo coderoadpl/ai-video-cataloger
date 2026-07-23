@@ -15,6 +15,7 @@ import {
 import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 import { z } from 'zod';
 
@@ -325,6 +326,8 @@ const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined
 };
 
 const findSqlJsWasmPath = (): string | null => {
+  const bundledPath = bundledSqlJsWasmPath();
+  if (bundledPath !== null) return bundledPath;
   const packagedPath = packagedSqlJsWasmPath();
   if (packagedPath !== null) return packagedPath;
   try {
@@ -349,6 +352,11 @@ const packagedSqlJsWasmPath = (): string | null => {
     path.join(resourcesPath, 'app.asar.unpacked', 'node_modules', 'sql.js', 'sql-wasm.wasm'),
   ];
   return candidates.find((candidate) => existsSync(candidate)) ?? null;
+};
+
+const bundledSqlJsWasmPath = (): string | null => {
+  const candidate = path.join(path.dirname(fileURLToPath(import.meta.url)), 'sql-wasm.wasm');
+  return existsSync(candidate) ? candidate : null;
 };
 
 const catalogDatabasePath = (folder: string): string =>

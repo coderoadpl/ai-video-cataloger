@@ -71,6 +71,9 @@ const DARK = {
 };
 
 const RADIUS = 8;
+const CHIP_ICON_INSET = 8;
+const CHIP_ICON_GAP = -4;
+const chipIconSpacing = { marginLeft: CHIP_ICON_INSET, marginRight: CHIP_ICON_GAP } as const;
 
 export const createAppTheme = (mode: ThemeMode): Theme => {
   const c = mode === 'dark' ? DARK : LIGHT;
@@ -112,13 +115,11 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
       },
       MuiChip: {
         styleOverrides: {
-          root: { borderRadius: RADIUS - 2, fontWeight: 600, fontSize: '0.72rem' },
-          icon: { marginLeft: 6 },
-          sizeSmall: {
-            '& .MuiChip-icon': {
-              marginLeft: 8,
-              marginRight: -4,
-            },
+          root: {
+            borderRadius: RADIUS - 2,
+            fontWeight: 600,
+            fontSize: '0.72rem',
+            '& .MuiChip-icon': chipIconSpacing,
           },
         },
       },

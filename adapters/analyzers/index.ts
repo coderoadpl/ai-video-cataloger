@@ -1,4 +1,5 @@
 import { spawn, type ChildProcess } from 'node:child_process';
+import { existsSync, readdirSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -73,6 +74,7 @@ export interface HarnessAnalyzerAdapterOptions {
   writeStdout?: ((chunk: string) => void) | undefined;
   writeStderr?: ((chunk: string) => void) | undefined;
   prepare?: ((definition: HarnessRuntimeDefinition, homeDirectory: string, videoDirectory: string) => Promise<void>) | undefined;
+  resolveCommand?: ((command: string) => string) | undefined;
 }
 
 interface HarnessRuntimeDefinition {
@@ -227,6 +229,7 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
   private readonly writeStdout: (chunk: string) => void;
   private readonly writeStderr: (chunk: string) => void;
   private readonly prepare: (definition: HarnessRuntimeDefinition, homeDirectory: string, videoDirectory: string) => Promise<void>;
+  private readonly resolveCommand: (command: string) => string;
 
   constructor(options: HarnessAnalyzerAdapterOptions = {}) {
     this.commandRunner = options.commandRunner ?? childProcessAnalyzerCommandRunner;
@@ -240,6 +243,8 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       process.stderr.write(chunk);
     });
     this.prepare = options.prepare ?? runHarnessPreparation;
+    this.resolveCommand = options.resolveCommand
+      ?? ((command) => resolveHarnessCommandOnDisk(command, this.env, this.homeDirectory));
   }
 
   async analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
@@ -262,8 +267,9 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       return { ok: false, error: appError('read_error', 'Could not prepare harness analysis') };
     }
     const args = buildHarnessArgs(provider, { prompt, videoDir });
+    const command = this.resolveCommand(provider.command);
     const invocation = runtime.verboseInvocation === null
-      ? `${provider.command} ${buildHarnessArgs(provider, { prompt: '<prompt>', videoDir }).map((argument) => JSON.stringify(argument)).join(' ')}`
+      ? `${command} ${buildHarnessArgs(provider, { prompt: '<prompt>', videoDir }).map((argument) => JSON.stringify(argument)).join(' ')}`
       : runtime.verboseInvocation.replaceAll('{videoDir}', videoDir);
     const verbosePrefix = verbose
       ? [
@@ -273,7 +279,7 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       ].join('\n')
       : '';
     if (verbosePrefix.length > 0) this.writeStdout(verbosePrefix);
-    const run = await this.commandRunner.run(provider.command, args, {
+    const run = await this.commandRunner.run(command, args, {
       env: filteredAnalyzerEnv(this.env),
       timeoutMs: input.timeoutSeconds * 1000,
       signal: input.signal,
@@ -294,12 +300,13 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     }
     const tested = await this.testHarness(provider);
     const runtime = harnessRuntimeDefinition(provider.providerId);
+    const resolvedPath = this.resolveCommand(provider.command);
     return ok({
       name: runtime.dependencyName,
       available: tested.available,
       version: tested.version,
       source: tested.available ? 'system' : null,
-      path: null,
+      path: tested.available && resolvedPath !== provider.command ? resolvedPath : null,
       installHint: tested.available ? runtime.installHint : `${runtime.installHint}. ${tested.message}`,
     });
   }
@@ -319,7 +326,8 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
   ): Promise<Extract<ProviderTestResult, { family: 'harness' }>> {
     const startedAt = performance.now();
     const runtime = harnessRuntimeDefinition(provider.providerId);
-    const version = await this.commandRunner.run(provider.command, runtime.versionArgs, {
+    const command = this.resolveCommand(provider.command);
+    const version = await this.commandRunner.run(command, runtime.versionArgs, {
       env: filteredAnalyzerEnv(this.env),
       timeoutMs: 5000,
     });
@@ -456,6 +464,61 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     });
   }
 }
+
+export interface HarnessCommandResolution {
+  env: NodeJS.ProcessEnv;
+  homeDirectory: string;
+  fileExists: (candidate: string) => boolean;
+  listDirectory: (directory: string) => string[];
+}
+
+const harnessCommandInstallDirs = (homeDirectory: string): readonly string[] => [
+  path.join(homeDirectory, '.local', 'bin'),
+  '/opt/homebrew/bin',
+  '/usr/local/bin',
+  path.join(homeDirectory, '.bun', 'bin'),
+  path.join(homeDirectory, '.npm-global', 'bin'),
+];
+
+const nvmBinDirs = (homeDirectory: string, listDirectory: (directory: string) => string[]): readonly string[] => {
+  const versionsRoot = path.join(homeDirectory, '.nvm', 'versions', 'node');
+  return listDirectory(versionsRoot)
+    .sort((left, right) => right.localeCompare(left, undefined, { numeric: true }))
+    .map((version) => path.join(versionsRoot, version, 'bin'));
+};
+
+export const resolveHarnessCommand = (command: string, resolution: HarnessCommandResolution): string => {
+  if (command.includes(path.sep) || command.includes('/')) return command;
+  const pathValue = resolution.env.PATH ?? resolution.env.Path ?? '';
+  const pathDirs = pathValue.split(path.delimiter).filter((entry) => entry.length > 0);
+  for (const directory of pathDirs) {
+    const candidate = path.join(directory, command);
+    if (resolution.fileExists(candidate)) return candidate;
+  }
+  const knownDirs = [
+    ...harnessCommandInstallDirs(resolution.homeDirectory),
+    ...nvmBinDirs(resolution.homeDirectory, resolution.listDirectory),
+  ];
+  for (const directory of knownDirs) {
+    const candidate = path.join(directory, command);
+    if (resolution.fileExists(candidate)) return candidate;
+  }
+  return command;
+};
+
+const resolveHarnessCommandOnDisk = (command: string, env: NodeJS.ProcessEnv, homeDirectory: string): string =>
+  resolveHarnessCommand(command, {
+    env,
+    homeDirectory,
+    fileExists: (candidate) => existsSync(candidate),
+    listDirectory: (directory) => {
+      try {
+        return readdirSync(directory);
+      } catch {
+        return [];
+      }
+    },
+  });
 
 export const filteredAnalyzerEnv = (source: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv => {
   const filtered: NodeJS.ProcessEnv = {};
