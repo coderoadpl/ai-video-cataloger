@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Box, Button, ButtonGroup } from '@mui/material';
 
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
@@ -7,6 +7,8 @@ import { CancelConfirmationDialog } from '../components/ui/dialogs/CancelConfirm
 import { ProcessingOverlay } from '../components/ui/ProcessingOverlay.js';
 import { useTerminalLog } from '../components/ui/use-terminal-log.js';
 import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
+import { flattenTreeVideos } from '../features/catalog/catalog-tree-model.js';
+import { keyOf } from '../features/catalog/catalog-video.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
 import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
@@ -44,7 +46,11 @@ export const IndexRoute = () => {
     ? `Analysis unavailable: ${readiness.data.missingPieces.map((piece) => piece.name).join(', ')}`
     : readiness.isLoading ? 'Checking processing setup…' : undefined;
 
-  const selected = catalog.selectedVideo;
+  const selected = useMemo(() => {
+    if (catalog.selectedVideo !== null) return catalog.selectedVideo;
+    if (catalog.selectedKey === null || tree.root === null) return null;
+    return flattenTreeVideos(tree.root).find((video) => keyOf(video) === catalog.selectedKey) ?? null;
+  }, [catalog.selectedVideo, catalog.selectedKey, tree.root]);
   const analyzing = selected !== null && selected.path === processing.analyzingPath;
   const overlay = analyzing ? processing.progress : null;
 

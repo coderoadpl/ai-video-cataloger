@@ -146,7 +146,7 @@ describe('useProcessing drive', () => {
     expect(lines.some((line) => line.includes('[1/2] Extracting frames: one.mp4'))).toBe(true);
     expect(lines.some((line) => line.includes('Skipped (already analyzed): two.mp4'))).toBe(true);
     expect(result.current.skippedPaths.has('/videos/a/two.mp4')).toBe(true);
-    expect(invalidate).toHaveBeenCalled();
+    expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(3);
   });
 
   it('stops an active drive run without a confirmation dialog', async () => {

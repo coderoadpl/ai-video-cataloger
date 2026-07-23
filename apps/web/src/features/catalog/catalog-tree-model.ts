@@ -51,6 +51,11 @@ const finalize = (node: MutableNode): CatalogTreeNode => {
   };
 };
 
+export const flattenTreeVideos = (node: CatalogTreeNode): CatalogVideo[] => [
+  ...node.videos,
+  ...node.children.flatMap(flattenTreeVideos),
+];
+
 export const buildCatalogTree = (data: CatalogTreeData): CatalogTreeNode => {
   const rootName = basename(data.root);
   const nodes = new Map<string, MutableNode>();
