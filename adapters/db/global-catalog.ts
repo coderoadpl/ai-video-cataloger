@@ -410,12 +410,27 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       if (fileRow === undefined) return { fingerprint, deleted: false, folderId: null, cropPaths: [] };
       const observationRows = db.select().from(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).all();
       const cropPaths = observationRows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
+      const affectedPersonIds = [...new Set(observationRows
+        .map((row) => row.personId)
+        .filter((value): value is string => typeof value === 'string' && value.length > 0))];
       deleteSearchDocument(client, fingerprint);
       db.delete(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).run();
       db.delete(faceIndexState).where(eq(faceIndexState.fingerprint, fingerprint)).run();
       db.delete(fileTags).where(eq(fileTags.fingerprint, fingerprint)).run();
       db.delete(analyses).where(eq(analyses.fingerprint, fingerprint)).run();
       db.delete(files).where(eq(files.fingerprint, fingerprint)).run();
+      for (const personId of affectedPersonIds) {
+        const remaining = db.select().from(faceObservations).where(eq(faceObservations.personId, personId)).all();
+        if (remaining.length === 0) {
+          db.delete(people).where(eq(people.personId, personId)).run();
+          continue;
+        }
+        const embeddings = remaining.map((row) => rowToFaceObservation(row).embedding);
+        db.update(people)
+          .set({ centroid: embeddingToBlob(centroidFor(embeddings)), exemplarCount: embeddings.length })
+          .where(eq(people.personId, personId))
+          .run();
+      }
       return { fingerprint, deleted: true, folderId: fileRow.folderId, cropPaths };
     });
   }
@@ -493,10 +508,13 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
-  async deleteFaceObservationsForFile(fingerprint: string): Promise<Result<void, AppError>> {
+  async deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>> {
     return this.write((db, client) => {
+      const observationRows = db.select().from(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).all();
+      const cropPaths = observationRows.map((row) => row.cropPath).filter((value): value is string => typeof value === 'string' && value.length > 0);
       db.delete(faceObservations).where(eq(faceObservations.fingerprint, fingerprint)).run();
       syncSearchDocument(db, client, fingerprint);
+      return { cropPaths };
     });
   }
 

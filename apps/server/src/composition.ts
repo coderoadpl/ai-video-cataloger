@@ -609,11 +609,14 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(undefined));
   }
 
-  deleteFaceObservationsForFile(fingerprint: string): Promise<Result<void, AppError>> {
-    for (const observation of this.faceObservations.values()) {
-      if (observation.fingerprint === fingerprint) this.faceObservations.delete(observation.obsId);
+  deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>> {
+    const cropPaths: string[] = [];
+    for (const observation of [...this.faceObservations.values()]) {
+      if (observation.fingerprint !== fingerprint) continue;
+      if (typeof observation.cropPath === 'string' && observation.cropPath.length > 0) cropPaths.push(observation.cropPath);
+      this.faceObservations.delete(observation.obsId);
     }
-    return Promise.resolve(ok(undefined));
+    return Promise.resolve(ok({ cropPaths }));
   }
 
   listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>> {

@@ -180,7 +180,7 @@ export interface GlobalCatalogStore {
   latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>>;
   listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>>;
   completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
-  deleteFaceObservationsForFile(fingerprint: string): Promise<Result<void, AppError>>;
+  deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>>;
   listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>>;
   listPeople(): Promise<Result<Person[], AppError>>;
   getPerson(personId: string): Promise<Result<Person | null, AppError>>;

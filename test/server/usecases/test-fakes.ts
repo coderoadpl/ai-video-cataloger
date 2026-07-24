@@ -956,14 +956,30 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     const file = this.files.get(fingerprint);
     if (file === undefined) return Promise.resolve(ok({ fingerprint, deleted: false, folderId: null, cropPaths: [] }));
     const cropPaths: string[] = [];
-    for (const observation of this.faceObservations.values()) {
+    const affectedPersonIds = new Set<string>();
+    for (const observation of [...this.faceObservations.values()]) {
       if (observation.fingerprint !== fingerprint) continue;
       if (typeof observation.cropPath === 'string' && observation.cropPath.length > 0) cropPaths.push(observation.cropPath);
+      if (observation.personId !== null) affectedPersonIds.add(observation.personId);
       this.faceObservations.delete(observation.obsId);
     }
     this.faceIndexState.delete(fingerprint);
     this.analyses.delete(fingerprint);
     this.files.delete(fingerprint);
+    for (const personId of affectedPersonIds) {
+      const remaining = [...this.faceObservations.values()].filter((observation) => observation.personId === personId);
+      const person = this.people.get(personId);
+      if (person === undefined) continue;
+      if (remaining.length === 0) {
+        this.people.delete(personId);
+        continue;
+      }
+      this.people.set(personId, {
+        ...person,
+        centroid: fakeCentroid(remaining.map((observation) => observation.embedding)),
+        exemplarCount: remaining.length,
+      });
+    }
     return Promise.resolve(ok({ fingerprint, deleted: true, folderId: file.folderId, cropPaths }));
   }
 
@@ -1003,11 +1019,14 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(undefined));
   }
 
-  deleteFaceObservationsForFile(fingerprint: string): Promise<Result<void, AppError>> {
+  deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>> {
+    const cropPaths: string[] = [];
     for (const observation of [...this.faceObservations.values()]) {
-      if (observation.fingerprint === fingerprint) this.faceObservations.delete(observation.obsId);
+      if (observation.fingerprint !== fingerprint) continue;
+      if (typeof observation.cropPath === 'string' && observation.cropPath.length > 0) cropPaths.push(observation.cropPath);
+      this.faceObservations.delete(observation.obsId);
     }
-    return Promise.resolve(ok(undefined));
+    return Promise.resolve(ok({ cropPaths }));
   }
 
   listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>> {

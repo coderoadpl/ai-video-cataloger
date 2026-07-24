@@ -306,6 +306,96 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(results.ok && results.value[0]?.folder.currentPath).toBe('/media/drive-b');
   });
 
+  it('forgetEntry recomputes affected person centroids and removes people with no remaining observations', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const other: CatalogFile = { ...file, fingerprint: 'fp-two', fileName: 'two.mp4' };
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertFile(other);
+    await store.upsertPerson({
+      personId: 'person-shared',
+      displayName: 'Ada',
+      kind: 'face',
+      createdAt: '2026-01-04T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.1),
+      exemplarCount: 2,
+    });
+    await store.upsertPerson({
+      personId: 'person-only',
+      displayName: 'Bo',
+      kind: 'face',
+      createdAt: '2026-01-04T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.1),
+      exemplarCount: 1,
+    });
+    await store.upsertFaceObservation({
+      obsId: 'obs-shared-a',
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-shared',
+      cropPath: null,
+    });
+    await store.upsertFaceObservation({
+      obsId: 'obs-shared-b',
+      fingerprint: other.fingerprint,
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.5),
+      quality: 0.9,
+      personId: 'person-shared',
+      cropPath: null,
+    });
+    await store.upsertFaceObservation({
+      obsId: 'obs-only',
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      frameTsS: 2,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.3),
+      quality: 0.9,
+      personId: 'person-only',
+      cropPath: null,
+    });
+
+    const forgotten = await store.forgetEntry(file.fingerprint);
+    expect(forgotten.ok && forgotten.value.deleted).toBe(true);
+
+    const shared = await store.getPerson('person-shared');
+    expect(shared.ok && shared.value?.exemplarCount).toBe(1);
+    expect(shared.ok && shared.value?.centroid[0]).toBeCloseTo(1 / Math.sqrt(128), 6);
+    const removed = await store.getPerson('person-only');
+    expect(removed.ok && removed.value).toBe(null);
+  });
+
+  it('deleteFaceObservationsForFile returns the crop paths of the removed observations', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertFaceObservation({
+      obsId: 'obs-1',
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-1',
+      cropPath: '/home/faces/person-1/exemplar-001.jpg',
+    });
+
+    const removed = await store.deleteFaceObservationsForFile(file.fingerprint);
+    expect(removed.ok && removed.value.cropPaths).toEqual(['/home/faces/person-1/exemplar-001.jpg']);
+    const observations = await store.listFaceObservations({ fingerprint: file.fingerprint });
+    expect(observations.ok && observations.value.length).toBe(0);
+  });
+
   it('reconcileFolder marks absent files, clears returning files, and skips duplicates elsewhere', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });

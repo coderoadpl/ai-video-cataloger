@@ -204,6 +204,8 @@ const runFacesIndex = async (
       if (stale) {
         const purged = await deps.globalCatalog.deleteFaceObservationsForFile(fingerprint);
         if (!purged.ok) return purged;
+        const removedCrops = await deleteCropPaths(deps.fs, purged.value.cropPaths);
+        if (!removedCrops.ok) return removedCrops;
         contexts = contexts.filter((context) => context.observation.fingerprint !== fingerprint);
       }
       const existing = await deps.globalCatalog.listFaceObservations({ fingerprint });
