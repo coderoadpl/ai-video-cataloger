@@ -2,7 +2,7 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { app, BrowserWindow, nativeTheme } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
 
 import type { App } from '@server/src/create-app.js';
 
@@ -67,7 +67,10 @@ const createWindow = async (): Promise<void> => {
   if (windowState.isMaximized === true) {
     mainWindow.once('ready-to-show', () => mainWindow?.maximize());
   }
-  mainWindow.once('ready-to-show', () => mainWindow?.show());
+  mainWindow.once('ready-to-show', () => {
+    mainWindow?.show();
+    logWindowShown();
+  });
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -89,19 +92,22 @@ const loadRenderer = async (window: BrowserWindow): Promise<void> => {
   await window.loadFile(path.join(currentDirectory, '..', 'dist', 'web', 'index.html'));
 };
 
+const logWindowShown = (): void => {
+  if (process.env.AVC_DEBUG_STARTUP !== '1') return;
+  console.log(`[startup] window shown ${Math.round(process.uptime() * 1000)}ms after process start`);
+};
+
+const surfaceCompositionFailure = (error: unknown): void => {
+  const message = error instanceof Error ? error.message : String(error);
+  dialog.showErrorBox('AI Video Cataloger failed to start', `The catalog could not be initialized.\n\n${message}`);
+};
+
 const bootstrap = async (): Promise<void> => {
   const appVersion = resolveDesktopAppVersion({
     isPackaged: app.isPackaged,
     packagedVersion: app.getVersion(),
   });
-  desktopApp = createDesktopApp({ version: appVersion });
   folderStore = new FolderStore(folderStorePath(app.getPath('userData')));
-  registerIpcHandlers({
-    desktopApp,
-    appVersion,
-    folderStore,
-    getMainWindow: () => mainWindow,
-  });
   registerMediaProtocolHandler({
     getCurrentFolder: () => {
       if (folderStore === null) return Promise.resolve(null);
@@ -109,7 +115,32 @@ const bootstrap = async (): Promise<void> => {
     },
     getFacesRoot: () => Promise.resolve(path.join(homedir(), '.ai-video-cataloger', 'faces')),
   });
+
+  let resolveDesktopApp!: (value: App) => void;
+  let rejectDesktopApp!: (reason: unknown) => void;
+  const desktopAppReady = new Promise<App>((resolve, reject) => {
+    resolveDesktopApp = resolve;
+    rejectDesktopApp = reject;
+  });
+  void desktopAppReady.catch(surfaceCompositionFailure);
+
+  registerIpcHandlers({
+    desktopApp: desktopAppReady,
+    appVersion,
+    folderStore,
+    getMainWindow: () => mainWindow,
+  });
+
   await createWindow();
+
+  setImmediate(() => {
+    try {
+      desktopApp = createDesktopApp({ version: appVersion });
+      resolveDesktopApp(desktopApp);
+    } catch (error) {
+      rejectDesktopApp(error);
+    }
+  });
 };
 
 app.on('window-all-closed', () => {

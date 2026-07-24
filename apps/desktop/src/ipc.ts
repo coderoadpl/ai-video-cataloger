@@ -25,7 +25,7 @@ import { resolveScopedPath } from './media-scope.js';
 import { updateRecentFoldersMenu } from './menu.js';
 
 export interface IpcDeps {
-  desktopApp: App;
+  desktopApp: Promise<App>;
   appVersion: string;
   folderStore: FolderStore;
   getMainWindow(): BrowserWindow | null;
@@ -47,23 +47,7 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
 
   ipcMain.handle(CHANNELS.apiRequest, async (event, input: unknown): Promise<DesktopFetchResponse> => {
     if (!isTrustedSender(event)) throw new Error('Unauthorized IPC sender');
-    const request = desktopFetchRequestSchema.parse(input);
-    const init: RequestInit = {
-      ...(request.method === undefined ? {} : { method: request.method }),
-      ...(request.headers === undefined ? {} : { headers: request.headers }),
-      ...(request.body === undefined || request.body === null ? {} : { body: request.body }),
-    };
-    const response = await deps.desktopApp.honoApp.request(request.url, init);
-    const headers: Record<string, string> = {};
-    response.headers.forEach((value, key) => {
-      headers[key] = value;
-    });
-    return desktopFetchResponseSchema.parse({
-      status: response.status,
-      statusText: response.statusText,
-      headers,
-      body: await response.text(),
-    });
+    return dispatchApiRequest(deps.desktopApp, input);
   });
 
   ipcMain.on(CHANNELS.windowClose, (event) => {
@@ -148,6 +132,30 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
   ipcMain.handle(CHANNELS.onboardingSetCompleted, async (event): Promise<void> => {
     if (!isTrustedSender(event)) return;
     await writeOnboardingCompleted();
+  });
+};
+
+export const dispatchApiRequest = async (
+  desktopApp: Promise<App>,
+  input: unknown,
+): Promise<DesktopFetchResponse> => {
+  const request = desktopFetchRequestSchema.parse(input);
+  const init: RequestInit = {
+    ...(request.method === undefined ? {} : { method: request.method }),
+    ...(request.headers === undefined ? {} : { headers: request.headers }),
+    ...(request.body === undefined || request.body === null ? {} : { body: request.body }),
+  };
+  const resolvedApp = await desktopApp;
+  const response = await resolvedApp.honoApp.request(request.url, init);
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, key) => {
+    headers[key] = value;
+  });
+  return desktopFetchResponseSchema.parse({
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+    body: await response.text(),
   });
 };
 
