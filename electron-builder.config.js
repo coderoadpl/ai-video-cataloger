@@ -20,6 +20,8 @@ const config = {
     'node_modules/onnxruntime-node/package.json',
     'node_modules/onnxruntime-common/dist/**/*',
     'node_modules/onnxruntime-common/package.json',
+    '!node_modules/onnxruntime-node/bin/napi-v6/win32/**',
+    '!node_modules/onnxruntime-node/bin/napi-v6/linux/**',
   ],
   asarUnpack: [
     'node_modules/ffmpeg-static/ffmpeg',
@@ -32,16 +34,6 @@ const config = {
       from: 'dist/cli',
       to: 'cli',
       filter: ['**/*'],
-    },
-    {
-      from: 'node_modules/onnxruntime-node',
-      to: 'node_modules/onnxruntime-node',
-      filter: ['dist/**/*', 'bin/napi-v6/darwin/arm64/**/*', 'package.json'],
-    },
-    {
-      from: 'node_modules/onnxruntime-common',
-      to: 'node_modules/onnxruntime-common',
-      filter: ['dist/**/*', 'package.json'],
     },
   ],
   mac: {
