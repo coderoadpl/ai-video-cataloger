@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 import { join } from 'node:path';
 
 import { analyzerCliFlags } from '../analyzer-mode.js';
-import { CLI_DIST, listVideos, runCli, type JsonEvent } from '../helpers.js';
+import { CLI_DIST, cliEnv, listVideos, runCli, type JsonEvent } from '../helpers.js';
 import type { AnalyzeOptions, AnalyzeOutcome, BatchOutcome, PipelineDriver } from './types.js';
 
 const PIPELINE_TIMEOUT_MS = 420_000;
@@ -33,7 +33,7 @@ export class CliDriver implements PipelineDriver {
       const child = spawn(
         process.execPath,
         [CLI_DIST, 'process', join(this.workdir, filename), '--json', '--whisper', options.whisper, ...analyzerCliFlags()],
-        { cwd: this.workdir, env: process.env, stdio: ['ignore', 'pipe', 'pipe'] },
+        { cwd: this.workdir, env: cliEnv(this.workdir), stdio: ['ignore', 'pipe', 'pipe'] },
       );
 
       let buffered = '';

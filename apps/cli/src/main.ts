@@ -87,7 +87,7 @@ interface SearchOptions extends JsonOption {
 }
 
 const cliWorkingDirectory = process.env.AVC_WORKING_DIRECTORY ?? process.cwd();
-const cliHomeDirectory = homedir();
+const cliHomeDirectory = process.env.AVC_HOME_DIRECTORY ?? homedir();
 const cliConfigFolder = path.resolve(cliWorkingDirectory) === path.resolve(cliHomeDirectory)
   ? undefined
   : cliWorkingDirectory;

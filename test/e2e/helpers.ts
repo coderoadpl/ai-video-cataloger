@@ -9,11 +9,12 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  symlinkSync,
   unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { pipeline } from 'node:stream/promises';
 import { fileURLToPath } from 'node:url';
@@ -83,11 +84,25 @@ export interface CliResult {
   stderr: string;
 }
 
+export function isolatedHome(workdir: string): string {
+  const home = join(workdir, '.avc-home');
+  const appDir = join(home, '.ai-video-cataloger');
+  mkdirSync(appDir, { recursive: true });
+  const sharedModels = join(homedir(), '.ai-video-cataloger', 'models');
+  const linkedModels = join(appDir, 'models');
+  if (existsSync(sharedModels) && !existsSync(linkedModels)) symlinkSync(sharedModels, linkedModels);
+  return home;
+}
+
+export function cliEnv(workdir: string, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  return { ...base, AVC_HOME_DIRECTORY: isolatedHome(workdir) };
+}
+
 export function runCli(
   args: string[],
   cwd: string,
   timeoutMs = 300_000,
-  env: NodeJS.ProcessEnv = process.env,
+  env: NodeJS.ProcessEnv = cliEnv(cwd),
 ): Promise<CliResult> {
   return new Promise((resolvePromise, rejectPromise) => {
     const child = spawn(process.execPath, [CLI_DIST, ...args], {
@@ -155,7 +170,13 @@ async function downloadTo(url: string, dest: string): Promise<void> {
   const response = await fetch(url);
   if (!response.ok) throw new Error(`Download failed (${String(response.status)}) for ${url}`);
   mkdirSync(dirname(dest), { recursive: true });
-  await pipeline(response.body, createWriteStream(dest));
+  const tmp = `${dest}.tmp-${String(process.pid)}-${String(Date.now())}`;
+  try {
+    await pipeline(response.body, createWriteStream(tmp));
+    renameSync(tmp, dest);
+  } finally {
+    if (existsSync(tmp)) rmSync(tmp);
+  }
 }
 
 function ffmpegBinary(): string {
@@ -167,37 +188,73 @@ function ffmpegBinary(): string {
   return resolved;
 }
 
+function ffprobeBinary(): string {
+  const require = createRequire(import.meta.url);
+  const resolved: unknown = (require('@ffprobe-installer/ffprobe') as { path?: unknown }).path;
+  if (typeof resolved !== 'string' || !existsSync(resolved)) {
+    throw new Error('@ffprobe-installer/ffprobe binary not found - run npm install');
+  }
+  return resolved;
+}
+
+function mediaIsPlayable(path: string): boolean {
+  if (!existsSync(path)) return false;
+  const probe = spawnSync(
+    ffprobeBinary(),
+    ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=noprint_wrappers=1:nokey=1', path],
+    { timeout: 30_000, encoding: 'utf-8' },
+  );
+  if (probe.status !== 0) return false;
+  const duration = Number.parseFloat((probe.stdout ?? '').trim());
+  return Number.isFinite(duration) && duration > 0;
+}
+
 function generateSpeechVideo(dest: string, speech: string): void {
   mkdirSync(dirname(dest), { recursive: true });
-  const aiff = dest.replace(/\.mp4$/, '.aiff');
-  const say = spawnSync('say', ['-o', aiff, speech], { timeout: 60_000 });
-  if (say.status !== 0) {
-    throw new Error(`macOS 'say' failed (status ${String(say.status)}): ${String(say.stderr)}`);
-  }
-  const ffmpeg = spawnSync(
-    ffmpegBinary(),
-    [
-      '-y',
-      '-f',
-      'lavfi',
-      '-i',
-      'testsrc=size=640x360:rate=25',
-      '-i',
-      aiff,
-      '-shortest',
-      '-c:v',
-      'libx264',
-      '-pix_fmt',
-      'yuv420p',
-      '-c:a',
-      'aac',
-      dest,
-    ],
-    { timeout: 120_000 },
-  );
-  unlinkSync(aiff);
-  if (ffmpeg.status !== 0) {
-    throw new Error(`ffmpeg failed generating ${dest}: ${String(ffmpeg.stderr).slice(-2000)}`);
+  const base = `${dest}.tmp-${String(process.pid)}-${String(Date.now())}`;
+  const aiff = `${base}.aiff`;
+  const tmp = `${base}.mp4`;
+  const cleanup = (): void => {
+    if (existsSync(aiff)) unlinkSync(aiff);
+    if (existsSync(tmp)) rmSync(tmp);
+  };
+  try {
+    const say = spawnSync('say', ['-o', aiff, speech], { timeout: 60_000 });
+    if (say.status !== 0) {
+      throw new Error(`macOS 'say' failed (status ${String(say.status)}): ${String(say.stderr)}`);
+    }
+    const ffmpeg = spawnSync(
+      ffmpegBinary(),
+      [
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'testsrc=size=640x360:rate=25',
+        '-i',
+        aiff,
+        '-shortest',
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-c:a',
+        'aac',
+        '-movflags',
+        '+faststart',
+        tmp,
+      ],
+      { timeout: 120_000 },
+    );
+    if (ffmpeg.status !== 0) {
+      throw new Error(`ffmpeg failed generating ${dest}: ${String(ffmpeg.stderr).slice(-2000)}`);
+    }
+    if (!mediaIsPlayable(tmp)) {
+      throw new Error(`ffmpeg produced an unplayable ${dest} (no readable moov/duration)`);
+    }
+    renameSync(tmp, dest);
+  } finally {
+    cleanup();
   }
 }
 
@@ -206,11 +263,13 @@ export async function ensureFixture(sample: VideoSample): Promise<string> {
   if (source.kind === 'repo') {
     const path = join(REPO_ROOT, source.path);
     if (!existsSync(path)) throw new Error(`Repo fixture missing: ${path}`);
+    if (!mediaIsPlayable(path)) throw new Error(`Repo fixture is corrupt (unplayable): ${path}`);
     return path;
   }
 
   const dest = join(FIXTURES_DIR, sample.file);
   if (source.kind === 'url') {
+    if (existsSync(dest) && sha256Of(dest) !== source.sha256) rmSync(dest);
     if (!existsSync(dest)) await downloadTo(source.url, dest);
     const actual = sha256Of(dest);
     if (actual !== source.sha256) {
@@ -220,6 +279,7 @@ export async function ensureFixture(sample: VideoSample): Promise<string> {
     return dest;
   }
 
+  if (existsSync(dest) && !mediaIsPlayable(dest)) rmSync(dest);
   if (!existsSync(dest)) generateSpeechVideo(dest, source.speech);
   return dest;
 }
@@ -306,11 +366,47 @@ export function addCorruptVideoTo(dir: string, name = 'corrupt-video.mp4'): stri
   return name;
 }
 
+function writeMinimalVideo(dest: string): void {
+  mkdirSync(dirname(dest), { recursive: true });
+  const tmp = `${dest}.tmp-${String(process.pid)}-${String(Date.now())}`;
+  try {
+    const ffmpeg = spawnSync(
+      ffmpegBinary(),
+      [
+        '-y',
+        '-f',
+        'lavfi',
+        '-i',
+        'color=c=gray:size=320x240:rate=5:duration=1',
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-movflags',
+        '+faststart',
+        '-f',
+        'mp4',
+        tmp,
+      ],
+      { timeout: 60_000 },
+    );
+    if (ffmpeg.status !== 0) {
+      throw new Error(`ffmpeg failed generating ${dest}: ${String(ffmpeg.stderr).slice(-2000)}`);
+    }
+    if (!mediaIsPlayable(tmp)) {
+      throw new Error(`ffmpeg produced an unplayable ${dest} (no readable moov/duration)`);
+    }
+    renameSync(tmp, dest);
+  } finally {
+    if (existsSync(tmp)) rmSync(tmp);
+  }
+}
+
 export async function createOldDataCompatFixture(dir: string): Promise<string> {
   const originalName = 'legacy-resume.mp4';
   const originalPath = join(dir, originalName);
   const baseName = 'legacy-resume';
-  writeFileSync(originalPath, Buffer.from('legacy placeholder video'));
+  writeMinimalVideo(originalPath);
 
   mkdirSync(join(dir, 'frames', baseName), { recursive: true });
   mkdirSync(join(dir, 'transcripts'), { recursive: true });
