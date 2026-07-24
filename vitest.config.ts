@@ -13,6 +13,36 @@ export default defineConfig({
   test: {
     // Gates must never read or write the developer's real macOS Keychain.
     env: { AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1' },
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'json-summary'],
+      include: ['core/**/*.ts', 'adapters/**/*.ts', 'apps/**/*.{ts,tsx}', 'scripts/**/*.ts'],
+      exclude: [
+        '**/*.test.{ts,tsx}',
+        // Renderer bootstrap: mounts React into the DOM, no database-free unit
+        // surface, exercised by the GUI e2e job.
+        'apps/web/src/main.tsx',
+        // Dev-only component gallery (CLAUDE.md §House rules): a QA tool, not
+        // shipped, driven by scripts/gallery-shots.mjs, not vitest.
+        'apps/web/src/gallery/**',
+        // Gate-orchestration scripts (top-level programs that boot the real app /
+        // scan docs and process.exit()): run by `npm run smoke` / `npm run
+        // doc-lint`, never by vitest, so counting them 0% would depress the floor.
+        'scripts/smoke.ts',
+        'scripts/doc-lint.ts',
+      ],
+      // Ratchet floor, not aspiration: each threshold is the measured coverage of
+      // `vitest run --coverage` rounded DOWN to the whole percent. A regression
+      // below the floor fails `npm run check`; raise the floor whenever coverage
+      // climbs. First measured 2026-07-25 (Phase 3): stmts 79.33 / branches 80.57
+      // / funcs 73.68 / lines 79.33.
+      thresholds: {
+        statements: 79,
+        branches: 80,
+        functions: 73,
+        lines: 79,
+      },
+    },
     projects: [
       {
         extends: true,
@@ -67,6 +97,9 @@ export default defineConfig({
           environment: 'node',
           include: ['config-regression/**/*.test.ts'],
           testTimeout: 120000,
+          // The beforeAll boots a real eslint subprocess over planted fixtures;
+          // under coverage instrumentation that first run exceeds the 10s default.
+          hookTimeout: 120000,
         },
       },
     ],

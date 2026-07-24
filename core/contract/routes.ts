@@ -498,7 +498,9 @@ export const whisperModelDownloadOutputSchema = z.object({
   sizeBytes: z.number().int().nonnegative().optional(),
 });
 
-export const whisperModelDeleteInputSchema = whisperModelDownloadInputSchema;
+export const whisperModelDeleteInputSchema = whisperModelInputSchema.extend({
+  force: z.boolean().default(false),
+});
 
 export const whisperModelDeleteOutputSchema = z.object({
   model: z.enum(WHISPER_MODEL_NAMES),

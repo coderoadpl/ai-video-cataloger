@@ -1,0 +1,64 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "entry": [
+    // Electron main + preload are bundled by esbuild (scripts/build-electron.mjs),
+    // not imported from any inferable entry; the `main` field points at the built
+    // dist-electron output, so knip cannot reach the sources without these.
+    "apps/desktop/src/main.ts",
+    "apps/desktop/src/preload.ts",
+    // Dev-server / screenshot gallery. gallery.html has no rollupOptions.input in
+    // apps/web/vite.config.ts (hotspot 3), so neither the html nor its main.tsx is
+    // a build output knip can infer — both are hand-run QA entries.
+    "apps/web/gallery.html",
+    "apps/web/src/gallery/main.tsx",
+    // electron-builder reads this config file by name; nothing imports it.
+    "electron-builder.config.js",
+    // Every script runs via an npm script or by hand (build-app-icon.mjs and
+    // gallery-shots.mjs have no npm-script wrapper).
+    "scripts/*.{ts,mjs}",
+    // Playwright e2e specs + their in-tree support the config loads.
+    "test/e2e/*.spec.ts",
+    // globalSetup referenced by string in playwright.config.ts, not importable.
+    "test/e2e/preflight.ts",
+    // vitest suites across every project (vitest.config.ts nests projects knip
+    // cannot fully infer).
+    "**/*.test.{ts,tsx}"
+  ],
+  "project": [
+    "core/**/*.ts",
+    "adapters/**/*.ts",
+    "apps/**/*.{ts,tsx}",
+    "scripts/**/*.{ts,mjs}",
+    "config-regression/**/*.ts",
+    "test/**/*.{ts,tsx}"
+  ],
+  "ignoreBinaries": [
+    // macOS system binaries the app and its harnesses shell out to; not npm
+    // dependencies, so knip cannot resolve them (analogous to upstream's fuser).
+    "caffeinate", // apps/cli: keep the Mac awake during long scans
+    "sips", // scripts/build-app-icon.mjs: rasterize the logo
+    "iconutil", // scripts/build-app-icon.mjs: assemble the .icns
+    "say" // test/e2e/helpers.ts: synthesize sample audio for transcription fixtures
+  ],
+  "rules": {
+    // Unambiguous dead weight fails `check`: dead files, undeclared/unused
+    // dependencies, unresolved imports, duplicate exports. Unused *exports* and
+    // *types* are surfaced but do NOT fail — the layered core/contract/client API
+    // is deliberately shipped ahead of some consumers, so export-level pruning
+    // would thrash. Packaging-critical deps (ffmpeg-static, @ffprobe-installer,
+    // onnxruntime-node) are PROVEN referenced via string-literal require()/import()
+    // in adapters — never blanket-ignored, so a broken packaging path surfaces
+    // here instead of shipping a green check with a broken bundle.
+    "files": "error",
+    "dependencies": "error",
+    "unlisted": "error",
+    "unresolved": "error",
+    "binaries": "error",
+    "duplicates": "error",
+    "exports": "warn",
+    "types": "warn",
+    "nsExports": "warn",
+    "nsTypes": "warn",
+    "enumMembers": "warn"
+  }
+}

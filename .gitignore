@@ -9,6 +9,7 @@ test/e2e/fixtures/*
 .e2e-worktrees/
 release/
 test-results/
+coverage/
 playwright-report/
 .cli-stage/
 **/__avc_probe_*/
