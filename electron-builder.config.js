@@ -44,6 +44,7 @@ const config = {
     icon: 'build/icon.icns',
     category: 'public.app-category.utilities',
     darkModeSupport: true,
+    identity: '-',
     hardenedRuntime: true,
     gatekeeperAssess: false,
     entitlements: 'build/entitlements.mac.plist',
