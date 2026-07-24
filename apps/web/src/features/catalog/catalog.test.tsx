@@ -82,7 +82,7 @@ describe('catalog', () => {
     expect(screen.getByText('1.0 KB')).toBeDefined();
   });
 
-  it('renders thumbnails with source-derived aspect dimensions', async () => {
+  it('renders square thumbnail bounding boxes regardless of source aspect', async () => {
     server.use(scanOk(makeScan([
       makeVideo({ path: '/videos/landscape.mp4', contentHash: 'hash-a', source: { width: 1920, height: 1080, rotation: 0 } }),
       makeVideo({ path: '/videos/portrait.mp4', contentHash: 'hash-b', source: { width: 1920, height: 1080, rotation: 90 } }),
@@ -92,8 +92,10 @@ describe('catalog', () => {
 
     await screen.findByText('landscape.mp4');
     const thumbnails = screen.getAllByTestId('media-thumbnail');
-    expect(thumbnails[0]?.getAttribute('data-thumbnail-height')).toBe('36');
-    expect(thumbnails[1]?.getAttribute('data-thumbnail-height')).toBe('64');
+    expect(thumbnails[0]?.getAttribute('data-thumbnail-width')).toBe('56');
+    expect(thumbnails[0]?.getAttribute('data-thumbnail-height')).toBe('56');
+    expect(thumbnails[1]?.getAttribute('data-thumbnail-width')).toBe('56');
+    expect(thumbnails[1]?.getAttribute('data-thumbnail-height')).toBe('56');
   });
 
   it('shows the opened folder name and path in the header', async () => {
@@ -130,37 +132,22 @@ describe('catalog', () => {
     expect(alert.textContent).toContain('Cannot read folder');
   });
 
-  it('keeps the selection on the same video across a rename (content-hash key)', async () => {
+  it('selects only the clicked row when another file shares its content hash', async () => {
     server.use(
       scanOk(
         makeScan([
-          makeVideo({ path: '/videos/raw-clip.mp4', contentHash: 'hash-a', status: 'completed' }),
-          makeVideo({ path: '/videos/other.mp4', contentHash: 'hash-b' }),
+          makeVideo({ path: '/videos/original.mp4', contentHash: 'shared-hash', status: 'completed' }),
+          makeVideo({ path: '/videos/copy.mp4', contentHash: 'shared-hash' }),
         ]),
       ),
     );
 
-    const { queryClient, container } = renderThemed(<Harness folder={FOLDER} />);
+    const { container } = renderThemed(<Harness folder={FOLDER} />);
 
-    fireEvent.click(await screen.findByText('raw-clip.mp4'));
-    expect(selectedFilename(container)).toBe('raw-clip.mp4');
+    fireEvent.click(await screen.findByText('copy.mp4'));
 
-    server.use(
-      scanOk(
-        makeScan([
-          makeVideo({
-            path: '/videos/2026-01-01_cooking.mp4',
-            contentHash: 'hash-a',
-            status: 'completed',
-          }),
-          makeVideo({ path: '/videos/other.mp4', contentHash: 'hash-b' }),
-        ]),
-      ),
-    );
-    await queryClient.invalidateQueries();
-
-    await screen.findByText('2026-01-01_cooking.mp4');
-    expect(selectedFilename(container)).toBe('2026-01-01_cooking.mp4');
+    expect(selectedFilename(container)).toBe('copy.mp4');
+    expect(container.querySelectorAll('.Mui-selected')).toHaveLength(1);
   });
 
   it('generates a missing thumbnail then invalidates so the catalog refetches it', async () => {

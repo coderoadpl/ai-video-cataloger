@@ -51,8 +51,10 @@ export interface Dictionary {
     lockedBy: (processName: string, pid: number) => string;
     retryLock: string;
     folderCounts: (pending: number, processed: number) => string;
-    approximateFolderCounts: (pending: number, processed: number) => string;
+    folderCountsWithDuplicates: (pending: number, processed: number, duplicates: number) => string;
     unknownFolderCounts: (videoCount: number) => string;
+    duplicateBadge: string;
+    duplicateTooltip: (canonicalPath: string) => string;
     largeRunWarningTitle: string;
     largeRunWarningBody: (count: number) => string;
     largeRunCommandLabel: string;
@@ -531,8 +533,11 @@ export const en: Dictionary = {
     lockedBy: (processName, pid) => `Catalog locked by ${processName} PID ${pid}`,
     retryLock: 'Retry',
     folderCounts: (pending, processed) => `${pending} pending · ${processed} done`,
-    approximateFolderCounts: (pending, processed) => `about ${pending} pending · ${processed} done`,
-    unknownFolderCounts: (videoCount) => `${videoCount} videos · pending unknown`,
+    folderCountsWithDuplicates: (pending, processed, duplicates) =>
+      `${pending} pending · ${processed} done · ${duplicates} duplicates`,
+    unknownFolderCounts: (videoCount) => `${videoCount} videos`,
+    duplicateBadge: 'Duplicate',
+    duplicateTooltip: (canonicalPath) => `Duplicate of ${canonicalPath}`,
     largeRunWarningTitle: 'Large folder tree',
     largeRunWarningBody: (count) => `${count} videos found. Analysis at this scale is better run from the CLI, and the initial scan may take a while.`,
     largeRunCommandLabel: 'Copy CLI command',
@@ -1049,8 +1054,11 @@ export const pl: Dictionary = {
     lockedBy: (processName, pid) => `Katalog zablokowany przez ${processName} PID ${pid}`,
     retryLock: 'Ponów',
     folderCounts: (pending, processed) => `${pending} oczekuje · ${processed} gotowe`,
-    approximateFolderCounts: (pending, processed) => `około ${pending} oczekuje · ${processed} gotowe`,
-    unknownFolderCounts: (videoCount) => `${videoCount} film(y) · oczekujące nieznane`,
+    folderCountsWithDuplicates: (pending, processed, duplicates) =>
+      `${pending} oczekuje · ${processed} gotowe · ${duplicates} duplikaty`,
+    unknownFolderCounts: (videoCount) => `${videoCount} film(y)`,
+    duplicateBadge: 'Duplikat',
+    duplicateTooltip: (canonicalPath) => `Duplikat pliku ${canonicalPath}`,
     largeRunWarningTitle: 'Duże drzewo folderów',
     largeRunWarningBody: (count) => `Znaleziono ${count} filmów. Analizę w tej skali lepiej uruchomić z CLI, a początkowe skanowanie może chwilę potrwać.`,
     largeRunCommandLabel: 'Kopiuj polecenie CLI',

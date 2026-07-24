@@ -101,7 +101,7 @@ describe('scanTree', () => {
     expect(media.probeInputs).toEqual([]);
   });
 
-  it('derives approximate processed counts from folder markers and catalog names', async () => {
+  it('derives exact processed counts from folder markers and catalog names', async () => {
     const fs = new InMemoryFileSystem('/drive');
     const store = new InMemoryGlobalCatalogStore();
     const folderId = '11111111-1111-4111-8111-111111111111';
@@ -167,7 +167,6 @@ describe('scanTree', () => {
       videoCount: 2,
       pendingCount: 0,
       processedCount: 2,
-      countsApproximate: true,
     });
     expect(result.value.pendingTotal).toBe(0);
     expect(result.value.processedTotal).toBe(2);
@@ -189,5 +188,52 @@ describe('scanTree', () => {
     expect(fs.hashInputs).toEqual(['/drive/sub/clip.mp4']);
     expect(media.probeInputs).toEqual(['/drive/sub/clip.mp4']);
     expect(deps.catalogs.openInputs).toEqual(['/drive/sub']);
+  });
+
+  it('marks a folder video as a duplicate of a global analysis recorded under another folder', async () => {
+    const fs = new InMemoryFileSystem('/drive');
+    const media = new InMemoryMedia();
+    const store = new InMemoryGlobalCatalogStore();
+    const dupesFolderId = '22222222-2222-4222-8222-222222222222';
+    const canonicalFolderId = '33333333-3333-4333-8333-333333333333';
+    addVideo(fs, '/drive/dupes/clone.mp4', 'shared-fp');
+    await fs.writeTextFile('/drive/dupes/.ai-video-cataloger/folder-id', markerJson(dupesFolderId));
+    await store.upsertFolder({
+      folderId: canonicalFolderId,
+      currentPath: '/drive/originals',
+      displayName: 'originals',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    await store.upsertFile({
+      fingerprint: 'shared-fp',
+      folderId: canonicalFolderId,
+      fileName: 'source.mp4',
+      size: 1024,
+      durationS: null,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'openai',
+      model: 'gpt-4.1-mini',
+      missingAt: null,
+    });
+    await store.upsertAnalysis({
+      fingerprint: 'shared-fp',
+      finalName: '2026_holiday.mp4',
+      description: 'done',
+      transcript: null,
+      language: null,
+      tags: [],
+    });
+
+    const result = await scanTreeFolderDetails(
+      { catalogs: new InMemoryCatalogs(), fs, media, globalCatalog: store },
+      { folder: '/drive/dupes' },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.videos[0]?.duplicate).toEqual({ canonicalPath: '/drive/originals/2026_holiday.mp4' });
   });
 });

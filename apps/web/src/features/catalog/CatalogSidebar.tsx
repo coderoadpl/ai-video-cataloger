@@ -79,7 +79,7 @@ export const CatalogSidebar = ({
         {lockBanner === undefined ? null : <Box sx={{ mt: 1 }}>{lockBanner}</Box>}
         {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}
       </Box>
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: treeRoot === null ? 'auto' : 'hidden' }}>
         {treeRoot === null ? (
           <>
             <VideoList

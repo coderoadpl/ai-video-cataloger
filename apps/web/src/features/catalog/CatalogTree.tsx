@@ -1,13 +1,30 @@
-import { useCallback, useEffect, useState } from 'react';
-import { Alert, Box, Button, Collapse, List, ListItemButton, Typography } from '@mui/material';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { Alert, Box, Button, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { ChevronRightIcon, ExpandMoreIcon, FolderIcon } from '../../components/ui/icons.js';
+import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
+import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
+import { ApiError } from '@core/client/index.js';
 import { actions } from '../../api.js';
+import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { type CatalogVideo } from './catalog-video.js';
+import { type CatalogVideo, keyOf } from './catalog-video.js';
 import { type CatalogTreeNode } from './catalog-tree-model.js';
-import { VideoList } from './VideoList.js';
+import {
+  buildTreeRows,
+  folderNeedsFetch,
+  type FolderCountsData,
+  type FolderRow,
+  type LoadedFolder,
+  type StatusRow,
+  type TreeRow,
+  type VideoRow as VideoRowData,
+} from './catalog-tree-rows.js';
+import { DuplicateBadge } from './DuplicateBadge.js';
+import { SkippedBadge } from './VideoList.js';
+import { useThumbnailGeneration } from './use-thumbnail-generation.js';
+import { useWindowedList } from './use-windowed-list.js';
 
 interface CatalogTreeProps {
   root: CatalogTreeNode;
@@ -20,118 +37,209 @@ interface CatalogTreeProps {
 }
 
 const LARGE_TREE_VIDEO_THRESHOLD = 2_000;
+const FOLDER_ROW_HEIGHT = 40;
+const STATUS_ROW_HEIGHT = 52;
+const VIDEO_ROW_HEIGHT = 96;
+const ERROR_VIDEO_ROW_HEIGHT = 120;
+const INDENT = 18;
+const THUMB_BOX = 56;
+const EMPTY_SUBFOLDER_VIDEOS: readonly CatalogVideo[] = [];
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
-
 const processDriveCommand = (root: string): string => `ai-video-cataloger process-drive ${shellQuote(root)}`;
 
-const FolderCounts = ({
-  videoCount,
-  pending,
-  processed,
-  approximate,
-}: {
-  videoCount: number;
-  pending: number | null;
-  processed: number | null;
-  approximate: boolean;
-}) => {
-  const dictionary = useDictionary();
-  const text = pending === null || processed === null
-    ? dictionary.catalog.unknownFolderCounts(videoCount)
-    : approximate
-      ? dictionary.catalog.approximateFolderCounts(pending, processed)
-      : dictionary.catalog.folderCounts(pending, processed);
+const hasErrorLine = (video: CatalogVideo): boolean =>
+  video.status === 'error' && video.errorMessage != null && video.errorMessage.length > 0;
 
-  return (
-    <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', flexShrink: 0 }}>
-      {text}
-    </Typography>
-  );
+const rowHeightOf = (row: TreeRow): number => {
+  if (row.kind === 'folder') return FOLDER_ROW_HEIGHT;
+  if (row.kind === 'status') return STATUS_ROW_HEIGHT;
+  return hasErrorLine(row.video) ? ERROR_VIDEO_ROW_HEIGHT : VIDEO_ROW_HEIGHT;
 };
 
-interface NodeProps extends Omit<CatalogTreeProps, 'root' | 'rootVideos'> {
-  node: CatalogTreeNode;
-  isExpanded: (relativePath: string) => boolean;
-  onToggle: (relativePath: string) => void;
-  renderChildren?: boolean | undefined;
-  suppressFetch?: boolean | undefined;
-}
-
-const NodeVideos = ({
-  node,
-  selectedKey,
-  analyzingPath,
-  skippedPaths,
-  onSelect,
-  registerVideos,
-  expanded,
-  suppressFetch = false,
-}: Pick<NodeProps, 'node' | 'selectedKey' | 'analyzingPath' | 'skippedPaths' | 'onSelect' | 'registerVideos' | 'suppressFetch'> & { expanded: boolean }) => {
-  const videoCount = node.directVideoCount ?? node.videos.length;
-  const details = useQuery({
-    ...actions.catalogTreeFolder({ folder: node.path }),
-    enabled: !suppressFetch && expanded && videoCount > 0 && node.videos.length === 0,
-  });
-  const videos = suppressFetch ? node.videos : (details.data?.videos ?? node.videos);
-  useEffect(() => {
-    registerVideos(videos);
-  }, [videos, registerVideos]);
-  if (videoCount === 0) return null;
-  return (
-    <VideoList
-      videos={videos}
-      selectedKey={selectedKey}
-      analyzingPath={analyzingPath}
-      isLoading={details.isLoading}
-      isError={details.isError}
-      error={details.error}
-      onSelect={onSelect}
-      skippedPaths={skippedPaths}
-      maxHeight={360}
-    />
-  );
+const countsText = (counts: FolderCountsData, dictionary: Dictionary): string => {
+  if (!counts.known) return dictionary.catalog.unknownFolderCounts(counts.videoCount);
+  if (counts.duplicates > 0) {
+    return dictionary.catalog.folderCountsWithDuplicates(counts.pending, counts.done, counts.duplicates);
+  }
+  return dictionary.catalog.folderCounts(counts.pending, counts.done);
 };
 
-const ChildFolder = ({ node, isExpanded, onToggle, renderChildren = true, ...rest }: NodeProps) => {
-  const expanded = renderChildren ? isExpanded(node.relativePath) : true;
+const RowGuides = ({ row }: { row: TreeRow }) => {
+  if (row.depth === 0) return null;
+  const connector = row.depth - 1;
+  const lines: ReactNode[] = [];
+  for (let level = 0; level < connector; level += 1) {
+    if (!row.ancestorContinues[level]) continue;
+    lines.push(
+      <Box
+        key={`v-${String(level)}`}
+        sx={(theme) => ({
+          position: 'absolute',
+          top: 0,
+          bottom: 0,
+          left: level * INDENT + INDENT / 2,
+          width: '1px',
+          bgcolor: theme.palette.divider,
+        })}
+      />,
+    );
+  }
+  const x = connector * INDENT + INDENT / 2;
   return (
-    <Box>
-      <ListItemButton
-        onClick={() => onToggle(node.relativePath)}
-        data-testid={renderChildren ? 'folder-row' : 'folder-root-row'}
-        data-folder-name={node.name}
-        data-folder-pending={node.pendingCount}
-        title={node.path}
-        sx={{ gap: 0.75, py: 0.5, pl: 1 + node.depth * 1.25, borderRadius: 1 }}
-      >
-        {expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
-        <FolderIcon fontSize="small" sx={{ color: 'primary.main' }} />
-        <Typography variant="body2" noWrap sx={{ fontWeight: 500, minWidth: 0 }}>
-          {node.name}
-        </Typography>
-        <FolderCounts
-          videoCount={node.videoCount ?? node.videos.length}
-          pending={node.pendingCount}
-          processed={node.processedCount}
-          approximate={node.countsApproximate ?? false}
-        />
-      </ListItemButton>
-      <Collapse in={expanded} unmountOnExit>
-        <NodeVideos node={node} expanded={expanded} {...rest} />
-        {renderChildren
-          ? node.children.map((child) => (
-              <ChildFolder key={child.relativePath} node={child} isExpanded={isExpanded} onToggle={onToggle} {...rest} />
-            ))
-          : null}
-      </Collapse>
+    <Box aria-hidden sx={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} data-testid="row-guides">
+      {lines}
+      <Box sx={(theme) => ({ position: 'absolute', top: 0, height: '50%', left: x, width: '1px', bgcolor: theme.palette.divider })} />
+      {row.isLast ? null : (
+        <Box sx={(theme) => ({ position: 'absolute', top: '50%', bottom: 0, left: x, width: '1px', bgcolor: theme.palette.divider })} />
+      )}
+      <Box sx={(theme) => ({ position: 'absolute', top: '50%', left: x, width: INDENT / 2, height: '1px', bgcolor: theme.palette.divider })} />
     </Box>
   );
 };
 
-export const CatalogTree = ({ root, rootVideos, ...rest }: CatalogTreeProps) => {
+const FolderRowView = ({ row, onToggle }: { row: FolderRow; onToggle: (relativePath: string) => void }) => {
   const dictionary = useDictionary();
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
+  return (
+    <ListItemButton
+      onClick={() => onToggle(row.relativePath)}
+      data-testid={row.isRoot ? 'folder-root-row' : 'folder-row'}
+      data-folder-name={row.name}
+      data-folder-pending={row.counts.known ? row.counts.pending : null}
+      data-folder-duplicates={row.counts.duplicates}
+      title={row.path}
+      sx={{ position: 'relative', gap: 0.75, py: 0.5, pl: `${row.depth * INDENT + 8}px`, height: FOLDER_ROW_HEIGHT, borderRadius: 1 }}
+    >
+      <RowGuides row={row} />
+      {row.expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
+      <FolderIcon fontSize="small" sx={{ color: 'primary.main' }} />
+      <Typography variant="body2" noWrap sx={{ fontWeight: 500, minWidth: 0 }}>
+        {row.name}
+      </Typography>
+      <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', flexShrink: 0 }}>
+        {countsText(row.counts, dictionary)}
+      </Typography>
+    </ListItemButton>
+  );
+};
+
+const VideoRowView = ({
+  row,
+  selected,
+  analyzing,
+  skipped,
+  onSelect,
+}: {
+  row: VideoRowData;
+  selected: boolean;
+  analyzing: boolean;
+  skipped: boolean;
+  onSelect: (video: CatalogVideo) => void;
+}) => {
+  const dictionary = useDictionary();
+  const video = row.video;
+  const height = hasErrorLine(video) ? ERROR_VIDEO_ROW_HEIGHT : VIDEO_ROW_HEIGHT;
+  return (
+    <ListItemButton
+      selected={selected}
+      onClick={() => onSelect(video)}
+      title={video.path}
+      data-testid="video-item"
+      data-video-filename={video.filename}
+      data-video-status={video.status}
+      sx={{ position: 'relative', alignItems: 'center', gap: 1.25, borderRadius: 1, py: 1, height, pl: `${row.depth * INDENT + 8}px` }}
+    >
+      <RowGuides row={row} />
+      <MediaThumbnail
+        path={video.artifacts.thumbnailPath}
+        mtime={video.artifacts.thumbnailMtime}
+        alt={video.filename}
+        width={THUMB_BOX}
+        square
+        source={video.source}
+        selected={selected}
+      />
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+          {video.filename}
+        </Typography>
+        <Typography variant="caption" component="div" noWrap>
+          {video.durationFormatted === null ? null : <span>{video.durationFormatted}</span>}
+          {video.durationFormatted === null ? null : <span> · </span>}
+          <span>{video.sizeFormatted}</span>
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+          {video.duplicate != null ? (
+            <DuplicateBadge canonicalPath={video.duplicate.canonicalPath} />
+          ) : (
+            <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
+          )}
+          {skipped ? <SkippedBadge dictionary={dictionary} /> : null}
+        </Box>
+        {hasErrorLine(video) ? (
+          <Typography
+            variant="caption"
+            noWrap
+            title={video.errorMessage ?? undefined}
+            sx={(theme) => ({ color: theme.palette.status.error.main })}
+          >
+            {video.errorMessage}
+          </Typography>
+        ) : null}
+      </Box>
+    </ListItemButton>
+  );
+};
+
+const StatusRowView = ({ row }: { row: StatusRow }) => {
+  const dictionary = useDictionary();
+  return (
+    <Box sx={{ position: 'relative', height: STATUS_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 1, pl: `${row.depth * INDENT + 8}px` }}>
+      <RowGuides row={row} />
+      {row.variant === 'loading' ? (
+        <>
+          <CircularProgress size={16} />
+          <Typography variant="caption" color="text.secondary">{dictionary.catalog.scanningFolder}</Typography>
+        </>
+      ) : (
+        <Typography variant="caption" role="alert" sx={(theme) => ({ color: theme.palette.status.error.main })}>
+          {row.error instanceof ApiError ? row.error.appError.message : dictionary.catalog.genericScanError}
+        </Typography>
+      )}
+    </Box>
+  );
+};
+
+const FolderFetcher = ({
+  relativePath,
+  path,
+  onLoaded,
+  registerVideos,
+}: {
+  relativePath: string;
+  path: string;
+  onLoaded: (relativePath: string, loaded: LoadedFolder) => void;
+  registerVideos: (videos: readonly CatalogVideo[]) => void;
+}) => {
+  const details = useQuery(actions.catalogTreeFolder({ folder: path }));
+  const videos = details.data?.videos;
+  useEffect(() => {
+    if (videos !== undefined) registerVideos(videos);
+    onLoaded(relativePath, {
+      videos: videos ?? [],
+      isLoading: details.isLoading,
+      isError: details.isError,
+      error: details.error,
+    });
+  }, [relativePath, videos, details.isLoading, details.isError, details.error, onLoaded, registerVideos]);
+  return null;
+};
+
+export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skippedPaths, onSelect, registerVideos }: CatalogTreeProps) => {
+  const dictionary = useDictionary();
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(['']));
+  const [loaded, setLoaded] = useState<ReadonlyMap<string, LoadedFolder>>(() => new Map());
+
   const isExpanded = useCallback((relativePath: string) => expanded.has(relativePath), [expanded]);
   const onToggle = useCallback((relativePath: string) => {
     setExpanded((current) => {
@@ -141,25 +249,82 @@ export const CatalogTree = ({ root, rootVideos, ...rest }: CatalogTreeProps) => 
       return next;
     });
   }, []);
+  const onLoaded = useCallback((relativePath: string, value: LoadedFolder) => {
+    setLoaded((current) => {
+      const previous = current.get(relativePath);
+      if (
+        previous !== undefined &&
+        previous.videos === value.videos &&
+        previous.isLoading === value.isLoading &&
+        previous.isError === value.isError &&
+        previous.error === value.error
+      ) {
+        return current;
+      }
+      const next = new Map(current);
+      next.set(relativePath, value);
+      return next;
+    });
+  }, []);
+
+  const loadedFolder = useCallback((relativePath: string) => loaded.get(relativePath), [loaded]);
+
+  const fetchTargets = useMemo(() => {
+    const targets: { relativePath: string; path: string }[] = [];
+    const visit = (node: CatalogTreeNode): void => {
+      if (!expanded.has(node.relativePath)) return;
+      for (const child of node.children) {
+        if (expanded.has(child.relativePath) && folderNeedsFetch(child)) {
+          targets.push({ relativePath: child.relativePath, path: child.path });
+        }
+        visit(child);
+      }
+    };
+    visit(root);
+    return targets;
+  }, [root, expanded]);
+
+  const subfolderVideos = useMemo(() => {
+    const collected: CatalogVideo[] = [];
+    for (const target of fetchTargets) {
+      const entry = loaded.get(target.relativePath);
+      if (entry !== undefined) collected.push(...entry.videos);
+    }
+    return collected.length === 0 ? EMPTY_SUBFOLDER_VIDEOS : collected;
+  }, [fetchTargets, loaded]);
+
+  useThumbnailGeneration(root.path, subfolderVideos);
+
+  const rows = useMemo(
+    () => buildTreeRows({ root, rootVideos, isExpanded, loadedFolder }),
+    [root, rootVideos, isExpanded, loadedFolder],
+  );
+  const rowHeights = useMemo(() => rows.map(rowHeightOf), [rows]);
+  const { range, onScroll, containerRef } = useWindowedList(rowHeights);
+
   const rootVideoCount = root.videoCount ?? root.videos.length;
-  const rootDirectVideoCount = root.directVideoCount ?? root.videos.length;
   const command = processDriveCommand(root.path);
 
   return (
-    <>
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+      <Box sx={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }} aria-hidden>
+        {fetchTargets.map((target) => (
+          <FolderFetcher
+            key={target.relativePath}
+            relativePath={target.relativePath}
+            path={target.path}
+            onLoaded={onLoaded}
+            registerVideos={registerVideos}
+          />
+        ))}
+      </Box>
       {rootVideoCount > LARGE_TREE_VIDEO_THRESHOLD ? (
         <Alert
           severity="warning"
           data-testid="large-tree-warning"
           sx={{ m: 1, alignItems: 'flex-start' }}
           action={
-            <Button
-              color="inherit"
-              size="small"
-              onClick={() => {
-                void navigator.clipboard?.writeText(command);
-              }}
-            >
+            <Button color="inherit" size="small" onClick={() => { void navigator.clipboard?.writeText(command); }}>
               {dictionary.catalog.largeRunCommandLabel}
             </Button>
           }
@@ -171,21 +336,33 @@ export const CatalogTree = ({ root, rootVideos, ...rest }: CatalogTreeProps) => 
           </Typography>
         </Alert>
       ) : null}
-      <List dense disablePadding sx={{ p: 1 }}>
-        {rootDirectVideoCount > 0 ? (
-          <ChildFolder
-            node={{ ...root, videos: rootVideos }}
-            isExpanded={isExpanded}
-            onToggle={onToggle}
-            renderChildren={false}
-            suppressFetch
-            {...rest}
-          />
-        ) : null}
-        {root.children.map((child) => (
-          <ChildFolder key={child.relativePath} node={child} isExpanded={isExpanded} onToggle={onToggle} {...rest} />
-        ))}
+      <List
+        dense
+        disablePadding
+        ref={containerRef}
+        onScroll={onScroll}
+        data-testid="catalog-tree-scroll"
+        sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1 }}
+      >
+        <Box sx={{ height: range.totalHeight, position: 'relative' }}>
+          <Box sx={{ transform: `translateY(${String(range.offsetTop)}px)` }}>
+            {rows.slice(range.start, range.end).map((row) => {
+              if (row.kind === 'folder') return <FolderRowView key={row.key} row={row} onToggle={onToggle} />;
+              if (row.kind === 'status') return <StatusRowView key={row.key} row={row} />;
+              return (
+                <VideoRowView
+                  key={row.key}
+                  row={row}
+                  selected={keyOf(row.video) === selectedKey}
+                  analyzing={row.video.path === analyzingPath}
+                  skipped={skippedPaths.has(row.video.path)}
+                  onSelect={onSelect}
+                />
+              );
+            })}
+          </Box>
+        </Box>
       </List>
-    </>
+    </Box>
   );
 };

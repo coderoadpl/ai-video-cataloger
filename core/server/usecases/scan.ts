@@ -40,6 +40,7 @@ export interface ScanVideo {
   status: VideoStatus | 'not_tracked';
   errorMessage?: string | null;
   contentHash: string | null;
+  duplicate?: { canonicalPath: string } | null;
   source?: {
     width: number | null;
     height: number | null;

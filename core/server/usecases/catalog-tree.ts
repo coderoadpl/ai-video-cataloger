@@ -13,7 +13,6 @@ export interface CatalogTreeFolder {
   videoCount: number;
   pendingCount: number | null;
   processedCount: number | null;
-  countsApproximate: boolean;
 }
 
 export interface CatalogTreeOutput {
@@ -73,32 +72,82 @@ export const scanTree = async (
       videoCount: discovered.videoPaths.length,
       pendingCount: counts.value.pendingCount,
       processedCount: counts.value.processedCount,
-      countsApproximate: counts.value.countsApproximate,
     });
   }
 
   return ok({ root, folders, pendingTotal, processedTotal, videoTotal, hasUnknownPending });
 };
 
-export const scanTreeFolderDetails = (deps: ScanDeps, input: { folder: string }): Promise<Result<{ videos: ScanVideo[] }, AppError>> =>
-  scanFolder(deps, input).then((result) => result.ok ? ok({ videos: result.value.videos }) : result);
+export interface ScanTreeFolderDeps extends ScanDeps {
+  globalCatalog?: GlobalCatalogStore | undefined;
+}
+
+export const scanTreeFolderDetails = async (
+  deps: ScanTreeFolderDeps,
+  input: { folder: string },
+): Promise<Result<{ videos: ScanVideo[] }, AppError>> => {
+  const result = await scanFolder(deps, input);
+  if (!result.ok) return result;
+  const videos = await enrichWithDuplicates(deps, input.folder, result.value.videos);
+  if (!videos.ok) return videos;
+  return ok({ videos: videos.value });
+};
+
+const enrichWithDuplicates = async (
+  deps: ScanTreeFolderDeps,
+  folder: string,
+  videos: readonly ScanVideo[],
+): Promise<Result<ScanVideo[], AppError>> => {
+  const globalCatalog = deps.globalCatalog;
+  if (globalCatalog === undefined) return ok([...videos]);
+  const marker = await readFolderMarker(deps.fs, folder);
+  if (!marker.ok) return marker;
+  const ownFolderId = marker.value?.folderId ?? null;
+
+  const enriched: ScanVideo[] = [];
+  for (const video of videos) {
+    if (video.contentHash === null || video.status === 'completed') {
+      enriched.push(video);
+      continue;
+    }
+    const file = await globalCatalog.getFile(video.contentHash);
+    if (!file.ok) return file;
+    if (file.value === null || file.value.folderId === ownFolderId) {
+      enriched.push(video);
+      continue;
+    }
+    const analysis = await globalCatalog.getAnalysis(video.contentHash);
+    if (!analysis.ok) return analysis;
+    if (analysis.value === null) {
+      enriched.push(video);
+      continue;
+    }
+    const canonicalFolder = await globalCatalog.getFolder(file.value.folderId);
+    if (!canonicalFolder.ok) return canonicalFolder;
+    const finalName = analysis.value.finalName ?? file.value.fileName;
+    const canonicalPath = canonicalFolder.value === null
+      ? finalName
+      : deps.fs.join(canonicalFolder.value.currentPath, finalName);
+    enriched.push({ ...video, duplicate: { canonicalPath } });
+  }
+  return ok(enriched);
+};
 
 const folderCounts = async (
   deps: ScanTreeDeps,
   folder: string,
   videoPaths: readonly string[],
-): Promise<Result<{ pendingCount: number | null; processedCount: number | null; countsApproximate: boolean }, AppError>> => {
-  if (deps.globalCatalog === undefined) return ok({ pendingCount: null, processedCount: null, countsApproximate: false });
+): Promise<Result<{ pendingCount: number | null; processedCount: number | null }, AppError>> => {
+  if (deps.globalCatalog === undefined) return ok({ pendingCount: null, processedCount: null });
   const marker = await readFolderMarker(deps.fs, folder);
   if (!marker.ok) return marker;
-  if (marker.value === null) return ok({ pendingCount: null, processedCount: null, countsApproximate: false });
+  if (marker.value === null) return ok({ pendingCount: null, processedCount: null });
   const records = await deps.globalCatalog.listFolderRecords(marker.value.folderId);
   if (!records.ok) return records;
   const processedCount = processedDiskNames(deps.fs, records.value, new Set(videoPaths.map((videoPath) => deps.fs.basename(videoPath)))).size;
   return ok({
     pendingCount: Math.max(0, videoPaths.length - processedCount),
     processedCount,
-    countsApproximate: true,
   });
 };
 

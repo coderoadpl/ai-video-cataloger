@@ -8,10 +8,12 @@ import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type CatalogVideo, keyOf } from './catalog-video.js';
+import { DuplicateBadge } from './DuplicateBadge.js';
 import { useWindowedList } from './use-windowed-list.js';
 
 const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
 const VIDEO_ROW_HEIGHT = 96;
+const THUMB_BOX = 56;
 const ERROR_VIDEO_ROW_HEIGHT = 120;
 
 const hasErrorLine = (video: CatalogVideo): boolean =>
@@ -87,13 +89,14 @@ const VideoRow = ({
     data-testid="video-item"
     data-video-filename={video.filename}
     data-video-status={video.status}
-    sx={{ alignItems: 'flex-start', gap: 1.25, borderRadius: 1, py: 1, height: rowHeightOf(video) }}
+    sx={{ alignItems: 'center', gap: 1.25, borderRadius: 1, py: 1, height: rowHeightOf(video) }}
   >
     <MediaThumbnail
       path={video.artifacts.thumbnailPath}
       mtime={video.artifacts.thumbnailMtime}
       alt={video.filename}
-      width={64}
+      width={THUMB_BOX}
+      square
       source={video.source}
       selected={selected}
     />
@@ -107,7 +110,11 @@ const VideoRow = ({
         <span>{video.sizeFormatted}</span>
       </Typography>
       <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-        <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
+        {video.duplicate != null ? (
+          <DuplicateBadge canonicalPath={video.duplicate.canonicalPath} />
+        ) : (
+          <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
+        )}
         {skipped ? <SkippedBadge dictionary={dictionary} /> : null}
       </Box>
       {video.status === 'error' && video.errorMessage != null && video.errorMessage.length > 0 ? (

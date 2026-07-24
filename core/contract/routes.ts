@@ -70,6 +70,7 @@ export const scanVideoSchema = z.object({
   status: z.union([videoStatusSchema, z.literal('not_tracked')]),
   errorMessage: z.string().nullable().optional(),
   contentHash: z.string().nullable(),
+  duplicate: z.object({ canonicalPath: z.string() }).nullable().optional(),
   source: z.object({
     width: z.number().int().positive().nullable(),
     height: z.number().int().positive().nullable(),
@@ -101,7 +102,6 @@ export const catalogTreeFolderSchema = z.object({
   videoCount: z.number().int().nonnegative(),
   pendingCount: z.number().int().nonnegative().nullable(),
   processedCount: z.number().int().nonnegative().nullable(),
-  countsApproximate: z.boolean(),
 });
 
 export const catalogTreeOutputSchema = z.object({

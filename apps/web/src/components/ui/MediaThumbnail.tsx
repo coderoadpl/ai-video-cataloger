@@ -13,6 +13,7 @@ interface MediaThumbnailProps {
   height?: number | undefined;
   source?: SourceAspectInput | undefined;
   selected?: boolean;
+  square?: boolean;
 }
 
 export const MediaThumbnail = ({
@@ -23,10 +24,15 @@ export const MediaThumbnail = ({
   height,
   source,
   selected = false,
+  square = false,
 }: MediaThumbnailProps) => {
   const src = path === null ? null : mediaUrl(path, mtime);
   const [failed, setFailed] = useState(false);
-  const box = height === undefined ? thumbnailBoxForSource(source, width) : { width, height };
+  const box = square
+    ? { width, height: width }
+    : height === undefined
+      ? thumbnailBoxForSource(source, width)
+      : { width, height };
 
   useEffect(() => {
     setFailed(false);
@@ -63,7 +69,14 @@ export const MediaThumbnail = ({
           src={src ?? undefined}
           alt={alt}
           onError={() => setFailed(true)}
-          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          data-testid="media-thumbnail-img"
+          sx={{
+            maxWidth: '100%',
+            maxHeight: '100%',
+            width: square ? 'auto' : '100%',
+            height: square ? 'auto' : '100%',
+            objectFit: square ? 'contain' : 'cover',
+          }}
         />
       )}
     </Box>

@@ -4,5 +4,4 @@ import type { scanVideoSchema } from '@core/contract/index.js';
 
 export type CatalogVideo = z.output<typeof scanVideoSchema>;
 
-export const keyOf = (video: Pick<CatalogVideo, 'contentHash' | 'path'>): string =>
-  video.contentHash === null ? 'path:' + video.path : video.contentHash;
+export const keyOf = (video: Pick<CatalogVideo, 'path'>): string => video.path;
