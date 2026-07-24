@@ -66,6 +66,17 @@ const healthEnvelopeSchema = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(true), data: z.object({ status: z.literal('ok'), version: z.string() }) }),
   z.object({ ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) }),
 ]);
+const readyEnvelopeSchema = z.discriminatedUnion('ok', [
+  z.object({
+    ok: z.literal(true),
+    data: z.object({
+      status: z.literal('ok'),
+      version: z.string(),
+      checks: z.array(z.object({ name: z.string(), ok: z.boolean(), detail: z.string() })),
+    }),
+  }),
+  z.object({ ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) }),
+]);
 
 const readLock = (raw: string): z.output<typeof lockFileSchema> => lockFileSchema.parse(JSON.parse(raw));
 
@@ -135,8 +146,24 @@ const bootInProcess = async (): Promise<void> => {
     const parsed = healthEnvelopeSchema.parse(await response.json());
     assert(parsed.ok, 'in-process health returned an error envelope');
     assert(parsed.data.version === packageJson.version, `in-process health echoed the wrong version: ${parsed.data.version}`);
+
+    const live = await app.honoApp.request('/api/health/live');
+    assert(live.ok, `in-process liveness returned HTTP ${live.status}`);
+    const liveParsed = healthEnvelopeSchema.parse(await live.json());
+    assert(liveParsed.ok, 'in-process liveness returned an error envelope');
   } finally {
     await app.dispose();
+  }
+
+  const ready = createApp({ dbDriver: 'memory' });
+  try {
+    const response = await ready.honoApp.request('/api/health/ready');
+    assert(response.ok, `in-process readiness returned HTTP ${response.status}`);
+    const parsed = readyEnvelopeSchema.parse(await response.json());
+    assert(parsed.ok, 'in-process readiness returned an error envelope');
+    assert(parsed.data.checks.every((check) => check.ok), 'in-process readiness reported a failed check');
+  } finally {
+    await ready.dispose();
   }
 };
 

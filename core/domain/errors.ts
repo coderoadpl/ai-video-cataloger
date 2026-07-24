@@ -35,6 +35,7 @@ export const ERROR_CODES = [
   'faces_disabled',
   'snapshot_incompatible',
   'catalog_locked',
+  'unavailable',
   'internal',
 ] as const;
 
@@ -55,5 +56,8 @@ export const validation = (message: string, details?: unknown): AppError =>
 export const notFound = (message = 'Not found'): AppError => appError('not_found', message);
 
 export const conflict = (message = 'Conflict'): AppError => appError('conflict', message);
+
+export const unavailable = (message = 'Service unavailable', details?: unknown): AppError =>
+  appError('unavailable', message, details);
 
 export const internal = (message = 'Internal error'): AppError => appError('internal', message);

@@ -245,7 +245,7 @@ changes; `test:e2e:cli` where the staged bundle changes.
 - **Rollback:** revert the three fields + `.nvmrc`; keep the regenerated
   lock either way.
 
-### Phase 1 — Response seam + health/ready split
+### Phase 1 — Response seam + health/ready split — **DONE 2026-07-25** (respond.ts keeps output-schema validation + error telemetry seam + no-store on errors; live/ready split with new `unavailable` code, doctor surfaces both; tenant/public-cache args and VERCEL_*/EXPECTED_SHA attestation skipped)
 - **Scope:** new `apps/server/src/respond.ts` (extracted, keeps
   output-schema validation, adds error telemetry + `no-store` on errors),
   `apps/server/src/observability.ts`, `core/contract/routes.ts` (live vs

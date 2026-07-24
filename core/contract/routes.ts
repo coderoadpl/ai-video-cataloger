@@ -21,6 +21,23 @@ export const healthOutputSchema = z.object({
   version: z.string(),
 });
 
+export const healthLiveOutputSchema = z.object({
+  status: z.literal('ok'),
+  version: z.string(),
+});
+
+export const readyCheckSchema = z.object({
+  name: z.enum(['catalog', 'lock', 'provider_config']),
+  ok: z.boolean(),
+  detail: z.string(),
+});
+
+export const healthReadyOutputSchema = z.object({
+  status: z.literal('ok'),
+  version: z.string(),
+  checks: z.array(readyCheckSchema),
+});
+
 const emptyInputSchema = z.object({});
 const folderInputSchema = z.object({ folder: z.string().min(1) });
 const optionalFolderInputSchema = z.object({ folder: z.string().min(1).optional() });
@@ -911,6 +928,8 @@ export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.Zo
 
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health', input: emptyInputSchema, output: healthOutputSchema },
+  healthLive: { method: 'GET', path: '/api/health/live', input: emptyInputSchema, output: healthLiveOutputSchema },
+  healthReady: { method: 'GET', path: '/api/health/ready', input: emptyInputSchema, output: healthReadyOutputSchema },
   catalogLockStatus: { method: 'GET', path: '/api/catalog-lock', input: emptyInputSchema, output: catalogLockOutputSchema },
   catalogLockRetry: { method: 'POST', path: '/api/catalog-lock/retry', input: emptyInputSchema, output: catalogLockOutputSchema },
   scan: { method: 'GET', path: '/api/scan', input: folderInputSchema, output: scanOutputSchema },
@@ -1048,6 +1067,8 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
   health: API_ROUTES.health.path,
+  healthLive: API_ROUTES.healthLive.path,
+  healthReady: API_ROUTES.healthReady.path,
   catalogLockStatus: API_ROUTES.catalogLockStatus.path,
   catalogLockRetry: API_ROUTES.catalogLockRetry.path,
   scan: API_ROUTES.scan.path,

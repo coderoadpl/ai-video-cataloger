@@ -19,7 +19,9 @@ import {
   facesPeopleOutputSchema,
   facesPurgeOutputSchema,
   facesStatusOutputSchema,
+  healthLiveOutputSchema,
   healthOutputSchema,
+  healthReadyOutputSchema,
   indexForgetOutputSchema,
   indexRebuildOutputSchema,
   indexStatusOutputSchema,
@@ -129,6 +131,10 @@ const queryPath = (path: string, entries: ReadonlyArray<readonly [string, string
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
     request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
+  healthLive: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.healthLive.method, API_ROUTES.healthLive.path, healthLiveOutputSchema, undefined, signal),
+  healthReady: (signal?: AbortSignal) =>
+    request(options, API_ROUTES.healthReady.method, API_ROUTES.healthReady.path, healthReadyOutputSchema, undefined, signal),
   catalogLockStatus: (signal?: AbortSignal) =>
     request(
       options,

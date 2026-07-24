@@ -2,13 +2,14 @@ import { Hono } from 'hono';
 import { trace } from '@opentelemetry/api';
 import { type z } from 'zod';
 
-import { API_ROUTES, HTTP_STATUS_BY_ERROR_CODE, looseEnvelopeSchema, toEnvelope } from '@core/contract/index.js';
+import { API_ROUTES, looseEnvelopeSchema } from '@core/contract/index.js';
 import { appError, err, ok, type AppError, type Result } from '@core/domain/index.js';
 import {
   cancelJob,
   acquireCatalogWriteLock,
   catalogLockStatus,
   checkHealth,
+  checkReady,
   checkNestedDatabases,
   deleteWhisperModel,
   downloadWhisperModel,
@@ -59,22 +60,9 @@ import {
 } from '@core/server/index.js';
 
 import type { AppDeps } from './composition.js';
+import { respond } from './respond.js';
 
 type BodyReader = { req: { json(): Promise<unknown>; query(): Record<string, string> } };
-
-const respond = (result: Result<unknown, AppError>, outputSchema: z.ZodTypeAny): Response => {
-  const parsed = result.ok ? outputSchema.safeParse(result.value) : null;
-  const finalResult =
-    result.ok && parsed !== null && !parsed.success
-      ? err(appError('internal', 'Response data does not match the contract'))
-      : result;
-  const envelope = toEnvelope(finalResult);
-  const status = envelope.ok ? 200 : HTTP_STATUS_BY_ERROR_CODE[envelope.error.code];
-  return new Response(JSON.stringify(envelope), {
-    status,
-    headers: { 'content-type': 'application/json' },
-  });
-};
 
 const parseInput = <S extends z.ZodTypeAny>(schema: S, input: unknown): Result<z.output<S>, AppError> => {
   const parsed = schema.safeParse(input);
@@ -145,6 +133,17 @@ export const buildApp = (deps: AppDeps): Hono => {
 
   app.get(API_ROUTES.health.path, () =>
     respond(checkHealth({ version: deps.version }), API_ROUTES.health.output),
+  );
+
+  app.get(API_ROUTES.healthLive.path, () =>
+    respond(checkHealth({ version: deps.version }), API_ROUTES.healthLive.output),
+  );
+
+  app.get(API_ROUTES.healthReady.path, async () =>
+    respond(
+      await checkReady({ version: deps.version, globalCatalog: deps.globalCatalog, config: deps.config }),
+      API_ROUTES.healthReady.output,
+    ),
   );
 
   app.get(API_ROUTES.catalogLockStatus.path, async () =>

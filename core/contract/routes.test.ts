@@ -3,6 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   API_ROUTES,
   doctorOutputSchema,
+  healthLiveOutputSchema,
+  healthReadyOutputSchema,
   jobOutputSchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
@@ -240,6 +242,19 @@ describe('route schemas', () => {
     });
     expect(parsed.progress?.step).toBe('transcribing_audio');
     expect(parsed.progressEvents.map((event) => event.sequence)).toEqual([1, 2, 3]);
+  });
+
+  it('splits liveness and readiness into distinct additive GET routes', () => {
+    expect(API_ROUTES.healthLive).toMatchObject({ method: 'GET', path: '/api/health/live' });
+    expect(API_ROUTES.healthReady).toMatchObject({ method: 'GET', path: '/api/health/ready' });
+    expect(healthLiveOutputSchema.parse({ status: 'ok', version: '1.0.0' })).toEqual({ status: 'ok', version: '1.0.0' });
+    expect(
+      healthReadyOutputSchema.parse({
+        status: 'ok',
+        version: '1.0.0',
+        checks: [{ name: 'catalog', ok: true, detail: 'opened' }],
+      }).checks,
+    ).toHaveLength(1);
   });
 
   it('tags reads with GET and writes with POST or DELETE', () => {

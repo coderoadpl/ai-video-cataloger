@@ -772,15 +772,16 @@ program
   .option('--json', 'machine-readable JSON output', false)
   .action(async (options: JsonOption) => {
     const json = isJsonMode(options);
-    await runSimple(
-      json,
-      'doctor',
-      () => api.doctor(),
-      doctorHuman,
-      {
-        exitOnData: (data) => data.allAvailable ? null : EXIT_CODE_BY_ERROR_CODE.prerequisites_failed,
-      },
-    );
+    emitStarted(json, 'doctor');
+    const result = await api.doctor();
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    const live = await api.healthLive();
+    const ready = await api.healthReady();
+    emitCompleted(json, result.value, doctorHuman(result.value, live, ready));
+    if (!result.value.allAvailable) process.exitCode = EXIT_CODE_BY_ERROR_CODE.prerequisites_failed;
   });
 
 const index = program.command('index').description('Inspect and rebuild the global catalog index');
@@ -1149,10 +1150,21 @@ const searchHuman = (data: Awaited<ReturnType<ApiClient['search']>> extends Resu
   return [...rows, `${data.count} result(s)`].join('\n');
 };
 
-const doctorHuman = (data: Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never): string => {
+const doctorHuman = (
+  data: Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never,
+  live: Awaited<ReturnType<ApiClient['healthLive']>>,
+  ready: Awaited<ReturnType<ApiClient['healthReady']>>,
+): string => {
   const lines = data.dependencies.map((dependency) => `${dependency.name}: ${dependency.available ? 'available' : 'missing'}`);
   lines.push(`All available: ${data.allAvailable ? 'yes' : 'no'}`);
   for (const warning of data.warnings) lines.push(`Warning: ${warning.message}`);
+  lines.push(`Liveness: ${live.ok ? `up v${live.value.version}` : `unavailable (${live.error.message})`}`);
+  if (ready.ok) {
+    lines.push('Readiness: ready');
+    for (const check of ready.value.checks) lines.push(`  ${check.name}: ${check.ok ? 'ok' : 'not ready'} - ${check.detail}`);
+  } else {
+    lines.push(`Readiness: not ready (${ready.error.message})`);
+  }
   lines.push('Configured processing:');
   lines.push(`Analyzer (${data.configured.analyzer.providerId}): ${data.configured.analyzer.available ? 'available' : 'missing'}`);
   lines.push(`Transcriber (${data.configured.transcriber.mode}): ${data.configured.transcriber.available ? 'available' : 'missing'}`);

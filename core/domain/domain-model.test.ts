@@ -53,6 +53,7 @@ describe('domain taxonomy', () => {
       'faces_disabled',
       'snapshot_incompatible',
       'catalog_locked',
+      'unavailable',
       'internal',
     ]);
   });
