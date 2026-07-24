@@ -43,6 +43,9 @@ new lint rule must first fail on a violating probe file.
   source, fails on unavailable legs unless `E2E_MATRIX_ALLOW_SKIP=1` is set,
   and is intentionally outside `check`, `smoke`, and parity. Run it after a
   completed work batch and before a release; never add it to a normal gate.
+- `npm run verify:package` = packaged-bundle shape check (single darwin
+  onnxruntime binding, no non-darwin artifacts); run it on the built bundle
+  before a release, also outside the normal gates.
 
 ## House rules
 
@@ -57,3 +60,6 @@ new lint rule must first fail on a violating probe file.
   layout, DB files) must match `tasks/parity-inventory.md`; the four
   sanctioned deviations are listed in the PRD's Technical Considerations.
 - Docs first: architecture changes edit `docs/` before code.
+- Dev component gallery is a QA tool, not shipped: `apps/web/src/gallery` +
+  `apps/web/gallery.html` render components in isolation, and
+  `scripts/gallery-shots.mjs` captures reference screenshots.

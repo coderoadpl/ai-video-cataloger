@@ -81,17 +81,25 @@ npm run cli -- process ./clip.mp4 --json
 Core commands:
 
 ```text
+setup
 health
 doctor [--json]
 check [folder] [--json]
 scan <folder> [--json]
+search <query> [--json]
 process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper-model model] [--analyzer claude|local] [--local-model tag] [--json]
+process-drive <root> [--json]
 thumbnail <video-path> [--force] [--json]
 status [--json]
 reset [filename] [--force] [--json]
 config get [key] [--json]
 config set <key> <value> [--json]
-models list|requirements|pull|rm|daemon-stop|use|download|delete
+config set-credential <providerId>
+index status|rebuild|forget
+tags list|alias
+faces index|people|name|merge|forget|purge|status
+models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|faces install
+whisper-runtime status|install
 ```
 
 Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`.
@@ -156,11 +164,16 @@ your-videos/
 ├── summaries/
 │   └── descriptive-name.txt
 └── .ai-video-cataloger/
-    ├── catalog.db
+    ├── folder-id          # UUID marker identifying this folder
+    ├── catalog.ndjson     # derived snapshot, re-imported when the folder is unknown
     └── config.json
 ```
 
-Home-scope runtime and model files live under `~/.ai-video-cataloger/`.
+The canonical catalog now lives home-scoped at `~/.ai-video-cataloger/catalog.db`
+(per [ADR-0002](docs/decisions/0002-global-catalog-layer.md)); the per-folder
+`catalog.ndjson` is a derived snapshot, and legacy per-folder `catalog.db`
+files stay readable for migration. Home-scope runtime and model files also
+live under `~/.ai-video-cataloger/`.
 
 ## Development
 

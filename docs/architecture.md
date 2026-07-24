@@ -39,8 +39,15 @@ The foundation's deployment matrix (Vercel/Docker), public surface
 (embeds/headless API), and domain provisioning do not apply and are removed,
 not stubbed.
 
-Concurrent access (GUI + CLI on the same folder) is mediated by the shared
-SQLite files, as in the old app — no daemon, no lock server.
+Concurrent access (GUI + CLI on the same catalog) is mediated by a
+home-scoped advisory `catalog.lock` file next to `catalog.db`, not a lock
+server. The lock records the owning process (pid/hostname/name) and is
+acquired per `lockMode` — `none` (CLI reads), `lazy` (acquire on first
+write), or `eager` (acquire at startup) — with a process-alive check that
+lets a live peer block and a dead peer's stale lock be taken over. A running
+job holds the lease for its whole run; one-off mutations flush without
+dropping it. When the lock can't be acquired the renderer drops to a
+read-only banner and offers retry. See ADR-0002 Consequences.
 
 ## Delta 2 — no identity
 
@@ -81,10 +88,11 @@ Processing-config resolution (owner decision 2026-07-17): **explicit CLI
 flag > folder config > home config > built-in default**, per key. The home
 scope holds global defaults (the wizard and `models use` write there when no
 folder is in play); a folder's own config overrides point-wise, preserving
-per-folder parity — a folder that sets a key always wins. The GUI
-Prerequisites modal reads the configured-readiness section from
-`/api/readiness` with the selected folder; the doctor contract stays
-unchanged.
+per-folder parity — a folder that sets a key always wins. Two app-global keys
+are exempt: `ui_language` and `faces_enabled` are always resolved home-scoped
+and ignore folder overrides. The GUI Prerequisites modal reads the
+configured-readiness section from `/api/readiness` with the selected folder;
+the doctor contract stays unchanged.
 
 ## Delta 4 — Electron shape (t3code model)
 
@@ -99,7 +107,10 @@ verbatim, with desktop-specific bans (lint-enforced): no `electron` import,
 no `ipcRenderer`, no `process` access; the bridge is consumed like any bound
 dependency wired in `api.ts`. The `media://` protocol with its security model
 (extension allowlist, folder scoping, realpath-escape rejection, size cap —
-parity-inventory §10) is a main-process adapter.
+parity-inventory §10) is a main-process adapter. It is registered as a
+standard, stream-enabled scheme (not a bare privileged scheme) and serves
+`206` partial responses for `Range` requests so video seeking works; the 20MB
+size cap applies to images only, not the supported video extensions.
 
 The old GUI shelled out to a staged CLI and parsed NDJSON; that machinery is
 deleted. Renderer and CLI are peers on the same contract.
@@ -197,6 +208,12 @@ managed runtimes, and its working-directory fallback.
 - `ModelDownloadPort` — HuggingFace whisper models; Ollama pulls go through
   the runtime port.
 - `JobsPort` — in-process executor (see Delta 5).
+- `FaceEnginePort` — face detect/align/embed/crop lifecycle behind the faces
+  feature; ONNX Runtime adapter (darwin-only binding).
+- `ProvidersPort` — analyzer-provider listing and credential/connectivity
+  test, routed across the same three analyzer families.
+- `FileSystemPort` — fs primitives incl. `partialContentHash` (named by
+  ADR-0002(c)); Node adapter in production, in-memory fake in tests.
 - `DesktopBridge` (client-side port) — preload adapter in `apps/desktop`.
 
 Harness commands are always spawned directly from an argument vector. The
