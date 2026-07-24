@@ -5,6 +5,8 @@ import {
   ok,
   type AppConfig,
   type AppError,
+  type CatalogFile,
+  type CatalogFolder,
   type Result,
   type WhisperModelName,
 } from '@core/domain/index.js';
@@ -411,9 +413,38 @@ const relocateResumedFile = async (
   if (existing.value === null) return ok([]);
   const fileName = deps.fs.basename(video.path);
   if (existing.value.folderId === marker.value.folderId && existing.value.fileName === fileName) return ok([]);
+
+  const recordedFolder = await globalCatalog.getFolder(existing.value.folderId);
+  if (!recordedFolder.ok) return recordedFolder;
+  const recordedPresent = await recordedLocationExists(deps, globalCatalog, recordedFolder.value, existing.value);
+  if (!recordedPresent.ok) return recordedPresent;
+
+  if (recordedPresent.value && recordedFolder.value !== null
+    && folderPath.localeCompare(recordedFolder.value.currentPath) >= 0) {
+    return ok([]);
+  }
+
   const relocated = await globalCatalog.relocateFile(video.contentHash, marker.value.folderId, fileName);
   if (!relocated.ok) return relocated;
   return ok([...new Set([existing.value.folderId, marker.value.folderId])]);
+};
+
+const recordedLocationExists = async (
+  deps: ProcessDeps,
+  globalCatalog: GlobalCatalogStore,
+  folder: CatalogFolder | null,
+  file: CatalogFile,
+): Promise<Result<boolean, AppError>> => {
+  if (folder === null) return ok(false);
+  const analysis = await globalCatalog.getAnalysis(file.fingerprint);
+  if (!analysis.ok) return analysis;
+  const names = [file.fileName, analysis.value?.finalName ?? null].filter((name): name is string => name !== null);
+  for (const name of names) {
+    const exists = await deps.fs.exists(deps.fs.join(folder.currentPath, name));
+    if (!exists.ok) return exists;
+    if (exists.value) return ok(true);
+  }
+  return ok(false);
 };
 
 const isWithinRoot = (candidate: string, root: string): boolean => {

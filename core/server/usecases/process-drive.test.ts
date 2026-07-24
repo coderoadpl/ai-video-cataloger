@@ -4,6 +4,7 @@ import { appError, ok, type AppError, type Result } from '@core/domain/index.js'
 
 import type { AnalysisOutput, AnalyzeInput, DirectoryEntry } from '../ports.js';
 import { indexStatus } from './catalog-index.js';
+import { scanTreeFolderDetails } from './catalog-tree.js';
 import { discoverCatalogFolders, processDrive, type ProcessDriveInput } from './process-drive.js';
 import {
   InMemoryAnalyzer,
@@ -162,6 +163,46 @@ describe('drive processing', () => {
     expect(folderB).toBeDefined();
     expect(moved.ok && moved.value?.folderId).toBe(folderB?.folderId);
     expect(moved.ok && moved.value?.missingAt).toBe(null);
+  });
+
+  it('keeps the canonical row and leaves a byte-identical clone a duplicate after a tree run', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/root.mp4', 'hash-x');
+    addVideo(deps.fs, '/drive/sub/clone.mp4', 'hash-x');
+
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-tree' });
+    expect(run.ok).toBe(true);
+
+    const folders = await deps.globalCatalog.listFolders();
+    const rootFolder = folders.ok ? folders.value.find((entry) => entry.currentPath === '/drive') : undefined;
+    const row = await deps.globalCatalog.getFile('hash-x');
+    expect(rootFolder).toBeDefined();
+    expect(row.ok && row.value?.folderId).toBe(rootFolder?.folderId);
+    expect(row.ok && row.value?.fileName).toBe('root.mp4');
+
+    const cloneDetails = await scanTreeFolderDetails(deps, { folder: '/drive/sub' });
+    const clone = cloneDetails.ok ? cloneDetails.value.videos.find((video) => video.filename === 'clone.mp4') : undefined;
+    expect(clone?.duplicate?.canonicalPath).toBe('/drive/root.mp4');
+  });
+
+  it('repairs a damaged row that points at a clone by restoring the original location on the next run', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/root.mp4', 'hash-x');
+    addVideo(deps.fs, '/drive/sub/clone.mp4', 'hash-x');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    const folders = await deps.globalCatalog.listFolders();
+    const subFolder = folders.ok ? folders.value.find((entry) => entry.currentPath === '/drive/sub') : undefined;
+    expect(subFolder).toBeDefined();
+    await deps.globalCatalog.relocateFile('hash-x', subFolder?.folderId ?? '', 'clone.mp4');
+
+    const repair = await processDrive(deps, baseInput, undefined, { runId: 'run-repair' });
+    expect(repair.ok).toBe(true);
+
+    const rootFolder = folders.ok ? folders.value.find((entry) => entry.currentPath === '/drive') : undefined;
+    const row = await deps.globalCatalog.getFile('hash-x');
+    expect(row.ok && row.value?.folderId).toBe(rootFolder?.folderId);
+    expect(row.ok && row.value?.fileName).toBe('root.mp4');
   });
 
   it('marks rows missing in a folder that still exists on disk but lost all its videos', async () => {
