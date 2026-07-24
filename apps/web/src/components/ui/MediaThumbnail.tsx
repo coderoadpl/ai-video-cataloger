@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { Box } from '@mui/material';
+import { Box, Skeleton } from '@mui/material';
 
 import { mediaUrl } from '../../lib/media-url.js';
 import { thumbnailBoxForSource, type SourceAspectInput } from '../../lib/thumbnail-aspect.js';
@@ -14,6 +14,7 @@ interface MediaThumbnailProps {
   source?: SourceAspectInput | undefined;
   selected?: boolean;
   square?: boolean;
+  loading?: boolean;
 }
 
 export const MediaThumbnail = ({
@@ -25,6 +26,7 @@ export const MediaThumbnail = ({
   source,
   selected = false,
   square = false,
+  loading = false,
 }: MediaThumbnailProps) => {
   const src = path === null ? null : mediaUrl(path, mtime);
   const [failed, setFailed] = useState(false);
@@ -38,7 +40,8 @@ export const MediaThumbnail = ({
     setFailed(false);
   }, [src]);
 
-  const showFallback = src === null || failed;
+  const showImage = src !== null && !failed;
+  const showShimmer = src === null && loading;
 
   return (
     <Box
@@ -60,10 +63,9 @@ export const MediaThumbnail = ({
       data-testid="media-thumbnail"
       data-thumbnail-width={box.width}
       data-thumbnail-height={box.height}
+      data-thumbnail-state={showImage ? 'image' : showShimmer ? 'loading' : 'placeholder'}
     >
-      {showFallback ? (
-        <FilmIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-      ) : (
+      {showImage ? (
         <Box
           component="img"
           src={src ?? undefined}
@@ -78,6 +80,16 @@ export const MediaThumbnail = ({
             objectFit: square ? 'contain' : 'cover',
           }}
         />
+      ) : showShimmer ? (
+        <Skeleton
+          variant="rectangular"
+          animation="wave"
+          width="100%"
+          height="100%"
+          data-testid="media-thumbnail-shimmer"
+        />
+      ) : (
+        <FilmIcon fontSize="small" sx={{ color: 'text.secondary' }} />
       )}
     </Box>
   );

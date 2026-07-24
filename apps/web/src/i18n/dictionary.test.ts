@@ -45,6 +45,7 @@ describe('dictionary', () => {
       for (const entry of readdirSync(dir)) {
         const fullPath = join(dir, entry);
         if (fullPath.includes(`${join('src', 'i18n')}`)) continue;
+        if (fullPath.includes(`${join('src', 'gallery')}`)) continue;
         const stats = statSync(fullPath);
         if (stats.isDirectory()) {
           walk(fullPath);

@@ -175,6 +175,7 @@ export default tseslint.config(
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'app-desktop', pattern: 'apps/desktop/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
+        { type: 'web-gallery', pattern: 'apps/web/src/gallery/**', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
         {
@@ -244,6 +245,23 @@ export default tseslint.config(
               from: ['web-main'],
               allow: [
                 'web-main',
+                'web-api',
+                'web-routes',
+                'web-features',
+                'web-ui',
+                'web-lib',
+                'web-theme',
+                'web-i18n',
+                'app-web',
+                'core-domain',
+                'core-contract',
+                'core-client',
+              ],
+            },
+            {
+              from: ['web-gallery'],
+              allow: [
+                'web-gallery',
                 'web-api',
                 'web-routes',
                 'web-features',
@@ -438,7 +456,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/web/src/main.tsx'],
+    files: ['apps/web/src/main.tsx', 'apps/web/src/gallery/main.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',
