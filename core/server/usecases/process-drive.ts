@@ -418,15 +418,26 @@ const relocateResumedFile = async (
   if (!recordedFolder.ok) return recordedFolder;
   const recordedPresent = await recordedLocationExists(deps, globalCatalog, recordedFolder.value, existing.value);
   if (!recordedPresent.ok) return recordedPresent;
+  const currentFolder = await globalCatalog.getFolder(marker.value.folderId);
+  if (!currentFolder.ok) return currentFolder;
 
-  if (recordedPresent.value && recordedFolder.value !== null
-    && folderPath.localeCompare(recordedFolder.value.currentPath) >= 0) {
+  if (!shouldRelocateCanonical(currentFolder.value, recordedFolder.value, recordedPresent.value)) {
     return ok([]);
   }
 
   const relocated = await globalCatalog.relocateFile(video.contentHash, marker.value.folderId, fileName);
   if (!relocated.ok) return relocated;
   return ok([...new Set([existing.value.folderId, marker.value.folderId])]);
+};
+
+export const shouldRelocateCanonical = (
+  current: CatalogFolder | null,
+  recorded: CatalogFolder | null,
+  recordedPresent: boolean,
+): boolean => {
+  if (recorded === null) return true;
+  if (!recordedPresent) return true;
+  return current !== null && current.firstSeenAt < recorded.firstSeenAt;
 };
 
 const recordedLocationExists = async (
@@ -440,9 +451,13 @@ const recordedLocationExists = async (
   if (!analysis.ok) return analysis;
   const names = [file.fileName, analysis.value?.finalName ?? null].filter((name): name is string => name !== null);
   for (const name of names) {
-    const exists = await deps.fs.exists(deps.fs.join(folder.currentPath, name));
+    const candidate = deps.fs.join(folder.currentPath, name);
+    const exists = await deps.fs.exists(candidate);
     if (!exists.ok) return exists;
-    if (exists.value) return ok(true);
+    if (!exists.value) continue;
+    const stats = await deps.fs.stat(candidate);
+    if (!stats.ok) return stats;
+    if (stats.value.size === file.size) return ok(true);
   }
   return ok(false);
 };

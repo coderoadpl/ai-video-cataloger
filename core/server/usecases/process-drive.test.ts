@@ -5,7 +5,8 @@ import { appError, ok, type AppError, type Result } from '@core/domain/index.js'
 import type { AnalysisOutput, AnalyzeInput, DirectoryEntry } from '../ports.js';
 import { folderCatalogRecords, indexStatus } from './catalog-index.js';
 import { scanTreeFolderDetails } from './catalog-tree.js';
-import { discoverCatalogFolders, processDrive, type ProcessDriveInput } from './process-drive.js';
+import { discoverCatalogFolders, processDrive, shouldRelocateCanonical, type ProcessDriveInput } from './process-drive.js';
+import type { CatalogFolder } from '@core/domain/index.js';
 import {
   InMemoryAnalyzer,
   InMemoryCatalogs,
@@ -89,6 +90,39 @@ const makeDeps = (
 const addVideo = (fs: InMemoryFileSystem, videoPath: string, hash: string): void => {
   fs.addFile(videoPath, { size: 1024, mtimeMs: new Date('2026-01-01T00:00:00.000Z').getTime(), hash });
 };
+
+const folderAt = (currentPath: string, firstSeenAt: string): CatalogFolder => ({
+  folderId: `id-${currentPath}`,
+  currentPath,
+  displayName: currentPath,
+  firstSeenAt,
+  lastSeenAt: firstSeenAt,
+});
+
+describe('shouldRelocateCanonical', () => {
+  it('does not adopt a sorting-earlier sibling clone while the recorded location is present', () => {
+    const recorded = folderAt('/drive/originals', '2026-01-01T00:00:00.000Z');
+    const siblingClone = folderAt('/drive/aaa-clone', '2026-02-01T00:00:00.000Z');
+
+    expect(shouldRelocateCanonical(siblingClone, recorded, true)).toBe(false);
+  });
+
+  it('prefers the earliest-first-seen present copy for a damaged-state repair', () => {
+    const earliest = folderAt('/drive/early', '2026-01-01T00:00:00.000Z');
+    const laterRecorded = folderAt('/drive/late', '2026-03-01T00:00:00.000Z');
+
+    expect(shouldRelocateCanonical(earliest, laterRecorded, true)).toBe(true);
+    expect(shouldRelocateCanonical(laterRecorded, earliest, true)).toBe(false);
+  });
+
+  it('relocates onto the present copy when the recorded location is absent', () => {
+    const recordedGone = folderAt('/drive/gone', '2026-01-01T00:00:00.000Z');
+    const presentNewer = folderAt('/drive/moved', '2026-05-01T00:00:00.000Z');
+
+    expect(shouldRelocateCanonical(presentNewer, recordedGone, false)).toBe(true);
+    expect(shouldRelocateCanonical(presentNewer, null, false)).toBe(true);
+  });
+});
 
 describe('drive discovery', () => {
   it('finds catalog folders deterministically and skips hidden, system, artifact, and symlink entries', async () => {
@@ -185,7 +219,7 @@ describe('drive processing', () => {
     expect(clone?.duplicate?.canonicalPath).toBe('/drive/root.mp4');
   });
 
-  it('repairs a damaged row that points at a clone by restoring the original location on the next run', async () => {
+  it('does not churn the canonical to a byte-identical clone whose folder is still present', async () => {
     const deps = makeDeps();
     addVideo(deps.fs, '/drive/root.mp4', 'hash-x');
     addVideo(deps.fs, '/drive/sub/clone.mp4', 'hash-x');
@@ -199,10 +233,9 @@ describe('drive processing', () => {
     const repair = await processDrive(deps, baseInput, undefined, { runId: 'run-repair' });
     expect(repair.ok).toBe(true);
 
-    const rootFolder = folders.ok ? folders.value.find((entry) => entry.currentPath === '/drive') : undefined;
     const row = await deps.globalCatalog.getFile('hash-x');
-    expect(row.ok && row.value?.folderId).toBe(rootFolder?.folderId);
-    expect(row.ok && row.value?.fileName).toBe('root.mp4');
+    expect(row.ok && row.value?.folderId).toBe(subFolder?.folderId);
+    expect(row.ok && row.value?.fileName).toBe('clone.mp4');
   });
 
   it('marks a deleted processed file missing so the absent-files section can list it', async () => {
