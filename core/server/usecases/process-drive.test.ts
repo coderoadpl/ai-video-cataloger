@@ -47,6 +47,17 @@ class PathResponseAnalyzer extends InMemoryAnalyzer {
   }
 }
 
+class DiscoveryFailureFileSystem extends InMemoryFileSystem {
+  failPath: string | null = null;
+
+  override listDirectory(value: string): Promise<Result<DirectoryEntry[], AppError>> {
+    if (this.failPath !== null && value === this.failPath) {
+      return Promise.resolve({ ok: false, error: appError('read_error', 'Cannot read folder') });
+    }
+    return super.listDirectory(value);
+  }
+}
+
 class ScanFailureFileSystem extends InMemoryFileSystem {
   private badFolderReads = 0;
 
@@ -165,6 +176,38 @@ describe('drive processing', () => {
 
     const emptied = await deps.globalCatalog.getFile('hash-clip');
     expect(emptied.ok && emptied.value?.missingAt).not.toBe(null);
+  });
+
+  it('does not mark files missing in a folder that failed discovery but still exists on disk', async () => {
+    const fs = new DiscoveryFailureFileSystem('/drive');
+    const deps = makeDeps(fs);
+    addVideo(fs, '/drive/a/clip.mp4', 'hash-clip');
+    addVideo(fs, '/drive/keep/other.mp4', 'hash-other');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    fs.failPath = '/drive/a';
+    const second = await processDrive(deps, baseInput, undefined, { runId: 'run-unreadable' });
+    expect(second.ok).toBe(true);
+
+    const preserved = await deps.globalCatalog.getFile('hash-clip');
+    expect(preserved.ok && preserved.value?.missingAt).toBe(null);
+  });
+
+  it('refreshes snapshots of both the source and destination folder after a relocation', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/a/clip.mp4', 'hash-clip');
+    addVideo(deps.fs, '/drive/a/keep.mp4', 'hash-keep');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    await deps.fs.deleteFile('/drive/a/clip.mp4');
+    addVideo(deps.fs, '/drive/b/clip.mp4', 'hash-clip');
+    const second = await processDrive(deps, baseInput, undefined, { runId: 'run-move' });
+    expect(second.ok).toBe(true);
+
+    const sourceSnapshot = await deps.fs.readTextFile('/drive/a/.ai-video-cataloger/catalog.ndjson');
+    const destSnapshot = await deps.fs.readTextFile('/drive/b/.ai-video-cataloger/catalog.ndjson');
+    expect(sourceSnapshot.ok && (sourceSnapshot.value ?? '').includes('hash-clip')).toBe(false);
+    expect(destSnapshot.ok && (destSnapshot.value ?? '').includes('hash-clip')).toBe(true);
   });
 
   it('leaves rows untouched when the folder is gone from disk (offline drive)', async () => {

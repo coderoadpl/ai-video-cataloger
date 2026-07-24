@@ -4,7 +4,7 @@ import path from 'node:path';
 import initSqlJs from 'sql.js';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { CatalogFile, CatalogFolder } from '@core/domain/index.js';
+import type { CatalogFile, CatalogFolder, FaceObservation, Person } from '@core/domain/index.js';
 
 import { SqlJsGlobalCatalogStore } from './global-catalog.js';
 import {
@@ -253,6 +253,28 @@ describe('SqlJsGlobalCatalogStore', () => {
 
     expect(blocked.ok).toBe(false);
     if (!blocked.ok) expect(blocked.error.code).toBe('catalog_locked');
+  });
+
+  it('recomputes person exemplar counts and prunes empty persons when a file loses its faces', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertFile({ ...file, fingerprint: 'fp-second', fileName: 'second.mp4' });
+    await store.upsertPerson(personFor('person-shared', 2));
+    await store.upsertPerson(personFor('person-solo', 1));
+    await store.upsertFaceObservation(observationFor('obs-1', file.fingerprint, 'person-shared'));
+    await store.upsertFaceObservation(observationFor('obs-2', 'fp-second', 'person-shared'));
+    await store.upsertFaceObservation(observationFor('obs-3', file.fingerprint, 'person-solo'));
+
+    const deleted = await store.deleteFaceObservationsForFile(file.fingerprint);
+    expect(deleted.ok).toBe(true);
+
+    const survivor = await store.getPerson('person-shared');
+    const pruned = await store.getPerson('person-solo');
+    expect(survivor.ok && survivor.value?.exemplarCount).toBe(1);
+    expect(pruned.ok && pruned.value).toBeNull();
+    await store.dispose();
   });
 
   it('allows reads while another process holds the catalog lock', async () => {
@@ -869,6 +891,27 @@ const writeLock = async (
   await mkdir(path.dirname(lockPath(home)), { recursive: true });
   await writeFile(lockPath(home), `${JSON.stringify(lock)}\n`, 'utf8');
 };
+
+const personFor = (personId: string, exemplarCount: number): Person => ({
+  personId,
+  displayName: personId,
+  kind: 'face',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  centroid: Array.from({ length: 128 }, () => 0.1),
+  exemplarCount,
+});
+
+const observationFor = (obsId: string, fingerprint: string, personId: string | null): FaceObservation => ({
+  obsId,
+  fingerprint,
+  kind: 'face',
+  frameTsS: 1,
+  bbox: { x: 0, y: 0, width: 10, height: 10 },
+  embedding: Array.from({ length: 128 }, () => 0.2),
+  quality: 0.9,
+  personId,
+  cropPath: null,
+});
 
 const writeV1Catalog = async (home: string): Promise<void> => {
   const SQL = await initSqlJs();

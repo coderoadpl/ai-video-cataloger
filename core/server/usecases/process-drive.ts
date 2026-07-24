@@ -19,6 +19,7 @@ import {
 } from '../ports.js';
 import type { ProcessDeps, ProcessPipelineInput } from './process.js';
 import { hasProcessedAnalysis, reconcileFolderPresence } from './catalog-index.js';
+import { exportFolderSnapshot } from './catalog-snapshot.js';
 import { readFolderMarker } from './folder-identity.js';
 import { processVideoPipeline } from './process.js';
 import { scanFolder, type ScanVideo } from './scan.js';
@@ -175,6 +176,7 @@ export const processDrive = async (
   let consecutiveFailures = 0;
   let fileIndex = 0;
   const folderPresences: { folderPath: string; presentFingerprints: string[]; hashUnavailable: boolean }[] = [];
+  const snapshotRefreshFolderIds = new Set<string>();
   for (const folder of discovery.value.folders) {
     const folderStarted = await report(progress, 'folder-started', {
       path: folder.path,
@@ -214,6 +216,7 @@ export const processDrive = async (
         if (skipped.value) {
           const relocated = await relocateResumedFile(deps, globalCatalog, folder.path, video);
           if (!relocated.ok) return relocated;
+          for (const folderId of relocated.value) snapshotRefreshFolderIds.add(folderId);
           state.run.filesSkipped += 1;
           folderCounts.filesSkipped += 1;
         } else {
@@ -274,11 +277,15 @@ export const processDrive = async (
   }
 
   const visitedFolderPaths = new Set(discovery.value.folders.map((entry) => entry.path));
+  const discoveryFailedFolders = discovery.value.failures
+    .filter((entry) => entry.scope === 'folder')
+    .map((entry) => entry.path);
   const catalogFolders = await globalCatalog.listFolders();
   if (!catalogFolders.ok) return catalogFolders;
   for (const catalogFolder of catalogFolders.value) {
     if (!isWithinRoot(catalogFolder.currentPath, discovery.value.root)) continue;
     if (visitedFolderPaths.has(catalogFolder.currentPath)) continue;
+    if (discoveryFailedFolders.some((failed) => isWithinRoot(catalogFolder.currentPath, failed))) continue;
     const stillOnDisk = await deps.fs.exists(catalogFolder.currentPath);
     if (!stillOnDisk.ok) return stillOnDisk;
     if (!stillOnDisk.value) continue;
@@ -290,6 +297,17 @@ export const processDrive = async (
       now: now().getTime(),
     });
     if (!reconciled.ok) return reconciled;
+  }
+
+  for (const folderId of snapshotRefreshFolderIds) {
+    const folder = await globalCatalog.getFolder(folderId);
+    if (!folder.ok) return folder;
+    if (folder.value === null) continue;
+    const onDisk = await deps.fs.exists(folder.value.currentPath);
+    if (!onDisk.ok) return onDisk;
+    if (!onDisk.value) continue;
+    const snapshot = await exportFolderSnapshot({ globalCatalog, fs: deps.fs }, folder.value);
+    if (!snapshot.ok) return snapshot;
   }
 
   state.run.finishedAt = now().toISOString();
@@ -383,21 +401,27 @@ const relocateResumedFile = async (
   globalCatalog: GlobalCatalogStore,
   folderPath: string,
   video: ScanVideo,
-): Promise<Result<void, AppError>> => {
-  if (video.contentHash === null) return ok(undefined);
+): Promise<Result<readonly string[], AppError>> => {
+  if (video.contentHash === null) return ok([]);
   const marker = await readFolderMarker(deps.fs, folderPath);
   if (!marker.ok) return marker;
-  if (marker.value === null) return ok(undefined);
+  if (marker.value === null) return ok([]);
   const existing = await globalCatalog.getFile(video.contentHash);
   if (!existing.ok) return existing;
-  if (existing.value === null) return ok(undefined);
+  if (existing.value === null) return ok([]);
   const fileName = deps.fs.basename(video.path);
-  if (existing.value.folderId === marker.value.folderId && existing.value.fileName === fileName) return ok(undefined);
-  return globalCatalog.relocateFile(video.contentHash, marker.value.folderId, fileName);
+  if (existing.value.folderId === marker.value.folderId && existing.value.fileName === fileName) return ok([]);
+  const relocated = await globalCatalog.relocateFile(video.contentHash, marker.value.folderId, fileName);
+  if (!relocated.ok) return relocated;
+  return ok([...new Set([existing.value.folderId, marker.value.folderId])]);
 };
 
-const isWithinRoot = (candidate: string, root: string): boolean =>
-  candidate === root || candidate.startsWith(`${root}/`) || candidate.startsWith(`${root}\\`);
+const isWithinRoot = (candidate: string, root: string): boolean => {
+  const normalizedRoot = root.replace(/[/\\]+$/, '');
+  return candidate === normalizedRoot
+    || candidate.startsWith(`${normalizedRoot}/`)
+    || candidate.startsWith(`${normalizedRoot}\\`);
+};
 
 const alreadyProcessed = async (
   deps: ProcessDeps,
