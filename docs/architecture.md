@@ -136,14 +136,15 @@ without DOM), the ESLint island-purity bans, and the depcruise
 `island-core-is-portable` / `island-core-no-frameworks` rules.
 
 **i18n ruling (owner-accepted 2026-07-25): cores emit typed dictionary keys;
-web bindings translate through `useDictionary`.** A pure core cannot call the
-`useDictionary` React hook, so it never holds translated strings. Instead a
-core exposes labels and log lines as a typed, closed key union (e.g. the
-processing core's `DriveMessage`: `{ kind: 'folderDone'; path; filesDone; … }`
-and a step key), and the web binding — which alone imports `web-i18n` —
-resolves each key against the effective dictionary. This keeps the core
-locale-free and portable while the translated output stays byte-identical to
-the pre-extraction renderer.
+the feature's web side translates through `useDictionary`.** A pure core
+cannot call the `useDictionary` React hook, so it never holds translated
+strings. Instead a core exposes labels and log lines as a typed, closed key
+union (e.g. the processing core's `DriveMessage`:
+`{ kind: 'folderDone'; path; filesDone; … }` and a step key), and the
+feature's view hooks and components — which may import `web-i18n`, while the
+core never does — resolve each key against the effective dictionary. This
+keeps the core locale-free and portable while the translated output stays
+byte-identical to the pre-extraction renderer.
 
 ## Delta 5 — long-running work
 
