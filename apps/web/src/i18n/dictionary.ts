@@ -331,6 +331,7 @@ export interface Dictionary {
     stoppingDrive: string;
     cancellingCurrentAndBatch: string;
     cancellingAnalysis: string;
+    stepLabels: Record<string, string>;
   };
   people: {
     disabledTitle: string;
@@ -367,6 +368,20 @@ export interface Dictionary {
     observationCount: (count: number) => string;
     rename: string;
     delete: string;
+    installingModelsLog: string;
+    modelsInstalledLog: string;
+    installModelsFailedLog: string;
+    indexingFacesLog: string;
+    indexUpdatedLog: string;
+    indexFacesFailedLog: string;
+    renamedGroupingLog: (name: string) => string;
+    renameGroupingFailedLog: string;
+    mergedGroupingsLog: string;
+    mergeGroupingsFailedLog: string;
+    deletedGroupingLog: string;
+    deleteGroupingFailedLog: string;
+    deletedAllFaceDataLog: string;
+    deleteAllFaceDataFailedLog: string;
   };
   settingsModal: {
     title: string;
@@ -388,6 +403,19 @@ export interface Dictionary {
     skipAutoRename: string;
     reset: string;
     saving: string;
+    whisperModes: {
+      local: { label: string; description: string };
+      api: { label: string; description: string };
+      skip: { label: string; description: string };
+    };
+    whisperModels: {
+      tiny: { label: string; description: string };
+      base: { label: string; description: string };
+      small: { label: string; description: string };
+      medium: { label: string; description: string };
+      'large-v3': { label: string; description: string };
+      'large-v3-turbo': { label: string; description: string };
+    };
   };
   settingsAnalyzer: {
     aiAnalyzer: string;
@@ -811,6 +839,17 @@ export const en: Dictionary = {
     stoppingDrive: 'Stopping folder tree analysis…',
     cancellingCurrentAndBatch: 'Cancelling current video and stopping batch…',
     cancellingAnalysis: 'Cancelling analysis…',
+    stepLabels: {
+      extracting_frames: 'Extracting frames',
+      extracting_audio: 'Extracting audio',
+      transcribing_audio: 'Transcribing audio',
+      analyzing_with_claude: 'Analyzing with AI',
+      renaming_video: 'Renaming video',
+      skipping_rename: 'Finalizing',
+      downloading: 'Downloading',
+      runtime_setup: 'Preparing runtime',
+      model_download: 'Downloading model',
+    },
   },
   people: {
     disabledTitle: 'Face grouping is off',
@@ -847,6 +886,20 @@ export const en: Dictionary = {
     observationCount: (count) => `${count} observation(s)`,
     rename: 'Rename',
     delete: 'Delete',
+    installingModelsLog: 'Installing face grouping models...',
+    modelsInstalledLog: 'Face grouping models are installed',
+    installModelsFailedLog: 'Failed to install face grouping models',
+    indexingFacesLog: 'Indexing faces in the current folder...',
+    indexUpdatedLog: 'Face grouping index is updated',
+    indexFacesFailedLog: 'Failed to index faces',
+    renamedGroupingLog: (name) => `Renamed grouping to ${name}`,
+    renameGroupingFailedLog: 'Failed to rename grouping',
+    mergedGroupingsLog: 'Merged face groupings',
+    mergeGroupingsFailedLog: 'Failed to merge face groupings',
+    deletedGroupingLog: 'Deleted face grouping',
+    deleteGroupingFailedLog: 'Failed to delete face grouping',
+    deletedAllFaceDataLog: 'Deleted all face data',
+    deleteAllFaceDataFailedLog: 'Failed to delete all face data',
   },
   settingsModal: {
     title: 'Settings',
@@ -868,6 +921,19 @@ export const en: Dictionary = {
     skipAutoRename: 'Skip Auto-Rename',
     reset: 'Reset',
     saving: 'Saving…',
+    whisperModes: {
+      local: { label: 'Local (Whisper.cpp)', description: 'Uses local whisper.cpp binary' },
+      api: { label: 'API (OpenAI)', description: 'Uses OpenAI Whisper API' },
+      skip: { label: 'Skip Transcription', description: 'Do not transcribe audio' },
+    },
+    whisperModels: {
+      tiny: { label: 'Tiny', description: 'Fastest, lowest accuracy' },
+      base: { label: 'Base', description: 'Good balance of speed and accuracy' },
+      small: { label: 'Small', description: 'Better accuracy, slower' },
+      medium: { label: 'Medium', description: 'High accuracy, slow' },
+      'large-v3': { label: 'Large v3', description: 'Best accuracy, slowest' },
+      'large-v3-turbo': { label: 'Large v3 turbo', description: 'Large v3 accuracy, faster and smaller' },
+    },
   },
   settingsAnalyzer: {
     aiAnalyzer: 'AI Analyzer',
@@ -1291,6 +1357,17 @@ export const pl: Dictionary = {
     stoppingDrive: 'Zatrzymywanie analizy drzewa folderów…',
     cancellingCurrentAndBatch: 'Anulowanie bieżącego filmu i zatrzymywanie wsadu…',
     cancellingAnalysis: 'Anulowanie analizy…',
+    stepLabels: {
+      extracting_frames: 'Wyodrębnianie klatek',
+      extracting_audio: 'Wyodrębnianie dźwięku',
+      transcribing_audio: 'Transkrypcja dźwięku',
+      analyzing_with_claude: 'Analiza przez AI',
+      renaming_video: 'Zmiana nazwy filmu',
+      skipping_rename: 'Finalizowanie',
+      downloading: 'Pobieranie',
+      runtime_setup: 'Przygotowywanie runtime',
+      model_download: 'Pobieranie modelu',
+    },
   },
   people: {
     disabledTitle: 'Grupowanie twarzy jest wyłączone',
@@ -1327,6 +1404,20 @@ export const pl: Dictionary = {
     observationCount: (count) => `${count} obserwacji`,
     rename: 'Zmień nazwę',
     delete: 'Usuń',
+    installingModelsLog: 'Instalowanie modeli grupowania twarzy...',
+    modelsInstalledLog: 'Modele grupowania twarzy zostały zainstalowane',
+    installModelsFailedLog: 'Nie udało się zainstalować modeli grupowania twarzy',
+    indexingFacesLog: 'Indeksowanie twarzy w bieżącym folderze...',
+    indexUpdatedLog: 'Indeks grupowania twarzy został zaktualizowany',
+    indexFacesFailedLog: 'Nie udało się zindeksować twarzy',
+    renamedGroupingLog: (name) => `Zmieniono nazwę grupy na ${name}`,
+    renameGroupingFailedLog: 'Nie udało się zmienić nazwy grupy',
+    mergedGroupingsLog: 'Scalono grupy twarzy',
+    mergeGroupingsFailedLog: 'Nie udało się scalić grup twarzy',
+    deletedGroupingLog: 'Usunięto grupę twarzy',
+    deleteGroupingFailedLog: 'Nie udało się usunąć grupy twarzy',
+    deletedAllFaceDataLog: 'Usunięto wszystkie dane twarzy',
+    deleteAllFaceDataFailedLog: 'Nie udało się usunąć wszystkich danych twarzy',
   },
   settingsModal: {
     title: 'Ustawienia',
@@ -1348,6 +1439,19 @@ export const pl: Dictionary = {
     skipAutoRename: 'Pomiń automatyczną zmianę nazw',
     reset: 'Resetuj',
     saving: 'Zapisywanie…',
+    whisperModes: {
+      local: { label: 'Lokalnie (Whisper.cpp)', description: 'Używa lokalnego pliku whisper.cpp' },
+      api: { label: 'API (OpenAI)', description: 'Używa API OpenAI Whisper' },
+      skip: { label: 'Pomiń transkrypcję', description: 'Nie transkrybuj dźwięku' },
+    },
+    whisperModels: {
+      tiny: { label: 'Tiny', description: 'Najszybszy, najniższa dokładność' },
+      base: { label: 'Base', description: 'Dobry balans szybkości i dokładności' },
+      small: { label: 'Small', description: 'Lepsza dokładność, wolniejszy' },
+      medium: { label: 'Medium', description: 'Wysoka dokładność, wolny' },
+      'large-v3': { label: 'Large v3', description: 'Najlepsza dokładność, najwolniejszy' },
+      'large-v3-turbo': { label: 'Large v3 turbo', description: 'Dokładność Large v3, szybszy i mniejszy' },
+    },
   },
   settingsAnalyzer: {
     aiAnalyzer: 'Analizator AI',

@@ -7,6 +7,7 @@ import type { facesPeopleOutputSchema } from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 
 export type FacePerson = z.output<typeof facesPeopleOutputSchema>['people'][number];
@@ -57,6 +58,7 @@ export const usePeople = ({
   intervalMs = 1000,
 }: UsePeopleOptions): PeopleState => {
   const queryClient = useQueryClient();
+  const dictionary = useDictionary();
   const config = useQuery({ ...actions.config({}), enabled: active });
   const facesEnabled = enabledValue(config.data !== undefined && 'effective' in config.data
     ? config.data.effective.faces_enabled
@@ -121,21 +123,21 @@ export const usePeople = ({
   const installArtifacts = useCallback(() => {
     runJob(
       installMutation.mutateAsync({ force: false }),
-      'Installing face grouping models...',
-      'Face grouping models are installed',
-      'Failed to install face grouping models',
+      dictionary.people.installingModelsLog,
+      dictionary.people.modelsInstalledLog,
+      dictionary.people.installModelsFailedLog,
     );
-  }, [installMutation, runJob]);
+  }, [dictionary, installMutation, runJob]);
 
   const indexFaces = useCallback(() => {
     if (folder === null) return;
     runJob(
       indexMutation.mutateAsync({ root: folder }),
-      'Indexing faces in the current folder...',
-      'Face grouping index is updated',
-      'Failed to index faces',
+      dictionary.people.indexingFacesLog,
+      dictionary.people.indexUpdatedLog,
+      dictionary.people.indexFacesFailedLog,
     );
-  }, [folder, indexMutation, runJob]);
+  }, [dictionary, folder, indexMutation, runJob]);
 
   const mutateAndRefresh = useCallback(
     (operation: Promise<unknown>, success: string, failure: string) => {
@@ -157,42 +159,42 @@ export const usePeople = ({
     (personId: string, displayName: string) => {
       mutateAndRefresh(
         renameMutation.mutateAsync({ personId, displayName }),
-        `Renamed grouping to ${displayName}`,
-        'Failed to rename grouping',
+        dictionary.people.renamedGroupingLog(displayName),
+        dictionary.people.renameGroupingFailedLog,
       );
     },
-    [mutateAndRefresh, renameMutation],
+    [dictionary, mutateAndRefresh, renameMutation],
   );
 
   const merge = useCallback(
     (fromPersonId: string, toPersonId: string) => {
       mutateAndRefresh(
         mergeMutation.mutateAsync({ fromPersonId, toPersonId }),
-        'Merged face groupings',
-        'Failed to merge face groupings',
+        dictionary.people.mergedGroupingsLog,
+        dictionary.people.mergeGroupingsFailedLog,
       );
     },
-    [mergeMutation, mutateAndRefresh],
+    [dictionary, mergeMutation, mutateAndRefresh],
   );
 
   const forget = useCallback(
     (personId: string) => {
       mutateAndRefresh(
         forgetMutation.mutateAsync({ personId, force: true }),
-        'Deleted face grouping',
-        'Failed to delete face grouping',
+        dictionary.people.deletedGroupingLog,
+        dictionary.people.deleteGroupingFailedLog,
       );
     },
-    [forgetMutation, mutateAndRefresh],
+    [dictionary, forgetMutation, mutateAndRefresh],
   );
 
   const purge = useCallback(() => {
     mutateAndRefresh(
       purgeMutation.mutateAsync({ force: true }),
-      'Deleted all face data',
-      'Failed to delete all face data',
+      dictionary.people.deletedAllFaceDataLog,
+      dictionary.people.deleteAllFaceDataFailedLog,
     );
-  }, [mutateAndRefresh, purgeMutation]);
+  }, [dictionary, mutateAndRefresh, purgeMutation]);
 
   const toggleSelected = useCallback((personId: string) => {
     setSelectedPersonIds((current) =>

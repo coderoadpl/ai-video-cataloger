@@ -15,6 +15,8 @@ import type {
   storedConfigSchema,
 } from '@core/contract/index.js';
 
+import { type Dictionary } from '../../i18n/dictionary.js';
+
 export type SettingsDraft = AppConfig;
 export type LocalAiTier = z.output<typeof localAiTierSchema>;
 export type Machine = z.output<typeof machineSchema>;
@@ -76,10 +78,10 @@ export interface WhisperModeOption {
   description: string;
 }
 
-export const WHISPER_MODE_OPTIONS: WhisperModeOption[] = [
-  { value: 'local', label: 'Local (Whisper.cpp)', description: 'Uses local whisper.cpp binary' },
-  { value: 'api', label: 'API (OpenAI)', description: 'Uses OpenAI Whisper API' },
-  { value: 'skip', label: 'Skip Transcription', description: 'Do not transcribe audio' },
+export const whisperModeOptions = (dictionary: Dictionary): WhisperModeOption[] => [
+  { value: 'local', ...dictionary.settingsModal.whisperModes.local },
+  { value: 'api', ...dictionary.settingsModal.whisperModes.api },
+  { value: 'skip', ...dictionary.settingsModal.whisperModes.skip },
 ];
 
 export interface WhisperModelOption {
@@ -88,16 +90,5 @@ export interface WhisperModelOption {
   description: string;
 }
 
-const WHISPER_MODEL_DETAILS: Record<AppConfig['whisper_model'], Omit<WhisperModelOption, 'value'>> = {
-  tiny: { label: 'Tiny', description: 'Fastest, lowest accuracy' },
-  base: { label: 'Base', description: 'Good balance of speed and accuracy' },
-  small: { label: 'Small', description: 'Better accuracy, slower' },
-  medium: { label: 'Medium', description: 'High accuracy, slow' },
-  'large-v3': { label: 'Large v3', description: 'Best accuracy, slowest' },
-  'large-v3-turbo': { label: 'Large v3 turbo', description: 'Large v3 accuracy, faster and smaller' },
-};
-
-export const WHISPER_MODEL_OPTIONS: WhisperModelOption[] = WHISPER_MODEL_NAMES.map((value) => ({
-  value,
-  ...WHISPER_MODEL_DETAILS[value],
-}));
+export const whisperModelOptions = (dictionary: Dictionary): WhisperModelOption[] =>
+  WHISPER_MODEL_NAMES.map((value) => ({ value, ...dictionary.settingsModal.whisperModels[value] }));

@@ -84,9 +84,9 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-const toProgressView = (progress: NonNullable<JobOutput['progress']>): ProgressView => ({
+const toProgressView = (progress: NonNullable<JobOutput['progress']>, dictionary: Dictionary): ProgressView => ({
   step: progress.step,
-  stepLabel: stepLabel(progress.step),
+  stepLabel: stepLabel(dictionary, progress.step),
   percentage: progress.percentage ?? 0,
   stepNumber: progress.stepNumber ?? 0,
   totalSteps: progress.totalSteps ?? 5,
@@ -177,7 +177,7 @@ const renderDriveEvent = (
     const currentIndex = progress.current ?? 0;
     const totalCount = progress.total ?? 0;
     handlers.onFileProgress({ currentIndex, totalCount, currentFilename: filename });
-    handlers.addLine(handlers.dictionary.processing.fileProgressLine(currentIndex, totalCount, stepLabel(step), filename), 'info');
+    handlers.addLine(handlers.dictionary.processing.fileProgressLine(currentIndex, totalCount, stepLabel(handlers.dictionary, step), filename), 'info');
   }
 };
 
@@ -244,7 +244,7 @@ export const useProcessing = ({
           isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
           onSnapshot: (job) => {
             if (job.progress === null) return;
-            const view = toProgressView(job.progress);
+            const view = toProgressView(job.progress, dictionary);
             setProgress(view);
             const key = `${view.step}:${String(view.percentage)}`;
             if (key !== lastProgressKeyRef.current) {

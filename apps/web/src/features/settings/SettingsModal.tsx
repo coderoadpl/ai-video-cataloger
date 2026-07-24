@@ -23,8 +23,8 @@ import { SettingsAnalyzerSection } from './SettingsAnalyzerSection.js';
 import {
   OUTPUT_LANGUAGE_OPTIONS,
   UI_LANGUAGE_OPTIONS,
-  WHISPER_MODEL_OPTIONS,
-  WHISPER_MODE_OPTIONS,
+  whisperModelOptions,
+  whisperModeOptions,
   type SettingsDraft,
 } from './settings-model.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -48,6 +48,8 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
   });
   const { draft } = settings;
   const dictionary = useDictionary();
+  const whisperModes = whisperModeOptions(dictionary);
+  const whisperModels = whisperModelOptions(dictionary);
 
   const patch = (value: Partial<SettingsDraft>) => settings.setDraft(value);
 
@@ -104,11 +106,11 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
                 value={draft.whisper_mode}
                 data-testid="whisper-mode-select"
                 onChange={(event) => {
-                  const next = WHISPER_MODE_OPTIONS.find((option) => option.value === event.target.value);
+                  const next = whisperModes.find((option) => option.value === event.target.value);
                   if (next !== undefined) patch({ whisper_mode: next.value });
                 }}
               >
-                {WHISPER_MODE_OPTIONS.map((option) => (
+                {whisperModes.map((option) => (
                   <MenuItem key={option.value} value={option.value}>
                     {option.label}
                   </MenuItem>
@@ -126,11 +128,11 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
                     value={draft.whisper_model}
                     data-testid="whisper-model-select"
                     onChange={(event) => {
-                      const next = WHISPER_MODEL_OPTIONS.find((option) => option.value === event.target.value);
+                      const next = whisperModels.find((option) => option.value === event.target.value);
                       if (next !== undefined) patch({ whisper_model: next.value });
                     }}
                   >
-                    {WHISPER_MODEL_OPTIONS.map((option) => (
+                    {whisperModels.map((option) => (
                       <MenuItem key={option.value} value={option.value}>
                         {option.label}
                       </MenuItem>
