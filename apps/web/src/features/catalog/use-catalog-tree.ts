@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
-import { actions } from '../../api.js';
-import { buildCatalogTree, type CatalogTreeNode } from './catalog-tree-model.js';
+import { buildCatalogTree, catalogTree, type CatalogTreeNode } from './index.web.js';
 
 const TREE_DISABLED_FOLDER = ' ';
 
@@ -19,7 +18,7 @@ export interface CatalogTreeState {
 
 export const useCatalogTree = (folder: string | null): CatalogTreeState => {
   const tree = useQuery({
-    ...actions.catalogTree({ folder: folder ?? TREE_DISABLED_FOLDER }),
+    ...catalogTree({ folder: folder ?? TREE_DISABLED_FOLDER }),
     enabled: folder !== null,
   });
 

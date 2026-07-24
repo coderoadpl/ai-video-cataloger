@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
-import { type CatalogVideo } from './catalog-video.js';
+import { type CatalogVideo } from './core/index.js';
 
 const EMPTY: readonly CatalogVideo[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();

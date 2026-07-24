@@ -107,6 +107,22 @@ module.exports = {
       to: { path: 'node_modules/(hono|react|react-dom|drizzle-orm|commander|electron)(/|$)' },
     },
     {
+      name: 'island-core-is-portable',
+      severity: 'error',
+      comment:
+        'Island cores (apps/web/src/features/*/core) import no web composition: not api.ts, not i18n, not a sibling feature, not any apps/web path outside their own core — bound descriptors are injected in features/<name>/index.web.ts. A depcruise mirror of the ESLint parent-import ban, so the core typechecks without DOM and runs in plain node (ADR-0005 §Pure-TS cores).',
+      from: { path: '^apps/web/src/features/([^/]+)/core/' },
+      to: { path: '^apps/web/src/', pathNot: '^apps/web/src/features/$1/core/' },
+    },
+    {
+      name: 'island-core-no-frameworks',
+      severity: 'error',
+      comment:
+        'Island cores are pure TypeScript: no React, MUI or TanStack. Framework bindings live in the web binding (ADR-0005 §Pure-TS cores).',
+      from: { path: '^apps/web/src/features/([^/]+)/core/' },
+      to: { path: 'node_modules/(react|react-dom|@mui/[^/]+|@tanstack/react-query|@tanstack/react-router)(/|$)' },
+    },
+    {
       name: 'electron-only-in-desktop',
       severity: 'error',
       comment: 'Only apps/desktop (composition root + preload) may import electron.',

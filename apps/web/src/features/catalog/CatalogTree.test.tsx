@@ -13,7 +13,7 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
 import { CatalogTree } from './CatalogTree.js';
-import { type CatalogTreeNode } from './catalog-tree-model.js';
+import { type CatalogTreeNode } from './core/index.js';
 
 type ScanVideo = z.output<typeof scanVideoSchema>;
 

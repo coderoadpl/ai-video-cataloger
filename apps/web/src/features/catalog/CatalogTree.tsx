@@ -10,18 +10,19 @@ import { ApiError } from '@core/client/index.js';
 import { actions, bridge } from '../../api.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { type CatalogVideo, keyOf } from './catalog-video.js';
-import { type CatalogTreeNode } from './catalog-tree-model.js';
 import {
   buildTreeRows,
   folderNeedsFetch,
+  keyOf,
+  type CatalogTreeNode,
+  type CatalogVideo,
   type FolderCountsData,
   type FolderRow,
   type LoadedFolder,
   type StatusRow,
   type TreeRow,
   type VideoRow as VideoRowData,
-} from './catalog-tree-rows.js';
+} from './core/index.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
 import { SkippedBadge, thumbnailLoading } from './VideoList.js';
 import { useThumbnailGeneration } from './use-thumbnail-generation.js';

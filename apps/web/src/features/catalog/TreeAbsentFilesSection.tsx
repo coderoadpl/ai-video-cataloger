@@ -16,7 +16,7 @@ import {
 import { ChevronRightIcon, ExpandMoreIcon, WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
-import { type CatalogTreeNode } from './catalog-tree-model.js';
+import { type CatalogTreeNode } from './core/index.js';
 import { type AbsentFileEntry } from './use-absent-files.js';
 import { useTreeAbsentFiles } from './use-tree-absent-files.js';
 import { useCatalogLock } from './use-catalog-lock.js';

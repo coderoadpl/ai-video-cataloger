@@ -119,6 +119,40 @@ const QUERY_CLIENT_SINGLETON_PATTERN = {
     'Do not import the QueryClient singleton: reach it via useQueryClient(). Only main.tsx wires it.',
 };
 
+// Island cores (features/*/core) are portable, DOM-free modules: they may not
+// reach out of their own core directory. Every parent-relative specifier (`../…`)
+// escapes the core — api.ts, i18n, a sibling feature, any apps/web path — so the
+// whole class is banned; shared contracts arrive through the `@core/*` alias and
+// the bound descriptors are INJECTED in features/<name>/index.web.ts (ADR-0005
+// §Pure-TS cores). Mirrored by the depcruise `island-core-is-portable` rule.
+const ISLAND_CORE_PORTABILITY_MESSAGE =
+  'Island cores are portable and DOM-free: no parent-relative import — not api.ts, i18n, a sibling feature, or any apps/web path outside this core. Inject bound descriptors in features/<name>/index.web.ts and reach shared contracts via the @core/* alias (ADR-0005 §Pure-TS cores).';
+const ISLAND_CORE_PORTABILITY_PATTERN = {
+  group: ['../*', '../**'],
+  message: ISLAND_CORE_PORTABILITY_MESSAGE,
+};
+
+const ISLAND_CORE_FRAMEWORK_MESSAGE =
+  'Island cores are pure TypeScript: no React, MUI, TanStack or i18n. Expose typed dictionary keys the web binding translates (ADR-0005 §Pure-TS cores).';
+const ISLAND_CORE_FRAMEWORK_BANS = [
+  'react',
+  'react-dom',
+  'react/jsx-runtime',
+  '@mui/material',
+  '@mui/icons-material',
+  '@emotion/react',
+  '@emotion/styled',
+  '@tanstack/react-query',
+  '@tanstack/react-router',
+].map((name) => ({ name, message: ISLAND_CORE_FRAMEWORK_MESSAGE }));
+
+const ISLAND_CORE_DOM_MESSAGE =
+  'Island cores are DOM-free: no window/document. Keep DOM access in the web binding (ADR-0005 §Pure-TS cores).';
+const ISLAND_CORE_DOM_GLOBALS = ['window', 'document'].map((name) => ({
+  name,
+  message: ISLAND_CORE_DOM_MESSAGE,
+}));
+
 /**
  * Layer boundaries (docs/architecture.md) plus the renderer's inner boundaries
  * (frontend-lint-plan Phases 1–3). `boundaries/element-types` denies everything
@@ -183,6 +217,12 @@ export default tseslint.config(
         { type: 'web-gallery', pattern: 'apps/web/src/gallery/**', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
+        {
+          type: 'web-island-core',
+          pattern: 'apps/web/src/features/(*)/core/**',
+          mode: 'full',
+          capture: ['feature'],
+        },
         {
           type: 'web-features',
           pattern: 'apps/web/src/features/(*)/**',
@@ -292,12 +332,22 @@ export default tseslint.config(
               from: ['web-features'],
               allow: [
                 ['web-features', { feature: '${from.feature}' }],
+                ['web-island-core', { feature: '${from.feature}' }],
                 'web-api',
                 'web-ui',
                 'web-lib',
                 'web-theme',
                 'web-i18n',
                 'web-test',
+                'core-domain',
+                'core-contract',
+                'core-client',
+              ],
+            },
+            {
+              from: ['web-island-core'],
+              allow: [
+                ['web-island-core', { feature: '${from.feature}' }],
                 'core-domain',
                 'core-contract',
                 'core-client',
@@ -376,6 +426,7 @@ export default tseslint.config(
                 'web-main',
                 'web-api',
                 'web-routes',
+                'web-island-core',
                 'web-features',
                 'web-ui',
                 'web-lib',
@@ -385,6 +436,19 @@ export default tseslint.config(
               ],
               disallow: ['electron'],
               message: 'Only apps/desktop (composition root + preload) may import electron',
+            },
+            {
+              from: ['web-island-core'],
+              disallow: [
+                'react',
+                'react-dom',
+                '@mui/material',
+                '@mui/icons-material',
+                '@tanstack/react-query',
+                '@tanstack/react-router',
+              ],
+              message:
+                'Island cores are pure TypeScript: no React, MUI or TanStack (ADR-0005 §Pure-TS cores)',
             },
           ],
         },
@@ -472,9 +536,30 @@ export default tseslint.config(
     },
   },
   {
+    files: ['apps/web/src/features/*/core/**/*.{ts,tsx}'],
+    ignores: ['apps/web/src/features/*/core/**/*.test.{ts,tsx}'],
+    rules: {
+      'no-restricted-globals': ['error', ...HTTP_GLOBALS, ...STORAGE_GLOBALS, ...ISLAND_CORE_DOM_GLOBALS],
+      'no-restricted-imports': [
+        'error',
+        {
+          paths: [
+            ...HTTP_IMPORT_BANS,
+            ...STATE_LIB_BANS,
+            ...CLIENT_CONSTRUCTION_BANS,
+            ...DEVTOOLS_BAN,
+            ...ISLAND_CORE_FRAMEWORK_BANS,
+          ],
+          patterns: [QUERY_CLIENT_SINGLETON_PATTERN, ISLAND_CORE_PORTABILITY_PATTERN],
+        },
+      ],
+    },
+  },
+  {
     // An island's inbound event contract lives in core/events.ts; every event is
     // named for what happened (intent suffix), never an imperative command.
-    // Forward-only: no core/events.ts exists yet (island cores arrive in Phase 6).
+    // Forward-only: rung-1 cores expose selectors/typed keys, no inbound event
+    // union yet; a core/events.ts arrives when a core graduates to rung 2.
     files: ['apps/web/src/features/*/core/events.ts'],
     rules: {
       'avc/event-suffix-taxonomy': 'error',

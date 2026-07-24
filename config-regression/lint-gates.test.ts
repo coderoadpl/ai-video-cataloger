@@ -71,7 +71,7 @@ const fixtures = {
   },
   crossFeature: {
     rel: join(featureDir, 'cross-probe.ts'),
-    content: "import '../catalog/catalog-tree-model.js';\n",
+    content: "import '../catalog/use-catalog.js';\n",
   },
   queryHook: {
     rel: join(featureDir, 'query-probe.tsx'),
@@ -91,7 +91,7 @@ const fixtures = {
   },
   galleryImportsFeature: {
     rel: join(galleryDir, 'feature-probe.ts'),
-    content: "import '../../features/catalog/catalog-tree-model.js';\n",
+    content: "import '../../features/catalog/use-catalog.js';\n",
   },
   queryDescriptorsInline: {
     rel: join(featureDir, 'descriptors-probe.tsx'),
@@ -109,6 +109,22 @@ const fixtures = {
   eventTaxonomy: {
     rel: join(featureDir, 'core', 'events.ts'),
     content: "export type ProbeEvents = { type: 'deleteThing' } | { type: 'thingRemoved' };\n",
+  },
+  islandCoreReact: {
+    rel: join(featureDir, 'core', 'react-probe.ts'),
+    content: "import 'react';\nexport const probe = 1;\n",
+  },
+  islandCoreI18n: {
+    rel: join(featureDir, 'core', 'i18n-probe.ts'),
+    content: "import '../../../i18n/dictionary.js';\nexport const probe = 1;\n",
+  },
+  islandCoreIndex: {
+    rel: join(featureDir, 'core', 'index.ts'),
+    content: 'export const thing = 1;\n',
+  },
+  islandBindingImportsCore: {
+    rel: join(featureDir, 'index.web.ts'),
+    content: "import { thing } from './core/index.js';\nexport const probe = thing;\n",
   },
 } satisfies Record<string, Fixture>;
 
@@ -128,6 +144,7 @@ interface EslintResult {
 
 const messagesByFixture = new Map<string, EslintMessage[]>();
 const depcruiseRules = new Set<string>();
+const islandDepcruiseRules = new Set<string>();
 
 const write = (rel: string, content: string): string => {
   const abs = join(repoRoot, rel);
@@ -170,6 +187,14 @@ beforeAll(() => {
   });
   const depReport: { summary: { violations: { rule: { name: string } }[] } } = JSON.parse(depRun.stdout);
   for (const violation of depReport.summary.violations) depcruiseRules.add(violation.rule.name);
+
+  const islandRun = spawnSync(depBin, ['--output-type', 'json', join(featureDir, 'core')], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  const islandReport: { summary: { violations: { rule: { name: string } }[] } } = JSON.parse(islandRun.stdout);
+  for (const violation of islandReport.summary.violations) islandDepcruiseRules.add(violation.rule.name);
 });
 
 afterAll(() => {
@@ -242,6 +267,18 @@ describe('ESLint gate still rejects violations', () => {
     expect(message).toBeDefined();
     expect(message?.message).toContain('intent suffix');
   });
+
+  it('bans react imports in an island core (no-restricted-imports, pure TypeScript)', () => {
+    const message = findMessage(fixtures.islandCoreReact, 'no-restricted-imports');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('pure TypeScript');
+  });
+
+  it('bans reaching i18n from an island core (no-restricted-imports, portable)', () => {
+    const message = findMessage(fixtures.islandCoreI18n, 'no-restricted-imports');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('portable');
+  });
 });
 
 describe('ESLint gate keeps app-owned grants (positive probes)', () => {
@@ -256,11 +293,24 @@ describe('ESLint gate keeps app-owned grants (positive probes)', () => {
   it('lets a feature spread an imported descriptor into a query hook (avc rule does not over-fire)', () => {
     expect(findMessage(fixtures.queryDescriptorsValid, 'avc/query-descriptors-only')).toBeUndefined();
   });
+
+  it('lets a web binding (index.web.ts) import its own island core (seam is lawful)', () => {
+    expect(findMessage(fixtures.islandBindingImportsCore, 'boundaries/element-types')).toBeUndefined();
+    expect(findMessage(fixtures.islandBindingImportsCore, 'no-restricted-imports')).toBeUndefined();
+  });
 });
 
 describe('dependency-cruiser gate still rejects violations', () => {
   it('behavioral: react imported into core fires no-frameworks-in-core', () => {
     expect(depcruiseRules.has('no-frameworks-in-core')).toBe(true);
+  });
+
+  it('behavioral: react in an island core fires island-core-no-frameworks', () => {
+    expect(islandDepcruiseRules.has('island-core-no-frameworks')).toBe(true);
+  });
+
+  it('behavioral: an island core reaching i18n fires island-core-is-portable', () => {
+    expect(islandDepcruiseRules.has('island-core-is-portable')).toBe(true);
   });
 
   it('structural: every guarded rule is present with severity error', () => {
@@ -282,6 +332,8 @@ describe('dependency-cruiser gate still rejects violations', () => {
       'cli-only-composes-server',
       'desktop-only-composes',
       'no-frameworks-in-core',
+      'island-core-is-portable',
+      'island-core-no-frameworks',
       'electron-only-in-desktop',
     ]) {
       expect(byName.get(name)).toBe('error');

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
-import { type CatalogVideo, keyOf } from './catalog-video.js';
+import { type CatalogVideo, keyOf } from './core/index.js';
 import { useThumbnailGeneration } from './use-thumbnail-generation.js';
 
 const EMPTY: readonly CatalogVideo[] = [];

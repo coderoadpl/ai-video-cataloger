@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useState } from 'react';
 
-import { type CatalogVideo, keyOf } from './catalog-video.js';
+import { type CatalogVideo, keyOf } from './core/index.js';
 
 export interface CatalogVideoRegistry {
   videosByKey: ReadonlyMap<string, CatalogVideo>;

@@ -8,7 +8,7 @@ import { AbsentFilesSection } from './AbsentFilesSection.js';
 import { TreeAbsentFilesSection } from './TreeAbsentFilesSection.js';
 import { CatalogTree } from './CatalogTree.js';
 import { SidebarSkeleton } from './SidebarSkeleton.js';
-import { type CatalogVideo } from './catalog-video.js';
+import { type CatalogVideo } from './core/index.js';
 import { type CatalogState } from './use-catalog.js';
 import { type CatalogTreeState } from './use-catalog-tree.js';
 import { VideoList } from './VideoList.js';

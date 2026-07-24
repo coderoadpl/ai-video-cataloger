@@ -11,7 +11,7 @@ import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
 import { SkipNextIcon } from '../../components/ui/icons.js';
-import { type CatalogVideo, keyOf } from './catalog-video.js';
+import { type CatalogVideo, keyOf } from './core/index.js';
 import { useWindowedList } from './use-windowed-list.js';
 
 const EMPTY_SKIPPED: ReadonlySet<string> = new Set();

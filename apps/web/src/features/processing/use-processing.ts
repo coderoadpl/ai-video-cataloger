@@ -1,29 +1,30 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError, isTerminalJobStatus, type JobOutput } from '@core/client/index.js';
-import type { z } from 'zod';
-import type { scanVideoSchema } from '@core/contract/index.js';
-
 import type { BatchProgressView } from '../../components/ui/BatchToolbar.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
 import type { BatchResultItem } from '../../components/ui/dialogs/BatchSummaryDialog.js';
 import type { ProgressView } from '../../components/ui/ProcessingOverlay.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
-import { actions } from '../../api.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import {
+  cancel as cancelJob,
+  emptyDriveCounts,
+  isPending,
+  isTerminalJobStatus,
+  job as jobQuery,
+  messageOf,
+  process as processVideo,
+  processDrive as processDriveAction,
+  reduceDriveEvent,
+  toProgressModel,
+  type DriveMessage,
+  type DriveProgressView,
+  type ProcessVideo,
+} from './index.web.js';
 import { stepLabel } from './step-labels.js';
-
-type ProcessVideo = Pick<z.output<typeof scanVideoSchema>, 'path' | 'filename' | 'status'>;
-
-export interface DriveProgressView {
-  currentFolder: number;
-  totalFolders: number;
-  filesDone: number;
-  filesSkipped: number;
-}
 
 interface RunOutcome {
   success: boolean;
@@ -64,120 +65,36 @@ export interface UseProcessingOptions {
   checkReadiness?: (() => Promise<boolean>) | undefined;
 }
 
-const isPending = (status: ProcessVideo['status']): boolean =>
-  status === 'pending' || status === 'not_tracked';
-
-const basename = (path: string): string => path.split(/[\\/]/).pop() ?? path;
-
-const PER_FILE_STEPS = new Set([
-  'extracting_frames',
-  'extracting_audio',
-  'transcribing_audio',
-  'analyzing_with_claude',
-  'renaming_video',
-  'skipping_rename',
-]);
-
-const messageOf = (error: unknown): string => {
-  if (error instanceof ApiError) return error.appError.message;
-  if (error instanceof Error) return error.message;
-  return String(error);
-};
-
-const toProgressView = (progress: NonNullable<JobOutput['progress']>, dictionary: Dictionary): ProgressView => ({
-  step: progress.step,
-  stepLabel: stepLabel(dictionary, progress.step),
-  percentage: progress.percentage ?? 0,
-  stepNumber: progress.stepNumber ?? 0,
-  totalSteps: progress.totalSteps ?? 5,
-});
-
-type DriveEventProgress = JobOutput['progressEvents'][number]['progress'];
-
-interface DriveCounts {
-  currentFolder: number;
-  totalFolders: number;
-  filesDone: number;
-  filesSkipped: number;
-}
-
-const numField = (data: Record<string, unknown> | undefined, key: string): number => {
-  const value = data?.[key];
-  return typeof value === 'number' ? value : 0;
-};
-
-const strField = (data: Record<string, unknown> | undefined, key: string): string => {
-  const value = data?.[key];
-  return typeof value === 'string' ? value : '';
-};
-
-interface DriveHandlers {
-  dictionary: Dictionary;
-  addLine: AddLogLine;
-  onFolderProgress: (view: DriveProgressView) => void;
-  onFileProgress: (view: BatchProgressView) => void;
-  onFolderComplete: () => void;
-  onSkipped: (path: string) => void;
-}
-
-const renderDriveEvent = (
-  progress: DriveEventProgress,
-  counts: DriveCounts,
-  handlers: DriveHandlers,
-): void => {
-  const { step, data } = progress;
-  if (step === 'run-started') {
-    counts.totalFolders = numField(data, 'foldersTotal');
-    handlers.addLine(handlers.dictionary.processing.driveRunStarted(counts.totalFolders, numField(data, 'filesTotal')), 'info');
-    return;
-  }
-  if (step === 'folder-started') {
-    counts.currentFolder += 1;
-    handlers.addLine(handlers.dictionary.processing.driveFolderStarted(strField(data, 'path'), numField(data, 'filesTotal')), 'info');
-    handlers.onFolderProgress({ ...counts });
-    return;
-  }
-  if (step === 'folder-done') {
-    counts.filesDone += numField(data, 'filesDone');
-    counts.filesSkipped += numField(data, 'filesSkipped');
-    handlers.addLine(
-      handlers.dictionary.processing.driveFolderDone(
-        strField(data, 'path'),
-        numField(data, 'filesDone'),
-        numField(data, 'filesSkipped'),
-        numField(data, 'filesFailed'),
-      ),
-      'success',
-    );
-    handlers.onFolderProgress({ ...counts });
-    handlers.onFolderComplete();
-    return;
-  }
-  if (step === 'file-skipped') {
-    const video = strField(data, 'video');
-    handlers.addLine(handlers.dictionary.processing.driveFileSkipped(basename(video)), 'info');
-    handlers.onSkipped(video);
-    return;
-  }
-  if (step === 'run-summary') {
-    handlers.addLine(
-      handlers.dictionary.processing.driveRunComplete(
-        numField(data, 'foldersDone'),
-        numField(data, 'foldersTotal'),
-        numField(data, 'filesDone'),
-        numField(data, 'filesSkipped'),
-        numField(data, 'filesFailed'),
-      ),
-      'info',
-    );
-    return;
-  }
-  if (PER_FILE_STEPS.has(step)) {
-    const filename = basename(strField(data, 'video'));
-    const currentIndex = progress.current ?? 0;
-    const totalCount = progress.total ?? 0;
-    handlers.onFileProgress({ currentIndex, totalCount, currentFilename: filename });
-    handlers.addLine(handlers.dictionary.processing.fileProgressLine(currentIndex, totalCount, stepLabel(handlers.dictionary, step), filename), 'info');
+const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): string => {
+  switch (message.kind) {
+    case 'runStarted':
+      return dictionary.processing.driveRunStarted(message.folders, message.files);
+    case 'folderStarted':
+      return dictionary.processing.driveFolderStarted(message.path, message.files);
+    case 'folderDone':
+      return dictionary.processing.driveFolderDone(
+        message.path,
+        message.filesDone,
+        message.filesSkipped,
+        message.filesFailed,
+      );
+    case 'fileSkipped':
+      return dictionary.processing.driveFileSkipped(message.filename);
+    case 'runComplete':
+      return dictionary.processing.driveRunComplete(
+        message.foldersDone,
+        message.foldersTotal,
+        message.filesDone,
+        message.filesSkipped,
+        message.filesFailed,
+      );
+    case 'fileProgress':
+      return dictionary.processing.fileProgressLine(
+        message.current,
+        message.total,
+        stepLabel(dictionary, message.step),
+        message.filename,
+      );
   }
 };
 
@@ -189,9 +106,9 @@ export const useProcessing = ({
 }: UseProcessingOptions): ProcessingState => {
   const dictionary = useDictionary();
   const queryClient = useQueryClient();
-  const process = useMutation(actions.processVideo);
-  const processDrive = useMutation(actions.processDrive);
-  const cancel = useMutation(actions.cancelJob);
+  const process = useMutation(processVideo);
+  const processDrive = useMutation(processDriveAction);
+  const cancel = useMutation(cancelJob);
   const processAsync = process.mutateAsync;
   const processDriveAsync = processDrive.mutateAsync;
   const cancelAsync = cancel.mutateAsync;
@@ -240,11 +157,12 @@ export const useProcessing = ({
         const final = await pollJobUntilTerminal(jobId, {
           intervalMs,
           delay: sleep,
-          fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
+          fetchJob: (id) => queryClient.fetchQuery(jobQuery({ jobId: id })),
           isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
           onSnapshot: (job) => {
             if (job.progress === null) return;
-            const view = toProgressView(job.progress, dictionary);
+            const model = toProgressModel(job.progress);
+            const view: ProgressView = { ...model, stepLabel: stepLabel(dictionary, model.step) };
             setProgress(view);
             const key = `${view.step}:${String(view.percentage)}`;
             if (key !== lastProgressKeyRef.current) {
@@ -377,29 +295,29 @@ export const useProcessing = ({
 
       activeJobIdRef.current = jobId;
       const rendered = new Set<number>();
-      const counts: DriveCounts = { currentFolder: 0, totalFolders: 0, filesDone: 0, filesSkipped: 0 };
+      let counts = emptyDriveCounts();
       try {
         const final = await pollJobUntilTerminal(jobId, {
           intervalMs,
           delay: sleep,
-          fetchJob: (id) => queryClient.fetchQuery(actions.job({ jobId: id })),
+          fetchJob: (id) => queryClient.fetchQuery(jobQuery({ jobId: id })),
           isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
           onSnapshot: (job) => {
             for (const event of job.progressEvents) {
               if (rendered.has(event.sequence)) continue;
               rendered.add(event.sequence);
-              renderDriveEvent(event.progress, counts, {
-                dictionary,
-                addLine,
-                onFolderProgress: setDriveProgress,
-                onFileProgress: setDriveFileProgress,
-                onFolderComplete: () => {
-                  void queryClient.invalidateQueries();
-                },
-                onSkipped: (path) => {
-                  setSkippedPaths((current) => new Set(current).add(path));
-                },
-              });
+              const outcome = reduceDriveEvent(event.progress, counts);
+              counts = outcome.counts;
+              for (const message of outcome.messages) {
+                addLine(translateDriveMessage(dictionary, message), message.level);
+              }
+              if (outcome.folderProgress !== null) setDriveProgress(outcome.folderProgress);
+              if (outcome.fileProgress !== null) setDriveFileProgress(outcome.fileProgress);
+              if (outcome.folderComplete) void queryClient.invalidateQueries();
+              const skipped = outcome.skippedPath;
+              if (skipped !== null) {
+                setSkippedPaths((current) => new Set(current).add(skipped));
+              }
             }
           },
         });
