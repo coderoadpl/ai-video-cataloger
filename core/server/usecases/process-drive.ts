@@ -20,7 +20,7 @@ import {
   type ProcessJobStep,
 } from '../ports.js';
 import type { ProcessDeps, ProcessPipelineInput } from './process.js';
-import { hasProcessedAnalysis, reconcileFolderPresence } from './catalog-index.js';
+import { hasProcessedAnalysis, reconcileFolderPresence, resolveFolderIntoIndex } from './catalog-index.js';
 import { exportFolderSnapshot } from './catalog-snapshot.js';
 import { readFolderMarker } from './folder-identity.js';
 import { processVideoPipeline } from './process.js';
@@ -167,6 +167,13 @@ export const processDrive = async (
 
   const startedRun = await deps.globalCatalog.startDriveRun(state.run);
   if (!startedRun.ok) return startedRun;
+
+  const runFirstSeenAt = started.toISOString();
+  for (const folder of discovery.value.folders) {
+    const registered = await resolveFolderIntoIndex({ globalCatalog, fs: deps.fs }, folder.path, { firstSeenAt: runFirstSeenAt });
+    if (!registered.ok) return registered;
+  }
+
   const runStarted = await report(progress, 'run-started', {
     runId: state.run.runId,
     root: state.run.root,

@@ -63,7 +63,7 @@ export interface IndexRebuildOutput {
 export const resolveFolderIntoIndex = async (
   deps: CatalogIndexDeps,
   folderPath: string,
-  options: { forceImport?: boolean } = {},
+  options: { forceImport?: boolean; firstSeenAt?: string } = {},
 ): Promise<Result<{ folderId: string; imported: number }, AppError>> => {
   const marker = await ensureFolderMarker(deps.fs, folderPath);
   if (!marker.ok) return marker;
@@ -88,7 +88,7 @@ export const resolveFolderIntoIndex = async (
     folderId,
     currentPath: folderPath,
     displayName: deps.fs.basename(folderPath),
-    firstSeenAt: existing.value?.firstSeenAt ?? now,
+    firstSeenAt: existing.value?.firstSeenAt ?? options.firstSeenAt ?? now,
     lastSeenAt: now,
   };
   const upserted = await deps.globalCatalog.upsertFolder(folder);
