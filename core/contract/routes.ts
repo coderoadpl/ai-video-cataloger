@@ -98,9 +98,10 @@ export const catalogTreeFolderSchema = z.object({
   name: z.string(),
   relativePath: z.string(),
   depth: z.number().int().nonnegative(),
-  videos: z.array(scanVideoSchema),
-  pendingCount: z.number().int().nonnegative(),
-  processedCount: z.number().int().nonnegative(),
+  videoCount: z.number().int().nonnegative(),
+  pendingCount: z.number().int().nonnegative().nullable(),
+  processedCount: z.number().int().nonnegative().nullable(),
+  countsApproximate: z.boolean(),
 });
 
 export const catalogTreeOutputSchema = z.object({
@@ -108,6 +109,22 @@ export const catalogTreeOutputSchema = z.object({
   folders: z.array(catalogTreeFolderSchema),
   pendingTotal: z.number().int().nonnegative(),
   processedTotal: z.number().int().nonnegative(),
+  videoTotal: z.number().int().nonnegative(),
+  hasUnknownPending: z.boolean(),
+});
+
+export const catalogLockInfoSchema = z.object({
+  pid: z.number().int().positive(),
+  processName: z.enum(['gui', 'cli']),
+  startedAt: z.string().min(1),
+  hostname: z.string().min(1),
+});
+
+export const catalogLockOutputSchema = z.object({
+  writable: z.boolean(),
+  owner: catalogLockInfoSchema.nullable(),
+  blockedBy: catalogLockInfoSchema.nullable(),
+  warnings: z.array(z.string()),
 });
 
 export const catalogFolderRecordSchema = z.object({
@@ -881,6 +898,8 @@ export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.Zo
 
 export const API_ROUTES = {
   health: { method: 'GET', path: '/api/health', input: emptyInputSchema, output: healthOutputSchema },
+  catalogLockStatus: { method: 'GET', path: '/api/catalog-lock', input: emptyInputSchema, output: catalogLockOutputSchema },
+  catalogLockRetry: { method: 'POST', path: '/api/catalog-lock/retry', input: emptyInputSchema, output: catalogLockOutputSchema },
   scan: { method: 'GET', path: '/api/scan', input: folderInputSchema, output: scanOutputSchema },
   catalogTree: { method: 'GET', path: '/api/catalog-tree', input: folderInputSchema, output: catalogTreeOutputSchema },
   catalogFolder: { method: 'GET', path: '/api/catalog-folder', input: folderInputSchema, output: catalogFolderOutputSchema },
@@ -1014,6 +1033,8 @@ export type WriteMethod = Exclude<HttpMethod, ReadMethod>;
 
 export const API_PATHS = {
   health: API_ROUTES.health.path,
+  catalogLockStatus: API_ROUTES.catalogLockStatus.path,
+  catalogLockRetry: API_ROUTES.catalogLockRetry.path,
   scan: API_ROUTES.scan.path,
   catalogTree: API_ROUTES.catalogTree.path,
   catalogFolder: API_ROUTES.catalogFolder.path,

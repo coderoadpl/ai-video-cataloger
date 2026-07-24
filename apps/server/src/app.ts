@@ -6,6 +6,8 @@ import { API_ROUTES, HTTP_STATUS_BY_ERROR_CODE, looseEnvelopeSchema, toEnvelope 
 import { appError, err, ok, type AppError, type Result } from '@core/domain/index.js';
 import {
   cancelJob,
+  acquireCatalogWriteLock,
+  catalogLockStatus,
   checkHealth,
   checkNestedDatabases,
   deleteWhisperModel,
@@ -41,6 +43,7 @@ import {
   removeLocalAiModel,
   resetAll,
   resetSingle,
+  requireCatalogWriteLock,
   runDoctor,
   scanFolder,
   scanTree,
@@ -113,6 +116,22 @@ export const buildApp = (deps: AppDeps): Hono => {
     respond(checkHealth({ version: deps.version }), API_ROUTES.health.output),
   );
 
+  app.get(API_ROUTES.catalogLockStatus.path, async () =>
+    respond(await catalogLockStatus(deps), API_ROUTES.catalogLockStatus.output),
+  );
+
+  app.post(API_ROUTES.catalogLockRetry.path, async () =>
+    respond(await acquireCatalogWriteLock(deps), API_ROUTES.catalogLockRetry.output),
+  );
+
+  app.get(API_ROUTES.catalogLockStatus.path, async () =>
+    respond(await deps.globalCatalog.lockStatus(), API_ROUTES.catalogLockStatus.output),
+  );
+
+  app.post(API_ROUTES.catalogLockRetry.path, async () =>
+    respond(await deps.globalCatalog.acquireWriteLock(), API_ROUTES.catalogLockRetry.output),
+  );
+
   app.get(API_ROUTES.scan.path, async (context) => {
     const input = parseInput(API_ROUTES.scan.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.scan.output);
@@ -132,6 +151,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   app.post(API_ROUTES.process.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.process.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.process.output);
     const input = parseInput(API_ROUTES.process.input, body.value);
@@ -140,6 +161,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   app.post(API_ROUTES.processDrive.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.processDrive.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.processDrive.output);
     const input = parseInput(API_ROUTES.processDrive.input, body.value);
@@ -309,11 +332,15 @@ export const buildApp = (deps: AppDeps): Hono => {
     respond(await indexStatus(deps), API_ROUTES.indexStatus.output),
   );
 
-  app.post(API_ROUTES.indexRebuild.path, async () =>
-    respond(await indexRebuild(deps), API_ROUTES.indexRebuild.output),
-  );
+  app.post(API_ROUTES.indexRebuild.path, async () => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.indexRebuild.output);
+    return respond(await indexRebuild(deps), API_ROUTES.indexRebuild.output);
+  });
 
   app.post(API_ROUTES.indexForget.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.indexForget.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.indexForget.output);
     const input = parseInput(API_ROUTES.indexForget.input, body.value);
@@ -326,6 +353,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   );
 
   app.post(API_ROUTES.tagsAlias.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.tagsAlias.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.tagsAlias.output);
     const input = parseInput(API_ROUTES.tagsAlias.input, body.value);
@@ -352,6 +381,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   app.post(API_ROUTES.facesIndex.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.facesIndex.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.facesIndex.output);
     const input = parseInput(API_ROUTES.facesIndex.input, body.value);
@@ -364,6 +395,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   );
 
   app.post(API_ROUTES.facesName.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.facesName.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.facesName.output);
     const input = parseInput(API_ROUTES.facesName.input, body.value);
@@ -372,6 +405,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   app.post(API_ROUTES.facesMerge.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.facesMerge.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.facesMerge.output);
     const input = parseInput(API_ROUTES.facesMerge.input, body.value);
@@ -380,6 +415,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   app.post(API_ROUTES.facesForget.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.facesForget.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.facesForget.output);
     const input = parseInput(API_ROUTES.facesForget.input, body.value);
@@ -388,6 +425,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   app.post(API_ROUTES.facesPurge.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.facesPurge.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.facesPurge.output);
     const input = parseInput(API_ROUTES.facesPurge.input, body.value);

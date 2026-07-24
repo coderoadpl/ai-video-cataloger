@@ -48,6 +48,8 @@ export interface Dictionary {
     noFolderSelected: string;
     openFolderHint: string;
     generatingThumbnails: string;
+    lockedBy: (processName: string, pid: number) => string;
+    retryLock: string;
     folderCounts: (pending: number, processed: number) => string;
     skipped: string;
     genericScanError: string;
@@ -493,6 +495,8 @@ export const en: Dictionary = {
     noFolderSelected: 'No folder selected',
     openFolderHint: 'Open a folder to catalog its videos.',
     generatingThumbnails: 'Generating thumbnails…',
+    lockedBy: (processName, pid) => `Catalog locked by ${processName} PID ${pid}`,
+    retryLock: 'Retry',
     folderCounts: (pending, processed) => `${pending} pending · ${processed} done`,
     skipped: 'Skipped',
     genericScanError: 'Could not scan this folder.',
@@ -966,6 +970,8 @@ export const pl: Dictionary = {
     noFolderSelected: 'Nie wybrano folderu',
     openFolderHint: 'Otwórz folder, aby skatalogować jego filmy.',
     generatingThumbnails: 'Generowanie miniatur…',
+    lockedBy: (processName, pid) => `Katalog zablokowany przez ${processName} PID ${pid}`,
+    retryLock: 'Ponów',
     folderCounts: (pending, processed) => `${pending} oczekuje · ${processed} gotowe`,
     skipped: 'Pominięto',
     genericScanError: 'Nie udało się przeskanować tego folderu.',

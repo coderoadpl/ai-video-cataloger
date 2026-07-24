@@ -9,13 +9,15 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { homedir } from 'node:os';
+import { homedir, hostname } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js';
+import { z } from 'zod';
 
 import {
   FACE_ENGINE_VERSION,
@@ -36,6 +38,9 @@ import type {
   CatalogFileRecord,
   FaceIndexCandidate,
   FaceStatusCounts,
+  CatalogLockInfo,
+  CatalogLockProcessName,
+  CatalogLockSnapshot,
   CatalogSearchInput,
   CatalogSearchRow,
   CatalogTagAliasResult,
@@ -84,11 +89,23 @@ interface FileState {
 
 export interface GlobalCatalogAdapterOptions {
   homeDirectory?: string | undefined;
+  processName?: CatalogLockProcessName | undefined;
+  lockMode?: 'none' | 'lazy' | 'eager' | undefined;
+  isProcessAlive?: ((pid: number) => boolean) | undefined;
 }
 
 export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private readonly filePath: string;
+  private readonly lockPath: string;
+  private readonly processName: CatalogLockProcessName;
+  private readonly lockMode: 'none' | 'lazy' | 'eager';
+  private readonly isProcessAlive: (pid: number) => boolean;
   private dirtyCount = 0;
+  private heldLock: CatalogLockInfo | null = null;
+  private exitHandlerRegistered = false;
+  private readonly releaseOnExit = (): void => {
+    this.releaseWriteLock();
+  };
   private state: {
     SQL: SqlJsStatic;
     client: Database;
@@ -98,6 +115,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   constructor(options: GlobalCatalogAdapterOptions = {}) {
     this.filePath = globalCatalogPath(options.homeDirectory ?? homedir());
+    this.lockPath = globalCatalogLockPath(options.homeDirectory ?? homedir());
+    this.processName = options.processName ?? 'cli';
+    this.lockMode = options.lockMode ?? (options.processName === undefined ? 'none' : 'lazy');
+    this.isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
+    if (this.lockMode === 'eager') {
+      try {
+        this.takeWriteLock();
+      } catch (cause) {
+        if (!(cause instanceof CatalogAppError) || cause.appError.code !== 'catalog_locked') throw cause;
+      }
+    }
   }
 
   databasePath(): string {
@@ -107,11 +135,43 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   async flush(): Promise<Result<void, AppError>> {
     if (this.state === null || this.dirtyCount === 0) return ok(undefined);
     try {
+      this.takeWriteLock();
       this.persist(this.state);
       return ok(undefined);
     } catch (cause) {
       this.state = null;
       this.dirtyCount = 0;
+      return failure(cause);
+    }
+  }
+
+  async dispose(): Promise<Result<void, AppError>> {
+    const flushed = await this.flush();
+    try {
+      if (this.state !== null) this.state.client.close();
+      this.state = null;
+      this.dirtyCount = 0;
+      this.releaseWriteLock();
+      return flushed;
+    } catch (cause) {
+      if (!flushed.ok) return flushed;
+      return failure(cause);
+    }
+  }
+
+  async lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>> {
+    try {
+      return ok(this.snapshot([]));
+    } catch (cause) {
+      return failure(cause);
+    }
+  }
+
+  async acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>> {
+    try {
+      const warnings = this.takeWriteLock();
+      return ok(this.snapshot(warnings));
+    } catch (cause) {
       return failure(cause);
     }
   }
@@ -590,7 +650,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   private async read<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
-      const state = await this.ensureOpen();
+      const state = await this.ensureOpen(this.lockMode === 'none');
       return ok(operation(state.db, state.client));
     } catch (cause) {
       return failure(cause);
@@ -599,7 +659,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   private async write<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
-      const state = await this.ensureOpen();
+      this.takeWriteLock();
+      const state = await this.ensureOpen(true);
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
       if (this.dirtyCount >= AUTO_FLUSH_MUTATION_COUNT) this.persist(state);
@@ -619,7 +680,96 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     this.dirtyCount = 0;
   }
 
-  private async ensureOpen(): Promise<NonNullable<SqlJsGlobalCatalogStore['state']>> {
+  private takeWriteLock(): string[] {
+    if (this.lockMode === 'none') return [];
+    if (this.heldLock !== null) return [];
+    const warnings: string[] = [];
+    mkdirSync(path.dirname(this.lockPath), { recursive: true });
+    const info: CatalogLockInfo = {
+      pid: process.pid,
+      processName: this.processName,
+      startedAt: new Date().toISOString(),
+      hostname: hostname(),
+    };
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      try {
+        const descriptor = openSync(this.lockPath, 'wx');
+        try {
+          writeFileSync(descriptor, `${JSON.stringify(info)}\n`, 'utf8');
+          fsyncSync(descriptor);
+        } finally {
+          closeSync(descriptor);
+        }
+        this.heldLock = info;
+        this.registerExitHandler();
+        return warnings;
+      } catch (cause) {
+        if (!isNodeErrorCode(cause, 'EEXIST')) throw cause;
+        const existing = readLockInfo(this.lockPath);
+        if (existing !== null && existing.pid === process.pid) {
+          this.heldLock = existing;
+          return warnings;
+        }
+        if (existing !== null && this.isProcessAlive(existing.pid)) throw new CatalogAppError(catalogLockedError(existing));
+        if (existing !== null) {
+          const warning = `Taking over stale catalog lock from ${existing.processName} PID ${String(existing.pid)}`;
+          warnings.push(warning);
+          process.emitWarning(warning);
+        }
+        try {
+          unlinkSync(this.lockPath);
+        } catch (unlinkCause) {
+          if (!isNodeErrorCode(unlinkCause, 'ENOENT')) throw unlinkCause;
+        }
+      }
+    }
+    const existing = readLockInfo(this.lockPath);
+    if (existing !== null) throw new CatalogAppError(catalogLockedError(existing));
+    throw new Error('Could not acquire catalog lock');
+  }
+
+  private snapshot(warnings: string[]): CatalogLockSnapshot {
+    if (this.lockMode === 'none') return { writable: true, owner: null, blockedBy: null, warnings };
+    if (this.heldLock !== null) {
+      return { writable: true, owner: this.heldLock, blockedBy: null, warnings };
+    }
+    const existing = readLockInfo(this.lockPath);
+    if (existing === null) return { writable: false, owner: null, blockedBy: null, warnings };
+    if (!this.isProcessAlive(existing.pid)) {
+      return { writable: false, owner: null, blockedBy: null, warnings: [...warnings, `Stale catalog lock from ${existing.processName} PID ${String(existing.pid)}`] };
+    }
+    return { writable: false, owner: null, blockedBy: existing, warnings };
+  }
+
+  private releaseWriteLock(): void {
+    if (this.heldLock === null) return;
+    const existing = readLockInfo(this.lockPath);
+    if (
+      existing !== null
+      && existing.pid === this.heldLock.pid
+      && existing.processName === this.heldLock.processName
+      && existing.startedAt === this.heldLock.startedAt
+    ) {
+      try {
+        unlinkSync(this.lockPath);
+      } catch (cause) {
+        if (!isNodeErrorCode(cause, 'ENOENT')) throw cause;
+      }
+    }
+    this.heldLock = null;
+    if (this.exitHandlerRegistered) {
+      process.removeListener('exit', this.releaseOnExit);
+      this.exitHandlerRegistered = false;
+    }
+  }
+
+  private registerExitHandler(): void {
+    if (this.exitHandlerRegistered) return;
+    process.once('exit', this.releaseOnExit);
+    this.exitHandlerRegistered = true;
+  }
+
+  private async ensureOpen(canPersist: boolean): Promise<NonNullable<SqlJsGlobalCatalogStore['state']>> {
     if (this.state !== null && (this.dirtyCount > 0 || sameFileState(this.state.fileState, fileStateOf(this.filePath)))) {
       return this.state;
     }
@@ -628,7 +778,9 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     const client = existsSync(this.filePath) ? new SQL.Database(readFileSync(this.filePath)) : new SQL.Database();
     const created = !existsSync(this.filePath);
     const migrated = migrate(client);
-    if (created || migrated) persistDatabase(this.filePath, client);
+    if ((canPersist || !hasLiveForeignLock(this.lockPath, this.isProcessAlive)) && (created || migrated)) {
+      persistDatabase(this.filePath, client);
+    }
     this.state?.client.close();
     this.state = {
       SQL,
@@ -724,6 +876,51 @@ const sameFileState = (left: FileState, right: FileState): boolean =>
   left.mtimeMs === right.mtimeMs && left.size === right.size;
 
 const globalCatalogPath = (home: string): string => path.join(home, dbDirectoryName, dbFileName);
+
+const globalCatalogLockPath = (home: string): string => path.join(home, dbDirectoryName, 'catalog.lock');
+
+const lockInfoSchema = z.object({
+  pid: z.number().int().positive(),
+  processName: z.enum(['gui', 'cli']),
+  startedAt: z.string().min(1),
+  hostname: z.string().min(1),
+});
+
+const catalogLockedError = (info: CatalogLockInfo): AppError =>
+  appError(
+    'catalog_locked',
+    `Catalog is in use by ${info.processName} (PID ${String(info.pid)}, started ${info.startedAt}). Close it or wait.`,
+    info,
+  );
+
+const readLockInfo = (lockPath: string): CatalogLockInfo | null => {
+  try {
+    const parsed: unknown = JSON.parse(readFileSync(lockPath, 'utf8'));
+    const lockInfo = lockInfoSchema.safeParse(parsed);
+    return lockInfo.success ? lockInfo.data : null;
+  } catch (cause) {
+    if (isNodeErrorCode(cause, 'ENOENT')) return null;
+    throw cause;
+  }
+};
+
+const defaultIsProcessAlive = (pid: number): boolean => {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (cause) {
+    if (isNodeErrorCode(cause, 'ESRCH')) return false;
+    return true;
+  }
+};
+
+const isNodeErrorCode = (cause: unknown, code: string): boolean =>
+  cause instanceof Error && 'code' in cause && cause.code === code;
+
+const hasLiveForeignLock = (lockPath: string, isProcessAlive: (pid: number) => boolean): boolean => {
+  const existing = readLockInfo(lockPath);
+  return existing !== null && existing.pid !== process.pid && isProcessAlive(existing.pid);
+};
 
 const rowToFolder = (row: typeof folders.$inferSelect): CatalogFolder => ({
   folderId: row.folderId,

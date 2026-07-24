@@ -59,6 +59,7 @@ export const defineMutation = <TData, TVariables>(
 };
 
 export type ScanInput = z.input<typeof API_ROUTES.scan.input>;
+export type CatalogLockOutput = z.output<typeof API_ROUTES.catalogLockStatus.output>;
 export type CatalogTreeInput = z.input<typeof API_ROUTES.catalogTree.input>;
 export type CatalogFolderInput = z.input<typeof API_ROUTES.catalogFolder.input>;
 export type StatusInput = z.input<typeof API_ROUTES.status.input>;
@@ -94,6 +95,10 @@ export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
 
 export const healthScopes = {
   all: () => ['health'] as const,
+};
+
+export const catalogLockScopes = {
+  all: () => ['catalog-lock'] as const,
 };
 
 export const scanScopes = {
@@ -198,6 +203,7 @@ export const mutationScopes = {
   stopLocalAiDaemon: () => ['stopLocalAiDaemon'] as const,
   cancelJob: () => ['cancelJob'] as const,
   testProvider: () => ['testProvider'] as const,
+  catalogLockRetry: () => ['catalogLockRetry'] as const,
   installFaceArtifacts: () => ['installFaceArtifacts'] as const,
   facesIndex: () => ['facesIndex'] as const,
   facesName: () => ['facesName'] as const,
@@ -235,6 +241,18 @@ export const healthQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: healthScopes.all(),
     call: ({ signal }) => api.health(signal),
+  });
+
+export const catalogLockQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: catalogLockScopes.all(),
+    call: ({ signal }) => api.catalogLockStatus(signal),
+  });
+
+export const catalogLockRetryMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.catalogLockRetry(),
+    call: () => api.catalogLockRetry(),
   });
 
 export const scanQuery = (api: ApiClient, input: ScanInput) => {

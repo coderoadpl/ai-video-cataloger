@@ -19,6 +19,7 @@ interface CatalogSidebarProps {
   analyzingPath?: string | null;
   skippedPaths?: ReadonlySet<string>;
   toolbar?: ReactNode;
+  lockBanner?: ReactNode;
 }
 
 export const CatalogSidebar = ({
@@ -28,6 +29,7 @@ export const CatalogSidebar = ({
   analyzingPath = null,
   skippedPaths = EMPTY_SKIPPED,
   toolbar,
+  lockBanner,
 }: CatalogSidebarProps) => {
   const dictionary = useDictionary();
 
@@ -71,6 +73,7 @@ export const CatalogSidebar = ({
             {dictionary.catalog.generatingThumbnails}
           </Typography>
         ) : null}
+        {lockBanner === undefined ? null : <Box sx={{ mt: 1 }}>{lockBanner}</Box>}
         {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>

@@ -23,6 +23,7 @@ import {
 
 import type {
   CatalogFileRecord,
+  CatalogLockSnapshot,
   CatalogSearchInput,
   CatalogSearchRow,
   CatalogRepository,
@@ -799,6 +800,18 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   flush(): Promise<Result<void, AppError>> {
     this.flushCount += 1;
     return Promise.resolve(ok(undefined));
+  }
+
+  dispose(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>> {
+    return Promise.resolve(ok({ writable: true, owner: null, blockedBy: null, warnings: [] }));
+  }
+
+  acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>> {
+    return Promise.resolve(ok({ writable: true, owner: null, blockedBy: null, warnings: [] }));
   }
 
   listFolders(): Promise<Result<CatalogFolder[], AppError>> {

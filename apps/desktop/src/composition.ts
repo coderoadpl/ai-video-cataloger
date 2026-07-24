@@ -12,5 +12,7 @@ export const createDesktopApp = (options: DesktopCompositionOptions): App => {
     version: options.version,
     workingDirectory: homeDirectory,
     homeDirectory,
+    processName: 'gui',
+    catalogLockMode: 'eager',
   });
 };

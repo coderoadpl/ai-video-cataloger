@@ -10,6 +10,7 @@ import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
 import { flattenTreeVideos } from '../features/catalog/catalog-tree-model.js';
 import { keyOf } from '../features/catalog/catalog-video.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
+import { useCatalogLock } from '../features/catalog/use-catalog-lock.js';
 import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
@@ -36,15 +37,16 @@ export const IndexRoute = () => {
   const catalog = useCatalog(shell.currentFolder);
   const tree = useCatalogTree(shell.currentFolder);
   const readiness = useReadiness(shell.currentFolder);
+  const catalogLock = useCatalogLock();
   const firstLaunch = useFirstLaunch();
   const processing = useProcessing({
     videos: catalog.videos,
     addLine: terminal.addLine,
     checkReadiness: readiness.checkNow,
   });
-  const disabledReason = readiness.data !== null && !readiness.data.ready
+  const disabledReason = catalogLock.disabledReason ?? (readiness.data !== null && !readiness.data.ready
     ? `Analysis unavailable: ${readiness.data.missingPieces.map((piece) => piece.name).join(', ')}`
-    : readiness.isLoading ? 'Checking processing setup…' : undefined;
+    : readiness.isLoading ? 'Checking processing setup…' : undefined);
 
   const selected = useMemo(() => {
     if (catalog.selectedVideo !== null) return catalog.selectedVideo;
@@ -65,6 +67,7 @@ export const IndexRoute = () => {
       tree={tree}
       analyzingPath={processing.analyzingPath}
       skippedPaths={processing.skippedPaths}
+      lockBanner={catalogLock.lockBanner}
       toolbar={
         <ScopeAnalyzeToolbar
           scope={scope}

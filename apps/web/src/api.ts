@@ -1,6 +1,8 @@
 import {
   cancelJobMutation,
   catalogFolderQuery,
+  catalogLockQuery,
+  catalogLockRetryMutation,
   catalogTreeQuery,
   checkQuery,
   configQuery,
@@ -120,6 +122,8 @@ const apiClient =
 export const actions = {
   health: healthQuery(apiClient),
   status: (input?: StatusInput) => statusQuery(apiClient, input),
+  catalogLock: catalogLockQuery(apiClient),
+  catalogLockRetry: catalogLockRetryMutation(apiClient),
   modelsWhisper: modelsWhisperQuery(apiClient),
   faceArtifacts: faceArtifactsQuery(apiClient),
   whisperRuntime: whisperRuntimeQuery(apiClient),

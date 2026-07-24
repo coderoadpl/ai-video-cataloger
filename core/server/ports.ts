@@ -108,6 +108,22 @@ export interface GlobalCatalogCounts {
   analyses: number;
 }
 
+export type CatalogLockProcessName = 'gui' | 'cli';
+
+export interface CatalogLockInfo {
+  pid: number;
+  processName: CatalogLockProcessName;
+  startedAt: string;
+  hostname: string;
+}
+
+export interface CatalogLockSnapshot {
+  writable: boolean;
+  owner: CatalogLockInfo | null;
+  blockedBy: CatalogLockInfo | null;
+  warnings: string[];
+}
+
 export interface FaceIndexCandidate {
   file: CatalogFile;
   analysis: CatalogAnalysis;
@@ -140,6 +156,9 @@ export interface DriveRunRecord {
 export interface GlobalCatalogStore {
   databasePath(): string;
   flush(): Promise<Result<void, AppError>>;
+  dispose(): Promise<Result<void, AppError>>;
+  lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>>;
+  acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>>;
   listFolders(): Promise<Result<CatalogFolder[], AppError>>;
   getFolder(folderId: string): Promise<Result<CatalogFolder | null, AppError>>;
   upsertFolder(folder: CatalogFolder): Promise<Result<void, AppError>>;

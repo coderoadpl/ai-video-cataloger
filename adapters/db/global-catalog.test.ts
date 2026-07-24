@@ -85,6 +85,86 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(search.ok && search.value[0]?.tags).toEqual(['a-clip']);
   });
 
+  it('rejects a second writer with catalog_locked and the owner PID', async () => {
+    const home = await tempHome();
+    await writeLock(home, {
+      pid: 123456,
+      processName: 'gui',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      hostname: 'host-a',
+    });
+
+    const second = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: (pid) => pid === 123456,
+    });
+    const blocked = await second.upsertFolder({ ...folder, folderId: '33333333-3333-4333-8333-333333333333' });
+
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) {
+      expect(blocked.error.code).toBe('catalog_locked');
+      expect(blocked.error.message).toContain('PID 123456');
+      expect(blocked.error.message).toContain('Catalog is in use by gui');
+    }
+  });
+
+  it('takes over a stale catalog lock', async () => {
+    const home = await tempHome();
+    await writeLock(home, {
+      pid: 987654,
+      processName: 'gui',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      hostname: 'host-a',
+    });
+    const store = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: () => false,
+    });
+
+    expect((await store.upsertFolder(folder)).ok).toBe(true);
+    const status = await store.lockStatus();
+
+    expect(status.ok && status.value.owner?.processName).toBe('cli');
+    await store.dispose();
+  });
+
+  it('allows reads while another process holds the catalog lock', async () => {
+    const home = await tempHome();
+    await writeLock(home, {
+      pid: 123456,
+      processName: 'gui',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      hostname: 'host-a',
+    });
+    const reader = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: () => true,
+    });
+
+    const counts = await reader.counts();
+    const lock = await readFile(lockPath(home), 'utf8');
+
+    expect(counts.ok && counts.value).toEqual({ folders: 0, files: 0, analyses: 0 });
+    expect(lock).toContain('"pid":123456');
+    expect(lock).toContain('"processName":"gui"');
+  });
+
+  it('releases its lock on dispose', async () => {
+    const home = await tempHome();
+    const first = new SqlJsGlobalCatalogStore({ homeDirectory: home, processName: 'gui' });
+    expect((await first.upsertFolder(folder)).ok).toBe(true);
+    await first.dispose();
+
+    const second = new SqlJsGlobalCatalogStore({ homeDirectory: home, processName: 'cli' });
+    const written = await second.upsertFolder({ ...folder, folderId: '33333333-3333-4333-8333-333333333333' });
+
+    expect(written.ok).toBe(true);
+    await second.dispose();
+  });
+
   it('overwrites a row on conflicting fingerprint upsert', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -526,6 +606,21 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(current.ok && current.value[0]?.fingerprint).toBe(file.fingerprint);
   });
 });
+
+const lockPath = (home: string): string => path.join(home, '.ai-video-cataloger', 'catalog.lock');
+
+const writeLock = async (
+  home: string,
+  lock: {
+    pid: number;
+    processName: 'gui' | 'cli';
+    startedAt: string;
+    hostname: string;
+  },
+): Promise<void> => {
+  await mkdir(path.dirname(lockPath(home)), { recursive: true });
+  await writeFile(lockPath(home), `${JSON.stringify(lock)}\n`, 'utf8');
+};
 
 const writeV1Catalog = async (home: string): Promise<void> => {
   const SQL = await initSqlJs();

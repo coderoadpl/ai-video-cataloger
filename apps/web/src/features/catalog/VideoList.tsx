@@ -8,8 +8,10 @@ import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type CatalogVideo, keyOf } from './catalog-video.js';
+import { useWindowedList } from './use-windowed-list.js';
 
 const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
+const VIDEO_ROW_HEIGHT = 96;
 
 interface VideoListProps {
   videos: readonly CatalogVideo[];
@@ -20,6 +22,7 @@ interface VideoListProps {
   error: unknown;
   onSelect: (video: CatalogVideo) => void;
   skippedPaths?: ReadonlySet<string>;
+  maxHeight?: number | undefined;
 }
 
 export const SkippedBadge = ({ dictionary }: { dictionary: Dictionary }) => (
@@ -77,7 +80,7 @@ const VideoRow = ({
     data-testid="video-item"
     data-video-filename={video.filename}
     data-video-status={video.status}
-    sx={{ alignItems: 'flex-start', gap: 1.25, borderRadius: 1, py: 1 }}
+    sx={{ alignItems: 'flex-start', gap: 1.25, borderRadius: 1, py: 1, height: VIDEO_ROW_HEIGHT }}
   >
     <MediaThumbnail
       path={video.artifacts.thumbnailPath}
@@ -123,8 +126,10 @@ export const VideoList = ({
   error,
   onSelect,
   skippedPaths = EMPTY_SKIPPED,
+  maxHeight,
 }: VideoListProps) => {
   const dictionary = useDictionary();
+  const { range, onScroll } = useWindowedList(videos.length, VIDEO_ROW_HEIGHT);
 
   if (isLoading) {
     return (
@@ -158,18 +163,32 @@ export const VideoList = ({
   }
 
   return (
-    <List dense disablePadding sx={{ p: 1 }}>
-      {videos.map((video) => (
-        <VideoRow
-          key={keyOf(video)}
-          video={video}
-          selected={keyOf(video) === selectedKey}
-          analyzing={video.path === analyzingPath}
-          skipped={skippedPaths.has(video.path)}
-          onSelect={onSelect}
-          dictionary={dictionary}
-        />
-      ))}
+    <List
+      dense
+      disablePadding
+      onScroll={onScroll}
+      sx={{
+        p: 1,
+        height: maxHeight === undefined ? '100%' : maxHeight,
+        maxHeight: maxHeight,
+        overflow: 'auto',
+      }}
+    >
+      <Box sx={{ height: range.totalHeight, position: 'relative' }}>
+        <Box sx={{ transform: `translateY(${String(range.offsetTop)}px)` }}>
+          {videos.slice(range.start, range.end).map((video) => (
+            <VideoRow
+              key={keyOf(video)}
+              video={video}
+              selected={keyOf(video) === selectedKey}
+              analyzing={video.path === analyzingPath}
+              skipped={skippedPaths.has(video.path)}
+              onSelect={onSelect}
+              dictionary={dictionary}
+            />
+          ))}
+        </Box>
+      </Box>
     </List>
   );
 };

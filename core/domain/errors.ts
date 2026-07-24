@@ -34,6 +34,7 @@ export const ERROR_CODES = [
   'hw_requirements_not_met',
   'faces_disabled',
   'snapshot_incompatible',
+  'catalog_locked',
   'internal',
 ] as const;
 

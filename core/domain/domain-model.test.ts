@@ -52,6 +52,7 @@ describe('domain taxonomy', () => {
       'hw_requirements_not_met',
       'faces_disabled',
       'snapshot_incompatible',
+      'catalog_locked',
       'internal',
     ]);
   });

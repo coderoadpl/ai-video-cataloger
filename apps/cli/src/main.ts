@@ -91,7 +91,7 @@ const cliHomeDirectory = homedir();
 const cliConfigFolder = path.resolve(cliWorkingDirectory) === path.resolve(cliHomeDirectory)
   ? undefined
   : cliWorkingDirectory;
-const app = createApp({ workingDirectory: cliWorkingDirectory, homeDirectory: cliHomeDirectory });
+const app = createApp({ workingDirectory: cliWorkingDirectory, homeDirectory: cliHomeDirectory, processName: 'cli' });
 const api = createApiClient({
   baseUrl: '',
   fetchImpl: async (input, init) => app.honoApp.request(input, init),

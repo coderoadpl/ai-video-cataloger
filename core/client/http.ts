@@ -3,6 +3,7 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   catalogFolderOutputSchema,
+  catalogLockOutputSchema,
   catalogTreeOutputSchema,
   checkOutputSchema,
   configGetOutputSchema,
@@ -132,6 +133,24 @@ const queryPath = (path: string, entries: ReadonlyArray<readonly [string, string
 export const createApiClient = (options: ApiClientOptions) => ({
   health: (signal?: AbortSignal) =>
     request(options, API_ROUTES.health.method, API_ROUTES.health.path, healthOutputSchema, undefined, signal),
+  catalogLockStatus: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.catalogLockStatus.method,
+      API_ROUTES.catalogLockStatus.path,
+      catalogLockOutputSchema,
+      undefined,
+      signal,
+    ),
+  catalogLockRetry: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.catalogLockRetry.method,
+      API_ROUTES.catalogLockRetry.path,
+      catalogLockOutputSchema,
+      {},
+      signal,
+    ),
   scan: (input: z.input<typeof API_ROUTES.scan.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.scan.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

@@ -63,12 +63,14 @@ import type {
   ForgetEntryResult,
   GlobalCatalogCounts,
   GlobalCatalogStore,
+  CatalogLockSnapshot,
   ReconcileFolderInput,
   ReconcileFolderResult,
   JobsPort,
   JobExecutionContext,
   JobKind,
   JobRecord,
+  CatalogLockProcessName,
   LocalAiRuntimePort,
   MediaPort,
   MediaProbe,
@@ -104,6 +106,8 @@ export interface AppConfig {
   workingDirectory?: string;
   homeDirectory?: string;
   dbDriver?: 'sql-js' | 'memory';
+  processName?: CatalogLockProcessName | undefined;
+  catalogLockMode?: 'lazy' | 'eager' | undefined;
 }
 
 export const createDeps = (config: AppConfig = {}): AppDeps => {
@@ -148,7 +152,11 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   return {
     version: config.version ?? packageJson.version,
     catalogs: new SqlJsCatalogRepositoryFactory(),
-    globalCatalog: new SqlJsGlobalCatalogStore({ homeDirectory }),
+    globalCatalog: new SqlJsGlobalCatalogStore({
+      homeDirectory,
+      processName: config.processName ?? 'cli',
+      lockMode: config.catalogLockMode ?? 'lazy',
+    }),
     config: configStore,
     credentials,
     fs: new NodeFileSystemPort({ workingDirectory }),
@@ -414,6 +422,18 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   flush(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
+  }
+
+  dispose(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>> {
+    return Promise.resolve(ok({ writable: true, owner: null, blockedBy: null, warnings: [] }));
+  }
+
+  acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>> {
+    return Promise.resolve(ok({ writable: true, owner: null, blockedBy: null, warnings: [] }));
   }
 
   listFolders(): Promise<Result<CatalogFolder[], AppError>> {

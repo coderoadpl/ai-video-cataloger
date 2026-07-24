@@ -4,7 +4,25 @@ import type { catalogTreeOutputSchema } from '@core/contract/index.js';
 
 import type { CatalogVideo } from './catalog-video.js';
 
-export type CatalogTreeData = z.output<typeof catalogTreeOutputSchema>;
+type ContractCatalogTreeData = z.output<typeof catalogTreeOutputSchema>;
+
+interface CatalogTreeFolderData {
+  path: string;
+  name: string;
+  relativePath: string;
+  depth: number;
+  videos?: readonly CatalogVideo[] | undefined;
+  videoCount?: number | undefined;
+  pendingCount: number | null;
+  processedCount: number | null;
+  countsApproximate?: boolean | undefined;
+}
+
+export type CatalogTreeData = Omit<ContractCatalogTreeData, 'folders' | 'videoTotal' | 'hasUnknownPending'> & {
+  folders: readonly CatalogTreeFolderData[];
+  videoTotal?: number | undefined;
+  hasUnknownPending?: boolean | undefined;
+};
 
 export interface CatalogTreeNode {
   path: string;
@@ -12,8 +30,10 @@ export interface CatalogTreeNode {
   relativePath: string;
   depth: number;
   videos: readonly CatalogVideo[];
-  pendingCount: number;
-  processedCount: number;
+  videoCount?: number | undefined;
+  pendingCount: number | null;
+  processedCount: number | null;
+  countsApproximate?: boolean | undefined;
   children: CatalogTreeNode[];
 }
 
@@ -23,8 +43,11 @@ interface MutableNode {
   relativePath: string;
   depth: number;
   videos: readonly CatalogVideo[];
+  videoCount: number;
   directPending: number;
   directProcessed: number;
+  hasUnknownPending: boolean;
+  countsApproximate: boolean;
   children: MutableNode[];
 }
 
@@ -37,16 +60,19 @@ const finalize = (node: MutableNode): CatalogTreeNode => {
     .slice()
     .sort((left, right) => left.relativePath.localeCompare(right.relativePath))
     .map(finalize);
-  const pendingCount = children.reduce((sum, child) => sum + child.pendingCount, node.directPending);
-  const processedCount = children.reduce((sum, child) => sum + child.processedCount, node.directProcessed);
+  const pendingCount = children.reduce((sum, child) => sum + (child.pendingCount ?? 0), node.directPending);
+  const processedCount = children.reduce((sum, child) => sum + (child.processedCount ?? 0), node.directProcessed);
+  const hasUnknownPending = node.hasUnknownPending || children.some((child) => child.pendingCount === null);
   return {
     path: node.path,
     name: node.name,
     relativePath: node.relativePath,
     depth: node.depth,
     videos: node.videos,
-    pendingCount,
+    videoCount: children.reduce((sum, child) => sum + (child.videoCount ?? 0), node.videoCount),
+    pendingCount: hasUnknownPending ? null : pendingCount,
     processedCount,
+    countsApproximate: node.countsApproximate || children.some((child) => child.countsApproximate),
     children,
   };
 };
@@ -70,8 +96,11 @@ export const buildCatalogTree = (data: CatalogTreeData): CatalogTreeNode => {
       relativePath,
       depth: segments.length,
       videos: [],
+      videoCount: 0,
       directPending: 0,
       directProcessed: 0,
+      hasUnknownPending: false,
+      countsApproximate: false,
       children: [],
     };
     nodes.set(relativePath, node);
@@ -82,9 +111,12 @@ export const buildCatalogTree = (data: CatalogTreeData): CatalogTreeNode => {
   const root = ensure('');
   for (const folder of data.folders) {
     const node = ensure(folder.relativePath);
-    node.videos = folder.videos;
-    node.directPending = folder.pendingCount;
-    node.directProcessed = folder.processedCount;
+    node.videos = folder.videos ?? [];
+    node.videoCount = folder.videoCount ?? node.videos.length;
+    node.directPending = folder.pendingCount ?? 0;
+    node.directProcessed = folder.processedCount ?? 0;
+    node.hasUnknownPending = folder.pendingCount === null;
+    node.countsApproximate = folder.countsApproximate ?? false;
   }
 
   return finalize(root);
