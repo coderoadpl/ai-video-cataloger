@@ -121,6 +121,30 @@ lint boundary `web-i18n`): `en`/`pl` dictionaries with structural parity, and a
 config change re-renders every consumer without a restart. `web-i18n` may import
 `web-api` and `core-*`; `web-features` and `web-main` may consume it.
 
+### Island cores (ADR-0005 rung 1) and i18n
+
+A feature's decision/selector logic lives in a portable, DOM-free, React-free
+island core at `apps/web/src/features/<name>/core/` — a factory over its
+dependencies (`createCatalogCore` / `createProcessingCore`), following the
+foundation's rung-1 shape (pure TypeScript; no state library). The single web
+binding `apps/web/src/features/<name>/index.web.ts` injects the bound
+server-read descriptors from `api.ts` and re-exports the seam; view hooks
+consume the binding, never `core/` construction. Cores may import `core-*`
+contracts through the `@core/*` alias and their own core directory, nothing
+else — enforced by `typecheck:islands` (`tsconfig.islands.json`, ES2023 lib
+without DOM), the ESLint island-purity bans, and the depcruise
+`island-core-is-portable` / `island-core-no-frameworks` rules.
+
+**i18n ruling (owner-accepted 2026-07-25): cores emit typed dictionary keys;
+web bindings translate through `useDictionary`.** A pure core cannot call the
+`useDictionary` React hook, so it never holds translated strings. Instead a
+core exposes labels and log lines as a typed, closed key union (e.g. the
+processing core's `DriveMessage`: `{ kind: 'folderDone'; path; filesDone; … }`
+and a step key), and the web binding — which alone imports `web-i18n` —
+resolves each key against the effective dictionary. This keeps the core
+locale-free and portable while the translated output stays byte-identical to
+the pre-extraction renderer.
+
 ## Delta 5 — long-running work
 
 The Electron main process (and the CLI process, for its lifetime) is a
