@@ -113,6 +113,9 @@ const FolderRowView = ({
   const dictionary = useDictionary();
   return (
     <ListItemButton
+      role="treeitem"
+      aria-expanded={row.expanded}
+      aria-level={row.depth + 1}
       onClick={() => onToggle(row.relativePath)}
       onContextMenu={(event) => onContextMenu(event, row.path)}
       data-testid={row.isRoot ? 'folder-root-row' : 'folder-row'}
@@ -157,6 +160,9 @@ const VideoRowView = ({
   const height = hasErrorLine(video) ? ERROR_VIDEO_ROW_HEIGHT : VIDEO_ROW_HEIGHT;
   return (
     <ListItemButton
+      role="treeitem"
+      aria-level={row.depth + 1}
+      aria-selected={selected}
       selected={selected}
       onClick={() => onSelect(video)}
       onContextMenu={(event) => onContextMenu(event, video.path)}
@@ -365,6 +371,8 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skip
         disablePadding
         ref={containerRef}
         onScroll={onScroll}
+        role="tree"
+        aria-label={dictionary.batchToolbar.wholeTree}
         data-testid="catalog-tree-scroll"
         sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1 }}
       >

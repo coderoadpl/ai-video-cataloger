@@ -220,7 +220,7 @@ describe('PeopleView', () => {
     expect(await screen.findByTestId('people-grid')).toBeDefined();
     expect(screen.getByText('Alex')).toBeDefined();
     expect(screen.getByText('Person 2')).toBeDefined();
-    expect(screen.getByText('3 observation(s)')).toBeDefined();
+    expect(screen.getByText('3 observations')).toBeDefined();
     const crop = screen.getByAltText('Alex');
     expect(crop.getAttribute('src')).toContain('media://local/');
   });

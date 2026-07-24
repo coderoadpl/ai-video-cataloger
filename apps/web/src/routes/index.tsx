@@ -27,6 +27,7 @@ import { useProcessing } from '../features/processing/use-processing.js';
 import { SettingsModal } from '../features/settings/SettingsModal.js';
 import { AppShell } from '../features/shell/AppShell.js';
 import { useShell } from '../features/shell/use-shell.js';
+import { useAnalysisDisabledReason } from '../features/readiness/use-disabled-reason.js';
 
 export const IndexRoute = () => {
   const [activeView, setActiveView] = useState<'videos' | 'people'>('videos');
@@ -46,9 +47,7 @@ export const IndexRoute = () => {
     addLine: terminal.addLine,
     checkReadiness: readiness.checkNow,
   });
-  const disabledReason = catalogLock.disabledReason ?? (readiness.data !== null && !readiness.data.ready
-    ? `Analysis unavailable: ${readiness.data.missingPieces.map((piece) => piece.name).join(', ')}`
-    : readiness.isLoading ? 'Checking processing setup…' : undefined);
+  const disabledReason = useAnalysisDisabledReason(catalogLock.disabledReason, readiness);
 
   const selected = useMemo(() => {
     if (catalog.selectedVideo !== null) return catalog.selectedVideo;

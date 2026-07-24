@@ -36,6 +36,12 @@ export const WhisperModelRow = ({
       role={clickable ? 'button' : undefined}
       tabIndex={clickable ? 0 : undefined}
       onClick={clickable ? onActivate : undefined}
+      onKeyDown={clickable ? (event) => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          onActivate();
+        }
+      } : undefined}
       sx={{
         display: 'flex',
         alignItems: 'center',

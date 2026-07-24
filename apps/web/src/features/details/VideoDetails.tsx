@@ -74,6 +74,11 @@ const DuplicateDetail = ({
         >
           {analyzing ? dictionary.details.analyzingButton : dictionary.details.analyzeAnyway}
         </Button>
+        {disabledReason === undefined ? null : (
+          <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
+            {disabledReason}
+          </Typography>
+        )}
       </Box>
     )}
   </Alert>

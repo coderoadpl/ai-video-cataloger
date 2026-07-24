@@ -29,6 +29,22 @@ describe('dictionary', () => {
     }
   });
 
+  it('applies Polish three-form plural rules to counted copy', () => {
+    expect(pl.people.observationCount(1)).toBe('1 obserwacja');
+    expect(pl.people.observationCount(3)).toBe('3 obserwacje');
+    expect(pl.people.observationCount(5)).toBe('5 obserwacji');
+    expect(pl.search.resultCount(1)).toBe('1 wynik');
+    expect(pl.search.resultCount(3)).toBe('3 wyniki');
+    expect(pl.search.resultCount(5)).toBe('5 wyników');
+  });
+
+  it('uses English singular/plural siblings for counted copy', () => {
+    expect(en.search.resultCount(1)).toBe('1 result');
+    expect(en.search.resultCount(2)).toBe('2 results');
+    expect(en.people.observationCount(1)).toBe('1 observation');
+    expect(en.people.observationCount(2)).toBe('2 observations');
+  });
+
   it('resolves the polish dictionary only for the pl locale', () => {
     expect(getDict('pl')).toBe(pl);
     expect(getDict('en')).toBe(en);

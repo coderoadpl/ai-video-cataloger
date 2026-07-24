@@ -62,6 +62,9 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: S
         >
           {analyzing ? dictionary.details.processingButton : dictionary.details.continueAnalysis}
         </Button>
+        {disabledReason === undefined ? null : (
+          <Typography variant="caption">{disabledReason}</Typography>
+        )}
       </Alert>
     );
   }
@@ -86,6 +89,9 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason }: S
             {analyzing ? dictionary.details.retrying : dictionary.details.retryAnalysis}
           </Button>
         </Box>
+        {disabledReason === undefined ? null : (
+          <Typography variant="caption">{disabledReason}</Typography>
+        )}
       </Alert>
     );
   }

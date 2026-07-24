@@ -58,13 +58,12 @@ export const serializeValue = (draft: SettingsDraft, key: ConfigKey): string => 
 
 export interface OutputLanguageOption {
   value: string;
-  label: string;
 }
 
 export const OUTPUT_LANGUAGE_OPTIONS: OutputLanguageOption[] = [
-  { value: 'auto', label: 'Automatic (model chooses)' },
-  { value: 'en', label: 'English' },
-  { value: 'pl', label: 'Polish' },
+  { value: 'auto' },
+  { value: 'en' },
+  { value: 'pl' },
 ];
 
 export const UI_LANGUAGE_OPTIONS: Array<{ value: AppConfig['ui_language'] }> = [
