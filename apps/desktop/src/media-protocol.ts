@@ -27,6 +27,6 @@ export const registerMediaProtocolHandler = (deps: MediaProtocolDeps): void => {
     );
     if (realPath === null) return new Response(null, { status: 403 });
 
-    return serveFile(realPath, request.headers.get('Range'));
+    return serveFile(realPath, request.headers.get('Range'), request.method);
   });
 };

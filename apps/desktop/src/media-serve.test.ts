@@ -33,16 +33,29 @@ describe('contentTypeFor', () => {
 });
 
 describe('parseRange', () => {
-  it('parses open-ended, closed, and suffix ranges and rejects invalid ones', () => {
-    expect(parseRange(null, 100)).toBeNull();
-    expect(parseRange('bytes=0-', 100)).toEqual({ start: 0, end: 99 });
-    expect(parseRange('bytes=10-20', 100)).toEqual({ start: 10, end: 20 });
-    expect(parseRange('bytes=10-500', 100)).toEqual({ start: 10, end: 99 });
-    expect(parseRange('bytes=-30', 100)).toEqual({ start: 70, end: 99 });
-    expect(parseRange('bytes=-', 100)).toBeNull();
-    expect(parseRange('bytes=200-300', 100)).toBeNull();
-    expect(parseRange('bytes=50-40', 100)).toBeNull();
-    expect(parseRange('nonsense', 100)).toBeNull();
+  it('parses open-ended, closed, and suffix ranges', () => {
+    expect(parseRange(null, 100)).toEqual({ kind: 'ignore' });
+    expect(parseRange('bytes=0-', 100)).toEqual({ kind: 'ok', start: 0, end: 99 });
+    expect(parseRange('bytes=10-20', 100)).toEqual({ kind: 'ok', start: 10, end: 20 });
+    expect(parseRange('bytes=10-500', 100)).toEqual({ kind: 'ok', start: 10, end: 99 });
+    expect(parseRange('bytes=-30', 100)).toEqual({ kind: 'ok', start: 70, end: 99 });
+  });
+
+  it('clamps an oversized suffix to the full representation', () => {
+    expect(parseRange('bytes=-1000', 100)).toEqual({ kind: 'ok', start: 0, end: 99 });
+  });
+
+  it('flags unsatisfiable ranges', () => {
+    expect(parseRange('bytes=200-300', 100)).toEqual({ kind: 'unsatisfiable' });
+    expect(parseRange('bytes=100-', 100)).toEqual({ kind: 'unsatisfiable' });
+    expect(parseRange('bytes=-0', 100)).toEqual({ kind: 'unsatisfiable' });
+  });
+
+  it('ignores absent, malformed, multi, and inverted ranges', () => {
+    expect(parseRange('bytes=-', 100)).toEqual({ kind: 'ignore' });
+    expect(parseRange('bytes=50-40', 100)).toEqual({ kind: 'ignore' });
+    expect(parseRange('bytes=0-1,4-5', 100)).toEqual({ kind: 'ignore' });
+    expect(parseRange('nonsense', 100)).toEqual({ kind: 'ignore' });
   });
 });
 
@@ -78,6 +91,51 @@ describe('serveFile', () => {
     expect(response.status).toBe(206);
     expect(response.headers.get('Content-Range')).toBe('bytes 7-9/10');
     expect(await response.text()).toBe('hij');
+  });
+
+  it('returns 416 with Content-Range for an unsatisfiable range', async () => {
+    const filePath = await tempFile('clip.mp4', Buffer.from('abcdefghij'));
+
+    const response = await serveFile(filePath, 'bytes=20-30');
+
+    expect(response.status).toBe(416);
+    expect(response.headers.get('Content-Range')).toBe('bytes */10');
+    expect(await response.text()).toBe('');
+  });
+
+  it('clamps an oversized suffix to a 206 of the full representation', async () => {
+    const filePath = await tempFile('clip.mp4', Buffer.from('abcdefghij'));
+
+    const response = await serveFile(filePath, 'bytes=-1000');
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get('Content-Range')).toBe('bytes 0-9/10');
+    expect(await response.text()).toBe('abcdefghij');
+  });
+
+  it('ignores a multi-range header and serves the full body with 200', async () => {
+    const filePath = await tempFile('clip.mp4', Buffer.from('abcdefghij'));
+
+    const response = await serveFile(filePath, 'bytes=0-1,4-5');
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get('Content-Length')).toBe('10');
+    expect(await response.text()).toBe('abcdefghij');
+  });
+
+  it('answers HEAD with headers only and no body', async () => {
+    const filePath = await tempFile('clip.mp4', Buffer.from('abcdefghij'));
+
+    const full = await serveFile(filePath, null, 'HEAD');
+    expect(full.status).toBe(200);
+    expect(full.headers.get('Content-Length')).toBe('10');
+    expect(full.body).toBeNull();
+
+    const partial = await serveFile(filePath, 'bytes=2-5', 'HEAD');
+    expect(partial.status).toBe(206);
+    expect(partial.headers.get('Content-Range')).toBe('bytes 2-5/10');
+    expect(partial.headers.get('Content-Length')).toBe('4');
+    expect(partial.body).toBeNull();
   });
 
   it('returns 404 for a missing file', async () => {

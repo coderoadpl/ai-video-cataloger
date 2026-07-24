@@ -18,20 +18,30 @@ const MEDIA_CONTENT_TYPES = new Map<string, string>([
 export const contentTypeFor = (filePath: string): string =>
   MEDIA_CONTENT_TYPES.get(path.extname(filePath).toLowerCase()) ?? 'application/octet-stream';
 
-export const parseRange = (
-  header: string | null,
-  size: number,
-): { start: number; end: number } | null => {
-  if (header === null) return null;
+export type RangeResult =
+  | { kind: 'ok'; start: number; end: number }
+  | { kind: 'unsatisfiable' }
+  | { kind: 'ignore' };
+
+export const parseRange = (header: string | null, size: number): RangeResult => {
+  if (header === null) return { kind: 'ignore' };
   const match = /^bytes=(\d*)-(\d*)$/.exec(header.trim());
-  if (match === null) return null;
+  if (match === null) return { kind: 'ignore' };
   const rawStart = match[1] ?? '';
   const rawEnd = match[2] ?? '';
-  if (rawStart === '' && rawEnd === '') return null;
-  const start = rawStart === '' ? size - Number(rawEnd) : Number(rawStart);
-  const end = rawEnd === '' || rawStart === '' ? size - 1 : Math.min(Number(rawEnd), size - 1);
-  if (Number.isNaN(start) || Number.isNaN(end) || start < 0 || start > end || start >= size) return null;
-  return { start, end };
+  if (rawStart === '' && rawEnd === '') return { kind: 'ignore' };
+  if (rawStart === '') {
+    const suffix = Number(rawEnd);
+    if (Number.isNaN(suffix)) return { kind: 'ignore' };
+    if (suffix === 0) return { kind: 'unsatisfiable' };
+    return { kind: 'ok', start: Math.max(0, size - suffix), end: size - 1 };
+  }
+  const start = Number(rawStart);
+  if (Number.isNaN(start)) return { kind: 'ignore' };
+  if (start >= size) return { kind: 'unsatisfiable' };
+  const end = rawEnd === '' ? size - 1 : Math.min(Number(rawEnd), size - 1);
+  if (Number.isNaN(end) || end < start) return { kind: 'ignore' };
+  return { kind: 'ok', start, end };
 };
 
 const streamBody = (filePath: string, start: number, end: number): ReadableStream<Uint8Array> => {
@@ -54,7 +64,11 @@ const streamBody = (filePath: string, start: number, end: number): ReadableStrea
   });
 };
 
-export const serveFile = async (filePath: string, rangeHeader: string | null): Promise<Response> => {
+export const serveFile = async (
+  filePath: string,
+  rangeHeader: string | null,
+  method = 'GET',
+): Promise<Response> => {
   let size: number;
   try {
     const stats = await stat(filePath);
@@ -65,6 +79,7 @@ export const serveFile = async (filePath: string, rangeHeader: string | null): P
   }
 
   const contentType = contentTypeFor(filePath);
+  const bodyOnly = method === 'HEAD';
   if (size === 0) {
     return new Response(null, {
       status: 200,
@@ -73,8 +88,19 @@ export const serveFile = async (filePath: string, rangeHeader: string | null): P
   }
 
   const range = parseRange(rangeHeader, size);
-  if (range === null) {
-    return new Response(streamBody(filePath, 0, size - 1), {
+  if (range.kind === 'unsatisfiable') {
+    return new Response(null, {
+      status: 416,
+      headers: {
+        'Content-Type': contentType,
+        'Content-Range': `bytes */${String(size)}`,
+        'Accept-Ranges': 'bytes',
+      },
+    });
+  }
+
+  if (range.kind === 'ignore') {
+    return new Response(bodyOnly ? null : streamBody(filePath, 0, size - 1), {
       status: 200,
       headers: {
         'Content-Type': contentType,
@@ -84,7 +110,7 @@ export const serveFile = async (filePath: string, rangeHeader: string | null): P
     });
   }
 
-  return new Response(streamBody(filePath, range.start, range.end), {
+  return new Response(bodyOnly ? null : streamBody(filePath, range.start, range.end), {
     status: 206,
     headers: {
       'Content-Type': contentType,
