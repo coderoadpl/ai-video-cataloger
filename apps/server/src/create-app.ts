@@ -13,7 +13,6 @@ export interface App {
 
 export const createApp = (config: AppConfig = {}): App => {
   const deps = createDeps(config);
-  if (config.processName === 'gui') void deps.globalCatalog.acquireWriteLock();
   return {
     honoApp: buildApp(deps),
     jobs: deps.jobs,

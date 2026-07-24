@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type UIEvent } from 'react';
+import { useCallback, useMemo, useRef, useState, type UIEvent } from 'react';
 
 export interface WindowedRangeInput {
   rowHeights: readonly number[];
@@ -61,23 +61,20 @@ export const windowedRange = ({
 export const useWindowedList = (rowHeights: readonly number[], overscan = 6) => {
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
-  const elementRef = useRef<HTMLElement | null>(null);
+  const observerRef = useRef<ResizeObserver | null>(null);
 
   const containerRef = useCallback((element: HTMLElement | null) => {
-    elementRef.current = element;
-    if (element !== null) setViewportHeight(element.clientHeight);
-  }, []);
-
-  useEffect(() => {
-    const element = elementRef.current;
-    if (element === null || typeof ResizeObserver === 'undefined') return;
+    observerRef.current?.disconnect();
+    observerRef.current = null;
+    if (element === null) return;
     setViewportHeight(element.clientHeight);
+    if (typeof ResizeObserver === 'undefined') return;
     const observer = new ResizeObserver(() => {
       setViewportHeight(element.clientHeight);
       setScrollTop(element.scrollTop);
     });
     observer.observe(element);
-    return () => { observer.disconnect(); };
+    observerRef.current = observer;
   }, []);
 
   const onScroll = useCallback((event: UIEvent<HTMLElement>) => {

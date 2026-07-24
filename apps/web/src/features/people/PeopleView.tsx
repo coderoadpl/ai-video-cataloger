@@ -92,7 +92,8 @@ export const PeopleView = ({
           <Button
             variant="contained"
             size="small"
-            disabled={folder === null || people.isBusy || people.facesEnabled !== true || people.artifactsReady !== true}
+            disabled={folder === null || people.isBusy || people.facesEnabled !== true || people.artifactsReady !== true || mutationsBlocked}
+            title={lockReason}
             onClick={people.indexFaces}
             data-testid="people-index"
           >
