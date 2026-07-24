@@ -64,14 +64,14 @@ export interface OnboardingBridge {
 export const desktopFetchRequestSchema = z.object({
   url: z.string().min(1),
   method: z.string().min(1).optional(),
-  headers: z.record(z.string()).optional(),
+  headers: z.record(z.string(), z.string()).optional(),
   body: z.string().nullable().optional(),
 });
 
 export const desktopFetchResponseSchema = z.object({
   status: z.number().int(),
   statusText: z.string(),
-  headers: z.record(z.string()),
+  headers: z.record(z.string(), z.string()),
   body: z.string(),
 });
 

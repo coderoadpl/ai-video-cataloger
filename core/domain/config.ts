@@ -57,7 +57,7 @@ export const configValueSchema = z.object({
   whisper_binary_path: z.string().default(''),
   whisper_model: whisperModelNameSchema.default('base'),
   whisper_mode: whisperModeSchema.default('local'),
-  whisper_api_base_url: z.string().url().default('https://api.openai.com/v1'),
+  whisper_api_base_url: z.url().default('https://api.openai.com/v1'),
   whisper_api_model: z.string().trim().min(1).default('whisper-1'),
   frames: z.preprocess(integerFromPersistedValue, z.number().int().min(1).max(10)).default(3),
   timeout: z.preprocess(integerFromPersistedValue, z.number().int().min(30).max(600)).default(120),

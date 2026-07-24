@@ -20,7 +20,7 @@ import { createDeps } from '@server/src/composition.js';
 import { InMemoryAnalyzer, InMemoryTranscriber, dependency } from '../server/usecases/test-fakes.js';
 
 const SELECTED_TAG = 'gemma3:4b';
-const storedConfigSchema = z.record(z.string());
+const storedConfigSchema = z.record(z.string(), z.string());
 const roots: string[] = [];
 
 const readStoredConfig = (home: string): Record<string, string> =>

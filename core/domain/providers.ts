@@ -14,12 +14,12 @@ const providerIdSchema = z.string().trim().min(1);
 const labelSchema = z.string().trim().min(1);
 const argsTemplateSchema = z.array(z.string()).min(1).superRefine((args, context) => {
   if (!args.some((argument) => argument.includes('{prompt}'))) {
-    context.addIssue({ code: z.ZodIssueCode.custom, message: 'argsTemplate must contain {prompt}' });
+    context.addIssue({ code: 'custom', message: 'argsTemplate must contain {prompt}' });
   }
   for (const argument of args) {
     const unsupported = argument.match(/\{[^}]+\}/g)?.filter((value) => value !== '{prompt}' && value !== '{videoDir}');
     if (unsupported !== undefined && unsupported.length > 0) {
-      context.addIssue({ code: z.ZodIssueCode.custom, message: `Unsupported placeholder: ${unsupported[0]}` });
+      context.addIssue({ code: 'custom', message: `Unsupported placeholder: ${unsupported[0]}` });
     }
   }
 });
@@ -27,7 +27,7 @@ const argsTemplateSchema = z.array(z.string()).min(1).superRefine((args, context
 export const apiAnalyzerProviderConfigSchema = z.object({
   family: z.literal('api'),
   providerId: providerIdSchema,
-  baseUrl: z.string().url().default('https://api.openai.com/v1'),
+  baseUrl: z.url().default('https://api.openai.com/v1'),
   apiKeyRef: z.string().trim().min(1),
   model: z.string().trim().min(1),
   maxImageDetail: maxImageDetailSchema,
@@ -73,7 +73,7 @@ export const apiProviderDescriptorSchema = z.object({
   family: z.literal('api'),
   providerId: providerIdSchema,
   label: labelSchema,
-  baseUrl: z.string().url(),
+  baseUrl: z.url(),
   model: z.string().trim().min(1),
   maxImageDetail: maxImageDetailSchema,
   pricePerMTokensInput: z.number().nonnegative().optional(),

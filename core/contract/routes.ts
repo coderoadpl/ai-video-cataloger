@@ -536,7 +536,7 @@ export const faceArtifactEntrySchema = z.object({
   filename: z.string().min(1),
   bytes: z.number().int().positive().nullable(),
   sha256: z.string().regex(/^[a-f0-9]{64}$/),
-  url: z.string().url(),
+  url: z.url(),
   license: z.string().min(1),
   path: z.string().min(1),
   downloaded: z.boolean(),
@@ -700,7 +700,7 @@ export const jobProgressSchema = z.object({
   total: z.number().int().positive().optional(),
   stepNumber: z.number().int().positive().optional(),
   totalSteps: z.number().int().positive().optional(),
-  data: z.record(z.unknown()).optional(),
+  data: z.record(z.string(), z.unknown()).optional(),
 });
 
 export const sequencedJobProgressSchema = z.object({
@@ -856,7 +856,7 @@ export const facePersonSchema = z.object({
   personId: z.string().min(1),
   displayName: z.string().nullable(),
   kind: z.literal('face'),
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
   centroid: z.array(z.number()).length(128),
   exemplarCount: z.number().int().nonnegative(),
   observationCount: z.number().int().nonnegative(),

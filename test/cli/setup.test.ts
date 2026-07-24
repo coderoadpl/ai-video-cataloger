@@ -78,7 +78,7 @@ describe('setup command workflow', () => {
     expect(findEvent(parseJsonEvents(result.stdout), 'started')).toMatchObject({ command: 'setup' });
     expect(findEvent(parseJsonEvents(result.stdout), 'completed')?.data).toMatchObject({ ready: true });
     expect(result.stderr).not.toContain('API key');
-    const config = z.record(z.string()).parse(
+    const config = z.record(z.string(), z.string()).parse(
       JSON.parse(readFileSync(join(folder, '.ai-video-cataloger', 'config.json'), 'utf8')),
     );
     expect(config.analyzer_backend).toBe('claude');
@@ -134,7 +134,7 @@ describe('setup command workflow', () => {
     expect(downloads.downloaded).toContain('base');
     expect(progress).toEqual(expect.arrayContaining(['runtime_setup', 'model_download', 'downloading']));
     expect(completions).toHaveLength(1);
-    const folderConfig = z.record(z.string()).parse(
+    const folderConfig = z.record(z.string(), z.string()).parse(
       JSON.parse(readFileSync(join(folder, '.ai-video-cataloger', 'config.json'), 'utf8')),
     );
     expect(folderConfig).toMatchObject({

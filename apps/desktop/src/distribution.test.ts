@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
-const packageSchema = z.object({ scripts: z.record(z.string()) });
+const packageSchema = z.object({ scripts: z.record(z.string(), z.string()) });
 
 describe('macOS distribution', () => {
   it('builds the renderer, desktop entrypoints, and staged CLI before packaging a DMG', async () => {

@@ -55,7 +55,7 @@ const lockPackageSchema = z.object({
   os: z.unknown().optional(),
   cpu: z.unknown().optional(),
 });
-const lockFileSchema = z.object({ packages: z.record(lockPackageSchema) });
+const lockFileSchema = z.object({ packages: z.record(z.string(), lockPackageSchema) });
 const jsonEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('started'), timestamp: z.string(), command: z.string(), data: z.unknown().optional() }),
   z.object({ type: z.literal('progress'), timestamp: z.string(), step: z.string() }).passthrough(),

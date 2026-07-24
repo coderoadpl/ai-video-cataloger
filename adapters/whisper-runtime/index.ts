@@ -44,7 +44,7 @@ const manifestIndexSchema = z.object({
   schemaVersion: z.literal(2),
   manifests: z.array(z.object({
     digest: z.string().regex(/^sha256:[a-f0-9]{64}$/),
-    annotations: z.record(z.string()).optional(),
+    annotations: z.record(z.string(), z.string()).optional(),
   })),
 });
 

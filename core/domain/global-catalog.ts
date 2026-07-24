@@ -5,7 +5,7 @@ export const GLOBAL_CATALOG_SCHEMA_VERSION = 7;
 export const folderMarkerSchema = z.object({
   folderId: z.string().uuid(),
   schemaVersion: z.number().int().positive(),
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
 });
 
 export type FolderMarker = z.output<typeof folderMarkerSchema>;
@@ -14,8 +14,8 @@ export const catalogFolderSchema = z.object({
   folderId: z.string().uuid(),
   currentPath: z.string().min(1),
   displayName: z.string(),
-  firstSeenAt: z.string().datetime(),
-  lastSeenAt: z.string().datetime(),
+  firstSeenAt: z.iso.datetime(),
+  lastSeenAt: z.iso.datetime(),
 });
 
 export type CatalogFolder = z.output<typeof catalogFolderSchema>;
@@ -28,7 +28,7 @@ export const catalogFileSchema = z.object({
   durationS: z.number().nonnegative().nullable(),
   gpsLat: z.number().min(-90).max(90).nullable().default(null),
   gpsLon: z.number().min(-180).max(180).nullable().default(null),
-  processedAt: z.string().datetime(),
+  processedAt: z.iso.datetime(),
   analyzer: z.string().nullable(),
   model: z.string().nullable(),
   missingAt: z.number().int().nonnegative().nullable().default(null),
@@ -58,7 +58,7 @@ export const snapshotHeaderLineSchema = z.object({
   type: z.literal('header'),
   version: z.number().int().positive(),
   folder: catalogFolderSchema,
-  exportedAt: z.string().datetime(),
+  exportedAt: z.iso.datetime(),
 });
 
 export const snapshotRecordLineSchema = z.object({

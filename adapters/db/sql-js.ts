@@ -411,7 +411,7 @@ const rowToVideo = (row: typeof videos.$inferSelect): Video => ({
 
 const normalizeSqliteDateTime = (value: string): string => {
   const iso = /^\d{4}-\d{2}-\d{2}T/.test(value) ? value : `${value.replace(' ', 'T')}.000Z`;
-  return z.string().datetime().parse(iso);
+  return z.iso.datetime().parse(iso);
 };
 
 const repositoryFailure = <T>(cause: unknown): Result<T, AppError> => {

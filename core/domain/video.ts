@@ -20,8 +20,8 @@ export const videoSchema = z.object({
   newName: z.string().min(1).nullable(),
   fileHash: z.string().min(1),
   status: videoStatusSchema,
-  createdAt: z.string().datetime(),
-  updatedAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
   errorMessage: z.string().nullable(),
 });
 

@@ -59,7 +59,7 @@ export const personSchema = z.object({
   personId: z.string().min(1),
   displayName: z.string().min(1).nullable(),
   kind: subjectKindSchema,
-  createdAt: z.string().datetime(),
+  createdAt: z.iso.datetime(),
   centroid: faceEmbeddingSchema,
   exemplarCount: z.number().int().nonnegative(),
 });
