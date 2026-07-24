@@ -67,6 +67,7 @@ export interface Dictionary {
     scanningFolder: string;
     noVideosFound: string;
     absentSectionTitle: string;
+    absentNone: string;
     absentLastSeen: (date: string) => string;
     forgetEntry: string;
     forgetEntryConfirmTitle: string;
@@ -558,6 +559,7 @@ export const en: Dictionary = {
     scanningFolder: 'Scanning folder…',
     noVideosFound: 'No videos found',
     absentSectionTitle: 'Previously cataloged, now absent',
+    absentNone: 'No absent files in this tree.',
     absentLastSeen: (date) => `Last seen ${date}`,
     forgetEntry: 'Forget',
     forgetEntryConfirmTitle: 'Forget catalog entry',
@@ -1095,6 +1097,7 @@ export const pl: Dictionary = {
     scanningFolder: 'Skanowanie folderu…',
     noVideosFound: 'Nie znaleziono filmów',
     absentSectionTitle: 'Wcześniej skatalogowane, obecnie nieobecne',
+    absentNone: 'Brak nieobecnych plików w tym drzewie.',
     absentLastSeen: (date) => `Ostatnio widziano ${date}`,
     forgetEntry: 'Zapomnij',
     forgetEntryConfirmTitle: 'Zapomnij wpis katalogu',

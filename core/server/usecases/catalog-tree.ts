@@ -1,6 +1,7 @@
 import { ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { CatalogFileRecord, FileSystemPort, GlobalCatalogStore } from '../ports.js';
+import type { CatalogFolderRecord } from './catalog-index.js';
 import { discoverCatalogFolders } from './process-drive.js';
 import { scanFolder, type ScanDeps, type ScanVideo } from './scan.js';
 import { readFolderMarker } from './folder-identity.js';
@@ -76,6 +77,45 @@ export const scanTree = async (
   }
 
   return ok({ root, folders, pendingTotal, processedTotal, videoTotal, hasUnknownPending });
+};
+
+export interface CatalogTreeAbsentGroup {
+  folderPath: string;
+  entries: CatalogFolderRecord[];
+}
+
+const isUnderRoot = (fs: FileSystemPort, root: string, candidate: string): boolean => {
+  const resolved = fs.resolve(candidate);
+  return resolved === root || resolved.startsWith(`${root}/`) || resolved.startsWith(`${root}\\`);
+};
+
+export const catalogTreeAbsentFiles = async (
+  deps: ScanTreeDeps,
+  input: { folder: string },
+): Promise<Result<{ groups: CatalogTreeAbsentGroup[] }, AppError>> => {
+  const globalCatalog = deps.globalCatalog;
+  if (globalCatalog === undefined) return ok({ groups: [] });
+  const root = deps.fs.resolve(input.folder);
+  const folders = await globalCatalog.listFolders();
+  if (!folders.ok) return folders;
+  const groups: CatalogTreeAbsentGroup[] = [];
+  for (const folder of folders.value) {
+    if (!isUnderRoot(deps.fs, root, folder.currentPath)) continue;
+    const records = await globalCatalog.listFolderRecords(folder.folderId);
+    if (!records.ok) return records;
+    const entries = records.value
+      .filter((record) => record.file.missingAt !== null)
+      .map((record) => ({
+        fingerprint: record.file.fingerprint,
+        fileName: record.file.fileName,
+        finalName: record.analysis?.finalName ?? null,
+        missing: true,
+        missingAt: record.file.missingAt,
+      }));
+    if (entries.length > 0) groups.push({ folderPath: folder.currentPath, entries });
+  }
+  groups.sort((left, right) => left.folderPath.localeCompare(right.folderPath));
+  return ok({ groups });
 };
 
 export interface ScanTreeFolderDeps extends ScanDeps {

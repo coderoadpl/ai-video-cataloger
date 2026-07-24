@@ -1,8 +1,7 @@
 import { useCallback } from 'react';
-import { useMutation, useQueries, useQueryClient } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
-import { type CatalogTreeNode } from './catalog-tree-model.js';
 import { type AbsentFileEntry } from './use-absent-files.js';
 
 export interface AbsentFolderGroup {
@@ -17,31 +16,18 @@ export interface TreeAbsentFilesState {
   forget: (fingerprint: string) => void;
 }
 
-export const collectFolderPaths = (root: CatalogTreeNode | null): string[] => {
-  if (root === null) return [];
-  const paths: string[] = [];
-  const visit = (node: CatalogTreeNode): void => {
-    paths.push(node.path);
-    for (const child of node.children) visit(child);
-  };
-  visit(root);
-  return paths;
-};
-
-export const useTreeAbsentFiles = (folders: readonly string[]): TreeAbsentFilesState => {
+export const useTreeAbsentFiles = (root: string | null, enabled: boolean): TreeAbsentFilesState => {
   const queryClient = useQueryClient();
   const forgetMutation = useMutation(actions.indexForget);
-  const results = useQueries({
-    queries: folders.map((folder) => ({ ...actions.catalogFolder({ folder }) })),
+  const query = useQuery({
+    ...actions.catalogTreeAbsent({ folder: root ?? ' ' }),
+    enabled: enabled && root !== null,
   });
 
-  const groups: AbsentFolderGroup[] = [];
-  results.forEach((result, index) => {
-    const folder = folders[index];
-    if (folder === undefined) return;
-    const entries = (result.data?.records ?? []).filter((record) => record.missing);
-    if (entries.length > 0) groups.push({ folder, entries });
-  });
+  const groups: AbsentFolderGroup[] = (query.data?.groups ?? []).map((group) => ({
+    folder: group.folderPath,
+    entries: group.entries,
+  }));
   const total = groups.reduce((sum, group) => sum + group.entries.length, 0);
 
   const forget = useCallback(

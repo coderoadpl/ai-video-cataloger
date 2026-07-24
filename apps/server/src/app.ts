@@ -48,6 +48,7 @@ import {
   scanFolder,
   scanTree,
   scanTreeFolderDetails,
+  catalogTreeAbsentFiles,
   search,
   setConfig,
   setCredential,
@@ -176,6 +177,12 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.catalogFolder.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.catalogFolder.output);
     return respond(await folderCatalogRecords(deps, input.value), API_ROUTES.catalogFolder.output);
+  });
+
+  app.get(API_ROUTES.catalogTreeAbsent.path, async (context) => {
+    const input = parseInput(API_ROUTES.catalogTreeAbsent.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.catalogTreeAbsent.output);
+    return respond(await catalogTreeAbsentFiles(deps, input.value), API_ROUTES.catalogTreeAbsent.output);
   });
 
   app.post(API_ROUTES.process.path, async (context) => {

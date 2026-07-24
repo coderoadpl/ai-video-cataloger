@@ -143,6 +143,15 @@ export const catalogFolderOutputSchema = z.object({
   records: z.array(catalogFolderRecordSchema),
 });
 
+export const catalogTreeAbsentGroupSchema = z.object({
+  folderPath: z.string().min(1),
+  entries: z.array(catalogFolderRecordSchema),
+});
+
+export const catalogTreeAbsentOutputSchema = z.object({
+  groups: z.array(catalogTreeAbsentGroupSchema),
+});
+
 export const processInputSchema = videoPathInputSchema.extend({
   frames: z.number().int().optional(),
   framesExplicit: z.boolean().optional(),
@@ -908,6 +917,7 @@ export const API_ROUTES = {
   catalogTree: { method: 'GET', path: '/api/catalog-tree', input: folderInputSchema, output: catalogTreeOutputSchema },
   catalogTreeFolder: { method: 'GET', path: '/api/catalog-tree/folder', input: folderInputSchema, output: catalogTreeFolderOutputSchema },
   catalogFolder: { method: 'GET', path: '/api/catalog-folder', input: folderInputSchema, output: catalogFolderOutputSchema },
+  catalogTreeAbsent: { method: 'GET', path: '/api/catalog-tree/absent', input: folderInputSchema, output: catalogTreeAbsentOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
   processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
   thumbnail: { method: 'POST', path: '/api/thumbnail', input: thumbnailInputSchema, output: thumbnailOutputSchema },

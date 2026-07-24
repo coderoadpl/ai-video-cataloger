@@ -119,10 +119,18 @@ export const catalogTreeFolderScopes = {
     ['catalog-tree-folder', 'folder', input.folder] as const,
 };
 
+export type CatalogTreeAbsentInput = z.input<typeof API_ROUTES.catalogTreeAbsent.input>;
+
 export const catalogFolderScopes = {
   all: () => ['catalog-folder'] as const,
   folder: (input: z.output<typeof API_ROUTES.catalogFolder.input>) =>
     ['catalog-folder', 'folder', input.folder] as const,
+};
+
+export const catalogTreeAbsentScopes = {
+  all: () => ['catalog-tree-absent'] as const,
+  folder: (input: z.output<typeof API_ROUTES.catalogTreeAbsent.input>) =>
+    ['catalog-tree-absent', 'folder', input.folder] as const,
 };
 
 export const statusScopes = {
@@ -298,6 +306,14 @@ export const catalogFolderQuery = (api: ApiClient, input: CatalogFolderInput) =>
   return defineQuery({
     queryKey: catalogFolderScopes.folder(parsed),
     call: ({ signal }) => api.catalogFolder(parsed, signal),
+  });
+};
+
+export const catalogTreeAbsentQuery = (api: ApiClient, input: CatalogTreeAbsentInput) => {
+  const parsed = API_ROUTES.catalogTreeAbsent.input.parse(input);
+  return defineQuery({
+    queryKey: catalogTreeAbsentScopes.folder(parsed),
+    call: ({ signal }) => api.catalogTreeAbsent(parsed, signal),
   });
 };
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useState } from 'react';
 import {
   Box,
   Button,
@@ -18,7 +18,7 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
 import { type CatalogTreeNode } from './catalog-tree-model.js';
 import { type AbsentFileEntry } from './use-absent-files.js';
-import { collectFolderPaths, useTreeAbsentFiles } from './use-tree-absent-files.js';
+import { useTreeAbsentFiles } from './use-tree-absent-files.js';
 import { useCatalogLock } from './use-catalog-lock.js';
 
 const nameOf = (entry: AbsentFileEntry): string => entry.finalName ?? entry.fileName;
@@ -26,14 +26,13 @@ const lastSeenLabel = (missingAt: number): string => new Date(missingAt).toLocal
 
 export const TreeAbsentFilesSection = ({ root }: { root: CatalogTreeNode | null }) => {
   const dictionary = useDictionary();
-  const folders = useMemo(() => collectFolderPaths(root), [root]);
-  const { groups, total, forget, isForgetting } = useTreeAbsentFiles(folders);
+  const [open, setOpen] = useState(false);
+  const { groups, total, forget, isForgetting } = useTreeAbsentFiles(root?.path ?? null, open);
   const { disabledReason: lockReason } = useCatalogLock();
   const mutationsBlocked = lockReason !== undefined;
-  const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<{ fingerprint: string; name: string } | null>(null);
 
-  if (total === 0) return null;
+  if (root === null) return null;
 
   return (
     <Box sx={{ borderTop: 1, borderColor: 'divider' }} data-testid="tree-absent-files-section">
@@ -60,11 +59,16 @@ export const TreeAbsentFilesSection = ({ root }: { root: CatalogTreeNode | null 
         {open ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
         <WarningIcon fontSize="small" sx={(theme) => ({ color: theme.palette.status.notTracked.main })} />
         <Typography variant="caption" sx={{ fontWeight: 600 }}>
-          {dictionary.catalog.absentSectionTitle} ({total})
+          {open ? `${dictionary.catalog.absentSectionTitle} (${String(total)})` : dictionary.catalog.absentSectionTitle}
         </Typography>
       </Box>
       <Collapse in={open} unmountOnExit>
         <Box sx={{ px: 1, pb: 1 }}>
+          {total === 0 ? (
+            <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
+              {dictionary.catalog.absentNone}
+            </Typography>
+          ) : null}
           {groups.map((group) => (
             <Box key={group.folder} sx={{ mt: 0.5 }}>
               <Typography variant="caption" color="text.secondary" sx={{ px: 1, fontWeight: 600 }} title={group.folder}>

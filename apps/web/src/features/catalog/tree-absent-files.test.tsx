@@ -40,43 +40,52 @@ const root: CatalogTreeNode = {
   children: [leaf('/drive/sub')],
 };
 
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
 describe('tree absent files section', () => {
-  it('aggregates missing entries across the tree grouped by folder', async () => {
+  it('fetches a single grouped query lazily on first expand and none while collapsed', async () => {
+    let requestCount = 0;
     server.use(
-      http.get('/api/catalog-folder', ({ request }) => {
-        const folder = new URL(request.url).searchParams.get('folder');
-        if (folder === '/drive/sub') {
-          return HttpResponse.json({
-            ok: true,
-            data: {
-              records: [
-                { fingerprint: 'fp-gone', fileName: 'gone.mp4', finalName: null, missing: true, missingAt: 1738368000000 },
-              ],
-            },
-          });
-        }
-        return HttpResponse.json({ ok: true, data: { records: [] } });
+      http.get('/api/catalog-tree/absent', ({ request }) => {
+        requestCount += 1;
+        expect(new URL(request.url).searchParams.get('folder')).toBe('/drive');
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            groups: [
+              {
+                folderPath: '/drive/sub',
+                entries: [
+                  { fingerprint: 'fp-gone', fileName: 'gone.mp4', finalName: null, missing: true, missingAt: 1738368000000 },
+                ],
+              },
+            ],
+          },
+        });
       }),
     );
 
     renderThemed(<TreeAbsentFilesSection root={root} />);
 
     const toggle = await screen.findByTestId('tree-absent-files-toggle');
-    expect(toggle.textContent).toContain('1');
+    await sleep(20);
+    expect(requestCount).toBe(0);
 
     fireEvent.click(toggle);
     await waitFor(() => expect(screen.getByTestId('tree-absent-file-item')).toBeDefined());
     expect(screen.getByText('gone.mp4')).toBeDefined();
     expect(screen.getByText('sub')).toBeDefined();
+    expect(requestCount).toBe(1);
   });
 
-  it('renders nothing when no folder has missing entries', async () => {
+  it('shows an empty note when the tree has no absent files', async () => {
     server.use(
-      http.get('/api/catalog-folder', () => HttpResponse.json({ ok: true, data: { records: [] } })),
+      http.get('/api/catalog-tree/absent', () => HttpResponse.json({ ok: true, data: { groups: [] } })),
     );
 
     renderThemed(<TreeAbsentFilesSection root={root} />);
 
-    await waitFor(() => expect(screen.queryByTestId('tree-absent-files-section')).toBeNull());
+    fireEvent.click(await screen.findByTestId('tree-absent-files-toggle'));
+    await waitFor(() => expect(screen.getByText('No absent files in this tree.')).toBeDefined());
   });
 });

@@ -4,6 +4,7 @@ import {
   API_ROUTES,
   catalogFolderOutputSchema,
   catalogLockOutputSchema,
+  catalogTreeAbsentOutputSchema,
   catalogTreeFolderOutputSchema,
   catalogTreeOutputSchema,
   checkOutputSchema,
@@ -190,6 +191,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.catalogFolder.method,
       queryPath(API_ROUTES.catalogFolder.path, [['folder', parsed.value.folder]]),
       catalogFolderOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  catalogTreeAbsent: (input: z.input<typeof API_ROUTES.catalogTreeAbsent.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.catalogTreeAbsent.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.catalogTreeAbsent.method,
+      queryPath(API_ROUTES.catalogTreeAbsent.path, [['folder', parsed.value.folder]]),
+      catalogTreeAbsentOutputSchema,
       undefined,
       signal,
     );

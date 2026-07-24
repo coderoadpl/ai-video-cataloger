@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { GLOBAL_CATALOG_SCHEMA_VERSION, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { MediaProbe } from '../ports.js';
-import { scanTree, scanTreeFolderDetails } from './catalog-tree.js';
+import { catalogTreeAbsentFiles, scanTree, scanTreeFolderDetails } from './catalog-tree.js';
 import {
   InMemoryCatalogs,
   InMemoryFileSystem,
@@ -235,5 +235,75 @@ describe('scanTree', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.videos[0]?.duplicate).toEqual({ canonicalPath: '/drive/originals/2026_holiday.mp4' });
+  });
+});
+
+describe('catalogTreeAbsentFiles', () => {
+  const upsertFolderWithMissing = async (
+    store: InMemoryGlobalCatalogStore,
+    folderId: string,
+    currentPath: string,
+    files: readonly { fingerprint: string; fileName: string; finalName: string | null; missingAt: number | null }[],
+  ): Promise<void> => {
+    await store.upsertFolder({
+      folderId,
+      currentPath,
+      displayName: currentPath,
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    for (const file of files) {
+      await store.upsertFile({
+        fingerprint: file.fingerprint,
+        folderId,
+        fileName: file.fileName,
+        size: 1024,
+        durationS: null,
+        gpsLat: null,
+        gpsLon: null,
+        processedAt: '2026-01-01T00:00:00.000Z',
+        analyzer: 'openai',
+        model: 'gpt-4.1-mini',
+        missingAt: file.missingAt,
+      });
+      await store.upsertAnalysis({
+        fingerprint: file.fingerprint,
+        finalName: file.finalName,
+        description: 'done',
+        transcript: null,
+        language: null,
+        tags: [],
+      });
+    }
+  };
+
+  it('groups missing files by folder under the root and skips folders outside it', async () => {
+    const fs = new InMemoryFileSystem('/drive');
+    const store = new InMemoryGlobalCatalogStore();
+    await upsertFolderWithMissing(store, '22222222-2222-4222-8222-222222222222', '/drive/b', [
+      { fingerprint: 'fp-b1', fileName: 'b1.mp4', finalName: 'kept-b1.mp4', missingAt: 1738368000000 },
+      { fingerprint: 'fp-b2', fileName: 'b2.mp4', finalName: null, missingAt: null },
+    ]);
+    await upsertFolderWithMissing(store, '11111111-1111-4111-8111-111111111111', '/drive/a', [
+      { fingerprint: 'fp-a1', fileName: 'a1.mp4', finalName: null, missingAt: 1738368000000 },
+    ]);
+    await upsertFolderWithMissing(store, '33333333-3333-4333-8333-333333333333', '/other/c', [
+      { fingerprint: 'fp-c1', fileName: 'c1.mp4', finalName: null, missingAt: 1738368000000 },
+    ]);
+
+    const result = await catalogTreeAbsentFiles({ fs, globalCatalog: store }, { folder: '/drive' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups.map((group) => group.folderPath)).toEqual(['/drive/a', '/drive/b']);
+    expect(result.value.groups[1]?.entries).toEqual([
+      { fingerprint: 'fp-b1', fileName: 'b1.mp4', finalName: 'kept-b1.mp4', missing: true, missingAt: 1738368000000 },
+    ]);
+  });
+
+  it('returns no groups when the store is absent', async () => {
+    const fs = new InMemoryFileSystem('/drive');
+    const result = await catalogTreeAbsentFiles({ fs }, { folder: '/drive' });
+    expect(result.ok && result.value.groups).toEqual([]);
   });
 });
