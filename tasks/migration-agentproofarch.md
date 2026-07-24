@@ -48,6 +48,16 @@ load-bearing claim below was re-verified against both repos.
 Upstream distance: `9b4bcd5..3508f06` = ~170 commits, 304 files,
 ~39.9k insertions (2026-07-14 → 2026-07-24).
 
+**Addendum 2026-07-25:** the foundation has since advanced `3508f06..bcb038b`
+(+9 commits): a fail-closed **ai-review CI gate** (DECIDE F1, 1809249) with
+same-slot retry on cold-start signatures (750f339), an e2e port-guard fix
+freeing the port before boot to kill an EADDRINUSE flake (595799c), and a
+knip allowance for the `fuser` binary that guard uses (831fa68). Folded into
+Phase 7 (ai-review gate + port guard) below; no other section is affected.
+App-side claims were re-verified against app HEAD `32d59bf4` (v0.5.8,
+16 commits after the assessment): still no `engines`/`packageManager`/
+`.nvmrc`, still zod v3, still exactly 14 `withCatalogWriteLock` call sites.
+
 ## 2. What changed upstream (catalog summary)
 
 The range splits into two very different halves:
@@ -334,7 +344,11 @@ changes; `test:e2e:cli` where the staged bundle changes.
   Electron/onnxruntime + the persistent `avc-e2e-matrix-home` cache all
   favor local). Runner installed as a user LaunchAgent; workflows must
   remain safe for a self-hosted runner (no fork PRs, repo guards, no
-  secrets beyond what the runner already holds).
+  secrets beyond what the runner already holds). Candidate from the
+  2026-07-25 upstream addendum: the fail-closed ai-review gate (F1,
+  1809249 + 750f339 cold-start retry) — adopt once check/smoke workflows
+  are stable; and the e2e port-guard pattern (595799c) if the GUI e2e ever
+  flakes on EADDRINUSE against the vite dev-server port.
 - **Effort:** M · **Risk:** med — runner availability (machine asleep =
   queued jobs), workspace hygiene between runs (temp HOME isolation the
   smoke already provides), not correctness.
