@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { homedir } from 'node:os';
+import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
@@ -36,6 +37,14 @@ registerMediaScheme();
 let mainWindow: BrowserWindow | null = null;
 let desktopApp: App | null = null;
 let folderStore: FolderStore | null = null;
+let quitting = false;
+
+let resolveFirstWindowShown!: () => void;
+const firstWindowShown = new Promise<void>((resolve) => {
+  resolveFirstWindowShown = resolve;
+});
+
+const WINDOW_SHOWN_FALLBACK_MS = 3000;
 
 const isDevelopment = (): boolean =>
   process.env.NODE_ENV !== 'production' && (process.env.NODE_ENV === 'development' || !app.isPackaged);
@@ -70,6 +79,7 @@ const createWindow = async (): Promise<void> => {
   mainWindow.once('ready-to-show', () => {
     mainWindow?.show();
     logWindowShown();
+    resolveFirstWindowShown();
   });
   mainWindow.on('closed', () => {
     mainWindow = null;
@@ -132,8 +142,10 @@ const bootstrap = async (): Promise<void> => {
   });
 
   await createWindow();
+  await Promise.race([firstWindowShown, sleep(WINDOW_SHOWN_FALLBACK_MS)]);
 
   setImmediate(() => {
+    if (quitting) return;
     try {
       desktopApp = createDesktopApp({ version: appVersion });
       resolveDesktopApp(desktopApp);
@@ -152,6 +164,7 @@ app.on('activate', () => {
 });
 
 app.on('before-quit', () => {
+  quitting = true;
   cleanupIpcHandlers();
   if (desktopApp !== null) void desktopApp.dispose();
 });
