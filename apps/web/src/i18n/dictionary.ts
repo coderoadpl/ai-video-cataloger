@@ -11,6 +11,7 @@ export interface Dictionary {
     saved: string;
     openSettings: string;
     ok: string;
+    revealInFinder: string;
   };
   language: {
     stepTitle: string;
@@ -498,6 +499,7 @@ export const en: Dictionary = {
     saved: 'Saved',
     openSettings: 'Open Settings',
     ok: 'OK',
+    revealInFinder: 'Reveal in Finder',
   },
   language: {
     stepTitle: 'Language',
@@ -1032,6 +1034,7 @@ export const pl: Dictionary = {
     saved: 'Zapisano',
     openSettings: 'Otwórz ustawienia',
     ok: 'OK',
+    revealInFinder: 'Pokaż w Finderze',
   },
   language: {
     stepTitle: 'Język',

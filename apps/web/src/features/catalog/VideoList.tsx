@@ -1,9 +1,11 @@
-import { useMemo, type ReactNode } from 'react';
+import { useMemo, type MouseEvent, type ReactNode } from 'react';
 import { Box, Chip, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
 
+import { bridge } from '../../api.js';
 import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
+import { RevealContextMenu, useRevealContextMenu } from '../../components/ui/RevealContextMenu.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -81,6 +83,7 @@ const VideoRow = ({
   skipped,
   thumbnailLoadingState,
   onSelect,
+  onContextMenu,
   dictionary,
 }: {
   video: CatalogVideo;
@@ -89,11 +92,13 @@ const VideoRow = ({
   skipped: boolean;
   thumbnailLoadingState: boolean;
   onSelect: (video: CatalogVideo) => void;
+  onContextMenu: (event: MouseEvent, path: string) => void;
   dictionary: Dictionary;
 }) => (
   <ListItemButton
     selected={selected}
     onClick={() => onSelect(video)}
+    onContextMenu={(event) => onContextMenu(event, video.path)}
     title={video.path}
     data-testid="video-item"
     data-video-filename={video.filename}
@@ -154,6 +159,7 @@ export const VideoList = ({
   maxHeight,
 }: VideoListProps) => {
   const dictionary = useDictionary();
+  const revealMenu = useRevealContextMenu();
   const rowHeights = useMemo(() => videos.map(rowHeightOf), [videos]);
   const { range, onScroll, containerRef } = useWindowedList(rowHeights);
 
@@ -212,11 +218,13 @@ export const VideoList = ({
               skipped={skippedPaths.has(video.path)}
               thumbnailLoadingState={thumbnailLoading(video, thumbnailFailedPaths)}
               onSelect={onSelect}
+              onContextMenu={revealMenu.open}
               dictionary={dictionary}
             />
           ))}
         </Box>
       </Box>
+      <RevealContextMenu controller={revealMenu} onReveal={(path) => void bridge.revealInFinder(path)} />
     </List>
   );
 };

@@ -1,12 +1,13 @@
-import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
 import { Alert, Box, Button, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { ChevronRightIcon, ExpandMoreIcon, FolderIcon } from '../../components/ui/icons.js';
 import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
+import { RevealContextMenu, useRevealContextMenu } from '../../components/ui/RevealContextMenu.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { ApiError } from '@core/client/index.js';
-import { actions } from '../../api.js';
+import { actions, bridge } from '../../api.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type CatalogVideo, keyOf } from './catalog-video.js';
@@ -100,11 +101,20 @@ const RowGuides = ({ row }: { row: TreeRow }) => {
   );
 };
 
-const FolderRowView = ({ row, onToggle }: { row: FolderRow; onToggle: (relativePath: string) => void }) => {
+const FolderRowView = ({
+  row,
+  onToggle,
+  onContextMenu,
+}: {
+  row: FolderRow;
+  onToggle: (relativePath: string) => void;
+  onContextMenu: (event: MouseEvent, path: string) => void;
+}) => {
   const dictionary = useDictionary();
   return (
     <ListItemButton
       onClick={() => onToggle(row.relativePath)}
+      onContextMenu={(event) => onContextMenu(event, row.path)}
       data-testid={row.isRoot ? 'folder-root-row' : 'folder-row'}
       data-folder-name={row.name}
       data-folder-pending={row.counts.known ? row.counts.pending : null}
@@ -132,6 +142,7 @@ const VideoRowView = ({
   skipped,
   thumbnailLoadingState,
   onSelect,
+  onContextMenu,
 }: {
   row: VideoRowData;
   selected: boolean;
@@ -139,6 +150,7 @@ const VideoRowView = ({
   skipped: boolean;
   thumbnailLoadingState: boolean;
   onSelect: (video: CatalogVideo) => void;
+  onContextMenu: (event: MouseEvent, path: string) => void;
 }) => {
   const dictionary = useDictionary();
   const video = row.video;
@@ -147,6 +159,7 @@ const VideoRowView = ({
     <ListItemButton
       selected={selected}
       onClick={() => onSelect(video)}
+      onContextMenu={(event) => onContextMenu(event, video.path)}
       title={video.path}
       data-testid="video-item"
       data-video-filename={video.filename}
@@ -242,6 +255,7 @@ const FolderFetcher = ({
 
 export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skippedPaths, thumbnailFailedPaths = EMPTY_FAILED, onSelect, registerVideos }: CatalogTreeProps) => {
   const dictionary = useDictionary();
+  const revealMenu = useRevealContextMenu();
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(['']));
   const [loaded, setLoaded] = useState<ReadonlyMap<string, LoadedFolder>>(() => new Map());
 
@@ -357,7 +371,7 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skip
         <Box sx={{ height: range.totalHeight, position: 'relative' }}>
           <Box sx={{ transform: `translateY(${String(range.offsetTop)}px)` }}>
             {rows.slice(range.start, range.end).map((row) => {
-              if (row.kind === 'folder') return <FolderRowView key={row.key} row={row} onToggle={onToggle} />;
+              if (row.kind === 'folder') return <FolderRowView key={row.key} row={row} onToggle={onToggle} onContextMenu={revealMenu.open} />;
               if (row.kind === 'status') return <StatusRowView key={row.key} row={row} />;
               return (
                 <VideoRowView
@@ -368,12 +382,14 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skip
                   skipped={skippedPaths.has(row.video.path)}
                   thumbnailLoadingState={isThumbnailLoading(row.video)}
                   onSelect={onSelect}
+                  onContextMenu={revealMenu.open}
                 />
               );
             })}
           </Box>
         </Box>
       </List>
+      <RevealContextMenu controller={revealMenu} onReveal={(path) => void bridge.revealInFinder(path)} />
     </Box>
   );
 };

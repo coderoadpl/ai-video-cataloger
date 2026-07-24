@@ -4,6 +4,7 @@ import { Box, Button, Chip, CircularProgress, Divider, List, ListItemButton, Typ
 import { ApiError, type SearchOutput } from '@core/client/index.js';
 
 import { FolderIcon, SearchIcon } from '../../components/ui/icons.js';
+import { RevealContextMenu, useRevealContextMenu, type RevealContextMenuController } from '../../components/ui/RevealContextMenu.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
@@ -38,6 +39,7 @@ const errorMessage = (error: unknown, dictionary: Dictionary): string =>
 
 export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
   const dictionary = useDictionary();
+  const revealMenu = useRevealContextMenu();
 
   if (search.isLoading) {
     return (
@@ -83,10 +85,12 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
             key={group.folder.folderId}
             group={group}
             onOpenFolder={onOpenFolder}
+            revealMenu={revealMenu}
             dictionary={dictionary}
           />
         ))}
       </Box>
+      <RevealContextMenu controller={revealMenu} onReveal={(path) => void bridge.revealInFinder(path)} />
     </Box>
   );
 };
@@ -94,10 +98,12 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
 const SearchFolderGroup = ({
   group,
   onOpenFolder,
+  revealMenu,
   dictionary,
 }: {
   group: SearchGroup;
   onOpenFolder: (folderPath: string) => void;
+  revealMenu: RevealContextMenuController;
   dictionary: Dictionary;
 }) => (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
@@ -129,7 +135,7 @@ const SearchFolderGroup = ({
       {group.results.map((result, index) => (
         <Fragment key={result.fingerprint}>
           {index === 0 ? null : <Divider component="li" />}
-          <SearchResultRow result={result} dictionary={dictionary} />
+          <SearchResultRow result={result} revealMenu={revealMenu} dictionary={dictionary} />
         </Fragment>
       ))}
     </List>
@@ -138,18 +144,22 @@ const SearchFolderGroup = ({
 
 const SearchResultRow = ({
   result,
+  revealMenu,
   dictionary,
 }: {
   result: SearchOutput['results'][number];
+  revealMenu: RevealContextMenuController;
   dictionary: Dictionary;
 }) => {
   const filePath = `${result.folder.currentPath}/${result.fileName}`;
+  const reachable = result.folder.online && !result.missing;
   return (
     <ListItemButton
-      disabled={!result.folder.online || result.missing}
+      disabled={!reachable}
       onClick={() => {
-        if (result.folder.online && !result.missing) void bridge.revealInFinder(filePath);
+        if (reachable) void bridge.revealInFinder(filePath);
       }}
+      onContextMenu={reachable ? (event) => revealMenu.open(event, filePath) : undefined}
       title={filePath}
       sx={{ alignItems: 'flex-start', borderRadius: 1, py: 1, gap: 1.5 }}
     >
