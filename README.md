@@ -99,7 +99,7 @@ index status|rebuild|forget
 tags list|alias
 faces index|people|name|merge|forget|purge|status
 models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|faces install
-whisper-runtime status|install
+models whisper-runtime status|install
 ```
 
 Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`.

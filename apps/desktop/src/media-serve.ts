@@ -79,7 +79,7 @@ export const serveFile = async (
   }
 
   const contentType = contentTypeFor(filePath);
-  const bodyOnly = method === 'HEAD';
+  const headersOnly = method === 'HEAD';
   if (size === 0) {
     return new Response(null, {
       status: 200,
@@ -100,7 +100,7 @@ export const serveFile = async (
   }
 
   if (range.kind === 'ignore') {
-    return new Response(bodyOnly ? null : streamBody(filePath, 0, size - 1), {
+    return new Response(headersOnly ? null : streamBody(filePath, 0, size - 1), {
       status: 200,
       headers: {
         'Content-Type': contentType,
@@ -110,7 +110,7 @@ export const serveFile = async (
     });
   }
 
-  return new Response(bodyOnly ? null : streamBody(filePath, range.start, range.end), {
+  return new Response(headersOnly ? null : streamBody(filePath, range.start, range.end), {
     status: 206,
     headers: {
       'Content-Type': contentType,
