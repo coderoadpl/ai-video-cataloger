@@ -1,0 +1,38 @@
+name: check
+
+on:
+  pull_request:
+  push:
+    branches: [rewrite/foundation]
+
+# One run per ref; a new push cancels the superseded run so the single
+# self-hosted runner is never blocked behind stale work.
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    # Self-hosted safety: this repo only, and never a fork PR — a fork's head
+    # would otherwise execute untrusted code on the owner's Mac.
+    if: >-
+      github.repository == 'chomamateusz/ai-video-cataloger' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    # Native arm64 the packaged build (Electron + onnxruntime) actually targets,
+    # at zero GitHub-minute cost (10x multiplier on private macOS runners).
+    runs-on: [self-hosted, macOS, arm64]
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          # The npm-10 pin: node 22 ships npm 10.x, so `npm ci` keeps the
+          # platform-optional lock entries electron-builder reads as literal paths.
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run check
+      # Advisory only: high/critical findings are triaged, but audit's transitive
+      # noise must not break the build.
+      - run: npm audit --omit=dev --audit-level=high
+        continue-on-error: true

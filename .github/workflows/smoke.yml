@@ -1,0 +1,29 @@
+name: smoke
+
+on:
+  pull_request:
+  push:
+    branches: [rewrite/foundation]
+
+concurrency:
+  group: smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: >-
+      github.repository == 'chomamateusz/ai-video-cataloger' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    runs-on: [self-hosted, macOS, arm64]
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      # Boots the real in-process app in a temp HOME/folder and drives
+      # doctor/scan/config/status through the CLI; local-first (sql.js), so no
+      # database service is needed.
+      - run: npm run smoke

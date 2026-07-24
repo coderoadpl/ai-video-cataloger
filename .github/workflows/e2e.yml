@@ -1,0 +1,40 @@
+name: e2e
+
+on:
+  pull_request:
+  push:
+    branches: [rewrite/foundation]
+
+concurrency:
+  group: e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # CLI project only. The on-demand real-provider `matrix` suite (managed/system/
+  # API analyzers, model caches) stays out of CI per the on-demand doctrine. The
+  # cli e2e drives the staged CLI binary directly and isolates app state through
+  # AVC_HOME_DIRECTORY, so it needs no browser and no fixed listening port —
+  # nothing binds a socket, so the upstream vite-dev-server port guard has no
+  # surface here and is intentionally omitted.
+  e2e-cli:
+    if: >-
+      github.repository == 'chomamateusz/ai-video-cataloger' &&
+      (github.event_name != 'pull_request' ||
+       github.event.pull_request.head.repo.full_name == github.repository)
+    # The self-hosted Mac already holds the real `claude` CLI login and `whisper`
+    # the e2e preflight requires; a GitHub-hosted runner could not satisfy them.
+    runs-on: [self-hosted, macOS, arm64]
+    steps:
+      - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - run: npm run test:e2e:cli
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: e2e-cli-results
+          path: test-results
+          retention-days: 7

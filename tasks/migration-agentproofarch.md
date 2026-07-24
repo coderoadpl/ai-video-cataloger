@@ -1,7 +1,9 @@
 # Migration assessment: agentproofarch foundation `9b4bcd5` → `3508f06`
 
-Date: 2026-07-24 · Revised: 2026-07-25 (owner decisions) · Status: plan
-accepted, implementation not started ·
+Date: 2026-07-24 · Revised: 2026-07-25 (owner decisions) · Status: **COMPLETE
+2026-07-25** — phases 0–7 all landed on `rewrite/foundation`; the app is fully
+aligned with every foundation rule that has a target here (§3(d)/§6 material
+stays out by design, not deferral) ·
 Scope: whether and how to migrate this app to the current agentproofarch
 foundation. Investigation ran as a multi-agent workflow (baseline
 verification + four area catalogs + consolidated impact map); every
@@ -336,7 +338,7 @@ changes; `test:e2e:cli` where the staged bundle changes.
 - **Rollback:** cores are additive — revert bindings, delete `core/` dirs,
   drop `typecheck:islands`; cheap if each feature is its own commit.
 
-### Phase 7 — CI on a self-hosted Mac runner (owner-decided 2026-07-25)
+### Phase 7 — CI on a self-hosted Mac runner (owner-decided 2026-07-25) — **DONE 2026-07-25** (four new SHA-pinned workflows under `.github/workflows/`, all `runs-on: [self-hosted, macOS, arm64]`, all guarded to `github.repository == 'chomamateusz/ai-video-cataloger'` AND non-fork (`pull_request.head.repo.full_name == github.repository`) so a fork head never executes on the owner's Mac. `check.yml`/`smoke.yml`/`e2e.yml` each `actions/setup-node` off `node-version-file: .nvmrc` (node 22 → npm 10, preserving the platform-optional lock entries) then `npm ci`; check runs `npm run check` + advisory `npm audit`, smoke runs `npm run smoke` (no DB service — local-first sql.js), e2e runs `npm run test:e2e:cli` only (the on-demand real-provider `matrix` suite stays out of CI; cli e2e drives the staged CLI and isolates state via `AVC_HOME_DIRECTORY`, using the runner's real `claude`/`whisper` login). Per-workflow `concurrency` cancels superseded runs so the single runner never queues behind stale work. `ai-review.yml` adapted from the foundation gate (1809249 + 750f339): fail-closed, PASS-only-green, slot 1→2→3 failover with a single same-slot cold-start retry (claude-code#23265), verdict posted as one sticky PR comment, five helper scripts copied verbatim into `.github/scripts/`; prompt retargeted to this app's doctrine (core purity incl. island cores, renderer bound-actions, comment doctrine, zod-parse/Result/no-`any`/no-`as`, single-writer-lock wrapping) and diffs against `origin/rewrite/foundation`; runs only on non-draft same-repo PRs (self-hosted cannot fail-closed-by-skip a fork the way a disposable hosted runner does). **Port guard (595799c) intentionally omitted + fuser NOT added to knip `ignoreBinaries`**: our GUI e2e launches Electron directly against the static built bundle and the cli e2e drives the staged binary — nothing binds a fixed socket, so there is no vite-dev-server EADDRINUSE surface for the guard to protect (the plan gated it exactly on that condition). All Vercel/Neon/Docker/mailpit/postgres/visual template jobs skipped (no target here). Repo-side config verified: `knip` project globs never reach `.github/**` and `doc-lint` only scans tracked `.md`, so both stay green with the new files. Gates: `check` (834 unit, coverage floors held stmts 79.41/branches 80.55/funcs 73.74/lines 79.41) + `smoke` (PASS) green under pinned Node 22. Owner handoff for runner registration written to `claude-tmp/wf-m7/runner-setup.md`.)
 - **Scope:** new `.github/workflows/{check,smoke,e2e}.yml`, SHA-pinned
   actions, `npm ci`, repo guards; jobs target a **self-hosted runner on the
   owner's Mac** (labels `self-hosted, macOS, ARM64`) instead of GitHub-hosted
