@@ -125,14 +125,6 @@ export const buildApp = (deps: AppDeps): Hono => {
     respond(await acquireCatalogWriteLock(deps), API_ROUTES.catalogLockRetry.output),
   );
 
-  app.get(API_ROUTES.catalogLockStatus.path, async () =>
-    respond(await deps.globalCatalog.lockStatus(), API_ROUTES.catalogLockStatus.output),
-  );
-
-  app.post(API_ROUTES.catalogLockRetry.path, async () =>
-    respond(await deps.globalCatalog.acquireWriteLock(), API_ROUTES.catalogLockRetry.output),
-  );
-
   app.get(API_ROUTES.scan.path, async (context) => {
     const input = parseInput(API_ROUTES.scan.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.scan.output);
