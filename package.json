@@ -27,8 +27,14 @@
     "test:e2e:matrix": "npm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=matrix",
     "electron:dev": "npm run electron:build:desktop && sh -c 'NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 vite --config apps/web/vite.config.ts --host 127.0.0.1 & vite_pid=$!; NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 electron .; status=$?; kill $vite_pid; exit $status'",
     "electron:package": "npm run electron:build && electron-builder --config electron-builder.config.js",
-    "verify:package": "node scripts/verify-package.mjs"
+    "verify:package": "node scripts/verify-package.mjs",
+    "lock-lint": "npx -y npm@10 ls --all --package-lock-only >/dev/null"
   },
+  "engines": {
+    "node": "22.x",
+    "npm": ">=10 <11"
+  },
+  "packageManager": "npm@10.9.2",
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",

@@ -35,6 +35,27 @@ Ground-up rewrite on the agentproofarch foundation
 **Done = check green AND smoke green.** Never weaken lint to get there; every
 new lint rule must first fail on a violating probe file.
 
+The toolchain is pinned to npm 10: `.nvmrc` (Node 22, which ships npm 10.x),
+`engines.npm` (`>=10 <11`) and `packageManager` (`npm@10.9.2`). Local machines
+often run a newer line (Node 25 / npm 11); before touching dependencies switch
+to the pin with `nvm use` (reads `.nvmrc`) so installs keep npm-10 semantics —
+a bare npm 11 `npm install` silently prunes platform-optional lock entries
+(`@ffprobe-installer/darwin-arm64`, `onnxruntime-node`, `@emnapi/*`) that
+`electron-builder.config.js` and the staged CLI read as literal paths, which
+ships a green `check` with a broken `electron:package`. `engines` is advisory
+only (no `engine-strict`), so a newer local Node still runs the app; if the
+lock was last written by npm 11, regenerate it with `npx -y npm@10 install`.
+`npm run lock-lint` and `smoke` both fail closed when the lock no longer
+resolves under npm 10.
+
+**Flake doctrine: the gates are deterministic; a flake is a P1 bug, never
+rerun-to-green.** A red gate means the commit is wrong or the gate is wrong —
+one of them gets fixed; rerunning a red job until it passes is forbidden.
+Playwright runs with exactly one retry (`retries: 1`) and
+`trace: 'on-first-retry'` as diagnostic capture only — any run the retry turned
+green is flaky-flagged and requires a filed P1 before merging, never a silent
+re-run.
+
 ## On-demand real-provider suite
 
 - `npm run test:e2e:matrix` = batch-end/pre-release real-provider suite. It

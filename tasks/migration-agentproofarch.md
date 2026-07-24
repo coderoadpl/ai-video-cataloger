@@ -230,7 +230,7 @@ Every phase leaves `check` + `smoke` green. `test:e2e:matrix` only where
 packaging or CLI↔GUI parity is touched; `test:e2e:gui` where renderer/IPC
 changes; `test:e2e:cli` where the staged bundle changes.
 
-### Phase 0 — Toolchain pin (do first regardless of the rest)
+### Phase 0 — Toolchain pin (do first regardless of the rest) — **DONE 2026-07-25** (lock regenerated under npm 10; optional entries verified)
 - **Scope:** `package.json` (`engines.node 22.x`, `engines.npm >=10 <11`,
   `packageManager npm@10.x`, `lock-lint` script), new `.nvmrc`,
   `scripts/smoke.ts` (lock-lint next to the existing tree-drift check),

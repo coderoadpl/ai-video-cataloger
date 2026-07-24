@@ -103,6 +103,30 @@ const checkLockfileDrift = (): void => {
   }
 };
 
+const lockLint = (): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const child = spawn('npx', ['-y', 'npm@10', 'ls', '--all', '--package-lock-only'], {
+      cwd: rootDir,
+      stdio: ['ignore', 'ignore', 'pipe'],
+    });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => {
+      stderr += String(chunk);
+    });
+    child.on('error', (cause) => reject(new SmokeFailure(`lock-lint could not run npm@10: ${String(cause)}`)));
+    child.on('close', (code) => {
+      if (code === 0) {
+        resolve();
+        return;
+      }
+      reject(
+        new SmokeFailure(
+          `Lockfile does not resolve under npm 10; platform-optional entries may be pruned. Regenerate with: npx -y npm@10 install\n${stderr}`,
+        ),
+      );
+    });
+  });
+
 const bootInProcess = async (): Promise<void> => {
   const app = createApp();
   try {
@@ -189,6 +213,8 @@ const tempDirs: string[] = [];
 try {
   console.log('smoke: checking lockfile drift...');
   checkLockfileDrift();
+  console.log('smoke: linting the lockfile under npm 10...');
+  await lockLint();
   console.log('smoke: booting the in-process app via createApp...');
   await bootInProcess();
   console.log('smoke: driving the CLI...');
