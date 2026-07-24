@@ -7,6 +7,8 @@ import reactCompiler from 'eslint-plugin-react-compiler';
 import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
+import avc from './eslint-plugin-avc/index.js';
+
 const AS_BAN = {
   selector: 'TSAsExpression:not([typeAnnotation.typeName.name="const"])',
   message: 'Type assertions (`as`) are forbidden; parse or narrow instead. `as const` is allowed.',
@@ -136,6 +138,9 @@ export default tseslint.config(
       'scripts/ralph/**',
       'landing/**',
     ],
+  },
+  {
+    linterOptions: { reportUnusedDisableDirectives: 'error' },
   },
   {
     files: ['**/*.js', '**/*.mjs'],
@@ -390,6 +395,7 @@ export default tseslint.config(
     files: ['apps/web/**/*.{ts,tsx}'],
     plugins: {
       '@tanstack/query': tanstackQuery,
+      avc,
       'jsx-a11y': jsxA11y,
       react,
       'react-compiler': reactCompiler,
@@ -408,6 +414,7 @@ export default tseslint.config(
       '@tanstack/query/exhaustive-deps': 'error',
       '@tanstack/query/no-rest-destructuring': 'error',
       '@tanstack/query/stable-query-client': 'error',
+      'avc/query-descriptors-only': 'error',
       'react-compiler/react-compiler': 'error',
       'react-hooks/exhaustive-deps': 'error',
       'react-hooks/rules-of-hooks': 'error',
@@ -465,8 +472,18 @@ export default tseslint.config(
     },
   },
   {
+    // An island's inbound event contract lives in core/events.ts; every event is
+    // named for what happened (intent suffix), never an imperative command.
+    // Forward-only: no core/events.ts exists yet (island cores arrive in Phase 6).
+    files: ['apps/web/src/features/*/core/events.ts'],
+    rules: {
+      'avc/event-suffix-taxonomy': 'error',
+    },
+  },
+  {
     files: ['apps/web/src/test/**/*.{ts,tsx}', 'apps/web/**/*.test.{ts,tsx}'],
     rules: {
+      'avc/query-descriptors-only': 'off',
       'no-restricted-syntax': ['error', AS_BAN, ...REACT_API_BANS, ...QUERY_HOOK_BANS, VI_MOCK_BAN],
     },
   },

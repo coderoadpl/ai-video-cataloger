@@ -289,7 +289,7 @@ changes; `test:e2e:cli` where the staged bundle changes.
 - **Rollback:** remove the three commands from `check`, keep configs
   un-gated.
 
-### Phase 4 — Local eslint plugin (forward-only)
+### Phase 4 — Local eslint plugin (forward-only) — **DONE 2026-07-25** (new `eslint-plugin-avc/` wired into `eslint.config.js`. `query-descriptors-only` (adapted to the app's `@core/client` alias + `apps/web/src/api.ts` binding; forward-compatible with island `core/index.ts`/`index.web.ts` seams for Phase 6) enabled across `apps/web/**` and turned OFF in web test files (MSW + real client). `event-suffix-taxonomy` scoped to `apps/web/src/features/*/core/events.ts` — FORWARD-ONLY: no such file exists yet, and the desktop `channels/ipc/preload` IPC contract was left unrenamed per scope. `reportUnusedDisableDirectives: 'error'` enabled globally; the sweep found ZERO existing `eslint-disable` directives, so none needed removal. Each rule ships RuleTester unit tests under a new `eslint-plugin` vitest project AND a negative probe in `config-regression/lint-gates.test.ts` that plants a violating fixture into the real tree and asserts the named rule fires (`avc/query-descriptors-only` on an inline query object; `avc/event-suffix-taxonomy` on an imperative event name), plus a positive probe that a spread imported descriptor stays green. web-i18n/web-gallery grants untouched; all real renderer query hooks already spread `actions.*` descriptors so nothing existing was flagged. check + smoke green under the pinned Node 22.)
 - **Scope:** new `eslint-plugin-avc/` with rule unit tests + violating
   probes: `query-descriptors-only`; `event-suffix-taxonomy` scoped to new
   unions only (desktop IPC files audited, not renamed).

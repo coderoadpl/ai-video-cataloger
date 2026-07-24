@@ -67,6 +67,14 @@ export default defineConfig({
       {
         extends: true,
         test: {
+          name: 'eslint-plugin',
+          environment: 'node',
+          include: ['eslint-plugin-avc/**/*.test.js'],
+        },
+      },
+      {
+        extends: true,
+        test: {
           name: 'web',
           environment: 'jsdom',
           include: ['apps/web/**/*.test.{ts,tsx}'],

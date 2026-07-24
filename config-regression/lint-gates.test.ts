@@ -93,6 +93,23 @@ const fixtures = {
     rel: join(galleryDir, 'feature-probe.ts'),
     content: "import '../../features/catalog/catalog-tree-model.js';\n",
   },
+  queryDescriptorsInline: {
+    rel: join(featureDir, 'descriptors-probe.tsx'),
+    content:
+      "import { useQuery } from '@tanstack/react-query';\n" +
+      "export const probe = () => useQuery({ queryKey: ['avc-probe'], queryFn: () => 1 });\n",
+  },
+  queryDescriptorsValid: {
+    rel: join(featureDir, 'descriptors-ok-probe.tsx'),
+    content:
+      "import { useQuery } from '@tanstack/react-query';\n" +
+      "import { actions } from '../../api.js';\n" +
+      'export const probe = () => useQuery(actions.catalogLock);\n',
+  },
+  eventTaxonomy: {
+    rel: join(featureDir, 'core', 'events.ts'),
+    content: "export type ProbeEvents = { type: 'deleteThing' } | { type: 'thingRemoved' };\n",
+  },
 } satisfies Record<string, Fixture>;
 
 const dcFixture: Fixture = {
@@ -213,6 +230,18 @@ describe('ESLint gate still rejects violations', () => {
     expect(message).toBeDefined();
     expect(message?.message).toContain('Raw color');
   });
+
+  it('bans inline query descriptors in a feature (avc/query-descriptors-only)', () => {
+    const message = findMessage(fixtures.queryDescriptorsInline, 'avc/query-descriptors-only');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('imported action descriptor');
+  });
+
+  it('bans imperative event names in core/events.ts (avc/event-suffix-taxonomy)', () => {
+    const message = findMessage(fixtures.eventTaxonomy, 'avc/event-suffix-taxonomy');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('intent suffix');
+  });
 });
 
 describe('ESLint gate keeps app-owned grants (positive probes)', () => {
@@ -222,6 +251,10 @@ describe('ESLint gate keeps app-owned grants (positive probes)', () => {
 
   it('lets the gallery composition root import a feature (web-gallery second root survives)', () => {
     expect(findMessage(fixtures.galleryImportsFeature, 'boundaries/element-types')).toBeUndefined();
+  });
+
+  it('lets a feature spread an imported descriptor into a query hook (avc rule does not over-fire)', () => {
+    expect(findMessage(fixtures.queryDescriptorsValid, 'avc/query-descriptors-only')).toBeUndefined();
   });
 });
 
