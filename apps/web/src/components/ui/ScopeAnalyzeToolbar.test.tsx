@@ -37,6 +37,46 @@ describe('ScopeAnalyzeToolbar', () => {
     expect(onAnalyze).toHaveBeenCalledOnce();
   });
 
+  it('renders an approximate up-to count for an unindexed tree and triggers analyze', async () => {
+    const onAnalyze = vi.fn();
+    renderThemed(
+      <ScopeAnalyzeToolbar
+        scope="tree"
+        onScopeChange={vi.fn()}
+        pendingCount={200}
+        isBusy={false}
+        progress={null}
+        onAnalyze={onAnalyze}
+        onStop={vi.fn()}
+        approximateCount
+        canAnalyze
+      />,
+    );
+
+    const button = screen.getByTestId('analyze-all-button');
+    expect(button.textContent).toContain(en.batchToolbar.analyzeUpTo(200));
+    await userEvent.click(button);
+    expect(onAnalyze).toHaveBeenCalledOnce();
+  });
+
+  it('shows the analyze button when only unknown pending is present at a zero count', () => {
+    renderThemed(
+      <ScopeAnalyzeToolbar
+        scope="tree"
+        onScopeChange={vi.fn()}
+        pendingCount={0}
+        isBusy={false}
+        progress={null}
+        onAnalyze={vi.fn()}
+        onStop={vi.fn()}
+        approximateCount
+        canAnalyze
+      />,
+    );
+
+    expect(screen.getByTestId('analyze-all-button')).toBeDefined();
+  });
+
   it('renders live progress and wires Stop while a run is active', async () => {
     const onStop = vi.fn();
     renderThemed(

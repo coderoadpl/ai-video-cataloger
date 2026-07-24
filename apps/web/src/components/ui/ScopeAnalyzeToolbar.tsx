@@ -16,6 +16,8 @@ interface ScopeAnalyzeToolbarProps {
   onStop: () => void;
   disabledReason?: string | undefined;
   scopeToggleDisabled?: boolean;
+  approximateCount?: boolean;
+  canAnalyze?: boolean | undefined;
 }
 
 export const ScopeAnalyzeToolbar = ({
@@ -28,8 +30,11 @@ export const ScopeAnalyzeToolbar = ({
   onStop,
   disabledReason,
   scopeToggleDisabled = false,
+  approximateCount = false,
+  canAnalyze,
 }: ScopeAnalyzeToolbarProps) => {
   const dictionary = useDictionary();
+  const showAnalyze = canAnalyze ?? pendingCount > 0;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
@@ -81,7 +86,7 @@ export const ScopeAnalyzeToolbar = ({
             {progress.currentFilename}
           </Typography>
         </Box>
-      ) : isBusy || pendingCount === 0 ? null : (
+      ) : isBusy || !showAnalyze ? null : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
           <Button
             data-testid="analyze-all-button"
@@ -92,7 +97,9 @@ export const ScopeAnalyzeToolbar = ({
             startIcon={<PlayCircleIcon fontSize="small" />}
             onClick={onAnalyze}
           >
-            {dictionary.batchToolbar.analyzeAll(pendingCount)}
+            {approximateCount
+              ? dictionary.batchToolbar.analyzeUpTo(pendingCount)
+              : dictionary.batchToolbar.analyzeAll(pendingCount)}
           </Button>
           {disabledReason === undefined ? null : (
             <Typography variant="caption" color="text.secondary">

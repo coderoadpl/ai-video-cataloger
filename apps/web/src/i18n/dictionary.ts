@@ -45,6 +45,7 @@ export interface Dictionary {
     processingCount: (current: number, total: number) => string;
     stop: string;
     analyzeAll: (count: number) => string;
+    analyzeUpTo: (count: number) => string;
   };
   catalog: {
     noFolderSelected: string;
@@ -533,6 +534,7 @@ export const en: Dictionary = {
     processingCount: (current, total) => `Processing ${current} of ${total}`,
     stop: 'Stop',
     analyzeAll: (count) => `Analyze All (${count})`,
+    analyzeUpTo: (count) => `Analyze All (up to ${count})`,
   },
   catalog: {
     noFolderSelected: 'No folder selected',
@@ -1068,6 +1070,7 @@ export const pl: Dictionary = {
     processingCount: (current, total) => `Przetwarzanie ${current} z ${total}`,
     stop: 'Stop',
     analyzeAll: (count) => `Analizuj wszystko (${count})`,
+    analyzeUpTo: (count) => `Analizuj wszystko (do ${count})`,
   },
   catalog: {
     noFolderSelected: 'Nie wybrano folderu',

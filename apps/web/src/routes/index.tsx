@@ -70,7 +70,9 @@ export const IndexRoute = () => {
   }, [tree.root]);
   const effectiveScope: AnalyzeScope = hasSubfolderVideos ? scope : 'folder';
   const showTree = effectiveScope === 'tree';
-  const scopedPendingCount = effectiveScope === 'tree' ? tree.pendingTotal : processing.pendingCount;
+  const treePendingCount = Math.max(0, tree.videoTotal - tree.processedTotal);
+  const scopedPendingCount = effectiveScope === 'tree' ? treePendingCount : processing.pendingCount;
+  const treeCanAnalyze = tree.videoTotal > tree.processedTotal || tree.hasUnknownPending;
 
   const clearSearch = globalSearch.clearSearch;
   const sidebarCatalog = useMemo(
@@ -102,6 +104,8 @@ export const IndexRoute = () => {
           isBusy={processing.isBusy}
           progress={activeProgress}
           scopeToggleDisabled={!hasSubfolderVideos}
+          approximateCount={effectiveScope === 'tree'}
+          canAnalyze={effectiveScope === 'tree' ? treeCanAnalyze : undefined}
           onAnalyze={() => {
             if (effectiveScope === 'tree') {
               if (shell.currentFolder !== null) processing.driveAnalyze(shell.currentFolder);
