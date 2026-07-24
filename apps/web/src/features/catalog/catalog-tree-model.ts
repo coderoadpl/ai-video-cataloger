@@ -30,6 +30,7 @@ export interface CatalogTreeNode {
   relativePath: string;
   depth: number;
   videos: readonly CatalogVideo[];
+  directVideoCount?: number | undefined;
   videoCount?: number | undefined;
   pendingCount: number | null;
   processedCount: number | null;
@@ -69,6 +70,7 @@ const finalize = (node: MutableNode): CatalogTreeNode => {
     relativePath: node.relativePath,
     depth: node.depth,
     videos: node.videos,
+    directVideoCount: node.videoCount,
     videoCount: children.reduce((sum, child) => sum + (child.videoCount ?? 0), node.videoCount),
     pendingCount: hasUnknownPending ? null : pendingCount,
     processedCount,

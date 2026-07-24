@@ -4,6 +4,7 @@ import {
   API_ROUTES,
   catalogFolderOutputSchema,
   catalogLockOutputSchema,
+  catalogTreeFolderOutputSchema,
   catalogTreeOutputSchema,
   checkOutputSchema,
   configGetOutputSchema,
@@ -52,12 +53,6 @@ import { err, internal, ok, validation, type AppError, type Result } from '@core
 
 declare const HTTP_METHOD_BRAND: unique symbol;
 
-/**
- * Phantom read/write tag on a call's result, driven by the contract's HTTP
- * method. Optional and never assigned at runtime (zero cost, no `as`): a plain
- * `Result` is assignable, yet a `'GET'`-tagged result is not assignable to a
- * write-tagged one, so `defineQuery`/`defineMutation` can reject mismatches.
- */
 type Branded<T, M extends HttpMethod> = T & { readonly [HTTP_METHOD_BRAND]?: M };
 export type ReadResult<T> = Branded<Result<T, AppError>, ReadMethod>;
 export type WriteResult<T> = Branded<Result<T, AppError>, WriteMethod>;
@@ -171,6 +166,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.catalogTree.method,
       queryPath(API_ROUTES.catalogTree.path, [['folder', parsed.value.folder]]),
       catalogTreeOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  catalogTreeFolder: (input: z.input<typeof API_ROUTES.catalogTreeFolder.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.catalogTreeFolder.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.catalogTreeFolder.method,
+      queryPath(API_ROUTES.catalogTreeFolder.path, [['folder', parsed.value.folder]]),
+      catalogTreeFolderOutputSchema,
       undefined,
       signal,
     );

@@ -1,5 +1,5 @@
 import { useCallback, useState } from 'react';
-import { Box, Collapse, List, ListItemButton, Typography } from '@mui/material';
+import { Alert, Box, Button, Collapse, List, ListItemButton, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { ChevronRightIcon, ExpandMoreIcon, FolderIcon } from '../../components/ui/icons.js';
@@ -17,20 +17,33 @@ interface CatalogTreeProps {
   onSelect: (video: CatalogVideo) => void;
 }
 
+const LARGE_TREE_VIDEO_THRESHOLD = 2_000;
+
+const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
+
+const processDriveCommand = (root: string): string => `ai-video-cataloger process-drive ${shellQuote(root)}`;
+
 const FolderCounts = ({
   videoCount,
   pending,
   processed,
+  approximate,
 }: {
   videoCount: number;
   pending: number | null;
   processed: number | null;
+  approximate: boolean;
 }) => {
   const dictionary = useDictionary();
+  const text = pending === null || processed === null
+    ? dictionary.catalog.unknownFolderCounts(videoCount)
+    : approximate
+      ? dictionary.catalog.approximateFolderCounts(pending, processed)
+      : dictionary.catalog.folderCounts(pending, processed);
 
   return (
     <Typography variant="caption" color="text.secondary" sx={{ ml: 'auto', flexShrink: 0 }}>
-      {dictionary.catalog.folderCounts(pending ?? videoCount, processed ?? 0)}
+      {text}
     </Typography>
   );
 };
@@ -50,21 +63,21 @@ const NodeVideos = ({
   onSelect,
   expanded,
 }: Pick<NodeProps, 'node' | 'selectedKey' | 'analyzingPath' | 'skippedPaths' | 'onSelect'> & { expanded: boolean }) => {
-  const videoCount = node.videoCount ?? node.videos.length;
-  const scan = useQuery({
-    ...actions.scan({ folder: node.path }),
+  const videoCount = node.directVideoCount ?? node.videos.length;
+  const details = useQuery({
+    ...actions.catalogTreeFolder({ folder: node.path }),
     enabled: expanded && videoCount > 0 && node.videos.length === 0,
   });
   if (videoCount === 0) return null;
-  const videos = scan.data?.videos ?? node.videos;
+  const videos = details.data?.videos ?? node.videos;
   return (
     <VideoList
       videos={videos}
       selectedKey={selectedKey}
       analyzingPath={analyzingPath}
-      isLoading={scan.isLoading}
-      isError={scan.isError}
-      error={scan.error}
+      isLoading={details.isLoading}
+      isError={details.isError}
+      error={details.error}
       onSelect={onSelect}
       skippedPaths={skippedPaths}
       maxHeight={360}
@@ -89,7 +102,12 @@ const ChildFolder = ({ node, isExpanded, onToggle, renderChildren = true, ...res
         <Typography variant="body2" noWrap sx={{ fontWeight: 500, minWidth: 0 }}>
           {node.name}
         </Typography>
-        <FolderCounts videoCount={node.videoCount ?? node.videos.length} pending={node.pendingCount} processed={node.processedCount} />
+        <FolderCounts
+          videoCount={node.videoCount ?? node.videos.length}
+          pending={node.pendingCount}
+          processed={node.processedCount}
+          approximate={node.countsApproximate ?? false}
+        />
       </ListItemButton>
       <Collapse in={expanded} unmountOnExit>
         <NodeVideos node={node} expanded={expanded} {...rest} />
@@ -104,6 +122,7 @@ const ChildFolder = ({ node, isExpanded, onToggle, renderChildren = true, ...res
 };
 
 export const CatalogTree = ({ root, ...rest }: CatalogTreeProps) => {
+  const dictionary = useDictionary();
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const isExpanded = useCallback((relativePath: string) => expanded.has(relativePath), [expanded]);
   const onToggle = useCallback((relativePath: string) => {
@@ -114,15 +133,44 @@ export const CatalogTree = ({ root, ...rest }: CatalogTreeProps) => {
       return next;
     });
   }, []);
+  const rootVideoCount = root.videoCount ?? root.videos.length;
+  const rootDirectVideoCount = root.directVideoCount ?? root.videos.length;
+  const command = processDriveCommand(root.path);
 
   return (
-    <List dense disablePadding sx={{ p: 1 }}>
-      {(root.videoCount ?? root.videos.length) > 0 ? (
-        <ChildFolder node={root} isExpanded={isExpanded} onToggle={onToggle} renderChildren={false} {...rest} />
+    <>
+      {rootVideoCount > LARGE_TREE_VIDEO_THRESHOLD ? (
+        <Alert
+          severity="warning"
+          data-testid="large-tree-warning"
+          sx={{ m: 1, alignItems: 'flex-start' }}
+          action={
+            <Button
+              color="inherit"
+              size="small"
+              onClick={() => {
+                void navigator.clipboard?.writeText(command);
+              }}
+            >
+              {dictionary.catalog.largeRunCommandLabel}
+            </Button>
+          }
+        >
+          <Typography variant="subtitle2">{dictionary.catalog.largeRunWarningTitle}</Typography>
+          <Typography variant="body2">{dictionary.catalog.largeRunWarningBody(rootVideoCount)}</Typography>
+          <Typography component="code" variant="caption" sx={{ display: 'block', mt: 0.75, userSelect: 'all' }}>
+            {command}
+          </Typography>
+        </Alert>
       ) : null}
-      {root.children.map((child) => (
-        <ChildFolder key={child.relativePath} node={child} isExpanded={isExpanded} onToggle={onToggle} {...rest} />
-      ))}
-    </List>
+      <List dense disablePadding sx={{ p: 1 }}>
+        {rootDirectVideoCount > 0 ? (
+          <ChildFolder node={root} isExpanded={isExpanded} onToggle={onToggle} renderChildren={false} {...rest} />
+        ) : null}
+        {root.children.map((child) => (
+          <ChildFolder key={child.relativePath} node={child} isExpanded={isExpanded} onToggle={onToggle} {...rest} />
+        ))}
+      </List>
+    </>
   );
 };

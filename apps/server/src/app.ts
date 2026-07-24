@@ -47,6 +47,7 @@ import {
   runDoctor,
   scanFolder,
   scanTree,
+  scanTreeFolderDetails,
   search,
   setConfig,
   setCredential,
@@ -142,6 +143,12 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.catalogTree.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.catalogTree.output);
     return respond(await scanTree(deps, input.value), API_ROUTES.catalogTree.output);
+  });
+
+  app.get(API_ROUTES.catalogTreeFolder.path, async (context) => {
+    const input = parseInput(API_ROUTES.catalogTreeFolder.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.catalogTreeFolder.output);
+    return respond(await scanTreeFolderDetails(deps, input.value), API_ROUTES.catalogTreeFolder.output);
   });
 
   app.get(API_ROUTES.catalogFolder.path, async (context) => {

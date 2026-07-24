@@ -61,6 +61,7 @@ export const defineMutation = <TData, TVariables>(
 export type ScanInput = z.input<typeof API_ROUTES.scan.input>;
 export type CatalogLockOutput = z.output<typeof API_ROUTES.catalogLockStatus.output>;
 export type CatalogTreeInput = z.input<typeof API_ROUTES.catalogTree.input>;
+export type CatalogTreeFolderInput = z.input<typeof API_ROUTES.catalogTreeFolder.input>;
 export type CatalogFolderInput = z.input<typeof API_ROUTES.catalogFolder.input>;
 export type StatusInput = z.input<typeof API_ROUTES.status.input>;
 export type ConfigInput = z.input<typeof API_ROUTES.configGet.input>;
@@ -110,6 +111,12 @@ export const catalogTreeScopes = {
   all: () => ['catalog-tree'] as const,
   folder: (input: z.output<typeof API_ROUTES.catalogTree.input>) =>
     ['catalog-tree', 'folder', input.folder] as const,
+};
+
+export const catalogTreeFolderScopes = {
+  all: () => ['catalog-tree-folder'] as const,
+  folder: (input: z.output<typeof API_ROUTES.catalogTreeFolder.input>) =>
+    ['catalog-tree-folder', 'folder', input.folder] as const,
 };
 
 export const catalogFolderScopes = {
@@ -268,6 +275,14 @@ export const catalogTreeQuery = (api: ApiClient, input: CatalogTreeInput) => {
   return defineQuery({
     queryKey: catalogTreeScopes.folder(parsed),
     call: ({ signal }) => api.catalogTree(parsed, signal),
+  });
+};
+
+export const catalogTreeFolderQuery = (api: ApiClient, input: CatalogTreeFolderInput) => {
+  const parsed = API_ROUTES.catalogTreeFolder.input.parse(input);
+  return defineQuery({
+    queryKey: catalogTreeFolderScopes.folder(parsed),
+    call: ({ signal }) => api.catalogTreeFolder(parsed, signal),
   });
 };
 

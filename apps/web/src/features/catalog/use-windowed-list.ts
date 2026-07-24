@@ -22,12 +22,17 @@ export const windowedRange = ({
   scrollTop,
   overscan,
 }: WindowedRangeInput): WindowedRange => {
-  const totalHeight = itemCount * rowHeight;
-  const visibleStart = Math.floor(scrollTop / rowHeight);
-  const visibleEnd = Math.ceil((scrollTop + viewportHeight) / rowHeight);
-  const start = Math.max(0, visibleStart - overscan);
-  const end = Math.min(itemCount, visibleEnd + overscan);
-  return { start, end, offsetTop: start * rowHeight, totalHeight };
+  const safeItemCount = Math.max(0, itemCount);
+  const safeRowHeight = Math.max(1, rowHeight);
+  const safeViewportHeight = Math.max(0, viewportHeight);
+  const safeScrollTop = Math.max(0, scrollTop);
+  const safeOverscan = Math.max(0, overscan);
+  const totalHeight = safeItemCount * safeRowHeight;
+  const visibleStart = Math.floor(safeScrollTop / safeRowHeight);
+  const visibleEnd = Math.ceil((safeScrollTop + safeViewportHeight) / safeRowHeight);
+  const start = Math.max(0, visibleStart - safeOverscan);
+  const end = Math.min(safeItemCount, visibleEnd + safeOverscan);
+  return { start, end, offsetTop: start * safeRowHeight, totalHeight };
 };
 
 export const useWindowedList = (itemCount: number, rowHeight: number, overscan = 6) => {

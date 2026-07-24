@@ -51,6 +51,11 @@ export interface Dictionary {
     lockedBy: (processName: string, pid: number) => string;
     retryLock: string;
     folderCounts: (pending: number, processed: number) => string;
+    approximateFolderCounts: (pending: number, processed: number) => string;
+    unknownFolderCounts: (videoCount: number) => string;
+    largeRunWarningTitle: string;
+    largeRunWarningBody: (count: number) => string;
+    largeRunCommandLabel: string;
     skipped: string;
     genericScanError: string;
     scanningFolder: string;
@@ -498,6 +503,11 @@ export const en: Dictionary = {
     lockedBy: (processName, pid) => `Catalog locked by ${processName} PID ${pid}`,
     retryLock: 'Retry',
     folderCounts: (pending, processed) => `${pending} pending · ${processed} done`,
+    approximateFolderCounts: (pending, processed) => `about ${pending} pending · ${processed} done`,
+    unknownFolderCounts: (videoCount) => `${videoCount} videos · pending unknown`,
+    largeRunWarningTitle: 'Large folder tree',
+    largeRunWarningBody: (count) => `${count} videos found. Analysis at this scale is better run from the CLI, and the initial scan may take a while.`,
+    largeRunCommandLabel: 'Copy CLI command',
     skipped: 'Skipped',
     genericScanError: 'Could not scan this folder.',
     scanningFolder: 'Scanning folder…',
@@ -973,6 +983,11 @@ export const pl: Dictionary = {
     lockedBy: (processName, pid) => `Katalog zablokowany przez ${processName} PID ${pid}`,
     retryLock: 'Ponów',
     folderCounts: (pending, processed) => `${pending} oczekuje · ${processed} gotowe`,
+    approximateFolderCounts: (pending, processed) => `około ${pending} oczekuje · ${processed} gotowe`,
+    unknownFolderCounts: (videoCount) => `${videoCount} film(y) · oczekujące nieznane`,
+    largeRunWarningTitle: 'Duże drzewo folderów',
+    largeRunWarningBody: (count) => `Znaleziono ${count} filmów. Analizę w tej skali lepiej uruchomić z CLI, a początkowe skanowanie może chwilę potrwać.`,
+    largeRunCommandLabel: 'Kopiuj polecenie CLI',
     skipped: 'Pominięto',
     genericScanError: 'Nie udało się przeskanować tego folderu.',
     scanningFolder: 'Skanowanie folderu…',

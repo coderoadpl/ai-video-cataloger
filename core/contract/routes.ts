@@ -113,6 +113,10 @@ export const catalogTreeOutputSchema = z.object({
   hasUnknownPending: z.boolean(),
 });
 
+export const catalogTreeFolderOutputSchema = z.object({
+  videos: z.array(scanVideoSchema),
+});
+
 export const catalogLockInfoSchema = z.object({
   pid: z.number().int().positive(),
   processName: z.enum(['gui', 'cli']),
@@ -902,6 +906,7 @@ export const API_ROUTES = {
   catalogLockRetry: { method: 'POST', path: '/api/catalog-lock/retry', input: emptyInputSchema, output: catalogLockOutputSchema },
   scan: { method: 'GET', path: '/api/scan', input: folderInputSchema, output: scanOutputSchema },
   catalogTree: { method: 'GET', path: '/api/catalog-tree', input: folderInputSchema, output: catalogTreeOutputSchema },
+  catalogTreeFolder: { method: 'GET', path: '/api/catalog-tree/folder', input: folderInputSchema, output: catalogTreeFolderOutputSchema },
   catalogFolder: { method: 'GET', path: '/api/catalog-folder', input: folderInputSchema, output: catalogFolderOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
   processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
@@ -1037,6 +1042,7 @@ export const API_PATHS = {
   catalogLockRetry: API_ROUTES.catalogLockRetry.path,
   scan: API_ROUTES.scan.path,
   catalogTree: API_ROUTES.catalogTree.path,
+  catalogTreeFolder: API_ROUTES.catalogTreeFolder.path,
   catalogFolder: API_ROUTES.catalogFolder.path,
   process: API_ROUTES.process.path,
   processDrive: API_ROUTES.processDrive.path,

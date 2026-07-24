@@ -88,7 +88,7 @@ const folderCounts = async (
   folder: string,
   videoPaths: readonly string[],
 ): Promise<Result<{ pendingCount: number | null; processedCount: number | null; countsApproximate: boolean }, AppError>> => {
-  if (deps.globalCatalog === undefined) return ok({ pendingCount: videoPaths.length, processedCount: 0, countsApproximate: false });
+  if (deps.globalCatalog === undefined) return ok({ pendingCount: null, processedCount: null, countsApproximate: false });
   const marker = await readFolderMarker(deps.fs, folder);
   if (!marker.ok) return marker;
   if (marker.value === null) return ok({ pendingCount: null, processedCount: null, countsApproximate: false });
