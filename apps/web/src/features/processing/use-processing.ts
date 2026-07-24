@@ -46,7 +46,7 @@ export interface ProcessingState {
   skippedPaths: ReadonlySet<string>;
   cancelConfirmation: CancelConfirmation;
   batchSummary: BatchSummaryState;
-  analyze: (video: ProcessVideo) => void;
+  analyze: (video: ProcessVideo, options?: { force?: boolean }) => void;
   batchAnalyze: () => void;
   driveAnalyze: (root: string) => void;
   driveCancel: () => void;
@@ -221,13 +221,13 @@ export const useProcessing = ({
   const lastProgressKeyRef = useRef('');
 
   const runVideo = useCallback(
-    async (video: ProcessVideo): Promise<RunOutcome> => {
+    async (video: ProcessVideo, force = false): Promise<RunOutcome> => {
       setProgress(null);
       lastProgressKeyRef.current = '';
 
       let jobId: string;
       try {
-        const accepted = await processAsync({ videoPath: video.path });
+        const accepted = await processAsync({ videoPath: video.path, ...(force ? { force: true } : {}) });
         jobId = accepted.jobId;
       } catch (error) {
         const message = messageOf(error);
@@ -283,7 +283,7 @@ export const useProcessing = ({
   );
 
   const analyze = useCallback(
-    (video: ProcessVideo) => {
+    (video: ProcessVideo, options?: { force?: boolean }) => {
       if (busyRef.current) return;
       busyRef.current = true;
       cancelBatchRef.current = false;
@@ -295,7 +295,7 @@ export const useProcessing = ({
         }
         setAnalyzingPath(video.path);
         addLine(dictionary.processing.startingAnalysis(video.filename), 'info');
-        await runVideo(video);
+        await runVideo(video, options?.force ?? false);
         busyRef.current = false;
         setAnalyzingPath(null);
         setProgress(null);

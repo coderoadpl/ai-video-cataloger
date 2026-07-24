@@ -21,8 +21,8 @@ import {
   type TreeRow,
   type VideoRow as VideoRowData,
 } from './catalog-tree-rows.js';
-import { DuplicateBadge } from './DuplicateBadge.js';
-import { SkippedBadge } from './VideoList.js';
+import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
+import { SkippedBadge, thumbnailLoading } from './VideoList.js';
 import { useThumbnailGeneration } from './use-thumbnail-generation.js';
 import { useWindowedList } from './use-windowed-list.js';
 
@@ -32,6 +32,7 @@ interface CatalogTreeProps {
   selectedKey: string | null;
   analyzingPath: string | null;
   skippedPaths: ReadonlySet<string>;
+  thumbnailFailedPaths?: ReadonlySet<string>;
   onSelect: (video: CatalogVideo) => void;
   registerVideos: (videos: readonly CatalogVideo[]) => void;
 }
@@ -44,6 +45,7 @@ const ERROR_VIDEO_ROW_HEIGHT = 120;
 const INDENT = 18;
 const THUMB_BOX = 56;
 const EMPTY_SUBFOLDER_VIDEOS: readonly CatalogVideo[] = [];
+const EMPTY_FAILED: ReadonlySet<string> = new Set();
 
 const shellQuote = (value: string): string => `'${value.replaceAll("'", "'\\''")}'`;
 const processDriveCommand = (root: string): string => `ai-video-cataloger process-drive ${shellQuote(root)}`;
@@ -128,12 +130,14 @@ const VideoRowView = ({
   selected,
   analyzing,
   skipped,
+  thumbnailLoadingState,
   onSelect,
 }: {
   row: VideoRowData;
   selected: boolean;
   analyzing: boolean;
   skipped: boolean;
+  thumbnailLoadingState: boolean;
   onSelect: (video: CatalogVideo) => void;
 }) => {
   const dictionary = useDictionary();
@@ -158,6 +162,7 @@ const VideoRowView = ({
         square
         source={video.source}
         selected={selected}
+        loading={thumbnailLoadingState}
       />
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
@@ -235,7 +240,7 @@ const FolderFetcher = ({
   return null;
 };
 
-export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skippedPaths, onSelect, registerVideos }: CatalogTreeProps) => {
+export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skippedPaths, thumbnailFailedPaths = EMPTY_FAILED, onSelect, registerVideos }: CatalogTreeProps) => {
   const dictionary = useDictionary();
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(['']));
   const [loaded, setLoaded] = useState<ReadonlyMap<string, LoadedFolder>>(() => new Map());
@@ -293,7 +298,12 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skip
     return collected.length === 0 ? EMPTY_SUBFOLDER_VIDEOS : collected;
   }, [fetchTargets, loaded]);
 
-  useThumbnailGeneration(root.path, subfolderVideos);
+  const subfolderThumbnails = useThumbnailGeneration(root.path, subfolderVideos);
+  const isThumbnailLoading = useCallback(
+    (video: CatalogVideo): boolean =>
+      thumbnailLoading(video, thumbnailFailedPaths) && thumbnailLoading(video, subfolderThumbnails.failedPaths),
+    [thumbnailFailedPaths, subfolderThumbnails.failedPaths],
+  );
 
   const rows = useMemo(
     () => buildTreeRows({ root, rootVideos, isExpanded, loadedFolder }),
@@ -356,6 +366,7 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skip
                   selected={keyOf(row.video) === selectedKey}
                   analyzing={row.video.path === analyzingPath}
                   skipped={skippedPaths.has(row.video.path)}
+                  thumbnailLoadingState={isThumbnailLoading(row.video)}
                   onSelect={onSelect}
                 />
               );

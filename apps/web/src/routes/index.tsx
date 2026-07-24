@@ -63,26 +63,35 @@ export const IndexRoute = () => {
 
   const driveRunning = processing.driveFileProgress !== null;
   const activeProgress = processing.batchProgress ?? processing.driveFileProgress;
-  const scopedPendingCount = scope === 'tree' ? tree.pendingTotal : processing.pendingCount;
+  const hasSubfolderVideos = useMemo(() => {
+    const root = tree.root;
+    if (root === null) return false;
+    return root.children.some((child) => (child.videoCount ?? child.videos.length) > 0);
+  }, [tree.root]);
+  const effectiveScope: AnalyzeScope = hasSubfolderVideos ? scope : 'folder';
+  const showTree = effectiveScope === 'tree';
+  const scopedPendingCount = effectiveScope === 'tree' ? tree.pendingTotal : processing.pendingCount;
 
   const sidebar = (
     <CatalogSidebar
       folder={shell.currentFolder}
       catalog={catalog}
       tree={tree}
+      showTree={showTree}
       analyzingPath={processing.analyzingPath}
       skippedPaths={processing.skippedPaths}
       lockBanner={catalogLock.lockBanner}
       registerVideos={videoRegistry.register}
       toolbar={
         <ScopeAnalyzeToolbar
-          scope={scope}
+          scope={effectiveScope}
           onScopeChange={setScope}
           pendingCount={scopedPendingCount}
           isBusy={processing.isBusy}
           progress={activeProgress}
+          scopeToggleDisabled={!hasSubfolderVideos}
           onAnalyze={() => {
-            if (scope === 'tree') {
+            if (effectiveScope === 'tree') {
               if (shell.currentFolder !== null) processing.driveAnalyze(shell.currentFolder);
             } else {
               processing.batchAnalyze();
@@ -103,6 +112,7 @@ export const IndexRoute = () => {
       analyzing={analyzing}
       loading={shell.currentFolder !== null && selected === null && (catalog.isLoading || tree.isLoading)}
       onAnalyze={processing.analyze}
+      onNavigateToCanonical={catalog.selectKey}
       disabledReason={disabledReason}
       onTagSearch={globalSearch.submitSearch}
     />

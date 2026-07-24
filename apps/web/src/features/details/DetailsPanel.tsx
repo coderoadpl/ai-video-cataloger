@@ -10,7 +10,8 @@ interface DetailsPanelProps {
   video: DetailsVideo | null;
   analyzing: boolean;
   loading?: boolean;
-  onAnalyze?: ((video: DetailsVideo) => void) | undefined;
+  onAnalyze?: ((video: DetailsVideo, options?: { force?: boolean }) => void) | undefined;
+  onNavigateToCanonical?: ((canonicalPath: string) => void) | undefined;
   disabledReason?: string | undefined;
   onTagSearch?: ((tag: string) => void) | undefined;
 }
@@ -40,7 +41,7 @@ const Welcome = ({ dictionary }: { dictionary: Dictionary }) => (
   </Box>
 );
 
-export const DetailsPanel = ({ video, analyzing, loading = false, onAnalyze, disabledReason, onTagSearch }: DetailsPanelProps) => {
+export const DetailsPanel = ({ video, analyzing, loading = false, onAnalyze, onNavigateToCanonical, disabledReason, onTagSearch }: DetailsPanelProps) => {
   const dictionary = useDictionary();
 
   if (video === null && loading) return <DetailsSkeleton />;
@@ -52,6 +53,7 @@ export const DetailsPanel = ({ video, analyzing, loading = false, onAnalyze, dis
       video={video}
       analyzing={analyzing}
       onAnalyze={onAnalyze}
+      onNavigateToCanonical={onNavigateToCanonical}
       disabledReason={disabledReason}
       onTagSearch={onTagSearch}
     />

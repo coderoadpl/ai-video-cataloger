@@ -40,6 +40,7 @@ export interface Dictionary {
     analyzeScope: string;
     thisFolder: string;
     wholeTree: string;
+    scopeToggleDisabled: string;
     processingCount: (current: number, total: number) => string;
     stop: string;
     analyzeAll: (count: number) => string;
@@ -97,6 +98,10 @@ export interface Dictionary {
     processingFailed: string;
     retrying: string;
     retryAnalysis: string;
+    duplicateTitle: string;
+    duplicateExplanation: string;
+    duplicateCanonicalLabel: string;
+    analyzeAnyway: string;
     status: {
       analyzing: string;
       completed: string;
@@ -522,6 +527,7 @@ export const en: Dictionary = {
     analyzeScope: 'Analyze scope',
     thisFolder: 'This folder',
     wholeTree: 'Whole tree',
+    scopeToggleDisabled: 'This folder has no subfolders with videos.',
     processingCount: (current, total) => `Processing ${current} of ${total}`,
     stop: 'Stop',
     analyzeAll: (count) => `Analyze All (${count})`,
@@ -586,6 +592,10 @@ export const en: Dictionary = {
     processingFailed: 'Processing Failed',
     retrying: 'Retrying…',
     retryAnalysis: 'Retry Analysis',
+    duplicateTitle: 'Duplicate file',
+    duplicateExplanation: 'This file has the same content as another video already in your catalog, so it is not analyzed automatically.',
+    duplicateCanonicalLabel: 'Original file',
+    analyzeAnyway: 'Analyze anyway',
     status: {
       analyzing: 'Video is being processed…',
       completed: 'Analysis complete. Summary, transcript, and frames are available.',
@@ -1051,6 +1061,7 @@ export const pl: Dictionary = {
     analyzeScope: 'Zakres analizy',
     thisFolder: 'Ten folder',
     wholeTree: 'Całe drzewo',
+    scopeToggleDisabled: 'Ten folder nie ma podfolderów z filmami.',
     processingCount: (current, total) => `Przetwarzanie ${current} z ${total}`,
     stop: 'Stop',
     analyzeAll: (count) => `Analizuj wszystko (${count})`,
@@ -1115,6 +1126,10 @@ export const pl: Dictionary = {
     processingFailed: 'Przetwarzanie nie powiodło się',
     retrying: 'Ponawianie…',
     retryAnalysis: 'Ponów analizę',
+    duplicateTitle: 'Plik zduplikowany',
+    duplicateExplanation: 'Ten plik ma tę samą zawartość co inny film już w katalogu, więc nie jest analizowany automatycznie.',
+    duplicateCanonicalLabel: 'Plik oryginalny',
+    analyzeAnyway: 'Analizuj mimo to',
     status: {
       analyzing: 'Film jest przetwarzany…',
       completed: 'Analiza zakończona. Streszczenie, transkrypcja i klatki są dostępne.',

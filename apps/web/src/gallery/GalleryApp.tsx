@@ -10,10 +10,10 @@ import {
 } from '@mui/material';
 import { ThemeProvider } from '@mui/material/styles';
 
+import { DuplicateBadge } from '../components/ui/DuplicateBadge.js';
 import { FolderIcon, PlayCircleIcon } from '../components/ui/icons.js';
 import { MediaThumbnail } from '../components/ui/MediaThumbnail.js';
 import { VideoStatusBadge } from '../components/ui/VideoStatusBadge.js';
-import { DuplicateBadge } from '../features/catalog/DuplicateBadge.js';
 import { SkippedBadge } from '../features/catalog/VideoList.js';
 import { getDict } from '../i18n/dictionary.js';
 import { createAppTheme, type ThemeMode } from '../theme.js';

@@ -1,14 +1,34 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useState, type ReactNode } from 'react';
 import { Box, Button, Typography } from '@mui/material';
 
 import { ResizablePanel } from './ResizablePanel.js';
 
-export const SIDEBAR_DEFAULT_SIZE = 280;
-export const SIDEBAR_MIN_SIZE = 200;
-export const SIDEBAR_MAX_SIZE = 400;
+export const SIDEBAR_DEFAULT_SIZE = 440;
+export const SIDEBAR_MIN_SIZE = 280;
+export const SIDEBAR_MAX_SIZE = 640;
 export const TERMINAL_DEFAULT_SIZE = 200;
 export const TERMINAL_MIN_SIZE = 100;
 export const TERMINAL_MAX_SIZE = 500;
+
+const SIDEBAR_WIDTH_KEY = 'avc.sidebarWidth';
+
+const clampWidth = (value: number): number =>
+  Math.min(Math.max(value, SIDEBAR_MIN_SIZE), SIDEBAR_MAX_SIZE);
+
+const readSidebarWidth = (): number => {
+  if (typeof window === 'undefined' || typeof window.localStorage.getItem !== 'function') {
+    return SIDEBAR_DEFAULT_SIZE;
+  }
+  const raw = window.localStorage.getItem(SIDEBAR_WIDTH_KEY);
+  if (raw === null) return SIDEBAR_DEFAULT_SIZE;
+  const parsed = Number.parseInt(raw, 10);
+  return Number.isFinite(parsed) ? clampWidth(parsed) : SIDEBAR_DEFAULT_SIZE;
+};
+
+const writeSidebarWidth = (value: number): void => {
+  if (typeof window === 'undefined' || typeof window.localStorage.setItem !== 'function') return;
+  window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(value)));
+};
 
 interface AppLayoutProps {
   header: ReactNode;
@@ -41,8 +61,13 @@ export const AppLayout = ({
   onTerminalCopy,
   onTerminalClear,
 }: AppLayoutProps) => {
-  const [sidebarSize, setSidebarSize] = useState(SIDEBAR_DEFAULT_SIZE);
+  const [sidebarSize, setSidebarSize] = useState(readSidebarWidth);
   const [terminalSize, setTerminalSize] = useState(TERMINAL_DEFAULT_SIZE);
+
+  const onSidebarResize = useCallback((size: number) => {
+    setSidebarSize(size);
+    writeSidebarWidth(size);
+  }, []);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
@@ -54,7 +79,7 @@ export const AppLayout = ({
           minSize={SIDEBAR_MIN_SIZE}
           maxSize={SIDEBAR_MAX_SIZE}
           collapsed={sidebarCollapsed}
-          onResize={setSidebarSize}
+          onResize={onSidebarResize}
         >
           <Box
             sx={{

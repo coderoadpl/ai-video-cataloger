@@ -7,11 +7,12 @@ import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
 import { type CatalogVideo, keyOf } from './catalog-video.js';
-import { DuplicateBadge } from './DuplicateBadge.js';
 import { useWindowedList } from './use-windowed-list.js';
 
 const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
+const EMPTY_FAILED: ReadonlySet<string> = new Set();
 const VIDEO_ROW_HEIGHT = 96;
 const THUMB_BOX = 56;
 const ERROR_VIDEO_ROW_HEIGHT = 120;
@@ -31,8 +32,14 @@ interface VideoListProps {
   error: unknown;
   onSelect: (video: CatalogVideo) => void;
   skippedPaths?: ReadonlySet<string>;
+  thumbnailFailedPaths?: ReadonlySet<string>;
   maxHeight?: number | undefined;
 }
+
+export const thumbnailLoading = (
+  video: Pick<CatalogVideo, 'path' | 'artifacts'>,
+  failedPaths: ReadonlySet<string>,
+): boolean => video.artifacts.thumbnailPath === null && !failedPaths.has(video.path);
 
 export const SkippedBadge = ({ dictionary }: { dictionary: Dictionary }) => (
   <Chip
@@ -72,6 +79,7 @@ const VideoRow = ({
   selected,
   analyzing,
   skipped,
+  thumbnailLoadingState,
   onSelect,
   dictionary,
 }: {
@@ -79,6 +87,7 @@ const VideoRow = ({
   selected: boolean;
   analyzing: boolean;
   skipped: boolean;
+  thumbnailLoadingState: boolean;
   onSelect: (video: CatalogVideo) => void;
   dictionary: Dictionary;
 }) => (
@@ -99,6 +108,7 @@ const VideoRow = ({
       square
       source={video.source}
       selected={selected}
+      loading={thumbnailLoadingState}
     />
     <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
       <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
@@ -140,6 +150,7 @@ export const VideoList = ({
   error,
   onSelect,
   skippedPaths = EMPTY_SKIPPED,
+  thumbnailFailedPaths = EMPTY_FAILED,
   maxHeight,
 }: VideoListProps) => {
   const dictionary = useDictionary();
@@ -199,6 +210,7 @@ export const VideoList = ({
               selected={keyOf(video) === selectedKey}
               analyzing={video.path === analyzingPath}
               skipped={skippedPaths.has(video.path)}
+              thumbnailLoadingState={thumbnailLoading(video, thumbnailFailedPaths)}
               onSelect={onSelect}
               dictionary={dictionary}
             />

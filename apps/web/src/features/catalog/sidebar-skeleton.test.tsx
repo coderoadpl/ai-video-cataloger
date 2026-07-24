@@ -15,10 +15,12 @@ const baseCatalog = (overrides: Partial<CatalogState> = {}): CatalogState => ({
   selectedVideo: null,
   selectedKey: null,
   select: vi.fn(),
+  selectKey: vi.fn(),
   isLoading: false,
   isError: false,
   error: null,
   isGeneratingThumbnails: false,
+  thumbnailFailedPaths: new Set(),
   ...overrides,
 });
 

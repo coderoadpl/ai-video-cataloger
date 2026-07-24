@@ -1,4 +1,4 @@
-import { Box, Button, LinearProgress, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Box, Button, LinearProgress, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type BatchProgressView } from './BatchToolbar.js';
@@ -15,6 +15,7 @@ interface ScopeAnalyzeToolbarProps {
   onAnalyze: () => void;
   onStop: () => void;
   disabledReason?: string | undefined;
+  scopeToggleDisabled?: boolean;
 }
 
 export const ScopeAnalyzeToolbar = ({
@@ -26,29 +27,34 @@ export const ScopeAnalyzeToolbar = ({
   onAnalyze,
   onStop,
   disabledReason,
+  scopeToggleDisabled = false,
 }: ScopeAnalyzeToolbarProps) => {
   const dictionary = useDictionary();
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      <ToggleButtonGroup
-        exclusive
-        fullWidth
-        size="small"
-        value={scope}
-        disabled={isBusy}
-        onChange={(_event, next: AnalyzeScope | null) => {
-          if (next !== null) onScopeChange(next);
-        }}
-        aria-label={dictionary.batchToolbar.analyzeScope}
-      >
-        <ToggleButton value="folder" data-testid="scope-folder">
-          {dictionary.batchToolbar.thisFolder}
-        </ToggleButton>
-        <ToggleButton value="tree" data-testid="scope-tree">
-          {dictionary.batchToolbar.wholeTree}
-        </ToggleButton>
-      </ToggleButtonGroup>
+      <Tooltip title={scopeToggleDisabled ? dictionary.batchToolbar.scopeToggleDisabled : ''}>
+        <span>
+          <ToggleButtonGroup
+            exclusive
+            fullWidth
+            size="small"
+            value={scope}
+            disabled={isBusy || scopeToggleDisabled}
+            onChange={(_event, next: AnalyzeScope | null) => {
+              if (next !== null) onScopeChange(next);
+            }}
+            aria-label={dictionary.batchToolbar.analyzeScope}
+          >
+            <ToggleButton value="folder" data-testid="scope-folder">
+              {dictionary.batchToolbar.thisFolder}
+            </ToggleButton>
+            <ToggleButton value="tree" data-testid="scope-tree">
+              {dictionary.batchToolbar.wholeTree}
+            </ToggleButton>
+          </ToggleButtonGroup>
+        </span>
+      </Tooltip>
 
       {progress !== null ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>

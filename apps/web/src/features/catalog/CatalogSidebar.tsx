@@ -18,6 +18,7 @@ interface CatalogSidebarProps {
   folder: string | null;
   catalog: CatalogState;
   tree?: CatalogTreeState;
+  showTree?: boolean;
   analyzingPath?: string | null;
   skippedPaths?: ReadonlySet<string>;
   toolbar?: ReactNode;
@@ -29,6 +30,7 @@ export const CatalogSidebar = ({
   folder,
   catalog,
   tree,
+  showTree = true,
   analyzingPath = null,
   skippedPaths = EMPTY_SKIPPED,
   toolbar,
@@ -49,7 +51,8 @@ export const CatalogSidebar = ({
   }
 
   const treeRoot = tree?.root ?? null;
-  const showTreeSkeleton = tree !== undefined && treeRoot === null && (tree.isLoading || catalog.isLoading);
+  const useTree = showTree && tree !== undefined;
+  const showTreeSkeleton = useTree && treeRoot === null && (tree.isLoading || catalog.isLoading);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -81,10 +84,10 @@ export const CatalogSidebar = ({
         {lockBanner === undefined ? null : <Box sx={{ mt: 1 }}>{lockBanner}</Box>}
         {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}
       </Box>
-      <Box sx={{ flex: 1, minHeight: 0, overflow: treeRoot === null && !showTreeSkeleton ? 'auto' : 'hidden' }}>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: !useTree || treeRoot === null ? (showTreeSkeleton ? 'hidden' : 'auto') : 'hidden' }}>
         {showTreeSkeleton ? (
           <SidebarSkeleton />
-        ) : treeRoot === null ? (
+        ) : !useTree || treeRoot === null ? (
           <>
             <VideoList
               videos={catalog.videos}
@@ -95,6 +98,7 @@ export const CatalogSidebar = ({
               error={catalog.error}
               onSelect={catalog.select}
               skippedPaths={skippedPaths}
+              thumbnailFailedPaths={catalog.thumbnailFailedPaths}
             />
             <AbsentFilesSection folder={folder} />
           </>
@@ -105,6 +109,7 @@ export const CatalogSidebar = ({
             selectedKey={catalog.selectedKey}
             analyzingPath={analyzingPath}
             skippedPaths={skippedPaths}
+            thumbnailFailedPaths={catalog.thumbnailFailedPaths}
             onSelect={catalog.select}
             registerVideos={registerVideos}
           />
