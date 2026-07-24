@@ -5,6 +5,7 @@ import { FolderIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
 import { AbsentFilesSection } from './AbsentFilesSection.js';
+import { TreeAbsentFilesSection } from './TreeAbsentFilesSection.js';
 import { CatalogTree } from './CatalogTree.js';
 import { SidebarSkeleton } from './SidebarSkeleton.js';
 import { type CatalogVideo } from './catalog-video.js';
@@ -103,16 +104,23 @@ export const CatalogSidebar = ({
             <AbsentFilesSection folder={folder} />
           </>
         ) : (
-          <CatalogTree
-            root={treeRoot}
-            rootVideos={catalog.videos}
-            selectedKey={catalog.selectedKey}
-            analyzingPath={analyzingPath}
-            skippedPaths={skippedPaths}
-            thumbnailFailedPaths={catalog.thumbnailFailedPaths}
-            onSelect={catalog.select}
-            registerVideos={registerVideos}
-          />
+          <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
+            <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+              <CatalogTree
+                root={treeRoot}
+                rootVideos={catalog.videos}
+                selectedKey={catalog.selectedKey}
+                analyzingPath={analyzingPath}
+                skippedPaths={skippedPaths}
+                thumbnailFailedPaths={catalog.thumbnailFailedPaths}
+                onSelect={catalog.select}
+                registerVideos={registerVideos}
+              />
+            </Box>
+            <Box sx={{ flexShrink: 0, maxHeight: '40%', overflow: 'auto' }}>
+              <TreeAbsentFilesSection root={treeRoot} />
+            </Box>
+          </Box>
         )}
       </Box>
     </Box>
