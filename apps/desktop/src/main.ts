@@ -39,12 +39,12 @@ let desktopApp: App | null = null;
 let folderStore: FolderStore | null = null;
 let quitting = false;
 
-let resolveFirstWindowShown!: () => void;
-const firstWindowShown = new Promise<void>((resolve) => {
-  resolveFirstWindowShown = resolve;
+let resolveRendererReady!: () => void;
+const rendererReady = new Promise<void>((resolve) => {
+  resolveRendererReady = resolve;
 });
 
-const WINDOW_SHOWN_FALLBACK_MS = 3000;
+const COMPOSITION_DEFER_FALLBACK_MS = 3000;
 
 const isDevelopment = (): boolean =>
   process.env.NODE_ENV !== 'production' && (process.env.NODE_ENV === 'development' || !app.isPackaged);
@@ -61,7 +61,7 @@ const createWindow = async (): Promise<void> => {
     height: windowState.height,
     minWidth: 900,
     minHeight: 600,
-    show: false,
+    show: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f5f5f7',
     titleBarStyle: 'default',
     webPreferences: {
@@ -73,14 +73,10 @@ const createWindow = async (): Promise<void> => {
   });
 
   attachWindowStateHandlers(statePath, mainWindow);
-  if (windowState.isMaximized === true) {
-    mainWindow.once('ready-to-show', () => mainWindow?.maximize());
-  }
-  mainWindow.once('ready-to-show', () => {
-    mainWindow?.show();
-    logWindowShown();
-    resolveFirstWindowShown();
-  });
+  if (windowState.isMaximized === true) mainWindow.maximize();
+  logWindowVisible();
+  mainWindow.once('ready-to-show', logFirstPaint);
+  mainWindow.webContents.once('did-finish-load', resolveRendererReady);
   mainWindow.on('closed', () => {
     mainWindow = null;
   });
@@ -102,9 +98,16 @@ const loadRenderer = async (window: BrowserWindow): Promise<void> => {
   await window.loadFile(path.join(currentDirectory, '..', 'dist', 'web', 'index.html'));
 };
 
-const logWindowShown = (): void => {
+const startupTimestampMs = (): number => Math.round(process.uptime() * 1000);
+
+const logWindowVisible = (): void => {
   if (process.env.AVC_DEBUG_STARTUP !== '1') return;
-  console.log(`[startup] window shown ${Math.round(process.uptime() * 1000)}ms after process start`);
+  console.log(`[startup] window visible ${startupTimestampMs()}ms after process start`);
+};
+
+const logFirstPaint = (): void => {
+  if (process.env.AVC_DEBUG_STARTUP !== '1') return;
+  console.log(`[startup] first paint ${startupTimestampMs()}ms after process start`);
 };
 
 const surfaceCompositionFailure = (error: unknown): void => {
@@ -142,7 +145,7 @@ const bootstrap = async (): Promise<void> => {
   });
 
   await createWindow();
-  await Promise.race([firstWindowShown, sleep(WINDOW_SHOWN_FALLBACK_MS)]);
+  await Promise.race([rendererReady, sleep(COMPOSITION_DEFER_FALLBACK_MS)]);
 
   setImmediate(() => {
     if (quitting) return;
