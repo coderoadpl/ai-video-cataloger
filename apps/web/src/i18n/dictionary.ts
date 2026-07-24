@@ -29,6 +29,20 @@ export interface Dictionary {
     languageSectionTitle: string;
     savedToast: string;
   };
+  appFrame: {
+    sidebarHeading: string;
+    hideSidebar: string;
+    showSidebar: string;
+    navVideos: string;
+    navPeople: string;
+    terminalTitle: string;
+    terminalJson: string;
+    terminalCopy: string;
+    terminalClear: string;
+    terminalCollapse: string;
+    terminalExpand: string;
+    terminalEmpty: string;
+  };
   appHeader: {
     searchPlaceholder: string;
     recentSearches: string;
@@ -519,6 +533,20 @@ export const en: Dictionary = {
   settings: {
     languageSectionTitle: 'Language',
     savedToast: 'Settings saved',
+  },
+  appFrame: {
+    sidebarHeading: 'Videos',
+    hideSidebar: 'Hide',
+    showSidebar: 'Show',
+    navVideos: 'Videos',
+    navPeople: 'People',
+    terminalTitle: 'Terminal',
+    terminalJson: 'JSON',
+    terminalCopy: 'Copy',
+    terminalClear: 'Clear',
+    terminalCollapse: 'Collapse',
+    terminalExpand: 'Expand',
+    terminalEmpty: 'No output yet. Run an analysis to see job progress here.',
   },
   appHeader: {
     searchPlaceholder: 'Search catalog',
@@ -1057,6 +1085,20 @@ export const pl: Dictionary = {
   settings: {
     languageSectionTitle: 'Język',
     savedToast: 'Zapisano ustawienia',
+  },
+  appFrame: {
+    sidebarHeading: 'Filmy',
+    hideSidebar: 'Ukryj',
+    showSidebar: 'Pokaż',
+    navVideos: 'Filmy',
+    navPeople: 'Osoby',
+    terminalTitle: 'Terminal',
+    terminalJson: 'JSON',
+    terminalCopy: 'Kopiuj',
+    terminalClear: 'Wyczyść',
+    terminalCollapse: 'Zwiń',
+    terminalExpand: 'Rozwiń',
+    terminalEmpty: 'Brak danych wyjściowych. Uruchom analizę, aby zobaczyć postęp zadania.',
   },
   appHeader: {
     searchPlaceholder: 'Szukaj w katalogu',

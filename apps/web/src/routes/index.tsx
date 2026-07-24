@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Box, Button, ButtonGroup } from '@mui/material';
+import { Box } from '@mui/material';
 
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
@@ -28,9 +28,10 @@ import { SettingsModal } from '../features/settings/SettingsModal.js';
 import { AppShell } from '../features/shell/AppShell.js';
 import { useShell } from '../features/shell/use-shell.js';
 import { useAnalysisDisabledReason } from '../features/readiness/use-disabled-reason.js';
+import { ViewNav, type MainView } from '../components/ui/ViewNav.js';
 
 export const IndexRoute = () => {
-  const [activeView, setActiveView] = useState<'videos' | 'people'>('videos');
+  const [activeView, setActiveView] = useState<MainView>('videos');
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const [scope, setScope] = useState<AnalyzeScope>('folder');
   const shell = useShell();
@@ -170,24 +171,7 @@ export const IndexRoute = () => {
     </Box>
   );
 
-  const navigation = (
-    <ButtonGroup fullWidth size="small" variant="outlined" aria-label="Main view">
-      <Button
-        variant={activeView === 'videos' ? 'contained' : 'outlined'}
-        onClick={() => setActiveView('videos')}
-        data-testid="nav-videos"
-      >
-        Videos
-      </Button>
-      <Button
-        variant={activeView === 'people' ? 'contained' : 'outlined'}
-        onClick={() => setActiveView('people')}
-        data-testid="nav-people"
-      >
-        People
-      </Button>
-    </ButtonGroup>
-  );
+  const navigation = <ViewNav activeView={activeView} onSelectView={setActiveView} />;
 
   const overlays = (
     <>

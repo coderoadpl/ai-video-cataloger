@@ -1,6 +1,7 @@
 import { useCallback, useState, type ReactNode } from 'react';
 import { Box, Button, Typography } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import { ResizablePanel } from './ResizablePanel.js';
 
 export const SIDEBAR_DEFAULT_SIZE = 440;
@@ -61,6 +62,7 @@ export const AppLayout = ({
   onTerminalCopy,
   onTerminalClear,
 }: AppLayoutProps) => {
+  const dictionary = useDictionary();
   const [sidebarSize, setSidebarSize] = useState(readSidebarWidth);
   const [terminalSize, setTerminalSize] = useState(TERMINAL_DEFAULT_SIZE);
 
@@ -109,9 +111,9 @@ export const AppLayout = ({
                   justifyContent: 'space-between',
                 }}
               >
-                <Typography variant="h2">Videos</Typography>
+                <Typography variant="h2">{dictionary.appFrame.sidebarHeading}</Typography>
                 <Button size="small" color="inherit" onClick={onToggleSidebar}>
-                  Hide
+                  {dictionary.appFrame.hideSidebar}
                 </Button>
               </Box>
               {navigation}
@@ -123,7 +125,7 @@ export const AppLayout = ({
         {sidebarCollapsed ? (
           <Box sx={{ pt: 1.5, pl: 1 }}>
             <Button size="small" color="inherit" onClick={onToggleSidebar}>
-              Show
+              {dictionary.appFrame.showSidebar}
             </Button>
           </Box>
         ) : null}
@@ -143,7 +145,7 @@ export const AppLayout = ({
           }}
         >
           <Typography variant="caption" sx={{ color: 'grey.300' }}>
-            Terminal
+            {dictionary.appFrame.terminalTitle}
           </Typography>
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
             {!terminalCollapsed && onShowJsonChange ? (
@@ -152,21 +154,21 @@ export const AppLayout = ({
                 sx={{ color: showJson ? 'primary.light' : 'grey.400', minWidth: 0 }}
                 onClick={() => onShowJsonChange(!showJson)}
               >
-                JSON
+                {dictionary.appFrame.terminalJson}
               </Button>
             ) : null}
             {!terminalCollapsed && onTerminalCopy ? (
               <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }} onClick={onTerminalCopy}>
-                Copy
+                {dictionary.appFrame.terminalCopy}
               </Button>
             ) : null}
             {!terminalCollapsed && onTerminalClear ? (
               <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }} onClick={onTerminalClear}>
-                Clear
+                {dictionary.appFrame.terminalClear}
               </Button>
             ) : null}
             <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }} onClick={onToggleTerminal}>
-              {terminalCollapsed ? 'Expand' : 'Collapse'}
+              {terminalCollapsed ? dictionary.appFrame.terminalExpand : dictionary.appFrame.terminalCollapse}
             </Button>
           </Box>
         </Box>

@@ -1,5 +1,5 @@
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
-import { Box, Chip, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
+import { Box, Chip, CircularProgress, List, ListItemButton, Typography, type SvgIconProps } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
 
@@ -10,6 +10,7 @@ import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
+import { SkipNextIcon } from '../../components/ui/icons.js';
 import { type CatalogVideo, keyOf } from './catalog-video.js';
 import { useWindowedList } from './use-windowed-list.js';
 
@@ -43,14 +44,18 @@ export const thumbnailLoading = (
   failedPaths: ReadonlySet<string>,
 ): boolean => video.artifacts.thumbnailPath === null && !failedPaths.has(video.path);
 
+const SkippedGlyph = (props: SvgIconProps) => <SkipNextIcon fontSize="inherit" {...props} />;
+
 export const SkippedBadge = ({ dictionary }: { dictionary: Dictionary }) => (
   <Chip
     size="small"
+    icon={<SkippedGlyph />}
     label={dictionary.catalog.skipped}
     data-testid="skipped-badge"
     sx={(theme) => ({
       bgcolor: theme.palette.status.notTracked.soft,
       color: theme.palette.status.notTracked.main,
+      '& .MuiChip-icon': { color: 'inherit', fontSize: '0.9rem', marginLeft: '8px', marginRight: '3px' },
     })}
   />
 );

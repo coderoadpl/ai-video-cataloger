@@ -51,7 +51,7 @@ describe('dictionary', () => {
   });
 
   it('keeps swept UI literals inside the dictionary', () => {
-    const literals = ['Search catalog', 'Analyze All', 'Getting Started', 'Only this folder', 'Not detected', 'Open Folder', 'Not Tracked', 'Local (Whisper.cpp)', 'Skip Transcription'];
+    const literals = ['Search catalog', 'Analyze All', 'Getting Started', 'Only this folder', 'Not detected', 'Open Folder', 'Not Tracked', 'Local (Whisper.cpp)', 'Skip Transcription', 'No output yet. Run an analysis to see job progress here.'];
     const standaloneSaved = /(?<![A-Za-z])Saved(?![A-Za-z])/;
 
     const srcRoot = join(import.meta.dirname, '..');

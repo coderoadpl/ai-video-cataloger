@@ -37,6 +37,8 @@ const ICON_BADGE_IDS = [
   'badge-processing',
   'badge-error',
   'badge-not-tracked',
+  'badge-duplicate',
+  'badge-skipped',
 ];
 
 const round = (value) => Math.round(value * 100) / 100;

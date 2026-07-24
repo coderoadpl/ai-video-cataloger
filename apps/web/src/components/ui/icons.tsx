@@ -90,3 +90,15 @@ export const SearchIcon = (props: SvgIconProps) => (
     <path d="M9.5 3a6.5 6.5 0 0 1 5.16 10.45l4.44 4.45-1.2 1.2-4.45-4.44A6.5 6.5 0 1 1 9.5 3zm0 1.7a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z" />
   </SvgIcon>
 );
+
+export const ContentCopyIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
+  </SvgIcon>
+);
+
+export const SkipNextIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
+  </SvgIcon>
+);

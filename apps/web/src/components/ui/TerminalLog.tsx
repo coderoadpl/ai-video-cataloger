@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Typography, type Theme } from '@mui/material';
 
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { LogLine, LogLineType } from './use-terminal-log.js';
 
 interface TerminalLogProps {
@@ -28,6 +29,7 @@ const colorForType =
   };
 
 export const TerminalLog = ({ lines, droppedCount = 0, showJson = false }: TerminalLogProps) => {
+  const dictionary = useDictionary();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedUp, setPinnedUp] = useState(false);
 
@@ -72,7 +74,7 @@ export const TerminalLog = ({ lines, droppedCount = 0, showJson = false }: Termi
         ) : null}
         {visibleLines.length === 0 ? (
           <Typography variant="caption" sx={{ color: 'grey.500', fontStyle: 'italic' }}>
-            No output yet. Run an analysis to see job progress here.
+            {dictionary.appFrame.terminalEmpty}
           </Typography>
         ) : (
           visibleLines.map((line) => (
