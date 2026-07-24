@@ -1,10 +1,28 @@
 # Migration assessment: agentproofarch foundation `9b4bcd5` → `3508f06`
 
-Date: 2026-07-24 · Status: assessment only (no code changed) ·
+Date: 2026-07-24 · Revised: 2026-07-25 (owner decisions) · Status: plan
+accepted, implementation not started ·
 Scope: whether and how to migrate this app to the current agentproofarch
 foundation. Investigation ran as a multi-agent workflow (baseline
 verification + four area catalogs + consolidated impact map); every
 load-bearing claim below was re-verified against both repos.
+
+**Owner decisions (2026-07-25):**
+
+1. **Island cores i18n ruling accepted**: cores emit typed dictionary keys;
+   web bindings translate through `useDictionary`. Island cores move from
+   owner-gated to the main path (Phase 6); record the ruling as a
+   `docs/architecture.md` delta before the first core.
+2. **SQLite data-conventions ADR accepted**: write the SQLite-flavoured
+   equivalent of upstream's data conventions (ISO-8601 text timestamps,
+   app-minted UUID text ids, `CHECK` constraints where expressible, cursor
+   pagination as contract grammar) as a new app ADR (Phase 3).
+3. **zod 3→4: adopt** (owner override of the initial propose-skip; "no
+   reason not to"). Peers are already v4-ready — `zod-validation-error@4.0.2`
+   and `openai@6.46.0` both declare `zod ^3.25 || ^4.0`. New Phase 5.
+4. **CI runs on the owner's Mac** as a self-hosted GitHub Actions runner
+   (GitHub-hosted macOS minutes bill at a 10× multiplier on private repos;
+   the e2e matrix also wants the local model caches). Phase 7.
 
 ## 1. Baseline — where the app forked from
 
@@ -116,8 +134,8 @@ investigation artifacts at `~/repositories/claude-tmp/avc-migration/`.
     (renames change the IPC contract — own phase with GUI e2e if ever).
 16. **Island-core purity + `tsconfig.islands.json`** → new
     `apps/web/src/features/*/core/` dirs (we have zero today — greenfield,
-    not a rename), `eslint.config.js`, `.dependency-cruiser.cjs`. Blocked on
-    the i18n-in-cores decision (hotspot 2).
+    not a rename), `eslint.config.js`, `.dependency-cruiser.cjs`. The
+    i18n-in-cores ruling (hotspot 2) is owner-accepted 2026-07-25.
 17. **Vertical-slice checklist** (members aggregate as template) → for the
     next app aggregate; replace tenant-isolation assertions with
     global-catalog scope + lock ownership + faces-privacy assertions.
@@ -134,11 +152,11 @@ investigation artifacts at `~/repositories/claude-tmp/avc-migration/`.
 
 | Upstream change | Collides with | Call |
 |---|---|---|
-| Data conventions: `timestamptz`, native `uuid` PKs, CHECK mandates, migration packages (036b086) | **ADR-0002** — these are drizzle-**pg** column builders; sql.js/SQLite has neither, and we have no migration runner (schema evolution = `global-catalog-schema.ts` + snapshot rebuild, ADR-0002's stated recovery story) | **propose-skip** the pg-typed rules; **propose-adopt** cursor pagination as contract grammar (whole-drive lists over 1–2 TB will need it); needs-owner-ADR only for a SQLite-flavoured equivalent |
+| Data conventions: `timestamptz`, native `uuid` PKs, CHECK mandates, migration packages (036b086) | **ADR-0002** — these are drizzle-**pg** column builders; sql.js/SQLite has neither, and we have no migration runner (schema evolution = `global-catalog-schema.ts` + snapshot rebuild, ADR-0002's stated recovery story) | **propose-skip** the pg-typed rules; **propose-adopt** cursor pagination as contract grammar (whole-drive lists over 1–2 TB will need it); **owner-accepted 2026-07-25**: write the SQLite-flavoured equivalent as an app ADR (Phase 3) |
 | `new:resource` scaffolder | ADR-0002 + catalog lock — a generated repository-per-aggregate bypasses the `withCatalogWriteLock` funnel by construction | **propose-skip** the generator; adopt its anchored manual checklist idea |
 | ADR-0005 rungs 2/3 (`@xstate/store`, statecharts, transition tables) | No board-style transition domain; closest analogue (scan/lock lifecycle) is server-enforced; adds deps we don't have | **propose-adopt rung 1 only** (pure cores); **needs-owner-ADR** before rung 2/3 |
 | Capability predicates / `decide(identity, capability)` | ADR-0001 (no identity) — but the *ordering rule* (guard resolves before any store access, fail closed) is isomorphic to `withCatalogWriteLock` | **propose-adopt the ordering + a lock-wrapper probe** (see hotspot 4); propose-skip identity content |
-| zod 3→4 (52e927a) | Our `zod ^3.25.76` pin; upstream moved only for a passkey peer dep we don't have; blast radius = `core/{domain,contract,client}`, adapters, smoke, every error-shape assertion | **propose-skip**; revisit only if a different dependency forces v4 |
+| zod 3→4 (52e927a) | Our `zod ^3.25.76` pin; upstream moved for a passkey peer dep we don't have; blast radius = 63 files importing zod across `core/{domain,contract,client}`, adapters, apps, smoke, tests | **adopt — owner decision 2026-07-25** (Phase 5); peers verified v4-ready (`zod-validation-error@4.0.2`, `openai@6.46.0` both accept `zod ^4`); upstream 52e927a is the mechanical template |
 | `sx-layout-only` + frozen baseline | `RAW_COLOR_BAN` + theme-only visuals already achieve the goal; a baseline-driven layout rewrite invalidates the gallery screenshot set | **needs-owner-ADR** for wholesale adopt; default skip |
 | Shared env module `core/server/config.ts` | Name collision: our `core/domain/config.ts` = user settings, `core/server/usecases/config.ts` exists; upstream contents are Neon/Vercel-shaped; env is read in 9 app files | **propose-adopt the principle** as `core/server/env.ts`; skip the contents; must preserve the `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN` override used by gates |
 | Wholesale copy of upstream `eslint.config.js` / `.dependency-cruiser.cjs` | Deletes `web-i18n` + `web-gallery` element types, their four allow-list grants, and the dual composition roots | **merge rule-by-rule, never file-by-file** (standing rule for every future sync) |
@@ -248,7 +266,11 @@ changes; `test:e2e:cli` where the staged bundle changes.
   unit tests; files/dependencies/unlisted/unresolved/duplicates = error,
   exports/types = warn), coverage at measured-current in
   `vitest.config.ts`, new `scripts/doc-lint.ts` covering the ADR-0002
-  claims, `check` chain.
+  claims, `check` chain. Docs-first companion: write
+  `docs/decisions/0003-sqlite-data-conventions.md` (owner-accepted —
+  ISO-8601 text timestamps, app-minted UUID text ids, `CHECK` where
+  expressible, cursor pagination as contract grammar for future list
+  endpoints) so doc-lint guards it from day one.
 - **Effort:** M · **Risk:** med. What breaks: knip's first run flags the
   packaging-critical deps (hotspot 5) — resolve by proving each reference,
   never blanket-ignoring; a wrong ignore is how packaging silently rots.
@@ -268,38 +290,67 @@ changes; `test:e2e:cli` where the staged bundle changes.
   name moved (should be none).
 - **Rollback:** drop the plugin from `eslint.config.js`.
 
-### Phase 5 (owner-gated) — Island cores, rung 1
-- **Scope:** `apps/web/src/features/{catalog,processing}/core/` (two
-  features, not eleven), `tsconfig.islands.json` + `typecheck:islands`,
+### Phase 5 — zod 3→4 (owner-decided 2026-07-25)
+- **Scope:** `package.json` (`zod ^4.x`; lock regenerated under npm 10 —
+  hence after Phase 0), then the mechanical sweep over the 63 files
+  importing zod, following upstream 52e927a as the template:
+  `z.record(v)` → `z.record(z.string(), v)`; deprecated string formats →
+  top-level (`z.string().email()/url()` → `z.email()/z.url()`,
+  `z.string().datetime()` → `z.iso.datetime()` — 10 call sites, includes
+  the domain `Video` timestamp schema); error-shape touchpoints
+  (`issues`/`flatten()` assertions in tests and `scripts/smoke.ts`).
+  `zod-validation-error` stays at ^4 (peer-compatible).
+- **Effort:** M · **Risk:** med. What breaks: validation **message strings**
+  can change between zod majors — the NDJSON error output is a public
+  contract, so any smoke/parity assertion pinned to exact message text will
+  surface it; that is the review focus, not the type-level changes
+  (compile-visible). Runs after Phases 2–3 so probes + coverage are already
+  in place as the safety net.
+- **Verify:** `check`, `smoke`, `test:e2e:cli` (NDJSON error envelopes),
+  **`test:e2e:matrix` once** (error-shape parity across providers).
+- **Rollback:** single revert of the version bump + sweep commit; keep the
+  sweep as one commit for exactly this reason.
+
+### Phase 6 — Island cores, rung 1 (mainlined 2026-07-25)
+- **Scope:** docs first — record the accepted i18n ruling ("cores emit
+  typed dictionary keys; web bindings translate") as a
+  `docs/architecture.md` delta; then `apps/web/src/features/{catalog,processing}/core/`
+  (two features, not eleven), `tsconfig.islands.json` + `typecheck:islands`,
   island-purity lint/depcruise rules, `api.ts` bindings, `new:island`
   scaffolder adapted to TanStack Router + typed-i18n key bindings.
-- **Effort:** L · **Risk:** high. Blocked on the hotspot-2 design ruling
-  (cores emit keys, bindings translate). Catalog is the most entangled
-  feature (lock status, tree, absent files, snapshots). No xstate deps —
-  rung 1 is plain TS.
+- **Effort:** L · **Risk:** high. Catalog is the most entangled feature
+  (lock status, tree, absent files, snapshots). No xstate deps — rung 1 is
+  plain TS; rungs 2/3 still need their own ADR.
 - **Verify:** `check` (incl. islands typecheck), `test:e2e:gui`,
   `test:e2e:matrix` (catalog is the parity surface).
 - **Rollback:** cores are additive — revert bindings, delete `core/` dirs,
   drop `typecheck:islands`; cheap if each feature is its own commit.
 
-### Phase 6 (optional) — CI workflows
+### Phase 7 — CI on a self-hosted Mac runner (owner-decided 2026-07-25)
 - **Scope:** new `.github/workflows/{check,smoke,e2e}.yml`, SHA-pinned
-  actions, `npm ci`, repo guards; macOS runner for Electron + onnxruntime.
-- **Effort:** M · **Risk:** med (runner/native-build cost, not
-  correctness). First red CI is likely a native install on the runner.
-- **Verify:** the workflows; matrix nightly only, never per-PR.
-- **Rollback:** delete the workflow files.
+  actions, `npm ci`, repo guards; jobs target a **self-hosted runner on the
+  owner's Mac** (labels `self-hosted, macOS, ARM64`) instead of GitHub-hosted
+  macOS (10× minute multiplier on private repos; native arm64 +
+  Electron/onnxruntime + the persistent `avc-e2e-matrix-home` cache all
+  favor local). Runner installed as a user LaunchAgent; workflows must
+  remain safe for a self-hosted runner (no fork PRs, repo guards, no
+  secrets beyond what the runner already holds).
+- **Effort:** M · **Risk:** med — runner availability (machine asleep =
+  queued jobs), workspace hygiene between runs (temp HOME isolation the
+  smoke already provides), not correctness.
+- **Verify:** the workflows themselves; matrix nightly only, never per-PR.
+- **Rollback:** delete the workflow files, unregister the runner.
 
 **Ordering rationale:** 0 protects the dependency graph everything else
-builds on; 2 precedes 3–4 so new rules are probe-backed as `CLAUDE.md`
-demands; 1 is independent and front-loads visible value; 5–6 need owner
-decisions before starting.
+builds on; 2 precedes 3–5 so new rules and the zod sweep land on
+probe-backed, coverage-measured ground; 1 is independent and front-loads
+visible value; 5 before 6 keeps the zod sweep off freshly extracted cores;
+7 last because CI only pays once the local gates are worth running
+remotely.
 
 ## 6. No-go list
 
 - Everything in §3(d) — no target after ADR-0001.
-- **zod 3→4** — driven by a passkey peer dep we don't have; zero app benefit
-  for a full-stack blast radius. Revisit only under external forcing.
 - **pg-typed data conventions** (`timestamptz`, native `uuid`, CHECK/
   migration packages, backfill checkpoints, transactional outbox) —
   mechanically impossible or targetless on sql.js.
@@ -319,7 +370,13 @@ decisions before starting.
 
 ## 7. Recommendation
 
-**Migrate partially, now: phases 0–4. Defer 5–6 to owner decisions.**
+**Migrate now, full alignment: phases 0–7.** (Original 2026-07-24
+recommendation was partial — phases 0–4 with island cores and CI deferred;
+the 2026-07-25 owner decisions resolved every open question, so the full
+path is now unblocked. "Full alignment" means every foundation rule that
+has a target in this app; the §3(d)/§6 material stays out because it has no
+target, is technically impossible on sql.js, or contradicts an app ADR —
+not because it is deferred.)
 
 The product half of the upstream range is exactly what ADR-0001 deleted, and
 the flagship data conventions cannot exist on sql.js. But the enforcement
@@ -347,8 +404,18 @@ Concretely the app gains:
 - **Phase 4:** descriptor provenance enforced (the seam exists, unforced),
   event taxonomy gets a home without touching the IPC contract.
 
+- **Phase 5:** dependency parity with upstream on zod 4 while the peer
+  graph is already there, with probes + coverage as the net and the NDJSON
+  error contract as the one watched surface.
+- **Phase 6:** catalog/processing logic becomes portable by construction —
+  the app's most valuable feature code stops being welded to React — under
+  the accepted "cores emit keys, bindings translate" ruling.
+- **Phase 7:** independent verification of every gate on the machine that
+  can actually build the package (arm64, Electron, onnxruntime, model
+  caches), at zero minute cost.
+
 Phases 0–4 ≈ S+S/M+M+M+M, all additive, each independently revertible, none
-touching ADR-0001/0002 territory. Phase 5 (island cores) is the most
-valuable deferred item — catalog logic is the app's most portable asset —
-but needs the i18n-in-cores ruling first; phase 6 (CI) becomes worthwhile
-once 0–4 make the gates worth running remotely.
+touching ADR-0001/0002 territory; phase 5 is one revertible sweep; phase 6
+is additive files behind a docs-first delta; phase 7 is workflow files plus
+a runner registration. After phase 7 the app is fully aligned with the
+current foundation's applicable ruleset.
