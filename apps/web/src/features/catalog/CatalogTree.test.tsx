@@ -161,7 +161,7 @@ describe('CatalogTree', () => {
     expect(badge.closest('[title]')?.getAttribute('title')).toContain('/drive/canon/final.mp4');
     const rootRow = screen.getByTestId('folder-root-row');
     expect(rootRow.getAttribute('data-folder-duplicates')).toBe('1');
-    expect(rootRow.textContent).toContain('1 duplicates');
+    expect(rootRow.textContent).toContain('1 duplicate');
   });
 
   it('loads folder details only after expanding a lazy folder and registers its videos', async () => {

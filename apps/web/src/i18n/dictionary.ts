@@ -534,8 +534,8 @@ export const en: Dictionary = {
     retryLock: 'Retry',
     folderCounts: (pending, processed) => `${pending} pending · ${processed} done`,
     folderCountsWithDuplicates: (pending, processed, duplicates) =>
-      `${pending} pending · ${processed} done · ${duplicates} duplicates`,
-    unknownFolderCounts: (videoCount) => `${videoCount} videos`,
+      `${pending} pending · ${processed} done · ${duplicates} ${duplicates === 1 ? 'duplicate' : 'duplicates'}`,
+    unknownFolderCounts: (videoCount) => `${videoCount} ${videoCount === 1 ? 'video' : 'videos'}`,
     duplicateBadge: 'Duplicate',
     duplicateTooltip: (canonicalPath) => `Duplicate of ${canonicalPath}`,
     largeRunWarningTitle: 'Large folder tree',
@@ -1003,6 +1003,14 @@ export const en: Dictionary = {
   },
 };
 
+const plPlural = (count: number, one: string, few: string, many: string): string => {
+  if (count === 1) return one;
+  const lastTwo = count % 100;
+  const last = count % 10;
+  if (last >= 2 && last <= 4 && (lastTwo < 12 || lastTwo > 14)) return few;
+  return many;
+};
+
 export const pl: Dictionary = {
   locale: 'pl',
   common: {
@@ -1055,8 +1063,8 @@ export const pl: Dictionary = {
     retryLock: 'Ponów',
     folderCounts: (pending, processed) => `${pending} oczekuje · ${processed} gotowe`,
     folderCountsWithDuplicates: (pending, processed, duplicates) =>
-      `${pending} oczekuje · ${processed} gotowe · ${duplicates} duplikaty`,
-    unknownFolderCounts: (videoCount) => `${videoCount} film(y)`,
+      `${pending} oczekuje · ${processed} gotowe · ${duplicates} ${plPlural(duplicates, 'duplikat', 'duplikaty', 'duplikatów')}`,
+    unknownFolderCounts: (videoCount) => `${videoCount} ${plPlural(videoCount, 'film', 'filmy', 'filmów')}`,
     duplicateBadge: 'Duplikat',
     duplicateTooltip: (canonicalPath) => `Duplikat pliku ${canonicalPath}`,
     largeRunWarningTitle: 'Duże drzewo folderów',
