@@ -101,15 +101,20 @@ const withCatalogWriteLock = async <T>(
   return result;
 };
 
-const withCatalogWriteLockForJob = async <T>(
+const withCatalogWriteLockForJob = async (
   deps: AppDeps,
-  run: () => Promise<Result<T, AppError>>,
-): Promise<Result<T, AppError>> => {
-  const lock = await requireCatalogWriteLock(deps);
-  if (!lock.ok) return lock;
+  run: () => Promise<Result<{ jobId: string }, AppError>>,
+): Promise<Result<{ jobId: string }, AppError>> => {
+  const lease = await deps.globalCatalog.acquireLease();
+  if (!lease.ok) return lease;
   const result = await run();
-  if (result.ok) return result;
-  await deps.globalCatalog.flush();
+  if (!result.ok) {
+    await deps.globalCatalog.releaseLease();
+    return result;
+  }
+  deps.jobs.onSettled(result.value.jobId, async () => {
+    await deps.globalCatalog.releaseLease();
+  });
   return result;
 };
 

@@ -192,6 +192,75 @@ describe('InProcessJobsPort', () => {
     expect(listed).toEqual(ok([]));
   });
 
+  it('fires settle callbacks when a job completes, fails, or is cancelled', async () => {
+    const jobs = new InProcessJobsPort({ nowIso: tickingClock() });
+    const gate = deferred();
+
+    const completed = await jobs.enqueue({
+      kind: 'process',
+      payload: {},
+      run: () => Promise.resolve(ok({})),
+    });
+    const failed = await jobs.enqueue({
+      kind: 'process',
+      payload: {},
+      run: () => Promise.resolve({ ok: false, error: appError('internal', 'boom') }),
+    });
+    const cancellable = await jobs.enqueue({
+      kind: 'process',
+      payload: {},
+      run: async (context) => {
+        const first = await context.reportProgress({ step: 'extracting_frames', percentage: 10 });
+        if (!first.ok) return first;
+        await gate.promise;
+        return context.reportProgress({ step: 'extracting_audio', percentage: 20 });
+      },
+    });
+    if (!completed.ok || !failed.ok || !cancellable.ok) throw new Error('enqueue failed');
+
+    let completedSettled = 0;
+    let failedSettled = 0;
+    let cancelledSettled = 0;
+    jobs.onSettled(completed.value.jobId, () => {
+      completedSettled += 1;
+    });
+    jobs.onSettled(failed.value.jobId, () => {
+      failedSettled += 1;
+    });
+    jobs.onSettled(cancellable.value.jobId, () => {
+      cancelledSettled += 1;
+    });
+
+    await waitForJob(jobs, completed.value.jobId, (record) => record.status === 'completed');
+    await waitForJob(jobs, failed.value.jobId, (record) => record.status === 'failed');
+    await waitForJob(jobs, cancellable.value.jobId, (record) => record.progress?.step === 'extracting_frames');
+    await jobs.cancel(cancellable.value.jobId);
+    gate.resolve();
+    await waitForJob(jobs, cancellable.value.jobId, (record) => record.status === 'cancelled');
+
+    expect(completedSettled).toBe(1);
+    expect(failedSettled).toBe(1);
+    expect(cancelledSettled).toBe(1);
+  });
+
+  it('fires a settle callback immediately when the job is already terminal', async () => {
+    const jobs = new InProcessJobsPort();
+    const enqueued = await jobs.enqueue({
+      kind: 'process',
+      payload: {},
+      run: () => Promise.resolve(ok({})),
+    });
+    if (!enqueued.ok) throw new Error(enqueued.error.message);
+    await waitForJob(jobs, enqueued.value.jobId, (record) => record.status === 'completed');
+
+    let settled = 0;
+    jobs.onSettled(enqueued.value.jobId, () => {
+      settled += 1;
+    });
+
+    expect(settled).toBe(1);
+  });
+
   it('retains only the newest 200 terminal records', async () => {
     const jobs = new InProcessJobsPort();
     let newestId = '';

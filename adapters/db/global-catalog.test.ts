@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -297,6 +298,41 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(counts.ok && counts.value).toEqual({ folders: 0, files: 0, analyses: 0 });
     expect(lock).toContain('"pid":123456');
     expect(lock).toContain('"processName":"gui"');
+  });
+
+  it('keeps the lock file while a lease is active and persists one-off mutations', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, processName: 'gui' });
+    expect((await store.acquireLease()).ok).toBe(true);
+    expect((await store.upsertFolder(folder)).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+    expect(existsSync(lockPath(home))).toBe(true);
+
+    expect((await store.upsertFile(file)).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+    expect(existsSync(lockPath(home))).toBe(true);
+
+    expect((await store.releaseLease()).ok).toBe(true);
+    expect(existsSync(lockPath(home))).toBe(false);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const counts = await reopened.counts();
+    expect(counts.ok && counts.value).toEqual({ folders: 1, files: 1, analyses: 0 });
+    await reopened.dispose();
+  });
+
+  it('releases the lock only after the final nested lease is released', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home, processName: 'gui' });
+    expect((await store.acquireLease()).ok).toBe(true);
+    expect((await store.acquireLease()).ok).toBe(true);
+    expect((await store.upsertFolder(folder)).ok).toBe(true);
+
+    expect((await store.releaseLease()).ok).toBe(true);
+    expect(existsSync(lockPath(home))).toBe(true);
+
+    expect((await store.releaseLease()).ok).toBe(true);
+    expect(existsSync(lockPath(home))).toBe(false);
   });
 
   it('releases its lock on dispose', async () => {

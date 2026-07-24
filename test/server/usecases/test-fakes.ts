@@ -765,6 +765,13 @@ export class InMemoryJobs implements JobsPort {
     this.records.set(jobId, { ...record, status: 'cancelled', updatedAt: '2026-01-01T00:00:01.000Z' });
     return Promise.resolve(ok({ jobId, cancelled: true }));
   }
+
+  onSettled(jobId: string, callback: () => void | Promise<void>): void {
+    const record = this.records.get(jobId);
+    const terminal = record !== undefined
+      && (record.status === 'completed' || record.status === 'failed' || record.status === 'cancelled');
+    if (terminal) void callback();
+  }
 }
 
 export const videoFixture = (overrides: Partial<Video> = {}): Video => ({
@@ -812,6 +819,18 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>> {
     return Promise.resolve(ok({ writable: true, owner: null, blockedBy: null, warnings: [] }));
+  }
+
+  leaseCount = 0;
+
+  acquireLease(): Promise<Result<void, AppError>> {
+    this.leaseCount += 1;
+    return Promise.resolve(ok(undefined));
+  }
+
+  releaseLease(): Promise<Result<void, AppError>> {
+    if (this.leaseCount > 0) this.leaseCount -= 1;
+    return Promise.resolve(ok(undefined));
   }
 
   listFolders(): Promise<Result<CatalogFolder[], AppError>> {

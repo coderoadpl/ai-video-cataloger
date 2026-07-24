@@ -243,6 +243,10 @@ class InvalidatingJobsPort implements JobsPort {
   cancel(jobId: string): Promise<Result<{ jobId: string; cancelled: boolean }, AppError>> {
     return this.jobs.cancel(jobId);
   }
+
+  onSettled(jobId: string, callback: () => void | Promise<void>): void {
+    this.jobs.onSettled(jobId, callback);
+  }
 }
 
 class InvalidatingCredentialsStore implements CredentialsStore {
@@ -434,6 +438,14 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>> {
     return Promise.resolve(ok({ writable: true, owner: null, blockedBy: null, warnings: [] }));
+  }
+
+  acquireLease(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  releaseLease(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
   }
 
   listFolders(): Promise<Result<CatalogFolder[], AppError>> {

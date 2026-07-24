@@ -159,6 +159,8 @@ export interface GlobalCatalogStore {
   dispose(): Promise<Result<void, AppError>>;
   lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>>;
   acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>>;
+  acquireLease(): Promise<Result<void, AppError>>;
+  releaseLease(): Promise<Result<void, AppError>>;
   listFolders(): Promise<Result<CatalogFolder[], AppError>>;
   getFolder(folderId: string): Promise<Result<CatalogFolder | null, AppError>>;
   upsertFolder(folder: CatalogFolder): Promise<Result<void, AppError>>;
@@ -594,4 +596,5 @@ export interface JobsPort {
   get(jobId: string): Promise<Result<JobRecord | null, AppError>>;
   list(): Promise<Result<JobRecord[], AppError>>;
   cancel(jobId: string): Promise<Result<{ jobId: string; cancelled: boolean }, AppError>>;
+  onSettled(jobId: string, callback: () => void | Promise<void>): void;
 }

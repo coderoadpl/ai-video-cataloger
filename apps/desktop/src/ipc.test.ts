@@ -14,7 +14,13 @@ const buildDesktopApp = (): App => {
   honoApp.get('/status', (c) => c.text('ok'));
   return {
     honoApp,
-    jobs: { enqueue: unusedJob, get: unusedJob, list: unusedJob, cancel: unusedJob },
+    jobs: {
+      enqueue: unusedJob,
+      get: unusedJob,
+      list: unusedJob,
+      cancel: unusedJob,
+      onSettled: () => undefined,
+    },
     dispose: async () => undefined,
   };
 };

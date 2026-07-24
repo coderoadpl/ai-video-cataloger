@@ -134,6 +134,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private readonly isProcessAlive: (pid: number) => boolean;
   private readonly lockFs: CatalogLockFs;
   private dirtyCount = 0;
+  private leaseCount = 0;
   private heldLock: CatalogLockInfo | null = null;
   private exitHandlerRegistered = false;
   private readonly releaseOnExit = (): void => {
@@ -168,19 +169,34 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async flush(): Promise<Result<void, AppError>> {
     if (this.state === null || this.dirtyCount === 0) {
-      this.releaseWriteLock();
+      if (this.leaseCount === 0) this.releaseWriteLock();
       return ok(undefined);
     }
     try {
       this.takeWriteLock();
       this.persist(this.state);
-      this.releaseWriteLock();
+      if (this.leaseCount === 0) this.releaseWriteLock();
       return ok(undefined);
     } catch (cause) {
       this.state = null;
       this.dirtyCount = 0;
       return failure(cause);
     }
+  }
+
+  async acquireLease(): Promise<Result<void, AppError>> {
+    try {
+      this.takeWriteLock();
+      this.leaseCount += 1;
+      return ok(undefined);
+    } catch (cause) {
+      return failure(cause);
+    }
+  }
+
+  async releaseLease(): Promise<Result<void, AppError>> {
+    if (this.leaseCount > 0) this.leaseCount -= 1;
+    return this.flush();
   }
 
   async dispose(): Promise<Result<void, AppError>> {

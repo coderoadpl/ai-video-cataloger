@@ -27,6 +27,7 @@ export class InProcessJobsPort implements JobsPort {
   private readonly nextId: () => string;
   private readonly controllers = new Map<string, AbortController>();
   private readonly cancellationRequests = new Set<string>();
+  private readonly settleCallbacks = new Map<string, Array<() => void | Promise<void>>>();
   private nextNumber = 1;
 
   constructor(options: InProcessJobsPortOptions = {}) {
@@ -90,12 +91,26 @@ export class InProcessJobsPort implements JobsPort {
     return Promise.resolve(ok({ jobId, cancelled: true }));
   }
 
+  onSettled(jobId: string, callback: () => void | Promise<void>): void {
+    const record = this.records.get(jobId);
+    if (record !== undefined && isTerminal(record)) {
+      void callback();
+      return;
+    }
+    const existing = this.settleCallbacks.get(jobId) ?? [];
+    existing.push(callback);
+    this.settleCallbacks.set(jobId, existing);
+  }
+
   private async runJob(
     jobId: string,
     run: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>,
   ): Promise<void> {
     const queued = this.records.get(jobId);
-    if (queued === undefined || queued.status === 'cancelled') return;
+    if (queued === undefined || queued.status === 'cancelled') {
+      this.fireSettleCallbacks(jobId);
+      return;
+    }
     this.records.set(jobId, { ...queued, status: 'running', updatedAt: this.nowIso() });
 
     const controller = new AbortController();
@@ -109,7 +124,10 @@ export class InProcessJobsPort implements JobsPort {
 
     const current = this.records.get(jobId);
     this.controllers.delete(jobId);
-    if (current === undefined) return;
+    if (current === undefined) {
+      this.fireSettleCallbacks(jobId);
+      return;
+    }
     const cancelled = this.cancellationRequests.delete(jobId) && !result.ok;
     this.records.set(jobId, {
       ...current,
@@ -118,7 +136,15 @@ export class InProcessJobsPort implements JobsPort {
       error: result.ok || cancelled ? null : result.error,
       updatedAt: this.nowIso(),
     });
+    this.fireSettleCallbacks(jobId);
     this.evictOldTerminalRecords();
+  }
+
+  private fireSettleCallbacks(jobId: string): void {
+    const callbacks = this.settleCallbacks.get(jobId);
+    if (callbacks === undefined) return;
+    this.settleCallbacks.delete(jobId);
+    for (const callback of callbacks) void callback();
   }
 
   private reportProgress(jobId: string, progress: JobProgress): Promise<Result<void, AppError>> {
