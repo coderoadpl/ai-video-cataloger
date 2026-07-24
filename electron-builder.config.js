@@ -1,3 +1,6 @@
+import { rm, symlink } from 'node:fs/promises';
+import path from 'node:path';
+
 const config = {
   appId: 'com.ai-video-cataloger.app',
   productName: 'AI Video Cataloger',
@@ -28,7 +31,20 @@ const config = {
     'node_modules/@ffprobe-installer/darwin-arm64/ffprobe',
     'node_modules/sql.js/dist/sql-wasm.wasm',
     'node_modules/onnxruntime-node/bin/napi-v6/darwin/arm64/**/*',
+    'node_modules/onnxruntime-common/**/*',
   ],
+  afterPack: async (context) => {
+    if (context.electronPlatformName !== 'darwin') return;
+    const resources = path.join(
+      context.appOutDir,
+      `${context.packager.appInfo.productFilename}.app`,
+      'Contents',
+      'Resources',
+    );
+    const cliNodeModules = path.join(resources, 'cli', 'node_modules');
+    await rm(cliNodeModules, { recursive: true, force: true });
+    await symlink(path.join('..', 'app.asar.unpacked', 'node_modules'), cliNodeModules);
+  },
   extraResources: [
     {
       from: 'dist/cli',

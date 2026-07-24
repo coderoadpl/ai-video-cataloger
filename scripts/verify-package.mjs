@@ -61,6 +61,14 @@ if (nonDarwinArtifacts.length > 0) {
   console.log('verify-package: zero non-darwin onnxruntime artifacts (.so / linux / win32 / .dll)');
 }
 
+const cliOnnxPackage = path.join(appPath, 'Contents', 'Resources', 'cli', 'node_modules', 'onnxruntime-node', 'package.json');
+const cliOnnxInfo = await stat(cliOnnxPackage).catch(() => null);
+if (cliOnnxInfo === null || !cliOnnxInfo.isFile()) {
+  fail(`packaged CLI cannot resolve onnxruntime-node (missing ${cliOnnxPackage})`);
+} else {
+  console.log('verify-package: packaged CLI resolves onnxruntime-node via cli/node_modules');
+}
+
 try {
   await execFileAsync('codesign', ['--verify', '--deep', '--strict', appPath]);
   console.log('verify-package: codesign --verify --deep --strict exit 0');
