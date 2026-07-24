@@ -67,7 +67,15 @@ const root: CatalogTreeNode = {
 describe('CatalogTree', () => {
   it('renders root videos and a collapsed child folder with counts, expanding on click', async () => {
     renderThemed(
-      <CatalogTree root={root} selectedKey={null} analyzingPath={null} skippedPaths={new Set()} onSelect={vi.fn()} />,
+      <CatalogTree
+        root={root}
+        rootVideos={root.videos}
+        selectedKey={null}
+        analyzingPath={null}
+        skippedPaths={new Set()}
+        onSelect={vi.fn()}
+        registerVideos={vi.fn()}
+      />,
     );
 
     expect(screen.getByText('top.mp4')).toBeDefined();
@@ -85,10 +93,12 @@ describe('CatalogTree', () => {
     renderThemed(
       <CatalogTree
         root={root}
+        rootVideos={root.videos}
         selectedKey={null}
         analyzingPath={null}
         skippedPaths={new Set(['/drive/top.mp4'])}
         onSelect={vi.fn()}
+        registerVideos={vi.fn()}
       />,
     );
 
@@ -133,7 +143,15 @@ describe('CatalogTree', () => {
     };
 
     renderThemed(
-      <CatalogTree root={lazyRoot} selectedKey={null} analyzingPath={null} skippedPaths={new Set()} onSelect={vi.fn()} />,
+      <CatalogTree
+        root={lazyRoot}
+        rootVideos={[]}
+        selectedKey={null}
+        analyzingPath={null}
+        skippedPaths={new Set()}
+        onSelect={vi.fn()}
+        registerVideos={vi.fn()}
+      />,
     );
 
     expect(screen.queryByText('lazy.mp4')).toBeNull();
@@ -143,6 +161,98 @@ describe('CatalogTree', () => {
 
     expect(await screen.findByText('lazy.mp4')).toBeDefined();
     expect(detailCalls).toBe(1);
+  });
+
+  it('registers lazily loaded folder videos so they can be selected', async () => {
+    server.use(
+      http.get('/api/catalog-tree/folder', () =>
+        HttpResponse.json({ ok: true, data: { videos: [makeVideo('/drive/lazy/inner.mp4')] } }),
+      ),
+    );
+    const registerVideos = vi.fn();
+    const onSelect = vi.fn();
+    const lazyRoot: CatalogTreeNode = {
+      path: '/drive',
+      name: 'drive',
+      relativePath: '',
+      depth: 0,
+      videos: [],
+      videoCount: 1,
+      pendingCount: null,
+      processedCount: null,
+      children: [
+        {
+          path: '/drive/lazy',
+          name: 'lazy',
+          relativePath: 'lazy',
+          depth: 1,
+          videos: [],
+          directVideoCount: 1,
+          videoCount: 1,
+          pendingCount: null,
+          processedCount: null,
+          children: [],
+        },
+      ],
+    };
+
+    renderThemed(
+      <CatalogTree
+        root={lazyRoot}
+        rootVideos={[]}
+        selectedKey={null}
+        analyzingPath={null}
+        skippedPaths={new Set()}
+        onSelect={onSelect}
+        registerVideos={registerVideos}
+      />,
+    );
+
+    await userEvent.click(screen.getByTestId('folder-row'));
+    const innerRow = await screen.findByText('inner.mp4');
+    await userEvent.click(innerRow);
+
+    expect(onSelect).toHaveBeenCalledWith(expect.objectContaining({ path: '/drive/lazy/inner.mp4' }));
+    expect(registerVideos).toHaveBeenCalledWith(
+      expect.arrayContaining([expect.objectContaining({ path: '/drive/lazy/inner.mp4' })]),
+    );
+  });
+
+  it('reuses the eager scan for the root row instead of a second folder fetch', async () => {
+    let rootFolderCalls = 0;
+    server.use(
+      http.get('/api/catalog-tree/folder', ({ request }) => {
+        if (new URL(request.url).searchParams.get('folder') === '/drive') rootFolderCalls += 1;
+        return HttpResponse.json({ ok: true, data: { videos: [] } });
+      }),
+    );
+    const flatRoot: CatalogTreeNode = {
+      path: '/drive',
+      name: 'drive',
+      relativePath: '',
+      depth: 0,
+      videos: [],
+      directVideoCount: 1,
+      videoCount: 1,
+      pendingCount: null,
+      processedCount: null,
+      children: [],
+    };
+
+    renderThemed(
+      <CatalogTree
+        root={flatRoot}
+        rootVideos={[makeVideo('/drive/flat.mp4')]}
+        selectedKey={null}
+        analyzingPath={null}
+        skippedPaths={new Set()}
+        onSelect={vi.fn()}
+        registerVideos={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('flat.mp4')).toBeDefined();
+    expect(rootFolderCalls).toBe(0);
   });
 
   it('renders large tree guidance with a copyable process-drive command', () => {
@@ -167,7 +277,15 @@ describe('CatalogTree', () => {
     };
 
     renderThemed(
-      <CatalogTree root={largeRoot} selectedKey={null} analyzingPath={null} skippedPaths={new Set()} onSelect={vi.fn()} />,
+      <CatalogTree
+        root={largeRoot}
+        rootVideos={[]}
+        selectedKey={null}
+        analyzingPath={null}
+        skippedPaths={new Set()}
+        onSelect={vi.fn()}
+        registerVideos={vi.fn()}
+      />,
     );
 
     expect(screen.getByTestId('large-tree-warning')).toBeDefined();

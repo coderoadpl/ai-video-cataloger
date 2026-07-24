@@ -1,4 +1,4 @@
-import { type ReactNode } from 'react';
+import { useMemo, type ReactNode } from 'react';
 import { Box, Chip, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
@@ -12,6 +12,13 @@ import { useWindowedList } from './use-windowed-list.js';
 
 const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
 const VIDEO_ROW_HEIGHT = 96;
+const ERROR_VIDEO_ROW_HEIGHT = 120;
+
+const hasErrorLine = (video: CatalogVideo): boolean =>
+  video.status === 'error' && video.errorMessage != null && video.errorMessage.length > 0;
+
+const rowHeightOf = (video: CatalogVideo): number =>
+  hasErrorLine(video) ? ERROR_VIDEO_ROW_HEIGHT : VIDEO_ROW_HEIGHT;
 
 interface VideoListProps {
   videos: readonly CatalogVideo[];
@@ -80,7 +87,7 @@ const VideoRow = ({
     data-testid="video-item"
     data-video-filename={video.filename}
     data-video-status={video.status}
-    sx={{ alignItems: 'flex-start', gap: 1.25, borderRadius: 1, py: 1, height: VIDEO_ROW_HEIGHT }}
+    sx={{ alignItems: 'flex-start', gap: 1.25, borderRadius: 1, py: 1, height: rowHeightOf(video) }}
   >
     <MediaThumbnail
       path={video.artifacts.thumbnailPath}
@@ -129,7 +136,8 @@ export const VideoList = ({
   maxHeight,
 }: VideoListProps) => {
   const dictionary = useDictionary();
-  const { range, onScroll } = useWindowedList(videos.length, VIDEO_ROW_HEIGHT);
+  const rowHeights = useMemo(() => videos.map(rowHeightOf), [videos]);
+  const { range, onScroll, containerRef } = useWindowedList(rowHeights);
 
   if (isLoading) {
     return (
@@ -166,6 +174,7 @@ export const VideoList = ({
     <List
       dense
       disablePadding
+      ref={containerRef}
       onScroll={onScroll}
       sx={{
         p: 1,

@@ -6,6 +6,7 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
 import { AbsentFilesSection } from './AbsentFilesSection.js';
 import { CatalogTree } from './CatalogTree.js';
+import { type CatalogVideo } from './catalog-video.js';
 import { type CatalogState } from './use-catalog.js';
 import { type CatalogTreeState } from './use-catalog-tree.js';
 import { VideoList } from './VideoList.js';
@@ -20,6 +21,7 @@ interface CatalogSidebarProps {
   skippedPaths?: ReadonlySet<string>;
   toolbar?: ReactNode;
   lockBanner?: ReactNode;
+  registerVideos: (videos: readonly CatalogVideo[]) => void;
 }
 
 export const CatalogSidebar = ({
@@ -30,6 +32,7 @@ export const CatalogSidebar = ({
   skippedPaths = EMPTY_SKIPPED,
   toolbar,
   lockBanner,
+  registerVideos,
 }: CatalogSidebarProps) => {
   const dictionary = useDictionary();
 
@@ -94,10 +97,12 @@ export const CatalogSidebar = ({
         ) : (
           <CatalogTree
             root={treeRoot}
+            rootVideos={catalog.videos}
             selectedKey={catalog.selectedKey}
             analyzingPath={analyzingPath}
             skippedPaths={skippedPaths}
             onSelect={catalog.select}
+            registerVideos={registerVideos}
           />
         )}
       </Box>

@@ -66,7 +66,7 @@ const scanOk = (result: ScanResult) =>
 
 const Harness = ({ folder }: { folder: string | null }) => {
   const catalog = useCatalog(folder);
-  return <CatalogSidebar folder={folder} catalog={catalog} />;
+  return <CatalogSidebar folder={folder} catalog={catalog} registerVideos={() => {}} />;
 };
 
 const selectedFilename = (container: HTMLElement): string | null =>

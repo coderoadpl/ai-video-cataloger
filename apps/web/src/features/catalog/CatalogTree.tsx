@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { Alert, Box, Button, Collapse, List, ListItemButton, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
@@ -11,10 +11,12 @@ import { VideoList } from './VideoList.js';
 
 interface CatalogTreeProps {
   root: CatalogTreeNode;
+  rootVideos: readonly CatalogVideo[];
   selectedKey: string | null;
   analyzingPath: string | null;
   skippedPaths: ReadonlySet<string>;
   onSelect: (video: CatalogVideo) => void;
+  registerVideos: (videos: readonly CatalogVideo[]) => void;
 }
 
 const LARGE_TREE_VIDEO_THRESHOLD = 2_000;
@@ -48,11 +50,12 @@ const FolderCounts = ({
   );
 };
 
-interface NodeProps extends Omit<CatalogTreeProps, 'root'> {
+interface NodeProps extends Omit<CatalogTreeProps, 'root' | 'rootVideos'> {
   node: CatalogTreeNode;
   isExpanded: (relativePath: string) => boolean;
   onToggle: (relativePath: string) => void;
   renderChildren?: boolean | undefined;
+  suppressFetch?: boolean | undefined;
 }
 
 const NodeVideos = ({
@@ -61,15 +64,20 @@ const NodeVideos = ({
   analyzingPath,
   skippedPaths,
   onSelect,
+  registerVideos,
   expanded,
-}: Pick<NodeProps, 'node' | 'selectedKey' | 'analyzingPath' | 'skippedPaths' | 'onSelect'> & { expanded: boolean }) => {
+  suppressFetch = false,
+}: Pick<NodeProps, 'node' | 'selectedKey' | 'analyzingPath' | 'skippedPaths' | 'onSelect' | 'registerVideos' | 'suppressFetch'> & { expanded: boolean }) => {
   const videoCount = node.directVideoCount ?? node.videos.length;
   const details = useQuery({
     ...actions.catalogTreeFolder({ folder: node.path }),
-    enabled: expanded && videoCount > 0 && node.videos.length === 0,
+    enabled: !suppressFetch && expanded && videoCount > 0 && node.videos.length === 0,
   });
+  const videos = suppressFetch ? node.videos : (details.data?.videos ?? node.videos);
+  useEffect(() => {
+    registerVideos(videos);
+  }, [videos, registerVideos]);
   if (videoCount === 0) return null;
-  const videos = details.data?.videos ?? node.videos;
   return (
     <VideoList
       videos={videos}
@@ -121,7 +129,7 @@ const ChildFolder = ({ node, isExpanded, onToggle, renderChildren = true, ...res
   );
 };
 
-export const CatalogTree = ({ root, ...rest }: CatalogTreeProps) => {
+export const CatalogTree = ({ root, rootVideos, ...rest }: CatalogTreeProps) => {
   const dictionary = useDictionary();
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(new Set());
   const isExpanded = useCallback((relativePath: string) => expanded.has(relativePath), [expanded]);
@@ -165,7 +173,14 @@ export const CatalogTree = ({ root, ...rest }: CatalogTreeProps) => {
       ) : null}
       <List dense disablePadding sx={{ p: 1 }}>
         {rootDirectVideoCount > 0 ? (
-          <ChildFolder node={root} isExpanded={isExpanded} onToggle={onToggle} renderChildren={false} {...rest} />
+          <ChildFolder
+            node={{ ...root, videos: rootVideos }}
+            isExpanded={isExpanded}
+            onToggle={onToggle}
+            renderChildren={false}
+            suppressFetch
+            {...rest}
+          />
         ) : null}
         {root.children.map((child) => (
           <ChildFolder key={child.relativePath} node={child} isExpanded={isExpanded} onToggle={onToggle} {...rest} />

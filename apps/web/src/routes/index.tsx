@@ -10,6 +10,7 @@ import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
 import { flattenTreeVideos } from '../features/catalog/catalog-tree-model.js';
 import { keyOf } from '../features/catalog/catalog-video.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
+import { useCatalogVideoRegistry } from '../features/catalog/use-catalog-video-registry.js';
 import { useCatalogLock } from '../features/catalog/use-catalog-lock.js';
 import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
@@ -35,6 +36,7 @@ export const IndexRoute = () => {
   const globalSearch = useGlobalSearch();
   const terminal = useTerminalLog();
   const catalog = useCatalog(shell.currentFolder);
+  const videoRegistry = useCatalogVideoRegistry();
   const tree = useCatalogTree(shell.currentFolder);
   const readiness = useReadiness(shell.currentFolder);
   const catalogLock = useCatalogLock();
@@ -50,9 +52,12 @@ export const IndexRoute = () => {
 
   const selected = useMemo(() => {
     if (catalog.selectedVideo !== null) return catalog.selectedVideo;
-    if (catalog.selectedKey === null || tree.root === null) return null;
-    return flattenTreeVideos(tree.root).find((video) => keyOf(video) === catalog.selectedKey) ?? null;
-  }, [catalog.selectedVideo, catalog.selectedKey, tree.root]);
+    if (catalog.selectedKey === null) return null;
+    const fromTree = tree.root === null
+      ? null
+      : flattenTreeVideos(tree.root).find((video) => keyOf(video) === catalog.selectedKey) ?? null;
+    return fromTree ?? videoRegistry.lookup(catalog.selectedKey);
+  }, [catalog.selectedVideo, catalog.selectedKey, tree.root, videoRegistry]);
   const analyzing = selected !== null && selected.path === processing.analyzingPath;
   const overlay = analyzing ? processing.progress : null;
 
@@ -68,6 +73,7 @@ export const IndexRoute = () => {
       analyzingPath={processing.analyzingPath}
       skippedPaths={processing.skippedPaths}
       lockBanner={catalogLock.lockBanner}
+      registerVideos={videoRegistry.register}
       toolbar={
         <ScopeAnalyzeToolbar
           scope={scope}
