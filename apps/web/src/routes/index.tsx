@@ -8,7 +8,7 @@ import { ProcessingOverlay } from '../components/ui/ProcessingOverlay.js';
 import { useTerminalLog } from '../components/ui/use-terminal-log.js';
 import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
 import { flattenTreeVideos } from '../features/catalog/catalog-tree-model.js';
-import { keyOf } from '../features/catalog/catalog-video.js';
+import { keyOf, type CatalogVideo } from '../features/catalog/catalog-video.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
 import { useCatalogVideoRegistry } from '../features/catalog/use-catalog-video-registry.js';
 import { useCatalogLock } from '../features/catalog/use-catalog-lock.js';
@@ -72,10 +72,22 @@ export const IndexRoute = () => {
   const showTree = effectiveScope === 'tree';
   const scopedPendingCount = effectiveScope === 'tree' ? tree.pendingTotal : processing.pendingCount;
 
+  const clearSearch = globalSearch.clearSearch;
+  const sidebarCatalog = useMemo(
+    () => ({
+      ...catalog,
+      select: (video: CatalogVideo) => {
+        clearSearch();
+        catalog.select(video);
+      },
+    }),
+    [catalog, clearSearch],
+  );
+
   const sidebar = (
     <CatalogSidebar
       folder={shell.currentFolder}
-      catalog={catalog}
+      catalog={sidebarCatalog}
       tree={tree}
       showTree={showTree}
       analyzingPath={processing.analyzingPath}

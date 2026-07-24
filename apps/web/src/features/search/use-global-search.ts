@@ -20,6 +20,7 @@ export interface GlobalSearchState {
   query: string;
   setQuery: (query: string) => void;
   submitSearch: (query: string) => void;
+  clearSearch: () => void;
   debouncedQuery: string;
   active: boolean;
   recentSearches: readonly string[];
@@ -65,6 +66,10 @@ export const useGlobalSearch = (): GlobalSearchState => {
       return next;
     });
   }, []);
+  const clearSearch = useCallback(() => {
+    setQuery('');
+    setDebouncedQuery('');
+  }, []);
   const removeRecentSearch = useCallback((value: string) => {
     setRecentSearches((current) => {
       const next = current.filter((entry) => entry !== value);
@@ -77,6 +82,7 @@ export const useGlobalSearch = (): GlobalSearchState => {
     query,
     setQuery,
     submitSearch,
+    clearSearch,
     debouncedQuery,
     active,
     recentSearches,

@@ -23,6 +23,7 @@ const searchState: GlobalSearchState = {
   query: 'drone',
   setQuery: () => undefined,
   submitSearch: () => undefined,
+  clearSearch: () => undefined,
   debouncedQuery: 'drone',
   active: true,
   recentSearches: [],
