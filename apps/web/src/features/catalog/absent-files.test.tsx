@@ -57,6 +57,29 @@ describe('absent files section', () => {
     await waitFor(() => expect(forgetBodies).toEqual([{ fingerprint: 'fp-missing' }]));
   });
 
+  it('disables forgetting absent entries when the catalog is locked', async () => {
+    server.use(
+      catalogFolderOk([
+        { fingerprint: 'fp-missing', fileName: 'gone.mp4', finalName: null, missing: true, missingAt: 1738368000000 },
+      ]),
+      http.get('/api/catalog-lock', () => HttpResponse.json({
+        ok: true,
+        data: {
+          writable: false,
+          owner: null,
+          blockedBy: { pid: 4321, processName: 'gui', startedAt: '2026-01-01T00:00:00.000Z', hostname: 'host-a' },
+          warnings: [],
+        },
+      })),
+    );
+
+    renderThemed(<AbsentFilesSection folder={FOLDER} />);
+
+    fireEvent.click(await screen.findByTestId('absent-files-toggle'));
+    const forget = await screen.findByTestId('absent-file-forget');
+    await waitFor(() => expect(forget.getAttribute('disabled')).not.toBeNull());
+  });
+
   it('renders nothing when no catalog entries are absent', async () => {
     server.use(
       catalogFolderOk([

@@ -16,6 +16,7 @@ import {
 import { ChevronRightIcon, ExpandMoreIcon, WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { useAbsentFiles, type AbsentFileEntry } from './use-absent-files.js';
+import { useCatalogLock } from './use-catalog-lock.js';
 
 interface AbsentFilesSectionProps {
   folder: string;
@@ -28,6 +29,8 @@ const lastSeenLabel = (missingAt: number): string => new Date(missingAt).toLocal
 export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
   const dictionary = useDictionary();
   const { entries, forget, isForgetting } = useAbsentFiles(folder);
+  const { disabledReason: lockReason } = useCatalogLock();
+  const mutationsBlocked = lockReason !== undefined;
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState<{ fingerprint: string; name: string } | null>(null);
 
@@ -83,6 +86,8 @@ export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
                 size="small"
                 color="error"
                 data-testid="absent-file-forget"
+                disabled={mutationsBlocked}
+                title={lockReason}
                 onClick={() => setPending({ fingerprint: entry.fingerprint, name: nameOf(entry) })}
               >
                 {dictionary.catalog.forgetEntry}
@@ -105,7 +110,8 @@ export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
           <Button
             color="error"
             variant="contained"
-            disabled={isForgetting}
+            disabled={isForgetting || mutationsBlocked}
+            title={lockReason}
             data-testid="absent-file-forget-confirm"
             onClick={() => {
               if (pending !== null) forget(pending.fingerprint);

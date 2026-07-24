@@ -30,6 +30,7 @@ interface PeopleViewProps {
   folder: string | null;
   addLine: AddLogLine;
   onOpenSettings: () => void;
+  lockReason?: string | undefined;
   intervalMs?: number;
 }
 
@@ -46,10 +47,12 @@ export const PeopleView = ({
   folder,
   addLine,
   onOpenSettings,
+  lockReason,
   intervalMs,
 }: PeopleViewProps) => {
   const dictionary = useDictionary();
   const people = usePeople({ active, folder, addLine, ...(intervalMs === undefined ? {} : { intervalMs }) });
+  const mutationsBlocked = lockReason !== undefined;
   const [rename, setRename] = useState<RenameState | null>(null);
   const [forgetTarget, setForgetTarget] = useState<FacePerson | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -79,7 +82,8 @@ export const PeopleView = ({
           <Button
             variant="outlined"
             size="small"
-            disabled={people.selectedPersonIds.length !== 2 || people.isBusy}
+            disabled={people.selectedPersonIds.length !== 2 || people.isBusy || mutationsBlocked}
+            title={lockReason}
             onClick={() => setMergeOpen(true)}
             data-testid="people-merge-selected"
           >
@@ -101,6 +105,9 @@ export const PeopleView = ({
       {people.activeJobLabel === null ? null : (
         <Alert severity="info" data-testid="people-active-job">{people.activeJobLabel}</Alert>
       )}
+      {mutationsBlocked ? (
+        <Alert severity="warning" data-testid="people-read-only">{lockReason}</Alert>
+      ) : null}
 
       {people.isLoading ? (
         <LoadingState />
@@ -157,6 +164,8 @@ export const PeopleView = ({
                 name={displayName(dictionary, person, index)}
                 selected={people.selectedPersonIds.includes(person.personId)}
                 disabled={people.isBusy}
+                mutationsDisabled={mutationsBlocked}
+                lockReason={lockReason}
                 onToggle={() => people.toggleSelected(person.personId)}
                 onRename={() => setRename({ person, value: displayName(dictionary, person, index) })}
                 onForget={() => setForgetTarget(person)}
@@ -174,7 +183,8 @@ export const PeopleView = ({
                 color="error"
                 variant="outlined"
                 size="small"
-                disabled={people.isBusy}
+                disabled={people.isBusy || mutationsBlocked}
+                title={lockReason}
                 onClick={() => setPurgeOpen(true)}
                 data-testid="people-purge"
               >
@@ -204,7 +214,8 @@ export const PeopleView = ({
           <Button color="inherit" onClick={() => setRename(null)}>{dictionary.common.cancel}</Button>
           <Button
             variant="contained"
-            disabled={rename === null || rename.value.trim().length === 0 || people.isBusy}
+            disabled={rename === null || rename.value.trim().length === 0 || people.isBusy || mutationsBlocked}
+            title={lockReason}
             onClick={() => {
               if (rename === null) return;
               people.rename(rename.person.personId, rename.value.trim());
@@ -228,7 +239,7 @@ export const PeopleView = ({
           )}
         confirmLabel={dictionary.people.merge}
         testId="people-merge-confirm"
-        disabled={people.isBusy}
+        disabled={people.isBusy || mutationsBlocked}
         onClose={() => setMergeOpen(false)}
         onConfirm={() => {
           if (mergeTarget !== null) people.merge(mergeTarget.from.person.personId, mergeTarget.to.person.personId);
@@ -242,7 +253,7 @@ export const PeopleView = ({
         body={dictionary.people.deleteFaceGroupingBody}
         confirmLabel={dictionary.people.delete}
         testId="people-forget-confirm"
-        disabled={people.isBusy}
+        disabled={people.isBusy || mutationsBlocked}
         onClose={() => setForgetTarget(null)}
         onConfirm={() => {
           if (forgetTarget !== null) people.forget(forgetTarget.personId);
@@ -256,7 +267,7 @@ export const PeopleView = ({
         body={dictionary.people.deleteAllFaceDataBody}
         confirmLabel={dictionary.people.deleteAll}
         testId="people-purge-confirm"
-        disabled={people.isBusy}
+        disabled={people.isBusy || mutationsBlocked}
         onClose={() => setPurgeOpen(false)}
         onConfirm={() => {
           people.purge();
@@ -311,6 +322,8 @@ interface PersonCardProps {
   name: string;
   selected: boolean;
   disabled: boolean;
+  mutationsDisabled: boolean;
+  lockReason: string | undefined;
   onToggle: () => void;
   onRename: () => void;
   onForget: () => void;
@@ -321,6 +334,8 @@ const PersonCard = ({
   name,
   selected,
   disabled,
+  mutationsDisabled,
+  lockReason,
   onToggle,
   onRename,
   onForget,
@@ -367,10 +382,10 @@ const PersonCard = ({
       <Typography variant="caption">{dictionary.people.observationCount(person.observationCount)}</Typography>
     </CardContent>
     <CardActions sx={{ px: 1, py: 0.75 }}>
-      <Button size="small" onClick={onRename} disabled={disabled} data-testid="people-rename">
+      <Button size="small" onClick={onRename} disabled={disabled || mutationsDisabled} title={lockReason} data-testid="people-rename">
         {dictionary.people.rename}
       </Button>
-      <Button size="small" color="error" onClick={onForget} disabled={disabled} data-testid="people-forget">
+      <Button size="small" color="error" onClick={onForget} disabled={disabled || mutationsDisabled} title={lockReason} data-testid="people-forget">
         {dictionary.people.delete}
       </Button>
     </CardActions>

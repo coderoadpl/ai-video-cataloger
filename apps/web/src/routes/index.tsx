@@ -171,6 +171,7 @@ export const IndexRoute = () => {
             folder={shell.currentFolder}
             addLine={terminal.addLine}
             onOpenSettings={() => setModalRequest('settings')}
+            lockReason={catalogLock.disabledReason}
           />
         ) : content
       }

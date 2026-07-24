@@ -225,6 +225,34 @@ describe('PeopleView', () => {
     expect(crop.getAttribute('src')).toContain('media://local/');
   });
 
+  it('disables face mutations and shows a read-only notice when the catalog is locked', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 3,
+      people: [
+        person({ personId: 'p1', displayName: 'Alex', observationCount: 2 }),
+        person({ personId: 'p2', observationCount: 1 }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView
+        active
+        folder={FOLDER}
+        addLine={vi.fn()}
+        onOpenSettings={vi.fn()}
+        lockReason="Catalog locked by gui PID 4321"
+        intervalMs={0}
+      />,
+    );
+
+    expect(await screen.findByTestId('people-read-only')).toBeDefined();
+    await waitFor(() => expect(screen.getByTestId('people-purge').getAttribute('disabled')).not.toBeNull());
+    expect(screen.getAllByTestId('people-rename')[0]?.getAttribute('disabled')).not.toBeNull();
+    expect(screen.getAllByTestId('people-forget')[0]?.getAttribute('disabled')).not.toBeNull();
+  });
+
   it('wires rename, merge, forget, and purge actions', async () => {
     const bodies: unknown[] = [];
     stubPeople({
