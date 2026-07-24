@@ -1,7 +1,7 @@
-import { net, protocol } from 'electron';
-import { pathToFileURL } from 'node:url';
+import { protocol } from 'electron';
 
 import { parseMediaUrl, resolveScopedMedia } from './media-scope.js';
+import { serveFile } from './media-serve.js';
 
 export interface MediaProtocolDeps {
   getCurrentFolder(): Promise<string | null>;
@@ -10,7 +10,7 @@ export interface MediaProtocolDeps {
 
 export const registerMediaScheme = (): void => {
   protocol.registerSchemesAsPrivileged([
-    { scheme: 'media', privileges: { stream: true, bypassCSP: false } },
+    { scheme: 'media', privileges: { standard: true, stream: true, bypassCSP: false } },
   ]);
 };
 
@@ -27,6 +27,6 @@ export const registerMediaProtocolHandler = (deps: MediaProtocolDeps): void => {
     );
     if (realPath === null) return new Response(null, { status: 403 });
 
-    return net.fetch(pathToFileURL(realPath).toString());
+    return serveFile(realPath, request.headers.get('Range'));
   });
 };
