@@ -395,6 +395,15 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async relocateFile(fingerprint: string, folderId: string, fileName: string): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      const row = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();
+      if (row === undefined) return;
+      db.update(files).set({ folderId, fileName }).where(eq(files.fingerprint, fingerprint)).run();
+      syncSearchDocument(db, client, fingerprint);
+    });
+  }
+
   async forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
     return this.write((db, client) => {
       const fileRow = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();

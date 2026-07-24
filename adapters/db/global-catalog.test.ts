@@ -273,6 +273,39 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(forgotten.ok && forgotten.value.cropPaths).toEqual(['/home/faces/person-1/exemplar-001.jpg']);
   });
 
+  it('relocateFile moves a row to another folder and keeps the search document in sync', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const folderB: CatalogFolder = {
+      ...folder,
+      folderId: '33333333-3333-4333-8333-333333333333',
+      currentPath: '/media/drive-b',
+      displayName: 'drive-b',
+    };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(folderB);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: null,
+      transcript: null,
+      language: null,
+      tags: [],
+    });
+
+    const relocated = await store.relocateFile(file.fingerprint, folderB.folderId, 'renamed.mp4');
+    expect(relocated.ok).toBe(true);
+
+    const moved = await store.getFile(file.fingerprint);
+    expect(moved.ok && moved.value?.folderId).toBe(folderB.folderId);
+    expect(moved.ok && moved.value?.fileName).toBe('renamed.mp4');
+
+    const results = await store.search({ match: 'renamed*', rankingTerms: ['renamed'], limit: 10, offset: 0 });
+    expect(results.ok && results.value[0]?.fingerprint).toBe(file.fingerprint);
+    expect(results.ok && results.value[0]?.folder.currentPath).toBe('/media/drive-b');
+  });
+
   it('reconcileFolder marks absent files, clears returning files, and skips duplicates elsewhere', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });

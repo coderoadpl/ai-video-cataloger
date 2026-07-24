@@ -541,6 +541,13 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok({ marked, cleared }));
   }
 
+  relocateFile(fingerprint: string, folderId: string, fileName: string): Promise<Result<void, AppError>> {
+    const file = this.files.get(fingerprint);
+    if (file === undefined) return Promise.resolve(ok(undefined));
+    this.files.set(fingerprint, { ...file, folderId, fileName });
+    return Promise.resolve(ok(undefined));
+  }
+
   forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>> {
     const file = this.files.get(fingerprint);
     if (file === undefined) return Promise.resolve(ok({ fingerprint, deleted: false, folderId: null, cropPaths: [] }));

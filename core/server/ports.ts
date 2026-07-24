@@ -173,6 +173,7 @@ export interface GlobalCatalogStore {
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
   reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>>;
+  relocateFile(fingerprint: string, folderId: string, fileName: string): Promise<Result<void, AppError>>;
   forgetEntry(fingerprint: string): Promise<Result<ForgetEntryResult, AppError>>;
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;

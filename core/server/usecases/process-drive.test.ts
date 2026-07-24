@@ -134,6 +134,53 @@ describe('drive processing', () => {
     expect(moved.ok && moved.value?.missingAt).toBe(null);
   });
 
+  it('relocates a resumed file row to the folder it now lives under', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/a/clip.mp4', 'hash-clip');
+    addVideo(deps.fs, '/drive/a/keep.mp4', 'hash-keep');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    await deps.fs.deleteFile('/drive/a/clip.mp4');
+    addVideo(deps.fs, '/drive/b/clip.mp4', 'hash-clip');
+    const second = await processDrive(deps, baseInput, undefined, { runId: 'run-move' });
+    expect(second.ok).toBe(true);
+
+    const folders = await deps.globalCatalog.listFolders();
+    const folderB = folders.ok ? folders.value.find((entry) => entry.currentPath === '/drive/b') : undefined;
+    const moved = await deps.globalCatalog.getFile('hash-clip');
+    expect(folderB).toBeDefined();
+    expect(moved.ok && moved.value?.folderId).toBe(folderB?.folderId);
+    expect(moved.ok && moved.value?.missingAt).toBe(null);
+  });
+
+  it('marks rows missing in a folder that still exists on disk but lost all its videos', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/a/clip.mp4', 'hash-clip');
+    addVideo(deps.fs, '/drive/keep/other.mp4', 'hash-other');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    await deps.fs.deleteFile('/drive/a/clip.mp4');
+    const second = await processDrive(deps, baseInput, undefined, { runId: 'run-empty' });
+    expect(second.ok).toBe(true);
+
+    const emptied = await deps.globalCatalog.getFile('hash-clip');
+    expect(emptied.ok && emptied.value?.missingAt).not.toBe(null);
+  });
+
+  it('leaves rows untouched when the folder is gone from disk (offline drive)', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/a/clip.mp4', 'hash-clip');
+    addVideo(deps.fs, '/drive/keep/other.mp4', 'hash-other');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    await deps.fs.renamePath('/drive/a', '/gone/a');
+    const second = await processDrive(deps, baseInput, undefined, { runId: 'run-offline' });
+    expect(second.ok).toBe(true);
+
+    const offline = await deps.globalCatalog.getFile('hash-clip');
+    expect(offline.ok && offline.value?.missingAt).toBe(null);
+  });
+
   it('continues after file and folder failures and persists run counters', async () => {
     const fs = new ScanFailureFileSystem('/drive');
     const analyzer = new PathResponseAnalyzer();

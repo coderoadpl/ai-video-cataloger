@@ -13,11 +13,13 @@ import {
   JOB_CANCELLED_ERROR_MESSAGE,
   type DriveRunRecord,
   type FileSystemPort,
+  type GlobalCatalogStore,
   type JobExecutionContext,
   type ProcessJobStep,
 } from '../ports.js';
 import type { ProcessDeps, ProcessPipelineInput } from './process.js';
 import { hasProcessedAnalysis, reconcileFolderPresence } from './catalog-index.js';
+import { readFolderMarker } from './folder-identity.js';
 import { processVideoPipeline } from './process.js';
 import { scanFolder, type ScanVideo } from './scan.js';
 import { isSupportedVideoExtension } from './shared.js';
@@ -210,6 +212,8 @@ export const processDrive = async (
       if (result.ok) {
         consecutiveFailures = 0;
         if (skipped.value) {
+          const relocated = await relocateResumedFile(deps, globalCatalog, folder.path, video);
+          if (!relocated.ok) return relocated;
           state.run.filesSkipped += 1;
           folderCounts.filesSkipped += 1;
         } else {
@@ -266,6 +270,25 @@ export const processDrive = async (
         now: now().getTime(),
       },
     );
+    if (!reconciled.ok) return reconciled;
+  }
+
+  const visitedFolderPaths = new Set(discovery.value.folders.map((entry) => entry.path));
+  const catalogFolders = await globalCatalog.listFolders();
+  if (!catalogFolders.ok) return catalogFolders;
+  for (const catalogFolder of catalogFolders.value) {
+    if (!isWithinRoot(catalogFolder.currentPath, discovery.value.root)) continue;
+    if (visitedFolderPaths.has(catalogFolder.currentPath)) continue;
+    const stillOnDisk = await deps.fs.exists(catalogFolder.currentPath);
+    if (!stillOnDisk.ok) return stillOnDisk;
+    if (!stillOnDisk.value) continue;
+    const reconciled = await globalCatalog.reconcileFolder({
+      folderId: catalogFolder.folderId,
+      presentFingerprints: [],
+      fingerprintsPresentElsewhere: presentAcrossRun,
+      markMissing: true,
+      now: now().getTime(),
+    });
     if (!reconciled.ok) return reconciled;
   }
 
@@ -354,6 +377,27 @@ const processInput = (
   ...(input.force === undefined ? {} : { force: input.force }),
   batch: { current, total },
 });
+
+const relocateResumedFile = async (
+  deps: ProcessDeps,
+  globalCatalog: GlobalCatalogStore,
+  folderPath: string,
+  video: ScanVideo,
+): Promise<Result<void, AppError>> => {
+  if (video.contentHash === null) return ok(undefined);
+  const marker = await readFolderMarker(deps.fs, folderPath);
+  if (!marker.ok) return marker;
+  if (marker.value === null) return ok(undefined);
+  const existing = await globalCatalog.getFile(video.contentHash);
+  if (!existing.ok) return existing;
+  if (existing.value === null) return ok(undefined);
+  const fileName = deps.fs.basename(video.path);
+  if (existing.value.folderId === marker.value.folderId && existing.value.fileName === fileName) return ok(undefined);
+  return globalCatalog.relocateFile(video.contentHash, marker.value.folderId, fileName);
+};
+
+const isWithinRoot = (candidate: string, root: string): boolean =>
+  candidate === root || candidate.startsWith(`${root}/`) || candidate.startsWith(`${root}\\`);
 
 const alreadyProcessed = async (
   deps: ProcessDeps,
