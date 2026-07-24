@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { parseMediaUrl, resolveScopedImage, resolveScopedMedia, resolveScopedPath } from './media-scope.js';
+import { parseMediaUrl, resolveRevealPath, resolveScopedImage, resolveScopedMedia, resolveScopedPath } from './media-scope.js';
 
 const tempRoots: string[] = [];
 
@@ -115,6 +115,32 @@ describe('resolveScopedMedia', () => {
 
     expect(await resolveScopedMedia(videoPath, root, [facesRoot])).toBe(await realpath(videoPath));
     expect(await resolveScopedMedia(outsideVideoPath, root, [facesRoot])).toBeNull();
+  });
+});
+
+describe('resolveRevealPath', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('reveals a target under any known catalog folder, not only the current one', async () => {
+    const current = await tempRoot();
+    const otherCatalogFolder = await tempRoot();
+    const target = path.join(otherCatalogFolder, 'clip.mp4');
+    await writeFile(target, 'video', 'utf8');
+
+    expect(await resolveRevealPath(target, [current, otherCatalogFolder])).toBe(await realpath(target));
+  });
+
+  it('rejects a target outside every known folder and skips null entries', async () => {
+    const current = await tempRoot();
+    const outside = await tempRoot();
+    const target = path.join(outside, 'clip.mp4');
+    await writeFile(target, 'video', 'utf8');
+
+    expect(await resolveRevealPath(target, [null, current])).toBeNull();
+    expect(await resolveRevealPath('relative/clip.mp4', [current])).toBeNull();
   });
 });
 

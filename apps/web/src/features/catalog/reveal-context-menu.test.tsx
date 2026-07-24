@@ -42,7 +42,7 @@ const video: ScanVideo = {
 
 describe('reveal in finder context menu', () => {
   it('reveals a right-clicked video row in Finder', async () => {
-    const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(undefined);
+    const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(true);
     renderThemed(
       <VideoList
         videos={[video]}
@@ -60,6 +60,27 @@ describe('reveal in finder context menu', () => {
     fireEvent.click(item);
 
     await waitFor(() => expect(reveal).toHaveBeenCalledWith('/videos/clip.mp4'));
+    reveal.mockRestore();
+  });
+
+  it('shows an error toast when the reveal target is outside every known folder', async () => {
+    const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(false);
+    renderThemed(
+      <VideoList
+        videos={[video]}
+        selectedKey={null}
+        analyzingPath={null}
+        isLoading={false}
+        isError={false}
+        error={null}
+        onSelect={() => {}}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId('video-item'));
+    fireEvent.click(await screen.findByTestId('reveal-in-finder-item'));
+
+    expect(await screen.findByTestId('reveal-failed-toast')).toBeDefined();
     reveal.mockRestore();
   });
 });

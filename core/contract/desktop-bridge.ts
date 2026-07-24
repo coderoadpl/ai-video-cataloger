@@ -87,7 +87,7 @@ export interface DesktopBridge {
   getAppVersion(): Promise<string>;
   api: DesktopApiBridge;
   folder: FolderStoreBridge;
-  revealInFinder(path: string): Promise<void>;
+  revealInFinder(path: string): Promise<boolean>;
   window: WindowControlsBridge;
   menu: MenuEventsBridge;
   onboarding: OnboardingBridge;

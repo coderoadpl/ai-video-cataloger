@@ -120,9 +120,7 @@ const desktopBridge: DesktopBridge = {
       await invokeUnknown(CHANNELS.folderClearRecent);
     },
   },
-  revealInFinder: async (targetPath) => {
-    await invokeUnknown(CHANNELS.revealInFinder, targetPath);
-  },
+  revealInFinder: async (targetPath) => z.boolean().parse(await invokeUnknown(CHANNELS.revealInFinder, targetPath)),
   window: {
     close: () => send(CHANNELS.windowClose),
     minimize: () => send(CHANNELS.windowMinimize),

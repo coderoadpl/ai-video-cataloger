@@ -103,7 +103,7 @@ const devBridge: DesktopBridge = {
     removeRecent: () => Promise.resolve(),
     clearRecent: () => Promise.resolve(),
   },
-  revealInFinder: () => Promise.resolve(),
+  revealInFinder: () => Promise.resolve(true),
   window: { close: () => undefined, minimize: () => undefined, maximize: () => undefined },
   menu: { on: () => noopUnsubscribe },
   onboarding: { getCompleted: () => Promise.resolve(true), setCompleted: () => Promise.resolve() },

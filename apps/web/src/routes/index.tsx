@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Box, Button, ButtonGroup } from '@mui/material';
 
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
@@ -75,6 +75,27 @@ export const IndexRoute = () => {
   const treeCanAnalyze = tree.videoTotal > tree.processedTotal || tree.hasUnknownPending;
 
   const clearSearch = globalSearch.clearSearch;
+  const [pendingSelection, setPendingSelection] = useState<{ folderPath: string; videoPath: string } | null>(null);
+  const selectKey = catalog.selectKey;
+  const currentFolder = shell.currentFolder;
+  const selectRecentFolder = shell.selectRecentFolder;
+  const openSearchResult = useCallback(
+    (folderPath: string, videoPath: string) => {
+      clearSearch();
+      if (currentFolder === folderPath) {
+        selectKey(videoPath);
+        return;
+      }
+      setPendingSelection({ folderPath, videoPath });
+      selectRecentFolder(folderPath);
+    },
+    [clearSearch, currentFolder, selectKey, selectRecentFolder],
+  );
+  useEffect(() => {
+    if (pendingSelection === null || currentFolder !== pendingSelection.folderPath) return;
+    selectKey(pendingSelection.videoPath);
+    setPendingSelection(null);
+  }, [pendingSelection, currentFolder, selectKey]);
   const sidebarCatalog = useMemo(
     () => ({
       ...catalog,
@@ -121,7 +142,7 @@ export const IndexRoute = () => {
   );
 
   const detailContent = activeView === 'people' ? null : globalSearch.active ? (
-    <SearchResults search={globalSearch} onOpenFolder={shell.selectRecentFolder} />
+    <SearchResults search={globalSearch} onOpenFolder={shell.selectRecentFolder} onOpenResult={openSearchResult} />
   ) : (
     <DetailsPanel
       video={selected}

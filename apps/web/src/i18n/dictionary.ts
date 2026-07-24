@@ -12,6 +12,7 @@ export interface Dictionary {
     openSettings: string;
     ok: string;
     revealInFinder: string;
+    revealFailed: string;
   };
   language: {
     stepTitle: string;
@@ -501,6 +502,7 @@ export const en: Dictionary = {
     openSettings: 'Open Settings',
     ok: 'OK',
     revealInFinder: 'Reveal in Finder',
+    revealFailed: 'Could not reveal this file: it is outside every known catalog folder.',
   },
   language: {
     stepTitle: 'Language',
@@ -1037,6 +1039,7 @@ export const pl: Dictionary = {
     openSettings: 'Otwórz ustawienia',
     ok: 'OK',
     revealInFinder: 'Pokaż w Finderze',
+    revealFailed: 'Nie można pokazać tego pliku: jest poza wszystkimi znanymi folderami katalogu.',
   },
   language: {
     stepTitle: 'Język',

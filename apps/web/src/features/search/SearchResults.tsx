@@ -14,6 +14,7 @@ import type { GlobalSearchState, SearchGroup } from './use-global-search.js';
 interface SearchResultsProps {
   search: GlobalSearchState;
   onOpenFolder: (folderPath: string) => void;
+  onOpenResult: (folderPath: string, videoPath: string) => void;
 }
 
 const Centered = ({ children }: { children: ReactNode }) => (
@@ -37,7 +38,7 @@ const Centered = ({ children }: { children: ReactNode }) => (
 const errorMessage = (error: unknown, dictionary: Dictionary): string =>
   error instanceof ApiError ? error.appError.message : dictionary.search.genericError;
 
-export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
+export const SearchResults = ({ search, onOpenFolder, onOpenResult }: SearchResultsProps) => {
   const dictionary = useDictionary();
   const revealMenu = useRevealContextMenu();
 
@@ -85,12 +86,13 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
             key={group.folder.folderId}
             group={group}
             onOpenFolder={onOpenFolder}
+            onOpenResult={onOpenResult}
             revealMenu={revealMenu}
             dictionary={dictionary}
           />
         ))}
       </Box>
-      <RevealContextMenu controller={revealMenu} onReveal={(path) => void bridge.revealInFinder(path)} />
+      <RevealContextMenu controller={revealMenu} onReveal={(path) => bridge.revealInFinder(path)} />
     </Box>
   );
 };
@@ -98,11 +100,13 @@ export const SearchResults = ({ search, onOpenFolder }: SearchResultsProps) => {
 const SearchFolderGroup = ({
   group,
   onOpenFolder,
+  onOpenResult,
   revealMenu,
   dictionary,
 }: {
   group: SearchGroup;
   onOpenFolder: (folderPath: string) => void;
+  onOpenResult: (folderPath: string, videoPath: string) => void;
   revealMenu: RevealContextMenuController;
   dictionary: Dictionary;
 }) => (
@@ -135,7 +139,7 @@ const SearchFolderGroup = ({
       {group.results.map((result, index) => (
         <Fragment key={result.fingerprint}>
           {index === 0 ? null : <Divider component="li" />}
-          <SearchResultRow result={result} revealMenu={revealMenu} dictionary={dictionary} />
+          <SearchResultRow result={result} onOpenResult={onOpenResult} revealMenu={revealMenu} dictionary={dictionary} />
         </Fragment>
       ))}
     </List>
@@ -144,20 +148,23 @@ const SearchFolderGroup = ({
 
 const SearchResultRow = ({
   result,
+  onOpenResult,
   revealMenu,
   dictionary,
 }: {
   result: SearchOutput['results'][number];
+  onOpenResult: (folderPath: string, videoPath: string) => void;
   revealMenu: RevealContextMenuController;
   dictionary: Dictionary;
 }) => {
   const filePath = `${result.folder.currentPath}/${result.fileName}`;
+  const canOpen = result.folder.online;
   const reachable = result.folder.online && !result.missing;
   return (
     <ListItemButton
-      disabled={!reachable}
+      disabled={!canOpen}
       onClick={() => {
-        if (reachable) void bridge.revealInFinder(filePath);
+        if (canOpen) onOpenResult(result.folder.currentPath, filePath);
       }}
       onContextMenu={reachable ? (event) => revealMenu.open(event, filePath) : undefined}
       title={filePath}

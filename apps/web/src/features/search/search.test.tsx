@@ -87,17 +87,23 @@ const searchState: GlobalSearchState = {
 };
 
 describe('SearchResults', () => {
-  it('renders grouped results and reveals online files through the bridge', () => {
-    const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(undefined);
+  it('opens the detail of a clicked online result and reveals through the context menu', () => {
+    const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(true);
+    const onOpenResult = vi.fn();
 
-    renderThemed(<SearchResults search={searchState} onOpenFolder={() => undefined} />);
+    renderThemed(
+      <SearchResults search={searchState} onOpenFolder={() => undefined} onOpenResult={onOpenResult} />,
+    );
 
-    expect(screen.getByText('2 result(s)')).toBeDefined();
     expect(screen.getByText('drive not connected')).toBeDefined();
     expect(screen.getByText('aerial')).toBeDefined();
 
     fireEvent.click(screen.getByText('drone-clip.mp4'));
+    expect(onOpenResult).toHaveBeenCalledWith('/online', '/online/clip.mp4');
+    expect(reveal).not.toHaveBeenCalled();
 
+    fireEvent.contextMenu(screen.getByText('drone-clip.mp4'));
+    fireEvent.click(screen.getByTestId('reveal-in-finder-item'));
     expect(reveal).toHaveBeenCalledWith('/online/clip.mp4');
     reveal.mockRestore();
   });

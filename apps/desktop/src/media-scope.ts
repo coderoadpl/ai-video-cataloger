@@ -67,6 +67,15 @@ export const resolveScopedMedia = async (
   return realRequested;
 };
 
+export const resolveRevealPath = async (
+  requestedPath: string,
+  rootFolders: readonly (string | null)[],
+): Promise<string | null> => {
+  if (!path.isAbsolute(requestedPath)) return null;
+  const roots = rootFolders.filter((folder): folder is string => folder !== null);
+  return resolveAnyScopedPath(requestedPath, roots);
+};
+
 const resolveAnyScopedPath = async (
   requestedPath: string,
   rootFolders: readonly string[],

@@ -21,7 +21,7 @@ import type { App } from '@server/src/create-app.js';
 
 import { CHANNELS } from './channels.js';
 import type { FolderStore } from './folder-store.js';
-import { resolveScopedPath } from './media-scope.js';
+import { resolveRevealPath } from './media-scope.js';
 import { updateRecentFoldersMenu } from './menu.js';
 
 export interface IpcDeps {
@@ -115,13 +115,16 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
     await updateMenu(deps);
   });
 
-  ipcMain.handle(CHANNELS.revealInFinder, async (event, pathInput: unknown): Promise<void> => {
-    if (!isTrustedSender(event)) return;
+  ipcMain.handle(CHANNELS.revealInFinder, async (event, pathInput: unknown): Promise<boolean> => {
+    if (!isTrustedSender(event)) return false;
     const targetPath = stringSchema.safeParse(pathInput);
-    if (!targetPath.success || !path.isAbsolute(targetPath.data)) return;
-    const scopedPath = await resolveScopedPath(targetPath.data, await deps.folderStore.getCurrent());
-    if (scopedPath === null) return;
+    if (!targetPath.success || !path.isAbsolute(targetPath.data)) return false;
+    const app = await deps.desktopApp;
+    const knownFolders = [await deps.folderStore.getCurrent(), ...(await app.catalogFolderPaths())];
+    const scopedPath = await resolveRevealPath(targetPath.data, knownFolders);
+    if (scopedPath === null) return false;
     shell.showItemInFolder(scopedPath);
+    return true;
   });
 
   ipcMain.handle(CHANNELS.onboardingGetCompleted, async (event): Promise<boolean> => {

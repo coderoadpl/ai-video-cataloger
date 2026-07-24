@@ -224,7 +224,7 @@ export const VideoList = ({
           ))}
         </Box>
       </Box>
-      <RevealContextMenu controller={revealMenu} onReveal={(path) => void bridge.revealInFinder(path)} />
+      <RevealContextMenu controller={revealMenu} onReveal={(path) => bridge.revealInFinder(path)} />
     </List>
   );
 };

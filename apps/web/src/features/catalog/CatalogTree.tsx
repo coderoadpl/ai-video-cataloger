@@ -389,7 +389,7 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skip
           </Box>
         </Box>
       </List>
-      <RevealContextMenu controller={revealMenu} onReveal={(path) => void bridge.revealInFinder(path)} />
+      <RevealContextMenu controller={revealMenu} onReveal={(path) => bridge.revealInFinder(path)} />
     </Box>
   );
 };

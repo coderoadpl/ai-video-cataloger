@@ -21,6 +21,7 @@ const buildDesktopApp = (): App => {
       cancel: unusedJob,
       onSettled: () => undefined,
     },
+    catalogFolderPaths: async () => [],
     dispose: async () => undefined,
   };
 };
