@@ -11,3 +11,4 @@ release/
 test-results/
 playwright-report/
 .cli-stage/
+**/__avc_probe_*/

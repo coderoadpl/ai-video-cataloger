@@ -60,6 +60,15 @@ export default defineConfig({
           testTimeout: 30000,
         },
       },
+      {
+        extends: true,
+        test: {
+          name: 'config',
+          environment: 'node',
+          include: ['config-regression/**/*.test.ts'],
+          testTimeout: 120000,
+        },
+      },
     ],
   },
 });

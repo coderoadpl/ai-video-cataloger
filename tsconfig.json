@@ -22,7 +22,7 @@
       "@server/*": ["apps/server/*"]
     }
   },
-  "include": ["core", "adapters", "apps", "scripts/smoke.ts", "*.config.ts", ".dependency-cruiser.cjs"],
+  "include": ["core", "adapters", "apps", "config-regression", "scripts/smoke.ts", "*.config.ts", ".dependency-cruiser.cjs"],
   "exclude": [
     "node_modules",
     "dist",

@@ -259,7 +259,7 @@ changes; `test:e2e:cli` where the staged bundle changes.
   `test:e2e:gui` if readiness UI changes.
 - **Rollback:** inline `respond` back; single-file revert.
 
-### Phase 2 — Config-regression probes for existing boundaries
+### Phase 2 — Config-regression probes for existing boundaries — **DONE 2026-07-25** (new `config` vitest project under `config-regression/`; `lint-gates.test.ts` plants illegal fixtures into the real tree and runs the real eslint/depcruise, asserting the named rule fires for AS_BAN, no-explicit-any, core→adapters, CLI→core/server, renderer axios/fetch/electron, cross-feature islands, query-hook type-args, RAW_COLOR_BAN, plus depcruise no-frameworks-in-core + severity table, and POSITIVE grants — components/ui→i18n and gallery→features must pass; `catalog-lock.test.ts` is the hotspot-4 structural probe: every mutating route is lock-wrapped or a named no-write exception, anti-vacuous + no-stale-allowlist + planted-violation detector; fixtures gitignored and always swept; no rule was found unenforced)
 - **Scope:** new `config-regression/` vitest project + gitignored killed
   fixtures; probes: layer allow-lists, `web-i18n` positive grants,
   `web-gallery` second root, `RAW_COLOR_BAN`, query bans, `AS_BAN`,
