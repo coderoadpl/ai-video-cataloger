@@ -3,11 +3,13 @@ import { Box, List, ListItem, Paper, Typography } from '@mui/material';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type DetailsVideo } from './details-video.js';
+import { DetailsSkeleton } from './DetailsSkeleton.js';
 import { VideoDetails } from './VideoDetails.js';
 
 interface DetailsPanelProps {
   video: DetailsVideo | null;
   analyzing: boolean;
+  loading?: boolean;
   onAnalyze?: ((video: DetailsVideo) => void) | undefined;
   disabledReason?: string | undefined;
   onTagSearch?: ((tag: string) => void) | undefined;
@@ -38,8 +40,10 @@ const Welcome = ({ dictionary }: { dictionary: Dictionary }) => (
   </Box>
 );
 
-export const DetailsPanel = ({ video, analyzing, onAnalyze, disabledReason, onTagSearch }: DetailsPanelProps) => {
+export const DetailsPanel = ({ video, analyzing, loading = false, onAnalyze, disabledReason, onTagSearch }: DetailsPanelProps) => {
   const dictionary = useDictionary();
+
+  if (video === null && loading) return <DetailsSkeleton />;
 
   return video === null ? (
     <Welcome dictionary={dictionary} />

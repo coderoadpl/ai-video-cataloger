@@ -101,6 +101,7 @@ export const IndexRoute = () => {
     <DetailsPanel
       video={selected}
       analyzing={analyzing}
+      loading={shell.currentFolder !== null && selected === null && (catalog.isLoading || tree.isLoading)}
       onAnalyze={processing.analyze}
       disabledReason={disabledReason}
       onTagSearch={globalSearch.submitSearch}

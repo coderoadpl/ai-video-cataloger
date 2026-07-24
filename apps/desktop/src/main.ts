@@ -2,7 +2,7 @@ import path from 'node:path';
 import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 
-import { app, BrowserWindow } from 'electron';
+import { app, BrowserWindow, nativeTheme } from 'electron';
 
 import type { App } from '@server/src/create-app.js';
 
@@ -53,6 +53,7 @@ const createWindow = async (): Promise<void> => {
     minWidth: 900,
     minHeight: 600,
     show: false,
+    backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f5f5f7',
     titleBarStyle: 'default',
     webPreferences: {
       preload: path.join(currentDirectory, 'preload.cjs'),
