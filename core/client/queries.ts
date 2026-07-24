@@ -250,9 +250,16 @@ export const healthQuery = (api: ApiClient) =>
     call: ({ signal }) => api.health(signal),
   });
 
+export const catalogLockRefetchInterval =
+  (intervalMs = 5_000) =>
+  (query: RefetchQuery<CatalogLockOutput>): number | false =>
+    query.state.data?.blockedBy != null ? intervalMs : false;
+
 export const catalogLockQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: catalogLockScopes.all(),
+    staleTime: 0,
+    refetchInterval: catalogLockRefetchInterval(),
     call: ({ signal }) => api.catalogLockStatus(signal),
   });
 

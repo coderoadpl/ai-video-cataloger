@@ -184,6 +184,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   app.post(API_ROUTES.resetAll.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.resetAll.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.resetAll.output);
     const input = parseInput(API_ROUTES.resetAll.input, body.value);
@@ -192,6 +194,8 @@ export const buildApp = (deps: AppDeps): Hono => {
   });
 
   app.post(API_ROUTES.resetSingle.path, async (context) => {
+    const lock = await requireCatalogWriteLock(deps);
+    if (!lock.ok) return respond(lock, API_ROUTES.resetSingle.output);
     const body = await readBody(context);
     if (!body.ok) return respond(body, API_ROUTES.resetSingle.output);
     const input = parseInput(API_ROUTES.resetSingle.input, body.value);

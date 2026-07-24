@@ -1,5 +1,5 @@
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
 import initSqlJs from 'sql.js';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -115,7 +115,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       pid: 987654,
       processName: 'gui',
       startedAt: '2026-01-01T00:00:00.000Z',
-      hostname: 'host-a',
+      hostname: hostname(),
     });
     const store = new SqlJsGlobalCatalogStore({
       homeDirectory: home,
@@ -128,6 +128,131 @@ describe('SqlJsGlobalCatalogStore', () => {
 
     expect(status.ok && status.value.owner?.processName).toBe('cli');
     await store.dispose();
+  });
+
+  it('treats a corrupt (0-byte) lock file as stale and takes it over', async () => {
+    const home = await tempHome();
+    await mkdir(path.dirname(lockPath(home)), { recursive: true });
+    await writeFile(lockPath(home), '', 'utf8');
+    const store = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: () => true,
+    });
+
+    expect((await store.upsertFolder(folder)).ok).toBe(true);
+    const status = await store.lockStatus();
+
+    expect(status.ok && status.value.owner?.processName).toBe('cli');
+    await store.dispose();
+  });
+
+  it('does not crash the eager constructor on a corrupt lock file', async () => {
+    const home = await tempHome();
+    await mkdir(path.dirname(lockPath(home)), { recursive: true });
+    await writeFile(lockPath(home), '{ not json', 'utf8');
+
+    expect(() => new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'gui',
+      lockMode: 'eager',
+      isProcessAlive: () => true,
+    })).not.toThrow();
+  });
+
+  it('never auto-takes over a lock held by a foreign hostname', async () => {
+    const home = await tempHome();
+    await writeLock(home, {
+      pid: 987654,
+      processName: 'gui',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      hostname: `${hostname()}-other-machine`,
+    });
+    const store = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: () => false,
+    });
+
+    const blocked = await store.upsertFolder(folder);
+    const status = await store.lockStatus();
+
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.error.code).toBe('catalog_locked');
+    expect(status.ok && status.value.writable).toBe(false);
+    expect(status.ok && status.value.blockedBy?.hostname).toBe(`${hostname()}-other-machine`);
+  });
+
+  it('reports a lazy store with no lock file as writable', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+    });
+
+    const status = await store.lockStatus();
+
+    expect(status.ok && status.value.writable).toBe(true);
+    expect(status.ok && status.value.owner).toBeNull();
+    expect(status.ok && status.value.blockedBy).toBeNull();
+  });
+
+  it('does not persist a fresh database on a read while a foreign process holds the lock', async () => {
+    const home = await tempHome();
+    await writeLock(home, {
+      pid: 123456,
+      processName: 'gui',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      hostname: hostname(),
+    });
+    const reader = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: () => true,
+    });
+
+    expect((await reader.counts()).ok).toBe(true);
+
+    const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+    await expect(readFile(databasePath)).rejects.toThrow();
+  });
+
+  it('does not double-hold when a competing writer wins the re-read after create', async () => {
+    const home = await tempHome();
+    const foreign = {
+      pid: 999999,
+      processName: 'gui' as const,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      hostname: hostname(),
+    };
+    let created = false;
+    const store = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: () => true,
+      lockFs: {
+        mkdirSync: () => undefined,
+        openSync: () => {
+          if (created) {
+            const error: NodeJS.ErrnoException = new Error('exists');
+            error.code = 'EEXIST';
+            throw error;
+          }
+          created = true;
+          return 1;
+        },
+        writeFileSync: () => undefined,
+        fsyncSync: () => undefined,
+        closeSync: () => undefined,
+        readFileSync: () => `${JSON.stringify(foreign)}\n`,
+        unlinkSync: () => undefined,
+      },
+    });
+
+    const blocked = await store.upsertFolder(folder);
+
+    expect(blocked.ok).toBe(false);
+    if (!blocked.ok) expect(blocked.error.code).toBe('catalog_locked');
   });
 
   it('allows reads while another process holds the catalog lock', async () => {

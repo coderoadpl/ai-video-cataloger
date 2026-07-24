@@ -27,7 +27,10 @@ export const useCatalogLock = (): CatalogLockUi => {
             color="inherit"
             size="small"
             onClick={() => {
-              void catalogLockRetry.mutateAsync(undefined).then(() => catalogLock.refetch());
+              void catalogLockRetry
+                .mutateAsync(undefined)
+                .then(() => catalogLock.refetch())
+                .catch(() => catalogLock.refetch());
             }}
           >
             {dictionary.catalog.retryLock}
