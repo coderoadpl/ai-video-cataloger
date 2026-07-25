@@ -24,7 +24,7 @@ import {
   type VideoRow as VideoRowData,
 } from './core/index.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
-import { SkippedBadge, thumbnailLoading } from './VideoList.js';
+import { thumbnailLoading } from './VideoList.js';
 import { useThumbnailGeneration } from './use-thumbnail-generation.js';
 import { useWindowedList } from './use-windowed-list.js';
 
@@ -33,7 +33,6 @@ interface CatalogTreeProps {
   rootVideos: readonly CatalogVideo[];
   selectedKey: string | null;
   analyzingPath: string | null;
-  skippedPaths: ReadonlySet<string>;
   thumbnailFailedPaths?: ReadonlySet<string>;
   onSelect: (video: CatalogVideo) => void;
   registerVideos: (videos: readonly CatalogVideo[]) => void;
@@ -143,7 +142,6 @@ const VideoRowView = ({
   row,
   selected,
   analyzing,
-  skipped,
   thumbnailLoadingState,
   onSelect,
   onContextMenu,
@@ -151,12 +149,10 @@ const VideoRowView = ({
   row: VideoRowData;
   selected: boolean;
   analyzing: boolean;
-  skipped: boolean;
   thumbnailLoadingState: boolean;
   onSelect: (video: CatalogVideo) => void;
   onContextMenu: (event: MouseEvent, path: string) => void;
 }) => {
-  const dictionary = useDictionary();
   const video = row.video;
   const height = hasErrorLine(video) ? ERROR_VIDEO_ROW_HEIGHT : VIDEO_ROW_HEIGHT;
   return (
@@ -199,7 +195,6 @@ const VideoRowView = ({
           ) : (
             <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
           )}
-          {skipped ? <SkippedBadge dictionary={dictionary} /> : null}
         </Box>
         {hasErrorLine(video) ? (
           <Typography
@@ -260,7 +255,7 @@ const FolderFetcher = ({
   return null;
 };
 
-export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skippedPaths, thumbnailFailedPaths = EMPTY_FAILED, onSelect, registerVideos }: CatalogTreeProps) => {
+export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, thumbnailFailedPaths = EMPTY_FAILED, onSelect, registerVideos }: CatalogTreeProps) => {
   const dictionary = useDictionary();
   const revealMenu = useRevealContextMenu();
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set(['']));
@@ -388,7 +383,6 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, skip
                   row={row}
                   selected={keyOf(row.video) === selectedKey}
                   analyzing={row.video.path === analyzingPath}
-                  skipped={skippedPaths.has(row.video.path)}
                   thumbnailLoadingState={isThumbnailLoading(row.video)}
                   onSelect={onSelect}
                   onContextMenu={revealMenu.open}

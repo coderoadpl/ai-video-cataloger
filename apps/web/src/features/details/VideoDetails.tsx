@@ -63,7 +63,7 @@ const DuplicateDetail = ({
       )}
     </Box>
     {onAnalyze === undefined ? null : (
-      <Box>
+      <Box sx={{ mt: 1 }}>
         <Button
           data-testid="analyze-anyway-button"
           variant="outlined"

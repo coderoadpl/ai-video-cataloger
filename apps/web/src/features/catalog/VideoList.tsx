@@ -1,5 +1,5 @@
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
-import { Box, Chip, CircularProgress, List, ListItemButton, Typography, type SvgIconProps } from '@mui/material';
+import { Box, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
 
@@ -10,11 +10,9 @@ import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
-import { SkipNextIcon } from '../../components/ui/icons.js';
 import { type CatalogVideo, keyOf } from './core/index.js';
 import { useWindowedList } from './use-windowed-list.js';
 
-const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
 const EMPTY_FAILED: ReadonlySet<string> = new Set();
 const VIDEO_ROW_HEIGHT = 96;
 const THUMB_BOX = 56;
@@ -34,7 +32,6 @@ interface VideoListProps {
   isError: boolean;
   error: unknown;
   onSelect: (video: CatalogVideo) => void;
-  skippedPaths?: ReadonlySet<string>;
   thumbnailFailedPaths?: ReadonlySet<string>;
   maxHeight?: number | undefined;
 }
@@ -43,22 +40,6 @@ export const thumbnailLoading = (
   video: Pick<CatalogVideo, 'path' | 'artifacts'>,
   failedPaths: ReadonlySet<string>,
 ): boolean => video.artifacts.thumbnailPath === null && !failedPaths.has(video.path);
-
-const SkippedGlyph = (props: SvgIconProps) => <SkipNextIcon fontSize="inherit" {...props} />;
-
-export const SkippedBadge = ({ dictionary }: { dictionary: Dictionary }) => (
-  <Chip
-    size="small"
-    icon={<SkippedGlyph />}
-    label={dictionary.catalog.skipped}
-    data-testid="skipped-badge"
-    sx={(theme) => ({
-      bgcolor: theme.palette.status.notTracked.soft,
-      color: theme.palette.status.notTracked.main,
-      '& .MuiChip-icon': { color: 'inherit', fontSize: '0.9rem', marginLeft: '8px', marginRight: '3px' },
-    })}
-  />
-);
 
 const Centered = ({ children }: { children: ReactNode }) => (
   <Box
@@ -85,20 +66,16 @@ const VideoRow = ({
   video,
   selected,
   analyzing,
-  skipped,
   thumbnailLoadingState,
   onSelect,
   onContextMenu,
-  dictionary,
 }: {
   video: CatalogVideo;
   selected: boolean;
   analyzing: boolean;
-  skipped: boolean;
   thumbnailLoadingState: boolean;
   onSelect: (video: CatalogVideo) => void;
   onContextMenu: (event: MouseEvent, path: string) => void;
-  dictionary: Dictionary;
 }) => (
   <ListItemButton
     selected={selected}
@@ -135,7 +112,6 @@ const VideoRow = ({
         ) : (
           <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
         )}
-        {skipped ? <SkippedBadge dictionary={dictionary} /> : null}
       </Box>
       {video.status === 'error' && video.errorMessage != null && video.errorMessage.length > 0 ? (
         <Typography
@@ -159,7 +135,6 @@ export const VideoList = ({
   isError,
   error,
   onSelect,
-  skippedPaths = EMPTY_SKIPPED,
   thumbnailFailedPaths = EMPTY_FAILED,
   maxHeight,
 }: VideoListProps) => {
@@ -220,11 +195,9 @@ export const VideoList = ({
               video={video}
               selected={keyOf(video) === selectedKey}
               analyzing={video.path === analyzingPath}
-              skipped={skippedPaths.has(video.path)}
               thumbnailLoadingState={thumbnailLoading(video, thumbnailFailedPaths)}
               onSelect={onSelect}
               onContextMenu={revealMenu.open}
-              dictionary={dictionary}
             />
           ))}
         </Box>

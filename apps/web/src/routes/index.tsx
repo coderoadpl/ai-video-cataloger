@@ -3,6 +3,7 @@ import { Box } from '@mui/material';
 
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
+import { DriveSummaryDialog } from '../components/ui/dialogs/DriveSummaryDialog.js';
 import { CancelConfirmationDialog } from '../components/ui/dialogs/CancelConfirmationDialog.js';
 import { ProcessingOverlay } from '../components/ui/ProcessingOverlay.js';
 import { useTerminalLog } from '../components/ui/use-terminal-log.js';
@@ -114,7 +115,6 @@ export const IndexRoute = () => {
       tree={tree}
       showTree={showTree}
       analyzingPath={processing.analyzingPath}
-      skippedPaths={processing.skippedPaths}
       lockBanner={catalogLock.lockBanner}
       registerVideos={videoRegistry.register}
       toolbar={
@@ -184,6 +184,11 @@ export const IndexRoute = () => {
         open={processing.batchSummary.open}
         results={processing.batchSummary.results}
         onClose={processing.closeBatchSummary}
+      />
+      <DriveSummaryDialog
+        open={processing.driveSummary.open}
+        counts={processing.driveSummary.counts}
+        onClose={processing.closeDriveSummary}
       />
     </>
   );

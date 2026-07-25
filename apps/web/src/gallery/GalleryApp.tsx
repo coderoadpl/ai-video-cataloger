@@ -14,7 +14,6 @@ import { DuplicateBadge } from '../components/ui/DuplicateBadge.js';
 import { FolderIcon, PlayCircleIcon } from '../components/ui/icons.js';
 import { MediaThumbnail } from '../components/ui/MediaThumbnail.js';
 import { VideoStatusBadge } from '../components/ui/VideoStatusBadge.js';
-import { SkippedBadge } from '../features/catalog/VideoList.js';
 import { getDict } from '../i18n/dictionary.js';
 import { createAppTheme, type ThemeMode } from '../theme.js';
 
@@ -36,7 +35,6 @@ const badgeSpecimens: readonly Specimen[] = [
   { id: 'badge-error', label: 'Error / missing', node: <VideoStatusBadge status="error" variant="details" /> },
   { id: 'badge-not-tracked', label: 'Not Tracked', node: <VideoStatusBadge status="not_tracked" variant="details" /> },
   { id: 'badge-duplicate', label: 'Duplicate', node: <DuplicateBadge canonicalPath={CANONICAL} /> },
-  { id: 'badge-skipped', label: 'Skipped', node: <SkippedBadge dictionary={dictionary} /> },
 ];
 
 const tagSpecimens: readonly Specimen[] = [

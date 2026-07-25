@@ -84,6 +84,10 @@ describe('useProcessing drive', () => {
     expect(lines.some((line) => line.includes('2 done, 1 skipped, 0 failed'))).toBe(true);
     expect(lines.some((line) => line.startsWith('=== Drive run complete:'))).toBe(true);
     expect(invalidate).toHaveBeenCalled();
+    expect(result.current.driveSummary).toEqual({
+      open: true,
+      counts: { foldersDone: 2, filesDone: 2, filesSkipped: 1, filesFailed: 0 },
+    });
   });
 
   const perFileJob = (jobId: string) => ({
@@ -145,7 +149,6 @@ describe('useProcessing drive', () => {
 
     expect(lines.some((line) => line.includes('[1/2] Extracting frames: one.mp4'))).toBe(true);
     expect(lines.some((line) => line.includes('Skipped (already analyzed): two.mp4'))).toBe(true);
-    expect(result.current.skippedPaths.has('/videos/a/two.mp4')).toBe(true);
     expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 

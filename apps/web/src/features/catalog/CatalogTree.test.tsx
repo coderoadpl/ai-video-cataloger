@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { screen, within } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -83,7 +83,6 @@ const renderTree = (props: Partial<React.ComponentProps<typeof CatalogTree>> = {
       rootVideos={root.videos}
       selectedKey={null}
       analyzingPath={null}
-      skippedPaths={new Set()}
       onSelect={vi.fn()}
       registerVideos={vi.fn()}
       {...props}
@@ -247,13 +246,9 @@ describe('CatalogTree', () => {
     expect(thumb?.getAttribute('data-thumbnail-height')).toBe('56');
   });
 
-  it('renders a Skipped badge for videos in the skipped set', () => {
-    renderTree({ skippedPaths: new Set(['/drive/top.mp4']) });
-    const topRow = screen
-      .getAllByTestId('video-item')
-      .find((row) => row.getAttribute('data-video-filename') === 'top.mp4');
-    if (topRow === undefined) throw new Error('top.mp4 row not found');
-    expect(within(topRow).getByTestId('skipped-badge')).toBeDefined();
+  it('does not render a transient Skipped badge on catalog rows', () => {
+    renderTree();
+    expect(screen.queryByTestId('skipped-badge')).toBeNull();
   });
 
   it('renders large tree guidance with a copyable process-drive command', () => {

@@ -13,7 +13,6 @@ import { type CatalogState } from './use-catalog.js';
 import { type CatalogTreeState } from './use-catalog-tree.js';
 import { VideoList } from './VideoList.js';
 
-const EMPTY_SKIPPED: ReadonlySet<string> = new Set();
 
 interface CatalogSidebarProps {
   folder: string | null;
@@ -21,7 +20,6 @@ interface CatalogSidebarProps {
   tree?: CatalogTreeState;
   showTree?: boolean;
   analyzingPath?: string | null;
-  skippedPaths?: ReadonlySet<string>;
   toolbar?: ReactNode;
   lockBanner?: ReactNode;
   registerVideos: (videos: readonly CatalogVideo[]) => void;
@@ -33,7 +31,6 @@ export const CatalogSidebar = ({
   tree,
   showTree = true,
   analyzingPath = null,
-  skippedPaths = EMPTY_SKIPPED,
   toolbar,
   lockBanner,
   registerVideos,
@@ -98,7 +95,6 @@ export const CatalogSidebar = ({
               isError={catalog.isError}
               error={catalog.error}
               onSelect={catalog.select}
-              skippedPaths={skippedPaths}
               thumbnailFailedPaths={catalog.thumbnailFailedPaths}
             />
             <AbsentFilesSection folder={folder} />
@@ -111,8 +107,7 @@ export const CatalogSidebar = ({
                 rootVideos={catalog.videos}
                 selectedKey={catalog.selectedKey}
                 analyzingPath={analyzingPath}
-                skippedPaths={skippedPaths}
-                thumbnailFailedPaths={catalog.thumbnailFailedPaths}
+                  thumbnailFailedPaths={catalog.thumbnailFailedPaths}
                 onSelect={catalog.select}
                 registerVideos={registerVideos}
               />

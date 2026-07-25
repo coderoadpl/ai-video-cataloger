@@ -484,6 +484,13 @@ export interface Dictionary {
     failedVideos: string;
     unknownError: string;
   };
+  driveSummary: {
+    title: string;
+    folders: string;
+    analyzed: string;
+    skipped: string;
+    failed: string;
+  };
   harnessModelPicker: {
     model: string;
     default: string;
@@ -1028,6 +1035,13 @@ export const en: Dictionary = {
     failed: 'failed',
     failedVideos: 'Failed videos:',
     unknownError: 'Unknown error',
+  },
+  driveSummary: {
+    title: 'Folder Analysis Complete',
+    folders: 'folders',
+    analyzed: 'analyzed',
+    skipped: 'skipped',
+    failed: 'failed',
   },
   harnessModelPicker: {
     model: 'Model',
@@ -1581,6 +1595,13 @@ export const pl: Dictionary = {
     failed: 'nieudanych',
     failedVideos: 'Nieudane filmy:',
     unknownError: 'Nieznany błąd',
+  },
+  driveSummary: {
+    title: 'Analiza folderu ukończona',
+    folders: 'folderów',
+    analyzed: 'przeanalizowanych',
+    skipped: 'pominiętych',
+    failed: 'nieudanych',
   },
   harnessModelPicker: {
     model: 'Model',

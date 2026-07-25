@@ -4,6 +4,7 @@ import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { BatchProgressView } from '../../components/ui/BatchToolbar.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
 import type { BatchResultItem } from '../../components/ui/dialogs/BatchSummaryDialog.js';
+import type { DriveSummaryCounts } from '../../components/ui/dialogs/DriveSummaryDialog.js';
 import type { ProgressView } from '../../components/ui/ProcessingOverlay.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
@@ -36,6 +37,11 @@ export interface BatchSummaryState {
   results: readonly BatchResultItem[];
 }
 
+export interface DriveSummaryState {
+  open: boolean;
+  counts: DriveSummaryCounts | null;
+}
+
 export interface ProcessingState {
   analyzingPath: string | null;
   progress: ProgressView | null;
@@ -44,9 +50,9 @@ export interface ProcessingState {
   batchProgress: BatchProgressView | null;
   driveProgress: DriveProgressView | null;
   driveFileProgress: BatchProgressView | null;
-  skippedPaths: ReadonlySet<string>;
   cancelConfirmation: CancelConfirmation;
   batchSummary: BatchSummaryState;
+  driveSummary: DriveSummaryState;
   analyze: (video: ProcessVideo, options?: { force?: boolean }) => void;
   batchAnalyze: () => void;
   driveAnalyze: (root: string) => void;
@@ -56,6 +62,7 @@ export interface ProcessingState {
   confirmCancel: () => void;
   closeCancelDialog: () => void;
   closeBatchSummary: () => void;
+  closeDriveSummary: () => void;
 }
 
 export interface UseProcessingOptions {
@@ -118,13 +125,14 @@ export const useProcessing = ({
   const [batchProgress, setBatchProgress] = useState<BatchProgressView | null>(null);
   const [driveProgress, setDriveProgress] = useState<DriveProgressView | null>(null);
   const [driveFileProgress, setDriveFileProgress] = useState<BatchProgressView | null>(null);
-  const [skippedPaths, setSkippedPaths] = useState<ReadonlySet<string>>(new Set());
   const [driveActive, setDriveActive] = useState(false);
+  const driveSummaryRef = useRef<DriveSummaryCounts | null>(null);
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({
     open: false,
     isBatch: false,
   });
   const [batchSummary, setBatchSummary] = useState<BatchSummaryState>({ open: false, results: [] });
+  const [driveSummary, setDriveSummary] = useState<DriveSummaryState>({ open: false, counts: null });
 
   const videosRef = useRef(videos);
   useEffect(() => {
@@ -310,14 +318,18 @@ export const useProcessing = ({
               counts = outcome.counts;
               for (const message of outcome.messages) {
                 addLine(translateDriveMessage(dictionary, message), message.level);
+                if (message.kind === 'runComplete') {
+                  driveSummaryRef.current = {
+                    foldersDone: message.foldersDone,
+                    filesDone: message.filesDone,
+                    filesSkipped: message.filesSkipped,
+                    filesFailed: message.filesFailed,
+                  };
+                }
               }
               if (outcome.folderProgress !== null) setDriveProgress(outcome.folderProgress);
               if (outcome.fileProgress !== null) setDriveFileProgress(outcome.fileProgress);
               if (outcome.folderComplete) void queryClient.invalidateQueries();
-              const skipped = outcome.skippedPath;
-              if (skipped !== null) {
-                setSkippedPaths((current) => new Set(current).add(skipped));
-              }
             }
           },
         });
@@ -361,14 +373,17 @@ export const useProcessing = ({
           return;
         }
         setDriveActive(true);
-        setSkippedPaths(new Set());
+        driveSummaryRef.current = null;
         addLine(dictionary.processing.driveStart(root), 'info');
-        await runDrive(root);
+        const outcome = await runDrive(root);
         busyRef.current = false;
         setDriveActive(false);
         setDriveProgress(null);
         setDriveFileProgress(null);
         await queryClient.invalidateQueries();
+        if (outcome.success && driveSummaryRef.current !== null) {
+          setDriveSummary({ open: true, counts: driveSummaryRef.current });
+        }
       })();
     },
     [runDrive, addLine, queryClient, checkReadiness, dictionary],
@@ -413,6 +428,10 @@ export const useProcessing = ({
     setBatchSummary({ open: false, results: [] });
   }, []);
 
+  const closeDriveSummary = useCallback(() => {
+    setDriveSummary((current) => ({ ...current, open: false }));
+  }, []);
+
   const pendingCount = videos.filter((video) => isPending(video.status)).length;
 
   return {
@@ -423,9 +442,9 @@ export const useProcessing = ({
     batchProgress,
     driveProgress,
     driveFileProgress,
-    skippedPaths,
     cancelConfirmation,
     batchSummary,
+    driveSummary,
     analyze,
     batchAnalyze,
     driveAnalyze,
@@ -435,5 +454,6 @@ export const useProcessing = ({
     confirmCancel,
     closeCancelDialog,
     closeBatchSummary,
+    closeDriveSummary,
   };
 };
