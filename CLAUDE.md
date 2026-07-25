@@ -102,7 +102,9 @@ re-run.
   changed capability, CLI command, event, exit code, config key, gate or
   operational procedure — adds one factual line to
   [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog) **in the same commit**, under
-  `[Unreleased]`, linking the commit rather than a PR (we ship from a branch).
+  `[Unreleased]`. Entries there carry no link — a commit cannot cite its own hash
+  — and the release commit adds the commit links as it moves them under the
+  version heading; we ship from a branch, so commits, not PRs, are the citation.
   Pure refactors, test-only and comment-only changes do not. This is enforced by
   review, not by a gate — no script can tell a user-visible change from an
   internal one.

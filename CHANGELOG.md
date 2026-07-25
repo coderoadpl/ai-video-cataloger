@@ -5,10 +5,12 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-This project ships from a branch, not from pull requests, so every entry links
-the **commit** that carried it. Releases below `0.4.0` predate this file and are
-recoverable from git history only. Version `0.5.11` was never cut: the release
-history jumps from `0.5.10` to `0.5.12`.
+This project ships from a branch, not from pull requests, so a released entry
+links the **commit** that carried it. Entries under `[Unreleased]` carry no link
+— a commit cannot cite its own hash; the release commit adds the links when it
+moves them under a version heading. Releases below `0.4.0` predate this file and
+are recoverable from git history only. Version `0.5.11` was never cut: the
+release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
@@ -17,23 +19,21 @@ history jumps from `0.5.10` to `0.5.12`.
 - `pnpm run visual` — a Playwright screenshot suite that compares the layout
   skeletons (default, collapsed sidebar, open terminal, loading) in dark and
   light against darwin baselines committed under `visual/__screenshots__/`; it
-  joins no required gate ([`beb5ad7`](https://github.com/chomamateusz/ai-video-cataloger/commit/beb5ad76)).
+  joins no required gate.
 - `components/layout/` as a named structural layer, enforced by the
   `web-layouts-are-structure-only` dependency-cruiser rule, a `Container`/
   `AppBar`/`Drawer`/`Toolbar` import ban outside it, and config-regression
-  probes ([`24a932b`](https://github.com/chomamateusz/ai-video-cataloger/commit/24a932b9)).
+  probes.
 
 ### Changed
 
 - `doc-lint` fails when a tracked `README.md` documents a `pnpm run <script>`
   that the owning `package.json` does not define, so a renamed or dropped script
-  can no longer leave a quickstart that lies
-  ([`4e63850`](https://github.com/chomamateusz/ai-video-cataloger/commit/4e63850c)).
+  can no longer leave a quickstart that lies.
 - The package manager is pnpm 10 on Node 22.23.1: install with `pnpm install`
   under `nvm use`, dependency lifecycle scripts are blocked except for three
   allowlisted packages, and `lock-lint` now fails closed on a `pnpm-lock.yaml`
-  that disagrees with `package.json`
-  ([`2149503`](https://github.com/chomamateusz/ai-video-cataloger/commit/21495031)).
+  that disagrees with `package.json`.
 
 ## [0.5.13] - 2026-07-27
 
