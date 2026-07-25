@@ -220,13 +220,21 @@ managed runtimes, and its working-directory fallback.
   plus managed bottle installation with source fallback; the configured path
   always wins and the canonical managed executable remains
   `~/.ai-video-cataloger/bin/whisper`.
-- `AnalyzerPort` — three families behind one port (v1.1,
+- `AnalyzerPort` — four families behind one port (v1.1,
   `tasks/prd-providers-onboarding.md`): OpenAI-compatible API adapter
   (BYO base URL + key; credentials live in the home scope only), a
   data-driven agent-harness adapter (Claude Code / Codex / Cursor Agent
   built-ins + user-defined, with optional built-in model/reasoning-effort
-  flags), and the local ollama adapter. Legacy config
-  values `claude|local` remain valid aliases.
+  flags), the local ollama adapter, and the `gemini-native` adapter
+  (`adapters/gemini`). Legacy config values `claude|local` remain valid
+  aliases. The `gemini-native` family sends the whole video to the Gemini
+  Files API as one modality (1fps frames + full audio) and takes a native
+  processing path that **skips frame extraction and Whisper** — the model
+  returns the description and a timestamped transcript in one call, and
+  `usageMetadata` (tokens + est cost per file) is surfaced as an NDJSON
+  event; GPS still comes from metadata. Budget-capped smoke bench (real key,
+  11-clip subset, flash vs flash-lite, $0.096 total) recorded at
+  `~/repositories/claude-tmp/wf-mg1/bench-report.md`.
 - `LocalAiRuntimePort` — system Ollama / managed pinned runtime. Analyzer
   execution starts the runtime on demand through this port and receives the
   resolved daemon base URL, including the managed runtime's dynamic port.
