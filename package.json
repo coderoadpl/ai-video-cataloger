@@ -18,27 +18,27 @@
     "test:coverage": "vitest run --coverage",
     "knip": "knip",
     "doc-lint": "node --import tsx scripts/doc-lint.ts",
-    "check": "npm run typecheck && npm run typecheck:islands && npm run lint && npm run depcruise && npm run knip && npm run doc-lint && npm run test:coverage",
+    "check": "pnpm run typecheck && pnpm run typecheck:islands && pnpm run lint && pnpm run depcruise && pnpm run knip && pnpm run doc-lint && pnpm run test:coverage",
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "node --import tsx scripts/smoke.ts",
     "electron:build:renderer": "vite build --config apps/web/vite.config.ts",
     "electron:build:desktop": "node scripts/build-electron.mjs",
     "package:stage": "node scripts/build-packaged-cli.mjs",
-    "electron:build": "npm run electron:build:renderer && npm run electron:build:desktop && npm run package:stage",
-    "test:e2e:cli": "npm run package:stage && playwright test --config test/e2e/playwright.config.ts --project=cli",
-    "test:e2e:gui": "npm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=gui",
-    "test:e2e:parity": "npm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=cli --project=gui",
-    "test:e2e:matrix": "npm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=matrix",
-    "electron:dev": "npm run electron:build:desktop && sh -c 'NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 vite --config apps/web/vite.config.ts --host 127.0.0.1 & vite_pid=$!; NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 electron .; status=$?; kill $vite_pid; exit $status'",
-    "electron:package": "npm run electron:build && electron-builder --config electron-builder.config.js",
+    "electron:build": "pnpm run electron:build:renderer && pnpm run electron:build:desktop && pnpm run package:stage",
+    "test:e2e:cli": "pnpm run package:stage && playwright test --config test/e2e/playwright.config.ts --project=cli",
+    "test:e2e:gui": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=gui",
+    "test:e2e:parity": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=cli --project=gui",
+    "test:e2e:matrix": "pnpm run electron:build && playwright test --config test/e2e/playwright.config.ts --project=matrix",
+    "electron:dev": "pnpm run electron:build:desktop && sh -c 'NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 vite --config apps/web/vite.config.ts --host 127.0.0.1 & vite_pid=$!; NODE_ENV=development VITE_DEV_SERVER_URL=http://localhost:9473 electron .; status=$?; kill $vite_pid; exit $status'",
+    "electron:package": "pnpm run electron:build && electron-builder --config electron-builder.config.js",
     "verify:package": "node scripts/verify-package.mjs",
-    "lock-lint": "npx -y npm@10 ls --all --package-lock-only >/dev/null"
+    "lock-lint": "node scripts/lock-lint.mjs"
   },
   "engines": {
     "node": "22.x",
-    "npm": ">=10 <11"
+    "pnpm": ">=10 <11"
   },
-  "packageManager": "npm@10.9.2",
+  "packageManager": "pnpm@10.34.5",
   "dependencies": {
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",

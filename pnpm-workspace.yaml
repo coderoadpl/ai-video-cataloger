@@ -1,0 +1,6 @@
+packages: []
+minimumReleaseAge: 4320
+onlyBuiltDependencies:
+  - '@ffprobe-installer/darwin-arm64'
+  - electron
+  - ffmpeg-static
