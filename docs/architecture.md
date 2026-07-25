@@ -352,12 +352,18 @@ vocabulary, never wrapped.
 
 ## Gates
 
-`npm run check` — typecheck, eslint (boundaries + local plugin), depcruise
-mirror, vitest projects. `npm run smoke` — lockfile drift check, boot the
-real in-process app, drive doctor/scan/config/status through the CLI in an
-isolated temp HOME + temp folder, assert envelope shapes and taxonomy exit
-codes. Both green = done; every new lint rule proves itself with a violating
-probe before it counts.
+`pnpm run check` — typecheck, eslint (boundaries + local plugin), depcruise
+mirror, vitest projects. `pnpm run smoke` — installed-tree check (every
+declared dependency linked, every native asset the packaged bundle reads as a
+literal path materialized), `lock-lint` under pnpm frozen-lockfile semantics,
+boot the real in-process app, drive doctor/scan/config/status through the CLI
+in an isolated temp HOME + temp folder, assert envelope shapes and taxonomy
+exit codes. Both green = done; every new lint rule proves itself with a
+violating probe before it counts.
+
+The package manager is pnpm, pinned by `packageManager` and activated through
+Corepack; dependency install scripts are off by default and the exceptions are
+named in `pnpm-workspace.yaml` ([ADR-0006](decisions/0006-package-manager-pnpm.md)).
 
 Changing this architecture means changing this document (and, for the frozen
 constraints, ADR-0001) first, then the code.

@@ -30,8 +30,8 @@ Cursor). A fully local Ollama model keeps everything on your Mac.
 ## GUI Quick Start
 
 ```bash
-npm install
-npm run electron:dev
+pnpm install
+pnpm run electron:dev
 ```
 
 The desktop app includes folder browsing, thumbnails, single/batch processing, settings, prerequisites, Whisper model management, local AI model management, native menus, and resumable catalog state.
@@ -39,11 +39,11 @@ The desktop app includes folder browsing, thumbnails, single/batch processing, s
 Package the app:
 
 ```bash
-npm run electron:package
+pnpm run electron:package
 ```
 
 The DMG and packaged macOS app are written under `release/`. The `.app` also
-stages a standalone CLI at `resources/cli`; for development, use `npm run cli`
+stages a standalone CLI at `resources/cli`; for development, use `pnpm run cli`
 or the staged `dist/cli/index.js` from this repo.
 
 ## First Open on macOS
@@ -58,8 +58,8 @@ message about AI Video Cataloger, and choose **Open Anyway**.
 Stage the CLI bundle:
 
 ```bash
-npm install
-npm run package:stage
+pnpm install
+pnpm run package:stage
 ```
 
 Run it directly:
@@ -74,8 +74,8 @@ node dist/cli/index.js status
 During development:
 
 ```bash
-npm run cli -- doctor
-npm run cli -- process ./clip.mp4 --json
+pnpm run cli -- doctor
+pnpm run cli -- process ./clip.mp4 --json
 ```
 
 Core commands:
@@ -196,16 +196,16 @@ test/e2e          Playwright parity scenarios
 Gates:
 
 ```bash
-npm run check
-npm run smoke
+pnpm run check
+pnpm run smoke
 ```
 
 E2E:
 
 ```bash
-npm run test:e2e:cli
-npm run test:e2e:gui
-npm run test:e2e:parity
+pnpm run test:e2e:cli
+pnpm run test:e2e:gui
+pnpm run test:e2e:parity
 ```
 
 `test:e2e:cli` only runs the CLI project. The GUI and parity projects build Electron and launch the desktop app.

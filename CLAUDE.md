@@ -26,27 +26,32 @@ Ground-up rewrite on the agentproofarch foundation
 
 ## The two gates
 
-- `npm run check` = typecheck + eslint (boundaries; the local plugin joins
+- `pnpm run check` = typecheck + eslint (boundaries; the local plugin joins
   with the renderer phase) + dependency-cruiser + vitest.
-- `npm run smoke` = lockfile drift → boot the real in-process app in a temp
-  HOME/folder → drive doctor/scan/config/status through the CLI → assert
-  envelope shapes and taxonomy exit codes.
+- `pnpm run smoke` = installed-tree check → lockfile lint → boot the real
+  in-process app in a temp HOME/folder → drive doctor/scan/config/status
+  through the CLI → assert envelope shapes and taxonomy exit codes.
 
 **Done = check green AND smoke green.** Never weaken lint to get there; every
 new lint rule must first fail on a violating probe file.
 
-The toolchain is pinned to npm 10: `.nvmrc` (Node 22, which ships npm 10.x),
-`engines.npm` (`>=10 <11`) and `packageManager` (`npm@10.9.2`). Local machines
-often run a newer line (Node 25 / npm 11); before touching dependencies switch
-to the pin with `nvm use` (reads `.nvmrc`) so installs keep npm-10 semantics —
-a bare npm 11 `npm install` silently prunes platform-optional lock entries
-(`@ffprobe-installer/darwin-arm64`, `onnxruntime-node`, `@emnapi/*`) that
-`electron-builder.config.js` and the staged CLI read as literal paths, which
-ships a green `check` with a broken `electron:package`. `engines` is advisory
-only (no `engine-strict`), so a newer local Node still runs the app; if the
-lock was last written by npm 11, regenerate it with `npx -y npm@10 install`.
-`npm run lock-lint` and `smoke` both fail closed when the lock no longer
-resolves under npm 10.
+The package manager is **pnpm**, pinned by `packageManager` (`pnpm@10.34.5`)
+and `engines.pnpm` (`>=10 <11`), on **Node 22.23.1** (`.nvmrc`), whose bundled
+Corepack 0.34.6 activates that pin — Node 24 is deferred because V8 there
+reports branch coverage ~4 points lower and trips the ratchet floor, and older
+Node 22 patches ship a Corepack that rejects pnpm's signing key; both are
+recorded in [ADR-0006](docs/decisions/0006-package-manager-pnpm.md). Switch to
+the pin with `nvm use` before touching dependencies; a stale global pnpm is
+rejected by `engines.pnpm`. Dependency install scripts do **not** run: the
+three that earned an exception (`ffmpeg-static`,
+`@ffprobe-installer/darwin-arm64`, `electron`)
+are named in `pnpm-workspace.yaml`'s `onlyBuiltDependencies`, which also carries
+the `minimumReleaseAge` cooldown. `pnpm run lock-lint` fails closed on a missing
+`pnpm-lock.yaml` or one that no longer agrees with `package.json`, and `smoke`
+runs it plus the installed-tree check that every native asset
+`electron-builder.config.js` and the staged CLI read as a literal path is
+materialized — the round-1 lesson (a green `check` with a broken
+`electron:package`) now has a gate that names it.
 
 **Flake doctrine: the gates are deterministic; a flake is a P1 bug, never
 rerun-to-green.** A red gate means the commit is wrong or the gate is wrong —
@@ -58,13 +63,13 @@ re-run.
 
 ## On-demand real-provider suite
 
-- `npm run test:e2e:matrix` = batch-end/pre-release real-provider suite. It
+- `pnpm run test:e2e:matrix` = batch-end/pre-release real-provider suite. It
   uses the persistent `~/repositories/claude-tmp/avc-e2e-matrix-home` cache,
   exercises managed/system/API/harness analyzers and every transcription
   source, fails on unavailable legs unless `E2E_MATRIX_ALLOW_SKIP=1` is set,
   and is intentionally outside `check`, `smoke`, and parity. Run it after a
   completed work batch and before a release; never add it to a normal gate.
-- `npm run verify:package` = packaged-bundle shape check (single darwin
+- `pnpm run verify:package` = packaged-bundle shape check (single darwin
   onnxruntime binding, no non-darwin artifacts); run it on the built bundle
   before a release, also outside the normal gates.
 

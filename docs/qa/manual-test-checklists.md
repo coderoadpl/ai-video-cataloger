@@ -15,8 +15,8 @@ catalog lock shared between GUI and CLI.
 
 ### Out of scope
 Real provider accuracy of AI summaries/transcripts (covered by
-`npm run test:e2e:matrix`), packaged-bundle shape (`npm run verify:package`),
-and unit/integration gates (`npm run check` / `npm run smoke`).
+`pnpm run test:e2e:matrix`), packaged-bundle shape (`pnpm run verify:package`),
+and unit/integration gates (`pnpm run check` / `pnpm run smoke`).
 
 ### Environment matrix
 Run the SMOKE suite on every column of a release build; run FEATURE suites on at

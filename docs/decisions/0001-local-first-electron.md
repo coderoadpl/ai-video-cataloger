@@ -50,7 +50,7 @@ Owner decisions fixed at kickoff (constraints, not open questions):
    Query); no event bus.
 8. **Telemetry opt-in, default OFF** — OTel facade + wide events per the
    foundation, but nothing leaves the process without explicit user consent.
-9. **Gates from day one** — `npm run check` and `npm run smoke` copied and
+9. **Gates from day one** — `pnpm run check` and `pnpm run smoke` copied and
    adapted from the foundation demo; every lint rule proven by a violating
    probe; static-green is not done.
 

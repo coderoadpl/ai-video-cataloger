@@ -80,6 +80,15 @@ flagged OWNER.
    fail → REJECT for now in ADR-0006 with the evidence and a revisit trigger.
    No blind adoption: the round-1 lesson (npm-11 silently pruning
    platform-optional lock entries) lives in this exact ground.
+   **RESOLVED 2026-07-27 → ADOPT strict**
+   ([ADR-0006](../docs/decisions/0006-package-manager-pnpm.md)). The whole
+   ladder is green on the default linked layout, DMG included; no
+   `node-linker` deviation. Three `onlyBuiltDependencies` entries earned their
+   place (`ffmpeg-static`, `@ffprobe-installer/darwin-arm64`, `electron`). The
+   Node 24 half of the decision is **deferred with evidence**: V8 on 24 reports
+   branch coverage ~4 points lower and trips the ratchet floor, so the pin moves
+   to Node 22.23.1 (whose bundled Corepack accepts pnpm's key) and Node 24
+   rides along with the vitest 4 upgrade.
 4. **ADR-0010 tenant policy → REJECT (N/A).** Local-first, no auth, no
    tenants. Recorded here; no code.
 5. **US-020 Vercel adapter / DR-acceptance / self-host docs → REJECT (N/A).**
