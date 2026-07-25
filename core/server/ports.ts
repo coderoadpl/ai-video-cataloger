@@ -572,7 +572,8 @@ export type ProcessJobStep =
   | 'faces_detecting'
   | 'faces_clustering'
   | 'faces_done'
-  | 'catalog_index_skipped';
+  | 'catalog_index_skipped'
+  | 'catalog_snapshot_skipped';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

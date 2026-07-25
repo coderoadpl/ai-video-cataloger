@@ -16,6 +16,7 @@ export type DriveMessage =
       readonly filesFailed: number;
     }
   | { readonly kind: 'fileSkipped'; readonly level: 'info'; readonly filename: string }
+  | { readonly kind: 'snapshotSkipped'; readonly level: 'info'; readonly folder: string }
   | {
       readonly kind: 'runComplete';
       readonly level: 'info';
@@ -156,6 +157,13 @@ export const reduceDriveEvent = (
       ...idle(counts),
       messages: [{ kind: 'fileSkipped', level: 'info', filename: basename(video) }],
       skippedPath: video,
+    };
+  }
+
+  if (step === 'catalog_snapshot_skipped') {
+    return {
+      ...idle(counts),
+      messages: [{ kind: 'snapshotSkipped', level: 'info', folder: strField(data, 'folder') }],
     };
   }
 

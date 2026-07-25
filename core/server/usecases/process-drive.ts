@@ -87,6 +87,7 @@ export interface DriveRunSummary {
   filesDone: number;
   filesSkipped: number;
   filesFailed: number;
+  snapshotSkipped: number;
   elapsedMs: number;
   failures: DriveRunFailure[];
 }
@@ -101,6 +102,7 @@ export interface DriveRunOptions {
 interface MutableRunState {
   run: DriveRunRecord;
   filesTotal: number;
+  snapshotSkipped: number;
   failures: DriveRunFailure[];
   startedMs: number;
 }
@@ -161,6 +163,7 @@ export const processDrive = async (
       lastActivityAt: started.toISOString(),
     },
     filesTotal: discovery.value.filesTotal,
+    snapshotSkipped: 0,
     failures: [...discovery.value.failures],
     startedMs: started.getTime(),
   };
@@ -222,6 +225,7 @@ export const processDrive = async (
       const result = await runDriveFile(deps, input, video.path, fileIndex, state.filesTotal, skipped.value, progress, options);
       if (result.ok) {
         consecutiveFailures = 0;
+        if (result.value.snapshotSkipped) state.snapshotSkipped += 1;
         if (skipped.value) {
           const relocated = await relocateResumedFile(deps, globalCatalog, folder.path, video);
           if (!relocated.ok) return relocated;
@@ -363,16 +367,16 @@ const runDriveFile = async (
   skipped: boolean,
   progress: JobExecutionContext | undefined,
   options: DriveRunOptions,
-): Promise<Result<void, AppError>> => {
+): Promise<Result<{ snapshotSkipped: boolean }, AppError>> => {
   if (skipped) {
     const result = await processVideoPipeline(deps, processInput(input, videoPath, current, total), progress);
-    return result.ok ? ok(undefined) : result;
+    return result.ok ? ok({ snapshotSkipped: result.value.snapshotSkipped === true }) : result;
   }
 
   let attempt = 0;
   while (attempt <= maxRetries) {
     const result = await processVideoPipeline(deps, processInput(input, videoPath, current, total), progress);
-    if (result.ok) return ok(undefined);
+    if (result.ok) return ok({ snapshotSkipped: result.value.snapshotSkipped === true });
     if (!isRetryable(result.error) || attempt === maxRetries) return result;
     const delay = backoffDelayMs(attempt, options);
     await (options.sleep ?? sleep)(delay);
@@ -528,6 +532,7 @@ const reportSummary = async (
     filesDone: summary.filesDone,
     filesSkipped: summary.filesSkipped,
     filesFailed: summary.filesFailed,
+    snapshotSkipped: summary.snapshotSkipped,
     elapsedMs: summary.elapsedMs,
     failures: summary.failures,
   });
@@ -546,6 +551,7 @@ const summaryFromState = (state: MutableRunState, now: () => Date): DriveRunSumm
   filesDone: state.run.filesDone,
   filesSkipped: state.run.filesSkipped,
   filesFailed: state.run.filesFailed,
+  snapshotSkipped: state.snapshotSkipped,
   elapsedMs: Math.max(0, now().getTime() - state.startedMs),
   failures: state.failures,
 });

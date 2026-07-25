@@ -334,6 +334,7 @@ export interface Dictionary {
     driveFolderStarted: (path: string, files: number) => string;
     driveFolderDone: (path: string, done: number, skipped: number, failed: number) => string;
     driveFileSkipped: (filename: string) => string;
+    driveSnapshotSkipped: (folder: string) => string;
     driveRunComplete: (foldersDone: number, foldersTotal: number, done: number, skipped: number, failed: number) => string;
     progressLine: (percentage: number, label: string) => string;
     fileProgressLine: (current: number, total: number, label: string, filename: string) => string;
@@ -880,6 +881,7 @@ export const en: Dictionary = {
     driveFolderStarted: (path, files) => `→ ${path} (${String(files)} file(s))`,
     driveFolderDone: (path, done, skipped, failed) => `✓ ${path}: ${String(done)} done, ${String(skipped)} skipped, ${String(failed)} failed`,
     driveFileSkipped: (filename) => `↷ Skipped (already analyzed): ${filename}`,
+    driveSnapshotSkipped: (folder) => `⚠ Folder read-only — snapshot skipped: ${folder}`,
     driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed) =>
       `=== Drive run complete: ${String(foldersDone)}/${String(foldersTotal)} folder(s), ${String(done)} done, ${String(skipped)} skipped, ${String(failed)} failed ===`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
@@ -912,6 +914,7 @@ export const en: Dictionary = {
       analyzing_with_claude: 'Analyzing with AI',
       renaming_video: 'Renaming video',
       skipping_rename: 'Finalizing',
+      catalog_snapshot_skipped: 'Folder read-only — snapshot skipped',
       downloading: 'Downloading',
       runtime_setup: 'Preparing runtime',
       model_download: 'Downloading model',
@@ -1445,6 +1448,7 @@ export const pl: Dictionary = {
     driveFolderStarted: (path, files) => `→ ${path} (${String(files)} plik(i))`,
     driveFolderDone: (path, done, skipped, failed) => `✓ ${path}: ${String(done)} gotowe, ${String(skipped)} pominięte, ${String(failed)} błędne`,
     driveFileSkipped: (filename) => `↷ Pominięto (już przeanalizowano): ${filename}`,
+    driveSnapshotSkipped: (folder) => `⚠ Folder tylko do odczytu — pominięto migawkę: ${folder}`,
     driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed) =>
       `=== Analiza drzewa ukończona: ${String(foldersDone)}/${String(foldersTotal)} folder(y), ${String(done)} gotowe, ${String(skipped)} pominięte, ${String(failed)} błędne ===`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
@@ -1477,6 +1481,7 @@ export const pl: Dictionary = {
       analyzing_with_claude: 'Analiza przez AI',
       renaming_video: 'Zmiana nazwy filmu',
       skipping_rename: 'Finalizowanie',
+      catalog_snapshot_skipped: 'Folder tylko do odczytu — pominięto migawkę',
       downloading: 'Pobieranie',
       runtime_setup: 'Przygotowywanie runtime',
       model_download: 'Pobieranie modelu',

@@ -78,6 +78,7 @@ export interface ProcessCompletedOutput {
   video: string;
   path: string;
   status: 'completed';
+  snapshotSkipped?: boolean;
 }
 
 export interface ParsedAnalysis {
@@ -132,7 +133,7 @@ export const processVideoPipeline = async (
     const flushed = await flushGlobalCatalog(deps);
     if (!flushed.ok) return flushed;
   }
-  return runResult;
+  return ok({ ...runResult.value, snapshotSkipped: recorded.value.snapshotSkipped });
 };
 
 export const checkProcessPrerequisites = async (
@@ -1179,19 +1180,21 @@ const recordGlobalCatalog = async (
   resolved: ResolvedProcessOptions,
   completed: ProcessCompletedOutput,
   progress: JobExecutionContext | undefined,
-): Promise<Result<void, AppError>> => {
+): Promise<Result<{ snapshotSkipped: boolean }, AppError>> => {
   const globalCatalog = deps.globalCatalog;
-  if (globalCatalog === undefined) return ok(undefined);
+  if (globalCatalog === undefined) return ok({ snapshotSkipped: false });
   const finalPath = completed.path;
   const folder = deps.fs.dirname(finalPath);
   const fingerprint = await deps.fs.partialContentHash(finalPath);
   if (!fingerprint.ok) return fingerprint;
   if (fingerprint.value === null) {
-    if (progress === undefined) return ok(undefined);
-    return progress.reportProgress({
+    if (progress === undefined) return ok({ snapshotSkipped: false });
+    const reported = await progress.reportProgress({
       step: 'catalog_index_skipped',
       data: { video: finalPath, reason: 'fingerprint_unavailable' },
     });
+    if (!reported.ok) return reported;
+    return ok({ snapshotSkipped: false });
   }
   const stat = await deps.fs.stat(finalPath);
   if (!stat.ok) return stat;
@@ -1206,7 +1209,7 @@ const recordGlobalCatalog = async (
   const transcript = await readFilteredTranscript(deps.fs, paths.transcriptPath, paths.transcriptJsonPath);
   if (!transcript.ok) return transcript;
   const provider = resolved.analyzer.provider;
-  return upsertProcessedVideo(
+  const upserted = await upsertProcessedVideo(
     { globalCatalog, fs: deps.fs },
     {
       folderPath: folder,
@@ -1226,6 +1229,15 @@ const recordGlobalCatalog = async (
       tags: summary.value?.tags ?? [],
     },
   );
+  if (!upserted.ok) return upserted;
+  if (upserted.value.snapshotSkipped && progress !== undefined) {
+    const warned = await progress.reportProgress({
+      step: 'catalog_snapshot_skipped',
+      data: { video: finalPath, folder, reason: 'folder_read_only' },
+    });
+    if (!warned.ok) return warned;
+  }
+  return ok({ snapshotSkipped: upserted.value.snapshotSkipped });
 };
 
 const flushGlobalCatalog = async (deps: ProcessDeps): Promise<Result<void, AppError>> => {

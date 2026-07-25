@@ -15,7 +15,7 @@ import type {
   GlobalCatalogStore,
   ReconcileFolderResult,
 } from '../ports.js';
-import { ensureFolderMarker, readFolderMarker } from './folder-identity.js';
+import { isReadOnlyWriteError, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
 import { isSupportedVideoExtension } from './shared.js';
 
@@ -66,10 +66,10 @@ export const resolveFolderIntoIndex = async (
   deps: CatalogIndexDeps,
   folderPath: string,
   options: { forceImport?: boolean; firstSeenAt?: string } = {},
-): Promise<Result<{ folderId: string; imported: number }, AppError>> => {
-  const marker = await ensureFolderMarker(deps.fs, folderPath);
-  if (!marker.ok) return marker;
-  const folderId = marker.value.folderId;
+): Promise<Result<{ folderId: string; imported: number; persistent: boolean }, AppError>> => {
+  const identity = await resolveFolderIdentity(deps.fs, folderPath);
+  if (!identity.ok) return identity;
+  const folderId = identity.value.folderId;
 
   const existing = await deps.globalCatalog.getFolder(folderId);
   if (!existing.ok) return existing;
@@ -95,13 +95,13 @@ export const resolveFolderIntoIndex = async (
   };
   const upserted = await deps.globalCatalog.upsertFolder(folder);
   if (!upserted.ok) return upserted;
-  return ok({ folderId, imported });
+  return ok({ folderId, imported, persistent: identity.value.persistent });
 };
 
 export const upsertProcessedVideo = async (
   deps: CatalogIndexDeps,
   input: ProcessedVideoInput,
-): Promise<Result<void, AppError>> => {
+): Promise<Result<{ snapshotSkipped: boolean }, AppError>> => {
   const resolved = await resolveFolderIntoIndex(deps, input.folderPath);
   if (!resolved.ok) return resolved;
 
@@ -134,10 +134,14 @@ export const upsertProcessedVideo = async (
 
   const folder = await deps.globalCatalog.getFolder(resolved.value.folderId);
   if (!folder.ok) return folder;
-  if (folder.value === null) return ok(undefined);
+  if (folder.value === null) return ok({ snapshotSkipped: false });
+  if (!resolved.value.persistent) return ok({ snapshotSkipped: true });
   const snapshot = await exportFolderSnapshot(deps, folder.value);
-  if (!snapshot.ok) return snapshot;
-  return ok(undefined);
+  if (!snapshot.ok) {
+    if (isReadOnlyWriteError(snapshot.error)) return ok({ snapshotSkipped: true });
+    return snapshot;
+  }
+  return ok({ snapshotSkipped: false });
 };
 
 export const reconcileFolderPresence = async (

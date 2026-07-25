@@ -96,6 +96,8 @@ const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): s
       );
     case 'fileSkipped':
       return dictionary.processing.driveFileSkipped(message.filename);
+    case 'snapshotSkipped':
+      return dictionary.processing.driveSnapshotSkipped(message.folder);
     case 'runComplete':
       return dictionary.processing.driveRunComplete(
         message.foldersDone,
