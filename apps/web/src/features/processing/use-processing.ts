@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 
+import type { JobOutput } from '@core/client/index.js';
+
 import type { BatchProgressView } from '../../components/ui/BatchToolbar.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
 import type { BatchResultItem } from '../../components/ui/dialogs/BatchSummaryDialog.js';
@@ -30,7 +32,13 @@ import { stepLabel } from './step-labels.js';
 interface RunOutcome {
   success: boolean;
   error?: string;
+  completedPath?: string;
 }
+
+const completedVideoPath = (result: JobOutput['result']): string | null =>
+  result !== undefined && 'status' in result && result.status === 'completed' && 'path' in result
+    ? result.path
+    : null;
 
 export interface BatchSummaryState {
   open: boolean;
@@ -70,6 +78,7 @@ export interface UseProcessingOptions {
   addLine: AddLogLine;
   intervalMs?: number;
   checkReadiness?: (() => Promise<boolean>) | undefined;
+  onVideoRenamed?: ((oldPath: string, newPath: string) => void) | undefined;
 }
 
 const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): string => {
@@ -110,6 +119,7 @@ export const useProcessing = ({
   addLine,
   intervalMs = 1000,
   checkReadiness,
+  onVideoRenamed,
 }: UseProcessingOptions): ProcessingState => {
   const dictionary = useDictionary();
   const queryClient = useQueryClient();
@@ -181,9 +191,11 @@ export const useProcessing = ({
           },
         });
         switch (final.status) {
-          case 'completed':
+          case 'completed': {
             addLine(dictionary.processing.analysisCompleted(video.filename), 'success');
-            return { success: true };
+            const completedPath = completedVideoPath(final.result);
+            return { success: true, ...(completedPath === null ? {} : { completedPath }) };
+          }
           case 'cancelled':
             addLine(dictionary.processing.cancelledByUser, 'info');
             return { success: false, error: dictionary.processing.cancelledByUser };
@@ -221,14 +233,17 @@ export const useProcessing = ({
         }
         setAnalyzingPath(video.path);
         addLine(dictionary.processing.startingAnalysis(video.filename), 'info');
-        await runVideo(video, options?.force ?? false);
+        const outcome = await runVideo(video, options?.force ?? false);
         busyRef.current = false;
         setAnalyzingPath(null);
         setProgress(null);
         await queryClient.invalidateQueries();
+        if (outcome.completedPath !== undefined && outcome.completedPath !== video.path) {
+          onVideoRenamed?.(video.path, outcome.completedPath);
+        }
       })();
     },
-    [runVideo, addLine, queryClient, checkReadiness, dictionary],
+    [runVideo, addLine, queryClient, checkReadiness, dictionary, onVideoRenamed],
   );
 
   const batchAnalyze = useCallback(() => {

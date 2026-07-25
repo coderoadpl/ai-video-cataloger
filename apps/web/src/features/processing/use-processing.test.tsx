@@ -153,6 +153,72 @@ describe('useProcessing batch', () => {
     await waitFor(() => expect(processed).toEqual(['/v/good1.mp4', '/v/good2.mp4']));
   });
 
+  it('reports the renamed path after a completed analysis so selection can follow', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const onVideoRenamed = vi.fn();
+    server.use(
+      http.post('/api/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job:rename' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          ...jobSnapshot('job:rename'),
+          result: { video: '2026-01-01_renamed.mp4', path: '/v/2026-01-01_renamed.mp4', status: 'completed' },
+        },
+      })),
+    );
+    const { result } = renderHook(() => useProcessing({
+      videos,
+      addLine: vi.fn(),
+      intervalMs: 0,
+      onVideoRenamed,
+    }), { wrapper });
+    const video = videos[1];
+    if (video === undefined) throw new Error('Expected video fixture');
+
+    act(() => {
+      result.current.analyze(video, { force: true });
+    });
+
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+    await waitFor(() => expect(onVideoRenamed).toHaveBeenCalledWith('/v/good1.mp4', '/v/2026-01-01_renamed.mp4'));
+  });
+
+  it('does not report a rename when the completed path is unchanged', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const onVideoRenamed = vi.fn();
+    server.use(
+      http.post('/api/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job:same' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          ...jobSnapshot('job:same'),
+          result: { video: 'good1.mp4', path: '/v/good1.mp4', status: 'completed' },
+        },
+      })),
+    );
+    const { result } = renderHook(() => useProcessing({
+      videos,
+      addLine: vi.fn(),
+      intervalMs: 0,
+      onVideoRenamed,
+    }), { wrapper });
+    const video = videos[1];
+    if (video === undefined) throw new Error('Expected video fixture');
+
+    act(() => {
+      result.current.analyze(video);
+    });
+
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+    expect(onVideoRenamed).not.toHaveBeenCalled();
+  });
+
   it('releases the busy guard after a job poll rejects', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (

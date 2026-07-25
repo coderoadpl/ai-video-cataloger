@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
@@ -44,10 +44,22 @@ export const IndexRoute = () => {
   const readiness = useReadiness(shell.currentFolder);
   const catalogLock = useCatalogLock();
   const firstLaunch = useFirstLaunch();
+  const selectKey = catalog.selectKey;
+  const selectedKeyRef = useRef(catalog.selectedKey);
+  useEffect(() => {
+    selectedKeyRef.current = catalog.selectedKey;
+  }, [catalog.selectedKey]);
+  const followRenamedSelection = useCallback(
+    (oldPath: string, newPath: string) => {
+      if (selectedKeyRef.current === oldPath) selectKey(newPath);
+    },
+    [selectKey],
+  );
   const processing = useProcessing({
     videos: catalog.videos,
     addLine: terminal.addLine,
     checkReadiness: readiness.checkNow,
+    onVideoRenamed: followRenamedSelection,
   });
   const disabledReason = useAnalysisDisabledReason(catalogLock.disabledReason, readiness);
 
@@ -77,7 +89,6 @@ export const IndexRoute = () => {
 
   const clearSearch = globalSearch.clearSearch;
   const [pendingSelection, setPendingSelection] = useState<{ folderPath: string; videoPath: string } | null>(null);
-  const selectKey = catalog.selectKey;
   const currentFolder = shell.currentFolder;
   const selectRecentFolder = shell.selectRecentFolder;
   const openSearchResult = useCallback(
