@@ -14,6 +14,7 @@ import { useScopePreference } from '../features/catalog/use-scope-preference.js'
 import { useCatalogVideoRegistry } from '../features/catalog/use-catalog-video-registry.js';
 import { useCatalogLock } from '../features/catalog/use-catalog-lock.js';
 import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
+import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { PeopleView } from '../features/people/PeopleView.js';
@@ -41,6 +42,7 @@ export const IndexRoute = () => {
   const catalog = useCatalog(shell.currentFolder);
   const videoRegistry = useCatalogVideoRegistry();
   const tree = useCatalogTree(shell.currentFolder);
+  useFolderWatch(shell.currentFolder);
   const readiness = useReadiness(shell.currentFolder);
   const catalogLock = useCatalogLock();
   const firstLaunch = useFirstLaunch();

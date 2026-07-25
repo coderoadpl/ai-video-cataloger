@@ -247,6 +247,16 @@ managed runtimes, and its working-directory fallback.
   test, routed across the same three analyzer families.
 - `FileSystemPort` — fs primitives incl. `partialContentHash` (named by
   ADR-0002(c)); Node adapter in production, in-memory fake in tests.
+- `FolderWatcherPort` — recursive watch of the opened folder tree. The Node
+  adapter (`adapters/fs/folder-watcher.ts`) wraps `fs.watch` with
+  `recursive: true` (FSEvents on macOS), drops `.ai-video-cataloger` paths and
+  debounces bursts so an in-flight file copy produces one change, not
+  hundreds; the memory driver gets an inert implementation. The
+  `watchCatalogFolder` use-case holds the refresh while an analysis run
+  (`process` / `process_drive`) is active and emits a single coalesced refresh
+  once the run settles. Electron main subscribes through `App.watchFolder` and
+  forwards `folder:changed` over the preload bridge; the renderer invalidates
+  its server state so the sidebar tree and counts follow the disk.
 - `DesktopBridge` (client-side port) — preload adapter in `apps/desktop`.
 
 Harness commands are always spawned directly from an argument vector. The

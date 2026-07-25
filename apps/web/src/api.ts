@@ -104,6 +104,7 @@ const devBridge: DesktopBridge = {
     getRecent: () => Promise.resolve([]),
     removeRecent: () => Promise.resolve(),
     clearRecent: () => Promise.resolve(),
+    onChanged: () => noopUnsubscribe,
   },
   revealInFinder: () => Promise.resolve(true),
   window: { close: () => undefined, minimize: () => undefined, maximize: () => undefined },

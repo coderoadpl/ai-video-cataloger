@@ -67,27 +67,27 @@ function onMenuEvent(name: 'showSetupWizard', handler: MenuEventHandler<'showSet
 function onMenuEvent(...args: MenuEventSubscriptionArgs): Unsubscribe {
   switch (args[0]) {
     case 'openFolder':
-      return listenToMenuEvent(menuChannelByName.openFolder, menuPayloadParsers.openFolder, args[1]);
+      return listenToChannel(menuChannelByName.openFolder, menuPayloadParsers.openFolder, args[1]);
     case 'openRecentFolder':
-      return listenToMenuEvent(menuChannelByName.openRecentFolder, menuPayloadParsers.openRecentFolder, args[1]);
+      return listenToChannel(menuChannelByName.openRecentFolder, menuPayloadParsers.openRecentFolder, args[1]);
     case 'clearRecentFolders':
-      return listenToMenuEvent(menuChannelByName.clearRecentFolders, menuPayloadParsers.clearRecentFolders, args[1]);
+      return listenToChannel(menuChannelByName.clearRecentFolders, menuPayloadParsers.clearRecentFolders, args[1]);
     case 'toggleTerminal':
-      return listenToMenuEvent(menuChannelByName.toggleTerminal, menuPayloadParsers.toggleTerminal, args[1]);
+      return listenToChannel(menuChannelByName.toggleTerminal, menuPayloadParsers.toggleTerminal, args[1]);
     case 'toggleSidebar':
-      return listenToMenuEvent(menuChannelByName.toggleSidebar, menuPayloadParsers.toggleSidebar, args[1]);
+      return listenToChannel(menuChannelByName.toggleSidebar, menuPayloadParsers.toggleSidebar, args[1]);
     case 'showSettings':
-      return listenToMenuEvent(menuChannelByName.showSettings, menuPayloadParsers.showSettings, args[1]);
+      return listenToChannel(menuChannelByName.showSettings, menuPayloadParsers.showSettings, args[1]);
     case 'showPrerequisites':
-      return listenToMenuEvent(menuChannelByName.showPrerequisites, menuPayloadParsers.showPrerequisites, args[1]);
+      return listenToChannel(menuChannelByName.showPrerequisites, menuPayloadParsers.showPrerequisites, args[1]);
     case 'showModelManager':
-      return listenToMenuEvent(menuChannelByName.showModelManager, menuPayloadParsers.showModelManager, args[1]);
+      return listenToChannel(menuChannelByName.showModelManager, menuPayloadParsers.showModelManager, args[1]);
     case 'showSetupWizard':
-      return listenToMenuEvent(menuChannelByName.showSetupWizard, menuPayloadParsers.showSetupWizard, args[1]);
+      return listenToChannel(menuChannelByName.showSetupWizard, menuPayloadParsers.showSetupWizard, args[1]);
   }
 }
 
-const listenToMenuEvent = <Payload>(
+const listenToChannel = <Payload>(
   channel: string,
   parsePayload: (args: readonly unknown[]) => Payload,
   handler: (payload: Payload) => void,
@@ -119,6 +119,8 @@ const desktopBridge: DesktopBridge = {
     clearRecent: async () => {
       await invokeUnknown(CHANNELS.folderClearRecent);
     },
+    onChanged: (handler) =>
+      listenToChannel(CHANNELS.folderChanged, (args) => ({ folderPath: z.string().parse(args[0]) }), handler),
   },
   revealInFinder: async (targetPath) => z.boolean().parse(await invokeUnknown(CHANNELS.revealInFinder, targetPath)),
   window: {

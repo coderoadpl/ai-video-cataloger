@@ -29,6 +29,8 @@ export interface MenuEventPayloads {
 export type MenuEventHandler<Name extends MenuEventName> = (payload: MenuEventPayloads[Name]) => void;
 export type Unsubscribe = () => void;
 
+export type FolderChangedHandler = (payload: { folderPath: string }) => void;
+
 export interface FolderStoreBridge {
   showPicker(): Promise<string | null>;
   getCurrent(): Promise<string | null>;
@@ -36,6 +38,7 @@ export interface FolderStoreBridge {
   getRecent(): Promise<string[]>;
   removeRecent(folderPath: string): Promise<void>;
   clearRecent(): Promise<void>;
+  onChanged(handler: FolderChangedHandler): Unsubscribe;
 }
 
 export interface WindowControlsBridge {

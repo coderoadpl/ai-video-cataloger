@@ -21,6 +21,7 @@ import type { App } from '@server/src/create-app.js';
 
 import { CHANNELS } from './channels.js';
 import type { FolderStore } from './folder-store.js';
+import type { FolderWatchController } from './folder-watch.js';
 import { resolveRevealPath } from './media-scope.js';
 import { updateRecentFoldersMenu } from './menu.js';
 
@@ -28,6 +29,7 @@ export interface IpcDeps {
   desktopApp: Promise<App>;
   appVersion: string;
   folderStore: FolderStore;
+  folderWatch: FolderWatchController;
   getMainWindow(): BrowserWindow | null;
 }
 
@@ -93,6 +95,7 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
     if (!folderPath.success) return;
     if (!(await isAbsoluteDirectory(folderPath.data))) return;
     await deps.folderStore.setCurrent(folderPath.data);
+    void deps.folderWatch.watch(folderPath.data);
     await updateMenu(deps);
   });
 

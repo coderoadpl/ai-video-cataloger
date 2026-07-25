@@ -257,6 +257,14 @@ export interface FileSystemPort {
   tempDirectory(): string;
 }
 
+export interface FolderWatchHandle {
+  close(): void;
+}
+
+export interface FolderWatcherPort {
+  watch(root: string, onChange: () => void): Promise<Result<FolderWatchHandle, AppError>>;
+}
+
 export interface DependencyStatus {
   name: string;
   available: boolean;

@@ -8,8 +8,10 @@ import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
 import type { App } from '@server/src/create-app.js';
 
 import { resolveDesktopAppVersion } from './app-version.js';
+import { CHANNELS } from './channels.js';
 import { createDesktopApp } from './composition.js';
 import { folderStorePath, FolderStore } from './folder-store.js';
+import { FolderWatchController } from './folder-watch.js';
 import { buildDesktopPath, userDataDirectoryOverride } from './environment.js';
 import { cleanupIpcHandlers, registerIpcHandlers } from './ipc.js';
 import { createApplicationMenu } from './menu.js';
@@ -37,6 +39,7 @@ registerMediaScheme();
 let mainWindow: BrowserWindow | null = null;
 let desktopApp: App | null = null;
 let folderStore: FolderStore | null = null;
+let folderWatch: FolderWatchController | null = null;
 let quitting = false;
 
 let resolveRendererReady!: () => void;
@@ -137,15 +140,27 @@ const bootstrap = async (): Promise<void> => {
   });
   void desktopAppReady.catch(surfaceCompositionFailure);
 
+  folderWatch = new FolderWatchController({
+    desktopApp: desktopAppReady,
+    notify: (folderPath) => {
+      if (mainWindow === null || mainWindow.isDestroyed()) return;
+      mainWindow.webContents.send(CHANNELS.folderChanged, folderPath);
+    },
+  });
+
   registerIpcHandlers({
     desktopApp: desktopAppReady,
     appVersion,
     folderStore,
+    folderWatch,
     getMainWindow: () => mainWindow,
   });
 
   await createWindow();
   await Promise.race([rendererReady, sleep(COMPOSITION_DEFER_FALLBACK_MS)]);
+
+  const startupFolder = await folderStore.getCurrent();
+  if (startupFolder !== null) void folderWatch.watch(startupFolder);
 
   setImmediate(() => {
     if (quitting) return;
@@ -169,6 +184,7 @@ app.on('activate', () => {
 app.on('before-quit', () => {
   quitting = true;
   cleanupIpcHandlers();
+  folderWatch?.stop();
   if (desktopApp !== null) void desktopApp.dispose();
 });
 

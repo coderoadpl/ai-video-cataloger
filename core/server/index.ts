@@ -4,6 +4,7 @@ export * from './usecases/catalog-lock.js';
 export * from './usecases/catalog-snapshot.js';
 export * from './usecases/catalog-tree.js';
 export * from './usecases/folder-identity.js';
+export * from './usecases/folder-watch.js';
 export * from './usecases/check.js';
 export * from './usecases/config.js';
 export * from './usecases/credentials.js';

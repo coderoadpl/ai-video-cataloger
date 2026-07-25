@@ -10,6 +10,7 @@ export const CHANNELS = {
   folderGetRecent: 'folder:getRecent',
   folderRemoveRecent: 'folder:removeRecent',
   folderClearRecent: 'folder:clearRecent',
+  folderChanged: 'folder:changed',
   revealInFinder: 'shell:revealInFinder',
   menuOpenFolder: 'menu:openFolder',
   menuOpenRecentFolder: 'menu:openRecentFolder',

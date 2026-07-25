@@ -15,6 +15,7 @@ import { NodeCliPathAdapter } from '@adapters/cli-path/index.js';
 import { OnnxFaceEngineAdapter } from '@adapters/faces/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
+import { NodeFolderWatcherPort } from '@adapters/fs/folder-watcher.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { ManagedOllamaRuntimeAdapter } from '@adapters/ollama-runtime/index.js';
 import { ManagedWhisperRuntimeAdapter } from '@adapters/whisper-runtime/index.js';
@@ -63,6 +64,8 @@ import type {
   FileStat,
   CliPathPort,
   FileSystemPort,
+  FolderWatchHandle,
+  FolderWatcherPort,
   ForgetEntryResult,
   GlobalCatalogCounts,
   GlobalCatalogStore,
@@ -102,6 +105,7 @@ export interface AppDeps {
   config: ConfigStore;
   credentials: CredentialsStore;
   fs: FileSystemPort;
+  folderWatcher: FolderWatcherPort;
   media: MediaPort;
   transcriber: TranscriberPort;
   whisperRuntime: WhisperRuntimePort;
@@ -140,6 +144,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
       config: configStore,
       credentials,
       fs: new InMemoryFileSystemPort(workingDirectory),
+      folderWatcher: new InertFolderWatcherPort(),
       media: new InMemoryMediaPort(),
       transcriber: new InMemoryTranscriberPort(),
       whisperRuntime: new InMemoryWhisperRuntimePort(),
@@ -176,6 +181,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     config: configStore,
     credentials,
     fs: new NodeFileSystemPort({ workingDirectory }),
+    folderWatcher: new NodeFolderWatcherPort(),
     media: new FfmpegMediaAdapter(),
     transcriber: new WhisperTranscriberAdapter({ credentials, homeDirectory, runtime: whisperRuntime }),
     whisperRuntime,
@@ -301,6 +307,12 @@ class ProvidersNotWiredPort implements ProvidersPort {
       ok: false,
       error: appError('internal', 'Provider connectivity checks are not wired until provider adapters land'),
     });
+  }
+}
+
+class InertFolderWatcherPort implements FolderWatcherPort {
+  watch(): Promise<Result<FolderWatchHandle, AppError>> {
+    return Promise.resolve(ok({ close: () => undefined }));
   }
 }
 

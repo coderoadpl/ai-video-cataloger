@@ -22,6 +22,7 @@ const buildDesktopApp = (): App => {
       onSettled: () => undefined,
     },
     catalogFolderPaths: async () => [],
+    watchFolder: async () => ({ ok: true, value: { stop: () => undefined } }),
     dispose: async () => undefined,
   };
 };
