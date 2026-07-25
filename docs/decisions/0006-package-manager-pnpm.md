@@ -155,7 +155,13 @@ upstream argument.
    convention — with no `version:` input, so `packageManager` stays the single
    source of the version. `npm audit` becomes `pnpm audit --prod`, still
    advisory. `scripts/stage-cli.sh` and `scripts/e2e-videos.sh` install with
-   pnpm. `landing/` was already on pnpm; its action is now SHA-pinned too.
+   pnpm. `landing/` was already on pnpm; its action is now SHA-pinned too, and
+   it gains its **own** `pnpm-workspace.yaml`. That file is load-bearing, not
+   decoration: pnpm searches upward for a workspace root, so once the repo root
+   had one, `pnpm install` inside `landing/` silently installed the **root**
+   project instead (observed: the install reported the root's ignored build
+   scripts, not `sharp`). A workspace file in `landing/` stops the search there,
+   which is what keeps the Firebase deploy job installing what it thinks it is.
 
 10. **The npm-10 pin story is retired.** `engines.npm`, `packageManager:
     npm@10.9.2`, "regenerate with `npx -y npm@10 install`" and the whole
