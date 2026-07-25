@@ -109,6 +109,25 @@ flagged OWNER.
    scripts — the smallest probe that catches the drift class.
 10. **Scaffolder/template deltas → ADOPT where our scaffolds drifted** from
     the rung-1 island seam doctrine; verify, sync, nothing speculative.
+    **RESOLVED 2026-07-27 → NO CODE, ONE DOC SYNC.** What was checked:
+    (a) we have no scaffolder — `new:island` / `new:resource` / `scripts/templates`
+    do not exist here, and none was built (two islands do not earn a generator);
+    (b) the foundation's island template delta across `bcb038b..cf247d1` is a
+    single commit (`685d704`, the pnpm migration) touching `new-island.ts`,
+    `island-index.ts.tpl`, `island-index.web.store.ts.tpl`,
+    `island-selectors.ts.tpl` and `page.tsx.tpl` — every hunk is `npm run` →
+    `pnpm run` prose, so **no doctrine moved**; (c) the rung-1 seam our docs
+    promise was compared field by field against the current templates:
+    factory-over-deps core (`create<X>Core`) ✓, descriptors injected at the one
+    web binding `index.web.ts` ✓, colocated node-only core test ✓, DOM-free
+    portability via `tsconfig.islands.json` ✓, `index.web.ts` never imported
+    backwards by `api.ts` ✓; (d) the one standing difference is our round-1
+    ruling that a rung-1 core carries **no inbound event union** (the foundation
+    scaffolds `core/events.ts` with a stubbed `send` at rung 1) plus our i18n
+    typed-key ruling, which the foundation's templates are silent about — both
+    were undocumented in `docs/architecture.md` §Island cores and are now
+    written down there, with the `avc/event-suffix-taxonomy` rule named as the
+    enforcement waiting for the first rung-2 graduation.
 
 ## Phases
 
@@ -116,12 +135,16 @@ flagged OWNER.
 - **P1** — layout layer (decision 1): our ADR-0004-layout-layer + architecture
   delta first, then the extraction/split, rule + probe, tests, gates.
 - **P2** — visual suite (decision 2): our ADR-0005-visual-regression, config +
-  specs + darwin baselines, `npm run visual`, docs.
+  specs + darwin baselines, `pnpm run visual`, docs. DONE 2026-07-27: eight
+  baselines (four skeleton states × dark/light) under
+  `visual/__screenshots__/darwin/`, green twice from a clean build.
 - **P3** — pnpm spike on an isolated worktree → evidence report → ADR-0006 →
   adopt/deviate/reject per the tree above. May run parallel to P1 (separate
   worktrees; the M1/L1 shared-worktree collision is the standing lesson).
 - **P4** — conventions: CHANGELOG.md + PR template line, doc-lint README
-  probe, scaffolder sync, doc updates.
+  probe, scaffolder sync, doc updates. DONE 2026-07-27 except the PR-template
+  line, which is moot here: we ship from a branch, so the convention lives in
+  `CLAUDE.md` and `CHANGELOG.md`'s own header instead.
 - **P5** — full audit (check + smoke + matrix subset + verify:package +
   packaged-CLI), release, docs sync, status flip to COMPLETE here.
 

@@ -156,6 +156,21 @@ core never does — resolve each key against the effective dictionary. This
 keeps the core locale-free and portable while the translated output stays
 byte-identical to the pre-extraction renderer.
 
+**No scaffolder, and one half of the seam is deferred.** The foundation
+generates a new island with `pnpm run new:island`, and its rung-1 template ships
+**both** halves of the seam: an inbound `core/events.ts` intent union with a
+typed stub `send`, plus `core/selectors.ts`. We have no generator — two islands
+do not earn one, and a template nobody runs rots — so the seam is written by
+hand and the rules, not a template, are what hold it: `typecheck:islands`, the
+island-purity bans and the depcruise pair above. Our rung-1 cores ship the
+**read half** (selectors/descriptors out, plus the typed dictionary keys of the
+i18n ruling) and deliberately have **no event union**: with no client machine
+behind the seam, an inbound `send` would be a stub forwarding to nothing, and
+writes go through mutation descriptors in the view (invalidation → refetch). The
+naming rule for the day one arrives is already armed —
+`avc/event-suffix-taxonomy` runs on `features/*/core/events.ts`, so the first
+core to graduate to rung 2 gets an intent-suffixed union or a red `check`.
+
 ### Renderer structure (delta on the foundation's frontend diagram)
 
 ```
