@@ -20,6 +20,7 @@ import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
 import { z } from 'zod';
 
 import {
+  APP_GLOBAL_CONFIG_KEYS,
   CONFIG_KEYS,
   appError,
   ok,
@@ -41,6 +42,8 @@ import { createCatalogSchemaSql, createConfigSchemaSql, schema, videos } from '.
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'catalog.db';
 const configFileName = 'config.json';
+
+const appGlobalConfigKeys = new Set<string>(APP_GLOBAL_CONFIG_KEYS);
 
 const persistedConfigSchema = z.record(z.string(), z.string());
 
@@ -106,8 +109,13 @@ export class JsonConfigStore implements ConfigStore {
     const values = await this.read(scope);
     if (!values.ok) return values;
     const previousValue = values.value[key] ?? null;
-    values.value[key] = value;
-    const written = writeConfig(configPath(scopeRoot(scope, this.options)), values.value);
+    const merged: Record<string, string> = { ...values.value, [key]: value };
+    const next = scope.kind === 'folder'
+      ? Object.fromEntries(
+          Object.entries(merged).filter(([entryKey]) => entryKey === key || !appGlobalConfigKeys.has(entryKey)),
+        )
+      : merged;
+    const written = writeConfig(configPath(scopeRoot(scope, this.options)), next);
     if (!written.ok) return written;
     return ok({ previousValue });
   }

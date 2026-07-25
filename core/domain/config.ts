@@ -98,6 +98,10 @@ export const CONFIG_KEYS = [
 export const configKeySchema = z.enum(CONFIG_KEYS);
 export type ConfigKey = z.output<typeof configKeySchema>;
 
+export const APP_GLOBAL_CONFIG_KEYS: readonly ConfigKey[] = ['ui_language', 'faces_enabled'];
+
+export const isAppGlobalConfigKey = (key: ConfigKey): boolean => APP_GLOBAL_CONFIG_KEYS.includes(key);
+
 export const configPatchSchema = configValueSchema.partial();
 
 export const CONFIG_DEFAULTS = configSchema.parse({});

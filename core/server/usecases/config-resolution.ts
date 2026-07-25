@@ -2,6 +2,7 @@ import {
   CONFIG_KEYS,
   analyzerBackendSchema,
   analyzerProviderConfigSchema,
+  isAppGlobalConfigKey,
   legacyAnalyzerProvider,
   type AppError,
   type ConfigKey,
@@ -35,7 +36,7 @@ export const resolveConfigValues = async (
   const effective = { ...defaults };
   const sources = defaultSources();
   for (const key of CONFIG_KEYS) {
-    const folderValue = folderValues.value[key];
+    const folderValue = isAppGlobalConfigKey(key) ? undefined : folderValues.value[key];
     const homeValue = home.value[key];
     if (folderValue !== undefined) {
       effective[key] = folderValue;

@@ -128,7 +128,46 @@ describe('config use-cases', () => {
     });
   });
 
-  it('lets folder values override home values for every key', async () => {
+  it('resolves app-global ui_language and faces_enabled home-scoped, ignoring a poisoned folder override', async () => {
+    const config = new InMemoryConfig();
+    const deps = { config, fs: new InMemoryFileSystem('/work') };
+    await setConfig(deps, { key: 'ui_language', value: 'en' });
+    await config.set({ kind: 'folder', folder: '/work' }, 'ui_language', 'pl');
+
+    const beforeFolder = await getConfig(deps, { folder: '/work', key: null });
+    expect(beforeFolder).toMatchObject({
+      ok: true,
+      value: { effective: { ui_language: 'en' }, sources: { ui_language: 'home' } },
+    });
+    const beforeHome = await getConfig(deps, { key: null });
+    expect(beforeHome).toMatchObject({ ok: true, value: { effective: { ui_language: 'en' } } });
+
+    await setConfig(deps, { key: 'ui_language', value: 'pl' });
+
+    const afterFolder = await getConfig(deps, { folder: '/work', key: null });
+    const afterHome = await getConfig(deps, { key: null });
+    expect(afterFolder).toMatchObject({
+      ok: true,
+      value: { effective: { ui_language: 'pl' }, sources: { ui_language: 'home' } },
+    });
+    expect(afterHome).toMatchObject({ ok: true, value: { effective: { ui_language: 'pl' } } });
+  });
+
+  it('resolves faces_enabled home-scoped, ignoring a folder override', async () => {
+    const config = new InMemoryConfig();
+    const deps = { config, fs: new InMemoryFileSystem('/work') };
+    await setConfig(deps, { key: 'faces_enabled', value: 'false' });
+    await config.set({ kind: 'folder', folder: '/work' }, 'faces_enabled', 'true');
+
+    const result = await getConfig(deps, { folder: '/work', key: null });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { effective: { faces_enabled: 'false' }, sources: { faces_enabled: 'home' } },
+    });
+  });
+
+  it('lets folder values override home values for every folder-scoped key', async () => {
     const config = new InMemoryConfig();
     const deps = { config, fs: new InMemoryFileSystem('/work') };
     const homeValues = {
@@ -174,7 +213,7 @@ describe('config use-cases', () => {
       ok: true,
       value: {
         config: folderValues,
-        effective: folderValues,
+        effective: { ...folderValues, ui_language: 'en', faces_enabled: 'false' },
         sources: {
           whisper_binary_path: 'folder',
           whisper_model: 'folder',
@@ -187,9 +226,9 @@ describe('config use-cases', () => {
           analyzer_backend: 'folder',
           local_model: 'folder',
           analyzer_provider: 'folder',
-          faces_enabled: 'folder',
+          faces_enabled: 'home',
           output_language: 'folder',
-          ui_language: 'folder',
+          ui_language: 'home',
         },
       },
     });

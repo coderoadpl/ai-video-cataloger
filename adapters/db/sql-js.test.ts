@@ -196,6 +196,24 @@ describe('JsonConfigStore', () => {
     expect(JSON.parse(raw)).toEqual({ frames: '7', skip_rename: 'true' });
   });
 
+  it('strips legacy app-global keys from a folder config on the next folder write', async () => {
+    const folder = await tempRoot();
+    const configDirectory = path.join(folder, '.ai-video-cataloger');
+    await mkdir(configDirectory, { recursive: true });
+    await writeFile(
+      path.join(configDirectory, 'config.json'),
+      JSON.stringify({ ui_language: 'pl', faces_enabled: 'true', frames: '4' }),
+      'utf8',
+    );
+    const store = new JsonConfigStore();
+
+    const written = await store.set({ kind: 'folder', folder }, 'skip_rename', 'true');
+    if (!written.ok) throw new Error(written.error.message);
+
+    const raw = await readFile(path.join(configDirectory, 'config.json'), 'utf8');
+    expect(JSON.parse(raw)).toEqual({ frames: '4', skip_rename: 'true' });
+  });
+
   it('uses the configured home directory for home-scope config', async () => {
     const home = await tempRoot();
     const store = new JsonConfigStore({ homeDirectory: home });
