@@ -110,7 +110,7 @@ export const VideoDetails = ({
               {video.path}
             </Typography>
             <Box>
-              {duplicate === null ? (
+              {duplicate === null || analyzing ? (
                 <VideoStatusBadge status={video.status} analyzing={analyzing} variant="details" />
               ) : (
                 <DuplicateBadge canonicalPath={duplicate.canonicalPath} />

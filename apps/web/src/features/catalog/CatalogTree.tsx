@@ -190,7 +190,7 @@ const VideoRowView = ({
           <span>{video.sizeFormatted}</span>
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-          {video.duplicate != null ? (
+          {video.duplicate != null && !analyzing ? (
             <DuplicateBadge canonicalPath={video.duplicate.canonicalPath} />
           ) : (
             <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />

@@ -163,6 +163,22 @@ describe('CatalogTree', () => {
     expect(rootRow.textContent).toContain('1 duplicate');
   });
 
+  it('shows Processing instead of the Duplicate badge while a duplicate row is being force-analyzed', () => {
+    const dupRoot = makeNode({
+      path: '/drive',
+      name: 'drive',
+      relativePath: '',
+      depth: 0,
+      videos: [makeVideo('/drive/dupe.mp4', { duplicate: { canonicalPath: '/drive/canon/final.mp4' } })],
+      pendingCount: 1,
+      processedCount: 0,
+      children: [],
+    });
+    renderTree({ root: dupRoot, rootVideos: dupRoot.videos, analyzingPath: '/drive/dupe.mp4' });
+    expect(screen.getByTestId('video-status-badge').textContent).toContain('Processing');
+    expect(screen.queryByTestId('duplicate-badge')).toBeNull();
+  });
+
   it('loads folder details only after expanding a lazy folder and registers its videos', async () => {
     let detailCalls = 0;
     server.use(

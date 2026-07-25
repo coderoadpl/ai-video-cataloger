@@ -140,6 +140,21 @@ describe('details panel', () => {
     expect(screen.getByText('Video Information')).toBeDefined();
   });
 
+  it('shows a duplicate video with the analyze-anyway affordance when idle', () => {
+    const video = makeVideo({ status: 'pending', duplicate: { canonicalPath: '/videos/canon.mp4' } });
+    renderThemed(<DetailsPanel video={video} analyzing={false} onAnalyze={vi.fn()} />);
+    expect(screen.getByTestId('analyze-anyway-button')).toBeDefined();
+    expect(screen.getByTestId('duplicate-badge')).toBeDefined();
+    expect(screen.queryByTestId('video-status-badge')).toBeNull();
+  });
+
+  it('replaces the duplicate badge with Processing while a forced analysis runs', () => {
+    const video = makeVideo({ status: 'pending', duplicate: { canonicalPath: '/videos/canon.mp4' } });
+    renderThemed(<DetailsPanel video={video} analyzing onAnalyze={vi.fn()} />);
+    expect(screen.getByTestId('video-status-badge').textContent).toContain('Processing');
+    expect(screen.queryByTestId('duplicate-badge')).toBeNull();
+  });
+
   it('shows the missing-summary empty state for an analyzed video without a summary', () => {
     renderThemed(<DetailsPanel video={makeVideo({ status: 'analyzed' })} analyzing={false} />);
     expect(screen.getByText(/No summary available/)).toBeDefined();
