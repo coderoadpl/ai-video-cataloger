@@ -93,6 +93,14 @@ re-run.
   layout, DB files) must match `tasks/parity-inventory.md`; the four
   sanctioned deviations are listed in the PRD's Technical Considerations.
 - Docs first: architecture changes edit `docs/` before code.
+- The changelog travels with the change: a behaviour-visible change — a new or
+  changed capability, CLI command, event, exit code, config key, gate or
+  operational procedure — adds one factual line to
+  [`CHANGELOG.md`](CHANGELOG.md) (Keep a Changelog) **in the same commit**, under
+  `[Unreleased]`, linking the commit rather than a PR (we ship from a branch).
+  Pure refactors, test-only and comment-only changes do not. This is enforced by
+  review, not by a gate — no script can tell a user-visible change from an
+  internal one.
 - Dev component gallery is a QA tool, not shipped: `apps/web/src/gallery` +
   `apps/web/gallery.html` render components in isolation, and
   `scripts/gallery-shots.mjs` captures reference screenshots.
