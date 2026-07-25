@@ -4,7 +4,7 @@ import { appError, ok, type AppError, type Result } from '@core/domain/index.js'
 
 import type { AnalysisOutput, AnalyzeInput, DirectoryEntry } from '../ports.js';
 import { folderCatalogRecords, indexStatus } from './catalog-index.js';
-import { scanTreeFolderDetails } from './catalog-tree.js';
+import { catalogTreeAbsentFiles, scanTreeFolderDetails } from './catalog-tree.js';
 import { discoverCatalogFolders, processDrive, shouldRelocateCanonical, type ProcessDriveInput } from './process-drive.js';
 import type { CatalogFolder } from '@core/domain/index.js';
 import {
@@ -253,6 +253,25 @@ describe('drive processing', () => {
     const keep = records.ok ? records.value.records.find((record) => record.fileName === 'keep.mp4') : undefined;
     expect(gone?.missing).toBe(true);
     expect(keep?.missing).toBe(false);
+  });
+
+  it('clears the absent flag after a deleted file is restored to disk, without another drive run', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/a/keep.mp4', 'hash-keep');
+    addVideo(deps.fs, '/drive/a/gone.mp4', 'hash-gone');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    await deps.fs.deleteFile('/drive/a/gone.mp4');
+    await processDrive(deps, baseInput, undefined, { runId: 'run-missing' });
+    const marked = await deps.globalCatalog.getFile('hash-gone');
+    expect(marked.ok && marked.value?.missingAt).not.toBe(null);
+
+    addVideo(deps.fs, '/drive/a/gone.mp4', 'hash-gone');
+    const absent = await catalogTreeAbsentFiles(deps, { folder: '/drive' });
+
+    const restored = await deps.globalCatalog.getFile('hash-gone');
+    expect(restored.ok && restored.value?.missingAt).toBe(null);
+    expect(absent.ok && absent.value.groups).toEqual([]);
   });
 
   it('marks rows missing in a folder that still exists on disk but lost all its videos', async () => {

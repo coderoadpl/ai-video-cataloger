@@ -1,10 +1,11 @@
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { ok, type AppError, type CatalogFolder, type Result } from '@core/domain/index.js';
 
 import type { CatalogFileRecord, FileSystemPort, GlobalCatalogStore } from '../ports.js';
 import type { CatalogFolderRecord } from './catalog-index.js';
 import { discoverCatalogFolders } from './process-drive.js';
 import { scanFolder, type ScanDeps, type ScanVideo } from './scan.js';
 import { readFolderMarker } from './folder-identity.js';
+import { isSupportedVideoExtension } from './shared.js';
 
 export interface CatalogTreeFolder {
   path: string;
@@ -103,8 +104,23 @@ export const catalogTreeAbsentFiles = async (
     if (!isUnderRoot(deps.fs, root, folder.currentPath)) continue;
     const records = await globalCatalog.listFolderRecords(folder.folderId);
     if (!records.ok) return records;
-    const entries = records.value
-      .filter((record) => record.file.missingAt !== null)
+    const missingRecords = records.value.filter((record) => record.file.missingAt !== null);
+    if (missingRecords.length === 0) continue;
+
+    const restored = await restoredFingerprints(deps.fs, folder, missingRecords);
+    if (!restored.ok) return restored;
+    if (restored.value.size > 0) {
+      const cleared = await globalCatalog.reconcileFolder({
+        folderId: folder.folderId,
+        presentFingerprints: [...restored.value],
+        markMissing: false,
+        now: Date.now(),
+      });
+      if (!cleared.ok) return cleared;
+    }
+
+    const entries = missingRecords
+      .filter((record) => !restored.value.has(record.file.fingerprint))
       .map((record) => ({
         fingerprint: record.file.fingerprint,
         fileName: record.file.fileName,
@@ -116,7 +132,34 @@ export const catalogTreeAbsentFiles = async (
   }
   groups.sort((left, right) => left.folderPath.localeCompare(right.folderPath));
   return ok({ groups });
-};
+}
+
+const restoredFingerprints = async (
+  fs: FileSystemPort,
+  folder: CatalogFolder,
+  missingRecords: readonly CatalogFileRecord[],
+): Promise<Result<Set<string>, AppError>> => {
+  const restored = new Set<string>();
+  const entries = await fs.listDirectory(folder.currentPath);
+  if (!entries.ok) return ok(restored);
+  const presentByName = new Map<string, string>();
+  for (const entry of entries.value) {
+    if (entry.kind !== 'file' || !isSupportedVideoExtension(fs.extname(entry.name))) continue;
+    presentByName.set(fs.basename(entry.path), entry.path);
+  }
+
+  for (const record of missingRecords) {
+    const candidateNames = [record.file.fileName, record.analysis?.finalName ?? null]
+      .filter((name): name is string => name !== null)
+      .map((name) => fs.basename(name));
+    const diskPath = candidateNames.map((name) => presentByName.get(name)).find((path) => path !== undefined);
+    if (diskPath === undefined) continue;
+    const hash = await fs.partialContentHash(diskPath);
+    if (!hash.ok) return hash;
+    if (hash.value === record.file.fingerprint) restored.add(record.file.fingerprint);
+  }
+  return ok(restored);
+};;
 
 export interface ScanTreeFolderDeps extends ScanDeps {
   globalCatalog?: GlobalCatalogStore | undefined;
