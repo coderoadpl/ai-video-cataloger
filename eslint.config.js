@@ -182,6 +182,7 @@ export default tseslint.config(
       'build/**',
       'release/**',
       'test/**',
+      'visual/**',
       'scripts/ralph/**',
       'landing/**',
     ],
@@ -229,6 +230,7 @@ export default tseslint.config(
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
         { type: 'web-shell', pattern: 'apps/web/src/AppLayout*', mode: 'full' },
         { type: 'web-gallery', pattern: 'apps/web/src/gallery/**', mode: 'full' },
+        { type: 'web-visual', pattern: 'apps/web/src/visual/**', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
         {
@@ -352,6 +354,19 @@ export default tseslint.config(
               ],
             },
             {
+              from: ['web-visual'],
+              allow: [
+                'web-visual',
+                'web-features',
+                'web-layout',
+                'web-ui',
+                'web-lib',
+                'web-theme',
+                'web-i18n',
+                'app-web',
+              ],
+            },
+            {
               from: ['web-api'],
               allow: ['web-api', 'core-domain', 'core-contract', 'core-client'],
             },
@@ -467,6 +482,7 @@ export default tseslint.config(
                 'app-web',
                 'web-main',
                 'web-shell',
+                'web-visual',
                 'web-api',
                 'web-routes',
                 'web-island-core',
@@ -589,7 +605,7 @@ export default tseslint.config(
     },
   },
   {
-    files: ['apps/web/src/main.tsx', 'apps/web/src/gallery/main.tsx'],
+    files: ['apps/web/src/main.tsx', 'apps/web/src/gallery/main.tsx', 'apps/web/src/visual/main.tsx'],
     rules: {
       'no-restricted-imports': [
         'error',

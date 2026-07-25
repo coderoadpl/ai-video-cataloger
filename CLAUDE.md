@@ -69,6 +69,13 @@ re-run.
   source, fails on unavailable legs unless `E2E_MATRIX_ALLOW_SKIP=1` is set,
   and is intentionally outside `check`, `smoke`, and parity. Run it after a
   completed work batch and before a release; never add it to a normal gate.
+- `pnpm run visual` = screenshot comparison of the layout skeletons against the
+  darwin baselines in `visual/__screenshots__/`
+  ([ADR-0005](docs/decisions/0005-visual-regression.md)). It builds and previews
+  the `apps/web/visual.html` harness — no Electron, no server, no analysis run —
+  and is deliberately outside `check` and `smoke` until the owner arms it.
+  `scripts/gallery-shots.mjs` stays a capture-only dev tool, never a second
+  baseline store.
 - `pnpm run verify:package` = packaged-bundle shape check (single darwin
   onnxruntime binding, no non-darwin artifacts); run it on the built bundle
   before a release, also outside the normal gates.

@@ -25,6 +25,9 @@ export default defineConfig({
         // Dev-only component gallery (CLAUDE.md §House rules): a QA tool, not
         // shipped, driven by scripts/gallery-shots.mjs, not vitest.
         'apps/web/src/gallery/**',
+        // Visual-regression harness (ADR-0005): fixture surfaces for the
+        // screenshot suite, rendered by `pnpm run visual`, never by vitest.
+        'apps/web/src/visual/**',
         // Gate-orchestration scripts (top-level programs that boot the real app /
         // scan docs and process.exit()): run by `pnpm run smoke` / `pnpm run
         // doc-lint`, never by vitest, so counting them 0% would depress the floor.

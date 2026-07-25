@@ -15,6 +15,7 @@ const featureDir = join('apps', 'web', 'src', 'features', token);
 const uiDir = join('apps', 'web', 'src', 'components', 'ui', token);
 const layoutDir = join('apps', 'web', 'src', 'components', 'layout', token);
 const galleryDir = join('apps', 'web', 'src', 'gallery', token);
+const visualDir = join('apps', 'web', 'src', 'visual', token);
 const cliDir = join('apps', 'cli', token);
 const dcDir = join('core', 'domain', `${token}_dc`);
 
@@ -24,6 +25,7 @@ const SWEEP_BASES = [
   join(repoRoot, 'apps', 'web', 'src', 'components', 'ui'),
   join(repoRoot, 'apps', 'web', 'src', 'components', 'layout'),
   join(repoRoot, 'apps', 'web', 'src', 'gallery'),
+  join(repoRoot, 'apps', 'web', 'src', 'visual'),
   join(repoRoot, 'apps', 'cli'),
 ];
 
@@ -110,6 +112,14 @@ const fixtures = {
   galleryImportsFeature: {
     rel: join(galleryDir, 'feature-probe.ts'),
     content: "import '../../features/catalog/use-catalog.js';\n",
+  },
+  visualImportsApi: {
+    rel: join(visualDir, 'api-probe.ts'),
+    content: "import '../../api.js';\n",
+  },
+  visualImportsLayout: {
+    rel: join(visualDir, 'layout-probe.ts'),
+    content: "import '../../components/layout/AppShell.js';\n",
   },
   queryDescriptorsInline: {
     rel: join(featureDir, 'descriptors-probe.tsx'),
@@ -313,6 +323,12 @@ describe('ESLint gate still rejects violations', () => {
     expect(message?.message).toContain('web-layout');
   });
 
+  it('bans the visual harness reaching the bound API client (boundaries/element-types)', () => {
+    const message = findMessage(fixtures.visualImportsApi, 'boundaries/element-types');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('web-visual');
+  });
+
   it('bans skeleton MUI components outside components/layout (MUI_SKELETON_BAN)', () => {
     const message = findMessage(fixtures.muiSkeletonOutsideLayout, 'no-restricted-imports');
     expect(message).toBeDefined();
@@ -327,6 +343,10 @@ describe('ESLint gate keeps app-owned grants (positive probes)', () => {
 
   it('lets the gallery composition root import a feature (web-gallery second root survives)', () => {
     expect(findMessage(fixtures.galleryImportsFeature, 'boundaries/element-types')).toBeUndefined();
+  });
+
+  it('lets the visual harness render a layout skeleton (ADR-0005 §b harness grant)', () => {
+    expect(findMessage(fixtures.visualImportsLayout, 'boundaries/element-types')).toBeUndefined();
   });
 
   it('lets a feature spread an imported descriptor into a query hook (avc rule does not over-fire)', () => {

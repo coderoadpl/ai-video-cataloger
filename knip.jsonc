@@ -11,6 +11,13 @@
     // a build output knip can infer — both are hand-run QA entries.
     "apps/web/gallery.html",
     "apps/web/src/gallery/main.tsx",
+    // Visual-regression harness (ADR-0005): its own vite config builds visual.html
+    // into dist/visual for `pnpm run visual`; nothing in the app imports it.
+    "apps/web/vite.visual.config.ts",
+    "apps/web/visual.html",
+    "apps/web/src/visual/main.tsx",
+    "visual/playwright.visual.config.ts",
+    "visual/*.spec.ts",
     // electron-builder reads this config file by name; nothing imports it.
     "electron-builder.config.js",
     // Every script runs via a package script or by hand (build-app-icon.mjs and
@@ -30,7 +37,8 @@
     "apps/**/*.{ts,tsx}",
     "scripts/**/*.{ts,mjs}",
     "config-regression/**/*.ts",
-    "test/**/*.{ts,tsx}"
+    "test/**/*.{ts,tsx}",
+    "visual/**/*.ts"
   ],
   "ignoreBinaries": [
     // macOS system binaries the app and its harnesses shell out to; not npm

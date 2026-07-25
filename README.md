@@ -210,3 +210,15 @@ pnpm run test:e2e:parity
 ```
 
 `test:e2e:cli` only runs the CLI project. The GUI and parity projects build Electron and launch the desktop app.
+
+Visual regression:
+
+```bash
+pnpm run visual
+```
+
+The visual suite builds the renderer harness (`apps/web/visual.html`), previews
+it, and compares the layout skeletons against the darwin baselines committed in
+`visual/__screenshots__/`. It joins no gate — see
+[ADR-0005](docs/decisions/0005-visual-regression.md). Re-baseline an intentional
+UI change with `pnpm run visual --update-snapshots` and commit the PNGs.
