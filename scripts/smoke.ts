@@ -1,5 +1,6 @@
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { accessSync, constants, existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -49,13 +50,6 @@ const run = (args: string[], env: NodeJS.ProcessEnv, cwd: string): Promise<Run> 
     child.on('close', (code) => resolve({ code: code ?? 0, stdout, stderr }));
   });
 
-const lockPackageSchema = z.object({
-  version: z.string().optional(),
-  optional: z.boolean().optional(),
-  os: z.unknown().optional(),
-  cpu: z.unknown().optional(),
-});
-const lockFileSchema = z.object({ packages: z.record(z.string(), lockPackageSchema) });
 const jsonEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('started'), timestamp: z.string(), command: z.string(), data: z.unknown().optional() }),
   z.object({ type: z.literal('progress'), timestamp: z.string(), step: z.string() }).passthrough(),
@@ -78,45 +72,88 @@ const readyEnvelopeSchema = z.discriminatedUnion('ok', [
   z.object({ ok: z.literal(false), error: z.object({ code: z.string(), message: z.string() }) }),
 ]);
 
-const readLock = (raw: string): z.output<typeof lockFileSchema> => lockFileSchema.parse(JSON.parse(raw));
+const require = createRequire(import.meta.url);
 
-const readInstalledLock = (): string => {
+const binaryPathSchema = z.string();
+const ffprobeModuleSchema = z.object({ path: z.string() });
+
+interface NativeAsset {
+  readonly label: string;
+  readonly mode: 'readable' | 'executable';
+  readonly resolve: () => string;
+}
+
+const NATIVE_ASSETS: readonly NativeAsset[] = [
+  {
+    label: 'ffmpeg-static binary',
+    mode: 'executable',
+    resolve: () => binaryPathSchema.parse(require('ffmpeg-static')),
+  },
+  {
+    label: '@ffprobe-installer ffprobe binary',
+    mode: 'executable',
+    resolve: () => ffprobeModuleSchema.parse(require('@ffprobe-installer/ffprobe')).path,
+  },
+  {
+    label: 'electron runtime',
+    mode: 'executable',
+    resolve: () => binaryPathSchema.parse(require('electron')),
+  },
+  {
+    label: 'onnxruntime-node darwin binding',
+    mode: 'readable',
+    resolve: () =>
+      join(
+        dirname(require.resolve('onnxruntime-node/package.json')),
+        'bin/napi-v6/darwin/arm64/onnxruntime_binding.node',
+      ),
+  },
+  {
+    label: 'sql.js wasm',
+    mode: 'readable',
+    resolve: () => join(dirname(require.resolve('sql.js')), 'sql-wasm.wasm'),
+  },
+];
+
+const nativeAssetProblem = (asset: NativeAsset): string | null => {
+  let path: string;
   try {
-    return readFileSync(join(rootDir, 'node_modules/.package-lock.json'), 'utf8');
+    path = asset.resolve();
+  } catch (cause) {
+    return `${asset.label} does not resolve: ${String(cause)}`;
+  }
+  try {
+    accessSync(path, asset.mode === 'executable' ? constants.X_OK : constants.R_OK);
+    return null;
   } catch {
-    return fail('Dependencies are not installed (node_modules/.package-lock.json missing). Run: npm install');
+    return `${asset.label} is missing or not ${asset.mode} at ${path}`;
   }
 };
 
-const checkLockfileDrift = (): void => {
-  const src = readLock(readFileSync(join(rootDir, 'package-lock.json'), 'utf8'));
-  const installed = readLock(readInstalledLock());
-  const problems: string[] = [];
-  for (const [name, entry] of Object.entries(src.packages)) {
-    if (name === '') continue;
-    const present = installed.packages[name];
-    const platformConditional = entry.optional === true || entry.os !== undefined || entry.cpu !== undefined;
-    if (present === undefined) {
-      if (!platformConditional) problems.push(`missing: ${name}`);
-      continue;
-    }
-    if (entry.version !== undefined && present.version !== undefined && entry.version !== present.version) {
-      problems.push(`version: ${name} lock=${entry.version} installed=${present.version}`);
-    }
+const checkInstalledTree = (): void => {
+  const declared = [...Object.keys(packageJson.dependencies), ...Object.keys(packageJson.devDependencies)];
+  const unlinked = declared.filter(
+    (name) => !existsSync(join(rootDir, 'node_modules', name, 'package.json')),
+  );
+  if (unlinked.length > 0) {
+    const shown = unlinked.slice(0, 10).join('\n  ');
+    const rest = unlinked.length > 10 ? `\n  ...and ${unlinked.length - 10} more` : '';
+    fail(`Declared dependencies are not linked into node_modules. Run: pnpm install\n  ${shown}${rest}`);
   }
-  for (const name of Object.keys(installed.packages)) {
-    if (name !== '' && !(name in src.packages)) problems.push(`extraneous: ${name}`);
-  }
-  if (problems.length > 0) {
-    const shown = problems.slice(0, 10).join('\n  ');
-    const rest = problems.length > 10 ? `\n  ...and ${problems.length - 10} more` : '';
-    fail(`Installed dependency tree does not match package-lock.json. Run: npm install\n  ${shown}${rest}`);
+
+  const assetProblems = NATIVE_ASSETS.map(nativeAssetProblem).filter((problem) => problem !== null);
+  if (assetProblems.length > 0) {
+    fail(
+      'Native assets the packaged bundle reads as literal paths are not materialized; a dependency that ' +
+        'needs its install script may have dropped out of onlyBuiltDependencies (pnpm-workspace.yaml). ' +
+        `Run: pnpm install\n  ${assetProblems.join('\n  ')}`,
+    );
   }
 };
 
 const lockLint = (): Promise<void> =>
   new Promise((resolve, reject) => {
-    const child = spawn('npx', ['-y', 'npm@10', 'ls', '--all', '--package-lock-only'], {
+    const child = spawn(process.execPath, [join(rootDir, 'scripts/lock-lint.mjs')], {
       cwd: rootDir,
       stdio: ['ignore', 'ignore', 'pipe'],
     });
@@ -124,17 +161,13 @@ const lockLint = (): Promise<void> =>
     child.stderr.on('data', (chunk) => {
       stderr += String(chunk);
     });
-    child.on('error', (cause) => reject(new SmokeFailure(`lock-lint could not run npm@10: ${String(cause)}`)));
+    child.on('error', (cause) => reject(new SmokeFailure(`lock-lint could not run: ${String(cause)}`)));
     child.on('close', (code) => {
       if (code === 0) {
         resolve();
         return;
       }
-      reject(
-        new SmokeFailure(
-          `Lockfile does not resolve under npm 10; platform-optional entries may be pruned. Regenerate with: npx -y npm@10 install\n${stderr}`,
-        ),
-      );
+      reject(new SmokeFailure(stderr.trim()));
     });
   });
 
@@ -238,9 +271,9 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
 const startedAt = Date.now();
 const tempDirs: string[] = [];
 try {
-  console.log('smoke: checking lockfile drift...');
-  checkLockfileDrift();
-  console.log('smoke: linting the lockfile under npm 10...');
+  console.log('smoke: checking the installed dependency tree...');
+  checkInstalledTree();
+  console.log('smoke: linting the lockfile under frozen-lockfile semantics...');
   await lockLint();
   console.log('smoke: booting the in-process app via createApp...');
   await bootInProcess();
