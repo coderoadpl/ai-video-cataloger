@@ -192,9 +192,12 @@ describe('cost accounting', () => {
 });
 
 describe('inline vs resumable decision', () => {
-  it('uploads inline at or below 20 MB and resumable above', () => {
-    expect(shouldUploadInline(20 * 1024 * 1024)).toBe(true);
-    expect(shouldUploadInline(20 * 1024 * 1024 + 1)).toBe(false);
+  it('keeps the base64-encoded request under the 20 MB cap', () => {
+    expect(shouldUploadInline(14 * 1024 * 1024)).toBe(true);
+    expect(shouldUploadInline(15_679_488)).toBe(true);
+    expect(shouldUploadInline(15_679_489)).toBe(false);
+    expect(shouldUploadInline(16 * 1024 * 1024)).toBe(false);
+    expect(shouldUploadInline(20 * 1024 * 1024)).toBe(false);
   });
 });
 

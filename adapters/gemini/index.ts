@@ -64,7 +64,12 @@ const generateContentResponseSchema = z.object({
     .optional(),
 });
 
-export const shouldUploadInline = (sizeBytes: number): boolean => sizeBytes <= GEMINI_NATIVE_INLINE_LIMIT_BYTES;
+const INLINE_REQUEST_OVERHEAD_BYTES = 64 * 1024;
+
+// The 20 MB cap applies to the whole JSON request, and inline video travels
+// base64-encoded (4/3 expansion), so eligibility is computed on encoded size.
+export const shouldUploadInline = (sizeBytes: number): boolean =>
+  Math.ceil(sizeBytes / 3) * 4 + INLINE_REQUEST_OVERHEAD_BYTES <= GEMINI_NATIVE_INLINE_LIMIT_BYTES;
 
 export const geminiProviderPricing = (
   provider: GeminiNativeProvider,
