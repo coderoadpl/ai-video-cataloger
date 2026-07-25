@@ -3,6 +3,8 @@ import { createRequire } from 'node:module';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 
+import { readmeScriptProblems } from './doc-lint-readme.js';
+
 const scriptsDir = import.meta.dirname;
 const repoRoot = join(scriptsDir, '..');
 const require = createRequire(import.meta.url);
@@ -163,6 +165,23 @@ for (const rel of trackedMarkdown) {
   }
 }
 
+const readmes = trackedMarkdown.filter((rel) => rel === 'README.md' || rel.endsWith('/README.md'));
+
+const owningScripts = (rel: string): ReadonlySet<string> => {
+  let dir = dirname(rel);
+  for (;;) {
+    const manifest = dir === '.' ? 'package.json' : `${dir}/package.json`;
+    if (existsSync(join(repoRoot, manifest))) {
+      const parsed: { scripts?: Record<string, string> } = JSON.parse(read(manifest));
+      return new Set(Object.keys(parsed.scripts ?? {}));
+    }
+    if (dir === '.') return new Set();
+    dir = dirname(dir);
+  }
+};
+
+for (const rel of readmes) problems.push(...readmeScriptProblems(rel, read(rel), owningScripts(rel)));
+
 for (const enforcer of DOC_PROMISED_ENFORCERS) {
   if (!configHasId(enforcer.id, enforcer.target))
     problems.push(
@@ -209,5 +228,6 @@ if (problems.length > 0) {
 process.stdout.write(
   `doc-lint: OK — ${DOC_PROMISED_ENFORCERS.length} promised enforcer(s) present, ` +
     `${ADR_CLAIMS.length} ADR claim(s) honoured in docs and code, ` +
+    `${readmes.length} README(s) documenting only real package scripts, ` +
     `${trackedMarkdown.length} tracked .md file(s) clean of dead links and leaked delimiters.\n`,
 );

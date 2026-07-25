@@ -25,6 +25,10 @@ history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- `doc-lint` fails when a tracked `README.md` documents a `pnpm run <script>`
+  that the owning `package.json` does not define, so a renamed or dropped script
+  can no longer leave a quickstart that lies
+  ([`4e63850`](https://github.com/chomamateusz/ai-video-cataloger/commit/4e63850c)).
 - The package manager is pnpm 10 on Node 22.23.1: install with `pnpm install`
   under `nvm use`, dependency lifecycle scripts are blocked except for three
   allowlisted packages, and `lock-lint` now fails closed on a `pnpm-lock.yaml`

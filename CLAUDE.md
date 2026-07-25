@@ -32,6 +32,11 @@ Ground-up rewrite on the agentproofarch foundation
   in-process app in a temp HOME/folder → drive doctor/scan/config/status
   through the CLI → assert envelope shapes and taxonomy exit codes.
 
+`doc-lint` also holds the docs to the toolchain: every `pnpm run <script>` a
+tracked `README.md` documents must exist in the `package.json` that owns that
+README, so a renamed or dropped script turns `check` red instead of leaving a
+quickstart that lies.
+
 **Done = check green AND smoke green.** Never weaken lint to get there; every
 new lint rule must first fail on a violating probe file.
 
