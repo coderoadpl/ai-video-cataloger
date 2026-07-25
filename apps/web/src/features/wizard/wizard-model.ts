@@ -3,6 +3,8 @@ import type { z } from 'zod';
 import {
   apiProviderIdForBaseUrl,
   builtInHarnessProviders,
+  defaultGeminiNativeProvider,
+  geminiNativeModelIds,
   type AnalyzerProviderConfig,
   type WhisperModelName,
 } from '@core/domain/index.js';
@@ -14,6 +16,7 @@ export type LocalAiTier = z.output<typeof localAiTierSchema>;
 export type Machine = z.output<typeof machineSchema>;
 export type HarnessDescriptor = ReturnType<typeof builtInHarnessProviders>[number];
 export type ApiProviderConfig = Extract<AnalyzerProviderConfig, { family: 'api' }>;
+export type GeminiNativeProviderConfig = Extract<AnalyzerProviderConfig, { family: 'gemini-native' }>;
 
 export type WizardStep =
   | 'welcome'
@@ -52,8 +55,21 @@ export const wizardNextLabel = (
   return dictionary.wizard.nextLabels.continue;
 };
 
-export type AnalyzerFamily = 'local' | 'api' | 'harness';
+export type AnalyzerFamily = 'local' | 'api' | 'harness' | 'gemini-native';
 export type TranscriptionMode = 'managed' | 'own' | 'api' | 'skip';
+
+export interface GeminiDraft {
+  model: string;
+  credential: string;
+}
+
+export const emptyGeminiDraft = (): GeminiDraft => ({
+  model: geminiNativeModelIds()[0] ?? '',
+  credential: '',
+});
+
+export const buildGeminiProvider = (draft: GeminiDraft): GeminiNativeProviderConfig =>
+  defaultGeminiNativeProvider(draft.model);
 
 export interface ApiDraft {
   baseUrl: string;

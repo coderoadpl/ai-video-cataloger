@@ -19,13 +19,16 @@ import {
   analyzerBackendFor,
   bestInstalledWhisperModel,
   buildApiProvider,
+  buildGeminiProvider,
   buildHarnessProvider,
   buildLocalProvider,
   emptyApiDraft,
+  emptyGeminiDraft,
   harnessDescriptors,
   recommendedTier,
   type AnalyzerFamily,
   type ApiDraft,
+  type GeminiDraft,
   type HarnessDescriptor,
   type LocalAiTier,
   type Machine,
@@ -70,6 +73,7 @@ export interface WizardController {
   analyzerFamily: AnalyzerFamily;
   localModelTag: string;
   apiDraft: ApiDraft;
+  geminiDraft: GeminiDraft;
   harnessId: string;
   harnessModel: string;
   harnessEffort: string;
@@ -96,6 +100,7 @@ export interface WizardController {
   setAnalyzerFamily: (family: AnalyzerFamily) => void;
   setLocalModelTag: (tag: string) => void;
   setApiDraft: (patch: Partial<ApiDraft>) => void;
+  setGeminiDraft: (patch: Partial<GeminiDraft>) => void;
   setHarnessId: (id: string) => void;
   setHarnessModel: (model: string) => void;
   setHarnessEffort: (effort: string) => void;
@@ -140,6 +145,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const [analyzerFamily, setAnalyzerFamilyState] = useState<AnalyzerFamily>('local');
   const [localModelTag, setLocalModelTag] = useState<string>('');
   const [apiDraft, setApiDraftState] = useState<ApiDraft>(emptyApiDraft);
+  const [geminiDraft, setGeminiDraftState] = useState<GeminiDraft>(emptyGeminiDraft);
   const [harnessId, setHarnessId] = useState<string>('claude-code');
   const [harnessModel, setHarnessModelState] = useState<string>('');
   const [harnessEffort, setHarnessEffortState] = useState<string>('');
@@ -171,6 +177,12 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
 
   const setApiDraft = useCallback((patch: Partial<ApiDraft>) => {
     setApiDraftState((current) => ({ ...current, ...patch }));
+    setValidation('idle');
+    setValidationMessage(null);
+  }, []);
+
+  const setGeminiDraft = useCallback((patch: Partial<GeminiDraft>) => {
+    setGeminiDraftState((current) => ({ ...current, ...patch }));
     setValidation('idle');
     setValidationMessage(null);
   }, []);
@@ -244,6 +256,18 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
           return;
         }
         await persistAnalyzer(provider);
+      } else if (analyzerFamily === 'gemini-native') {
+        const provider = buildGeminiProvider(geminiDraft);
+        if (geminiDraft.credential.trim().length > 0) {
+          await setCredential.mutateAsync({ providerId: provider.apiKeyRef, credential: geminiDraft.credential.trim() });
+        }
+        const result = await testProvider.mutateAsync(provider);
+        if (result.family !== 'api' || !result.reachable || !result.authenticated) {
+          setValidation('error');
+          setValidationMessage(result.message);
+          return;
+        }
+        await persistAnalyzer(provider);
       } else if (analyzerFamily === 'harness') {
         const descriptor = harnesses.find((entry) => entry.providerId === harnessId) ?? harnesses[0];
         if (descriptor === undefined) {
@@ -272,6 +296,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   }, [
     analyzerFamily,
     apiDraft,
+    geminiDraft,
     effectiveLocalTag,
     harnessId,
     harnessModel,
@@ -576,6 +601,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     analyzerFamily,
     localModelTag: effectiveLocalTag,
     apiDraft,
+    geminiDraft,
     harnessId,
     harnessModel,
     harnessEffort,
@@ -602,6 +628,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     setAnalyzerFamily: setAnalyzerFamilyWithDetection,
     setLocalModelTag,
     setApiDraft,
+    setGeminiDraft,
     setHarnessId,
     setHarnessModel,
     setHarnessEffort,

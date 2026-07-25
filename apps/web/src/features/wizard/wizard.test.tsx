@@ -106,7 +106,7 @@ const installHandlers = (
     http.post('/api/providers/test', async ({ request }) => {
       const body = providerBodySchema.parse(await request.json());
       recorders.providerTests.push({ family: body.family, providerId: body.providerId });
-      if (body.family === 'api') {
+      if (body.family === 'api' || body.family === 'gemini-native') {
         return ok({
           providerId: body.providerId,
           latencyMs: 12,
@@ -312,6 +312,57 @@ describe('SetupWizard', () => {
     const providerWrite = recorders.configWrites.find((write) => write.key === 'analyzer_provider');
     expect(providerWrite?.value).toContain('"family":"api"');
     expect(providerWrite?.value).not.toContain('sk-secret');
+  });
+
+  it('warns about the Google upload and stores the key when Gemini native video is chosen', async () => {
+    const recorders = installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await passLanguageStep();
+
+    fireEvent.click(screen.getByTestId('analyzer-family-gemini'));
+    const privacy = screen.getByTestId('wizard-gemini-privacy').textContent ?? '';
+    expect(privacy).toContain('uploaded to Google');
+    expect(privacy).toContain('48 hours');
+
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'gemini-secret' } });
+    clickNext();
+
+    await screen.findByTestId('wizard-step-transcription');
+    expect(recorders.credentialWrites).toEqual([{ providerId: 'gemini' }]);
+    expect(recorders.providerTests.some((test) => test.family === 'gemini-native')).toBe(true);
+    const providerWrite = recorders.configWrites.find((write) => write.key === 'analyzer_provider');
+    expect(providerWrite?.value).toContain('"family":"gemini-native"');
+    expect(providerWrite?.value).not.toContain('gemini-secret');
+    const backendWrite = recorders.configWrites.find((write) => write.key === 'analyzer_backend');
+    expect(backendWrite?.value).toBe('claude');
+  });
+
+  it('lets the user pick a cheaper Gemini model before advancing', async () => {
+    const recorders = installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await passLanguageStep();
+
+    fireEvent.click(screen.getByTestId('analyzer-family-gemini'));
+    fireEvent.mouseDown(within(screen.getByTestId('wizard-gemini-model-select')).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'gemini-flash-lite-latest' }));
+    clickNext();
+
+    await screen.findByTestId('wizard-step-transcription');
+    const providerWrite = recorders.configWrites.find((write) => write.key === 'analyzer_provider');
+    expect(providerWrite?.value).toContain('"model":"gemini-flash-lite-latest"');
+    expect(recorders.credentialWrites).toEqual([]);
+  });
+
+  it('blocks advancing when a rejected Gemini key fails validation', async () => {
+    installHandlers({ apiAuthenticated: false });
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await passLanguageStep();
+    fireEvent.click(screen.getByTestId('analyzer-family-gemini'));
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'bad' } });
+    clickNext();
+
+    await screen.findByTestId('analyzer-validation-error');
+    expect(screen.getByTestId('wizard-step-analyzer')).toBeDefined();
   });
 
   it('blocks advancing when the API key fails validation', async () => {

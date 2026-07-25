@@ -5,9 +5,11 @@ import { analyzerProviderConfigSchema } from '@core/domain/index.js';
 import {
   analyzerBackendFor,
   buildApiProvider,
+  buildGeminiProvider,
   buildHarnessProvider,
   buildLocalProvider,
   emptyApiDraft,
+  emptyGeminiDraft,
   harnessDescriptors,
   recommendedTier,
   type LocalAiTier,
@@ -65,6 +67,27 @@ describe('wizard-model builders', () => {
 
     expect(provider.providerId).toBe('openrouter.ai');
     expect(provider.apiKeyRef).toBe('openrouter.ai');
+  });
+
+  it('builds a valid gemini-native provider with priced defaults', () => {
+    const draft = emptyGeminiDraft();
+    const provider = buildGeminiProvider(draft);
+
+    expect(draft.model.length).toBeGreaterThan(0);
+    expect(draft.credential).toBe('');
+    expect(analyzerProviderConfigSchema.parse(provider)).toEqual(provider);
+    expect(provider.family).toBe('gemini-native');
+    expect(provider.apiKeyRef).toBe('gemini');
+    expect(provider.model).toBe(draft.model);
+    expect(provider.pricePerMTokensInput).toBeGreaterThan(0);
+    expect(analyzerBackendFor(provider)).toBe('claude');
+  });
+
+  it('carries the chosen gemini model into the provider config', () => {
+    const provider = buildGeminiProvider({ ...emptyGeminiDraft(), model: 'gemini-flash-lite-latest' });
+
+    expect(provider.model).toBe('gemini-flash-lite-latest');
+    expect(analyzerProviderConfigSchema.parse(provider)).toEqual(provider);
   });
 
   it('prefers the recommended tier, then the first supported one', () => {

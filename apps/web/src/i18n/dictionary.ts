@@ -173,6 +173,9 @@ export interface Dictionary {
       recommendedSuffix: string;
       api: string;
       harness: string;
+      gemini: string;
+      geminiModel: string;
+      geminiPrivacy: string;
       localAppleSiliconWarning: string;
       localModel: string;
       recommendedForThisMac: string;
@@ -699,6 +702,9 @@ export const en: Dictionary = {
       recommendedSuffix: ' (recommended)',
       api: 'API',
       harness: 'Agent harness',
+      gemini: 'Gemini (native video)',
+      geminiModel: 'Gemini model',
+      geminiPrivacy: 'The whole video file is uploaded to Google (Gemini API) for analysis and auto-deleted after 48 hours. No frames or Whisper — Gemini reads the video and audio directly. Do not use for private or confidential footage.',
       localAppleSiliconWarning: 'Local models need Apple Silicon; pick API or a harness on this machine.',
       localModel: 'Local model',
       recommendedForThisMac: ' — recommended for this Mac',
@@ -1266,6 +1272,9 @@ export const pl: Dictionary = {
       recommendedSuffix: ' (zalecane)',
       api: 'API',
       harness: 'Agent harness',
+      gemini: 'Gemini (natywne wideo)',
+      geminiModel: 'Model Gemini',
+      geminiPrivacy: 'Cały plik wideo jest wysyłany do Google (Gemini API) w celu analizy i automatycznie usuwany po 48 godzinach. Bez klatek i Whispera — Gemini czyta obraz i dźwięk bezpośrednio. Nie używaj do prywatnych lub poufnych nagrań.',
       localAppleSiliconWarning: 'Modele lokalne wymagają Apple Silicon; na tym komputerze wybierz API albo harness.',
       localModel: 'Model lokalny',
       recommendedForThisMac: ' — zalecany dla tego Maca',

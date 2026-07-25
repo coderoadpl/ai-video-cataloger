@@ -17,6 +17,7 @@ import {
   apiCostSignal,
   curatedHarnessModels,
   estimateApiTokens,
+  geminiNativeModelIds,
 } from '@core/domain/index.js';
 
 import { HarnessModelPicker } from '../../components/ui/HarnessModelPicker.js';
@@ -48,7 +49,7 @@ const availabilityChip = (
 
 export const AnalyzerStep = ({ controller }: { controller: WizardController }) => {
   const dictionary = useDictionary();
-  const { analyzerFamily, machine, tiers, apiDraft } = controller;
+  const { analyzerFamily, machine, tiers, apiDraft, geminiDraft } = controller;
   const costSignal = apiCostSignal(buildApiProvider(apiDraft), estimateApiTokens({ transcriptCharacters: 0, frameCount: 3 }));
 
   return (
@@ -59,7 +60,9 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
         size="small"
         value={analyzerFamily}
         onChange={(_event, value: unknown) => {
-          if (value === 'local' || value === 'api' || value === 'harness') controller.setAnalyzerFamily(value);
+          if (value === 'local' || value === 'api' || value === 'harness' || value === 'gemini-native') {
+            controller.setAnalyzerFamily(value);
+          }
         }}
         aria-label={dictionary.wizard.analyzer.familyLabel}
       >
@@ -69,6 +72,9 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
         </ToggleButton>
         <ToggleButton value="api" data-testid="analyzer-family-api">
           {dictionary.wizard.analyzer.api}
+        </ToggleButton>
+        <ToggleButton value="gemini-native" data-testid="analyzer-family-gemini">
+          {dictionary.wizard.analyzer.gemini}
         </ToggleButton>
         <ToggleButton value="harness" data-testid="analyzer-family-harness">
           {dictionary.wizard.analyzer.harness}
@@ -141,6 +147,38 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
           </Box>
           <Alert severity="info" data-testid="api-cost-notice">
             {costSignal.kind === 'estimate' ? costSignal.message : API_USAGE_CHARGE_NOTICE}
+          </Alert>
+        </Box>
+      ) : null}
+
+      {analyzerFamily === 'gemini-native' ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="analyzer-gemini">
+          <FormControl fullWidth size="small">
+            <InputLabel id="wizard-gemini-model">{dictionary.wizard.analyzer.geminiModel}</InputLabel>
+            <Select
+              labelId="wizard-gemini-model"
+              label={dictionary.wizard.analyzer.geminiModel}
+              value={geminiDraft.model}
+              data-testid="wizard-gemini-model-select"
+              onChange={(event) => controller.setGeminiDraft({ model: event.target.value })}
+            >
+              {geminiNativeModelIds().map((modelId) => (
+                <MenuItem key={modelId} value={modelId}>
+                  {modelId}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            type="password"
+            label={dictionary.wizard.analyzer.apiKey}
+            autoComplete="new-password"
+            value={geminiDraft.credential}
+            onChange={(event) => controller.setGeminiDraft({ credential: event.target.value })}
+          />
+          <Alert severity="warning" data-testid="wizard-gemini-privacy">
+            {dictionary.wizard.analyzer.geminiPrivacy}
           </Alert>
         </Box>
       ) : null}
