@@ -21,6 +21,7 @@ export interface TerminalPanelState {
 export interface ShellModalState {
   modal: ShellModal | null;
   close: () => void;
+  open: (modal: ShellModal) => void;
 }
 
 interface AppShellProps {
@@ -150,7 +151,7 @@ export const AppShell = ({
         <Alert severity="error" onClose={shell.closeFolderError}>{shell.folderError}</Alert>
       </Snackbar>
       {overlays}
-      {renderModals?.({ modal, close: () => setModal(null) })}
+      {renderModals?.({ modal, close: () => setModal(null), open: setModal })}
     </>
   );
 };

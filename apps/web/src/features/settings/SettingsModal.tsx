@@ -35,9 +35,10 @@ interface SettingsModalProps {
   folder: string | null;
   onClose: () => void;
   onSaved?: (() => void) | undefined;
+  onRunWizard?: (() => void) | undefined;
 }
 
-export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalProps) => {
+export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: SettingsModalProps) => {
   const settings = useSettings({
     open,
     folder,
@@ -250,6 +251,17 @@ export const SettingsModal = ({ open, folder, onClose, onSaved }: SettingsModalP
         )}
       </DialogContent>
       <DialogActions>
+        {onRunWizard === undefined ? null : (
+          <Button
+            color="inherit"
+            onClick={onRunWizard}
+            disabled={settings.isSaving}
+            data-testid="settings-run-wizard"
+            sx={{ mr: 'auto' }}
+          >
+            {dictionary.settingsModal.runSetupWizard}
+          </Button>
+        )}
         {settings.hasChanges ? (
           <Button color="inherit" onClick={settings.reset} disabled={settings.isSaving} data-testid="settings-reset">
             {dictionary.settingsModal.reset}

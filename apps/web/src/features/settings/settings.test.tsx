@@ -148,6 +148,24 @@ describe('settings modal', () => {
     expect(screen.getByText('3 frames')).toBeDefined();
   });
 
+  it('opens the setup wizard from a re-entry affordance without closing on save', async () => {
+    stubEndpoints(emptyConfig);
+    const onRunWizard = vi.fn();
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} onRunWizard={onRunWizard} />);
+
+    const button = await screen.findByTestId('settings-run-wizard');
+    fireEvent.click(button);
+    expect(onRunWizard).toHaveBeenCalledTimes(1);
+  });
+
+  it('hides the wizard affordance when no re-entry handler is provided', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    await screen.findByTestId('whisper-mode-select');
+    expect(screen.queryByTestId('settings-run-wizard')).toBeNull();
+  });
+
   it('shows effective inherited values without creating folder overrides', async () => {
     const effective = { ...defaults, frames: '7', whisper_model: 'small' };
     const sources = {

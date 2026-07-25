@@ -9,6 +9,7 @@ import { useTerminalLog } from '../components/ui/use-terminal-log.js';
 import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
 import { flattenTreeVideos, keyOf, type CatalogVideo } from '../features/catalog/index.web.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
+import { useScopePreference } from '../features/catalog/use-scope-preference.js';
 import { useCatalogVideoRegistry } from '../features/catalog/use-catalog-video-registry.js';
 import { useCatalogLock } from '../features/catalog/use-catalog-lock.js';
 import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
@@ -32,8 +33,8 @@ import { ViewNav, type MainView } from '../components/ui/ViewNav.js';
 export const IndexRoute = () => {
   const [activeView, setActiveView] = useState<MainView>('videos');
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
-  const [scope, setScope] = useState<AnalyzeScope>('folder');
   const shell = useShell();
+  const [scope, setScope] = useScopePreference(shell.currentFolder);
   const globalSearch = useGlobalSearch();
   const terminal = useTerminalLog();
   const catalog = useCatalog(shell.currentFolder);
@@ -230,13 +231,14 @@ export const IndexRoute = () => {
           onOpenSetup={() => openModal('setup')}
         />
       )}
-      renderModals={({ modal, close }) => (
+      renderModals={({ modal, close, open }) => (
         <>
           <SettingsModal
             open={modal === 'settings'}
             folder={shell.currentFolder}
             onClose={close}
             onSaved={() => { void readiness.refresh(); }}
+            onRunWizard={() => open('setup')}
           />
           <ModelManagerModal open={modal === 'models'} onClose={close} addLine={terminal.addLine} />
           <PrerequisitesModal

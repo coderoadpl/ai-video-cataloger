@@ -426,6 +426,7 @@ export interface Dictionary {
     facesEnableLabel: string;
     facesHelper: string;
     skipAutoRename: string;
+    runSetupWizard: string;
     reset: string;
     saving: string;
     whisperModes: {
@@ -970,6 +971,7 @@ export const en: Dictionary = {
     facesEnableLabel: 'Enable local face grouping',
     facesHelper: 'Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.',
     skipAutoRename: 'Skip Auto-Rename',
+    runSetupWizard: 'Run Setup Wizard',
     reset: 'Reset',
     saving: 'Saving…',
     whisperModes: {
@@ -1522,6 +1524,7 @@ export const pl: Dictionary = {
     facesEnableLabel: 'Włącz lokalne grupowanie twarzy',
     facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',
     skipAutoRename: 'Pomiń automatyczną zmianę nazw',
+    runSetupWizard: 'Uruchom kreatora konfiguracji',
     reset: 'Resetuj',
     saving: 'Zapisywanie…',
     whisperModes: {
