@@ -110,7 +110,7 @@ describe('details panel', () => {
     expect(screen.queryByTestId('detail-subtitles-track')).toBeNull();
   });
 
-  it('renders a subtitles track when timestamped transcript segments exist', () => {
+  it('renders a subtitles track defaulted on when timestamped transcript segments exist', () => {
     const video = makeVideo({
       artifacts: {
         ...makeVideo().artifacts,
@@ -122,6 +122,22 @@ describe('details panel', () => {
 
     const track = screen.getByTestId('detail-subtitles-track');
     expect(track.getAttribute('src')).toContain('WEBVTT');
+    if (!(track instanceof HTMLTrackElement)) throw new Error('expected a track element');
+    expect(track.default).toBe(true);
+  });
+
+  it('bounds the player to the true aspect for portrait sources', () => {
+    const video = makeVideo({ source: { width: 720, height: 1280, rotation: 0 } });
+    renderThemed(<DetailsPanel video={video} analyzing={false} />);
+    const player = screen.getByTestId('detail-video-player');
+    expect(Number(player.getAttribute('data-player-aspect'))).toBeCloseTo(720 / 1280);
+  });
+
+  it('lays out the info column and player together in the detail layout', () => {
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+    const layout = screen.getByTestId('detail-layout');
+    expect(layout.contains(screen.getByTestId('detail-video-player'))).toBe(true);
+    expect(screen.getByText('Video Information')).toBeDefined();
   });
 
   it('shows the missing-summary empty state for an analyzed video without a summary', () => {

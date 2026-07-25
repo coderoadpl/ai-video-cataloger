@@ -96,49 +96,56 @@ export const VideoDetails = ({
   const duplicate = video.duplicate ?? null;
 
   return (
-    <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: 780 }}>
-      <VideoPlayer video={video} />
-
-      <Box sx={{ display: 'flex', gap: 2 }}>
-        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          <Typography variant="h1" noWrap title={video.filename}>
-            {video.filename}
-          </Typography>
-          <Typography variant="caption" noWrap title={video.path}>
-            {video.path}
-          </Typography>
-          <Box>
-            {duplicate === null ? (
-              <VideoStatusBadge status={video.status} analyzing={analyzing} variant="details" />
-            ) : (
-              <DuplicateBadge canonicalPath={duplicate.canonicalPath} />
-            )}
+    <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: { xs: 780, lg: 1180 } }}>
+      <Box
+        data-testid="detail-layout"
+        sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 3, alignItems: 'flex-start' }}
+      >
+        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+            <Typography variant="h1" noWrap title={video.filename}>
+              {video.filename}
+            </Typography>
+            <Typography variant="caption" noWrap title={video.path}>
+              {video.path}
+            </Typography>
+            <Box>
+              {duplicate === null ? (
+                <VideoStatusBadge status={video.status} analyzing={analyzing} variant="details" />
+              ) : (
+                <DuplicateBadge canonicalPath={duplicate.canonicalPath} />
+              )}
+            </Box>
           </Box>
+
+          <MetadataCard video={video} />
+
+          <TagRow tags={video.artifacts.summary?.tags ?? []} onTagSearch={onTagSearch} label={dictionary.details.videoTags} />
+
+          {duplicate === null ? (
+            <>
+              <Typography variant="body2" color="text.secondary">
+                {statusDescription(dictionary, video.status, analyzing)}
+              </Typography>
+              <StatusActions video={video} analyzing={analyzing} onAnalyze={onAnalyze} disabledReason={disabledReason} />
+            </>
+          ) : (
+            <DuplicateDetail
+              video={video}
+              canonicalPath={duplicate.canonicalPath}
+              analyzing={analyzing}
+              onAnalyze={onAnalyze}
+              onNavigateToCanonical={onNavigateToCanonical}
+              disabledReason={disabledReason}
+              dictionary={dictionary}
+            />
+          )}
+        </Box>
+
+        <Box sx={{ width: { xs: '100%', lg: 440 }, flexShrink: 0, order: { xs: -1, lg: 0 } }}>
+          <VideoPlayer video={video} />
         </Box>
       </Box>
-
-      <MetadataCard video={video} />
-
-      <TagRow tags={video.artifacts.summary?.tags ?? []} onTagSearch={onTagSearch} label={dictionary.details.videoTags} />
-
-      {duplicate === null ? (
-        <>
-          <Typography variant="body2" color="text.secondary">
-            {statusDescription(dictionary, video.status, analyzing)}
-          </Typography>
-          <StatusActions video={video} analyzing={analyzing} onAnalyze={onAnalyze} disabledReason={disabledReason} />
-        </>
-      ) : (
-        <DuplicateDetail
-          video={video}
-          canonicalPath={duplicate.canonicalPath}
-          analyzing={analyzing}
-          onAnalyze={onAnalyze}
-          onNavigateToCanonical={onNavigateToCanonical}
-          disabledReason={disabledReason}
-          dictionary={dictionary}
-        />
-      )}
 
       <ArtifactsSection video={video} />
     </Box>
