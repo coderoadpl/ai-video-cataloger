@@ -8,6 +8,7 @@ import {
   type AppConfig,
   type AppError,
   type AnalyzerProviderConfig,
+  type GeminiUsageAccounting,
   type Result,
   type Video,
   type WhisperModelName,
@@ -20,6 +21,7 @@ import { z } from 'zod';
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
   type AnalyzerPort,
+  type AnalyzerTranscript,
   type CatalogRepository,
   type CatalogRepositoryFactory,
   type ConfigStore,
@@ -314,6 +316,8 @@ const runPipelineSteps = async (
   if (!stage.ok) return stage;
   if (stage.value === 'done') return ok(completedOutput(deps.fs, video));
 
+  if (resolved.native) return runNativePipeline(deps, repository, video, resolved, progress);
+
   const paths = artifactPaths(deps.fs, deps.fs.dirname(video.originalPath), video.originalPath, video.newName);
   let currentFramePaths: string[] | null = null;
 
@@ -484,6 +488,146 @@ const runPipelineSteps = async (
   return ok(completedOutput(deps.fs, video));
 };
 
+const runNativePipeline = async (
+  deps: ProcessDeps,
+  repository: CatalogRepository,
+  initialVideo: Video,
+  resolved: ResolvedProcessOptions,
+  progress?: JobExecutionContext,
+): Promise<Result<ProcessCompletedOutput, AppError>> => {
+  let video = initialVideo;
+  const paths = artifactPaths(deps.fs, deps.fs.dirname(video.originalPath), video.originalPath, video.newName);
+  let parsed: ParsedAnalysis | null = null;
+
+  if (video.status !== 'analyzed') {
+    const progressResult = await report(progress, 'analyzing_with_claude', 4, video.originalPath, resolved.batch);
+    if (!progressResult.ok) return progressResult;
+    const warnings: string[] = [];
+    const analyzed = await deps.analyzer.analyze({
+      videoPath: video.originalPath,
+      framePaths: [],
+      transcript: null,
+      backend: resolved.analyzer.backend,
+      localModel: resolved.analyzer.localModel,
+      outputLanguage: resolved.analyzer.outputLanguage,
+      provider: resolved.analyzer.provider,
+      timeoutSeconds: resolved.analyzer.timeoutSeconds,
+      verbose: resolved.verbose,
+      signal: progress?.signal,
+      onWarning: (warning) => warnings.push(warning),
+    });
+    for (const warning of warnings) {
+      const reported = await reportAnalyzerWarning(progress, warning, video.originalPath, resolved.batch);
+      if (!reported.ok) return reported;
+    }
+    const notCancelled = cancellationBoundary(progress);
+    if (!notCancelled.ok) return notCancelled;
+    if (!analyzed.ok) return analyzed;
+    const transcript = analyzed.value.transcript;
+    if (transcript !== null && transcript !== undefined) {
+      const wrote = await writeNativeTranscript(deps.fs, paths.transcriptPath, paths.transcriptJsonPath, transcript);
+      if (!wrote.ok) return wrote;
+    }
+    if (analyzed.value.usage !== undefined) {
+      const reportedUsage = await reportAnalyzerUsage(
+        progress,
+        analyzed.value.usage,
+        resolved.analyzer.provider,
+        video.originalPath,
+        resolved.batch,
+      );
+      if (!reportedUsage.ok) return reportedUsage;
+    }
+    const debug = await writeDebugLog(deps.fs, paths.debugLogPath, {
+      video,
+      framePaths: [],
+      rawResponse: analyzed.value.rawResponse,
+      provider: resolved.analyzer.provider,
+    });
+    if (!debug.ok) return debug;
+    const parsedResult = parseAnalysisResponse(analyzed.value.rawResponse);
+    if (!parsedResult.ok) return parsedResult;
+    parsed = parsedResult.value;
+    const summary = await writeSummary(deps.fs, video.originalPath, paths.summaryJsonPath, paths.summaryPath, {
+      schemaVersion: 1,
+      description: parsed.description,
+      suggestedFilename: parsed.suggestedFilename,
+      fullAnalysis: parsed.fullAnalysis,
+      tags: parsed.tags,
+      analyzedAt: new Date().toISOString(),
+    });
+    if (!summary.ok) return summary;
+    const afterSummary = cancellationBoundary(progress);
+    if (!afterSummary.ok) return afterSummary;
+    const updated = await repository.updateVideoStatus(video.id, 'analyzed', null);
+    if (!updated.ok) return updated;
+    video = updated.value;
+  }
+
+  if (resolved.skipRename) {
+    const progressResult = await report(progress, 'skipping_rename', 5, video.originalPath, resolved.batch);
+    if (!progressResult.ok) return progressResult;
+    const updated = await repository.updateVideoStatus(video.id, 'completed', null);
+    if (!updated.ok) return updated;
+    return ok(completedOutput(deps.fs, updated.value));
+  }
+  const progressResult = await report(progress, 'renaming_video', 5, video.originalPath, resolved.batch);
+  if (!progressResult.ok) return progressResult;
+  const summary = parsed === null ? await loadSummary(deps.fs, paths.summaryJsonPath) : ok(parsed);
+  if (!summary.ok) return summary;
+  const renamed = await renameVideoAndArtifacts(deps.fs, video, summary.value.suggestedFilename, progress?.signal);
+  if (!renamed.ok) return renamed;
+  const moved = await repository.updateVideoPath(video.id, renamed.value.newPath);
+  if (!moved.ok) return moved;
+  const named = await repository.updateVideoNewName(moved.value.id, renamed.value.newName);
+  if (!named.ok) return named;
+  const completed = await repository.updateVideoStatus(video.id, 'completed', null);
+  if (!completed.ok) return completed;
+  return ok({ video: deps.fs.basename(renamed.value.newPath), path: renamed.value.newPath, status: 'completed' });
+};
+
+const writeNativeTranscript = async (
+  fs: FileSystemPort,
+  transcriptPath: string,
+  transcriptJsonPath: string,
+  transcript: AnalyzerTranscript,
+): Promise<Result<void, AppError>> => {
+  const ensured = await fs.ensureDirectory(fs.dirname(transcriptPath));
+  if (!ensured.ok) return ensured;
+  const text = await fs.writeTextFile(transcriptPath, transcript.text);
+  if (!text.ok) return text;
+  const ensuredJson = await fs.ensureDirectory(fs.dirname(transcriptJsonPath));
+  if (!ensuredJson.ok) return ensuredJson;
+  return fs.writeTextFile(transcriptJsonPath, JSON.stringify({ segments: transcript.segments }, null, 2));
+};
+
+const reportAnalyzerUsage = async (
+  progress: JobExecutionContext | undefined,
+  usage: GeminiUsageAccounting,
+  provider: AnalyzerProviderConfig,
+  videoPath: string,
+  batch: ProcessBatchContext,
+): Promise<Result<void, AppError>> => {
+  if (progress === undefined) return ok(undefined);
+  const reported = await progress.reportProgress({
+    step: 'analyzing_with_claude',
+    current: batch.current,
+    total: batch.total,
+    data: {
+      video: videoPath,
+      model: provider.family === 'gemini-native' ? provider.model : null,
+      usage: {
+        promptTokens: usage.promptTokens,
+        billedOutputTokens: usage.billedOutputTokens,
+        totalTokens: usage.totalTokens,
+        estimatedCostUsd: usage.estimatedCostUsd,
+      },
+    },
+  });
+  if (!reported.ok) return reported;
+  return cancellationBoundary(progress);
+};
+
 interface ResolvedAnalyzer {
   backend: AppConfig['analyzer_backend'];
   localModel: string;
@@ -502,6 +646,7 @@ interface ResolvedProcessOptions {
   whisperApiBaseUrl: string;
   whisperApiModel: string;
   analyzer: ResolvedAnalyzer;
+  native: boolean;
   batch: ProcessBatchContext;
 }
 
@@ -551,6 +696,7 @@ const resolveProcessOptions = async (
       outputLanguage: outputLanguageSchema.parse(effective.output_language ?? CONFIG_DEFAULTS.output_language),
       provider,
     },
+    native: provider.family === 'gemini-native',
     batch: input.batch ?? { current: 1, total: 1 },
   });
 };

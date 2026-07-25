@@ -12,6 +12,7 @@ import type {
   FaceObservation,
   FileArtifact,
   FileArtifactId,
+  GeminiUsageAccounting,
   MachineProfile,
   Person,
   Result,
@@ -422,8 +423,21 @@ export interface AnalyzeInput {
   onWarning?: ((warning: string) => void) | undefined;
 }
 
+export interface AnalyzerTranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
+export interface AnalyzerTranscript {
+  text: string;
+  segments: AnalyzerTranscriptSegment[];
+}
+
 export interface AnalysisOutput {
   rawResponse: string;
+  usage?: GeminiUsageAccounting | undefined;
+  transcript?: AnalyzerTranscript | null | undefined;
 }
 
 export interface AnalyzerPort {

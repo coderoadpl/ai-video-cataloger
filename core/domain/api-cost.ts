@@ -48,3 +48,42 @@ export const apiCostSignal = (
     estimatedCostUsd: cost,
   };
 };
+
+export interface GeminiUsage {
+  promptTokens: number;
+  candidatesTokens: number;
+  thoughtsTokens: number;
+}
+
+export interface GeminiUsageAccounting {
+  promptTokens: number;
+  candidatesTokens: number;
+  thoughtsTokens: number;
+  billedOutputTokens: number;
+  totalTokens: number;
+  estimatedCostUsd: number | null;
+}
+
+// Gemini bills "thoughts" (thinking) tokens as output, so billed output is
+// candidates + thoughts, not candidates alone.
+export const geminiUsageAccounting = (
+  usage: GeminiUsage,
+  pricing: { pricePerMTokensInput?: number | undefined; pricePerMTokensOutput?: number | undefined },
+): GeminiUsageAccounting => {
+  const promptTokens = Math.max(0, usage.promptTokens);
+  const candidatesTokens = Math.max(0, usage.candidatesTokens);
+  const thoughtsTokens = Math.max(0, usage.thoughtsTokens);
+  const billedOutputTokens = candidatesTokens + thoughtsTokens;
+  const hasPricing = pricing.pricePerMTokensInput !== undefined && pricing.pricePerMTokensOutput !== undefined;
+  const estimatedCostUsd = hasPricing
+    ? (promptTokens * (pricing.pricePerMTokensInput ?? 0) + billedOutputTokens * (pricing.pricePerMTokensOutput ?? 0)) / 1_000_000
+    : null;
+  return {
+    promptTokens,
+    candidatesTokens,
+    thoughtsTokens,
+    billedOutputTokens,
+    totalTokens: promptTokens + billedOutputTokens,
+    estimatedCostUsd,
+  };
+};

@@ -14,6 +14,7 @@ import {
   type ConfigKey,
   type FaceObservation,
   type FileArtifact,
+  type GeminiUsageAccounting,
   type MachineProfile,
   type Person,
   type Result,
@@ -44,6 +45,7 @@ import type {
   ReconcileFolderResult,
   AnalyzerPort,
   AnalysisOutput,
+  AnalyzerTranscript,
   ConfigScope,
   ConfigStore,
   DependencyStatus,
@@ -519,6 +521,8 @@ export class InMemoryAnalyzer implements AnalyzerPort {
     verbose: boolean;
   }> = [];
   rawResponse = 'DESCRIPTION: A useful clip.\nFILENAME: useful-clip';
+  usage: GeminiUsageAccounting | undefined = undefined;
+  transcript: AnalyzerTranscript | null | undefined = undefined;
 
   analyze(input: {
     videoPath: string;
@@ -531,7 +535,7 @@ export class InMemoryAnalyzer implements AnalyzerPort {
   }): Promise<Result<AnalysisOutput, AppError>> {
     this.inputs.push(input);
     if (this.analyzeError !== null) return Promise.resolve({ ok: false, error: this.analyzeError });
-    return Promise.resolve(ok({ rawResponse: this.rawResponse }));
+    return Promise.resolve(ok({ rawResponse: this.rawResponse, usage: this.usage, transcript: this.transcript }));
   }
 
   dependency(input?: {

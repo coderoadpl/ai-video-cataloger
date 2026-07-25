@@ -7,6 +7,7 @@ import {
   OllamaAnalyzerAdapter,
   OpenAiCompatibleAnalyzerAdapter,
 } from '@adapters/analyzers/index.js';
+import { GeminiNativeAnalyzerAdapter } from '@adapters/gemini/index.js';
 import { JsonCredentialsStore, KeychainCredentialsStore } from '@adapters/credentials/index.js';
 import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
 import { JsonConfigStore, SqlJsCatalogRepositoryFactory, SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
@@ -161,6 +162,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   const whisperRuntime = new ManagedWhisperRuntimeAdapter({ config: configStore, homeDirectory });
   const ollamaAnalyzer = new OllamaAnalyzerAdapter({ runtime: localAi });
   const apiAnalyzer = new OpenAiCompatibleAnalyzerAdapter({ credentials });
+  const geminiAnalyzer = new GeminiNativeAnalyzerAdapter({ credentials });
   const downloads = new HuggingFaceWhisperModelDownloader({ homeDirectory });
   return {
     version: config.version ?? packageJson.version,
@@ -177,8 +179,8 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     media: new FfmpegMediaAdapter(),
     transcriber: new WhisperTranscriberAdapter({ credentials, homeDirectory, runtime: whisperRuntime }),
     whisperRuntime,
-    analyzer: new ProviderRoutingAnalyzerAdapter(harness, ollamaAnalyzer, apiAnalyzer),
-    providers: new ProviderRoutingProvidersPort(harness, ollamaAnalyzer, apiAnalyzer),
+    analyzer: new ProviderRoutingAnalyzerAdapter(harness, ollamaAnalyzer, apiAnalyzer, geminiAnalyzer),
+    providers: new ProviderRoutingProvidersPort(harness, ollamaAnalyzer, apiAnalyzer, geminiAnalyzer),
     localAi,
     downloads,
     faceEngine: new OnnxFaceEngineAdapter({ downloads }),
@@ -307,9 +309,11 @@ class ProviderRoutingProvidersPort implements ProvidersPort {
     private readonly harness: ProvidersPort,
     private readonly local: ProvidersPort,
     private readonly api: ProvidersPort,
+    private readonly gemini: ProvidersPort,
   ) {}
 
   test(config: AnalyzerProviderConfig): Promise<Result<ProviderTestResult, AppError>> {
+    if (config.family === 'gemini-native') return this.gemini.test(config);
     if (config.family === 'api') return this.api.test(config);
     if (config.family === 'local') return this.local.test(config);
     return this.harness.test(config);
@@ -321,14 +325,17 @@ class ProviderRoutingAnalyzerAdapter implements AnalyzerPort {
     private readonly harness: AnalyzerPort,
     private readonly local: AnalyzerPort,
     private readonly api: AnalyzerPort,
+    private readonly gemini: AnalyzerPort,
   ) {}
 
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
+    if (input.provider?.family === 'gemini-native') return this.gemini.analyze(input);
     if (input.provider?.family === 'api') return this.api.analyze(input);
     return input.backend === 'local' ? this.local.analyze(input) : this.harness.analyze(input);
   }
 
   dependency(input?: { backend: AnalyzeInput['backend']; provider?: AnalyzeInput['provider'] }): Promise<Result<DependencyStatus, AppError>> {
+    if (input?.provider?.family === 'gemini-native') return this.gemini.dependency(input);
     if (input?.provider?.family === 'api') return this.api.dependency(input);
     return input?.backend === 'local' ? this.local.dependency(input) : this.harness.dependency(input);
   }

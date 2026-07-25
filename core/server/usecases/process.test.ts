@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { appError, type AppError, type Result, type VideoStatus } from '@core/domain/index.js';
+import {
+  appError,
+  defaultGeminiNativeProvider,
+  geminiUsageAccounting,
+  type AppError,
+  type Result,
+  type VideoStatus,
+} from '@core/domain/index.js';
 
 import { enqueueProcess } from './jobs.js';
 import { normalizeKebabSlug, parseAnalysisResponse, parseTagsLine, processVideoPipeline, tempAudioPath, type ProcessDeps } from './process.js';
@@ -221,6 +228,61 @@ describe('process pipeline resume behavior', () => {
 
     expect(result).toMatchObject({ ok: true });
     expect(deps.analyzer.inputs[0]?.transcript).toBe('transcript');
+  });
+
+  it('runs the native gemini path: skips frames and whisper, stores transcript and surfaces usage', async () => {
+    const deps = makeDeps('pending');
+    await deps.config.set(
+      { kind: 'folder', folder: '/work' },
+      'analyzer_provider',
+      JSON.stringify(defaultGeminiNativeProvider('gemini-3.6-flash')),
+    );
+    deps.analyzer.rawResponse = 'DESCRIPTION: A boat museum hall.\nFILENAME: boat-museum-hall\nTAGS: boat, museum\nTRANSCRIPT:\n[00:00] czesc';
+    deps.analyzer.usage = geminiUsageAccounting(
+      { promptTokens: 1700, candidatesTokens: 800, thoughtsTokens: 100 },
+      { pricePerMTokensInput: 1.5, pricePerMTokensOutput: 7.5 },
+    );
+    deps.analyzer.transcript = { text: 'czesc', segments: [{ start: 0, end: 1, text: 'czesc' }] };
+
+    const events: Array<{ step: string; data?: Record<string, unknown> | undefined }> = [];
+    const result = await processVideoPipeline(deps, { ...baseInput, skipRename: true, skipRenameExplicit: true }, {
+      signal: idleSignal,
+      reportProgress: (event) => {
+        events.push({ step: event.step, data: event.data });
+        return Promise.resolve({ ok: true, value: undefined });
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(deps.media.frameInputs).toHaveLength(0);
+    expect(deps.media.audioInputs).toHaveLength(0);
+    expect(deps.transcriber.inputs).toHaveLength(0);
+    expect(deps.analyzer.inputs[0]?.framePaths).toEqual([]);
+    expect(deps.analyzer.inputs[0]?.transcript).toBeNull();
+    const usageEvent = events.find((event) => event.data?.usage !== undefined);
+    expect(usageEvent?.data?.model).toBe('gemini-3.6-flash');
+    const txt = await deps.fs.readTextFile('/work/transcripts/Clip One.txt');
+    expect(txt.ok && txt.value).toContain('czesc');
+    const json = await deps.fs.readTextFile('/work/transcripts/Clip One.json');
+    expect(json.ok && json.value).toContain('"start": 0');
+  });
+
+  it('runs the native gemini path with rename and no transcript or usage', async () => {
+    const deps = makeDeps('pending');
+    await deps.config.set(
+      { kind: 'folder', folder: '/work' },
+      'analyzer_provider',
+      JSON.stringify(defaultGeminiNativeProvider('gemini-flash-lite-latest')),
+    );
+    deps.analyzer.rawResponse = 'DESCRIPTION: A litter bin.\nFILENAME: litter-bin\nTAGS: bin';
+
+    const result = await processVideoPipeline(deps, baseInput);
+
+    expect(result).toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(deps.media.frameInputs).toHaveLength(0);
+    expect(deps.transcriber.inputs).toHaveLength(0);
+    if (!result.ok) return;
+    expect(result.value.video).toContain('litter-bin');
   });
 
   it('does not extract audio when whisper is skipped', async () => {

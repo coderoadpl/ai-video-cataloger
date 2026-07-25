@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const ANALYZER_PROVIDER_FAMILIES = ['api', 'harness', 'local'] as const;
+export const ANALYZER_PROVIDER_FAMILIES = ['api', 'harness', 'local', 'gemini-native'] as const;
 export const MAX_IMAGE_DETAILS = ['low', 'high', 'auto'] as const;
 export const HARNESS_PROMPT_STYLES = ['file-urls', 'dir-access'] as const;
 export const HARNESS_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
@@ -51,10 +51,20 @@ export const localAnalyzerProviderConfigSchema = z.object({
   modelTag: z.string().trim().min(1),
 }).strict();
 
+export const geminiNativeAnalyzerProviderConfigSchema = z.object({
+  family: z.literal('gemini-native'),
+  providerId: providerIdSchema,
+  apiKeyRef: z.string().trim().min(1),
+  model: z.string().trim().min(1),
+  pricePerMTokensInput: z.number().nonnegative().optional(),
+  pricePerMTokensOutput: z.number().nonnegative().optional(),
+}).strict();
+
 export const analyzerProviderConfigSchema = z.discriminatedUnion('family', [
   apiAnalyzerProviderConfigSchema,
   harnessAnalyzerProviderConfigSchema,
   localAnalyzerProviderConfigSchema,
+  geminiNativeAnalyzerProviderConfigSchema,
 ]);
 
 export type AnalyzerProviderConfig = z.output<typeof analyzerProviderConfigSchema>;
@@ -96,10 +106,20 @@ export const localProviderDescriptorSchema = z.object({
   modelTag: z.string().trim().min(1),
 }).strict();
 
+export const geminiNativeProviderDescriptorSchema = z.object({
+  family: z.literal('gemini-native'),
+  providerId: providerIdSchema,
+  label: labelSchema,
+  model: z.string().trim().min(1),
+  pricePerMTokensInput: z.number().nonnegative().optional(),
+  pricePerMTokensOutput: z.number().nonnegative().optional(),
+}).strict();
+
 export const analyzerProviderDescriptorSchema = z.discriminatedUnion('family', [
   apiProviderDescriptorSchema,
   harnessProviderDescriptorSchema,
   localProviderDescriptorSchema,
+  geminiNativeProviderDescriptorSchema,
 ]);
 
 export type AnalyzerProviderDescriptor = z.output<typeof analyzerProviderDescriptorSchema>;
@@ -143,6 +163,14 @@ export const ANALYZER_PROVIDERS: readonly AnalyzerProviderDescriptor[] = analyze
     label: 'Local Ollama',
     modelTag: 'gemma3:12b',
   },
+  {
+    family: 'gemini-native',
+    providerId: 'gemini',
+    label: 'Gemini native video',
+    model: 'gemini-3.6-flash',
+    pricePerMTokensInput: 1.5,
+    pricePerMTokensOutput: 7.5,
+  },
 ]);
 
 export const legacyAnalyzerProvider = (
@@ -178,4 +206,48 @@ export const isModelValidForHarness = (providerId: string, model: string): boole
   if (curated !== undefined && curated.includes(model)) return true;
   return !Object.entries(HARNESS_MODEL_OPTIONS)
     .some(([id, models]) => id !== providerId && models.includes(model));
+};
+
+export const GEMINI_NATIVE_API_BASE_URL = 'https://generativelanguage.googleapis.com';
+export const GEMINI_NATIVE_INLINE_LIMIT_BYTES = 20 * 1024 * 1024;
+export const GEMINI_NATIVE_FILE_TTL_HOURS = 48;
+
+interface GeminiNativeModel {
+  id: string;
+  label: string;
+  pricePerMTokensInput: number;
+  pricePerMTokensOutput: number;
+}
+
+// Published ids as returned by the live ListModels endpoint (2026-07): the
+// notatka's "gemini-3.6-flash-lite" is not published; the current lite alias
+// is "gemini-flash-lite-latest". Lite pricing is approximate pending billing.
+export const GEMINI_NATIVE_MODELS: readonly GeminiNativeModel[] = [
+  { id: 'gemini-3.6-flash', label: 'Gemini 3.6 Flash', pricePerMTokensInput: 1.5, pricePerMTokensOutput: 7.5 },
+  { id: 'gemini-flash-lite-latest', label: 'Gemini Flash-Lite', pricePerMTokensInput: 0.1, pricePerMTokensOutput: 0.4 },
+  { id: 'gemini-3.5-flash-lite', label: 'Gemini 3.5 Flash-Lite', pricePerMTokensInput: 0.1, pricePerMTokensOutput: 0.4 },
+];
+
+export const geminiNativeModelIds = (): readonly string[] => GEMINI_NATIVE_MODELS.map((model) => model.id);
+
+export const geminiNativeModelPricing = (
+  modelId: string,
+): { pricePerMTokensInput: number; pricePerMTokensOutput: number } | null => {
+  const model = GEMINI_NATIVE_MODELS.find((candidate) => candidate.id === modelId);
+  return model === null || model === undefined
+    ? null
+    : { pricePerMTokensInput: model.pricePerMTokensInput, pricePerMTokensOutput: model.pricePerMTokensOutput };
+};
+
+export const defaultGeminiNativeProvider = (
+  modelId: string = GEMINI_NATIVE_MODELS[0]?.id ?? 'gemini-3.6-flash',
+): Extract<AnalyzerProviderConfig, { family: 'gemini-native' }> => {
+  const pricing = geminiNativeModelPricing(modelId);
+  return {
+    family: 'gemini-native',
+    providerId: 'gemini',
+    apiKeyRef: 'gemini',
+    model: modelId,
+    ...(pricing === null ? {} : pricing),
+  };
 };

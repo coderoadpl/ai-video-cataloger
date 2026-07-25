@@ -40,6 +40,7 @@ describe('provider routes', () => {
           { family: 'harness', providerId: 'codex' },
           { family: 'harness', providerId: 'cursor-agent' },
           { family: 'local', providerId: 'local' },
+          { family: 'gemini-native', providerId: 'gemini' },
         ],
       },
     });
