@@ -214,6 +214,7 @@ export default tseslint.config(
         { type: 'app-server', pattern: 'apps/server/**', mode: 'full' },
         { type: 'app-desktop', pattern: 'apps/desktop/**', mode: 'full' },
         { type: 'web-main', pattern: 'apps/web/src/main.tsx', mode: 'full' },
+        { type: 'web-shell', pattern: 'apps/web/src/AppLayout*', mode: 'full' },
         { type: 'web-gallery', pattern: 'apps/web/src/gallery/**', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
@@ -229,6 +230,7 @@ export default tseslint.config(
           mode: 'full',
           capture: ['feature'],
         },
+        { type: 'web-layout', pattern: 'apps/web/src/components/layout/**', mode: 'full' },
         { type: 'web-ui', pattern: 'apps/web/src/components/ui/**', mode: 'full' },
         { type: 'web-lib', pattern: 'apps/web/src/lib/**', mode: 'full' },
         { type: 'web-test', pattern: 'apps/web/src/test/**', mode: 'full' },
@@ -290,9 +292,11 @@ export default tseslint.config(
               from: ['web-main'],
               allow: [
                 'web-main',
+                'web-shell',
                 'web-api',
                 'web-routes',
                 'web-features',
+                'web-layout',
                 'web-ui',
                 'web-lib',
                 'web-theme',
@@ -304,12 +308,26 @@ export default tseslint.config(
               ],
             },
             {
+              from: ['web-shell'],
+              allow: [
+                'web-shell',
+                'web-features',
+                'web-layout',
+                'web-ui',
+                'web-lib',
+                'web-theme',
+                'web-i18n',
+                'web-test',
+              ],
+            },
+            {
               from: ['web-gallery'],
               allow: [
                 'web-gallery',
                 'web-api',
                 'web-routes',
                 'web-features',
+                'web-layout',
                 'web-ui',
                 'web-lib',
                 'web-theme',
@@ -326,7 +344,7 @@ export default tseslint.config(
             },
             {
               from: ['web-routes'],
-              allow: ['web-routes', 'web-features', 'web-ui', 'web-lib'],
+              allow: ['web-routes', 'web-shell', 'web-features', 'web-layout', 'web-ui', 'web-lib'],
             },
             {
               from: ['web-features'],
@@ -334,6 +352,7 @@ export default tseslint.config(
                 ['web-features', { feature: '${from.feature}' }],
                 ['web-island-core', { feature: '${from.feature}' }],
                 'web-api',
+                'web-layout',
                 'web-ui',
                 'web-lib',
                 'web-theme',
@@ -364,6 +383,10 @@ export default tseslint.config(
                 'core-contract',
                 'core-client',
               ],
+            },
+            {
+              from: ['web-layout'],
+              allow: ['web-layout', 'web-ui', 'web-lib', 'web-theme'],
             },
             {
               from: ['web-ui'],
@@ -415,6 +438,12 @@ export default tseslint.config(
                 'components/ui is presentational: no TanStack Query/Router (frontend-lint-plan Phase 2)',
             },
             {
+              from: ['web-layout'],
+              disallow: ['@tanstack/react-query', '@tanstack/react-router'],
+              message:
+                'components/layout holds page skeletons: structure only, no server state (ADR-0004)',
+            },
+            {
               from: [
                 'core-domain',
                 'core-contract',
@@ -424,10 +453,12 @@ export default tseslint.config(
                 'app-server',
                 'app-web',
                 'web-main',
+                'web-shell',
                 'web-api',
                 'web-routes',
                 'web-island-core',
                 'web-features',
+                'web-layout',
                 'web-ui',
                 'web-lib',
                 'web-test',

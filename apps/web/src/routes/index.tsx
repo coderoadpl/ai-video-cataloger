@@ -27,7 +27,7 @@ import { SetupWizard } from '../features/wizard/SetupWizard.js';
 import { useFirstLaunch } from '../features/wizard/use-first-launch.js';
 import { useProcessing } from '../features/processing/use-processing.js';
 import { SettingsModal } from '../features/settings/SettingsModal.js';
-import { AppShell } from '../features/shell/AppShell.js';
+import { AppLayout } from '../AppLayout.js';
 import { useShell } from '../features/shell/use-shell.js';
 import { useAnalysisDisabledReason } from '../features/readiness/use-disabled-reason.js';
 import { ViewNav, type MainView } from '../components/ui/ViewNav.js';
@@ -207,7 +207,7 @@ export const IndexRoute = () => {
   );
 
   return (
-    <AppShell
+    <AppLayout
       shell={shell}
       sidebar={sidebar}
       navigation={navigation}
