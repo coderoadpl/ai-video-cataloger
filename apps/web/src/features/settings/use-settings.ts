@@ -105,7 +105,10 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
           setSaveError(messageOf(error));
         }
       }
-      if (apiCredential.length > 0 && draft.analyzer_provider.family === 'api') {
+      if (
+        apiCredential.length > 0
+        && (draft.analyzer_provider.family === 'api' || draft.analyzer_provider.family === 'gemini-native')
+      ) {
         try {
           await setCredential.mutateAsync({
             providerId: draft.analyzer_provider.apiKeyRef,

@@ -460,6 +460,9 @@ export interface Dictionary {
     apiCredential: string;
     inputPrice: string;
     outputPrice: string;
+    geminiNativeVideo: string;
+    geminiModel: string;
+    geminiPrivacy: string;
   };
   folderBar: {
     openFolder: string;
@@ -1014,6 +1017,9 @@ export const en: Dictionary = {
     apiCredential: 'API credential',
     inputPrice: 'Input price per 1M tokens',
     outputPrice: 'Output price per 1M tokens',
+    geminiNativeVideo: 'Gemini (native video)',
+    geminiModel: 'Gemini model',
+    geminiPrivacy: 'The whole video file is uploaded to Google (Gemini API) for analysis and auto-deleted after 48 hours. No frames or Whisper — Gemini reads the video and audio directly. Do not use for private or confidential footage.',
   },
   folderBar: {
     openFolder: 'Open Folder',
@@ -1576,6 +1582,9 @@ export const pl: Dictionary = {
     apiCredential: 'Dane logowania API',
     inputPrice: 'Cena wejścia za 1M tokenów',
     outputPrice: 'Cena wyjścia za 1M tokenów',
+    geminiNativeVideo: 'Gemini (natywne wideo)',
+    geminiModel: 'Model Gemini',
+    geminiPrivacy: 'Cały plik wideo jest wysyłany do Google (Gemini API) w celu analizy i automatycznie usuwany po 48 godzinach. Bez klatek i Whispera — Gemini czyta obraz i dźwięk bezpośrednio. Nie używaj do prywatnych lub poufnych nagrań.',
   },
   folderBar: {
     openFolder: 'Otwórz folder',

@@ -12,7 +12,9 @@ import {
   apiCostSignal,
   apiProviderIdForBaseUrl,
   curatedHarnessModels,
+  defaultGeminiNativeProvider,
   estimateApiTokens,
+  geminiNativeModelIds,
   type AnalyzerProviderConfig,
 } from '@core/domain/index.js';
 
@@ -78,7 +80,8 @@ export const SettingsAnalyzerSection = ({
   onApiCredentialChange,
 }: SettingsAnalyzerSectionProps) => {
   const dictionary = useDictionary();
-  const selectedBackend = provider.family === 'api' ? 'api' : backend;
+  const selectedBackend =
+    provider.family === 'gemini-native' ? 'gemini' : provider.family === 'api' ? 'api' : backend;
   const selectedTier = tiers?.find((tier) => tier.tag === localModel) ?? null;
   const showUnsupportedHint =
     backend === 'local' && selectedTier !== null && selectedTier.supportLevel !== 'ok';
@@ -95,6 +98,11 @@ export const SettingsAnalyzerSection = ({
           value={selectedBackend}
           data-testid="analyzer-backend-select"
           onChange={(event) => {
+            if (event.target.value === 'gemini') {
+              onBackendChange('claude');
+              onProviderChange(defaultGeminiNativeProvider());
+              return;
+            }
             if (event.target.value === 'api') {
               onBackendChange('claude');
               onProviderChange(defaultApiProvider());
@@ -118,6 +126,7 @@ export const SettingsAnalyzerSection = ({
           <MenuItem value="claude">{dictionary.settingsAnalyzer.claudeCli}</MenuItem>
           <MenuItem value="local">{dictionary.settingsAnalyzer.localOllama}</MenuItem>
           <MenuItem value="api">{dictionary.settingsAnalyzer.openAiCompatibleApi}</MenuItem>
+          <MenuItem value="gemini">{dictionary.settingsAnalyzer.geminiNativeVideo}</MenuItem>
         </Select>
       </FormControl>
 
@@ -207,6 +216,38 @@ export const SettingsAnalyzerSection = ({
           />
           <Typography variant="caption" data-testid="api-cost-signal">
             {apiCostSignal(provider, estimateApiTokens({ transcriptCharacters: 0, frameCount })).message}
+          </Typography>
+        </Box>
+      ) : null}
+
+      {provider.family === 'gemini-native' ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="gemini-provider-settings">
+          <FormControl fullWidth size="small">
+            <InputLabel id="gemini-model-label">{dictionary.settingsAnalyzer.geminiModel}</InputLabel>
+            <Select
+              labelId="gemini-model-label"
+              label={dictionary.settingsAnalyzer.geminiModel}
+              value={provider.model}
+              data-testid="gemini-model-select"
+              onChange={(event) => onProviderChange(defaultGeminiNativeProvider(event.target.value))}
+            >
+              {geminiNativeModelIds().map((modelId) => (
+                <MenuItem key={modelId} value={modelId}>
+                  {modelId}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+          <TextField
+            size="small"
+            label={dictionary.settingsAnalyzer.apiCredential}
+            type="password"
+            value={apiCredential}
+            autoComplete="new-password"
+            onChange={(event) => onApiCredentialChange(event.target.value)}
+          />
+          <Typography variant="caption" color="warning.main" data-testid="gemini-privacy-copy">
+            {dictionary.settingsAnalyzer.geminiPrivacy}
           </Typography>
         </Box>
       ) : null}
