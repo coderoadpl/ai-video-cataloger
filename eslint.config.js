@@ -113,6 +113,19 @@ const DEVTOOLS_BAN = [
   },
 ];
 
+const MUI_SKELETON_COMPONENTS = ['Container', 'AppBar', 'Drawer', 'Toolbar'];
+const MUI_SKELETON_MESSAGE =
+  'Container/AppBar/Drawer/Toolbar shape a page: define the skeleton in apps/web/src/components/layout and pass content through slots (ADR-0004 §d).';
+const MUI_SKELETON_BAN = {
+  name: '@mui/material',
+  importNames: MUI_SKELETON_COMPONENTS,
+  message: MUI_SKELETON_MESSAGE,
+};
+const MUI_SKELETON_DEEP_BAN = {
+  group: MUI_SKELETON_COMPONENTS.map((name) => `@mui/material/${name}`),
+  message: MUI_SKELETON_MESSAGE,
+};
+
 const QUERY_CLIENT_SINGLETON_PATTERN = {
   regex: 'query-client\\.js$',
   message:
@@ -519,11 +532,29 @@ export default tseslint.config(
       'no-restricted-imports': [
         'error',
         {
+          paths: [
+            ...HTTP_IMPORT_BANS,
+            ...STATE_LIB_BANS,
+            ...CLIENT_CONSTRUCTION_BANS,
+            ...DEVTOOLS_BAN,
+            MUI_SKELETON_BAN,
+          ],
+          patterns: [QUERY_CLIENT_SINGLETON_PATTERN, MUI_SKELETON_DEEP_BAN],
+        },
+      ],
+      'no-restricted-syntax': ['error', ...WEB_SYNTAX_BANS, RAW_COLOR_BAN],
+    },
+  },
+  {
+    files: ['apps/web/src/components/layout/**/*.{ts,tsx}'],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
           paths: [...HTTP_IMPORT_BANS, ...STATE_LIB_BANS, ...CLIENT_CONSTRUCTION_BANS, ...DEVTOOLS_BAN],
           patterns: [QUERY_CLIENT_SINGLETON_PATTERN],
         },
       ],
-      'no-restricted-syntax': ['error', ...WEB_SYNTAX_BANS, RAW_COLOR_BAN],
     },
   },
   {
@@ -562,7 +593,15 @@ export default tseslint.config(
     rules: {
       'no-restricted-imports': [
         'error',
-        { paths: [...HTTP_IMPORT_BANS, ...STATE_LIB_BANS, ...CLIENT_CONSTRUCTION_BANS] },
+        {
+          paths: [
+            ...HTTP_IMPORT_BANS,
+            ...STATE_LIB_BANS,
+            ...CLIENT_CONSTRUCTION_BANS,
+            MUI_SKELETON_BAN,
+          ],
+          patterns: [MUI_SKELETON_DEEP_BAN],
+        },
       ],
     },
   },

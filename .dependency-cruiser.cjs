@@ -51,6 +51,19 @@ module.exports = {
       },
     },
     {
+      name: 'web-layouts-are-structure-only',
+      severity: 'error',
+      comment:
+        'components/layout holds page skeletons: theme, components/ui and lib only. No core, features, routes, api.ts, i18n or TanStack — structure has no data and no copy (ADR-0004).',
+      from: { path: '^apps/web/src/components/layout/' },
+      to: {
+        path: [
+          '^(core/|apps/web/src/(features|routes|api|i18n))',
+          'node_modules/@tanstack/(react-query|react-router)(/|$)',
+        ],
+      },
+    },
+    {
       name: 'web-ui-presentational',
       severity: 'error',
       comment: 'components/ui is presentational: only lib, theme and its own siblings — never core, features, routes or api.',

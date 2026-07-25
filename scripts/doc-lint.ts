@@ -38,6 +38,12 @@ const DOC_PROMISED_ENFORCERS: ReadonlyArray<{ id: string; target: ConfigTarget; 
   { id: '@typescript-eslint/no-explicit-any', target: 'eslint', doc: 'CLAUDE.md §House rules' },
   { id: 'no-restricted-syntax', target: 'eslint', doc: 'CLAUDE.md §House rules (no `as`)' },
   { id: 'RAW_COLOR_BAN', target: 'eslint', doc: 'CLAUDE.md §House rules (theme-only visuals)' },
+  { id: 'MUI_SKELETON_BAN', target: 'eslint', doc: 'ADR-0004 §(d) (page skeletons live in components/layout)' },
+  {
+    id: 'web-layouts-are-structure-only',
+    target: 'depcruise',
+    doc: 'architecture.md §The layout layer / ADR-0004 rule (a)',
+  },
   { id: 'core-domain-depends-on-nothing', target: 'depcruise', doc: 'architecture.md §Layers' },
   { id: 'no-frameworks-in-core', target: 'depcruise', doc: 'architecture.md §Layers' },
   { id: 'web-features-are-islands', target: 'depcruise', doc: 'architecture.md §Frontend' },

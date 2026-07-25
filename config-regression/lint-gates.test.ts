@@ -13,6 +13,7 @@ const token = `__avc_probe_${process.pid}_${Date.now()}__`;
 const coreDir = join('core', 'domain', token);
 const featureDir = join('apps', 'web', 'src', 'features', token);
 const uiDir = join('apps', 'web', 'src', 'components', 'ui', token);
+const layoutDir = join('apps', 'web', 'src', 'components', 'layout', token);
 const galleryDir = join('apps', 'web', 'src', 'gallery', token);
 const cliDir = join('apps', 'cli', token);
 const dcDir = join('core', 'domain', `${token}_dc`);
@@ -21,6 +22,7 @@ const SWEEP_BASES = [
   join(repoRoot, 'core', 'domain'),
   join(repoRoot, 'apps', 'web', 'src', 'features'),
   join(repoRoot, 'apps', 'web', 'src', 'components', 'ui'),
+  join(repoRoot, 'apps', 'web', 'src', 'components', 'layout'),
   join(repoRoot, 'apps', 'web', 'src', 'gallery'),
   join(repoRoot, 'apps', 'cli'),
 ];
@@ -89,6 +91,22 @@ const fixtures = {
     rel: join(uiDir, 'i18n-probe.ts'),
     content: "import '../../../i18n/dictionary.js';\n",
   },
+  layoutImportsFeature: {
+    rel: join(layoutDir, 'feature-probe.ts'),
+    content: "import '../../../features/catalog/use-catalog.js';\n",
+  },
+  muiSkeletonOutsideLayout: {
+    rel: join(featureDir, 'container-probe.tsx'),
+    content:
+      "import { Container } from '@mui/material';\n" +
+      'export const probe = () => <Container />;\n',
+  },
+  muiSkeletonInsideLayout: {
+    rel: join(layoutDir, 'container-probe.tsx'),
+    content:
+      "import { Container } from '@mui/material';\n" +
+      'export const probe = () => <Container />;\n',
+  },
   galleryImportsFeature: {
     rel: join(galleryDir, 'feature-probe.ts'),
     content: "import '../../features/catalog/use-catalog.js';\n",
@@ -145,6 +163,7 @@ interface EslintResult {
 const messagesByFixture = new Map<string, EslintMessage[]>();
 const depcruiseRules = new Set<string>();
 const islandDepcruiseRules = new Set<string>();
+const layoutDepcruiseRules = new Set<string>();
 
 const write = (rel: string, content: string): string => {
   const abs = join(repoRoot, rel);
@@ -195,6 +214,14 @@ beforeAll(() => {
   });
   const islandReport: { summary: { violations: { rule: { name: string } }[] } } = JSON.parse(islandRun.stdout);
   for (const violation of islandReport.summary.violations) islandDepcruiseRules.add(violation.rule.name);
+
+  const layoutRun = spawnSync(depBin, ['--output-type', 'json', layoutDir], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+    maxBuffer: 32 * 1024 * 1024,
+  });
+  const layoutReport: { summary: { violations: { rule: { name: string } }[] } } = JSON.parse(layoutRun.stdout);
+  for (const violation of layoutReport.summary.violations) layoutDepcruiseRules.add(violation.rule.name);
 });
 
 afterAll(() => {
@@ -279,6 +306,18 @@ describe('ESLint gate still rejects violations', () => {
     expect(message).toBeDefined();
     expect(message?.message).toContain('portable');
   });
+
+  it('bans a layout skeleton importing a feature (boundaries/element-types)', () => {
+    const message = findMessage(fixtures.layoutImportsFeature, 'boundaries/element-types');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('web-layout');
+  });
+
+  it('bans skeleton MUI components outside components/layout (MUI_SKELETON_BAN)', () => {
+    const message = findMessage(fixtures.muiSkeletonOutsideLayout, 'no-restricted-imports');
+    expect(message).toBeDefined();
+    expect(message?.message).toContain('components/layout');
+  });
 });
 
 describe('ESLint gate keeps app-owned grants (positive probes)', () => {
@@ -292,6 +331,10 @@ describe('ESLint gate keeps app-owned grants (positive probes)', () => {
 
   it('lets a feature spread an imported descriptor into a query hook (avc rule does not over-fire)', () => {
     expect(findMessage(fixtures.queryDescriptorsValid, 'avc/query-descriptors-only')).toBeUndefined();
+  });
+
+  it('lets components/layout own the skeleton MUI components the rest of the app may not', () => {
+    expect(findMessage(fixtures.muiSkeletonInsideLayout, 'no-restricted-imports')).toBeUndefined();
   });
 
   it('lets a web binding (index.web.ts) import its own island core (seam is lawful)', () => {
@@ -313,6 +356,10 @@ describe('dependency-cruiser gate still rejects violations', () => {
     expect(islandDepcruiseRules.has('island-core-is-portable')).toBe(true);
   });
 
+  it('behavioral: a layout reaching a feature fires web-layouts-are-structure-only', () => {
+    expect(layoutDepcruiseRules.has('web-layouts-are-structure-only')).toBe(true);
+  });
+
   it('structural: every guarded rule is present with severity error', () => {
     const depConfig: { forbidden: { name: string; severity: string }[] } = require(
       join(repoRoot, '.dependency-cruiser.cjs'),
@@ -327,6 +374,7 @@ describe('dependency-cruiser gate still rejects violations', () => {
       'adapters-never-import-apps',
       'web-never-server-side',
       'web-features-are-islands',
+      'web-layouts-are-structure-only',
       'web-ui-presentational',
       'web-lib-no-react',
       'cli-only-composes-server',
