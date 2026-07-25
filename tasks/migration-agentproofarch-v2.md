@@ -1,8 +1,12 @@
 # Migration to agentproofarch @ cf247d1 — round 2
 
-Status: IN PROGRESS (started 2026-07-27). Baseline: round 1 completed
-2026-07-25 against foundation `bcb038b` (`tasks/migration-agentproofarch.md`).
-This round covers the 112-commit foundation delta `bcb038b..cf247d1`.
+Status: COMPLETE (2026-07-27), released as v0.5.14. Wave map: P1 layout layer
+`f1a624c4` + `24a932b9`; P3 pnpm `b0133c81..bdc0aa3e`; P2 visual suite
+`d894c5a8` + `beb5ad76`; P4 conventions `8710df27`, `ce2a2723`, `7add3d85`,
+`758ad012`, `c8fdfa02`; P5 audit + release in the `chore: release v0.5.14`
+commit. Baseline: round 1 completed 2026-07-25 against foundation `bcb038b`
+(`tasks/migration-agentproofarch.md`). This round covers the 112-commit
+foundation delta `bcb038b..cf247d1`.
 
 Doctrine unchanged from round 1: the foundation is normative unless this app's
 specifics demand a deviation, and every deviation is written down with its
@@ -146,7 +150,8 @@ flagged OWNER.
   line, which is moot here: we ship from a branch, so the convention lives in
   `CLAUDE.md` and `CHANGELOG.md`'s own header instead.
 - **P5** — full audit (check + smoke + matrix subset + verify:package +
-  packaged-CLI), release, docs sync, status flip to COMPLETE here.
+  packaged-CLI), release, docs sync, status flip to COMPLETE here. DONE
+  2026-07-27 with the v0.5.14 release.
 
 Every phase runs impl → independent empirical review (journeys + screenshots
 on the built app) → gates under the pinned toolchain. House rules apply

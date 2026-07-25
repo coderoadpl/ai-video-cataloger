@@ -14,26 +14,33 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.14] - 2026-07-27
+
 ### Added
 
 - `pnpm run visual` — a Playwright screenshot suite that compares the layout
   skeletons (default, collapsed sidebar, open terminal, loading) in dark and
   light against darwin baselines committed under `visual/__screenshots__/`; it
-  joins no required gate.
+  joins no required gate
+  ([`beb5ad7`](https://github.com/chomamateusz/ai-video-cataloger/commit/beb5ad76)).
 - `components/layout/` as a named structural layer, enforced by the
   `web-layouts-are-structure-only` dependency-cruiser rule, a `Container`/
   `AppBar`/`Drawer`/`Toolbar` import ban outside it, and config-regression
-  probes.
+  probes ([`f1a624c`](https://github.com/chomamateusz/ai-video-cataloger/commit/f1a624c4),
+  [`24a932b`](https://github.com/chomamateusz/ai-video-cataloger/commit/24a932b9)).
 
 ### Changed
 
 - `doc-lint` fails when a tracked `README.md` documents a `pnpm run <script>`
   that the owning `package.json` does not define, so a renamed or dropped script
-  can no longer leave a quickstart that lies.
+  can no longer leave a quickstart that lies
+  ([`ce2a272`](https://github.com/chomamateusz/ai-video-cataloger/commit/ce2a2723)).
 - The package manager is pnpm 10 on Node 22.23.1: install with `pnpm install`
   under `nvm use`, dependency lifecycle scripts are blocked except for three
   allowlisted packages, and `lock-lint` now fails closed on a `pnpm-lock.yaml`
-  that disagrees with `package.json`.
+  that disagrees with `package.json`
+  ([`2149503`](https://github.com/chomamateusz/ai-video-cataloger/commit/21495031),
+  [`5d3f273`](https://github.com/chomamateusz/ai-video-cataloger/commit/5d3f273f)).
 
 ## [0.5.13] - 2026-07-27
 
