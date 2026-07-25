@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { ensureFolderMarker, folderMarkerPath, readFolderMarker } from './folder-identity.js';
+import { folderMarkerPath, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import {
   folderCatalogRecords,
   forgetCatalogEntry,
@@ -37,8 +37,8 @@ describe('folder identity marker', () => {
   it('creates a persistent marker and returns the same id on re-read', async () => {
     const fs = new InMemoryFileSystem('/work');
     fs.addDirectory('/work');
-    const created = await ensureFolderMarker(fs, '/work');
-    expect(created.ok).toBe(true);
+    const created = await resolveFolderIdentity(fs, '/work');
+    expect(created.ok && created.value.persistent).toBe(true);
     if (!created.ok) return;
     const reread = await readFolderMarker(fs, '/work');
     expect(reread.ok && reread.value?.folderId).toBe(created.value.folderId);

@@ -2,6 +2,7 @@ import { appError, ok, type AppError, type Result } from '@core/domain/index.js'
 
 import type { FileSystemPort, GlobalCatalogStore } from '../ports.js';
 import { artifactPaths } from './shared.js';
+import { discoverArtifactRoot } from './artifact-root.js';
 
 export interface SearchDeps {
   globalCatalog: GlobalCatalogStore;
@@ -98,7 +99,9 @@ const resolveThumbnailPath = async (
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
   const videoPath = fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
-  const { thumbnailPath } = artifactPaths(fs, row.folder.currentPath, videoPath, row.finalName);
+  const root = await discoverArtifactRoot(fs, row.folder.currentPath);
+  if (!root.ok) return root;
+  const { thumbnailPath } = artifactPaths(fs, root.value, videoPath, row.finalName);
   const exists = await fs.exists(thumbnailPath);
   if (!exists.ok) return exists;
   return ok(exists.value ? thumbnailPath : null);

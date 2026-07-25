@@ -79,7 +79,16 @@ Two scopes remain, with catalog ownership revised by
   is unknown to the local index. Existing per-folder `catalog.db` files remain
   readable for migration but are not the canonical write target.
 - **Home scope** — `~/.ai-video-cataloger/` also holds global model state,
-  managed runtime files, whisper models, and provider credentials.
+  managed runtime files, whisper models, provider credentials, and the
+  read-only mirror below.
+
+A source folder that cannot be written to (write-protected external drive,
+`chmod -w`) is not a failure: opening its catalog degrades to an in-memory
+repository (`CatalogRepository.writable()` reports it), artifacts are mirrored
+to `~/.ai-video-cataloger/read-only-folders/{folderId}/`, renaming is forced
+off, the NDJSON snapshot is skipped with a `catalog_snapshot_skipped` warning
+per file, and the analysis still lands in the canonical global index. See
+[ADR-0002](decisions/0002-global-catalog-layer.md) §(f).
 
 Existing databases and on-disk artifacts written by the old implementation
 must remain readable with no migration.

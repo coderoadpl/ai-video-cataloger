@@ -1,9 +1,10 @@
+import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 
 import { createFakeVideoFile } from '../helpers/fixtures.js';
-import { findEvent, parseJsonEvents, runCli } from '../helpers/cli-runner.js';
+import { findEvent, getProjectRoot, parseJsonEvents, runCli } from '../helpers/cli-runner.js';
 import { cleanupTestDir, createTestDir } from '../setup.js';
 
 describe('process-drive command', () => {
@@ -50,5 +51,32 @@ describe('process-drive command', () => {
     expect(findEvent(events, 'folder-done')).toMatchObject({ path: testDir, filesFailed: 1 });
     expect(findEvent(events, 'run-summary')).toMatchObject({ root: testDir, filesFailed: 1 });
     expect(findEvent(events, 'completed')).toBeDefined();
+  });
+
+  it('keeps a write-protected folder in the run and mirrors its artifacts into the home scope', async () => {
+    const home = createTestDir();
+    const folder = join(testDir, 'ro');
+    mkdirSync(folder);
+    copyFileSync(join(getProjectRoot(), 'test', 'BigBuckBunny480p30s.mp4'), join(folder, 'clip.mp4'));
+    chmodSync(folder, 0o555);
+
+    try {
+      const result = await runCli(
+        ['process-drive', testDir, '--whisper', 'skip', '--skip-rename', '--frames', '1', '--analyzer', 'api', '--json'],
+        { cwd: testDir, env: { HOME: home } },
+      );
+      const summary = findEvent(parseJsonEvents(result.stdout), 'run-summary');
+
+      expect(result.exitCode).toBe(0);
+      expect(summary).toMatchObject({ foldersTotal: 1, filesTotal: 1 });
+      expect(JSON.stringify(summary?.failures)).not.toContain('EACCES');
+      expect(readdirSync(folder)).toEqual(['clip.mp4']);
+      const mirrors = readdirSync(join(home, '.ai-video-cataloger', 'read-only-folders'));
+      expect(mirrors).toHaveLength(1);
+      expect(existsSync(join(home, '.ai-video-cataloger', 'read-only-folders', mirrors[0] ?? '', 'frames', 'clip', 'frame-001.jpg'))).toBe(true);
+    } finally {
+      chmodSync(folder, 0o755);
+      cleanupTestDir(home);
+    }
   });
 });

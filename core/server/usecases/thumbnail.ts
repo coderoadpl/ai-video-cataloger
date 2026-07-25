@@ -1,7 +1,8 @@
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { FileSystemPort, MediaPort } from '../ports.js';
-import { isSupportedVideoExtension } from './shared.js';
+import { isSupportedVideoExtension, thumbnailArtifactPath } from './shared.js';
+import { discoverArtifactRoot } from './artifact-root.js';
 
 export interface ThumbnailDeps {
   fs: FileSystemPort;
@@ -33,12 +34,9 @@ export const generateThumbnail = async (
   if (!file.ok) return file;
   if (!file.value) return { ok: false, error: appError('not_a_file', `Not a file: ${videoPath}`) };
 
-  const thumbnailPath = deps.fs.join(
-    deps.fs.dirname(videoPath),
-    '.ai-video-cataloger',
-    'thumbnails',
-    `${deps.fs.basenameWithoutExtension(videoPath)}.jpg`,
-  );
+  const root = await discoverArtifactRoot(deps.fs, deps.fs.dirname(videoPath));
+  if (!root.ok) return root;
+  const thumbnailPath = thumbnailArtifactPath(deps.fs, root.value, videoPath);
   const thumbnail = await deps.media.thumbnail({
     videoPath,
     thumbnailPath,

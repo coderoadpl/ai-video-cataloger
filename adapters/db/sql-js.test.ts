@@ -1,4 +1,5 @@
-import { mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { chmod, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import initSqlJs from 'sql.js';
@@ -332,3 +333,71 @@ const oldSchemaStatements = async (): Promise<string[]> => {
   expect(statements).toHaveLength(2);
   return statements;
 };
+
+describe('SqlJsCatalogRepositoryFactory over a read-only folder', () => {
+  const readOnlyRoots: string[] = [];
+  const restricted: string[] = [];
+
+  afterEach(async () => {
+    for (const directory of [...restricted].reverse()) await chmod(directory, 0o755);
+    await Promise.all(readOnlyRoots.map((root) => rm(root, { recursive: true, force: true })));
+    readOnlyRoots.length = 0;
+    restricted.length = 0;
+  });
+
+  const readOnlyRoot = async (): Promise<string> => {
+    const root = await mkdtemp(path.join(tmpdir(), 'avc-db-ro-'));
+    readOnlyRoots.push(root);
+    return root;
+  };
+
+  const denyWrites = async (directory: string): Promise<void> => {
+    await chmod(directory, 0o555);
+    restricted.push(directory);
+  };
+
+  it('opens degraded without creating the sidecar directory and keeps writes in memory', async () => {
+    const folder = await readOnlyRoot();
+    await denyWrites(folder);
+
+    const opened = await new SqlJsCatalogRepositoryFactory().open(folder);
+    if (!opened.ok) throw new Error(opened.error.message);
+
+    expect(opened.value.writable()).toBe(false);
+    expect(existsSync(path.join(folder, '.ai-video-cataloger'))).toBe(false);
+
+    const created = await opened.value.createVideo(videoInput(folder));
+    if (!created.ok) throw new Error(created.error.message);
+    const listed = await opened.value.listVideos();
+    if (!listed.ok) throw new Error(listed.error.message);
+
+    expect(listed.value).toHaveLength(1);
+    expect(listed.value[0]?.originalName).toBe('clip.mp4');
+    expect(existsSync(path.join(folder, '.ai-video-cataloger'))).toBe(false);
+  });
+
+  it('loads an existing catalog.db read-only and leaves the file untouched on write', async () => {
+    const folder = await readOnlyRoot();
+    const seeded = await new SqlJsCatalogRepositoryFactory().open(folder);
+    if (!seeded.ok) throw new Error(seeded.error.message);
+    const created = await seeded.value.createVideo(videoInput(folder));
+    if (!created.ok) throw new Error(created.error.message);
+
+    const databasePath = path.join(folder, '.ai-video-cataloger', 'catalog.db');
+    const bytesBefore = await readFile(databasePath);
+    await denyWrites(path.join(folder, '.ai-video-cataloger'));
+    await denyWrites(folder);
+
+    const reopened = await new SqlJsCatalogRepositoryFactory().open(folder);
+    if (!reopened.ok) throw new Error(reopened.error.message);
+    expect(reopened.value.writable()).toBe(false);
+    const listed = await reopened.value.listVideos();
+    if (!listed.ok) throw new Error(listed.error.message);
+    expect(listed.value[0]?.status).toBe('pending');
+
+    const updated = await reopened.value.updateVideoStatus(created.value.id, 'completed', null);
+    if (!updated.ok) throw new Error(updated.error.message);
+    expect(updated.value.status).toBe('completed');
+    expect(await readFile(databasePath)).toEqual(bytesBefore);
+  });
+});

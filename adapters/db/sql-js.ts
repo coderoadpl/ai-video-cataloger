@@ -46,6 +46,8 @@ const configFileName = 'config.json';
 const appGlobalConfigKeys = new Set<string>(APP_GLOBAL_CONFIG_KEYS);
 
 const persistedConfigSchema = z.record(z.string(), z.string());
+const errnoSchema = z.object({ code: z.string() });
+const READ_ONLY_ERRNO_CODES: ReadonlySet<string> = new Set(['EACCES', 'EROFS', 'EPERM']);
 
 type DatabaseSchema = typeof schema;
 type SqlJsDrizzle = SQLJsDatabase<DatabaseSchema>;
@@ -76,6 +78,7 @@ export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
         opened.value.client,
         opened.value.db,
         opened.value.fileState,
+        opened.value.persistent,
       );
       this.opened.set(canonicalFolder, repository);
       return ok(repository);
@@ -132,10 +135,15 @@ class SqlJsCatalogRepository implements CatalogRepository {
     private client: Database,
     private db: SqlJsDrizzle,
     private fileState: DatabaseFileState | null,
+    private readonly persistent: boolean,
   ) {}
 
   databasePath(): string | null {
     return this.filePath;
+  }
+
+  writable(): boolean {
+    return this.persistent;
   }
 
   async listVideos(): Promise<Result<Video[], AppError>> {
@@ -258,6 +266,7 @@ class SqlJsCatalogRepository implements CatalogRepository {
     try {
       this.reloadIfChanged();
       const value = operation();
+      if (!this.persistent) return ok(value);
       persistDatabase(this.filePath, this.client);
       this.fileState = databaseFileState(this.filePath);
       return ok(value);
@@ -268,6 +277,7 @@ class SqlJsCatalogRepository implements CatalogRepository {
   }
 
   private reloadIfChanged(): void {
+    if (!this.persistent) return;
     const diskState = databaseFileState(this.filePath);
     if (this.fileState !== null && sameFileState(this.fileState, diskState)) return;
     const client = new this.SQL.Database(readFileSync(this.filePath));
@@ -293,19 +303,36 @@ const openSqlJsDatabase = async (
   SQL: SqlJsStatic;
   client: Database;
   db: SqlJsDrizzle;
-  fileState: DatabaseFileState;
+  fileState: DatabaseFileState | null;
+  persistent: boolean;
 }, AppError>> => {
   try {
-    mkdirSync(path.dirname(databasePath), { recursive: true });
     const SQL = await initSqlJs(sqlJsWasmConfig());
     const client = existsSync(databasePath) ? new SQL.Database(readFileSync(databasePath)) : new SQL.Database();
     client.run(createCatalogSchemaSql);
     client.run(createConfigSchemaSql);
-    persistDatabase(databasePath, client);
-    return ok({ databasePath, SQL, client, db: drizzle(client, { schema }), fileState: databaseFileState(databasePath) });
+    const opened = { databasePath, SQL, client, db: drizzle(client, { schema }) };
+    if (!persistWhereWritable(databasePath, client)) return ok({ ...opened, fileState: null, persistent: false });
+    return ok({ ...opened, fileState: databaseFileState(databasePath), persistent: true });
   } catch (cause) {
     return repositoryFailure(cause);
   }
+};
+
+const persistWhereWritable = (databasePath: string, client: Database): boolean => {
+  try {
+    mkdirSync(path.dirname(databasePath), { recursive: true });
+    persistDatabase(databasePath, client);
+    return true;
+  } catch (cause) {
+    if (isReadOnlyErrno(cause)) return false;
+    throw cause;
+  }
+};
+
+const isReadOnlyErrno = (cause: unknown): boolean => {
+  const parsed = errnoSchema.safeParse(cause);
+  return parsed.success && READ_ONLY_ERRNO_CODES.has(parsed.data.code);
 };
 
 const persistDatabase = (databasePath: string, client: Database): void => {

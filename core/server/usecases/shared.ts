@@ -15,6 +15,7 @@ import { analyzerProviderConfigSchema } from '@core/domain/providers.js';
 import { z } from 'zod';
 
 import type { FileSystemPort } from '../ports.js';
+import type { ArtifactRoot } from './artifact-root.js';
 
 export const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'] as const;
 export const IN_PROGRESS_STATUSES: readonly VideoStatus[] = [
@@ -83,7 +84,7 @@ export const artifactBaseName = (fs: FileSystemPort, videoPath: string, newName:
 
 export const artifactPaths = (
   fs: FileSystemPort,
-  folder: string,
+  root: ArtifactRoot,
   videoPath: string,
   newName: string | null,
 ): {
@@ -97,15 +98,18 @@ export const artifactPaths = (
 } => {
   const baseName = artifactBaseName(fs, videoPath, newName);
   return {
-    framesDir: fs.join(folder, 'frames', baseName),
-    transcriptPath: fs.join(folder, 'transcripts', `${baseName}.txt`),
-    transcriptJsonPath: fs.join(folder, 'transcripts', `${baseName}.json`),
-    summaryPath: fs.join(folder, 'summaries', `${baseName}.txt`),
-    summaryJsonPath: fs.join(folder, 'summaries', `${baseName}.json`),
-    debugLogPath: fs.join(folder, 'summaries', `${baseName}-debug.log`),
-    thumbnailPath: fs.join(folder, '.ai-video-cataloger', 'thumbnails', `${baseName}.jpg`),
+    framesDir: fs.join(root.path, 'frames', baseName),
+    transcriptPath: fs.join(root.path, 'transcripts', `${baseName}.txt`),
+    transcriptJsonPath: fs.join(root.path, 'transcripts', `${baseName}.json`),
+    summaryPath: fs.join(root.path, 'summaries', `${baseName}.txt`),
+    summaryJsonPath: fs.join(root.path, 'summaries', `${baseName}.json`),
+    debugLogPath: fs.join(root.path, 'summaries', `${baseName}-debug.log`),
+    thumbnailPath: fs.join(root.catalogDirectory, 'thumbnails', `${baseName}.jpg`),
   };
 };
+
+export const thumbnailArtifactPath = (fs: FileSystemPort, root: ArtifactRoot, videoPath: string): string =>
+  fs.join(root.catalogDirectory, 'thumbnails', `${fs.basenameWithoutExtension(videoPath)}.jpg`);
 
 export const parseSummary = (content: string | null): SummaryData | null => {
   if (content === null) return null;

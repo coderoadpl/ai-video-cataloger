@@ -71,6 +71,7 @@ import type {
   TranscribeInput,
   TranscriberPort,
 } from '../../../core/server/ports.js';
+import { isReadOnlyWriteError } from '../../../core/server/usecases/folder-identity.js';
 
 interface FakeFile {
   content: string | null;
@@ -244,6 +245,10 @@ export class InMemoryFileSystem implements FileSystemPort {
     return '/tmp';
   }
 
+  homeDirectory(): string {
+    return '/home';
+  }
+
   private normalize(value: string): string {
     return path.normalize(value);
   }
@@ -251,6 +256,7 @@ export class InMemoryFileSystem implements FileSystemPort {
 
 export class InMemoryCatalogRepository implements CatalogRepository {
   private records: Video[];
+  private persistent = true;
 
   constructor(
     private readonly folder: string,
@@ -261,6 +267,14 @@ export class InMemoryCatalogRepository implements CatalogRepository {
 
   databasePath(): string | null {
     return path.join(this.folder, '.ai-video-cataloger', 'catalog.db');
+  }
+
+  writable(): boolean {
+    return this.persistent;
+  }
+
+  markReadOnly(): void {
+    this.persistent = false;
   }
 
   setVideos(videos: Video[]): void {
@@ -348,7 +362,10 @@ export class InMemoryCatalogs implements CatalogRepositoryFactory {
   private readonly repositories = new Map<string, InMemoryCatalogRepository>();
   readonly openInputs: string[] = [];
 
-  constructor(initial: ReadonlyArray<{ folder: string; videos: Video[] }> = []) {
+  constructor(
+    initial: ReadonlyArray<{ folder: string; videos: Video[] }> = [],
+    private readonly fs?: FileSystemPort,
+  ) {
     for (const entry of initial) {
       this.repositories.set(path.normalize(entry.folder), new InMemoryCatalogRepository(entry.folder, entry.videos));
     }
@@ -363,9 +380,15 @@ export class InMemoryCatalogs implements CatalogRepositoryFactory {
     return created;
   }
 
-  open(folder: string): Promise<Result<CatalogRepository, AppError>> {
+  async open(folder: string): Promise<Result<CatalogRepository, AppError>> {
     this.openInputs.push(folder);
-    return Promise.resolve(ok(this.repo(folder)));
+    const repository = this.repo(folder);
+    if (this.fs === undefined) return ok(repository);
+    const ensured = await this.fs.ensureDirectory(this.fs.join(folder, '.ai-video-cataloger'));
+    if (ensured.ok) return ok(repository);
+    if (!isReadOnlyWriteError(ensured.error)) return ensured;
+    repository.markReadOnly();
+    return ok(repository);
   }
 }
 
@@ -400,6 +423,8 @@ export class InMemoryConfig implements ConfigStore {
 }
 
 export class InMemoryMedia implements MediaPort {
+  constructor(private readonly fs?: FileSystemPort) {}
+
   readonly thumbnailInputs: ThumbnailInput[] = [];
   readonly frameInputs: Array<{ videoPath: string; outputDirectory: string; frameCount: number }> = [];
   readonly audioInputs: Array<{ videoPath: string; outputPath: string }> = [];
@@ -420,12 +445,19 @@ export class InMemoryMedia implements MediaPort {
     }));
   }
 
-  extractFrames(input: { videoPath: string; outputDirectory: string; frameCount: number }): Promise<Result<{ framePaths: string[] }, AppError>> {
+  async extractFrames(input: { videoPath: string; outputDirectory: string; frameCount: number }): Promise<Result<{ framePaths: string[] }, AppError>> {
     this.frameInputs.push(input);
     const paths = Array.from({ length: input.frameCount }, (_value, index) =>
       path.join(input.outputDirectory, `frame-${String(index + 1).padStart(3, '0')}.jpg`),
     );
-    return Promise.resolve(ok({ framePaths: paths }));
+    if (this.fs === undefined) return ok({ framePaths: paths });
+    const ensured = await this.fs.ensureDirectory(input.outputDirectory);
+    if (!ensured.ok) return ensured;
+    for (const framePath of paths) {
+      const written = await this.fs.writeTextFile(framePath, 'frame');
+      if (!written.ok) return written;
+    }
+    return ok({ framePaths: paths });
   }
 
   extractAudio(input: { videoPath: string; outputPath: string }): Promise<Result<{ hasAudio: boolean; audioPath: string | null }, AppError>> {

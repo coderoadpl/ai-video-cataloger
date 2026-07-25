@@ -180,7 +180,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     }),
     config: configStore,
     credentials,
-    fs: new NodeFileSystemPort({ workingDirectory }),
+    fs: new NodeFileSystemPort({ workingDirectory, homeDirectory }),
     folderWatcher: new NodeFolderWatcherPort(),
     media: new FfmpegMediaAdapter(),
     transcriber: new WhisperTranscriberAdapter({ credentials, homeDirectory, runtime: whisperRuntime }),
@@ -377,6 +377,10 @@ class InMemoryCatalogRepository implements CatalogRepository {
 
   databasePath(): string | null {
     return path.join(this.folder, '.ai-video-cataloger', 'catalog.db');
+  }
+
+  writable(): boolean {
+    return true;
   }
 
   listVideos(): Promise<Result<CatalogVideo[], AppError>> {
@@ -889,6 +893,10 @@ class InMemoryFileSystemPort implements FileSystemPort {
 
   tempDirectory(): string {
     return '/tmp';
+  }
+
+  homeDirectory(): string {
+    return path.join(this.workingDirectory, 'home');
   }
 }
 

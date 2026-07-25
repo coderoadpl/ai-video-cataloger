@@ -1,6 +1,7 @@
 # ADR-0002: Global catalog index as canonical store, per-folder snapshot as backup
 
-Date: 2026-07-20 · Status: accepted (owner-decided) · Amended 2026-07-22 to match the implementation
+Date: 2026-07-20 · Status: accepted (owner-decided) · Amended 2026-07-22 to match the
+implementation · Amended 2026-07-27 with §(f) read-only folders
 
 ## Context
 
@@ -125,6 +126,57 @@ the person's `face_observations` rows — embeddings and bounding boxes included
 together with the person row and its exemplar crops, so a "forget" removes the
 biometric data rather than leaving it as unassigned observations that could
 re-cluster. `purgeFaces` clears all people and observations.
+
+### (f) Read-only folders run in degraded index-only mode
+
+A read-only source folder (a chmod -w directory, a write-protected or
+foreign-owned external drive) must still be catalogable: the global index is the
+canonical store, so nothing about a drive pass needs the folder to be writable.
+Every write into the folder is therefore optional and degrades instead of
+failing the pass.
+
+- **Catalog open never writes eagerly.** `openSqlJsDatabase`
+  (`adapters/db/sql-js.ts`) does not create `{folder}/.ai-video-cataloger/` and
+  does not persist an empty database as a side effect of opening. It loads the
+  bytes of an existing `catalog.db` when one is there, starts empty when not,
+  and treats an `EACCES`/`EROFS`/`EPERM` on the write probe as **degraded**: the
+  repository stays in memory for the process lifetime and every later persist is
+  a no-op rather than a throw. `CatalogRepository.writable()`
+  (`core/server/ports.ts`) exposes that state so use-cases can branch on it
+  instead of discovering it through an exception. Writability is decided once per
+  folder, at open, and cached with the repository.
+- **Identity.** With no marker file writable, `resolveFolderIdentity`
+  (`core/server/usecases/folder-identity.ts`) falls back to the deterministic
+  path-derived id `path-<fnv1a32-hex>`, which is stable for as long as the folder
+  keeps its path.
+- **Artifacts mirror into the home scope.** Frames, transcripts, summaries, the
+  analyzer debug log, and thumbnails are written to
+  `~/.ai-video-cataloger/read-only-folders/{folderId}/` — the same
+  `frames/`, `transcripts/`, `summaries/`, `thumbnails/` layout the folder would
+  have carried, under the home scope this ADR already owns. `ArtifactRoot`
+  (`core/server/usecases/artifact-root.ts`) is the single seam: the write path
+  picks the folder root or the mirror from `CatalogRepository.writable()`; read
+  paths with no repository handle (search thumbnails, the `thumbnail` command)
+  discover it from the folder — marker present means in-folder, otherwise the
+  mirror if it exists.
+- **Renaming is off.** Files on a read-only folder cannot be renamed, so
+  degraded mode forces `skip_rename`; the run is index-only by construction.
+- **Snapshot skipped, index written.** The NDJSON snapshot of §(a) cannot be
+  written, so it is skipped per file with a `catalog_snapshot_skipped` warning
+  event and a `snapshotSkipped` count on the drive-run summary. The analysis
+  itself still lands in the global index, which is what makes the folder
+  searchable.
+
+Consequences: a read-only folder whose path changes (remount at another mount
+point) gets a new `folderId` and a new mirror directory, because there is no
+marker to ride inside it — the derived artifacts are re-created, but the
+analyses are not recomputed, since resume is keyed by content fingerprint in the
+global index (§c). The mirror is derived data with the same standing as the
+in-folder `frames/`/`summaries/` directories: deleting it costs re-extraction,
+never catalog rows. Two distinct read-only folders whose paths collide under
+FNV-1a would share a mirror; the window is a 32-bit hash over a personal
+machine's folder paths, and the failure mode is mixed derived artifacts, not
+mixed catalog rows.
 
 ## Alternatives considered
 

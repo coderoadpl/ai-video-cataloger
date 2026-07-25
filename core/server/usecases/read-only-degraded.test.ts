@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { JobProgress } from '../ports.js';
+import { readOnlyArtifactRoot } from './artifact-root.js';
 import { isReadOnlyWriteError, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import { processDrive, type ProcessDriveInput } from './process-drive.js';
 import {
@@ -20,7 +21,7 @@ const eaccesError = (message: string): AppError => {
   return appError('internal', message, cause);
 };
 
-class ReadOnlyCatalogFileSystem extends InMemoryFileSystem {
+class ReadOnlyFolderFileSystem extends InMemoryFileSystem {
   constructor(
     private readonly readOnlyFolder: string,
     workingDirectory = '/drive',
@@ -29,7 +30,7 @@ class ReadOnlyCatalogFileSystem extends InMemoryFileSystem {
   }
 
   private isBlocked(target: string): boolean {
-    return this.resolve(target).startsWith(this.resolve(`${this.readOnlyFolder}/.ai-video-cataloger`));
+    return this.resolve(target).startsWith(this.resolve(this.readOnlyFolder));
   }
 
   override writeTextFile(value: string, content: string): Promise<Result<void, AppError>> {
@@ -61,14 +62,17 @@ const baseInput: ProcessDriveInput = {
 };
 
 const makeDeps = (fs: InMemoryFileSystem) => ({
-  catalogs: new InMemoryCatalogs(),
+  catalogs: new InMemoryCatalogs([], fs),
   config: new InMemoryConfig(),
   fs,
-  media: new InMemoryMedia(),
+  media: new InMemoryMedia(fs),
   transcriber: new InMemoryTranscriber(fs),
   analyzer: new InMemoryAnalyzer(),
   globalCatalog: new InMemoryGlobalCatalogStore(),
 });
+
+const mirrorRoot = (fs: InMemoryFileSystem, folder: string): string =>
+  readOnlyArtifactRoot(fs, folder).path;
 
 const recordingProgress = (events: JobProgress[]) => ({
   signal: new AbortController().signal,
@@ -93,7 +97,7 @@ describe('read-only write classification', () => {
 
 describe('resolveFolderIdentity', () => {
   it('falls back to a stable path-derived identity when the marker cannot be written', async () => {
-    const fs = new ReadOnlyCatalogFileSystem('/drive/ro');
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
     const first = await resolveFolderIdentity(fs, '/drive/ro');
     const second = await resolveFolderIdentity(fs, '/drive/ro');
 
@@ -115,7 +119,7 @@ describe('resolveFolderIdentity', () => {
 
 describe('drive processing over a read-only folder', () => {
   it('completes the file with a snapshot-skipped warning and records the analysis in the global catalog', async () => {
-    const fs = new ReadOnlyCatalogFileSystem('/drive/ro');
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
     fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
     const deps = makeDeps(fs);
     const events: JobProgress[] = [];
@@ -132,10 +136,18 @@ describe('drive processing over a read-only folder', () => {
     expect(analysis.ok && analysis.value !== null).toBe(true);
     const marker = await readFolderMarker(fs, '/drive/ro');
     expect(marker.ok && marker.value).toBe(null);
+
+    const mirror = mirrorRoot(fs, '/drive/ro');
+    const frame = await fs.exists(`${mirror}/frames/clip/frame-001.jpg`);
+    const summary = await fs.exists(`${mirror}/summaries/clip.json`);
+    expect(frame.ok && frame.value).toBe(true);
+    expect(summary.ok && summary.value).toBe(true);
+    const folderEntries = await fs.listDirectory('/drive/ro');
+    expect(folderEntries.ok && folderEntries.value.map((entry) => entry.name)).toEqual(['clip.mp4']);
   });
 
   it('does not trip the consecutive-failure abort across several read-only files', async () => {
-    const fs = new ReadOnlyCatalogFileSystem('/drive/ro');
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
     for (let index = 0; index < 6; index += 1) {
       fs.addFile(`/drive/ro/clip-${String(index)}.mp4`, { size: 1024, mtimeMs: 0, hash: `hash-${String(index)}` });
     }
@@ -150,7 +162,7 @@ describe('drive processing over a read-only folder', () => {
   });
 
   it('skips by fingerprint on a second run without a local marker', async () => {
-    const fs = new ReadOnlyCatalogFileSystem('/drive/ro');
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
     fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
     const deps = makeDeps(fs);
 

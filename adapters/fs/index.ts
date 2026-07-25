@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { access, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import {
@@ -20,15 +20,18 @@ const PARTIAL_HASH_CHUNK_SIZE = 1024 * 1024;
 export interface NodeFileSystemPortOptions {
   workingDirectory?: string | undefined;
   tempDirectory?: string | undefined;
+  homeDirectory?: string | undefined;
 }
 
 export class NodeFileSystemPort implements FileSystemPort {
   private readonly workingDirectory: string;
   private readonly tempRoot: string;
+  private readonly homeRoot: string;
 
   constructor(options: NodeFileSystemPortOptions = {}) {
     this.workingDirectory = options.workingDirectory ?? process.cwd();
     this.tempRoot = options.tempDirectory ?? tmpdir();
+    this.homeRoot = options.homeDirectory ?? homedir();
   }
 
   cwd(): string {
@@ -185,6 +188,10 @@ export class NodeFileSystemPort implements FileSystemPort {
 
   tempDirectory(): string {
     return this.tempRoot;
+  }
+
+  homeDirectory(): string {
+    return this.homeRoot;
   }
 }
 

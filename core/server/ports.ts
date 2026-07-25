@@ -29,6 +29,7 @@ export interface CatalogResetSingleResult {
 
 export interface CatalogRepository {
   databasePath(): string | null;
+  writable(): boolean;
   listVideos(): Promise<Result<CatalogVideo[], AppError>>;
   findVideoByPath(path: string): Promise<Result<CatalogVideo | null, AppError>>;
   findVideoByHash(fileHash: string): Promise<Result<CatalogVideo | null, AppError>>;
@@ -255,6 +256,7 @@ export interface FileSystemPort {
   deleteFile(path: string): Promise<Result<void, AppError>>;
   partialContentHash(path: string): Promise<Result<string | null, AppError>>;
   tempDirectory(): string;
+  homeDirectory(): string;
 }
 
 export interface FolderWatchHandle {

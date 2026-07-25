@@ -10,6 +10,7 @@ import {
   parseSummary,
   type SummaryData,
 } from './shared.js';
+import { artifactRootFor, type ArtifactRoot } from './artifact-root.js';
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
 
 export interface TranscriptSegment {
@@ -90,9 +91,10 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
     .filter((entry) => entry.kind === 'file' && isSupportedVideoExtension(deps.fs.extname(entry.name)))
     .sort((left, right) => left.path.localeCompare(right.path));
 
+  const artifactRoot = artifactRootFor(deps.fs, folder, repository.value.writable());
   const videos: ScanVideo[] = [];
   for (const entry of videoEntries) {
-    const scanned = await scanVideo(deps, repository.value, folder, entry.path);
+    const scanned = await scanVideo(deps, repository.value, artifactRoot, entry.path);
     if (!scanned.ok) return scanned;
     videos.push(scanned.value);
   }
@@ -108,7 +110,7 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
 const scanVideo = async (
   deps: ScanDeps,
   repository: CatalogRepository,
-  folder: string,
+  artifactRoot: ArtifactRoot,
   videoPath: string,
 ): Promise<Result<ScanVideo, AppError>> => {
   const stat = await deps.fs.stat(videoPath);
@@ -131,7 +133,7 @@ const scanVideo = async (
 
   const status = matched?.status ?? 'not_tracked';
   const newName = matched?.newName ?? null;
-  const artifacts = await loadArtifacts(deps.fs, folder, videoPath, status, newName);
+  const artifacts = await loadArtifacts(deps.fs, artifactRoot, videoPath, status, newName);
   if (!artifacts.ok) return artifacts;
 
   return ok({
@@ -157,12 +159,12 @@ const scanVideo = async (
 
 const loadArtifacts = async (
   fs: FileSystemPort,
-  folder: string,
+  artifactRoot: ArtifactRoot,
   videoPath: string,
   status: VideoStatus | 'not_tracked',
   newName: string | null,
 ): Promise<Result<ScanArtifacts, AppError>> => {
-  const paths = artifactPaths(fs, folder, videoPath, newName);
+  const paths = artifactPaths(fs, artifactRoot, videoPath, newName);
   const artifacts: ScanArtifacts = {
     framePaths: null,
     transcriptContent: null,

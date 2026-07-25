@@ -38,6 +38,7 @@ import {
   summaryDataSchema,
   type SummaryData,
 } from './shared.js';
+import { artifactRootFor, folderArtifactRoot, type ArtifactRoot } from './artifact-root.js';
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
 import { resolveConfigValues } from './config-resolution.js';
 import { hasProcessedAnalysis, resolveFolderIntoIndex, upsertProcessedVideo } from './catalog-index.js';
@@ -118,8 +119,9 @@ export const processVideoPipeline = async (
 
   const resolved = await resolveProcessOptions(deps.config, folder, input);
   if (!resolved.ok) return resolved;
+  const options = pipelineOptions(deps.fs, folder, repository.value.writable(), resolved.value);
 
-  const runResult = await runPipelineSteps(deps, repository.value, video.value, resolved.value, progress);
+  const runResult = await runPipelineSteps(deps, repository.value, video.value, options, progress);
   if (!runResult.ok) {
     if (!isJobCancelled(runResult.error) && !preservesCatalog(runResult.error)) {
       await repository.value.updateVideoStatus(video.value.id, 'error', runResult.error.message);
@@ -127,7 +129,7 @@ export const processVideoPipeline = async (
     return runResult;
   }
 
-  const recorded = await recordGlobalCatalog(deps, repository.value, resolved.value, runResult.value, progress);
+  const recorded = await recordGlobalCatalog(deps, repository.value, options, runResult.value, progress);
   if (!recorded.ok) return recorded;
   if (input.batch === undefined) {
     const flushed = await flushGlobalCatalog(deps);
@@ -309,17 +311,17 @@ const runPipelineSteps = async (
   deps: ProcessDeps,
   repository: CatalogRepository,
   initialVideo: Video,
-  resolved: ResolvedProcessOptions,
+  resolved: PipelineOptions,
   progress?: JobExecutionContext,
 ): Promise<Result<ProcessCompletedOutput, AppError>> => {
   let video = initialVideo;
-  let stage = await resumeStage(deps, video, resolved.frames);
+  let stage = await resumeStage(deps, video, resolved);
   if (!stage.ok) return stage;
   if (stage.value === 'done') return ok(completedOutput(deps.fs, video));
 
   if (resolved.native) return runNativePipeline(deps, repository, video, resolved, progress);
 
-  const paths = artifactPaths(deps.fs, deps.fs.dirname(video.originalPath), video.originalPath, video.newName);
+  const paths = artifactPaths(deps.fs, resolved.artifactRoot, video.originalPath, video.newName);
   let currentFramePaths: string[] | null = null;
 
   if (stage.value === 'frames') {
@@ -493,11 +495,11 @@ const runNativePipeline = async (
   deps: ProcessDeps,
   repository: CatalogRepository,
   initialVideo: Video,
-  resolved: ResolvedProcessOptions,
+  resolved: PipelineOptions,
   progress?: JobExecutionContext,
 ): Promise<Result<ProcessCompletedOutput, AppError>> => {
   let video = initialVideo;
-  const paths = artifactPaths(deps.fs, deps.fs.dirname(video.originalPath), video.originalPath, video.newName);
+  const paths = artifactPaths(deps.fs, resolved.artifactRoot, video.originalPath, video.newName);
   let parsed: ParsedAnalysis | null = null;
 
   if (video.status !== 'analyzed') {
@@ -650,6 +652,21 @@ interface ResolvedProcessOptions {
   native: boolean;
   batch: ProcessBatchContext;
 }
+
+interface PipelineOptions extends ResolvedProcessOptions {
+  artifactRoot: ArtifactRoot;
+}
+
+const pipelineOptions = (
+  fs: FileSystemPort,
+  folder: string,
+  writable: boolean,
+  resolved: ResolvedProcessOptions,
+): PipelineOptions => ({
+  ...resolved,
+  skipRename: resolved.skipRename || !writable,
+  artifactRoot: artifactRootFor(fs, folder, writable),
+});
 
 const resolveProcessOptions = async (
   config: ConfigStore,
@@ -807,17 +824,17 @@ const trimmedValue = (value: string | undefined): string | null => {
 const resumeStage = async (
   deps: ProcessDeps,
   video: Video,
-  requestedFrames: number,
+  resolved: PipelineOptions,
 ): Promise<Result<ResumeStage, AppError>> => {
   if (video.status === 'completed') return ok('done');
-  const paths = artifactPaths(deps.fs, deps.fs.dirname(video.originalPath), video.originalPath, video.newName);
+  const paths = artifactPaths(deps.fs, resolved.artifactRoot, video.originalPath, video.newName);
   if (video.status === 'error') {
     const frames = await existingFrames(deps.fs, paths.framesDir);
     if (!frames.ok) return frames;
     const transcript = await readTranscript(deps.fs, paths.transcriptPath);
     if (!transcript.ok) return transcript;
-    if (frames.value.length >= requestedFrames && transcript.value !== null) return ok('analyze');
-    if (frames.value.length >= requestedFrames) return ok('audio');
+    if (frames.value.length >= resolved.frames && transcript.value !== null) return ok('analyze');
+    if (frames.value.length >= resolved.frames) return ok('audio');
     return ok('frames');
   }
   if (video.status === 'pending') return ok('frames');
@@ -1003,7 +1020,7 @@ const renameVideoAndArtifacts = async (
   if (!newName.ok) return newName;
   const newPath = fs.join(folder, newName.value);
   const newBase = fs.basenameWithoutExtension(newName.value);
-  const oldArtifacts = artifactPaths(fs, folder, video.originalPath, null);
+  const oldArtifacts = artifactPaths(fs, folderArtifactRoot(fs, folder), video.originalPath, null);
   const steps = [
     { from: video.originalPath, to: newPath, required: true },
     { from: oldArtifacts.framesDir, to: fs.join(folder, 'frames', newBase), required: false },
@@ -1177,7 +1194,7 @@ const alreadyIndexed = async (
 const recordGlobalCatalog = async (
   deps: ProcessDeps,
   repository: CatalogRepository,
-  resolved: ResolvedProcessOptions,
+  resolved: PipelineOptions,
   completed: ProcessCompletedOutput,
   progress: JobExecutionContext | undefined,
 ): Promise<Result<{ snapshotSkipped: boolean }, AppError>> => {
@@ -1203,7 +1220,7 @@ const recordGlobalCatalog = async (
   const videoRow = await repository.findVideoByPath(finalPath);
   if (!videoRow.ok) return videoRow;
   const newName = videoRow.value?.newName ?? null;
-  const paths = artifactPaths(deps.fs, folder, finalPath, newName);
+  const paths = artifactPaths(deps.fs, resolved.artifactRoot, finalPath, newName);
   const summary = await loadOptionalSummary(deps.fs, paths.summaryJsonPath);
   if (!summary.ok) return summary;
   const transcript = await readFilteredTranscript(deps.fs, paths.transcriptPath, paths.transcriptJsonPath);
