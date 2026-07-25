@@ -337,6 +337,27 @@ describe('SetupWizard', () => {
     expect(backendWrite?.value).toBe('claude');
   });
 
+  it('locks transcription to skip and plans no whisper download for Gemini native video', async () => {
+    const recorders = installHandlers();
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await passLanguageStep();
+
+    fireEvent.click(screen.getByTestId('analyzer-family-gemini'));
+    clickNext();
+
+    await screen.findByTestId('wizard-step-transcription');
+    expect(screen.getByTestId('transcription-native-notice').textContent).toContain('reads the audio itself');
+    expect(within(screen.getByTestId('transcription-skip')).getByRole('radio', { checked: true })).toBeDefined();
+    expect(within(screen.getByTestId('transcription-managed')).getByRole('radio').hasAttribute('disabled')).toBe(true);
+    clickNext();
+
+    await screen.findByTestId('downloads-none');
+    expect(recorders.configWrites.filter((write) => write.key === 'whisper_mode')).toEqual([
+      { folder: undefined, key: 'whisper_mode', value: 'skip' },
+    ]);
+    expect(recorders.configWrites.some((write) => write.key === 'whisper_model')).toBe(false);
+  });
+
   it('lets the user pick a cheaper Gemini model before advancing', async () => {
     const recorders = installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);

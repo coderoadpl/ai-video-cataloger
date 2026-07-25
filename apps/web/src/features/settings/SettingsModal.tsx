@@ -50,6 +50,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
   const { draft } = settings;
   const dictionary = useDictionary();
   const whisperModes = whisperModeOptions(dictionary);
+  const nativeAnalyzer = draft?.analyzer_provider.family === 'gemini-native';
   const whisperModels = whisperModelOptions(dictionary);
 
   const patch = (value: Partial<SettingsDraft>) => settings.setDraft(value);
@@ -106,6 +107,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                 label={dictionary.settingsModal.transcriptionMode}
                 value={draft.whisper_mode}
                 data-testid="whisper-mode-select"
+                disabled={nativeAnalyzer}
                 onChange={(event) => {
                   const next = whisperModes.find((option) => option.value === event.target.value);
                   if (next !== undefined) patch({ whisper_mode: next.value });
@@ -118,6 +120,12 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                 ))}
               </Select>
             </FormControl>
+
+            {nativeAnalyzer ? (
+              <Typography variant="caption" data-testid="whisper-mode-native-notice">
+                {dictionary.wizard.transcription.nativeSkipNotice}
+              </Typography>
+            ) : null}
 
             {draft.whisper_mode === 'local' ? (
               <>
@@ -172,7 +180,10 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               apiCredential={settings.apiCredential}
               onBackendChange={(backend) => patch({ analyzer_backend: backend })}
               onLocalModelChange={(tag) => patch({ local_model: tag })}
-              onProviderChange={(provider) => patch({ analyzer_provider: provider })}
+              onProviderChange={(provider) =>
+                patch(provider.family === 'gemini-native'
+                  ? { analyzer_provider: provider, whisper_mode: 'skip' }
+                  : { analyzer_provider: provider })}
               onApiCredentialChange={settings.setApiCredential}
             />
 

@@ -202,6 +202,21 @@ describe('settings modal', () => {
     expect(screen.queryByTestId('whisper-model-control')).toBeNull();
   });
 
+  it('forces transcription to skip and locks the control when Gemini native video is selected', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const backendSelect = await screen.findByTestId('analyzer-backend-select');
+    fireEvent.mouseDown(within(backendSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId('whisper-mode-native-notice')).toBeDefined();
+    });
+    expect(screen.queryByTestId('whisper-model-control')).toBeNull();
+    expect(within(screen.getByTestId('whisper-mode-select')).getByRole('combobox').getAttribute('aria-disabled')).toBe('true');
+  });
+
   it('saves only the changed keys and closes on success', async () => {
     const configSetBody = z.object({ folder: z.literal(FOLDER), key: z.string(), value: z.string() });
     const bodies: { folder: typeof FOLDER; key: string; value: string }[] = [];

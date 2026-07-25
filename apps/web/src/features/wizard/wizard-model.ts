@@ -58,6 +58,13 @@ export const wizardNextLabel = (
 export type AnalyzerFamily = 'local' | 'api' | 'harness' | 'gemini-native';
 export type TranscriptionMode = 'managed' | 'own' | 'api' | 'skip';
 
+export const transcriptionLockedToSkip = (family: AnalyzerFamily): boolean => family === 'gemini-native';
+
+export const effectiveTranscriptionMode = (
+  family: AnalyzerFamily,
+  selected: TranscriptionMode,
+): TranscriptionMode => (transcriptionLockedToSkip(family) ? 'skip' : selected);
+
 export interface GeminiDraft {
   model: string;
   credential: string;

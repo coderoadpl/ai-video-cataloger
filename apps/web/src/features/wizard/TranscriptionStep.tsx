@@ -49,6 +49,11 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
   return (
   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="wizard-step-transcription">
     <Typography variant="h2">{dictionary.wizard.transcription.title}</Typography>
+    {controller.transcriptionLocked ? (
+      <Alert severity="info" data-testid="transcription-native-notice">
+        {dictionary.wizard.transcription.nativeSkipNotice}
+      </Alert>
+    ) : null}
     <RadioGroup
       value={controller.transcriptionMode}
       onChange={(event) => {
@@ -60,7 +65,7 @@ export const TranscriptionStep = ({ controller }: { controller: WizardController
         <FormControlLabel
           key={option.value}
           value={option.value}
-          control={<Radio size="small" />}
+          control={<Radio size="small" disabled={controller.transcriptionLocked} />}
           data-testid={`transcription-${option.value}`}
           label={
             <Box>

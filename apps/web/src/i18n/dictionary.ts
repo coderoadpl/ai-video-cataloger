@@ -201,6 +201,7 @@ export interface Dictionary {
       apiDescription: string;
       skipLabel: string;
       skipDescription: string;
+      nativeSkipNotice: string;
       whisperModel: string;
       installedSuffix: string;
       buildToolsWarning: (tools: string) => string;
@@ -730,6 +731,7 @@ export const en: Dictionary = {
       apiDescription: 'Transcribe through the OpenAI API (usage is charged).',
       skipLabel: 'Skip transcription',
       skipDescription: 'Analyze frames only, no audio transcript.',
+      nativeSkipNotice: 'Gemini native video reads the audio itself, so transcription stays skipped and no Whisper download is needed.',
       whisperModel: 'Whisper model',
       installedSuffix: ' (installed)',
       buildToolsWarning: (tools) => `Building whisper needs: ${tools}.`,
@@ -1300,6 +1302,7 @@ export const pl: Dictionary = {
       apiDescription: 'Transkrybuj przez OpenAI API (naliczane opłaty za użycie).',
       skipLabel: 'Pomiń transkrypcję',
       skipDescription: 'Analizuj tylko klatki, bez transkrypcji audio.',
+      nativeSkipNotice: 'Gemini native video sam czyta ścieżkę dźwiękową, więc transkrypcja pozostaje pominięta i pobieranie Whispera jest zbędne.',
       whisperModel: 'Model whisper',
       installedSuffix: ' (zainstalowany)',
       buildToolsWarning: (tools) => `Budowanie whisper wymaga: ${tools}.`,

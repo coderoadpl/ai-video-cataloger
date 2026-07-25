@@ -22,10 +22,12 @@ import {
   buildGeminiProvider,
   buildHarnessProvider,
   buildLocalProvider,
+  effectiveTranscriptionMode,
   emptyApiDraft,
   emptyGeminiDraft,
   harnessDescriptors,
   recommendedTier,
+  transcriptionLockedToSkip,
   type AnalyzerFamily,
   type ApiDraft,
   type GeminiDraft,
@@ -78,6 +80,7 @@ export interface WizardController {
   harnessModel: string;
   harnessEffort: string;
   transcriptionMode: TranscriptionMode;
+  transcriptionLocked: boolean;
   whisperModel: WhisperModelName;
   whisperModelOptions: WhisperModelChoice[];
   whisperBinaryPath: string;
@@ -150,7 +153,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const [harnessModel, setHarnessModelState] = useState<string>('');
   const [harnessEffort, setHarnessEffortState] = useState<string>('');
   const [harnessAvailability, setHarnessAvailability] = useState<Record<string, HarnessAvailability>>({});
-  const [transcriptionMode, setTranscriptionMode] = useState<TranscriptionMode>('managed');
+  const [selectedTranscriptionMode, setTranscriptionMode] = useState<TranscriptionMode>('managed');
   const [whisperModelChoice, setWhisperModelChoice] = useState<WhisperModelName | null>(null);
   const [whisperBinaryPath, setWhisperBinaryPath] = useState<string>('');
   const [whisperApiCredential, setWhisperApiCredential] = useState<string>('');
@@ -174,6 +177,8 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   );
   const effectiveWhisperModel: WhisperModelName =
     whisperModelChoice ?? bestInstalledWhisperModel(whisperModelOptions) ?? FALLBACK_WHISPER_MODEL;
+  const transcriptionLocked = transcriptionLockedToSkip(analyzerFamily);
+  const transcriptionMode = effectiveTranscriptionMode(analyzerFamily, selectedTranscriptionMode);
 
   const setApiDraft = useCallback((patch: Partial<ApiDraft>) => {
     setApiDraftState((current) => ({ ...current, ...patch }));
@@ -606,6 +611,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     harnessModel,
     harnessEffort,
     transcriptionMode,
+    transcriptionLocked,
     whisperModel: effectiveWhisperModel,
     whisperModelOptions,
     whisperBinaryPath,

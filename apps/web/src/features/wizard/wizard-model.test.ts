@@ -8,10 +8,12 @@ import {
   buildGeminiProvider,
   buildHarnessProvider,
   buildLocalProvider,
+  effectiveTranscriptionMode,
   emptyApiDraft,
   emptyGeminiDraft,
   harnessDescriptors,
   recommendedTier,
+  transcriptionLockedToSkip,
   type LocalAiTier,
 } from './wizard-model.js';
 
@@ -98,5 +100,20 @@ describe('wizard-model builders', () => {
       'gemma3:4b',
     );
     expect(recommendedTier([])).toBeNull();
+  });
+});
+
+describe('transcription guard for the native analyzer', () => {
+  it('locks the gemini-native family to skip regardless of the selected mode', () => {
+    expect(transcriptionLockedToSkip('gemini-native')).toBe(true);
+    expect(effectiveTranscriptionMode('gemini-native', 'managed')).toBe('skip');
+    expect(effectiveTranscriptionMode('gemini-native', 'api')).toBe('skip');
+  });
+
+  it('leaves every other family free to choose', () => {
+    for (const family of ['local', 'api', 'harness'] as const) {
+      expect(transcriptionLockedToSkip(family)).toBe(false);
+      expect(effectiveTranscriptionMode(family, 'managed')).toBe('managed');
+    }
   });
 });
