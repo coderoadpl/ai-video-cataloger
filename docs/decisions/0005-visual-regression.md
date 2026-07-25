@@ -119,10 +119,12 @@ font-metric noise, not coverage.
 ### (d) The check is non-required until the owner arms it
 
 `pnpm run visual` joins **no** gate: not `check`, not `smoke`, not the e2e
-projects, not `main-gates`. It reports; it does not block. Arming it is an owner
-action taken only after a run history of green comparisons on the self-hosted
-mac runner, and it is reverted the moment it flakes — a flaky required gate is a
-P1, and an enforcer that cannot be trusted is worse than no enforcer.
+projects, not `main-gates` — and it has **no CI job yet**. It is a command run on
+demand, on the machine that also runs the gates. The order is deliberate: a CI
+job comes first (non-required, on the self-hosted mac runner, once that runner is
+registered — OWNER), then a run history of green comparisons, and only then the
+ruleset edit that arms it. It is reverted the moment it flakes — a flaky required
+gate is a P1, and an enforcer that cannot be trusted is worse than no enforcer.
 
 ### (e) `scripts/gallery-shots.mjs` keeps its round-1 role
 
