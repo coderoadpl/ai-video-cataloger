@@ -76,6 +76,22 @@ export const PrerequisitesModal = ({ open, folder, onClose }: PrerequisitesModal
                 <DependencyRow key={dependency.name} dependency={dependency} dictionary={dictionary} />
               ))}
             </Box>
+            {doctor.warnings.length === 0 ? null : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                <Typography variant="subtitle2">{dictionary.prerequisites.warningsTitle}</Typography>
+                {doctor.warnings.map((warning) => (
+                  <Alert
+                    key={`${warning.code}:${warning.message}`}
+                    severity="warning"
+                    data-testid="doctor-warning"
+                    data-warning-code={warning.code}
+                    sx={{ whiteSpace: 'pre-line' }}
+                  >
+                    {warning.message}
+                  </Alert>
+                ))}
+              </Box>
+            )}
           </Box>
         ) : null}
       </DialogContent>

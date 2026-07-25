@@ -3,7 +3,9 @@ import path from 'node:path';
 import { app, type BrowserWindow, dialog, Menu, type MenuItemConstructorOptions, shell } from 'electron';
 
 import { CHANNELS } from './channels.js';
-import { installCurrentRuntimeCommandLineTool } from './cli-install.js';
+import { NodeCliPathAdapter } from '@adapters/cli-path/index.js';
+
+import { commandNameForRuntime, describeInstallShadows, installCurrentRuntimeCommandLineTool } from './cli-install.js';
 
 export const createApplicationMenu = (mainWindow: BrowserWindow | null, recentFolders: readonly string[]): void => {
   Menu.setApplicationMenu(Menu.buildFromTemplate(menuTemplate(mainWindow, recentFolders)));
@@ -61,7 +63,7 @@ const appMenu = (mainWindow: BrowserWindow | null): MenuItemConstructorOptions =
 
 const installCliTool = async (mainWindow: BrowserWindow | null): Promise<void> => {
   const result = await installCurrentRuntimeCommandLineTool(app.isPackaged);
-  const message = result.ok ? cliInstallSuccessMessage(result.path) : result.reason;
+  const message = result.ok ? await withShadowGuidance(result.path) : result.reason;
   const options = {
     type: result.ok ? 'info' : 'error',
     message,
@@ -75,6 +77,15 @@ const installCliTool = async (mainWindow: BrowserWindow | null): Promise<void> =
 
 export const cliInstallSuccessMessage = (installedPath: string): string =>
   `Installed. Run ${path.basename(installedPath)} in your terminal.\n\n${installedPath}`;
+
+const withShadowGuidance = async (installedPath: string): Promise<string> => {
+  const base = cliInstallSuccessMessage(installedPath);
+  const commandName = commandNameForRuntime(app.isPackaged);
+  const entries = await new NodeCliPathAdapter({ commandName, ownedInstallPaths: [installedPath] }).resolveOnPath();
+  if (!entries.ok) return base;
+  const guidance = describeInstallShadows(commandName, installedPath, app.getVersion(), entries.value);
+  return guidance === null ? base : `${base}\n\n${guidance}`;
+};
 
 const fileMenu = (
   mainWindow: BrowserWindow | null,

@@ -93,6 +93,61 @@ describe('runDoctor', () => {
     ]);
   });
 
+  it('warns and names the shadowing paths when a stale CLI wins on PATH', async () => {
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      version: '0.6.0',
+      cliPath: {
+        commandName: 'ai-video-cataloger',
+        ownedInstallPaths: ['/usr/local/bin/ai-video-cataloger'],
+        resolveOnPath: () => Promise.resolve(ok([
+          { path: '/opt/homebrew/bin/ai-video-cataloger', version: '0.4.1', isSymlink: false, symlinkTarget: null },
+          { path: '/usr/local/bin/ai-video-cataloger', version: '0.6.0', isSymlink: true, symlinkTarget: '/app' },
+        ])),
+      },
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok).toBe(true);
+    const warning = result.ok ? result.value.warnings.find((entry) => entry.code === 'stale_cli') : undefined;
+    expect(warning?.message).toContain('/opt/homebrew/bin/ai-video-cataloger');
+    expect(warning?.message).toContain('version 0.4.1');
+    expect(warning?.message).toContain('0.6.0');
+  });
+
+  it('emits no stale-CLI warning when PATH already runs the current version', async () => {
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      version: '0.6.0',
+      cliPath: {
+        commandName: 'ai-video-cataloger',
+        ownedInstallPaths: ['/usr/local/bin/ai-video-cataloger'],
+        resolveOnPath: () => Promise.resolve(ok([
+          { path: '/usr/local/bin/ai-video-cataloger', version: '0.6.0', isSymlink: true, symlinkTarget: '/app' },
+        ])),
+      },
+    };
+
+    const result = await runDoctor(deps);
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.warnings.some((entry) => entry.code === 'stale_cli')).toBe(false);
+  });
+
   it('warns when a plaintext credential can be migrated to the keychain', async () => {
     const deps = {
       media: new InMemoryMedia(),

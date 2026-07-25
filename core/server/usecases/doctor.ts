@@ -1,15 +1,19 @@
 import {
   LOCAL_AI_HARDWARE_TIERS,
+  assessStaleCli,
   builtInHarnessProviders,
+  cliShadowLine,
   getLocalAiSupportLevel,
   ok,
   type AppError,
+  type CliShadow,
   type MachineProfile,
   type Result,
 } from '@core/domain/index.js';
 
 import type {
   AnalyzerPort,
+  CliPathPort,
   CredentialsStore,
   DependencyStatus,
   LocalAiRuntimePort,
@@ -35,6 +39,8 @@ export interface DoctorDeps {
   readiness: ReadinessCache;
   credentials?: CredentialsStore | undefined;
   faceEngine?: FaceEnginePort | undefined;
+  cliPath?: CliPathPort | undefined;
+  version?: string | undefined;
 }
 
 export interface DoctorWarning {
@@ -73,6 +79,8 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
   if (!configured.ok) return configured;
   const migrations = await secretMigrationWarnings(deps.credentials);
   if (!migrations.ok) return migrations;
+  const staleCli = await staleCliWarnings(deps.cliPath, deps.version);
+  if (!staleCli.ok) return staleCli;
   const resolvedConfig = await resolveConfigValues(deps.config, deps.fs.resolve(deps.fs.cwd()));
   if (!resolvedConfig.ok) return resolvedConfig;
   const faceDependency = await optionalFaceDependency(deps, resolvedConfig.value.effective.faces_enabled);
@@ -95,7 +103,7 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
     },
     recommendedLocalModel: recommendedLocalModel(machine.value),
     allAvailable: dependencies.every((dependency) => dependency.available),
-    warnings: [...dependencyWarnings(dependencies), ...migrations.value],
+    warnings: [...dependencyWarnings(dependencies), ...migrations.value, ...staleCli.value],
     harnesses,
     configured: configured.value,
   });
@@ -126,6 +134,36 @@ const secretMigrationWarnings = async (
     code: 'secret_migration',
     message: `The API key for "${providerId}" is stored in plaintext config. Run: ai-video-cataloger setup to move it into the macOS Keychain.`,
   })));
+};
+
+const staleCliWarnings = async (
+  cliPath: CliPathPort | undefined,
+  version: string | undefined,
+): Promise<Result<DoctorWarning[], AppError>> => {
+  if (cliPath === undefined || version === undefined) return ok([]);
+  const entries = await cliPath.resolveOnPath();
+  if (!entries.ok) return entries;
+  const assessment = assessStaleCli({
+    appVersion: version,
+    ownedInstallPaths: cliPath.ownedInstallPaths,
+    entries: entries.value,
+  });
+  if (!assessment.stale || assessment.shadows.length === 0) return ok([]);
+  return ok([{
+    code: 'stale_cli',
+    message: staleCliMessage(cliPath.commandName, version, assessment.activeVersion, assessment.shadows),
+  }]);
+};
+
+const staleCliMessage = (
+  commandName: string,
+  appVersion: string,
+  activeVersion: string | null,
+  shadows: readonly CliShadow[],
+): string => {
+  const running = activeVersion === null ? 'an unknown version' : `version ${activeVersion}`;
+  const shadowList = shadows.map((shadow) => cliShadowLine(shadow)).join('; ');
+  return `The "${commandName}" on your PATH is ${running}, but this app is version ${appVersion}. Shadowing it: ${shadowList}. Reinstall the command line tool from the app menu or remove the stale copy so the terminal command matches the app.`;
 };
 
 const isEnabled = (value: string): boolean =>

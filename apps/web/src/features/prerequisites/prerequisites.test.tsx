@@ -71,7 +71,26 @@ const withMissing: DoctorResult = {
   warnings: [],
 };
 
+const withStaleCli: DoctorResult = {
+  ...allGood,
+  warnings: [{
+    code: 'stale_cli',
+    message: 'The "ai-video-cataloger" on your PATH is version 0.4.1, but this app is version 0.6.0. Shadowing it: /opt/homebrew/bin/ai-video-cataloger (version 0.4.1, remove it manually or adjust your PATH).',
+  }],
+};
+
 describe('prerequisites modal', () => {
+  it('lists doctor warnings with the shadowing paths under a translated heading', async () => {
+    server.use(http.get('/api/doctor', () => HttpResponse.json({ ok: true, data: withStaleCli })));
+    server.use(http.get('/api/readiness', () => HttpResponse.json({ ok: true, data: configured })));
+    renderThemed(<PrerequisitesModal open folder="/videos/selected" onClose={vi.fn()} />);
+
+    const warning = await screen.findByTestId('doctor-warning');
+    expect(warning.getAttribute('data-warning-code')).toBe('stale_cli');
+    expect(warning.textContent).toContain('/opt/homebrew/bin/ai-video-cataloger');
+    expect(screen.getByText('Warnings')).toBeDefined();
+  });
+
   it('shows the loading state then the all-satisfied banner and dependency rows', async () => {
     server.use(http.get('/api/doctor', () => HttpResponse.json({ ok: true, data: allGood })));
     server.use(http.get('/api/readiness', () => HttpResponse.json({ ok: true, data: configured })));

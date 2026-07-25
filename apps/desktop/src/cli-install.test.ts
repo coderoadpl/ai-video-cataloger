@@ -1,13 +1,61 @@
 import { describe, expect, it } from 'vitest';
 
+import type { CliPathEntry } from '@core/domain/index.js';
+
 import {
   buildCliWrapperScript,
   buildDevCliWrapperScript,
   buildOsascriptExpression,
   buildPrivilegedInstallShellCommand,
   commandNameForRuntime,
+  describeInstallShadows,
   installPathForRuntime,
 } from './cli-install.js';
+
+const OWNED = '/usr/local/bin/ai-video-cataloger';
+const pathEntry = (overrides: Partial<CliPathEntry> & { path: string }): CliPathEntry => ({
+  version: null,
+  isSymlink: false,
+  symlinkTarget: null,
+  ...overrides,
+});
+
+describe('describeInstallShadows', () => {
+  it('returns null when PATH cleanly resolves to the freshly installed tool', () => {
+    const guidance = describeInstallShadows('ai-video-cataloger', OWNED, '0.6.0', [
+      pathEntry({ path: OWNED, version: '0.6.0', isSymlink: true }),
+    ]);
+    expect(guidance).toBeNull();
+  });
+
+  it('names a single stale shadow that wins on PATH', () => {
+    const guidance = describeInstallShadows('ai-video-cataloger', OWNED, '0.6.0', [
+      pathEntry({ path: '/opt/homebrew/bin/ai-video-cataloger', version: '0.4.1' }),
+      pathEntry({ path: OWNED, version: '0.6.0', isSymlink: true }),
+    ]);
+    expect(guidance).toContain('/opt/homebrew/bin/ai-video-cataloger');
+    expect(guidance).toContain('version 0.4.1');
+    expect(guidance).toContain('remove it manually or adjust your PATH');
+  });
+
+  it('names every stale shadow when several precede the installed tool', () => {
+    const guidance = describeInstallShadows('ai-video-cataloger', OWNED, '0.6.0', [
+      pathEntry({ path: '/opt/homebrew/bin/ai-video-cataloger', version: '0.4.1' }),
+      pathEntry({ path: '/Users/me/bin/ai-video-cataloger', version: null }),
+      pathEntry({ path: OWNED, version: '0.6.0', isSymlink: true }),
+    ]);
+    expect(guidance).toContain('/opt/homebrew/bin/ai-video-cataloger');
+    expect(guidance).toContain('/Users/me/bin/ai-video-cataloger');
+    expect(guidance).toContain('unknown version');
+  });
+
+  it('marks an owned symlink shadow as safe to remove', () => {
+    const guidance = describeInstallShadows('ai-video-cataloger', OWNED, '0.6.0', [
+      pathEntry({ path: OWNED, version: '0.4.1', isSymlink: true, symlinkTarget: '/old/app' }),
+    ]);
+    expect(guidance).toContain('safe to remove');
+  });
+});
 
 describe('CLI installer', () => {
   it('builds an Electron wrapper for app and CLI paths containing spaces', () => {

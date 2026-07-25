@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
 
+import { assessStaleCli, cliShadowLine, type CliPathEntry } from '@core/domain/index.js';
+
 const execFileAsync = promisify(execFile);
 const packagedCommandName = 'ai-video-cataloger';
 const devCommandName = 'ai-video-cataloger-dev';
@@ -103,6 +105,18 @@ export const installCommandLineTool = async (scriptContent: string, targetPath: 
 
 export const installCurrentRuntimeCommandLineTool = async (isPackaged: boolean): Promise<CliInstallOutcome> =>
   installCommandLineTool(wrapperScriptForRuntime(isPackaged), installPathForRuntime(isPackaged));
+
+export const describeInstallShadows = (
+  commandName: string,
+  installedPath: string,
+  appVersion: string,
+  entries: readonly CliPathEntry[],
+): string | null => {
+  const assessment = assessStaleCli({ appVersion, ownedInstallPaths: [installedPath], entries });
+  if (assessment.shadows.length === 0) return null;
+  const lines = assessment.shadows.map((shadow) => `• ${cliShadowLine(shadow)}`).join('\n');
+  return `Another "${commandName}" earlier on your PATH runs instead of the one just installed:\n${lines}\n\nRemove or reorder those entries so the terminal command matches this app.`;
+};
 
 const isPermissionError = (error: unknown): boolean =>
   error instanceof Error && 'code' in error && (error.code === 'EACCES' || error.code === 'EPERM');

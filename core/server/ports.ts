@@ -2,6 +2,7 @@ import type {
   AppConfig,
   AppError,
   AnalyzerProviderConfig,
+  CliPathEntry,
   CatalogAnalysis,
   CatalogFile,
   CatalogFolder,
@@ -333,6 +334,12 @@ export interface FaceEnginePort {
   writeCrop(alignedCrop: AlignedFaceCrop, outputPath: string): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
   dependency(): Promise<Result<DependencyStatus, AppError>>;
+}
+
+export interface CliPathPort {
+  commandName: string;
+  ownedInstallPaths: readonly string[];
+  resolveOnPath(): Promise<Result<CliPathEntry[], AppError>>;
 }
 
 export interface MediaPort {

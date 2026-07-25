@@ -10,6 +10,7 @@ import {
 import { JsonCredentialsStore, KeychainCredentialsStore } from '@adapters/credentials/index.js';
 import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
 import { JsonConfigStore, SqlJsCatalogRepositoryFactory, SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
+import { NodeCliPathAdapter } from '@adapters/cli-path/index.js';
 import { OnnxFaceEngineAdapter } from '@adapters/faces/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
@@ -59,6 +60,7 @@ import type {
   AlignedFaceCrop,
   FaceEnginePort,
   FileStat,
+  CliPathPort,
   FileSystemPort,
   ForgetEntryResult,
   GlobalCatalogCounts,
@@ -82,8 +84,18 @@ import type {
   WhisperRuntimePort,
 } from '@core/server/index.js';
 
+const CLI_COMMAND_NAME = 'ai-video-cataloger';
+const CLI_OWNED_INSTALL_PATHS = ['/usr/local/bin/ai-video-cataloger'];
+
+const stubCliPathPort: CliPathPort = {
+  commandName: CLI_COMMAND_NAME,
+  ownedInstallPaths: CLI_OWNED_INSTALL_PATHS,
+  resolveOnPath: () => Promise.resolve(ok([])),
+};
+
 export interface AppDeps {
   version: string;
+  cliPath: CliPathPort;
   catalogs: CatalogRepositoryFactory;
   globalCatalog: GlobalCatalogStore;
   config: ConfigStore;
@@ -121,6 +133,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     const credentials = new InvalidatingCredentialsStore(new InMemoryCredentialsStore(), readiness);
     return {
       version: config.version ?? packageJson.version,
+      cliPath: stubCliPathPort,
       catalogs: new InMemoryCatalogRepositoryFactory(),
       globalCatalog: new InMemoryGlobalCatalogStore(),
       config: configStore,
@@ -151,6 +164,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   const downloads = new HuggingFaceWhisperModelDownloader({ homeDirectory });
   return {
     version: config.version ?? packageJson.version,
+    cliPath: new NodeCliPathAdapter({ commandName: CLI_COMMAND_NAME, ownedInstallPaths: CLI_OWNED_INSTALL_PATHS }),
     catalogs: new SqlJsCatalogRepositoryFactory(),
     globalCatalog: new SqlJsGlobalCatalogStore({
       homeDirectory,

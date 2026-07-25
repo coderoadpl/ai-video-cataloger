@@ -315,6 +315,7 @@ export interface Dictionary {
     selectedFolderReady: string;
     mustBeConfigured: (pieces: string) => string;
     systemDependencies: string;
+    warningsTitle: string;
     close: string;
     checkAgain: string;
     available: string;
@@ -852,6 +853,7 @@ export const en: Dictionary = {
     selectedFolderReady: 'The selected folder is ready for analysis.',
     mustBeConfigured: (pieces) => `${pieces} must be configured.`,
     systemDependencies: 'System dependencies',
+    warningsTitle: 'Warnings',
     close: 'Close',
     checkAgain: 'Check Again',
     available: 'Available',
@@ -1413,6 +1415,7 @@ export const pl: Dictionary = {
     selectedFolderReady: 'Wybrany folder jest gotowy do analizy.',
     mustBeConfigured: (pieces) => `${pieces} wymaga konfiguracji.`,
     systemDependencies: 'Zależności systemowe',
+    warningsTitle: 'Ostrzeżenia',
     close: 'Zamknij',
     checkAgain: 'Sprawdź ponownie',
     available: 'Dostępne',
