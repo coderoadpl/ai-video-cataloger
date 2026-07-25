@@ -1,9 +1,10 @@
 import { Fragment, type ReactNode } from 'react';
-import { Box, Button, Chip, CircularProgress, Divider, List, ListItemButton, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, Divider, IconButton, List, ListItemButton, Tooltip, Typography } from '@mui/material';
 
 import { ApiError, type SearchOutput } from '@core/client/index.js';
 
-import { FolderIcon, SearchIcon } from '../../components/ui/icons.js';
+import { ArrowBackIcon, FolderIcon, SearchIcon } from '../../components/ui/icons.js';
+import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
 import { RevealContextMenu, useRevealContextMenu, type RevealContextMenuController } from '../../components/ui/RevealContextMenu.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -11,8 +12,11 @@ import { folderName } from '../../lib/format.js';
 import { bridge } from '../../api.js';
 import type { GlobalSearchState, SearchGroup } from './use-global-search.js';
 
+const RESULT_THUMB_BOX = 56;
+
 interface SearchResultsProps {
   search: GlobalSearchState;
+  onBack: () => void;
   onOpenFolder: (folderPath: string) => void;
   onOpenResult: (folderPath: string, videoPath: string) => void;
 }
@@ -38,48 +42,52 @@ const Centered = ({ children }: { children: ReactNode }) => (
 const errorMessage = (error: unknown, dictionary: Dictionary): string =>
   error instanceof ApiError ? error.appError.message : dictionary.search.genericError;
 
-export const SearchResults = ({ search, onOpenFolder, onOpenResult }: SearchResultsProps) => {
+const BackBar = ({ onBack, dictionary, children }: { onBack: () => void; dictionary: Dictionary; children?: ReactNode }) => (
+  <Box sx={{ px: 2, py: 1.5, borderBottom: 1, borderColor: 'divider', display: 'flex', alignItems: 'center', gap: 1.5 }}>
+    <Tooltip title={dictionary.search.back}>
+      <IconButton size="small" onClick={onBack} aria-label={dictionary.search.back} data-testid="search-back">
+        <ArrowBackIcon fontSize="small" />
+      </IconButton>
+    </Tooltip>
+    {children}
+  </Box>
+);
+
+export const SearchResults = ({ search, onBack, onOpenFolder, onOpenResult }: SearchResultsProps) => {
   const dictionary = useDictionary();
   const revealMenu = useRevealContextMenu();
 
-  if (search.isLoading) {
+  const body = (): ReactNode => {
+    if (search.isLoading) {
+      return (
+        <Centered>
+          <CircularProgress size={22} />
+          <Typography variant="body2">{dictionary.search.searchingCatalog}</Typography>
+        </Centered>
+      );
+    }
+    if (search.isError) {
+      return (
+        <Centered>
+          <Typography
+            variant="body2"
+            role="alert"
+            sx={(theme) => ({ color: theme.palette.status.error.main })}
+          >
+            {errorMessage(search.error, dictionary)}
+          </Typography>
+        </Centered>
+      );
+    }
+    if (search.debouncedQuery.length > 0 && search.count === 0) {
+      return (
+        <Centered>
+          <SearchIcon />
+          <Typography variant="body2">{dictionary.search.noResultsFound}</Typography>
+        </Centered>
+      );
+    }
     return (
-      <Centered>
-        <CircularProgress size={22} />
-        <Typography variant="body2">{dictionary.search.searchingCatalog}</Typography>
-      </Centered>
-    );
-  }
-
-  if (search.isError) {
-    return (
-      <Centered>
-        <Typography
-          variant="body2"
-          role="alert"
-          sx={(theme) => ({ color: theme.palette.status.error.main })}
-        >
-          {errorMessage(search.error, dictionary)}
-        </Typography>
-      </Centered>
-    );
-  }
-
-  if (search.debouncedQuery.length > 0 && search.count === 0) {
-    return (
-      <Centered>
-        <SearchIcon />
-        <Typography variant="body2">{dictionary.search.noResultsFound}</Typography>
-      </Centered>
-    );
-  }
-
-  return (
-    <Box sx={{ height: '100%', overflow: 'auto' }}>
-      <Box sx={{ px: 3, py: 2, borderBottom: 1, borderColor: 'divider' }}>
-        <Typography variant="h2">{dictionary.search.resultCount(search.count)}</Typography>
-        <Typography variant="caption">{dictionary.search.resultsFor(search.debouncedQuery)}</Typography>
-      </Box>
       <Box sx={{ px: 2, py: 1.5, display: 'flex', flexDirection: 'column', gap: 2 }}>
         {search.groups.map((group) => (
           <SearchFolderGroup
@@ -92,6 +100,24 @@ export const SearchResults = ({ search, onOpenFolder, onOpenResult }: SearchResu
           />
         ))}
       </Box>
+    );
+  };
+
+  const showHeaderText = !search.isLoading && !search.isError && !(search.debouncedQuery.length > 0 && search.count === 0);
+
+  return (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <BackBar onBack={onBack} dictionary={dictionary}>
+        {showHeaderText ? (
+          <Box sx={{ minWidth: 0 }}>
+            <Typography variant="h2">{dictionary.search.resultCount(search.count)}</Typography>
+            <Typography variant="caption" noWrap component="div" title={search.debouncedQuery}>
+              {dictionary.search.resultsFor(search.debouncedQuery)}
+            </Typography>
+          </Box>
+        ) : null}
+      </BackBar>
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>{body()}</Box>
       <RevealContextMenu controller={revealMenu} onReveal={(path) => bridge.revealInFinder(path)} />
     </Box>
   );
@@ -170,6 +196,13 @@ const SearchResultRow = ({
       title={filePath}
       sx={{ alignItems: 'flex-start', borderRadius: 1, py: 1, gap: 1.5 }}
     >
+      <MediaThumbnail
+        path={result.thumbnailPath}
+        mtime={null}
+        alt={result.finalName ?? result.fileName}
+        width={RESULT_THUMB_BOX}
+        square
+      />
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.65 }}>
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
           <Typography variant="body2" noWrap sx={{ fontWeight: 600, minWidth: 0 }}>

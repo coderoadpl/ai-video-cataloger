@@ -48,6 +48,7 @@ const searchState: GlobalSearchState = {
         finalName: 'drone-clip.mp4',
         description: 'A drone clip',
         snippet: '<mark>drone</mark> clip',
+        thumbnailPath: '/online/.ai-video-cataloger/thumbnails/drone-clip.jpg',
         tags: ['aerial'],
         folder: {
           folderId: '11111111-1111-4111-8111-111111111111',
@@ -72,6 +73,7 @@ const searchState: GlobalSearchState = {
         finalName: null,
         description: null,
         snippet: 'field drone',
+        thumbnailPath: null,
         tags: [],
         folder: {
           folderId: '22222222-2222-4222-8222-222222222222',
@@ -92,7 +94,7 @@ describe('SearchResults', () => {
     const onOpenResult = vi.fn();
 
     renderThemed(
-      <SearchResults search={searchState} onOpenFolder={() => undefined} onOpenResult={onOpenResult} />,
+      <SearchResults search={searchState} onBack={() => undefined} onOpenFolder={() => undefined} onOpenResult={onOpenResult} />,
     );
 
     expect(screen.getByText('drive not connected')).toBeDefined();
@@ -106,6 +108,27 @@ describe('SearchResults', () => {
     fireEvent.click(screen.getByTestId('reveal-in-finder-item'));
     expect(reveal).toHaveBeenCalledWith('/online/clip.mp4');
     reveal.mockRestore();
+  });
+
+  it('clears the query and returns to the prior view when the back affordance is used', () => {
+    const onBack = vi.fn();
+    renderThemed(
+      <SearchResults search={searchState} onBack={onBack} onOpenFolder={() => undefined} onOpenResult={() => undefined} />,
+    );
+    fireEvent.click(screen.getByTestId('search-back'));
+    expect(onBack).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders a 56px thumbnail bounding box for each result row', () => {
+    renderThemed(
+      <SearchResults search={searchState} onBack={() => undefined} onOpenFolder={() => undefined} onOpenResult={() => undefined} />,
+    );
+    const thumbs = screen.getAllByTestId('media-thumbnail');
+    expect(thumbs).toHaveLength(2);
+    expect(thumbs[0]?.getAttribute('data-thumbnail-width')).toBe('56');
+    expect(thumbs[0]?.getAttribute('data-thumbnail-height')).toBe('56');
+    expect(thumbs[0]?.getAttribute('data-thumbnail-state')).toBe('image');
+    expect(thumbs[1]?.getAttribute('data-thumbnail-state')).toBe('placeholder');
   });
 });
 

@@ -142,7 +142,7 @@ export const IndexRoute = () => {
   );
 
   const detailContent = activeView === 'people' ? null : globalSearch.active ? (
-    <SearchResults search={globalSearch} onOpenFolder={shell.selectRecentFolder} onOpenResult={openSearchResult} />
+    <SearchResults search={globalSearch} onBack={clearSearch} onOpenFolder={shell.selectRecentFolder} onOpenResult={openSearchResult} />
   ) : (
     <DetailsPanel
       video={selected}

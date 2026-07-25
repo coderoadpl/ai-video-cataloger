@@ -173,6 +173,7 @@ describe('route schemas', () => {
         finalName: 'drone-clip.mp4',
         description: 'A drone clip',
         snippet: '<mark>drone</mark> clip',
+        thumbnailPath: '/drive/.ai-video-cataloger/thumbnails/drone-clip.jpg',
         tags: ['aerial'],
         folder: {
           folderId: '11111111-1111-4111-8111-111111111111',

@@ -85,6 +85,12 @@ export const ChevronRightIcon = (props: SvgIconProps) => (
   </SvgIcon>
 );
 
+export const ArrowBackIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20z" />
+  </SvgIcon>
+);
+
 export const SearchIcon = (props: SvgIconProps) => (
   <SvgIcon {...props}>
     <path d="M9.5 3a6.5 6.5 0 0 1 5.16 10.45l4.44 4.45-1.2 1.2-4.45-4.44A6.5 6.5 0 1 1 9.5 3zm0 1.7a4.8 4.8 0 1 0 0 9.6 4.8 4.8 0 0 0 0-9.6z" />

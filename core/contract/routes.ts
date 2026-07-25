@@ -826,6 +826,7 @@ export const searchResultSchema = z.object({
   finalName: z.string().nullable(),
   description: z.string().nullable(),
   snippet: z.string(),
+  thumbnailPath: z.string().nullable(),
   tags: z.array(z.string()),
   folder: z.object({
     folderId: z.string().uuid(),

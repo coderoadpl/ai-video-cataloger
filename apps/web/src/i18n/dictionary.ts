@@ -140,6 +140,7 @@ export interface Dictionary {
     resultsFor: (query: string) => string;
     driveNotConnected: string;
     fileMissing: string;
+    back: string;
   };
   wizard: {
     stepLabels: {
@@ -660,6 +661,7 @@ export const en: Dictionary = {
     resultsFor: (query) => `Search results for ${query}`,
     driveNotConnected: 'drive not connected',
     fileMissing: 'file missing',
+    back: 'Back to catalog',
   },
   wizard: {
     stepLabels: {
@@ -1220,6 +1222,7 @@ export const pl: Dictionary = {
     resultsFor: (query) => `Wyniki wyszukiwania dla ${query}`,
     driveNotConnected: 'dysk niepodłączony',
     fileMissing: 'brak pliku',
+    back: 'Powrót do katalogu',
   },
   wizard: {
     stepLabels: {

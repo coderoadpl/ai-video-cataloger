@@ -1,6 +1,7 @@
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { FileSystemPort, GlobalCatalogStore } from '../ports.js';
+import { artifactPaths } from './shared.js';
 
 export interface SearchDeps {
   globalCatalog: GlobalCatalogStore;
@@ -19,6 +20,7 @@ export interface SearchResult {
   finalName: string | null;
   description: string | null;
   snippet: string;
+  thumbnailPath: string | null;
   tags: string[];
   folder: {
     folderId: string;
@@ -60,12 +62,15 @@ export const search = async (
   for (const row of rows.value) {
     const online = await deps.fs.exists(row.folder.currentPath);
     if (!online.ok) return online;
+    const thumbnailPath = await resolveThumbnailPath(deps.fs, row, online.value);
+    if (!thumbnailPath.ok) return thumbnailPath;
     results.push({
       fingerprint: row.fingerprint,
       fileName: row.fileName,
       finalName: row.finalName,
       description: row.description,
       snippet: row.snippet,
+      thumbnailPath: thumbnailPath.value,
       tags: row.tags,
       folder: {
         folderId: row.folder.folderId,
@@ -84,6 +89,19 @@ export const search = async (
     count: results.length,
     results,
   });
+};
+
+const resolveThumbnailPath = async (
+  fs: FileSystemPort,
+  row: { folder: { currentPath: string }; fileName: string; finalName: string | null },
+  online: boolean,
+): Promise<Result<string | null, AppError>> => {
+  if (!online) return ok(null);
+  const videoPath = fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
+  const { thumbnailPath } = artifactPaths(fs, row.folder.currentPath, videoPath, row.finalName);
+  const exists = await fs.exists(thumbnailPath);
+  if (!exists.ok) return exists;
+  return ok(exists.value ? thumbnailPath : null);
 };
 
 export const sanitizeSearchQuery = (query: string): Result<SanitizedSearchQuery, AppError> => {

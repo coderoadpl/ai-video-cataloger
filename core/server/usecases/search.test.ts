@@ -91,4 +91,26 @@ describe('search', () => {
     expect(result.value.results[1]?.folder.online).toBe(false);
     expect(result.value.results[1]?.tags).toEqual(['field']);
   });
+
+  it('resolves an existing thumbnail path for an online result and null when absent', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addDirectory('/media/online');
+    fs.addFile('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFolder(folderB);
+    await store.upsertFile(file('fp-thumb', folderA.folderId, 'drone-a.mp4'));
+    await store.upsertAnalysis(analysis('fp-thumb', { finalName: 'renamed.mp4', transcript: 'drone', tags: [] }));
+    await store.upsertFile(file('fp-nothumb', folderB.folderId, 'drone-b.mp4'));
+    await store.upsertAnalysis(analysis('fp-nothumb', { transcript: 'drone', tags: [] }));
+
+    const result = await search({ globalCatalog: store, fs }, { query: 'drone', limit: 10, offset: 0 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const online = result.value.results.find((row) => row.fingerprint === 'fp-thumb');
+    const offline = result.value.results.find((row) => row.fingerprint === 'fp-nothumb');
+    expect(online?.thumbnailPath).toBe('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
+    expect(offline?.thumbnailPath).toBeNull();
+  });
 });
