@@ -11,10 +11,10 @@ describe('macOS distribution', () => {
     const builderConfig = await readFile('electron-builder.config.js', 'utf8');
 
     expect(metadata.scripts['electron:build']).toBe(
-      'npm run electron:build:renderer && npm run electron:build:desktop && npm run package:stage',
+      'pnpm run electron:build:renderer && pnpm run electron:build:desktop && pnpm run package:stage',
     );
     expect(metadata.scripts['electron:package']).toBe(
-      'npm run electron:build && electron-builder --config electron-builder.config.js',
+      'pnpm run electron:build && electron-builder --config electron-builder.config.js',
     );
     expect(builderConfig).toMatch(/target:\s*'dmg'/u);
   });

@@ -85,12 +85,12 @@ export default async function preflight(): Promise<void> {
   const guiSelected = !/--project[= ]cli(\s|$)/.test(argv) || /--project[= ]gui/.test(argv);
 
   if (!existsSync(CLI_DIST)) {
-    fail(`CLI build not found at ${CLI_DIST}.\nRun: npm run package:stage or set E2E_CLI_DIST.`);
+    fail(`CLI build not found at ${CLI_DIST}.\nRun: pnpm run package:stage or set E2E_CLI_DIST.`);
   }
   if (guiSelected && (!existsSync(ELECTRON_MAIN) || !existsSync(RENDERER_HTML))) {
     fail(
       `Electron build not found.\nmain: ${ELECTRON_MAIN}\nrenderer: ${RENDERER_HTML}\n` +
-        'Run: npm run electron:build or set E2E_ELECTRON_MAIN/E2E_RENDERER_HTML.',
+        'Run: pnpm run electron:build or set E2E_ELECTRON_MAIN/E2E_RENDERER_HTML.',
     );
   }
 

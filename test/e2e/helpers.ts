@@ -183,7 +183,7 @@ function ffmpegBinary(): string {
   const require = createRequire(import.meta.url);
   const resolved: unknown = require('ffmpeg-static');
   if (typeof resolved !== 'string' || !existsSync(resolved)) {
-    throw new Error('ffmpeg-static binary not found - run npm install');
+    throw new Error('ffmpeg-static binary not found - run pnpm install');
   }
   return resolved;
 }
@@ -192,7 +192,7 @@ function ffprobeBinary(): string {
   const require = createRequire(import.meta.url);
   const resolved: unknown = (require('@ffprobe-installer/ffprobe') as { path?: unknown }).path;
   if (typeof resolved !== 'string' || !existsSync(resolved)) {
-    throw new Error('@ffprobe-installer/ffprobe binary not found - run npm install');
+    throw new Error('@ffprobe-installer/ffprobe binary not found - run pnpm install');
   }
   return resolved;
 }

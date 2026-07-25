@@ -13,8 +13,8 @@
     "apps/web/src/gallery/main.tsx",
     // electron-builder reads this config file by name; nothing imports it.
     "electron-builder.config.js",
-    // Every script runs via an npm script or by hand (build-app-icon.mjs and
-    // gallery-shots.mjs have no npm-script wrapper).
+    // Every script runs via a package script or by hand (build-app-icon.mjs and
+    // gallery-shots.mjs have no package-script wrapper).
     "scripts/*.{ts,mjs}",
     // Playwright e2e specs + their in-tree support the config loads.
     "test/e2e/*.spec.ts",

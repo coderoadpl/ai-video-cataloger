@@ -24,15 +24,16 @@ jobs:
     runs-on: [self-hosted, macOS, arm64]
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
+      # No `version:` input — the packageManager pin is the single source. Must
+      # precede setup-node, which needs a pnpm on PATH to locate the store cache.
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
-          # The npm-10 pin: node 22 ships npm 10.x, so `npm ci` keeps the
-          # platform-optional lock entries electron-builder reads as literal paths.
           node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci
-      - run: npm run check
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
       # Advisory only: high/critical findings are triaged, but audit's transitive
       # noise must not break the build.
-      - run: npm audit --omit=dev --audit-level=high
+      - run: pnpm audit --prod --audit-level high
         continue-on-error: true

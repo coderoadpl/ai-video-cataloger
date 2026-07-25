@@ -9,11 +9,11 @@ STAGE="$ROOT/.cli-stage"
 
 rm -rf "$STAGE"
 mkdir -p "$STAGE"
-cp "$ROOT/package.json" "$ROOT/package-lock.json" "$STAGE/"
+cp "$ROOT/package.json" "$ROOT/pnpm-lock.yaml" "$ROOT/pnpm-workspace.yaml" "$STAGE/"
 cp -R "$ROOT/dist" "$STAGE/dist"
 
-# Production deps only; postinstall scripts must run (ffmpeg-static downloads
-# its binary in one).
-( cd "$STAGE" && npm ci --omit=dev --no-audit --no-fund )
+# pnpm-workspace.yaml travels with the manifest because its onlyBuiltDependencies
+# is what materializes the ffmpeg/ffprobe binaries the staged CLI spawns.
+( cd "$STAGE" && pnpm install --prod --frozen-lockfile )
 
 echo "Staged CLI: $(du -sh "$STAGE" | cut -f1)"

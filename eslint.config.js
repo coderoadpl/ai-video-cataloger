@@ -171,7 +171,7 @@ const ISLAND_CORE_DOM_GLOBALS = ['window', 'document'].map((name) => ({
  * (frontend-lint-plan Phases 1–3). `boundaries/element-types` denies everything
  * by default; each rule is an explicit permission adapted from the
  * agentproofarch foundation minus auth/tenancy. dependency-cruiser
- * double-checks the same graph plus vendor bans in `npm run depcruise`.
+ * double-checks the same graph plus vendor bans in `pnpm run depcruise`.
  */
 export default tseslint.config(
   {

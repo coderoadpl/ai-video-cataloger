@@ -26,14 +26,14 @@ export default defineConfig({
         // shipped, driven by scripts/gallery-shots.mjs, not vitest.
         'apps/web/src/gallery/**',
         // Gate-orchestration scripts (top-level programs that boot the real app /
-        // scan docs and process.exit()): run by `npm run smoke` / `npm run
+        // scan docs and process.exit()): run by `pnpm run smoke` / `pnpm run
         // doc-lint`, never by vitest, so counting them 0% would depress the floor.
         'scripts/smoke.ts',
         'scripts/doc-lint.ts',
       ],
       // Ratchet floor, not aspiration: each threshold is the measured coverage of
       // `vitest run --coverage` rounded DOWN to the whole percent. A regression
-      // below the floor fails `npm run check`; raise the floor whenever coverage
+      // below the floor fails `pnpm run check`; raise the floor whenever coverage
       // climbs. First measured 2026-07-25 (Phase 3): stmts 79.33 / branches 80.57
       // / funcs 73.68 / lines 79.33.
       thresholds: {

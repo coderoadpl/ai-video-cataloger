@@ -21,11 +21,11 @@ run_suite() {
   # current checkout, not the ref under test).
   ( cd "$ROOT" && \
     E2E_CLI_DIST="$cli_dist" E2E_SAMPLES="$SAMPLES" \
-    npx playwright test --config test/e2e/playwright.config.ts --project=cli )
+    pnpm exec playwright test --config test/e2e/playwright.config.ts --project=cli )
 }
 
 if [[ -z "$REF" ]]; then
-  ( cd "$ROOT" && npm run package:stage )
+  ( cd "$ROOT" && pnpm run package:stage )
   run_suite "$ROOT/dist/cli/index.js"
   exit 0
 fi
@@ -41,6 +41,6 @@ cleanup
 git -C "$ROOT" worktree add --force "$WT" "$REF"
 
 echo "== Staging CLI for $REF in $WT =="
-( cd "$WT" && npm ci --no-audit --no-fund && npm run package:stage )
+( cd "$WT" && pnpm install --frozen-lockfile && pnpm run package:stage )
 
 run_suite "$WT/dist/cli/index.js"
