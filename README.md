@@ -30,6 +30,7 @@ Cursor). A fully local Ollama model keeps everything on your Mac.
 ## GUI Quick Start
 
 ```bash
+nvm use          # Node 22.23.1, per .nvmrc — its Corepack activates the pinned pnpm
 pnpm install
 pnpm run electron:dev
 ```
