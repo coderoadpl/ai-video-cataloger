@@ -55,7 +55,7 @@ Blocking gate: any FAIL here stops the release. Run on the packaged build.
 | ID | Pri | Preconditions | Steps | Expected |
 |---|---|---|---|---|
 | SMK-01 | P1 | Packaged build installed; app not running | 1. Launch app (cold). 2. Watch first paint. | Window appears **immediately** with the branded splash (brand mark + app name + spinner), theme-correct, **no white flash**; splash is replaced by skeletons then the real UI. |
-| SMK-02 | P1 | App open, fresh install | 1. Observe first-run. | Setup Wizard **Setup Wizard (Kreator konfiguracji)** opens or is reachable; welcome screen renders in the active UI language with no `key.path` leaks. |
+| SMK-02 | P1 | App open, fresh install | 1. Observe first-run. 2. After setup, open **Settings** and use **Run Setup Wizard (Uruchom kreatora konfiguracji)**. | Setup Wizard **Setup Wizard (Kreator konfiguracji)** opens or is reachable on first-run; the Settings affordance reopens it anytime without clearing config; welcome screen renders in the active UI language with no `key.path` leaks. |
 | SMK-03 | P1 | App open | 1. Click **Open Folder (Otwórz folder)**. 2. Pick S-clean. | Sidebar lists all detected videos; folder header shows exact counts (e.g. `5 pending · 0 done` / `5 oczekuje · 0 gotowe`), never "about". |
 | SMK-04 | P1 | Folder open, analyzer configured | 1. Select one Pending video. 2. Click **Analyze Video (Analizuj film)**. | Terminal streams per-step progress; on completion status flips to **Completed (Ukończony)**; Summary, Transcript, frames appear. |
 | SMK-05 | P1 | ≥1 analyzed video | 1. Click a video row. | Detail view opens with tags, **Video Information (Informacje o filmie)**, and inline player. |
@@ -63,7 +63,7 @@ Blocking gate: any FAIL here stops the release. Run on the packaged build.
 | SMK-07 | P1 | ≥1 analyzed video | 1. Click the search box **Search catalog (Szukaj w katalogu)**. 2. Type a term from a known summary. 3. Enter. | Results list shows the match; clicking a result opens its detail. |
 | SMK-08 | P2 | App open | 1. Open **Settings (Ustawienia)**. 2. Toggle **App language (Język aplikacji)** EN↔PL. 3. Save. | UI switches language **live** without restart. |
 | SMK-09 | P2 | Terminal available | 1. Run `ai-video-cataloger health --json` in the folder. | One `started` + one `completed` NDJSON line; exit code 0. |
-| SMK-10 | P2 | App open | 1. Cmd+Q / quit. 2. Relaunch. | App reopens to the last folder; no crash; sidebar width preserved. |
+| SMK-10 | P2 | App open, a folder with a **Whole tree** scope chosen | 1. Cmd+Q / quit. 2. Relaunch. | App reopens to the last folder; no crash; sidebar width preserved; the **This folder / Whole tree** scope is restored per folder (not reset to This folder). |
 | SMK-11 | P3 | Dark mode enabled at OS level before launch | 1. Launch. | Splash, skeletons, and full UI render in dark theme end-to-end. |
 | SMK-12 | P3 | Folder open | 1. Right-click a video row. | Context menu with **Reveal in Finder (Pokaż w Finderze)** appears and reveals the file. |
 
@@ -95,7 +95,7 @@ Blocking gate: any FAIL here stops the release. Run on the packaged build.
 |---|---|---|---|---|
 | ANL-01 | P1 | One Pending video | 1. **Analyze Video (Analizuj film)**. | Runs to Completed; button shows **Analyzing… (Analizowanie…)** while active; frames/transcript/summary populate. |
 | ANL-02 | P1 | Root with several Pending | 1. Click **Analyze All (N) (Analizuj wszystko (N))**. | Batch processes each; per-file live status refresh in the sidebar; terminal shows `[current/total] Processing: <file>`. |
-| ANL-03 | P1 | Whole tree scope, multiple folders | 1. Click Analyze All (whole tree). | Terminal streams per-folder lines `→ path (n file(s))` and `✓ path: d done, s skipped, f failed`, ending with a **run summary** (`=== Drive run complete: … ===`). |
+| ANL-03 | P1 | Whole tree scope, multiple folders | 1. Click Analyze All (whole tree). | Terminal streams per-folder lines `→ path (n file(s))` and `✓ path: d done, s skipped, f failed`, ending with a **run summary** (`=== Drive run complete: … ===`); on completion a **Folder Analysis Complete (Analiza folderu ukończona)** dialog shows folders/analyzed/skipped/failed counts. Rows carry **no** transient Skipped chip. |
 | ANL-04 | P1 | Batch running | 1. Click **Stop (Stop)**. 2. Confirm **Stop Batch (Zatrzymaj wsad)**. | Batch stops after current file; already-processed keep results; message `Batch processing cancelled. Processed X of Y`. |
 | ANL-05 | P1 | Single run active | 1. Click Stop. 2. Confirm **Cancel Analysis (Anuluj analizę)**. | Current analysis cancels; video may be left Incomplete with resume hint. |
 | ANL-06 | P2 | An Incomplete video (interrupted) | 1. Select it. | Shows **Processing Incomplete (Przetwarzanie nieukończone)** with step-specific hint and **Continue Analysis (Kontynuuj analizę)**. |
@@ -240,7 +240,7 @@ from the owner findings ledger and fix commits since `89e6a6e3`.
 
 | ID | Pri | Bug (original) | Repro | Expected (fixed) |
 |---|---|---|---|---|
-| REG-01 | P2 | Status badge icon had no left inset (`.MuiChip-icon` override matched nothing). | Inspect Completed/Pending/Duplicate/Skipped badges in light + dark. | Icon left inset ≈ **8px** on every status glyph badge, both themes. |
+| REG-01 | P2 | Status badge icon had no left inset (`.MuiChip-icon` override matched nothing). | Inspect Completed/Pending/Duplicate badges in light + dark. | Icon left inset ≈ **8px** on every status glyph badge, both themes. |
 | REG-02 | P1 | Thumbnails rendered stretched/square-cropped, no loading state. | View portrait + generating videos. | **56px square** box, frame at **true aspect** upright; **shimmer** while generating; placeholder **only** on failure. |
 | REG-03 | P1 | Tree nested a windowed scroll per folder; approximate counts; root not collapsible. | Scroll M-tree; read headers; collapse root. | **One** scroll container; indent guides; root collapsible; **exact** counts (no "about"); duplicates segment in header. |
 | REG-04 | P1 | Duplicate clone showed Pending + primary Analyze; badge unstable. | Open clone detail; re-run; restart. | Duplicate badge stable; detail shows **Duplicate block** with canonical link + secondary **Analyze anyway**, no primary Analyze. |
@@ -267,6 +267,12 @@ from the owner findings ledger and fix commits since `89e6a6e3`.
 | REG-25 | P2 | Moved files were incorrectly marked missing. | Move a processed file within the tree; re-run. | File relocated, not marked missing, not re-analyzed. |
 | REG-26 | P2 | Read-only mode didn't cover all mutating actions. | Enter read-only (foreign lock) and try each mutating action. | Every mutating action is blocked/guarded while read-only. |
 | REG-27 | P3 | Per-file NDJSON + live sidebar refresh missing during tree/batch runs. | Run a tree/batch analyze; watch terminal + sidebar. | Per-file NDJSON lines during the run, run summary at end, per-file live status refresh in the sidebar. |
+| REG-28 | P1 | A legacy folder config carried an app-global `ui_language` (v0.4.x); dictionary read home (EN) while Settings read the folder override (PL), so saving EN "never applied". | Seed a folder whose `.ai-video-cataloger/config.json` has `{"ui_language":"pl"}` while home is EN; open the app; open Settings; switch EN↔PL and Save. | App language follows **home**; Settings reflects the same value; saving flips it live; the next folder write strips the app-global key from the folder config. |
+| REG-29 | P1 | A processed file deleted then restored from Trash stayed listed under **Previously cataloged, now absent** because folder-scope analyze never reconciled presence. | Delete a processed file; run (it enters the absent section); restore it from Trash; refresh / run again. | The absent list self-heals: the restored file's `missing_at` is cleared and the absent section is empty for it — no whole-tree run required. |
+| REG-30 | P2 | A transient **Skipped** chip shared the row badge slot with durable Completed/Duplicate, and no run summary surfaced skipped counts. | Run **Analyze All** where some files are skipped. | Rows show **no** Skipped chip; a **Folder Analysis Complete** dialog reports folders/analyzed/skipped/failed; terminal lines unchanged. |
+| REG-31 | P2 | The duplicate detail **Analyze anyway** button had no top margin, touching the original-file link. | Open a duplicate detail block. | Clear top margin separates **Analyze anyway** from the canonical link. |
+| REG-32 | P3 | No way to reopen the Setup Wizard after first run without clearing config. | Open **Settings** → **Run Setup Wizard**. | Wizard opens with pre-filled state; config is not cleared. |
+| REG-33 | P3 | The **This folder / Whole tree** scope reset to This folder on relaunch. | Choose Whole tree for a folder; quit and relaunch. | Scope is restored per folder from localStorage. |
 
 ---
 
