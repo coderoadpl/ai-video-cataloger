@@ -8,6 +8,7 @@ import {
 } from '@core/domain/index.js';
 
 import type {
+  CatalogFileRecord,
   DriveRunRecord,
   FileSystemPort,
   ForgetEntryResult,
@@ -16,6 +17,7 @@ import type {
 } from '../ports.js';
 import { ensureFolderMarker, readFolderMarker } from './folder-identity.js';
 import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
+import { isSupportedVideoExtension } from './shared.js';
 
 export interface CatalogIndexDeps {
   globalCatalog: GlobalCatalogStore;
@@ -179,15 +181,69 @@ export const folderCatalogRecords = async (
   if (marker.value === null) return ok({ records: [] });
   const records = await deps.globalCatalog.listFolderRecords(marker.value.folderId);
   if (!records.ok) return records;
+  const healed = await healRestoredRecords(deps, marker.value.folderId, input.folder, records.value);
+  if (!healed.ok) return healed;
   return ok({
-    records: records.value.map((record) => ({
-      fingerprint: record.file.fingerprint,
-      fileName: record.file.fileName,
-      finalName: record.analysis?.finalName ?? null,
-      missing: record.file.missingAt !== null,
-      missingAt: record.file.missingAt,
-    })),
+    records: records.value.map((record) => {
+      const restored = healed.value.has(record.file.fingerprint);
+      return {
+        fingerprint: record.file.fingerprint,
+        fileName: record.file.fileName,
+        finalName: record.analysis?.finalName ?? null,
+        missing: !restored && record.file.missingAt !== null,
+        missingAt: restored ? null : record.file.missingAt,
+      };
+    }),
   });
+};
+
+const restoredFingerprints = async (
+  fs: FileSystemPort,
+  folderPath: string,
+  missingRecords: readonly CatalogFileRecord[],
+): Promise<Result<Set<string>, AppError>> => {
+  const restored = new Set<string>();
+  const entries = await fs.listDirectory(folderPath);
+  if (!entries.ok) return ok(restored);
+  const presentByName = new Map<string, string>();
+  for (const entry of entries.value) {
+    if (entry.kind !== 'file' || !isSupportedVideoExtension(fs.extname(entry.name))) continue;
+    presentByName.set(fs.basename(entry.path), entry.path);
+  }
+
+  for (const record of missingRecords) {
+    const candidateNames = [record.file.fileName, record.analysis?.finalName ?? null]
+      .filter((name): name is string => name !== null)
+      .map((name) => fs.basename(name));
+    const diskPath = candidateNames.map((name) => presentByName.get(name)).find((path) => path !== undefined);
+    if (diskPath === undefined) continue;
+    const hash = await fs.partialContentHash(diskPath);
+    if (!hash.ok) return hash;
+    if (hash.value === record.file.fingerprint) restored.add(record.file.fingerprint);
+  }
+  return ok(restored);
+};
+
+export const healRestoredRecords = async (
+  deps: CatalogIndexDeps,
+  folderId: string,
+  folderPath: string,
+  records: readonly CatalogFileRecord[],
+): Promise<Result<Set<string>, AppError>> => {
+  const missingRecords = records.filter((record) => record.file.missingAt !== null);
+  if (missingRecords.length === 0) return ok(new Set());
+  const restored = await restoredFingerprints(deps.fs, folderPath, missingRecords);
+  if (!restored.ok) return restored;
+  if (restored.value.size > 0) {
+    const cleared = await deps.globalCatalog.reconcileFolder({
+      folderId,
+      presentFingerprints: [...restored.value],
+      markMissing: false,
+      now: Date.now(),
+    });
+    if (!cleared.ok) return cleared;
+  }
+  return restored;
 };
 
 export const forgetCatalogEntry = async (

@@ -274,6 +274,25 @@ describe('drive processing', () => {
     expect(absent.ok && absent.value.groups).toEqual([]);
   });
 
+  it('clears the absent flag through the flat folder records view, without a tree fetch', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/drive/a/keep.mp4', 'hash-keep');
+    addVideo(deps.fs, '/drive/a/gone.mp4', 'hash-gone');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    await deps.fs.deleteFile('/drive/a/gone.mp4');
+    await processDrive(deps, baseInput, undefined, { runId: 'run-missing' });
+
+    addVideo(deps.fs, '/drive/a/gone.mp4', 'hash-gone');
+    const records = await folderCatalogRecords(deps, { folder: '/drive/a' });
+
+    const restored = await deps.globalCatalog.getFile('hash-gone');
+    expect(restored.ok && restored.value?.missingAt).toBe(null);
+    const gone = records.ok ? records.value.records.find((record) => record.fileName === 'gone.mp4') : undefined;
+    expect(gone?.missing).toBe(false);
+    expect(gone?.missingAt).toBe(null);
+  });
+
   it('marks rows missing in a folder that still exists on disk but lost all its videos', async () => {
     const deps = makeDeps();
     addVideo(deps.fs, '/drive/a/clip.mp4', 'hash-clip');

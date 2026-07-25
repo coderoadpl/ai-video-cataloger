@@ -13,7 +13,6 @@ import { type CatalogState } from './use-catalog.js';
 import { type CatalogTreeState } from './use-catalog-tree.js';
 import { VideoList } from './VideoList.js';
 
-
 interface CatalogSidebarProps {
   folder: string | null;
   catalog: CatalogState;
@@ -107,7 +106,7 @@ export const CatalogSidebar = ({
                 rootVideos={catalog.videos}
                 selectedKey={catalog.selectedKey}
                 analyzingPath={analyzingPath}
-                  thumbnailFailedPaths={catalog.thumbnailFailedPaths}
+                thumbnailFailedPaths={catalog.thumbnailFailedPaths}
                 onSelect={catalog.select}
                 registerVideos={registerVideos}
               />
