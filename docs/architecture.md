@@ -14,8 +14,9 @@ behavioral ground truth: [`../tasks/parity-inventory.md`](../tasks/parity-invent
 Layer discipline and dependency rules, `core/contract` as the only bridge,
 `Result<T, AppError>` + closed `ErrorCode` taxonomy with CLI exit codes,
 CQRS-partitioned actions, the entire frontend architecture
-(routes/features/ui/lib, bound actions, features are islands, no client event
-bus, visual language only in `theme.ts`), the server-state policy
+(routes/features/ui/layout/lib, bound actions, features are islands, layouts are
+structure only, no client event bus, visual language only in `theme.ts`), the
+server-state policy
 (`server-state.md`), the lint-enforcement method (warn → fix → error, probes
 prove rules, suppression policy), wide events over the `@opentelemetry/api`
 facade, and the two gates (`check` static, `smoke` runtime; static-green is
@@ -154,6 +155,70 @@ feature's view hooks and components — which may import `web-i18n`, while the
 core never does — resolve each key against the effective dictionary. This
 keeps the core locale-free and portable while the translated output stays
 byte-identical to the pre-extraction renderer.
+
+### Renderer structure (delta on the foundation's frontend diagram)
+
+```
+apps/web/src/
+  main.tsx           composition root: providers + router wiring only
+  api.ts             binds core/client actions + the DesktopBridge once
+  AppLayout.tsx      the stateful shell composition (ADR-0004): modal state,
+                     menu events, collapse + sidebar-width persistence,
+                     translated labels — renders components/layout/AppShell
+  routes/            route components — thin: wire features into AppLayout
+  features/<name>/   feature folders (islands), core/ = the island core
+  components/layout/ page skeletons: structure only → theme, components/ui, lib
+                     (no core, features, routes, api, TanStack, i18n)
+  components/ui/     presentational primitives → theme, lib, i18n
+  i18n/              typed en/pl dictionaries + useDictionary
+  lib/               pure TS utilities → no react
+  theme.ts           the entire visual language (MUI theme)
+```
+
+### The layout layer (page skeletons)
+
+Decided in [ADR-0004](decisions/0004-layout-layer.md), adopting the foundation's
+ADR-0011 with four app rulings. `components/layout/` is the one legal home for a
+component that owns a page's **shape** — the 100vh column, the resizable sidebar
+rail, the content region, the terminal drawer. Content arrives through
+`ReactNode` slots; non-happy branches (the readiness/degraded banner slot, the
+collapsed-sidebar rail) render *inside* the skeleton so the content region never
+jumps between a pending and a loaded render; resize **limits** are exported from
+the skeleton while the current size arrives as a prop and its persistence stays
+in the composition. Our stricter ruling: **skeletons carry no i18n** — structure
+has no copy, and every visible string arrives as a slot, the same seam the island
+cores use.
+
+**(a) Layouts are structure only.** `components/layout/**` imports `theme.ts`,
+`components/ui/` and `lib/` and nothing else in the app: no `core/**`, no
+`adapters/**`, no `features/**`, no `routes/**`, no `api.ts`, no `i18n/`, no
+TanStack.
+— **TYPE**: n/a (an import edge is not a type) · **LINT**:
+`web-layouts-are-structure-only` (dependency-cruiser) plus the `web-layout`
+`boundaries` element type · **TEST**: `config-regression/lint-gates.test.ts`
+plants a layout fixture importing a feature and asserts the named rule fires ·
+**REVIEW+AI**: n/a (mechanically covered).
+
+**(b) Features consume layouts; they do not define them.** A page skeleton — a
+component owning a page grid or a page-level max-width — may be defined only
+under `components/layout/`. This is a claim about the content of a file, not an
+edge in the graph, so the mechanical half is incomplete by construction.
+— **TYPE**: n/a · **LINT**: partial only — `MUI_SKELETON_BAN`
+(`no-restricted-imports`) forbids `Container`/`AppBar`/`Drawer`/`Toolbar`
+outside `components/layout/**`, which is a proxy, not the rule · **TEST**: the
+MUI-ban probe (violating fixture outside the layer fires; the same import inside
+the layer does not) · **REVIEW+AI**: owns the rest — flag a feature growing its
+own page grid or max-width instead of consuming a skeleton.
+
+**Structural `sx` tier** (NORMATIVE WHEN TRIGGERED, same trigger as upstream —
+*the first duplicated page skeleton outside `components/layout/`*): reserving
+`display`, `grid*`, `flex*` on containers, `position: sticky|fixed`, `width` and
+`maxWidth` for `components/layout/**` and `theme.ts`, on a per-file,
+shrink-only, stale-erroring baseline. Not switched on: the tier has never run
+against a real codebase anywhere. Rule (b)'s mechanical half closes when it does.
+
+**Visual specs** per skeleton and per state land with the visual-regression
+suite (migration plan P2), not here.
 
 ## Delta 5 — long-running work
 
