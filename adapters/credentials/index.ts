@@ -197,7 +197,10 @@ export class JsonCredentialsStore implements CredentialsStore {
 
   private async writeFileEntries(filePath: string, entries: FileEntries): Promise<boolean> {
     const temporaryPath = `${filePath}.${process.pid.toString(36)}.${randomBytes(6).toString('hex')}.tmp`;
-    const merged = { ...entries.values, ...entries.unreadable };
+    // One key holds one entry, so a provider present on both sides has to be resolved: the parsed
+    // value is the one the caller just decided to keep, and letting the unparsed copy land on top
+    // of it would write away the value this call exists to preserve.
+    const merged = { ...entries.unreadable, ...entries.values };
     try {
       await mkdir(path.dirname(filePath), { recursive: true });
       await writeFile(temporaryPath, `${JSON.stringify(merged, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });

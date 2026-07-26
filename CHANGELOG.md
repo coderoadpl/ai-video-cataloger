@@ -23,6 +23,11 @@ release history jumps from `0.5.10` to `0.5.12`.
   gallery fell back to placeholders. The mirror root joins the faces root as a
   fixed home scope, and a path that only appears to be inside it — traversal,
   symlink escape, a video smuggled in — is still refused.
+- Setting a conflicting API key aside no longer writes that key away. Every
+  write of a credentials file merges the entries the parser could not read back
+  in, and that merge overwrote the value the same call had just archived when
+  the target file already held an unreadable entry for the same provider. A
+  parsed value now wins over an unparsed one on a key collision, in every write.
 
 ## [0.5.23] - 2026-07-29
 

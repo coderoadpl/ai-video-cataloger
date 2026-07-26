@@ -2,7 +2,7 @@ import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 
 import { appError, ok, type AppError, type CredentialDeletion, type Result } from '@core/domain/index.js';
@@ -89,6 +89,7 @@ const tempHome = async (): Promise<string> => {
 };
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(roots.map((root) => rm(root, { recursive: true, force: true })));
   roots.length = 0;
 });
@@ -210,6 +211,19 @@ describe('JsonCredentialsStore', () => {
       },
     });
     expect(await storedEntries(home)).toEqual({ gemini: { value: 'mangled', state: 'nonsense' } });
+  });
+
+  it('lets the value it sets aside win over an entry the archive could not read for that provider', async () => {
+    const home = await tempHome();
+    const archivePath = path.join(home, '.ai-video-cataloger', 'credentials.json.conflict-2026-07-29T10-20-30-400Z');
+    await writeStoredEntries(home, { gemini: 'conflicting-key' });
+    await writeFile(archivePath, JSON.stringify({ gemini: { value: 'mangled', state: 'nonsense' } }), { mode: 0o600 });
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+    vi.setSystemTime(new Date('2026-07-29T10:20:30.400Z'));
+
+    expect(await store.archive('gemini')).toEqual({ ok: true, value: archivePath });
+
+    expect(JSON.parse(await readFile(archivePath, 'utf8'))).toEqual({ gemini: 'conflicting-key' });
   });
 
   it('removes the file only once no entry of any kind is left', async () => {
