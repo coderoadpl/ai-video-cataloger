@@ -269,6 +269,30 @@ describe('KeychainCredentialsStore', () => {
     expect(await store.credentialValueConflicts()).toEqual({ ok: true, value: [] });
   });
 
+  it('never resurrects a stale file copy into a keychain that no longer holds the key', async () => {
+    const home = await tempHome();
+    const legacy = new UnremovableLegacy({ homeDirectory: home });
+    await legacy.set('openai', 'superseded-key');
+    const secrets = new FakeSecrets('available');
+    const store = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+    legacy.failingDeletes = 4;
+    await store.set('openai', 'newer-key');
+    legacy.failingDeletes = 0;
+    secrets.values.delete('openai');
+    const emptied = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+
+    expect(await emptied.get('openai')).toEqual({ ok: true, value: null });
+    expect(secrets.values.has('openai')).toBe(false);
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
+    const log = await readFile(path.join(home, '.ai-video-cataloger', 'credentials-migration.ndjson'), 'utf8');
+    const lines = log.trim().split('\n');
+    expect(JSON.parse(lines[lines.length - 1] ?? '')).toMatchObject({ event: 'credential_superseded', providerId: 'openai' });
+  });
+
   it('retries a single failed removal of the plaintext copy once', async () => {
     const home = await tempHome();
     const legacy = new UnremovableLegacy({ homeDirectory: home });

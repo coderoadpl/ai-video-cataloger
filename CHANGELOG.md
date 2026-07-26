@@ -25,7 +25,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   older plaintext one. `credentials.json` entries now record their provenance
   (`{"value": …, "state": "pending" | "stale"}`, a bare string meaning
   "unmarked"); only a `pending` entry — one a degraded write created — wins a
-  value conflict. An unmarked conflict leaves the Keychain in charge and moves
+  value conflict, and a `stale` entry is never promoted, not even into a
+  Keychain that no longer holds the key. An unmarked conflict leaves the Keychain in charge and moves
   the file value aside to `credentials.json.conflict-<timestamp>` (mode 0600)
   instead of deleting it, and `doctor` raises a new `credential_value_conflict`
   warning naming the provider and that file. Forgetting a key clears those

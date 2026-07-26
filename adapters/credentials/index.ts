@@ -359,9 +359,11 @@ export class KeychainCredentialsStore implements CredentialsStore {
     }
     this.keychainFailed = false;
     if (existing.value === entry.value.value) return this.dropMigrated(providerId, 'migrated');
+    // A stale copy stays superseded even when the keychain item is gone (a reset login
+    // keychain, a manual removal): promoting it would resurrect a key the user replaced.
+    if (entry.value.state === 'stale') return this.dropMigrated(providerId, 'superseded');
     if (existing.value === null) return this.promote(providerId, entry.value.value, 'migrated');
     if (entry.value.state === 'pending') return this.promote(providerId, entry.value.value, 'value_conflict');
-    if (entry.value.state === 'stale') return this.dropMigrated(providerId, 'superseded');
     return this.setAside(providerId);
   }
 
