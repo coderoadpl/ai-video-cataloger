@@ -14,6 +14,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- A drive run over a tree that turned read-only after it was first indexed no
+  longer dies with a raw `internal` EACCES on
+  `.ai-video-cataloger/catalog.ndjson`. The end-of-run snapshot refresh — the
+  one that follows a file relocated between folders — now degrades exactly like
+  the per-file snapshot write: it counts towards `snapshotSkipped` and emits a
+  `catalog_snapshot_skipped` warning, and the run completes.
+
 ## [0.5.21] - 2026-07-28
 
 ### Added

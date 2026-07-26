@@ -27,7 +27,7 @@ import {
 import type { ProcessDeps, ProcessPipelineInput } from './process.js';
 import { hasProcessedAnalysis, reconcileFolderPresence, resolveFolderIntoIndex } from './catalog-index.js';
 import { exportFolderSnapshot } from './catalog-snapshot.js';
-import { readFolderMarker } from './folder-identity.js';
+import { isReadOnlyWriteError, readFolderMarker } from './folder-identity.js';
 import { processVideoPipeline, resolveProcessOptions } from './process.js';
 import {
   awaitBatchResults,
@@ -392,8 +392,8 @@ export const processDrive = async (
     const onDisk = await deps.fs.exists(folder.value.currentPath);
     if (!onDisk.ok) return onDisk;
     if (!onDisk.value) continue;
-    const snapshot = await exportFolderSnapshot({ globalCatalog, fs: deps.fs }, folder.value);
-    if (!snapshot.ok) return snapshot;
+    const refreshed = await refreshFolderSnapshot(deps, globalCatalog, state, folder.value, progress);
+    if (!refreshed.ok) return refreshed;
   }
 
   state.run.finishedAt = now().toISOString();
@@ -627,6 +627,23 @@ const persistBatchIdentity = async (
   const persisted = await persistRun(deps, state, now);
   if (!persisted.ok) return persisted;
   return globalCatalog.flush();
+};
+
+const refreshFolderSnapshot = async (
+  deps: ProcessDeps,
+  globalCatalog: GlobalCatalogStore,
+  state: MutableRunState,
+  folder: CatalogFolder,
+  progress: JobExecutionContext | undefined,
+): Promise<Result<void, AppError>> => {
+  const snapshot = await exportFolderSnapshot({ globalCatalog, fs: deps.fs }, folder);
+  if (snapshot.ok) return ok(undefined);
+  if (!isReadOnlyWriteError(snapshot.error)) return snapshot;
+  state.snapshotSkipped += 1;
+  return report(progress, 'catalog_snapshot_skipped', {
+    folder: folder.currentPath,
+    reason: 'folder_read_only',
+  });
 };
 
 const closeFolder = async (
