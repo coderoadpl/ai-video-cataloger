@@ -14,12 +14,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.24] - 2026-07-29
+
 ### Changed
 
 - Listing a folder's records from the global catalog costs a fixed number of
   queries instead of five per file. A 500-file folder — read on every scan of a
   read-only folder, every catalog-tree count and every snapshot export — went
-  from 2502 queries to 6; a 10-file folder went from 52 to the same 6.
+  from 2502 queries to 6; a 10-file folder went from 52 to the same 6
+  ([`024687b`](https://github.com/chomamateusz/ai-video-cataloger/commit/024687b6)).
 
 ### Fixed
 
@@ -29,37 +32,46 @@ release history jumps from `0.5.10` to `0.5.12`.
   scope did not cover, so every request for one was answered with `403` and the
   gallery fell back to placeholders. The mirror root joins the faces root as a
   fixed home scope, and a path that only appears to be inside it — traversal,
-  symlink escape, a video smuggled in — is still refused.
+  symlink escape, a video smuggled in — is still refused
+  ([`21ccd88`](https://github.com/chomamateusz/ai-video-cataloger/commit/21ccd88a)).
 - Setting a conflicting API key aside no longer writes that key away. Every
   write of a credentials file merges the entries the parser could not read back
   in, and that merge overwrote the value the same call had just archived when
   the target file already held an unreadable entry for the same provider. A
-  parsed value now wins over an unparsed one on a key collision, in every write.
+  parsed value now wins over an unparsed one on a key collision, in every write
+  ([`e9b9a1f`](https://github.com/chomamateusz/ai-video-cataloger/commit/e9b9a1f9)).
 - A Gemini batch drive run that finds several unfinished runs for the same root,
   each holding a live batch job, now emits one `batch_orphan_jobs` event naming
   the jobs it is not adopting. It still adopts exactly one; the others are
-  collected by re-running the root instead of being silently orphaned.
+  collected by re-running the root instead of being silently orphaned
+  ([`45848da`](https://github.com/chomamateusz/ai-video-cataloger/commit/45848da0)).
 - Re-attaching to a batch job whose model no longer matches the resolved
   configuration emits one `batch_model_changed` event and records the answers
   under the model the job was bought with, instead of overwriting the run's
-  model with one that never produced those answers.
+  model with one that never produced those answers
+  ([`45848da`](https://github.com/chomamateusz/ai-video-cataloger/commit/45848da0)).
 - A Files API delete answered `404` counts as a released upload. Reporting it as
-  retained invented a quota leak out of an upload that was already gone.
+  retained invented a quota leak out of an upload that was already gone
+  ([`45848da`](https://github.com/chomamateusz/ai-video-cataloger/commit/45848da0)).
 - `batch_uploads_retained` is a typed drive event in the CLI's NDJSON stream
   like `batch_submitted`, `batch_poll` and `batch_completed`, instead of a
-  generic progress line.
+  generic progress line
+  ([`45848da`](https://github.com/chomamateusz/ai-video-cataloger/commit/45848da0)).
 - Deleting a credential whose file entry could not be read no longer claims
   "nothing was removed" when the Keychain item was in fact cleared. The CLI and
   the settings panel now name what was cleared and still say the unreadable
-  entry was left untouched and has to be fixed by hand.
+  entry was left untouched and has to be fixed by hand
+  ([`264cbf3`](https://github.com/chomamateusz/ai-video-cataloger/commit/264cbf34)).
 - The catalog tree shows real pending and processed counts for a read-only
   folder. Those folders carry no marker file, so the counts fell back to
   "unknown"; the tree now reaches the global index through the same path-derived
-  folder id `scan` uses, and only when the index actually holds that folder.
+  folder id `scan` uses, and only when the index actually holds that folder
+  ([`264cbf3`](https://github.com/chomamateusz/ai-video-cataloger/commit/264cbf34)).
 - Scanning a read-only folder surfaces the analysis of a file that is back on
   disk after having been recorded as missing. The missing mark is cleared in the
   global index — which is writable even when the folder is not — instead of
-  hiding an analysis that is still valid.
+  hiding an analysis that is still valid
+  ([`264cbf3`](https://github.com/chomamateusz/ai-video-cataloger/commit/264cbf34)).
 
 ## [0.5.23] - 2026-07-29
 
