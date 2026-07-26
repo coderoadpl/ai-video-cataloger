@@ -121,6 +121,13 @@ describe('KeychainSecretsAdapter', () => {
     expect(await adapter.delete('openai')).toEqual({ ok: true, value: { existed: true } });
   });
 
+  it('surfaces an error when an unreachable keychain refuses the delete', async () => {
+    const runner = new FakeSecurity(() => ({ code: 36, stdout: '', stderr: 'The specified keychain could not be found.' }));
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+
+    expect(await adapter.delete('openai')).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+
   it('reports unavailable when the keychain probe times out', async () => {
     const runner = new FakeSecurity(() => timedOut());
     const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });

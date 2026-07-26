@@ -40,21 +40,57 @@ costs one `execFile`.
 **3. Migration is lazy, idempotent, write-verified, and retried.** The first
 credential access in a process migrates whatever `credentials.json` still holds,
 and an incomplete pass is attempted again on the next access instead of being
-remembered as done. Per
-provider: write the Keychain, read it back, and only after the readback matches
-remove that entry from the file. A failed write or a mismatched readback leaves
-the file entry untouched, so the sequence is never lossy — worst case the key
-stays where it already was and doctor keeps asking for the migration. When the
-Keychain already holds the *same* value, the file copy is dead weight and is
-removed without rewriting the Keychain. When the two disagree, the **file value
-wins**: after this migration exists, a file entry can only be created by a
-`set` that had to fall back, so it is the newer key — it is write-verified into
-the Keychain, the file entry is removed, and the line is logged as a value
-conflict. Until such a pending entry is promoted, `get` answers from the file,
-because that is the newest value the app was given. Each resolved provider
-appends one NDJSON line to
-`~/.ai-video-cataloger/credentials-migration.ndjson` — provider id, direction,
-outcome, timestamp, never the secret.
+remembered as done. Every entry point that can race the migration — `get`,
+`set` and `delete` — awaits the same in-flight migration promise, so a delete
+can never interleave with a promotion that re-creates the key it just cleared.
+Per provider: write the Keychain, read it back, and only after the readback
+matches remove that entry from the file. A failed write or a mismatched readback
+leaves the file entry untouched, so the sequence is never lossy — worst case the
+key stays where it already was and doctor keeps asking for the migration. When
+the Keychain already holds the *same* value, the file copy is dead weight and is
+removed without rewriting the Keychain. Each resolved provider appends one
+NDJSON line to `~/.ai-video-cataloger/credentials-migration.ndjson` — provider
+id, direction, outcome, timestamp, never the secret.
+
+**3a. When the two backends disagree, the file entry's own marker decides — the
+file never wins by assumption.** A file entry is one of three things, and the
+file format says which:
+
+```jsonc
+{
+  "openai":     "sk-…",                                // unmarked: age unknown
+  "openrouter": { "value": "sk-…", "state": "pending" }, // newer than the Keychain
+  "gemini":     { "value": "sk-…", "state": "stale" }    // superseded by the Keychain
+}
+```
+
+A bare string is the backward-compatible shape: every `credentials.json` written
+before this ADR parses unchanged, and an absent marker means exactly "no
+provenance recorded".
+
+- **`pending`** — written by a `set` that had to fall back to the file because
+  the Keychain refused while it was expected (darwin, not opted out; a platform
+  with no Keychain writes unmarked entries, since there the file *is* the
+  primary store). It is newer by construction, so it wins: write-verified
+  into the Keychain, then removed from the file, logged as `value_conflict`.
+  Until it is promoted, `get` answers from the file, because that is the newest
+  value the app was given.
+- **`stale`** — the Keychain already holds a *verified* newer value and only the
+  removal of the file copy failed. It can never be promoted; the migration
+  removes it and logs `superseded`.
+- **unmarked** — an entry from a pre-Keychain install or a restored backup. Its
+  age is unknown, so the **Keychain wins**, and the file entry is *not* deleted:
+  it is moved aside into `~/.ai-video-cataloger/credentials.json.conflict-<ISO
+  timestamp>` (mode `0600`) and doctor raises a `credential_value_conflict`
+  warning naming the provider and the file, until the user picks a value and
+  removes the archive. The earlier rule (file always wins) could destroy a newer
+  Keychain key whenever an unmarked file entry existed — a restored
+  `credentials.json` backup, or a `set` whose Keychain write succeeded while the
+  file cleanup failed.
+
+`set` closes that second hole at the source: after a verified Keychain write it
+retries the file removal once, and if the removal still fails it marks that
+entry `stale` rather than leaving it unmarked.
 
 **4. A Keychain failure degrades to the file store per operation, it never
 fails a run and it never locks the process out.** Availability is `darwin` +
@@ -67,9 +103,9 @@ never makes the rest of the process blind to a key the Keychain still holds.
 `degraded` is therefore a *report*, not a gate: the backend reads `degraded`
 while the last Keychain operation failed or a plaintext entry is still waiting
 to be migrated, and returns to `keychain` on its own once the Keychain answers
-again — no relaunch. A write that fell back to the file marks the migration
-pending, so the next successful Keychain access promotes it and removes the
-plaintext copy. Analysis must not die because a keychain is locked.
+again — no relaunch. A write that fell back to the file marks *that entry*
+`pending` (decision 3a), so the next successful Keychain access promotes it and
+removes the plaintext copy. Analysis must not die because a keychain is locked.
 `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` opts out explicitly (both
 gates set it, so `check` and `smoke` never touch the developer's login
 keychain); `AI_VIDEO_CATALOGER_KEYCHAIN=<path>` points the adapter at a
@@ -78,7 +114,9 @@ throwaway keychain instead of the login one.
 
 **5. The backend is visible.** `doctor` (human and `--json`) names the backend
 that holds credentials and its reason, warns when the Keychain was expected but
-unreachable, and keeps warning for every key still sitting in plaintext.
+unreachable, keeps warning for every key still sitting in plaintext, and raises
+`credential_value_conflict` for every provider whose unmarked file entry was
+moved aside because the Keychain held a different value.
 `config set-credential --json` reports the backend it wrote to.
 
 **6. Secrets stay out of everything observable.** No secret in an event, an
@@ -115,8 +153,12 @@ exposure is documented below.
   is out of proportion for a store the user writes by hand, one key at a time,
   from a single app; the Keychain — the primary store — has no such window
   because `security` writes one item, not a document.
+- A value conflict leaves a second plaintext file behind
+  (`credentials.json.conflict-<timestamp>`, mode `0600`) until the user removes
+  it. That is deliberate: silently destroying one of two disagreeing keys is the
+  worse outcome, and doctor names the file in the warning it keeps raising.
 - Non-darwin platforms and explicit opt-outs keep the exact prior behavior:
-  the `0600` JSON file. Nothing about the file store changed.
+  the `0600` JSON file, whose bare-string entries this ADR leaves untouched.
 - Unit tests never reach a real keychain; they inject a fake command runner.
 
 ## Alternatives rejected

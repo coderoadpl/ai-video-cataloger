@@ -81,6 +81,8 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
   if (!configured.ok) return configured;
   const migrations = await secretMigrationWarnings(deps.credentials);
   if (!migrations.ok) return migrations;
+  const conflicts = await credentialConflictWarnings(deps.credentials);
+  if (!conflicts.ok) return conflicts;
   const credentialsBackend = await resolveCredentialsBackend(deps.credentials);
   const staleCli = await staleCliWarnings(deps.cliPath, deps.version);
   if (!staleCli.ok) return staleCli;
@@ -109,6 +111,7 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
     warnings: [
       ...dependencyWarnings(dependencies),
       ...migrations.value,
+      ...conflicts.value,
       ...credentialsBackendWarnings(credentialsBackend),
       ...staleCli.value,
     ],
@@ -142,6 +145,20 @@ const secretMigrationWarnings = async (
   return ok(providers.value.map((providerId) => ({
     code: 'secret_migration',
     message: `The API key for "${providerId}" could not be moved out of the plaintext file ~/.ai-video-cataloger/credentials.json into the macOS Keychain. Unlock the login keychain and run doctor again.`,
+  })));
+};
+
+const credentialConflictWarnings = async (
+  credentials: CredentialsStore | undefined,
+): Promise<Result<DoctorWarning[], AppError>> => {
+  if (credentials?.credentialValueConflicts === undefined) return ok([]);
+  const conflicts = await credentials.credentialValueConflicts();
+  if (!conflicts.ok) return conflicts;
+  return ok(conflicts.value.map((conflict) => ({
+    code: 'credential_value_conflict',
+    message: `The macOS Keychain and the plaintext file held different API keys for "${conflict.providerId}". `
+      + `The Keychain value is in use; the file value was set aside in ${conflict.archivePath}. `
+      + 'Decide which key is current, store it with set-credential, and delete that file.',
   })));
 };
 

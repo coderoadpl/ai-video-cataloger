@@ -478,6 +478,7 @@ export interface Dictionary {
     clearedFile: string;
     clearedBoth: string;
     keychainRetained: string;
+    keychainUnavailable: string;
     notStored: string;
   };
   folderBar: {
@@ -1052,6 +1053,7 @@ export const en: Dictionary = {
     clearedFile: 'Key removed from the config file.',
     clearedBoth: 'Key removed from the macOS Keychain and the config file.',
     keychainRetained: 'The macOS Keychain still holds the key — unlock the login keychain and try again.',
+    keychainUnavailable: 'The macOS Keychain could not be read, so a stored key cannot be used. Unlock the login keychain and try again — this is not the same as having no key.',
     notStored: 'No key was stored for this provider.',
   },
   folderBar: {
@@ -1634,6 +1636,7 @@ export const pl: Dictionary = {
     clearedFile: 'Klucz usunięty z pliku konfiguracyjnego.',
     clearedBoth: 'Klucz usunięty z pęku kluczy macOS i pliku konfiguracyjnego.',
     keychainRetained: 'Pęk kluczy macOS nadal przechowuje klucz — odblokuj pęk kluczy logowania i spróbuj ponownie.',
+    keychainUnavailable: 'Nie udało się odczytać pęku kluczy macOS, więc zapisany klucz jest niedostępny. Odblokuj pęk kluczy logowania i spróbuj ponownie — to nie znaczy, że klucza nie ma.',
     notStored: 'Dla tego dostawcy nie zapisano żadnego klucza.',
   },
   folderBar: {

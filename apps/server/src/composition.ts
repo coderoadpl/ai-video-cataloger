@@ -55,6 +55,7 @@ import type {
   ConfigScope,
   ConfigStore,
   CredentialsStore,
+  CredentialValueConflict,
   DependencyStatus,
   DirectoryEntry,
   DriveRunRecord,
@@ -305,6 +306,10 @@ class InvalidatingCredentialsStore implements CredentialsStore {
 
   legacyPlaintextProviders(): Promise<Result<string[], AppError>> {
     return this.store.legacyPlaintextProviders?.() ?? Promise.resolve(ok([]));
+  }
+
+  credentialValueConflicts(): Promise<Result<CredentialValueConflict[], AppError>> {
+    return this.store.credentialValueConflicts?.() ?? Promise.resolve(ok([]));
   }
 
   backend(): Promise<CredentialsBackendStatus> {

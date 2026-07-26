@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
 import { CONFIG_KEYS } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
+import { apiErrorMessage } from '../../i18n/api-error-message.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { savedToastStore } from '../../lib/saved-toast.js';
 import {
@@ -43,12 +43,6 @@ export interface UseSettingsOptions {
   folder: string | null;
   onSaved?: () => void;
 }
-
-const messageOf = (error: unknown): string => {
-  if (error instanceof ApiError) return error.appError.message;
-  if (error instanceof Error) return error.message;
-  return String(error);
-};
 
 export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): SettingsState => {
   const dictionary = useDictionary();
@@ -104,7 +98,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
         setForgetCredentialNotice(credentialDeletionNotice(dictionary, deletion));
         await queryClient.invalidateQueries();
       } catch (error) {
-        setForgetCredentialNotice({ message: messageOf(error), severity: 'error' });
+        setForgetCredentialNotice({ message: apiErrorMessage(error, dictionary), severity: 'error' });
       }
     })();
   }, [credentialRef, deleteCredential, dictionary, queryClient]);
@@ -126,7 +120,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
           });
         } catch (error) {
           allOk = false;
-          setSaveError(messageOf(error));
+          setSaveError(apiErrorMessage(error, dictionary));
         }
       }
       if (
@@ -141,7 +135,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
           setApiCredential('');
         } catch (error) {
           allOk = false;
-          setSaveError(messageOf(error));
+          setSaveError(apiErrorMessage(error, dictionary));
         }
       }
       if (whisperApiCredential.length > 0 && draft.whisper_mode === 'api') {
@@ -150,7 +144,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
           setWhisperApiCredential('');
         } catch (error) {
           allOk = false;
-          setSaveError(messageOf(error));
+          setSaveError(apiErrorMessage(error, dictionary));
         }
       }
       setIsSaving(false);
@@ -184,7 +178,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
 
   return {
     isLoading: enabled && draft === null && configQuery.error === null,
-    error: saveError ?? (configQuery.error === null ? null : messageOf(configQuery.error)),
+    error: saveError ?? (configQuery.error === null ? null : apiErrorMessage(configQuery.error, dictionary)),
     draft,
     hasChanges,
     isSaving,

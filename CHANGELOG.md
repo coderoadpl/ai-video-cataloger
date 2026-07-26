@@ -21,6 +21,26 @@ release history jumps from `0.5.10` to `0.5.12`.
   (cleared everywhere = success, keychain retained or request failed = warning
   or error), so a Keychain that refused to release the key is finally readable.
   Closing the modal stays the user's action.
+- A credential migration can no longer overwrite a newer Keychain key with an
+  older plaintext one. `credentials.json` entries now record their provenance
+  (`{"value": …, "state": "pending" | "stale"}`, a bare string meaning
+  "unmarked"); only a `pending` entry — one a degraded write created — wins a
+  value conflict. An unmarked conflict leaves the Keychain in charge and moves
+  the file value aside to `credentials.json.conflict-<timestamp>` (mode 0600)
+  instead of deleting it, and `doctor` raises a new `credential_value_conflict`
+  warning naming the provider and that file. Forgetting a key clears those
+  archives too.
+- `delete-credential` now attempts the Keychain even when its availability probe
+  fails, and distinguishes "no such item" (nothing cleared) from an unreachable
+  Keychain (reported as retained), so a key is never announced as gone while the
+  Keychain still holds it.
+- A Keychain read error with no plaintext fallback is reported as the new
+  `keychain_unavailable` error (HTTP 503, CLI exit 44) instead of being flattened
+  into "no API key stored"; the Settings and prerequisites panels say the login
+  keychain is locked (en + pl).
+- `doctor` stops reporting a degraded credentials backend once the Keychain
+  answers again, including when the migration itself was the operation that
+  succeeded.
 
 ## [0.5.19] - 2026-07-28
 

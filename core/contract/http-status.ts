@@ -37,6 +37,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   faces_disabled: 409,
   snapshot_incompatible: 422,
   catalog_locked: 423,
+  keychain_unavailable: 503,
   unavailable: 503,
   internal: 500,
 };
@@ -78,6 +79,7 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   faces_disabled: 41,
   snapshot_incompatible: 42,
   catalog_locked: 43,
+  keychain_unavailable: 44,
   unavailable: 8,
   internal: 10,
 };
@@ -119,6 +121,7 @@ export const LEGACY_ERROR_CODE_BY_ERROR_CODE: Record<ErrorCode, string> = {
   faces_disabled: 'FACES_DISABLED',
   snapshot_incompatible: 'SNAPSHOT_INCOMPATIBLE',
   catalog_locked: 'CATALOG_LOCKED',
+  keychain_unavailable: 'KEYCHAIN_UNAVAILABLE',
   unavailable: 'UNAVAILABLE',
   internal: 'INTERNAL',
 };

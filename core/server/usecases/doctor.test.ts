@@ -174,6 +174,37 @@ describe('runDoctor', () => {
     });
   });
 
+  it('names the provider whose conflicting file entry was set aside during migration', async () => {
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      credentials: {
+        get: () => Promise.resolve(ok(null)),
+        set: () => Promise.resolve(ok(undefined)),
+        credentialValueConflicts: () => Promise.resolve(ok([
+          { providerId: 'openai', archivePath: '/home/.ai-video-cataloger/credentials.json.conflict-2026' },
+        ])),
+      },
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.warnings).toContainEqual({
+      code: 'credential_value_conflict',
+      message: 'The macOS Keychain and the plaintext file held different API keys for "openai". '
+        + 'The Keychain value is in use; the file value was set aside in '
+        + '/home/.ai-video-cataloger/credentials.json.conflict-2026. '
+        + 'Decide which key is current, store it with set-credential, and delete that file.',
+    });
+  });
+
   it('names the keychain as the credentials backend without a fallback warning', async () => {
     const deps = {
       media: new InMemoryMedia(),

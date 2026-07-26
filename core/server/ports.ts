@@ -214,11 +214,17 @@ export interface ConfigStore {
   set(scope: ConfigScope, key: ConfigKey, value: string): Promise<Result<{ previousValue: string | null }, AppError>>;
 }
 
+export interface CredentialValueConflict {
+  providerId: string;
+  archivePath: string;
+}
+
 export interface CredentialsStore {
   get(providerId: string): Promise<Result<string | null, AppError>>;
   set(providerId: string, credential: string): Promise<Result<void, AppError>>;
   delete?(providerId: string): Promise<Result<CredentialDeletion, AppError>>;
   legacyPlaintextProviders?(): Promise<Result<string[], AppError>>;
+  credentialValueConflicts?(): Promise<Result<CredentialValueConflict[], AppError>>;
   backend?(): Promise<CredentialsBackendStatus>;
 }
 
@@ -231,7 +237,7 @@ export interface SecretsStore {
   delete(account: string): Promise<Result<{ existed: boolean }, AppError>>;
 }
 
-export type CredentialMigrationOutcome = 'migrated' | 'value_conflict';
+export type CredentialMigrationOutcome = 'migrated' | 'value_conflict' | 'superseded';
 
 export interface CredentialMigrationLog {
   record(providerId: string, outcome: CredentialMigrationOutcome): Promise<void>;

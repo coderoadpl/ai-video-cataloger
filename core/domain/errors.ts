@@ -35,6 +35,7 @@ export const ERROR_CODES = [
   'faces_disabled',
   'snapshot_incompatible',
   'catalog_locked',
+  'keychain_unavailable',
   'unavailable',
   'internal',
 ] as const;

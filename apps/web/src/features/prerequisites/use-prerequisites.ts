@@ -1,8 +1,8 @@
 import { useQuery } from '@tanstack/react-query';
 
-import { ApiError } from '@core/client/index.js';
-
 import { actions } from '../../api.js';
+import { apiErrorMessage } from '../../i18n/api-error-message.js';
+import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { DoctorResult, ReadinessResult } from './prerequisites-model.js';
 
 export interface PrerequisitesState {
@@ -13,13 +13,8 @@ export interface PrerequisitesState {
   check: () => void;
 }
 
-const messageOf = (error: unknown): string => {
-  if (error instanceof ApiError) return error.appError.message;
-  if (error instanceof Error) return error.message;
-  return String(error);
-};
-
 export const usePrerequisites = ({ open, folder }: { open: boolean; folder: string | null }): PrerequisitesState => {
+  const dictionary = useDictionary();
   const doctorQuery = useQuery({ ...actions.doctor, enabled: open });
   const readinessQuery = useQuery({
     ...actions.readiness(folder === null ? { scope: 'home' } : { folder }),
@@ -28,7 +23,7 @@ export const usePrerequisites = ({ open, folder }: { open: boolean; folder: stri
   const queryError = doctorQuery.error ?? readinessQuery.error;
   return {
     isLoading: open && (doctorQuery.isLoading || readinessQuery.isLoading),
-    error: queryError === null ? null : messageOf(queryError),
+    error: queryError === null ? null : apiErrorMessage(queryError, dictionary),
     doctor: doctorQuery.data ?? null,
     readiness: readinessQuery.data ?? null,
     check: () => {
