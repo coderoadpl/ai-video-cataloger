@@ -353,6 +353,26 @@ describe('KeychainCredentialsStore', () => {
     expect(secrets.values.has('openai')).toBe(false);
   });
 
+  it('never surfaces a stale copy across a keychain outage and recovery', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, { openai: { value: 'superseded-key', state: 'stale' } });
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets('available');
+    secrets.values.set('openai', 'live-key');
+    secrets.failingReads.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+
+    const outage = await store.get('openai');
+    expect(outage.ok).toBe(false);
+    expect(outage.ok === false && outage.error.code).toBe('keychain_unavailable');
+
+    secrets.failingReads.delete('openai');
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'live-key' });
+    expect(await legacy.entry('openai')).toEqual({ ok: true, value: null });
+  });
+
   it('keeps serving the pending file copy while the keychain refuses', async () => {
     const home = await tempHome();
     await writeStoredEntries(home, { openai: { value: 'newest-key', state: 'pending' } });
