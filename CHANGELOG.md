@@ -14,31 +14,38 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.15] - 2026-07-28
+
 ### Added
 
 - `doctor` and the readiness payload name the resolved whisper binary and its
   engine (`whisper.cpp` or `openai-whisper (python, CPU)`): dependency statuses
   carry an `engine` field and the readiness transcriber component carries
-  `engine` and `binaryPath`.
+  `engine` and `binaryPath`
+  ([`1c16eed`](https://github.com/chomamateusz/ai-video-cataloger/commit/1c16eedb)).
 - `process` and `process-drive` accept `--provider <id>` to select a built-in
   analyzer provider by id (`openai`, `claude-code`, `codex`, `cursor-agent`,
   `local`, `gemini`), so harness providers no longer require a config write;
   it cannot be combined with the legacy `--analyzer` backend flag, which now
-  rejects unknown values during parsing.
+  rejects unknown values during parsing
+  ([`bc0fe3e`](https://github.com/chomamateusz/ai-video-cataloger/commit/bc0fe3e0)).
 - The readiness payload names the effective analyzer model, and `doctor` prints
   it as `(model: ...)` — `CLI default` for a harness provider left without a
-  configured model, which is when the harness CLI picks the model itself.
+  configured model, which is when the harness CLI picks the model itself
+  ([`2cbaa5a`](https://github.com/chomamateusz/ai-video-cataloger/commit/2cbaa5a5)).
 
 ### Fixed
 
 - Readiness for a configured Gemini-native analyzer no longer fails the
   response contract: the readiness analyzer family accepts every analyzer
-  family, not just `api`, `harness`, and `local`.
+  family, not just `api`, `harness`, and `local`
+  ([`115657e`](https://github.com/chomamateusz/ai-video-cataloger/commit/115657ea)).
 - An empty `~/.ai-video-cataloger/bin` directory is reported as an incomplete
   managed whisper install pointing at
   `ai-video-cataloger models whisper-runtime install`, instead of an absent one
   that silently fell through to a slower system whisper; readiness components
-  now carry that `warning` rather than dropping it.
+  now carry that `warning` rather than dropping it
+  ([`b58ea86`](https://github.com/chomamateusz/ai-video-cataloger/commit/b58ea867)).
 
 ## [0.5.14] - 2026-07-27
 
