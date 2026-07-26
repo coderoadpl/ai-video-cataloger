@@ -41,6 +41,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `doctor` stops reporting a degraded credentials backend once the Keychain
   answers again, including when the migration itself was the operation that
   succeeded.
+- Saving a credential from Settings while the macOS Keychain is unreachable no
+  longer looks frozen: after two seconds the dialog says it is waiting for the
+  Keychain and suggests unlocking it, instead of showing only `Saving…` for the
+  ~20s the two `security` calls take to time out.
 - The CLI credential prompt writes its question to stderr and decides on raw
   mode from the same stream it gates on (stdin), so `config set-credential
   --json` with stdout redirected no longer mixes the prompt into its NDJSON and

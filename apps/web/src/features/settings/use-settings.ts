@@ -18,12 +18,15 @@ import {
   type SettingsDraft,
 } from './settings-model.js';
 
+export const SLOW_SAVE_HINT_MS = 2000;
+
 export interface SettingsState {
   isLoading: boolean;
   error: string | null;
   draft: SettingsDraft | null;
   hasChanges: boolean;
   isSaving: boolean;
+  isSaveSlow: boolean;
   tiers: LocalAiTier[] | null;
   apiCredential: string;
   whisperApiCredential: string;
@@ -57,6 +60,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const [draft, setDraftState] = useState<SettingsDraft | null>(null);
   const [original, setOriginal] = useState<SettingsDraft | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isSaveSlow, setIsSaveSlow] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [apiCredential, setApiCredential] = useState('');
   const [whisperApiCredential, setWhisperApiCredential] = useState('');
@@ -109,6 +113,10 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     if (keys.length === 0 && apiCredential.length === 0 && whisperApiCredential.length === 0) return;
     void (async () => {
       setIsSaving(true);
+      setIsSaveSlow(false);
+      // A locked keychain answers only when `security` is killed, twice over, so the button
+      // alone would look frozen for ~20s.
+      const slowHint = setTimeout(() => setIsSaveSlow(true), SLOW_SAVE_HINT_MS);
       setSaveError(null);
       let allOk = true;
       for (const key of keys) {
@@ -147,7 +155,9 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
           setSaveError(apiErrorMessage(error, dictionary));
         }
       }
+      clearTimeout(slowHint);
       setIsSaving(false);
+      setIsSaveSlow(false);
       if (!allOk) return;
       setOriginal(draft);
       await configQuery.refetch();
@@ -182,6 +192,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     draft,
     hasChanges,
     isSaving,
+    isSaveSlow,
     tiers: requirementsQuery.data?.tiers ?? null,
     apiCredential,
     whisperApiCredential,

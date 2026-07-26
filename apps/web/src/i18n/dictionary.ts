@@ -439,6 +439,7 @@ export interface Dictionary {
     runSetupWizard: string;
     reset: string;
     saving: string;
+    savingKeychainHint: string;
     whisperModes: {
       local: { label: string; description: string };
       api: { label: string; description: string };
@@ -1014,6 +1015,7 @@ export const en: Dictionary = {
     runSetupWizard: 'Run Setup Wizard',
     reset: 'Reset',
     saving: 'Saving…',
+    savingKeychainHint: 'Waiting for the macOS Keychain — unlock it if it is locked.',
     whisperModes: {
       local: { label: 'Local (Whisper.cpp)', description: 'Uses local whisper.cpp binary' },
       api: { label: 'API (OpenAI)', description: 'Uses OpenAI Whisper API' },
@@ -1597,6 +1599,7 @@ export const pl: Dictionary = {
     runSetupWizard: 'Uruchom kreatora konfiguracji',
     reset: 'Resetuj',
     saving: 'Zapisywanie…',
+    savingKeychainHint: 'Czekam na pęk kluczy macOS — odblokuj go, jeśli jest zablokowany.',
     whisperModes: {
       local: { label: 'Lokalnie (Whisper.cpp)', description: 'Używa lokalnego pliku whisper.cpp' },
       api: { label: 'API (OpenAI)', description: 'Używa API OpenAI Whisper' },

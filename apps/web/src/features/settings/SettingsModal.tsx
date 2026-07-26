@@ -281,6 +281,11 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
             {dictionary.settingsModal.reset}
           </Button>
         ) : null}
+        {settings.isSaving && settings.isSaveSlow ? (
+          <Typography variant="caption" color="text.secondary" data-testid="settings-saving-hint">
+            {dictionary.settingsModal.savingKeychainHint}
+          </Typography>
+        ) : null}
         <Button color="inherit" onClick={onClose} disabled={settings.isSaving} data-testid="settings-cancel">
           {dictionary.common.cancel}
         </Button>

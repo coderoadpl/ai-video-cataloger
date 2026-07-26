@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -18,6 +18,7 @@ import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
 import { credentialDeletionMessage } from './settings-model.js';
 import { SettingsModal } from './SettingsModal.js';
+import { SLOW_SAVE_HINT_MS } from './use-settings.js';
 
 const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) =>
@@ -463,6 +464,24 @@ describe('settings modal', () => {
     expect(result.textContent).toBe(en.credentials.clearedBoth);
     expect(onClose).not.toHaveBeenCalled();
     expect(result.getAttribute('data-severity')).toBe('success');
+  });
+
+  it('says what a stalled save is waiting for instead of freezing on Saving…', async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    stubEndpoints(apiProviderConfig);
+    server.use(http.post('/api/credentials', () => new Promise(() => undefined)));
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    fireEvent.change(await screen.findByLabelText('API credential'), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(screen.getByTestId('settings-save').textContent).toBe(en.settingsModal.saving));
+    expect(screen.queryByTestId('settings-saving-hint')).toBeNull();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(SLOW_SAVE_HINT_MS);
+    });
+    expect(screen.getByTestId('settings-saving-hint').textContent).toBe(en.settingsModal.savingKeychainHint);
+    vi.useRealTimers();
   });
 
   it('stores an OpenAI credential for API transcription', async () => {
