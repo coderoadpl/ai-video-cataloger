@@ -14,33 +14,44 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.18] - 2026-07-28
+
 ### Added
 
 - The folder-scope catalog empty state now says how many videos the tree knows
   about in subfolders and offers a one-click switch to whole-tree scope; the
-  bare `No videos found` stays when the whole tree is empty.
+  bare `No videos found` stays when the whole tree is empty
+  ([`b1bd860`](https://github.com/chomamateusz/ai-video-cataloger/commit/b1bd8600)).
 - A stored provider key can be forgotten from the app: `DELETE /api/credentials`,
   `ai-video-cataloger config delete-credential <providerId> [--json]`, and a
   **Forget key** action beside the API key field in Settings. Each names the
-  backends it cleared and never echoes the key.
+  backends it cleared and never echoes the key
+  ([`3696634`](https://github.com/chomamateusz/ai-video-cataloger/commit/36966341)).
 
 ### Changed
 
 - Credential deletion answers with the backends it cleared and the ones that
   kept the key: when the Keychain refuses while the plaintext file was cleared,
   CLI and Settings say the removal was partial instead of claiming the key is
-  gone. `CredentialsStore.delete` and `SecretsStore.delete` carry that shape.
+  gone, and a keychain that kept the only copy is reported as nothing cleared,
+  never as a key that was not stored. `CredentialsStore.delete` and
+  `SecretsStore.delete` carry that shape
+  ([`3696634`](https://github.com/chomamateusz/ai-video-cataloger/commit/36966341),
+  [`6f59eb3`](https://github.com/chomamateusz/ai-video-cataloger/commit/6f59eb37)).
 - Model Manager closes from a footer Close button instead of Escape or a
   backdrop click only, every downloaded model carries its own contained
   `Activate` button, and both Delete actions (whisper models and local AI
-  tiers) render in the error palette.
+  tiers) render in the error palette
+  ([`c5145c2`](https://github.com/chomamateusz/ai-video-cataloger/commit/c5145c2b)).
 - The `Not Tracked` status token no longer renders grey-on-grey: its
   `theme.ts` palette entry moves to `#4e4e53` on `#e3e3e6` in light and
   `#c7c7cc` on a 20% tint in dark, which also lifts the search-result and
-  absent-file surfaces that share the token.
+  absent-file surfaces that share the token
+  ([`c5145c2`](https://github.com/chomamateusz/ai-video-cataloger/commit/c5145c2b)).
 - The terminal panel starts collapsed while it has no output, expands by itself
   on the first line, and stays wherever the user last put it once they toggle
-  it by hand.
+  it by hand
+  ([`c5145c2`](https://github.com/chomamateusz/ai-video-cataloger/commit/c5145c2b)).
 
 ## [0.5.17] - 2026-07-28
 
