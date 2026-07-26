@@ -14,39 +14,47 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.19] - 2026-07-28
+
 ### Fixed
 
 - Model Manager no longer marks a managed Whisper model `Active` while the
   effective runtime is the system `whisper-cli`, which never reads those files —
   a row could read `Base [Active] · Not downloaded [Download]`. The banner keeps
-  naming the runtime actually in use.
+  naming the runtime actually in use
+  ([`8e91fda`](https://github.com/chomamateusz/ai-video-cataloger/commit/8e91fda7)).
 - The Polish frame-count label declines properly: `1 klatka`, `2 klatki`,
   `5 klatek`, `22 klatki` instead of a fixed `klatek`. The English label now
-  also says `1 frame` rather than `1 frames`.
+  also says `1 frame` rather than `1 frames`
+  ([`f7e9e99`](https://github.com/chomamateusz/ai-video-cataloger/commit/f7e9e996)).
 - `config set ui_language` / `faces_enabled` run outside `$HOME` no longer write
   a per-folder override that nothing reads: these keys are app-wide, so the CLI
   and the API always write them to the home config regardless of the working
   directory, and `config get` reads them back from there. The `config set`
   response names the `scope` it wrote, `config get <key>` carries
   `ignoredFolderValue`, and the CLI prints a `warning:` line naming a stray
-  folder override it is ignoring.
+  folder override it is ignoring
+  ([`54aff96`](https://github.com/chomamateusz/ai-video-cataloger/commit/54aff96e)).
 - `Nested Databases Detected` no longer blocks re-opening a root the app itself
   analyzed in whole-tree scope. A nested `.ai-video-cataloger` that carries our
   `folder-id` marker is our own lineage: `check` now returns it in the new
   `ownNestedPaths` field and leaves `hasNestedDatabases` false (exit 0), so the
   folder opens. A nested catalog directory without the marker is still foreign
-  and still blocks the GUI open and exits `nested_databases_found`.
+  and still blocks the GUI open and exits `nested_databases_found`
+  ([`4cd55a8`](https://github.com/chomamateusz/ai-video-cataloger/commit/4cd55a84)).
 - Global search no longer fails with `Response data does not match the contract`
   (exit 10) once a read-only folder has been processed. A folder the app cannot
   write a marker into keeps a stable `path-<hash>` identity, but the contract
   still demanded a UUID; folder ids now travel as a named `folderIdSchema` union
-  of both forms, in the contract and in the catalog/snapshot domain schemas.
+  of both forms, in the contract and in the catalog/snapshot domain schemas
+  ([`31da9f9`](https://github.com/chomamateusz/ai-video-cataloger/commit/31da9f9e)).
 - `index forget` on a file inside a read-only folder now exits 0 instead of
   failing with `EACCES` (exit 10) after the global deletion had already
   happened. The folder-local catalog snapshot is skipped when the folder cannot
   be written, and the result says so: the response carries `snapshotSkipped` and
   the human line reads `Forgot <fingerprint> (folder snapshot not updated: the
-  folder is not writable)`.
+  folder is not writable)`
+  ([`3b6feef`](https://github.com/chomamateusz/ai-video-cataloger/commit/3b6feef0)).
 - The packaged CLI now finds the ffprobe shipped inside the app bundle. Its only
   bundled-ffprobe lookup went through the `@ffprobe-installer/ffprobe` wrapper
   package, which is not staged, so on a machine without a system ffprobe
@@ -55,51 +63,59 @@ release history jumps from `0.5.10` to `0.5.12`.
   through `node_modules`, which reaches
   `Resources/cli/node_modules -> app.asar.unpacked/node_modules`, and
   `verify:package` asserts both bundled binaries are reachable from the staged
-  CLI.
+  CLI ([`bbbcdcd`](https://github.com/chomamateusz/ai-video-cataloger/commit/bbbcdcd5)).
 - A folder watcher that fails while the app is running (for example the watched
   root disappearing) no longer takes the Electron main process down with an
   uncaught error: the watch ends, closes its handle and reports a `read_error`
-  to the caller, which drops the dead session.
+  to the caller, which drops the dead session
+  ([`5a65906`](https://github.com/chomamateusz/ai-video-cataloger/commit/5a659064)).
 - Gemini native analysis no longer loads the whole video into memory (twice) to
   upload it: files above the inline cutoff are streamed to the Files API in 8 MB
   chunks straight from disk, so a 300 MB clip peaks at ~40 MB of buffers instead
   of ~900 MB. A file above the Files API 2 GB limit is now refused up front with
   a message naming the limit, instead of failing as an unexplained read error
-  after the read was attempted.
+  after the read was attempted
+  ([`911dc24`](https://github.com/chomamateusz/ai-video-cataloger/commit/911dc242)).
 - The CLI credential prompts (`config set-credential` and `setup`) no longer
   write the typed key into the terminal at all. They previously relied on the
   ANSI conceal sequence, which only hides the characters visually and leaves the
-  key in scrollback, in a copied selection and in any `script`/tmux capture.
+  key in scrollback, in a copied selection and in any `script`/tmux capture
+  ([`ef8ebd1`](https://github.com/chomamateusz/ai-video-cataloger/commit/ef8ebd12)).
 - Keychain access runs the absolute `/usr/bin/security` instead of resolving
   `security` on `PATH`, so a shadowing binary earlier in `PATH` can no longer
-  see or serve API keys.
+  see or serve API keys
+  ([`e05ff53`](https://github.com/chomamateusz/ai-video-cataloger/commit/e05ff532)).
 - Overlapping writes to the plaintext credentials file no longer collide on a
   shared `credentials.json.tmp`: each write uses its own temporary file and an
   atomic rename, so concurrent saves stop failing with
   `Could not store provider credential` and the file can never be left
-  half-written.
+  half-written
+  ([`25d3912`](https://github.com/chomamateusz/ai-video-cataloger/commit/25d39129)).
 - Forgetting a key when the plaintext credentials file cannot be read now
   reports the partial removal (`cleared: keychain`, `retained: file`) instead of
-  a bare error that hid the Keychain removal that did happen.
+  a bare error that hid the Keychain removal that did happen
+  ([`4021430`](https://github.com/chomamateusz/ai-video-cataloger/commit/4021430b)).
 - A key saved while the Keychain was refusing writes is no longer discarded by
   the next migration: when the plaintext file and the Keychain hold different
   values for a provider, the file value wins, is write-verified into the
   Keychain and logged to `credentials-migration.ndjson` as
   `credential_value_conflict` (no secret in the line). An equal or absent file
-  value keeps the previous keychain-wins behaviour.
+  value keeps the previous keychain-wins behaviour
+  ([`bf417e6`](https://github.com/chomamateusz/ai-video-cataloger/commit/bf417e60)).
 - A transient Keychain failure no longer makes the running app read and write
   API keys from the plaintext file until it is relaunched: every credential
   operation tries the Keychain again, an `unavailable` keychain is re-probed on
   the next access, an incomplete migration is retried, and a key that had to
   fall back to the file is moved into the Keychain as soon as it accepts writes.
   `doctor` reports `degraded` while that is true and returns to `keychain` by
-  itself.
-
+  itself
+  ([`0faa2fd`](https://github.com/chomamateusz/ai-video-cataloger/commit/0faa2fd2)).
 - Forgetting a provider key now always reaches the Keychain: an earlier keychain
   failure in the same process no longer makes the deletion skip the Keychain and
   report an untouched pair of backends while the key was still stored there. A
   Keychain that refuses the removal is still reported as retained, and a key
-  held by both backends now names both as cleared.
+  held by both backends now names both as cleared
+  ([`54057bd`](https://github.com/chomamateusz/ai-video-cataloger/commit/54057bde)).
 
 ## [0.5.18] - 2026-07-28
 
