@@ -4,6 +4,7 @@ import {
   appError,
   batchSubmitRejection,
   defaultGeminiNativeProvider,
+  geminiNativeModelPricing,
   geminiUsageAccounting,
   ok,
   type AppError,
@@ -54,11 +55,11 @@ const configuredInput: ProcessDriveInput = {
   geminiBatchExplicit: undefined,
 };
 
-const batchAnalysis = (): AnalysisOutput => ({
+const batchAnalysis = (model: string): AnalysisOutput => ({
   rawResponse: RESPONSE_TEXT,
   usage: geminiUsageAccounting(
     { promptTokens: 1000, candidatesTokens: 500, thoughtsTokens: 500 },
-    { pricePerMTokensInput: 0.75, pricePerMTokensOutput: 3.75 },
+    geminiNativeModelPricing(model, 'batch') ?? {},
   ),
   transcript: { text: 'czesc', segments: [{ start: 1, end: 2, text: 'czesc' }] },
 });
@@ -77,6 +78,7 @@ class FakeBatchPort implements AnalyzerBatchPort {
   readonly submissions: { displayName: string; keys: string[] }[] = [];
   readonly lookups: string[] = [];
   readonly polls: string[] = [];
+  readonly pollModels: string[] = [];
   readonly released: string[] = [];
   private statusIndex = 0;
 
@@ -119,8 +121,9 @@ class FakeBatchPort implements AnalyzerBatchPort {
     return Promise.resolve(ok({ retained: this.options.retainedUploads ?? 0 }));
   }
 
-  batchStatus(input: { jobName: string; requestKeys: readonly string[] }): Promise<Result<AnalyzerBatchStatus, AppError>> {
+  batchStatus(input: { jobName: string; requestKeys: readonly string[]; model: string }): Promise<Result<AnalyzerBatchStatus, AppError>> {
     this.polls.push(input.jobName);
+    this.pollModels.push(input.model);
     const statuses = this.options.statuses ?? [];
     const status = statuses[Math.min(this.statusIndex, statuses.length - 1)];
     this.statusIndex += 1;
@@ -132,7 +135,7 @@ class FakeBatchPort implements AnalyzerBatchPort {
       results: status.results === null
         ? null
         : input.requestKeys.map((key) => status.results?.find((result) => result.key === key)
-          ?? { key, outcome: ok(batchAnalysis()) }),
+          ?? { key, outcome: ok(batchAnalysis(input.model)) }),
     }));
   }
 }
@@ -692,6 +695,46 @@ describe('gemini batch drive runs', () => {
     });
     const stored = await deps.globalCatalog.latestDriveRun();
     expect(stored.ok && stored.value?.batch?.model).toBe(submittedModel);
+  });
+
+  it('stamps and prices a re-attached answer with the job model, not the one that replaced it', async () => {
+    const interrupted = new FakeBatchPort({ statuses: [{ state: 'running', message: null, results: null }] });
+    const deps = makeDeps(interrupted);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    await processDrive(deps, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-a',
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: () => Promise.reject(new Error('killed')),
+    }).catch(() => undefined);
+    const submitted = await deps.globalCatalog.latestDriveRun();
+    expect(submitted.ok && submitted.value?.batch?.model).toBe('gemini-3.6-flash');
+    await deps.config.set(
+      { kind: 'home' },
+      'analyzer_provider',
+      JSON.stringify(defaultGeminiNativeProvider('gemini-flash-lite-latest')),
+    );
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()] });
+    const { progress, events } = recordingProgress();
+    const second = await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, progress, {
+      ...runOptions,
+      runId: 'run-c',
+      now: () => new Date('2026-01-01T02:00:00.000Z'),
+    });
+
+    expect(second).toMatchObject({ ok: true, value: { filesDone: 1, filesFailed: 0 } });
+    expect(resumed.pollModels).toEqual(['gemini-3.6-flash']);
+    const file = await deps.globalCatalog.getFile('hash-one');
+    expect(file.ok && file.value?.model).toBe('gemini-3.6-flash');
+    const usage = events.find((event) => event.step === 'analyzing_with_claude' && event.data?.usage !== undefined);
+    expect(usage?.data).toMatchObject({
+      model: 'gemini-3.6-flash',
+      pricingMode: 'batch',
+      usage: { estimatedCostUsd: (1000 * 0.75 + 1000 * 3.75) / 1_000_000 },
+    });
   });
 
   it('honours a folder that opts out of the batch root', async () => {

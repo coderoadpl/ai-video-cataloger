@@ -526,6 +526,7 @@ export interface AnalyzerBatchPort {
   batchStatus(input: {
     provider: AnalyzerProviderConfig;
     jobName: string;
+    model: string;
     requestKeys: readonly string[];
     signal?: AbortSignal | undefined;
   }): Promise<Result<AnalyzerBatchStatus, AppError>>;

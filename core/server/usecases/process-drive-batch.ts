@@ -66,6 +66,7 @@ export interface AwaitBatchResultsInput {
   analyzerBatch: AnalyzerBatchPort;
   provider: AnalyzerProviderConfig;
   jobName: string;
+  model: string;
   requestKeys: readonly string[];
   progress?: JobExecutionContext | undefined;
   sleep: (milliseconds: number) => Promise<void>;
@@ -83,6 +84,7 @@ export const awaitBatchResults = async (
     const status = await input.analyzerBatch.batchStatus({
       provider: input.provider,
       jobName: input.jobName,
+      model: input.model,
       requestKeys: input.requestKeys,
       ...(input.progress === undefined ? {} : { signal: input.progress.signal }),
     });

@@ -627,6 +627,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
     analyzerBatch: plan.analyzerBatch,
     provider: plan.provider,
     jobName: job.value.jobName,
+    model,
     requestKeys: requests.map((request) => request.key),
     progress,
     sleep: pass.options.sleep ?? sleep,
@@ -666,7 +667,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
           pass.deps,
           {
             ...processInput(pass.input, pending.video.path, pending.fileIndex, state.filesTotal),
-            precomputedAnalysis: { analysis: outcome.value, pricingMode: 'batch' },
+            precomputedAnalysis: { analysis: outcome.value, pricingMode: 'batch', model },
           },
           progress,
         )

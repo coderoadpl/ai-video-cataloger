@@ -120,6 +120,15 @@ run keeps polling and mapping the job it already paid for, records the answers
 under the job's own model, and emits one `batch_model_changed` event naming both
 models. The new model takes effect on the next run that submits.
 
+"Records under the job's model" is the whole answer path, not the run record
+alone: the job's model travels with each answer (`PrecomputedAnalysis.model`)
+into the `files.model` column, into the per-file usage event, and into
+`batchStatus`, which prices the answers from it. A `pricePerMTokens*` override
+stored on the provider describes the model it was set for, so it is applied only
+while that model still matches the job's; a drifted job is priced from the
+published table for its own model, and an unknown model yields no cost estimate
+rather than a wrong one.
+
 **6. Expiry is per-file honesty, not a crash.** The Files API holds an upload
 for 48 h and a batch job is not eternal either. A re-attach whose job answers
 `404`, `JOB_STATE_EXPIRED`, or whose per-request errors name a missing file

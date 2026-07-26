@@ -137,6 +137,17 @@ export const geminiProviderPricing = (
   return fromModel ?? {};
 };
 
+// The answers belong to the model the job was submitted with; a price override stored on the
+// provider describes the model it was set for, so a job whose model has since changed is priced
+// from the published table for its own model instead.
+const batchAnswerPricing = (
+  provider: GeminiNativeProvider,
+  jobModel: string,
+): { pricePerMTokensInput?: number | undefined; pricePerMTokensOutput?: number | undefined } =>
+  jobModel === provider.model
+    ? geminiProviderPricing(provider, 'batch')
+    : geminiNativeModelPricing(jobModel, 'batch') ?? {};
+
 export const buildGeminiPrompt = (input: { videoName: string; outputLanguage: string }): string =>
   `You are analyzing a video file named "${input.videoName}". You can see the video and hear its full audio track: speech, music and ambient sound.
 
@@ -420,6 +431,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
   async batchStatus(input: {
     provider: AnalyzerProviderConfig;
     jobName: string;
+    model: string;
     requestKeys: readonly string[];
     signal?: AbortSignal | undefined;
   }): Promise<Result<AnalyzerBatchStatus, AppError>> {
@@ -469,7 +481,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     return ok({
       state,
       message: null,
-      results: batchResults(operation.value, input.requestKeys, geminiProviderPricing(provider, 'batch')),
+      results: batchResults(operation.value, input.requestKeys, batchAnswerPricing(provider, input.model)),
     });
   }
 

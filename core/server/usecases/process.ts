@@ -89,6 +89,7 @@ export interface ProcessPipelineInput {
 export interface PrecomputedAnalysis {
   analysis: AnalysisOutput;
   pricingMode: GeminiPricingMode;
+  model: string;
 }
 
 export interface ProcessCompletedOutput {
@@ -553,7 +554,7 @@ const runNativePipeline = async (
       const reportedUsage = await reportAnalyzerUsage(
         progress,
         analyzed.value.usage,
-        resolved.analyzer.provider,
+        analysisModel(resolved),
         video.originalPath,
         resolved.batch,
         resolved.precomputedAnalysis?.pricingMode ?? 'interactive',
@@ -626,7 +627,7 @@ const writeNativeTranscript = async (
 const reportAnalyzerUsage = async (
   progress: JobExecutionContext | undefined,
   usage: GeminiUsageAccounting,
-  provider: AnalyzerProviderConfig,
+  model: string | null,
   videoPath: string,
   batch: ProcessBatchContext,
   pricingMode: GeminiPricingMode,
@@ -638,7 +639,7 @@ const reportAnalyzerUsage = async (
     total: batch.total,
     data: {
       video: videoPath,
-      model: provider.family === 'gemini-native' ? provider.model : null,
+      model,
       pricingMode,
       usage: {
         promptTokens: usage.promptTokens,
@@ -1267,7 +1268,7 @@ const recordGlobalCatalog = async (
       gpsLon: probe.value.gpsLon,
       processedAt: new Date().toISOString(),
       analyzer: provider.providerId,
-      model: analyzerModel(provider),
+      model: analysisModel(resolved),
       finalName: newName,
       description: summary.value?.description ?? null,
       transcript: transcript.value,
@@ -1290,6 +1291,11 @@ const flushGlobalCatalog = async (deps: ProcessDeps): Promise<Result<void, AppEr
   if (deps.globalCatalog === undefined) return ok(undefined);
   return deps.globalCatalog.flush();
 };
+
+// A batch answer was bought from the model its job was submitted with, whatever the configuration
+// resolves to by the time the run that re-attaches records it.
+const analysisModel = (resolved: PipelineOptions): string | null =>
+  resolved.precomputedAnalysis?.model ?? analyzerModel(resolved.analyzer.provider);
 
 const analyzerModel = (provider: AnalyzerProviderConfig): string | null => {
   if (provider.family === 'local') return provider.modelTag;

@@ -174,9 +174,9 @@ describe('gemini batch lifecycle', () => {
       },
     });
 
-    const first = await adapter.batchStatus({ provider: provider(), jobName: 'batches/42', requestKeys: ['r0'] });
-    const second = await adapter.batchStatus({ provider: provider(), jobName: 'batches/42', requestKeys: ['r0'] });
-    const third = await adapter.batchStatus({ provider: provider(), jobName: 'batches/42', requestKeys: ['r0'] });
+    const first = await adapter.batchStatus({ provider: provider(), model: 'gemini-3.6-flash', jobName: 'batches/42', requestKeys: ['r0'] });
+    const second = await adapter.batchStatus({ provider: provider(), model: 'gemini-3.6-flash', jobName: 'batches/42', requestKeys: ['r0'] });
+    const third = await adapter.batchStatus({ provider: provider(), model: 'gemini-3.6-flash', jobName: 'batches/42', requestKeys: ['r0'] });
 
     expect(first).toMatchObject({ ok: true, value: { state: 'pending', results: null } });
     expect(second).toMatchObject({ ok: true, value: { state: 'running', results: null } });
@@ -213,6 +213,7 @@ describe('gemini batch lifecycle', () => {
 
     const status = await adapter.batchStatus({
       provider: provider(),
+      model: 'gemini-3.6-flash',
       jobName: 'batches/7',
       requestKeys: ['r0', 'r1', 'r2'],
     });
@@ -223,6 +224,29 @@ describe('gemini batch lifecycle', () => {
     expect(status.value.results[0]?.outcome.ok).toBe(true);
     expect(status.value.results[1]?.outcome).toMatchObject({ ok: false, error: { code: 'rate_limited' } });
     expect(status.value.results[2]?.outcome).toMatchObject({ ok: false, error: { code: 'provider_error' } });
+  });
+
+  it('prices the answers at the job model rate when the configured model has moved on', async () => {
+    const { fetchImpl } = recordingFetch(() =>
+      jsonResponse({
+        name: 'batches/9',
+        done: true,
+        metadata: { state: 'JOB_STATE_SUCCEEDED' },
+        response: { inlinedResponses: { inlinedResponses: [{ response: answer(RESPONSE_TEXT), metadata: { key: 'r0' } }] } },
+      }));
+
+    const status = await adapterWith(fetchImpl).batchStatus({
+      provider: provider({ model: 'gemini-flash-lite-latest', pricePerMTokensInput: 0.1, pricePerMTokensOutput: 0.4 }),
+      model: 'gemini-3.6-flash',
+      jobName: 'batches/9',
+      requestKeys: ['r0'],
+    });
+
+    expect(status.ok && status.value.results?.[0]?.outcome.ok).toBe(true);
+    if (!status.ok || status.value.results === null) throw new Error('expected results');
+    const outcome = status.value.results[0]?.outcome;
+    expect(outcome?.ok === true && outcome.value.usage?.estimatedCostUsd)
+      .toBe((1000 * 0.75 + 1000 * 3.75) / 1_000_000);
   });
 
   it('falls back to request order when the API drops the metadata key', async () => {
@@ -236,6 +260,7 @@ describe('gemini batch lifecycle', () => {
 
     const status = await adapterWith(fetchImpl).batchStatus({
       provider: provider(),
+      model: 'gemini-3.6-flash',
       jobName: 'batches/8',
       requestKeys: ['r0', 'r1'],
     });
@@ -249,6 +274,7 @@ describe('gemini batch lifecycle', () => {
 
     const status = await adapterWith(fetchImpl).batchStatus({
       provider: provider(),
+      model: 'gemini-3.6-flash',
       jobName: 'batches/gone',
       requestKeys: ['r0'],
     });
@@ -267,6 +293,7 @@ describe('gemini batch lifecycle', () => {
 
     const status = await adapterWith(fetchImpl).batchStatus({
       provider: provider(),
+      model: 'gemini-3.6-flash',
       jobName: 'batches/9',
       requestKeys: ['r0'],
     });
@@ -412,6 +439,7 @@ describe('gemini batch lifecycle', () => {
 
     const status = await adapterWith(fetchImpl).batchStatus({
       provider: provider(),
+      model: 'gemini-3.6-flash',
       jobName: 'batches/9',
       requestKeys: ['r0'],
     });
@@ -430,6 +458,7 @@ describe('gemini batch lifecycle', () => {
 
     const status = await adapterWith(fetchImpl).batchStatus({
       provider: provider(),
+      model: 'gemini-3.6-flash',
       jobName: 'batches/9',
       requestKeys: ['r0'],
     });
@@ -442,6 +471,7 @@ describe('gemini batch lifecycle', () => {
 
     const status = await adapterWith(fetchImpl).batchStatus({
       provider: provider(),
+      model: 'gemini-3.6-flash',
       jobName: 'batches/9',
       requestKeys: ['r0'],
     });
@@ -466,6 +496,7 @@ describe('gemini batch lifecycle', () => {
 
     const status = await adapterWith(fetchImpl).batchStatus({
       provider: provider(),
+      model: 'gemini-3.6-flash',
       jobName: 'batches/9',
       requestKeys: ['r0', 'r1', 'r2'],
     });

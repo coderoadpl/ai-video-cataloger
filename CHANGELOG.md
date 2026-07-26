@@ -23,6 +23,14 @@ release history jumps from `0.5.10` to `0.5.12`.
   other folder — including ones the catalog has never seen — are refused
   instead of served.
 
+### Fixed
+
+- A re-attached Gemini batch run records its answers under the model the job
+  was submitted with: the file's stored model, the per-file usage event and the
+  cost rates all name the job's model, not the one the configuration has moved
+  to since. A price override stored on the provider is applied only while its
+  model still matches the job's.
+
 ## [0.5.24] - 2026-07-29
 
 ### Changed
