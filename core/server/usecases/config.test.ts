@@ -97,6 +97,7 @@ describe('config use-cases', () => {
       local_model: 'home:model',
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'home:model' }),
       faces_enabled: 'true',
+      gemini_batch_mode: 'false',
       output_language: 'pl',
       ui_language: 'pl',
     } as const;
@@ -125,6 +126,7 @@ describe('config use-cases', () => {
           local_model: 'home',
           analyzer_provider: 'home',
           faces_enabled: 'home',
+          gemini_batch_mode: 'home',
           output_language: 'home',
           ui_language: 'home',
         },
@@ -187,6 +189,7 @@ describe('config use-cases', () => {
       local_model: 'home:model',
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'home:model' }),
       faces_enabled: 'false',
+      gemini_batch_mode: 'false',
       output_language: 'en',
       ui_language: 'en',
     } as const;
@@ -203,6 +206,7 @@ describe('config use-cases', () => {
       local_model: 'folder:model',
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'folder:model' }),
       faces_enabled: 'true',
+      gemini_batch_mode: 'false',
       output_language: 'pl',
       ui_language: 'pl',
     } as const;
@@ -239,6 +243,7 @@ describe('config use-cases', () => {
           local_model: 'folder',
           analyzer_provider: 'folder',
           faces_enabled: 'home',
+          gemini_batch_mode: 'folder',
           output_language: 'folder',
           ui_language: 'home',
         },

@@ -66,6 +66,7 @@ export const configValueSchema = z.object({
   local_model: z.string().min(1).default('gemma3:12b'),
   analyzer_provider: z.preprocess(providerFromPersistedValue, analyzerProviderConfigSchema.optional()),
   faces_enabled: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
+  gemini_batch_mode: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
   output_language: outputLanguageSchema.default('auto'),
   ui_language: uiLanguageSchema.default('en'),
 });
@@ -91,6 +92,7 @@ export const CONFIG_KEYS = [
   'local_model',
   'analyzer_provider',
   'faces_enabled',
+  'gemini_batch_mode',
   'output_language',
   'ui_language',
 ] as const;
@@ -119,6 +121,7 @@ export const configDescriptions: Record<ConfigKey, string> = {
   local_model: 'Local AI model tag',
   analyzer_provider: 'Analyzer provider configuration',
   faces_enabled: 'Experimental local face grouping (opt-in, all data stays on this machine)',
+  gemini_batch_mode: 'Send gemini-native drive runs through the Gemini Batch API (half price, results may take up to 24h)',
   output_language: 'Language for generated descriptions and filenames (auto, en, pl, or a BCP-47 code)',
   ui_language: 'Language of the desktop app interface (en, pl)',
 };

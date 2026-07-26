@@ -365,6 +365,7 @@ export const storedConfigSchema = z.object({
   local_model: z.string().nullable(),
   analyzer_provider: z.string().nullable(),
   faces_enabled: z.string().nullable(),
+  gemini_batch_mode: z.string().nullable(),
   output_language: z.string().nullable(),
   ui_language: z.string().nullable(),
 });
@@ -382,6 +383,7 @@ export const storedConfigDefaultsSchema = z.object({
   local_model: z.string(),
   analyzer_provider: z.string(),
   faces_enabled: z.string(),
+  gemini_batch_mode: z.string(),
   output_language: z.string(),
   ui_language: z.string(),
 });
@@ -399,6 +401,7 @@ export const configValueSourcesSchema = z.object({
   local_model: z.enum(['folder', 'home', 'default']),
   analyzer_provider: z.enum(['folder', 'home', 'default']),
   faces_enabled: z.enum(['folder', 'home', 'default']),
+  gemini_batch_mode: z.enum(['folder', 'home', 'default']),
   output_language: z.enum(['folder', 'home', 'default']),
   ui_language: z.enum(['folder', 'home', 'default']),
 });

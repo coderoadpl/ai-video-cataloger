@@ -301,13 +301,24 @@ export const GEMINI_NATIVE_MODELS: readonly GeminiNativeModel[] = [
 
 export const geminiNativeModelIds = (): readonly string[] => GEMINI_NATIVE_MODELS.map((model) => model.id);
 
+export type GeminiPricingMode = 'interactive' | 'batch';
+
+export const GEMINI_BATCH_PRICE_MULTIPLIER = 0.5;
+
+export const geminiPricingModeMultiplier = (mode: GeminiPricingMode): number =>
+  mode === 'batch' ? GEMINI_BATCH_PRICE_MULTIPLIER : 1;
+
 export const geminiNativeModelPricing = (
   modelId: string,
+  mode: GeminiPricingMode = 'interactive',
 ): { pricePerMTokensInput: number; pricePerMTokensOutput: number } | null => {
   const model = GEMINI_NATIVE_MODELS.find((candidate) => candidate.id === modelId);
-  return model === null || model === undefined
-    ? null
-    : { pricePerMTokensInput: model.pricePerMTokensInput, pricePerMTokensOutput: model.pricePerMTokensOutput };
+  if (model === null || model === undefined) return null;
+  const multiplier = geminiPricingModeMultiplier(mode);
+  return {
+    pricePerMTokensInput: model.pricePerMTokensInput * multiplier,
+    pricePerMTokensOutput: model.pricePerMTokensOutput * multiplier,
+  };
 };
 
 export const defaultGeminiNativeProvider = (

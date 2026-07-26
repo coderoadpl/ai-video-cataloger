@@ -49,12 +49,14 @@ const defaults = {
     promptStyle: 'file-urls',
   }),
   faces_enabled: 'false',
+  gemini_batch_mode: 'false',
   output_language: 'auto',
   ui_language: 'en',
 };
 
 const emptyConfig: StoredConfig = {
   whisper_binary_path: null,
+  gemini_batch_mode: null,
   whisper_model: null,
   whisper_mode: null,
   whisper_api_base_url: null,
@@ -117,6 +119,7 @@ const stubEndpoints = (
     local_model: config.local_model ?? defaults.local_model,
     analyzer_provider: config.analyzer_provider ?? defaults.analyzer_provider,
     faces_enabled: config.faces_enabled ?? defaults.faces_enabled,
+    gemini_batch_mode: config.gemini_batch_mode ?? defaults.gemini_batch_mode,
     output_language: config.output_language ?? defaults.output_language,
     ui_language: config.ui_language ?? defaults.ui_language,
   };
@@ -135,6 +138,7 @@ const stubEndpoints = (
     faces_enabled: config.faces_enabled === null ? 'default' : 'folder',
     output_language: config.output_language === null ? 'default' : 'folder',
     ui_language: config.ui_language === null ? 'default' : 'folder',
+    gemini_batch_mode: config.gemini_batch_mode === null ? 'default' : 'folder',
   } as const;
   server.use(
     http.get('/api/config', ({ request }) => {
@@ -196,6 +200,7 @@ describe('settings modal', () => {
       local_model: 'default',
       analyzer_provider: 'default',
       faces_enabled: 'default',
+      gemini_batch_mode: 'default',
       output_language: 'default',
       ui_language: 'default',
     } as const;
