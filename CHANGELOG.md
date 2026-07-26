@@ -14,6 +14,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Thumbnails and extracted frames of a read-only folder are shown in the
+  desktop app again. Those artifacts live in the home mirror
+  (`~/.ai-video-cataloger/read-only-folders/<folderId>/`), which the `media://`
+  scope did not cover, so every request for one was answered with `403` and the
+  gallery fell back to placeholders. The mirror root joins the faces root as a
+  fixed home scope, and a path that only appears to be inside it — traversal,
+  symlink escape, a video smuggled in — is still refused.
+
 ## [0.5.23] - 2026-07-29
 
 ### Fixed

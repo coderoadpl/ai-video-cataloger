@@ -16,6 +16,7 @@ import { buildDesktopPath, userDataDirectoryOverride } from './environment.js';
 import { cleanupIpcHandlers, registerIpcHandlers } from './ipc.js';
 import { createApplicationMenu } from './menu.js';
 import { registerMediaProtocolHandler, registerMediaScheme } from './media-protocol.js';
+import { catalogMediaRoots } from './media-scope.js';
 import { attachWindowStateHandlers, loadWindowState, windowStatePath } from './window-state.js';
 
 const currentFile = fileURLToPath(import.meta.url);
@@ -129,7 +130,7 @@ const bootstrap = async (): Promise<void> => {
       if (folderStore === null) return Promise.resolve(null);
       return folderStore.getCurrent();
     },
-    getFacesRoot: () => Promise.resolve(path.join(homedir(), '.ai-video-cataloger', 'faces')),
+    getCatalogMediaRoots: () => Promise.resolve(catalogMediaRoots(homedir())),
   });
 
   let resolveDesktopApp!: (value: App) => void;

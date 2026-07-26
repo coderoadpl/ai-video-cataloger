@@ -5,6 +5,13 @@ const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const ALLOWED_VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm']);
 const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
 
+// A folder the app cannot write keeps its thumbnails and frames in the home mirror, not beside the
+// video, so scoping media to the opened folder alone leaves every read-only folder blank.
+export const catalogMediaRoots = (homeDirectory: string): readonly string[] => [
+  path.join(homeDirectory, '.ai-video-cataloger', 'faces'),
+  path.join(homeDirectory, '.ai-video-cataloger', 'read-only-folders'),
+];
+
 export const parseMediaUrl = (urlValue: string): string | null => {
   try {
     const url = new URL(urlValue);

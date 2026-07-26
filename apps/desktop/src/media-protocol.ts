@@ -5,7 +5,7 @@ import { serveFile } from './media-serve.js';
 
 export interface MediaProtocolDeps {
   getCurrentFolder(): Promise<string | null>;
-  getFacesRoot?(): Promise<string | null>;
+  getCatalogMediaRoots?(): Promise<readonly string[]>;
 }
 
 export const registerMediaScheme = (): void => {
@@ -19,11 +19,10 @@ export const registerMediaProtocolHandler = (deps: MediaProtocolDeps): void => {
     const requestedPath = parseMediaUrl(request.url);
     if (requestedPath === null) return new Response(null, { status: 403 });
 
-    const facesRoot = await deps.getFacesRoot?.();
     const realPath = await resolveScopedMedia(
       requestedPath,
       await deps.getCurrentFolder(),
-      facesRoot === undefined || facesRoot === null ? [] : [facesRoot],
+      (await deps.getCatalogMediaRoots?.()) ?? [],
     );
     if (realPath === null) return new Response(null, { status: 403 });
 
