@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.16] - 2026-07-28
+
 ### Changed
 
 - API keys stored in `~/.ai-video-cataloger/credentials.json` migrate into the
@@ -23,7 +25,9 @@ release history jumps from `0.5.10` to `0.5.12`.
   `--json`) and `config set-credential` now name the backend holding the keys,
   and doctor warns when the Keychain was expected but unreachable. A Keychain
   failure falls back to the plaintext file instead of failing the command
-  ([ADR-0007](docs/decisions/0007-credentials-in-keychain.md)).
+  ([ADR-0007](docs/decisions/0007-credentials-in-keychain.md),
+  [`587d2eb`](https://github.com/chomamateusz/ai-video-cataloger/commit/587d2eb7),
+  [`0be0931`](https://github.com/chomamateusz/ai-video-cataloger/commit/0be0931c)).
 
 ## [0.5.15] - 2026-07-28
 
