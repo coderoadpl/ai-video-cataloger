@@ -21,6 +21,14 @@ release history jumps from `0.5.10` to `0.5.12`.
   carry an `engine` field and the readiness transcriber component carries
   `engine` and `binaryPath`.
 
+### Fixed
+
+- An empty `~/.ai-video-cataloger/bin` directory is reported as an incomplete
+  managed whisper install pointing at
+  `ai-video-cataloger models whisper-runtime install`, instead of an absent one
+  that silently fell through to a slower system whisper; readiness components
+  now carry that `warning` rather than dropping it.
+
 ## [0.5.14] - 2026-07-27
 
 ### Added

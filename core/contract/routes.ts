@@ -619,6 +619,7 @@ export const readinessComponentSchema = z.object({
   available: z.boolean(),
   message: z.string(),
   suggestedAction: z.string().nullable(),
+  warning: z.string().nullable().default(null),
 });
 
 export const readinessOutputSchema = z.object({

@@ -204,6 +204,27 @@ describe('configured readiness', () => {
     });
   });
 
+  it('carries a degraded transcriber warning instead of reporting a plain available runtime', async () => {
+    const provider = providers.find((candidate) => candidate.family === 'harness');
+    if (provider === undefined) throw new Error('Expected harness provider fixture');
+    const deps = await configuredDeps(provider, true);
+    deps.transcriber.dependencyValue = {
+      ...dependency('whisper', true),
+      engine: 'openai-whisper',
+      warning: 'The managed whisper.cpp runtime is present but incomplete',
+    };
+
+    const result = await getReadiness(deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        ready: true,
+        transcriber: { warning: 'The managed whisper.cpp runtime is present but incomplete' },
+      },
+    });
+  });
+
   it('caches by folder and refreshes on demand', async () => {
     const provider = providers.find((candidate) => candidate.family === 'harness');
     if (provider === undefined) throw new Error('Expected harness provider fixture');

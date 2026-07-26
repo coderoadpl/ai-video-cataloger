@@ -36,6 +36,7 @@ const readiness = (options: {
     available: options.analyzerAvailable ?? true,
     message: 'checked',
     suggestedAction: null,
+    warning: null,
   },
   transcriber: {
     kind: 'transcriber' as const,
@@ -45,6 +46,7 @@ const readiness = (options: {
     available: options.transcriberAvailable ?? true,
     message: 'checked',
     suggestedAction: null,
+    warning: null,
     engine: null,
     binaryPath: null,
   },

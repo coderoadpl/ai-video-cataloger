@@ -19,6 +19,7 @@ const readiness = {
     available: false,
     message: 'openrouter is unavailable',
     suggestedAction: 'Store a credential. Run: ai-video-cataloger setup',
+    warning: null,
   },
   transcriber: {
     kind: 'transcriber' as const,
@@ -28,6 +29,7 @@ const readiness = {
     available: true,
     message: 'transcription-skip is available',
     suggestedAction: null,
+    warning: null,
     engine: null,
     binaryPath: null,
   },
@@ -37,6 +39,7 @@ const readiness = {
     available: false,
     message: 'openrouter is unavailable',
     suggestedAction: 'Store a credential. Run: ai-video-cataloger setup',
+    warning: null,
   }],
   suggestedAction: 'Store a credential. Run: ai-video-cataloger setup',
 };

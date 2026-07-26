@@ -29,6 +29,7 @@ const configured: DoctorResult['configured'] = {
     available: true,
     message: 'claude-code is available',
     suggestedAction: null,
+    warning: null,
   },
   transcriber: {
     kind: 'transcriber',
@@ -38,6 +39,7 @@ const configured: DoctorResult['configured'] = {
     available: true,
     message: 'whisper-base is available',
     suggestedAction: null,
+    warning: null,
     engine: null,
     binaryPath: null,
   },
@@ -131,6 +133,7 @@ describe('prerequisites modal', () => {
         available: false,
         message: 'openrouter is unavailable',
         suggestedAction: 'Add the selected folder API key',
+        warning: null,
       }],
       suggestedAction: 'Add the selected folder API key',
     };

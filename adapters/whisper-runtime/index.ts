@@ -1,7 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
-import { access, chmod, copyFile, mkdir, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, chmod, copyFile, mkdir, readdir, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
 import path from 'node:path';
 
@@ -556,7 +556,15 @@ const managedRuntimeState = async (homeDirectory: string): Promise<'installed' |
   const binaryPath = managedWhisperBinaryPath(homeDirectory);
   if (await nonEmptyExecutable(binaryPath)) return 'installed';
   if (await pathExists(binaryPath) || await pathExists(whisperRuntimeDirectory(homeDirectory))) return 'incomplete';
-  return 'absent';
+  return await isEmptyDirectory(path.dirname(binaryPath)) ? 'incomplete' : 'absent';
+};
+
+const isEmptyDirectory = async (candidate: string): Promise<boolean> => {
+  try {
+    return (await readdir(candidate)).length === 0;
+  } catch {
+    return false;
+  }
 };
 
 const parseVersion = (output: string): string => {

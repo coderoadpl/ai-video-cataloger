@@ -18,6 +18,7 @@ export type ReadinessComponent = {
   available: boolean;
   message: string;
   suggestedAction: string | null;
+  warning: string | null;
 };
 
 export interface ReadinessOutput {
@@ -139,6 +140,7 @@ const component = (
   available: dependency.available,
   message: dependency.available ? `${name} is available` : `${name} is unavailable`,
   suggestedAction: dependency.available ? null : setupGuidance(dependency.installHint),
+  warning: dependency.warning ?? null,
 });
 
 const setupGuidance = (hint: string): string => {

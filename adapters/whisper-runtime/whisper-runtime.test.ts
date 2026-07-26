@@ -104,7 +104,7 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     const adapter = new ManagedWhisperRuntimeAdapter({ config, homeDirectory: home, commandRunner: runner });
 
     const managed = await adapter.status();
-    await rm(managedPath, { force: true });
+    await rm(path.dirname(managedPath), { recursive: true, force: true });
     const system = await adapter.status();
 
     expect(managed).toMatchObject({ ok: true, value: { source: 'managed', path: managedPath, engine: 'whisper-cli' } });
@@ -159,6 +159,68 @@ describe('ManagedWhisperRuntimeAdapter', () => {
         message: MANAGED_WHISPER_INCOMPLETE_MESSAGE,
       },
     });
+  });
+
+  it.each([
+    {
+      state: 'an empty managed bin directory',
+      prepare: async (managedPath: string) => {
+        await mkdir(path.dirname(managedPath), { recursive: true });
+      },
+    },
+    {
+      state: 'a non-executable managed binary',
+      prepare: async (managedPath: string) => {
+        await mkdir(path.dirname(managedPath), { recursive: true });
+        await writeFile(managedPath, 'wrapper', 'utf8');
+        await chmod(managedPath, 0o644);
+      },
+    },
+  ])('reports $state as an incomplete managed install', async ({ prepare }) => {
+    const home = await tempHome();
+    await prepare(managedWhisperBinaryPath(home));
+    const runner = new FakeRunner(WHISPER_BOTTLE_SPECS);
+    runner.missingTools.add('whisper-cli');
+    const adapter = new ManagedWhisperRuntimeAdapter({ config: new InMemoryConfig(), homeDirectory: home, commandRunner: runner });
+
+    const status = await adapter.status();
+
+    expect(status).toMatchObject({
+      ok: true,
+      value: { available: false, managedInstalled: false, message: MANAGED_WHISPER_INCOMPLETE_MESSAGE },
+    });
+  });
+
+  it('reports a healthy managed install without an incomplete message', async () => {
+    const home = await tempHome();
+    await executable(managedWhisperBinaryPath(home), 'wrapper');
+    const adapter = new ManagedWhisperRuntimeAdapter({
+      config: new InMemoryConfig(),
+      homeDirectory: home,
+      commandRunner: new FakeRunner(WHISPER_BOTTLE_SPECS),
+    });
+
+    const status = await adapter.status();
+
+    expect(status).toMatchObject({
+      ok: true,
+      value: { available: true, source: 'managed', managedInstalled: true, engine: 'whisper-cli' },
+    });
+    expect(status.ok && status.value.message).toBeUndefined();
+  });
+
+  it('leaves an absent managed install absent when the bin directory holds other runtimes', async () => {
+    const home = await tempHome();
+    const managedPath = managedWhisperBinaryPath(home);
+    await executable(path.join(path.dirname(managedPath), 'ollama'), 'ollama');
+    const runner = new FakeRunner(WHISPER_BOTTLE_SPECS);
+    runner.missingTools.add('whisper-cli');
+    const adapter = new ManagedWhisperRuntimeAdapter({ config: new InMemoryConfig(), homeDirectory: home, commandRunner: runner });
+
+    const status = await adapter.status();
+
+    expect(status).toMatchObject({ ok: true, value: { available: false, managedInstalled: false } });
+    expect(status.ok && status.value.message).toBeUndefined();
   });
 
   it('surfaces the incomplete managed runtime as a warning when system whisper-cli is present', async () => {
