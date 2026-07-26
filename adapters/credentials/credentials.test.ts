@@ -65,6 +65,12 @@ class UnremovableLegacy extends JsonCredentialsStore {
   }
 }
 
+const writeStoredEntries = async (home: string, entries: Record<string, unknown>): Promise<void> => {
+  const directory = path.join(home, '.ai-video-cataloger');
+  await mkdir(directory, { recursive: true });
+  await writeFile(path.join(directory, 'credentials.json'), JSON.stringify(entries, null, 2), { mode: 0o600 });
+};
+
 const tempHome = async (): Promise<string> => {
   const home = await mkdtemp(path.join(tmpdir(), 'credentials-store-'));
   roots.push(home);
@@ -291,6 +297,45 @@ describe('KeychainCredentialsStore', () => {
     const log = await readFile(path.join(home, '.ai-video-cataloger', 'credentials-migration.ndjson'), 'utf8');
     const lines = log.trim().split('\n');
     expect(JSON.parse(lines[lines.length - 1] ?? '')).toMatchObject({ event: 'credential_superseded', providerId: 'openai' });
+  });
+
+  it('reports the keychain as unreachable rather than serving a stale file copy', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, { openai: { value: 'superseded-key', state: 'stale' } });
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets('available');
+    secrets.failingReads.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+
+    const resolved = await store.get('openai');
+    expect(resolved.ok).toBe(false);
+    expect(resolved.ok === false && resolved.error.code).toBe('keychain_unavailable');
+  });
+
+  it('answers null and drops the stale file copy when the keychain item is gone', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, { openai: { value: 'superseded-key', state: 'stale' } });
+    const legacy = new UnremovableLegacy({ homeDirectory: home });
+    const secrets = new FakeSecrets('available');
+    const store = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+    legacy.failingDeletes = 1;
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: null });
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
+    expect(secrets.values.has('openai')).toBe(false);
+  });
+
+  it('keeps serving the pending file copy while the keychain refuses', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, { openai: { value: 'newest-key', state: 'pending' } });
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets('available');
+    secrets.failingReads.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'newest-key' });
   });
 
   it('retries a single failed removal of the plaintext copy once', async () => {

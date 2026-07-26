@@ -232,23 +232,24 @@ export class KeychainCredentialsStore implements CredentialsStore {
 
   async get(providerId: string): Promise<Result<string | null, AppError>> {
     const ready = await this.keychainReady();
-    const pending = this.plaintextPending ? await this.legacy.entry(providerId) : ok(null);
-    if (!pending.ok) return pending;
-    if (pending.value?.state === 'pending') return ok(pending.value.value);
+    const entry = await this.legacy.entry(providerId);
+    if (!entry.ok) return entry;
+    // A stale copy was superseded by a verified keychain write, so it is never a live value —
+    // not even when the keychain that superseded it has since become unreachable or been reset.
+    const usable = entry.value?.state === 'stale' ? null : entry.value;
+    if (usable?.state === 'pending') return ok(usable.value);
     if (ready) {
       const fromKeychain = await this.secrets.get(providerId);
       if (!fromKeychain.ok) {
         this.keychainFailed = true;
-        if (pending.value !== null) return ok(pending.value.value);
-        const fallback = await this.legacy.get(providerId);
-        if (!fallback.ok || fallback.value !== null) return fallback;
+        if (usable !== null) return ok(usable.value);
         return { ok: false, error: appError('keychain_unavailable', KEYCHAIN_UNREACHABLE_MESSAGE) };
       }
       this.keychainFailed = false;
       if (fromKeychain.value !== null) return ok(fromKeychain.value);
+      if (entry.value?.state === 'stale') await this.dropMigrated(providerId, 'superseded');
     }
-    if (pending.value !== null) return ok(pending.value.value);
-    return this.legacy.get(providerId);
+    return ok(usable?.value ?? null);
   }
 
   async set(providerId: string, credential: string): Promise<Result<void, AppError>> {

@@ -22,6 +22,10 @@ release history jumps from `0.5.10` to `0.5.12`.
   one that follows a file relocated between folders — now degrades exactly like
   the per-file snapshot write: it counts towards `snapshotSkipped` and emits a
   `catalog_snapshot_skipped` warning, and the run completes.
+- A `stale` credential entry is never served as a live key. Reading a provider
+  whose only file copy is `stale` now reports `keychain_unavailable` when the
+  Keychain refuses, and answers "no key" when the Keychain no longer holds the
+  item — dropping that superseded copy instead of resurrecting it.
 
 ## [0.5.21] - 2026-07-28
 
