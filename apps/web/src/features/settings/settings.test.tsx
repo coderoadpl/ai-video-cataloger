@@ -582,4 +582,14 @@ describe('credentialDeletionMessage', () => {
       unreadableEntry: '/home/u/.ai-video-cataloger/credentials.json',
     })).toBe(`${en.credentials.clearedKeychain} ${en.credentials.entryUnreadableRetained}`);
   });
+
+  it('still warns about the keychain when an unreadable entry joins a retained keychain', () => {
+    expect(credentialDeletionMessage(en, {
+      cleared: ['file'],
+      retained: ['keychain'],
+      unreadableEntry: '/home/u/.ai-video-cataloger/credentials.json',
+    })).toBe(
+      `${en.credentials.clearedFile} ${en.credentials.keychainRetained} ${en.credentials.entryUnreadableRetained}`,
+    );
+  });
 });

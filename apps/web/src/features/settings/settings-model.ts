@@ -92,10 +92,12 @@ export const credentialDeletionMessage = (
       ? dictionary.credentials.clearedBoth
       : dictionary.credentials.clearedKeychain
     : dictionary.credentials.clearedFile;
-  if (deletion.unreadableEntry !== undefined) return `${cleared} ${dictionary.credentials.entryUnreadableRetained}`;
-  return deletion.retained.includes('keychain')
+  const withKeychain = deletion.retained.includes('keychain')
     ? `${cleared} ${dictionary.credentials.keychainRetained}`
     : cleared;
+  return deletion.unreadableEntry === undefined
+    ? withKeychain
+    : `${withKeychain} ${dictionary.credentials.entryUnreadableRetained}`;
 };
 
 export const serializeValue = (draft: SettingsDraft, key: ConfigKey): string => {

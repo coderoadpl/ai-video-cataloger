@@ -43,3 +43,35 @@ Deliberately open after this round — each is a decision, not an oversight:
   notices (`catalog_snapshot_skipped`, `batch_uploads_retained`) render at
   `info` with the warning carried by the copy. Adding a level means a palette
   entry and new visual baselines.
+
+## Audit ledger — round 6 (2026-07-29)
+
+Round 6 narrowed the `media://` read-only mirror scope to the folder ids the
+catalog knows, made a re-attached batch run stamp and price its answers with the
+job's own model, and stopped a run from adopting a batch job it then dropped
+without releasing its uploads. Read-only reconciliation now degrades on an
+unreadable file instead of failing the folder scan, thumbnails of a read-only
+folder appear after its first analysis without a restart, and the
+delete-credential copy keeps the keychain warning next to an unreadable entry.
+[ADR-0002](../docs/decisions/0002-global-catalog-layer.md) §(f) and
+[ADR-0008](../docs/decisions/0008-gemini-batch-drive-runs.md) §5a/§5b carry the
+reasoning.
+
+Deliberately open after this round:
+
+- [ ] **An adopted batch job whose files are all already indexed is dropped
+  unharvested.** Its answers would only duplicate rows the run cannot use, so
+  the run releases the job's uploads and clears the state rather than polling
+  it. Harvesting would mean a second adoption path and a mapping for files that
+  are not pending — recorded in ADR-0008 §5a instead of built.
+- [ ] **Cross-folder search thumbnails render for read-only folders only.** A
+  writable folder keeps its thumbnails inside its own
+  `.ai-video-cataloger/thumbnails/`, which the `media://` scope admits only for
+  the open folder, so a search hit in another writable folder still falls back
+  to a placeholder. Widening the scope to every catalogued folder path is a
+  bigger decision than this round's mirror narrowing.
+- [ ] **A read-only folder that has never been analysed shows placeholders.**
+  `discoverArtifactRoot` cannot tell an unwritable folder from a writable one
+  that was never processed — `FileSystemPort` has no writability probe — so the
+  first thumbnail attempt targets the folder and fails. The mirror, and with it
+  the thumbnails, arrives with the folder's first analysis.

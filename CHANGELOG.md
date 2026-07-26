@@ -41,6 +41,9 @@ release history jumps from `0.5.10` to `0.5.12`.
   finishes, instead of staying placeholders until the app is restarted. A
   completed analysis earns a file one more thumbnail attempt, now that the home
   mirror it writes to exists.
+- The delete-credential copy keeps the keychain warning when a credentials-file
+  entry is also unreadable — both the settings notice and the CLI report the
+  retained keychain instead of dropping it for the unreadable-entry line.
 
 ## [0.5.24] - 2026-07-29
 
