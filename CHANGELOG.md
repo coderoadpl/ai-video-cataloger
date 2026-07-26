@@ -21,6 +21,12 @@ release history jumps from `0.5.10` to `0.5.12`.
   write a marker into keeps a stable `path-<hash>` identity, but the contract
   still demanded a UUID; folder ids now travel as a named `folderIdSchema` union
   of both forms, in the contract and in the catalog/snapshot domain schemas.
+- `index forget` on a file inside a read-only folder now exits 0 instead of
+  failing with `EACCES` (exit 10) after the global deletion had already
+  happened. The folder-local catalog snapshot is skipped when the folder cannot
+  be written, and the result says so: the response carries `snapshotSkipped` and
+  the human line reads `Forgot <fingerprint> (folder snapshot not updated: the
+  folder is not writable)`.
 - The packaged CLI now finds the ffprobe shipped inside the app bundle. Its only
   bundled-ffprobe lookup went through the `@ffprobe-installer/ffprobe` wrapper
   package, which is not staged, so on a machine without a system ffprobe

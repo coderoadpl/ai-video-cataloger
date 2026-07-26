@@ -42,6 +42,10 @@ export interface ProcessedVideoInput {
   tags: string[];
 }
 
+export interface ForgetCatalogEntryResult extends ForgetEntryResult {
+  snapshotSkipped: boolean;
+}
+
 export interface IndexStatusFolder {
   folderId: string;
   currentPath: string;
@@ -253,7 +257,7 @@ export const healRestoredRecords = async (
 export const forgetCatalogEntry = async (
   deps: CatalogIndexDeps,
   input: { fingerprint: string },
-): Promise<Result<ForgetEntryResult, AppError>> => {
+): Promise<Result<ForgetCatalogEntryResult, AppError>> => {
   const forgotten = await deps.globalCatalog.forgetEntry(input.fingerprint);
   if (!forgotten.ok) return forgotten;
   const flushed = await deps.globalCatalog.flush();
@@ -262,15 +266,14 @@ export const forgetCatalogEntry = async (
     const deleted = await deps.fs.deleteFile(cropPath);
     if (!deleted.ok) return deleted;
   }
-  if (forgotten.value.folderId !== null) {
-    const folder = await deps.globalCatalog.getFolder(forgotten.value.folderId);
-    if (!folder.ok) return folder;
-    if (folder.value !== null) {
-      const snapshot = await exportFolderSnapshot(deps, folder.value);
-      if (!snapshot.ok) return snapshot;
-    }
-  }
-  return ok(forgotten.value);
+  if (forgotten.value.folderId === null) return ok({ ...forgotten.value, snapshotSkipped: false });
+  const folder = await deps.globalCatalog.getFolder(forgotten.value.folderId);
+  if (!folder.ok) return folder;
+  if (folder.value === null) return ok({ ...forgotten.value, snapshotSkipped: false });
+  const snapshot = await exportFolderSnapshot(deps, folder.value);
+  if (snapshot.ok) return ok({ ...forgotten.value, snapshotSkipped: false });
+  if (!isReadOnlyWriteError(snapshot.error)) return snapshot;
+  return ok({ ...forgotten.value, snapshotSkipped: true });
 };
 
 export const hasProcessedAnalysis = async (

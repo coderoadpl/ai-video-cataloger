@@ -5,8 +5,9 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { ok, type AppError, type Result } from '@core/domain/index.js';
-import { searchOutputSchema } from '@core/contract/index.js';
+import { indexForgetOutputSchema, searchOutputSchema } from '@core/contract/index.js';
 import {
+  forgetCatalogEntry,
   processDrive,
   scanFolder,
   search,
@@ -188,5 +189,29 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     const detail = details.value.videos.find((video) => video.filename === 'clip.mp4');
     expect(detail?.artifacts.summary?.description).toContain('rabbit');
     expect(detail?.status).toBe('completed');
+  }, 60000);
+
+  it('forgets an entry globally and reports the skipped folder snapshot instead of failing', async () => {
+    const { root, deps } = await scaffold();
+
+    const run = await processDrive(deps, driveInput(root));
+    if (!run.ok) throw new Error(run.error.message);
+
+    const globalCatalog = deps.globalCatalog;
+    if (globalCatalog === undefined) throw new Error('missing global catalog');
+    const files = await globalCatalog.counts();
+    expect(files.ok === true && files.value.files).toBe(1);
+    const found = await search({ globalCatalog, fs: deps.fs }, { query: 'rabbit', limit: 50, offset: 0 });
+    if (!found.ok) throw new Error(found.error.message);
+    const fingerprint = found.value.results[0]?.fingerprint ?? '';
+
+    const forgotten = await forgetCatalogEntry({ globalCatalog, fs: deps.fs }, { fingerprint });
+    if (!forgotten.ok) throw new Error(`${forgotten.error.code}: ${forgotten.error.message}`);
+
+    expect(forgotten.value.deleted).toBe(true);
+    expect(forgotten.value.snapshotSkipped).toBe(true);
+    expect(indexForgetOutputSchema.safeParse(forgotten.value).success).toBe(true);
+    const after = await globalCatalog.counts();
+    expect(after.ok === true && after.value.files).toBe(0);
   }, 60000);
 });

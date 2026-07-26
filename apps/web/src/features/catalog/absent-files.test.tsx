@@ -37,7 +37,7 @@ describe('absent files section', () => {
       ]),
       http.post('/api/index/forget', async ({ request }) => {
         forgetBodies.push(await request.json());
-        return HttpResponse.json({ ok: true, data: { fingerprint: 'fp-missing', deleted: true, folderId: null } });
+        return HttpResponse.json({ ok: true, data: { fingerprint: 'fp-missing', deleted: true, folderId: null, snapshotSkipped: false } });
       }),
     );
 

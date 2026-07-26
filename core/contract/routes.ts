@@ -820,6 +820,7 @@ export const indexForgetOutputSchema = z.object({
   fingerprint: z.string().min(1),
   deleted: z.boolean(),
   folderId: folderIdSchema.nullable(),
+  snapshotSkipped: z.boolean(),
 });
 
 export const tagsListOutputSchema = z.object({

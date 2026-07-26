@@ -889,7 +889,7 @@ index
       'index_forget',
       () => api.indexForget({ fingerprint }),
       (data) => data.deleted
-        ? `Forgot ${data.fingerprint}`
+        ? `Forgot ${data.fingerprint}${data.snapshotSkipped ? ' (folder snapshot not updated: the folder is not writable)' : ''}`
         : `No catalog entry for ${data.fingerprint}`,
       { raw: true },
     );
