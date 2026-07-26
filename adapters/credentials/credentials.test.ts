@@ -3,6 +3,7 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 import type { SecretsAvailability, SecretsStore } from '@core/server/index.js';
@@ -91,6 +92,19 @@ describe('JsonCredentialsStore', () => {
     expect(await store.delete('openai')).toEqual({ ok: true, value: { cleared: ['file'], retained: [] } });
     expect(await store.get('openai')).toEqual({ ok: true, value: null });
     expect(await store.list()).toEqual({ ok: true, value: ['openrouter'] });
+  });
+
+  it('never leaves a corrupt file behind when writes overlap', async () => {
+    const home = await tempHome();
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+    const providers = Array.from({ length: 24 }, (_, index) => `provider-${String(index)}`);
+
+    const results = await Promise.all(providers.map((providerId) => store.set(providerId, `secret-${providerId}`)));
+
+    expect(results.filter((result) => !result.ok)).toEqual([]);
+    const raw = await readFile(path.join(home, '.ai-video-cataloger', 'credentials.json'), 'utf8');
+    const parsed: unknown = JSON.parse(raw);
+    expect(z.record(z.string(), z.string()).safeParse(parsed).success).toBe(true);
   });
 
   it('reports an untouched pair of backends for a provider it never held', async () => {

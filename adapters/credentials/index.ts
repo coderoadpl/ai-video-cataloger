@@ -1,3 +1,4 @@
+import { randomBytes } from 'node:crypto';
 import { existsSync } from 'node:fs';
 import { appendFile, chmod, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { homedir } from 'node:os';
@@ -44,21 +45,9 @@ export class JsonCredentialsStore implements CredentialsStore {
     }
     const values = await this.read();
     if (!values.ok) return values;
-    const directory = path.dirname(this.filePath);
-    const temporaryPath = `${this.filePath}.tmp`;
-    try {
-      await mkdir(directory, { recursive: true });
-      await writeFile(temporaryPath, `${JSON.stringify({ ...values.value, [providerId]: credential }, null, 2)}\n`, {
-        encoding: 'utf8',
-        mode: 0o600,
-      });
-      await chmod(temporaryPath, 0o600);
-      await rename(temporaryPath, this.filePath);
-      await chmod(this.filePath, 0o600);
-      return ok(undefined);
-    } catch {
-      return { ok: false, error: appError('internal', 'Could not store provider credential') };
-    }
+    const written = await this.writeAll({ ...values.value, [providerId]: credential });
+    if (!written) return { ok: false, error: appError('internal', 'Could not store provider credential') };
+    return ok(undefined);
   }
 
   async delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
@@ -66,8 +55,6 @@ export class JsonCredentialsStore implements CredentialsStore {
     if (!values.ok) return values;
     if (!(providerId in values.value)) return ok({ cleared: [], retained: [] });
     const remaining = Object.fromEntries(Object.entries(values.value).filter(([key]) => key !== providerId));
-    const directory = path.dirname(this.filePath);
-    const temporaryPath = `${this.filePath}.tmp`;
     if (Object.keys(remaining).length === 0) {
       try {
         await rm(this.filePath, { force: true });
@@ -76,22 +63,30 @@ export class JsonCredentialsStore implements CredentialsStore {
         return { ok: false, error: appError('internal', 'Could not remove provider credential') };
       }
     }
-    try {
-      await mkdir(directory, { recursive: true });
-      await writeFile(temporaryPath, `${JSON.stringify(remaining, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
-      await chmod(temporaryPath, 0o600);
-      await rename(temporaryPath, this.filePath);
-      await chmod(this.filePath, 0o600);
-      return ok({ cleared: ['file'], retained: [] });
-    } catch {
-      return { ok: false, error: appError('internal', 'Could not remove provider credential') };
-    }
+    const written = await this.writeAll(remaining);
+    if (!written) return { ok: false, error: appError('internal', 'Could not remove provider credential') };
+    return ok({ cleared: ['file'], retained: [] });
   }
 
   async list(): Promise<Result<string[], AppError>> {
     const values = await this.read();
     if (!values.ok) return values;
     return ok(Object.keys(values.value));
+  }
+
+  private async writeAll(values: Record<string, string>): Promise<boolean> {
+    const temporaryPath = `${this.filePath}.${process.pid.toString(36)}.${randomBytes(6).toString('hex')}.tmp`;
+    try {
+      await mkdir(path.dirname(this.filePath), { recursive: true });
+      await writeFile(temporaryPath, `${JSON.stringify(values, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+      await chmod(temporaryPath, 0o600);
+      await rename(temporaryPath, this.filePath);
+      await chmod(this.filePath, 0o600);
+      return true;
+    } catch {
+      await rm(temporaryPath, { force: true }).catch(() => undefined);
+      return false;
+    }
   }
 
   private async read(): Promise<Result<Record<string, string>, AppError>> {

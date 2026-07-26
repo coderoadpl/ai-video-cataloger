@@ -16,6 +16,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Overlapping writes to the plaintext credentials file no longer collide on a
+  shared `credentials.json.tmp`: each write uses its own temporary file and an
+  atomic rename, so concurrent saves stop failing with
+  `Could not store provider credential` and the file can never be left
+  half-written.
 - Forgetting a key when the plaintext credentials file cannot be read now
   reports the partial removal (`cleared: keychain`, `retained: file`) instead of
   a bare error that hid the Keychain removal that did happen.

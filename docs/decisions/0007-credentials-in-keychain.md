@@ -99,6 +99,17 @@ exposure is documented below.
   Settings **Forget key** action) and it answers with the backends it cleared
   and the ones that kept the key: a Keychain that refuses while the file was
   cleared is reported as a partial removal, never as a key that is gone.
+- The fallback file is written through a per-write temporary name
+  (`credentials.json.<pid>.<random>.tmp`) and an atomic `rename`, so overlapping
+  writers can never truncate each other's temporary file or land a half-written
+  `credentials.json` — the shared `.tmp` name that preceded this made every
+  concurrent write but one fail on `rename`. What remains is a read-modify-write
+  **lost update**: two writers that overlap on *different* providers both start
+  from the same snapshot, and the later `rename` wins, so one of the two entries
+  is dropped (the winning file is always valid, never corrupt). Locking the file
+  is out of proportion for a store the user writes by hand, one key at a time,
+  from a single app; the Keychain — the primary store — has no such window
+  because `security` writes one item, not a document.
 - Non-darwin platforms and explicit opt-outs keep the exact prior behavior:
   the `0600` JSON file. Nothing about the file store changed.
 - Unit tests never reach a real keychain; they inject a fake command runner.
