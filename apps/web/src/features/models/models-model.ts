@@ -15,6 +15,12 @@ export type LocalAiTier = z.output<typeof localAiTierSchema>;
 export type Machine = z.output<typeof machineSchema>;
 export type DependencyStatus = z.output<typeof dependencyStatusSchema>;
 
+export const whisperRowsForRuntime = (
+  models: readonly WhisperModelEntry[],
+  runtimeSource: 'configured' | 'managed' | 'system' | null,
+): WhisperModelEntry[] =>
+  models.map((model) => (runtimeSource === 'system' ? { ...model, active: false } : model));
+
 export const whisperDiskUsageMb = (models: readonly WhisperModelEntry[]): number =>
   models
     .filter((model) => model.downloaded)

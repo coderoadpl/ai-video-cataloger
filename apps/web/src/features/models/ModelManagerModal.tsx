@@ -19,6 +19,7 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 
 import { DeleteModelDialog } from './DeleteModelDialog.js';
 import { LocalAiSection } from './LocalAiSection.js';
+import { whisperRowsForRuntime } from './models-model.js';
 import { WhisperModelRow } from './WhisperModelRow.js';
 import { useLocalAi } from './use-local-ai.js';
 import { useWhisperModels } from './use-whisper-models.js';
@@ -95,7 +96,7 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
                     <Typography variant="caption">{dictionary.models.diskSpaceUsed(whisper.diskUsageLabel)}</Typography>
                   </Box>
                   <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                    {whisper.models.map((model) => (
+                    {whisperRowsForRuntime(whisper.models, runtime.source).map((model) => (
                       <WhisperModelRow
                         key={model.name}
                         model={model}

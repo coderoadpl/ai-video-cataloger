@@ -16,6 +16,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Model Manager no longer marks a managed Whisper model `Active` while the
+  effective runtime is the system `whisper-cli`, which never reads those files —
+  a row could read `Base [Active] · Not downloaded [Download]`. The banner keeps
+  naming the runtime actually in use.
 - The Polish frame-count label declines properly: `1 klatka`, `2 klatki`,
   `5 klatek`, `22 klatki` instead of a fixed `klatek`. The English label now
   also says `1 frame` rather than `1 frames`.

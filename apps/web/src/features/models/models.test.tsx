@@ -95,6 +95,35 @@ describe('model manager', () => {
     expect(screen.getAllByTestId('local-ai-tier-row')).toHaveLength(2);
   });
 
+  it('claims no active managed model while the system whisper runtime is in use', async () => {
+    server.use(
+      http.get('/api/models/whisper', () => HttpResponse.json({
+        ok: true,
+        data: { models: [{ name: 'base', size: '142MB', downloaded: false, active: true }] },
+      })),
+      http.get('/api/models/whisper-runtime', () => HttpResponse.json({
+        ok: true,
+        data: { ...managedRuntime, source: 'system', path: '/opt/homebrew/bin/whisper-cli' },
+      })),
+      http.get('/api/models/local-ai/requirements', () => HttpResponse.json({ ok: true, data: requirements })),
+    );
+    renderThemed(<ModelManagerModal open onClose={vi.fn()} addLine={vi.fn()} intervalMs={0} />);
+
+    const row = await screen.findByTestId('whisper-model-row');
+    expect(row.textContent).not.toContain('Active');
+    expect(row.textContent).toContain('Not downloaded');
+    expect(await screen.findByTestId('whisper-runtime-status')).toBeDefined();
+  });
+
+  it('keeps the active chip on the managed runtime', async () => {
+    stubList();
+    renderThemed(<ModelManagerModal open onClose={vi.fn()} addLine={vi.fn()} intervalMs={0} />);
+
+    const rows = await screen.findAllByTestId('whisper-model-row');
+    const base = rows.find((row) => row.dataset.modelName === 'base');
+    expect(base?.textContent).toContain('Active');
+  });
+
   it('downloads a missing whisper model as a job', async () => {
     let downloadHit = false;
     stubList();
