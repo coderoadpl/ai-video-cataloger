@@ -41,6 +41,7 @@ import {
 import { credentialDeleteHuman } from './credential-delete-human.js';
 import { doctorHuman } from './doctor-human.js';
 import { waitForJob } from './job-wait.js';
+import { createMaskedPrompter, promptMaskedSecret } from './masked-prompt.js';
 import { runProgram } from './run-program.js';
 import {
   executeSetup,
@@ -1029,33 +1030,11 @@ const credentialFromEnvironment = (providerId: string, requestedName: string | u
 
 const promptHiddenCredential = async (): Promise<string | null> => {
   if (!process.stdin.isTTY) return null;
-  const readline = createInterface({ input: process.stdin, output: process.stdout });
-  try {
-    process.stdout.write('API credential: \u001B[8m');
-    const credential = await readline.question('');
-    process.stdout.write('\u001B[28m\n');
-    return credential.trim();
-  } finally {
-    process.stdout.write('\u001B[28m');
-    readline.close();
-  }
+  return promptMaskedSecret({ input: process.stdin, output: process.stdout }, 'API credential: ');
 };
 
-const createSetupPrompter = (): SetupPrompter => {
-  const readline = createInterface({ input: process.stdin, output: process.stderr });
-  return {
-    question: (message) => readline.question(message),
-    secret: async (message) => {
-      process.stderr.write(`${message}\u001B[8m`);
-      try {
-        return (await readline.question('')).trim();
-      } finally {
-        process.stderr.write('\u001B[28m\n');
-      }
-    },
-    close: () => readline.close(),
-  };
-};
+const createSetupPrompter = (): SetupPrompter =>
+  createMaskedPrompter({ input: process.stdin, output: process.stderr });
 
 type ApiAnalyzerProvider = Extract<AnalyzerProviderConfig, { family: 'api' }>;
 

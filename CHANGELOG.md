@@ -16,6 +16,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- The CLI credential prompts (`config set-credential` and `setup`) no longer
+  write the typed key into the terminal at all. They previously relied on the
+  ANSI conceal sequence, which only hides the characters visually and leaves the
+  key in scrollback, in a copied selection and in any `script`/tmux capture.
 - Keychain access runs the absolute `/usr/bin/security` instead of resolving
   `security` on `PATH`, so a shadowing binary earlier in `PATH` can no longer
   see or serve API keys.
