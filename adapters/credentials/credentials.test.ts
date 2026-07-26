@@ -226,6 +226,22 @@ describe('JsonCredentialsStore', () => {
     expect(JSON.parse(await readFile(archivePath, 'utf8'))).toEqual({ gemini: 'conflicting-key' });
   });
 
+  it('keeps another provider\'s unreadable archive entry intact while archiving into the same file', async () => {
+    const home = await tempHome();
+    const archivePath = path.join(home, '.ai-video-cataloger', 'credentials.json.conflict-2026-07-29T10-20-30-400Z');
+    await writeStoredEntries(home, { gemini: 'conflicting-key' });
+    await writeFile(archivePath, JSON.stringify({ openai: { value: 'mangled', state: 'nonsense' } }), { mode: 0o600 });
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+    vi.setSystemTime(new Date('2026-07-29T10:20:30.400Z'));
+
+    expect(await store.archive('gemini')).toEqual({ ok: true, value: archivePath });
+
+    expect(JSON.parse(await readFile(archivePath, 'utf8'))).toEqual({
+      gemini: 'conflicting-key',
+      openai: { value: 'mangled', state: 'nonsense' },
+    });
+  });
+
   it('removes the file only once no entry of any kind is left', async () => {
     const home = await tempHome();
     const store = new JsonCredentialsStore({ homeDirectory: home });

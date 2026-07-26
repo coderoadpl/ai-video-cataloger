@@ -104,5 +104,6 @@ describe('listFolderRecords query count', () => {
     expect(largeRecords.ok && largeRecords.value[0]?.analysis?.tags).toEqual(['beach', 'clip-0']);
     expect(largeRecords.ok && largeRecords.value[13]?.analysis?.tags).toEqual(['beach', 'clip-6']);
     expect(largeRecords.ok && largeRecords.value.every((record) => record.file.fingerprint.startsWith('drive-large-'))).toBe(true);
-  });
+    // Filling 510 rows under full-suite load overran the default 5s; the assertion is query counts, not speed.
+  }, 30_000);
 });
