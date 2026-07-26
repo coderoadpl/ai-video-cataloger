@@ -172,6 +172,38 @@ describe('configured readiness', () => {
     });
   });
 
+  it('names the resolved whisper binary and engine on the transcriber component', async () => {
+    const provider = providers.find((candidate) => candidate.family === 'harness');
+    if (provider === undefined) throw new Error('Expected harness provider fixture');
+    const deps = await configuredDeps(provider, true);
+    deps.transcriber.dependencyValue = {
+      ...dependency('whisper', true),
+      path: '/opt/homebrew/bin/whisper',
+      engine: 'openai-whisper',
+    };
+
+    const result = await getReadiness(deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { transcriber: { engine: 'openai-whisper', binaryPath: '/opt/homebrew/bin/whisper' } },
+    });
+  });
+
+  it('leaves the transcriber engine unnamed when the dependency is not a whisper binary', async () => {
+    const provider = providers.find((candidate) => candidate.family === 'harness');
+    if (provider === undefined) throw new Error('Expected harness provider fixture');
+    const deps = await configuredDeps(provider, true);
+    deps.transcriber.dependencyValue = { ...dependency('whisper-base', false), path: '/models/ggml-base.bin' };
+
+    const result = await getReadiness(deps);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { transcriber: { engine: null, binaryPath: null } },
+    });
+  });
+
   it('caches by folder and refreshes on demand', async () => {
     const provider = providers.find((candidate) => candidate.family === 'harness');
     if (provider === undefined) throw new Error('Expected harness provider fixture');

@@ -34,6 +34,7 @@ import {
   emitStarted,
   isJsonMode,
 } from './output.js';
+import { doctorHuman } from './doctor-human.js';
 import { waitForJob } from './job-wait.js';
 import { runProgram } from './run-program.js';
 import {
@@ -1148,28 +1149,6 @@ const searchHuman = (data: Awaited<ReturnType<ApiClient['search']>> extends Resu
     ].join('\t');
   });
   return [...rows, `${data.count} result(s)`].join('\n');
-};
-
-const doctorHuman = (
-  data: Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never,
-  live: Awaited<ReturnType<ApiClient['healthLive']>>,
-  ready: Awaited<ReturnType<ApiClient['healthReady']>>,
-): string => {
-  const lines = data.dependencies.map((dependency) => `${dependency.name}: ${dependency.available ? 'available' : 'missing'}`);
-  lines.push(`All available: ${data.allAvailable ? 'yes' : 'no'}`);
-  for (const warning of data.warnings) lines.push(`Warning: ${warning.message}`);
-  lines.push(`Liveness: ${live.ok ? `up v${live.value.version}` : `unavailable (${live.error.message})`}`);
-  if (ready.ok) {
-    lines.push('Readiness: ready');
-    for (const check of ready.value.checks) lines.push(`  ${check.name}: ${check.ok ? 'ok' : 'not ready'} - ${check.detail}`);
-  } else {
-    lines.push(`Readiness: not ready (${ready.error.message})`);
-  }
-  lines.push('Configured processing:');
-  lines.push(`Analyzer (${data.configured.analyzer.providerId}): ${data.configured.analyzer.available ? 'available' : 'missing'}`);
-  lines.push(`Transcriber (${data.configured.transcriber.mode}): ${data.configured.transcriber.available ? 'available' : 'missing'}`);
-  if (data.configured.suggestedAction !== null) lines.push(data.configured.suggestedAction);
-  return lines.join('\n');
 };
 
 const configGetHuman = (data: Awaited<ReturnType<ApiClient['config']>> extends Result<infer T, AppError> ? T : never): string => {

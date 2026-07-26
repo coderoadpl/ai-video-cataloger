@@ -28,6 +28,8 @@ const readiness = {
     available: true,
     message: 'transcription-skip is available',
     suggestedAction: null,
+    engine: null,
+    binaryPath: null,
   },
   missingPieces: [{
     kind: 'analyzer' as const,

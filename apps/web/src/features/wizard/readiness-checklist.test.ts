@@ -45,6 +45,8 @@ const readiness = (options: {
     available: options.transcriberAvailable ?? true,
     message: 'checked',
     suggestedAction: null,
+    engine: null,
+    binaryPath: null,
   },
   missingPieces: [],
   suggestedAction: null,

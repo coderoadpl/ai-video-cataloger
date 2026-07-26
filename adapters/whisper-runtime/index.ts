@@ -226,7 +226,7 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
         managedInstalled: false,
         buildToolsAvailable,
         missingBuildTools: buildTools.missing,
-        implementation: 'whisper-cli',
+        engine: 'whisper-cli',
         ...(incompleteMessage === undefined ? {} : { warning: incompleteMessage }),
       };
     }
@@ -240,7 +240,7 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
         managedInstalled: false,
         buildToolsAvailable,
         missingBuildTools: buildTools.missing,
-        implementation: 'openai-whisper',
+        engine: 'openai-whisper',
         warning: incompleteMessage === undefined
           ? SLOW_CPU_WHISPER_WARNING
           : `${incompleteMessage} ${SLOW_CPU_WHISPER_WARNING}`,
@@ -492,7 +492,7 @@ export class ManagedWhisperRuntimeAdapter implements WhisperRuntimePort {
       managedInstalled,
       buildToolsAvailable: buildTools.missing.length === 0,
       missingBuildTools: buildTools.missing,
-      implementation: 'whisper-cli',
+      engine: 'whisper-cli',
     };
   }
 

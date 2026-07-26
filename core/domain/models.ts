@@ -4,6 +4,15 @@ export const WHISPER_MODEL_NAMES = ['tiny', 'base', 'small', 'medium', 'large-v3
 export const whisperModelNameSchema = z.enum(WHISPER_MODEL_NAMES);
 export type WhisperModelName = z.output<typeof whisperModelNameSchema>;
 
+export const WHISPER_ENGINES = ['whisper-cli', 'openai-whisper'] as const;
+export const whisperEngineSchema = z.enum(WHISPER_ENGINES);
+export type WhisperEngine = z.output<typeof whisperEngineSchema>;
+
+export const WHISPER_ENGINE_LABELS: Record<WhisperEngine, string> = {
+  'whisper-cli': 'whisper.cpp',
+  'openai-whisper': 'openai-whisper (python, CPU)',
+};
+
 export interface WhisperModel {
   name: WhisperModelName;
   size: string;

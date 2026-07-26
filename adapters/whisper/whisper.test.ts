@@ -250,6 +250,60 @@ describe('WhisperTranscriberAdapter', () => {
     });
   });
 
+  it('names the resolved binary and engine for each system whisper implementation', async () => {
+    const root = await tempRoot();
+    const cliAdapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      commandRunner: new FakeCommandRunner({ 'whisper-cli': 'whisper.cpp 1.9.1', whisper: 'whisper 1.2.3' }),
+      binaryResolver: { bundledWhisperPath: () => null },
+    });
+    const pythonAdapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      commandRunner: new FakeCommandRunner({ whisper: 'whisper 1.2.3' }),
+      binaryResolver: { bundledWhisperPath: () => null },
+    });
+
+    const cli = await cliAdapter.dependency();
+    const python = await pythonAdapter.dependency();
+
+    expect(cli).toMatchObject({
+      ok: true,
+      value: { available: true, source: 'system', path: 'whisper-cli', engine: 'whisper-cli' },
+    });
+    expect(python).toMatchObject({
+      ok: true,
+      value: { available: true, source: 'system', path: 'whisper', engine: 'openai-whisper' },
+    });
+  });
+
+  it('passes the runtime engine through to the dependency status', async () => {
+    const root = await tempRoot();
+    const runtime = runtimeWithSource('system');
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      runtime: {
+        status: () => Promise.resolve(ok({
+          available: true,
+          path: '/opt/homebrew/bin/whisper',
+          source: 'system',
+          version: '1.2.3',
+          managedInstalled: false,
+          buildToolsAvailable: true,
+          missingBuildTools: [],
+          engine: 'openai-whisper',
+        })),
+        install: runtime.install.bind(runtime),
+      },
+    });
+
+    const result = await adapter.dependency({ mode: 'local', model: 'base' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { available: true, path: '/opt/homebrew/bin/whisper', engine: 'openai-whisper' },
+    });
+  });
+
   it('requires a downloaded GGML model for a managed Whisper runtime', async () => {
     const root = await tempRoot();
     const adapter = new WhisperTranscriberAdapter({

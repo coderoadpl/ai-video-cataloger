@@ -107,8 +107,8 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     await rm(managedPath, { force: true });
     const system = await adapter.status();
 
-    expect(managed).toMatchObject({ ok: true, value: { source: 'managed', path: managedPath, implementation: 'whisper-cli' } });
-    expect(system).toMatchObject({ ok: true, value: { source: 'system', path: 'whisper-cli', implementation: 'whisper-cli' } });
+    expect(managed).toMatchObject({ ok: true, value: { source: 'managed', path: managedPath, engine: 'whisper-cli' } });
+    expect(system).toMatchObject({ ok: true, value: { source: 'system', path: 'whisper-cli', engine: 'whisper-cli' } });
     expect(system.ok && system.value.warning).toBeUndefined();
   });
 
@@ -128,7 +128,7 @@ describe('ManagedWhisperRuntimeAdapter', () => {
         available: true,
         source: 'system',
         path: 'whisper',
-        implementation: 'openai-whisper',
+        engine: 'openai-whisper',
         warning: SLOW_CPU_WHISPER_WARNING,
       },
     });

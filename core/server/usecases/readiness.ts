@@ -5,6 +5,7 @@ import {
   type AnalyzerProviderConfig,
   type AppError,
   type Result,
+  type WhisperEngine,
   type WhisperModelName,
 } from '@core/domain/index.js';
 
@@ -22,7 +23,12 @@ export type ReadinessComponent = {
 export interface ReadinessOutput {
   ready: boolean;
   analyzer: ReadinessComponent & { family: AnalyzerProviderConfig['family']; providerId: string };
-  transcriber: ReadinessComponent & { mode: 'local' | 'api' | 'skip'; model: WhisperModelName | null };
+  transcriber: ReadinessComponent & {
+    mode: 'local' | 'api' | 'skip';
+    model: WhisperModelName | null;
+    engine: WhisperEngine | null;
+    binaryPath: string | null;
+  };
   missingPieces: ReadinessComponent[];
   suggestedAction: string | null;
 }
@@ -105,10 +111,13 @@ const evaluateConfiguredReadiness = async (
     family: provider.family,
     providerId: provider.providerId,
   };
+  const engine = transcriberDependency.value.engine ?? null;
   const transcriber = {
     ...component('transcriber', transcriberName(configured.data.whisper_mode, configured.data.whisper_model), transcriberDependency.value),
     mode: configured.data.whisper_mode,
     model: configured.data.whisper_mode === 'local' ? configured.data.whisper_model : null,
+    engine,
+    binaryPath: engine === null ? null : transcriberDependency.value.path,
   };
   const missingPieces = [analyzer, transcriber].filter((entry) => !entry.available);
   return ok({

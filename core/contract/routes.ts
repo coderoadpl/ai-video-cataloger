@@ -14,6 +14,7 @@ import {
   analyzerProviderDescriptorSchema,
   configKeySchema,
   videoStatusSchema,
+  whisperEngineSchema,
 } from '@core/domain/index.js';
 
 export const healthOutputSchema = z.object({
@@ -604,6 +605,7 @@ export const dependencyStatusSchema = z.object({
   path: z.string().nullable(),
   installHint: z.string(),
   warning: z.string().optional(),
+  engine: whisperEngineSchema.optional(),
 });
 
 export const doctorWarningSchema = z.object({
@@ -630,6 +632,8 @@ export const readinessOutputSchema = z.object({
     kind: z.literal('transcriber'),
     mode: z.enum(WHISPER_MODES),
     model: z.enum(WHISPER_MODEL_NAMES).nullable(),
+    engine: whisperEngineSchema.nullable().default(null),
+    binaryPath: z.string().nullable().default(null),
   }),
   missingPieces: z.array(readinessComponentSchema),
   suggestedAction: z.string().nullable(),

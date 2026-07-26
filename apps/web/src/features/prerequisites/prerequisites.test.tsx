@@ -38,6 +38,8 @@ const configured: DoctorResult['configured'] = {
     available: true,
     message: 'whisper-base is available',
     suggestedAction: null,
+    engine: null,
+    binaryPath: null,
   },
   missingPieces: [],
   suggestedAction: null,

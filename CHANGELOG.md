@@ -14,6 +14,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- `doctor` and the readiness payload name the resolved whisper binary and its
+  engine (`whisper.cpp` or `openai-whisper (python, CPU)`): dependency statuses
+  carry an `engine` field and the readiness transcriber component carries
+  `engine` and `binaryPath`.
+
 ## [0.5.14] - 2026-07-27
 
 ### Added

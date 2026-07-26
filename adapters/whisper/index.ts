@@ -177,6 +177,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
       source: binary.source,
       path: binary.path,
       installHint: '',
+      engine: usesOpenAiWhisperDialect(binary) ? 'openai-whisper' : 'whisper-cli',
     });
   }
 
@@ -678,6 +679,7 @@ const runtimeDependency = (runtime: WhisperRuntimeStatus): DependencyStatus => (
       ? 'Install the managed whisper.cpp runtime or configure whisper_binary_path'
       : `Managed whisper.cpp requires ${runtime.missingBuildTools.join(' and ')}`,
   ...(runtime.warning === undefined ? {} : { warning: runtime.warning }),
+  ...(runtime.engine === undefined ? {} : { engine: runtime.engine }),
 });
 
 const openAiFailure = (cause: unknown): Result<never, AppError> => {
