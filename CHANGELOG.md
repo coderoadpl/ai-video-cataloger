@@ -30,6 +30,10 @@ release history jumps from `0.5.10` to `0.5.12`.
   cost rates all name the job's model, not the one the configuration has moved
   to since. A price override stored on the provider is applied only while its
   model still matches the job's.
+- A batch run that adopts a job whose files another run has already processed
+  releases that job's Files API uploads and clears the batch state instead of
+  leaving both behind. Such a job is dropped without harvesting — its answers
+  would only duplicate rows already in the index.
 
 ## [0.5.24] - 2026-07-29
 

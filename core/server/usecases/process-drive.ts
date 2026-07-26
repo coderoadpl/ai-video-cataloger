@@ -362,6 +362,9 @@ export const processDrive = async (
       now,
     });
     if (!mapped.ok) return mapped;
+  } else if (plan !== null && state.run.batch !== null) {
+    const dropped = await dropAdoptedBatch(plan, state, progress);
+    if (!dropped.ok) return dropped;
   }
 
   const presentAcrossRun = [...new Set(folderPresences.flatMap((entry) => entry.presentFingerprints))];
@@ -560,6 +563,26 @@ interface BatchPassInput {
   options: DriveRunOptions;
   now: () => Date;
 }
+
+// Every file of the adopted job is already in the index, so its answers would only duplicate rows
+// this run cannot use: the job is dropped rather than polled, and the uploads it still holds are
+// released instead of waiting out their 48 h TTL.
+const dropAdoptedBatch = async (
+  plan: DriveBatchPlan,
+  state: MutableRunState,
+  progress: JobExecutionContext | undefined,
+): Promise<Result<void, AppError>> => {
+  const batch = state.run.batch;
+  if (batch === null || batch === undefined) return ok(undefined);
+  state.run.batch = null;
+  const released = await plan.analyzerBatch.releaseBatchUploads({
+    provider: plan.provider,
+    fileNames: batch.requests.map((request) => request.fileName),
+  });
+  const retained = released.ok ? released.value.retained : batch.requests.length;
+  if (retained === 0) return ok(undefined);
+  return report(progress, 'batch_uploads_retained', { jobName: batch.jobName, retained });
+};
 
 const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError>> => {
   const { deps, state, plan, progress, now } = pass;

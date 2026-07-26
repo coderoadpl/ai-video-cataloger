@@ -737,6 +737,43 @@ describe('gemini batch drive runs', () => {
     });
   });
 
+  it('releases the uploads of an adopted job whose files another run already processed', async () => {
+    const interrupted = new FakeBatchPort({ statuses: [{ state: 'running', message: null, results: null }] });
+    const deps = makeDeps(interrupted);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    await processDrive(deps, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-a',
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: () => Promise.reject(new Error('killed')),
+    }).catch(() => undefined);
+
+    const interactive = await processDrive(deps, { ...batchInput, geminiBatch: false }, undefined, {
+      ...runOptions,
+      runId: 'run-b',
+      now: () => new Date('2026-01-01T01:00:00.000Z'),
+    });
+    expect(interactive).toMatchObject({ ok: true, value: { filesDone: 1 } });
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()] });
+    const { progress, events } = recordingProgress();
+    const third = await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, progress, {
+      ...runOptions,
+      runId: 'run-c',
+      now: () => new Date('2026-01-01T02:00:00.000Z'),
+    });
+
+    expect(third).toMatchObject({ ok: true, value: { runId: 'run-a', filesSkipped: 1 } });
+    expect(resumed.polls).toEqual([]);
+    expect(resumed.released).toEqual(['files/r0']);
+    expect(events.filter((event) => event.step === 'batch_uploads_retained')).toHaveLength(0);
+    const adopted = deps.globalCatalog.driveRuns.get('run-a');
+    expect(adopted?.batch).toBe(null);
+    expect(adopted?.finishedAt).not.toBe(null);
+  });
+
   it('honours a folder that opts out of the batch root', async () => {
     const batch = new FakeBatchPort({ statuses: [succeeded()] });
     const deps = makeDeps(batch);

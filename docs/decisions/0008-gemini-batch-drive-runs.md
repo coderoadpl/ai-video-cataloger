@@ -112,6 +112,18 @@ emits a single `batch_orphan_jobs` event naming the jobs it is *not* adopting,
 so paid-for work is never silently orphaned. Re-running the root after this run
 finishes adopts the next one.
 
+A run that adopts such a job can find that **every request in it is already in
+the index** — the files were answered by the job this run's predecessor adopted,
+or interactively in between. The mapping pass then has nothing to map: those
+files are skipped before they reach the batch, and polling the job would only
+produce answers that duplicate rows the run cannot use. That job is therefore
+**dropped rather than harvested**: the run releases its Files API uploads best
+effort and clears the batch state, so the record closes clean instead of leaving
+a live job nobody will ever poll. Releasing uploads of a job that may still be
+running can fail that job — which is the point: it has been abandoned, and its
+answers are worthless to the index. Orphan jobs the run merely *names* are left
+untouched, uploads included, precisely because a later run can still adopt them.
+
 **5b. A re-attached run records answers under the model that produced them.**
 The persisted `batch.model` is the model the job was submitted with. A
 configuration that has moved since — a different Gemini model on the folder or
