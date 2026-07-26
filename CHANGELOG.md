@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.25] - 2026-07-29
+
 ### Security
 
 - The `media://` read-only mirror scope is no longer one shared root. A
@@ -21,7 +23,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   `~/.ai-video-cataloger/read-only-folders/<folderId>/` only for a folder the
   catalog knows or the folder that is currently open, so the mirrors of every
   other folder — including ones the catalog has never seen — are refused
-  instead of served.
+  instead of served
+  ([`5f0b539`](https://github.com/chomamateusz/ai-video-cataloger/commit/5f0b5393)).
 
 ### Fixed
 
@@ -29,21 +32,26 @@ release history jumps from `0.5.10` to `0.5.12`.
   was submitted with: the file's stored model, the per-file usage event and the
   cost rates all name the job's model, not the one the configuration has moved
   to since. A price override stored on the provider is applied only while its
-  model still matches the job's.
+  model still matches the job's
+  ([`1304c0c`](https://github.com/chomamateusz/ai-video-cataloger/commit/1304c0cd)).
 - A batch run that adopts a job whose files another run has already processed
   releases that job's Files API uploads and clears the batch state instead of
   leaving both behind. Such a job is dropped without harvesting — its answers
-  would only duplicate rows already in the index.
+  would only duplicate rows already in the index
+  ([`f5e7783`](https://github.com/chomamateusz/ai-video-cataloger/commit/f5e7783a)).
 - An unreadable video no longer aborts the scan of a read-only folder. The
   missing-file reconciliation degrades exactly like the ordinary scan path: the
-  file it cannot hash stays marked missing and the folder still lists.
+  file it cannot hash stays marked missing and the folder still lists
+  ([`4b9c895`](https://github.com/chomamateusz/ai-video-cataloger/commit/4b9c895a)).
 - Thumbnails of a read-only folder appear as soon as its first analysis
   finishes, instead of staying placeholders until the app is restarted. A
   completed analysis earns a file one more thumbnail attempt, now that the home
-  mirror it writes to exists.
+  mirror it writes to exists
+  ([`4b9c895`](https://github.com/chomamateusz/ai-video-cataloger/commit/4b9c895a)).
 - The delete-credential copy keeps the keychain warning when a credentials-file
   entry is also unreadable — both the settings notice and the CLI report the
-  retained keychain instead of dropping it for the unreadable-entry line.
+  retained keychain instead of dropping it for the unreadable-entry line
+  ([`e187071`](https://github.com/chomamateusz/ai-video-cataloger/commit/e1870710)).
 
 ## [0.5.24] - 2026-07-29
 
