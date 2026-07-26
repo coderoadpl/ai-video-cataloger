@@ -14,13 +14,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.20] - 2026-07-28
+
 ### Fixed
 
 - **Forget key** in Settings no longer closes the modal the moment the answer
   arrives: the outcome is rendered next to the field as a coloured notice
   (cleared everywhere = success, keychain retained or request failed = warning
   or error), so a Keychain that refused to release the key is finally readable.
-  Closing the modal stays the user's action.
+  Closing the modal stays the user's action
+  ([`8255e78`](https://github.com/chomamateusz/ai-video-cataloger/commit/8255e783)).
 - A credential migration can no longer overwrite a newer Keychain key with an
   older plaintext one. `credentials.json` entries now record their provenance
   (`{"value": …, "state": "pending" | "stale"}`, a bare string meaning
@@ -30,32 +33,40 @@ release history jumps from `0.5.10` to `0.5.12`.
   the file value aside to `credentials.json.conflict-<timestamp>` (mode 0600)
   instead of deleting it, and `doctor` raises a new `credential_value_conflict`
   warning naming the provider and that file. Forgetting a key clears those
-  archives too.
+  archives too
+  ([`43ffa76`](https://github.com/chomamateusz/ai-video-cataloger/commit/43ffa76a),
+  [`6ec415b`](https://github.com/chomamateusz/ai-video-cataloger/commit/6ec415be)).
 - `delete-credential` now attempts the Keychain even when its availability probe
   fails, and distinguishes "no such item" (nothing cleared) from an unreachable
   Keychain (reported as retained), so a key is never announced as gone while the
-  Keychain still holds it.
+  Keychain still holds it
+  ([`43ffa76`](https://github.com/chomamateusz/ai-video-cataloger/commit/43ffa76a)).
 - A Keychain read error with no plaintext fallback is reported as the new
   `keychain_unavailable` error (HTTP 503, CLI exit 44) instead of being flattened
   into "no API key stored"; the Settings and prerequisites panels say the login
-  keychain is locked (en + pl).
+  keychain is locked (en + pl)
+  ([`43ffa76`](https://github.com/chomamateusz/ai-video-cataloger/commit/43ffa76a)).
 - `doctor` stops reporting a degraded credentials backend once the Keychain
   answers again, including when the migration itself was the operation that
-  succeeded.
+  succeeded
+  ([`43ffa76`](https://github.com/chomamateusz/ai-video-cataloger/commit/43ffa76a)).
 - Saving a credential from Settings while the macOS Keychain is unreachable no
   longer looks frozen: after two seconds the dialog says it is waiting for the
   Keychain and suggests unlocking it, instead of showing only `Saving…` for the
-  ~20s the two `security` calls take to time out.
+  ~20s the two `security` calls take to time out
+  ([`c07675d`](https://github.com/chomamateusz/ai-video-cataloger/commit/c07675da)).
 - The CLI credential prompt writes its question to stderr and decides on raw
   mode from the same stream it gates on (stdin), so `config set-credential
   --json` with stdout redirected no longer mixes the prompt into its NDJSON and
-  no longer leaves the terminal echoing the typed key.
+  no longer leaves the terminal echoing the typed key
+  ([`8d08c2a`](https://github.com/chomamateusz/ai-video-cataloger/commit/8d08c2a2)).
 - A Gemini native video upload survives a transient chunk failure: a failed
   chunk is retried up to three times with a short backoff, and each retry first
   asks the resumable session how many bytes it already holds, so a half-received
   chunk is resumed rather than sent twice. Non-retryable answers (a rejected key,
   a bad request) still abandon the session immediately. Chunk offsets now advance
-  by the bytes actually read, so a short read no longer skips part of the file.
+  by the bytes actually read, so a short read no longer skips part of the file
+  ([`e6a64b5`](https://github.com/chomamateusz/ai-video-cataloger/commit/e6a64b5d)).
 
 ## [0.5.19] - 2026-07-28
 

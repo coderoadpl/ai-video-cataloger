@@ -1,6 +1,6 @@
 {
   "name": "ai-video-cataloger",
-  "version": "0.5.19",
+  "version": "0.5.20",
   "private": true,
   "type": "module",
   "description": "Local-first Electron + CLI video cataloger on the agentproofarch foundation",
