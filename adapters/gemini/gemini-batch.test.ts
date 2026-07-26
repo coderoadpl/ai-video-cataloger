@@ -376,6 +376,36 @@ describe('gemini batch lifecycle', () => {
     expect(warnings[0]).toContain('avc-drive-run-1');
   });
 
+  it('picks the newest same-named batch even when the older one is on an earlier page', async () => {
+    const { fetchImpl, calls } = recordingFetch((call) =>
+      call.url.includes('pageToken=page-2')
+        ? jsonResponse({
+          operations: [
+            { name: 'batches/new', metadata: { displayName: 'avc-drive-run-1', createTime: '2026-01-02T00:00:00Z' } },
+          ],
+        })
+        : jsonResponse({
+          operations: [
+            { name: 'batches/old', metadata: { displayName: 'avc-drive-run-1', createTime: '2026-01-01T00:00:00Z' } },
+          ],
+          nextPageToken: 'page-2',
+        }));
+    const warnings: string[] = [];
+    const adapter = new GeminiNativeAnalyzerAdapter({
+      credentials,
+      fetchImpl,
+      videoFile,
+      sleep: () => Promise.resolve(),
+      onWarning: (message) => warnings.push(message),
+    });
+
+    const found = await adapter.findBatchByDisplayName({ provider: provider(), displayName: 'avc-drive-run-1' });
+
+    expect(found).toMatchObject({ ok: true, value: 'batches/new' });
+    expect(calls).toHaveLength(2);
+    expect(warnings).toHaveLength(1);
+  });
+
   it('reports a job that is done with an error as failed even when the state suffix is empty', async () => {
     const { fetchImpl } = recordingFetch(() =>
       jsonResponse({ name: 'batches/9', done: true, error: { code: 3, message: 'quota exhausted' } }));
@@ -387,6 +417,24 @@ describe('gemini batch lifecycle', () => {
     });
 
     expect(status).toMatchObject({ ok: true, value: { state: 'failed', message: 'quota exhausted' } });
+  });
+
+  it('reports a job that names a success state while carrying a job-level error as failed', async () => {
+    const { fetchImpl } = recordingFetch(() =>
+      jsonResponse({
+        name: 'batches/9',
+        done: true,
+        metadata: { state: 'JOB_STATE_SUCCEEDED' },
+        error: { code: 13, message: 'internal batch failure' },
+      }));
+
+    const status = await adapterWith(fetchImpl).batchStatus({
+      provider: provider(),
+      jobName: 'batches/9',
+      requestKeys: ['r0'],
+    });
+
+    expect(status).toMatchObject({ ok: true, value: { state: 'failed', message: 'internal batch failure' } });
   });
 
   it('reads a bare state name that carries no STATE_ prefix', async () => {
@@ -436,11 +484,23 @@ describe('gemini batch lifecycle', () => {
       fileNames: ['files/r0', 'files/r1'],
     });
 
-    expect(released.ok).toBe(true);
+    expect(released).toEqual({ ok: true, value: { retained: 0 } });
     expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
       'DELETE https://generativelanguage.googleapis.com/v1beta/files/r0',
       'DELETE https://generativelanguage.googleapis.com/v1beta/files/r1',
     ]);
+  });
+
+  it('counts the uploads the Files API refused to delete instead of reporting a clean release', async () => {
+    const { fetchImpl } = recordingFetch((call) =>
+      call.url.endsWith('files/r1') ? jsonResponse({ error: { code: 500 } }, 500) : jsonResponse({}));
+
+    const released = await adapterWith(fetchImpl).releaseBatchUploads({
+      provider: provider(),
+      fileNames: ['files/r0', 'files/r1'],
+    });
+
+    expect(released).toEqual({ ok: true, value: { retained: 1 } });
   });
 
   it('marks a 4xx submit rejection as definitive and leaves a network failure uncertain', async () => {

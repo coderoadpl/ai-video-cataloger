@@ -95,7 +95,7 @@ export const parseBatchOperation = (body: unknown): Result<GeminiBatchOperation,
 
 export interface BatchDisplayNameMatch {
   jobName: string;
-  matchCount: number;
+  createTime: string;
 }
 
 export const batchListNextPageToken = (body: unknown): string | null => {
@@ -105,16 +105,19 @@ export const batchListNextPageToken = (body: unknown): string | null => {
   return token.length === 0 ? null : token;
 };
 
-export const batchJobForDisplayName = (body: unknown, displayName: string): BatchDisplayNameMatch | null => {
+export const batchJobsForDisplayName = (body: unknown, displayName: string): BatchDisplayNameMatch[] => {
   const parsed = batchListSchema.safeParse(body);
-  if (!parsed.success) return null;
-  const matches = [...(parsed.data.operations ?? []), ...(parsed.data.batches ?? [])]
-    .filter((operation) => operation.metadata?.displayName === displayName && operation.name !== undefined)
-    .sort((left, right) => createTimeOf(right).localeCompare(createTimeOf(left)));
-  const newest = matches[0];
-  if (newest?.name === undefined) return null;
-  return { jobName: newest.name, matchCount: matches.length };
+  if (!parsed.success) return [];
+  return [...(parsed.data.operations ?? []), ...(parsed.data.batches ?? [])].flatMap((operation) =>
+    operation.name === undefined || operation.metadata?.displayName !== displayName
+      ? []
+      : [{ jobName: operation.name, createTime: createTimeOf(operation) }]);
 };
+
+// Jobs sharing a display name can straddle a page boundary, so the newest is only known once
+// every page has been read; picking within the first page that matched would take an older job.
+export const newestBatchJob = (matches: readonly BatchDisplayNameMatch[]): BatchDisplayNameMatch | null =>
+  [...matches].sort((left, right) => right.createTime.localeCompare(left.createTime))[0] ?? null;
 
 const createTimeOf = (operation: GeminiBatchOperation): string =>
   operation.metadata?.createTime ?? operation.createTime ?? '';
@@ -137,13 +140,13 @@ export interface BatchJobStateReading {
 }
 
 export const readBatchJobState = (operation: GeminiBatchOperation): BatchJobStateReading => {
+  // A job that carries an error never "finished" successfully, whatever its state field says.
+  if (operation.error !== undefined) return { state: 'failed', unrecognizedState: null };
   const raw = (operation.metadata?.state ?? operation.state ?? '').toUpperCase();
   const marker = raw.lastIndexOf('STATE_');
   const suffix = marker === -1 ? raw : raw.slice(marker + 'STATE_'.length);
   const known = BATCH_STATE_BY_NAME[suffix];
   if (known !== undefined) return { state: known, unrecognizedState: null };
-  // A job that carries an error never "finished" successfully, whatever its state field says.
-  if (operation.error !== undefined) return { state: 'failed', unrecognizedState: null };
   if (operation.done === true) return { state: 'succeeded', unrecognizedState: raw };
   return { state: 'pending', unrecognizedState: raw.length === 0 ? null : raw };
 };

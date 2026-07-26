@@ -114,6 +114,8 @@ const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): s
       return dictionary.processing.driveBatchPoll(message.state, message.requestCount);
     case 'batchCompleted':
       return dictionary.processing.driveBatchCompleted(message.succeeded, message.failed);
+    case 'batchUploadsRetained':
+      return dictionary.processing.driveBatchUploadsRetained(message.retained);
     case 'fileProgress':
       return dictionary.processing.fileProgressLine(
         message.current,

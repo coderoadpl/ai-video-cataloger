@@ -462,18 +462,22 @@ const resolveBatchPlan = async (
   });
 };
 
+// The newest unfinished run for a root is not necessarily the one holding a paid-for job: an
+// interactive run over the same root can be interrupted after it, and resubmitting because that
+// one carries no batch state would buy the same job twice.
 const resumableBatchRun = async (
   globalCatalog: GlobalCatalogStore,
   root: string,
 ): Promise<Result<DriveRunRecord | null, AppError>> => {
-  const latest = await globalCatalog.latestUnfinishedDriveRun(root);
-  if (!latest.ok) return latest;
-  const run = latest.value;
-  if (run === null) return ok(null);
-  if (run.batch === null || run.batch.state === 'completed' || run.batch.state === 'failed') return ok(null);
-  return ok(run);
+  const unfinished = await globalCatalog.unfinishedDriveRuns(root);
+  if (!unfinished.ok) return unfinished;
+  const resumable = unfinished.value.find((run) =>
+    run.batch !== null && run.batch.state !== 'completed' && run.batch.state !== 'failed');
+  return ok(resumable ?? null);
 };
 
+// Every request in the job is built from the plan's own provider, language and timeout, so a
+// folder that resolves any of them differently would be answered with the root's settings.
 const folderTakesBatch = async (
   deps: ProcessDeps,
   input: ProcessDriveInput,
@@ -482,9 +486,24 @@ const folderTakesBatch = async (
 ): Promise<Result<boolean, AppError>> => {
   const resolved = await resolveProcessOptions(deps.config, folder, processInput(input, folder, 1, 1));
   if (!resolved.ok) return resolved;
-  const provider = resolved.value.analyzer.provider;
-  return ok(provider.family === 'gemini-native' && provider.model === plan.model);
+  const analyzer = resolved.value.analyzer;
+  return ok(
+    analyzer.provider.family === 'gemini-native'
+    && batchConfigKey(analyzer.provider, analyzer.outputLanguage, analyzer.timeoutSeconds)
+      === batchConfigKey(plan.provider, plan.outputLanguage, plan.timeoutSeconds),
+  );
 };
+
+const batchConfigKey = (
+  provider: AnalyzerProviderConfig,
+  outputLanguage: AppConfig['output_language'],
+  timeoutSeconds: number,
+): string =>
+  JSON.stringify([
+    Object.entries(provider).sort(([left], [right]) => left.localeCompare(right)),
+    outputLanguage,
+    timeoutSeconds,
+  ]);
 
 const enrolInBatch = async (
   plan: DriveBatchPlan,
@@ -633,10 +652,15 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
 
   if (!expired) {
     // Best effort: an upload the API kept is a quota leak, not a reason to fail a paid-for run.
-    await plan.analyzerBatch.releaseBatchUploads({
+    const released = await plan.analyzerBatch.releaseBatchUploads({
       provider: plan.provider,
       fileNames: requests.map((request) => request.fileName),
     });
+    const retained = released.ok ? released.value.retained : requests.length;
+    if (retained > 0) {
+      const warned = await report(progress, 'batch_uploads_retained', { jobName: job.value.jobName, retained });
+      if (!warned.ok) return warned;
+    }
   }
   state.run.batch = expired
     ? null

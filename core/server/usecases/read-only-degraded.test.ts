@@ -6,6 +6,7 @@ import type { JobProgress } from '../ports.js';
 import { readOnlyArtifactRoot } from './artifact-root.js';
 import { isReadOnlyWriteError, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import { processDrive, type ProcessDriveInput } from './process-drive.js';
+import { scanFolder } from './scan.js';
 import {
   InMemoryAnalyzer,
   InMemoryCatalogs,
@@ -159,6 +160,31 @@ describe('drive processing over a read-only folder', () => {
     expect(run.ok && run.value.filesFailed).toBe(0);
     expect(run.ok && run.value.filesDone).toBe(6);
     expect(run.ok && run.value.snapshotSkipped).toBe(6);
+  });
+
+  it('still reports the analysed files as tracked after a restart drops the in-memory catalog', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const deps = makeDeps(fs);
+
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro' });
+    expect(run.ok && run.value.filesDone).toBe(1);
+
+    const restarted = { ...deps, catalogs: new InMemoryCatalogs([], fs) };
+    const scanned = await scanFolder(restarted, { folder: '/drive/ro' });
+
+    expect(scanned.ok && scanned.value.videos.map((video) => video.status)).toEqual(['completed']);
+    expect(scanned.ok && scanned.value.summary).toMatchObject({ total: 1, tracked: 1, notTracked: 0, completed: 1 });
+  });
+
+  it('leaves a read-only folder nothing analysed reported as untracked', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const deps = makeDeps(fs);
+
+    const scanned = await scanFolder(deps, { folder: '/drive/ro' });
+
+    expect(scanned.ok && scanned.value.videos.map((video) => video.status)).toEqual(['not_tracked']);
   });
 
   it('skips by fingerprint on a second run without a local marker', async () => {

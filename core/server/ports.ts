@@ -188,7 +188,7 @@ export interface GlobalCatalogStore {
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>>;
-  latestUnfinishedDriveRun(root: string): Promise<Result<DriveRunRecord | null, AppError>>;
+  unfinishedDriveRuns(root: string): Promise<Result<DriveRunRecord[], AppError>>;
   listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>>;
   completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
   deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>>;
@@ -532,7 +532,7 @@ export interface AnalyzerBatchPort {
   releaseBatchUploads(input: {
     provider: AnalyzerProviderConfig;
     fileNames: readonly string[];
-  }): Promise<Result<void, AppError>>;
+  }): Promise<Result<{ retained: number }, AppError>>;
 }
 
 export interface AnalyzerPort {
@@ -671,7 +671,8 @@ export type ProcessJobStep =
   | 'catalog_snapshot_skipped'
   | 'batch_submitted'
   | 'batch_poll'
-  | 'batch_completed';
+  | 'batch_completed'
+  | 'batch_uploads_retained';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

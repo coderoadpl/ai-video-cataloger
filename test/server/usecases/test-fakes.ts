@@ -1053,11 +1053,11 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(runs[0] ?? null));
   }
 
-  latestUnfinishedDriveRun(root: string): Promise<Result<DriveRunRecord | null, AppError>> {
+  unfinishedDriveRuns(root: string): Promise<Result<DriveRunRecord[], AppError>> {
     const runs = [...this.driveRuns.values()]
       .filter((run) => run.root === root && run.finishedAt === null)
       .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-    return Promise.resolve(ok(runs[0] ?? null));
+    return Promise.resolve(ok(runs));
   }
 
   listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {

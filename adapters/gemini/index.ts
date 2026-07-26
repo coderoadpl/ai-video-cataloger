@@ -32,14 +32,16 @@ import type {
 
 import {
   BATCH_INLINE_REQUEST_LIMIT_BYTES,
-  batchJobForDisplayName,
+  batchJobsForDisplayName,
   batchJobMessage,
   batchListNextPageToken,
   batchResults,
   buildBatchSubmitBody,
   inlineRequestTooLargeError,
+  newestBatchJob,
   parseBatchOperation,
   readBatchJobState,
+  type BatchDisplayNameMatch,
 } from './batch.js';
 import { analysisFromGenerateContent } from './response.js';
 
@@ -389,6 +391,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     const apiKey = await this.apiKey(provider);
     if (!apiKey.ok) return apiKey;
     let pageToken: string | null = null;
+    const matches: BatchDisplayNameMatch[] = [];
     for (let page = 0; page < BATCH_LIST_PAGE_LIMIT; page += 1) {
       const url = `${GEMINI_NATIVE_API_BASE_URL}/v1beta/batches?pageSize=100`
         + (pageToken === null ? '' : `&pageToken=${encodeURIComponent(pageToken)}`);
@@ -399,20 +402,19 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
         input.signal,
       );
       if (!response.ok) return response;
-      const match = batchJobForDisplayName(response.value, input.displayName);
-      if (match !== null) {
-        if (match.matchCount > 1) {
-          this.warn(
-            `Gemini holds ${String(match.matchCount)} batch jobs named "${input.displayName}"; `
-            + `re-attaching to the newest one (${match.jobName}).`,
-          );
-        }
-        return ok(match.jobName);
-      }
+      matches.push(...batchJobsForDisplayName(response.value, input.displayName));
       pageToken = batchListNextPageToken(response.value);
-      if (pageToken === null) return ok(null);
+      if (pageToken === null) break;
     }
-    return ok(null);
+    const newest = newestBatchJob(matches);
+    if (newest === null) return ok(null);
+    if (matches.length > 1) {
+      this.warn(
+        `Gemini holds ${String(matches.length)} batch jobs named "${input.displayName}"; `
+        + `re-attaching to the newest one (${newest.jobName}).`,
+      );
+    }
+    return ok(newest.jobName);
   }
 
   async batchStatus(input: {
@@ -476,15 +478,18 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
   async releaseBatchUploads(input: {
     provider: AnalyzerProviderConfig;
     fileNames: readonly string[];
-  }): Promise<Result<void, AppError>> {
+  }): Promise<Result<{ retained: number }, AppError>> {
     const provider = input.provider;
     if (provider.family !== 'gemini-native') {
       return { ok: false, error: appError('invalid_config_value', 'Gemini native analyzer provider configuration is required') };
     }
     const apiKey = await this.apiKey(provider);
     if (!apiKey.ok) return apiKey;
-    for (const fileName of input.fileNames) await this.deleteFile(apiKey.value, fileName);
-    return ok(undefined);
+    let retained = 0;
+    for (const fileName of input.fileNames) {
+      if (!(await this.deleteFile(apiKey.value, fileName))) retained += 1;
+    }
+    return ok({ retained });
   }
 
   private async apiKey(provider: GeminiNativeProvider): Promise<Result<string, AppError>> {
@@ -734,15 +739,16 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     return { ok: false, error: appError('provider_error', 'Gemini video did not become ACTIVE before timeout') };
   }
 
-  private async deleteFile(apiKey: string, fileName: string): Promise<void> {
+  private async deleteFile(apiKey: string, fileName: string): Promise<boolean> {
     try {
-      await this.fetchImpl(`${GEMINI_NATIVE_API_BASE_URL}/v1beta/${fileName}`, {
+      const response = await this.fetchImpl(`${GEMINI_NATIVE_API_BASE_URL}/v1beta/${fileName}`, {
         method: 'DELETE',
         headers: { 'x-goog-api-key': apiKey },
         signal: AbortSignal.timeout(10_000),
       });
+      return response.ok;
     } catch {
-      return;
+      return false;
     }
   }
 

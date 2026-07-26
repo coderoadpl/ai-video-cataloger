@@ -17,6 +17,7 @@ export type DriveMessage =
     }
   | { readonly kind: 'fileSkipped'; readonly level: 'info'; readonly filename: string }
   | { readonly kind: 'snapshotSkipped'; readonly level: 'info'; readonly folder: string }
+  | { readonly kind: 'batchUploadsRetained'; readonly level: 'info'; readonly retained: number }
   | {
       readonly kind: 'runComplete';
       readonly level: 'info';
@@ -208,6 +209,13 @@ export const reduceDriveEvent = (
         },
       ],
       batchWait: { requestCount: numField(data, 'requestCount'), state: strField(data, 'state') },
+    };
+  }
+
+  if (step === 'batch_uploads_retained') {
+    return {
+      ...idle(counts),
+      messages: [{ kind: 'batchUploadsRetained', level: 'info', retained: numField(data, 'retained') }],
     };
   }
 

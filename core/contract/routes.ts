@@ -731,6 +731,7 @@ export const jobProgressStepSchema = z.enum([
   'batch_submitted',
   'batch_poll',
   'batch_completed',
+  'batch_uploads_retained',
 ]);
 
 export const jobProgressSchema = z.object({

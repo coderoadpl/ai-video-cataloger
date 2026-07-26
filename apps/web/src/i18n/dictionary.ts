@@ -347,6 +347,7 @@ export interface Dictionary {
     driveBatchSubmitted: (requestCount: number, reattached: boolean) => string;
     driveBatchPoll: (state: string, requestCount: number) => string;
     driveBatchCompleted: (succeeded: number, failed: number) => string;
+    driveBatchUploadsRetained: (retained: number) => string;
     driveBatchWaiting: (requestCount: number) => string;
     progressLine: (percentage: number, label: string) => string;
     fileProgressLine: (current: number, total: number, label: string, filename: string) => string;
@@ -925,6 +926,8 @@ export const en: Dictionary = {
     driveBatchPoll: (state, requestCount) => `… Batch ${state} (${String(requestCount)} file(s))`,
     driveBatchCompleted: (succeeded, failed) =>
       `✓ Batch results in: ${String(succeeded)} answered, ${String(failed)} failed`,
+    driveBatchUploadsRetained: (retained) =>
+      `! ${String(retained)} uploaded file(s) could not be deleted from Gemini; they expire on their own after 48h`,
     driveBatchWaiting: (requestCount) => `Batch submitted — awaiting results (${String(requestCount)} file(s))`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
     fileProgressLine: (current, total, label, filename) => `[${String(current)}/${String(total)}] ${label}: ${filename}`,
@@ -1524,6 +1527,8 @@ export const pl: Dictionary = {
     driveBatchPoll: (state, requestCount) => `… Wsad: ${state} (${String(requestCount)} plik(i))`,
     driveBatchCompleted: (succeeded, failed) =>
       `✓ Wyniki wsadu: ${String(succeeded)} z odpowiedzią, ${String(failed)} błędnych`,
+    driveBatchUploadsRetained: (retained) =>
+      `! Nie udało się usunąć ${String(retained)} przesłanych plików z Gemini; wygasną same po 48 h`,
     driveBatchWaiting: (requestCount) => `Wysłano wsad — czekamy na wyniki (${String(requestCount)} plik(i))`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
     fileProgressLine: (current, total, label, filename) => `[${String(current)}/${String(total)}] ${label}: ${filename}`,

@@ -31,6 +31,26 @@ release history jumps from `0.5.10` to `0.5.12`.
   be removed nor marked superseded now fails with that message and keeps
   reporting a degraded backend, instead of proceeding as if the copy had been
   marked.
+- A folder whose effective analyzer configuration differs from the batch root's
+  in any way — a different `apiKeyRef`, output language or timeout, not just a
+  different model — is processed interactively instead of being answered with
+  the root's settings inside the shared batch job.
+- A Gemini batch run re-attaches to the unfinished run that actually holds a
+  submitted job, rather than to the newest unfinished run for the root, so an
+  interrupted interactive run over the same root can no longer cause a second
+  job to be bought.
+- The `ListBatches` display-name lookup now collects matches across every page
+  before choosing the newest by `createTime`; a duplicate name split over a page
+  boundary previously re-attached to the older job.
+- A batch job that reports a success state while carrying a job-level error is
+  classified as failed.
+- A read-only folder analysed under a path-derived folder id is reported as
+  analysed after a restart. Folder-scoped scans now read the global index for
+  such folders, so the desktop app no longer shows "Not Tracked" and offers to
+  analyse work that is already done.
+- Failed Files API deletions after a batch run emit one
+  `batch_uploads_retained` progress event per run naming the count, instead of
+  being silent.
 
 ## [0.5.22] - 2026-07-29
 

@@ -1,6 +1,14 @@
-import { appError, ok, type AppError, type Result, type VideoStatus } from '@core/domain/index.js';
+import { appError, derivedFolderId, ok, type AppError, type Result, type VideoStatus } from '@core/domain/index.js';
 
-import type { CatalogRepository, CatalogRepositoryFactory, CatalogVideo, FileSystemPort, MediaPort } from '../ports.js';
+import type {
+  CatalogFileRecord,
+  CatalogRepository,
+  CatalogRepositoryFactory,
+  CatalogVideo,
+  FileSystemPort,
+  GlobalCatalogStore,
+  MediaPort,
+} from '../ports.js';
 import {
   artifactPaths,
   formatDuration,
@@ -11,6 +19,7 @@ import {
   type SummaryData,
 } from './shared.js';
 import { artifactRootFor, type ArtifactRoot } from './artifact-root.js';
+import { readFolderMarker } from './folder-identity.js';
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
 
 export interface TranscriptSegment {
@@ -69,6 +78,7 @@ export interface ScanDeps {
   catalogs: CatalogRepositoryFactory;
   fs: FileSystemPort;
   media: MediaPort;
+  globalCatalog?: GlobalCatalogStore | undefined;
 }
 
 export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Promise<Result<ScanOutput, AppError>> => {
@@ -92,9 +102,11 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
     .sort((left, right) => left.path.localeCompare(right.path));
 
   const artifactRoot = artifactRootFor(deps.fs, folder, repository.value.writable());
+  const indexed = await indexedAnalyses(deps, folder, repository.value.writable());
+  if (!indexed.ok) return indexed;
   const videos: ScanVideo[] = [];
   for (const entry of videoEntries) {
-    const scanned = await scanVideo(deps, repository.value, artifactRoot, entry.path);
+    const scanned = await scanVideo(deps, repository.value, artifactRoot, entry.path, indexed.value);
     if (!scanned.ok) return scanned;
     videos.push(scanned.value);
   }
@@ -107,11 +119,36 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
   });
 };
 
+// A folder the app cannot write keeps no catalog of its own: its analyses live only in the global
+// index, under the path-derived folder id. Without that lookup an analysed read-only folder reads
+// as untracked again on the next launch, offering to analyse what is already done.
+const indexedAnalyses = async (
+  deps: ScanDeps,
+  folder: string,
+  writable: boolean,
+): Promise<Result<Map<string, CatalogFileRecord>, AppError>> => {
+  const globalCatalog = deps.globalCatalog;
+  if (writable || globalCatalog === undefined) return ok(new Map());
+  const marker = await readFolderMarker(deps.fs, folder);
+  if (!marker.ok) return marker;
+  const records = await globalCatalog.listFolderRecords(
+    marker.value?.folderId ?? derivedFolderId(deps.fs.resolve(folder)),
+  );
+  if (!records.ok) return records;
+  const byFingerprint = new Map<string, CatalogFileRecord>();
+  for (const record of records.value) {
+    if (record.analysis === null || record.file.missingAt !== null) continue;
+    byFingerprint.set(record.file.fingerprint, record);
+  }
+  return ok(byFingerprint);
+};
+
 const scanVideo = async (
   deps: ScanDeps,
   repository: CatalogRepository,
   artifactRoot: ArtifactRoot,
   videoPath: string,
+  indexed: ReadonlyMap<string, CatalogFileRecord>,
 ): Promise<Result<ScanVideo, AppError>> => {
   const stat = await deps.fs.stat(videoPath);
   if (!stat.ok) return stat;
@@ -131,8 +168,9 @@ const scanVideo = async (
     matched = hashMatch.value;
   }
 
-  const status = matched?.status ?? 'not_tracked';
-  const newName = matched?.newName ?? null;
+  const indexedRecord = matched !== null || initialHash === null ? undefined : indexed.get(initialHash);
+  const status = matched?.status ?? (indexedRecord === undefined ? 'not_tracked' : 'completed');
+  const newName = matched?.newName ?? indexedRecord?.analysis?.finalName ?? null;
   const artifacts = await loadArtifacts(deps.fs, artifactRoot, videoPath, status, newName);
   if (!artifacts.ok) return artifacts;
 

@@ -78,15 +78,20 @@ matches the display name it already persisted, which is why the display name
 is derived rather than random.
 
 **5. An interrupted batch run re-attaches; it never resubmits.** Starting a
-batch drive run looks up the latest unfinished run **for that root** — not the
-latest run overall, which a run over any other root in between would otherwise
-displace, orphaning a job that was already paid for — and if it carries a
-`batch` state, re-adopts that run id, that mapping and that job, and jumps
-straight to polling. Only a run whose persisted state is `preparing` *and*
-whose display name matches no batch on the account submits — because in that
-case nothing was ever submitted. That lookup walks every page of `ListBatches`,
-and when several jobs carry the same display name it takes the newest by
-`createTime` and logs a warning rather than trusting list order. A submit that
+batch drive run looks up the unfinished runs **for that root** — not the latest
+run overall, which a run over any other root in between would otherwise
+displace, orphaning a job that was already paid for — and re-adopts the newest
+one that actually carries a live `batch` state, with its run id, mapping and
+job, jumping straight to polling. It is the *batch* state that decides, not
+recency: an interactive run over the same root, interrupted after the batch one,
+is newer and carries no job, and treating it as the candidate would buy the same
+job twice. Only a run whose persisted state is `preparing` *and* whose display
+name matches no batch on the account submits — because in that case nothing was
+ever submitted. That lookup walks every page of `ListBatches` and collects the
+matches from all of them before taking the newest by `createTime`, logging a
+warning rather than trusting list order or page order: jobs sharing a display
+name can straddle a page boundary, and stopping at the first page that matched
+would re-attach to an older job. A submit that
 fails without a definitive rejection (a dropped connection, a timeout) keeps the
 persisted display name, because a job may exist that only that name can find;
 only a 4xx with an error body — the API refusing before it created anything —
@@ -134,17 +139,22 @@ may take up to 24 hours.
 - A batch drive run has two passes over the tree: upload/plan, then map. Files
   already in the global index are still skipped in the first pass and never
   reach the batch.
-- A folder whose effective config resolves to a different analyzer (or a
-  different Gemini model) than the batch is processed interactively inside
-  the first pass. One job, one model — mixing them would break the mapping.
+- A folder whose effective configuration differs from the batch plan's in any
+  way that reaches a request — the analyzer family, the Gemini model, the API
+  key reference, the output language, the timeout — is processed interactively
+  inside the first pass. One job, one configuration: every request in the job is
+  built from the plan's own settings, so a folder that differs would be answered
+  with the root's settings rather than its own.
 - `gemini_batch_mode` resolves per folder, exactly like the analyzer provider:
   without the `--gemini-batch` flag a folder under a batch root can opt out and
   run interactively, and a folder under an interactive root can opt in. The flag
   is a run-wide override and wins over every folder key. The job's model comes
   from the first folder that opted in.
 - The Files API uploads a completed batch used are deleted once its answers are
-  mapped, best effort: a delete that fails is logged, never fatal, and the 48 h
-  TTL remains the backstop.
+  mapped, best effort: a delete that fails is never fatal, and the 48 h TTL
+  remains the backstop. The run reports it once — a single
+  `batch_uploads_retained` progress event naming how many uploads the API kept,
+  not one per file — because silence about a quota leak is not "best effort".
 - A file that appears *after* a batch was submitted cannot join that job. A
   re-attached run processes it interactively, at full price for that one file,
   rather than leaving it silently unprocessed.
