@@ -228,6 +228,7 @@ export interface CredentialsStore {
   delete?(providerId: string): Promise<Result<CredentialDeletion, AppError>>;
   legacyPlaintextProviders?(): Promise<Result<string[], AppError>>;
   credentialValueConflicts?(): Promise<Result<CredentialValueConflict[], AppError>>;
+  unreadableCredentialEntries?(): Promise<Result<string[], AppError>>;
   backend?(): Promise<CredentialsBackendStatus>;
 }
 
@@ -528,6 +529,10 @@ export interface AnalyzerBatchPort {
     requestKeys: readonly string[];
     signal?: AbortSignal | undefined;
   }): Promise<Result<AnalyzerBatchStatus, AppError>>;
+  releaseBatchUploads(input: {
+    provider: AnalyzerProviderConfig;
+    fileNames: readonly string[];
+  }): Promise<Result<void, AppError>>;
 }
 
 export interface AnalyzerPort {

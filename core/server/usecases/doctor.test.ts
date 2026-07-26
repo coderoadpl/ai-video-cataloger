@@ -174,6 +174,34 @@ describe('runDoctor', () => {
     });
   });
 
+  it('names the provider whose credentials file entry could not be parsed', async () => {
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      credentials: {
+        get: () => Promise.resolve(ok(null)),
+        set: () => Promise.resolve(ok(undefined)),
+        unreadableCredentialEntries: () => Promise.resolve(ok(['openrouter'])),
+      },
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.warnings).toContainEqual({
+      code: 'credential_entry_unreadable',
+      message: 'The entry for "openrouter" in ~/.ai-video-cataloger/credentials.json is malformed and is being '
+        + 'ignored; the other keys in that file still work. Store it again with set-credential, '
+        + 'or fix the entry by hand.',
+    });
+  });
+
   it('names the provider whose conflicting file entry was set aside during migration', async () => {
     const deps = {
       media: new InMemoryMedia(),

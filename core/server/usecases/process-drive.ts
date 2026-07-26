@@ -631,6 +631,13 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
     if (!closed.ok) return closed;
   }
 
+  if (!expired) {
+    // Best effort: an upload the API kept is a quota leak, not a reason to fail a paid-for run.
+    await plan.analyzerBatch.releaseBatchUploads({
+      provider: plan.provider,
+      fileNames: requests.map((request) => request.fileName),
+    });
+  }
   state.run.batch = expired
     ? null
     : { displayName, jobName: job.value.jobName, state: 'completed', model: plan.model, requests };

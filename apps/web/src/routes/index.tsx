@@ -15,6 +15,7 @@ import { useCatalogVideoRegistry } from '../features/catalog/use-catalog-video-r
 import { useCatalogLock } from '../features/catalog/use-catalog-lock.js';
 import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
+import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { PeopleView } from '../features/people/PeopleView.js';
@@ -83,8 +84,8 @@ export const IndexRoute = () => {
     if (root === null) return 0;
     return root.children.reduce((total, child) => total + (child.videoCount ?? child.videos.length), 0);
   }, [tree.root]);
-  const hasSubfolderVideos = subfolderVideoCount > 0;
-  const effectiveScope: AnalyzeScope = hasSubfolderVideos ? scope : 'folder';
+  const treeScopeAvailable = useTreeScopeAvailability(shell.currentFolder, subfolderVideoCount);
+  const effectiveScope: AnalyzeScope = treeScopeAvailable ? scope : 'folder';
   const showTree = effectiveScope === 'tree';
   const treePendingCount = Math.max(0, tree.videoTotal - tree.processedTotal);
   const scopedPendingCount = effectiveScope === 'tree' ? treePendingCount : processing.pendingCount;
@@ -141,7 +142,7 @@ export const IndexRoute = () => {
           isBusy={processing.isBusy}
           progress={activeProgress}
           batchWait={processing.driveBatchWait}
-          scopeToggleDisabled={!hasSubfolderVideos}
+          scopeToggleDisabled={!treeScopeAvailable}
           approximateCount={effectiveScope === 'tree'}
           canAnalyze={effectiveScope === 'tree' ? treeCanAnalyze : undefined}
           onAnalyze={() => {

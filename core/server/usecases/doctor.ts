@@ -83,6 +83,8 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
   if (!migrations.ok) return migrations;
   const conflicts = await credentialConflictWarnings(deps.credentials);
   if (!conflicts.ok) return conflicts;
+  const unreadable = await unreadableCredentialWarnings(deps.credentials);
+  if (!unreadable.ok) return unreadable;
   const credentialsBackend = await resolveCredentialsBackend(deps.credentials);
   const staleCli = await staleCliWarnings(deps.cliPath, deps.version);
   if (!staleCli.ok) return staleCli;
@@ -112,6 +114,7 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
       ...dependencyWarnings(dependencies),
       ...migrations.value,
       ...conflicts.value,
+      ...unreadable.value,
       ...credentialsBackendWarnings(credentialsBackend),
       ...staleCli.value,
     ],
@@ -159,6 +162,20 @@ const credentialConflictWarnings = async (
     message: `The macOS Keychain and the plaintext file held different API keys for "${conflict.providerId}". `
       + `The Keychain value is in use; the file value was set aside in ${conflict.archivePath}. `
       + 'Decide which key is current, store it with set-credential, and delete that file.',
+  })));
+};
+
+const unreadableCredentialWarnings = async (
+  credentials: CredentialsStore | undefined,
+): Promise<Result<DoctorWarning[], AppError>> => {
+  if (credentials?.unreadableCredentialEntries === undefined) return ok([]);
+  const providers = await credentials.unreadableCredentialEntries();
+  if (!providers.ok) return providers;
+  return ok(providers.value.map((providerId) => ({
+    code: 'credential_entry_unreadable',
+    message: `The entry for "${providerId}" in ~/.ai-video-cataloger/credentials.json is malformed and is being `
+      + 'ignored; the other keys in that file still work. Store it again with set-credential, '
+      + 'or fix the entry by hand.',
   })));
 };
 

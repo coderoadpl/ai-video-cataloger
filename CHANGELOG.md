@@ -43,6 +43,17 @@ release history jumps from `0.5.10` to `0.5.12`.
   a folder under a batch root can opt out and run interactively, and a folder
   under an interactive root can opt in. The `--gemini-batch` flag still wins over
   every folder key.
+- One malformed entry in `credentials.json` no longer makes the whole file
+  unreadable: the bad entry is skipped, every other key keeps working, and
+  `doctor` raises a `credential_entry_unreadable` warning naming the provider.
+- A completed Gemini batch run deletes the files it uploaded to the Files API
+  instead of leaving them to expire after 48 hours (best effort — a delete that
+  fails is logged, never fatal).
+- Cancelling a Gemini batch run stops it at once instead of waiting out the
+  current poll backoff, which reaches five minutes.
+- The whole-tree scope stays available when a tree holds no files on disk but
+  the catalog still remembers absent ones, so the absent/forget section is
+  reachable for entries search can already find.
 
 ## [0.5.21] - 2026-07-28
 

@@ -95,9 +95,27 @@ export const awaitBatchResults = async (
     });
     if (!reported.ok) return reported;
     if (status.value.state !== 'pending' && status.value.state !== 'running') return ok(status.value);
-    await input.sleep(delayMs(attempt));
+    await sleepUntilCancelled(input.sleep, delayMs(attempt), input.progress?.signal);
   }
   return { ok: false, error: appError('provider_error', `Gemini batch job ${input.jobName} did not finish before the poll limit`) };
+};
+
+// The backoff reaches five minutes, and a cancel that waits it out reads as a hung app.
+const sleepUntilCancelled = (
+  sleep: (milliseconds: number) => Promise<void>,
+  milliseconds: number,
+  signal: AbortSignal | undefined,
+): Promise<void> => {
+  if (signal === undefined) return sleep(milliseconds);
+  if (signal.aborted) return Promise.resolve();
+  return new Promise((resolve) => {
+    const settle = (): void => {
+      signal.removeEventListener('abort', settle);
+      resolve();
+    };
+    signal.addEventListener('abort', settle, { once: true });
+    void sleep(milliseconds).then(settle, settle);
+  });
 };
 
 export const batchJobFailureError = (jobName: string, status: AnalyzerBatchStatus): AppError =>

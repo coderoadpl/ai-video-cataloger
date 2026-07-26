@@ -110,7 +110,26 @@ removes the plaintext copy. Analysis must not die because a keychain is locked.
 gates set it, so `check` and `smoke` never touch the developer's login
 keychain); `AI_VIDEO_CATALOGER_KEYCHAIN=<path>` points the adapter at a
 specific keychain file, which is how the empirical check runs against a
-throwaway keychain instead of the login one.
+throwaway keychain instead of the login one. `AI_VIDEO_CATALOGER_KEYCHAIN`
+pointed at a **broken or unreadable** keychain file is not distinguished from a
+locked or missing one: `security` collapses both into the same failure, so the
+adapter reports `keychain_unavailable` (CLI exit 44) either way. Accepted rather
+than guessed at — the variable is a development and test affordance, never part
+of a shipped run, and inventing a second verdict from an ambiguous exit code
+would make the honest "the Keychain did not answer" report less trustworthy.
+
+**4a. A stale entry is never a live value.** `get` answers from the file only
+for `pending` and unmarked entries. When the file's only copy is `stale`, an
+unreachable Keychain is reported as `keychain_unavailable` and a Keychain that no
+longer holds the item answers "no key" — and drops the superseded copy, logged as
+`superseded`, exactly as the migration would. Serving a stale value would hand a
+paying API the key the user already replaced.
+
+**4b. One malformed file entry costs only that entry.** `credentials.json` is
+validated per provider, not as one document: an entry that does not parse is
+skipped and named in a `credential_entry_unreadable` doctor warning, while every
+other key in the file keeps working. Only a file whose outer shape is not an
+object at all fails the whole read.
 
 **5. The backend is visible.** `doctor` (human and `--json`) names the backend
 that holds credentials and its reason, warns when the Keychain was expected but

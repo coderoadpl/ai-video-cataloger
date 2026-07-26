@@ -23,7 +23,7 @@ import type {
 
 const markedEntrySchema = z.object({ value: z.string().min(1), state: z.enum(['pending', 'stale']) });
 const storedEntrySchema = z.union([z.string().min(1), markedEntrySchema]);
-const credentialsSchema = z.record(z.string().min(1), storedEntrySchema);
+const credentialsDocumentSchema = z.record(z.string().min(1), z.unknown());
 
 type StoredEntry = z.output<typeof storedEntrySchema>;
 
@@ -196,22 +196,47 @@ export class JsonCredentialsStore implements CredentialsStore {
     }
   }
 
+  async unreadableEntries(): Promise<Result<string[], AppError>> {
+    const parsed = await this.parseFileEntries(this.filePath);
+    if (!parsed.ok) return parsed;
+    return ok(parsed.value.unreadable);
+  }
+
   private read(): Promise<Result<Record<string, StoredEntry>, AppError>> {
     return this.readFileEntries(this.filePath);
   }
 
   private async readFileEntries(filePath: string): Promise<Result<Record<string, StoredEntry>, AppError>> {
-    if (!existsSync(filePath)) return ok({});
+    const parsed = await this.parseFileEntries(filePath);
+    if (!parsed.ok) return parsed;
+    return ok(parsed.value.values);
+  }
+
+  // One hand-edited entry must not blind the app to every other key in the file, so each entry
+  // is validated on its own and only the file's outer shape can fail the whole read.
+  private async parseFileEntries(
+    filePath: string,
+  ): Promise<Result<{ values: Record<string, StoredEntry>; unreadable: string[] }, AppError>> {
+    if (!existsSync(filePath)) return ok({ values: {}, unreadable: [] });
+    let decoded: unknown;
     try {
-      const parsed = credentialsSchema.safeParse(JSON.parse(await readFile(filePath, 'utf8')));
-      if (!parsed.success) {
-        return { ok: false, error: appError('invalid_config_value', 'Credentials file has an invalid format') };
-      }
+      decoded = JSON.parse(await readFile(filePath, 'utf8'));
       await chmod(filePath, 0o600);
-      return ok(parsed.data);
     } catch {
       return { ok: false, error: appError('internal', 'Could not read provider credentials') };
     }
+    const document = credentialsDocumentSchema.safeParse(decoded);
+    if (!document.success) {
+      return { ok: false, error: appError('invalid_config_value', 'Credentials file has an invalid format') };
+    }
+    const values: Record<string, StoredEntry> = {};
+    const unreadable: string[] = [];
+    for (const [providerId, stored] of Object.entries(document.data)) {
+      const entry = storedEntrySchema.safeParse(stored);
+      if (entry.success) values[providerId] = entry.data;
+      else unreadable.push(providerId);
+    }
+    return ok({ values, unreadable });
   }
 }
 
@@ -305,6 +330,10 @@ export class KeychainCredentialsStore implements CredentialsStore {
 
   credentialValueConflicts(): Promise<Result<CredentialValueConflict[], AppError>> {
     return this.legacy.conflictArchives();
+  }
+
+  unreadableCredentialEntries(): Promise<Result<string[], AppError>> {
+    return this.legacy.unreadableEntries();
   }
 
   private async dropSupersededPlaintext(providerId: string): Promise<Result<void, AppError>> {

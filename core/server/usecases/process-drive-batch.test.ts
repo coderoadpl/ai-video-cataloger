@@ -74,6 +74,7 @@ class FakeBatchPort implements AnalyzerBatchPort {
   readonly submissions: { displayName: string; keys: string[] }[] = [];
   readonly lookups: string[] = [];
   readonly polls: string[] = [];
+  readonly released: string[] = [];
   private statusIndex = 0;
 
   constructor(private readonly options: FakeBatchOptions = {}) {}
@@ -108,6 +109,11 @@ class FakeBatchPort implements AnalyzerBatchPort {
   findBatchByDisplayName(input: { displayName: string }): Promise<Result<string | null, AppError>> {
     this.lookups.push(input.displayName);
     return Promise.resolve(ok(this.options.existingJobName ?? null));
+  }
+
+  releaseBatchUploads(input: { fileNames: readonly string[] }): Promise<Result<void, AppError>> {
+    this.released.push(...input.fileNames);
+    return Promise.resolve(ok(undefined));
   }
 
   batchStatus(input: { jobName: string; requestKeys: readonly string[] }): Promise<Result<AnalyzerBatchStatus, AppError>> {
@@ -395,6 +401,42 @@ describe('gemini batch drive runs', () => {
     expect(result).toMatchObject({ ok: false, error: { code: 'invalid_config_value' } });
     expect(batch.submissions).toHaveLength(0);
   });
+
+  it('releases the uploaded batch files once the answers are mapped', async () => {
+    const batch = new FakeBatchPort({ statuses: [succeeded()] });
+    const deps = makeDeps(batch);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+    addVideo(deps.fs, '/drive/two.mp4', 'hash-two');
+
+    const result = await processDrive(deps, batchInput, undefined, { ...runOptions, runId: 'run-1' });
+
+    expect(result.ok).toBe(true);
+    expect(batch.released).toEqual(['files/r0', 'files/r1']);
+  });
+
+  it('stops polling the moment the run is cancelled instead of waiting out the backoff', async () => {
+    const batch = new FakeBatchPort({ statuses: [{ state: 'running', message: null, results: null }] });
+    const deps = makeDeps(batch);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+    const controller = new AbortController();
+    const progress = {
+      signal: controller.signal,
+      reportProgress: (event: JobProgress): Promise<Result<void, AppError>> => {
+        if (event.step === 'batch_poll') controller.abort();
+        return Promise.resolve(ok(undefined));
+      },
+    };
+
+    const result = await processDrive(deps, batchInput, progress, {
+      ...runOptions,
+      runId: 'run-1',
+      sleep: () => new Promise(() => undefined),
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'processing_error' } });
+  }, 2000);
 
   it('keeps the display name after an uncertain submit failure so recovery can find the job', async () => {
     const batch = new FakeBatchPort({ submitError: appError('provider_error', 'fetch failed') });

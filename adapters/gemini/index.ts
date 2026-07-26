@@ -471,6 +471,22 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     });
   }
 
+  // The Files API holds an upload for 48 hours whether or not the job that used it is done;
+  // releasing them keeps the account's quota free for the next run.
+  async releaseBatchUploads(input: {
+    provider: AnalyzerProviderConfig;
+    fileNames: readonly string[];
+  }): Promise<Result<void, AppError>> {
+    const provider = input.provider;
+    if (provider.family !== 'gemini-native') {
+      return { ok: false, error: appError('invalid_config_value', 'Gemini native analyzer provider configuration is required') };
+    }
+    const apiKey = await this.apiKey(provider);
+    if (!apiKey.ok) return apiKey;
+    for (const fileName of input.fileNames) await this.deleteFile(apiKey.value, fileName);
+    return ok(undefined);
+  }
+
   private async apiKey(provider: GeminiNativeProvider): Promise<Result<string, AppError>> {
     const credential = await this.credentials.get(provider.apiKeyRef);
     if (!credential.ok) return credential;

@@ -428,6 +428,21 @@ describe('gemini batch lifecycle', () => {
     expect(codes).toEqual(['provider_auth_failed', 'rate_limited', 'provider_auth_failed']);
   });
 
+  it('deletes every uploaded file when the run releases the batch', async () => {
+    const { fetchImpl, calls } = recordingFetch(() => jsonResponse({}));
+
+    const released = await adapterWith(fetchImpl).releaseBatchUploads({
+      provider: provider(),
+      fileNames: ['files/r0', 'files/r1'],
+    });
+
+    expect(released.ok).toBe(true);
+    expect(calls.map((call) => `${call.method} ${call.url}`)).toEqual([
+      'DELETE https://generativelanguage.googleapis.com/v1beta/files/r0',
+      'DELETE https://generativelanguage.googleapis.com/v1beta/files/r1',
+    ]);
+  });
+
   it('marks a 4xx submit rejection as definitive and leaves a network failure uncertain', async () => {
     const rejecting = recordingFetch(() =>
       jsonResponse({ error: { code: 400, message: 'invalid request', status: 'INVALID_ARGUMENT' } }, 400));

@@ -129,6 +129,32 @@ describe('JsonCredentialsStore', () => {
     expect(z.record(z.string(), z.string()).safeParse(parsed).success).toBe(true);
   });
 
+  it('salvages the readable entries when one of them is malformed', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, {
+      openai: 'good-key',
+      openrouter: { value: 'other-key', state: 'nonsense' },
+      gemini: { value: 'third-key', state: 'pending' },
+    });
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'good-key' });
+    expect(await store.get('gemini')).toEqual({ ok: true, value: 'third-key' });
+    expect(await store.get('openrouter')).toEqual({ ok: true, value: null });
+    expect(await store.list()).toEqual({ ok: true, value: ['openai', 'gemini'] });
+    expect(await store.unreadableEntries()).toEqual({ ok: true, value: ['openrouter'] });
+  });
+
+  it('still fails when the credentials file is not an object at all', async () => {
+    const home = await tempHome();
+    const directory = path.join(home, '.ai-video-cataloger');
+    await mkdir(directory, { recursive: true });
+    await writeFile(path.join(directory, 'credentials.json'), '"not-an-object"', { mode: 0o600 });
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+
+    expect(await store.get('openai')).toMatchObject({ ok: false, error: { code: 'invalid_config_value' } });
+  });
+
   it('reports an untouched pair of backends for a provider it never held', async () => {
     const home = await tempHome();
     const store = new JsonCredentialsStore({ homeDirectory: home });
@@ -541,7 +567,7 @@ describe('KeychainCredentialsStore', () => {
     const home = await tempHome();
     const legacy = new JsonCredentialsStore({ homeDirectory: home });
     await mkdir(path.join(home, '.ai-video-cataloger'), { recursive: true });
-    await writeFile(path.join(home, '.ai-video-cataloger', 'credentials.json'), '{"openai": 42}', 'utf8');
+    await writeFile(path.join(home, '.ai-video-cataloger', 'credentials.json'), '"not-an-object"', 'utf8');
     const secrets = new FakeSecrets('available');
     await secrets.set('openai', 'keychain-key');
     const store = new KeychainCredentialsStore(secrets, legacy);
