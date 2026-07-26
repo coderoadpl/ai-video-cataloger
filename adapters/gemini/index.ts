@@ -4,27 +4,42 @@ import { z } from 'zod';
 import {
   appError,
   geminiNativeModelPricing,
-  geminiUsageAccounting,
+  geminiPricingModeMultiplier,
   ok,
   GEMINI_NATIVE_API_BASE_URL,
   GEMINI_NATIVE_FILES_API_LIMIT_BYTES,
   GEMINI_NATIVE_INLINE_LIMIT_BYTES,
   type AnalyzerProviderConfig,
   type AppError,
-  type GeminiUsageAccounting,
+  type GeminiPricingMode,
   type Result,
 } from '@core/domain/index.js';
 import type {
   AnalysisOutput,
   AnalyzeInput,
+  AnalyzerBatchPort,
+  AnalyzerBatchRequest,
+  AnalyzerBatchStatus,
+  AnalyzerBatchSubmission,
+  AnalyzerBatchUploadInput,
   AnalyzerPort,
-  AnalyzerTranscript,
-  AnalyzerTranscriptSegment,
   CredentialsStore,
   DependencyStatus,
   ProvidersPort,
   ProviderTestResult,
 } from '@core/server/index.js';
+
+import {
+  BATCH_INLINE_REQUEST_LIMIT_BYTES,
+  batchJobMessage,
+  batchJobNameForDisplayName,
+  batchJobState,
+  batchResults,
+  buildBatchSubmitBody,
+  inlineRequestTooLargeError,
+  parseBatchOperation,
+} from './batch.js';
+import { analysisFromGenerateContent } from './response.js';
 
 import {
   descriptionInstruction,
@@ -59,6 +74,9 @@ export interface GeminiNativeAnalyzerAdapterOptions {
 
 export const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 
+const BATCH_REQUEST_TIMEOUT_MS = 60_000;
+const MISSING_BATCH_JOB = Symbol('missing-batch-job');
+
 const UPLOAD_CHUNK_RETRIES = 3;
 const UPLOAD_RETRY_DELAY_MS = 500;
 
@@ -91,23 +109,6 @@ const uploadResponseSchema = z.object({
   file: fileStateSchema.optional(),
 });
 
-const generateContentResponseSchema = z.object({
-  candidates: z
-    .array(
-      z.object({
-        content: z.object({ parts: z.array(z.object({ text: z.string().optional() })).optional() }).optional(),
-      }),
-    )
-    .optional(),
-  usageMetadata: z
-    .object({
-      promptTokenCount: z.number().optional(),
-      candidatesTokenCount: z.number().optional(),
-      thoughtsTokenCount: z.number().optional(),
-    })
-    .optional(),
-});
-
 const INLINE_REQUEST_OVERHEAD_BYTES = 64 * 1024;
 
 // The 20 MB cap applies to the whole JSON request, and inline video travels
@@ -117,14 +118,16 @@ export const shouldUploadInline = (sizeBytes: number): boolean =>
 
 export const geminiProviderPricing = (
   provider: GeminiNativeProvider,
+  mode: GeminiPricingMode = 'interactive',
 ): { pricePerMTokensInput?: number | undefined; pricePerMTokensOutput?: number | undefined } => {
   if (provider.pricePerMTokensInput !== undefined && provider.pricePerMTokensOutput !== undefined) {
+    const multiplier = geminiPricingModeMultiplier(mode);
     return {
-      pricePerMTokensInput: provider.pricePerMTokensInput,
-      pricePerMTokensOutput: provider.pricePerMTokensOutput,
+      pricePerMTokensInput: provider.pricePerMTokensInput * multiplier,
+      pricePerMTokensOutput: provider.pricePerMTokensOutput * multiplier,
     };
   }
-  const fromModel = geminiNativeModelPricing(provider.model);
+  const fromModel = geminiNativeModelPricing(provider.model, mode);
   return fromModel ?? {};
 };
 
@@ -139,51 +142,9 @@ FILENAME: ${filenameInstruction}
 TAGS: ${tagsInstruction}
 TRANSCRIPT: verbatim speech and on-screen text with timestamps, one segment per line formatted [MM:SS] text. If there is no speech at all, write exactly: NONE${outputLanguageInstruction(input.outputLanguage)}`;
 
-const timestampToSeconds = (raw: string): number | null => {
-  const parts = raw.split(':').map((part) => Number(part));
-  if (parts.some((part) => !Number.isFinite(part) || part < 0)) return null;
-  if (parts.length === 2) {
-    const [minutes, seconds] = parts;
-    return minutes === undefined || seconds === undefined ? null : minutes * 60 + seconds;
-  }
-  if (parts.length === 3) {
-    const [hours, minutes, seconds] = parts;
-    return hours === undefined || minutes === undefined || seconds === undefined
-      ? null
-      : hours * 3600 + minutes * 60 + seconds;
-  }
-  return null;
-};
-
-const transcriptLinePattern = /^\[(\d{1,2}(?::\d{2}){1,2})\]\s*(.*)$/;
-
-export const parseGeminiTranscript = (rawResponse: string): AnalyzerTranscript | null => {
-  const marker = rawResponse.search(/^\s*TRANSCRIPT:/im);
-  if (marker < 0) return null;
-  const afterMarker = rawResponse.slice(marker).replace(/^\s*TRANSCRIPT:/i, '');
-  const lines = afterMarker.split('\n').map((line) => line.trim()).filter((line) => line.length > 0);
-  if (lines.length === 0 || lines[0]?.toUpperCase() === 'NONE') return null;
-  const parsed: { start: number; text: string }[] = [];
-  for (const line of lines) {
-    const match = transcriptLinePattern.exec(line);
-    if (match === null) continue;
-    const start = timestampToSeconds(match[1] ?? '');
-    const text = (match[2] ?? '').trim();
-    if (start === null || text.length === 0) continue;
-    parsed.push({ start, text });
-  }
-  if (parsed.length === 0) return null;
-  const segments: AnalyzerTranscriptSegment[] = parsed.map((segment, index) => {
-    const next = parsed[index + 1];
-    const end = next !== undefined && next.start > segment.start ? next.start : segment.start + 1;
-    return { start: segment.start, end, text: segment.text };
-  });
-  return { text: segments.map((segment) => segment.text).join('\n'), segments };
-};
-
 const bytesToBase64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString('base64');
 
-export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
+export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchPort, ProvidersPort {
   private readonly credentials: CredentialsStore;
   private readonly fetchImpl: typeof fetch;
   private readonly videoFile: VideoFileSource;
@@ -331,6 +292,197 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort 
     }, signal, input.signal);
     await this.deleteFile(apiKey, uploaded.value.name);
     return generated;
+  }
+
+  async uploadForBatch(input: AnalyzerBatchUploadInput): Promise<Result<AnalyzerBatchRequest, AppError>> {
+    const provider = input.provider;
+    if (provider.family !== 'gemini-native') {
+      return { ok: false, error: appError('invalid_config_value', 'Gemini native analyzer provider configuration is required') };
+    }
+    const apiKey = await this.apiKey(provider);
+    if (!apiKey.ok) return apiKey;
+    let sizeBytes: number;
+    try {
+      sizeBytes = await this.videoFile.size(input.videoPath);
+    } catch {
+      return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
+    }
+    if (sizeBytes > GEMINI_NATIVE_FILES_API_LIMIT_BYTES) {
+      return { ok: false, error: appError('provider_error', tooLargeMessage(sizeBytes)) };
+    }
+    const signal = combinedSignal(input.signal, input.timeoutSeconds * 1000);
+    const uploaded = await this.uploadResumable(apiKey.value, input.videoPath, sizeBytes, signal, input.signal);
+    if (!uploaded.ok) return uploaded;
+    const active = await this.pollActive(apiKey.value, uploaded.value.name, signal, input.signal);
+    if (!active.ok) {
+      await this.deleteFile(apiKey.value, uploaded.value.name);
+      return active;
+    }
+    return ok({
+      key: input.key,
+      videoPath: input.videoPath,
+      fileName: uploaded.value.name,
+      fileUri: active.value,
+      outputLanguage: input.outputLanguage,
+    });
+  }
+
+  async submitBatch(input: {
+    provider: AnalyzerProviderConfig;
+    displayName: string;
+    requests: readonly AnalyzerBatchRequest[];
+    signal?: AbortSignal | undefined;
+  }): Promise<Result<AnalyzerBatchSubmission, AppError>> {
+    const provider = input.provider;
+    if (provider.family !== 'gemini-native') {
+      return { ok: false, error: appError('invalid_config_value', 'Gemini native analyzer provider configuration is required') };
+    }
+    const apiKey = await this.apiKey(provider);
+    if (!apiKey.ok) return apiKey;
+    const body = buildBatchSubmitBody(
+      input.displayName,
+      input.requests.map((request) => ({
+        key: request.key,
+        fileUri: request.fileUri,
+        prompt: buildGeminiPrompt({
+          videoName: basename(request.videoPath),
+          outputLanguage: request.outputLanguage,
+        }),
+      })),
+    );
+    const bodyBytes = Buffer.byteLength(body);
+    if (bodyBytes > BATCH_INLINE_REQUEST_LIMIT_BYTES) {
+      return { ok: false, error: inlineRequestTooLargeError(bodyBytes, input.requests.length) };
+    }
+    const response = await this.batchFetch(
+      `${GEMINI_NATIVE_API_BASE_URL}/v1beta/models/${provider.model}:batchGenerateContent`,
+      apiKey.value,
+      { method: 'POST', body },
+      input.signal,
+    );
+    if (!response.ok) return response;
+    const operation = parseBatchOperation(response.value);
+    if (!operation.ok) return operation;
+    const jobName = operation.value.name;
+    if (jobName === undefined || jobName.length === 0) {
+      return { ok: false, error: appError('provider_error', 'Gemini batch submission returned no job name') };
+    }
+    return ok({ jobName, requestCount: input.requests.length });
+  }
+
+  async findBatchByDisplayName(input: {
+    provider: AnalyzerProviderConfig;
+    displayName: string;
+    signal?: AbortSignal | undefined;
+  }): Promise<Result<string | null, AppError>> {
+    const provider = input.provider;
+    if (provider.family !== 'gemini-native') {
+      return { ok: false, error: appError('invalid_config_value', 'Gemini native analyzer provider configuration is required') };
+    }
+    const apiKey = await this.apiKey(provider);
+    if (!apiKey.ok) return apiKey;
+    const response = await this.batchFetch(
+      `${GEMINI_NATIVE_API_BASE_URL}/v1beta/batches?pageSize=100`,
+      apiKey.value,
+      { method: 'GET' },
+      input.signal,
+    );
+    if (!response.ok) return response;
+    return ok(batchJobNameForDisplayName(response.value, input.displayName));
+  }
+
+  async batchStatus(input: {
+    provider: AnalyzerProviderConfig;
+    jobName: string;
+    requestKeys: readonly string[];
+    signal?: AbortSignal | undefined;
+  }): Promise<Result<AnalyzerBatchStatus, AppError>> {
+    const provider = input.provider;
+    if (provider.family !== 'gemini-native') {
+      return { ok: false, error: appError('invalid_config_value', 'Gemini native analyzer provider configuration is required') };
+    }
+    const apiKey = await this.apiKey(provider);
+    if (!apiKey.ok) return apiKey;
+    const response = await this.batchFetch(
+      `${GEMINI_NATIVE_API_BASE_URL}/v1beta/${input.jobName}`,
+      apiKey.value,
+      { method: 'GET' },
+      input.signal,
+      { missingIsExpired: true },
+    );
+    if (!response.ok) return response;
+    if (response.value === MISSING_BATCH_JOB) {
+      return ok({
+        state: 'expired',
+        message: `Gemini no longer knows batch job ${input.jobName}`,
+        results: null,
+      });
+    }
+    const operation = parseBatchOperation(response.value);
+    if (!operation.ok) return operation;
+    const state = batchJobState(operation.value);
+    if (state !== 'succeeded') {
+      return ok({ state, message: batchJobMessage(operation.value), results: null });
+    }
+    if (operation.value.response?.responsesFile !== undefined) {
+      return {
+        ok: false,
+        error: appError(
+          'provider_error',
+          'Gemini answered the batch with a responses file; this build only reads inline batch responses',
+        ),
+      };
+    }
+    return ok({
+      state,
+      message: null,
+      results: batchResults(operation.value, input.requestKeys, geminiProviderPricing(provider, 'batch')),
+    });
+  }
+
+  private async apiKey(provider: GeminiNativeProvider): Promise<Result<string, AppError>> {
+    const credential = await this.credentials.get(provider.apiKeyRef);
+    if (!credential.ok) return credential;
+    if (credential.value === null) {
+      return { ok: false, error: appError('missing_api_key', `No Gemini API key stored for provider ${provider.providerId}`) };
+    }
+    return ok(credential.value);
+  }
+
+  private async batchFetch(
+    url: string,
+    apiKey: string,
+    init: { method: string; body?: string | undefined },
+    userSignal: AbortSignal | undefined,
+    options: { missingIsExpired?: boolean | undefined } = {},
+  ): Promise<Result<unknown, AppError>> {
+    const signal = combinedSignal(userSignal, BATCH_REQUEST_TIMEOUT_MS);
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url, {
+        method: init.method,
+        headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+        ...(init.body === undefined ? {} : { body: init.body }),
+        signal,
+      });
+    } catch (cause) {
+      return uploadFailure(userSignal, signal, cause);
+    }
+    if (response.status === 404 && options.missingIsExpired === true) return ok(MISSING_BATCH_JOB);
+    if (!response.ok) {
+      if (response.status === 401 || response.status === 403) {
+        return { ok: false, error: appError('provider_auth_failed', 'Gemini rejected the stored API key') };
+      }
+      if (response.status === 429) {
+        return { ok: false, error: appError('rate_limited', 'Gemini rate limit reached. Retry later.') };
+      }
+      return { ok: false, error: appError('provider_error', `Gemini batch API returned HTTP ${response.status}`) };
+    }
+    try {
+      return ok(await response.json());
+    } catch {
+      return { ok: false, error: appError('provider_error', 'Gemini batch API returned invalid JSON') };
+    }
   }
 
   async dependency(input?: {
@@ -584,26 +736,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort 
     } catch {
       return { ok: false, error: appError('provider_error', 'Gemini API returned invalid JSON') };
     }
-    const parsed = generateContentResponseSchema.safeParse(body);
-    if (!parsed.success) {
-      return { ok: false, error: appError('provider_error', 'Gemini API returned an unexpected response shape') };
-    }
-    const text = (parsed.data.candidates?.[0]?.content?.parts ?? [])
-      .map((part) => part.text ?? '')
-      .join('')
-      .trim();
-    if (text.length === 0) {
-      return { ok: false, error: appError('provider_error', 'Gemini API returned an empty response') };
-    }
-    const usage: GeminiUsageAccounting = geminiUsageAccounting(
-      {
-        promptTokens: parsed.data.usageMetadata?.promptTokenCount ?? 0,
-        candidatesTokens: parsed.data.usageMetadata?.candidatesTokenCount ?? 0,
-        thoughtsTokens: parsed.data.usageMetadata?.thoughtsTokenCount ?? 0,
-      },
-      geminiProviderPricing(provider),
-    );
-    return ok({ rawResponse: text, usage, transcript: parseGeminiTranscript(text) });
+    return analysisFromGenerateContent(body, geminiProviderPricing(provider));
   }
 }
 

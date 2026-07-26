@@ -20,10 +20,10 @@ import {
   buildGeminiPrompt,
   geminiProviderPricing,
   nodeVideoFileSource,
-  parseGeminiTranscript,
   shouldUploadInline,
   type VideoFileSource,
 } from './index.js';
+import { parseGeminiTranscript } from './response.js';
 
 const geminiProvider = (overrides: Partial<Extract<AnalyzerProviderConfig, { family: 'gemini-native' }>> = {}): Extract<
   AnalyzerProviderConfig,
