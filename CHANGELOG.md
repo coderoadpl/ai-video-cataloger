@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.17] - 2026-07-28
+
 ### Changed
 
 - The analyzer prompt is now retrieval-graded and shared by every provider:
@@ -24,7 +26,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   `footage`, and tags are search handles (objects, place type, activity, notable
   text). The gemini-native provider reuses the same sections instead of its own
   copy; the `DESCRIPTION` / `FILENAME` / `TAGS` / `TRANSCRIPT` output contract is
-  unchanged.
+  unchanged
+  ([`c779068`](https://github.com/chomamateusz/ai-video-cataloger/commit/c779068d)).
 
 ## [0.5.16] - 2026-07-28
 
