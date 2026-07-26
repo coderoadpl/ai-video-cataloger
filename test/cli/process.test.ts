@@ -153,6 +153,54 @@ describe('process command', () => {
     expect(result.stderr).toContain('Invalid whisper mode: bogus');
   });
 
+  it('rejects an unknown analyzer provider id and names the accepted ones', async () => {
+    const videoPath = createFakeVideoFile(testDir, 'test.mp4');
+
+    const result = await runCli(['process', videoPath, '--provider', 'bogus', '--json'], { cwd: testDir });
+
+    expect(result.exitCode).toBe(1);
+    expect(parseJsonEvents(result.stdout)).toEqual([]);
+    expect(result.stderr).toContain('Invalid analyzer provider: bogus');
+    expect(result.stderr).toContain('claude-code, codex, cursor-agent');
+  });
+
+  it('rejects an unknown analyzer backend and names the accepted ones', async () => {
+    const videoPath = createFakeVideoFile(testDir, 'test.mp4');
+
+    const result = await runCli(['process', videoPath, '--analyzer', 'codex', '--json'], { cwd: testDir });
+
+    expect(result.exitCode).toBe(1);
+    expect(result.stderr).toContain('Invalid analyzer backend: codex');
+    expect(result.stderr).toContain('claude, local, api');
+  });
+
+  it('refuses a run that sets both --analyzer and --provider', async () => {
+    const videoPath = createFakeVideoFile(testDir, 'test.mp4');
+
+    const result = await runCli(
+      ['process', videoPath, '--analyzer', 'local', '--provider', 'codex', '--json'],
+      { cwd: testDir },
+    );
+    const errorEvent = findEvent(parseJsonEvents(result.stdout), 'error');
+
+    expect(result.exitCode).toBeGreaterThan(0);
+    expect(errorEvent?.code).toBe('VALIDATION');
+    expect(errorEvent?.message).toContain('--analyzer or --provider');
+  });
+
+  it('accepts a harness provider id by flag', async () => {
+    const videoPath = createFakeVideoFile(testDir, 'test.mp4');
+
+    const result = await runCli(['process', videoPath, '--provider', 'codex', '--json'], {
+      cwd: testDir,
+      env: { PATH: '/nonexistent' },
+    });
+    const events = parseJsonEvents(result.stdout);
+
+    expect(findEvent(events, 'started')?.command).toBe('process_single');
+    expect(findEvent(events, 'error')?.code).not.toBe('VALIDATION');
+  });
+
   it('accepts legacy process flag values outside stored-config ranges', async () => {
     const videoPath = createFakeVideoFile(testDir, 'test.mp4');
 

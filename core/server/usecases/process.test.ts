@@ -882,6 +882,50 @@ describe('process pipeline rename and jobs', () => {
     expect(explicitDeps.analyzer.inputs[0]?.timeoutSeconds).toBe(180);
   });
 
+  it('runs a harness provider selected by id over the configured provider', async () => {
+    const deps = makeDeps('transcribed');
+    seedFrames(deps.fs);
+    seedTranscript(deps.fs);
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'analyzer_provider', JSON.stringify({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'configured:model',
+    }));
+
+    await processVideoPipeline(deps, { ...baseInput, provider: 'codex' });
+
+    expect(deps.analyzer.inputs[0]).toMatchObject({
+      backend: 'claude',
+      provider: {
+        family: 'harness',
+        providerId: 'codex',
+        command: 'codex',
+        promptStyle: 'dir-access',
+      },
+    });
+  });
+
+  it('keeps the configured model and effort when the selected id matches the configured harness', async () => {
+    const deps = makeDeps('transcribed');
+    seedFrames(deps.fs);
+    seedTranscript(deps.fs);
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'analyzer_provider', JSON.stringify({
+      family: 'harness',
+      providerId: 'codex',
+      command: 'codex',
+      argsTemplate: ['exec', '{prompt}'],
+      promptStyle: 'dir-access',
+      model: 'gpt-5.5',
+      reasoningEffort: 'high',
+    }));
+
+    await processVideoPipeline(deps, { ...baseInput, provider: 'codex' });
+
+    expect(deps.analyzer.inputs[0]).toMatchObject({
+      provider: { providerId: 'codex', model: 'gpt-5.5', reasoningEffort: 'high' },
+    });
+  });
+
   it('lets an explicit local model override the persisted local provider model', async () => {
     const deps = makeDeps('transcribed');
     seedFrames(deps.fs);

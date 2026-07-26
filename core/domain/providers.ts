@@ -173,6 +173,50 @@ export const ANALYZER_PROVIDERS: readonly AnalyzerProviderDescriptor[] = analyze
   },
 ]);
 
+export const ANALYZER_PROVIDER_IDS = ['openai', 'claude-code', 'codex', 'cursor-agent', 'local', 'gemini'] as const;
+export const analyzerProviderIdSchema = z.enum(ANALYZER_PROVIDER_IDS);
+export type AnalyzerProviderId = z.output<typeof analyzerProviderIdSchema>;
+
+export const builtInAnalyzerProvider = (
+  providerId: string,
+  localModel = 'gemma3:12b',
+): AnalyzerProviderConfig | null => {
+  const descriptor = ANALYZER_PROVIDERS.find((candidate) => candidate.providerId === providerId);
+  if (descriptor === undefined) return null;
+  switch (descriptor.family) {
+    case 'api':
+      return {
+        family: 'api',
+        providerId: descriptor.providerId,
+        baseUrl: descriptor.baseUrl,
+        apiKeyRef: descriptor.providerId,
+        model: descriptor.model,
+        maxImageDetail: descriptor.maxImageDetail,
+        ...(descriptor.pricePerMTokensInput === undefined ? {} : { pricePerMTokensInput: descriptor.pricePerMTokensInput }),
+        ...(descriptor.pricePerMTokensOutput === undefined ? {} : { pricePerMTokensOutput: descriptor.pricePerMTokensOutput }),
+      };
+    case 'harness':
+      return {
+        family: 'harness',
+        providerId: descriptor.providerId,
+        command: descriptor.command,
+        argsTemplate: descriptor.argsTemplate,
+        promptStyle: descriptor.promptStyle,
+      };
+    case 'local':
+      return { family: 'local', providerId: descriptor.providerId, modelTag: localModel };
+    case 'gemini-native':
+      return {
+        family: 'gemini-native',
+        providerId: descriptor.providerId,
+        apiKeyRef: descriptor.providerId,
+        model: descriptor.model,
+        ...(descriptor.pricePerMTokensInput === undefined ? {} : { pricePerMTokensInput: descriptor.pricePerMTokensInput }),
+        ...(descriptor.pricePerMTokensOutput === undefined ? {} : { pricePerMTokensOutput: descriptor.pricePerMTokensOutput }),
+      };
+  }
+};
+
 export const legacyAnalyzerProvider = (
   backend: 'claude' | 'local',
   localModel = 'gemma3:12b',

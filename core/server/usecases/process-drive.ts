@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   appError,
   ok,
+  type AnalyzerProviderId,
   type AppConfig,
   type AppError,
   type CatalogFile,
@@ -72,6 +73,7 @@ export interface ProcessDriveInput {
   whisperModel: WhisperModelName;
   whisperModelExplicit?: boolean | undefined;
   analyzer?: AppConfig['analyzer_backend'] | 'api' | undefined;
+  provider?: AnalyzerProviderId | undefined;
   localModel?: string | undefined;
   force?: boolean | undefined;
 }
@@ -404,6 +406,7 @@ const processInput = (
   whisperModel: input.whisperModel,
   ...(input.whisperModelExplicit === undefined ? {} : { whisperModelExplicit: input.whisperModelExplicit }),
   ...(input.analyzer === undefined ? {} : { analyzer: input.analyzer }),
+  ...(input.provider === undefined ? {} : { provider: input.provider }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
   ...(input.force === undefined ? {} : { force: input.force }),
   batch: { current, total },

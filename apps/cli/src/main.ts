@@ -9,16 +9,19 @@ import { Command, InvalidArgumentError } from 'commander';
 import { createApiClient, type ApiClient } from '@core/client/index.js';
 import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
 import {
+  ANALYZER_PROVIDER_IDS,
   CONFIG_KEYS,
   HARNESS_REASONING_EFFORTS,
   WHISPER_MODEL_NAMES,
   apiCostSignal,
   analyzerProviderConfigSchema,
+  builtInAnalyzerProvider,
   estimateApiTokens,
   appError,
   configKeySchema,
   err,
   type AnalyzerProviderConfig,
+  type AnalyzerProviderId,
   type AppError,
   type Result,
   type WhisperModelName,
@@ -61,12 +64,18 @@ interface ProcessOptions extends JsonOption {
   whisper: 'local' | 'api' | 'skip';
   whisperModel: string;
   analyzer?: 'claude' | 'local' | 'api' | undefined;
+  provider?: AnalyzerProviderId | undefined;
   localModel?: string | undefined;
   force?: boolean | undefined;
 }
 
 interface ProcessDriveOptions extends ProcessOptions {
   keepAwake?: boolean | undefined;
+}
+
+interface AnalyzerSelection {
+  analyzer: ProcessOptions['analyzer'];
+  provider: ProcessOptions['provider'];
 }
 
 interface CliJobProgress {
@@ -113,6 +122,28 @@ const parseWhisperModel = (modelName: string): Result<WhisperModelName, AppError
     if (modelName === model) return { ok: true, value: model };
   }
   return err(appError('invalid_model', `Invalid model: ${modelName}`));
+};
+
+const analyzerSelection = (options: ProcessOptions): AnalyzerSelection => ({
+  analyzer: options.analyzer,
+  provider: options.provider,
+});
+
+const conflictingAnalyzerSelection = (options: ProcessOptions): AppError | null =>
+  options.analyzer === undefined || options.provider === undefined
+    ? null
+    : appError('validation', 'Use either --analyzer or --provider, not both');
+
+const analyzerProviderOption = (value: string): AnalyzerProviderId => {
+  for (const providerId of ANALYZER_PROVIDER_IDS) {
+    if (value === providerId) return providerId;
+  }
+  throw new InvalidArgumentError(`Invalid analyzer provider: ${value}. Valid providers: ${ANALYZER_PROVIDER_IDS.join(', ')}`);
+};
+
+const analyzerBackendOption = (value: string): NonNullable<ProcessOptions['analyzer']> => {
+  if (value === 'claude' || value === 'local' || value === 'api') return value;
+  throw new InvalidArgumentError(`Invalid analyzer backend: ${value}. Valid backends: claude, local, api`);
 };
 
 const setupAnalyzerOption = (value: string): SetupAnalyzer => {
@@ -516,12 +547,22 @@ program
   .option('-t, --timeout <seconds>', 'analysis timeout', numberOption, 120)
   .option('-w, --whisper <mode>', 'whisper mode', whisperOption, 'local')
   .option('--whisper-model <model>', 'whisper model', 'base')
-  .option('--analyzer <backend>', 'analyzer backend')
+  .option('--analyzer <backend>', 'analyzer backend: claude, local, or api', analyzerBackendOption)
+  .option(
+    '--provider <id>',
+    `analyzer provider id: ${ANALYZER_PROVIDER_IDS.join(', ')}`,
+    analyzerProviderOption,
+  )
   .option('--local-model <tag>', 'local AI model')
   .option('--force', 'reprocess even if the global index already has an analysis', false)
   .option('--json', 'machine-readable JSON output', false)
   .action(async (videoPath: string, options: ProcessOptions, command: Command) => {
     const json = isJsonMode(options);
+    const conflict = conflictingAnalyzerSelection(options);
+    if (conflict !== null) {
+      emitError(json, conflict);
+      return;
+    }
     const validatedPath = await validateProcessPath(videoPath);
     if (!validatedPath.ok) {
       emitError(json, validatedPath.error, validatedPath.data);
@@ -536,7 +577,7 @@ program
       whisperModel: options.whisperModel,
     };
     emitStarted(json, 'process_single', { videoPath: validatedPath.value, options: commandOptions });
-    await emitApiCostNotice(json, options.analyzer, options.frames);
+    await emitApiCostNotice(json, analyzerSelection(options), options.frames);
     let whisperModel: WhisperModelName | undefined;
     if (options.whisper === 'local') {
       const model = parseWhisperModel(options.whisperModel);
@@ -560,6 +601,7 @@ program
       ...(whisperModel === undefined ? {} : { whisperModel }),
       whisperModelExplicit: explicit('whisperModel'),
       ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
+      ...(options.provider === undefined ? {} : { provider: options.provider }),
       ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
       ...(options.force === true ? { force: true } : {}),
     });
@@ -579,13 +621,23 @@ program
   .option('-t, --timeout <seconds>', 'analysis timeout', numberOption, 120)
   .option('-w, --whisper <mode>', 'whisper mode', whisperOption, 'local')
   .option('--whisper-model <model>', 'whisper model', 'base')
-  .option('--analyzer <backend>', 'analyzer backend')
+  .option('--analyzer <backend>', 'analyzer backend: claude, local, or api', analyzerBackendOption)
+  .option(
+    '--provider <id>',
+    `analyzer provider id: ${ANALYZER_PROVIDER_IDS.join(', ')}`,
+    analyzerProviderOption,
+  )
   .option('--local-model <tag>', 'local AI model')
   .option('--force', 'reprocess even if the global index already has an analysis', false)
   .option('--keep-awake', 'keep macOS awake while the drive run is active', false)
   .option('--json', 'machine-readable JSON output', false)
   .action(async (root: string, options: ProcessDriveOptions, command: Command) => {
     const json = isJsonMode(options);
+    const conflict = conflictingAnalyzerSelection(options);
+    if (conflict !== null) {
+      emitError(json, conflict);
+      return;
+    }
     const validatedRoot = await validateProcessRoot(root);
     if (!validatedRoot.ok) {
       emitError(json, validatedRoot.error, validatedRoot.data);
@@ -601,7 +653,7 @@ program
       force: options.force === true,
     };
     emitStarted(json, 'process_drive', { root: validatedRoot.value, options: commandOptions });
-    await emitApiCostNotice(json, options.analyzer, options.frames);
+    await emitApiCostNotice(json, analyzerSelection(options), options.frames);
     let whisperModel: WhisperModelName | undefined;
     if (options.whisper === 'local') {
       const model = parseWhisperModel(options.whisperModel);
@@ -627,6 +679,7 @@ program
         ...(whisperModel === undefined ? {} : { whisperModel }),
         whisperModelExplicit: explicit('whisperModel'),
         ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
+        ...(options.provider === undefined ? {} : { provider: options.provider }),
         ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
         ...(options.force === true ? { force: true } : {}),
       });
@@ -983,32 +1036,48 @@ const createSetupPrompter = (): SetupPrompter => {
   };
 };
 
+type ApiAnalyzerProvider = Extract<AnalyzerProviderConfig, { family: 'api' }>;
+
+const DEFAULT_API_PROVIDER: ApiAnalyzerProvider = {
+  family: 'api',
+  providerId: 'openai',
+  baseUrl: 'https://api.openai.com/v1',
+  apiKeyRef: 'openai',
+  model: 'gpt-4.1-mini',
+  maxImageDetail: 'auto',
+};
+
+const storedApiProvider = async (): Promise<ApiAnalyzerProvider | null> => {
+  const stored = await api.config({ folder: cliWorkingDirectory, key: 'analyzer_provider' });
+  if (!stored.ok || !('key' in stored.value) || stored.value.value === null) return null;
+  try {
+    const parsed = analyzerProviderConfigSchema.parse(JSON.parse(stored.value.value));
+    return parsed.family === 'api' ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
+const apiProviderForNotice = async (selection: AnalyzerSelection): Promise<ApiAnalyzerProvider | null> => {
+  if (selection.provider !== undefined) {
+    const builtIn = builtInAnalyzerProvider(selection.provider);
+    if (builtIn === null || builtIn.family !== 'api') return null;
+    const stored = await storedApiProvider();
+    return stored?.providerId === builtIn.providerId ? stored : builtIn;
+  }
+  if (selection.analyzer !== undefined && selection.analyzer !== 'api') return null;
+  const stored = await storedApiProvider();
+  if (stored !== null) return stored;
+  return selection.analyzer === 'api' ? DEFAULT_API_PROVIDER : null;
+};
+
 const emitApiCostNotice = async (
   json: boolean,
-  explicitAnalyzer: ProcessOptions['analyzer'],
+  selection: AnalyzerSelection,
   frameCount: number,
 ): Promise<void> => {
-  if (explicitAnalyzer !== undefined && explicitAnalyzer !== 'api') return;
-  let provider: Extract<AnalyzerProviderConfig, { family: 'api' }> | null | undefined =
-    explicitAnalyzer === 'api' ? null : undefined;
-  const stored = await api.config({ folder: cliWorkingDirectory, key: 'analyzer_provider' });
-  if (stored.ok && 'key' in stored.value && stored.value.value !== null) {
-    try {
-      const parsed = analyzerProviderConfigSchema.parse(JSON.parse(stored.value.value));
-      if (parsed.family === 'api') provider = parsed;
-    } catch {
-      provider = undefined;
-    }
-  }
-  if (explicitAnalyzer !== 'api' && provider === undefined) return;
-  const selected = provider ?? {
-    family: 'api',
-    providerId: 'openai',
-    baseUrl: 'https://api.openai.com/v1',
-    apiKeyRef: 'openai',
-    model: 'gpt-4.1-mini',
-    maxImageDetail: 'auto',
-  } as const;
+  const selected = await apiProviderForNotice(selection);
+  if (selected === null) return;
   const signal = apiCostSignal(selected, estimateApiTokens({ transcriptCharacters: 0, frameCount }));
   if (json) {
     emitProgress(true, { step: 'api_cost_notice', data: signal });

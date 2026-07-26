@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  ANALYZER_PROVIDER_IDS,
+  ANALYZER_PROVIDERS,
   CONFIG_DEFAULTS,
   ERROR_CODES,
   LOCAL_AI_HARDWARE_TIERS,
@@ -10,6 +12,7 @@ import {
   configSchema,
   getLocalAiSupportLevel,
   analyzerProviderConfigSchema,
+  builtInAnalyzerProvider,
   isModelValidForHarness,
   videoStatusSchema,
 } from './index.js';
@@ -200,6 +203,36 @@ describe('analyzer provider schema', () => {
       providerId: 'local',
       modelTag: 'gemma3:27b',
     });
+  });
+});
+
+describe('built-in analyzer providers', () => {
+  it('keeps the selectable provider id union in step with the descriptor catalog', () => {
+    expect([...ANALYZER_PROVIDER_IDS]).toEqual(ANALYZER_PROVIDERS.map((provider) => provider.providerId));
+  });
+
+  it('builds a valid provider config for every selectable id', () => {
+    for (const providerId of ANALYZER_PROVIDER_IDS) {
+      const provider = builtInAnalyzerProvider(providerId);
+      expect(analyzerProviderConfigSchema.safeParse(provider).success).toBe(true);
+      expect(provider?.providerId).toBe(providerId);
+    }
+  });
+
+  it('carries the harness command contract and the requested local model tag', () => {
+    expect(builtInAnalyzerProvider('codex')).toEqual({
+      family: 'harness',
+      providerId: 'codex',
+      command: 'codex',
+      argsTemplate: ['exec', '--sandbox', 'read-only', '--skip-git-repo-check', '--cd', '{videoDir}', '{prompt}'],
+      promptStyle: 'dir-access',
+    });
+    expect(builtInAnalyzerProvider('local', 'gemma3:4b')).toEqual({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:4b',
+    });
+    expect(builtInAnalyzerProvider('not-a-provider')).toBeNull();
   });
 });
 

@@ -15,7 +15,12 @@ import {
 } from '@core/domain/index.js';
 import { analyzerBackendSchema, configValueSchema, outputLanguageSchema } from '@core/domain/config.js';
 import { whisperModelNameSchema } from '@core/domain/models.js';
-import { analyzerProviderConfigSchema, legacyAnalyzerProvider } from '@core/domain/providers.js';
+import {
+  analyzerProviderConfigSchema,
+  builtInAnalyzerProvider,
+  legacyAnalyzerProvider,
+  type AnalyzerProviderId,
+} from '@core/domain/providers.js';
 import { z } from 'zod';
 
 import {
@@ -70,6 +75,7 @@ export interface ProcessPipelineInput {
   whisperModel: WhisperModelName;
   whisperModelExplicit?: boolean | undefined;
   analyzer?: AppConfig['analyzer_backend'] | 'api' | undefined;
+  provider?: AnalyzerProviderId | undefined;
   localModel?: string | undefined;
   force?: boolean | undefined;
   batch?: ProcessBatchContext | undefined;
@@ -690,7 +696,7 @@ const resolveProcessOptions = async (
   const localModel = trimmedValue(input.localModel) ?? trimmedValue(effective.local_model) ?? CONFIG_DEFAULTS.local_model;
   const persistedProvider = storedAnalyzerProvider(effective.analyzer_provider);
   const legacyBackend = storedAnalyzerBackend(effective.analyzer_backend) ?? CONFIG_DEFAULTS.analyzer_backend;
-  const selectedProvider = resolveAnalyzerProvider(input.analyzer, persistedProvider, legacyBackend, localModel);
+  const selectedProvider = resolveAnalyzerProvider(input, persistedProvider, legacyBackend, localModel);
   const provider = resolvedLocalProvider(selectedProvider, localModel, input.localModel);
   const backend = provider.family === 'local' ? 'local' : 'claude';
   const storedTimeout = stored.value.sources.timeout === 'default' ? null : storedTimeoutValue(effective.timeout);
@@ -738,11 +744,17 @@ const storedAnalyzerProvider = (value: string | undefined): AnalyzerProviderConf
 };
 
 const resolveAnalyzerProvider = (
-  explicit: ProcessPipelineInput['analyzer'],
+  input: Pick<ProcessPipelineInput, 'analyzer' | 'provider'>,
   persisted: AnalyzerProviderConfig | null,
   legacyBackend: AppConfig['analyzer_backend'],
   localModel: string,
 ): AnalyzerProviderConfig => {
+  const selected = input.provider;
+  if (selected !== undefined) {
+    if (persisted?.providerId === selected) return persisted;
+    return builtInAnalyzerProvider(selected, localModel) ?? legacyAnalyzerProvider(legacyBackend, localModel);
+  }
+  const explicit = input.analyzer;
   if (explicit === undefined) return persisted ?? legacyAnalyzerProvider(legacyBackend, localModel);
   if (explicit === 'local') return legacyAnalyzerProvider('local', localModel);
   if (explicit === 'claude') return legacyAnalyzerProvider('claude', localModel);

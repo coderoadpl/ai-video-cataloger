@@ -20,6 +20,11 @@ release history jumps from `0.5.10` to `0.5.12`.
   engine (`whisper.cpp` or `openai-whisper (python, CPU)`): dependency statuses
   carry an `engine` field and the readiness transcriber component carries
   `engine` and `binaryPath`.
+- `process` and `process-drive` accept `--provider <id>` to select a built-in
+  analyzer provider by id (`openai`, `claude-code`, `codex`, `cursor-agent`,
+  `local`, `gemini`), so harness providers no longer require a config write;
+  it cannot be combined with the legacy `--analyzer` backend flag, which now
+  rejects unknown values during parsing.
 
 ### Fixed
 
