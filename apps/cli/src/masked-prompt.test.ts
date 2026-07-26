@@ -1,7 +1,7 @@
 import { PassThrough } from 'node:stream';
 import { describe, expect, it } from 'vitest';
 
-import { createMaskedPrompter, promptMaskedSecret } from './masked-prompt.js';
+import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 
 const captured = (): { output: PassThrough; text: () => string } => {
   const output = new PassThrough();
@@ -28,17 +28,36 @@ describe('promptMaskedSecret', () => {
 });
 
 describe('terminal detection', () => {
-  it('drives readline in terminal mode when the real output is a TTY, so the driver never echoes', async () => {
-    const input = new PassThrough();
+  it('drives readline in terminal mode from the input stream, whatever the output is', async () => {
+    const input = Object.assign(new PassThrough(), { isTTY: true });
     const { output, text } = captured();
-    const tty = Object.assign(output, { isTTY: true });
 
-    const answered = promptMaskedSecret({ input, output: tty }, 'API credential: ');
+    const answered = promptMaskedSecret({ input, output }, 'API credential: ');
     input.write('sk-live-4321\n');
 
     expect(await answered).toBe('sk-live-4321');
     expect(text()).toContain('API credential: ');
+    expect(text()).toContain('\u001b[');
     expect(text()).not.toContain('sk-live-4321');
+  });
+
+  it('leaves a piped input alone instead of taking a terminal it does not own out of cooked mode', async () => {
+    const input = new PassThrough();
+    const { output, text } = captured();
+
+    const answered = promptMaskedSecret({ input, output }, 'API credential: ');
+    input.write('sk-live-9999\n');
+
+    expect(await answered).toBe('sk-live-9999');
+    expect(text()).not.toContain('\u001b[');
+  });
+
+  it('prompts on stderr so a --json run never mixes the prompt into its NDJSON', () => {
+    const streams = promptStreams();
+
+    expect(streams.output).toBe(process.stderr);
+    expect(streams.input).toBe(process.stdin);
+    expect(isInteractiveInput(streams.input)).toBe(process.stdin.isTTY === true);
   });
 });
 

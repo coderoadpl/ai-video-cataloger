@@ -42,7 +42,7 @@ import {
 import { credentialDeleteHuman } from './credential-delete-human.js';
 import { doctorHuman } from './doctor-human.js';
 import { waitForJob } from './job-wait.js';
-import { createMaskedPrompter, promptMaskedSecret } from './masked-prompt.js';
+import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 import { runProgram } from './run-program.js';
 import {
   executeSetup,
@@ -256,7 +256,7 @@ program
   .option('--json', 'machine-readable NDJSON output', false)
   .action(async (options: SetupOptions) => {
     const json = isJsonMode(options);
-    const prompter = options.yes === true || !process.stdin.isTTY ? undefined : createSetupPrompter();
+    const prompter = options.yes === true || !isInteractiveInput(process.stdin) ? undefined : createSetupPrompter();
     await executeSetup({
       api,
       folder: cliWorkingDirectory,
@@ -1033,12 +1033,12 @@ const credentialFromEnvironment = (providerId: string, requestedName: string | u
 };
 
 const promptHiddenCredential = async (): Promise<string | null> => {
-  if (!process.stdin.isTTY) return null;
-  return promptMaskedSecret({ input: process.stdin, output: process.stdout }, 'API credential: ');
+  const streams = promptStreams();
+  if (!isInteractiveInput(streams.input)) return null;
+  return promptMaskedSecret(streams, 'API credential: ');
 };
 
-const createSetupPrompter = (): SetupPrompter =>
-  createMaskedPrompter({ input: process.stdin, output: process.stderr });
+const createSetupPrompter = (): SetupPrompter => createMaskedPrompter(promptStreams());
 
 type ApiAnalyzerProvider = Extract<AnalyzerProviderConfig, { family: 'api' }>;
 
