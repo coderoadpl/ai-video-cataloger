@@ -8,7 +8,7 @@ import {
   OpenAiCompatibleAnalyzerAdapter,
 } from '@adapters/analyzers/index.js';
 import { GeminiNativeAnalyzerAdapter } from '@adapters/gemini/index.js';
-import { JsonCredentialsStore, KeychainCredentialsStore } from '@adapters/credentials/index.js';
+import { JsonCredentialsStore, KeychainCredentialsStore, NdjsonMigrationLog } from '@adapters/credentials/index.js';
 import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
 import { JsonConfigStore, SqlJsCatalogRepositoryFactory, SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
 import { NodeCliPathAdapter } from '@adapters/cli-path/index.js';
@@ -30,6 +30,7 @@ import {
   type CatalogFile,
   type CatalogFolder,
   type ConfigKey,
+  type CredentialsBackendStatus,
   type FaceObservation,
   type FileArtifact,
   type Result,
@@ -159,7 +160,11 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
   }
   const localAi = new ManagedOllamaRuntimeAdapter({ homeDirectory });
   const credentials = new InvalidatingCredentialsStore(
-    new KeychainCredentialsStore(new KeychainSecretsAdapter(), new JsonCredentialsStore({ homeDirectory })),
+    new KeychainCredentialsStore(
+      new KeychainSecretsAdapter(),
+      new JsonCredentialsStore({ homeDirectory }),
+      { migrationLog: new NdjsonMigrationLog({ homeDirectory }) },
+    ),
     readiness,
   );
   const harness = new HarnessAnalyzerAdapter({ homeDirectory });
@@ -298,6 +303,10 @@ class InvalidatingCredentialsStore implements CredentialsStore {
 
   legacyPlaintextProviders(): Promise<Result<string[], AppError>> {
     return this.store.legacyPlaintextProviders?.() ?? Promise.resolve(ok([]));
+  }
+
+  backend(): Promise<CredentialsBackendStatus> {
+    return this.store.backend?.() ?? Promise.resolve({ backend: 'file', reason: 'unsupported' });
   }
 }
 

@@ -2,6 +2,7 @@ import type { ApiClient } from '@core/client/index.js';
 import { access, constants } from 'node:fs/promises';
 
 import {
+  CREDENTIALS_BACKEND_LABELS,
   WHISPER_MODEL_NAMES,
   apiProviderIdForBaseUrl,
   analyzerProviderConfigSchema,
@@ -249,20 +250,10 @@ const selectApiAnalyzer = async (
   }
   const credential = credentialFromEnvironment(context);
   if (credential !== null) {
-    const saved = await context.api.setCredential({ providerId, credential });
-    if (!saved.ok) {
-      context.output.error(saved.error);
-      return null;
-    }
+    if (!await storeCredential(context, providerId, credential)) return null;
   } else if (context.options.yes !== true) {
     const entered = await context.prompter?.secret('API key (leave blank to keep the stored key): ') ?? '';
-    if (entered.trim().length > 0) {
-      const saved = await context.api.setCredential({ providerId, credential: entered.trim() });
-      if (!saved.ok) {
-        context.output.error(saved.error);
-        return null;
-      }
-    }
+    if (entered.trim().length > 0 && !await storeCredential(context, providerId, entered.trim())) return null;
   }
   context.output.write('Notice: usage will be charged by your API provider.');
   const provider: AnalyzerProviderConfig = {
@@ -423,13 +414,7 @@ const persistTranscription = async (
       return false;
     }
     const credential = credentialFromEnvironment(context);
-    if (credential !== null) {
-      const saved = await context.api.setCredential({ providerId, credential });
-      if (!saved.ok) {
-        context.output.error(saved.error);
-        return false;
-      }
-    }
+    if (credential !== null && !await storeCredential(context, providerId, credential)) return false;
     return await setConfig(context, 'whisper_api_base_url', transcription.whisperApiBaseUrl)
       && await setConfig(context, 'whisper_api_model', transcription.whisperApiModel)
       && await setConfig(context, 'whisper_mode', 'api');
@@ -548,6 +533,16 @@ const askOptionalPrice = async (
   const value = Number(answer);
   if (!Number.isFinite(value) || value < 0) throw new Error(`${message} must be a non-negative number`);
   return value;
+};
+
+const storeCredential = async (context: SetupContext, providerId: string, credential: string): Promise<boolean> => {
+  const saved = await context.api.setCredential({ providerId, credential });
+  if (!saved.ok) {
+    context.output.error(saved.error);
+    return false;
+  }
+  context.output.write(`Stored the API key in the ${CREDENTIALS_BACKEND_LABELS[saved.value.backend.backend]}.`);
+  return true;
 };
 
 const credentialFromEnvironment = (context: SetupContext): string | null => {

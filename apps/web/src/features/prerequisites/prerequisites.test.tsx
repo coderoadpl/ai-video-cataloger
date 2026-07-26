@@ -61,6 +61,7 @@ const allGood: DoctorResult = {
   recommendedLocalModel: 'gemma3:12b',
   allAvailable: true,
   warnings: [],
+  credentials: { backend: 'keychain', reason: 'ok' },
 };
 
 const withMissing: DoctorResult = {
@@ -74,6 +75,7 @@ const withMissing: DoctorResult = {
   recommendedLocalModel: null,
   allAvailable: false,
   warnings: [],
+  credentials: { backend: 'keychain', reason: 'ok' },
 };
 
 const withStaleCli: DoctorResult = {

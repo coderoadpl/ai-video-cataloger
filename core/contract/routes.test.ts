@@ -117,6 +117,7 @@ describe('route schemas', () => {
       },
       recommendedLocalModel: 'gemma3:12b',
       allAvailable: false,
+      credentials: { backend: 'keychain', reason: 'ok' },
       configured: {
         ready: false,
         analyzer: {

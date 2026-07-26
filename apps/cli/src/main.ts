@@ -19,6 +19,7 @@ import {
   estimateApiTokens,
   appError,
   configKeySchema,
+  CREDENTIALS_BACKEND_LABELS,
   err,
   type AnalyzerProviderConfig,
   type AnalyzerProviderId,
@@ -782,7 +783,11 @@ config
       emitError(json, result.error);
       return;
     }
-    emitCompleted(json, result.value, `Stored credential for ${providerId}`);
+    emitCompleted(
+      json,
+      result.value,
+      `Stored credential for ${providerId} in the ${CREDENTIALS_BACKEND_LABELS[result.value.backend.backend]}`,
+    );
   });
 
 program

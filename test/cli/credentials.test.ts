@@ -2,7 +2,7 @@ import { chmodSync, existsSync, readFileSync, statSync, writeFileSync } from 'no
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import { runCli } from '../helpers/cli-runner.js';
+import { findEvent, parseJsonEvents, runCli } from '../helpers/cli-runner.js';
 import { cleanupTestDir, createTestDir } from '../setup.js';
 
 const roots: string[] = [];
@@ -30,6 +30,24 @@ describe('API credentials', () => {
     expect(JSON.parse(readFileSync(credentialPath, 'utf8'))).toEqual({ openai: secret });
     expect(existsSync(join(folder, '.ai-video-cataloger', 'config.json'))).toBe(false);
   });
+
+  it('names the credentials backend in the human and JSON doctor output', async () => {
+    const home = createTestDir();
+    const folder = createTestDir();
+    roots.push(home, folder);
+    const env = { HOME: home, AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1' };
+
+    const stored = await runCli(['config', 'set-credential', 'openai'], {
+      cwd: folder,
+      env: { ...env, AI_VIDEO_CATALOGER_API_KEY: 'sk-backend-line' },
+    });
+    expect(stored.stdout).toContain('config file (~/.ai-video-cataloger/credentials.json)');
+
+    const result = await runCli(['doctor', '--json'], { cwd: folder, env, timeout: 60_000 });
+    const completed = findEvent(parseJsonEvents(result.stdout), 'completed');
+    const data = completed?.data as { credentials?: { backend?: string; reason?: string } };
+    expect(data.credentials).toEqual({ backend: 'file', reason: 'disabled' });
+  }, 75_000);
 
   it('keeps the key out of events and debug artifacts after a failing configured API run', async () => {
     const home = createTestDir();

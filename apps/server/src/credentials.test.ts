@@ -17,7 +17,7 @@ describe('credential route', () => {
     expect(response.status).toBe(200);
     expect(JSON.parse(responseText)).toEqual({
       ok: true,
-      data: { providerId: 'openai', stored: true },
+      data: { providerId: 'openai', stored: true, backend: { backend: 'file', reason: 'unsupported' } },
     });
     expect(responseText).not.toContain(secret);
     expect(await deps.credentials.get('openai')).toEqual({ ok: true, value: secret });

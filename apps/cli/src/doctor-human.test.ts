@@ -25,6 +25,7 @@ const doctorOutput = (overrides: Partial<DoctorOutput> = {}): DoctorOutput => ({
   recommendedLocalModel: null,
   allAvailable: true,
   warnings: [],
+  credentials: { backend: 'keychain', reason: 'ok' },
   configured: {
     ready: true,
     analyzer: {
@@ -67,6 +68,13 @@ describe('doctorHuman', () => {
     expect(output).toContain('Transcriber (local): available (engine: openai-whisper (python, CPU), binary: /opt/homebrew/bin/whisper)');
     expect(output.split('\n')).toContain('ffmpeg: available');
     expect(output.split('\n')).toContain('Analyzer (codex): available (model: CLI default)');
+  });
+
+  it('names the credentials backend that answered', () => {
+    expect(doctorHuman(doctorOutput(), live, ready).split('\n')).toContain('Credentials: macOS Keychain');
+    const onFile = doctorOutput({ credentials: { backend: 'file', reason: 'degraded' } });
+    expect(doctorHuman(onFile, live, ready).split('\n'))
+      .toContain('Credentials: config file (~/.ai-video-cataloger/credentials.json)');
   });
 
   it('labels a whisper.cpp resolution and omits the suffix when no engine is known', () => {

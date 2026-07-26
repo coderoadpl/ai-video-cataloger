@@ -170,8 +170,76 @@ describe('runDoctor', () => {
     expect(result.ok).toBe(true);
     expect(result.ok && result.value.warnings).toContainEqual({
       code: 'secret_migration',
-      message: 'The API key for "openai" is stored in plaintext config. Run: ai-video-cataloger setup to move it into the macOS Keychain.',
+      message: 'The API key for "openai" could not be moved out of the plaintext file ~/.ai-video-cataloger/credentials.json into the macOS Keychain. Unlock the login keychain and run doctor again.',
     });
+  });
+
+  it('names the keychain as the credentials backend without a fallback warning', async () => {
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      credentials: {
+        get: () => Promise.resolve(ok(null)),
+        set: () => Promise.resolve(ok(undefined)),
+        backend: () => Promise.resolve({ backend: 'keychain' as const, reason: 'ok' as const }),
+      },
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok && result.value.credentials).toEqual({ backend: 'keychain', reason: 'ok' });
+    expect(result.ok && result.value.warnings.some((entry) => entry.code === 'credentials_backend_fallback')).toBe(false);
+  });
+
+  it('warns when the keychain is unreachable and credentials fall back to the file store', async () => {
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      credentials: {
+        get: () => Promise.resolve(ok(null)),
+        set: () => Promise.resolve(ok(undefined)),
+        backend: () => Promise.resolve({ backend: 'file' as const, reason: 'degraded' as const }),
+      },
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok && result.value.credentials).toEqual({ backend: 'file', reason: 'degraded' });
+    expect(result.ok && result.value.warnings.some((entry) => entry.code === 'credentials_backend_fallback')).toBe(true);
+  });
+
+  it('reports the file backend without a warning when the keychain is switched off', async () => {
+    const deps = {
+      media: new InMemoryMedia(),
+      transcriber: new InMemoryTranscriber(),
+      analyzer: new InMemoryAnalyzer(),
+      providers: new InMemoryProviders(),
+      localAi: new InMemoryLocalAi(),
+      config: new InMemoryConfig(),
+      fs: new InMemoryFileSystem(),
+      readiness: new ReadinessCache(),
+      credentials: {
+        get: () => Promise.resolve(ok(null)),
+        set: () => Promise.resolve(ok(undefined)),
+        backend: () => Promise.resolve({ backend: 'file' as const, reason: 'disabled' as const }),
+      },
+    };
+
+    const result = await runDoctor(deps);
+
+    expect(result.ok && result.value.warnings.some((entry) => entry.code === 'credentials_backend_fallback')).toBe(false);
   });
 
   it('keeps doctor successful on Apple Silicon when local AI starts on demand', async () => {

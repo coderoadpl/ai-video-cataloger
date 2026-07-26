@@ -151,7 +151,7 @@ const installHandlers = (
     http.post('/api/credentials', async ({ request }) => {
       const body = credentialBodySchema.parse(await request.json());
       recorders.credentialWrites.push(body);
-      return ok({ providerId: body.providerId, stored: true });
+      return ok({ providerId: body.providerId, stored: true, backend: { backend: 'keychain', reason: 'ok' } });
     }),
     http.post('/api/models/local-ai/pull', () => ok({ jobId: 'job-local' })),
     http.post('/api/models/whisper-runtime/install', () => ok({ jobId: 'job-runtime' })),
@@ -186,6 +186,7 @@ const installHandlers = (
         recommendedLocalModel: 'gemma3:12b',
         allAvailable: overrides.ready ?? true,
         warnings: [],
+        credentials: { backend: 'keychain', reason: 'ok' },
         configured: readiness(overrides.ready ?? true),
       }),
     ),

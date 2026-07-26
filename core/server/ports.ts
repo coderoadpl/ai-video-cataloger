@@ -7,6 +7,7 @@ import type {
   CatalogFile,
   CatalogFolder,
   ConfigKey,
+  CredentialsBackendStatus,
   FaceBox,
   FaceLandmarks,
   FaceObservation,
@@ -217,13 +218,20 @@ export interface CredentialsStore {
   set(providerId: string, credential: string): Promise<Result<void, AppError>>;
   delete?(providerId: string): Promise<Result<void, AppError>>;
   legacyPlaintextProviders?(): Promise<Result<string[], AppError>>;
+  backend?(): Promise<CredentialsBackendStatus>;
 }
 
+export type SecretsAvailability = 'available' | 'disabled' | 'unsupported' | 'unavailable';
+
 export interface SecretsStore {
-  isAvailable(): Promise<boolean>;
+  availability(): Promise<SecretsAvailability>;
   get(account: string): Promise<Result<string | null, AppError>>;
   set(account: string, secret: string): Promise<Result<void, AppError>>;
   delete(account: string): Promise<Result<void, AppError>>;
+}
+
+export interface CredentialMigrationLog {
+  record(providerId: string): Promise<void>;
 }
 
 export interface DirectoryEntry {

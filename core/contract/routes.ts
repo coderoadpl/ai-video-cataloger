@@ -15,6 +15,7 @@ import {
   analyzerProviderFamilySchema,
   analyzerProviderIdSchema,
   configKeySchema,
+  credentialsBackendStatusSchema,
   videoStatusSchema,
   whisperEngineSchema,
 } from '@core/domain/index.js';
@@ -439,6 +440,7 @@ export const credentialSetInputSchema = z.object({
 export const credentialSetOutputSchema = z.object({
   providerId: z.string().min(1),
   stored: z.literal(true),
+  backend: credentialsBackendStatusSchema,
 });
 
 export const providersListOutputSchema = z.object({
@@ -662,6 +664,7 @@ export const doctorOutputSchema = z.object({
   recommendedLocalModel: z.string().nullable(),
   allAvailable: z.boolean(),
   warnings: z.array(doctorWarningSchema).default([]),
+  credentials: credentialsBackendStatusSchema,
   configured: readinessOutputSchema,
 });
 

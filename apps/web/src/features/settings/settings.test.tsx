@@ -337,7 +337,7 @@ describe('settings modal', () => {
       http.post('/api/credentials', async ({ request }) => {
         const body = await request.json();
         credentialBodies.push(body);
-        return HttpResponse.json({ ok: true, data: { providerId: 'openrouter', stored: true } });
+        return HttpResponse.json({ ok: true, data: { providerId: 'openrouter', stored: true, backend: { backend: 'keychain', reason: 'ok' } } });
       }),
     );
     const onClose = vi.fn();
@@ -374,7 +374,7 @@ describe('settings modal', () => {
       http.post('/api/credentials', async ({ request }) => {
         const body = await request.json();
         credentialBodies.push(body);
-        return HttpResponse.json({ ok: true, data: { providerId: 'openrouter.ai', stored: true } });
+        return HttpResponse.json({ ok: true, data: { providerId: 'openrouter.ai', stored: true, backend: { backend: 'keychain', reason: 'ok' } } });
       }),
     );
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
@@ -397,7 +397,7 @@ describe('settings modal', () => {
       http.post('/api/credentials', async ({ request }) => {
         const body = await request.json();
         credentialBodies.push(body);
-        return HttpResponse.json({ ok: true, data: { providerId: 'openai', stored: true } });
+        return HttpResponse.json({ ok: true, data: { providerId: 'openai', stored: true, backend: { backend: 'keychain', reason: 'ok' } } });
       }),
     );
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);

@@ -28,7 +28,7 @@ describe('KeychainSecretsAdapter', () => {
     const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
     const adapter = new KeychainSecretsAdapter({ platform: 'linux', commandRunner: runner });
 
-    expect(await adapter.isAvailable()).toBe(false);
+    expect(await adapter.availability()).toBe('unsupported');
     expect(runner.calls).toHaveLength(0);
   });
 
@@ -36,7 +36,7 @@ describe('KeychainSecretsAdapter', () => {
     const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
     const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: true, commandRunner: runner });
 
-    expect(await adapter.isAvailable()).toBe(false);
+    expect(await adapter.availability()).toBe('disabled');
     expect(runner.calls).toHaveLength(0);
   });
 
@@ -44,8 +44,8 @@ describe('KeychainSecretsAdapter', () => {
     const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
     const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
-    expect(await adapter.isAvailable()).toBe(true);
-    expect(await adapter.isAvailable()).toBe(true);
+    expect(await adapter.availability()).toBe('available');
+    expect(await adapter.availability()).toBe('available');
     expect(runner.calls.filter((call) => call.args[0] === 'list-keychains')).toHaveLength(1);
   });
 
@@ -91,9 +91,9 @@ describe('KeychainSecretsAdapter', () => {
 
   it('reports unavailable when the keychain probe times out', async () => {
     const runner = new FakeSecurity(() => timedOut());
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
-    expect(await adapter.isAvailable()).toBe(false);
+    expect(await adapter.availability()).toBe('unavailable');
   });
 
   it('surfaces an error when a read times out so callers can fall back', async () => {
@@ -102,5 +102,29 @@ describe('KeychainSecretsAdapter', () => {
 
     const result = await adapter.get('openai');
     expect(result.ok).toBe(false);
+  });
+
+  it('addresses an explicit keychain file when one is configured', async () => {
+    const runner = new FakeSecurity((args) => (args[0] === 'find-generic-password' ? found('sk-temp') : notFound()));
+    const adapter = new KeychainSecretsAdapter({
+      platform: 'darwin',
+      service: 'svc',
+      keychainPath: '/tmp/probe.keychain',
+      commandRunner: runner,
+    });
+
+    await adapter.get('openai');
+    await adapter.set('openai', 'sk-temp');
+    await adapter.delete('openai');
+    for (const call of runner.calls) expect(call.args.at(-1)).toBe('/tmp/probe.keychain');
+  });
+
+  it('never repeats the secret in a failure message', async () => {
+    const runner = new FakeSecurity(() => ({ code: 1, stdout: '', stderr: 'SecKeychainAddGenericPassword failed' }));
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+
+    const result = await adapter.set('openai', 'sk-must-not-leak');
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.message).not.toContain('sk-must-not-leak');
   });
 });

@@ -62,6 +62,7 @@ const doctor = (dependencies: ReturnType<typeof dependency>[], configured: Retur
   recommendedLocalModel: 'gemma3:12b',
   allAvailable: dependencies.every((entry) => entry.available),
   warnings: [],
+  credentials: { backend: 'keychain' as const, reason: 'ok' as const },
   configured,
 });
 

@@ -1,5 +1,11 @@
 import type { ApiClient } from '@core/client/index.js';
-import { WHISPER_ENGINE_LABELS, type AppError, type Result, type WhisperEngine } from '@core/domain/index.js';
+import {
+  CREDENTIALS_BACKEND_LABELS,
+  WHISPER_ENGINE_LABELS,
+  type AppError,
+  type Result,
+  type WhisperEngine,
+} from '@core/domain/index.js';
 
 type DoctorOutput = Awaited<ReturnType<ApiClient['doctor']>> extends Result<infer T, AppError> ? T : never;
 type LiveOutput = Awaited<ReturnType<ApiClient['healthLive']>>;
@@ -9,6 +15,7 @@ export const doctorHuman = (data: DoctorOutput, live: LiveOutput, ready: ReadyOu
   const lines = data.dependencies.map((dependency) =>
     `${dependency.name}: ${dependency.available ? 'available' : 'missing'}${resolutionSuffix(dependency)}`);
   lines.push(`All available: ${data.allAvailable ? 'yes' : 'no'}`);
+  lines.push(`Credentials: ${CREDENTIALS_BACKEND_LABELS[data.credentials.backend]}`);
   for (const warning of data.warnings) lines.push(`Warning: ${warning.message}`);
   lines.push(`Liveness: ${live.ok ? `up v${live.value.version}` : `unavailable (${live.error.message})`}`);
   if (ready.ok) {

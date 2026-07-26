@@ -14,6 +14,17 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- API keys stored in `~/.ai-video-cataloger/credentials.json` migrate into the
+  macOS Keychain on first access — written, read back, then removed from the
+  file, with one NDJSON line per migrated provider in
+  `~/.ai-video-cataloger/credentials-migration.ndjson`. `doctor` (human and
+  `--json`) and `config set-credential` now name the backend holding the keys,
+  and doctor warns when the Keychain was expected but unreachable. A Keychain
+  failure falls back to the plaintext file instead of failing the command
+  ([ADR-0007](docs/decisions/0007-credentials-in-keychain.md)).
+
 ## [0.5.15] - 2026-07-28
 
 ### Added

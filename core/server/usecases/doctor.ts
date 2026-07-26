@@ -7,6 +7,7 @@ import {
   ok,
   type AppError,
   type CliShadow,
+  type CredentialsBackendStatus,
   type MachineProfile,
   type Result,
 } from '@core/domain/index.js';
@@ -59,6 +60,7 @@ export interface DoctorOutput {
   recommendedLocalModel: string | null;
   allAvailable: boolean;
   warnings: DoctorWarning[];
+  credentials: CredentialsBackendStatus;
   harnesses: Array<Extract<ProviderTestResult, { family: 'harness' }>>;
   configured: ReadinessOutput;
 }
@@ -79,6 +81,7 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
   if (!configured.ok) return configured;
   const migrations = await secretMigrationWarnings(deps.credentials);
   if (!migrations.ok) return migrations;
+  const credentialsBackend = await resolveCredentialsBackend(deps.credentials);
   const staleCli = await staleCliWarnings(deps.cliPath, deps.version);
   if (!staleCli.ok) return staleCli;
   const resolvedConfig = await resolveConfigValues(deps.config, deps.fs.resolve(deps.fs.cwd()));
@@ -103,7 +106,13 @@ export const runDoctor = async (deps: DoctorDeps): Promise<Result<DoctorOutput, 
     },
     recommendedLocalModel: recommendedLocalModel(machine.value),
     allAvailable: dependencies.every((dependency) => dependency.available),
-    warnings: [...dependencyWarnings(dependencies), ...migrations.value, ...staleCli.value],
+    warnings: [
+      ...dependencyWarnings(dependencies),
+      ...migrations.value,
+      ...credentialsBackendWarnings(credentialsBackend),
+      ...staleCli.value,
+    ],
+    credentials: credentialsBackend,
     harnesses,
     configured: configured.value,
   });
@@ -132,8 +141,22 @@ const secretMigrationWarnings = async (
   if (!providers.ok) return providers;
   return ok(providers.value.map((providerId) => ({
     code: 'secret_migration',
-    message: `The API key for "${providerId}" is stored in plaintext config. Run: ai-video-cataloger setup to move it into the macOS Keychain.`,
+    message: `The API key for "${providerId}" could not be moved out of the plaintext file ~/.ai-video-cataloger/credentials.json into the macOS Keychain. Unlock the login keychain and run doctor again.`,
   })));
+};
+
+const resolveCredentialsBackend = async (
+  credentials: CredentialsStore | undefined,
+): Promise<CredentialsBackendStatus> =>
+  await credentials?.backend?.() ?? { backend: 'file', reason: 'unsupported' };
+
+const credentialsBackendWarnings = (status: CredentialsBackendStatus): DoctorWarning[] => {
+  if (status.reason !== 'unavailable' && status.reason !== 'degraded') return [];
+  return [{
+    code: 'credentials_backend_fallback',
+    message: 'The macOS Keychain could not be reached, so API keys are read from and written to the plaintext file '
+      + '~/.ai-video-cataloger/credentials.json. Unlock the login keychain and run doctor again to move them back.',
+  }];
 };
 
 const staleCliWarnings = async (

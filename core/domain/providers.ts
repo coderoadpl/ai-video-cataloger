@@ -5,6 +5,21 @@ export const MAX_IMAGE_DETAILS = ['low', 'high', 'auto'] as const;
 export const HARNESS_PROMPT_STYLES = ['file-urls', 'dir-access'] as const;
 export const HARNESS_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh'] as const;
 
+export const CREDENTIALS_BACKENDS = ['keychain', 'file'] as const;
+export const CREDENTIALS_BACKEND_REASONS = ['ok', 'disabled', 'unsupported', 'unavailable', 'degraded'] as const;
+
+export const credentialsBackendStatusSchema = z.object({
+  backend: z.enum(CREDENTIALS_BACKENDS),
+  reason: z.enum(CREDENTIALS_BACKEND_REASONS),
+});
+
+export type CredentialsBackendStatus = z.output<typeof credentialsBackendStatusSchema>;
+
+export const CREDENTIALS_BACKEND_LABELS: Record<(typeof CREDENTIALS_BACKENDS)[number], string> = {
+  keychain: 'macOS Keychain',
+  file: 'config file (~/.ai-video-cataloger/credentials.json)',
+};
+
 export const analyzerProviderFamilySchema = z.enum(ANALYZER_PROVIDER_FAMILIES);
 export const maxImageDetailSchema = z.enum(MAX_IMAGE_DETAILS);
 export const harnessPromptStyleSchema = z.enum(HARNESS_PROMPT_STYLES);
