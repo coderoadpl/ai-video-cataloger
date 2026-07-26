@@ -16,6 +16,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Gemini native analysis no longer loads the whole video into memory (twice) to
+  upload it: files above the inline cutoff are streamed to the Files API in 8 MB
+  chunks straight from disk, so a 300 MB clip peaks at ~40 MB of buffers instead
+  of ~900 MB. A file above the Files API 2 GB limit is now refused up front with
+  a message naming the limit, instead of failing as an unexplained read error
+  after the read was attempted.
 - The CLI credential prompts (`config set-credential` and `setup`) no longer
   write the typed key into the terminal at all. They previously relied on the
   ANSI conceal sequence, which only hides the characters visually and leaves the

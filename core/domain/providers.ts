@@ -280,6 +280,7 @@ export const isModelValidForHarness = (providerId: string, model: string): boole
 
 export const GEMINI_NATIVE_API_BASE_URL = 'https://generativelanguage.googleapis.com';
 export const GEMINI_NATIVE_INLINE_LIMIT_BYTES = 20 * 1024 * 1024;
+export const GEMINI_NATIVE_FILES_API_LIMIT_BYTES = 2 * 1024 * 1024 * 1024;
 export const GEMINI_NATIVE_FILE_TTL_HOURS = 48;
 
 interface GeminiNativeModel {

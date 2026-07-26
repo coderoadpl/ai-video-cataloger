@@ -1,3 +1,6 @@
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -6,6 +9,8 @@ import {
   geminiNativeModelIds,
   geminiNativeModelPricing,
   geminiUsageAccounting,
+  GEMINI_NATIVE_API_BASE_URL,
+  GEMINI_NATIVE_FILES_API_LIMIT_BYTES,
   type AnalyzerProviderConfig,
 } from '@core/domain/index.js';
 import type { AnalyzeInput, CredentialsStore } from '@core/server/index.js';
@@ -14,8 +19,10 @@ import {
   GeminiNativeAnalyzerAdapter,
   buildGeminiPrompt,
   geminiProviderPricing,
+  nodeVideoFileSource,
   parseGeminiTranscript,
   shouldUploadInline,
+  type VideoFileSource,
 } from './index.js';
 
 const geminiProvider = (overrides: Partial<Extract<AnalyzerProviderConfig, { family: 'gemini-native' }>> = {}): Extract<
@@ -79,8 +86,51 @@ const recordingFetch = (
   return { fetchImpl, calls };
 };
 
-const smallVideo = new Uint8Array(1024);
-const largeVideo = new Uint8Array(21 * 1024 * 1024);
+const SMALL_VIDEO_BYTES = 1024;
+const LARGE_VIDEO_BYTES = 21 * 1024 * 1024;
+
+interface FakeVideoFile {
+  source: VideoFileSource;
+  reads: { offset: number; length: number }[];
+  readAllCalls: number;
+  openCalls: number;
+  closeCalls: number;
+}
+
+const fakeVideoFile = (sizeBytes: number, failures: { size?: boolean; readAll?: boolean; read?: boolean } = {}): FakeVideoFile => {
+  const state: FakeVideoFile = {
+    reads: [],
+    readAllCalls: 0,
+    openCalls: 0,
+    closeCalls: 0,
+    source: {
+      size: () => (failures.size === true ? Promise.reject(new Error('stat failed')) : Promise.resolve(sizeBytes)),
+      readAll: () => {
+        state.readAllCalls += 1;
+        if (failures.readAll === true) return Promise.reject(new Error('read failed'));
+        return Promise.resolve(new Uint8Array(sizeBytes));
+      },
+      open: () => {
+        state.openCalls += 1;
+        return Promise.resolve({
+          read: (offset: number, length: number) => {
+            state.reads.push({ offset, length });
+            if (failures.read === true) return Promise.reject(new Error('read failed'));
+            return Promise.resolve(new Uint8Array(length));
+          },
+          close: () => {
+            state.closeCalls += 1;
+            return Promise.resolve();
+          },
+        });
+      },
+    },
+  };
+  return state;
+};
+
+const smallVideo = (): VideoFileSource => fakeVideoFile(SMALL_VIDEO_BYTES).source;
+const largeVideo = (): VideoFileSource => fakeVideoFile(LARGE_VIDEO_BYTES).source;
 
 describe('config validation', () => {
   it('accepts a gemini-native provider config', () => {
@@ -211,7 +261,7 @@ describe('analyze — inline path', () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(smallVideo),
+      videoFile: smallVideo(),
     });
     const result = await adapter.analyze(analyzeInput());
     expect(result.ok).toBe(true);
@@ -229,7 +279,7 @@ describe('analyze — inline path', () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(smallVideo),
+      videoFile: smallVideo(),
     });
     const result = await adapter.analyze(analyzeInput());
     expect(result.ok).toBe(true);
@@ -243,7 +293,7 @@ describe('analyze — inline path', () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(smallVideo),
+      videoFile: smallVideo(),
     });
     const result = await adapter.analyze(analyzeInput());
     expect(result.ok).toBe(false);
@@ -252,7 +302,7 @@ describe('analyze — inline path', () => {
 });
 
 describe('analyze — resumable upload state machine', () => {
-  it('runs start -> finalize -> poll ACTIVE -> generate -> delete in order', async () => {
+  it('runs start -> chunked upload -> poll ACTIVE -> generate -> delete in order', async () => {
     const { fetchImpl, calls } = recordingFetch((call) => {
       if (call.url.endsWith('/upload/v1beta/files')) {
         return new Response(null, { status: 200, headers: { 'x-goog-upload-url': 'https://upload.example/session' } });
@@ -275,7 +325,7 @@ describe('analyze — resumable upload state machine', () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(largeVideo),
+      videoFile: largeVideo(),
       sleep: () => Promise.resolve(),
     });
     const result = await adapter.analyze(analyzeInput());
@@ -283,13 +333,13 @@ describe('analyze — resumable upload state machine', () => {
     if (!result.ok) return;
     const sequence = calls.map((call) => {
       if (call.url.endsWith('/upload/v1beta/files')) return 'start';
-      if (call.url === 'https://upload.example/session') return 'finalize';
+      if (call.url === 'https://upload.example/session') return call.headers['x-goog-upload-command'] ?? 'upload';
       if (call.method === 'GET' && call.url.endsWith('/files/abc')) return 'poll';
       if (call.url.includes(':generateContent')) return 'generate';
       if (call.method === 'DELETE') return 'delete';
       return 'other';
     });
-    expect(sequence).toEqual(['start', 'finalize', 'poll', 'generate', 'delete']);
+    expect(sequence).toEqual(['start', 'upload', 'upload', 'upload, finalize', 'poll', 'generate', 'delete']);
     expect(result.value.transcript?.segments).toEqual([{ start: 0, end: 1, text: 'czesc' }]);
     expect(result.value.usage?.billedOutputTokens).toBe(800);
   });
@@ -318,7 +368,7 @@ describe('analyze — resumable upload state machine', () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(largeVideo),
+      videoFile: largeVideo(),
       sleep: () => Promise.resolve(),
     });
     const result = await adapter.analyze(analyzeInput());
@@ -341,12 +391,130 @@ describe('analyze — resumable upload state machine', () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(largeVideo),
+      videoFile: largeVideo(),
       sleep: () => Promise.resolve(),
     });
     const result = await adapter.analyze(analyzeInput());
     expect(result.ok).toBe(false);
     expect(deleted).toBe(true);
+  });
+});
+
+describe('analyze — bounded reads', () => {
+  const uploadFetch = (): { fetchImpl: typeof fetch; calls: FetchCall[] } =>
+    recordingFetch((call) => {
+      if (call.url.endsWith('/upload/v1beta/files')) {
+        return new Response(null, { status: 200, headers: { 'x-goog-upload-url': 'https://upload.example/s' } });
+      }
+      if (call.url === 'https://upload.example/s') return jsonResponse({ file: { name: 'files/c', state: 'PROCESSING' } });
+      if (call.method === 'GET' && call.url.endsWith('/files/c')) return jsonResponse({ state: 'ACTIVE', uri: 'u' });
+      if (call.url.includes(':generateContent')) {
+        return jsonResponse({ candidates: [{ content: { parts: [{ text: 'DESCRIPTION: x' }] } }] });
+      }
+      return new Response(null, { status: 200 });
+    });
+
+  it('reads the video in bounded chunks and never materializes the whole file', async () => {
+    const video = fakeVideoFile(20 * 1024 * 1024);
+    const { fetchImpl, calls } = uploadFetch();
+    const adapter = new GeminiNativeAnalyzerAdapter({
+      credentials: fakeCredentials('key'),
+      fetchImpl,
+      videoFile: video.source,
+      sleep: () => Promise.resolve(),
+      uploadChunkBytes: 8 * 1024 * 1024,
+    });
+
+    const result = await adapter.analyze(analyzeInput());
+
+    expect(result.ok).toBe(true);
+    expect(video.readAllCalls).toBe(0);
+    expect(video.reads).toEqual([
+      { offset: 0, length: 8 * 1024 * 1024 },
+      { offset: 8 * 1024 * 1024, length: 8 * 1024 * 1024 },
+      { offset: 16 * 1024 * 1024, length: 4 * 1024 * 1024 },
+    ]);
+    expect(Math.max(...video.reads.map((read) => read.length))).toBeLessThanOrEqual(8 * 1024 * 1024);
+    expect(video.openCalls).toBe(1);
+    expect(video.closeCalls).toBe(1);
+    const uploads = calls.filter((call) => call.url === 'https://upload.example/s');
+    expect(uploads.map((call) => call.headers['x-goog-upload-offset'])).toEqual(['0', '8388608', '16777216']);
+    expect(uploads.map((call) => call.headers['content-length'])).toEqual(['8388608', '8388608', '4194304']);
+  });
+
+  it('keeps the single-buffer inline path under the computed cutoff', async () => {
+    const video = fakeVideoFile(1024);
+    const { fetchImpl, calls } = recordingFetch(() =>
+      jsonResponse({ candidates: [{ content: { parts: [{ text: 'DESCRIPTION: x' }] } }] }));
+    const adapter = new GeminiNativeAnalyzerAdapter({
+      credentials: fakeCredentials('key'),
+      fetchImpl,
+      videoFile: video.source,
+    });
+
+    const result = await adapter.analyze(analyzeInput());
+
+    expect(result.ok).toBe(true);
+    expect(video.readAllCalls).toBe(1);
+    expect(video.openCalls).toBe(0);
+    expect(calls.map((call) => call.url)).toEqual([`${GEMINI_NATIVE_API_BASE_URL}/v1beta/models/gemini-3.6-flash:generateContent`]);
+  });
+
+  it('refuses a file above the Files API limit without reading or uploading it', async () => {
+    const video = fakeVideoFile(GEMINI_NATIVE_FILES_API_LIMIT_BYTES + 1);
+    const { fetchImpl, calls } = recordingFetch(() => new Response(null, { status: 200 }));
+    const adapter = new GeminiNativeAnalyzerAdapter({
+      credentials: fakeCredentials('key'),
+      fetchImpl,
+      videoFile: video.source,
+    });
+
+    const result = await adapter.analyze(analyzeInput());
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('provider_error');
+      expect(result.error.message).toContain('2.00 GB');
+    }
+    expect(video.readAllCalls).toBe(0);
+    expect(video.openCalls).toBe(0);
+    expect(calls).toEqual([]);
+  });
+
+  it('accepts a file exactly at the Files API limit', async () => {
+    const video = fakeVideoFile(GEMINI_NATIVE_FILES_API_LIMIT_BYTES);
+    const { fetchImpl } = uploadFetch();
+    const adapter = new GeminiNativeAnalyzerAdapter({
+      credentials: fakeCredentials('key'),
+      fetchImpl,
+      videoFile: video.source,
+      sleep: () => Promise.resolve(),
+      uploadChunkBytes: GEMINI_NATIVE_FILES_API_LIMIT_BYTES / 2,
+    });
+
+    const result = await adapter.analyze(analyzeInput());
+
+    expect(result.ok).toBe(true);
+    expect(video.reads).toHaveLength(2);
+  });
+});
+
+describe('node video file source', () => {
+  it('reports the size and reads bounded ranges straight from disk', async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), 'gemini-video-'));
+    const filePath = path.join(directory, 'clip.bin');
+    await writeFile(filePath, '0123456789', 'utf8');
+    try {
+      expect(await nodeVideoFileSource.size(filePath)).toBe(10);
+      const handle = await nodeVideoFileSource.open(filePath);
+      expect(Buffer.from(await handle.read(0, 4)).toString('utf8')).toBe('0123');
+      expect(Buffer.from(await handle.read(4, 4)).toString('utf8')).toBe('4567');
+      expect(Buffer.from(await handle.read(8, 4)).toString('utf8')).toBe('89');
+      await handle.close();
+      expect(Buffer.from(await nodeVideoFileSource.readAll(filePath)).toString('utf8')).toBe('0123456789');
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
   });
 });
 
@@ -375,7 +543,7 @@ describe('analyze — error branches', () => {
     new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(largeVideo),
+      videoFile: largeVideo(),
       sleep: () => Promise.resolve(),
       maxPollAttempts: 3,
     });
@@ -471,14 +639,43 @@ describe('analyze — error branches', () => {
     if (!result.ok) expect(result.error.message).toContain('ACTIVE');
   });
 
-  it('reports read_error when the video cannot be read', async () => {
+  it('reports read_error when the video size cannot be read', async () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
-      readVideo: () => Promise.reject(new Error('nope')),
+      videoFile: fakeVideoFile(SMALL_VIDEO_BYTES, { size: true }).source,
     });
     const result = await adapter.analyze(analyzeInput());
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('read_error');
+  });
+
+  it('reports read_error when the inline video cannot be read', async () => {
+    const adapter = new GeminiNativeAnalyzerAdapter({
+      credentials: fakeCredentials('key'),
+      videoFile: fakeVideoFile(SMALL_VIDEO_BYTES, { readAll: true }).source,
+    });
+    const result = await adapter.analyze(analyzeInput());
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('read_error');
+  });
+
+  it('reports read_error and closes the file when a chunk cannot be read', async () => {
+    const video = fakeVideoFile(LARGE_VIDEO_BYTES, { read: true });
+    const { fetchImpl } = recordingFetch((call) =>
+      call.url.endsWith('/upload/v1beta/files')
+        ? new Response(null, { status: 200, headers: { 'x-goog-upload-url': 'https://up/s' } })
+        : jsonResponse({}));
+    const adapter = new GeminiNativeAnalyzerAdapter({
+      credentials: fakeCredentials('key'),
+      fetchImpl,
+      videoFile: video.source,
+    });
+
+    const result = await adapter.analyze(analyzeInput());
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('read_error');
+    expect(video.closeCalls).toBe(1);
   });
 
   it('returns cancelled when a request throws with an aborted user signal', async () => {
@@ -488,7 +685,7 @@ describe('analyze — error branches', () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(smallVideo),
+      videoFile: smallVideo(),
     });
     const result = await adapter.analyze(analyzeInput({ signal: controller.signal }));
     expect(result.ok).toBe(false);
@@ -500,7 +697,7 @@ describe('analyze — error branches', () => {
     const adapter = new GeminiNativeAnalyzerAdapter({
       credentials: fakeCredentials('key'),
       fetchImpl,
-      readVideo: () => Promise.resolve(smallVideo),
+      videoFile: smallVideo(),
     });
     const result = await adapter.analyze(analyzeInput());
     expect(result.ok).toBe(false);

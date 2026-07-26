@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { open, readFile, stat } from 'node:fs/promises';
 import { z } from 'zod';
 
 import {
@@ -7,6 +7,7 @@ import {
   geminiUsageAccounting,
   ok,
   GEMINI_NATIVE_API_BASE_URL,
+  GEMINI_NATIVE_FILES_API_LIMIT_BYTES,
   GEMINI_NATIVE_INLINE_LIMIT_BYTES,
   type AnalyzerProviderConfig,
   type AppError,
@@ -35,14 +36,44 @@ import {
 
 type GeminiNativeProvider = Extract<AnalyzerProviderConfig, { family: 'gemini-native' }>;
 
+export interface VideoFileHandle {
+  read(offset: number, length: number): Promise<Uint8Array<ArrayBuffer>>;
+  close(): Promise<void>;
+}
+
+export interface VideoFileSource {
+  size(videoPath: string): Promise<number>;
+  readAll(videoPath: string): Promise<Uint8Array>;
+  open(videoPath: string): Promise<VideoFileHandle>;
+}
+
 export interface GeminiNativeAnalyzerAdapterOptions {
   credentials: CredentialsStore;
   fetchImpl?: typeof fetch | undefined;
-  readVideo?: ((videoPath: string) => Promise<Uint8Array>) | undefined;
+  videoFile?: VideoFileSource | undefined;
   sleep?: ((ms: number) => Promise<void>) | undefined;
   pollIntervalMs?: number | undefined;
   maxPollAttempts?: number | undefined;
+  uploadChunkBytes?: number | undefined;
 }
+
+export const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
+
+export const nodeVideoFileSource: VideoFileSource = {
+  size: async (videoPath) => (await stat(videoPath)).size,
+  readAll: (videoPath) => readFile(videoPath),
+  open: async (videoPath) => {
+    const handle = await open(videoPath, 'r');
+    return {
+      read: async (offset, length) => {
+        const buffer = new Uint8Array(new ArrayBuffer(length));
+        const { bytesRead } = await handle.read(buffer, 0, length, offset);
+        return buffer.subarray(0, bytesRead);
+      },
+      close: () => handle.close(),
+    };
+  },
+};
 
 const fileStateSchema = z.object({
   name: z.string().optional(),
@@ -146,27 +177,23 @@ export const parseGeminiTranscript = (rawResponse: string): AnalyzerTranscript |
 
 const bytesToBase64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString('base64');
 
-const toBlob = (bytes: Uint8Array): Blob => {
-  const buffer = new ArrayBuffer(bytes.byteLength);
-  new Uint8Array(buffer).set(bytes);
-  return new Blob([buffer], { type: 'video/mp4' });
-};
-
 export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
   private readonly credentials: CredentialsStore;
   private readonly fetchImpl: typeof fetch;
-  private readonly readVideo: (videoPath: string) => Promise<Uint8Array>;
+  private readonly videoFile: VideoFileSource;
   private readonly sleep: (ms: number) => Promise<void>;
   private readonly pollIntervalMs: number;
   private readonly maxPollAttempts: number;
+  private readonly uploadChunkBytes: number;
 
   constructor(options: GeminiNativeAnalyzerAdapterOptions) {
     this.credentials = options.credentials;
     this.fetchImpl = options.fetchImpl ?? fetch;
-    this.readVideo = options.readVideo ?? ((videoPath) => readFile(videoPath));
+    this.videoFile = options.videoFile ?? nodeVideoFileSource;
     this.sleep = options.sleep ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
     this.pollIntervalMs = options.pollIntervalMs ?? 2000;
     this.maxPollAttempts = options.maxPollAttempts ?? 60;
+    this.uploadChunkBytes = options.uploadChunkBytes ?? UPLOAD_CHUNK_BYTES;
   }
 
   async test(config: AnalyzerProviderConfig): Promise<Result<ProviderTestResult, AppError>> {
@@ -255,17 +282,26 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort 
       return { ok: false, error: appError('missing_api_key', `No Gemini API key stored for provider ${provider.providerId}`) };
     }
     const apiKey = credential.value;
-    let bytes: Uint8Array;
+    let sizeBytes: number;
     try {
-      bytes = await this.readVideo(input.videoPath);
+      sizeBytes = await this.videoFile.size(input.videoPath);
     } catch {
       return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
+    }
+    if (sizeBytes > GEMINI_NATIVE_FILES_API_LIMIT_BYTES) {
+      return { ok: false, error: appError('provider_error', tooLargeMessage(sizeBytes)) };
     }
     const prompt = buildGeminiPrompt({ videoName: basename(input.videoPath), outputLanguage: input.outputLanguage });
     const timeoutMs = input.timeoutSeconds * 1000;
     const signal = combinedSignal(input.signal, timeoutMs);
 
-    if (shouldUploadInline(bytes.length)) {
+    if (shouldUploadInline(sizeBytes)) {
+      let bytes: Uint8Array;
+      try {
+        bytes = await this.videoFile.readAll(input.videoPath);
+      } catch {
+        return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
+      }
       return this.generate(apiKey, provider, {
         parts: [
           { inline_data: { mime_type: 'video/mp4', data: bytesToBase64(bytes) } },
@@ -274,7 +310,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort 
       }, signal, input.signal);
     }
 
-    const uploaded = await this.uploadResumable(apiKey, input.videoPath, bytes, signal, input.signal);
+    const uploaded = await this.uploadResumable(apiKey, input.videoPath, sizeBytes, signal, input.signal);
     if (!uploaded.ok) return uploaded;
     const active = await this.pollActive(apiKey, uploaded.value.name, signal, input.signal);
     if (!active.ok) {
@@ -321,7 +357,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort 
   private async uploadResumable(
     apiKey: string,
     videoPath: string,
-    bytes: Uint8Array,
+    sizeBytes: number,
     signal: AbortSignal,
     userSignal: AbortSignal | undefined,
   ): Promise<Result<{ name: string }, AppError>> {
@@ -333,7 +369,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort 
           'x-goog-api-key': apiKey,
           'X-Goog-Upload-Protocol': 'resumable',
           'X-Goog-Upload-Command': 'start',
-          'X-Goog-Upload-Header-Content-Length': String(bytes.length),
+          'X-Goog-Upload-Header-Content-Length': String(sizeBytes),
           'X-Goog-Upload-Header-Content-Type': 'video/mp4',
           'Content-Type': 'application/json',
         },
@@ -350,37 +386,56 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort 
     if (uploadUrl === null) {
       return { ok: false, error: appError('provider_error', 'Gemini upload did not return an upload URL') };
     }
-    let finalizeResponse: Response;
+    return this.uploadChunks(apiKey, videoPath, sizeBytes, uploadUrl, signal, userSignal);
+  }
+
+  private async uploadChunks(
+    apiKey: string,
+    videoPath: string,
+    sizeBytes: number,
+    uploadUrl: string,
+    signal: AbortSignal,
+    userSignal: AbortSignal | undefined,
+  ): Promise<Result<{ name: string }, AppError>> {
+    let handle: VideoFileHandle;
     try {
-      finalizeResponse = await this.fetchImpl(uploadUrl, {
-        method: 'POST',
-        headers: {
-          'x-goog-api-key': apiKey,
-          'X-Goog-Upload-Command': 'upload, finalize',
-          'X-Goog-Upload-Offset': '0',
-          'Content-Length': String(bytes.length),
-        },
-        body: toBlob(bytes),
-        signal,
-      });
-    } catch (cause) {
-      return uploadFailure(userSignal, signal, cause);
-    }
-    if (!finalizeResponse.ok) {
-      return { ok: false, error: uploadHttpError(finalizeResponse.status) };
-    }
-    let body: unknown;
-    try {
-      body = await finalizeResponse.json();
+      handle = await this.videoFile.open(videoPath);
     } catch {
-      return { ok: false, error: appError('provider_error', 'Gemini upload returned invalid JSON') };
+      return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
     }
-    const parsed = uploadResponseSchema.safeParse(body);
-    const name = parsed.success ? parsed.data.file?.name : undefined;
-    if (name === undefined || name.length === 0) {
-      return { ok: false, error: appError('provider_error', 'Gemini upload response did not contain a file name') };
+    try {
+      for (let offset = 0; offset < sizeBytes; offset += this.uploadChunkBytes) {
+        const length = Math.min(this.uploadChunkBytes, sizeBytes - offset);
+        const last = offset + length >= sizeBytes;
+        let chunk: Uint8Array<ArrayBuffer>;
+        try {
+          chunk = await handle.read(offset, length);
+        } catch {
+          return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
+        }
+        let response: Response;
+        try {
+          response = await this.fetchImpl(uploadUrl, {
+            method: 'POST',
+            headers: {
+              'x-goog-api-key': apiKey,
+              'X-Goog-Upload-Command': last ? 'upload, finalize' : 'upload',
+              'X-Goog-Upload-Offset': String(offset),
+              'Content-Length': String(chunk.byteLength),
+            },
+            body: chunk,
+            signal,
+          });
+        } catch (cause) {
+          return uploadFailure(userSignal, signal, cause);
+        }
+        if (!response.ok) return { ok: false, error: uploadHttpError(response.status) };
+        if (last) return uploadedFileName(response);
+      }
+      return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
+    } finally {
+      await handle.close().catch(() => undefined);
     }
-    return ok({ name });
   }
 
   private async pollActive(
@@ -516,6 +571,27 @@ const uploadFailure = (
   if (signal.aborted) return { ok: false, error: appError('provider_error', 'Gemini request timed out') };
   return { ok: false, error: appError('provider_error', 'Gemini request failed', cause) };
 };
+
+const uploadedFileName = async (response: Response): Promise<Result<{ name: string }, AppError>> => {
+  let body: unknown;
+  try {
+    body = await response.json();
+  } catch {
+    return { ok: false, error: appError('provider_error', 'Gemini upload returned invalid JSON') };
+  }
+  const parsed = uploadResponseSchema.safeParse(body);
+  const name = parsed.success ? parsed.data.file?.name : undefined;
+  if (name === undefined || name.length === 0) {
+    return { ok: false, error: appError('provider_error', 'Gemini upload response did not contain a file name') };
+  }
+  return ok({ name });
+};
+
+const gigabytes = (bytes: number): string => (bytes / 1024 / 1024 / 1024).toFixed(2);
+
+const tooLargeMessage = (sizeBytes: number): string =>
+  `Video is ${gigabytes(sizeBytes)} GB; the Gemini Files API accepts at most `
+  + `${gigabytes(GEMINI_NATIVE_FILES_API_LIMIT_BYTES)} GB per file`;
 
 const uploadHttpError = (status: number): AppError => {
   if (status === 401 || status === 403) return appError('provider_auth_failed', 'Gemini rejected the stored API key');
