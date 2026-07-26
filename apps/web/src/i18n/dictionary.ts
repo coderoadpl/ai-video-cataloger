@@ -493,6 +493,7 @@ export interface Dictionary {
     keychainUnavailable: string;
     notStored: string;
     entryUnreadable: string;
+    entryUnreadableRetained: string;
   };
   folderBar: {
     openFolder: string;
@@ -1092,6 +1093,7 @@ export const en: Dictionary = {
     keychainUnavailable: 'The macOS Keychain could not be read, so a stored key cannot be used. Unlock the login keychain and try again — this is not the same as having no key.',
     notStored: 'No key was stored for this provider.',
     entryUnreadable: 'The credentials file entry for this provider could not be read, so nothing was removed. Fix or remove that entry by hand.',
+    entryUnreadableRetained: 'The credentials file entry for this provider could not be read and was left untouched. Fix or remove that entry by hand.',
   },
   folderBar: {
     openFolder: 'Open Folder',
@@ -1700,6 +1702,7 @@ export const pl: Dictionary = {
     keychainUnavailable: 'Nie udało się odczytać pęku kluczy macOS, więc zapisany klucz jest niedostępny. Odblokuj pęk kluczy logowania i spróbuj ponownie — to nie znaczy, że klucza nie ma.',
     notStored: 'Dla tego dostawcy nie zapisano żadnego klucza.',
     entryUnreadable: 'Nie udało się odczytać wpisu tego dostawcy w pliku poświadczeń, więc nic nie zostało usunięte. Popraw lub usuń ten wpis ręcznie.',
+    entryUnreadableRetained: 'Nie udało się odczytać wpisu tego dostawcy w pliku poświadczeń i został on nietknięty. Popraw lub usuń ten wpis ręcznie.',
   },
   folderBar: {
     openFolder: 'Otwórz folder',

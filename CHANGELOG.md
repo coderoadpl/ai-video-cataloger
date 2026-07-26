@@ -48,6 +48,18 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `batch_uploads_retained` is a typed drive event in the CLI's NDJSON stream
   like `batch_submitted`, `batch_poll` and `batch_completed`, instead of a
   generic progress line.
+- Deleting a credential whose file entry could not be read no longer claims
+  "nothing was removed" when the Keychain item was in fact cleared. The CLI and
+  the settings panel now name what was cleared and still say the unreadable
+  entry was left untouched and has to be fixed by hand.
+- The catalog tree shows real pending and processed counts for a read-only
+  folder. Those folders carry no marker file, so the counts fell back to
+  "unknown"; the tree now reaches the global index through the same path-derived
+  folder id `scan` uses, and only when the index actually holds that folder.
+- Scanning a read-only folder surfaces the analysis of a file that is back on
+  disk after having been recorded as missing. The missing mark is cleared in the
+  global index — which is writable even when the folder is not — instead of
+  hiding an analysis that is still valid.
 
 ## [0.5.23] - 2026-07-29
 

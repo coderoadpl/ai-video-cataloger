@@ -566,4 +566,20 @@ describe('credentialDeletionMessage', () => {
       en.credentials.clearedKeychain,
     );
   });
+
+  it('says nothing was removed when an unreadable entry was all there was', () => {
+    expect(credentialDeletionMessage(en, {
+      cleared: [],
+      retained: ['file'],
+      unreadableEntry: '/home/u/.ai-video-cataloger/credentials.json',
+    })).toBe(en.credentials.entryUnreadable);
+  });
+
+  it('names the backend it did clear alongside the entry it had to leave', () => {
+    expect(credentialDeletionMessage(en, {
+      cleared: ['keychain'],
+      retained: ['file'],
+      unreadableEntry: '/home/u/.ai-video-cataloger/credentials.json',
+    })).toBe(`${en.credentials.clearedKeychain} ${en.credentials.entryUnreadableRetained}`);
+  });
 });

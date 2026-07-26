@@ -8,11 +8,18 @@ const labelList = (backends: readonly CredentialsBackend[]): string =>
   backends.map((backend) => `the ${CREDENTIALS_BACKEND_LABELS[backend]}`).join(' and ');
 
 export const credentialDeleteHuman = (data: { providerId: string } & CredentialDeletion): string => {
-  if (data.unreadableEntry !== undefined) {
+  if (data.unreadableEntry !== undefined && data.cleared.length === 0) {
     return (
       `The entry for ${data.providerId} in ${data.unreadableEntry} could not be read, so nothing was removed.`
       + ' Fix or remove that entry by hand.'
     );
+  }
+  if (data.unreadableEntry !== undefined) {
+    return [
+      `Cleared the credential for ${data.providerId} from ${labelList(data.cleared)}`,
+      `The entry for ${data.providerId} in ${data.unreadableEntry} could not be read and was left untouched.`
+      + ' Fix or remove that entry by hand.',
+    ].join('\n');
   }
   if (data.cleared.length === 0 && data.retained.length === 0) {
     return `No stored credential for ${data.providerId}`;

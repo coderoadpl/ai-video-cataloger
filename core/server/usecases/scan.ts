@@ -19,6 +19,7 @@ import {
   type SummaryData,
 } from './shared.js';
 import { artifactRootFor, type ArtifactRoot } from './artifact-root.js';
+import { healRestoredRecords } from './catalog-index.js';
 import { readFolderMarker } from './folder-identity.js';
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
 
@@ -131,13 +132,17 @@ const indexedAnalyses = async (
   if (writable || globalCatalog === undefined) return ok(new Map());
   const marker = await readFolderMarker(deps.fs, folder);
   if (!marker.ok) return marker;
-  const records = await globalCatalog.listFolderRecords(
-    marker.value?.folderId ?? derivedFolderId(deps.fs.resolve(folder)),
-  );
+  const folderId = marker.value?.folderId ?? derivedFolderId(deps.fs.resolve(folder));
+  const records = await globalCatalog.listFolderRecords(folderId);
   if (!records.ok) return records;
+  // The folder is read-only, but the index holding its records lives in the home scope and is not:
+  // a file that is back on disk gets its missing mark cleared here instead of staying hidden.
+  const restored = await healRestoredRecords({ fs: deps.fs, globalCatalog }, folderId, folder, records.value);
+  if (!restored.ok) return restored;
   const byFingerprint = new Map<string, CatalogFileRecord>();
   for (const record of records.value) {
-    if (record.analysis === null || record.file.missingAt !== null) continue;
+    if (record.analysis === null) continue;
+    if (record.file.missingAt !== null && !restored.value.has(record.file.fingerprint)) continue;
     byFingerprint.set(record.file.fingerprint, record);
   }
   return ok(byFingerprint);

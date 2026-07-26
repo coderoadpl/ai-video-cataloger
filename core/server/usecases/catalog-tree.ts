@@ -1,4 +1,4 @@
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { derivedFolderId, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { CatalogFileRecord, FileSystemPort, GlobalCatalogStore } from '../ports.js';
 import { healRestoredRecords, type CatalogFolderRecord } from './catalog-index.js';
@@ -190,16 +190,34 @@ const folderCounts = async (
   videoPaths: readonly string[],
 ): Promise<Result<{ pendingCount: number | null; processedCount: number | null }, AppError>> => {
   if (deps.globalCatalog === undefined) return ok({ pendingCount: null, processedCount: null });
-  const marker = await readFolderMarker(deps.fs, folder);
-  if (!marker.ok) return marker;
-  if (marker.value === null) return ok({ pendingCount: null, processedCount: null });
-  const records = await deps.globalCatalog.listFolderRecords(marker.value.folderId);
+  const folderId = await indexedFolderId(deps, deps.globalCatalog, folder);
+  if (!folderId.ok) return folderId;
+  if (folderId.value === null) return ok({ pendingCount: null, processedCount: null });
+  const records = await deps.globalCatalog.listFolderRecords(folderId.value);
   if (!records.ok) return records;
   const processedCount = processedDiskNames(deps.fs, records.value, new Set(videoPaths.map((videoPath) => deps.fs.basename(videoPath)))).size;
   return ok({
     pendingCount: Math.max(0, videoPaths.length - processedCount),
     processedCount,
   });
+};
+
+// A folder the app cannot write carries no marker: its records live in the global index under the
+// path-derived id. Reading only the marker leaves an analysed read-only folder counted as unknown
+// forever, and falling back blindly would answer "nothing processed" for a folder the index never
+// saw, so the derived id counts only once the index actually holds that folder.
+const indexedFolderId = async (
+  deps: ScanTreeDeps,
+  globalCatalog: GlobalCatalogStore,
+  folder: string,
+): Promise<Result<string | null, AppError>> => {
+  const marker = await readFolderMarker(deps.fs, folder);
+  if (!marker.ok) return marker;
+  if (marker.value !== null) return ok(marker.value.folderId);
+  const derived = derivedFolderId(deps.fs.resolve(folder));
+  const indexed = await globalCatalog.getFolder(derived);
+  if (!indexed.ok) return indexed;
+  return ok(indexed.value === null ? null : derived);
 };
 
 const processedDiskNames = (

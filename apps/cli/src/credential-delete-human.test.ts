@@ -39,6 +39,35 @@ describe('credentialDeleteHuman', () => {
     );
   });
 
+  it('says nothing was removed when an unreadable entry was all there was', () => {
+    const output = credentialDeleteHuman({
+      providerId: 'gemini',
+      cleared: [],
+      retained: ['file'],
+      unreadableEntry: '/home/u/.ai-video-cataloger/credentials.json',
+    });
+
+    expect(output).toBe(
+      'The entry for gemini in /home/u/.ai-video-cataloger/credentials.json could not be read,'
+      + ' so nothing was removed. Fix or remove that entry by hand.',
+    );
+  });
+
+  it('names what it did clear when an unreadable entry survived alongside it', () => {
+    const output = credentialDeleteHuman({
+      providerId: 'gemini',
+      cleared: ['keychain'],
+      retained: ['file'],
+      unreadableEntry: '/home/u/.ai-video-cataloger/credentials.json',
+    });
+
+    expect(output.split('\n')).toEqual([
+      'Cleared the credential for gemini from the macOS Keychain',
+      'The entry for gemini in /home/u/.ai-video-cataloger/credentials.json could not be read and was left untouched.'
+      + ' Fix or remove that entry by hand.',
+    ]);
+  });
+
   it('reports a provider that had nothing stored', () => {
     const output = credentialDeleteHuman({ providerId: 'gemini', cleared: [], retained: [] });
 

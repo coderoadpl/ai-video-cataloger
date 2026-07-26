@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { GLOBAL_CATALOG_SCHEMA_VERSION, ok, type AppError, type Result } from '@core/domain/index.js';
+import { derivedFolderId, GLOBAL_CATALOG_SCHEMA_VERSION, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { MediaProbe } from '../ports.js';
 import { catalogTreeAbsentFiles, scanTree, scanTreeFolderDetails } from './catalog-tree.js';
@@ -171,6 +171,69 @@ describe('scanTree', () => {
     expect(result.value.pendingTotal).toBe(0);
     expect(result.value.processedTotal).toBe(2);
     expect(result.value.hasUnknownPending).toBe(false);
+  });
+
+  it('counts a read-only folder through its path-derived id instead of reporting unknown', async () => {
+    const fs = new InMemoryFileSystem('/drive');
+    const store = new InMemoryGlobalCatalogStore();
+    const folderId = derivedFolderId('/drive/ro');
+    addVideo(fs, '/drive/ro/done.mp4', 'hash-done');
+    addVideo(fs, '/drive/ro/todo.mp4', 'hash-todo');
+    await store.upsertFolder({
+      folderId,
+      currentPath: '/drive/ro',
+      displayName: 'ro',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    await store.upsertFile({
+      fingerprint: 'hash-done',
+      folderId,
+      fileName: 'done.mp4',
+      size: 1024,
+      durationS: null,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'gemini',
+      model: 'gemini-2.5-flash',
+      missingAt: null,
+    });
+    await store.upsertAnalysis({
+      fingerprint: 'hash-done',
+      finalName: null,
+      description: 'done',
+      transcript: null,
+      language: null,
+      tags: [],
+    });
+
+    const result = await scanTree({ fs, globalCatalog: store }, { folder: '/drive' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.folders.find((entry) => entry.relativePath === 'ro')).toMatchObject({
+      videoCount: 2,
+      pendingCount: 1,
+      processedCount: 1,
+    });
+    expect(result.value.hasUnknownPending).toBe(false);
+  });
+
+  it('keeps counts unknown for an unmarked folder the global index never saw', async () => {
+    const fs = new InMemoryFileSystem('/drive');
+    const store = new InMemoryGlobalCatalogStore();
+    addVideo(fs, '/drive/fresh/clip.mp4', 'hash-fresh');
+
+    const result = await scanTree({ fs, globalCatalog: store }, { folder: '/drive' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.folders.find((entry) => entry.relativePath === 'fresh')).toMatchObject({
+      pendingCount: null,
+      processedCount: null,
+    });
+    expect(result.value.hasUnknownPending).toBe(true);
   });
 
   it('loads expanded folder details through the detail scanner', async () => {

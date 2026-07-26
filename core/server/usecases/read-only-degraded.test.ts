@@ -177,6 +177,31 @@ describe('drive processing over a read-only folder', () => {
     expect(scanned.ok && scanned.value.summary).toMatchObject({ total: 1, tracked: 1, notTracked: 0, completed: 1 });
   });
 
+  it('surfaces the analysis of a read-only file that is back on disk but still marked missing', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const deps = makeDeps(fs);
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro' });
+    expect(run.ok && run.value.filesDone).toBe(1);
+    const file = await deps.globalCatalog.getFile('hash-ro');
+    expect(file.ok).toBe(true);
+    if (!file.ok || file.value === null) return;
+    const marked = await deps.globalCatalog.reconcileFolder({
+      folderId: file.value.folderId,
+      presentFingerprints: [],
+      markMissing: true,
+      now: Date.parse('2026-02-01T00:00:00.000Z'),
+    });
+    expect(marked.ok).toBe(true);
+
+    const restarted = { ...deps, catalogs: new InMemoryCatalogs([], fs) };
+    const scanned = await scanFolder(restarted, { folder: '/drive/ro' });
+
+    expect(scanned.ok && scanned.value.videos.map((video) => video.status)).toEqual(['completed']);
+    const healed = await deps.globalCatalog.getFile('hash-ro');
+    expect(healed.ok && healed.value?.missingAt).toBe(null);
+  });
+
   it('leaves a read-only folder nothing analysed reported as untracked', async () => {
     const fs = new ReadOnlyFolderFileSystem('/drive/ro');
     fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
