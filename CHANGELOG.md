@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.26] - 2026-07-29
+
 ### Fixed
 
 - A Gemini batch run killed inside the submit call and resumed against the job
@@ -21,11 +23,13 @@ release history jumps from `0.5.10` to `0.5.12`.
   The job model is decided after the re-attach, so the stored file model, the
   per-file usage event and the batch price rates no longer follow a
   configuration that moved in between, and `batch_model_changed` names the drift
-  on this path too.
+  on this path too
+  ([`f553b24`](https://github.com/chomamateusz/ai-video-cataloger/commit/f553b24d)).
 - Deleting a credential whose file entry could not be read now also says the
   macOS Keychain still holds the credential when it does, in the CLI and in the
   settings panel: "nothing was removed" alone pointed at the file when the
-  locked keychain was what needed unlocking.
+  locked keychain was what needed unlocking
+  ([`0f32920`](https://github.com/chomamateusz/ai-video-cataloger/commit/0f329207)).
 
 ## [0.5.25] - 2026-07-29
 
