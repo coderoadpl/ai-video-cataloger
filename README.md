@@ -89,7 +89,7 @@ check [folder] [--json]
 scan <folder> [--json]
 search <query> [--json]
 process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper-model model] [--analyzer claude|local|api] [--provider openai|claude-code|codex|cursor-agent|local|gemini] [--local-model tag] [--json]
-process-drive <root> [--json]
+process-drive <root> [--gemini-batch] [--json]
 thumbnail <video-path> [--force] [--json]
 status [--json]
 reset [filename] [--force] [--json]
@@ -104,7 +104,13 @@ models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|fa
 models whisper-runtime status|install
 ```
 
-Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`.
+Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`, `gemini_batch_mode`.
+
+`--gemini-batch` (config key `gemini_batch_mode`) sends a whole `process-drive`
+run to the Gemini Batch API at half the interactive token price; results
+usually arrive in minutes but the API allows up to 24 hours, and a run killed
+mid-flight re-attaches to the same job on the next run
+([ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)).
 
 OpenAI-compatible analyzers use `analyzer_provider` JSON configuration. API
 credentials live in the macOS Keychain (service `com.ai-video-cataloger.app`,
