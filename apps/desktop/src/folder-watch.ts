@@ -19,7 +19,13 @@ export class FolderWatchController {
     this.stop();
     const generation = this.generation;
     const app = await this.deps.desktopApp;
-    const started = await app.watchFolder(folderPath, () => this.deps.notify(folderPath));
+    const started = await app.watchFolder(
+      folderPath,
+      () => this.deps.notify(folderPath),
+      () => {
+        if (generation === this.generation) this.session = null;
+      },
+    );
     if (!started.ok) return;
     if (generation !== this.generation) {
       started.value.stop();

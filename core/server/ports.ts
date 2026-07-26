@@ -276,7 +276,11 @@ export interface FolderWatchHandle {
 }
 
 export interface FolderWatcherPort {
-  watch(root: string, onChange: () => void): Promise<Result<FolderWatchHandle, AppError>>;
+  watch(
+    root: string,
+    onChange: () => void,
+    onFailure?: (error: AppError) => void,
+  ): Promise<Result<FolderWatchHandle, AppError>>;
 }
 
 export interface DependencyStatus {

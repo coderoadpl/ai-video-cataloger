@@ -10,7 +10,11 @@ export interface App {
   honoApp: Hono;
   jobs: JobsPort;
   catalogFolderPaths: () => Promise<string[]>;
-  watchFolder: (root: string, onChange: () => void) => Promise<Result<FolderWatchSession, AppError>>;
+  watchFolder: (
+    root: string,
+    onChange: () => void,
+    onStopped?: (error: AppError) => void,
+  ) => Promise<Result<FolderWatchSession, AppError>>;
   dispose: () => Promise<void>;
 }
 
@@ -19,8 +23,8 @@ export const createApp = (config: AppConfig = {}): App => {
   return {
     honoApp: buildApp(deps),
     jobs: deps.jobs,
-    watchFolder: (root, onChange) =>
-      watchCatalogFolder({ watcher: deps.folderWatcher, jobs: deps.jobs }, root, onChange),
+    watchFolder: (root, onChange, onStopped) =>
+      watchCatalogFolder({ watcher: deps.folderWatcher, jobs: deps.jobs }, root, onChange, { onStopped }),
     catalogFolderPaths: async () => {
       const folders = await deps.globalCatalog.listFolders();
       return folders.ok ? folders.value.map((folder) => folder.currentPath) : [];

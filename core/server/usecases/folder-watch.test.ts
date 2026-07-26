@@ -27,16 +27,19 @@ const failingJobs: Pick<JobsPort, 'list'> = {
 interface FakeWatcher {
   port: FolderWatcherPort;
   change: () => void;
+  fail: (error: AppError) => void;
   closed: () => number;
 }
 
 const fakeWatcher = (): FakeWatcher => {
   let notify: () => void = () => undefined;
+  let notifyFailure: (error: AppError) => void = () => undefined;
   let closed = 0;
   return {
     port: {
-      watch: (_root, onChange): Promise<Result<FolderWatchHandle, AppError>> => {
+      watch: (_root, onChange, onFailure): Promise<Result<FolderWatchHandle, AppError>> => {
         notify = onChange;
+        if (onFailure !== undefined) notifyFailure = onFailure;
         return Promise.resolve(
           ok({
             close: () => {
@@ -47,6 +50,7 @@ const fakeWatcher = (): FakeWatcher => {
       },
     },
     change: () => notify(),
+    fail: (error) => notifyFailure(error),
     closed: () => closed,
   };
 };
@@ -98,6 +102,27 @@ describe('watchCatalogFolder', () => {
     watcher.change();
     await flush();
     expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
+  it('stops the session and reports the error when the watcher dies', async () => {
+    const watcher = fakeWatcher();
+    const onRefresh = vi.fn();
+    const onStopped = vi.fn();
+
+    await watchCatalogFolder(
+      { watcher: watcher.port, jobs: jobsListing([]) },
+      '/drive',
+      onRefresh,
+      { onStopped },
+    );
+
+    watcher.fail(appError('read_error', 'Stopped watching folder: /drive'));
+    watcher.change();
+    await flush();
+
+    expect(onStopped).toHaveBeenCalledTimes(1);
+    expect(onStopped.mock.calls[0]?.[0]).toMatchObject({ code: 'read_error' });
+    expect(onRefresh).not.toHaveBeenCalled();
   });
 
   it('holds the refresh while a drive run is active and fires once it settles', async () => {

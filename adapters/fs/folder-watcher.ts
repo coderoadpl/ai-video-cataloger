@@ -12,6 +12,7 @@ export const isIgnoredWatchPath = (relativePath: string): boolean =>
 export type RecursiveWatch = (
   root: string,
   onEvent: (relativePath: string | null) => void,
+  onFailure: (cause: unknown) => void,
 ) => FolderWatchHandle;
 
 export interface NodeFolderWatcherPortOptions {
@@ -19,10 +20,11 @@ export interface NodeFolderWatcherPortOptions {
   watchRecursive?: RecursiveWatch | undefined;
 }
 
-const nodeRecursiveWatch: RecursiveWatch = (root, onEvent) => {
+const nodeRecursiveWatch: RecursiveWatch = (root, onEvent, onFailure) => {
   const watcher = watch(root, { recursive: true, persistent: false }, (_event, filename) => {
     onEvent(typeof filename === 'string' ? filename : null);
   });
+  watcher.on('error', onFailure);
   return { close: () => watcher.close() };
 };
 
@@ -35,26 +37,47 @@ export class NodeFolderWatcherPort implements FolderWatcherPort {
     this.watchRecursive = options.watchRecursive ?? nodeRecursiveWatch;
   }
 
-  watch(root: string, onChange: () => void): Promise<Result<FolderWatchHandle, AppError>> {
+  watch(
+    root: string,
+    onChange: () => void,
+    onFailure?: (error: AppError) => void,
+  ): Promise<Result<FolderWatchHandle, AppError>> {
     let timer: ReturnType<typeof setTimeout> | null = null;
+    let handle: FolderWatchHandle | null = null;
+    let ended = false;
     const cancelPending = (): void => {
       if (timer !== null) clearTimeout(timer);
       timer = null;
     };
+    const end = (): void => {
+      ended = true;
+      cancelPending();
+      handle?.close();
+    };
     try {
-      const handle = this.watchRecursive(root, (relativePath) => {
-        if (relativePath !== null && isIgnoredWatchPath(relativePath)) return;
-        cancelPending();
-        timer = setTimeout(() => {
-          timer = null;
-          onChange();
-        }, this.debounceMs);
-      });
+      handle = this.watchRecursive(
+        root,
+        (relativePath) => {
+          if (ended) return;
+          if (relativePath !== null && isIgnoredWatchPath(relativePath)) return;
+          cancelPending();
+          timer = setTimeout(() => {
+            timer = null;
+            onChange();
+          }, this.debounceMs);
+        },
+        (cause) => {
+          if (ended) return;
+          end();
+          onFailure?.(appError('read_error', `Stopped watching folder: ${root}`, cause));
+        },
+      );
+      if (ended) handle.close();
       return Promise.resolve(
         ok({
           close: () => {
-            cancelPending();
-            handle.close();
+            if (ended) return;
+            end();
           },
         }),
       );

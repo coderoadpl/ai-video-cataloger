@@ -15,6 +15,7 @@ export interface FolderWatchDeps {
 export interface FolderWatchOptions {
   resumePollMs?: number | undefined;
   schedule?: WatchScheduler | undefined;
+  onStopped?: ((error: AppError) => void) | undefined;
 }
 
 export interface FolderWatchSession {
@@ -69,14 +70,21 @@ export const watchCatalogFolder = async (
     });
   };
 
-  const started = await deps.watcher.watch(root, requestRefresh);
+  const stop = (): void => {
+    stopped = true;
+    releaseWait?.();
+    releaseWait = null;
+  };
+
+  const started = await deps.watcher.watch(root, requestRefresh, (error) => {
+    stop();
+    options.onStopped?.(error);
+  });
   if (!started.ok) return started;
 
   return ok({
     stop: () => {
-      stopped = true;
-      releaseWait?.();
-      releaseWait = null;
+      stop();
       started.value.close();
     },
   });

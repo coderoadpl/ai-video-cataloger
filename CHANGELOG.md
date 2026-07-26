@@ -16,6 +16,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- A folder watcher that fails while the app is running (for example the watched
+  root disappearing) no longer takes the Electron main process down with an
+  uncaught error: the watch ends, closes its handle and reports a `read_error`
+  to the caller, which drops the dead session.
 - Gemini native analysis no longer loads the whole video into memory (twice) to
   upload it: files above the inline cutoff are streamed to the Files API in 8 MB
   chunks straight from disk, so a 300 MB clip peaks at ~40 MB of buffers instead
