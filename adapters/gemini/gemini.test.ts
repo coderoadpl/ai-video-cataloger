@@ -97,7 +97,11 @@ interface FakeVideoFile {
   closeCalls: number;
 }
 
-const fakeVideoFile = (sizeBytes: number, failures: { size?: boolean; readAll?: boolean; read?: boolean } = {}): FakeVideoFile => {
+const fakeVideoFile = (
+  sizeBytes: number,
+  failures: { size?: boolean; readAll?: boolean; read?: boolean } = {},
+  maxBytesPerRead = Number.POSITIVE_INFINITY,
+): FakeVideoFile => {
   const state: FakeVideoFile = {
     reads: [],
     readAllCalls: 0,
@@ -116,7 +120,7 @@ const fakeVideoFile = (sizeBytes: number, failures: { size?: boolean; readAll?: 
           read: (offset: number, length: number) => {
             state.reads.push({ offset, length });
             if (failures.read === true) return Promise.reject(new Error('read failed'));
-            return Promise.resolve(new Uint8Array(length));
+            return Promise.resolve(new Uint8Array(Math.min(length, maxBytesPerRead)));
           },
           close: () => {
             state.closeCalls += 1;
@@ -397,6 +401,133 @@ describe('analyze — resumable upload state machine', () => {
     const result = await adapter.analyze(analyzeInput());
     expect(result.ok).toBe(false);
     expect(deleted).toBe(true);
+  });
+});
+
+describe('analyze — chunk upload resilience', () => {
+  const CHUNK = 8 * 1024 * 1024;
+
+  const sessionFetch = (
+    onUpload: (call: FetchCall, attempt: number) => Response | null,
+  ): { fetchImpl: typeof fetch; calls: FetchCall[] } => {
+    let uploads = 0;
+    return recordingFetch((call) => {
+      if (call.url.endsWith('/upload/v1beta/files')) {
+        return new Response(null, { status: 200, headers: { 'x-goog-upload-url': 'https://upload.example/s' } });
+      }
+      if (call.url === 'https://upload.example/s') {
+        if (call.headers['x-goog-upload-command'] === 'query') {
+          return onUpload(call, uploads) ?? new Response(null, { status: 200 });
+        }
+        uploads += 1;
+        const answer = onUpload(call, uploads);
+        return answer ?? jsonResponse({ file: { name: 'files/c', state: 'PROCESSING' } });
+      }
+      if (call.method === 'GET' && call.url.endsWith('/files/c')) return jsonResponse({ state: 'ACTIVE', uri: 'u' });
+      if (call.url.includes(':generateContent')) {
+        return jsonResponse({ candidates: [{ content: { parts: [{ text: 'DESCRIPTION: x' }] } }] });
+      }
+      return new Response(null, { status: 200 });
+    });
+  };
+
+  const uploadOffsets = (calls: FetchCall[]): string[] =>
+    calls
+      .filter((call) => call.url === 'https://upload.example/s' && call.headers['x-goog-upload-command'] !== 'query')
+      .map((call) => call.headers['x-goog-upload-offset'] ?? '');
+
+  const adapterFor = (fetchImpl: typeof fetch, videoFile: VideoFileSource): GeminiNativeAnalyzerAdapter =>
+    new GeminiNativeAnalyzerAdapter({
+      credentials: fakeCredentials('key'),
+      fetchImpl,
+      videoFile,
+      sleep: () => Promise.resolve(),
+      uploadChunkBytes: CHUNK,
+    });
+
+  it('retries a transiently failed chunk from the offset the session confirms', async () => {
+    const video = fakeVideoFile(20 * 1024 * 1024);
+    const { fetchImpl, calls } = sessionFetch((call) => {
+      if (call.headers['x-goog-upload-command'] === 'query') {
+        return new Response(null, { status: 200, headers: { 'x-goog-upload-size-received': String(CHUNK) } });
+      }
+      if (call.headers['x-goog-upload-offset'] === String(CHUNK) && calls.length < 4) {
+        return new Response(null, { status: 503 });
+      }
+      return null;
+    });
+
+    const result = await adapterFor(fetchImpl, video.source).analyze(analyzeInput());
+
+    expect(result.ok).toBe(true);
+    expect(uploadOffsets(calls)).toEqual(['0', String(CHUNK), String(CHUNK), String(2 * CHUNK)]);
+    expect(calls.some((call) => call.headers['x-goog-upload-command'] === 'query')).toBe(true);
+  });
+
+  it('never re-sends bytes a half-received chunk already delivered', async () => {
+    const video = fakeVideoFile(20 * 1024 * 1024);
+    const received = 12 * 1024 * 1024;
+    const { fetchImpl, calls } = sessionFetch((call) => {
+      if (call.headers['x-goog-upload-command'] === 'query') {
+        return new Response(null, { status: 200, headers: { 'x-goog-upload-size-received': String(received) } });
+      }
+      if (call.headers['x-goog-upload-offset'] === String(CHUNK) && calls.length < 4) {
+        return new Response(null, { status: 503 });
+      }
+      return null;
+    });
+
+    const result = await adapterFor(fetchImpl, video.source).analyze(analyzeInput());
+
+    expect(result.ok).toBe(true);
+    expect(uploadOffsets(calls)).toEqual(['0', String(CHUNK), String(received)]);
+    const finalize = calls.filter((call) => call.headers['x-goog-upload-command'] === 'upload, finalize');
+    expect(finalize.map((call) => call.headers['x-goog-upload-offset'])).toEqual([String(received)]);
+  });
+
+  it('returns a typed upload error once the retries are exhausted', async () => {
+    const video = fakeVideoFile(20 * 1024 * 1024);
+    const { fetchImpl, calls } = sessionFetch((call) => {
+      if (call.headers['x-goog-upload-command'] === 'query') {
+        return new Response(null, { status: 200, headers: { 'x-goog-upload-size-received': String(CHUNK) } });
+      }
+      return call.headers['x-goog-upload-offset'] === String(CHUNK) ? new Response(null, { status: 503 }) : null;
+    });
+
+    const result = await adapterFor(fetchImpl, video.source).analyze(analyzeInput());
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('provider_error');
+    expect(uploadOffsets(calls).filter((offset) => offset === String(CHUNK))).toHaveLength(4);
+  });
+
+  it('abandons a rejected key without retrying it', async () => {
+    const video = fakeVideoFile(20 * 1024 * 1024);
+    const { fetchImpl, calls } = sessionFetch((call) =>
+      (call.headers['x-goog-upload-command'] === 'query' ? null : new Response(null, { status: 403 })));
+
+    const result = await adapterFor(fetchImpl, video.source).analyze(analyzeInput());
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe('provider_auth_failed');
+    expect(uploadOffsets(calls)).toEqual(['0']);
+  });
+
+  it('advances the offset by the bytes actually read on a short read', async () => {
+    const shortRead = 3 * 1024 * 1024;
+    const video = fakeVideoFile(20 * 1024 * 1024, {}, shortRead);
+    const { fetchImpl, calls } = sessionFetch(() => null);
+
+    const result = await adapterFor(fetchImpl, video.source).analyze(analyzeInput());
+
+    expect(result.ok).toBe(true);
+    const uploads = calls.filter((call) => call.url === 'https://upload.example/s');
+    expect(uploads.map((call) => call.headers['content-length'])).toEqual(
+      Array.from({ length: 6 }, () => String(shortRead)).concat([String(20 * 1024 * 1024 - 6 * shortRead)]),
+    );
+    expect(uploadOffsets(calls)).toEqual(
+      Array.from({ length: 7 }, (_unused, index) => String(index * shortRead)),
+    );
   });
 });
 

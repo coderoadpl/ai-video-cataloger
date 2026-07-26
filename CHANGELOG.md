@@ -41,6 +41,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `doctor` stops reporting a degraded credentials backend once the Keychain
   answers again, including when the migration itself was the operation that
   succeeded.
+- A Gemini native video upload survives a transient chunk failure: a failed
+  chunk is retried up to three times with a short backoff, and each retry first
+  asks the resumable session how many bytes it already holds, so a half-received
+  chunk is resumed rather than sent twice. Non-retryable answers (a rejected key,
+  a bad request) still abandon the session immediately. Chunk offsets now advance
+  by the bytes actually read, so a short read no longer skips part of the file.
 
 ## [0.5.19] - 2026-07-28
 

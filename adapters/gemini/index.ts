@@ -59,6 +59,12 @@ export interface GeminiNativeAnalyzerAdapterOptions {
 
 export const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 
+const UPLOAD_CHUNK_RETRIES = 3;
+const UPLOAD_RETRY_DELAY_MS = 500;
+
+const isRetryableUploadStatus = (status: number): boolean =>
+  status === 408 || status === 429 || status >= 500;
+
 export const nodeVideoFileSource: VideoFileSource = {
   size: async (videoPath) => (await stat(videoPath)).size,
   readAll: (videoPath) => readFile(videoPath),
@@ -404,38 +410,89 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, ProvidersPort 
       return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
     }
     try {
-      for (let offset = 0; offset < sizeBytes; offset += this.uploadChunkBytes) {
-        const length = Math.min(this.uploadChunkBytes, sizeBytes - offset);
-        const last = offset + length >= sizeBytes;
+      let offset = 0;
+      let retries = 0;
+      while (offset < sizeBytes) {
+        if (signal.aborted) return abortResult(userSignal);
         let chunk: Uint8Array<ArrayBuffer>;
         try {
-          chunk = await handle.read(offset, length);
+          chunk = await handle.read(offset, Math.min(this.uploadChunkBytes, sizeBytes - offset));
         } catch {
           return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
         }
-        let response: Response;
-        try {
-          response = await this.fetchImpl(uploadUrl, {
-            method: 'POST',
-            headers: {
-              'x-goog-api-key': apiKey,
-              'X-Goog-Upload-Command': last ? 'upload, finalize' : 'upload',
-              'X-Goog-Upload-Offset': String(offset),
-              'Content-Length': String(chunk.byteLength),
-            },
-            body: chunk,
-            signal,
-          });
-        } catch (cause) {
-          return uploadFailure(userSignal, signal, cause);
+        if (chunk.byteLength === 0) {
+          return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
         }
-        if (!response.ok) return { ok: false, error: uploadHttpError(response.status) };
-        if (last) return uploadedFileName(response);
+        const last = offset + chunk.byteLength >= sizeBytes;
+        const attempt = await this.sendChunk({ apiKey, uploadUrl, offset, chunk, last, signal, userSignal });
+        if ('response' in attempt) {
+          if (last) return uploadedFileName(attempt.response);
+          offset += chunk.byteLength;
+          retries = 0;
+          continue;
+        }
+        if (!attempt.retryable || retries >= UPLOAD_CHUNK_RETRIES) return attempt.failure;
+        retries += 1;
+        await this.sleep(UPLOAD_RETRY_DELAY_MS * retries);
+        const received = await this.receivedOffset(apiKey, uploadUrl, signal);
+        if (received !== null) offset = received;
       }
       return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
     } finally {
       await handle.close().catch(() => undefined);
     }
+  }
+
+  private async sendChunk(input: {
+    apiKey: string;
+    uploadUrl: string;
+    offset: number;
+    chunk: Uint8Array<ArrayBuffer>;
+    last: boolean;
+    signal: AbortSignal;
+    userSignal: AbortSignal | undefined;
+  }): Promise<{ response: Response } | { failure: Result<never, AppError>; retryable: boolean }> {
+    try {
+      const response = await this.fetchImpl(input.uploadUrl, {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': input.apiKey,
+          'X-Goog-Upload-Command': input.last ? 'upload, finalize' : 'upload',
+          'X-Goog-Upload-Offset': String(input.offset),
+          'Content-Length': String(input.chunk.byteLength),
+        },
+        body: input.chunk,
+        signal: input.signal,
+      });
+      if (response.ok) return { response };
+      return {
+        failure: { ok: false, error: uploadHttpError(response.status) },
+        retryable: isRetryableUploadStatus(response.status),
+      };
+    } catch (cause) {
+      return {
+        failure: uploadFailure(input.userSignal, input.signal, cause),
+        retryable: !input.signal.aborted,
+      };
+    }
+  }
+
+  // The resumable protocol answers a `query` command with the byte count it actually holds,
+  // which is the only safe place to resume a chunk the server may have half received.
+  private async receivedOffset(apiKey: string, uploadUrl: string, signal: AbortSignal): Promise<number | null> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(uploadUrl, {
+        method: 'POST',
+        headers: { 'x-goog-api-key': apiKey, 'X-Goog-Upload-Command': 'query', 'Content-Length': '0' },
+        signal,
+      });
+    } catch {
+      return null;
+    }
+    if (!response.ok) return null;
+    const received = Number(response.headers.get('x-goog-upload-size-received'));
+    return Number.isSafeInteger(received) && received >= 0 ? received : null;
   }
 
   private async pollActive(
