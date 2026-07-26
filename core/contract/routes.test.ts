@@ -189,6 +189,33 @@ describe('route schemas', () => {
     expect(parsed.results[0]?.folder.online).toBe(true);
   });
 
+  it('accepts the derived path folder id a read-only folder produces', () => {
+    const parsed = searchOutputSchema.parse({
+      query: 'drone',
+      limit: 50,
+      offset: 0,
+      count: 1,
+      results: [{
+        fingerprint: 'fp-ro',
+        fileName: 'clip.mp4',
+        finalName: null,
+        description: null,
+        snippet: '<mark>drone</mark> clip',
+        thumbnailPath: null,
+        tags: [],
+        folder: {
+          folderId: 'path-1a2b3c4d',
+          currentPath: '/read-only-drive',
+          displayName: 'read-only-drive',
+          online: true,
+        },
+        gps: null,
+        missing: false,
+      }],
+    });
+    expect(parsed.results[0]?.folder.folderId).toBe('path-1a2b3c4d');
+  });
+
   it('defines family-specific cheap provider check results', () => {
     expect(providerTestOutputSchema.parse({
       family: 'api',

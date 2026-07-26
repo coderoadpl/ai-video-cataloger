@@ -1,7 +1,7 @@
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { derivedFolderId, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { FileSystemPort } from '../ports.js';
-import { pathFolderId, readFolderMarker } from './folder-identity.js';
+import { readFolderMarker } from './folder-identity.js';
 
 const catalogDirectoryName = '.ai-video-cataloger';
 const readOnlyMirrorDirectoryName = 'read-only-folders';
@@ -21,7 +21,7 @@ export const readOnlyArtifactRoot = (fs: FileSystemPort, folder: string): Artifa
     fs.homeDirectory(),
     catalogDirectoryName,
     readOnlyMirrorDirectoryName,
-    pathFolderId(fs.resolve(folder)),
+    derivedFolderId(fs.resolve(folder)),
   );
   return { path: mirror, catalogDirectory: mirror };
 };

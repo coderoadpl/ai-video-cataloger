@@ -17,6 +17,7 @@ import {
   configKeySchema,
   credentialDeletionSchema,
   credentialsBackendStatusSchema,
+  folderIdSchema,
   videoStatusSchema,
   whisperEngineSchema,
 } from '@core/domain/index.js';
@@ -777,7 +778,7 @@ export const jobCancelOutputSchema = z.object({
 });
 
 export const indexStatusFolderSchema = z.object({
-  folderId: z.string().min(1),
+  folderId: folderIdSchema,
   currentPath: z.string().min(1),
   displayName: z.string(),
 });
@@ -818,7 +819,7 @@ export const indexForgetInputSchema = z.object({
 export const indexForgetOutputSchema = z.object({
   fingerprint: z.string().min(1),
   deleted: z.boolean(),
-  folderId: z.string().uuid().nullable(),
+  folderId: folderIdSchema.nullable(),
 });
 
 export const tagsListOutputSchema = z.object({
@@ -854,7 +855,7 @@ export const searchResultSchema = z.object({
   thumbnailPath: z.string().nullable(),
   tags: z.array(z.string()),
   folder: z.object({
-    folderId: z.string().uuid(),
+    folderId: folderIdSchema,
     currentPath: z.string().min(1),
     displayName: z.string(),
     online: z.boolean(),

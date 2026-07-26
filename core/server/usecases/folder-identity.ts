@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 
 import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
+  derivedFolderId,
   folderMarkerSchema,
   ok,
   type AppError,
@@ -52,7 +53,7 @@ export const resolveFolderIdentity = async (
   fs: FileSystemPort,
   folder: string,
 ): Promise<Result<ResolvedFolderIdentity, AppError>> => {
-  const derived: ResolvedFolderIdentity = { folderId: pathFolderId(fs.resolve(folder)), persistent: false };
+  const derived: ResolvedFolderIdentity = { folderId: derivedFolderId(fs.resolve(folder)), persistent: false };
   const existing = await readFolderMarker(fs, folder);
   if (!existing.ok) return isReadOnlyWriteError(existing.error) ? ok(derived) : existing;
   if (existing.value !== null) return ok({ folderId: existing.value.folderId, persistent: true });
@@ -68,12 +69,4 @@ export const resolveFolderIdentity = async (
   const written = await fs.writeTextFile(markerPath, JSON.stringify(marker, null, 2));
   if (!written.ok) return isReadOnlyWriteError(written.error) ? ok(derived) : written;
   return ok({ folderId: marker.folderId, persistent: true });
-};
-
-export const pathFolderId = (folder: string): string => {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < folder.length; index += 1) {
-    hash = Math.imul(hash ^ folder.charCodeAt(index), 16_777_619);
-  }
-  return `path-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 };

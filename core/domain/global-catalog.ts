@@ -2,8 +2,23 @@ import { z } from 'zod';
 
 export const GLOBAL_CATALOG_SCHEMA_VERSION = 7;
 
+const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
+
+export const folderIdSchema = z.union([
+  z.string().uuid(),
+  z.string().regex(DERIVED_FOLDER_ID_PATTERN),
+]);
+
+export const derivedFolderId = (folder: string): string => {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < folder.length; index += 1) {
+    hash = Math.imul(hash ^ folder.charCodeAt(index), 16_777_619);
+  }
+  return `path-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+};
+
 export const folderMarkerSchema = z.object({
-  folderId: z.string().uuid(),
+  folderId: folderIdSchema,
   schemaVersion: z.number().int().positive(),
   createdAt: z.iso.datetime(),
 });
@@ -11,7 +26,7 @@ export const folderMarkerSchema = z.object({
 export type FolderMarker = z.output<typeof folderMarkerSchema>;
 
 export const catalogFolderSchema = z.object({
-  folderId: z.string().uuid(),
+  folderId: folderIdSchema,
   currentPath: z.string().min(1),
   displayName: z.string(),
   firstSeenAt: z.iso.datetime(),
@@ -22,7 +37,7 @@ export type CatalogFolder = z.output<typeof catalogFolderSchema>;
 
 export const catalogFileSchema = z.object({
   fingerprint: z.string().min(1),
-  folderId: z.string().uuid(),
+  folderId: folderIdSchema,
   fileName: z.string().min(1),
   size: z.number().int().nonnegative(),
   durationS: z.number().nonnegative().nullable(),

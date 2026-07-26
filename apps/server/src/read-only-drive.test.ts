@@ -5,8 +5,11 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { searchOutputSchema } from '@core/contract/index.js';
 import {
   processDrive,
+  scanFolder,
+  search,
   type AnalysisOutput,
   type AnalyzerPort,
   type DependencyStatus,
@@ -160,5 +163,30 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     expect(second.value.filesSkipped).toBe(1);
     expect(second.value.filesFailed).toBe(0);
     expect(analyzer.calls).toBe(1);
+  }, 60000);
+
+  it('serves the hit through the search contract and resolves its details', async () => {
+    const { root, folder, deps } = await scaffold();
+
+    const run = await processDrive(deps, driveInput(root));
+    if (!run.ok) throw new Error(run.error.message);
+
+    const globalCatalog = deps.globalCatalog;
+    if (globalCatalog === undefined) throw new Error('missing global catalog');
+    const found = await search({ globalCatalog, fs: deps.fs }, { query: 'rabbit', limit: 50, offset: 0 });
+    if (!found.ok) throw new Error(found.error.message);
+
+    const parsed = searchOutputSchema.safeParse(found.value);
+    expect(parsed.error?.issues ?? []).toEqual([]);
+    expect(parsed.success).toBe(true);
+    const hit = found.value.results[0];
+    expect(hit?.folder.folderId).toMatch(/^path-[0-9a-f]{8}$/);
+    expect(hit?.folder.currentPath).toBe(folder);
+
+    const details = await scanFolder({ catalogs: deps.catalogs, fs: deps.fs, media: deps.media }, { folder });
+    if (!details.ok) throw new Error(details.error.message);
+    const detail = details.value.videos.find((video) => video.filename === 'clip.mp4');
+    expect(detail?.artifacts.summary?.description).toContain('rabbit');
+    expect(detail?.status).toBe('completed');
   }, 60000);
 });
