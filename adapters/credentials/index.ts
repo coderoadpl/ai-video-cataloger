@@ -164,7 +164,10 @@ export class KeychainCredentialsStore implements CredentialsStore {
       else if (removed.value.existed) keychain.cleared.push('keychain');
     }
     const file = await this.legacy.delete(providerId);
-    if (!file.ok) return file;
+    if (!file.ok) {
+      if (keychain.cleared.length === 0 && keychain.retained.length === 0) return file;
+      return ok({ cleared: keychain.cleared, retained: [...keychain.retained, 'file'] });
+    }
     return ok({
       cleared: [...keychain.cleared, ...file.value.cleared],
       retained: [...keychain.retained, ...file.value.retained],

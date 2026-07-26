@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -349,6 +349,22 @@ describe('KeychainCredentialsStore', () => {
     secrets.failingReads.delete('openai');
     expect(await store.delete('openai')).toEqual({ ok: true, value: { cleared: ['keychain'], retained: [] } });
     expect(secrets.deleteCalls).toEqual(['openai']);
+    expect(secrets.values.has('openai')).toBe(false);
+  });
+
+  it('still reports the keychain removal when the file backend cannot be read', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    await mkdir(path.join(home, '.ai-video-cataloger'), { recursive: true });
+    await writeFile(path.join(home, '.ai-video-cataloger', 'credentials.json'), '{"openai": 42}', 'utf8');
+    const secrets = new FakeSecrets(true);
+    await secrets.set('openai', 'keychain-key');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+
+    expect(await store.delete('openai')).toEqual({
+      ok: true,
+      value: { cleared: ['keychain'], retained: ['file'] },
+    });
     expect(secrets.values.has('openai')).toBe(false);
   });
 
