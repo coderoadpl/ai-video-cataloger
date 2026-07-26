@@ -88,11 +88,16 @@ exposure is documented below.
 
 ## Consequences
 
-- `add-generic-password` takes the password as an argv element (`-w <secret>`);
-  its only alternative prompts interactively and would hang a headless run. The
-  secret is therefore briefly visible in this process's own argv. Accepted:
-  the window is milliseconds and the observer would already need to be running
-  as the same user, who can read the plaintext file this ADR removes.
+- `add-generic-password` takes the password as an argv element (`-w <secret>`),
+  and the adapter always runs the absolute `/usr/bin/security`, never a `PATH`
+  lookup. The secret is therefore briefly visible in this process's own argv.
+  Accepted: the window is milliseconds and the observer would already need to be
+  running as the same user, who can read the plaintext file this ADR removes.
+  `security -i` (commands read from stdin, secret never in argv) was measured
+  against a throwaway keychain on 2026-07-28 and rejected: the same failing
+  `add-generic-password` exits **0** under `-i` while the argv form exits 45, and
+  `-i` blocks indefinitely on a locked keychain. A write whose failure the
+  adapter cannot see is a worse defect than the argv window.
 - Deleting a credential removes it from both backends, so an old plaintext copy
   cannot resurrect a key the user believes is gone. That deletion is
   user-facing (`DELETE /api/credentials`, `config delete-credential`, the

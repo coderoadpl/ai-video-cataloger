@@ -16,6 +16,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Keychain access runs the absolute `/usr/bin/security` instead of resolving
+  `security` on `PATH`, so a shadowing binary earlier in `PATH` can no longer
+  see or serve API keys.
 - Overlapping writes to the plaintext credentials file no longer collide on a
   shared `credentials.json.tmp`: each write uses its own temporary file and an
   atomic rename, so concurrent saves stop failing with

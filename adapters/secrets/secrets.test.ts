@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_KEYCHAIN_SERVICE,
   KeychainSecretsAdapter,
+  SECURITY_COMMAND_PATH,
   type SecretsCommandResult,
   type SecretsCommandRunner,
 } from './index.js';
@@ -58,6 +59,19 @@ describe('KeychainSecretsAdapter', () => {
     expect(await adapter.availability()).toBe('disabled');
     expect(await adapter.availability()).toBe('disabled');
     expect(runner.calls).toHaveLength(0);
+  });
+
+  it('runs the absolute security binary instead of resolving it on PATH', async () => {
+    const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+
+    await adapter.availability();
+    await adapter.get('openai');
+    await adapter.set('openai', 'sk-test');
+    await adapter.delete('openai');
+
+    expect(SECURITY_COMMAND_PATH).toBe('/usr/bin/security');
+    expect(runner.calls.map((call) => call.command)).toEqual(Array.from(runner.calls, () => '/usr/bin/security'));
   });
 
   it('reads a stored secret and strips the trailing newline', async () => {

@@ -6,6 +6,7 @@ import { appError, ok, type AppError, type Result } from '@core/domain/index.js'
 import type { SecretsAvailability, SecretsStore } from '@core/server/index.js';
 
 export const DEFAULT_KEYCHAIN_SERVICE = 'com.ai-video-cataloger.app';
+export const SECURITY_COMMAND_PATH = '/usr/bin/security';
 
 const KEYCHAIN_ITEM_NOT_FOUND = 44;
 const SECURITY_COMMAND_TIMEOUT_MS = 10_000;
@@ -25,6 +26,7 @@ export interface KeychainSecretsAdapterOptions {
   platform?: NodeJS.Platform | undefined;
   disabled?: boolean | undefined;
   keychainPath?: string | undefined;
+  securityPath?: string | undefined;
   commandRunner?: SecretsCommandRunner | undefined;
 }
 
@@ -33,6 +35,7 @@ export class KeychainSecretsAdapter implements SecretsStore {
   private readonly platform: NodeJS.Platform;
   private readonly disabled: boolean;
   private readonly keychain: readonly string[];
+  private readonly securityPath: string;
   private readonly commandRunner: SecretsCommandRunner;
   private structural: Extract<SecretsAvailability, 'disabled' | 'unsupported'> | null = null;
 
@@ -42,6 +45,7 @@ export class KeychainSecretsAdapter implements SecretsStore {
     this.disabled = options.disabled ?? process.env.AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN === '1';
     const keychainPath = options.keychainPath ?? process.env.AI_VIDEO_CATALOGER_KEYCHAIN;
     this.keychain = keychainPath === undefined || keychainPath.length === 0 ? [] : [keychainPath];
+    this.securityPath = options.securityPath ?? SECURITY_COMMAND_PATH;
     this.commandRunner = options.commandRunner ?? securityCommandRunner;
   }
 
@@ -59,7 +63,7 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async get(account: string): Promise<Result<string | null, AppError>> {
-    const result = await this.commandRunner.run('security', [
+    const result = await this.commandRunner.run(this.securityPath, [
       'find-generic-password', '-s', this.service, '-a', account, '-w', ...this.keychain,
     ]);
     if (result.code === 0) return ok(stripTrailingNewline(result.stdout));
@@ -68,10 +72,13 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async set(account: string, secret: string): Promise<Result<void, AppError>> {
-    // security add-generic-password has no stdin form for the password; -w takes it as
-    // an argument, briefly exposing it in this process's argv. The alternative bare -w
-    // prompts interactively and would hang headless runs, so argv is the only viable path.
-    const result = await this.commandRunner.run('security', [
+    // -w takes the password as an argument, briefly exposing it in this process's argv.
+    // Bare -w prompts interactively and would hang headless runs. `security -i` does keep
+    // the secret out of argv, but a probe against a throwaway keychain (2026-07-28) showed
+    // it exits 0 on a failed add-generic-password that the argv form reports as exit 45,
+    // and it blocks forever on a locked keychain - a write that silently does nothing is
+    // worse than a millisecond of argv exposure, so argv stays.
+    const result = await this.commandRunner.run(this.securityPath, [
       'add-generic-password', '-U', '-s', this.service, '-a', account, '-w', secret, ...this.keychain,
     ]);
     if (result.code === 0) return ok(undefined);
@@ -79,7 +86,7 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
-    const result = await this.commandRunner.run('security', [
+    const result = await this.commandRunner.run(this.securityPath, [
       'delete-generic-password', '-s', this.service, '-a', account, ...this.keychain,
     ]);
     if (result.code === 0) return ok({ existed: true });
@@ -89,7 +96,7 @@ export class KeychainSecretsAdapter implements SecretsStore {
 
   private async probe(): Promise<SecretsAvailability> {
     try {
-      const result = await this.commandRunner.run('security', ['list-keychains']);
+      const result = await this.commandRunner.run(this.securityPath, ['list-keychains']);
       return result.code === 0 ? 'available' : 'unavailable';
     } catch {
       return 'unavailable';
