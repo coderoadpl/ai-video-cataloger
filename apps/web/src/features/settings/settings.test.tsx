@@ -69,6 +69,18 @@ const emptyConfig: StoredConfig = {
   ui_language: null,
 };
 
+const apiProviderConfig: StoredConfig = {
+  ...emptyConfig,
+  analyzer_provider: JSON.stringify({
+    family: 'api',
+    providerId: 'openai',
+    baseUrl: 'https://api.openai.com/v1',
+    apiKeyRef: 'openai',
+    model: 'vision-model',
+    maxImageDetail: 'auto',
+  }),
+};
+
 const makeTier = (overrides: Partial<Tier> & { tag: Tier['tag'] }): Tier => ({
   label: 'A tier',
   downloadGB: 8.1,
@@ -394,17 +406,7 @@ describe('settings modal', () => {
 
   it('forgets the analyzer credential and reports the backends that were cleared', async () => {
     const deleteBodies: unknown[] = [];
-    stubEndpoints({
-      ...emptyConfig,
-      analyzer_provider: JSON.stringify({
-        family: 'api',
-        providerId: 'openai',
-        baseUrl: 'https://api.openai.com/v1',
-        apiKeyRef: 'openai',
-        model: 'vision-model',
-        maxImageDetail: 'auto',
-      }),
-    });
+    stubEndpoints(apiProviderConfig);
     server.use(
       http.delete('/api/credentials', async ({ request }) => {
         deleteBodies.push(await request.json());
@@ -422,6 +424,45 @@ describe('settings modal', () => {
     expect((await screen.findByTestId('forget-credential-result')).textContent).toBe(
       `${en.credentials.clearedFile} ${en.credentials.keychainRetained}`,
     );
+  });
+
+  it('keeps the modal open on a partial forget so the retained keychain is readable', async () => {
+    const onClose = vi.fn();
+    const onSaved = vi.fn();
+    stubEndpoints(apiProviderConfig);
+    server.use(
+      http.delete('/api/credentials', () =>
+        HttpResponse.json({ ok: true, data: { providerId: 'openai', cleared: [], retained: ['keychain'] } })),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={onClose} onSaved={onSaved} />);
+
+    fireEvent.click(await screen.findByTestId('forget-credential-button'));
+
+    const result = await screen.findByTestId('forget-credential-result');
+    expect(result.textContent).toBe(en.credentials.keychainRetained);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(onSaved).not.toHaveBeenCalled();
+    expect(result.getAttribute('data-severity')).toBe('warning');
+  });
+
+  it('confirms a complete forget in place instead of closing the modal', async () => {
+    const onClose = vi.fn();
+    stubEndpoints(apiProviderConfig);
+    server.use(
+      http.delete('/api/credentials', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { providerId: 'openai', cleared: ['keychain', 'file'], retained: [] },
+        })),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={onClose} />);
+
+    fireEvent.click(await screen.findByTestId('forget-credential-button'));
+
+    const result = await screen.findByTestId('forget-credential-result');
+    expect(result.textContent).toBe(en.credentials.clearedBoth);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(result.getAttribute('data-severity')).toBe('success');
   });
 
   it('stores an OpenAI credential for API transcription', async () => {

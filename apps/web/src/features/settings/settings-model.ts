@@ -57,6 +57,23 @@ export const analyzerCredentialRef = (draft: SettingsDraft): string | null => {
   return provider.family === 'api' || provider.family === 'gemini-native' ? provider.apiKeyRef : null;
 };
 
+export type CredentialNoticeSeverity = 'success' | 'warning' | 'info' | 'error';
+
+export interface CredentialNotice {
+  message: string;
+  severity: CredentialNoticeSeverity;
+}
+
+export const credentialDeletionNotice = (
+  dictionary: Dictionary,
+  deletion: CredentialDeletion,
+): CredentialNotice => ({
+  message: credentialDeletionMessage(dictionary, deletion),
+  severity: deletion.retained.length > 0
+    ? 'warning'
+    : deletion.cleared.length > 0 ? 'success' : 'info',
+});
+
 export const credentialDeletionMessage = (
   dictionary: Dictionary,
   deletion: CredentialDeletion,

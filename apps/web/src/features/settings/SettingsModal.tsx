@@ -186,7 +186,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                   : { analyzer_provider: provider })}
               onApiCredentialChange={settings.setApiCredential}
               isForgettingCredential={settings.isForgettingCredential}
-              forgetCredentialMessage={settings.forgetCredentialMessage}
+              forgetCredentialNotice={settings.forgetCredentialNotice}
               onForgetCredential={settings.forgetCredential}
             />
 

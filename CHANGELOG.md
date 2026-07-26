@@ -14,6 +14,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Forget key** in Settings no longer closes the modal the moment the answer
+  arrives: the outcome is rendered next to the field as a coloured notice
+  (cleared everywhere = success, keychain retained or request failed = warning
+  or error), so a Keychain that refused to release the key is finally readable.
+  Closing the modal stays the user's action.
+
 ## [0.5.19] - 2026-07-28
 
 ### Fixed

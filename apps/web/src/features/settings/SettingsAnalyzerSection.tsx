@@ -1,4 +1,5 @@
 import {
+  Alert,
   Box,
   Button,
   CircularProgress,
@@ -22,7 +23,7 @@ import {
 
 import { HarnessModelPicker } from '../../components/ui/HarnessModelPicker.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import type { LocalAiTier, SettingsDraft } from './settings-model.js';
+import type { CredentialNotice, LocalAiTier, SettingsDraft } from './settings-model.js';
 
 type HarnessProvider = Extract<AnalyzerProviderConfig, { family: 'harness' }>;
 
@@ -68,7 +69,7 @@ interface SettingsAnalyzerSectionProps {
   onProviderChange: (provider: AnalyzerProviderConfig) => void;
   onApiCredentialChange: (credential: string) => void;
   isForgettingCredential: boolean;
-  forgetCredentialMessage: string | null;
+  forgetCredentialNotice: CredentialNotice | null;
   onForgetCredential: () => void;
 }
 
@@ -84,7 +85,7 @@ export const SettingsAnalyzerSection = ({
   onProviderChange,
   onApiCredentialChange,
   isForgettingCredential,
-  forgetCredentialMessage,
+  forgetCredentialNotice,
   onForgetCredential,
 }: SettingsAnalyzerSectionProps) => {
   const dictionary = useDictionary();
@@ -205,7 +206,7 @@ export const SettingsAnalyzerSection = ({
             forgetLabel={dictionary.settingsAnalyzer.forgetCredential}
             credential={apiCredential}
             forgetting={isForgettingCredential}
-            message={forgetCredentialMessage}
+            notice={forgetCredentialNotice}
             onChange={onApiCredentialChange}
             onForget={onForgetCredential}
           />
@@ -252,7 +253,7 @@ export const SettingsAnalyzerSection = ({
             forgetLabel={dictionary.settingsAnalyzer.forgetCredential}
             credential={apiCredential}
             forgetting={isForgettingCredential}
-            message={forgetCredentialMessage}
+            notice={forgetCredentialNotice}
             onChange={onApiCredentialChange}
             onForget={onForgetCredential}
           />
@@ -270,7 +271,7 @@ interface CredentialFieldProps {
   forgetLabel: string;
   credential: string;
   forgetting: boolean;
-  message: string | null;
+  notice: CredentialNotice | null;
   onChange: (credential: string) => void;
   onForget: () => void;
 }
@@ -280,7 +281,7 @@ const CredentialField = ({
   forgetLabel,
   credential,
   forgetting,
-  message,
+  notice,
   onChange,
   onForget,
 }: CredentialFieldProps) => (
@@ -305,10 +306,15 @@ const CredentialField = ({
         {forgetting ? <CircularProgress size={16} /> : forgetLabel}
       </Button>
     </Box>
-    {message === null ? null : (
-      <Typography variant="caption" data-testid="forget-credential-result">
-        {message}
-      </Typography>
+    {notice === null ? null : (
+      <Alert
+        severity={notice.severity}
+        variant="outlined"
+        data-testid="forget-credential-result"
+        data-severity={notice.severity}
+      >
+        {notice.message}
+      </Alert>
     )}
   </Box>
 );
