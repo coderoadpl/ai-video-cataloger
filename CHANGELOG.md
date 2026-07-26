@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.22] - 2026-07-29
+
 ### Fixed
 
 - A drive run over a tree that turned read-only after it was first indexed no
@@ -21,39 +23,49 @@ release history jumps from `0.5.10` to `0.5.12`.
   `.ai-video-cataloger/catalog.ndjson`. The end-of-run snapshot refresh — the
   one that follows a file relocated between folders — now degrades exactly like
   the per-file snapshot write: it counts towards `snapshotSkipped` and emits a
-  `catalog_snapshot_skipped` warning, and the run completes.
+  `catalog_snapshot_skipped` warning, and the run completes
+  ([`33f5fd6`](https://github.com/chomamateusz/ai-video-cataloger/commit/33f5fd64)).
 - A `stale` credential entry is never served as a live key. Reading a provider
   whose only file copy is `stale` now reports `keychain_unavailable` when the
   Keychain refuses, and answers "no key" when the Keychain no longer holds the
-  item — dropping that superseded copy instead of resurrecting it.
+  item — dropping that superseded copy instead of resurrecting it
+  ([`b6f39ec`](https://github.com/chomamateusz/ai-video-cataloger/commit/b6f39ec1)).
 - Gemini batch drive runs survive several ways of losing a submitted job. A run
   now re-attaches to the latest unfinished run **of its own root**, so a run over
   another root in between no longer orphans a paid-for batch; the display-name
   lookup walks every page of `ListBatches` instead of only the first; several
   jobs sharing a display name resolve to the newest one with a logged warning;
   and a submit failure that is not a definitive API rejection keeps the persisted
-  display name so recovery can still find a job that may exist.
+  display name so recovery can still find a job that may exist
+  ([`704d36b`](https://github.com/chomamateusz/ai-video-cataloger/commit/704d36bf),
+  [`1e59b72`](https://github.com/chomamateusz/ai-video-cataloger/commit/1e59b72c)).
 - A Gemini batch job that reports `done` together with an error is read as
   failed instead of succeeded, a state name without the `JOB_STATE_` prefix is
   understood, an unrecognized state is logged, and a per-request error is mapped
   by its gRPC status string (`UNAUTHENTICATED` / `PERMISSION_DENIED` →
   `provider_auth_failed`, `RESOURCE_EXHAUSTED` → `rate_limited`) as well as by
-  the numeric HTTP code.
+  the numeric HTTP code
+  ([`704d36b`](https://github.com/chomamateusz/ai-video-cataloger/commit/704d36bf)).
 - `gemini_batch_mode` is honoured per folder, exactly like the analyzer provider:
   a folder under a batch root can opt out and run interactively, and a folder
   under an interactive root can opt in. The `--gemini-batch` flag still wins over
-  every folder key.
+  every folder key
+  ([`704d36b`](https://github.com/chomamateusz/ai-video-cataloger/commit/704d36bf)).
 - One malformed entry in `credentials.json` no longer makes the whole file
   unreadable: the bad entry is skipped, every other key keeps working, and
-  `doctor` raises a `credential_entry_unreadable` warning naming the provider.
+  `doctor` raises a `credential_entry_unreadable` warning naming the provider
+  ([`f9071e6`](https://github.com/chomamateusz/ai-video-cataloger/commit/f9071e62)).
 - A completed Gemini batch run deletes the files it uploaded to the Files API
   instead of leaving them to expire after 48 hours (best effort — a delete that
-  fails is logged, never fatal).
+  fails is logged, never fatal)
+  ([`f9071e6`](https://github.com/chomamateusz/ai-video-cataloger/commit/f9071e62)).
 - Cancelling a Gemini batch run stops it at once instead of waiting out the
-  current poll backoff, which reaches five minutes.
+  current poll backoff, which reaches five minutes
+  ([`f9071e6`](https://github.com/chomamateusz/ai-video-cataloger/commit/f9071e62)).
 - The whole-tree scope stays available when a tree holds no files on disk but
   the catalog still remembers absent ones, so the absent/forget section is
-  reachable for entries search can already find.
+  reachable for entries search can already find
+  ([`f9071e6`](https://github.com/chomamateusz/ai-video-cataloger/commit/f9071e62)).
 
 ## [0.5.21] - 2026-07-28
 
