@@ -14,6 +14,25 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- **Batch mode for Gemini drive runs** — an opt-in that submits a whole
+  `process-drive` run to the Gemini Batch API, billed at **50% of the
+  interactive token price**. Turn it on with the `gemini_batch_mode` config
+  key, the `--gemini-batch` flag on `process-drive`, or the checkbox in the
+  desktop drive-run settings; single-file `process` always stays interactive.
+  Uploads still go file by file through the Files API, the run then submits one
+  job and waits for it — usually minutes, up to 24 hours by the API's SLA — and
+  every answer lands through the normal per-file path (transcript artifacts,
+  rename, global catalog, cost event). The run's job name and per-file request
+  mapping are persisted before submission, so a run killed mid-flight
+  re-attaches to the job it already paid for instead of submitting a second
+  one. Design recorded in
+  [ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md).
+- NDJSON drive runs gain three additive steps — `batch_submitted` (job name,
+  request count), `batch_poll` (job name, state) and `batch_completed` (job
+  name, succeeded/failed counts).
+
 ## [0.5.20] - 2026-07-28
 
 ### Fixed

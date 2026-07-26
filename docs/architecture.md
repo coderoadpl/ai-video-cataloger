@@ -333,6 +333,15 @@ managed runtimes, and its working-directory fallback.
   event; GPS still comes from metadata. Budget-capped smoke bench (real key,
   11-clip subset, flash vs flash-lite, $0.096 total) recorded at
   `~/repositories/claude-tmp/wf-mg1/bench-report.md`.
+- `AnalyzerBatchPort` — the Gemini **Batch API** half of the same adapter,
+  used only by `process_drive` and only when batch mode is on
+  ([ADR-0008](decisions/0008-gemini-batch-drive-runs.md)): per-file uploads
+  stay the streamed Files API path, the run's requests are submitted inline as
+  one job at **half the interactive token price**, and each answer is mapped
+  back through the ordinary per-file completion path (parse, rename, transcript
+  artifacts, global catalog, NDJSON events). The job name and the per-file
+  request mapping live in the drive-run record before submission, so an
+  interrupted run re-attaches instead of paying twice.
 - `LocalAiRuntimePort` — system Ollama / managed pinned runtime. Analyzer
   execution starts the runtime on demand through this port and receives the
   resolved daemon base URL, including the managed runtime's dynamic port.
