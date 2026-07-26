@@ -596,28 +596,19 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
       fileUri: request.fileUri,
     }))
     : persistedBatch.requests;
-  // Every answer in a submitted job was bought from the model it was submitted with, so the run
-  // that re-attaches records them under that model however the configuration has moved since.
-  const jobModel = persistedBatch?.jobName == null ? null : persistedBatch.model;
-  const model = jobModel ?? plan.model;
+  // A persisted state names the model its own submit was made with, and the job that submit may
+  // already have created is findable by display name, so a configuration that moved since never
+  // overwrites it.
+  const persistedModel = persistedBatch?.model ?? null;
   state.run.batch = {
     displayName,
     jobName: persistedBatch?.jobName ?? null,
     state: persistedBatch?.jobName == null ? 'preparing' : 'submitted',
-    model,
+    model: persistedModel ?? plan.model,
     requests,
   };
   const beforeSubmit = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
   if (!beforeSubmit.ok) return beforeSubmit;
-
-  if (jobModel !== null && jobModel !== plan.model) {
-    const modelReported = await report(progress, 'batch_model_changed', {
-      jobName: persistedBatch?.jobName ?? null,
-      jobModel,
-      resolvedModel: plan.model,
-    });
-    if (!modelReported.ok) return modelReported;
-  }
 
   const job = persistedBatch?.jobName == null
     ? await ensureBatchJob({
@@ -634,6 +625,18 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
     const persistedFailure = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
     if (!persistedFailure.ok) return persistedFailure;
     return job;
+  }
+  // Every answer in a submitted job was bought from the model it was submitted with, so the run
+  // that re-attaches records them under that model however the configuration has moved since.
+  const jobModel = job.value.reattached ? persistedModel : null;
+  const model = jobModel ?? plan.model;
+  if (jobModel !== null && jobModel !== plan.model) {
+    const modelReported = await report(progress, 'batch_model_changed', {
+      jobName: job.value.jobName,
+      jobModel,
+      resolvedModel: plan.model,
+    });
+    if (!modelReported.ok) return modelReported;
   }
   state.run.batch = { displayName, jobName: job.value.jobName, state: 'submitted', model, requests };
   const afterSubmit = await persistBatchIdentity(deps, pass.globalCatalog, state, now);

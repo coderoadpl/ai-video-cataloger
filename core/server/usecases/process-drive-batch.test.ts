@@ -140,6 +140,16 @@ class FakeBatchPort implements AnalyzerBatchPort {
   }
 }
 
+class DiesInsideSubmit extends FakeBatchPort {
+  override submitBatch(input: {
+    displayName: string;
+    requests: readonly AnalyzerBatchRequest[];
+  }): Promise<Result<AnalyzerBatchSubmission, AppError>> {
+    void super.submitBatch(input);
+    return Promise.reject(new Error('process killed while the submit request was in flight'));
+  }
+}
+
 const succeeded = (): AnalyzerBatchStatus => ({ state: 'succeeded', message: null, results: [] });
 
 const recordingProgress = (): { progress: JobExecutionContext; events: JobProgress[] } => {
@@ -365,15 +375,6 @@ describe('gemini batch drive runs', () => {
   });
 
   it('recovers a crash between the submit request and the job-name write by matching the display name, never resubmitting', async () => {
-    class DiesInsideSubmit extends FakeBatchPort {
-      override submitBatch(input: {
-        displayName: string;
-        requests: readonly AnalyzerBatchRequest[];
-      }): Promise<Result<AnalyzerBatchSubmission, AppError>> {
-        void super.submitBatch(input);
-        return Promise.reject(new Error('process killed while the submit request was in flight'));
-      }
-    }
     const dying = new DiesInsideSubmit();
     const deps = makeDeps(dying);
     await useGemini(deps);
@@ -735,6 +736,54 @@ describe('gemini batch drive runs', () => {
       pricingMode: 'batch',
       usage: { estimatedCostUsd: (1000 * 0.75 + 1000 * 3.75) / 1_000_000 },
     });
+  });
+
+  it('stamps a display-name re-attach with the model the interrupted submit used', async () => {
+    const dying = new DiesInsideSubmit();
+    const deps = makeDeps(dying);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    await processDrive(deps, batchInput, undefined, { ...runOptions, runId: 'run-1' }).catch(() => undefined);
+    const persisted = await deps.globalCatalog.latestDriveRun();
+    expect(persisted.ok && persisted.value?.batch).toMatchObject({
+      jobName: null,
+      state: 'preparing',
+      model: 'gemini-3.6-flash',
+    });
+    await deps.config.set(
+      { kind: 'home' },
+      'analyzer_provider',
+      JSON.stringify(defaultGeminiNativeProvider('gemini-flash-lite-latest')),
+    );
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()], existingJobName: 'batches/42' });
+    const { progress, events } = recordingProgress();
+    const second = await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, progress, {
+      ...runOptions,
+      runId: 'run-2',
+    });
+
+    expect(second).toMatchObject({ ok: true, value: { filesDone: 1, filesFailed: 0 } });
+    expect(resumed.submissions).toHaveLength(0);
+    expect(resumed.pollModels).toEqual(['gemini-3.6-flash']);
+    const file = await deps.globalCatalog.getFile('hash-one');
+    expect(file.ok && file.value?.model).toBe('gemini-3.6-flash');
+    const usage = events.find((event) => event.step === 'analyzing_with_claude' && event.data?.usage !== undefined);
+    expect(usage?.data).toMatchObject({
+      model: 'gemini-3.6-flash',
+      pricingMode: 'batch',
+      usage: { estimatedCostUsd: (1000 * 0.75 + 1000 * 3.75) / 1_000_000 },
+    });
+    const changed = events.filter((event) => event.step === 'batch_model_changed');
+    expect(changed).toHaveLength(1);
+    expect(changed[0]?.data).toEqual({
+      jobName: 'batches/42',
+      jobModel: 'gemini-3.6-flash',
+      resolvedModel: 'gemini-flash-lite-latest',
+    });
+    const stored = await deps.globalCatalog.latestDriveRun();
+    expect(stored.ok && stored.value?.batch?.model).toBe('gemini-3.6-flash');
   });
 
   it('releases the uploads of an adopted job whose files another run already processed', async () => {

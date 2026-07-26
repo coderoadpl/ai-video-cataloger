@@ -14,6 +14,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- A Gemini batch run killed inside the submit call and resumed against the job
+  it finds by display name records the answers under the model that submit used.
+  The job model is decided after the re-attach, so the stored file model, the
+  per-file usage event and the batch price rates no longer follow a
+  configuration that moved in between, and `batch_model_changed` names the drift
+  on this path too.
+
 ## [0.5.25] - 2026-07-29
 
 ### Security
