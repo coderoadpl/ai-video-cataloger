@@ -63,6 +63,7 @@ interface FakeBatchOptions {
 
 class FakeBatchPort implements AnalyzerBatchPort {
   readonly uploads: string[] = [];
+  trace: string[] | null = null;
   readonly submissions: { displayName: string; keys: string[] }[] = [];
   readonly lookups: string[] = [];
   readonly polls: string[] = [];
@@ -92,6 +93,7 @@ class FakeBatchPort implements AnalyzerBatchPort {
     requests: readonly AnalyzerBatchRequest[];
   }): Promise<Result<AnalyzerBatchSubmission, AppError>> {
     this.submissions.push({ displayName: input.displayName, keys: input.requests.map((request) => request.key) });
+    this.trace?.push('submit');
     if (this.options.submitError !== undefined) return Promise.resolve({ ok: false, error: this.options.submitError });
     return Promise.resolve(ok({ jobName: 'batches/42', requestCount: input.requests.length }));
   }
@@ -238,6 +240,37 @@ describe('gemini batch drive runs', () => {
       jobName: 'batches/42',
       reattached: true,
     });
+  });
+
+  it('flushes the persisted job identity to disk before the submit call', async () => {
+    const trace: string[] = [];
+    const batch = new FakeBatchPort({ statuses: [succeeded()] });
+    batch.trace = trace;
+    const deps = makeDeps(batch);
+    class TracingCatalog extends InMemoryGlobalCatalogStore {
+      override updateDriveRun(run: Parameters<InMemoryGlobalCatalogStore['updateDriveRun']>[0]) {
+        trace.push(run.batch === null ? 'persist-no-batch' : `persist-${run.batch.state}`);
+        return super.updateDriveRun(run);
+      }
+
+      override flush() {
+        trace.push('flush');
+        return super.flush();
+      }
+    }
+    const traced = { ...deps, globalCatalog: new TracingCatalog() };
+    await useGemini(traced);
+    addVideo(traced.fs, '/drive/one.mp4', 'hash-one');
+
+    const result = await processDrive(traced, batchInput, undefined, { ...runOptions, runId: 'run-1' });
+
+    expect(result.ok).toBe(true);
+    const submitIndex = trace.indexOf('submit');
+    const preparedIndex = trace.indexOf('persist-preparing');
+    expect(preparedIndex).toBeGreaterThanOrEqual(0);
+    expect(preparedIndex).toBeLessThan(submitIndex);
+    expect(trace.slice(preparedIndex, submitIndex)).toContain('flush');
+    expect(trace.slice(submitIndex).indexOf('flush')).toBeGreaterThanOrEqual(0);
   });
 
   it('turns an expired job into per-file failures and still finishes the run', async () => {

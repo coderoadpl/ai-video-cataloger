@@ -519,7 +519,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
     model: plan.model,
     requests,
   };
-  const beforeSubmit = await persistRun(deps, state, now);
+  const beforeSubmit = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
   if (!beforeSubmit.ok) return beforeSubmit;
 
   const job = persistedBatch?.jobName == null
@@ -534,12 +534,12 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
     : ok({ jobName: persistedBatch.jobName, reattached: true });
   if (!job.ok) {
     state.run.batch = null;
-    const cleared = await persistRun(deps, state, now);
+    const cleared = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
     if (!cleared.ok) return cleared;
     return job;
   }
   state.run.batch = { displayName, jobName: job.value.jobName, state: 'submitted', model: plan.model, requests };
-  const afterSubmit = await persistRun(deps, state, now);
+  const afterSubmit = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
   if (!afterSubmit.ok) return afterSubmit;
   const submitReported = await report(progress, 'batch_submitted', {
     jobName: job.value.jobName,
@@ -562,7 +562,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
 
   if (status.value.state === 'failed' || status.value.state === 'cancelled') {
     state.run.batch = null;
-    const cleared = await persistRun(deps, state, now);
+    const cleared = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
     if (!cleared.ok) return cleared;
     const summarised = await reportSummary(deps, state, progress, now);
     if (!summarised.ok) return summarised;
@@ -613,7 +613,20 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
   state.run.batch = expired
     ? null
     : { displayName, jobName: job.value.jobName, state: 'completed', model: plan.model, requests };
-  return persistRun(deps, state, now);
+  return persistBatchIdentity(deps, pass.globalCatalog, state, now);
+};
+
+// The sql.js store keeps writes in memory until a flush, so a run killed while it waits
+// for a batch job would come back with no job to re-attach to and pay for a second one.
+const persistBatchIdentity = async (
+  deps: ProcessDeps,
+  globalCatalog: GlobalCatalogStore,
+  state: MutableRunState,
+  now: () => Date,
+): Promise<Result<void, AppError>> => {
+  const persisted = await persistRun(deps, state, now);
+  if (!persisted.ok) return persisted;
+  return globalCatalog.flush();
 };
 
 const closeFolder = async (

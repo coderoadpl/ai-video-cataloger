@@ -82,7 +82,11 @@ batch drive run over a root whose latest run is unfinished and carries a
 `batch` state re-adopts that run id, that mapping and that job, and jumps
 straight to polling. Only a run whose persisted state is `preparing` *and*
 whose display name matches no batch on the account submits — because in that
-case nothing was ever submitted.
+case nothing was ever submitted. The persist is followed by an explicit
+catalog **flush**: the sql.js store buffers writes until one, and a run killed
+while waiting for the job would otherwise wake up with nothing to re-attach to
+and pay for a second job. Measured live before the flush existed — the resumed
+run submitted `batches/kuo7…` while `batches/pr9u…` was still running.
 
 **6. Expiry is per-file honesty, not a crash.** The Files API holds an upload
 for 48 h and a batch job is not eternal either. A re-attach whose job answers
@@ -125,6 +129,9 @@ may take up to 24 hours.
 - A folder whose effective config resolves to a different analyzer (or a
   different Gemini model) than the run root is processed interactively inside
   the first pass. One job, one model — mixing them would break the mapping.
+- A file that appears *after* a batch was submitted cannot join that job. A
+  re-attached run processes it interactively, at full price for that one file,
+  rather than leaving it silently unprocessed.
 - `batch_poll` uses capped exponential backoff (5 s → 5 min) and does not
   block on the 24 h ceiling: cancelling the job cancels the run, and quitting
   the app leaves a re-attachable run behind.
