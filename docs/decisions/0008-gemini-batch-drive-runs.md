@@ -132,6 +132,14 @@ run keeps polling and mapping the job it already paid for, records the answers
 under the job's own model, and emits one `batch_model_changed` event naming both
 models. The new model takes effect on the next run that submits.
 
+One accepted edge narrows this guarantee: a run killed inside a submit whose job
+was never created on the server keeps the earlier submit's persisted model; if
+the configuration drifted between the two kills, a later re-attach to the
+*second* job attributes its answers to the first job's model. Closing it would
+need a persist between the display-name lookup and the resubmit — out of
+proportion for a seconds-wide window that requires two mid-submit kills plus a
+config change in between.
+
 "Records under the job's model" is the whole answer path, not the run record
 alone: the job's model travels with each answer (`PrecomputedAnalysis.model`)
 into the `files.model` column, into the per-file usage event, and into
