@@ -7,6 +7,7 @@ import { readOnlyArtifactRoot } from './artifact-root.js';
 import { isReadOnlyWriteError, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import { processDrive, type ProcessDriveInput } from './process-drive.js';
 import { scanFolder } from './scan.js';
+import { generateThumbnail } from './thumbnail.js';
 import {
   InMemoryAnalyzer,
   InMemoryCatalogs,
@@ -47,6 +48,17 @@ class ReadOnlyFolderFileSystem extends InMemoryFileSystem {
   override renamePath(from: string, to: string): Promise<Result<void, AppError>> {
     if (this.isBlocked(to)) return Promise.resolve({ ok: false, error: eaccesError(`EACCES: ${to}`) });
     return super.renamePath(from, to);
+  }
+}
+
+class UnhashableFileSystem extends ReadOnlyFolderFileSystem {
+  readonly unhashable = new Set<string>();
+
+  override partialContentHash(value: string): Promise<Result<string | null, AppError>> {
+    if (this.unhashable.has(this.resolve(value))) {
+      return Promise.resolve({ ok: false, error: appError('read_error', `EIO: ${value}`) });
+    }
+    return super.partialContentHash(value);
   }
 }
 
@@ -200,6 +212,51 @@ describe('drive processing over a read-only folder', () => {
     expect(scanned.ok && scanned.value.videos.map((video) => video.status)).toEqual(['completed']);
     const healed = await deps.globalCatalog.getFile('hash-ro');
     expect(healed.ok && healed.value?.missingAt).toBe(null);
+  });
+
+  it('degrades an unreadable restored file to untracked instead of failing the whole scan', async () => {
+    const fs = new UnhashableFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    fs.addFile('/drive/ro/other.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-other' });
+    const deps = makeDeps(fs);
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro' });
+    expect(run.ok && run.value.filesDone).toBe(2);
+    const file = await deps.globalCatalog.getFile('hash-ro');
+    expect(file.ok && file.value !== null).toBe(true);
+    if (!file.ok || file.value === null) return;
+    const marked = await deps.globalCatalog.reconcileFolder({
+      folderId: file.value.folderId,
+      presentFingerprints: [],
+      markMissing: true,
+      now: Date.parse('2026-02-01T00:00:00.000Z'),
+    });
+    expect(marked.ok).toBe(true);
+    fs.unhashable.add('/drive/ro/clip.mp4');
+
+    const restarted = { ...deps, catalogs: new InMemoryCatalogs([], fs) };
+    const scanned = await scanFolder(restarted, { folder: '/drive/ro' });
+
+    expect(scanned.ok).toBe(true);
+    expect(scanned.ok && scanned.value.videos.map((video) => ({ name: video.filename, status: video.status }))).toEqual([
+      { name: 'clip.mp4', status: 'not_tracked' },
+      { name: 'other.mp4', status: 'completed' },
+    ]);
+  });
+
+  it('sends thumbnails of an analysed read-only folder to the mirror the analysis created', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const deps = makeDeps(fs);
+
+    const beforeAnalysis = await generateThumbnail(deps, { videoPath: '/drive/ro/clip.mp4', force: false });
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro' });
+    expect(run.ok && run.value.filesDone).toBe(1);
+    const afterAnalysis = await generateThumbnail(deps, { videoPath: '/drive/ro/clip.mp4', force: false });
+
+    expect(beforeAnalysis.ok && beforeAnalysis.value.thumbnailPath)
+      .toBe('/drive/ro/.ai-video-cataloger/thumbnails/clip.jpg');
+    expect(afterAnalysis.ok && afterAnalysis.value.thumbnailPath)
+      .toBe(`${mirrorRoot(fs, '/drive/ro')}/thumbnails/clip.jpg`);
   });
 
   it('leaves a read-only folder nothing analysed reported as untracked', async () => {

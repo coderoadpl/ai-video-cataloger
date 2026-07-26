@@ -34,6 +34,13 @@ release history jumps from `0.5.10` to `0.5.12`.
   releases that job's Files API uploads and clears the batch state instead of
   leaving both behind. Such a job is dropped without harvesting — its answers
   would only duplicate rows already in the index.
+- An unreadable video no longer aborts the scan of a read-only folder. The
+  missing-file reconciliation degrades exactly like the ordinary scan path: the
+  file it cannot hash stays marked missing and the folder still lists.
+- Thumbnails of a read-only folder appear as soon as its first analysis
+  finishes, instead of staying placeholders until the app is restarted. A
+  completed analysis earns a file one more thumbnail attempt, now that the home
+  mirror it writes to exists.
 
 ## [0.5.24] - 2026-07-29
 

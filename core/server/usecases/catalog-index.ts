@@ -226,7 +226,9 @@ const restoredFingerprints = async (
     const diskPath = candidateNames.map((name) => presentByName.get(name)).find((path) => path !== undefined);
     if (diskPath === undefined) continue;
     const hash = await fs.partialContentHash(diskPath);
-    if (!hash.ok) return hash;
+    // A file the app cannot read stays marked missing, exactly as the scan path treats an
+    // unreadable video as untracked; failing here would take the whole folder down with it.
+    if (!hash.ok) continue;
     if (hash.value === record.file.fingerprint) restored.add(record.file.fingerprint);
   }
   return ok(restored);

@@ -7,6 +7,12 @@ import { type CatalogVideo } from './core/index.js';
 const EMPTY: readonly CatalogVideo[] = [];
 const EMPTY_SET: ReadonlySet<string> = new Set();
 
+// A read-only folder keeps its thumbnails in the home mirror, which the first analysis of the
+// session creates: an attempt made before that has nowhere to write, so a completed analysis earns
+// the file one more try instead of a placeholder that survives until the next launch.
+const attemptPhase = (video: CatalogVideo): 'before-analysis' | 'after-analysis' =>
+  video.status === 'completed' ? 'after-analysis' : 'before-analysis';
+
 export interface ThumbnailGenerationState {
   isGenerating: boolean;
   failedPaths: ReadonlySet<string>;
@@ -22,18 +28,19 @@ export const useThumbnailGeneration = (
 
   const [isGenerating, setIsGenerating] = useState(false);
   const [failedPaths, setFailedPaths] = useState<ReadonlySet<string>>(EMPTY_SET);
-  const attemptedRef = useRef<Set<string>>(new Set());
+  const attemptedRef = useRef<Map<string, string>>(new Map());
   const runIdRef = useRef(0);
 
   useEffect(() => {
-    attemptedRef.current = new Set();
+    attemptedRef.current = new Map();
     setFailedPaths(EMPTY_SET);
   }, [folder]);
 
   useEffect(() => {
     if (folder === null) return;
     const missing = videos.filter(
-      (video) => video.artifacts.thumbnailPath === null && !attemptedRef.current.has(video.path),
+      (video) => video.artifacts.thumbnailPath === null
+        && attemptedRef.current.get(video.path) !== attemptPhase(video),
     );
     if (missing.length === 0) {
       setIsGenerating(false);
@@ -47,21 +54,25 @@ export const useThumbnailGeneration = (
     void (async () => {
       let generatedAny = false;
       const failures: string[] = [];
+      const recoveries: string[] = [];
       for (const video of missing) {
         if (cancelled || runId !== runIdRef.current) break;
-        attemptedRef.current.add(video.path);
+        attemptedRef.current.set(video.path, attemptPhase(video));
         try {
           const result = await runThumbnail({ videoPath: video.path, force: false });
-          if (result.generated) generatedAny = true;
-          else failures.push(video.path);
+          if (result.generated) {
+            generatedAny = true;
+            recoveries.push(video.path);
+          } else failures.push(video.path);
         } catch {
           failures.push(video.path);
         }
       }
       if (cancelled || runId !== runIdRef.current) return;
-      if (failures.length > 0) {
+      if (failures.length > 0 || recoveries.length > 0) {
         setFailedPaths((current) => {
           const next = new Set(current);
+          for (const path of recoveries) next.delete(path);
           for (const path of failures) next.add(path);
           return next;
         });

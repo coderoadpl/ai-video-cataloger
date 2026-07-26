@@ -158,7 +158,14 @@ failing the pass.
   picks the folder root or the mirror from `CatalogRepository.writable()`; read
   paths with no repository handle (search thumbnails, the `thumbnail` command)
   discover it from the folder — marker present means in-folder, otherwise the
-  mirror if it exists.
+  mirror if it exists. A folder with neither marker nor mirror resolves to the
+  folder itself: nothing there distinguishes a read-only folder from a writable
+  one that has never been processed, and preferring the mirror would move a
+  writable folder's thumbnails into the home scope. The mirror comes into being
+  with the folder's first analysis, so a thumbnail attempted before it had
+  nowhere to write; the renderer therefore retries a missing thumbnail once the
+  file's analysis has completed instead of leaving a placeholder until the next
+  launch.
 - **The renderer reads a mirror per folder id, not the mirror root.** The
   `media://` scope (`apps/desktop/src/media-scope.ts`) admits
   `~/.ai-video-cataloger/read-only-folders/<folderId>/` one id at a time: the
