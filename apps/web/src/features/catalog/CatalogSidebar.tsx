@@ -22,6 +22,8 @@ interface CatalogSidebarProps {
   toolbar?: ReactNode;
   lockBanner?: ReactNode;
   registerVideos: (videos: readonly CatalogVideo[]) => void;
+  subfolderVideoCount?: number;
+  onSwitchToWholeTree?: (() => void) | undefined;
 }
 
 export const CatalogSidebar = ({
@@ -33,6 +35,8 @@ export const CatalogSidebar = ({
   toolbar,
   lockBanner,
   registerVideos,
+  subfolderVideoCount = 0,
+  onSwitchToWholeTree,
 }: CatalogSidebarProps) => {
   const dictionary = useDictionary();
 
@@ -95,6 +99,8 @@ export const CatalogSidebar = ({
               error={catalog.error}
               onSelect={catalog.select}
               thumbnailFailedPaths={catalog.thumbnailFailedPaths}
+              subfolderVideoCount={subfolderVideoCount}
+              onSwitchToWholeTree={onSwitchToWholeTree}
             />
             <AbsentFilesSection folder={folder} />
           </>

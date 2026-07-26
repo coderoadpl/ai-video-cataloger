@@ -80,6 +80,8 @@ export interface Dictionary {
     genericScanError: string;
     scanningFolder: string;
     noVideosFound: string;
+    noVideosInFolder: (subfolderCount: number) => string;
+    switchToWholeTree: string;
     absentSectionTitle: string;
     absentNone: string;
     absentLastSeen: (date: string) => string;
@@ -605,6 +607,8 @@ export const en: Dictionary = {
     genericScanError: 'Could not scan this folder.',
     scanningFolder: 'Scanning folder…',
     noVideosFound: 'No videos found',
+    noVideosInFolder: (subfolderCount) => `No videos in this folder — ${String(subfolderCount)} in subfolders.`,
+    switchToWholeTree: 'Switch to Whole tree',
     absentSectionTitle: 'Previously cataloged, now absent',
     absentNone: 'No absent files in this tree.',
     absentLastSeen: (date) => `Last seen ${date}`,
@@ -1177,6 +1181,8 @@ export const pl: Dictionary = {
     genericScanError: 'Nie udało się przeskanować tego folderu.',
     scanningFolder: 'Skanowanie folderu…',
     noVideosFound: 'Nie znaleziono filmów',
+    noVideosInFolder: (subfolderCount) => `Brak filmów w tym folderze — ${String(subfolderCount)} w podfolderach.`,
+    switchToWholeTree: 'Przełącz na całe drzewo',
     absentSectionTitle: 'Wcześniej skatalogowane, obecnie nieobecne',
     absentNone: 'Brak nieobecnych plików w tym drzewie.',
     absentLastSeen: (date) => `Ostatnio widziano ${date}`,

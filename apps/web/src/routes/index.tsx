@@ -78,11 +78,12 @@ export const IndexRoute = () => {
 
   const driveRunning = processing.driveFileProgress !== null;
   const activeProgress = processing.batchProgress ?? processing.driveFileProgress;
-  const hasSubfolderVideos = useMemo(() => {
+  const subfolderVideoCount = useMemo(() => {
     const root = tree.root;
-    if (root === null) return false;
-    return root.children.some((child) => (child.videoCount ?? child.videos.length) > 0);
+    if (root === null) return 0;
+    return root.children.reduce((total, child) => total + (child.videoCount ?? child.videos.length), 0);
   }, [tree.root]);
+  const hasSubfolderVideos = subfolderVideoCount > 0;
   const effectiveScope: AnalyzeScope = hasSubfolderVideos ? scope : 'folder';
   const showTree = effectiveScope === 'tree';
   const treePendingCount = Math.max(0, tree.videoTotal - tree.processedTotal);
@@ -130,6 +131,8 @@ export const IndexRoute = () => {
       analyzingPath={processing.analyzingPath}
       lockBanner={catalogLock.lockBanner}
       registerVideos={videoRegistry.register}
+      subfolderVideoCount={subfolderVideoCount}
+      onSwitchToWholeTree={() => setScope('tree')}
       toolbar={
         <ScopeAnalyzeToolbar
           scope={effectiveScope}

@@ -14,6 +14,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- The folder-scope catalog empty state now says how many videos the tree knows
+  about in subfolders and offers a one-click switch to whole-tree scope; the
+  bare `No videos found` stays when the whole tree is empty.
+
 ### Changed
 
 - Model Manager closes from a footer Close button instead of Escape or a

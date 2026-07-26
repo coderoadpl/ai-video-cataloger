@@ -1,5 +1,5 @@
 import { useMemo, type MouseEvent, type ReactNode } from 'react';
-import { Box, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
 
@@ -34,6 +34,8 @@ interface VideoListProps {
   onSelect: (video: CatalogVideo) => void;
   thumbnailFailedPaths?: ReadonlySet<string>;
   maxHeight?: number | undefined;
+  subfolderVideoCount?: number;
+  onSwitchToWholeTree?: (() => void) | undefined;
 }
 
 export const thumbnailLoading = (
@@ -137,6 +139,8 @@ export const VideoList = ({
   onSelect,
   thumbnailFailedPaths = EMPTY_FAILED,
   maxHeight,
+  subfolderVideoCount = 0,
+  onSwitchToWholeTree,
 }: VideoListProps) => {
   const dictionary = useDictionary();
   const revealMenu = useRevealContextMenu();
@@ -167,6 +171,18 @@ export const VideoList = ({
   }
 
   if (videos.length === 0) {
+    if (subfolderVideoCount > 0 && onSwitchToWholeTree !== undefined) {
+      return (
+        <Centered>
+          <Typography variant="body2" data-testid="empty-folder-scope">
+            {dictionary.catalog.noVideosInFolder(subfolderVideoCount)}
+          </Typography>
+          <Button size="small" variant="outlined" onClick={onSwitchToWholeTree} data-testid="switch-to-tree">
+            {dictionary.catalog.switchToWholeTree}
+          </Button>
+        </Centered>
+      );
+    }
     return (
       <Centered>
         <Typography variant="body2">{dictionary.catalog.noVideosFound}</Typography>
