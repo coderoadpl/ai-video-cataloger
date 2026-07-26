@@ -10,6 +10,7 @@ import {
   checkOutputSchema,
   configGetOutputSchema,
   configSetOutputSchema,
+  credentialDeleteOutputSchema,
   credentialSetOutputSchema,
   doctorOutputSchema,
   faceArtifactsStatusOutputSchema,
@@ -412,6 +413,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.credentialSet.method,
       API_ROUTES.credentialSet.path,
       credentialSetOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  deleteCredential: (input: z.input<typeof API_ROUTES.credentialDelete.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.credentialDelete.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.credentialDelete.method,
+      API_ROUTES.credentialDelete.path,
+      credentialDeleteOutputSchema,
       parsed.value,
       signal,
     );

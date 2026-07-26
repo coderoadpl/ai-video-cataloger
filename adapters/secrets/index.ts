@@ -71,11 +71,12 @@ export class KeychainSecretsAdapter implements SecretsStore {
     return keychainError(`store the Keychain entry for ${account}`, result);
   }
 
-  async delete(account: string): Promise<Result<void, AppError>> {
+  async delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
     const result = await this.commandRunner.run('security', [
       'delete-generic-password', '-s', this.service, '-a', account, ...this.keychain,
     ]);
-    if (result.code === 0 || result.code === KEYCHAIN_ITEM_NOT_FOUND) return ok(undefined);
+    if (result.code === 0) return ok({ existed: true });
+    if (result.code === KEYCHAIN_ITEM_NOT_FOUND) return ok({ existed: false });
     return keychainError(`remove the Keychain entry for ${account}`, result);
   }
 

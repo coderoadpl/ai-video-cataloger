@@ -15,6 +15,7 @@ import {
   analyzerProviderFamilySchema,
   analyzerProviderIdSchema,
   configKeySchema,
+  credentialDeletionSchema,
   credentialsBackendStatusSchema,
   videoStatusSchema,
   whisperEngineSchema,
@@ -441,6 +442,14 @@ export const credentialSetOutputSchema = z.object({
   providerId: z.string().min(1),
   stored: z.literal(true),
   backend: credentialsBackendStatusSchema,
+});
+
+export const credentialDeleteInputSchema = z.object({
+  providerId: z.string().trim().min(1),
+});
+
+export const credentialDeleteOutputSchema = credentialDeletionSchema.extend({
+  providerId: z.string().min(1),
 });
 
 export const providersListOutputSchema = z.object({
@@ -974,6 +983,12 @@ export const API_ROUTES = {
     path: '/api/credentials',
     input: credentialSetInputSchema,
     output: credentialSetOutputSchema,
+  },
+  credentialDelete: {
+    method: 'DELETE',
+    path: '/api/credentials',
+    input: credentialDeleteInputSchema,
+    output: credentialDeleteOutputSchema,
   },
   providersList: {
     method: 'GET',

@@ -7,6 +7,7 @@ import type {
   CatalogFile,
   CatalogFolder,
   ConfigKey,
+  CredentialDeletion,
   CredentialsBackendStatus,
   FaceBox,
   FaceLandmarks,
@@ -216,7 +217,7 @@ export interface ConfigStore {
 export interface CredentialsStore {
   get(providerId: string): Promise<Result<string | null, AppError>>;
   set(providerId: string, credential: string): Promise<Result<void, AppError>>;
-  delete?(providerId: string): Promise<Result<void, AppError>>;
+  delete?(providerId: string): Promise<Result<CredentialDeletion, AppError>>;
   legacyPlaintextProviders?(): Promise<Result<string[], AppError>>;
   backend?(): Promise<CredentialsBackendStatus>;
 }
@@ -227,7 +228,7 @@ export interface SecretsStore {
   availability(): Promise<SecretsAvailability>;
   get(account: string): Promise<Result<string | null, AppError>>;
   set(account: string, secret: string): Promise<Result<void, AppError>>;
-  delete(account: string): Promise<Result<void, AppError>>;
+  delete(account: string): Promise<Result<{ existed: boolean }, AppError>>;
 }
 
 export interface CredentialMigrationLog {

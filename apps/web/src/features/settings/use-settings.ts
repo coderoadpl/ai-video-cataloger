@@ -8,7 +8,9 @@ import { actions } from '../../api.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { savedToastStore } from '../../lib/saved-toast.js';
 import {
+  analyzerCredentialRef,
   changedKeys,
+  credentialDeletionMessage,
   draftFromEffective,
   serializeValue,
   type LocalAiTier,
@@ -25,6 +27,9 @@ export interface SettingsState {
   apiCredential: string;
   whisperApiCredential: string;
   inherited: string[];
+  isForgettingCredential: boolean;
+  forgetCredentialMessage: string | null;
+  forgetCredential: () => void;
   setApiCredential: (credential: string) => void;
   setWhisperApiCredential: (credential: string) => void;
   setDraft: (patch: Partial<SettingsDraft>) => void;
@@ -52,6 +57,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const requirementsQuery = useQuery({ ...actions.localAiRequirements, enabled });
   const setConfig = useMutation(actions.setConfig);
   const setCredential = useMutation(actions.setCredential);
+  const deleteCredential = useMutation(actions.deleteCredential);
 
   const [draft, setDraftState] = useState<SettingsDraft | null>(null);
   const [original, setOriginal] = useState<SettingsDraft | null>(null);
@@ -59,6 +65,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const [saveError, setSaveError] = useState<string | null>(null);
   const [apiCredential, setApiCredential] = useState('');
   const [whisperApiCredential, setWhisperApiCredential] = useState('');
+  const [forgetCredentialMessage, setForgetCredentialMessage] = useState<string | null>(null);
 
   const data = configQuery.data;
   useEffect(() => {
@@ -68,6 +75,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       setSaveError(null);
       setApiCredential('');
       setWhisperApiCredential('');
+      setForgetCredentialMessage(null);
       return;
     }
     if (draft !== null || data === undefined || !('config' in data)) return;
@@ -84,6 +92,22 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     setDraftState(original);
     setSaveError(null);
   }, [original]);
+
+  const credentialRef = draft === null ? null : analyzerCredentialRef(draft);
+  const forgetCredential = useCallback(() => {
+    if (credentialRef === null) return;
+    void (async () => {
+      setForgetCredentialMessage(null);
+      try {
+        const deletion = await deleteCredential.mutateAsync({ providerId: credentialRef });
+        setForgetCredentialMessage(credentialDeletionMessage(dictionary, deletion));
+        await queryClient.invalidateQueries();
+        onSaved?.();
+      } catch (error) {
+        setForgetCredentialMessage(messageOf(error));
+      }
+    })();
+  }, [credentialRef, deleteCredential, dictionary, onSaved, queryClient]);
 
   const save = useCallback(() => {
     if (draft === null || original === null || folder === null) return;
@@ -172,6 +196,9 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
         .filter((key) => data.sources[key] !== 'folder')
         .map((key) => `${key}: ${data.effective[key]} (${data.sources[key]})`)
       : [],
+    isForgettingCredential: deleteCredential.isPending,
+    forgetCredentialMessage,
+    forgetCredential,
     setApiCredential,
     setWhisperApiCredential,
     setDraft,

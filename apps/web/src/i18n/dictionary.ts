@@ -471,6 +471,14 @@ export interface Dictionary {
     geminiNativeVideo: string;
     geminiModel: string;
     geminiPrivacy: string;
+    forgetCredential: string;
+  };
+  credentials: {
+    clearedKeychain: string;
+    clearedFile: string;
+    clearedBoth: string;
+    keychainRetained: string;
+    notStored: string;
   };
   folderBar: {
     openFolder: string;
@@ -1037,6 +1045,14 @@ export const en: Dictionary = {
     geminiNativeVideo: 'Gemini (native video)',
     geminiModel: 'Gemini model',
     geminiPrivacy: 'The whole video file is uploaded to Google (Gemini API) for analysis and auto-deleted after 48 hours. No frames or Whisper — Gemini reads the video and audio directly. Do not use for private or confidential footage.',
+    forgetCredential: 'Forget key',
+  },
+  credentials: {
+    clearedKeychain: 'Key removed from the macOS Keychain.',
+    clearedFile: 'Key removed from the config file.',
+    clearedBoth: 'Key removed from the macOS Keychain and the config file.',
+    keychainRetained: 'The macOS Keychain still holds the key — unlock the login keychain and try again.',
+    notStored: 'No key was stored for this provider.',
   },
   folderBar: {
     openFolder: 'Open Folder',
@@ -1611,6 +1627,14 @@ export const pl: Dictionary = {
     geminiNativeVideo: 'Gemini (natywne wideo)',
     geminiModel: 'Model Gemini',
     geminiPrivacy: 'Cały plik wideo jest wysyłany do Google (Gemini API) w celu analizy i automatycznie usuwany po 48 godzinach. Bez klatek i Whispera — Gemini czyta obraz i dźwięk bezpośrednio. Nie używaj do prywatnych lub poufnych nagrań.',
+    forgetCredential: 'Usuń klucz',
+  },
+  credentials: {
+    clearedKeychain: 'Klucz usunięty z pęku kluczy macOS.',
+    clearedFile: 'Klucz usunięty z pliku konfiguracyjnego.',
+    clearedBoth: 'Klucz usunięty z pęku kluczy macOS i pliku konfiguracyjnego.',
+    keychainRetained: 'Pęk kluczy macOS nadal przechowuje klucz — odblokuj pęk kluczy logowania i spróbuj ponownie.',
+    notStored: 'Dla tego dostawcy nie zapisano żadnego klucza.',
   },
   folderBar: {
     openFolder: 'Otwórz folder',

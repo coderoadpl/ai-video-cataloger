@@ -19,9 +19,17 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The folder-scope catalog empty state now says how many videos the tree knows
   about in subfolders and offers a one-click switch to whole-tree scope; the
   bare `No videos found` stays when the whole tree is empty.
+- A stored provider key can be forgotten from the app: `DELETE /api/credentials`,
+  `ai-video-cataloger config delete-credential <providerId> [--json]`, and a
+  **Forget key** action beside the API key field in Settings. Each names the
+  backends it cleared and never echoes the key.
 
 ### Changed
 
+- Credential deletion answers with the backends it cleared and the ones that
+  kept the key: when the Keychain refuses while the plaintext file was cleared,
+  CLI and Settings say the removal was partial instead of claiming the key is
+  gone. `CredentialsStore.delete` and `SecretsStore.delete` carry that shape.
 - Model Manager closes from a footer Close button instead of Escape or a
   backdrop click only, every downloaded model carries its own contained
   `Activate` button, and both Delete actions (whisper models and local AI

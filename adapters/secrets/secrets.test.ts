@@ -82,11 +82,18 @@ describe('KeychainSecretsAdapter', () => {
     expect(call?.args).toEqual(['add-generic-password', '-U', '-s', 'svc', '-a', 'openai', '-w', 'sk-new']);
   });
 
-  it('treats a missing item as a successful delete', async () => {
+  it('treats a missing item as a successful delete that removed nothing', async () => {
     const runner = new FakeSecurity(() => notFound());
     const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
 
-    expect(await adapter.delete('openai')).toEqual({ ok: true, value: undefined });
+    expect(await adapter.delete('openai')).toEqual({ ok: true, value: { existed: false } });
+  });
+
+  it('reports that a deleted item existed', async () => {
+    const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+
+    expect(await adapter.delete('openai')).toEqual({ ok: true, value: { existed: true } });
   });
 
   it('reports unavailable when the keychain probe times out', async () => {

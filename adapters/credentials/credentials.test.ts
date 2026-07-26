@@ -14,6 +14,7 @@ const roots: string[] = [];
 class FakeSecrets implements SecretsStore {
   readonly values = new Map<string, string>();
   failingAccounts = new Set<string>();
+  failingDeletes = new Set<string>();
 
   constructor(private readonly available: boolean) {}
 
@@ -33,9 +34,11 @@ class FakeSecrets implements SecretsStore {
     return Promise.resolve(ok(undefined));
   }
 
-  delete(account: string): Promise<Result<void, AppError>> {
-    this.values.delete(account);
-    return Promise.resolve(ok(undefined));
+  delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
+    if (this.failingDeletes.has(account)) {
+      return Promise.resolve({ ok: false, error: appError('internal', 'keychain is locked') });
+    }
+    return Promise.resolve(ok({ existed: this.values.delete(account) }));
   }
 }
 
@@ -79,9 +82,16 @@ describe('JsonCredentialsStore', () => {
     await store.set('openai', 'secret-a');
     await store.set('openrouter', 'secret-b');
 
-    expect(await store.delete('openai')).toEqual({ ok: true, value: undefined });
+    expect(await store.delete('openai')).toEqual({ ok: true, value: { cleared: ['file'], retained: [] } });
     expect(await store.get('openai')).toEqual({ ok: true, value: null });
     expect(await store.list()).toEqual({ ok: true, value: ['openrouter'] });
+  });
+
+  it('reports an untouched pair of backends for a provider it never held', async () => {
+    const home = await tempHome();
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+
+    expect(await store.delete('openai')).toEqual({ ok: true, value: { cleared: [], retained: [] } });
   });
 });
 
@@ -174,7 +184,10 @@ describe('KeychainCredentialsStore', () => {
     const store = new KeychainCredentialsStore(secrets, legacy);
     await legacy.set('openai', 'legacy-key');
 
-    expect(await store.delete('openai')).toEqual({ ok: true, value: undefined });
+    expect(await store.delete('openai')).toEqual({
+      ok: true,
+      value: { cleared: ['keychain'], retained: [] },
+    });
     expect(secrets.values.has('openai')).toBe(false);
     expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
   });
@@ -202,6 +215,39 @@ describe('KeychainCredentialsStore', () => {
     expect(await store.get('openai')).toEqual({ ok: true, value: 'plain-key' });
     expect(await store.legacyPlaintextProviders()).toEqual({ ok: true, value: [] });
     expect(await store.backend()).toEqual({ backend: 'file', reason: 'unavailable' });
+  });
+
+  it('clears both backends and names them', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets(true);
+    const store = new KeychainCredentialsStore(secrets, legacy);
+    await store.set('openai', 'keychain-key');
+    await legacy.set('openai', 'stale-plaintext');
+
+    expect(await store.delete('openai')).toEqual({
+      ok: true,
+      value: { cleared: ['keychain', 'file'], retained: [] },
+    });
+    expect(secrets.values.has('openai')).toBe(false);
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
+  });
+
+  it('reports a partial deletion when the keychain refuses and the file was cleared', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets(true);
+    const store = new KeychainCredentialsStore(secrets, legacy);
+    await store.set('openai', 'keychain-key');
+    await legacy.set('openai', 'stale-plaintext');
+    secrets.failingDeletes.add('openai');
+
+    expect(await store.delete('openai')).toEqual({
+      ok: true,
+      value: { cleared: ['file'], retained: ['keychain'] },
+    });
+    expect(secrets.values.get('openai')).toBe('keychain-key');
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
   });
 
   it('names the keychain as the backend when it answers', async () => {

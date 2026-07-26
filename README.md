@@ -96,6 +96,7 @@ reset [filename] [--force] [--json]
 config get [key] [--json]
 config set <key> <value> [--json]
 config set-credential <providerId>
+config delete-credential <providerId> [--json]
 index status|rebuild|forget
 tags list|alias
 faces index|people|name|merge|forget|purge|status
@@ -115,8 +116,16 @@ accepted for provider `openai`). Keys left over in the older plaintext file
 access. Where the Keychain is unavailable — another platform, a locked or
 missing keychain, `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` — that file (mode
 `0600`) stays the fallback and nothing fails; `ai-video-cataloger doctor` names
-the backend in use. See
-[ADR-0007](docs/decisions/0007-credentials-in-keychain.md).
+the backend in use. `AI_VIDEO_CATALOGER_KEYCHAIN=<path>` points the adapter at a
+specific keychain file instead of the login keychain, which is how a throwaway
+keychain is exercised without touching the developer's own.
+
+Forget a stored key with `ai-video-cataloger config delete-credential
+<providerId>` or the **Forget key** button beside the API key field in Settings.
+Both clear every backend that holds it and say which ones they cleared; if the
+Keychain refuses (locked, no default keychain) while the file was cleared, the
+answer says so instead of claiming the key is gone. The key itself is never
+echoed. See [ADR-0007](docs/decisions/0007-credentials-in-keychain.md).
 
 For Claude analysis, install Claude Code CLI and authenticate it:
 

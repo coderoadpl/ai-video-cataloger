@@ -12,6 +12,7 @@ import type {
   storedConfigSchema,
 } from '@core/contract/index.js';
 
+import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
@@ -388,6 +389,38 @@ describe('settings modal', () => {
     await waitFor(() => expect(credentialBodies).toEqual([
       { providerId: 'openrouter.ai', credential: 'router-secret' },
     ]));
+  });
+
+  it('forgets the analyzer credential and reports the backends that were cleared', async () => {
+    const deleteBodies: unknown[] = [];
+    stubEndpoints({
+      ...emptyConfig,
+      analyzer_provider: JSON.stringify({
+        family: 'api',
+        providerId: 'openai',
+        baseUrl: 'https://api.openai.com/v1',
+        apiKeyRef: 'openai',
+        model: 'vision-model',
+        maxImageDetail: 'auto',
+      }),
+    });
+    server.use(
+      http.delete('/api/credentials', async ({ request }) => {
+        deleteBodies.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: { providerId: 'openai', cleared: ['file'], retained: ['keychain'] },
+        });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    fireEvent.click(await screen.findByTestId('forget-credential-button'));
+
+    await waitFor(() => expect(deleteBodies).toEqual([{ providerId: 'openai' }]));
+    expect((await screen.findByTestId('forget-credential-result')).textContent).toBe(
+      `${en.credentials.clearedFile} ${en.credentials.keychainRetained}`,
+    );
   });
 
   it('stores an OpenAI credential for API transcription', async () => {

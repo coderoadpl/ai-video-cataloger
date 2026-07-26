@@ -248,6 +248,32 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
   assert(get.code === 0, `config get: expected exit 0, got ${get.code}.\nstdout: ${get.stdout}\nstderr: ${get.stderr}`);
   z.object({ key: z.literal('frames'), value: z.literal('4') }).parse(completedData(get, 'config get'));
 
+  const secret = 'sk-smoke-never-print';
+  const setCredential = await run(
+    ['config', 'set-credential', 'smoke-provider', '--env', 'AVC_SMOKE_CREDENTIAL', '--json'],
+    { ...env, AVC_SMOKE_CREDENTIAL: secret },
+    folder,
+  );
+  assert(
+    setCredential.code === 0,
+    `config set-credential: expected exit 0, got ${setCredential.code}.\nstderr: ${setCredential.stderr}`,
+  );
+  assert(!setCredential.stdout.includes(secret), 'config set-credential: the credential leaked into stdout.');
+  z.object({ providerId: z.literal('smoke-provider'), stored: z.literal(true) })
+    .parse(completedData(setCredential, 'config set-credential'));
+
+  const deleteCredential = await run(['config', 'delete-credential', 'smoke-provider', '--json'], env, folder);
+  assert(
+    deleteCredential.code === 0,
+    `config delete-credential: expected exit 0, got ${deleteCredential.code}.\nstderr: ${deleteCredential.stderr}`,
+  );
+  assert(!deleteCredential.stdout.includes(secret), 'config delete-credential: the credential leaked into stdout.');
+  z.object({
+    providerId: z.literal('smoke-provider'),
+    cleared: z.array(z.literal('file')).length(1),
+    retained: z.array(z.string()).length(0),
+  }).parse(completedData(deleteCredential, 'config delete-credential'));
+
   const status = await run(['status', '--json'], env, folder);
   assert(status.code === 0, `status: expected exit 0, got ${status.code}.\nstdout: ${status.stdout}\nstderr: ${status.stderr}`);
   z.object({ videos: z.array(z.unknown()), summary: z.object({ total: z.number() }) }).parse(completedData(status, 'status'));

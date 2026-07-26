@@ -11,6 +11,7 @@ import {
   checkHealth,
   checkReady,
   checkNestedDatabases,
+  deleteCredential,
   deleteWhisperModel,
   downloadWhisperModel,
   enqueueProcess,
@@ -250,6 +251,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.credentialSet.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.credentialSet.output);
     return respond(await setCredential(deps, input.value), API_ROUTES.credentialSet.output);
+  });
+
+  app.delete(API_ROUTES.credentialDelete.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.credentialDelete.output);
+    const input = parseInput(API_ROUTES.credentialDelete.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.credentialDelete.output);
+    return respond(await deleteCredential(deps, input.value), API_ROUTES.credentialDelete.output);
   });
 
   app.get(API_ROUTES.providersList.path, () =>

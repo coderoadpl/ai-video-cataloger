@@ -7,6 +7,7 @@ import {
   configSchema,
   type AppConfig,
   type ConfigKey,
+  type CredentialDeletion,
 } from '@core/domain/index.js';
 import type {
   localAiTierSchema,
@@ -50,6 +51,27 @@ export const draftFromEffective = (effective: StoredDefaults): SettingsDraft => 
 
 export const changedKeys = (draft: SettingsDraft, original: SettingsDraft): ConfigKey[] =>
   CONFIG_KEYS.filter((key) => draft[key] !== original[key]);
+
+export const analyzerCredentialRef = (draft: SettingsDraft): string | null => {
+  const provider = draft.analyzer_provider;
+  return provider.family === 'api' || provider.family === 'gemini-native' ? provider.apiKeyRef : null;
+};
+
+export const credentialDeletionMessage = (
+  dictionary: Dictionary,
+  deletion: CredentialDeletion,
+): string => {
+  const cleared = deletion.cleared.includes('keychain')
+    ? deletion.cleared.includes('file')
+      ? dictionary.credentials.clearedBoth
+      : dictionary.credentials.clearedKeychain
+    : deletion.cleared.includes('file')
+      ? dictionary.credentials.clearedFile
+      : dictionary.credentials.notStored;
+  return deletion.retained.includes('keychain')
+    ? `${cleared} ${dictionary.credentials.keychainRetained}`
+    : cleared;
+};
 
 export const serializeValue = (draft: SettingsDraft, key: ConfigKey): string => {
   const value = draft[key];

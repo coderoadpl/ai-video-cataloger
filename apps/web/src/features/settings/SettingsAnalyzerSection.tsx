@@ -1,5 +1,7 @@
 import {
   Box,
+  Button,
+  CircularProgress,
   FormControl,
   InputLabel,
   MenuItem,
@@ -65,6 +67,9 @@ interface SettingsAnalyzerSectionProps {
   onLocalModelChange: (tag: string) => void;
   onProviderChange: (provider: AnalyzerProviderConfig) => void;
   onApiCredentialChange: (credential: string) => void;
+  isForgettingCredential: boolean;
+  forgetCredentialMessage: string | null;
+  onForgetCredential: () => void;
 }
 
 export const SettingsAnalyzerSection = ({
@@ -78,6 +83,9 @@ export const SettingsAnalyzerSection = ({
   onLocalModelChange,
   onProviderChange,
   onApiCredentialChange,
+  isForgettingCredential,
+  forgetCredentialMessage,
+  onForgetCredential,
 }: SettingsAnalyzerSectionProps) => {
   const dictionary = useDictionary();
   const selectedBackend =
@@ -192,13 +200,14 @@ export const SettingsAnalyzerSection = ({
             value={provider.model}
             onChange={(event) => onProviderChange({ ...provider, model: event.target.value })}
           />
-          <TextField
-            size="small"
+          <CredentialField
             label={dictionary.settingsAnalyzer.apiCredential}
-            type="password"
-            value={apiCredential}
-            autoComplete="new-password"
-            onChange={(event) => onApiCredentialChange(event.target.value)}
+            forgetLabel={dictionary.settingsAnalyzer.forgetCredential}
+            credential={apiCredential}
+            forgetting={isForgettingCredential}
+            message={forgetCredentialMessage}
+            onChange={onApiCredentialChange}
+            onForget={onForgetCredential}
           />
           <TextField
             size="small"
@@ -238,13 +247,14 @@ export const SettingsAnalyzerSection = ({
               ))}
             </Select>
           </FormControl>
-          <TextField
-            size="small"
+          <CredentialField
             label={dictionary.settingsAnalyzer.apiCredential}
-            type="password"
-            value={apiCredential}
-            autoComplete="new-password"
-            onChange={(event) => onApiCredentialChange(event.target.value)}
+            forgetLabel={dictionary.settingsAnalyzer.forgetCredential}
+            credential={apiCredential}
+            forgetting={isForgettingCredential}
+            message={forgetCredentialMessage}
+            onChange={onApiCredentialChange}
+            onForget={onForgetCredential}
           />
           <Typography variant="caption" color="warning.main" data-testid="gemini-privacy-copy">
             {dictionary.settingsAnalyzer.geminiPrivacy}
@@ -254,6 +264,54 @@ export const SettingsAnalyzerSection = ({
     </Box>
   );
 };
+
+interface CredentialFieldProps {
+  label: string;
+  forgetLabel: string;
+  credential: string;
+  forgetting: boolean;
+  message: string | null;
+  onChange: (credential: string) => void;
+  onForget: () => void;
+}
+
+const CredentialField = ({
+  label,
+  forgetLabel,
+  credential,
+  forgetting,
+  message,
+  onChange,
+  onForget,
+}: CredentialFieldProps) => (
+  <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+    <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+      <TextField
+        size="small"
+        fullWidth
+        label={label}
+        type="password"
+        value={credential}
+        autoComplete="new-password"
+        onChange={(event) => onChange(event.target.value)}
+      />
+      <Button
+        size="small"
+        color="error"
+        disabled={forgetting}
+        data-testid="forget-credential-button"
+        onClick={onForget}
+      >
+        {forgetting ? <CircularProgress size={16} /> : forgetLabel}
+      </Button>
+    </Box>
+    {message === null ? null : (
+      <Typography variant="caption" data-testid="forget-credential-result">
+        {message}
+      </Typography>
+    )}
+  </Box>
+);
 
 const defaultApiProvider = (): Extract<AnalyzerProviderConfig, { family: 'api' }> => ({
   family: 'api',

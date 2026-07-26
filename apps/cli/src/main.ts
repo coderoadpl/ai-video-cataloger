@@ -38,6 +38,7 @@ import {
   emitStarted,
   isJsonMode,
 } from './output.js';
+import { credentialDeleteHuman } from './credential-delete-human.js';
 import { doctorHuman } from './doctor-human.js';
 import { waitForJob } from './job-wait.js';
 import { runProgram } from './run-program.js';
@@ -788,6 +789,21 @@ config
       result.value,
       `Stored credential for ${providerId} in the ${CREDENTIALS_BACKEND_LABELS[result.value.backend.backend]}`,
     );
+  });
+
+config
+  .command('delete-credential')
+  .argument('<providerId>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (providerId: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'config_delete_credential', { providerId });
+    const result = await api.deleteCredential({ providerId });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    emitCompleted(json, result.value, credentialDeleteHuman(result.value));
   });
 
 program

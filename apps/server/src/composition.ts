@@ -30,6 +30,7 @@ import {
   type CatalogFile,
   type CatalogFolder,
   type ConfigKey,
+  type CredentialDeletion,
   type CredentialsBackendStatus,
   type FaceObservation,
   type FileArtifact,
@@ -292,11 +293,12 @@ class InvalidatingCredentialsStore implements CredentialsStore {
     return result;
   }
 
-  async delete(providerId: string): Promise<Result<void, AppError>> {
-    if (this.store.delete === undefined) {
+  async delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
+    const remove = this.store.delete;
+    if (remove === undefined) {
       return { ok: false, error: appError('internal', 'Credential deletion is not supported by this store') };
     }
-    const result = await this.store.delete(providerId);
+    const result = await remove.call(this.store, providerId);
     if (result.ok) this.readiness.invalidate();
     return result;
   }
@@ -822,6 +824,11 @@ class InMemoryCredentialsStore implements CredentialsStore {
   set(providerId: string, credential: string): Promise<Result<void, AppError>> {
     this.values.set(providerId, credential);
     return Promise.resolve(ok(undefined));
+  }
+
+  delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
+    const existed = this.values.delete(providerId);
+    return Promise.resolve(ok({ cleared: existed ? ['file'] : [], retained: [] }));
   }
 }
 

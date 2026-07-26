@@ -185,6 +185,9 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                   ? { analyzer_provider: provider, whisper_mode: 'skip' }
                   : { analyzer_provider: provider })}
               onApiCredentialChange={settings.setApiCredential}
+              isForgettingCredential={settings.isForgettingCredential}
+              forgetCredentialMessage={settings.forgetCredentialMessage}
+              onForgetCredential={settings.forgetCredential}
             />
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>

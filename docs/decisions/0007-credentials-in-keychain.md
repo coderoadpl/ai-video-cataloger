@@ -78,7 +78,11 @@ exposure is documented below.
   the window is milliseconds and the observer would already need to be running
   as the same user, who can read the plaintext file this ADR removes.
 - Deleting a credential removes it from both backends, so an old plaintext copy
-  cannot resurrect a key the user believes is gone.
+  cannot resurrect a key the user believes is gone. That deletion is
+  user-facing (`DELETE /api/credentials`, `config delete-credential`, the
+  Settings **Forget key** action) and it answers with the backends it cleared
+  and the ones that kept the key: a Keychain that refuses while the file was
+  cleared is reported as a partial removal, never as a key that is gone.
 - Non-darwin platforms and explicit opt-outs keep the exact prior behavior:
   the `0600` JSON file. Nothing about the file store changed.
 - Unit tests never reach a real keychain; they inject a fake command runner.

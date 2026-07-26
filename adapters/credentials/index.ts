@@ -4,7 +4,14 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { z } from 'zod';
 
-import { appError, ok, type AppError, type CredentialsBackendStatus, type Result } from '@core/domain/index.js';
+import {
+  appError,
+  ok,
+  type AppError,
+  type CredentialDeletion,
+  type CredentialsBackendStatus,
+  type Result,
+} from '@core/domain/index.js';
 import type { CredentialMigrationLog, CredentialsStore, SecretsStore } from '@core/server/index.js';
 
 const credentialsSchema = z.record(z.string().min(1), z.string().min(1));
@@ -49,17 +56,17 @@ export class JsonCredentialsStore implements CredentialsStore {
     }
   }
 
-  async delete(providerId: string): Promise<Result<void, AppError>> {
+  async delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
     const values = await this.read();
     if (!values.ok) return values;
-    if (!(providerId in values.value)) return ok(undefined);
+    if (!(providerId in values.value)) return ok({ cleared: [], retained: [] });
     const remaining = Object.fromEntries(Object.entries(values.value).filter(([key]) => key !== providerId));
     const directory = path.dirname(this.filePath);
     const temporaryPath = `${this.filePath}.tmp`;
     if (Object.keys(remaining).length === 0) {
       try {
         await rm(this.filePath, { force: true });
-        return ok(undefined);
+        return ok({ cleared: ['file'], retained: [] });
       } catch {
         return { ok: false, error: appError('internal', 'Could not remove provider credential') };
       }
@@ -70,7 +77,7 @@ export class JsonCredentialsStore implements CredentialsStore {
       await chmod(temporaryPath, 0o600);
       await rename(temporaryPath, this.filePath);
       await chmod(this.filePath, 0o600);
-      return ok(undefined);
+      return ok({ cleared: ['file'], retained: [] });
     } catch {
       return { ok: false, error: appError('internal', 'Could not remove provider credential') };
     }
@@ -122,18 +129,32 @@ export class KeychainCredentialsStore implements CredentialsStore {
 
   async set(providerId: string, credential: string): Promise<Result<void, AppError>> {
     if (await this.keychainUsable()) {
-      if (await this.storeVerified(providerId, credential)) return this.legacy.delete(providerId);
+      if (await this.storeVerified(providerId, credential)) {
+        const removed = await this.legacy.delete(providerId);
+        return removed.ok ? ok(undefined) : removed;
+      }
       this.degraded = true;
     }
     return this.legacy.set(providerId, credential);
   }
 
-  async delete(providerId: string): Promise<Result<void, AppError>> {
+  async delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
+    const keychain: CredentialDeletion = { cleared: [], retained: [] };
     if (await this.keychainUsable()) {
       const removed = await this.secrets.delete(providerId);
-      if (!removed.ok) this.degraded = true;
+      if (!removed.ok) {
+        this.degraded = true;
+        keychain.retained.push('keychain');
+      } else if (removed.value.existed) {
+        keychain.cleared.push('keychain');
+      }
     }
-    return this.legacy.delete(providerId);
+    const file = await this.legacy.delete(providerId);
+    if (!file.ok) return file;
+    return ok({
+      cleared: [...keychain.cleared, ...file.value.cleared],
+      retained: [...keychain.retained, ...file.value.retained],
+    });
   }
 
   async legacyPlaintextProviders(): Promise<Result<string[], AppError>> {

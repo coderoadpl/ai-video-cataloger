@@ -15,6 +15,17 @@ export const credentialsBackendStatusSchema = z.object({
 
 export type CredentialsBackendStatus = z.output<typeof credentialsBackendStatusSchema>;
 
+export const credentialsBackendSchema = z.enum(CREDENTIALS_BACKENDS);
+
+export type CredentialsBackend = z.output<typeof credentialsBackendSchema>;
+
+export const credentialDeletionSchema = z.object({
+  cleared: z.array(credentialsBackendSchema),
+  retained: z.array(credentialsBackendSchema),
+});
+
+export type CredentialDeletion = z.output<typeof credentialDeletionSchema>;
+
 export const CREDENTIALS_BACKEND_LABELS: Record<(typeof CREDENTIALS_BACKENDS)[number], string> = {
   keychain: 'macOS Keychain',
   file: 'config file (~/.ai-video-cataloger/credentials.json)',
