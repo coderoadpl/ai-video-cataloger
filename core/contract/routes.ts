@@ -12,6 +12,7 @@ import {
   WHISPER_MODES,
   analyzerProviderConfigSchema,
   analyzerProviderDescriptorSchema,
+  analyzerProviderFamilySchema,
   analyzerProviderIdSchema,
   configKeySchema,
   videoStatusSchema,
@@ -631,7 +632,7 @@ export const readinessOutputSchema = z.object({
   ready: z.boolean(),
   analyzer: readinessComponentSchema.extend({
     kind: z.literal('analyzer'),
-    family: z.enum(['api', 'harness', 'local']),
+    family: analyzerProviderFamilySchema,
     providerId: z.string(),
     model: z.string().nullable().default(null),
   }),

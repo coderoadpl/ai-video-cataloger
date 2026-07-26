@@ -299,4 +299,34 @@ describe('route schemas', () => {
     });
     expect(API_ROUTES.readiness.input.safeParse({ folder: '/videos', scope: 'home' }).success).toBe(false);
   });
+
+  it('accepts every analyzer family in the readiness output, gemini-native included', () => {
+    const parsed = API_ROUTES.readiness.output.safeParse({
+      ready: true,
+      analyzer: {
+        kind: 'analyzer',
+        name: 'gemini',
+        available: true,
+        message: 'gemini is available',
+        suggestedAction: null,
+        family: 'gemini-native',
+        providerId: 'gemini',
+        model: 'gemini-3.6-flash',
+      },
+      transcriber: {
+        kind: 'transcriber',
+        name: 'transcription-skip',
+        available: true,
+        message: 'transcription-skip is available',
+        suggestedAction: null,
+        mode: 'skip',
+        model: null,
+      },
+      missingPieces: [],
+      suggestedAction: null,
+    });
+
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && parsed.data.transcriber).toMatchObject({ engine: null, binaryPath: null, warning: null });
+  });
 });

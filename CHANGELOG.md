@@ -31,6 +31,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Readiness for a configured Gemini-native analyzer no longer fails the
+  response contract: the readiness analyzer family accepts every analyzer
+  family, not just `api`, `harness`, and `local`.
 - An empty `~/.ai-video-cataloger/bin` directory is reported as an incomplete
   managed whisper install pointing at
   `ai-video-cataloger models whisper-runtime install`, instead of an absent one
