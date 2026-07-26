@@ -36,6 +36,7 @@ import {
   emitProgress,
   emitRaw,
   emitStarted,
+  emitWarning,
   isJsonMode,
 } from './output.js';
 import { credentialDeleteHuman } from './credential-delete-human.js';
@@ -738,6 +739,7 @@ config
       emitError(json, result.error);
       return;
     }
+    if ('key' in result.value) warnIgnoredFolderConfig(result.value.key, result.value.ignoredFolderValue);
     emitRaw(json, result.value, '');
     emitCompleted(json, result.value, configGetHuman(result.value));
   });
@@ -764,7 +766,9 @@ config
       emitError(json, result.error);
       return;
     }
-    emitCompleted(json, result.value, `Set ${result.value.key}=${result.value.value}`);
+    warnIgnoredFolderConfig(result.value.key, result.value.ignoredFolderValue);
+    const scopeNote = result.value.scope === 'home' && cliConfigFolder !== undefined ? ' (app-wide)' : '';
+    emitCompleted(json, result.value, `Set ${result.value.key}=${result.value.value}${scopeNote}`);
   });
 
 config
@@ -1223,6 +1227,11 @@ const searchHuman = (data: Awaited<ReturnType<ApiClient['search']>> extends Resu
     ].join('\t');
   });
   return [...rows, `${data.count} result(s)`].join('\n');
+};
+
+const warnIgnoredFolderConfig = (key: string, ignoredFolderValue: string | null): void => {
+  if (ignoredFolderValue === null) return;
+  emitWarning(`ignoring the folder override ${key}=${ignoredFolderValue}; this key is app-wide and resolves from ${cliHomeDirectory}`);
 };
 
 const configGetHuman = (data: Awaited<ReturnType<ApiClient['config']>> extends Result<infer T, AppError> ? T : never): string => {

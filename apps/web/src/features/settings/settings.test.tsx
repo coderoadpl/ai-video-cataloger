@@ -229,7 +229,7 @@ describe('settings modal', () => {
         bodies.push(body);
         return HttpResponse.json({
           ok: true,
-          data: { key: body.key, value: body.value, previousValue: null },
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null },
         });
       }),
     );
@@ -258,7 +258,7 @@ describe('settings modal', () => {
         bodies.push(body);
         return HttpResponse.json({
           ok: true,
-          data: { key: body.key, value: body.value, previousValue: null },
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null },
         });
       }),
     );
@@ -286,7 +286,7 @@ describe('settings modal', () => {
         bodies.push(body);
         return HttpResponse.json({
           ok: true,
-          data: { key: body.key, value: body.value, previousValue: null },
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null },
         });
       }),
     );
@@ -371,7 +371,7 @@ describe('settings modal', () => {
     server.use(
       http.post('/api/config', async ({ request }) => {
         const body = z.object({ key: z.string(), value: z.string() }).parse(await request.json());
-        return HttpResponse.json({ ok: true, data: { ...body, previousValue: null } });
+        return HttpResponse.json({ ok: true, data: { ...body, previousValue: null, scope: 'home', ignoredFolderValue: null } });
       }),
       http.post('/api/credentials', async ({ request }) => {
         const body = await request.json();

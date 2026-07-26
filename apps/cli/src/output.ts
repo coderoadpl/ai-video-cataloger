@@ -87,6 +87,10 @@ export const emitCompleted = (json: boolean, data?: unknown, human?: string): vo
   if (human !== undefined && human.length > 0) process.stdout.write(`${human}\n`);
 };
 
+export const emitWarning = (message: string): void => {
+  process.stderr.write(`warning: ${message}\n`);
+};
+
 export const emitError = (json: boolean, error: AppError, data?: unknown): void => {
   if (json) {
     writeJson({

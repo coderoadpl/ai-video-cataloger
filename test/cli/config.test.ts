@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { readFileSync } from 'node:fs';
+import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCli, parseJsonEvents, findEvent } from '../helpers/cli-runner.js';
 import { createTestDir, cleanupTestDir } from '../setup.js';
@@ -193,6 +193,48 @@ describe('config command', () => {
       const errorEvent = findEvent(events, 'error');
 
       expect(errorEvent).toBeDefined();
+    });
+  });
+
+  describe('app-global keys outside $HOME', () => {
+    let home: string;
+
+    beforeEach(() => {
+      home = createTestDir();
+    });
+
+    afterEach(() => {
+      cleanupTestDir(home);
+    });
+
+    it('writes ui_language into the home config, not a cwd override', async () => {
+      const set = await runCli(['config', 'set', 'ui_language', 'pl', '--json'], { cwd: testDir, env: { HOME: home } });
+      expect(set.exitCode).toBe(0);
+
+      const setData = findEvent(parseJsonEvents(set.stdout), 'completed')?.data as Record<string, unknown>;
+      expect(setData.scope).toBe('home');
+      expect(JSON.parse(readFileSync(join(home, '.ai-video-cataloger', 'config.json'), 'utf8'))).toMatchObject({ ui_language: 'pl' });
+      expect(existsSync(join(testDir, '.ai-video-cataloger', 'config.json'))).toBe(false);
+
+      const get = await runCli(['config', 'get', 'ui_language', '--json'], { cwd: testDir, env: { HOME: home } });
+      const getData = findEvent(parseJsonEvents(get.stdout), 'completed')?.data as Record<string, unknown>;
+      expect(getData.value).toBe('pl');
+      expect(getData.effectiveValue).toBe('pl');
+      expect(getData.source).toBe('home');
+    });
+
+    it('warns that a stray cwd override for an app-global key is ignored', async () => {
+      mkdirSync(join(testDir, '.ai-video-cataloger'), { recursive: true });
+      writeFileSync(join(testDir, '.ai-video-cataloger', 'config.json'), JSON.stringify({ ui_language: 'de' }));
+
+      const get = await runCli(['config', 'get', 'ui_language'], { cwd: testDir, env: { HOME: home } });
+      expect(get.exitCode).toBe(0);
+      expect(get.stderr).toContain('de');
+
+      const getJson = await runCli(['config', 'get', 'ui_language', '--json'], { cwd: testDir, env: { HOME: home } });
+      const getData = findEvent(parseJsonEvents(getJson.stdout), 'completed')?.data as Record<string, unknown>;
+      expect(getData.ignoredFolderValue).toBe('de');
+      expect(getData.effectiveValue).toBe('en');
     });
   });
 });

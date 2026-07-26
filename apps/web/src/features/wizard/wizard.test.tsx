@@ -146,7 +146,7 @@ const installHandlers = (
           { status: 400 },
         );
       }
-      return ok({ key: body.key, value: body.value, previousValue: null });
+      return ok({ key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null });
     }),
     http.post('/api/credentials', async ({ request }) => {
       const body = credentialBodySchema.parse(await request.json());
@@ -709,7 +709,7 @@ describe('SetupWizard', () => {
         const body = configBodySchema.parse(await request.json());
         recorders.configWrites.push(body);
         if (body.key === 'ui_language') uiLanguage = body.value;
-        return ok({ key: body.key, value: body.value, previousValue: null });
+        return ok({ key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null });
       }),
     );
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);

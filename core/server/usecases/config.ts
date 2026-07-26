@@ -1,6 +1,7 @@
 import {
   configDescriptions,
   appError,
+  isAppGlobalConfigKey,
   ok,
   type AppError,
   type ConfigKey,
@@ -36,12 +37,15 @@ export type ConfigGetOutput =
       description: string;
       effectiveValue: string;
       source: ConfigValueSource;
+      ignoredFolderValue: string | null;
     };
 
 export interface ConfigSetOutput {
   key: ConfigKey;
   value: string;
   previousValue: string | null;
+  scope: 'home' | 'folder';
+  ignoredFolderValue: string | null;
 }
 
 export const getConfig = async (
@@ -53,7 +57,8 @@ export const getConfig = async (
   const resolved = await resolveConfigValues(deps.config, folder);
   if (!resolved.ok) return resolved;
   if (input.key !== null) {
-    const value = await deps.config.get(scope, input.key);
+    const readScope = isAppGlobalConfigKey(input.key) ? { kind: 'home' } as const : scope;
+    const value = await deps.config.get(readScope, input.key);
     if (!value.ok) return value;
     return ok({
       key: input.key,
@@ -62,6 +67,7 @@ export const getConfig = async (
       description: configDescriptions[input.key],
       effectiveValue: resolved.value.effective[input.key],
       source: resolved.value.sources[input.key],
+      ignoredFolderValue: ignoredFolderValue(resolved.value.folder, input.key),
     });
   }
 
@@ -94,10 +100,26 @@ export const setConfig = async (
     };
   }
 
-  const scope = input.folder === undefined
+  const appGlobal = isAppGlobalConfigKey(input.key);
+  const scope = input.folder === undefined || appGlobal
     ? { kind: 'home' } as const
     : { kind: 'folder', folder: deps.fs.resolve(input.folder) } as const;
   const stored = await deps.config.set(scope, input.key, normalized);
   if (!stored.ok) return stored;
-  return ok({ key: input.key, value: normalized, previousValue: stored.value.previousValue });
+  const folderValues = input.folder === undefined || !appGlobal
+    ? ok<Partial<Record<ConfigKey, string>>>({})
+    : await deps.config.getAll({ kind: 'folder', folder: deps.fs.resolve(input.folder) });
+  if (!folderValues.ok) return folderValues;
+  return ok({
+    key: input.key,
+    value: normalized,
+    previousValue: stored.value.previousValue,
+    scope: scope.kind,
+    ignoredFolderValue: ignoredFolderValue(folderValues.value, input.key),
+  });
 };
+
+const ignoredFolderValue = (
+  folderValues: Partial<Record<ConfigKey, string>>,
+  key: ConfigKey,
+): string | null => (isAppGlobalConfigKey(key) ? folderValues[key] ?? null : null);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CONFIG_KEYS } from '@core/domain/index.js';
+import { APP_GLOBAL_CONFIG_KEYS, CONFIG_KEYS, isAppGlobalConfigKey } from '@core/domain/index.js';
 
 import { getConfig, setConfig } from './config.js';
 import { InMemoryConfig, InMemoryFileSystem } from '../../../test/server/usecases/test-fakes.js';
@@ -11,7 +11,10 @@ describe('config use-cases', () => {
     const set = await setConfig(deps, { folder: '/work', key: 'frames', value: '4' });
     const get = await getConfig(deps, { folder: '/work', key: 'frames' });
 
-    expect(set).toEqual({ ok: true, value: { key: 'frames', value: '4', previousValue: null } });
+    expect(set).toEqual({
+      ok: true,
+      value: { key: 'frames', value: '4', previousValue: null, scope: 'folder', ignoredFolderValue: null },
+    });
     expect(get).toEqual({
       ok: true,
       value: {
@@ -21,6 +24,7 @@ describe('config use-cases', () => {
         description: 'Number of frames to extract for analysis',
         effectiveValue: '4',
         source: 'folder',
+        ignoredFolderValue: null,
       },
     });
   });
@@ -204,7 +208,15 @@ describe('config use-cases', () => {
     } as const;
     for (const key of CONFIG_KEYS) {
       expect(await setConfig(deps, { key, value: homeValues[key] })).toMatchObject({ ok: true });
+      if (isAppGlobalConfigKey(key)) continue;
       expect(await setConfig(deps, { folder: '/work', key, value: folderValues[key] })).toMatchObject({ ok: true });
+    }
+
+    for (const key of APP_GLOBAL_CONFIG_KEYS) {
+      expect(await setConfig(deps, { folder: '/work', key, value: homeValues[key] })).toMatchObject({
+        ok: true,
+        value: { scope: 'home' },
+      });
     }
 
     const result = await getConfig(deps, { folder: '/work', key: null });
@@ -212,7 +224,7 @@ describe('config use-cases', () => {
     expect(result).toMatchObject({
       ok: true,
       value: {
-        config: folderValues,
+        config: { ...folderValues, faces_enabled: null, ui_language: null },
         effective: { ...folderValues, ui_language: 'en', faces_enabled: 'false' },
         sources: {
           whisper_binary_path: 'folder',

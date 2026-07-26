@@ -410,6 +410,7 @@ export const configEntrySchema = z.object({
   description: z.string(),
   effectiveValue: z.string(),
   source: z.enum(['folder', 'home', 'default']),
+  ignoredFolderValue: z.string().nullable(),
 });
 
 export const configGetOutputSchema = z.union([
@@ -432,6 +433,8 @@ export const configSetOutputSchema = z.object({
   key: configKeySchema,
   value: z.string(),
   previousValue: z.string().nullable(),
+  scope: z.enum(['home', 'folder']),
+  ignoredFolderValue: z.string().nullable(),
 });
 
 export const credentialSetInputSchema = z.object({

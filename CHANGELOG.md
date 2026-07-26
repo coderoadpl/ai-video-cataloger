@@ -16,6 +16,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- `config set ui_language` / `faces_enabled` run outside `$HOME` no longer write
+  a per-folder override that nothing reads: these keys are app-wide, so the CLI
+  and the API always write them to the home config regardless of the working
+  directory, and `config get` reads them back from there. The `config set`
+  response names the `scope` it wrote, `config get <key>` carries
+  `ignoredFolderValue`, and the CLI prints a `warning:` line naming a stray
+  folder override it is ignoring.
 - `Nested Databases Detected` no longer blocks re-opening a root the app itself
   analyzed in whole-tree scope. A nested `.ai-video-cataloger` that carries our
   `folder-id` marker is our own lineage: `check` now returns it in the new
