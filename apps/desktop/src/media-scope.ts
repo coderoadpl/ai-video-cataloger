@@ -5,11 +5,24 @@ const ALLOWED_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
 const ALLOWED_VIDEO_EXTENSIONS = new Set(['.mp4', '.mov', '.avi', '.mkv', '.webm']);
 const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
 
+export interface MediaRoot {
+  path: string;
+  allowedChildren?: ReadonlySet<string> | undefined;
+}
+
 // A folder the app cannot write keeps its thumbnails and frames in the home mirror, not beside the
-// video, so scoping media to the opened folder alone leaves every read-only folder blank.
-export const catalogMediaRoots = (homeDirectory: string): readonly string[] => [
-  path.join(homeDirectory, '.ai-video-cataloger', 'faces'),
-  path.join(homeDirectory, '.ai-video-cataloger', 'read-only-folders'),
+// video, so scoping media to the opened folder alone leaves every read-only folder blank — search
+// renders those thumbnails for folders that are not the current one. The mirror is admitted one
+// folder id at a time instead of wholesale: only the folders the catalog knows can be read.
+export const catalogMediaRoots = (
+  homeDirectory: string,
+  mirrorFolderIds: Iterable<string>,
+): readonly MediaRoot[] => [
+  { path: path.join(homeDirectory, '.ai-video-cataloger', 'faces') },
+  {
+    path: path.join(homeDirectory, '.ai-video-cataloger', 'read-only-folders'),
+    allowedChildren: new Set(mirrorFolderIds),
+  },
 ];
 
 export const parseMediaUrl = (urlValue: string): string | null => {
@@ -28,13 +41,13 @@ export const resolveScopedImage = async (
   requestedPath: string,
   rootFolder: string | null,
   maxBytes = MAX_MEDIA_BYTES,
-  extraRoots: readonly string[] = [],
+  extraRoots: readonly MediaRoot[] = [],
 ): Promise<string | null> => {
   if (!ALLOWED_EXTENSIONS.has(path.extname(requestedPath).toLowerCase())) return null;
 
   const realRequested = await resolveAnyScopedPath(
     requestedPath,
-    rootFolder === null ? extraRoots : [rootFolder, ...extraRoots],
+    rootFolder === null ? extraRoots : [{ path: rootFolder }, ...extraRoots],
   );
   if (realRequested === null) return null;
 
@@ -52,7 +65,7 @@ export const resolveScopedImage = async (
 export const resolveScopedMedia = async (
   requestedPath: string,
   rootFolder: string | null,
-  extraRoots: readonly string[] = [],
+  extraRoots: readonly MediaRoot[] = [],
 ): Promise<string | null> => {
   const extension = path.extname(requestedPath).toLowerCase();
   if (ALLOWED_EXTENSIONS.has(extension)) return resolveScopedImage(requestedPath, rootFolder, MAX_MEDIA_BYTES, extraRoots);
@@ -60,7 +73,7 @@ export const resolveScopedMedia = async (
 
   const realRequested = await resolveAnyScopedPath(
     requestedPath,
-    rootFolder === null ? [] : [rootFolder],
+    rootFolder === null ? [] : [{ path: rootFolder }],
   );
   if (realRequested === null) return null;
 
@@ -79,16 +92,18 @@ export const resolveRevealPath = async (
   rootFolders: readonly (string | null)[],
 ): Promise<string | null> => {
   if (!path.isAbsolute(requestedPath)) return null;
-  const roots = rootFolders.filter((folder): folder is string => folder !== null);
+  const roots = rootFolders
+    .filter((folder): folder is string => folder !== null)
+    .map((folder) => ({ path: folder }));
   return resolveAnyScopedPath(requestedPath, roots);
 };
 
 const resolveAnyScopedPath = async (
   requestedPath: string,
-  rootFolders: readonly string[],
+  roots: readonly MediaRoot[],
 ): Promise<string | null> => {
-  for (const rootFolder of rootFolders) {
-    const scoped = await resolveScopedPath(requestedPath, rootFolder);
+  for (const root of roots) {
+    const scoped = await resolveWithinRoot(requestedPath, root);
     if (scoped !== null) return scoped;
   }
   return null;
@@ -97,13 +112,16 @@ const resolveAnyScopedPath = async (
 export const resolveScopedPath = async (
   requestedPath: string,
   rootFolder: string | null,
-): Promise<string | null> => {
-  if (rootFolder === null || !path.isAbsolute(requestedPath)) return null;
+): Promise<string | null> =>
+  rootFolder === null ? null : resolveWithinRoot(requestedPath, { path: rootFolder });
+
+const resolveWithinRoot = async (requestedPath: string, root: MediaRoot): Promise<string | null> => {
+  if (!path.isAbsolute(requestedPath)) return null;
 
   let realRoot: string;
   let realRequested: string;
   try {
-    realRoot = await realpath(rootFolder);
+    realRoot = await realpath(root.path);
     realRequested = await realpath(requestedPath);
   } catch {
     return null;
@@ -111,5 +129,6 @@ export const resolveScopedPath = async (
 
   const relative = path.relative(realRoot, realRequested);
   if (relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) return null;
+  if (root.allowedChildren !== undefined && !root.allowedChildren.has(relative.split(path.sep)[0] ?? '')) return null;
   return realRequested;
 };

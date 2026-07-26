@@ -159,6 +159,23 @@ failing the pass.
   paths with no repository handle (search thumbnails, the `thumbnail` command)
   discover it from the folder — marker present means in-folder, otherwise the
   mirror if it exists.
+- **The renderer reads a mirror per folder id, not the mirror root.** The
+  `media://` scope (`apps/desktop/src/media-scope.ts`) admits
+  `~/.ai-video-cataloger/read-only-folders/<folderId>/` one id at a time: the
+  ids of the folders the global index holds
+  (`App.catalogFolderPaths()` → `derivedFolderId`) plus the folder that is
+  currently open, which is not in the index until its first pass. Any other
+  subdirectory of the mirror root — a folder the catalog has never seen, a
+  leftover from a folder that was forgotten, anything a third party dropped
+  there — is refused, as are traversal and symlink escapes out of an admitted
+  id. Scoping to the current folder alone was rejected because it breaks a live
+  journey: search results carry a `thumbnailPath` for every folder in the index
+  (`resolveThumbnailPath`, `core/server/usecases/search.ts`), and for a
+  read-only folder that path is in the mirror, so cross-folder mirror reads are
+  what makes those thumbnails render at all. The faces root
+  (`~/.ai-video-cataloger/faces/<personId>/`) keeps its single scope: it is
+  keyed by person, not by folder, and every person in it is the user's own
+  local data that the people view renders whatever folder is open.
 - **Renaming is off.** Files on a read-only folder cannot be renamed, so
   degraded mode forces `skip_rename`; the run is index-only by construction.
 - **Snapshot skipped, index written.** The NDJSON snapshot of §(a) cannot be

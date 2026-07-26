@@ -14,6 +14,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Security
+
+- The `media://` read-only mirror scope is no longer one shared root. A
+  renderer request can reach
+  `~/.ai-video-cataloger/read-only-folders/<folderId>/` only for a folder the
+  catalog knows or the folder that is currently open, so the mirrors of every
+  other folder — including ones the catalog has never seen — are refused
+  instead of served.
+
 ## [0.5.24] - 2026-07-29
 
 ### Changed

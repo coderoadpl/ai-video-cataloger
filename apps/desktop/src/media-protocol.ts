@@ -1,11 +1,11 @@
 import { protocol } from 'electron';
 
-import { parseMediaUrl, resolveScopedMedia } from './media-scope.js';
+import { parseMediaUrl, resolveScopedMedia, type MediaRoot } from './media-scope.js';
 import { serveFile } from './media-serve.js';
 
 export interface MediaProtocolDeps {
   getCurrentFolder(): Promise<string | null>;
-  getCatalogMediaRoots?(): Promise<readonly string[]>;
+  getCatalogMediaRoots?(): Promise<readonly MediaRoot[]>;
 }
 
 export const registerMediaScheme = (): void => {

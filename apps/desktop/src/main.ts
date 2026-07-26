@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
 
+import { derivedFolderId } from '@core/domain/index.js';
 import type { App } from '@server/src/create-app.js';
 
 import { resolveDesktopAppVersion } from './app-version.js';
@@ -119,19 +120,24 @@ const surfaceCompositionFailure = (error: unknown): void => {
   dialog.showErrorBox('AI Video Cataloger failed to start', `The catalog could not be initialized.\n\n${message}`);
 };
 
+// Search renders mirrored thumbnails of folders that are not the open one, so the mirror ids of
+// every catalogued folder stay readable; a folder opened before its first index pass is not in the
+// catalog yet and carries its own id.
+const mirrorFolderIds = async (
+  desktopAppReady: Promise<App>,
+  currentFolder: string | null,
+): Promise<string[]> => {
+  const catalogFolders = await desktopAppReady.then((ready) => ready.catalogFolderPaths()).catch(() => []);
+  const folders = currentFolder === null ? catalogFolders : [currentFolder, ...catalogFolders];
+  return folders.map((folder) => derivedFolderId(path.resolve(folder)));
+};
+
 const bootstrap = async (): Promise<void> => {
   const appVersion = resolveDesktopAppVersion({
     isPackaged: app.isPackaged,
     packagedVersion: app.getVersion(),
   });
   folderStore = new FolderStore(folderStorePath(app.getPath('userData')));
-  registerMediaProtocolHandler({
-    getCurrentFolder: () => {
-      if (folderStore === null) return Promise.resolve(null);
-      return folderStore.getCurrent();
-    },
-    getCatalogMediaRoots: () => Promise.resolve(catalogMediaRoots(homedir())),
-  });
 
   let resolveDesktopApp!: (value: App) => void;
   let rejectDesktopApp!: (reason: unknown) => void;
@@ -140,6 +146,15 @@ const bootstrap = async (): Promise<void> => {
     rejectDesktopApp = reject;
   });
   void desktopAppReady.catch(surfaceCompositionFailure);
+
+  const currentFolder = (): Promise<string | null> =>
+    folderStore === null ? Promise.resolve(null) : folderStore.getCurrent();
+
+  registerMediaProtocolHandler({
+    getCurrentFolder: currentFolder,
+    getCatalogMediaRoots: async () =>
+      catalogMediaRoots(homedir(), await mirrorFolderIds(desktopAppReady, await currentFolder())),
+  });
 
   folderWatch = new FolderWatchController({
     desktopApp: desktopAppReady,

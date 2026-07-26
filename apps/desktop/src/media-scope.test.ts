@@ -74,7 +74,7 @@ describe('resolveScopedImage', () => {
     await mkdir(path.dirname(cropPath), { recursive: true });
     await writeFile(cropPath, 'image', 'utf8');
 
-    expect(await resolveScopedImage(cropPath, root, undefined, [facesRoot])).toBe(await realpath(cropPath));
+    expect(await resolveScopedImage(cropPath, root, undefined, [{ path: facesRoot }])).toBe(await realpath(cropPath));
   });
 });
 
@@ -120,8 +120,8 @@ describe('resolveScopedMedia', () => {
     await writeFile(videoPath, 'video', 'utf8');
     await writeFile(outsideVideoPath, 'video', 'utf8');
 
-    expect(await resolveScopedMedia(videoPath, root, [facesRoot])).toBe(await realpath(videoPath));
-    expect(await resolveScopedMedia(outsideVideoPath, root, [facesRoot])).toBeNull();
+    expect(await resolveScopedMedia(videoPath, root, [{ path: facesRoot }])).toBe(await realpath(videoPath));
+    expect(await resolveScopedMedia(outsideVideoPath, root, [{ path: facesRoot }])).toBeNull();
   });
 
   it('serves mirrored artifacts of a read-only folder and refuses traversal out of that mirror', async () => {
@@ -136,13 +136,30 @@ describe('resolveScopedMedia', () => {
     await writeFile(thumbnailPath, 'image', 'utf8');
     await writeFile(framePath, 'image', 'utf8');
     await writeFile(secretPath, 'image', 'utf8');
-    const roots = catalogMediaRoots(home);
+    const roots = catalogMediaRoots(home, ['derived-folder-id']);
 
     expect(await resolveScopedMedia(thumbnailPath, readOnlyFolder, roots)).toBe(await realpath(thumbnailPath));
     expect(await resolveScopedMedia(framePath, readOnlyFolder, roots)).toBe(await realpath(framePath));
     expect(await resolveScopedMedia(secretPath, readOnlyFolder, roots)).toBeNull();
     expect(await resolveScopedMedia(path.join(mirrorRoot, '..', 'stolen.jpg'), readOnlyFolder, roots)).toBeNull();
     expect(await resolveScopedMedia(path.join(mirrorRoot, 'id', '..', '..', 'stolen.jpg'), readOnlyFolder, roots)).toBeNull();
+  });
+
+  it('refuses a mirror of a folder the catalog does not know', async () => {
+    const home = await tempRoot();
+    const readOnlyFolder = await tempRoot();
+    const mirrorRoot = path.join(home, '.ai-video-cataloger', 'read-only-folders');
+    const knownThumbnail = path.join(mirrorRoot, 'known-folder-id', 'thumbnails', 'clip.jpg');
+    const strangerThumbnail = path.join(mirrorRoot, 'stranger-folder-id', 'thumbnails', 'clip.jpg');
+    await mkdir(path.dirname(knownThumbnail), { recursive: true });
+    await mkdir(path.dirname(strangerThumbnail), { recursive: true });
+    await writeFile(knownThumbnail, 'image', 'utf8');
+    await writeFile(strangerThumbnail, 'image', 'utf8');
+    const roots = catalogMediaRoots(home, ['known-folder-id']);
+
+    expect(await resolveScopedMedia(knownThumbnail, readOnlyFolder, roots)).toBe(await realpath(knownThumbnail));
+    expect(await resolveScopedMedia(strangerThumbnail, readOnlyFolder, roots)).toBeNull();
+    expect(await resolveScopedMedia(mirrorRoot, readOnlyFolder, roots)).toBeNull();
   });
 
   it('refuses a video smuggled into the mirrored artifact root', async () => {
@@ -152,7 +169,7 @@ describe('resolveScopedMedia', () => {
     await mkdir(path.dirname(mirrorVideoPath), { recursive: true });
     await writeFile(mirrorVideoPath, 'video', 'utf8');
 
-    expect(await resolveScopedMedia(mirrorVideoPath, readOnlyFolder, catalogMediaRoots(home))).toBeNull();
+    expect(await resolveScopedMedia(mirrorVideoPath, readOnlyFolder, catalogMediaRoots(home, ['derived-folder-id']))).toBeNull();
   });
 
   it('rejects a symlink inside the mirror that escapes to a file outside every scope', async () => {
@@ -165,15 +182,18 @@ describe('resolveScopedMedia', () => {
     await writeFile(outsideImage, 'image', 'utf8');
     await symlink(outsideImage, linkPath);
 
-    expect(await resolveScopedMedia(linkPath, readOnlyFolder, catalogMediaRoots(home))).toBeNull();
+    expect(await resolveScopedMedia(linkPath, readOnlyFolder, catalogMediaRoots(home, ['id']))).toBeNull();
   });
 });
 
 describe('catalogMediaRoots', () => {
-  it('scopes media to the faces and read-only mirror roots only', () => {
-    expect(catalogMediaRoots('/home/u')).toEqual([
-      path.join('/home/u', '.ai-video-cataloger', 'faces'),
-      path.join('/home/u', '.ai-video-cataloger', 'read-only-folders'),
+  it('scopes media to the faces root and the mirrors of the folders it is given', () => {
+    expect(catalogMediaRoots('/home/u', ['folder-a', 'folder-b'])).toEqual([
+      { path: path.join('/home/u', '.ai-video-cataloger', 'faces') },
+      {
+        path: path.join('/home/u', '.ai-video-cataloger', 'read-only-folders'),
+        allowedChildren: new Set(['folder-a', 'folder-b']),
+      },
     ]);
   });
 });
