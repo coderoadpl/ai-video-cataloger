@@ -140,7 +140,7 @@ export class KeychainCredentialsStore implements CredentialsStore {
 
   async delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
     const keychain: CredentialDeletion = { cleared: [], retained: [] };
-    if (await this.keychainUsable()) {
+    if (await this.keychainReachable()) {
       const removed = await this.secrets.delete(providerId);
       if (!removed.ok) {
         this.degraded = true;
@@ -169,9 +169,13 @@ export class KeychainCredentialsStore implements CredentialsStore {
     return { backend: 'keychain', reason: 'ok' };
   }
 
+  private async keychainReachable(): Promise<boolean> {
+    return (await this.secrets.availability()) === 'available';
+  }
+
   private async keychainUsable(): Promise<boolean> {
     if (this.degraded) return false;
-    if ((await this.secrets.availability()) !== 'available') return false;
+    if (!(await this.keychainReachable())) return false;
     this.migration ??= this.migrateLegacyFile();
     await this.migration;
     return !this.degraded;

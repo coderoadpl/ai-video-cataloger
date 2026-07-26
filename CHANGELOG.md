@@ -14,6 +14,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Forgetting a provider key now always reaches the Keychain: an earlier keychain
+  failure in the same process no longer makes the deletion skip the Keychain and
+  report an untouched pair of backends while the key was still stored there. A
+  Keychain that refuses the removal is still reported as retained, and a key
+  held by both backends now names both as cleared.
+
 ## [0.5.18] - 2026-07-28
 
 ### Added

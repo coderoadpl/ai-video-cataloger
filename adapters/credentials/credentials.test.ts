@@ -13,8 +13,10 @@ const roots: string[] = [];
 
 class FakeSecrets implements SecretsStore {
   readonly values = new Map<string, string>();
+  readonly deleteCalls: string[] = [];
   failingAccounts = new Set<string>();
   failingDeletes = new Set<string>();
+  failingReads = new Set<string>();
 
   constructor(private readonly available: boolean) {}
 
@@ -23,6 +25,9 @@ class FakeSecrets implements SecretsStore {
   }
 
   get(account: string): Promise<Result<string | null, AppError>> {
+    if (this.failingReads.has(account)) {
+      return Promise.resolve({ ok: false, error: appError('internal', 'keychain is locked') });
+    }
     return Promise.resolve(ok(this.values.get(account) ?? null));
   }
 
@@ -35,6 +40,7 @@ class FakeSecrets implements SecretsStore {
   }
 
   delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
+    this.deleteCalls.push(account);
     if (this.failingDeletes.has(account)) {
       return Promise.resolve({ ok: false, error: appError('internal', 'keychain is locked') });
     }
@@ -186,7 +192,7 @@ describe('KeychainCredentialsStore', () => {
 
     expect(await store.delete('openai')).toEqual({
       ok: true,
-      value: { cleared: ['keychain'], retained: [] },
+      value: { cleared: ['keychain', 'file'], retained: [] },
     });
     expect(secrets.values.has('openai')).toBe(false);
     expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
@@ -248,6 +254,22 @@ describe('KeychainCredentialsStore', () => {
     });
     expect(secrets.values.get('openai')).toBe('keychain-key');
     expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
+  });
+
+  it('still clears the keychain after an earlier read failure degraded the backend', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets(true);
+    await secrets.set('openai', 'keychain-key');
+    secrets.failingReads.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: null });
+
+    secrets.failingReads.delete('openai');
+    expect(await store.delete('openai')).toEqual({ ok: true, value: { cleared: ['keychain'], retained: [] } });
+    expect(secrets.deleteCalls).toEqual(['openai']);
+    expect(secrets.values.has('openai')).toBe(false);
   });
 
   it('names the keychain as the backend when it answers', async () => {
