@@ -14,7 +14,6 @@ import {
   type AnalyzerProviderConfig,
   type Result,
 } from '@core/domain/index.js';
-import { LANGUAGE_DISPLAY_NAMES } from '@core/domain/config.js';
 import type {
   AnalysisOutput,
   AnalyzeInput,
@@ -25,6 +24,14 @@ import type {
   ProvidersPort,
   ProviderTestResult,
 } from '@core/server/index.js';
+
+import {
+  descriptionInstruction,
+  filenameInstruction,
+  outputLanguageInstruction,
+  retrievalBriefing,
+  tagsInstruction,
+} from './prompt.js';
 
 const envKeysToExclude = new Set([
   'ELECTRON_RUN_AS_NODE',
@@ -632,18 +639,12 @@ export const buildAnalyzerPrompt = (input: {
   return `You are analyzing a video file named "${input.videoName}".\n\n${transcriptBlock}${frameBlock}${responseContractInstructions(input.transcript !== null)}${outputLanguageInstruction(input.outputLanguage)}`;
 };
 
-const outputLanguageInstruction = (outputLanguage: string): string => {
-  if (outputLanguage === 'auto') return '';
-  const languageName = LANGUAGE_DISPLAY_NAMES[outputLanguage] ?? outputLanguage;
-  return `\n\nWrite the DESCRIPTION and the FILENAME in ${languageName}. Keep the TAGS in ASCII kebab-case English regardless of the description language.`;
-};
-
 const responseContractInstructions = (hasTranscript: boolean): string =>
-  `You are analyzing a video from its extracted frames${hasTranscript ? ' and the audio transcript' : ''}. Be a careful observer: read any visible text, signs, placards or labels in the frames and use them; prefer concrete, verifiable details over generic scene descriptions. Provide:
-1. DESCRIPTION: 2-4 sentences describing what the video actually shows - specific objects, named things (from visible text or the transcript), actions and setting. Do not speculate beyond what you can see or hear; never invent names or facts.
-2. FILENAME: a lowercase kebab-case filename (3-8 words, no dates, no extension) built from the MOST distinctive verifiable details - a name someone could use to find this exact clip among hundreds. Generic names like museum-exhibit or boat-display are wrong when anything more specific is visible.
-3. TAGS: 3-8 comma-separated kebab-case tags covering concrete objects, activities, place type and shot type. Prefer specific tags over generic ones; proper nouns are allowed.
-Respond exactly in the format:
+  `You are analyzing a video from its extracted frames${hasTranscript ? ' and the audio transcript' : ''}. ${retrievalBriefing} Provide:
+1. DESCRIPTION: ${descriptionInstruction}
+2. FILENAME: ${filenameInstruction}
+3. TAGS: ${tagsInstruction}
+Respond exactly in the format, with nothing before or after these three lines:
 DESCRIPTION: <text>
 FILENAME: <kebab-case-name>
 TAGS: <tag-one>, <tag-two>, <tag-three>`;

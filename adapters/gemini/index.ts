@@ -8,7 +8,6 @@ import {
   ok,
   GEMINI_NATIVE_API_BASE_URL,
   GEMINI_NATIVE_INLINE_LIMIT_BYTES,
-  LANGUAGE_DISPLAY_NAMES,
   type AnalyzerProviderConfig,
   type AppError,
   type GeminiUsageAccounting,
@@ -25,6 +24,14 @@ import type {
   ProvidersPort,
   ProviderTestResult,
 } from '@core/server/index.js';
+
+import {
+  descriptionInstruction,
+  filenameInstruction,
+  outputLanguageInstruction,
+  retrievalBriefing,
+  tagsInstruction,
+} from '@adapters/analyzers/prompt.js';
 
 type GeminiNativeProvider = Extract<AnalyzerProviderConfig, { family: 'gemini-native' }>;
 
@@ -84,20 +91,16 @@ export const geminiProviderPricing = (
   return fromModel ?? {};
 };
 
-export const buildGeminiPrompt = (input: { videoName: string; outputLanguage: string }): string => {
-  const languageInstruction = input.outputLanguage === 'auto'
-    ? ''
-    : `\n\nWrite the DESCRIPTION and FILENAME in ${LANGUAGE_DISPLAY_NAMES[input.outputLanguage] ?? input.outputLanguage}. Keep TAGS in ASCII kebab-case English regardless of the description language.`;
-  return `You are analyzing a video file named "${input.videoName}". You can see the video and hear its full audio track: speech, music and ambient sound.
+export const buildGeminiPrompt = (input: { videoName: string; outputLanguage: string }): string =>
+  `You are analyzing a video file named "${input.videoName}". You can see the video and hear its full audio track: speech, music and ambient sound.
 
-Be a careful observer: read any visible text, signs, placards or labels and use them; prefer concrete, verifiable details over generic scene descriptions. Never invent names or facts.
+${retrievalBriefing}
 
 Respond in exactly this format:
-DESCRIPTION: 2-4 sentences describing what the video actually shows - specific objects, named things (from visible text or speech), actions and setting. If there is no speech, say so and describe the music or ambient sound instead.
-FILENAME: a lowercase kebab-case filename (3-8 words, no dates, no extension) built from the MOST distinctive verifiable details - a name someone could use to find this exact clip among hundreds.
-TAGS: 3-8 comma-separated kebab-case tags covering concrete objects, activities, place type and shot type.
-TRANSCRIPT: verbatim speech and on-screen text with timestamps, one segment per line formatted [MM:SS] text. If there is no speech at all, write exactly: NONE${languageInstruction}`;
-};
+DESCRIPTION: ${descriptionInstruction} If there is no speech, say so and describe the music or ambient sound instead.
+FILENAME: ${filenameInstruction}
+TAGS: ${tagsInstruction}
+TRANSCRIPT: verbatim speech and on-screen text with timestamps, one segment per line formatted [MM:SS] text. If there is no speech at all, write exactly: NONE${outputLanguageInstruction(input.outputLanguage)}`;
 
 const timestampToSeconds = (raw: string): number | null => {
   const parts = raw.split(':').map((part) => Number(part));

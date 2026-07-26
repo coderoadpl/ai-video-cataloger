@@ -14,6 +14,18 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The analyzer prompt is now retrieval-graded and shared by every provider:
+  descriptions lead with what identifies the clip, the model is told to read the
+  text visible in frame (signs, placards, registrations, dates, screens) and
+  carry it into the description and the filename, the suggested filename may run
+  up to eight kebab-case words and may not use filler like `video`, `clip` or
+  `footage`, and tags are search handles (objects, place type, activity, notable
+  text). The gemini-native provider reuses the same sections instead of its own
+  copy; the `DESCRIPTION` / `FILENAME` / `TAGS` / `TRANSCRIPT` output contract is
+  unchanged.
+
 ## [0.5.16] - 2026-07-28
 
 ### Changed
