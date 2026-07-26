@@ -16,6 +16,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- `Nested Databases Detected` no longer blocks re-opening a root the app itself
+  analyzed in whole-tree scope. A nested `.ai-video-cataloger` that carries our
+  `folder-id` marker is our own lineage: `check` now returns it in the new
+  `ownNestedPaths` field and leaves `hasNestedDatabases` false (exit 0), so the
+  folder opens. A nested catalog directory without the marker is still foreign
+  and still blocks the GUI open and exits `nested_databases_found`.
 - Global search no longer fails with `Response data does not match the contract`
   (exit 10) once a read-only folder has been processed. A folder the app cannot
   write a marker into keeps a stable `path-<hash>` identity, but the contract

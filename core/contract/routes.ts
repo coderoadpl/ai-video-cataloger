@@ -681,6 +681,7 @@ export const doctorOutputSchema = z.object({
 export const checkOutputSchema = z.object({
   hasNestedDatabases: z.boolean(),
   nestedPaths: z.array(z.string()),
+  ownNestedPaths: z.array(z.string()),
   basePath: z.string(),
   scannedDirectories: z.number().int().nonnegative(),
 });

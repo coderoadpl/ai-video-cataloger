@@ -1175,8 +1175,13 @@ const statusHuman = (data: Awaited<ReturnType<ApiClient['status']>> extends Resu
 const resetHuman = (data: Awaited<ReturnType<ApiClient['resetAll']>> extends Result<infer T, AppError> ? T : never): string =>
   `Cleared ${data.cleared} video records`;
 
-const checkHuman = (data: Awaited<ReturnType<ApiClient['check']>> extends Result<infer T, AppError> ? T : never): string =>
-  data.hasNestedDatabases ? `Nested databases found:\n${data.nestedPaths.join('\n')}` : 'No nested databases found';
+const checkHuman = (data: Awaited<ReturnType<ApiClient['check']>> extends Result<infer T, AppError> ? T : never): string => {
+  if (data.hasNestedDatabases) return `Nested databases found:\n${data.nestedPaths.join('\n')}`;
+  if (data.ownNestedPaths.length > 0) {
+    return `No foreign nested databases found; ${String(data.ownNestedPaths.length)} nested catalogs of this app`;
+  }
+  return 'No nested databases found';
+};
 
 const scanHuman = (data: Awaited<ReturnType<ApiClient['scan']>> extends Result<infer T, AppError> ? T : never): string =>
   `Found ${data.summary.total} video files`;

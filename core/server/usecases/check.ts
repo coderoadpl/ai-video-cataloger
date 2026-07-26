@@ -1,6 +1,7 @@
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { FileSystemPort } from '../ports.js';
+import { readFolderMarker } from './folder-identity.js';
 
 export interface CheckDeps {
   fs: FileSystemPort;
@@ -9,6 +10,7 @@ export interface CheckDeps {
 export interface CheckOutput {
   hasNestedDatabases: boolean;
   nestedPaths: string[];
+  ownNestedPaths: string[];
   basePath: string;
   scannedDirectories: number;
 }
@@ -29,6 +31,7 @@ export const checkNestedDatabases = async (
   const accumulator: CheckOutput = {
     hasNestedDatabases: false,
     nestedPaths: [],
+    ownNestedPaths: [],
     basePath,
     scannedDirectories: 0,
   };
@@ -50,7 +53,11 @@ const scanDirectory = async (
   for (const entry of entries.value) {
     if (entry.kind !== 'directory') continue;
     if (entry.name === '.ai-video-cataloger') {
-      if (!isRoot) accumulator.nestedPaths.push(entry.path);
+      if (isRoot) continue;
+      const marker = await readFolderMarker(fs, currentPath);
+      if (!marker.ok) return marker;
+      if (marker.value === null) accumulator.nestedPaths.push(entry.path);
+      else accumulator.ownNestedPaths.push(entry.path);
       continue;
     }
     if (entry.name.startsWith('.')) continue;

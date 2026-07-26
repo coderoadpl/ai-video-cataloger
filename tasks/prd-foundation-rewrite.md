@@ -371,6 +371,13 @@ the CLI consume the same partition.
      RFC-3339 timestamps; SQLite's `datetime('now')` is already UTC, so this
      is a lossless format normalization, not a value change. Scripts diffing
      the exact string see the new format; scripts parsing a date accept both.
+  7. The nested-database guard (INV §"Nested DB helper", `check`) counts only
+     nested `.ai-video-cataloger` directories **without** our `folder-id`
+     marker. A whole-tree drive run writes a catalog into every subfolder, so
+     the old rule made the app block re-opening the very root it had just
+     analyzed. Own-lineage nested catalogs are reported separately as
+     `ownNestedPaths` (informational, exit 0); a foreign nested database still
+     blocks the GUI open and still exits `nested_databases_found`.
 - **Foundation reuse**: copy configs/patterns from `agentproofarch/demo`
   (eslint boundaries setup, local eslint plugin with probe-proven rules,
   depcruise mirror, vitest projects, theme.ts discipline, query policies)
