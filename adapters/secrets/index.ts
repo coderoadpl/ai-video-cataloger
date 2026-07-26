@@ -34,7 +34,7 @@ export class KeychainSecretsAdapter implements SecretsStore {
   private readonly disabled: boolean;
   private readonly keychain: readonly string[];
   private readonly commandRunner: SecretsCommandRunner;
-  private probed: SecretsAvailability | null = null;
+  private structural: Extract<SecretsAvailability, 'disabled' | 'unsupported'> | null = null;
 
   constructor(options: KeychainSecretsAdapterOptions = {}) {
     this.service = options.service ?? DEFAULT_KEYCHAIN_SERVICE;
@@ -46,9 +46,16 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async availability(): Promise<SecretsAvailability> {
-    if (this.probed !== null) return this.probed;
-    this.probed = await this.probe();
-    return this.probed;
+    if (this.structural !== null) return this.structural;
+    if (this.platform !== 'darwin') {
+      this.structural = 'unsupported';
+      return this.structural;
+    }
+    if (this.disabled) {
+      this.structural = 'disabled';
+      return this.structural;
+    }
+    return this.probe();
   }
 
   async get(account: string): Promise<Result<string | null, AppError>> {
@@ -81,8 +88,6 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   private async probe(): Promise<SecretsAvailability> {
-    if (this.platform !== 'darwin') return 'unsupported';
-    if (this.disabled) return 'disabled';
     try {
       const result = await this.commandRunner.run('security', ['list-keychains']);
       return result.code === 0 ? 'available' : 'unavailable';

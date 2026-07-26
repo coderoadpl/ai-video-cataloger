@@ -256,6 +256,53 @@ describe('KeychainCredentialsStore', () => {
     expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
   });
 
+  it('reads the keychain again after a transient failure instead of falling back for the process lifetime', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets(true);
+    await secrets.set('openai', 'keychain-key');
+    secrets.failingReads.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: null });
+    expect(await store.backend()).toEqual({ backend: 'file', reason: 'degraded' });
+
+    secrets.failingReads.delete('openai');
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'keychain-key' });
+    expect(await store.backend()).toEqual({ backend: 'keychain', reason: 'ok' });
+  });
+
+  it('retries a failed migration once the keychain accepts writes again', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    await legacy.set('openai', 'legacy-key');
+    const secrets = new FakeSecrets(true);
+    secrets.failingAccounts.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'legacy-key' });
+
+    secrets.failingAccounts.delete('openai');
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'legacy-key' });
+    expect(secrets.values.get('openai')).toBe('legacy-key');
+    expect(await store.legacyPlaintextProviders()).toEqual({ ok: true, value: [] });
+  });
+
+  it('promotes a fallback file write into the keychain once it accepts writes again', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets(true);
+    secrets.failingAccounts.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+    await store.set('openai', 'fresh-key');
+
+    secrets.failingAccounts.delete('openai');
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'fresh-key' });
+    expect(secrets.values.get('openai')).toBe('fresh-key');
+    expect(await store.legacyPlaintextProviders()).toEqual({ ok: true, value: [] });
+    expect(await store.backend()).toEqual({ backend: 'keychain', reason: 'ok' });
+  });
+
   it('still clears the keychain after an earlier read failure degraded the backend', async () => {
     const home = await tempHome();
     const legacy = new JsonCredentialsStore({ homeDirectory: home });

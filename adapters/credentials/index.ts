@@ -109,8 +109,9 @@ export interface KeychainCredentialsStoreOptions {
 }
 
 export class KeychainCredentialsStore implements CredentialsStore {
-  private degraded = false;
-  private migration: Promise<void> | null = null;
+  private keychainFailed = false;
+  private plaintextPending = false;
+  private migration: Promise<boolean> | null = null;
 
   constructor(
     private readonly secrets: SecretsStore,
@@ -119,35 +120,37 @@ export class KeychainCredentialsStore implements CredentialsStore {
   ) {}
 
   async get(providerId: string): Promise<Result<string | null, AppError>> {
-    if (await this.keychainUsable()) {
+    if (await this.keychainReady()) {
       const fromKeychain = await this.secrets.get(providerId);
+      this.keychainFailed = !fromKeychain.ok;
       if (fromKeychain.ok && fromKeychain.value !== null) return ok(fromKeychain.value);
-      if (!fromKeychain.ok) this.degraded = true;
     }
     return this.legacy.get(providerId);
   }
 
   async set(providerId: string, credential: string): Promise<Result<void, AppError>> {
-    if (await this.keychainUsable()) {
+    if (await this.keychainReady()) {
       if (await this.storeVerified(providerId, credential)) {
+        this.keychainFailed = false;
         const removed = await this.legacy.delete(providerId);
         return removed.ok ? ok(undefined) : removed;
       }
-      this.degraded = true;
+      this.keychainFailed = true;
     }
-    return this.legacy.set(providerId, credential);
+    const stored = await this.legacy.set(providerId, credential);
+    if (!stored.ok) return stored;
+    this.plaintextPending = true;
+    this.migration = null;
+    return stored;
   }
 
   async delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
     const keychain: CredentialDeletion = { cleared: [], retained: [] };
     if (await this.keychainReachable()) {
       const removed = await this.secrets.delete(providerId);
-      if (!removed.ok) {
-        this.degraded = true;
-        keychain.retained.push('keychain');
-      } else if (removed.value.existed) {
-        keychain.cleared.push('keychain');
-      }
+      this.keychainFailed = !removed.ok;
+      if (!removed.ok) keychain.retained.push('keychain');
+      else if (removed.value.existed) keychain.cleared.push('keychain');
     }
     const file = await this.legacy.delete(providerId);
     if (!file.ok) return file;
@@ -158,14 +161,15 @@ export class KeychainCredentialsStore implements CredentialsStore {
   }
 
   async legacyPlaintextProviders(): Promise<Result<string[], AppError>> {
-    if (!(await this.keychainUsable())) return ok([]);
+    if (!(await this.keychainReady())) return ok([]);
     return this.legacy.list();
   }
 
   async backend(): Promise<CredentialsBackendStatus> {
     const availability = await this.secrets.availability();
     if (availability !== 'available') return { backend: 'file', reason: availability };
-    if (this.degraded) return { backend: 'file', reason: 'degraded' };
+    await this.ensureMigrated();
+    if (this.keychainFailed || this.plaintextPending) return { backend: 'file', reason: 'degraded' };
     return { backend: 'keychain', reason: 'ok' };
   }
 
@@ -173,35 +177,44 @@ export class KeychainCredentialsStore implements CredentialsStore {
     return (await this.secrets.availability()) === 'available';
   }
 
-  private async keychainUsable(): Promise<boolean> {
-    if (this.degraded) return false;
+  private async keychainReady(): Promise<boolean> {
     if (!(await this.keychainReachable())) return false;
-    this.migration ??= this.migrateLegacyFile();
-    await this.migration;
-    return !this.degraded;
+    await this.ensureMigrated();
+    return true;
   }
 
-  private async migrateLegacyFile(): Promise<void> {
+  private async ensureMigrated(): Promise<void> {
+    const attempt = (this.migration ??= this.migrateLegacyFile());
+    const complete = await attempt;
+    this.plaintextPending = !complete;
+    if (!complete) this.migration = null;
+  }
+
+  private async migrateLegacyFile(): Promise<boolean> {
     const providers = await this.legacy.list();
-    if (!providers.ok) return;
-    for (const providerId of providers.value) await this.migrateProvider(providerId);
+    if (!providers.ok) return false;
+    let complete = true;
+    for (const providerId of providers.value) complete = (await this.migrateProvider(providerId)) && complete;
+    return complete;
   }
 
-  private async migrateProvider(providerId: string): Promise<void> {
+  private async migrateProvider(providerId: string): Promise<boolean> {
     const plaintext = await this.legacy.get(providerId);
-    if (!plaintext.ok || plaintext.value === null) return;
+    if (!plaintext.ok) return false;
+    if (plaintext.value === null) return true;
     const existing = await this.secrets.get(providerId);
     if (!existing.ok) {
-      this.degraded = true;
-      return;
+      this.keychainFailed = true;
+      return false;
     }
     if (existing.value === null && !(await this.storeVerified(providerId, plaintext.value))) {
-      this.degraded = true;
-      return;
+      this.keychainFailed = true;
+      return false;
     }
     const removed = await this.legacy.delete(providerId);
-    if (!removed.ok) return;
+    if (!removed.ok) return false;
     await this.options.migrationLog?.record(providerId);
+    return true;
   }
 
   private async storeVerified(providerId: string, credential: string): Promise<boolean> {

@@ -16,6 +16,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- A transient Keychain failure no longer makes the running app read and write
+  API keys from the plaintext file until it is relaunched: every credential
+  operation tries the Keychain again, an `unavailable` keychain is re-probed on
+  the next access, an incomplete migration is retried, and a key that had to
+  fall back to the file is moved into the Keychain as soon as it accepts writes.
+  `doctor` reports `degraded` while that is true and returns to `keychain` by
+  itself.
+
 - Forgetting a provider key now always reaches the Keychain: an earlier keychain
   failure in the same process no longer makes the deletion skip the Keychain and
   report an untouched pair of backends while the key was still stored there. A

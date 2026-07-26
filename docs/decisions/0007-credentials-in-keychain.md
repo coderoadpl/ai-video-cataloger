@@ -37,8 +37,10 @@ in a repo whose package manager refuses install scripts by default
 ([ADR-0006](0006-package-manager-pnpm.md)). `security` ships with macOS and
 costs one `execFile`.
 
-**3. Migration is lazy, idempotent, and write-verified.** The first credential
-access in a process migrates whatever `credentials.json` still holds. Per
+**3. Migration is lazy, idempotent, write-verified, and retried.** The first
+credential access in a process migrates whatever `credentials.json` still holds,
+and an incomplete pass is attempted again on the next access instead of being
+remembered as done. Per
 provider: write the Keychain, read it back, and only after the readback matches
 remove that entry from the file. A failed write or a mismatched readback leaves
 the file entry untouched, so the sequence is never lossy — worst case the key
@@ -49,12 +51,21 @@ overwriting the Keychain value. Each migrated provider appends one NDJSON line
 to `~/.ai-video-cataloger/credentials-migration.ndjson` — provider id,
 direction, timestamp, never the secret.
 
-**4. A Keychain failure degrades to the file store, it never fails a run.**
-Availability is `darwin` + not disabled + `security` runs at all. Beyond the
-probe, any per-operation failure (locked keychain, no default keychain, timeout
-— the adapter kills `security` after 10s) drops that process back to the file
-store and marks the backend degraded. Analysis must not die because a keychain
-is locked. `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` opts out explicitly (both
+**4. A Keychain failure degrades to the file store per operation, it never
+fails a run and it never locks the process out.** Availability is `darwin` +
+not disabled + `security` runs at all; only the structural verdicts
+(`unsupported`, `disabled`) are cached, an `unavailable` probe is retried on the
+next access. Beyond the probe, every operation attempts the Keychain and falls
+back to the file store on its own failure (locked keychain, no default keychain,
+timeout — the adapter kills `security` after 10s), so a single transient failure
+never makes the rest of the process blind to a key the Keychain still holds.
+`degraded` is therefore a *report*, not a gate: the backend reads `degraded`
+while the last Keychain operation failed or a plaintext entry is still waiting
+to be migrated, and returns to `keychain` on its own once the Keychain answers
+again — no relaunch. A write that fell back to the file marks the migration
+pending, so the next successful Keychain access promotes it and removes the
+plaintext copy. Analysis must not die because a keychain is locked.
+`AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` opts out explicitly (both
 gates set it, so `check` and `smoke` never touch the developer's login
 keychain); `AI_VIDEO_CATALOGER_KEYCHAIN=<path>` points the adapter at a
 specific keychain file, which is how the empirical check runs against a

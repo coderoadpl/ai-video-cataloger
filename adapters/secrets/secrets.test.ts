@@ -40,13 +40,24 @@ describe('KeychainSecretsAdapter', () => {
     expect(runner.calls).toHaveLength(0);
   });
 
-  it('probes the keychain once and caches availability', async () => {
-    const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
+  it('probes again after an unavailable verdict so a recovered keychain is used', async () => {
+    let code = 1;
+    const runner = new FakeSecurity(() => ({ code, stdout: '', stderr: 'no keychain' }));
     const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
+    expect(await adapter.availability()).toBe('unavailable');
+    code = 0;
     expect(await adapter.availability()).toBe('available');
-    expect(await adapter.availability()).toBe('available');
-    expect(runner.calls.filter((call) => call.args[0] === 'list-keychains')).toHaveLength(1);
+    expect(runner.calls.filter((call) => call.args[0] === 'list-keychains')).toHaveLength(2);
+  });
+
+  it('answers a structural verdict from the cache without shelling out again', async () => {
+    const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: true, commandRunner: runner });
+
+    expect(await adapter.availability()).toBe('disabled');
+    expect(await adapter.availability()).toBe('disabled');
+    expect(runner.calls).toHaveLength(0);
   });
 
   it('reads a stored secret and strips the trailing newline', async () => {
