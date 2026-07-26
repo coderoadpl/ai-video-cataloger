@@ -16,6 +16,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- The Polish frame-count label declines properly: `1 klatka`, `2 klatki`,
+  `5 klatek`, `22 klatki` instead of a fixed `klatek`. The English label now
+  also says `1 frame` rather than `1 frames`.
 - `config set ui_language` / `faces_enabled` run outside `$HOME` no longer write
   a per-folder override that nothing reads: these keys are app-wide, so the CLI
   and the API always write them to the home config regardless of the working

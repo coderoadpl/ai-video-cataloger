@@ -36,6 +36,10 @@ describe('dictionary', () => {
     expect(pl.search.resultCount(1)).toBe('1 wynik');
     expect(pl.search.resultCount(3)).toBe('3 wyniki');
     expect(pl.search.resultCount(5)).toBe('5 wyników');
+    expect(pl.settingsModal.frameCountValue(1)).toBe('1 klatka');
+    expect(pl.settingsModal.frameCountValue(2)).toBe('2 klatki');
+    expect(pl.settingsModal.frameCountValue(5)).toBe('5 klatek');
+    expect(pl.settingsModal.frameCountValue(22)).toBe('22 klatki');
   });
 
   it('uses English singular/plural siblings for counted copy', () => {
@@ -43,6 +47,8 @@ describe('dictionary', () => {
     expect(en.search.resultCount(2)).toBe('2 results');
     expect(en.people.observationCount(1)).toBe('1 observation');
     expect(en.people.observationCount(2)).toBe('2 observations');
+    expect(en.settingsModal.frameCountValue(1)).toBe('1 frame');
+    expect(en.settingsModal.frameCountValue(2)).toBe('2 frames');
   });
 
   it('resolves the polish dictionary only for the pl locale', () => {
