@@ -331,6 +331,53 @@ describe('gemini batch drive runs', () => {
     expect(batch.submissions[0]?.keys).toEqual(['r0']);
   });
 
+  it('recovers a crash between the submit request and the job-name write by matching the display name, never resubmitting', async () => {
+    class DiesInsideSubmit extends FakeBatchPort {
+      override submitBatch(input: {
+        displayName: string;
+        requests: readonly AnalyzerBatchRequest[];
+      }): Promise<Result<AnalyzerBatchSubmission, AppError>> {
+        void super.submitBatch(input);
+        return Promise.reject(new Error('process killed while the submit request was in flight'));
+      }
+    }
+    const dying = new DiesInsideSubmit();
+    const deps = makeDeps(dying);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    const first = await processDrive(deps, batchInput, undefined, { ...runOptions, runId: 'run-1' })
+      .catch((error: unknown) => error);
+
+    expect(first).toBeInstanceOf(Error);
+    expect(dying.submissions).toHaveLength(1);
+    const persisted = await deps.globalCatalog.latestDriveRun();
+    expect(persisted.ok && persisted.value?.batch).toMatchObject({
+      displayName: 'avc-drive-run-1',
+      jobName: null,
+      state: 'preparing',
+      requests: [{ key: 'r0', videoPath: '/drive/one.mp4', fileUri: 'https://files/r0' }],
+    });
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()], existingJobName: 'batches/42' });
+    const { progress, events } = recordingProgress();
+    const second = await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, progress, {
+      ...runOptions,
+      runId: 'run-2',
+    });
+
+    expect(second).toMatchObject({ ok: true, value: { runId: 'run-1', filesDone: 1, filesFailed: 0 } });
+    expect(resumed.lookups).toEqual(['avc-drive-run-1']);
+    expect(resumed.submissions).toHaveLength(0);
+    expect(resumed.uploads).toEqual([]);
+    expect(events.find((event) => event.step === 'batch_submitted')?.data).toMatchObject({
+      jobName: 'batches/42',
+      reattached: true,
+    });
+    const settled = await deps.globalCatalog.latestDriveRun();
+    expect(settled.ok && settled.value?.batch).toMatchObject({ jobName: 'batches/42', state: 'completed' });
+  });
+
   it('refuses batch mode when the resolved analyzer is not gemini-native', async () => {
     const batch = new FakeBatchPort({ statuses: [succeeded()] });
     const deps = makeDeps(batch);

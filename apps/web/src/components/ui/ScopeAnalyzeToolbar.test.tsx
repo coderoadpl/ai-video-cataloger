@@ -77,6 +77,29 @@ describe('ScopeAnalyzeToolbar', () => {
     expect(screen.getByTestId('analyze-all-button')).toBeDefined();
   });
 
+  it('renders the batch wait state over any per-file bar and keeps Stop wired', async () => {
+    const onStop = vi.fn();
+    renderThemed(
+      <ScopeAnalyzeToolbar
+        scope="tree"
+        onScopeChange={vi.fn()}
+        pendingCount={0}
+        isBusy
+        progress={{ currentIndex: 2, totalCount: 5, currentFilename: 'clip.mp4' }}
+        batchWait={{ requestCount: 7 }}
+        onAnalyze={vi.fn()}
+        onStop={onStop}
+      />,
+    );
+
+    const wait = screen.getByTestId('batch-wait');
+    expect(wait.textContent).toContain(en.processing.driveBatchWaiting(7));
+    expect(wait.textContent).toContain(en.batchToolbar.batchWaitHint);
+    expect(screen.queryByText(en.batchToolbar.processingCount(2, 5))).toBeNull();
+    await userEvent.click(screen.getByTestId('analyze-stop-button'));
+    expect(onStop).toHaveBeenCalledOnce();
+  });
+
   it('renders live progress and wires Stop while a run is active', async () => {
     const onStop = vi.fn();
     renderThemed(
