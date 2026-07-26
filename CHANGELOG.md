@@ -22,6 +22,10 @@ release history jumps from `0.5.10` to `0.5.12`.
   per-file usage event and the batch price rates no longer follow a
   configuration that moved in between, and `batch_model_changed` names the drift
   on this path too.
+- Deleting a credential whose file entry could not be read now also says the
+  macOS Keychain still holds the credential when it does, in the CLI and in the
+  settings panel: "nothing was removed" alone pointed at the file when the
+  locked keychain was what needed unlocking.
 
 ## [0.5.25] - 2026-07-29
 

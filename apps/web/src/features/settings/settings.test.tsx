@@ -575,6 +575,14 @@ describe('credentialDeletionMessage', () => {
     })).toBe(en.credentials.entryUnreadable);
   });
 
+  it('still names the keychain when an unreadable entry was all that could be read', () => {
+    expect(credentialDeletionMessage(en, {
+      cleared: [],
+      retained: ['keychain'],
+      unreadableEntry: '/home/u/.ai-video-cataloger/credentials.json',
+    })).toBe(`${en.credentials.entryUnreadable} ${en.credentials.keychainRetained}`);
+  });
+
   it('names the backend it did clear alongside the entry it had to leave', () => {
     expect(credentialDeletionMessage(en, {
       cleared: ['keychain'],

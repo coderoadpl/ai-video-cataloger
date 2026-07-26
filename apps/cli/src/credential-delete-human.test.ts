@@ -53,6 +53,22 @@ describe('credentialDeleteHuman', () => {
     );
   });
 
+  it('still names the keychain when an unreadable entry was all that could be read', () => {
+    const output = credentialDeleteHuman({
+      providerId: 'gemini',
+      cleared: [],
+      retained: ['keychain'],
+      unreadableEntry: '/home/u/.ai-video-cataloger/credentials.json',
+    });
+
+    expect(output.split('\n')).toEqual([
+      'The entry for gemini in /home/u/.ai-video-cataloger/credentials.json could not be read,'
+      + ' so nothing was removed. Fix or remove that entry by hand.',
+      'The macOS Keychain still holds the credential for gemini.'
+      + ' Unlock the login keychain and run this command again.',
+    ]);
+  });
+
   it('names what it did clear when an unreadable entry survived alongside it', () => {
     const output = credentialDeleteHuman({
       providerId: 'gemini',
