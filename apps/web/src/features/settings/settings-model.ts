@@ -61,13 +61,16 @@ export const credentialDeletionMessage = (
   dictionary: Dictionary,
   deletion: CredentialDeletion,
 ): string => {
+  if (deletion.cleared.length === 0) {
+    return deletion.retained.includes('keychain')
+      ? dictionary.credentials.keychainRetained
+      : dictionary.credentials.notStored;
+  }
   const cleared = deletion.cleared.includes('keychain')
     ? deletion.cleared.includes('file')
       ? dictionary.credentials.clearedBoth
       : dictionary.credentials.clearedKeychain
-    : deletion.cleared.includes('file')
-      ? dictionary.credentials.clearedFile
-      : dictionary.credentials.notStored;
+    : dictionary.credentials.clearedFile;
   return deletion.retained.includes('keychain')
     ? `${cleared} ${dictionary.credentials.keychainRetained}`
     : cleared;

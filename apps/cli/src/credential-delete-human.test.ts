@@ -30,6 +30,15 @@ describe('credentialDeleteHuman', () => {
     ]);
   });
 
+  it('says nothing was cleared when only the keychain held the credential and refused', () => {
+    const output = credentialDeleteHuman({ providerId: 'openai', cleared: [], retained: ['keychain'] });
+
+    expect(output).toBe(
+      'Nothing was cleared: the macOS Keychain still holds the credential for openai.'
+      + ' Unlock the login keychain and run this command again.',
+    );
+  });
+
   it('reports a provider that had nothing stored', () => {
     const output = credentialDeleteHuman({ providerId: 'gemini', cleared: [], retained: [] });
 

@@ -16,6 +16,7 @@ import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
+import { credentialDeletionMessage } from './settings-model.js';
 import { SettingsModal } from './SettingsModal.js';
 
 const theme = createAppTheme('light');
@@ -443,5 +444,29 @@ describe('settings modal', () => {
     await waitFor(() => expect(credentialBodies).toEqual([
       { providerId: 'openai', credential: 'whisper-secret' },
     ]));
+  });
+});
+
+describe('credentialDeletionMessage', () => {
+  it('says only that the keychain kept the key when nothing was cleared', () => {
+    expect(credentialDeletionMessage(en, { cleared: [], retained: ['keychain'] })).toBe(
+      en.credentials.keychainRetained,
+    );
+  });
+
+  it('says nothing was stored when both lists are empty', () => {
+    expect(credentialDeletionMessage(en, { cleared: [], retained: [] })).toBe(en.credentials.notStored);
+  });
+
+  it('names both backends when both were cleared', () => {
+    expect(credentialDeletionMessage(en, { cleared: ['keychain', 'file'], retained: [] })).toBe(
+      en.credentials.clearedBoth,
+    );
+  });
+
+  it('names the keychain alone when only it was cleared', () => {
+    expect(credentialDeletionMessage(en, { cleared: ['keychain'], retained: [] })).toBe(
+      en.credentials.clearedKeychain,
+    );
   });
 });
