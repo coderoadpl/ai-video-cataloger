@@ -16,6 +16,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- A key saved while the Keychain was refusing writes is no longer discarded by
+  the next migration: when the plaintext file and the Keychain hold different
+  values for a provider, the file value wins, is write-verified into the
+  Keychain and logged to `credentials-migration.ndjson` as
+  `credential_value_conflict` (no secret in the line). An equal or absent file
+  value keeps the previous keychain-wins behaviour.
 - A transient Keychain failure no longer makes the running app read and write
   API keys from the plaintext file until it is relaunched: every credential
   operation tries the Keychain again, an `unavailable` keychain is re-probed on

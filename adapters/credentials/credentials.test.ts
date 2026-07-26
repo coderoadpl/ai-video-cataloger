@@ -102,10 +102,10 @@ describe('JsonCredentialsStore', () => {
 });
 
 describe('KeychainCredentialsStore', () => {
-  it('resolves from the keychain before the legacy config value', async () => {
+  it('resolves from the keychain for a provider the legacy file never held', async () => {
     const home = await tempHome();
     const legacy = new JsonCredentialsStore({ homeDirectory: home });
-    await legacy.set('openai', 'legacy-key');
+    await legacy.set('openrouter', 'legacy-key');
     const secrets = new FakeSecrets(true);
     await secrets.set('openai', 'keychain-key');
     const store = new KeychainCredentialsStore(secrets, legacy);
@@ -145,16 +145,49 @@ describe('KeychainCredentialsStore', () => {
     expect(recorded.trim().split('\n')).toHaveLength(1);
   });
 
-  it('keeps the keychain value and removes the stale file copy when both hold a key', async () => {
+  it('removes the file copy without rewriting the keychain when both hold the same key', async () => {
     const home = await tempHome();
     const legacy = new JsonCredentialsStore({ homeDirectory: home });
-    await legacy.set('openai', 'stale-key');
+    await legacy.set('openai', 'same-key');
     const secrets = new FakeSecrets(true);
-    await secrets.set('openai', 'current-key');
+    await secrets.set('openai', 'same-key');
     const store = new KeychainCredentialsStore(secrets, legacy);
 
-    expect(await store.get('openai')).toEqual({ ok: true, value: 'current-key' });
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'same-key' });
     expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
+  });
+
+  it('lets the newer file value win the migration when the two backends disagree', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    await legacy.set('openai', 'newer-key');
+    const secrets = new FakeSecrets(true);
+    await secrets.set('openai', 'older-key');
+    const store = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'newer-key' });
+    expect(secrets.values.get('openai')).toBe('newer-key');
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
+    const log = await readFile(path.join(home, '.ai-video-cataloger', 'credentials-migration.ndjson'), 'utf8');
+    expect(JSON.parse(log.trim())).toMatchObject({ event: 'credential_value_conflict', providerId: 'openai' });
+    expect(log).not.toContain('newer-key');
+    expect(log).not.toContain('older-key');
+  });
+
+  it('keeps the file value when the conflicting keychain write cannot be verified', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    await legacy.set('openai', 'newer-key');
+    const secrets = new FakeSecrets(true);
+    await secrets.set('openai', 'older-key');
+    secrets.failingAccounts.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'newer-key' });
+    expect(secrets.values.get('openai')).toBe('older-key');
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: 'newer-key' });
   });
 
   it('leaves the plaintext key in place when the keychain write fails', async () => {

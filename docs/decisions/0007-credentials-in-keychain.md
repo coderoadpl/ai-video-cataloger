@@ -45,11 +45,16 @@ provider: write the Keychain, read it back, and only after the readback matches
 remove that entry from the file. A failed write or a mismatched readback leaves
 the file entry untouched, so the sequence is never lossy — worst case the key
 stays where it already was and doctor keeps asking for the migration. When the
-Keychain already holds an entry for a provider, the file copy is dead weight
-(`get` has not consulted it since the Keychain answered) and is removed without
-overwriting the Keychain value. Each migrated provider appends one NDJSON line
-to `~/.ai-video-cataloger/credentials-migration.ndjson` — provider id,
-direction, timestamp, never the secret.
+Keychain already holds the *same* value, the file copy is dead weight and is
+removed without rewriting the Keychain. When the two disagree, the **file value
+wins**: after this migration exists, a file entry can only be created by a
+`set` that had to fall back, so it is the newer key — it is write-verified into
+the Keychain, the file entry is removed, and the line is logged as a value
+conflict. Until such a pending entry is promoted, `get` answers from the file,
+because that is the newest value the app was given. Each resolved provider
+appends one NDJSON line to
+`~/.ai-video-cataloger/credentials-migration.ndjson` — provider id, direction,
+outcome, timestamp, never the secret.
 
 **4. A Keychain failure degrades to the file store per operation, it never
 fails a run and it never locks the process out.** Availability is `darwin` +

@@ -12,7 +12,12 @@ import {
   type CredentialsBackendStatus,
   type Result,
 } from '@core/domain/index.js';
-import type { CredentialMigrationLog, CredentialsStore, SecretsStore } from '@core/server/index.js';
+import type {
+  CredentialMigrationLog,
+  CredentialMigrationOutcome,
+  CredentialsStore,
+  SecretsStore,
+} from '@core/server/index.js';
 
 const credentialsSchema = z.record(z.string().min(1), z.string().min(1));
 
@@ -120,12 +125,18 @@ export class KeychainCredentialsStore implements CredentialsStore {
   ) {}
 
   async get(providerId: string): Promise<Result<string | null, AppError>> {
-    if (await this.keychainReady()) {
+    const ready = await this.keychainReady();
+    const plaintextIsNewer = this.plaintextPending;
+    if (plaintextIsNewer) {
+      const fromFile = await this.legacy.get(providerId);
+      if (!fromFile.ok || fromFile.value !== null) return fromFile;
+    }
+    if (ready) {
       const fromKeychain = await this.secrets.get(providerId);
       this.keychainFailed = !fromKeychain.ok;
       if (fromKeychain.ok && fromKeychain.value !== null) return ok(fromKeychain.value);
     }
-    return this.legacy.get(providerId);
+    return plaintextIsNewer ? ok(null) : this.legacy.get(providerId);
   }
 
   async set(providerId: string, credential: string): Promise<Result<void, AppError>> {
@@ -207,13 +218,16 @@ export class KeychainCredentialsStore implements CredentialsStore {
       this.keychainFailed = true;
       return false;
     }
-    if (existing.value === null && !(await this.storeVerified(providerId, plaintext.value))) {
-      this.keychainFailed = true;
-      return false;
+    const conflicting = existing.value !== null && existing.value !== plaintext.value;
+    if (existing.value === null || conflicting) {
+      if (!(await this.storeVerified(providerId, plaintext.value))) {
+        this.keychainFailed = true;
+        return false;
+      }
     }
     const removed = await this.legacy.delete(providerId);
     if (!removed.ok) return false;
-    await this.options.migrationLog?.record(providerId);
+    await this.options.migrationLog?.record(providerId, conflicting ? 'value_conflict' : 'migrated');
     return true;
   }
 
@@ -236,10 +250,10 @@ export class NdjsonMigrationLog implements CredentialMigrationLog {
     this.filePath = path.join(options.homeDirectory ?? homedir(), '.ai-video-cataloger', 'credentials-migration.ndjson');
   }
 
-  async record(providerId: string): Promise<void> {
+  async record(providerId: string, outcome: CredentialMigrationOutcome): Promise<void> {
     const entry = {
       at: new Date().toISOString(),
-      event: 'credential_migrated',
+      event: outcome === 'value_conflict' ? 'credential_value_conflict' : 'credential_migrated',
       providerId,
       from: 'credentials.json',
       to: 'keychain',

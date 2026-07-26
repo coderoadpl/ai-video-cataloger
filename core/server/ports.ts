@@ -231,8 +231,10 @@ export interface SecretsStore {
   delete(account: string): Promise<Result<{ existed: boolean }, AppError>>;
 }
 
+export type CredentialMigrationOutcome = 'migrated' | 'value_conflict';
+
 export interface CredentialMigrationLog {
-  record(providerId: string): Promise<void>;
+  record(providerId: string, outcome: CredentialMigrationOutcome): Promise<void>;
 }
 
 export interface DirectoryEntry {
