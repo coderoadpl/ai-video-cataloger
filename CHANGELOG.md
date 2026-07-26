@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.23] - 2026-07-29
+
 ### Fixed
 
 - `credentials.json` no longer loses an entry the parser could not read. Every
@@ -22,35 +24,44 @@ release history jumps from `0.5.10` to `0.5.12`.
   once no entry of any kind is left. Deleting a provider whose entry is
   unreadable reports that the entry was left untouched and names the file,
   instead of answering "no stored credential" while the plaintext key sits on
-  disk.
+  disk
+  ([`ba3555a`](https://github.com/chomamateusz/ai-video-cataloger/commit/ba3555a6)).
 - `doctor` warns about unreadable credential entries again: the composition
   wrapper around the credentials store dropped `unreadableCredentialEntries` on
   the floor. The wrapper is now typed against the full port so a forgotten
-  optional method is a compile error.
+  optional method is a compile error
+  ([`ba3555a`](https://github.com/chomamateusz/ai-video-cataloger/commit/ba3555a6)).
 - A `set` whose Keychain write succeeded but whose plaintext copy could neither
   be removed nor marked superseded now fails with that message and keeps
   reporting a degraded backend, instead of proceeding as if the copy had been
-  marked.
+  marked
+  ([`ba3555a`](https://github.com/chomamateusz/ai-video-cataloger/commit/ba3555a6)).
 - A folder whose effective analyzer configuration differs from the batch root's
   in any way — a different `apiKeyRef`, output language or timeout, not just a
   different model — is processed interactively instead of being answered with
-  the root's settings inside the shared batch job.
+  the root's settings inside the shared batch job
+  ([`c55b901`](https://github.com/chomamateusz/ai-video-cataloger/commit/c55b9016)).
 - A Gemini batch run re-attaches to the unfinished run that actually holds a
   submitted job, rather than to the newest unfinished run for the root, so an
   interrupted interactive run over the same root can no longer cause a second
-  job to be bought.
+  job to be bought
+  ([`c55b901`](https://github.com/chomamateusz/ai-video-cataloger/commit/c55b9016)).
 - The `ListBatches` display-name lookup now collects matches across every page
   before choosing the newest by `createTime`; a duplicate name split over a page
-  boundary previously re-attached to the older job.
+  boundary previously re-attached to the older job
+  ([`c55b901`](https://github.com/chomamateusz/ai-video-cataloger/commit/c55b9016)).
 - A batch job that reports a success state while carrying a job-level error is
-  classified as failed.
+  classified as failed
+  ([`c55b901`](https://github.com/chomamateusz/ai-video-cataloger/commit/c55b9016)).
 - A read-only folder analysed under a path-derived folder id is reported as
   analysed after a restart. Folder-scoped scans now read the global index for
   such folders, so the desktop app no longer shows "Not Tracked" and offers to
-  analyse work that is already done.
+  analyse work that is already done
+  ([`c55b901`](https://github.com/chomamateusz/ai-video-cataloger/commit/c55b9016)).
 - Failed Files API deletions after a batch run emit one
   `batch_uploads_retained` progress event per run naming the count, instead of
-  being silent.
+  being silent
+  ([`c55b901`](https://github.com/chomamateusz/ai-video-cataloger/commit/c55b9016)).
 
 ## [0.5.22] - 2026-07-29
 
