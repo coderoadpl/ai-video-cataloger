@@ -26,6 +26,9 @@ const SPECIMEN_IDS = [
   'row-folder',
   'row-video',
   'row-video-duplicate',
+  'model-row-active',
+  'model-row-downloaded',
+  'model-row-missing',
   'buttons',
   'callout',
 ];

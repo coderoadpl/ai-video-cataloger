@@ -269,6 +269,7 @@ export interface Dictionary {
     active: string;
     downloaded: string;
     clickToActivate: string;
+    activate: string;
     notDownloaded: string;
     delete: string;
     download: string;
@@ -815,6 +816,7 @@ export const en: Dictionary = {
     active: 'Active',
     downloaded: 'Downloaded',
     clickToActivate: 'Click to activate',
+    activate: 'Activate',
     notDownloaded: 'Not downloaded',
     delete: 'Delete',
     download: 'Download',
@@ -1386,6 +1388,7 @@ export const pl: Dictionary = {
     active: 'Aktywny',
     downloaded: 'Pobrany',
     clickToActivate: 'Kliknij, aby aktywować',
+    activate: 'Aktywuj',
     notDownloaded: 'Niepobrany',
     delete: 'Usuń',
     download: 'Pobierz',

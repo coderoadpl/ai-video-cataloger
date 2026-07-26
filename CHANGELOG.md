@@ -14,6 +14,20 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Model Manager closes from a footer Close button instead of Escape or a
+  backdrop click only, every downloaded model carries its own contained
+  `Activate` button, and both Delete actions (whisper models and local AI
+  tiers) render in the error palette.
+- The `Not Tracked` status token no longer renders grey-on-grey: its
+  `theme.ts` palette entry moves to `#4e4e53` on `#e3e3e6` in light and
+  `#c7c7cc` on a 20% tint in dark, which also lifts the search-result and
+  absent-file surfaces that share the token.
+- The terminal panel starts collapsed while it has no output, expands by itself
+  on the first line, and stays wherever the user last put it once they toggle
+  it by hand.
+
 ## [0.5.17] - 2026-07-28
 
 ### Changed

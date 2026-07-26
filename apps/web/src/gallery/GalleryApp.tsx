@@ -14,6 +14,8 @@ import { DuplicateBadge } from '../components/ui/DuplicateBadge.js';
 import { FolderIcon, PlayCircleIcon } from '../components/ui/icons.js';
 import { MediaThumbnail } from '../components/ui/MediaThumbnail.js';
 import { VideoStatusBadge } from '../components/ui/VideoStatusBadge.js';
+import { type WhisperModelEntry } from '../features/models/models-model.js';
+import { WhisperModelRow } from '../features/models/WhisperModelRow.js';
 import { getDict } from '../i18n/dictionary.js';
 import { createAppTheme, type ThemeMode } from '../theme.js';
 
@@ -111,6 +113,39 @@ const rowSpecimens: readonly Specimen[] = [
   { id: 'row-video-duplicate', label: 'Video row (duplicate)', node: <VideoRowSpecimen duplicate /> },
 ];
 
+const ModelRowSpecimen = ({ model }: { model: WhisperModelEntry }) => (
+  <Box sx={{ width: 460 }}>
+    <WhisperModelRow
+      model={model}
+      activating={false}
+      deleting={false}
+      downloadPercentage={null}
+      disabled={false}
+      onActivate={() => undefined}
+      onDownload={() => undefined}
+      onDelete={() => undefined}
+    />
+  </Box>
+);
+
+const modelSpecimens: readonly Specimen[] = [
+  {
+    id: 'model-row-active',
+    label: 'Model row (active)',
+    node: <ModelRowSpecimen model={{ name: 'base', size: '142 MB', downloaded: true, active: true }} />,
+  },
+  {
+    id: 'model-row-downloaded',
+    label: 'Model row (downloaded)',
+    node: <ModelRowSpecimen model={{ name: 'small', size: '466 MB', downloaded: true, active: false }} />,
+  },
+  {
+    id: 'model-row-missing',
+    label: 'Model row (not downloaded)',
+    node: <ModelRowSpecimen model={{ name: 'medium', size: '1.5 GB', downloaded: false, active: false }} />,
+  },
+];
+
 const controlSpecimens: readonly Specimen[] = [
   {
     id: 'buttons',
@@ -146,6 +181,7 @@ const sections: readonly { title: string; specimens: readonly Specimen[] }[] = [
   { title: 'Tag chips', specimens: tagSpecimens },
   { title: 'Thumbnails', specimens: thumbnailSpecimens },
   { title: 'Rows', specimens: rowSpecimens },
+  { title: 'Model manager rows', specimens: modelSpecimens },
   { title: 'Controls', specimens: controlSpecimens },
 ];
 

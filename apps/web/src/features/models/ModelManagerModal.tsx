@@ -5,6 +5,7 @@ import {
   Button,
   CircularProgress,
   Dialog,
+  DialogActions,
   DialogContent,
   DialogTitle,
   Divider,
@@ -121,6 +122,11 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
             <LocalAiSection state={localAi} />
           </Box>
         </DialogContent>
+        <DialogActions>
+          <Button color="inherit" onClick={onClose} data-testid="model-manager-close">
+            {dictionary.common.close}
+          </Button>
+        </DialogActions>
       </Dialog>
 
       <DeleteModelDialog

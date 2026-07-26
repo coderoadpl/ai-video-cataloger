@@ -112,7 +112,7 @@ const LocalAiTierRow = ({
           {tier.installed ? (
             <Button
               size="small"
-              color="inherit"
+              color="error"
               disabled={disabled}
               data-testid="local-ai-delete-button"
               onClick={onDelete}

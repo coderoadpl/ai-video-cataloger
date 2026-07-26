@@ -90,18 +90,34 @@ export const WhisperModelRow = ({
             </Typography>
           </Box>
         ) : model.downloaded ? (
-          <Button
-            size="small"
-            color="inherit"
-            disabled={disabled}
-            data-testid="whisper-delete-button"
-            onClick={(event) => {
-              event.stopPropagation();
-              onDelete();
-            }}
-          >
-            {deleting ? <CircularProgress size={16} /> : dictionary.models.delete}
-          </Button>
+          <>
+            {model.active ? null : (
+              <Button
+                size="small"
+                variant="contained"
+                disabled={disabled}
+                data-testid="whisper-activate-button"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onActivate();
+                }}
+              >
+                {dictionary.models.activate}
+              </Button>
+            )}
+            <Button
+              size="small"
+              color="error"
+              disabled={disabled}
+              data-testid="whisper-delete-button"
+              onClick={(event) => {
+                event.stopPropagation();
+                onDelete();
+              }}
+            >
+              {deleting ? <CircularProgress size={16} /> : dictionary.models.delete}
+            </Button>
+          </>
         ) : (
           <Button
             size="small"

@@ -49,7 +49,7 @@ const LIGHT = {
     inProgress: { main: '#1d4ed8', soft: '#dbeafe', contrastText: '#1d1d1f' },
     completed: { main: '#15803d', soft: '#dcfce7', contrastText: '#1d1d1f' },
     error: { main: '#b91c1c', soft: '#fee2e2', contrastText: '#1d1d1f' },
-    notTracked: { main: '#86868b', soft: '#ededed', contrastText: '#1d1d1f' },
+    notTracked: { main: '#4e4e53', soft: '#e3e3e6', contrastText: '#1d1d1f' },
   } satisfies StatusPalette,
 };
 
@@ -66,7 +66,7 @@ const DARK = {
     inProgress: { main: '#60a5fa', soft: 'rgba(96, 165, 250, 0.16)', contrastText: '#1c1c1e' },
     completed: { main: '#4ade80', soft: 'rgba(74, 222, 128, 0.16)', contrastText: '#1c1c1e' },
     error: { main: '#f87171', soft: 'rgba(248, 113, 113, 0.16)', contrastText: '#1c1c1e' },
-    notTracked: { main: '#98989d', soft: 'rgba(152, 152, 157, 0.16)', contrastText: '#1c1c1e' },
+    notTracked: { main: '#c7c7cc', soft: 'rgba(199, 199, 204, 0.20)', contrastText: '#1c1c1e' },
   } satisfies StatusPalette,
 };
 

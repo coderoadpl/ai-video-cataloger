@@ -1,10 +1,14 @@
+import { useState } from 'react';
+import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
 
-import { AppLayout } from './AppLayout.js';
+import { AppLayout, type TerminalPanelState } from './AppLayout.js';
+import { type LogLine } from './components/ui/use-terminal-log.js';
 import { type ShellState } from './features/shell/use-shell.js';
 import { en } from './i18n/dictionary.js';
 import { renderWithProviders } from './test/render.js';
+import { createAppTheme } from './theme.js';
 
 const stubShell: ShellState = {
   appVersion: '1.2.3',
@@ -17,6 +21,34 @@ const stubShell: ShellState = {
   nestedDb: { open: false, paths: [] },
   closeNestedDb: () => undefined,
   closeFolderError: () => undefined,
+};
+
+const terminalPanel: TerminalPanelState = {
+  lines: [],
+  droppedCount: 0,
+  onCopy: () => undefined,
+  onClear: () => undefined,
+};
+
+const logLine: LogLine = { id: 'line-1', content: 'scan started', type: 'info', isJson: false };
+
+const EMIT_LABEL = 'emit-line';
+
+const TerminalHarness = ({ initialLines = [] }: { initialLines?: readonly LogLine[] }) => {
+  const [lines, setLines] = useState<readonly LogLine[]>(initialLines);
+  return (
+    <ThemeProvider theme={createAppTheme('light')}>
+      <button type="button" onClick={() => setLines([logLine])}>
+        {EMIT_LABEL}
+      </button>
+      <AppLayout
+        shell={stubShell}
+        sidebar={<div />}
+        content={<div />}
+        terminal={{ ...terminalPanel, lines }}
+      />
+    </ThemeProvider>
+  );
 };
 
 describe('AppLayout composition', () => {
@@ -80,19 +112,7 @@ describe('AppLayout composition', () => {
     expect(screen.queryByRole('button', { name: en.appFrame.terminalCopy })).toBeNull();
     unmount();
 
-    renderWithProviders(
-      <AppLayout
-        shell={stubShell}
-        sidebar={<div />}
-        content={<div />}
-        terminal={{
-          lines: [],
-          droppedCount: 0,
-          onCopy: () => undefined,
-          onClear: () => undefined,
-        }}
-      />,
-    );
+    renderWithProviders(<TerminalHarness initialLines={[logLine]} />);
 
     expect(screen.getByRole('button', { name: en.appFrame.terminalCopy })).toBeDefined();
     expect(screen.getByRole('button', { name: en.appFrame.terminalClear })).toBeDefined();
@@ -100,6 +120,26 @@ describe('AppLayout composition', () => {
     fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalCollapse }));
 
     expect(screen.queryByRole('button', { name: en.appFrame.terminalCopy })).toBeNull();
+    expect(screen.getByRole('button', { name: en.appFrame.terminalExpand })).toBeDefined();
+  });
+
+  it('starts the terminal collapsed while it is empty and expands on the first output', () => {
+    renderWithProviders(<TerminalHarness />);
+
+    expect(screen.getByRole('button', { name: en.appFrame.terminalExpand })).toBeDefined();
+
+    fireEvent.click(screen.getByRole('button', { name: EMIT_LABEL }));
+
+    expect(screen.getByRole('button', { name: en.appFrame.terminalCollapse })).toBeDefined();
+  });
+
+  it('keeps a terminal the user collapsed collapsed when output arrives', () => {
+    renderWithProviders(<TerminalHarness />);
+
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalExpand }));
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalCollapse }));
+    fireEvent.click(screen.getByRole('button', { name: EMIT_LABEL }));
+
     expect(screen.getByRole('button', { name: en.appFrame.terminalExpand })).toBeDefined();
   });
 });

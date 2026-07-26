@@ -98,16 +98,28 @@ export const AppLayout = ({
   const [modal, setModal] = useState<ShellModal | null>(null);
   const [showJson, setShowJson] = useState(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
-  const [terminalCollapsed, setTerminalCollapsed] = useState(false);
+  const [terminalCollapsed, setTerminalCollapsed] = useState(true);
+  const terminalChosenByUser = useRef(false);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [terminalHeight, setTerminalHeight] = useState(TERMINAL_DEFAULT_SIZE);
+
+  const toggleTerminal = useCallback(() => {
+    terminalChosenByUser.current = true;
+    setTerminalCollapsed((value) => !value);
+  }, []);
+
+  const hasTerminalOutput = (terminal?.lines.length ?? 0) > 0;
+  useEffect(() => {
+    if (!hasTerminalOutput || terminalChosenByUser.current) return;
+    setTerminalCollapsed(false);
+  }, [hasTerminalOutput]);
 
   useMenuEvents({
     onShowSettings: () => setModal('settings'),
     onShowModelManager: () => setModal('models'),
     onShowPrerequisites: () => setModal('prerequisites'),
     onShowSetupWizard: () => setModal('setup'),
-    onToggleTerminal: () => setTerminalCollapsed((value) => !value),
+    onToggleTerminal: toggleTerminal,
     onToggleSidebar: () => setSidebarCollapsed((value) => !value),
   });
 
@@ -200,11 +212,7 @@ export const AppLayout = ({
                 </Button>
               </>
             )}
-            <Button
-              size="small"
-              sx={{ color: 'grey.400', minWidth: 0 }}
-              onClick={() => setTerminalCollapsed((value) => !value)}
-            >
+            <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }} onClick={toggleTerminal}>
               {terminalCollapsed ? dictionary.appFrame.terminalExpand : dictionary.appFrame.terminalCollapse}
             </Button>
           </>

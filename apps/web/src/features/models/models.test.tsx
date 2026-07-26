@@ -198,6 +198,38 @@ describe('model manager', () => {
     expect(deleteHit).toBe(true);
   });
 
+  it('closes from the footer button', async () => {
+    stubList();
+    const onClose = vi.fn();
+    renderThemed(<ModelManagerModal open onClose={onClose} addLine={vi.fn()} intervalMs={0} />);
+
+    fireEvent.click(await screen.findByTestId('model-manager-close'));
+
+    expect(onClose).toHaveBeenCalledOnce();
+  });
+
+  it('activates a downloaded model from its own button and offers none on the active row', async () => {
+    let useBody: unknown = null;
+    stubList();
+    server.use(
+      http.post('/api/models/whisper/use', async ({ request }) => {
+        useBody = await request.json();
+        return HttpResponse.json({ ok: true, data: { model: 'small', downloaded: true } });
+      }),
+    );
+    renderThemed(<ModelManagerModal open onClose={vi.fn()} addLine={vi.fn()} intervalMs={0} />);
+
+    await screen.findByText('Disk space used: 608 MB');
+    const rowFor = (name: string) =>
+      screen.getAllByTestId('whisper-model-row').find((row) => row.getAttribute('data-model-name') === name);
+    expect(rowFor('base')?.querySelector('[data-testid="whisper-activate-button"]')).toBeNull();
+    const activateButton = rowFor('small')?.querySelector('[data-testid="whisper-activate-button"]');
+    if (!(activateButton instanceof HTMLElement)) throw new Error('missing activate button');
+    fireEvent.click(activateButton);
+
+    await waitFor(() => expect(useBody).toEqual({ modelName: 'small' }));
+  });
+
   it('disables the download button for an unsupported local-ai tier', async () => {
     stubList();
     renderThemed(<ModelManagerModal open onClose={vi.fn()} addLine={vi.fn()} intervalMs={0} />);
