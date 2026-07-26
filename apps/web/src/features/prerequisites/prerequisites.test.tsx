@@ -25,6 +25,7 @@ const configured: DoctorResult['configured'] = {
     kind: 'analyzer',
     family: 'harness',
     providerId: 'claude-code',
+    model: null,
     name: 'claude-code',
     available: true,
     message: 'claude-code is available',

@@ -15,6 +15,7 @@ const readiness = {
     kind: 'analyzer' as const,
     family: 'api' as const,
     providerId: 'openrouter',
+    model: 'gpt-4.1-mini',
     name: 'openrouter',
     available: false,
     message: 'openrouter is unavailable',

@@ -36,6 +36,7 @@ const doctorOutput = (overrides: Partial<DoctorOutput> = {}): DoctorOutput => ({
       warning: null,
       family: 'harness',
       providerId: 'codex',
+      model: null,
     },
     transcriber: {
       kind: 'transcriber',
@@ -65,6 +66,7 @@ describe('doctorHuman', () => {
     expect(output).toContain('whisper: available (engine: openai-whisper (python, CPU), binary: /opt/homebrew/bin/whisper)');
     expect(output).toContain('Transcriber (local): available (engine: openai-whisper (python, CPU), binary: /opt/homebrew/bin/whisper)');
     expect(output.split('\n')).toContain('ffmpeg: available');
+    expect(output.split('\n')).toContain('Analyzer (codex): available (model: CLI default)');
   });
 
   it('labels a whisper.cpp resolution and omits the suffix when no engine is known', () => {
@@ -75,11 +77,13 @@ describe('doctorHuman', () => {
         entry.name === 'whisper' ? { ...entry, path: '/opt/homebrew/bin/whisper-cli', engine: 'whisper-cli' as const } : entry),
       configured: {
         ...data.configured,
+        analyzer: { ...data.configured.analyzer, model: 'gpt-5.5' },
         transcriber: { ...data.configured.transcriber, mode: 'api' as const, model: null, engine: null, binaryPath: null },
       },
     }, live, ready);
 
     expect(output).toContain('whisper: available (engine: whisper.cpp, binary: /opt/homebrew/bin/whisper-cli)');
     expect(output.split('\n')).toContain('Transcriber (api): available');
+    expect(output.split('\n')).toContain('Analyzer (codex): available (model: gpt-5.5)');
   });
 });

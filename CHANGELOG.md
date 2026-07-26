@@ -25,6 +25,9 @@ release history jumps from `0.5.10` to `0.5.12`.
   `local`, `gemini`), so harness providers no longer require a config write;
   it cannot be combined with the legacy `--analyzer` backend flag, which now
   rejects unknown values during parsing.
+- The readiness payload names the effective analyzer model, and `doctor` prints
+  it as `(model: ...)` — `CLI default` for a harness provider left without a
+  configured model, which is when the harness CLI picks the model itself.
 
 ### Fixed
 

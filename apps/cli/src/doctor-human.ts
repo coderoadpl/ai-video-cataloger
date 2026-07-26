@@ -18,7 +18,11 @@ export const doctorHuman = (data: DoctorOutput, live: LiveOutput, ready: ReadyOu
     lines.push(`Readiness: not ready (${ready.error.message})`);
   }
   lines.push('Configured processing:');
-  lines.push(`Analyzer (${data.configured.analyzer.providerId}): ${data.configured.analyzer.available ? 'available' : 'missing'}`);
+  const analyzer = data.configured.analyzer;
+  lines.push(
+    `Analyzer (${analyzer.providerId}): ${analyzer.available ? 'available' : 'missing'}`
+    + ` (model: ${analyzer.model ?? 'CLI default'})`,
+  );
   const transcriber = data.configured.transcriber;
   lines.push(
     `Transcriber (${transcriber.mode}): ${transcriber.available ? 'available' : 'missing'}`

@@ -172,6 +172,23 @@ describe('configured readiness', () => {
     });
   });
 
+  it('reports the effective analyzer model, null for a harness left on its CLI default', async () => {
+    const harness = providers.find((candidate) => candidate.family === 'harness');
+    const api = providers.find((candidate) => candidate.family === 'api');
+    const local = providers.find((candidate) => candidate.family === 'local');
+    if (harness === undefined || api === undefined || local === undefined) throw new Error('Expected provider fixtures');
+
+    const defaulted = await getReadiness(await configuredDeps(harness, true));
+    const pinned = await getReadiness(await configuredDeps({ ...harness, model: 'gpt-5.5' }, true));
+    const apiModel = await getReadiness(await configuredDeps(api, true));
+    const localModel = await getReadiness(await configuredDeps(local, true));
+
+    expect(defaulted).toMatchObject({ ok: true, value: { analyzer: { model: null } } });
+    expect(pinned).toMatchObject({ ok: true, value: { analyzer: { model: 'gpt-5.5' } } });
+    expect(apiModel).toMatchObject({ ok: true, value: { analyzer: { model: 'vision-model' } } });
+    expect(localModel).toMatchObject({ ok: true, value: { analyzer: { model: 'gemma3:12b' } } });
+  });
+
   it('names the resolved whisper binary and engine on the transcriber component', async () => {
     const provider = providers.find((candidate) => candidate.family === 'harness');
     if (provider === undefined) throw new Error('Expected harness provider fixture');

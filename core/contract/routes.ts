@@ -633,6 +633,7 @@ export const readinessOutputSchema = z.object({
     kind: z.literal('analyzer'),
     family: z.enum(['api', 'harness', 'local']),
     providerId: z.string(),
+    model: z.string().nullable().default(null),
   }),
   transcriber: readinessComponentSchema.extend({
     kind: z.literal('transcriber'),

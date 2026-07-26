@@ -23,7 +23,11 @@ export type ReadinessComponent = {
 
 export interface ReadinessOutput {
   ready: boolean;
-  analyzer: ReadinessComponent & { family: AnalyzerProviderConfig['family']; providerId: string };
+  analyzer: ReadinessComponent & {
+    family: AnalyzerProviderConfig['family'];
+    providerId: string;
+    model: string | null;
+  };
   transcriber: ReadinessComponent & {
     mode: 'local' | 'api' | 'skip';
     model: WhisperModelName | null;
@@ -111,6 +115,7 @@ const evaluateConfiguredReadiness = async (
     ...component('analyzer', provider.providerId, analyzerDependency.value),
     family: provider.family,
     providerId: provider.providerId,
+    model: providerModel(provider),
   };
   const engine = transcriberDependency.value.engine ?? null;
   const transcriber = {
@@ -142,6 +147,18 @@ const component = (
   suggestedAction: dependency.available ? null : setupGuidance(dependency.installHint),
   warning: dependency.warning ?? null,
 });
+
+const providerModel = (provider: AnalyzerProviderConfig): string | null => {
+  switch (provider.family) {
+    case 'api':
+    case 'gemini-native':
+      return provider.model;
+    case 'local':
+      return provider.modelTag;
+    case 'harness':
+      return provider.model ?? null;
+  }
+};
 
 const setupGuidance = (hint: string): string => {
   const setup = 'Run: ai-video-cataloger setup';

@@ -32,6 +32,7 @@ const readiness = (options: {
     kind: 'analyzer' as const,
     family: 'harness' as const,
     providerId: 'claude-code',
+    model: null,
     name: 'claude-code',
     available: options.analyzerAvailable ?? true,
     message: 'checked',
