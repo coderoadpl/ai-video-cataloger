@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   appError,
+  batchSubmitRejection,
   defaultGeminiNativeProvider,
   geminiUsageAccounting,
   ok,
@@ -43,6 +44,12 @@ const batchInput: ProcessDriveInput = {
   whisperModel: 'base',
   geminiBatch: true,
   geminiBatchExplicit: true,
+};
+
+const configuredInput: ProcessDriveInput = {
+  ...batchInput,
+  geminiBatch: undefined,
+  geminiBatchExplicit: undefined,
 };
 
 const batchAnalysis = (): AnalysisOutput => ({
@@ -387,6 +394,122 @@ describe('gemini batch drive runs', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'invalid_config_value' } });
     expect(batch.submissions).toHaveLength(0);
+  });
+
+  it('keeps the display name after an uncertain submit failure so recovery can find the job', async () => {
+    const batch = new FakeBatchPort({ submitError: appError('provider_error', 'fetch failed') });
+    const deps = makeDeps(batch);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    const result = await processDrive(deps, batchInput, undefined, { ...runOptions, runId: 'run-1' });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'provider_error' } });
+    const stored = await deps.globalCatalog.latestDriveRun();
+    expect(stored.ok && stored.value?.batch).toMatchObject({
+      displayName: 'avc-drive-run-1',
+      jobName: null,
+      state: 'preparing',
+    });
+  });
+
+  it('clears the batch state when the API definitively rejected the submit', async () => {
+    const batch = new FakeBatchPort({
+      submitError: batchSubmitRejection(appError('provider_error', 'Gemini batch API returned HTTP 400')),
+    });
+    const deps = makeDeps(batch);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    const result = await processDrive(deps, batchInput, undefined, { ...runOptions, runId: 'run-1' });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'provider_error' } });
+    const stored = await deps.globalCatalog.latestDriveRun();
+    expect(stored.ok && stored.value?.batch).toBe(null);
+  });
+
+  it('re-attaches the root it interrupted even after another root ran in between', async () => {
+    const interrupted = new FakeBatchPort({ statuses: [{ state: 'running', message: null, results: null }] });
+    const deps = makeDeps(interrupted);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+    addVideo(deps.fs, '/other/two.mp4', 'hash-two');
+
+    await processDrive(deps, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-a',
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: () => Promise.reject(new Error('killed')),
+    }).catch(() => undefined);
+    expect(interrupted.submissions).toHaveLength(1);
+
+    const otherRoot = new FakeBatchPort({ statuses: [succeeded()] });
+    const between = await processDrive({ ...deps, analyzerBatch: otherRoot }, { ...batchInput, root: '/other' }, undefined, {
+      ...runOptions,
+      runId: 'run-b',
+      now: () => new Date('2026-01-01T01:00:00.000Z'),
+    });
+    expect(between.ok).toBe(true);
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()], existingJobName: 'batches/42' });
+    const second = await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-c',
+      now: () => new Date('2026-01-01T02:00:00.000Z'),
+    });
+
+    expect(second).toMatchObject({ ok: true, value: { runId: 'run-a', filesDone: 1, filesFailed: 0 } });
+    expect(resumed.submissions).toHaveLength(0);
+    expect(resumed.uploads).toEqual([]);
+    expect(resumed.polls).toEqual(['batches/42']);
+  });
+
+  it('honours a folder that opts out of the batch root', async () => {
+    const batch = new FakeBatchPort({ statuses: [succeeded()] });
+    const deps = makeDeps(batch);
+    await useGemini(deps);
+    await deps.config.set({ kind: 'home' }, 'gemini_batch_mode', 'true');
+    await deps.config.set({ kind: 'folder', folder: '/drive/interactive' }, 'gemini_batch_mode', 'false');
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+    addVideo(deps.fs, '/drive/interactive/two.mp4', 'hash-two');
+
+    const result = await processDrive(deps, configuredInput, undefined, { ...runOptions, runId: 'run-1' });
+
+    expect(result).toMatchObject({ ok: true, value: { filesDone: 2, filesFailed: 0 } });
+    expect(batch.uploads).toEqual(['/drive/one.mp4']);
+    expect(batch.submissions[0]?.keys).toEqual(['r0']);
+    expect(deps.analyzer.inputs.map((entry) => entry.videoPath)).toEqual(['/drive/interactive/two.mp4']);
+  });
+
+  it('honours a folder that opts into batch mode under an interactive root', async () => {
+    const batch = new FakeBatchPort({ statuses: [succeeded()] });
+    const deps = makeDeps(batch);
+    await useGemini(deps);
+    await deps.config.set({ kind: 'folder', folder: '/drive/batched' }, 'gemini_batch_mode', 'true');
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+    addVideo(deps.fs, '/drive/batched/two.mp4', 'hash-two');
+
+    const result = await processDrive(deps, configuredInput, undefined, { ...runOptions, runId: 'run-1' });
+
+    expect(result).toMatchObject({ ok: true, value: { filesDone: 2, filesFailed: 0 } });
+    expect(batch.uploads).toEqual(['/drive/batched/two.mp4']);
+    expect(batch.submissions[0]?.keys).toEqual(['r0']);
+    expect(deps.analyzer.inputs.map((entry) => entry.videoPath)).toEqual(['/drive/one.mp4']);
+  });
+
+  it('lets the explicit flag override every folder key', async () => {
+    const batch = new FakeBatchPort({ statuses: [succeeded()] });
+    const deps = makeDeps(batch);
+    await useGemini(deps);
+    await deps.config.set({ kind: 'folder', folder: '/drive/interactive' }, 'gemini_batch_mode', 'false');
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+    addVideo(deps.fs, '/drive/interactive/two.mp4', 'hash-two');
+
+    const result = await processDrive(deps, batchInput, undefined, { ...runOptions, runId: 'run-1' });
+
+    expect(result).toMatchObject({ ok: true, value: { filesDone: 2, filesFailed: 0 } });
+    expect(batch.uploads).toEqual(['/drive/one.mp4', '/drive/interactive/two.mp4']);
+    expect(deps.analyzer.inputs).toHaveLength(0);
   });
 
   it('leaves interactive runs untouched when batch mode is off', async () => {

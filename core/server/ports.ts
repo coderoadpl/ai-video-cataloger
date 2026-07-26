@@ -188,6 +188,7 @@ export interface GlobalCatalogStore {
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>>;
+  latestUnfinishedDriveRun(root: string): Promise<Result<DriveRunRecord | null, AppError>>;
   listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>>;
   completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
   deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>>;

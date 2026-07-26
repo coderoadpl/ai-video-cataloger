@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   geminiNativeModelPricing,
+  isBatchSubmitRejection,
   type AnalyzerProviderConfig,
 } from '@core/domain/index.js';
 import type { AnalyzerBatchRequest, CredentialsStore } from '@core/server/index.js';
@@ -318,5 +319,135 @@ describe('gemini batch lifecycle', () => {
     });
 
     expect(found).toMatchObject({ ok: true, value: null });
+  });
+
+  it('walks every page of the batch list before giving up on the display name', async () => {
+    const { fetchImpl, calls } = recordingFetch((call) =>
+      call.url.includes('pageToken=page-2')
+        ? jsonResponse({ operations: [{ name: 'batches/2', metadata: { displayName: 'avc-drive-run-1' } }] })
+        : jsonResponse({
+          operations: [{ name: 'batches/1', metadata: { displayName: 'avc-drive-other' } }],
+          nextPageToken: 'page-2',
+        }));
+
+    const found = await adapterWith(fetchImpl).findBatchByDisplayName({
+      provider: provider(),
+      displayName: 'avc-drive-run-1',
+    });
+
+    expect(found).toMatchObject({ ok: true, value: 'batches/2' });
+    expect(calls).toHaveLength(2);
+    expect(calls[1]?.url).toContain('pageToken=page-2');
+  });
+
+  it('stops paging once the list is exhausted', async () => {
+    const { fetchImpl, calls } = recordingFetch(() => jsonResponse({ operations: [] }));
+
+    const found = await adapterWith(fetchImpl).findBatchByDisplayName({
+      provider: provider(),
+      displayName: 'avc-drive-run-1',
+    });
+
+    expect(found).toMatchObject({ ok: true, value: null });
+    expect(calls).toHaveLength(1);
+  });
+
+  it('picks the newest batch when several carry the same display name', async () => {
+    const { fetchImpl } = recordingFetch(() =>
+      jsonResponse({
+        operations: [
+          { name: 'batches/old', metadata: { displayName: 'avc-drive-run-1', createTime: '2026-01-01T00:00:00Z' } },
+          { name: 'batches/new', metadata: { displayName: 'avc-drive-run-1', createTime: '2026-01-02T00:00:00Z' } },
+        ],
+      }));
+    const warnings: string[] = [];
+    const adapter = new GeminiNativeAnalyzerAdapter({
+      credentials,
+      fetchImpl,
+      videoFile,
+      sleep: () => Promise.resolve(),
+      onWarning: (message) => warnings.push(message),
+    });
+
+    const found = await adapter.findBatchByDisplayName({ provider: provider(), displayName: 'avc-drive-run-1' });
+
+    expect(found).toMatchObject({ ok: true, value: 'batches/new' });
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('avc-drive-run-1');
+  });
+
+  it('reports a job that is done with an error as failed even when the state suffix is empty', async () => {
+    const { fetchImpl } = recordingFetch(() =>
+      jsonResponse({ name: 'batches/9', done: true, error: { code: 3, message: 'quota exhausted' } }));
+
+    const status = await adapterWith(fetchImpl).batchStatus({
+      provider: provider(),
+      jobName: 'batches/9',
+      requestKeys: ['r0'],
+    });
+
+    expect(status).toMatchObject({ ok: true, value: { state: 'failed', message: 'quota exhausted' } });
+  });
+
+  it('reads a bare state name that carries no STATE_ prefix', async () => {
+    const { fetchImpl } = recordingFetch(() => jsonResponse({ name: 'batches/9', metadata: { state: 'CANCELLED' } }));
+
+    const status = await adapterWith(fetchImpl).batchStatus({
+      provider: provider(),
+      jobName: 'batches/9',
+      requestKeys: ['r0'],
+    });
+
+    expect(status).toMatchObject({ ok: true, value: { state: 'cancelled' } });
+  });
+
+  it('maps a gRPC status string on a per-request error to its own taxonomy', async () => {
+    const { fetchImpl } = recordingFetch(() =>
+      jsonResponse({
+        name: 'batches/9',
+        done: true,
+        metadata: { state: 'JOB_STATE_SUCCEEDED' },
+        response: {
+          inlinedResponses: [
+            { metadata: { key: 'r0' }, error: { message: 'no access', status: 'PERMISSION_DENIED' } },
+            { metadata: { key: 'r1' }, error: { message: 'slow down', status: 'RESOURCE_EXHAUSTED' } },
+            { metadata: { key: 'r2' }, error: { message: 'bad key', status: 'UNAUTHENTICATED' } },
+          ],
+        },
+      }));
+
+    const status = await adapterWith(fetchImpl).batchStatus({
+      provider: provider(),
+      jobName: 'batches/9',
+      requestKeys: ['r0', 'r1', 'r2'],
+    });
+
+    const codes = status.ok
+      ? status.value.results?.map((entry) => (entry.outcome.ok ? 'ok' : entry.outcome.error.code))
+      : [];
+    expect(codes).toEqual(['provider_auth_failed', 'rate_limited', 'provider_auth_failed']);
+  });
+
+  it('marks a 4xx submit rejection as definitive and leaves a network failure uncertain', async () => {
+    const rejecting = recordingFetch(() =>
+      jsonResponse({ error: { code: 400, message: 'invalid request', status: 'INVALID_ARGUMENT' } }, 400));
+    const rejected = await adapterWith(rejecting.fetchImpl).submitBatch({
+      provider: provider(),
+      displayName: 'avc-drive-run-1',
+      requests: [batchRequest('r0', '/drive/one.mp4')],
+    });
+
+    expect(rejected.ok).toBe(false);
+    expect(rejected.ok === false && isBatchSubmitRejection(rejected.error)).toBe(true);
+
+    const dropping: typeof fetch = () => Promise.reject(new Error('fetch failed'));
+    const dropped = await adapterWith(dropping).submitBatch({
+      provider: provider(),
+      displayName: 'avc-drive-run-1',
+      requests: [batchRequest('r0', '/drive/one.mp4')],
+    });
+
+    expect(dropped.ok).toBe(false);
+    expect(dropped.ok === false && isBatchSubmitRejection(dropped.error)).toBe(false);
   });
 });

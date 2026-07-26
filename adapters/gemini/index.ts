@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   appError,
+  batchSubmitRejection,
   geminiNativeModelPricing,
   geminiPricingModeMultiplier,
   ok,
@@ -31,13 +32,14 @@ import type {
 
 import {
   BATCH_INLINE_REQUEST_LIMIT_BYTES,
+  batchJobForDisplayName,
   batchJobMessage,
-  batchJobNameForDisplayName,
-  batchJobState,
+  batchListNextPageToken,
   batchResults,
   buildBatchSubmitBody,
   inlineRequestTooLargeError,
   parseBatchOperation,
+  readBatchJobState,
 } from './batch.js';
 import { analysisFromGenerateContent } from './response.js';
 
@@ -70,11 +72,13 @@ export interface GeminiNativeAnalyzerAdapterOptions {
   pollIntervalMs?: number | undefined;
   maxPollAttempts?: number | undefined;
   uploadChunkBytes?: number | undefined;
+  onWarning?: ((message: string) => void) | undefined;
 }
 
 export const UPLOAD_CHUNK_BYTES = 8 * 1024 * 1024;
 
 const BATCH_REQUEST_TIMEOUT_MS = 60_000;
+const BATCH_LIST_PAGE_LIMIT = 100;
 const MISSING_BATCH_JOB = Symbol('missing-batch-job');
 
 const UPLOAD_CHUNK_RETRIES = 3;
@@ -152,6 +156,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
   private readonly pollIntervalMs: number;
   private readonly maxPollAttempts: number;
   private readonly uploadChunkBytes: number;
+  private readonly warn: (message: string) => void;
 
   constructor(options: GeminiNativeAnalyzerAdapterOptions) {
     this.credentials = options.credentials;
@@ -161,6 +166,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     this.pollIntervalMs = options.pollIntervalMs ?? 2000;
     this.maxPollAttempts = options.maxPollAttempts ?? 60;
     this.uploadChunkBytes = options.uploadChunkBytes ?? UPLOAD_CHUNK_BYTES;
+    this.warn = options.onWarning ?? (() => undefined);
   }
 
   async test(config: AnalyzerProviderConfig): Promise<Result<ProviderTestResult, AppError>> {
@@ -359,6 +365,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
       apiKey.value,
       { method: 'POST', body },
       input.signal,
+      { markRejections: true },
     );
     if (!response.ok) return response;
     const operation = parseBatchOperation(response.value);
@@ -381,14 +388,31 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     }
     const apiKey = await this.apiKey(provider);
     if (!apiKey.ok) return apiKey;
-    const response = await this.batchFetch(
-      `${GEMINI_NATIVE_API_BASE_URL}/v1beta/batches?pageSize=100`,
-      apiKey.value,
-      { method: 'GET' },
-      input.signal,
-    );
-    if (!response.ok) return response;
-    return ok(batchJobNameForDisplayName(response.value, input.displayName));
+    let pageToken: string | null = null;
+    for (let page = 0; page < BATCH_LIST_PAGE_LIMIT; page += 1) {
+      const url = `${GEMINI_NATIVE_API_BASE_URL}/v1beta/batches?pageSize=100`
+        + (pageToken === null ? '' : `&pageToken=${encodeURIComponent(pageToken)}`);
+      const response: Result<unknown, AppError> = await this.batchFetch(
+        url,
+        apiKey.value,
+        { method: 'GET' },
+        input.signal,
+      );
+      if (!response.ok) return response;
+      const match = batchJobForDisplayName(response.value, input.displayName);
+      if (match !== null) {
+        if (match.matchCount > 1) {
+          this.warn(
+            `Gemini holds ${String(match.matchCount)} batch jobs named "${input.displayName}"; `
+            + `re-attaching to the newest one (${match.jobName}).`,
+          );
+        }
+        return ok(match.jobName);
+      }
+      pageToken = batchListNextPageToken(response.value);
+      if (pageToken === null) return ok(null);
+    }
+    return ok(null);
   }
 
   async batchStatus(input: {
@@ -420,7 +444,14 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     }
     const operation = parseBatchOperation(response.value);
     if (!operation.ok) return operation;
-    const state = batchJobState(operation.value);
+    const reading = readBatchJobState(operation.value);
+    if (reading.unrecognizedState !== null) {
+      this.warn(
+        `Gemini reported batch job ${input.jobName} with the unrecognized state `
+        + `"${reading.unrecognizedState}"; treating it as ${reading.state}.`,
+      );
+    }
+    const state = reading.state;
     if (state !== 'succeeded') {
       return ok({ state, message: batchJobMessage(operation.value), results: null });
     }
@@ -454,7 +485,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     apiKey: string,
     init: { method: string; body?: string | undefined },
     userSignal: AbortSignal | undefined,
-    options: { missingIsExpired?: boolean | undefined } = {},
+    options: { missingIsExpired?: boolean | undefined; markRejections?: boolean | undefined } = {},
   ): Promise<Result<unknown, AppError>> {
     const signal = combinedSignal(userSignal, BATCH_REQUEST_TIMEOUT_MS);
     let response: Response;
@@ -470,13 +501,11 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     }
     if (response.status === 404 && options.missingIsExpired === true) return ok(MISSING_BATCH_JOB);
     if (!response.ok) {
-      if (response.status === 401 || response.status === 403) {
-        return { ok: false, error: appError('provider_auth_failed', 'Gemini rejected the stored API key') };
-      }
-      if (response.status === 429) {
-        return { ok: false, error: appError('rate_limited', 'Gemini rate limit reached. Retry later.') };
-      }
-      return { ok: false, error: appError('provider_error', `Gemini batch API returned HTTP ${response.status}`) };
+      const definitive = options.markRejections === true
+        && response.status >= 400 && response.status < 500
+        && await carriesErrorBody(response);
+      const error = batchHttpError(response.status);
+      return { ok: false, error: definitive ? batchSubmitRejection(error) : error };
     }
     try {
       return ok(await response.json());
@@ -782,6 +811,28 @@ const gigabytes = (bytes: number): string => (bytes / 1024 / 1024 / 1024).toFixe
 const tooLargeMessage = (sizeBytes: number): string =>
   `Video is ${gigabytes(sizeBytes)} GB; the Gemini Files API accepts at most `
   + `${gigabytes(GEMINI_NATIVE_FILES_API_LIMIT_BYTES)} GB per file`;
+
+const batchErrorBodySchema = z.object({
+  error: z.object({
+    code: z.number().optional(),
+    message: z.string().optional(),
+    status: z.string().optional(),
+  }),
+});
+
+const carriesErrorBody = async (response: Response): Promise<boolean> => {
+  try {
+    return batchErrorBodySchema.safeParse(await response.json()).success;
+  } catch {
+    return false;
+  }
+};
+
+const batchHttpError = (status: number): AppError => {
+  if (status === 401 || status === 403) return appError('provider_auth_failed', 'Gemini rejected the stored API key');
+  if (status === 429) return appError('rate_limited', 'Gemini rate limit reached. Retry later.');
+  return appError('provider_error', `Gemini batch API returned HTTP ${status}`);
+};
 
 const uploadHttpError = (status: number): AppError => {
   if (status === 401 || status === 403) return appError('provider_auth_failed', 'Gemini rejected the stored API key');

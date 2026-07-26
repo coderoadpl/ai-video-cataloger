@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+import { appError, type AppError } from './errors.js';
+
 export const GLOBAL_CATALOG_SCHEMA_VERSION = 8;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
@@ -110,6 +112,18 @@ export const driveRunBatchStateSchema = z.object({
 export type DriveRunBatchState = z.output<typeof driveRunBatchStateSchema>;
 
 export const driveRunBatchDisplayName = (runId: string): string => `avc-drive-${runId}`;
+
+const batchSubmitRejectedDetails = { batchSubmitRejected: true } as const;
+
+// A submit that the API rejected before it could create anything is safe to forget. Anything
+// else — a dropped connection, a timeout — may have created a job we still have to re-attach to.
+export const batchSubmitRejection = (error: AppError): AppError =>
+  appError(error.code, error.message, batchSubmitRejectedDetails);
+
+export const isBatchSubmitRejection = (error: AppError): boolean =>
+  batchSubmitRejectedSchema.safeParse(error.details).success;
+
+const batchSubmitRejectedSchema = z.object({ batchSubmitRejected: z.literal(true) });
 
 export const parseDriveRunBatchState = (value: string | null): DriveRunBatchState | null => {
   if (value === null || value.length === 0) return null;

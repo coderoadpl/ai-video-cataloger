@@ -61,8 +61,13 @@ const batchOperationSchema = z.object({
   name: z.string().optional(),
   done: z.boolean().optional(),
   state: z.string().optional(),
+  createTime: z.string().optional(),
   metadata: z
-    .object({ state: z.string().optional(), displayName: z.string().optional() })
+    .object({
+      state: z.string().optional(),
+      displayName: z.string().optional(),
+      createTime: z.string().optional(),
+    })
     .optional(),
   response: z
     .object({
@@ -76,6 +81,7 @@ const batchOperationSchema = z.object({
 const batchListSchema = z.object({
   operations: z.array(batchOperationSchema).optional(),
   batches: z.array(batchOperationSchema).optional(),
+  nextPageToken: z.string().optional(),
 });
 
 export type GeminiBatchOperation = z.output<typeof batchOperationSchema>;
@@ -87,24 +93,59 @@ export const parseBatchOperation = (body: unknown): Result<GeminiBatchOperation,
     : { ok: false, error: appError('provider_error', 'Gemini batch API returned an unexpected response shape') };
 };
 
-export const batchJobNameForDisplayName = (body: unknown, displayName: string): string | null => {
+export interface BatchDisplayNameMatch {
+  jobName: string;
+  matchCount: number;
+}
+
+export const batchListNextPageToken = (body: unknown): string | null => {
   const parsed = batchListSchema.safeParse(body);
   if (!parsed.success) return null;
-  const operations = [...(parsed.data.operations ?? []), ...(parsed.data.batches ?? [])];
-  const match = operations.find((operation) => operation.metadata?.displayName === displayName);
-  return match?.name ?? null;
+  const token = parsed.data.nextPageToken ?? '';
+  return token.length === 0 ? null : token;
 };
 
-export const batchJobState = (operation: GeminiBatchOperation): AnalyzerBatchJobState => {
-  const raw = operation.metadata?.state ?? operation.state ?? '';
-  const suffix = raw.slice(raw.lastIndexOf('STATE_') + 'STATE_'.length).toUpperCase();
-  if (suffix === 'SUCCEEDED') return 'succeeded';
-  if (suffix === 'FAILED') return 'failed';
-  if (suffix === 'CANCELLED' || suffix === 'CANCELED') return 'cancelled';
-  if (suffix === 'EXPIRED') return 'expired';
-  if (suffix === 'RUNNING') return 'running';
-  if (suffix.length === 0 && operation.done === true) return 'succeeded';
-  return 'pending';
+export const batchJobForDisplayName = (body: unknown, displayName: string): BatchDisplayNameMatch | null => {
+  const parsed = batchListSchema.safeParse(body);
+  if (!parsed.success) return null;
+  const matches = [...(parsed.data.operations ?? []), ...(parsed.data.batches ?? [])]
+    .filter((operation) => operation.metadata?.displayName === displayName && operation.name !== undefined)
+    .sort((left, right) => createTimeOf(right).localeCompare(createTimeOf(left)));
+  const newest = matches[0];
+  if (newest?.name === undefined) return null;
+  return { jobName: newest.name, matchCount: matches.length };
+};
+
+const createTimeOf = (operation: GeminiBatchOperation): string =>
+  operation.metadata?.createTime ?? operation.createTime ?? '';
+
+const BATCH_STATE_BY_NAME: Readonly<Record<string, AnalyzerBatchJobState>> = {
+  SUCCEEDED: 'succeeded',
+  FAILED: 'failed',
+  CANCELLED: 'cancelled',
+  CANCELED: 'cancelled',
+  EXPIRED: 'expired',
+  RUNNING: 'running',
+  PENDING: 'pending',
+  QUEUED: 'pending',
+  UNSPECIFIED: 'pending',
+};
+
+export interface BatchJobStateReading {
+  state: AnalyzerBatchJobState;
+  unrecognizedState: string | null;
+}
+
+export const readBatchJobState = (operation: GeminiBatchOperation): BatchJobStateReading => {
+  const raw = (operation.metadata?.state ?? operation.state ?? '').toUpperCase();
+  const marker = raw.lastIndexOf('STATE_');
+  const suffix = marker === -1 ? raw : raw.slice(marker + 'STATE_'.length);
+  const known = BATCH_STATE_BY_NAME[suffix];
+  if (known !== undefined) return { state: known, unrecognizedState: null };
+  // A job that carries an error never "finished" successfully, whatever its state field says.
+  if (operation.error !== undefined) return { state: 'failed', unrecognizedState: null };
+  if (operation.done === true) return { state: 'succeeded', unrecognizedState: raw };
+  return { state: 'pending', unrecognizedState: raw.length === 0 ? null : raw };
 };
 
 export const batchJobMessage = (operation: GeminiBatchOperation): string | null =>
@@ -116,10 +157,15 @@ const inlinedResponseList = (operation: GeminiBatchOperation): z.output<typeof i
   return Array.isArray(inlined) ? inlined : inlined.inlinedResponses ?? [];
 };
 
+// The batch endpoint answers over HTTP with numeric codes, but the per-request Status objects
+// it embeds come from gRPC and name the status instead. Both conventions have to map.
 const requestErrorFor = (error: z.output<typeof statusErrorSchema>): AppError => {
   const message = error.message ?? 'Gemini batch request failed';
-  if (error.code === 401 || error.code === 403) return appError('provider_auth_failed', message);
-  if (error.code === 429) return appError('rate_limited', message);
+  const status = error.status ?? '';
+  if (status === 'UNAUTHENTICATED' || status === 'PERMISSION_DENIED' || error.code === 401 || error.code === 403) {
+    return appError('provider_auth_failed', message);
+  }
+  if (status === 'RESOURCE_EXHAUSTED' || error.code === 429) return appError('rate_limited', message);
   return appError('provider_error', message);
 };
 

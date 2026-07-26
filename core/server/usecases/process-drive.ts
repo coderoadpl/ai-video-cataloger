@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto';
 import {
   appError,
   driveRunBatchDisplayName,
+  isBatchSubmitRejection,
   ok,
   type AnalyzerProviderConfig,
   type AnalyzerProviderId,
@@ -187,7 +188,12 @@ export const processDrive = async (
 
   const now = options.now ?? (() => new Date());
   const started = now();
-  const batchPlan = await resolveBatchPlan(deps, input, discovery.value.root);
+  const batchFolders = await resolveBatchFolders(deps, input, discovery.value.folders);
+  if (!batchFolders.ok) return batchFolders;
+  const planAnchor = discovery.value.folders.find((folder) => batchFolders.value.has(folder.path))?.path ?? null;
+  const batchPlan: Result<DriveBatchPlan | null, AppError> = planAnchor === null
+    ? ok(null)
+    : await resolveBatchPlan(deps, input, planAnchor);
   if (!batchPlan.ok) return batchPlan;
   const resumable = batchPlan.value === null
     ? ok(null)
@@ -266,7 +272,9 @@ export const processDrive = async (
 
     const folderCounts = { filesDone: 0, filesSkipped: 0, filesFailed: 0 };
     const pendingBatchFiles: PendingBatchFile[] = [];
-    const batchesHere = plan === null ? ok(false) : await folderTakesBatch(deps, input, folder.path, plan);
+    const batchesHere = plan === null || !batchFolders.value.has(folder.path)
+      ? ok(false)
+      : await folderTakesBatch(deps, input, folder.path, plan);
     if (!batchesHere.ok) return batchesHere;
     for (const video of scan.value.videos) {
       const cancellation = cancelled(progress);
@@ -404,17 +412,30 @@ export const processDrive = async (
   return reportSummary(deps, state, progress, now);
 };
 
+// The --gemini-batch flag wins over every scope, exactly like an explicit provider override;
+// without it each folder answers for itself, so a folder key can opt in or out of the run's mode.
+const resolveBatchFolders = async (
+  deps: ProcessDeps,
+  input: ProcessDriveInput,
+  folders: readonly CatalogFolderDiscovery[],
+): Promise<Result<Set<string>, AppError>> => {
+  if (input.geminiBatchExplicit === true) {
+    return ok(input.geminiBatch === true ? new Set(folders.map((folder) => folder.path)) : new Set());
+  }
+  const enabled = new Set<string>();
+  for (const folder of folders) {
+    const stored = await resolveConfigValues(deps.config, folder.path);
+    if (!stored.ok) return stored;
+    if (stored.value.effective.gemini_batch_mode === 'true') enabled.add(folder.path);
+  }
+  return ok(enabled);
+};
+
 const resolveBatchPlan = async (
   deps: ProcessDeps,
   input: ProcessDriveInput,
   root: string,
 ): Promise<Result<DriveBatchPlan | null, AppError>> => {
-  const stored = await resolveConfigValues(deps.config, root);
-  if (!stored.ok) return stored;
-  const enabled = input.geminiBatchExplicit === true
-    ? input.geminiBatch === true
-    : stored.value.effective.gemini_batch_mode === 'true';
-  if (!enabled) return ok(null);
   const resolved = await resolveProcessOptions(deps.config, root, processInput(input, root, 1, 1));
   if (!resolved.ok) return resolved;
   const provider = resolved.value.analyzer.provider;
@@ -445,10 +466,10 @@ const resumableBatchRun = async (
   globalCatalog: GlobalCatalogStore,
   root: string,
 ): Promise<Result<DriveRunRecord | null, AppError>> => {
-  const latest = await globalCatalog.latestDriveRun();
+  const latest = await globalCatalog.latestUnfinishedDriveRun(root);
   if (!latest.ok) return latest;
   const run = latest.value;
-  if (run === null || run.finishedAt !== null || run.root !== root) return ok(null);
+  if (run === null) return ok(null);
   if (run.batch === null || run.batch.state === 'completed' || run.batch.state === 'failed') return ok(null);
   return ok(run);
 };
@@ -533,9 +554,9 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
     })
     : ok({ jobName: persistedBatch.jobName, reattached: true });
   if (!job.ok) {
-    state.run.batch = null;
-    const cleared = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
-    if (!cleared.ok) return cleared;
+    if (isBatchSubmitRejection(job.error)) state.run.batch = null;
+    const persistedFailure = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
+    if (!persistedFailure.ok) return persistedFailure;
     return job;
   }
   state.run.batch = { displayName, jobName: job.value.jobName, state: 'submitted', model: plan.model, requests };

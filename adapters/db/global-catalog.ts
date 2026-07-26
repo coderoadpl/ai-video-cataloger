@@ -515,6 +515,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async latestUnfinishedDriveRun(root: string): Promise<Result<DriveRunRecord | null, AppError>> {
+    return this.read((db) => {
+      const rows = db.select().from(driveRuns).all()
+        .filter((row) => row.root === root && row.finishedAt === null)
+        .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
+      const latest = rows[0];
+      return latest === undefined ? null : rowToDriveRun(latest);
+    });
+  }
+
   async listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {
     return this.read((db) => {
       const candidates: FaceIndexCandidate[] = [];

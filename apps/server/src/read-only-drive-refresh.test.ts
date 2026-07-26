@@ -146,6 +146,6 @@ describe('drive run whose end-of-run snapshot refresh lands on a now read-only t
     expect(second.value.filesFailed).toBe(0);
     expect(second.value.snapshotSkipped).toBeGreaterThan(0);
     const skipped = events.filter((event) => event.step === 'catalog_snapshot_skipped');
-    expect(skipped.some((event) => event.data['folder'] === target)).toBe(true);
+    expect(skipped.some((event) => event.data?.['folder'] === target)).toBe(true);
   }, 120000);
 });
