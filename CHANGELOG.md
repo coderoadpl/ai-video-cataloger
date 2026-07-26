@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.5.21] - 2026-07-28
+
 ### Added
 
 - **Batch mode for Gemini drive runs** — an opt-in that submits a whole
@@ -25,13 +27,22 @@ release history jumps from `0.5.10` to `0.5.12`.
   job and waits for it — usually minutes, up to 24 hours by the API's SLA — and
   every answer lands through the normal per-file path (transcript artifacts,
   rename, global catalog, cost event). The run's job name and per-file request
-  mapping are persisted before submission, so a run killed mid-flight
-  re-attaches to the job it already paid for instead of submitting a second
-  one. Design recorded in
-  [ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md).
+  mapping are persisted and flushed to disk before submission, so a run killed
+  mid-flight re-attaches to the job it already paid for instead of submitting a
+  second one. Design recorded in
+  [ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)
+  ([`93c5839`](https://github.com/chomamateusz/ai-video-cataloger/commit/93c5839a),
+  [`fe562da`](https://github.com/chomamateusz/ai-video-cataloger/commit/fe562da6),
+  [`df49b76`](https://github.com/chomamateusz/ai-video-cataloger/commit/df49b76f),
+  [`3c51289`](https://github.com/chomamateusz/ai-video-cataloger/commit/3c512896),
+  [`e110c45`](https://github.com/chomamateusz/ai-video-cataloger/commit/e110c453),
+  [`98343ec`](https://github.com/chomamateusz/ai-video-cataloger/commit/98343ecb),
+  [`f72f2d8`](https://github.com/chomamateusz/ai-video-cataloger/commit/f72f2d83),
+  [`1045ce7`](https://github.com/chomamateusz/ai-video-cataloger/commit/1045ce78)).
 - NDJSON drive runs gain three additive steps — `batch_submitted` (job name,
   request count), `batch_poll` (job name, state) and `batch_completed` (job
-  name, succeeded/failed counts).
+  name, succeeded/failed counts)
+  ([`e110c45`](https://github.com/chomamateusz/ai-video-cataloger/commit/e110c453)).
 
 ## [0.5.20] - 2026-07-28
 
