@@ -26,6 +26,14 @@ export type DriveMessage =
       readonly filesSkipped: number;
       readonly filesFailed: number;
     }
+  | { readonly kind: 'batchSubmitted'; readonly level: 'info'; readonly requestCount: number; readonly reattached: boolean }
+  | { readonly kind: 'batchPoll'; readonly level: 'info'; readonly state: string; readonly requestCount: number }
+  | {
+      readonly kind: 'batchCompleted';
+      readonly level: 'success';
+      readonly succeeded: number;
+      readonly failed: number;
+    }
   | {
       readonly kind: 'fileProgress';
       readonly level: 'info';
@@ -55,6 +63,11 @@ export interface FileProgressView {
   currentFilename: string;
 }
 
+export interface BatchWaitView {
+  readonly requestCount: number;
+  readonly state: string;
+}
+
 export interface DriveEventOutcome {
   readonly counts: DriveCounts;
   readonly messages: readonly DriveMessage[];
@@ -62,6 +75,7 @@ export interface DriveEventOutcome {
   readonly fileProgress: FileProgressView | null;
   readonly folderComplete: boolean;
   readonly skippedPath: string | null;
+  readonly batchWait?: BatchWaitView | null;
 }
 
 export const emptyDriveCounts = (): DriveCounts => ({
@@ -164,6 +178,51 @@ export const reduceDriveEvent = (
     return {
       ...idle(counts),
       messages: [{ kind: 'snapshotSkipped', level: 'info', folder: strField(data, 'folder') }],
+    };
+  }
+
+  if (step === 'batch_submitted') {
+    return {
+      ...idle(counts),
+      messages: [
+        {
+          kind: 'batchSubmitted',
+          level: 'info',
+          requestCount: numField(data, 'requestCount'),
+          reattached: data?.reattached === true,
+        },
+      ],
+      batchWait: { requestCount: numField(data, 'requestCount'), state: 'submitted' },
+    };
+  }
+
+  if (step === 'batch_poll') {
+    return {
+      ...idle(counts),
+      messages: [
+        {
+          kind: 'batchPoll',
+          level: 'info',
+          state: strField(data, 'state'),
+          requestCount: numField(data, 'requestCount'),
+        },
+      ],
+      batchWait: { requestCount: numField(data, 'requestCount'), state: strField(data, 'state') },
+    };
+  }
+
+  if (step === 'batch_completed') {
+    return {
+      ...idle(counts),
+      messages: [
+        {
+          kind: 'batchCompleted',
+          level: 'success',
+          succeeded: numField(data, 'succeeded'),
+          failed: numField(data, 'failed'),
+        },
+      ],
+      batchWait: null,
     };
   }
 

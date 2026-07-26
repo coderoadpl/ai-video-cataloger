@@ -12,6 +12,7 @@ interface ScopeAnalyzeToolbarProps {
   pendingCount: number;
   isBusy: boolean;
   progress: BatchProgressView | null;
+  batchWait?: { requestCount: number } | null | undefined;
   onAnalyze: () => void;
   onStop: () => void;
   disabledReason?: string | undefined;
@@ -26,6 +27,7 @@ export const ScopeAnalyzeToolbar = ({
   pendingCount,
   isBusy,
   progress,
+  batchWait,
   onAnalyze,
   onStop,
   disabledReason,
@@ -61,7 +63,29 @@ export const ScopeAnalyzeToolbar = ({
         </span>
       </Tooltip>
 
-      {progress !== null ? (
+      {batchWait !== null && batchWait !== undefined ? (
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }} data-testid="batch-wait">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <Typography variant="caption">
+              {dictionary.processing.driveBatchWaiting(batchWait.requestCount)}
+            </Typography>
+            <Button
+              data-testid="analyze-stop-button"
+              size="small"
+              color="error"
+              startIcon={<CancelIcon fontSize="small" />}
+              onClick={onStop}
+              sx={{ minWidth: 0, py: 0 }}
+            >
+              {dictionary.batchToolbar.stop}
+            </Button>
+          </Box>
+          <LinearProgress variant="indeterminate" />
+          <Typography variant="caption" color="text.secondary">
+            {dictionary.batchToolbar.batchWaitHint}
+          </Typography>
+        </Box>
+      ) : progress !== null ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <Typography variant="caption">

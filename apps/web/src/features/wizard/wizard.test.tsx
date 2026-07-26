@@ -215,6 +215,7 @@ const configDefaults = {
     promptStyle: 'file-urls',
   }),
   faces_enabled: 'false',
+  gemini_batch_mode: 'false',
   output_language: 'auto',
   ui_language: 'en',
 };

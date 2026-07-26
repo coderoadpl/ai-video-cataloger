@@ -59,6 +59,7 @@ const configData = (facesEnabled: boolean) => ({
     local_model: null,
     analyzer_provider: null,
     faces_enabled: facesEnabled ? 'true' : 'false',
+    gemini_batch_mode: null,
     output_language: null,
     ui_language: null,
   },
@@ -77,6 +78,7 @@ const configData = (facesEnabled: boolean) => ({
     local_model: 'default',
     analyzer_provider: 'default',
     faces_enabled: 'home',
+    gemini_batch_mode: 'default',
     output_language: 'default',
     ui_language: 'default',
   },
@@ -101,6 +103,7 @@ const defaults = (facesEnabled: boolean) => ({
     promptStyle: 'file-urls',
   }),
   faces_enabled: facesEnabled ? 'true' : 'false',
+  gemini_batch_mode: 'false',
   output_language: 'auto',
   ui_language: 'en',
 });

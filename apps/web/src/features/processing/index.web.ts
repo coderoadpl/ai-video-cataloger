@@ -9,7 +9,7 @@ export {
   reduceDriveEvent,
   toProgressModel,
 } from './core/index.js';
-export type { DriveMessage, DriveProgressView, ProcessVideo } from './core/index.js';
+export type { BatchWaitView, DriveMessage, DriveProgressView, ProcessVideo } from './core/index.js';
 
 const core = createProcessingCore({
   descriptors: {

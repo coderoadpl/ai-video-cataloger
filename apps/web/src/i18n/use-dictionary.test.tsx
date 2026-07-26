@@ -19,6 +19,7 @@ const CONFIG_KEYS = [
   'local_model',
   'analyzer_provider',
   'faces_enabled',
+  'gemini_batch_mode',
   'output_language',
   'ui_language',
 ] as const;

@@ -237,6 +237,38 @@ describe('settings modal', () => {
     expect(within(screen.getByTestId('whisper-mode-select')).getByRole('combobox').getAttribute('aria-disabled')).toBe('true');
   });
 
+  it('offers batch mode only for Gemini and saves the opt-in with honest waiting copy', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { key: string; value: string }[] = [];
+    stubEndpoints(emptyConfig);
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push({ key: body.key, value: body.value });
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'folder' as const, ignoredFolderValue: null },
+        });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const backendSelect = await screen.findByTestId('analyzer-backend-select');
+    expect(screen.queryByTestId('gemini-batch-switch')).toBeNull();
+    fireEvent.mouseDown(within(backendSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
+
+    const toggle = await screen.findByTestId('gemini-batch-switch');
+    expect(screen.getByText(/up to 24 hours/u)).toBeDefined();
+    expect(screen.getByText(/Analyzing a single video is never batched/u)).toBeDefined();
+
+    fireEvent.click(toggle);
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(bodies.some((body) => body.key === 'gemini_batch_mode')).toBe(true));
+    expect(bodies.find((body) => body.key === 'gemini_batch_mode')?.value).toBe('true');
+  });
+
   it('saves only the changed keys and closes on success', async () => {
     const configSetBody = z.object({ folder: z.literal(FOLDER), key: z.string(), value: z.string() });
     const bodies: { folder: typeof FOLDER; key: string; value: string }[] = [];

@@ -23,6 +23,7 @@ import {
   processDrive as processDriveAction,
   reduceDriveEvent,
   toProgressModel,
+  type BatchWaitView,
   type DriveMessage,
   type DriveProgressView,
   type ProcessVideo,
@@ -58,6 +59,7 @@ export interface ProcessingState {
   batchProgress: BatchProgressView | null;
   driveProgress: DriveProgressView | null;
   driveFileProgress: BatchProgressView | null;
+  driveBatchWait: BatchWaitView | null;
   cancelConfirmation: CancelConfirmation;
   batchSummary: BatchSummaryState;
   driveSummary: DriveSummaryState;
@@ -106,6 +108,12 @@ const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): s
         message.filesSkipped,
         message.filesFailed,
       );
+    case 'batchSubmitted':
+      return dictionary.processing.driveBatchSubmitted(message.requestCount, message.reattached);
+    case 'batchPoll':
+      return dictionary.processing.driveBatchPoll(message.state, message.requestCount);
+    case 'batchCompleted':
+      return dictionary.processing.driveBatchCompleted(message.succeeded, message.failed);
     case 'fileProgress':
       return dictionary.processing.fileProgressLine(
         message.current,
@@ -137,6 +145,7 @@ export const useProcessing = ({
   const [batchProgress, setBatchProgress] = useState<BatchProgressView | null>(null);
   const [driveProgress, setDriveProgress] = useState<DriveProgressView | null>(null);
   const [driveFileProgress, setDriveFileProgress] = useState<BatchProgressView | null>(null);
+  const [driveBatchWait, setDriveBatchWait] = useState<BatchWaitView | null>(null);
   const [driveActive, setDriveActive] = useState(false);
   const driveSummaryRef = useRef<DriveSummaryCounts | null>(null);
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({
@@ -307,6 +316,7 @@ export const useProcessing = ({
     async (root: string): Promise<RunOutcome> => {
       setDriveProgress(null);
       setDriveFileProgress(null);
+      setDriveBatchWait(null);
 
       let jobId: string;
       try {
@@ -346,6 +356,7 @@ export const useProcessing = ({
               }
               if (outcome.folderProgress !== null) setDriveProgress(outcome.folderProgress);
               if (outcome.fileProgress !== null) setDriveFileProgress(outcome.fileProgress);
+              if (outcome.batchWait !== undefined) setDriveBatchWait(outcome.batchWait);
               if (outcome.folderComplete) void queryClient.invalidateQueries();
             }
           },
@@ -397,6 +408,7 @@ export const useProcessing = ({
         setDriveActive(false);
         setDriveProgress(null);
         setDriveFileProgress(null);
+        setDriveBatchWait(null);
         await queryClient.invalidateQueries();
         if (outcome.success && driveSummaryRef.current !== null) {
           setDriveSummary({ open: true, counts: driveSummaryRef.current });
@@ -459,6 +471,7 @@ export const useProcessing = ({
     batchProgress,
     driveProgress,
     driveFileProgress,
+    driveBatchWait,
     cancelConfirmation,
     batchSummary,
     driveSummary,

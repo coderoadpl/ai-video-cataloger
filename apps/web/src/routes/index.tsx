@@ -76,7 +76,7 @@ export const IndexRoute = () => {
   const analyzing = selected !== null && selected.path === processing.analyzingPath;
   const overlay = analyzing ? processing.progress : null;
 
-  const driveRunning = processing.driveFileProgress !== null;
+  const driveRunning = processing.driveFileProgress !== null || processing.driveBatchWait !== null;
   const activeProgress = processing.batchProgress ?? processing.driveFileProgress;
   const subfolderVideoCount = useMemo(() => {
     const root = tree.root;
@@ -140,6 +140,7 @@ export const IndexRoute = () => {
           pendingCount={scopedPendingCount}
           isBusy={processing.isBusy}
           progress={activeProgress}
+          batchWait={processing.driveBatchWait}
           scopeToggleDisabled={!hasSubfolderVideos}
           approximateCount={effectiveScope === 'tree'}
           canAnalyze={effectiveScope === 'tree' ? treeCanAnalyze : undefined}

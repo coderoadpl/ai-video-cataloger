@@ -6,6 +6,7 @@ export { toProgressModel } from './progress.js';
 export type { ProgressModel } from './progress.js';
 export { emptyDriveCounts, reduceDriveEvent } from './drive-events.js';
 export type {
+  BatchWaitView,
   DriveCounts,
   DriveEventOutcome,
   DriveEventProgress,

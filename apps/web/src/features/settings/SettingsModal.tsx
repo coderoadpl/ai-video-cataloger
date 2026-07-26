@@ -251,6 +251,27 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               </Typography>
             </Box>
 
+            {nativeAnalyzer ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {dictionary.settingsModal.geminiBatchSectionTitle}
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={draft.gemini_batch_mode}
+                      data-testid="gemini-batch-switch"
+                      onChange={(event) => patch({ gemini_batch_mode: event.target.checked })}
+                    />
+                  }
+                  label={dictionary.settingsModal.geminiBatchEnableLabel}
+                />
+                <Typography variant="caption">
+                  {dictionary.settingsModal.geminiBatchHelper}
+                </Typography>
+              </Box>
+            ) : null}
+
             <FormControlLabel
               control={
                 <Switch

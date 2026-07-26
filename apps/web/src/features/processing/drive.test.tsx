@@ -152,6 +152,65 @@ describe('useProcessing drive', () => {
     expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  const batchJob = (jobId: string) => ({
+    jobId,
+    kind: 'process_drive',
+    status: 'completed',
+    progress: null,
+    progressEvents: [
+      { sequence: 1, progress: { step: 'run-started', data: { runId: 'r1', root: '/videos', foldersTotal: 1, filesTotal: 2 } } },
+      { sequence: 2, progress: { step: 'folder-started', data: { path: '/videos/a', filesTotal: 2 } } },
+      {
+        sequence: 3,
+        progress: { step: 'batch_submitted', data: { jobName: 'batches/42', requestCount: 2, model: 'gemini-3.6-flash', reattached: false } },
+      },
+      { sequence: 4, progress: { step: 'batch_poll', data: { jobName: 'batches/42', state: 'running', attempt: 1, requestCount: 2 } } },
+      { sequence: 5, progress: { step: 'batch_completed', data: { jobName: 'batches/42', state: 'succeeded', succeeded: 2, failed: 0 } } },
+      { sequence: 6, progress: { step: 'folder-done', data: { path: '/videos/a', filesDone: 2, filesSkipped: 0, filesFailed: 0 } } },
+      {
+        sequence: 7,
+        progress: {
+          step: 'run-summary',
+          data: { runId: 'r1', root: '/videos', foldersTotal: 1, foldersDone: 1, filesTotal: 2, filesDone: 2, filesSkipped: 0, filesFailed: 0, elapsedMs: 1000, failures: [] },
+        },
+      },
+    ],
+    error: null,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    updatedAt: '2026-01-01T00:00:00.000Z',
+  });
+
+  it('renders the batch lifecycle instead of a per-file bar and clears the wait when results land', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    server.use(
+      http.post('/api/process-drive', () => HttpResponse.json({ ok: true, data: { jobId: 'job:drive' } })),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({ ok: true, data: batchJob(jobId) });
+      }),
+    );
+    const lines: string[] = [];
+    const addLine = vi.fn((content: string) => {
+      lines.push(content);
+    });
+
+    const { result } = renderHook(() => useProcessing({ videos: [], addLine, intervalMs: 0 }), { wrapper });
+
+    act(() => {
+      result.current.driveAnalyze('/videos');
+    });
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+
+    expect(lines.some((line) => line.includes('Batch submitted: 2 file(s) at half price'))).toBe(true);
+    expect(lines.some((line) => line.includes('Batch running (2 file(s))'))).toBe(true);
+    expect(lines.some((line) => line.includes('Batch results in: 2 answered, 0 failed'))).toBe(true);
+    expect(result.current.driveBatchWait).toBe(null);
+    expect(result.current.driveFileProgress).toBe(null);
+  });
+
   it('stops an active drive run without a confirmation dialog', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (

@@ -57,6 +57,7 @@ export interface Dictionary {
     thisFolder: string;
     wholeTree: string;
     scopeToggleDisabled: string;
+    batchWaitHint: string;
     processingCount: (current: number, total: number) => string;
     stop: string;
     analyzeAll: (count: number) => string;
@@ -343,6 +344,10 @@ export interface Dictionary {
     driveFileSkipped: (filename: string) => string;
     driveSnapshotSkipped: (folder: string) => string;
     driveRunComplete: (foldersDone: number, foldersTotal: number, done: number, skipped: number, failed: number) => string;
+    driveBatchSubmitted: (requestCount: number, reattached: boolean) => string;
+    driveBatchPoll: (state: string, requestCount: number) => string;
+    driveBatchCompleted: (succeeded: number, failed: number) => string;
+    driveBatchWaiting: (requestCount: number) => string;
     progressLine: (percentage: number, label: string) => string;
     fileProgressLine: (current: number, total: number, label: string, filename: string) => string;
     error: (message: string) => string;
@@ -435,6 +440,9 @@ export interface Dictionary {
     facesSectionTitle: string;
     facesEnableLabel: string;
     facesHelper: string;
+    geminiBatchSectionTitle: string;
+    geminiBatchEnableLabel: string;
+    geminiBatchHelper: string;
     skipAutoRename: string;
     runSetupWizard: string;
     reset: string;
@@ -593,6 +601,7 @@ export const en: Dictionary = {
     thisFolder: 'This folder',
     wholeTree: 'Whole tree',
     scopeToggleDisabled: 'This folder has no subfolders with videos.',
+    batchWaitHint: 'Results usually arrive in minutes, but the API allows up to 24 hours.',
     processingCount: (current, total) => `Processing ${current} of ${total}`,
     stop: 'Stop',
     analyzeAll: (count) => `Analyze All (${count})`,
@@ -908,6 +917,14 @@ export const en: Dictionary = {
     driveSnapshotSkipped: (folder) => `⚠ Folder read-only — snapshot skipped: ${folder}`,
     driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed) =>
       `=== Drive run complete: ${String(foldersDone)}/${String(foldersTotal)} folder(s), ${String(done)} done, ${String(skipped)} skipped, ${String(failed)} failed ===`,
+    driveBatchSubmitted: (requestCount, reattached) =>
+      reattached
+        ? `↻ Re-attached to the batch job already running for ${String(requestCount)} file(s)`
+        : `⇪ Batch submitted: ${String(requestCount)} file(s) at half price — usually minutes, up to 24h`,
+    driveBatchPoll: (state, requestCount) => `… Batch ${state} (${String(requestCount)} file(s))`,
+    driveBatchCompleted: (succeeded, failed) =>
+      `✓ Batch results in: ${String(succeeded)} answered, ${String(failed)} failed`,
+    driveBatchWaiting: (requestCount) => `Batch submitted — awaiting results (${String(requestCount)} file(s))`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
     fileProgressLine: (current, total, label, filename) => `[${String(current)}/${String(total)}] ${label}: ${filename}`,
     error: (message) => `Error: ${message}`,
@@ -1011,6 +1028,11 @@ export const en: Dictionary = {
     facesSectionTitle: 'Local face grouping (experimental)',
     facesEnableLabel: 'Enable local face grouping',
     facesHelper: 'Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.',
+    geminiBatchSectionTitle: 'Gemini batch mode (whole-tree runs)',
+    geminiBatchEnableLabel: 'Send whole-tree runs to the Gemini Batch API (half price)',
+    geminiBatchHelper: 'Files are uploaded one by one, then the whole run waits for a single batch job. '
+      + 'Results usually arrive in minutes, but Google allows up to 24 hours, so there is no per-file progress bar. '
+      + 'Analyzing a single video is never batched. Quitting is safe: the run re-attaches to the same job.',
     skipAutoRename: 'Skip Auto-Rename',
     runSetupWizard: 'Run Setup Wizard',
     reset: 'Reset',
@@ -1177,6 +1199,7 @@ export const pl: Dictionary = {
     thisFolder: 'Ten folder',
     wholeTree: 'Całe drzewo',
     scopeToggleDisabled: 'Ten folder nie ma podfolderów z filmami.',
+    batchWaitHint: 'Wyniki zwykle przychodzą w kilka minut, ale API dopuszcza do 24 godzin.',
     processingCount: (current, total) => `Przetwarzanie ${current} z ${total}`,
     stop: 'Stop',
     analyzeAll: (count) => `Analizuj wszystko (${count})`,
@@ -1492,6 +1515,14 @@ export const pl: Dictionary = {
     driveSnapshotSkipped: (folder) => `⚠ Folder tylko do odczytu — pominięto migawkę: ${folder}`,
     driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed) =>
       `=== Analiza drzewa ukończona: ${String(foldersDone)}/${String(foldersTotal)} folder(y), ${String(done)} gotowe, ${String(skipped)} pominięte, ${String(failed)} błędne ===`,
+    driveBatchSubmitted: (requestCount, reattached) =>
+      reattached
+        ? `↻ Podpięto do już uruchomionego zadania wsadowego dla ${String(requestCount)} plik(ów)`
+        : `⇪ Wysłano wsad: ${String(requestCount)} plik(i) za pół ceny — zwykle minuty, do 24 h`,
+    driveBatchPoll: (state, requestCount) => `… Wsad: ${state} (${String(requestCount)} plik(i))`,
+    driveBatchCompleted: (succeeded, failed) =>
+      `✓ Wyniki wsadu: ${String(succeeded)} z odpowiedzią, ${String(failed)} błędnych`,
+    driveBatchWaiting: (requestCount) => `Wysłano wsad — czekamy na wyniki (${String(requestCount)} plik(i))`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
     fileProgressLine: (current, total, label, filename) => `[${String(current)}/${String(total)}] ${label}: ${filename}`,
     error: (message) => `Błąd: ${message}`,
@@ -1595,6 +1626,11 @@ export const pl: Dictionary = {
     facesSectionTitle: 'Lokalne grupowanie twarzy (eksperymentalne)',
     facesEnableLabel: 'Włącz lokalne grupowanie twarzy',
     facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',
+    geminiBatchSectionTitle: 'Tryb wsadowy Gemini (analiza drzewa folderów)',
+    geminiBatchEnableLabel: 'Wysyłaj analizę drzewa przez Gemini Batch API (połowa ceny)',
+    geminiBatchHelper: 'Pliki lecą po kolei, a potem cały bieg czeka na jedno zadanie wsadowe. '
+      + 'Wyniki zwykle są w kilka minut, ale Google dopuszcza do 24 godzin, więc nie ma paska postępu per plik. '
+      + 'Analiza pojedynczego filmu nigdy nie idzie wsadowo. Zamknięcie aplikacji jest bezpieczne: bieg podepnie się do tego samego zadania.',
     skipAutoRename: 'Pomiń automatyczną zmianę nazw',
     runSetupWizard: 'Uruchom kreatora konfiguracji',
     reset: 'Resetuj',
