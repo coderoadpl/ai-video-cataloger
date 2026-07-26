@@ -22,6 +22,7 @@ export type CredentialsBackend = z.output<typeof credentialsBackendSchema>;
 export const credentialDeletionSchema = z.object({
   cleared: z.array(credentialsBackendSchema),
   retained: z.array(credentialsBackendSchema),
+  unreadableEntry: z.string().min(1).optional(),
 });
 
 export type CredentialDeletion = z.output<typeof credentialDeletionSchema>;

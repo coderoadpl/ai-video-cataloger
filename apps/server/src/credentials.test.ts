@@ -1,7 +1,17 @@
-import { describe, expect, it } from 'vitest';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
+
+const homes: string[] = [];
+
+afterEach(async () => {
+  await Promise.all(homes.map((home) => rm(home, { recursive: true, force: true })));
+  homes.length = 0;
+});
 
 describe('credential route', () => {
   it('stores a home-scoped credential without returning the secret', async () => {
@@ -64,5 +74,19 @@ describe('credential route', () => {
       ok: true,
       data: { providerId: 'gemini', cleared: [], retained: [] },
     });
+  });
+
+  it('forwards the unreadable-entry report of the store it decorates', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'composition-credentials-'));
+    homes.push(home);
+    await mkdir(path.join(home, '.ai-video-cataloger'), { recursive: true });
+    await writeFile(
+      path.join(home, '.ai-video-cataloger', 'credentials.json'),
+      JSON.stringify({ openai: 'sk-good', gemini: { value: 'sk-mangled', state: 'nonsense' } }),
+      { mode: 0o600 },
+    );
+    const deps = createDeps({ homeDirectory: home, dbDriver: 'sql-js' });
+
+    expect(await deps.credentials.unreadableCredentialEntries?.()).toEqual({ ok: true, value: ['gemini'] });
   });
 });

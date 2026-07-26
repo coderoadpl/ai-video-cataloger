@@ -46,6 +46,11 @@ export interface JsonCredentialsStoreOptions {
   homeDirectory?: string | undefined;
 }
 
+interface FileEntries {
+  values: Record<string, StoredEntry>;
+  unreadable: Record<string, unknown>;
+}
+
 export class JsonCredentialsStore implements CredentialsStore {
   private readonly filePath: string;
 
@@ -60,9 +65,9 @@ export class JsonCredentialsStore implements CredentialsStore {
   }
 
   async entry(providerId: string): Promise<Result<CredentialEntry | null, AppError>> {
-    const values = await this.read();
-    if (!values.ok) return values;
-    const stored = values.value[providerId];
+    const entries = await this.read();
+    if (!entries.ok) return entries;
+    const stored = entries.value.values[providerId];
     return ok(stored === undefined ? null : readEntry(stored));
   }
 
@@ -82,14 +87,15 @@ export class JsonCredentialsStore implements CredentialsStore {
   }
 
   async archive(providerId: string): Promise<Result<string | null, AppError>> {
-    const values = await this.read();
-    if (!values.ok) return values;
-    const stored = values.value[providerId];
+    const entries = await this.read();
+    if (!entries.ok) return entries;
+    const stored = entries.value.values[providerId];
     if (stored === undefined) return ok(null);
     const archivePath = `${this.filePath}.conflict-${new Date().toISOString().replace(/[:.]/g, '-')}`;
     const archived = await this.readFileEntries(archivePath);
     if (!archived.ok) return archived;
-    if (!(await this.writeFileEntries(archivePath, { ...archived.value, [providerId]: stored }))) {
+    const merged = { ...archived.value, values: { ...archived.value.values, [providerId]: stored } };
+    if (!(await this.writeFileEntries(archivePath, merged))) {
       return { ok: false, error: appError('internal', 'Could not set aside the conflicting provider credential') };
     }
     const removed = await this.delete(providerId);
@@ -104,7 +110,7 @@ export class JsonCredentialsStore implements CredentialsStore {
     for (const { archivePath } of archives.value.filter((conflict) => conflict.providerId === providerId)) {
       const entries = await this.readFileEntries(archivePath);
       if (!entries.ok) return entries;
-      const remaining = Object.fromEntries(Object.entries(entries.value).filter(([key]) => key !== providerId));
+      const remaining = withoutProvider(entries.value, providerId);
       if (!(await this.replaceArchive(archivePath, remaining))) {
         return { ok: false, error: appError('internal', 'Could not remove provider credential') };
       }
@@ -113,8 +119,8 @@ export class JsonCredentialsStore implements CredentialsStore {
     return ok(cleared);
   }
 
-  private async replaceArchive(archivePath: string, remaining: Record<string, StoredEntry>): Promise<boolean> {
-    if (Object.keys(remaining).length > 0) return this.writeFileEntries(archivePath, remaining);
+  private async replaceArchive(archivePath: string, remaining: FileEntries): Promise<boolean> {
+    if (!isEmpty(remaining)) return this.writeFileEntries(archivePath, remaining);
     try {
       await rm(archivePath, { force: true });
       return true;
@@ -137,7 +143,7 @@ export class JsonCredentialsStore implements CredentialsStore {
       const archivePath = path.join(directory, name);
       const archived = await this.readFileEntries(archivePath);
       if (!archived.ok) return archived;
-      for (const providerId of Object.keys(archived.value)) conflicts.push({ providerId, archivePath });
+      for (const providerId of Object.keys(archived.value.values)) conflicts.push({ providerId, archivePath });
     }
     return ok(conflicts);
   }
@@ -146,19 +152,27 @@ export class JsonCredentialsStore implements CredentialsStore {
     if (providerId.trim().length === 0 || entry.value.length === 0) {
       return { ok: false, error: appError('invalid_config_value', 'Provider ID and credential must not be empty') };
     }
-    const values = await this.read();
-    if (!values.ok) return values;
-    const written = await this.writeAll({ ...values.value, [providerId]: writeEntry(entry) });
+    const entries = await this.read();
+    if (!entries.ok) return entries;
+    const written = await this.writeAll({
+      values: { ...entries.value.values, [providerId]: writeEntry(entry) },
+      unreadable: omitKey(entries.value.unreadable, providerId),
+    });
     if (!written) return { ok: false, error: appError('internal', 'Could not store provider credential') };
     return ok(undefined);
   }
 
   async delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
-    const values = await this.read();
-    if (!values.ok) return values;
-    if (!(providerId in values.value)) return ok({ cleared: [], retained: [] });
-    const remaining = Object.fromEntries(Object.entries(values.value).filter(([key]) => key !== providerId));
-    if (Object.keys(remaining).length === 0) {
+    const entries = await this.read();
+    if (!entries.ok) return entries;
+    // Rewriting an entry the parser could not read would destroy the only copy of a key the
+    // user can still rescue by hand, so it is reported instead of removed.
+    if (providerId in entries.value.unreadable) {
+      return ok({ cleared: [], retained: ['file'], unreadableEntry: this.filePath });
+    }
+    if (!(providerId in entries.value.values)) return ok({ cleared: [], retained: [] });
+    const remaining = withoutProvider(entries.value, providerId);
+    if (isEmpty(remaining)) {
       try {
         await rm(this.filePath, { force: true });
         return ok({ cleared: ['file'], retained: [] });
@@ -172,20 +186,21 @@ export class JsonCredentialsStore implements CredentialsStore {
   }
 
   async list(): Promise<Result<string[], AppError>> {
-    const values = await this.read();
-    if (!values.ok) return values;
-    return ok(Object.keys(values.value));
+    const entries = await this.read();
+    if (!entries.ok) return entries;
+    return ok(Object.keys(entries.value.values));
   }
 
-  private writeAll(values: Record<string, StoredEntry>): Promise<boolean> {
-    return this.writeFileEntries(this.filePath, values);
+  private writeAll(entries: FileEntries): Promise<boolean> {
+    return this.writeFileEntries(this.filePath, entries);
   }
 
-  private async writeFileEntries(filePath: string, values: Record<string, StoredEntry>): Promise<boolean> {
+  private async writeFileEntries(filePath: string, entries: FileEntries): Promise<boolean> {
     const temporaryPath = `${filePath}.${process.pid.toString(36)}.${randomBytes(6).toString('hex')}.tmp`;
+    const merged = { ...entries.values, ...entries.unreadable };
     try {
       await mkdir(path.dirname(filePath), { recursive: true });
-      await writeFile(temporaryPath, `${JSON.stringify(values, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
+      await writeFile(temporaryPath, `${JSON.stringify(merged, null, 2)}\n`, { encoding: 'utf8', mode: 0o600 });
       await chmod(temporaryPath, 0o600);
       await rename(temporaryPath, filePath);
       await chmod(filePath, 0o600);
@@ -197,27 +212,21 @@ export class JsonCredentialsStore implements CredentialsStore {
   }
 
   async unreadableEntries(): Promise<Result<string[], AppError>> {
-    const parsed = await this.parseFileEntries(this.filePath);
+    const parsed = await this.read();
     if (!parsed.ok) return parsed;
-    return ok(parsed.value.unreadable);
+    return ok(Object.keys(parsed.value.unreadable));
   }
 
-  private read(): Promise<Result<Record<string, StoredEntry>, AppError>> {
+  private read(): Promise<Result<FileEntries, AppError>> {
     return this.readFileEntries(this.filePath);
   }
 
-  private async readFileEntries(filePath: string): Promise<Result<Record<string, StoredEntry>, AppError>> {
-    const parsed = await this.parseFileEntries(filePath);
-    if (!parsed.ok) return parsed;
-    return ok(parsed.value.values);
-  }
-
   // One hand-edited entry must not blind the app to every other key in the file, so each entry
-  // is validated on its own and only the file's outer shape can fail the whole read.
-  private async parseFileEntries(
-    filePath: string,
-  ): Promise<Result<{ values: Record<string, StoredEntry>; unreadable: string[] }, AppError>> {
-    if (!existsSync(filePath)) return ok({ values: {}, unreadable: [] });
+  // is validated on its own and only the file's outer shape can fail the whole read. What did not
+  // parse is carried along untouched: every write merges it back, so a salvaged read never
+  // becomes the write that destroys the entry the user still has to rescue.
+  private async readFileEntries(filePath: string): Promise<Result<FileEntries, AppError>> {
+    if (!existsSync(filePath)) return ok({ values: {}, unreadable: {} });
     let decoded: unknown;
     try {
       decoded = JSON.parse(await readFile(filePath, 'utf8'));
@@ -230,15 +239,26 @@ export class JsonCredentialsStore implements CredentialsStore {
       return { ok: false, error: appError('invalid_config_value', 'Credentials file has an invalid format') };
     }
     const values: Record<string, StoredEntry> = {};
-    const unreadable: string[] = [];
+    const unreadable: Record<string, unknown> = {};
     for (const [providerId, stored] of Object.entries(document.data)) {
       const entry = storedEntrySchema.safeParse(stored);
       if (entry.success) values[providerId] = entry.data;
-      else unreadable.push(providerId);
+      else unreadable[providerId] = stored;
     }
     return ok({ values, unreadable });
   }
 }
+
+const omitKey = <T,>(record: Record<string, T>, key: string): Record<string, T> =>
+  Object.fromEntries(Object.entries(record).filter(([entryKey]) => entryKey !== key));
+
+const withoutProvider = (entries: FileEntries, providerId: string): FileEntries => ({
+  values: omitKey(entries.values, providerId),
+  unreadable: omitKey(entries.unreadable, providerId),
+});
+
+const isEmpty = (entries: FileEntries): boolean =>
+  Object.keys(entries.values).length === 0 && Object.keys(entries.unreadable).length === 0;
 
 export interface KeychainCredentialsStoreOptions {
   migrationLog?: CredentialMigrationLog | undefined;
@@ -317,9 +337,11 @@ export class KeychainCredentialsStore implements CredentialsStore {
     const archived = await this.legacy.purgeArchived(providerId);
     if (!archived.ok) return fileLegFailure(keychain, archived);
     const clearedFile = file.value.cleared.length > 0 || archived.value;
+    const unreadable = file.value.unreadableEntry;
     return ok({
       cleared: [...keychain.cleared, ...(clearedFile ? ['file' as const] : [])],
       retained: [...keychain.retained, ...file.value.retained],
+      ...(unreadable === undefined ? {} : { unreadableEntry: unreadable }),
     });
   }
 
@@ -341,12 +363,21 @@ export class KeychainCredentialsStore implements CredentialsStore {
     if (removed.ok) return ok(undefined);
     const retried = await this.legacy.delete(providerId);
     if (retried.ok) return ok(undefined);
-    // The keychain now holds a write-verified newer value, so this leftover copy must never
-    // be promoted over it by a later migration.
-    await this.legacy.markStale(providerId);
     this.plaintextPending = true;
     this.migration = null;
-    return retried;
+    // The keychain now holds a write-verified newer value, so this leftover copy must never
+    // be promoted over it by a later migration.
+    const marked = await this.legacy.markStale(providerId);
+    if (marked.ok) return retried;
+    return {
+      ok: false,
+      error: appError(
+        'internal',
+        `The API key for "${providerId}" is stored in the macOS Keychain, but the superseded copy in `
+        + '~/.ai-video-cataloger/credentials.json could neither be removed nor marked superseded. '
+        + 'Remove that entry by hand.',
+      ),
+    };
   }
 
   async backend(): Promise<CredentialsBackendStatus> {

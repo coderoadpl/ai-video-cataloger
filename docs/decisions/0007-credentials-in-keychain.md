@@ -125,11 +125,17 @@ longer holds the item answers "no key" — and drops the superseded copy, logged
 `superseded`, exactly as the migration would. Serving a stale value would hand a
 paying API the key the user already replaced.
 
-**4b. One malformed file entry costs only that entry.** `credentials.json` is
-validated per provider, not as one document: an entry that does not parse is
-skipped and named in a `credential_entry_unreadable` doctor warning, while every
-other key in the file keeps working. Only a file whose outer shape is not an
-object at all fails the whole read.
+**4b. One malformed file entry costs only that entry, and the file never loses
+it.** `credentials.json` is validated per provider, not as one document: an entry
+that does not parse is skipped and named in a `credential_entry_unreadable`
+doctor warning, while every other key in the file keeps working. Only a file
+whose outer shape is not an object at all fails the whole read. The salvaged view
+is a *read*, never the basis of a write: every write merges the unparsed entries
+back verbatim, the file is removed only once no entry of any kind is left, and a
+`delete` aimed at an unreadable entry leaves it alone and answers that the entry
+must be fixed or removed by hand, naming the file. Rewriting the file from the
+salvaged view would destroy the only copy of a key the user can still rescue —
+the opposite of what per-entry validation exists for.
 
 **5. The backend is visible.** `doctor` (human and `--json`) names the backend
 that holds credentials and its reason, warns when the Keychain was expected but

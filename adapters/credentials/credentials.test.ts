@@ -54,6 +54,7 @@ class FakeSecrets implements SecretsStore {
 class UnremovableLegacy extends JsonCredentialsStore {
   failingDeletes = 0;
   deleteAttempts = 0;
+  staleMarkingFails = false;
 
   override delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
     this.deleteAttempts += 1;
@@ -63,6 +64,13 @@ class UnremovableLegacy extends JsonCredentialsStore {
     }
     return super.delete(providerId);
   }
+
+  override markStale(providerId: string): Promise<Result<void, AppError>> {
+    if (this.staleMarkingFails) {
+      return Promise.resolve({ ok: false, error: appError('internal', 'credentials file is busy') });
+    }
+    return super.markStale(providerId);
+  }
 }
 
 const writeStoredEntries = async (home: string, entries: Record<string, unknown>): Promise<void> => {
@@ -70,6 +78,9 @@ const writeStoredEntries = async (home: string, entries: Record<string, unknown>
   await mkdir(directory, { recursive: true });
   await writeFile(path.join(directory, 'credentials.json'), JSON.stringify(entries, null, 2), { mode: 0o600 });
 };
+
+const storedEntries = async (home: string): Promise<unknown> =>
+  JSON.parse(await readFile(path.join(home, '.ai-video-cataloger', 'credentials.json'), 'utf8'));
 
 const tempHome = async (): Promise<string> => {
   const home = await mkdtemp(path.join(tmpdir(), 'credentials-store-'));
@@ -160,6 +171,54 @@ describe('JsonCredentialsStore', () => {
     const store = new JsonCredentialsStore({ homeDirectory: home });
 
     expect(await store.delete('openai')).toEqual({ ok: true, value: { cleared: [], retained: [] } });
+  });
+
+  it('keeps an unreadable entry verbatim when another provider is written', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, { openai: 'good-key', gemini: { value: 'mangled', state: 'nonsense' } });
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+
+    expect(await store.set('openai', 'replacement')).toEqual({ ok: true, value: undefined });
+
+    expect(await storedEntries(home)).toEqual({
+      openai: 'replacement',
+      gemini: { value: 'mangled', state: 'nonsense' },
+    });
+  });
+
+  it('keeps an unreadable entry verbatim when the last readable provider is deleted', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, { openai: 'good-key', gemini: { value: 'mangled', state: 'nonsense' } });
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+
+    expect(await store.delete('openai')).toEqual({ ok: true, value: { cleared: ['file'], retained: [] } });
+
+    expect(await storedEntries(home)).toEqual({ gemini: { value: 'mangled', state: 'nonsense' } });
+  });
+
+  it('names the file instead of claiming nothing is stored for an unreadable entry', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, { gemini: { value: 'mangled', state: 'nonsense' } });
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+
+    expect(await store.delete('gemini')).toEqual({
+      ok: true,
+      value: {
+        cleared: [],
+        retained: ['file'],
+        unreadableEntry: path.join(home, '.ai-video-cataloger', 'credentials.json'),
+      },
+    });
+    expect(await storedEntries(home)).toEqual({ gemini: { value: 'mangled', state: 'nonsense' } });
+  });
+
+  it('removes the file only once no entry of any kind is left', async () => {
+    const home = await tempHome();
+    const store = new JsonCredentialsStore({ homeDirectory: home });
+    await store.set('openai', 'secret');
+
+    expect(await store.delete('openai')).toEqual({ ok: true, value: { cleared: ['file'], retained: [] } });
+    expect(existsSync(path.join(home, '.ai-video-cataloger', 'credentials.json'))).toBe(false);
   });
 });
 
@@ -299,6 +358,50 @@ describe('KeychainCredentialsStore', () => {
     expect(secrets.values.get('openai')).toBe('newer-key');
     expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
     expect(await store.credentialValueConflicts()).toEqual({ ok: true, value: [] });
+  });
+
+  it('reports a superseded copy it could neither remove nor mark, and stays degraded', async () => {
+    const home = await tempHome();
+    const legacy = new UnremovableLegacy({ homeDirectory: home });
+    await legacy.set('openai', 'older-key');
+    const secrets = new FakeSecrets('available');
+    const store = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+    legacy.failingDeletes = 4;
+    legacy.staleMarkingFails = true;
+
+    const stored = await store.set('openai', 'newer-key');
+
+    expect(stored).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(stored.ok ? '' : stored.error.message).toContain('neither be removed nor marked superseded');
+    expect(await store.backend()).toEqual({ backend: 'file', reason: 'degraded' });
+    expect(await storedEntries(home)).toEqual({ openai: 'older-key' });
+  });
+
+  it('sets aside an unmarked leftover instead of promoting it over the keychain value', async () => {
+    const home = await tempHome();
+    const legacy = new UnremovableLegacy({ homeDirectory: home });
+    await legacy.set('openai', 'older-key');
+    const secrets = new FakeSecrets('available');
+    const store = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+    legacy.failingDeletes = 4;
+    legacy.staleMarkingFails = true;
+    await store.set('openai', 'newer-key');
+
+    legacy.failingDeletes = 0;
+    legacy.staleMarkingFails = false;
+    const restarted = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+
+    expect(await restarted.get('openai')).toEqual({ ok: true, value: 'newer-key' });
+    expect(secrets.values.get('openai')).toBe('newer-key');
+    const conflicts = await restarted.credentialValueConflicts();
+    expect(conflicts).toMatchObject({ ok: true, value: [{ providerId: 'openai' }] });
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
   });
 
   it('never resurrects a stale file copy into a keychain that no longer holds the key', async () => {

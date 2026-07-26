@@ -286,7 +286,9 @@ class InvalidatingJobsPort implements JobsPort {
   }
 }
 
-class InvalidatingCredentialsStore implements CredentialsStore {
+// Required<> is the guard: an optional port method the wrapper forgets to forward is a
+// compile error here, not a capability that silently disappears behind the decorator.
+class InvalidatingCredentialsStore implements Required<CredentialsStore> {
   constructor(
     private readonly store: CredentialsStore,
     private readonly readiness: ReadinessCache,
@@ -318,6 +320,10 @@ class InvalidatingCredentialsStore implements CredentialsStore {
 
   credentialValueConflicts(): Promise<Result<CredentialValueConflict[], AppError>> {
     return this.store.credentialValueConflicts?.() ?? Promise.resolve(ok([]));
+  }
+
+  unreadableCredentialEntries(): Promise<Result<string[], AppError>> {
+    return this.store.unreadableCredentialEntries?.() ?? Promise.resolve(ok([]));
   }
 
   backend(): Promise<CredentialsBackendStatus> {
@@ -663,11 +669,11 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(runs[0] ?? null));
   }
 
-  latestUnfinishedDriveRun(root: string): Promise<Result<DriveRunRecord | null, AppError>> {
+  unfinishedDriveRuns(root: string): Promise<Result<DriveRunRecord[], AppError>> {
     const runs = [...this.driveRuns.values()]
       .filter((run) => run.root === root && run.finishedAt === null)
       .sort((left, right) => right.startedAt.localeCompare(left.startedAt));
-    return Promise.resolve(ok(runs[0] ?? null));
+    return Promise.resolve(ok(runs));
   }
 
   listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {

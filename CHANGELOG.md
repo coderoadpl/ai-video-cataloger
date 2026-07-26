@@ -14,6 +14,24 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- `credentials.json` no longer loses an entry the parser could not read. Every
+  write — `set`, `delete`, the Keychain migration's cleanup and the stale marker
+  — now merges the unparsed entries back verbatim, and the file is removed only
+  once no entry of any kind is left. Deleting a provider whose entry is
+  unreadable reports that the entry was left untouched and names the file,
+  instead of answering "no stored credential" while the plaintext key sits on
+  disk.
+- `doctor` warns about unreadable credential entries again: the composition
+  wrapper around the credentials store dropped `unreadableCredentialEntries` on
+  the floor. The wrapper is now typed against the full port so a forgotten
+  optional method is a compile error.
+- A `set` whose Keychain write succeeded but whose plaintext copy could neither
+  be removed nor marked superseded now fails with that message and keeps
+  reporting a degraded backend, instead of proceeding as if the copy had been
+  marked.
+
 ## [0.5.22] - 2026-07-29
 
 ### Fixed
