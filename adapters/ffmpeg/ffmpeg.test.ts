@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import {
+  anchoredNodeModulesPath,
   FfmpegMediaAdapter,
   frameOutputPath,
   framesDirectoryForVideo,
@@ -59,6 +60,35 @@ describe('resolveFfmpegBinaries', () => {
       { command: 'ffmpeg', args: ['-version'] },
       { command: 'ffprobe', args: ['-version'] },
     ]);
+  });
+});
+
+describe('anchoredNodeModulesPath', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('finds the packaged ffprobe through the staged CLI node_modules symlink', async () => {
+    const resources = await tempRoot();
+    const unpacked = path.join(resources, 'app.asar.unpacked', 'node_modules', '@ffprobe-installer', 'darwin-arm64');
+    await mkdir(unpacked, { recursive: true });
+    await writeFile(path.join(unpacked, 'ffprobe'), 'binary');
+    const cli = path.join(resources, 'cli');
+    await mkdir(cli, { recursive: true });
+    await symlink(path.join('..', 'app.asar.unpacked', 'node_modules'), path.join(cli, 'node_modules'));
+
+    expect(anchoredNodeModulesPath(cli, ['@ffprobe-installer', 'darwin-arm64', 'ffprobe'])).toBe(
+      path.join(cli, 'node_modules', '@ffprobe-installer', 'darwin-arm64', 'ffprobe'),
+    );
+  });
+
+  it('returns null when no ancestor carries the binary', async () => {
+    const root = await tempRoot();
+    const nested = path.join(root, 'a', 'b');
+    await mkdir(nested, { recursive: true });
+
+    expect(anchoredNodeModulesPath(nested, ['@ffprobe-installer', 'nowhere-arch', 'ffprobe'])).toBeNull();
   });
 });
 

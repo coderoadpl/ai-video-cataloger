@@ -5,6 +5,7 @@ import { existsSync, mkdirSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { z } from 'zod';
 
@@ -575,44 +576,73 @@ const nodeModuleBinaryResolver: BinaryResolver = {
   bundledFfmpegPath: () => {
     const packagedPath = packagedFfmpegPath();
     if (packagedPath !== null) return packagedPath;
-    try {
-      const loaded: unknown = require('ffmpeg-static');
-      if (typeof loaded === 'string' && existsSync(loaded)) return loaded;
-    } catch {
-      return null;
-    }
-    return null;
+    const required = requiredFfmpegStaticPath();
+    if (required !== null) return required;
+    return anchoredNodeModulesPath(adapterDirectory, ffmpegStaticSegments);
   },
   bundledFfprobePath: () => {
     const packagedPath = packagedFfprobePath();
     if (packagedPath !== null) return packagedPath;
-    try {
-      const loaded: unknown = require('@ffprobe-installer/ffprobe');
-      const parsed = ffprobeInstallerSchema.safeParse(loaded);
-      if (parsed.success && existsSync(parsed.data.path)) return parsed.data.path;
-    } catch {
-      return null;
-    }
-    return null;
+    const required = requiredFfprobeInstallerPath();
+    if (required !== null) return required;
+    return anchoredNodeModulesPath(adapterDirectory, ffprobeInstallerSegments);
   },
 };
 
-const packagedFfmpegPath = (): string | null =>
-  packagedResourcePath('node_modules', 'ffmpeg-static', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg');
+const requiredFfmpegStaticPath = (): string | null => {
+  try {
+    const loaded: unknown = require('ffmpeg-static');
+    if (typeof loaded === 'string' && existsSync(loaded)) return loaded;
+  } catch {
+    return null;
+  }
+  return null;
+};
 
-const packagedFfprobePath = (): string | null =>
-  packagedResourcePath(
-    'node_modules',
-    '@ffprobe-installer',
-    `${process.platform}-${process.arch}`,
-    process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe',
-  );
+const requiredFfprobeInstallerPath = (): string | null => {
+  try {
+    const loaded: unknown = require('@ffprobe-installer/ffprobe');
+    const parsed = ffprobeInstallerSchema.safeParse(loaded);
+    if (parsed.success && existsSync(parsed.data.path)) return parsed.data.path;
+  } catch {
+    return null;
+  }
+  return null;
+};
+
+const adapterDirectory = path.dirname(fileURLToPath(import.meta.url));
+
+const ffmpegStaticSegments = ['ffmpeg-static', process.platform === 'win32' ? 'ffmpeg.exe' : 'ffmpeg'];
+
+const ffprobeInstallerSegments = [
+  '@ffprobe-installer',
+  `${process.platform}-${process.arch}`,
+  process.platform === 'win32' ? 'ffprobe.exe' : 'ffprobe',
+];
+
+const packagedFfmpegPath = (): string | null => packagedResourcePath('node_modules', ...ffmpegStaticSegments);
+
+const packagedFfprobePath = (): string | null => packagedResourcePath('node_modules', ...ffprobeInstallerSegments);
 
 const packagedResourcePath = (...segments: string[]): string | null => {
   const resourcesPath = process.resourcesPath;
   if (typeof resourcesPath !== 'string' || resourcesPath.length === 0) return null;
   const candidate = path.join(resourcesPath, 'app.asar.unpacked', ...segments);
   return existsSync(candidate) ? candidate : null;
+};
+
+export const anchoredNodeModulesPath = (
+  startDirectory: string,
+  segments: readonly string[],
+): string | null => {
+  let directory = startDirectory;
+  for (;;) {
+    const candidate = path.join(directory, 'node_modules', ...segments);
+    if (existsSync(candidate)) return candidate;
+    const parent = path.dirname(directory);
+    if (parent === directory) return null;
+    directory = parent;
+  }
 };
 
 const childProcessCommandProbe: CommandProbe = {

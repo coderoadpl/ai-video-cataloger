@@ -16,6 +16,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- The packaged CLI now finds the ffprobe shipped inside the app bundle. Its only
+  bundled-ffprobe lookup went through the `@ffprobe-installer/ffprobe` wrapper
+  package, which is not staged, so on a machine without a system ffprobe
+  `doctor` reported `ffprobe: missing` and every probe/analysis failed. The
+  resolver now also looks the binary up by path from its own directory upwards
+  through `node_modules`, which reaches
+  `Resources/cli/node_modules -> app.asar.unpacked/node_modules`, and
+  `verify:package` asserts both bundled binaries are reachable from the staged
+  CLI.
 - A folder watcher that fails while the app is running (for example the watched
   root disappearing) no longer takes the Electron main process down with an
   uncaught error: the watch ends, closes its handle and reports a `read_error`

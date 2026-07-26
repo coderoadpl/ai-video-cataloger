@@ -69,6 +69,20 @@ if (cliOnnxInfo === null || !cliOnnxInfo.isFile()) {
   console.log('verify-package: packaged CLI resolves onnxruntime-node via cli/node_modules');
 }
 
+const cliBundledBinaries = [
+  ['ffmpeg', path.join('ffmpeg-static', 'ffmpeg')],
+  ['ffprobe', path.join('@ffprobe-installer', 'darwin-arm64', 'ffprobe')],
+];
+for (const [name, relative] of cliBundledBinaries) {
+  const binaryPath = path.join(appPath, 'Contents', 'Resources', 'cli', 'node_modules', relative);
+  const binaryInfo = await stat(binaryPath).catch(() => null);
+  if (binaryInfo === null || !binaryInfo.isFile()) {
+    fail(`packaged CLI cannot reach the bundled ${name} (missing ${binaryPath})`);
+  } else {
+    console.log(`verify-package: packaged CLI reaches the bundled ${name} via cli/node_modules`);
+  }
+}
+
 try {
   await execFileAsync('codesign', ['--verify', '--deep', '--strict', appPath]);
   console.log('verify-package: codesign --verify --deep --strict exit 0');
