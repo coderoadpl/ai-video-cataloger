@@ -338,6 +338,33 @@ describe('KeychainCredentialsStore', () => {
     expect(JSON.parse(log.trim())).toMatchObject({ event: 'credential_value_conflict', providerId: 'openai' });
   });
 
+  it('migrates a file holding every entry kind and leaves only the unreadable one behind', async () => {
+    const home = await tempHome();
+    await writeStoredEntries(home, {
+      openai: 'restored-backup-key',
+      anthropic: { value: 'pending-key', state: 'pending' },
+      openrouter: { value: 'superseded-key', state: 'stale' },
+      gemini: { value: 'mangled', state: 'nonsense' },
+    });
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    const secrets = new FakeSecrets('available');
+    await secrets.set('openai', 'current-keychain-key');
+    const store = new KeychainCredentialsStore(secrets, legacy, {
+      migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
+    });
+
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'current-keychain-key' });
+
+    expect(await storedEntries(home)).toEqual({ gemini: { value: 'mangled', state: 'nonsense' } });
+    expect(secrets.values.get('anthropic')).toBe('pending-key');
+    expect(secrets.values.has('openrouter')).toBe(false);
+    const conflicts = await store.credentialValueConflicts();
+    expect(conflicts).toMatchObject({ ok: true, value: [{ providerId: 'openai' }] });
+    const archivePath = conflicts.ok ? (conflicts.value[0]?.archivePath ?? '') : '';
+    expect(JSON.parse(await readFile(archivePath, 'utf8'))).toEqual({ openai: 'restored-backup-key' });
+    expect(await store.backend()).toEqual({ backend: 'keychain', reason: 'ok' });
+  });
+
   it('marks the file copy stale when it survives a verified keychain write, and never promotes it', async () => {
     const home = await tempHome();
     const legacy = new UnremovableLegacy({ homeDirectory: home });
