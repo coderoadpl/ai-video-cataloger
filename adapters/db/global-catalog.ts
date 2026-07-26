@@ -320,11 +320,28 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   async listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>> {
     return this.read((db) => {
       const fileRows = db.select().from(files).where(eq(files.folderId, folderId)).all();
+      const analysisRows = db
+        .select({ analysis: analyses })
+        .from(analyses)
+        .innerJoin(files, eq(files.fingerprint, analyses.fingerprint))
+        .where(eq(files.folderId, folderId))
+        .all();
+      const tagRows = db
+        .select({ fingerprint: fileTags.fingerprint, name: tags.name })
+        .from(fileTags)
+        .innerJoin(tags, eq(tags.tagId, fileTags.tagId))
+        .innerJoin(files, eq(files.fingerprint, fileTags.fingerprint))
+        .where(eq(files.folderId, folderId))
+        .all();
+      const analysisByFingerprint = new Map(analysisRows.map((row) => [row.analysis.fingerprint, row.analysis]));
+      const tagsByFingerprint = groupTagNames(tagRows);
       return fileRows.map((fileRow) => {
-        const analysisRow = db.select().from(analyses).where(eq(analyses.fingerprint, fileRow.fingerprint)).get();
+        const analysisRow = analysisByFingerprint.get(fileRow.fingerprint);
         return {
           file: rowToFile(fileRow),
-          analysis: analysisRow === undefined ? null : rowToAnalysis(analysisRow, tagsForFingerprint(db, fileRow.fingerprint)),
+          analysis: analysisRow === undefined
+            ? null
+            : rowToAnalysis(analysisRow, tagsByFingerprint.get(fileRow.fingerprint) ?? []),
         };
       });
     });
@@ -1220,6 +1237,17 @@ const tagsForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] =>
     if (tag !== undefined) names.push(tag.name);
   }
   return names.sort((left, right) => left.localeCompare(right));
+};
+
+const groupTagNames = (rows: readonly { fingerprint: string; name: string }[]): Map<string, string[]> => {
+  const byFingerprint = new Map<string, string[]>();
+  for (const row of rows) {
+    const names = byFingerprint.get(row.fingerprint);
+    if (names === undefined) byFingerprint.set(row.fingerprint, [row.name]);
+    else names.push(row.name);
+  }
+  for (const names of byFingerprint.values()) names.sort((left, right) => left.localeCompare(right));
+  return byFingerprint;
 };
 
 const faceNamesForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] => {

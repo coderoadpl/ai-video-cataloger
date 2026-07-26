@@ -14,6 +14,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Listing a folder's records from the global catalog costs a fixed number of
+  queries instead of five per file. A 500-file folder — read on every scan of a
+  read-only folder, every catalog-tree count and every snapshot export — went
+  from 2502 queries to 6; a 10-file folder went from 52 to the same 6.
+
 ### Fixed
 
 - Thumbnails and extracted frames of a read-only folder are shown in the
