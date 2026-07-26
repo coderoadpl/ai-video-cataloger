@@ -725,7 +725,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(forgetMissing.ok && forgetMissing.value).toEqual({ fingerprint: 'nope', deleted: false, folderId: null, cropPaths: [] });
   });
 
-  it('migrates an existing v6 database to v7 and persists a reconciled missing_at value', async () => {
+  it('migrates an existing v6 database to the current version and persists a reconciled missing_at value', async () => {
     const home = await tempHome();
     await writeV6Catalog(home);
 
@@ -742,16 +742,18 @@ describe('SqlJsGlobalCatalogStore', () => {
     const reopened = new SQL.Database(await readFile(store.databasePath()));
     const versionResult = reopened.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
     const columnResult = reopened.exec('PRAGMA table_info(files)');
+    const driveRunColumnResult = reopened.exec('PRAGMA table_info(drive_runs)');
     const missingResult = reopened.exec('SELECT missing_at FROM files WHERE fingerprint = ?', [file.fingerprint]);
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(7);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(8);
     const columnNames = columnResult[0]?.values.map((row) => row[1]) ?? [];
     expect(columnNames).toContain('missing_at');
+    expect(driveRunColumnResult[0]?.values.map((row) => row[1]) ?? []).toContain('batch_json');
     expect(missingResult[0]?.values[0]?.[0]).toBe(7000);
   });
 
-  it('migrates an existing v1 database to v6 and persists the migrated schema immediately', async () => {
+  it('migrates an existing v1 database to the current version and persists the migrated schema immediately', async () => {
     const home = await tempHome();
     await writeV1Catalog(home);
 
@@ -768,7 +770,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     );
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(7);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(8);
     const columnNames = columnResult[0]?.values.map((row) => row[1]).filter((value) => typeof value === 'string') ?? [];
     expect(columnNames).toContain('gps_lat');
     expect(columnNames).toContain('gps_lon');
@@ -776,7 +778,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(facesTablesResult[0]?.values.map((row) => row[0])).toEqual(['face_index_state', 'face_observations', 'people']);
   });
 
-  it('migrates an existing v5 database to v6 and backfills stale face index state', async () => {
+  it('migrates an existing v5 database to the current version and backfills stale face index state', async () => {
     const home = await tempHome();
     await writeV5Catalog(home);
 
@@ -793,11 +795,11 @@ describe('SqlJsGlobalCatalogStore', () => {
     const stateResult = reopened.exec('SELECT fingerprint, engine_version FROM face_index_state');
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(7);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(8);
     expect(stateResult[0]?.values).toEqual([['fp-abc', 1]]);
   });
 
-  it('migrates an existing v2 database to v5 and persists drive run bookkeeping immediately', async () => {
+  it('migrates an existing v2 database to the current version and persists drive run bookkeeping, batch state included', async () => {
     const home = await tempHome();
     await writeV2Catalog(home);
 
@@ -813,6 +815,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       filesSkipped: 0,
       filesFailed: 0,
       lastActivityAt: '2026-01-01T00:00:00.000Z',
+      batch: null,
     });
     expect(started.ok).toBe(true);
     const updated = await store.updateDriveRun({
@@ -826,6 +829,13 @@ describe('SqlJsGlobalCatalogStore', () => {
       filesSkipped: 1,
       filesFailed: 1,
       lastActivityAt: '2026-01-01T00:10:00.000Z',
+      batch: {
+        displayName: 'avc-drive-run-1',
+        jobName: 'batches/9',
+        state: 'submitted',
+        model: 'gemini-3.6-flash',
+        requests: [{ key: '/drive/a.mp4', videoPath: '/drive/a.mp4', fileName: 'files/a', fileUri: 'https://files/a' }],
+      },
     });
     expect(updated.ok).toBe(true);
     expect((await store.flush()).ok).toBe(true);
@@ -838,6 +848,11 @@ describe('SqlJsGlobalCatalogStore', () => {
       filesDone: 3,
       filesSkipped: 1,
       filesFailed: 1,
+      batch: {
+        jobName: 'batches/9',
+        state: 'submitted',
+        requests: [{ key: '/drive/a.mp4', fileUri: 'https://files/a' }],
+      },
     });
   });
 

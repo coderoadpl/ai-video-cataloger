@@ -724,6 +724,9 @@ export const jobProgressStepSchema = z.enum([
   'faces_done',
   'catalog_index_skipped',
   'catalog_snapshot_skipped',
+  'batch_submitted',
+  'batch_poll',
+  'batch_completed',
 ]);
 
 export const jobProgressSchema = z.object({

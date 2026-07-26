@@ -641,12 +641,12 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   startDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
-    this.driveRuns.set(run.runId, run);
+    this.driveRuns.set(run.runId, structuredClone(run));
     return Promise.resolve(ok(undefined));
   }
 
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>> {
-    this.driveRuns.set(run.runId, run);
+    this.driveRuns.set(run.runId, structuredClone(run));
     return Promise.resolve(ok(undefined));
   }
 

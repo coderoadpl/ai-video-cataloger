@@ -22,6 +22,7 @@ import { z } from 'zod';
 import {
   FACE_ENGINE_VERSION,
   GLOBAL_CATALOG_SCHEMA_VERSION,
+  parseDriveRunBatchState,
   appError,
   normalizeTagList,
   normalizeTagName,
@@ -69,6 +70,7 @@ import {
   migrateGlobalCatalogSchemaSqlV5,
   migrateGlobalCatalogSchemaSqlV6,
   migrateGlobalCatalogSchemaSqlV7,
+  migrateGlobalCatalogSchemaSqlV8,
   schemaMeta,
   tagAliases,
   tags,
@@ -498,6 +500,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
             filesSkipped: run.filesSkipped,
             filesFailed: run.filesFailed,
             lastActivityAt: run.lastActivityAt,
+            batchJson: run.batch === null ? null : JSON.stringify(run.batch),
           },
         })
         .run();
@@ -905,6 +908,10 @@ const migrate = (client: Database): boolean => {
     for (const statement of migrateGlobalCatalogSchemaSqlV7) runMigrationStatement(client, statement);
     migrated = true;
   }
+  if (currentVersion < 8) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV8) runMigrationStatement(client, statement);
+    migrated = true;
+  }
   if (currentVersion < 4) {
     rebuildSearchIndex(drizzle(client, { schema: globalCatalogSchema }), client);
   }
@@ -1144,6 +1151,7 @@ const blobToEmbedding = (value: unknown): number[] => {
 };
 
 const rowToDriveRun = (row: typeof driveRuns.$inferSelect): DriveRunRecord => ({
+  batch: parseDriveRunBatchState(row.batchJson ?? null),
   runId: row.runId,
   root: row.root,
   startedAt: row.startedAt,
@@ -1157,6 +1165,7 @@ const rowToDriveRun = (row: typeof driveRuns.$inferSelect): DriveRunRecord => ({
 });
 
 const driveRunToRow = (run: DriveRunRecord): typeof driveRuns.$inferInsert => ({
+  batchJson: run.batch === null ? null : JSON.stringify(run.batch),
   runId: run.runId,
   root: run.root,
   startedAt: run.startedAt,

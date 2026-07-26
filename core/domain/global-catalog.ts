@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 7;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 8;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
 
@@ -89,6 +89,39 @@ export const snapshotLineSchema = z.discriminatedUnion('type', [
 
 export type SnapshotHeaderLine = z.output<typeof snapshotHeaderLineSchema>;
 export type SnapshotRecordLine = z.output<typeof snapshotRecordLineSchema>;
+
+export const driveRunBatchRequestSchema = z.object({
+  key: z.string().min(1),
+  videoPath: z.string().min(1),
+  fileName: z.string().min(1),
+  fileUri: z.string().min(1),
+});
+
+export type DriveRunBatchRequest = z.output<typeof driveRunBatchRequestSchema>;
+
+export const driveRunBatchStateSchema = z.object({
+  displayName: z.string().min(1),
+  jobName: z.string().min(1).nullable(),
+  state: z.enum(['preparing', 'submitted', 'completed', 'failed']),
+  model: z.string().min(1),
+  requests: z.array(driveRunBatchRequestSchema),
+});
+
+export type DriveRunBatchState = z.output<typeof driveRunBatchStateSchema>;
+
+export const driveRunBatchDisplayName = (runId: string): string => `avc-drive-${runId}`;
+
+export const parseDriveRunBatchState = (value: string | null): DriveRunBatchState | null => {
+  if (value === null || value.length === 0) return null;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(value);
+  } catch {
+    return null;
+  }
+  const parsed = driveRunBatchStateSchema.safeParse(decoded);
+  return parsed.success ? parsed.data : null;
+};
 
 export const newerWins = (existingProcessedAt: string, incomingProcessedAt: string): boolean =>
   Date.parse(incomingProcessedAt) > Date.parse(existingProcessedAt);

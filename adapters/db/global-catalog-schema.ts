@@ -62,6 +62,7 @@ export const driveRuns = sqliteTable('drive_runs', {
   filesSkipped: integer('files_skipped').notNull(),
   filesFailed: integer('files_failed').notNull(),
   lastActivityAt: text('last_activity_at').notNull(),
+  batchJson: text('batch_json'),
 });
 
 export const people = sqliteTable('people', {
@@ -229,4 +230,8 @@ export const migrateGlobalCatalogSchemaSqlV6 = [
 
 export const migrateGlobalCatalogSchemaSqlV7 = [
   'ALTER TABLE files ADD COLUMN missing_at INTEGER',
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV8 = [
+  'ALTER TABLE drive_runs ADD COLUMN batch_json TEXT',
 ] as const;

@@ -9,6 +9,7 @@ import type {
   ConfigKey,
   CredentialDeletion,
   CredentialsBackendStatus,
+  DriveRunBatchState,
   FaceBox,
   FaceLandmarks,
   FaceObservation,
@@ -157,6 +158,7 @@ export interface DriveRunRecord {
   filesSkipped: number;
   filesFailed: number;
   lastActivityAt: string;
+  batch: DriveRunBatchState | null;
 }
 
 export interface GlobalCatalogStore {
@@ -471,6 +473,62 @@ export interface AnalysisOutput {
   transcript?: AnalyzerTranscript | null | undefined;
 }
 
+export type AnalyzerBatchJobState = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'expired';
+
+export interface AnalyzerBatchUploadInput {
+  key: string;
+  videoPath: string;
+  outputLanguage: AppConfig['output_language'];
+  provider: AnalyzerProviderConfig;
+  timeoutSeconds: number;
+  signal?: AbortSignal | undefined;
+}
+
+export interface AnalyzerBatchRequest {
+  key: string;
+  videoPath: string;
+  fileName: string;
+  fileUri: string;
+  outputLanguage: AppConfig['output_language'];
+}
+
+export interface AnalyzerBatchSubmission {
+  jobName: string;
+  requestCount: number;
+}
+
+export interface AnalyzerBatchResult {
+  key: string;
+  outcome: Result<AnalysisOutput, AppError>;
+}
+
+export interface AnalyzerBatchStatus {
+  state: AnalyzerBatchJobState;
+  message: string | null;
+  results: AnalyzerBatchResult[] | null;
+}
+
+export interface AnalyzerBatchPort {
+  uploadForBatch(input: AnalyzerBatchUploadInput): Promise<Result<AnalyzerBatchRequest, AppError>>;
+  submitBatch(input: {
+    provider: AnalyzerProviderConfig;
+    displayName: string;
+    requests: readonly AnalyzerBatchRequest[];
+    signal?: AbortSignal | undefined;
+  }): Promise<Result<AnalyzerBatchSubmission, AppError>>;
+  findBatchByDisplayName(input: {
+    provider: AnalyzerProviderConfig;
+    displayName: string;
+    signal?: AbortSignal | undefined;
+  }): Promise<Result<string | null, AppError>>;
+  batchStatus(input: {
+    provider: AnalyzerProviderConfig;
+    jobName: string;
+    requestKeys: readonly string[];
+    signal?: AbortSignal | undefined;
+  }): Promise<Result<AnalyzerBatchStatus, AppError>>;
+}
+
 export interface AnalyzerPort {
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>>;
   dependency(input?: {
@@ -604,7 +662,10 @@ export type ProcessJobStep =
   | 'faces_clustering'
   | 'faces_done'
   | 'catalog_index_skipped'
-  | 'catalog_snapshot_skipped';
+  | 'catalog_snapshot_skipped'
+  | 'batch_submitted'
+  | 'batch_poll'
+  | 'batch_completed';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

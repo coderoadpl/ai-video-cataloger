@@ -163,6 +163,7 @@ export const processDrive = async (
       filesSkipped: 0,
       filesFailed: 0,
       lastActivityAt: started.toISOString(),
+      batch: null,
     },
     filesTotal: discovery.value.filesTotal,
     snapshotSkipped: 0,
