@@ -93,6 +93,7 @@ export const enqueueProcessDrive = async (
     media: deps.media,
     transcriber: deps.transcriber,
     analyzer: deps.analyzer,
+    ...(deps.analyzerBatch === undefined ? {} : { analyzerBatch: deps.analyzerBatch }),
     globalCatalog: deps.globalCatalog,
   };
   return deps.jobs.enqueue({

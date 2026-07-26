@@ -75,6 +75,7 @@ interface ProcessOptions extends JsonOption {
 
 interface ProcessDriveOptions extends ProcessOptions {
   keepAwake?: boolean | undefined;
+  geminiBatch?: boolean | undefined;
 }
 
 interface AnalyzerSelection {
@@ -90,7 +91,15 @@ interface CliJobProgress {
   data?: unknown;
 }
 
-const driveEventSteps = ['run-started', 'folder-started', 'folder-done', 'run-summary'] as const;
+const driveEventSteps = [
+  'run-started',
+  'folder-started',
+  'folder-done',
+  'run-summary',
+  'batch_submitted',
+  'batch_poll',
+  'batch_completed',
+] as const;
 
 interface CredentialOptions extends JsonOption {
   env?: string | undefined;
@@ -633,6 +642,11 @@ program
   )
   .option('--local-model <tag>', 'local AI model')
   .option('--force', 'reprocess even if the global index already has an analysis', false)
+  .option(
+    '--gemini-batch',
+    'submit the run to the Gemini Batch API (half price; results usually minutes, up to 24h)',
+    false,
+  )
   .option('--keep-awake', 'keep macOS awake while the drive run is active', false)
   .option('--json', 'machine-readable JSON output', false)
   .action(async (root: string, options: ProcessDriveOptions, command: Command) => {
@@ -686,6 +700,7 @@ program
         ...(options.provider === undefined ? {} : { provider: options.provider }),
         ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
         ...(options.force === true ? { force: true } : {}),
+        ...(explicit('geminiBatch') ? { geminiBatch: options.geminiBatch === true, geminiBatchExplicit: true } : {}),
       });
       if (!result.ok) {
         emitError(json, result.error);

@@ -229,6 +229,8 @@ export const processDriveInputSchema = z.object({
   provider: analyzerProviderIdSchema.optional(),
   localModel: z.string().min(1).optional(),
   force: z.boolean().optional(),
+  geminiBatch: z.boolean().optional(),
+  geminiBatchExplicit: z.boolean().optional(),
 }).transform((input) => ({
   root: input.root,
   frames: input.frames ?? CONFIG_DEFAULTS.frames,
@@ -246,6 +248,8 @@ export const processDriveInputSchema = z.object({
   ...(input.provider === undefined ? {} : { provider: input.provider }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
   ...(input.force === undefined ? {} : { force: input.force }),
+  ...(input.geminiBatch === undefined ? {} : { geminiBatch: input.geminiBatch }),
+  geminiBatchExplicit: input.geminiBatchExplicit ?? input.geminiBatch !== undefined,
 }));
 
 export const jobAcceptedOutputSchema = z.object({

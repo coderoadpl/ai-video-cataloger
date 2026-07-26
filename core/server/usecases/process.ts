@@ -8,6 +8,7 @@ import {
   type AppConfig,
   type AppError,
   type AnalyzerProviderConfig,
+  type GeminiPricingMode,
   type GeminiUsageAccounting,
   type Result,
   type Video,
@@ -25,6 +26,8 @@ import { z } from 'zod';
 
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
+  type AnalysisOutput,
+  type AnalyzerBatchPort,
   type AnalyzerPort,
   type AnalyzerTranscript,
   type CatalogRepository,
@@ -58,6 +61,7 @@ export interface ProcessDeps {
   media: MediaPort;
   transcriber: TranscriberPort;
   analyzer: AnalyzerPort;
+  analyzerBatch?: AnalyzerBatchPort | undefined;
   globalCatalog?: GlobalCatalogStore | undefined;
 }
 
@@ -79,6 +83,12 @@ export interface ProcessPipelineInput {
   localModel?: string | undefined;
   force?: boolean | undefined;
   batch?: ProcessBatchContext | undefined;
+  precomputedAnalysis?: PrecomputedAnalysis | undefined;
+}
+
+export interface PrecomputedAnalysis {
+  analysis: AnalysisOutput;
+  pricingMode: GeminiPricingMode;
 }
 
 export interface ProcessCompletedOutput {
@@ -512,19 +522,21 @@ const runNativePipeline = async (
     const progressResult = await report(progress, 'analyzing_with_claude', 4, video.originalPath, resolved.batch);
     if (!progressResult.ok) return progressResult;
     const warnings: string[] = [];
-    const analyzed = await deps.analyzer.analyze({
-      videoPath: video.originalPath,
-      framePaths: [],
-      transcript: null,
-      backend: resolved.analyzer.backend,
-      localModel: resolved.analyzer.localModel,
-      outputLanguage: resolved.analyzer.outputLanguage,
-      provider: resolved.analyzer.provider,
-      timeoutSeconds: resolved.analyzer.timeoutSeconds,
-      verbose: resolved.verbose,
-      signal: progress?.signal,
-      onWarning: (warning) => warnings.push(warning),
-    });
+    const analyzed: Result<AnalysisOutput, AppError> = resolved.precomputedAnalysis === null
+      ? await deps.analyzer.analyze({
+        videoPath: video.originalPath,
+        framePaths: [],
+        transcript: null,
+        backend: resolved.analyzer.backend,
+        localModel: resolved.analyzer.localModel,
+        outputLanguage: resolved.analyzer.outputLanguage,
+        provider: resolved.analyzer.provider,
+        timeoutSeconds: resolved.analyzer.timeoutSeconds,
+        verbose: resolved.verbose,
+        signal: progress?.signal,
+        onWarning: (warning) => warnings.push(warning),
+      })
+      : ok(resolved.precomputedAnalysis.analysis);
     for (const warning of warnings) {
       const reported = await reportAnalyzerWarning(progress, warning, video.originalPath, resolved.batch);
       if (!reported.ok) return reported;
@@ -544,6 +556,7 @@ const runNativePipeline = async (
         resolved.analyzer.provider,
         video.originalPath,
         resolved.batch,
+        resolved.precomputedAnalysis?.pricingMode ?? 'interactive',
       );
       if (!reportedUsage.ok) return reportedUsage;
     }
@@ -616,6 +629,7 @@ const reportAnalyzerUsage = async (
   provider: AnalyzerProviderConfig,
   videoPath: string,
   batch: ProcessBatchContext,
+  pricingMode: GeminiPricingMode,
 ): Promise<Result<void, AppError>> => {
   if (progress === undefined) return ok(undefined);
   const reported = await progress.reportProgress({
@@ -625,6 +639,7 @@ const reportAnalyzerUsage = async (
     data: {
       video: videoPath,
       model: provider.family === 'gemini-native' ? provider.model : null,
+      pricingMode,
       usage: {
         promptTokens: usage.promptTokens,
         billedOutputTokens: usage.billedOutputTokens,
@@ -657,6 +672,7 @@ interface ResolvedProcessOptions {
   analyzer: ResolvedAnalyzer;
   native: boolean;
   batch: ProcessBatchContext;
+  precomputedAnalysis: PrecomputedAnalysis | null;
 }
 
 interface PipelineOptions extends ResolvedProcessOptions {
@@ -674,7 +690,7 @@ const pipelineOptions = (
   artifactRoot: artifactRootFor(fs, folder, writable),
 });
 
-const resolveProcessOptions = async (
+export const resolveProcessOptions = async (
   config: ConfigStore,
   folder: string,
   input: ProcessPipelineInput,
@@ -722,6 +738,7 @@ const resolveProcessOptions = async (
     },
     native: provider.family === 'gemini-native',
     batch: input.batch ?? { current: 1, total: 1 },
+    precomputedAnalysis: input.precomputedAnalysis ?? null,
   });
 };
 

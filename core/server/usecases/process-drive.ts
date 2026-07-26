@@ -2,29 +2,41 @@ import { randomUUID } from 'node:crypto';
 
 import {
   appError,
+  driveRunBatchDisplayName,
   ok,
+  type AnalyzerProviderConfig,
   type AnalyzerProviderId,
   type AppConfig,
   type AppError,
   type CatalogFile,
   type CatalogFolder,
+  type DriveRunBatchRequest,
   type Result,
   type WhisperModelName,
 } from '@core/domain/index.js';
 
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
+  type AnalyzerBatchPort,
+  type AnalyzerBatchRequest,
   type DriveRunRecord,
   type FileSystemPort,
   type GlobalCatalogStore,
   type JobExecutionContext,
-  type ProcessJobStep,
 } from '../ports.js';
 import type { ProcessDeps, ProcessPipelineInput } from './process.js';
 import { hasProcessedAnalysis, reconcileFolderPresence, resolveFolderIntoIndex } from './catalog-index.js';
 import { exportFolderSnapshot } from './catalog-snapshot.js';
 import { readFolderMarker } from './folder-identity.js';
-import { processVideoPipeline } from './process.js';
+import { processVideoPipeline, resolveProcessOptions } from './process.js';
+import {
+  awaitBatchResults,
+  batchJobFailureError,
+  ensureBatchJob,
+  expiredBatchFileError,
+  reportStep as report,
+} from './process-drive-batch.js';
+import { resolveConfigValues } from './config-resolution.js';
 import { scanFolder, type ScanVideo } from './scan.js';
 import { isSupportedVideoExtension } from './shared.js';
 
@@ -76,6 +88,8 @@ export interface ProcessDriveInput {
   provider?: AnalyzerProviderId | undefined;
   localModel?: string | undefined;
   force?: boolean | undefined;
+  geminiBatch?: boolean | undefined;
+  geminiBatchExplicit?: boolean | undefined;
 }
 
 export interface DriveRunSummary {
@@ -99,6 +113,28 @@ export interface DriveRunOptions {
   jitter?: ((attempt: number) => number) | undefined;
   now?: (() => Date) | undefined;
   runId?: string | undefined;
+  batchPollDelayMs?: ((attempt: number) => number) | undefined;
+}
+
+interface DriveBatchPlan {
+  analyzerBatch: AnalyzerBatchPort;
+  provider: AnalyzerProviderConfig;
+  model: string;
+  outputLanguage: AppConfig['output_language'];
+  timeoutSeconds: number;
+  reattachedRequests: Map<string, DriveRunBatchRequest> | null;
+}
+
+interface PendingBatchFile {
+  video: ScanVideo;
+  key: string;
+  fileIndex: number;
+}
+
+interface DeferredFolder {
+  path: string;
+  counts: { filesDone: number; filesSkipped: number; filesFailed: number };
+  pending: PendingBatchFile[];
 }
 
 interface MutableRunState {
@@ -151,11 +187,18 @@ export const processDrive = async (
 
   const now = options.now ?? (() => new Date());
   const started = now();
+  const batchPlan = await resolveBatchPlan(deps, input, discovery.value.root);
+  if (!batchPlan.ok) return batchPlan;
+  const resumable = batchPlan.value === null
+    ? ok(null)
+    : await resumableBatchRun(globalCatalog, discovery.value.root);
+  if (!resumable.ok) return resumable;
+  const adopted = resumable.value;
   const state: MutableRunState = {
     run: {
-      runId: options.runId ?? randomUUID(),
+      runId: adopted?.runId ?? options.runId ?? randomUUID(),
       root: discovery.value.root,
-      startedAt: started.toISOString(),
+      startedAt: adopted?.startedAt ?? started.toISOString(),
       finishedAt: null,
       foldersTotal: discovery.value.folders.length,
       foldersDone: 0,
@@ -163,15 +206,20 @@ export const processDrive = async (
       filesSkipped: 0,
       filesFailed: 0,
       lastActivityAt: started.toISOString(),
-      batch: null,
+      batch: adopted?.batch ?? null,
     },
     filesTotal: discovery.value.filesTotal,
     snapshotSkipped: 0,
     failures: [...discovery.value.failures],
     startedMs: started.getTime(),
   };
+  const plan = batchPlan.value === null || adopted?.batch == null
+    ? batchPlan.value
+    : { ...batchPlan.value, reattachedRequests: new Map(adopted.batch.requests.map((request) => [request.videoPath, request])) };
 
-  const startedRun = await deps.globalCatalog.startDriveRun(state.run);
+  const startedRun = adopted === null
+    ? await deps.globalCatalog.startDriveRun(state.run)
+    : await deps.globalCatalog.updateDriveRun(state.run);
   if (!startedRun.ok) return startedRun;
 
   const runFirstSeenAt = started.toISOString();
@@ -192,6 +240,8 @@ export const processDrive = async (
   let fileIndex = 0;
   const folderPresences: { folderPath: string; presentFingerprints: string[]; hashUnavailable: boolean }[] = [];
   const snapshotRefreshFolderIds = new Set<string>();
+  const deferredFolders: DeferredFolder[] = [];
+  const batchRequests: AnalyzerBatchRequest[] = [];
   for (const folder of discovery.value.folders) {
     const folderStarted = await report(progress, 'folder-started', {
       path: folder.path,
@@ -215,6 +265,9 @@ export const processDrive = async (
     }
 
     const folderCounts = { filesDone: 0, filesSkipped: 0, filesFailed: 0 };
+    const pendingBatchFiles: PendingBatchFile[] = [];
+    const batchesHere = plan === null ? ok(false) : await folderTakesBatch(deps, input, folder.path, plan);
+    if (!batchesHere.ok) return batchesHere;
     for (const video of scan.value.videos) {
       const cancellation = cancelled(progress);
       if (!cancellation.ok) return cancellation;
@@ -224,6 +277,22 @@ export const processDrive = async (
       if (skipped.value) {
         const skipReported = await report(progress, 'file-skipped', { video: video.path });
         if (!skipReported.ok) return skipReported;
+      }
+      if (plan !== null && batchesHere.value && !skipped.value) {
+        const enrolled = await enrolInBatch(plan, video.path, `r${batchRequests.length}`, progress?.signal);
+        if (enrolled.ok) {
+          if (enrolled.value !== null) {
+            batchRequests.push(enrolled.value);
+            pendingBatchFiles.push({ video, key: enrolled.value.key, fileIndex });
+            continue;
+          }
+        } else {
+          consecutiveFailures += 1;
+          const recorded = await recordFileFailure(deps, state, folderCounts, video.path, enrolled.error, now);
+          if (!recorded.ok) return recorded;
+          if (consecutiveFailures >= maxConsecutiveFailures) return abortedRun(deps, state, progress, now);
+          continue;
+        }
       }
       const result = await runDriveFile(deps, input, video.path, fileIndex, state.filesTotal, skipped.value, progress, options);
       if (result.ok) {
@@ -243,23 +312,9 @@ export const processDrive = async (
       }
 
       consecutiveFailures += 1;
-      state.run.filesFailed += 1;
-      folderCounts.filesFailed += 1;
-      state.failures.push(failureRecord(video.path, 'file', result.error));
-      const persisted = await persistRun(deps, state, now);
-      if (!persisted.ok) return persisted;
-      if (consecutiveFailures >= maxConsecutiveFailures) {
-        const aborted = await reportSummary(deps, state, progress, now);
-        if (!aborted.ok) return aborted;
-        return {
-          ok: false,
-          error: appError(
-            'drive_run_aborted',
-            `Aborted drive run after ${maxConsecutiveFailures} consecutive file failures. Re-run the same root to resume.`,
-            { runId: state.run.runId, failures: state.failures },
-          ),
-        };
-      }
+      const recorded = await recordFileFailure(deps, state, folderCounts, video.path, result.error, now);
+      if (!recorded.ok) return recorded;
+      if (consecutiveFailures >= maxConsecutiveFailures) return abortedRun(deps, state, progress, now);
     }
 
     const presentFingerprints = scan.value.videos
@@ -268,13 +323,28 @@ export const processDrive = async (
     const hashUnavailable = scan.value.videos.some((video) => video.contentHash === null);
     folderPresences.push({ folderPath: folder.path, presentFingerprints, hashUnavailable });
 
-    state.run.foldersDone += 1;
-    const persisted = await persistRun(deps, state, now);
-    if (!persisted.ok) return persisted;
-    const flushedFolder = await globalCatalog.flush();
-    if (!flushedFolder.ok) return flushedFolder;
-    const done = await reportFolderDone(progress, folder.path, folderCounts);
-    if (!done.ok) return done;
+    if (pendingBatchFiles.length > 0) {
+      deferredFolders.push({ path: folder.path, counts: folderCounts, pending: pendingBatchFiles });
+      continue;
+    }
+    const closed = await closeFolder(deps, globalCatalog, state, folder.path, folderCounts, progress, now);
+    if (!closed.ok) return closed;
+  }
+
+  if (plan !== null && batchRequests.length > 0) {
+    const mapped = await runBatchPass({
+      deps,
+      globalCatalog,
+      input,
+      state,
+      plan,
+      requests: batchRequests,
+      deferred: deferredFolders,
+      progress,
+      options,
+      now,
+    });
+    if (!mapped.ok) return mapped;
   }
 
   const presentAcrossRun = [...new Set(folderPresences.flatMap((entry) => entry.presentFingerprints))];
@@ -332,6 +402,267 @@ export const processDrive = async (
   const flushedRun = await globalCatalog.flush();
   if (!flushedRun.ok) return flushedRun;
   return reportSummary(deps, state, progress, now);
+};
+
+const resolveBatchPlan = async (
+  deps: ProcessDeps,
+  input: ProcessDriveInput,
+  root: string,
+): Promise<Result<DriveBatchPlan | null, AppError>> => {
+  const stored = await resolveConfigValues(deps.config, root);
+  if (!stored.ok) return stored;
+  const enabled = input.geminiBatchExplicit === true
+    ? input.geminiBatch === true
+    : stored.value.effective.gemini_batch_mode === 'true';
+  if (!enabled) return ok(null);
+  const resolved = await resolveProcessOptions(deps.config, root, processInput(input, root, 1, 1));
+  if (!resolved.ok) return resolved;
+  const provider = resolved.value.analyzer.provider;
+  if (provider.family !== 'gemini-native') {
+    return {
+      ok: false,
+      error: appError(
+        'invalid_config_value',
+        `Batch mode needs the gemini-native analyzer, but ${root} resolves to the ${provider.family} provider `
+        + `"${provider.providerId}". Select Gemini or turn batch mode off.`,
+      ),
+    };
+  }
+  if (deps.analyzerBatch === undefined) {
+    return { ok: false, error: appError('internal', 'Batch analyzer port is required for gemini batch drive runs') };
+  }
+  return ok({
+    analyzerBatch: deps.analyzerBatch,
+    provider,
+    model: provider.model,
+    outputLanguage: resolved.value.analyzer.outputLanguage,
+    timeoutSeconds: resolved.value.analyzer.timeoutSeconds,
+    reattachedRequests: null,
+  });
+};
+
+const resumableBatchRun = async (
+  globalCatalog: GlobalCatalogStore,
+  root: string,
+): Promise<Result<DriveRunRecord | null, AppError>> => {
+  const latest = await globalCatalog.latestDriveRun();
+  if (!latest.ok) return latest;
+  const run = latest.value;
+  if (run === null || run.finishedAt !== null || run.root !== root) return ok(null);
+  if (run.batch === null || run.batch.state === 'completed' || run.batch.state === 'failed') return ok(null);
+  return ok(run);
+};
+
+const folderTakesBatch = async (
+  deps: ProcessDeps,
+  input: ProcessDriveInput,
+  folder: string,
+  plan: DriveBatchPlan,
+): Promise<Result<boolean, AppError>> => {
+  const resolved = await resolveProcessOptions(deps.config, folder, processInput(input, folder, 1, 1));
+  if (!resolved.ok) return resolved;
+  const provider = resolved.value.analyzer.provider;
+  return ok(provider.family === 'gemini-native' && provider.model === plan.model);
+};
+
+const enrolInBatch = async (
+  plan: DriveBatchPlan,
+  videoPath: string,
+  key: string,
+  signal: AbortSignal | undefined,
+): Promise<Result<AnalyzerBatchRequest | null, AppError>> => {
+  const persisted = plan.reattachedRequests?.get(videoPath);
+  if (plan.reattachedRequests !== null) {
+    return ok(persisted === undefined
+      ? null
+      : { ...persisted, outputLanguage: plan.outputLanguage });
+  }
+  return plan.analyzerBatch.uploadForBatch({
+    key,
+    videoPath,
+    outputLanguage: plan.outputLanguage,
+    provider: plan.provider,
+    timeoutSeconds: plan.timeoutSeconds,
+    ...(signal === undefined ? {} : { signal }),
+  });
+};
+
+interface BatchPassInput {
+  deps: ProcessDeps;
+  globalCatalog: GlobalCatalogStore;
+  input: ProcessDriveInput;
+  state: MutableRunState;
+  plan: DriveBatchPlan;
+  requests: readonly AnalyzerBatchRequest[];
+  deferred: readonly DeferredFolder[];
+  progress: JobExecutionContext | undefined;
+  options: DriveRunOptions;
+  now: () => Date;
+}
+
+const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError>> => {
+  const { deps, state, plan, progress, now } = pass;
+  const persistedBatch = state.run.batch;
+  const displayName = persistedBatch?.displayName ?? driveRunBatchDisplayName(state.run.runId);
+  const requests = persistedBatch === null || persistedBatch === undefined
+    ? pass.requests.map((request) => ({
+      key: request.key,
+      videoPath: request.videoPath,
+      fileName: request.fileName,
+      fileUri: request.fileUri,
+    }))
+    : persistedBatch.requests;
+  state.run.batch = {
+    displayName,
+    jobName: persistedBatch?.jobName ?? null,
+    state: persistedBatch?.jobName == null ? 'preparing' : 'submitted',
+    model: plan.model,
+    requests,
+  };
+  const beforeSubmit = await persistRun(deps, state, now);
+  if (!beforeSubmit.ok) return beforeSubmit;
+
+  const job = persistedBatch?.jobName == null
+    ? await ensureBatchJob({
+      analyzerBatch: plan.analyzerBatch,
+      provider: plan.provider,
+      displayName,
+      requests: pass.requests,
+      submittedBefore: persistedBatch !== null && persistedBatch !== undefined,
+      ...(progress === undefined ? {} : { signal: progress.signal }),
+    })
+    : ok({ jobName: persistedBatch.jobName, reattached: true });
+  if (!job.ok) {
+    state.run.batch = null;
+    const cleared = await persistRun(deps, state, now);
+    if (!cleared.ok) return cleared;
+    return job;
+  }
+  state.run.batch = { displayName, jobName: job.value.jobName, state: 'submitted', model: plan.model, requests };
+  const afterSubmit = await persistRun(deps, state, now);
+  if (!afterSubmit.ok) return afterSubmit;
+  const submitReported = await report(progress, 'batch_submitted', {
+    jobName: job.value.jobName,
+    requestCount: requests.length,
+    model: plan.model,
+    reattached: job.value.reattached,
+  });
+  if (!submitReported.ok) return submitReported;
+
+  const status = await awaitBatchResults({
+    analyzerBatch: plan.analyzerBatch,
+    provider: plan.provider,
+    jobName: job.value.jobName,
+    requestKeys: requests.map((request) => request.key),
+    progress,
+    sleep: pass.options.sleep ?? sleep,
+    ...(pass.options.batchPollDelayMs === undefined ? {} : { pollDelayMs: pass.options.batchPollDelayMs }),
+  });
+  if (!status.ok) return status;
+
+  if (status.value.state === 'failed' || status.value.state === 'cancelled') {
+    state.run.batch = null;
+    const cleared = await persistRun(deps, state, now);
+    if (!cleared.ok) return cleared;
+    const summarised = await reportSummary(deps, state, progress, now);
+    if (!summarised.ok) return summarised;
+    return { ok: false, error: batchJobFailureError(job.value.jobName, status.value) };
+  }
+
+  const outcomes = new Map((status.value.results ?? []).map((result) => [result.key, result.outcome]));
+  const expired = status.value.state === 'expired';
+  const completedReported = await report(progress, 'batch_completed', {
+    jobName: job.value.jobName,
+    state: status.value.state,
+    succeeded: [...outcomes.values()].filter((outcome) => outcome.ok).length,
+    failed: [...outcomes.values()].filter((outcome) => !outcome.ok).length,
+  });
+  if (!completedReported.ok) return completedReported;
+
+  for (const folder of pass.deferred) {
+    for (const pending of folder.pending) {
+      const cancellation = cancelled(progress);
+      if (!cancellation.ok) return cancellation;
+      const outcome = expired
+        ? { ok: false as const, error: expiredBatchFileError(job.value.jobName) }
+        : outcomes.get(pending.key)
+          ?? { ok: false as const, error: appError('provider_error', 'Gemini batch job returned no response for this file') };
+      const completed = outcome.ok
+        ? await processVideoPipeline(
+          pass.deps,
+          {
+            ...processInput(pass.input, pending.video.path, pending.fileIndex, state.filesTotal),
+            precomputedAnalysis: { analysis: outcome.value, pricingMode: 'batch' },
+          },
+          progress,
+        )
+        : outcome;
+      if (!completed.ok) {
+        const recorded = await recordFileFailure(deps, state, folder.counts, pending.video.path, completed.error, now);
+        if (!recorded.ok) return recorded;
+        continue;
+      }
+      if (completed.value.snapshotSkipped === true) state.snapshotSkipped += 1;
+      state.run.filesDone += 1;
+      folder.counts.filesDone += 1;
+    }
+    const closed = await closeFolder(deps, pass.globalCatalog, state, folder.path, folder.counts, progress, now);
+    if (!closed.ok) return closed;
+  }
+
+  state.run.batch = expired
+    ? null
+    : { displayName, jobName: job.value.jobName, state: 'completed', model: plan.model, requests };
+  return persistRun(deps, state, now);
+};
+
+const closeFolder = async (
+  deps: ProcessDeps,
+  globalCatalog: GlobalCatalogStore,
+  state: MutableRunState,
+  folderPath: string,
+  counts: { filesDone: number; filesSkipped: number; filesFailed: number },
+  progress: JobExecutionContext | undefined,
+  now: () => Date,
+): Promise<Result<void, AppError>> => {
+  state.run.foldersDone += 1;
+  const persisted = await persistRun(deps, state, now);
+  if (!persisted.ok) return persisted;
+  const flushed = await globalCatalog.flush();
+  if (!flushed.ok) return flushed;
+  return reportFolderDone(progress, folderPath, counts);
+};
+
+const recordFileFailure = async (
+  deps: ProcessDeps,
+  state: MutableRunState,
+  counts: { filesDone: number; filesSkipped: number; filesFailed: number },
+  videoPath: string,
+  error: AppError,
+  now: () => Date,
+): Promise<Result<void, AppError>> => {
+  state.run.filesFailed += 1;
+  counts.filesFailed += 1;
+  state.failures.push(failureRecord(videoPath, 'file', error));
+  return persistRun(deps, state, now);
+};
+
+const abortedRun = async (
+  deps: ProcessDeps,
+  state: MutableRunState,
+  progress: JobExecutionContext | undefined,
+  now: () => Date,
+): Promise<Result<never, AppError>> => {
+  const aborted = await reportSummary(deps, state, progress, now);
+  if (!aborted.ok) return aborted;
+  return {
+    ok: false,
+    error: appError(
+      'drive_run_aborted',
+      `Aborted drive run after ${maxConsecutiveFailures} consecutive file failures. Re-run the same root to resume.`,
+      { runId: state.run.runId, failures: state.failures },
+    ),
+  };
 };
 
 const walkCatalogTree = async (
@@ -577,15 +908,6 @@ const backoffDelayMs = (attempt: number, options: DriveRunOptions): number => {
 
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
-
-const report = (
-  progress: JobExecutionContext | undefined,
-  step: ProcessJobStep,
-  data: Record<string, unknown>,
-): Promise<Result<void, AppError>> => {
-  if (progress === undefined) return Promise.resolve(ok(undefined));
-  return progress.reportProgress({ step, data });
-};
 
 const cancelled = (progress: JobExecutionContext | undefined): Result<void, AppError> => {
   if (progress?.signal.aborted === true) {

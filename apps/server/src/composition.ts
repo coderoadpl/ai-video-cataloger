@@ -42,6 +42,7 @@ import { ReadinessCache } from '@core/server/index.js';
 import type {
   AnalysisOutput,
   AnalyzeInput,
+  AnalyzerBatchPort,
   AnalyzerPort,
   CatalogFileRecord,
   CatalogSearchInput,
@@ -113,6 +114,7 @@ export interface AppDeps {
   transcriber: TranscriberPort;
   whisperRuntime: WhisperRuntimePort;
   analyzer: AnalyzerPort;
+  analyzerBatch?: AnalyzerBatchPort | undefined;
   providers: ProvidersPort;
   localAi: LocalAiRuntimePort;
   downloads: ModelDownloadPort;
@@ -193,6 +195,7 @@ export const createDeps = (config: AppConfig = {}): AppDeps => {
     transcriber: new WhisperTranscriberAdapter({ credentials, homeDirectory, runtime: whisperRuntime }),
     whisperRuntime,
     analyzer: new ProviderRoutingAnalyzerAdapter(harness, ollamaAnalyzer, apiAnalyzer, geminiAnalyzer),
+    analyzerBatch: geminiAnalyzer,
     providers: new ProviderRoutingProvidersPort(harness, ollamaAnalyzer, apiAnalyzer, geminiAnalyzer),
     localAi,
     downloads,
