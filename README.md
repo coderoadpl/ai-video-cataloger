@@ -106,12 +106,17 @@ models whisper-runtime status|install
 Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`.
 
 OpenAI-compatible analyzers use `analyzer_provider` JSON configuration. API
-credentials are deliberately stored as a plain owner-readable file at
-`~/.ai-video-cataloger/credentials.json` (mode `0600`), never alongside video
-folders. Store one with `ai-video-cataloger config set-credential <providerId>`;
-the command prompts without echo or reads `AI_VIDEO_CATALOGER_API_KEY`
-(`OPENAI_API_KEY` is also accepted for provider `openai`). macOS Keychain is a
-named future upgrade.
+credentials live in the macOS Keychain (service `com.ai-video-cataloger.app`,
+account = the provider id), never alongside video folders. Store one with
+`ai-video-cataloger config set-credential <providerId>`; the command prompts
+without echo or reads `AI_VIDEO_CATALOGER_API_KEY` (`OPENAI_API_KEY` is also
+accepted for provider `openai`). Keys left over in the older plaintext file
+`~/.ai-video-cataloger/credentials.json` move into the Keychain on first
+access. Where the Keychain is unavailable — another platform, a locked or
+missing keychain, `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` — that file (mode
+`0600`) stays the fallback and nothing fails; `ai-video-cataloger doctor` names
+the backend in use. See
+[ADR-0007](docs/decisions/0007-credentials-in-keychain.md).
 
 For Claude analysis, install Claude Code CLI and authenticate it:
 

@@ -289,9 +289,18 @@ managed runtimes, and its working-directory fallback.
 - `CatalogRepository` (global catalog index with folder-id dimension) +
   home-scope repository — drizzle.
 - `ConfigStore` — per-folder `config.json` (schema in `core/domain`).
-- `CredentialsStore` — home-scoped provider secrets in
-  `~/.ai-video-cataloger/credentials.json`; per-folder configuration contains
-  provider references only. The JSON adapter enforces owner-only mode (`0600`).
+- `CredentialsStore` — home-scoped provider secrets; per-folder configuration
+  contains provider references only. The primary backend is the macOS Keychain
+  (`SecretsStore`, service `com.ai-video-cataloger.app`, account = the
+  `apiKeyRef`), with `~/.ai-video-cataloger/credentials.json` (owner-only mode
+  `0600`) as the fallback for non-darwin hosts, explicit opt-outs, and any
+  environment where `security` cannot run. Keys left in the file migrate into
+  the Keychain on first access — write, read back, then remove from the file —
+  and doctor names the live backend. Decided in
+  [ADR-0007](decisions/0007-credentials-in-keychain.md).
+- `SecretsStore` — OS keychain items behind `/usr/bin/security`; the second
+  implementation is the fake command runner the gates inject instead of a real
+  keychain.
 - `MediaPort` — probe/frames/audio/thumbnail. Adapters: bundled
   ffmpeg-static, system ffmpeg (platform difference is real).
 - `TranscriberPort` — whisper.cpp (configured path / managed / system) /
