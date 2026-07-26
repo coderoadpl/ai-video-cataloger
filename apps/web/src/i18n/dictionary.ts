@@ -348,6 +348,8 @@ export interface Dictionary {
     driveBatchPoll: (state: string, requestCount: number) => string;
     driveBatchCompleted: (succeeded: number, failed: number) => string;
     driveBatchUploadsRetained: (retained: number) => string;
+    driveBatchOrphanJobs: (jobNames: readonly string[]) => string;
+    driveBatchModelChanged: (jobModel: string, resolvedModel: string) => string;
     driveBatchWaiting: (requestCount: number) => string;
     progressLine: (percentage: number, label: string) => string;
     fileProgressLine: (current: number, total: number, label: string, filename: string) => string;
@@ -928,6 +930,12 @@ export const en: Dictionary = {
       `✓ Batch results in: ${String(succeeded)} answered, ${String(failed)} failed`,
     driveBatchUploadsRetained: (retained) =>
       `! ${String(retained)} uploaded file(s) could not be deleted from Gemini; they expire on their own after 48h`,
+    driveBatchOrphanJobs: (jobNames) =>
+      `! This run adopts one batch job only. Other unfinished runs for this root still hold paid-for job(s): `
+      + `${jobNames.join(', ')}. Re-run this root after this run finishes to collect them.`,
+    driveBatchModelChanged: (jobModel, resolvedModel) =>
+      `! The batch job was bought with ${jobModel}, but the configuration now resolves to ${resolvedModel}; `
+      + 'its answers are recorded under the model that produced them',
     driveBatchWaiting: (requestCount) => `Batch submitted — awaiting results (${String(requestCount)} file(s))`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
     fileProgressLine: (current, total, label, filename) => `[${String(current)}/${String(total)}] ${label}: ${filename}`,
@@ -1529,6 +1537,13 @@ export const pl: Dictionary = {
       `✓ Wyniki wsadu: ${String(succeeded)} z odpowiedzią, ${String(failed)} błędnych`,
     driveBatchUploadsRetained: (retained) =>
       `! Nie udało się usunąć ${String(retained)} przesłanych plików z Gemini; wygasną same po 48 h`,
+    driveBatchOrphanJobs: (jobNames) =>
+      '! Ten przebieg podpina się tylko do jednego zadania wsadowego. Inne niedokończone przebiegi tego katalogu '
+      + `wciąż trzymają opłacone zadania: ${jobNames.join(', ')}. Uruchom ten katalog ponownie po zakończeniu `
+      + 'tego przebiegu, żeby je odebrać.',
+    driveBatchModelChanged: (jobModel, resolvedModel) =>
+      `! Zadanie wsadowe kupiono na modelu ${jobModel}, a konfiguracja wskazuje teraz ${resolvedModel}; `
+      + 'jego odpowiedzi zapisujemy pod modelem, który je wygenerował',
     driveBatchWaiting: (requestCount) => `Wysłano wsad — czekamy na wyniki (${String(requestCount)} plik(i))`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
     fileProgressLine: (current, total, label, filename) => `[${String(current)}/${String(total)}] ${label}: ${filename}`,

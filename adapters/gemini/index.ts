@@ -746,7 +746,8 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
         headers: { 'x-goog-api-key': apiKey },
         signal: AbortSignal.timeout(10_000),
       });
-      return response.ok;
+      // A file the API no longer has is not an upload still holding quota.
+      return response.ok || response.status === 404;
     } catch {
       return false;
     }

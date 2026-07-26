@@ -7,6 +7,7 @@ import {
   geminiUsageAccounting,
   ok,
   type AppError,
+  type DriveRunBatchState,
   type Result,
 } from '@core/domain/index.js';
 
@@ -16,6 +17,7 @@ import type {
   AnalyzerBatchRequest,
   AnalyzerBatchStatus,
   AnalyzerBatchSubmission,
+  DriveRunRecord,
   JobExecutionContext,
   JobProgress,
 } from '../ports.js';
@@ -176,6 +178,20 @@ const addVideo = (fs: InMemoryFileSystem, videoPath: string, hash: string): void
 };
 
 const runOptions = { sleep: () => Promise.resolve(), batchPollDelayMs: () => 0 };
+
+const unfinishedBatchRun = (runId: string, startedAt: string, batch: DriveRunBatchState): DriveRunRecord => ({
+  runId,
+  root: '/drive',
+  startedAt,
+  finishedAt: null,
+  foldersTotal: 1,
+  foldersDone: 0,
+  filesDone: 0,
+  filesSkipped: 0,
+  filesFailed: 0,
+  lastActivityAt: startedAt,
+  batch,
+});
 
 describe('gemini batch drive runs', () => {
   it('uploads every candidate, submits one job, and lands each answer through the per-file path', async () => {
@@ -574,6 +590,108 @@ describe('gemini batch drive runs', () => {
     expect(resumed.submissions).toHaveLength(0);
     expect(resumed.uploads).toEqual([]);
     expect(resumed.polls).toEqual(['batches/42']);
+  });
+
+  it('names the paid-for jobs of the other unfinished runs it is not adopting', async () => {
+    const interrupted = new FakeBatchPort({ statuses: [{ state: 'running', message: null, results: null }] });
+    const deps = makeDeps(interrupted);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    await processDrive(deps, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-a',
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: () => Promise.reject(new Error('killed')),
+    }).catch(() => undefined);
+    await deps.globalCatalog.startDriveRun(unfinishedBatchRun('run-b', '2026-01-01T01:00:00.000Z', {
+      displayName: 'avc-drive-run-b',
+      jobName: 'batches/99',
+      state: 'submitted',
+      model: 'gemini-2.5-flash',
+      requests: [{ key: 'r0', videoPath: '/drive/one.mp4', fileName: 'files/r0', fileUri: 'https://files/r0' }],
+    }));
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()] });
+    const { progress, events } = recordingProgress();
+    const second = await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, progress, {
+      ...runOptions,
+      runId: 'run-c',
+      now: () => new Date('2026-01-01T02:00:00.000Z'),
+    });
+
+    expect(second).toMatchObject({ ok: true, value: { runId: 'run-b', filesDone: 1 } });
+    expect(resumed.polls).toEqual(['batches/99']);
+    expect(resumed.submissions).toHaveLength(0);
+    const orphans = events.filter((event) => event.step === 'batch_orphan_jobs');
+    expect(orphans).toHaveLength(1);
+    expect(orphans[0]?.data).toEqual({ adoptedJobName: 'batches/99', jobNames: ['batches/42'] });
+  });
+
+  it('stays silent about orphaned jobs when the adopted run is the only one holding a job', async () => {
+    const interrupted = new FakeBatchPort({ statuses: [{ state: 'running', message: null, results: null }] });
+    const deps = makeDeps(interrupted);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    await processDrive(deps, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-a',
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: () => Promise.reject(new Error('killed')),
+    }).catch(() => undefined);
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()] });
+    const { progress, events } = recordingProgress();
+    await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, progress, {
+      ...runOptions,
+      runId: 'run-c',
+      now: () => new Date('2026-01-01T02:00:00.000Z'),
+    });
+
+    expect(events.filter((event) => event.step === 'batch_orphan_jobs')).toHaveLength(0);
+  });
+
+  it('warns when the resolved model no longer matches the job it re-attaches to, and keeps the job', async () => {
+    const interrupted = new FakeBatchPort({ statuses: [{ state: 'running', message: null, results: null }] });
+    const deps = makeDeps(interrupted);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    await processDrive(deps, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-a',
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: () => Promise.reject(new Error('killed')),
+    }).catch(() => undefined);
+    const submitted = await deps.globalCatalog.latestDriveRun();
+    const submittedModel = submitted.ok ? submitted.value?.batch?.model : null;
+    await deps.config.set(
+      { kind: 'home' },
+      'analyzer_provider',
+      JSON.stringify({ ...defaultGeminiNativeProvider(), model: 'gemini-3.0-pro' }),
+    );
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()] });
+    const { progress, events } = recordingProgress();
+    const second = await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, progress, {
+      ...runOptions,
+      runId: 'run-c',
+      now: () => new Date('2026-01-01T02:00:00.000Z'),
+    });
+
+    expect(second).toMatchObject({ ok: true, value: { runId: 'run-a', filesDone: 1, filesFailed: 0 } });
+    expect(resumed.polls).toEqual(['batches/42']);
+    expect(resumed.submissions).toHaveLength(0);
+    const changed = events.filter((event) => event.step === 'batch_model_changed');
+    expect(changed).toHaveLength(1);
+    expect(changed[0]?.data).toEqual({
+      jobName: 'batches/42',
+      jobModel: submittedModel,
+      resolvedModel: 'gemini-3.0-pro',
+    });
+    const stored = await deps.globalCatalog.latestDriveRun();
+    expect(stored.ok && stored.value?.batch?.model).toBe(submittedModel);
   });
 
   it('honours a folder that opts out of the batch root', async () => {

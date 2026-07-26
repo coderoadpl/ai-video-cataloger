@@ -101,6 +101,25 @@ while waiting for the job would otherwise wake up with nothing to re-attach to
 and pay for a second job. Measured live before the flush existed — the resumed
 run submitted `batches/kuo7…` while `batches/pr9u…` was still running.
 
+**5a. One run adopts exactly one job, and says so when it leaves others
+behind.** Several unfinished runs for the same root can each hold a live batch
+state — two runs interrupted in a row, a job that outlived the run that bought
+it. This loop has one request set, one mapping pass and one run record, so
+adopting more than one job would mean interleaving two mappings into one run:
+not worth the complexity for a case a second `process-drive` over the same root
+resolves on its own. The run therefore adopts the newest live-batch run and
+emits a single `batch_orphan_jobs` event naming the jobs it is *not* adopting,
+so paid-for work is never silently orphaned. Re-running the root after this run
+finishes adopts the next one.
+
+**5b. A re-attached run records answers under the model that produced them.**
+The persisted `batch.model` is the model the job was submitted with. A
+configuration that has moved since — a different Gemini model on the folder or
+in home config — does not abandon the job and does not overwrite that field: the
+run keeps polling and mapping the job it already paid for, records the answers
+under the job's own model, and emits one `batch_model_changed` event naming both
+models. The new model takes effect on the next run that submits.
+
 **6. Expiry is per-file honesty, not a crash.** The Files API holds an upload
 for 48 h and a batch job is not eternal either. A re-attach whose job answers
 `404`, `JOB_STATE_EXPIRED`, or whose per-request errors name a missing file
@@ -124,10 +143,15 @@ reuse of interactive rates.** `geminiNativeModelPricing(model, mode)` takes
 `pricePerMTokens*` overrides is halved the same way. The per-file usage event
 carries `pricingMode`, so a cost line in the log names which rate produced it.
 
-**9. Events are additive, and the drive panel stops pretending.** Three new
+**9. Events are additive, and the drive panel stops pretending.** New
 `ProcessJobStep` values — `batch_submitted` (job name, request count),
 `batch_poll` (job name, state, attempt), `batch_completed` (job name,
-succeeded/failed counts). Existing steps keep their meaning; `folder-started`
+succeeded/failed counts), `batch_uploads_retained` (job name, retained count),
+`batch_orphan_jobs` (adopted job name, the job names left behind) and
+`batch_model_changed` (job name, the job's model, the resolved model). All of
+them are typed drive events in the CLI's NDJSON stream — flattened next to
+`type` and `timestamp` — not generic progress lines. Existing steps keep their
+meaning; `folder-started`
 still opens a folder during the upload pass and `folder-done` closes it during
 the mapping pass, with the wait in between. The desktop drive panel renders
 "batch submitted — awaiting results (N of M)" instead of a linear bar it
@@ -154,7 +178,9 @@ may take up to 24 hours.
   mapped, best effort: a delete that fails is never fatal, and the 48 h TTL
   remains the backstop. The run reports it once — a single
   `batch_uploads_retained` progress event naming how many uploads the API kept,
-  not one per file — because silence about a quota leak is not "best effort".
+  not one per file — because silence about a quota leak is not "best effort". A
+  delete answered `404` is counted as released: the upload is gone, and calling
+  it retained would invent a quota leak that does not exist.
 - A file that appears *after* a batch was submitted cannot join that job. A
   re-attached run processes it interactively, at full price for that one file,
   rather than leaving it silently unprocessed.

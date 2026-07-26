@@ -12,6 +12,7 @@ import {
   type CatalogFile,
   type CatalogFolder,
   type DriveRunBatchRequest,
+  type DriveRunBatchState,
   type Result,
   type WhisperModelName,
 } from '@core/domain/index.js';
@@ -195,11 +196,11 @@ export const processDrive = async (
     ? ok(null)
     : await resolveBatchPlan(deps, input, planAnchor);
   if (!batchPlan.ok) return batchPlan;
-  const resumable = batchPlan.value === null
-    ? ok(null)
+  const resumable: Result<ResumableBatchRun, AppError> = batchPlan.value === null
+    ? ok({ adopted: null, orphanJobNames: [] })
     : await resumableBatchRun(globalCatalog, discovery.value.root);
   if (!resumable.ok) return resumable;
-  const adopted = resumable.value;
+  const adopted = resumable.value.adopted;
   const state: MutableRunState = {
     run: {
       runId: adopted?.runId ?? options.runId ?? randomUUID(),
@@ -241,6 +242,14 @@ export const processDrive = async (
     filesTotal: state.filesTotal,
   });
   if (!runStarted.ok) return runStarted;
+
+  if (resumable.value.orphanJobNames.length > 0) {
+    const orphansReported = await report(progress, 'batch_orphan_jobs', {
+      adoptedJobName: adopted?.batch?.jobName ?? null,
+      jobNames: resumable.value.orphanJobNames,
+    });
+    if (!orphansReported.ok) return orphansReported;
+  }
 
   let consecutiveFailures = 0;
   let fileIndex = 0;
@@ -462,18 +471,30 @@ const resolveBatchPlan = async (
   });
 };
 
+interface ResumableBatchRun {
+  adopted: DriveRunRecord | null;
+  orphanJobNames: string[];
+}
+
+const liveBatch = (run: DriveRunRecord): DriveRunBatchState | null =>
+  run.batch !== null && run.batch.state !== 'completed' && run.batch.state !== 'failed' ? run.batch : null;
+
 // The newest unfinished run for a root is not necessarily the one holding a paid-for job: an
 // interactive run over the same root can be interrupted after it, and resubmitting because that
-// one carries no batch state would buy the same job twice.
+// one carries no batch state would buy the same job twice. Adopting more than one job in a single
+// run is not a thing this loop can do, so the jobs left behind are named rather than adopted.
 const resumableBatchRun = async (
   globalCatalog: GlobalCatalogStore,
   root: string,
-): Promise<Result<DriveRunRecord | null, AppError>> => {
+): Promise<Result<ResumableBatchRun, AppError>> => {
   const unfinished = await globalCatalog.unfinishedDriveRuns(root);
   if (!unfinished.ok) return unfinished;
-  const resumable = unfinished.value.find((run) =>
-    run.batch !== null && run.batch.state !== 'completed' && run.batch.state !== 'failed');
-  return ok(resumable ?? null);
+  const live = unfinished.value.filter((run) => liveBatch(run) !== null);
+  const [adopted, ...orphans] = live;
+  return ok({
+    adopted: adopted ?? null,
+    orphanJobNames: orphans.map((run) => run.batch?.jobName ?? run.batch?.displayName ?? run.runId),
+  });
 };
 
 // Every request in the job is built from the plan's own provider, language and timeout, so a
@@ -552,15 +573,28 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
       fileUri: request.fileUri,
     }))
     : persistedBatch.requests;
+  // Every answer in a submitted job was bought from the model it was submitted with, so the run
+  // that re-attaches records them under that model however the configuration has moved since.
+  const jobModel = persistedBatch?.jobName == null ? null : persistedBatch.model;
+  const model = jobModel ?? plan.model;
   state.run.batch = {
     displayName,
     jobName: persistedBatch?.jobName ?? null,
     state: persistedBatch?.jobName == null ? 'preparing' : 'submitted',
-    model: plan.model,
+    model,
     requests,
   };
   const beforeSubmit = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
   if (!beforeSubmit.ok) return beforeSubmit;
+
+  if (jobModel !== null && jobModel !== plan.model) {
+    const modelReported = await report(progress, 'batch_model_changed', {
+      jobName: persistedBatch?.jobName ?? null,
+      jobModel,
+      resolvedModel: plan.model,
+    });
+    if (!modelReported.ok) return modelReported;
+  }
 
   const job = persistedBatch?.jobName == null
     ? await ensureBatchJob({
@@ -578,13 +612,13 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
     if (!persistedFailure.ok) return persistedFailure;
     return job;
   }
-  state.run.batch = { displayName, jobName: job.value.jobName, state: 'submitted', model: plan.model, requests };
+  state.run.batch = { displayName, jobName: job.value.jobName, state: 'submitted', model, requests };
   const afterSubmit = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
   if (!afterSubmit.ok) return afterSubmit;
   const submitReported = await report(progress, 'batch_submitted', {
     jobName: job.value.jobName,
     requestCount: requests.length,
-    model: plan.model,
+    model,
     reattached: job.value.reattached,
   });
   if (!submitReported.ok) return submitReported;
@@ -664,7 +698,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
   }
   state.run.batch = expired
     ? null
-    : { displayName, jobName: job.value.jobName, state: 'completed', model: plan.model, requests };
+    : { displayName, jobName: job.value.jobName, state: 'completed', model, requests };
   return persistBatchIdentity(deps, pass.globalCatalog, state, now);
 };
 

@@ -503,6 +503,20 @@ describe('gemini batch lifecycle', () => {
     expect(released).toEqual({ ok: true, value: { retained: 1 } });
   });
 
+  it('counts an upload the Files API already dropped as released, not retained', async () => {
+    const { fetchImpl } = recordingFetch((call) =>
+      call.url.endsWith('files/r1')
+        ? jsonResponse({ error: { code: 404, message: 'File not found', status: 'NOT_FOUND' } }, 404)
+        : jsonResponse({}));
+
+    const released = await adapterWith(fetchImpl).releaseBatchUploads({
+      provider: provider(),
+      fileNames: ['files/r0', 'files/r1'],
+    });
+
+    expect(released).toEqual({ ok: true, value: { retained: 0 } });
+  });
+
   it('marks a 4xx submit rejection as definitive and leaves a network failure uncertain', async () => {
     const rejecting = recordingFetch(() =>
       jsonResponse({ error: { code: 400, message: 'invalid request', status: 'INVALID_ARGUMENT' } }, 400));

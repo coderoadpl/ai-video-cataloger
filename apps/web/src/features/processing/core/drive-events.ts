@@ -18,6 +18,8 @@ export type DriveMessage =
   | { readonly kind: 'fileSkipped'; readonly level: 'info'; readonly filename: string }
   | { readonly kind: 'snapshotSkipped'; readonly level: 'info'; readonly folder: string }
   | { readonly kind: 'batchUploadsRetained'; readonly level: 'info'; readonly retained: number }
+  | { readonly kind: 'batchOrphanJobs'; readonly level: 'info'; readonly jobNames: readonly string[] }
+  | { readonly kind: 'batchModelChanged'; readonly level: 'info'; readonly jobModel: string; readonly resolvedModel: string }
   | {
       readonly kind: 'runComplete';
       readonly level: 'info';
@@ -105,6 +107,11 @@ const numField = (data: Record<string, unknown> | undefined, key: string): numbe
 const strField = (data: Record<string, unknown> | undefined, key: string): string => {
   const value = data?.[key];
   return typeof value === 'string' ? value : '';
+};
+
+const strListField = (data: Record<string, unknown> | undefined, key: string): string[] => {
+  const value = data?.[key];
+  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
 };
 
 const idle = (counts: DriveCounts): DriveEventOutcome => ({
@@ -216,6 +223,27 @@ export const reduceDriveEvent = (
     return {
       ...idle(counts),
       messages: [{ kind: 'batchUploadsRetained', level: 'info', retained: numField(data, 'retained') }],
+    };
+  }
+
+  if (step === 'batch_orphan_jobs') {
+    return {
+      ...idle(counts),
+      messages: [{ kind: 'batchOrphanJobs', level: 'info', jobNames: strListField(data, 'jobNames') }],
+    };
+  }
+
+  if (step === 'batch_model_changed') {
+    return {
+      ...idle(counts),
+      messages: [
+        {
+          kind: 'batchModelChanged',
+          level: 'info',
+          jobModel: strField(data, 'jobModel'),
+          resolvedModel: strField(data, 'resolvedModel'),
+        },
+      ],
     };
   }
 

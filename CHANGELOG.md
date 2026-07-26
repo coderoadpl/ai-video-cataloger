@@ -35,6 +35,19 @@ release history jumps from `0.5.10` to `0.5.12`.
   in, and that merge overwrote the value the same call had just archived when
   the target file already held an unreadable entry for the same provider. A
   parsed value now wins over an unparsed one on a key collision, in every write.
+- A Gemini batch drive run that finds several unfinished runs for the same root,
+  each holding a live batch job, now emits one `batch_orphan_jobs` event naming
+  the jobs it is not adopting. It still adopts exactly one; the others are
+  collected by re-running the root instead of being silently orphaned.
+- Re-attaching to a batch job whose model no longer matches the resolved
+  configuration emits one `batch_model_changed` event and records the answers
+  under the model the job was bought with, instead of overwriting the run's
+  model with one that never produced those answers.
+- A Files API delete answered `404` counts as a released upload. Reporting it as
+  retained invented a quota leak out of an upload that was already gone.
+- `batch_uploads_retained` is a typed drive event in the CLI's NDJSON stream
+  like `batch_submitted`, `batch_poll` and `batch_completed`, instead of a
+  generic progress line.
 
 ## [0.5.23] - 2026-07-29
 

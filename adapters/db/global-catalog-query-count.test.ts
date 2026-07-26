@@ -3,12 +3,14 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import type initSqlJs from 'sql.js';
+
 import type { CatalogFolder } from '@core/domain/index.js';
 
 const counter = vi.hoisted(() => ({ prepared: 0 }));
 
 vi.mock('sql.js', async () => {
-  const actual = await vi.importActual<{ default: typeof import('sql.js').default }>('sql.js');
+  const actual = await vi.importActual<{ default: typeof initSqlJs }>('sql.js');
   return {
     default: async (config: Parameters<typeof actual.default>[0]) => {
       const SQL = await actual.default(config);

@@ -672,7 +672,9 @@ export type ProcessJobStep =
   | 'batch_submitted'
   | 'batch_poll'
   | 'batch_completed'
-  | 'batch_uploads_retained';
+  | 'batch_uploads_retained'
+  | 'batch_orphan_jobs'
+  | 'batch_model_changed';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

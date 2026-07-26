@@ -40,6 +40,7 @@ import {
   isJsonMode,
 } from './output.js';
 import { credentialDeleteHuman } from './credential-delete-human.js';
+import { driveEventLine, isDriveEventStep, type DriveEventStep } from './drive-events.js';
 import { doctorHuman } from './doctor-human.js';
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
@@ -90,16 +91,6 @@ interface CliJobProgress {
   total?: number | undefined;
   data?: unknown;
 }
-
-const driveEventSteps = [
-  'run-started',
-  'folder-started',
-  'folder-done',
-  'run-summary',
-  'batch_submitted',
-  'batch_poll',
-  'batch_completed',
-] as const;
 
 interface CredentialOptions extends JsonOption {
   env?: string | undefined;
@@ -1280,13 +1271,9 @@ const installedHuman = (data: unknown, tag: string): string => {
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
 
-const isDriveEventStep = (step: string): step is (typeof driveEventSteps)[number] =>
-  driveEventSteps.some((candidate) => candidate === step);
-
-const emitDriveEvent = (json: boolean, type: (typeof driveEventSteps)[number], data: unknown): void => {
+const emitDriveEvent = (json: boolean, type: DriveEventStep, data: unknown): void => {
   if (!json) return;
-  const payload = isRecord(data) ? data : {};
-  process.stdout.write(`${JSON.stringify({ type, timestamp: new Date().toISOString(), ...payload })}\n`);
+  process.stdout.write(driveEventLine(type, data, new Date().toISOString()));
 };
 
 const startKeepAwake = (enabled: boolean): ChildProcess | null => {
