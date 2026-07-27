@@ -111,3 +111,14 @@ re-run.
 - Dev component gallery is a QA tool, not shipped: `apps/web/src/gallery` +
   `apps/web/gallery.html` render components in isolation, and
   `scripts/gallery-shots.mjs` captures reference screenshots.
+- **Keychain fixture hygiene (audits/tests, incident 2026-07-28/29).** Never
+  run `security` against a fixture keychain without supplying its password
+  (`unlock-keychain -p` first, or the trailing-path form with the item's
+  password known) — a password-less open queues a GUI SecurityAgent dialog on
+  the owner's screen, named after the fixture file (the overnight wf-audit
+  r2–r8 rounds left recurring "unlock the 'ro' keychain" prompts). Wrap every
+  `security` invocation in a timeout — FIFO fixtures hang it forever (4
+  `security` processes survived overnight). End every round by killing
+  leftover `security` processes and deleting FIFO fixtures. Any scenario that
+  intentionally can raise a GUI prompt: warn the owner BEFORE the run, never
+  fire it unattended.
