@@ -21,6 +21,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Fixed
 
 - A Gemini native upload whose final response is lost now completes from the server-confirmed state instead of failing with `read_error`.
+- An incomplete credential migration retries on a cooldown instead of re-running on every command.
 
 ## [0.5.26] - 2026-07-29
 
