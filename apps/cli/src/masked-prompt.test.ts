@@ -1,5 +1,5 @@
 import { PassThrough } from 'node:stream';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 
@@ -29,7 +29,8 @@ describe('promptMaskedSecret', () => {
 
 describe('terminal detection', () => {
   it('drives readline in terminal mode from the input stream, whatever the output is', async () => {
-    const input = Object.assign(new PassThrough(), { isTTY: true });
+    const setRawMode = vi.fn();
+    const input = Object.assign(new PassThrough(), { isTTY: true, setRawMode });
     const { output, text } = captured();
 
     const answered = promptMaskedSecret({ input, output }, 'API credential: ');
@@ -37,7 +38,7 @@ describe('terminal detection', () => {
 
     expect(await answered).toBe('sk-live-4321');
     expect(text()).toContain('API credential: ');
-    expect(text()).toContain('\u001b[');
+    expect(setRawMode).toHaveBeenCalledWith(true);
     expect(text()).not.toContain('sk-live-4321');
   });
 
