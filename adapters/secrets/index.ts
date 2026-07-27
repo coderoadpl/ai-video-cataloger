@@ -10,6 +10,8 @@ export const SECURITY_COMMAND_PATH = '/usr/bin/security';
 
 const KEYCHAIN_ITEM_NOT_FOUND = 44;
 const SECURITY_COMMAND_TIMEOUT_MS = 10_000;
+const configuredKeychainPathSchema = z.string().min(1);
+const disabledKeychainSchema = z.literal('1');
 
 export interface SecretsCommandResult {
   code: number;
@@ -42,9 +44,12 @@ export class KeychainSecretsAdapter implements SecretsStore {
   constructor(options: KeychainSecretsAdapterOptions = {}) {
     this.service = options.service ?? DEFAULT_KEYCHAIN_SERVICE;
     this.platform = options.platform ?? process.platform;
-    this.disabled = options.disabled ?? process.env.AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN === '1';
-    const keychainPath = options.keychainPath ?? process.env.AI_VIDEO_CATALOGER_KEYCHAIN;
-    this.keychain = keychainPath === undefined || keychainPath.length === 0 ? [] : [keychainPath];
+    this.disabled = options.disabled
+      ?? disabledKeychainSchema.safeParse(process.env.AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN).success;
+    const keychainPath = configuredKeychainPathSchema.safeParse(
+      options.keychainPath ?? process.env.AI_VIDEO_CATALOGER_KEYCHAIN,
+    );
+    this.keychain = keychainPath.success ? [keychainPath.data] : [];
     this.securityPath = options.securityPath ?? SECURITY_COMMAND_PATH;
     this.commandRunner = options.commandRunner ?? securityCommandRunner;
   }
@@ -96,7 +101,8 @@ export class KeychainSecretsAdapter implements SecretsStore {
 
   private async probe(): Promise<SecretsAvailability> {
     try {
-      const result = await this.commandRunner.run(this.securityPath, ['list-keychains']);
+      const args = this.keychain.length === 0 ? ['list-keychains'] : ['show-keychain-info', ...this.keychain];
+      const result = await this.commandRunner.run(this.securityPath, args);
       return result.code === 0 ? 'available' : 'unavailable';
     } catch {
       return 'unavailable';
