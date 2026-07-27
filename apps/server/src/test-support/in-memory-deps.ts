@@ -23,6 +23,7 @@ import {
 import { ReadinessCache } from '@core/server/index.js';
 import type {
   AlignedFaceCrop,
+  AnalyzedFileLocation,
   AnalyzerPort,
   CatalogFileRecord,
   CatalogLockSnapshot,
@@ -401,6 +402,25 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>> {
     this.analyses.set(analysis.fingerprint, analysis);
     return Promise.resolve(ok(undefined));
+  }
+
+  listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>> {
+    const locations = [...new Set(fingerprints)]
+      .map((fingerprint) => {
+        const file = this.files.get(fingerprint);
+        const analysis = this.analyses.get(fingerprint);
+        if (file === undefined || analysis === undefined) return null;
+        return {
+          fingerprint,
+          folderId: file.folderId,
+          fileName: file.fileName,
+          finalName: analysis.finalName,
+          folderPath: this.folders.get(file.folderId)?.currentPath ?? null,
+        };
+      })
+      .filter((location): location is AnalyzedFileLocation => location !== null)
+      .sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
+    return Promise.resolve(ok(locations));
   }
 
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>> {
