@@ -112,6 +112,11 @@ usually arrive in minutes but the API allows up to 24 hours, and a run killed
 mid-flight re-attaches to the same job on the next run
 ([ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)).
 
+A completed `process-drive` run exits 0 even when individual files fail. This
+partial-success behavior keeps drive runs resumable: the human run summary
+shows `failed=N`, while `--json` reports the count in the `folder-done` and
+`run-summary` NDJSON events.
+
 OpenAI-compatible analyzers use `analyzer_provider` JSON configuration. API
 credentials live in the macOS Keychain (service `com.ai-video-cataloger.app`,
 account = the provider id), never alongside video folders. Store one with

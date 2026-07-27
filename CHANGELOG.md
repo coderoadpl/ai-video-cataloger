@@ -24,6 +24,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Changed
 
 - The packaged app no longer accepts the in-memory DB driver.
+- Processing flags passed explicitly to `process` and `process-drive` now
+  override setup configuration, while unpassed flags defer to configured values
+  instead of applying their CLI defaults.
+- The processing command help now distinguishes `--force` from a catalog reset,
+  and the CLI documentation states that resumable drive runs with per-file
+  failures exit 0 and identifies the summary and NDJSON failure counts.
 
 ### Fixed
 

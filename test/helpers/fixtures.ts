@@ -2,7 +2,7 @@
  * Test fixtures and mock data generators
  */
 
-import { writeFileSync, mkdirSync } from 'node:fs';
+import { chmodSync, writeFileSync, mkdirSync } from 'node:fs';
 import { join, basename, extname } from 'node:path';
 
 // Minimal valid JPEG (1x1 pixel red image) as base64
@@ -20,6 +20,15 @@ export function createFakeVideoFile(dir: string, filename: string = 'test-video.
   const fakeVideoContent = Buffer.alloc(1024, 0);
   writeFileSync(videoPath, fakeVideoContent);
   return videoPath;
+}
+
+export function createFailingClaudeBinary(dir: string): string {
+  const binDir = join(dir, 'bin');
+  mkdirSync(binDir, { recursive: true });
+  const binary = join(binDir, 'claude');
+  writeFileSync(binary, '#!/bin/sh\nprintf "invalid analysis\\n"\n');
+  chmodSync(binary, 0o755);
+  return binDir;
 }
 
 /**

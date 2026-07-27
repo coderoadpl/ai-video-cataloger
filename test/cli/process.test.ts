@@ -3,11 +3,19 @@
  * Processes a single video file
  */
 
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
-import { runCli, parseJsonEvents, findEvent } from '../helpers/cli-runner.js';
-import { createTestDir, cleanupTestDir } from '../setup.js';
-import { createFakeVideoFile, createNonVideoFile, createSubDir } from '../helpers/fixtures.js';
+import { copyFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+
+import { runCli, parseJsonEvents, findEvent, getProjectRoot } from '../helpers/cli-runner.js';
+import { createTestDir, cleanupTestDir } from '../setup.js';
+import {
+  createFailingClaudeBinary,
+  createFakeVideoFile,
+  createNonVideoFile,
+  createSubDir,
+} from '../helpers/fixtures.js';
 
 describe('process command', () => {
   let testDir: string;
@@ -212,5 +220,26 @@ describe('process command', () => {
 
     expect(started).toMatchObject({ data: { options: { frames: 12, timeout: 20 } } });
     expect(findEvent(parseJsonEvents(result.stdout), 'error')?.code).not.toBe('VALIDATION');
+  });
+
+  it('defers unpassed --frames to config and lets explicit --frames win', async () => {
+    const home = createTestDir();
+    const videoPath = join(testDir, 'clip.mp4');
+    const binDir = createFailingClaudeBinary(home);
+    const env = { HOME: home, PATH: binDir };
+    copyFileSync(join(getProjectRoot(), 'test', 'BigBuckBunny480p30s.mp4'), videoPath);
+    await runCli(['config', 'set', 'frames', '1', '--json'], { cwd: home, env });
+    await runCli(['config', 'set', 'whisper_mode', 'skip', '--json'], { cwd: home, env });
+
+    const configured = await runCli(['process', videoPath, '--json'], { cwd: testDir, env });
+
+    expect(configured.exitCode).toBeGreaterThan(0);
+    expect(readdirSync(join(testDir, 'frames', 'clip'))).toHaveLength(1);
+
+    const overridden = await runCli(['process', videoPath, '--frames', '2', '--json'], { cwd: testDir, env });
+
+    expect(overridden.exitCode).toBeGreaterThan(0);
+    expect(readdirSync(join(testDir, 'frames', 'clip'))).toHaveLength(2);
+    cleanupTestDir(home);
   });
 });
