@@ -113,6 +113,7 @@ export class FfmpegMediaAdapter implements MediaPort {
   private readonly runtime: FfmpegRuntime;
   private readonly binaryResolver: BinaryResolver;
   private readonly commandProbe: CommandProbe;
+  private thumbnailTail: Promise<void> = Promise.resolve();
 
   constructor(options: FfmpegMediaAdapterOptions = {}) {
     this.runtime = options.runtime ?? fluentFfmpegRuntime;
@@ -195,7 +196,16 @@ export class FfmpegMediaAdapter implements MediaPort {
     }
   }
 
-  async thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
+  thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
+    const queued = this.thumbnailTail.then(() => this.generateThumbnail(input));
+    this.thumbnailTail = queued.then(
+      () => undefined,
+      () => undefined,
+    );
+    return queued.catch((cause: unknown) => mediaFailure(cause, 'Failed to generate thumbnail'));
+  }
+
+  private async generateThumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
     const configured = await this.configure();
     if (!configured.ok) return configured;
     if (existsSync(input.thumbnailPath) && !input.force) {
