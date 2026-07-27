@@ -236,7 +236,7 @@ exit **39**; a fatal uncaught error → `Fatal error: …` on stderr, exit **1**
 ## 4. Regression pack (REG) — one case per bug fixed this session
 
 Each case reproduces the original defect and asserts the fixed behavior. Derived
-from the owner findings ledger and fix commits since `89e6a6e3`.
+from the owner findings ledger and fix commits since `80c7d82d`.
 
 | ID | Pri | Bug (original) | Repro | Expected (fixed) |
 |---|---|---|---|---|

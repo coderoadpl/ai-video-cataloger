@@ -31,7 +31,7 @@ load-bearing claim below was re-verified against both repos.
 **The app was forked from foundation commit `9b4bcd5`** (merge of PR #8
 "smoke-gate", 2026-07-12 02:29). Evidence:
 
-- App kickoff commit `535d97af` ("docs: foundation-rewrite kickoff") is dated
+- App kickoff commit `d2d4056a` ("docs: foundation-rewrite kickoff") is dated
   2026-07-12 21:45; the first foundation commit after `9b4bcd5` is `956cc5c`/
   `3b7a4a4` (Vercel environments) on 2026-07-14 — nothing newer existed at
   kickoff time.
@@ -56,7 +56,7 @@ same-slot retry on cold-start signatures (750f339), an e2e port-guard fix
 freeing the port before boot to kill an EADDRINUSE flake (595799c), and a
 knip allowance for the `fuser` binary that guard uses (831fa68). Folded into
 Phase 7 (ai-review gate + port guard) below; no other section is affected.
-App-side claims were re-verified against app HEAD `32d59bf4` (v0.5.8,
+App-side claims were re-verified against app HEAD `a0844832` (v0.5.8,
 16 commits after the assessment): still no `engines`/`packageManager`/
 `.nvmrc`, still zod v3, still exactly 14 `withCatalogWriteLock` call sites.
 

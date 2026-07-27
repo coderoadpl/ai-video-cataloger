@@ -13,7 +13,7 @@ implementation, byte-for-byte where users or scripts can observe it (NDJSON
 events, exit codes, on-disk layout, database files). The authoritative
 description of "what exists today" is
 [`tasks/parity-inventory.md`](parity-inventory.md) (generated 2026-07-12 from
-branch `feat/macos-packaging`, commit `d588195`); this PRD references it as
+branch `feat/macos-packaging`, commit `90d9295`); this PRD references it as
 **INV §n** rather than restating it. The three historical PRDs
 (`prd-ai-video-cataloger.md`, `prd-extended-features.md`, `prd-gui-mvp.md`)
 remain background context; where they disagree with the inventory, the
