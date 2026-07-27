@@ -84,6 +84,13 @@ re-run.
 - `pnpm run verify:package` = packaged-bundle shape check (single darwin
   onnxruntime binding, no non-darwin artifacts); run it on the built bundle
   before a release, also outside the normal gates.
+- `pnpm run qa:walkthrough` = scripted self-QA pass over the packaged app
+  (launch, open folder, tree, analysis, search, settings, wizard) that captures
+  one screenshot per step into a timestamped directory, with an isolated
+  user-data directory, an isolated home and the keychain disabled. Mandatory
+  before any DMG handoff, together with the screenshot review listed in
+  [docs/qa/release-walkthrough.md](docs/qa/release-walkthrough.md); never part
+  of `check` or `smoke`.
 
 ## House rules
 

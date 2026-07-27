@@ -243,6 +243,18 @@ it, and compares the layout skeletons against the darwin baselines committed in
 [ADR-0005](docs/decisions/0005-visual-regression.md). Re-baseline an intentional
 UI change with `pnpm run visual --update-snapshots` and commit the PNGs.
 
+Pre-release self-QA:
+
+```bash
+pnpm run qa:walkthrough -- --app "release/mac-arm64/AI Video Cataloger.app" --fixtures ~/videos
+```
+
+Every DMG handoff first drives the packaged app through this scripted
+walkthrough — launch, open folder, tree, analysis, search, settings, wizard —
+and the screenshot set it captures is reviewed before the build is offered. The
+run is isolated: a temp user-data directory, a temp home and a disabled
+keychain. See [docs/qa/release-walkthrough.md](docs/qa/release-walkthrough.md).
+
 ## License
 
 Elastic License 2.0 — public source ("fair source"), not OSI open source.
