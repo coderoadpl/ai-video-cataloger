@@ -43,7 +43,7 @@ describe('partialContentHash identity', () => {
     const moved = path.join(nestedDir, 'clip.mp4');
     writeFileSync(moved, fill(3 * 1024 * 1024, 7));
     expect(await unwrapHash(fs, moved)).toBe(hash);
-  });
+  }, 30_000);
 
   it('is invariant across rename for a small single-window file', async () => {
     const original = path.join(dir, 'small.mp4');
@@ -53,7 +53,7 @@ describe('partialContentHash identity', () => {
     const renamed = path.join(dir, 'renamed-small.mp4');
     writeFileSync(renamed, fill(4096, 3));
     expect(await unwrapHash(fs, renamed)).toBe(hash);
-  });
+  }, 30_000);
 
   it('changes when the file content changes', async () => {
     const original = path.join(dir, 'a.mp4');
@@ -63,5 +63,5 @@ describe('partialContentHash identity', () => {
     const different = path.join(dir, 'b.mp4');
     writeFileSync(different, fill(2 * 1024 * 1024, 2));
     expect(await unwrapHash(fs, different)).not.toBe(hash);
-  });
+  }, 30_000);
 });

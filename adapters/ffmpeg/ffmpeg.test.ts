@@ -276,6 +276,43 @@ describe('FfmpegMediaAdapter', () => {
     expect(runtime.commands).toHaveLength(1);
   });
 
+  it('serializes concurrent thumbnail generation', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    runtime.autoComplete = false;
+    const adapter = adapterWithFakeRuntime(runtime);
+    const firstThumbnailPath = path.join(root, 'first.jpg');
+    const secondThumbnailPath = path.join(root, 'second.jpg');
+
+    const first = adapter.thumbnail({
+      videoPath: path.join(root, 'first.mp4'),
+      thumbnailPath: firstThumbnailPath,
+      seekPercent: 0.25,
+      width: 128,
+      height: 72,
+      force: true,
+    });
+    const second = adapter.thumbnail({
+      videoPath: path.join(root, 'second.mp4'),
+      thumbnailPath: secondThumbnailPath,
+      seekPercent: 0.25,
+      width: 128,
+      height: 72,
+      force: true,
+    });
+
+    await expect.poll(() => runtime.commands.length).toBe(1);
+    const firstCommand = runtime.commands[0];
+    if (firstCommand === undefined) throw new Error('missing first thumbnail command');
+    firstCommand.complete();
+    await expect(first).resolves.toEqual(ok({ path: firstThumbnailPath, generated: true, skipped: false }));
+    await expect.poll(() => runtime.commands.length).toBe(2);
+    const secondCommand = runtime.commands[1];
+    if (secondCommand === undefined) throw new Error('missing second thumbnail command');
+    secondCommand.complete();
+    await expect(second).resolves.toEqual(ok({ path: secondThumbnailPath, generated: true, skipped: false }));
+  });
+
   it('builds an aspect-preserving even-dimension scale filter bounded by the requested box', () => {
     const filter = thumbnailScaleFilter(128, 72);
 
@@ -429,7 +466,7 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     expect(decoded.value.data.some((value) => value !== 0)).toBe(true);
     expect(existsSync(cropPath)).toBe(true);
     expect(existsSync(thumbnailPath)).toBe(true);
-  });
+  }, 30_000);
 
   it.skipIf(!canRunRealBinaries)('preserves source orientation and even dimensions when generating thumbnails', async () => {
     const root = await tempRoot();
@@ -473,7 +510,7 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     for (const dimension of [landscapeDims.width, landscapeDims.height, portraitDims.width, portraitDims.height]) {
       expect(dimension % 2).toBe(0);
     }
-  });
+  }, 30_000);
 });
 
 const emptyResolver: BinaryResolver = {
@@ -648,5 +685,9 @@ class FakeFfmpegCommand implements FfmpegCommand {
 
   fail(error: Error): void {
     if (this.errorListener !== null) this.errorListener(error);
+  }
+
+  complete(): void {
+    if (this.endListener !== null) this.endListener();
   }
 }

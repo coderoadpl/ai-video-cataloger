@@ -3,7 +3,7 @@ import { join } from 'node:path';
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
 
-import { createFakeVideoFile } from '../helpers/fixtures.js';
+import { createFailingClaudeBinary, createFakeVideoFile } from '../helpers/fixtures.js';
 import { findEvent, getProjectRoot, parseJsonEvents, runCli } from '../helpers/cli-runner.js';
 import { cleanupTestDir, createTestDir } from '../setup.js';
 
@@ -78,5 +78,25 @@ describe('process-drive command', () => {
       chmodSync(folder, 0o755);
       cleanupTestDir(home);
     }
+  });
+
+  it('defers unpassed --frames to config and lets explicit --frames win', async () => {
+    const home = createTestDir();
+    const binDir = createFailingClaudeBinary(home);
+    const env = { HOME: home, PATH: binDir };
+    copyFileSync(join(getProjectRoot(), 'test', 'BigBuckBunny480p30s.mp4'), join(testDir, 'clip.mp4'));
+    await runCli(['config', 'set', 'frames', '1', '--json'], { cwd: home, env });
+    await runCli(['config', 'set', 'whisper_mode', 'skip', '--json'], { cwd: home, env });
+
+    const configured = await runCli(['process-drive', testDir, '--json'], { cwd: testDir, env });
+
+    expect(configured.exitCode).toBe(0);
+    expect(readdirSync(join(testDir, 'frames', 'clip'))).toHaveLength(1);
+
+    const overridden = await runCli(['process-drive', testDir, '--frames', '2', '--json'], { cwd: testDir, env });
+
+    expect(overridden.exitCode).toBe(0);
+    expect(readdirSync(join(testDir, 'frames', 'clip'))).toHaveLength(2);
+    cleanupTestDir(home);
   });
 });

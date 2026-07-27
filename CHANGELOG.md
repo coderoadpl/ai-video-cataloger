@@ -16,7 +16,28 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- The packaged app honors `AI_VIDEO_CATALOGER_USER_DATA_DIR` and the keychain
+  environment variables for fully isolated test runs.
+- Duplicate chips appear in folder scope, not only Whole-tree.
+- `pnpm run qa:walkthrough` drives a packaged build through launch, folder open, tree, analysis, search, settings and wizard against an isolated user-data directory, home and disabled keychain, capturing one screenshot per step; the release procedure now requires this self-QA pass and a review of its screenshots before a DMG is offered (`docs/qa/release-walkthrough.md`).
 - The project is licensed `Elastic-2.0` — `LICENSE` (ELv2) at the repo root and a root `package.json` declaration, per ADR-0009 (public source, paid convenience builds, license-key-gated features permitted).
+
+### Changed
+
+- The packaged app no longer accepts the in-memory DB driver.
+- Processing flags passed explicitly to `process` and `process-drive` now
+  override setup configuration, while unpassed flags defer to configured values
+  instead of applying their CLI defaults.
+- The processing command help now distinguishes `--force` from a catalog reset,
+  and the CLI documentation states that resumable drive runs with per-file
+  failures exit 0 and identifies the summary and NDJSON failure counts.
+
+### Fixed
+
+- A Gemini native upload whose final response is lost now completes from the server-confirmed state instead of failing with `read_error`.
+- An incomplete credential migration retries on a cooldown instead of re-running on every command.
+- The keychain path configured by `AI_VIDEO_CATALOGER_KEYCHAIN` is validated before writes, so a bogus path can no longer send API keys to the login keychain.
+- Search results show real thumbnails for folders indexed via the CLI.
 
 ## [0.5.26] - 2026-07-29
 

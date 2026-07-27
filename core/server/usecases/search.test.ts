@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import type { CatalogAnalysis, CatalogFile, CatalogFolder } from '@core/domain/index.js';
 
-import { InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
+import { InMemoryFileSystem, InMemoryGlobalCatalogStore, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
 import { sanitizeSearchQuery, search } from './search.js';
 
 const folderA: CatalogFolder = {
@@ -81,7 +81,7 @@ describe('search', () => {
     await store.upsertFile(file('fp-transcript', folderB.folderId, 'clip.mp4'));
     await store.upsertAnalysis(analysis('fp-transcript', { transcript: 'a long drone transcript', tags: ['field'] }));
 
-    const result = await search({ globalCatalog: store, fs }, { query: 'dron', limit: 10, offset: 0 });
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'dron', limit: 10, offset: 0 });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -104,7 +104,7 @@ describe('search', () => {
     await store.upsertFile(file('fp-nothumb', folderB.folderId, 'drone-b.mp4'));
     await store.upsertAnalysis(analysis('fp-nothumb', { transcript: 'drone', tags: [] }));
 
-    const result = await search({ globalCatalog: store, fs }, { query: 'drone', limit: 10, offset: 0 });
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'drone', limit: 10, offset: 0 });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -112,5 +112,42 @@ describe('search', () => {
     const offline = result.value.results.find((row) => row.fingerprint === 'fp-nothumb');
     expect(online?.thumbnailPath).toBe('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
     expect(offline?.thumbnailPath).toBeNull();
+  });
+
+  it('generates a missing thumbnail for an online hit with completed analysis', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone.mp4');
+    const media = new InMemoryMedia();
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-lazy-thumb', folderA.folderId, 'drone.mp4'));
+    await store.upsertAnalysis(analysis('fp-lazy-thumb', { description: 'drone flight' }));
+
+    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', limit: 10, offset: 0 });
+
+    expect(result.ok && result.value.results[0]?.thumbnailPath)
+      .toBe('/media/online/.ai-video-cataloger/thumbnails/drone.jpg');
+    expect(media.thumbnailInputs).toEqual([{
+      videoPath: '/media/online/drone.mp4',
+      thumbnailPath: '/media/online/.ai-video-cataloger/thumbnails/drone.jpg',
+      seekPercent: 0.25,
+      width: 128,
+      height: 72,
+      force: false,
+    }]);
+  });
+
+  it('does not generate a thumbnail for a hit without completed analysis', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone.mp4');
+    const media = new InMemoryMedia();
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-pending', folderA.folderId, 'drone.mp4'));
+
+    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', limit: 10, offset: 0 });
+
+    expect(result.ok && result.value.results[0]?.thumbnailPath).toBeNull();
+    expect(media.thumbnailInputs).toEqual([]);
   });
 });

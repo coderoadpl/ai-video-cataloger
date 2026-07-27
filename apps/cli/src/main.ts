@@ -28,6 +28,7 @@ import {
   type WhisperModelName,
 } from '@core/domain/index.js';
 import { createApp } from '@server/src/create-app.js';
+import { inMemoryDbRequested } from '@server/src/composition.js';
 import packageJson from '../../../package.json' with { type: 'json' };
 
 import {
@@ -105,7 +106,13 @@ const cliHomeDirectory = process.env.AVC_HOME_DIRECTORY ?? homedir();
 const cliConfigFolder = path.resolve(cliWorkingDirectory) === path.resolve(cliHomeDirectory)
   ? undefined
   : cliWorkingDirectory;
-const app = createApp({ workingDirectory: cliWorkingDirectory, homeDirectory: cliHomeDirectory, processName: 'cli' });
+const inMemoryDepsFactory = inMemoryDbRequested()
+  ? (await import('@server/src/test-support/in-memory-deps.js')).createInMemoryDeps
+  : undefined;
+const app = createApp(
+  { workingDirectory: cliWorkingDirectory, homeDirectory: cliHomeDirectory, processName: 'cli' },
+  inMemoryDepsFactory,
+);
 const api = createApiClient({
   baseUrl: '',
   fetchImpl: async (input, init) => app.honoApp.request(input, init),
@@ -132,6 +139,9 @@ const analyzerSelection = (options: ProcessOptions): AnalyzerSelection => ({
   analyzer: options.analyzer,
   provider: options.provider,
 });
+
+const optionWasPassed = (command: Command, name: string): boolean =>
+  command.getOptionValueSource(name) === 'cli';
 
 const conflictingAnalyzerSelection = (options: ProcessOptions): AppError | null =>
   options.analyzer === undefined || options.provider === undefined
@@ -558,7 +568,11 @@ program
     analyzerProviderOption,
   )
   .option('--local-model <tag>', 'local AI model')
-  .option('--force', 'reprocess even if the global index already has an analysis', false)
+  .option(
+    '--force',
+    'bypass only the global-index skip; does not re-analyze completed folder-catalog files (use reset or reset-single)',
+    false,
+  )
   .option('--json', 'machine-readable JSON output', false)
   .action(async (videoPath: string, options: ProcessOptions, command: Command) => {
     const json = isJsonMode(options);
@@ -572,7 +586,6 @@ program
       emitError(json, validatedPath.error, validatedPath.data);
       return;
     }
-    const explicit = (name: string): boolean => command.getOptionValueSource(name) === 'cli';
     const commandOptions = {
       frames: options.frames,
       skipRename: options.skipRename === true,
@@ -593,17 +606,12 @@ program
     }
     const result = await api.processVideo({
       videoPath: validatedPath.value,
-      frames: options.frames,
-      framesExplicit: explicit('frames'),
-      skipRename: options.skipRename === true,
-      skipRenameExplicit: explicit('skipRename'),
+      ...(optionWasPassed(command, 'frames') ? { frames: options.frames } : {}),
+      ...(optionWasPassed(command, 'skipRename') ? { skipRename: options.skipRename === true } : {}),
       verbose: options.verbose === true,
-      timeout: options.timeout,
-      timeoutExplicit: explicit('timeout'),
-      whisper: options.whisper,
-      whisperExplicit: explicit('whisper'),
-      ...(whisperModel === undefined ? {} : { whisperModel }),
-      whisperModelExplicit: explicit('whisperModel'),
+      ...(optionWasPassed(command, 'timeout') ? { timeout: options.timeout } : {}),
+      ...(optionWasPassed(command, 'whisper') ? { whisper: options.whisper } : {}),
+      ...(optionWasPassed(command, 'whisperModel') && whisperModel !== undefined ? { whisperModel } : {}),
       ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
       ...(options.provider === undefined ? {} : { provider: options.provider }),
       ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
@@ -632,7 +640,11 @@ program
     analyzerProviderOption,
   )
   .option('--local-model <tag>', 'local AI model')
-  .option('--force', 'reprocess even if the global index already has an analysis', false)
+  .option(
+    '--force',
+    'bypass only the global-index skip; does not re-analyze completed folder-catalog files (use reset or reset-single)',
+    false,
+  )
   .option(
     '--gemini-batch',
     'submit the run to the Gemini Batch API (half price; results usually minutes, up to 24h)',
@@ -652,7 +664,6 @@ program
       emitError(json, validatedRoot.error, validatedRoot.data);
       return;
     }
-    const explicit = (name: string): boolean => command.getOptionValueSource(name) === 'cli';
     const commandOptions = {
       frames: options.frames,
       skipRename: options.skipRename === true,
@@ -676,22 +687,17 @@ program
     try {
       const result = await api.processDrive({
         root: validatedRoot.value,
-        frames: options.frames,
-        framesExplicit: explicit('frames'),
-        skipRename: options.skipRename === true,
-        skipRenameExplicit: explicit('skipRename'),
+        ...(optionWasPassed(command, 'frames') ? { frames: options.frames } : {}),
+        ...(optionWasPassed(command, 'skipRename') ? { skipRename: options.skipRename === true } : {}),
         verbose: options.verbose === true,
-        timeout: options.timeout,
-        timeoutExplicit: explicit('timeout'),
-        whisper: options.whisper,
-        whisperExplicit: explicit('whisper'),
-        ...(whisperModel === undefined ? {} : { whisperModel }),
-        whisperModelExplicit: explicit('whisperModel'),
+        ...(optionWasPassed(command, 'timeout') ? { timeout: options.timeout } : {}),
+        ...(optionWasPassed(command, 'whisper') ? { whisper: options.whisper } : {}),
+        ...(optionWasPassed(command, 'whisperModel') && whisperModel !== undefined ? { whisperModel } : {}),
         ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
         ...(options.provider === undefined ? {} : { provider: options.provider }),
         ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
         ...(options.force === true ? { force: true } : {}),
-        ...(explicit('geminiBatch') ? { geminiBatch: options.geminiBatch === true, geminiBatchExplicit: true } : {}),
+        ...(optionWasPassed(command, 'geminiBatch') ? { geminiBatch: options.geminiBatch === true } : {}),
       });
       if (!result.ok) {
         emitError(json, result.error);

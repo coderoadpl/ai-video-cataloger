@@ -45,6 +45,10 @@ least one representative column plus the specifically-called-out variants.
 - "Analyzed" = status Completed; "unanalyzed" = Pending/Not Tracked.
 - CLI runs assume the binary resolves to `ai-video-cataloger` and `cwd` = the
   catalog folder unless `AVC_WORKING_DIRECTORY` is noted.
+- Agent-driven GUI runs MUST set `AI_VIDEO_CATALOGER_USER_DATA_DIR` to an
+  absolute throwaway directory and either set
+  `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` or point
+  `AI_VIDEO_CATALOGER_KEYCHAIN` at an unlocked throwaway keychain.
 
 ---
 

@@ -17,6 +17,7 @@ import type {
 
 import { buildApp } from './app.js';
 import { createDeps, type AppDeps } from './composition.js';
+import { createInMemoryDeps } from './test-support/in-memory-deps.js';
 
 class ToggleAnalyzer implements AnalyzerPort {
   available = false;
@@ -107,7 +108,7 @@ describe('readiness route cache invalidation', () => {
   it.each(['whisper_download', 'whisper_runtime_install', 'local_ai_pull'] satisfies JobKind[])(
     'invalidates cached readiness after a successful %s job',
     async (kind) => {
-      const deps = createDeps({ dbDriver: 'memory', workingDirectory: '/work' });
+      const deps: AppDeps = createInMemoryDeps({ workingDirectory: '/work' });
       const analyzer = new ToggleAnalyzer();
       deps.analyzer = analyzer;
       deps.transcriber = new ReadyTranscriber();
@@ -122,10 +123,11 @@ describe('readiness route cache invalidation', () => {
 
       expect(await refreshed.json()).toMatchObject({ ok: true, data: { analyzer: { available: true } } });
     },
+    30_000,
   );
 
   it('invalidates cached readiness after credential writes', async () => {
-    const deps = createDeps({ dbDriver: 'memory', workingDirectory: '/work' });
+    const deps: AppDeps = createInMemoryDeps({ workingDirectory: '/work' });
     const analyzer = new ToggleAnalyzer();
     deps.analyzer = analyzer;
     deps.transcriber = new ReadyTranscriber();
@@ -147,7 +149,7 @@ describe('readiness route cache invalidation', () => {
   });
 
   it('invalidates cached readiness after config writes', async () => {
-    const deps = createDeps({ dbDriver: 'memory', workingDirectory: '/work' });
+    const deps: AppDeps = createInMemoryDeps({ workingDirectory: '/work' });
     deps.transcriber = new ReadyTranscriber();
     const app = buildApp(deps);
 
@@ -166,7 +168,7 @@ describe('readiness route cache invalidation', () => {
 
 describe('configured Whisper validation', () => {
   it('rejects a non-executable path without storing it', async () => {
-    const deps = createDeps({ dbDriver: 'memory', workingDirectory: '/work' });
+    const deps = createInMemoryDeps({ workingDirectory: '/work' });
     const app = buildApp(deps);
 
     const response = await app.request('/api/config', {

@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import {
   DEFAULT_KEYCHAIN_SERVICE,
@@ -24,6 +24,10 @@ const found = (secret: string): SecretsCommandResult => ({ code: 0, stdout: `${s
 const notFound = (): SecretsCommandResult => ({ code: 44, stdout: '', stderr: 'not found' });
 const timedOut = (): SecretsCommandResult => ({ code: 1, stdout: '', stderr: 'security timed out after 10000ms' });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+});
+
 describe('KeychainSecretsAdapter', () => {
   it('is unavailable on non-darwin platforms', async () => {
     const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
@@ -36,6 +40,15 @@ describe('KeychainSecretsAdapter', () => {
   it('is unavailable when explicitly disabled even on darwin', async () => {
     const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
     const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: true, commandRunner: runner });
+
+    expect(await adapter.availability()).toBe('disabled');
+    expect(runner.calls).toHaveLength(0);
+  });
+
+  it('honors the disabled environment setting without invoking security', async () => {
+    vi.stubEnv('AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN', '1');
+    const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
 
     expect(await adapter.availability()).toBe('disabled');
     expect(runner.calls).toHaveLength(0);
@@ -144,7 +157,10 @@ describe('KeychainSecretsAdapter', () => {
   });
 
   it('addresses an explicit keychain file when one is configured', async () => {
-    const runner = new FakeSecurity((args) => (args[0] === 'find-generic-password' ? found('sk-temp') : notFound()));
+    const runner = new FakeSecurity((args) => {
+      if (args[0] === 'find-generic-password') return found('sk-temp');
+      return { code: 0, stdout: '', stderr: '' };
+    });
     const adapter = new KeychainSecretsAdapter({
       platform: 'darwin',
       service: 'svc',
@@ -156,6 +172,70 @@ describe('KeychainSecretsAdapter', () => {
     await adapter.set('openai', 'sk-temp');
     await adapter.delete('openai');
     for (const call of runner.calls) expect(call.args.at(-1)).toBe('/tmp/probe.keychain');
+  });
+
+  it('validates an explicit keychain once before writing to it', async () => {
+    const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
+    const adapter = new KeychainSecretsAdapter({
+      platform: 'darwin',
+      disabled: false,
+      keychainPath: '/tmp/valid.keychain',
+      commandRunner: runner,
+    });
+
+    expect(await adapter.availability()).toBe('available');
+    expect(await adapter.set('openai', 'sk-first')).toEqual({ ok: true, value: undefined });
+    expect(await adapter.set('gemini', 'sk-second')).toEqual({ ok: true, value: undefined });
+    expect(runner.calls.map((call) => call.args[0])).toEqual([
+      'show-keychain-info',
+      'add-generic-password',
+      'add-generic-password',
+    ]);
+    expect(runner.calls[0]?.args).toEqual(['show-keychain-info', '/tmp/valid.keychain']);
+  });
+
+  it('caches an invalid explicit keychain verdict and never attempts a write', async () => {
+    const runner = new FakeSecurity(() => ({
+      code: 36,
+      stdout: '',
+      stderr: 'The specified keychain could not be found.',
+    }));
+    const adapter = new KeychainSecretsAdapter({
+      platform: 'darwin',
+      disabled: false,
+      keychainPath: '/tmp/missing.keychain',
+      commandRunner: runner,
+    });
+
+    expect(await adapter.availability()).toBe('unavailable');
+    expect(await adapter.set('openai', 'sk-first')).toMatchObject({
+      ok: false,
+      error: { code: 'keychain_unavailable' },
+    });
+    expect(await adapter.set('gemini', 'sk-second')).toMatchObject({
+      ok: false,
+      error: { code: 'keychain_unavailable' },
+    });
+    expect(runner.calls.map((call) => call.args)).toEqual([
+      ['show-keychain-info', '/tmp/missing.keychain'],
+    ]);
+  });
+
+  it('targets only the environment keychain during readiness and credential access', async () => {
+    vi.stubEnv('AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN', '');
+    vi.stubEnv('AI_VIDEO_CATALOGER_KEYCHAIN', '/tmp/environment.keychain');
+    const runner = new FakeSecurity((args) => (
+      args[0] === 'find-generic-password' ? found('sk-temp') : { code: 0, stdout: '', stderr: '' }
+    ));
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+
+    expect(await adapter.availability()).toBe('available');
+    await adapter.get('openai');
+    await adapter.set('openai', 'sk-temp');
+    await adapter.delete('openai');
+
+    expect(runner.calls[0]?.args).toEqual(['show-keychain-info', '/tmp/environment.keychain']);
+    for (const call of runner.calls) expect(call.args.at(-1)).toBe('/tmp/environment.keychain');
   });
 
   it('never repeats the secret in a failure message', async () => {

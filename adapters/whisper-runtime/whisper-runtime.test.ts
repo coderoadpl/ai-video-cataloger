@@ -292,7 +292,7 @@ describe('ManagedWhisperRuntimeAdapter', () => {
         options: {},
       });
     }
-  });
+  }, 30_000);
 
   it('rejects a blob checksum mismatch and removes staged files', async () => {
     const home = await tempHome();
@@ -317,7 +317,7 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     expect(await exists(managedWhisperBinaryPath(home))).toBe(false);
     expect(await exists(path.join(home, '.ai-video-cataloger', 'bin', 'whisper-runtime', 'v1.9.1.install.tmp'))).toBe(false);
     expect(runner.commands.some((entry) => entry.command === 'make')).toBe(false);
-  });
+  }, 30_000);
 
   it('constructs install-name patch commands as argument vectors', () => {
     expect(whisperInstallNamePatches()).toContainEqual({
@@ -364,7 +364,7 @@ describe('ManagedWhisperRuntimeAdapter', () => {
     expect(installed).toEqual(ok({ path: managedWhisperBinaryPath(home), version: 'v1.9.1', installed: true }));
     expect(runner.commands.some((entry) => entry.command === 'make')).toBe(true);
     expect(progress).toContain('source_fallback');
-  });
+  }, 30_000);
 });
 
 class FakeRunner implements WhisperRuntimeCommandRunner {

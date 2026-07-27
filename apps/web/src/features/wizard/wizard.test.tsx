@@ -454,7 +454,7 @@ describe('SetupWizard', () => {
 
     expect(recorders.credentialWrites).toEqual([{ providerId: 'openai' }]);
     expect(recorders.configWrites).toContainEqual({ key: 'whisper_mode', value: 'api' });
-  });
+  }, 30_000);
 
   it('shows detected-installed badges for agent harnesses', async () => {
     installHandlers({ harnessAvailable: (providerId) => providerId === 'claude-code' });

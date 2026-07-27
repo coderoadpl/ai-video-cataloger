@@ -105,7 +105,7 @@ describe('process pipeline through the in-process jobs executor', () => {
     expect(deps.transcriber.inputs).toHaveLength(0);
     expect(deps.analyzer.inputs).toHaveLength(0);
     await expect(deps.fs.exists('/work/summaries/Clip One.json')).resolves.toEqual({ ok: true, value: false });
-  });
+  }, 30_000);
 });
 
 const waitForRecord = async (

@@ -10,6 +10,8 @@ export const SECURITY_COMMAND_PATH = '/usr/bin/security';
 
 const KEYCHAIN_ITEM_NOT_FOUND = 44;
 const SECURITY_COMMAND_TIMEOUT_MS = 10_000;
+const configuredKeychainPathSchema = z.string().min(1);
+const disabledKeychainSchema = z.literal('1');
 
 export interface SecretsCommandResult {
   code: number;
@@ -38,13 +40,17 @@ export class KeychainSecretsAdapter implements SecretsStore {
   private readonly securityPath: string;
   private readonly commandRunner: SecretsCommandRunner;
   private structural: Extract<SecretsAvailability, 'disabled' | 'unsupported'> | null = null;
+  private customKeychainValidation: Promise<Result<void, AppError>> | null = null;
 
   constructor(options: KeychainSecretsAdapterOptions = {}) {
     this.service = options.service ?? DEFAULT_KEYCHAIN_SERVICE;
     this.platform = options.platform ?? process.platform;
-    this.disabled = options.disabled ?? process.env.AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN === '1';
-    const keychainPath = options.keychainPath ?? process.env.AI_VIDEO_CATALOGER_KEYCHAIN;
-    this.keychain = keychainPath === undefined || keychainPath.length === 0 ? [] : [keychainPath];
+    this.disabled = options.disabled
+      ?? disabledKeychainSchema.safeParse(process.env.AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN).success;
+    const keychainPath = configuredKeychainPathSchema.safeParse(
+      options.keychainPath ?? process.env.AI_VIDEO_CATALOGER_KEYCHAIN,
+    );
+    this.keychain = keychainPath.success ? [keychainPath.data] : [];
     this.securityPath = options.securityPath ?? SECURITY_COMMAND_PATH;
     this.commandRunner = options.commandRunner ?? securityCommandRunner;
   }
@@ -59,6 +65,10 @@ export class KeychainSecretsAdapter implements SecretsStore {
       this.structural = 'disabled';
       return this.structural;
     }
+    if (this.keychain.length > 0) {
+      const validation = await this.validateCustomKeychain();
+      return validation.ok ? 'available' : 'unavailable';
+    }
     return this.probe();
   }
 
@@ -72,6 +82,8 @@ export class KeychainSecretsAdapter implements SecretsStore {
   }
 
   async set(account: string, secret: string): Promise<Result<void, AppError>> {
+    const validation = await this.validateCustomKeychain();
+    if (!validation.ok) return validation;
     // -w takes the password as an argument, briefly exposing it in this process's argv.
     // Bare -w prompts interactively and would hang headless runs. `security -i` does keep
     // the secret out of argv, but a probe against a throwaway keychain (2026-07-28) showed
@@ -94,9 +106,26 @@ export class KeychainSecretsAdapter implements SecretsStore {
     return keychainError(`remove the Keychain entry for ${account}`, result);
   }
 
+  private validateCustomKeychain(): Promise<Result<void, AppError>> {
+    const keychainPath = this.keychain[0];
+    if (keychainPath === undefined) return Promise.resolve(ok(undefined));
+    this.customKeychainValidation ??= this.runCustomKeychainValidation(keychainPath);
+    return this.customKeychainValidation;
+  }
+
+  private async runCustomKeychainValidation(keychainPath: string): Promise<Result<void, AppError>> {
+    try {
+      const result = await this.commandRunner.run(this.securityPath, ['show-keychain-info', keychainPath]);
+      return result.code === 0 ? ok(undefined) : customKeychainUnavailable();
+    } catch {
+      return customKeychainUnavailable();
+    }
+  }
+
   private async probe(): Promise<SecretsAvailability> {
     try {
-      const result = await this.commandRunner.run(this.securityPath, ['list-keychains']);
+      const args = this.keychain.length === 0 ? ['list-keychains'] : ['show-keychain-info', ...this.keychain];
+      const result = await this.commandRunner.run(this.securityPath, args);
       return result.code === 0 ? 'available' : 'unavailable';
     } catch {
       return 'unavailable';
@@ -109,6 +138,14 @@ const stripTrailingNewline = (value: string): string => value.replace(/\r?\n$/, 
 const keychainError = (action: string, result: SecretsCommandResult): Result<never, AppError> => ({
   ok: false,
   error: appError('internal', `Could not ${action} (security exited ${String(result.code)}): ${result.stderr.trim()}`),
+});
+
+const customKeychainUnavailable = (): Result<never, AppError> => ({
+  ok: false,
+  error: appError(
+    'keychain_unavailable',
+    'The configured macOS Keychain could not be read. Check AI_VIDEO_CATALOGER_KEYCHAIN and try again.',
+  ),
 });
 
 const securityCommandRunner: SecretsCommandRunner = {

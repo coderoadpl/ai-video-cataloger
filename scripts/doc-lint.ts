@@ -1,12 +1,18 @@
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 
 import { readmeScriptProblems } from './doc-lint-readme.js';
 
 const scriptsDir = import.meta.dirname;
 const repoRoot = join(scriptsDir, '..');
+const primaryRepoRoot = dirname(
+  execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+    cwd: repoRoot,
+    encoding: 'utf8',
+  }).trim(),
+);
 const require = createRequire(import.meta.url);
 
 const read = (rel: string): string => readFileSync(join(repoRoot, rel), 'utf8');
@@ -205,6 +211,14 @@ for (const claim of ADR_CLAIMS) {
 }
 
 const LINK = /\]\(([^)\s]+)(?:\s+"[^"]*")?\)/g;
+const linkExists = (rel: string, path: string): boolean => {
+  const candidate = resolve(dirname(join(repoRoot, rel)), path);
+  if (existsSync(candidate)) return true;
+  const fromRepoRoot = relative(repoRoot, candidate);
+  if (fromRepoRoot !== '..' && !fromRepoRoot.startsWith(`..${sep}`) && !isAbsolute(fromRepoRoot)) return false;
+  return existsSync(resolve(dirname(join(primaryRepoRoot, rel)), path));
+};
+
 for (const rel of trackedMarkdown) {
   const prose = read(rel)
     .replace(/```[\s\S]*?```/g, '')
@@ -214,7 +228,7 @@ for (const rel of trackedMarkdown) {
     if (/^(https?:|mailto:|tel:|\/\/|#)/.test(target)) continue;
     const path = target.split('#')[0];
     if (!path) continue;
-    if (!existsSync(resolve(dirname(join(repoRoot, rel)), path)))
+    if (!linkExists(rel, path))
       problems.push(`[link] ${rel}: relative link "${target}" points at a missing file.`);
   }
 }

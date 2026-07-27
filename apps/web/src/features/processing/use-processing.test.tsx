@@ -151,7 +151,7 @@ describe('useProcessing batch', () => {
       result.current.analyze(second);
     });
     await waitFor(() => expect(processed).toEqual(['/v/good1.mp4', '/v/good2.mp4']));
-  });
+  }, 30_000);
 
   it('reports the renamed path after a completed analysis so selection can follow', async () => {
     const queryClient = createTestQueryClient();

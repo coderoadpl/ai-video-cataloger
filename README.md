@@ -112,6 +112,11 @@ usually arrive in minutes but the API allows up to 24 hours, and a run killed
 mid-flight re-attaches to the same job on the next run
 ([ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)).
 
+A completed `process-drive` run exits 0 even when individual files fail. This
+partial-success behavior keeps drive runs resumable: the human run summary
+shows `failed=N`, while `--json` reports the count in the `folder-done` and
+`run-summary` NDJSON events.
+
 OpenAI-compatible analyzers use `analyzer_provider` JSON configuration. API
 credentials live in the macOS Keychain (service `com.ai-video-cataloger.app`,
 account = the provider id), never alongside video folders. Store one with
@@ -242,6 +247,18 @@ it, and compares the layout skeletons against the darwin baselines committed in
 `visual/__screenshots__/`. It joins no gate — see
 [ADR-0005](docs/decisions/0005-visual-regression.md). Re-baseline an intentional
 UI change with `pnpm run visual --update-snapshots` and commit the PNGs.
+
+Pre-release self-QA:
+
+```bash
+pnpm run qa:walkthrough -- --app "release/mac-arm64/AI Video Cataloger.app" --fixtures ~/videos
+```
+
+Every DMG handoff first drives the packaged app through this scripted
+walkthrough — launch, open folder, tree, analysis, search, settings, wizard —
+and the screenshot set it captures is reviewed before the build is offered. The
+run is isolated: a temp user-data directory, a temp home and a disabled
+keychain. See [docs/qa/release-walkthrough.md](docs/qa/release-walkthrough.md).
 
 ## License
 

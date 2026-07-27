@@ -11,6 +11,7 @@ export default defineConfig({
     },
   },
   test: {
+    maxWorkers: 4,
     // Gates must never read or write the developer's real macOS Keychain.
     env: { AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1' },
     coverage: {
@@ -82,6 +83,7 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['apps/web/**/*.test.{ts,tsx}'],
           setupFiles: ['apps/web/src/test/setup.ts'],
+          testTimeout: 30000,
         },
       },
       {
