@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
 import { createDeps } from './composition.js';
+import { createInMemoryDeps } from './test-support/in-memory-deps.js';
 
 const homes: string[] = [];
 
@@ -15,7 +16,7 @@ afterEach(async () => {
 
 describe('credential route', () => {
   it('stores a home-scoped credential without returning the secret', async () => {
-    const deps = createDeps({ dbDriver: 'memory' });
+    const deps = createInMemoryDeps();
     const secret = 'sk-never-emit-this';
     const response = await buildApp(deps).request('/api/credentials', {
       method: 'POST',
@@ -35,7 +36,7 @@ describe('credential route', () => {
   });
 
   it('forgets a stored credential and names the backends it cleared', async () => {
-    const deps = createDeps({ dbDriver: 'memory' });
+    const deps = createInMemoryDeps();
     const secret = 'sk-forget-me';
     const app = buildApp(deps);
     await app.request('/api/credentials', {
@@ -61,7 +62,7 @@ describe('credential route', () => {
   });
 
   it('reports an untouched pair of backends for a provider that was never stored', async () => {
-    const deps = createDeps({ dbDriver: 'memory' });
+    const deps = createInMemoryDeps();
 
     const response = await buildApp(deps).request('/api/credentials', {
       method: 'DELETE',

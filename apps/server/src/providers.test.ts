@@ -7,7 +7,8 @@ import { ok, type AnalyzerProviderConfig, type AppError, type Result } from '@co
 import type { ProvidersPort, ProviderTestResult } from '@core/server/index.js';
 
 import { buildApp } from './app.js';
-import { createDeps } from './composition.js';
+import { createDeps, type AppDeps } from './composition.js';
+import { createInMemoryDeps } from './test-support/in-memory-deps.js';
 
 class FakeProvidersPort implements ProvidersPort {
   readonly tested: AnalyzerProviderConfig[] = [];
@@ -27,7 +28,7 @@ class FakeProvidersPort implements ProvidersPort {
 
 describe('provider routes', () => {
   it('lists the closed provider registry without credentials', async () => {
-    const response = await buildApp(createDeps({ dbDriver: 'memory' })).request('/api/providers');
+    const response = await buildApp(createInMemoryDeps()).request('/api/providers');
     const body: unknown = await response.json();
 
     expect(response.status).toBe(200);
@@ -48,7 +49,7 @@ describe('provider routes', () => {
   });
 
   it('validates and delegates provider connectivity tests to ProvidersPort', async () => {
-    const deps = createDeps({ dbDriver: 'memory' });
+    const deps: AppDeps = createInMemoryDeps();
     const providers = new FakeProvidersPort();
     deps.providers = providers;
     const input = {
@@ -87,7 +88,7 @@ describe('provider routes', () => {
       providerId: 'local',
       modelTag: 'gemma3:12b',
     } as const;
-    const response = await buildApp(createDeps({ dbDriver: 'memory' })).request('/api/providers/test', {
+    const response = await buildApp(createInMemoryDeps()).request('/api/providers/test', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(input),

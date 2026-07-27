@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildApp } from './app.js';
-import { createDeps } from './composition.js';
+import { createInMemoryDeps } from './test-support/in-memory-deps.js';
 
 describe('health live/ready routes', () => {
   it('serves liveness at 200 with the composed version and no database touch', async () => {
-    const app = buildApp(createDeps({ dbDriver: 'memory', version: '4.5.6' }));
+    const app = buildApp(createInMemoryDeps({ version: '4.5.6' }));
 
     const response = await app.request('/api/health/live');
 
@@ -14,7 +14,7 @@ describe('health live/ready routes', () => {
   });
 
   it('serves readiness at 200 with per-check detail when the catalog opens', async () => {
-    const app = buildApp(createDeps({ dbDriver: 'memory', version: '4.5.6' }));
+    const app = buildApp(createInMemoryDeps({ version: '4.5.6' }));
 
     const response = await app.request('/api/health/ready');
 
@@ -34,7 +34,7 @@ describe('health live/ready routes', () => {
   });
 
   it('keeps the compat /api/health route', async () => {
-    const app = buildApp(createDeps({ dbDriver: 'memory', version: '4.5.6' }));
+    const app = buildApp(createInMemoryDeps({ version: '4.5.6' }));
 
     const response = await app.request('/api/health');
 

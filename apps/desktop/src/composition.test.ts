@@ -38,7 +38,7 @@ describe('desktop composition', () => {
     vi.stubEnv('USERPROFILE', home);
     vi.stubEnv('OLLAMA_HOST', 'http://127.0.0.1:1');
 
-    const desktopApp = createDesktopApp({ version: 'test' });
+    const desktopApp = await createDesktopApp({ version: 'test', isPackaged: false });
     const api = createApiClient({
       baseUrl: '',
       fetchImpl: async (input, init) => desktopApp.honoApp.request(input, init),
@@ -67,4 +67,12 @@ describe('desktop composition', () => {
     });
     await desktopApp.dispose();
   }, 30_000);
+
+  it('refuses the in-memory database driver in packaged builds', async () => {
+    vi.stubEnv('DB_DRIVER', 'memory');
+
+    await expect(createDesktopApp({ version: 'test', isPackaged: true })).rejects.toThrowError(
+      'Invalid configuration: packaged app does not support DB_DRIVER=memory',
+    );
+  });
 });

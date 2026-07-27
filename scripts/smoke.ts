@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
 import { createApp } from '@server/src/create-app.js';
+import { createInMemoryDeps } from '@server/src/test-support/in-memory-deps.js';
 import packageJson from '../package.json' with { type: 'json' };
 import { z } from 'zod';
 
@@ -188,7 +189,7 @@ const bootInProcess = async (): Promise<void> => {
     await app.dispose();
   }
 
-  const ready = createApp({ dbDriver: 'memory' });
+  const ready = createApp({ dbDriver: 'memory' }, createInMemoryDeps);
   try {
     const response = await ready.honoApp.request('/api/health/ready');
     assert(response.ok, `in-process readiness returned HTTP ${response.status}`);

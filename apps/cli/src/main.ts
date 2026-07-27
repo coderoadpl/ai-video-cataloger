@@ -28,6 +28,7 @@ import {
   type WhisperModelName,
 } from '@core/domain/index.js';
 import { createApp } from '@server/src/create-app.js';
+import { inMemoryDbRequested } from '@server/src/composition.js';
 import packageJson from '../../../package.json' with { type: 'json' };
 
 import {
@@ -105,7 +106,13 @@ const cliHomeDirectory = process.env.AVC_HOME_DIRECTORY ?? homedir();
 const cliConfigFolder = path.resolve(cliWorkingDirectory) === path.resolve(cliHomeDirectory)
   ? undefined
   : cliWorkingDirectory;
-const app = createApp({ workingDirectory: cliWorkingDirectory, homeDirectory: cliHomeDirectory, processName: 'cli' });
+const inMemoryDepsFactory = inMemoryDbRequested()
+  ? (await import('@server/src/test-support/in-memory-deps.js')).createInMemoryDeps
+  : undefined;
+const app = createApp(
+  { workingDirectory: cliWorkingDirectory, homeDirectory: cliHomeDirectory, processName: 'cli' },
+  inMemoryDepsFactory,
+);
 const api = createApiClient({
   baseUrl: '',
   fetchImpl: async (input, init) => app.honoApp.request(input, init),

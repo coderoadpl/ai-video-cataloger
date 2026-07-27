@@ -180,12 +180,10 @@ const bootstrap = async (): Promise<void> => {
 
   setImmediate(() => {
     if (quitting) return;
-    try {
-      desktopApp = createDesktopApp({ version: appVersion });
-      resolveDesktopApp(desktopApp);
-    } catch (error) {
-      rejectDesktopApp(error);
-    }
+    void createDesktopApp({ version: appVersion, isPackaged: app.isPackaged }).then((created) => {
+      desktopApp = created;
+      resolveDesktopApp(created);
+    }, rejectDesktopApp);
   });
 };
 
