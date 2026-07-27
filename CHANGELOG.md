@@ -16,7 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
-- The project is licensed `GPL-3.0-only` — `LICENSE` (GPLv3) at the repo root and a root `package.json` declaration, per ADR-0009 (VoiceInk-style: public source, paid convenience builds).
+- The project is licensed `Elastic-2.0` — `LICENSE` (ELv2) at the repo root and a root `package.json` declaration, per ADR-0009 (public source, paid convenience builds, license-key-gated features permitted).
 
 ## [0.5.26] - 2026-07-29
 
