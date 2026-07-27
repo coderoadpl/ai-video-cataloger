@@ -1,9 +1,9 @@
 # Migration to agentproofarch @ cf247d1 — round 2
 
 Status: COMPLETE (2026-07-27), released as v0.5.14. Wave map: P1 layout layer
-`bd7759c7` + `0b027e78`; P3 pnpm `530f8b3b..598ac2bd`; P2 visual suite
-`4f496e4c` + `6711a729`; P4 conventions `c848bfab`, `a5001731`, `9a713f87`,
-`e33dbc43`, `7375777a`; P5 audit + release in the `chore: release v0.5.14`
+`6deecdcc` + `9058063f`; P3 pnpm `891483a2..5efe3524`; P2 visual suite
+`cf3304e9` + `453e15c0`; P4 conventions `1ca82d6d`, `8e4832a3`, `609deb21`,
+`ce8434dc`, `5ea3d095`; P5 audit + release in the `chore: release v0.5.14`
 commit. Baseline: round 1 completed 2026-07-25 against foundation `bcb038b`
 (`tasks/migration-agentproofarch.md`). This round covers the 112-commit
 foundation delta `bcb038b..cf247d1`.

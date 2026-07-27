@@ -28,12 +28,12 @@ release history jumps from `0.5.10` to `0.5.12`.
   per-file usage event and the batch price rates no longer follow a
   configuration that moved in between, and `batch_model_changed` names the drift
   on this path too
-  ([`0c6da1e`](https://github.com/chomamateusz/ai-video-cataloger/commit/0c6da1e6)).
+  ([`73e6d18`](https://github.com/chomamateusz/ai-video-cataloger/commit/73e6d180)).
 - Deleting a credential whose file entry could not be read now also says the
   macOS Keychain still holds the credential when it does, in the CLI and in the
   settings panel: "nothing was removed" alone pointed at the file when the
   locked keychain was what needed unlocking
-  ([`4fece52`](https://github.com/chomamateusz/ai-video-cataloger/commit/4fece521)).
+  ([`b315241`](https://github.com/chomamateusz/ai-video-cataloger/commit/b3152417)).
 
 ## [0.5.25] - 2026-07-29
 
@@ -45,7 +45,7 @@ release history jumps from `0.5.10` to `0.5.12`.
   catalog knows or the folder that is currently open, so the mirrors of every
   other folder — including ones the catalog has never seen — are refused
   instead of served
-  ([`d50e189`](https://github.com/chomamateusz/ai-video-cataloger/commit/d50e1898)).
+  ([`67da149`](https://github.com/chomamateusz/ai-video-cataloger/commit/67da1493)).
 
 ### Fixed
 
@@ -54,25 +54,25 @@ release history jumps from `0.5.10` to `0.5.12`.
   cost rates all name the job's model, not the one the configuration has moved
   to since. A price override stored on the provider is applied only while its
   model still matches the job's
-  ([`7304736`](https://github.com/chomamateusz/ai-video-cataloger/commit/7304736b)).
+  ([`175cf93`](https://github.com/chomamateusz/ai-video-cataloger/commit/175cf937)).
 - A batch run that adopts a job whose files another run has already processed
   releases that job's Files API uploads and clears the batch state instead of
   leaving both behind. Such a job is dropped without harvesting — its answers
   would only duplicate rows already in the index
-  ([`d7e2524`](https://github.com/chomamateusz/ai-video-cataloger/commit/d7e2524c)).
+  ([`79432d8`](https://github.com/chomamateusz/ai-video-cataloger/commit/79432d83)).
 - An unreadable video no longer aborts the scan of a read-only folder. The
   missing-file reconciliation degrades exactly like the ordinary scan path: the
   file it cannot hash stays marked missing and the folder still lists
-  ([`a5fe691`](https://github.com/chomamateusz/ai-video-cataloger/commit/a5fe6912)).
+  ([`3168770`](https://github.com/chomamateusz/ai-video-cataloger/commit/31687708)).
 - Thumbnails of a read-only folder appear as soon as its first analysis
   finishes, instead of staying placeholders until the app is restarted. A
   completed analysis earns a file one more thumbnail attempt, now that the home
   mirror it writes to exists
-  ([`a5fe691`](https://github.com/chomamateusz/ai-video-cataloger/commit/a5fe6912)).
+  ([`3168770`](https://github.com/chomamateusz/ai-video-cataloger/commit/31687708)).
 - The delete-credential copy keeps the keychain warning when a credentials-file
   entry is also unreadable — both the settings notice and the CLI report the
   retained keychain instead of dropping it for the unreadable-entry line
-  ([`920abaa`](https://github.com/chomamateusz/ai-video-cataloger/commit/920abaa6)).
+  ([`e6daf79`](https://github.com/chomamateusz/ai-video-cataloger/commit/e6daf790)).
 
 ## [0.5.24] - 2026-07-29
 
@@ -82,7 +82,7 @@ release history jumps from `0.5.10` to `0.5.12`.
   queries instead of five per file. A 500-file folder — read on every scan of a
   read-only folder, every catalog-tree count and every snapshot export — went
   from 2502 queries to 6; a 10-file folder went from 52 to the same 6
-  ([`532e630`](https://github.com/chomamateusz/ai-video-cataloger/commit/532e6306)).
+  ([`127cd9c`](https://github.com/chomamateusz/ai-video-cataloger/commit/127cd9c7)).
 
 ### Fixed
 
@@ -93,45 +93,45 @@ release history jumps from `0.5.10` to `0.5.12`.
   gallery fell back to placeholders. The mirror root joins the faces root as a
   fixed home scope, and a path that only appears to be inside it — traversal,
   symlink escape, a video smuggled in — is still refused
-  ([`664e424`](https://github.com/chomamateusz/ai-video-cataloger/commit/664e424b)).
+  ([`39b5914`](https://github.com/chomamateusz/ai-video-cataloger/commit/39b59140)).
 - Setting a conflicting API key aside no longer writes that key away. Every
   write of a credentials file merges the entries the parser could not read back
   in, and that merge overwrote the value the same call had just archived when
   the target file already held an unreadable entry for the same provider. A
   parsed value now wins over an unparsed one on a key collision, in every write
-  ([`4408ed8`](https://github.com/chomamateusz/ai-video-cataloger/commit/4408ed8c)).
+  ([`138c44a`](https://github.com/chomamateusz/ai-video-cataloger/commit/138c44a0)).
 - A Gemini batch drive run that finds several unfinished runs for the same root,
   each holding a live batch job, now emits one `batch_orphan_jobs` event naming
   the jobs it is not adopting. It still adopts exactly one; the others are
   collected by re-running the root instead of being silently orphaned
-  ([`67de7ea`](https://github.com/chomamateusz/ai-video-cataloger/commit/67de7ea0)).
+  ([`30b4da8`](https://github.com/chomamateusz/ai-video-cataloger/commit/30b4da82)).
 - Re-attaching to a batch job whose model no longer matches the resolved
   configuration emits one `batch_model_changed` event and records the answers
   under the model the job was bought with, instead of overwriting the run's
   model with one that never produced those answers
-  ([`67de7ea`](https://github.com/chomamateusz/ai-video-cataloger/commit/67de7ea0)).
+  ([`30b4da8`](https://github.com/chomamateusz/ai-video-cataloger/commit/30b4da82)).
 - A Files API delete answered `404` counts as a released upload. Reporting it as
   retained invented a quota leak out of an upload that was already gone
-  ([`67de7ea`](https://github.com/chomamateusz/ai-video-cataloger/commit/67de7ea0)).
+  ([`30b4da8`](https://github.com/chomamateusz/ai-video-cataloger/commit/30b4da82)).
 - `batch_uploads_retained` is a typed drive event in the CLI's NDJSON stream
   like `batch_submitted`, `batch_poll` and `batch_completed`, instead of a
   generic progress line
-  ([`67de7ea`](https://github.com/chomamateusz/ai-video-cataloger/commit/67de7ea0)).
+  ([`30b4da8`](https://github.com/chomamateusz/ai-video-cataloger/commit/30b4da82)).
 - Deleting a credential whose file entry could not be read no longer claims
   "nothing was removed" when the Keychain item was in fact cleared. The CLI and
   the settings panel now name what was cleared and still say the unreadable
   entry was left untouched and has to be fixed by hand
-  ([`dc31807`](https://github.com/chomamateusz/ai-video-cataloger/commit/dc318075)).
+  ([`ef6a06b`](https://github.com/chomamateusz/ai-video-cataloger/commit/ef6a06b3)).
 - The catalog tree shows real pending and processed counts for a read-only
   folder. Those folders carry no marker file, so the counts fell back to
   "unknown"; the tree now reaches the global index through the same path-derived
   folder id `scan` uses, and only when the index actually holds that folder
-  ([`dc31807`](https://github.com/chomamateusz/ai-video-cataloger/commit/dc318075)).
+  ([`ef6a06b`](https://github.com/chomamateusz/ai-video-cataloger/commit/ef6a06b3)).
 - Scanning a read-only folder surfaces the analysis of a file that is back on
   disk after having been recorded as missing. The missing mark is cleared in the
   global index — which is writable even when the folder is not — instead of
   hiding an analysis that is still valid
-  ([`dc31807`](https://github.com/chomamateusz/ai-video-cataloger/commit/dc318075)).
+  ([`ef6a06b`](https://github.com/chomamateusz/ai-video-cataloger/commit/ef6a06b3)).
 
 ## [0.5.23] - 2026-07-29
 
@@ -144,43 +144,43 @@ release history jumps from `0.5.10` to `0.5.12`.
   unreadable reports that the entry was left untouched and names the file,
   instead of answering "no stored credential" while the plaintext key sits on
   disk
-  ([`9402dcd`](https://github.com/chomamateusz/ai-video-cataloger/commit/9402dcd8)).
+  ([`e50a7a9`](https://github.com/chomamateusz/ai-video-cataloger/commit/e50a7a9a)).
 - `doctor` warns about unreadable credential entries again: the composition
   wrapper around the credentials store dropped `unreadableCredentialEntries` on
   the floor. The wrapper is now typed against the full port so a forgotten
   optional method is a compile error
-  ([`9402dcd`](https://github.com/chomamateusz/ai-video-cataloger/commit/9402dcd8)).
+  ([`e50a7a9`](https://github.com/chomamateusz/ai-video-cataloger/commit/e50a7a9a)).
 - A `set` whose Keychain write succeeded but whose plaintext copy could neither
   be removed nor marked superseded now fails with that message and keeps
   reporting a degraded backend, instead of proceeding as if the copy had been
   marked
-  ([`9402dcd`](https://github.com/chomamateusz/ai-video-cataloger/commit/9402dcd8)).
+  ([`e50a7a9`](https://github.com/chomamateusz/ai-video-cataloger/commit/e50a7a9a)).
 - A folder whose effective analyzer configuration differs from the batch root's
   in any way — a different `apiKeyRef`, output language or timeout, not just a
   different model — is processed interactively instead of being answered with
   the root's settings inside the shared batch job
-  ([`5707a50`](https://github.com/chomamateusz/ai-video-cataloger/commit/5707a50a)).
+  ([`7f1f175`](https://github.com/chomamateusz/ai-video-cataloger/commit/7f1f1752)).
 - A Gemini batch run re-attaches to the unfinished run that actually holds a
   submitted job, rather than to the newest unfinished run for the root, so an
   interrupted interactive run over the same root can no longer cause a second
   job to be bought
-  ([`5707a50`](https://github.com/chomamateusz/ai-video-cataloger/commit/5707a50a)).
+  ([`7f1f175`](https://github.com/chomamateusz/ai-video-cataloger/commit/7f1f1752)).
 - The `ListBatches` display-name lookup now collects matches across every page
   before choosing the newest by `createTime`; a duplicate name split over a page
   boundary previously re-attached to the older job
-  ([`5707a50`](https://github.com/chomamateusz/ai-video-cataloger/commit/5707a50a)).
+  ([`7f1f175`](https://github.com/chomamateusz/ai-video-cataloger/commit/7f1f1752)).
 - A batch job that reports a success state while carrying a job-level error is
   classified as failed
-  ([`5707a50`](https://github.com/chomamateusz/ai-video-cataloger/commit/5707a50a)).
+  ([`7f1f175`](https://github.com/chomamateusz/ai-video-cataloger/commit/7f1f1752)).
 - A read-only folder analysed under a path-derived folder id is reported as
   analysed after a restart. Folder-scoped scans now read the global index for
   such folders, so the desktop app no longer shows "Not Tracked" and offers to
   analyse work that is already done
-  ([`5707a50`](https://github.com/chomamateusz/ai-video-cataloger/commit/5707a50a)).
+  ([`7f1f175`](https://github.com/chomamateusz/ai-video-cataloger/commit/7f1f1752)).
 - Failed Files API deletions after a batch run emit one
   `batch_uploads_retained` progress event per run naming the count, instead of
   being silent
-  ([`5707a50`](https://github.com/chomamateusz/ai-video-cataloger/commit/5707a50a)).
+  ([`7f1f175`](https://github.com/chomamateusz/ai-video-cataloger/commit/7f1f1752)).
 
 ## [0.5.22] - 2026-07-29
 
@@ -192,12 +192,12 @@ release history jumps from `0.5.10` to `0.5.12`.
   one that follows a file relocated between folders — now degrades exactly like
   the per-file snapshot write: it counts towards `snapshotSkipped` and emits a
   `catalog_snapshot_skipped` warning, and the run completes
-  ([`0ef1a00`](https://github.com/chomamateusz/ai-video-cataloger/commit/0ef1a00f)).
+  ([`fe495c9`](https://github.com/chomamateusz/ai-video-cataloger/commit/fe495c97)).
 - A `stale` credential entry is never served as a live key. Reading a provider
   whose only file copy is `stale` now reports `keychain_unavailable` when the
   Keychain refuses, and answers "no key" when the Keychain no longer holds the
   item — dropping that superseded copy instead of resurrecting it
-  ([`f94ae4d`](https://github.com/chomamateusz/ai-video-cataloger/commit/f94ae4dd)).
+  ([`6f4b7ea`](https://github.com/chomamateusz/ai-video-cataloger/commit/6f4b7ea8)).
 - Gemini batch drive runs survive several ways of losing a submitted job. A run
   now re-attaches to the latest unfinished run **of its own root**, so a run over
   another root in between no longer orphans a paid-for batch; the display-name
@@ -205,35 +205,35 @@ release history jumps from `0.5.10` to `0.5.12`.
   jobs sharing a display name resolve to the newest one with a logged warning;
   and a submit failure that is not a definitive API rejection keeps the persisted
   display name so recovery can still find a job that may exist
-  ([`6649571`](https://github.com/chomamateusz/ai-video-cataloger/commit/66495715),
-  [`e0b2da9`](https://github.com/chomamateusz/ai-video-cataloger/commit/e0b2da95)).
+  ([`873f407`](https://github.com/chomamateusz/ai-video-cataloger/commit/873f4070),
+  [`e6b6684`](https://github.com/chomamateusz/ai-video-cataloger/commit/e6b6684b)).
 - A Gemini batch job that reports `done` together with an error is read as
   failed instead of succeeded, a state name without the `JOB_STATE_` prefix is
   understood, an unrecognized state is logged, and a per-request error is mapped
   by its gRPC status string (`UNAUTHENTICATED` / `PERMISSION_DENIED` →
   `provider_auth_failed`, `RESOURCE_EXHAUSTED` → `rate_limited`) as well as by
   the numeric HTTP code
-  ([`6649571`](https://github.com/chomamateusz/ai-video-cataloger/commit/66495715)).
+  ([`873f407`](https://github.com/chomamateusz/ai-video-cataloger/commit/873f4070)).
 - `gemini_batch_mode` is honoured per folder, exactly like the analyzer provider:
   a folder under a batch root can opt out and run interactively, and a folder
   under an interactive root can opt in. The `--gemini-batch` flag still wins over
   every folder key
-  ([`6649571`](https://github.com/chomamateusz/ai-video-cataloger/commit/66495715)).
+  ([`873f407`](https://github.com/chomamateusz/ai-video-cataloger/commit/873f4070)).
 - One malformed entry in `credentials.json` no longer makes the whole file
   unreadable: the bad entry is skipped, every other key keeps working, and
   `doctor` raises a `credential_entry_unreadable` warning naming the provider
-  ([`28f0b17`](https://github.com/chomamateusz/ai-video-cataloger/commit/28f0b176)).
+  ([`14a7844`](https://github.com/chomamateusz/ai-video-cataloger/commit/14a7844a)).
 - A completed Gemini batch run deletes the files it uploaded to the Files API
   instead of leaving them to expire after 48 hours (best effort — a delete that
   fails is logged, never fatal)
-  ([`28f0b17`](https://github.com/chomamateusz/ai-video-cataloger/commit/28f0b176)).
+  ([`14a7844`](https://github.com/chomamateusz/ai-video-cataloger/commit/14a7844a)).
 - Cancelling a Gemini batch run stops it at once instead of waiting out the
   current poll backoff, which reaches five minutes
-  ([`28f0b17`](https://github.com/chomamateusz/ai-video-cataloger/commit/28f0b176)).
+  ([`14a7844`](https://github.com/chomamateusz/ai-video-cataloger/commit/14a7844a)).
 - The whole-tree scope stays available when a tree holds no files on disk but
   the catalog still remembers absent ones, so the absent/forget section is
   reachable for entries search can already find
-  ([`28f0b17`](https://github.com/chomamateusz/ai-video-cataloger/commit/28f0b176)).
+  ([`14a7844`](https://github.com/chomamateusz/ai-video-cataloger/commit/14a7844a)).
 
 ## [0.5.21] - 2026-07-28
 
@@ -252,18 +252,18 @@ release history jumps from `0.5.10` to `0.5.12`.
   mid-flight re-attaches to the job it already paid for instead of submitting a
   second one. Design recorded in
   [ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)
-  ([`e9c85dc`](https://github.com/chomamateusz/ai-video-cataloger/commit/e9c85dc2),
-  [`874bef6`](https://github.com/chomamateusz/ai-video-cataloger/commit/874bef6d),
-  [`68489bd`](https://github.com/chomamateusz/ai-video-cataloger/commit/68489bd8),
-  [`9033329`](https://github.com/chomamateusz/ai-video-cataloger/commit/90333293),
-  [`323a964`](https://github.com/chomamateusz/ai-video-cataloger/commit/323a964b),
-  [`9abdeb0`](https://github.com/chomamateusz/ai-video-cataloger/commit/9abdeb0a),
-  [`f226c5e`](https://github.com/chomamateusz/ai-video-cataloger/commit/f226c5e9),
-  [`640a432`](https://github.com/chomamateusz/ai-video-cataloger/commit/640a4324)).
+  ([`0288e1a`](https://github.com/chomamateusz/ai-video-cataloger/commit/0288e1af),
+  [`2ef0091`](https://github.com/chomamateusz/ai-video-cataloger/commit/2ef0091c),
+  [`9525155`](https://github.com/chomamateusz/ai-video-cataloger/commit/95251559),
+  [`4c239b5`](https://github.com/chomamateusz/ai-video-cataloger/commit/4c239b5d),
+  [`8d2514d`](https://github.com/chomamateusz/ai-video-cataloger/commit/8d2514df),
+  [`bb02669`](https://github.com/chomamateusz/ai-video-cataloger/commit/bb026694),
+  [`d67f004`](https://github.com/chomamateusz/ai-video-cataloger/commit/d67f004d),
+  [`20f715e`](https://github.com/chomamateusz/ai-video-cataloger/commit/20f715ec)).
 - NDJSON drive runs gain three additive steps — `batch_submitted` (job name,
   request count), `batch_poll` (job name, state) and `batch_completed` (job
   name, succeeded/failed counts)
-  ([`323a964`](https://github.com/chomamateusz/ai-video-cataloger/commit/323a964b)).
+  ([`8d2514d`](https://github.com/chomamateusz/ai-video-cataloger/commit/8d2514df)).
 
 ## [0.5.20] - 2026-07-28
 
@@ -274,7 +274,7 @@ release history jumps from `0.5.10` to `0.5.12`.
   (cleared everywhere = success, keychain retained or request failed = warning
   or error), so a Keychain that refused to release the key is finally readable.
   Closing the modal stays the user's action
-  ([`e359643`](https://github.com/chomamateusz/ai-video-cataloger/commit/e3596438)).
+  ([`b379411`](https://github.com/chomamateusz/ai-video-cataloger/commit/b3794111)).
 - A credential migration can no longer overwrite a newer Keychain key with an
   older plaintext one. `credentials.json` entries now record their provenance
   (`{"value": …, "state": "pending" | "stale"}`, a bare string meaning
@@ -285,39 +285,39 @@ release history jumps from `0.5.10` to `0.5.12`.
   instead of deleting it, and `doctor` raises a new `credential_value_conflict`
   warning naming the provider and that file. Forgetting a key clears those
   archives too
-  ([`9c070a7`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c070a77),
-  [`eec27aa`](https://github.com/chomamateusz/ai-video-cataloger/commit/eec27aaa)).
+  ([`9c42037`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c420374),
+  [`bb36129`](https://github.com/chomamateusz/ai-video-cataloger/commit/bb361297)).
 - `delete-credential` now attempts the Keychain even when its availability probe
   fails, and distinguishes "no such item" (nothing cleared) from an unreachable
   Keychain (reported as retained), so a key is never announced as gone while the
   Keychain still holds it
-  ([`9c070a7`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c070a77)).
+  ([`9c42037`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c420374)).
 - A Keychain read error with no plaintext fallback is reported as the new
   `keychain_unavailable` error (HTTP 503, CLI exit 44) instead of being flattened
   into "no API key stored"; the Settings and prerequisites panels say the login
   keychain is locked (en + pl)
-  ([`9c070a7`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c070a77)).
+  ([`9c42037`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c420374)).
 - `doctor` stops reporting a degraded credentials backend once the Keychain
   answers again, including when the migration itself was the operation that
   succeeded
-  ([`9c070a7`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c070a77)).
+  ([`9c42037`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c420374)).
 - Saving a credential from Settings while the macOS Keychain is unreachable no
   longer looks frozen: after two seconds the dialog says it is waiting for the
   Keychain and suggests unlocking it, instead of showing only `Saving…` for the
   ~20s the two `security` calls take to time out
-  ([`588b43a`](https://github.com/chomamateusz/ai-video-cataloger/commit/588b43a3)).
+  ([`387d33e`](https://github.com/chomamateusz/ai-video-cataloger/commit/387d33ea)).
 - The CLI credential prompt writes its question to stderr and decides on raw
   mode from the same stream it gates on (stdin), so `config set-credential
   --json` with stdout redirected no longer mixes the prompt into its NDJSON and
   no longer leaves the terminal echoing the typed key
-  ([`a21cda4`](https://github.com/chomamateusz/ai-video-cataloger/commit/a21cda4d)).
+  ([`5e87b26`](https://github.com/chomamateusz/ai-video-cataloger/commit/5e87b268)).
 - A Gemini native video upload survives a transient chunk failure: a failed
   chunk is retried up to three times with a short backoff, and each retry first
   asks the resumable session how many bytes it already holds, so a half-received
   chunk is resumed rather than sent twice. Non-retryable answers (a rejected key,
   a bad request) still abandon the session immediately. Chunk offsets now advance
   by the bytes actually read, so a short read no longer skips part of the file
-  ([`74a2a96`](https://github.com/chomamateusz/ai-video-cataloger/commit/74a2a968)).
+  ([`dbecb18`](https://github.com/chomamateusz/ai-video-cataloger/commit/dbecb182)).
 
 ## [0.5.19] - 2026-07-28
 
@@ -327,11 +327,11 @@ release history jumps from `0.5.10` to `0.5.12`.
   effective runtime is the system `whisper-cli`, which never reads those files —
   a row could read `Base [Active] · Not downloaded [Download]`. The banner keeps
   naming the runtime actually in use
-  ([`119f339`](https://github.com/chomamateusz/ai-video-cataloger/commit/119f339b)).
+  ([`2a4f543`](https://github.com/chomamateusz/ai-video-cataloger/commit/2a4f5439)).
 - The Polish frame-count label declines properly: `1 klatka`, `2 klatki`,
   `5 klatek`, `22 klatki` instead of a fixed `klatek`. The English label now
   also says `1 frame` rather than `1 frames`
-  ([`1be0737`](https://github.com/chomamateusz/ai-video-cataloger/commit/1be0737e)).
+  ([`2b4fb45`](https://github.com/chomamateusz/ai-video-cataloger/commit/2b4fb45f)).
 - `config set ui_language` / `faces_enabled` run outside `$HOME` no longer write
   a per-folder override that nothing reads: these keys are app-wide, so the CLI
   and the API always write them to the home config regardless of the working
@@ -339,27 +339,27 @@ release history jumps from `0.5.10` to `0.5.12`.
   response names the `scope` it wrote, `config get <key>` carries
   `ignoredFolderValue`, and the CLI prints a `warning:` line naming a stray
   folder override it is ignoring
-  ([`54a3280`](https://github.com/chomamateusz/ai-video-cataloger/commit/54a32806)).
+  ([`136aa4d`](https://github.com/chomamateusz/ai-video-cataloger/commit/136aa4d5)).
 - `Nested Databases Detected` no longer blocks re-opening a root the app itself
   analyzed in whole-tree scope. A nested `.ai-video-cataloger` that carries our
   `folder-id` marker is our own lineage: `check` now returns it in the new
   `ownNestedPaths` field and leaves `hasNestedDatabases` false (exit 0), so the
   folder opens. A nested catalog directory without the marker is still foreign
   and still blocks the GUI open and exits `nested_databases_found`
-  ([`eadf089`](https://github.com/chomamateusz/ai-video-cataloger/commit/eadf0895)).
+  ([`5a04db6`](https://github.com/chomamateusz/ai-video-cataloger/commit/5a04db67)).
 - Global search no longer fails with `Response data does not match the contract`
   (exit 10) once a read-only folder has been processed. A folder the app cannot
   write a marker into keeps a stable `path-<hash>` identity, but the contract
   still demanded a UUID; folder ids now travel as a named `folderIdSchema` union
   of both forms, in the contract and in the catalog/snapshot domain schemas
-  ([`ff9ee87`](https://github.com/chomamateusz/ai-video-cataloger/commit/ff9ee879)).
+  ([`e754b62`](https://github.com/chomamateusz/ai-video-cataloger/commit/e754b62b)).
 - `index forget` on a file inside a read-only folder now exits 0 instead of
   failing with `EACCES` (exit 10) after the global deletion had already
   happened. The folder-local catalog snapshot is skipped when the folder cannot
   be written, and the result says so: the response carries `snapshotSkipped` and
   the human line reads `Forgot <fingerprint> (folder snapshot not updated: the
   folder is not writable)`
-  ([`ebcbaaf`](https://github.com/chomamateusz/ai-video-cataloger/commit/ebcbaaf7)).
+  ([`84ebbbc`](https://github.com/chomamateusz/ai-video-cataloger/commit/84ebbbcf)).
 - The packaged CLI now finds the ffprobe shipped inside the app bundle. Its only
   bundled-ffprobe lookup went through the `@ffprobe-installer/ffprobe` wrapper
   package, which is not staged, so on a machine without a system ffprobe
@@ -368,45 +368,45 @@ release history jumps from `0.5.10` to `0.5.12`.
   through `node_modules`, which reaches
   `Resources/cli/node_modules -> app.asar.unpacked/node_modules`, and
   `verify:package` asserts both bundled binaries are reachable from the staged
-  CLI ([`05d9f7a`](https://github.com/chomamateusz/ai-video-cataloger/commit/05d9f7af)).
+  CLI ([`317c467`](https://github.com/chomamateusz/ai-video-cataloger/commit/317c467a)).
 - A folder watcher that fails while the app is running (for example the watched
   root disappearing) no longer takes the Electron main process down with an
   uncaught error: the watch ends, closes its handle and reports a `read_error`
   to the caller, which drops the dead session
-  ([`f7405b9`](https://github.com/chomamateusz/ai-video-cataloger/commit/f7405b9a)).
+  ([`91f15e3`](https://github.com/chomamateusz/ai-video-cataloger/commit/91f15e3c)).
 - Gemini native analysis no longer loads the whole video into memory (twice) to
   upload it: files above the inline cutoff are streamed to the Files API in 8 MB
   chunks straight from disk, so a 300 MB clip peaks at ~40 MB of buffers instead
   of ~900 MB. A file above the Files API 2 GB limit is now refused up front with
   a message naming the limit, instead of failing as an unexplained read error
   after the read was attempted
-  ([`404ff9c`](https://github.com/chomamateusz/ai-video-cataloger/commit/404ff9cc)).
+  ([`60917ec`](https://github.com/chomamateusz/ai-video-cataloger/commit/60917ec5)).
 - The CLI credential prompts (`config set-credential` and `setup`) no longer
   write the typed key into the terminal at all. They previously relied on the
   ANSI conceal sequence, which only hides the characters visually and leaves the
   key in scrollback, in a copied selection and in any `script`/tmux capture
-  ([`0e2831d`](https://github.com/chomamateusz/ai-video-cataloger/commit/0e2831d6)).
+  ([`e47fab4`](https://github.com/chomamateusz/ai-video-cataloger/commit/e47fab45)).
 - Keychain access runs the absolute `/usr/bin/security` instead of resolving
   `security` on `PATH`, so a shadowing binary earlier in `PATH` can no longer
   see or serve API keys
-  ([`6281be6`](https://github.com/chomamateusz/ai-video-cataloger/commit/6281be67)).
+  ([`0aa12ae`](https://github.com/chomamateusz/ai-video-cataloger/commit/0aa12ae6)).
 - Overlapping writes to the plaintext credentials file no longer collide on a
   shared `credentials.json.tmp`: each write uses its own temporary file and an
   atomic rename, so concurrent saves stop failing with
   `Could not store provider credential` and the file can never be left
   half-written
-  ([`8c2a0f8`](https://github.com/chomamateusz/ai-video-cataloger/commit/8c2a0f87)).
+  ([`183d8f4`](https://github.com/chomamateusz/ai-video-cataloger/commit/183d8f48)).
 - Forgetting a key when the plaintext credentials file cannot be read now
   reports the partial removal (`cleared: keychain`, `retained: file`) instead of
   a bare error that hid the Keychain removal that did happen
-  ([`84e07ca`](https://github.com/chomamateusz/ai-video-cataloger/commit/84e07ca6)).
+  ([`90d503e`](https://github.com/chomamateusz/ai-video-cataloger/commit/90d503ef)).
 - A key saved while the Keychain was refusing writes is no longer discarded by
   the next migration: when the plaintext file and the Keychain hold different
   values for a provider, the file value wins, is write-verified into the
   Keychain and logged to `credentials-migration.ndjson` as
   `credential_value_conflict` (no secret in the line). An equal or absent file
   value keeps the previous keychain-wins behaviour
-  ([`c107c92`](https://github.com/chomamateusz/ai-video-cataloger/commit/c107c927)).
+  ([`b26b0e6`](https://github.com/chomamateusz/ai-video-cataloger/commit/b26b0e6c)).
 - A transient Keychain failure no longer makes the running app read and write
   API keys from the plaintext file until it is relaunched: every credential
   operation tries the Keychain again, an `unavailable` keychain is re-probed on
@@ -414,13 +414,13 @@ release history jumps from `0.5.10` to `0.5.12`.
   fall back to the file is moved into the Keychain as soon as it accepts writes.
   `doctor` reports `degraded` while that is true and returns to `keychain` by
   itself
-  ([`0ca4f39`](https://github.com/chomamateusz/ai-video-cataloger/commit/0ca4f39b)).
+  ([`4400231`](https://github.com/chomamateusz/ai-video-cataloger/commit/4400231e)).
 - Forgetting a provider key now always reaches the Keychain: an earlier keychain
   failure in the same process no longer makes the deletion skip the Keychain and
   report an untouched pair of backends while the key was still stored there. A
   Keychain that refuses the removal is still reported as retained, and a key
   held by both backends now names both as cleared
-  ([`56eee4b`](https://github.com/chomamateusz/ai-video-cataloger/commit/56eee4bf)).
+  ([`995f5bc`](https://github.com/chomamateusz/ai-video-cataloger/commit/995f5bc9)).
 
 ## [0.5.18] - 2026-07-28
 
@@ -429,12 +429,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The folder-scope catalog empty state now says how many videos the tree knows
   about in subfolders and offers a one-click switch to whole-tree scope; the
   bare `No videos found` stays when the whole tree is empty
-  ([`7901fea`](https://github.com/chomamateusz/ai-video-cataloger/commit/7901fea9)).
+  ([`1bb0e41`](https://github.com/chomamateusz/ai-video-cataloger/commit/1bb0e41f)).
 - A stored provider key can be forgotten from the app: `DELETE /api/credentials`,
   `ai-video-cataloger config delete-credential <providerId> [--json]`, and a
   **Forget key** action beside the API key field in Settings. Each names the
   backends it cleared and never echoes the key
-  ([`6b224ea`](https://github.com/chomamateusz/ai-video-cataloger/commit/6b224ea7)).
+  ([`cf85e81`](https://github.com/chomamateusz/ai-video-cataloger/commit/cf85e81f)).
 
 ### Changed
 
@@ -444,22 +444,22 @@ release history jumps from `0.5.10` to `0.5.12`.
   gone, and a keychain that kept the only copy is reported as nothing cleared,
   never as a key that was not stored. `CredentialsStore.delete` and
   `SecretsStore.delete` carry that shape
-  ([`6b224ea`](https://github.com/chomamateusz/ai-video-cataloger/commit/6b224ea7),
-  [`42c0e13`](https://github.com/chomamateusz/ai-video-cataloger/commit/42c0e135)).
+  ([`cf85e81`](https://github.com/chomamateusz/ai-video-cataloger/commit/cf85e81f),
+  [`83be32b`](https://github.com/chomamateusz/ai-video-cataloger/commit/83be32bb)).
 - Model Manager closes from a footer Close button instead of Escape or a
   backdrop click only, every downloaded model carries its own contained
   `Activate` button, and both Delete actions (whisper models and local AI
   tiers) render in the error palette
-  ([`5f947e7`](https://github.com/chomamateusz/ai-video-cataloger/commit/5f947e71)).
+  ([`a724771`](https://github.com/chomamateusz/ai-video-cataloger/commit/a7247717)).
 - The `Not Tracked` status token no longer renders grey-on-grey: its
   `theme.ts` palette entry moves to `#4e4e53` on `#e3e3e6` in light and
   `#c7c7cc` on a 20% tint in dark, which also lifts the search-result and
   absent-file surfaces that share the token
-  ([`5f947e7`](https://github.com/chomamateusz/ai-video-cataloger/commit/5f947e71)).
+  ([`a724771`](https://github.com/chomamateusz/ai-video-cataloger/commit/a7247717)).
 - The terminal panel starts collapsed while it has no output, expands by itself
   on the first line, and stays wherever the user last put it once they toggle
   it by hand
-  ([`5f947e7`](https://github.com/chomamateusz/ai-video-cataloger/commit/5f947e71)).
+  ([`a724771`](https://github.com/chomamateusz/ai-video-cataloger/commit/a7247717)).
 
 ## [0.5.17] - 2026-07-28
 
@@ -474,7 +474,7 @@ release history jumps from `0.5.10` to `0.5.12`.
   text). The gemini-native provider reuses the same sections instead of its own
   copy; the `DESCRIPTION` / `FILENAME` / `TAGS` / `TRANSCRIPT` output contract is
   unchanged
-  ([`757d57c`](https://github.com/chomamateusz/ai-video-cataloger/commit/757d57ce)).
+  ([`b12d8e4`](https://github.com/chomamateusz/ai-video-cataloger/commit/b12d8e43)).
 
 ## [0.5.16] - 2026-07-28
 
@@ -488,8 +488,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   and doctor warns when the Keychain was expected but unreachable. A Keychain
   failure falls back to the plaintext file instead of failing the command
   ([ADR-0007](docs/decisions/0007-credentials-in-keychain.md),
-  [`67f1a90`](https://github.com/chomamateusz/ai-video-cataloger/commit/67f1a90a),
-  [`7be7def`](https://github.com/chomamateusz/ai-video-cataloger/commit/7be7def8)).
+  [`500a0e7`](https://github.com/chomamateusz/ai-video-cataloger/commit/500a0e7f),
+  [`7d36370`](https://github.com/chomamateusz/ai-video-cataloger/commit/7d363700)).
 
 ## [0.5.15] - 2026-07-28
 
@@ -499,30 +499,30 @@ release history jumps from `0.5.10` to `0.5.12`.
   engine (`whisper.cpp` or `openai-whisper (python, CPU)`): dependency statuses
   carry an `engine` field and the readiness transcriber component carries
   `engine` and `binaryPath`
-  ([`041f641`](https://github.com/chomamateusz/ai-video-cataloger/commit/041f641d)).
+  ([`c69d9f3`](https://github.com/chomamateusz/ai-video-cataloger/commit/c69d9f3a)).
 - `process` and `process-drive` accept `--provider <id>` to select a built-in
   analyzer provider by id (`openai`, `claude-code`, `codex`, `cursor-agent`,
   `local`, `gemini`), so harness providers no longer require a config write;
   it cannot be combined with the legacy `--analyzer` backend flag, which now
   rejects unknown values during parsing
-  ([`84edb40`](https://github.com/chomamateusz/ai-video-cataloger/commit/84edb40c)).
+  ([`c2b9a6b`](https://github.com/chomamateusz/ai-video-cataloger/commit/c2b9a6b5)).
 - The readiness payload names the effective analyzer model, and `doctor` prints
   it as `(model: ...)` — `CLI default` for a harness provider left without a
   configured model, which is when the harness CLI picks the model itself
-  ([`ccd1fe5`](https://github.com/chomamateusz/ai-video-cataloger/commit/ccd1fe5d)).
+  ([`8ff73d8`](https://github.com/chomamateusz/ai-video-cataloger/commit/8ff73d87)).
 
 ### Fixed
 
 - Readiness for a configured Gemini-native analyzer no longer fails the
   response contract: the readiness analyzer family accepts every analyzer
   family, not just `api`, `harness`, and `local`
-  ([`398f9b1`](https://github.com/chomamateusz/ai-video-cataloger/commit/398f9b1e)).
+  ([`8b53afd`](https://github.com/chomamateusz/ai-video-cataloger/commit/8b53afd6)).
 - An empty `~/.ai-video-cataloger/bin` directory is reported as an incomplete
   managed whisper install pointing at
   `ai-video-cataloger models whisper-runtime install`, instead of an absent one
   that silently fell through to a slower system whisper; readiness components
   now carry that `warning` rather than dropping it
-  ([`24199c5`](https://github.com/chomamateusz/ai-video-cataloger/commit/24199c52)).
+  ([`51cd626`](https://github.com/chomamateusz/ai-video-cataloger/commit/51cd6263)).
 
 ## [0.5.14] - 2026-07-27
 
@@ -532,25 +532,25 @@ release history jumps from `0.5.10` to `0.5.12`.
   skeletons (default, collapsed sidebar, open terminal, loading) in dark and
   light against darwin baselines committed under `visual/__screenshots__/`; it
   joins no required gate
-  ([`6711a72`](https://github.com/chomamateusz/ai-video-cataloger/commit/6711a729)).
+  ([`453e15c`](https://github.com/chomamateusz/ai-video-cataloger/commit/453e15c0)).
 - `components/layout/` as a named structural layer, enforced by the
   `web-layouts-are-structure-only` dependency-cruiser rule, a `Container`/
   `AppBar`/`Drawer`/`Toolbar` import ban outside it, and config-regression
-  probes ([`bd7759c`](https://github.com/chomamateusz/ai-video-cataloger/commit/bd7759c7),
-  [`0b027e7`](https://github.com/chomamateusz/ai-video-cataloger/commit/0b027e78)).
+  probes ([`6deecdc`](https://github.com/chomamateusz/ai-video-cataloger/commit/6deecdcc),
+  [`9058063`](https://github.com/chomamateusz/ai-video-cataloger/commit/9058063f)).
 
 ### Changed
 
 - `doc-lint` fails when a tracked `README.md` documents a `pnpm run <script>`
   that the owning `package.json` does not define, so a renamed or dropped script
   can no longer leave a quickstart that lies
-  ([`a500173`](https://github.com/chomamateusz/ai-video-cataloger/commit/a5001731)).
+  ([`8e4832a`](https://github.com/chomamateusz/ai-video-cataloger/commit/8e4832a3)).
 - The package manager is pnpm 10 on Node 22.23.1: install with `pnpm install`
   under `nvm use`, dependency lifecycle scripts are blocked except for three
   allowlisted packages, and `lock-lint` now fails closed on a `pnpm-lock.yaml`
   that disagrees with `package.json`
-  ([`2eb3eb3`](https://github.com/chomamateusz/ai-video-cataloger/commit/2eb3eb3e),
-  [`0706280`](https://github.com/chomamateusz/ai-video-cataloger/commit/0706280d)).
+  ([`977e0ec`](https://github.com/chomamateusz/ai-video-cataloger/commit/977e0ec9),
+  [`fe5abdb`](https://github.com/chomamateusz/ai-video-cataloger/commit/fe5abdbc)).
 
 ## [0.5.13] - 2026-07-27
 
@@ -558,15 +558,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Read-only folders open in a degraded, index-only mode: the catalog is indexed
   in the home database and the per-folder snapshot write is skipped instead of
-  failing the run ([`8dd59e8`](https://github.com/chomamateusz/ai-video-cataloger/commit/8dd59e86),
-  [`2f128cf`](https://github.com/chomamateusz/ai-video-cataloger/commit/2f128cf7)).
+  failing the run ([`f93cf33`](https://github.com/chomamateusz/ai-video-cataloger/commit/f93cf33d),
+  [`eef7ac9`](https://github.com/chomamateusz/ai-video-cataloger/commit/eef7ac9a)).
 - The opened folder tree is watched, so files added or removed on disk refresh
   the sidebar without a manual rescan
-  ([`7dfd761`](https://github.com/chomamateusz/ai-video-cataloger/commit/7dfd7614)).
+  ([`e5308b9`](https://github.com/chomamateusz/ai-video-cataloger/commit/e5308b9f)).
 - The setup wizard offers the Gemini-native analyzer and skips transcription
   setup for it, since that provider reads the video directly
-  ([`6990179`](https://github.com/chomamateusz/ai-video-cataloger/commit/69901798),
-  [`454ea53`](https://github.com/chomamateusz/ai-video-cataloger/commit/454ea53e)).
+  ([`dd58ce2`](https://github.com/chomamateusz/ai-video-cataloger/commit/dd58ce2a),
+  [`a7679a9`](https://github.com/chomamateusz/ai-video-cataloger/commit/a7679a91)).
 
 ## [0.5.12] - 2026-07-27
 
@@ -574,8 +574,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Gemini-native video analysis: a provider that uploads the video itself
   instead of extracted frames, selectable in Settings → AI Analyzer
-  ([`6f7494b`](https://github.com/chomamateusz/ai-video-cataloger/commit/6f7494bf),
-  [`5300920`](https://github.com/chomamateusz/ai-video-cataloger/commit/53009205)).
+  ([`6fcd43a`](https://github.com/chomamateusz/ai-video-cataloger/commit/6fcd43ae),
+  [`2b96575`](https://github.com/chomamateusz/ai-video-cataloger/commit/2b96575f)).
 
 ## [0.5.10] - 2026-07-26
 
@@ -583,105 +583,105 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - The detail player defaults subtitles on, boxes the video at its true aspect
   and lays the panel out in two columns
-  ([`f2f6ad5`](https://github.com/chomamateusz/ai-video-cataloger/commit/f2f6ad53)).
+  ([`bc0dc5d`](https://github.com/chomamateusz/ai-video-cataloger/commit/bc0dc5d7)).
 - Force-analyze shows Processing immediately and the tree detail refreshes when
-  the run completes ([`120f3c1`](https://github.com/chomamateusz/ai-video-cataloger/commit/120f3c1c)).
+  the run completes ([`09f9c00`](https://github.com/chomamateusz/ai-video-cataloger/commit/09f9c000)).
 - Search results gained a back affordance and 56px thumbnails
-  ([`39c21d8`](https://github.com/chomamateusz/ai-video-cataloger/commit/39c21d8c)).
+  ([`3dfb974`](https://github.com/chomamateusz/ai-video-cataloger/commit/3dfb974a)).
 - `doctor` detects a stale CLI shadowing the current one on `PATH` and names the
   shadow in the install flow
-  ([`852e697`](https://github.com/chomamateusz/ai-video-cataloger/commit/852e697c)).
+  ([`7014d4e`](https://github.com/chomamateusz/ai-video-cataloger/commit/7014d4ec)).
 
 ## [0.5.9] - 2026-07-26
 
 ### Added
 
 - Analyze scope is remembered per folder, and the setup wizard can be re-entered
-  from the app ([`8ee1d3b`](https://github.com/chomamateusz/ai-video-cataloger/commit/8ee1d3b7)).
+  from the app ([`5f81160`](https://github.com/chomamateusz/ai-video-cataloger/commit/5f811606)).
 - A run summary dialog replaces the transient skipped chips
-  ([`ea17281`](https://github.com/chomamateusz/ai-video-cataloger/commit/ea172811)).
+  ([`de898ac`](https://github.com/chomamateusz/ai-video-cataloger/commit/de898aca)).
 - `health` splits live and ready, and responses travel through one response seam
-  ([`0c0817d`](https://github.com/chomamateusz/ai-video-cataloger/commit/0c0817de)).
+  ([`8cfbb2c`](https://github.com/chomamateusz/ai-video-cataloger/commit/8cfbb2c3)).
 
 ### Changed
 
 - Contracts are validated with zod 4
-  ([`8d411d3`](https://github.com/chomamateusz/ai-video-cataloger/commit/8d411d35)).
+  ([`d265f2e`](https://github.com/chomamateusz/ai-video-cataloger/commit/d265f2ec)).
 - `pnpm run check` gained knip, doc-lint and a coverage ratchet; a local ESLint
   plugin enforces query descriptors and the event-name taxonomy
-  ([`6f659b5`](https://github.com/chomamateusz/ai-video-cataloger/commit/6f659b5e),
-  [`1790798`](https://github.com/chomamateusz/ai-video-cataloger/commit/1790798d)).
+  ([`8b5bbba`](https://github.com/chomamateusz/ai-video-cataloger/commit/8b5bbba0),
+  [`f1e8d7d`](https://github.com/chomamateusz/ai-video-cataloger/commit/f1e8d7d8)).
 - CI runs on self-hosted workflows with an `ai-review` job
-  ([`26cd2b6`](https://github.com/chomamateusz/ai-video-cataloger/commit/26cd2b6a)).
+  ([`12bdbdf`](https://github.com/chomamateusz/ai-video-cataloger/commit/12bdbdfb)).
 
 ### Fixed
 
 - `ui_language` and `faces_enabled` resolve app-global, so a poisoned per-folder
   config can no longer flip the UI language
-  ([`08ec7ce`](https://github.com/chomamateusz/ai-video-cataloger/commit/08ec7ce9)).
+  ([`b8820c2`](https://github.com/chomamateusz/ai-video-cataloger/commit/b8820c2c)).
 - A restored file clears its absent flag through a self-healing absent list
-  ([`7b95eaa`](https://github.com/chomamateusz/ai-video-cataloger/commit/7b95eaa4)).
+  ([`15f06a6`](https://github.com/chomamateusz/ai-video-cataloger/commit/15f06a67)).
 - The canonical row for duplicate files is chosen by a deterministic tie-break
-  ([`5874265`](https://github.com/chomamateusz/ai-video-cataloger/commit/58742657)).
+  ([`0ca4a9b`](https://github.com/chomamateusz/ai-video-cataloger/commit/0ca4a9bb)).
 
 ## [0.5.8] - 2026-07-25
 
 ### Fixed
 
 - Status badge icons align with their labels and the frame gallery is fully
-  translated ([`f27d19d`](https://github.com/chomamateusz/ai-video-cataloger/commit/f27d19d9)).
+  translated ([`7bbaac7`](https://github.com/chomamateusz/ai-video-cataloger/commit/7bbaac77)).
 
 ## [0.5.7] - 2026-07-25
 
 ### Fixed
 
 - The catalog write lock renews its lease across long jobs and is released when
-  a job fails ([`f83232f`](https://github.com/chomamateusz/ai-video-cataloger/commit/f83232fb)).
+  a job fails ([`c2dc5b6`](https://github.com/chomamateusz/ai-video-cataloger/commit/c2dc5b67)).
 - Whole-tree analyze is available on a tree that has not been indexed yet
-  ([`6c3efa0`](https://github.com/chomamateusz/ai-video-cataloger/commit/6c3efa00)).
+  ([`4386f9f`](https://github.com/chomamateusz/ai-video-cataloger/commit/4386f9f8)).
 - A search result opens its detail view, and Reveal in Finder works across
-  folders ([`43014de`](https://github.com/chomamateusz/ai-video-cataloger/commit/43014de3)).
+  folders ([`debd583`](https://github.com/chomamateusz/ai-video-cataloger/commit/debd583e)).
 - Absent files are fetched with one tree-scoped query instead of one per folder
-  ([`493f23e`](https://github.com/chomamateusz/ai-video-cataloger/commit/493f23e9)).
+  ([`ba9b91b`](https://github.com/chomamateusz/ai-video-cataloger/commit/ba9b91bc)).
 - The media scheme answers HEAD and returns 416 for an unsatisfiable range
-  ([`7619adb`](https://github.com/chomamateusz/ai-video-cataloger/commit/7619adb4)).
+  ([`f8113f1`](https://github.com/chomamateusz/ai-video-cataloger/commit/f8113f14)).
 - A relocated file keeps the original row chosen by first-seen time rather than
-  path sort order ([`22a9c1d`](https://github.com/chomamateusz/ai-video-cataloger/commit/22a9c1d8)).
+  path sort order ([`9068f55`](https://github.com/chomamateusz/ai-video-cataloger/commit/9068f550)).
 - UX audit batch: untranslated strings, accessibility labels, plurals and
-  tooltips ([`a5e1172`](https://github.com/chomamateusz/ai-video-cataloger/commit/a5e1172d)).
+  tooltips ([`10b47b0`](https://github.com/chomamateusz/ai-video-cataloger/commit/10b47b0f)).
 
 ## [0.5.6] - 2026-07-24
 
 ### Added
 
 - Reveal in Finder from video, folder and search rows
-  ([`8b5a9cd`](https://github.com/chomamateusz/ai-video-cataloger/commit/8b5a9cd3)).
+  ([`b797cdb`](https://github.com/chomamateusz/ai-video-cataloger/commit/b797cdb8)).
 - Absent files appear in tree mode grouped by folder
-  ([`181d893`](https://github.com/chomamateusz/ai-video-cataloger/commit/181d8937)).
+  ([`273d196`](https://github.com/chomamateusz/ai-video-cataloger/commit/273d196d)).
 
 ### Fixed
 
 - Media is served over a standard scheme with HTTP Range support, so seeking
-  works in the player ([`c44db2f`](https://github.com/chomamateusz/ai-video-cataloger/commit/c44db2fd)).
+  works in the player ([`8c4ebe4`](https://github.com/chomamateusz/ai-video-cataloger/commit/8c4ebe45)).
 - A duplicate clone no longer steals the canonical catalog row
-  ([`a25780e`](https://github.com/chomamateusz/ai-video-cataloger/commit/a25780ea)).
+  ([`0eff6de`](https://github.com/chomamateusz/ai-video-cataloger/commit/0eff6de1)).
 - The Settings UI-language switch is written home-scoped and takes effect
-  ([`8956914`](https://github.com/chomamateusz/ai-video-cataloger/commit/89569145)).
+  ([`31ea1b5`](https://github.com/chomamateusz/ai-video-cataloger/commit/31ea1b5f)).
 - Selecting a video in the sidebar clears an active search
-  ([`8d5c198`](https://github.com/chomamateusz/ai-video-cataloger/commit/8d5c198c)).
+  ([`2cb32a0`](https://github.com/chomamateusz/ai-video-cataloger/commit/2cb32a0e)).
 
 ## [0.5.5] - 2026-07-24
 
 ### Changed
 
 - The packaged bundle is smaller and ships a sealed ad-hoc signature
-  ([`470a23a`](https://github.com/chomamateusz/ai-video-cataloger/commit/470a23a0),
-  [`85625e1`](https://github.com/chomamateusz/ai-video-cataloger/commit/85625e14)).
+  ([`567c715`](https://github.com/chomamateusz/ai-video-cataloger/commit/567c7153),
+  [`418648e`](https://github.com/chomamateusz/ai-video-cataloger/commit/418648e0)).
 
 ### Fixed
 
 - The window is shown at `whenReady`, removing the black frame at launch
-  ([`258d025`](https://github.com/chomamateusz/ai-video-cataloger/commit/258d0250)).
+  ([`d7614b1`](https://github.com/chomamateusz/ai-video-cataloger/commit/d7614b12)).
 
 ## [0.5.4] - 2026-07-24
 
@@ -689,47 +689,47 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Sidebar round three: rail width, scope selection, thumbnail loading state,
   duplicate detail and badge spacing
-  ([`c4d3011`](https://github.com/chomamateusz/ai-video-cataloger/commit/c4d30117)).
+  ([`0625abd`](https://github.com/chomamateusz/ai-video-cataloger/commit/0625abd0)).
 
 ## [0.5.3] - 2026-07-24
 
 ### Fixed
 
 - The desktop window appears immediately and app composition is deferred behind
-  it ([`4bf16b4`](https://github.com/chomamateusz/ai-video-cataloger/commit/4bf16b46)).
+  it ([`c5f5c0e`](https://github.com/chomamateusz/ai-video-cataloger/commit/c5f5c0eb)).
 
 ## [0.5.2] - 2026-07-24
 
 ### Added
 
 - A startup splash and loading skeletons for the sidebar and detail panel
-  ([`94619a8`](https://github.com/chomamateusz/ai-video-cataloger/commit/94619a8e)).
+  ([`731da27`](https://github.com/chomamateusz/ai-video-cataloger/commit/731da274)).
 
 ### Changed
 
 - Sidebar tree v2: one scroll container, exact per-folder counts and duplicate
-  badges ([`23ee22d`](https://github.com/chomamateusz/ai-video-cataloger/commit/23ee22d2)).
+  badges ([`55b6ad2`](https://github.com/chomamateusz/ai-video-cataloger/commit/55b6ad25)).
 
 ## [0.5.1] - 2026-07-24
 
 ### Added
 
 - A single-writer catalog lock that names the holding process
-  ([`ae13d17`](https://github.com/chomamateusz/ai-video-cataloger/commit/ae13d175),
-  [`529290e`](https://github.com/chomamateusz/ai-video-cataloger/commit/529290e8)).
+  ([`f619f29`](https://github.com/chomamateusz/ai-video-cataloger/commit/f619f291),
+  [`893e4f6`](https://github.com/chomamateusz/ai-video-cataloger/commit/893e4f6a)).
 - Lazy folder scanning and windowed lists, with guidance for very large runs
-  ([`4d4a308`](https://github.com/chomamateusz/ai-video-cataloger/commit/4d4a308b)).
+  ([`b4a19a5`](https://github.com/chomamateusz/ai-video-cataloger/commit/b4a19a5e)).
 
 ### Fixed
 
 - Reconciliation covers moved and emptied folders
-  ([`40e416e`](https://github.com/chomamateusz/ai-video-cataloger/commit/40e416e5)).
+  ([`6c4767d`](https://github.com/chomamateusz/ai-video-cataloger/commit/6c4767d9)).
 - Forgetting an entry and re-indexing an engine clean up face data
-  ([`c2fe478`](https://github.com/chomamateusz/ai-video-cataloger/commit/c2fe478d)).
+  ([`53933ef`](https://github.com/chomamateusz/ai-video-cataloger/commit/53933ef3)).
 - Read-only mode disables every mutating action, not just the obvious ones
-  ([`c94aca6`](https://github.com/chomamateusz/ai-video-cataloger/commit/c94aca62)).
+  ([`8e3670e`](https://github.com/chomamateusz/ai-video-cataloger/commit/8e3670e8)).
 - Remaining untranslated strings in settings, steps and the people log
-  ([`08e4e25`](https://github.com/chomamateusz/ai-video-cataloger/commit/08e4e25b)).
+  ([`8c1a64d`](https://github.com/chomamateusz/ai-video-cataloger/commit/8c1a64da)).
 
 ## [0.5.0] - 2026-07-24
 
@@ -737,52 +737,52 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - A sidebar folder tree with scope-aware analyze: per-file live progress, a stop
   control and skip badges
-  ([`3ca1322`](https://github.com/chomamateusz/ai-video-cataloger/commit/3ca13224)).
+  ([`1bd1f6b`](https://github.com/chomamateusz/ai-video-cataloger/commit/1bd1f6bc)).
 - A coherent setup wizard with a readiness checklist and model pickers
-  ([`4b363ef`](https://github.com/chomamateusz/ai-video-cataloger/commit/4b363ef2)).
+  ([`592867d`](https://github.com/chomamateusz/ai-video-cataloger/commit/592867df)).
 - Content presentation: detail tags, source-aspect thumbnails, an inline player
   with subtitles and a search dropdown
-  ([`f197b24`](https://github.com/chomamateusz/ai-video-cataloger/commit/f197b245)).
+  ([`5c8bb05`](https://github.com/chomamateusz/ai-video-cataloger/commit/5c8bb056)).
 - A UI language layer (EN/PL) covering the desktop app and the wizard
-  ([`770f98f`](https://github.com/chomamateusz/ai-video-cataloger/commit/770f98fc),
-  [`13c78f8`](https://github.com/chomamateusz/ai-video-cataloger/commit/13c78f8a),
-  [`12ec358`](https://github.com/chomamateusz/ai-video-cataloger/commit/12ec358f),
-  [`3038d9b`](https://github.com/chomamateusz/ai-video-cataloger/commit/3038d9b4)).
+  ([`fe7252a`](https://github.com/chomamateusz/ai-video-cataloger/commit/fe7252ab),
+  [`9235f67`](https://github.com/chomamateusz/ai-video-cataloger/commit/9235f676),
+  [`eb983e0`](https://github.com/chomamateusz/ai-video-cataloger/commit/eb983e04),
+  [`999a3d6`](https://github.com/chomamateusz/ai-video-cataloger/commit/999a3d6b)).
 - An output-language setting for generated summaries and names
-  ([`de1b709`](https://github.com/chomamateusz/ai-video-cataloger/commit/de1b7097)).
+  ([`c4765e4`](https://github.com/chomamateusz/ai-video-cataloger/commit/c4765e47)).
 - Missing-file reconciliation with an absent-files section in the folder view
-  ([`8d5d7e2`](https://github.com/chomamateusz/ai-video-cataloger/commit/8d5d7e2d),
-  [`215e97e`](https://github.com/chomamateusz/ai-video-cataloger/commit/215e97e6)).
+  ([`c72e6bc`](https://github.com/chomamateusz/ai-video-cataloger/commit/c72e6bcf),
+  [`99ddeb2`](https://github.com/chomamateusz/ai-video-cataloger/commit/99ddeb2c)).
 
 ### Fixed
 
 - Thumbnails are generated at the source aspect ratio
-  ([`c9ed26a`](https://github.com/chomamateusz/ai-video-cataloger/commit/c9ed26a2)).
+  ([`a85bf23`](https://github.com/chomamateusz/ai-video-cataloger/commit/a85bf234)).
 - Whisper hallucinations on near-silent audio are filtered out
-  ([`fdae779`](https://github.com/chomamateusz/ai-video-cataloger/commit/fdae7797)).
+  ([`9c6c35d`](https://github.com/chomamateusz/ai-video-cataloger/commit/9c6c35d1)).
 - A moved file is no longer reported as missing
-  ([`66915c2`](https://github.com/chomamateusz/ai-video-cataloger/commit/66915c29)).
+  ([`a9b12ee`](https://github.com/chomamateusz/ai-video-cataloger/commit/a9b12eee)).
 - Model selection is scoped per analyzer harness
-  ([`11e3b0e`](https://github.com/chomamateusz/ai-video-cataloger/commit/11e3b0e3)).
+  ([`938b76f`](https://github.com/chomamateusz/ai-video-cataloger/commit/938b76ff)).
 
 ## [0.4.2] - 2026-07-23
 
 ### Added
 
 - The packaged app carries an icon generated from the brand logo
-  ([`332c01c`](https://github.com/chomamateusz/ai-video-cataloger/commit/332c01c9)).
+  ([`a53ea0b`](https://github.com/chomamateusz/ai-video-cataloger/commit/a53ea0b5)).
 
 ### Fixed
 
 - Harness path resolution, the packaged CLI's WASM asset, catalog flushing and
-  chip spacing ([`9e90dce`](https://github.com/chomamateusz/ai-video-cataloger/commit/9e90dce8)).
+  chip spacing ([`8b5fff4`](https://github.com/chomamateusz/ai-video-cataloger/commit/8b5fff4d)).
 
 ## [0.4.1] - 2026-07-23
 
 ### Added
 
 - Analyze a whole folder tree from the desktop app
-  ([`d40725a`](https://github.com/chomamateusz/ai-video-cataloger/commit/d40725a4)).
+  ([`249b9b0`](https://github.com/chomamateusz/ai-video-cataloger/commit/249b9b02)).
 
 ## [0.4.0] - 2026-07-23
 
@@ -790,38 +790,38 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - A home-scoped global catalog: folder identity, content fingerprints, a SQLite
   index and per-folder NDJSON snapshots
-  ([`b624b93`](https://github.com/chomamateusz/ai-video-cataloger/commit/b624b938)).
+  ([`6833161`](https://github.com/chomamateusz/ai-video-cataloger/commit/68331616)).
 - Global search across the catalog through an FTS4 index, in the CLI and the
-  desktop UI ([`03af455`](https://github.com/chomamateusz/ai-video-cataloger/commit/03af455a)).
+  desktop UI ([`744b885`](https://github.com/chomamateusz/ai-video-cataloger/commit/744b8855)).
 - Local face grouping: an opt-in ONNX pipeline, a people view and face settings
-  ([`19f1564`](https://github.com/chomamateusz/ai-video-cataloger/commit/19f1564c),
-  [`7944309`](https://github.com/chomamateusz/ai-video-cataloger/commit/7944309f),
-  [`95bd598`](https://github.com/chomamateusz/ai-video-cataloger/commit/95bd5983),
-  [`b91cefe`](https://github.com/chomamateusz/ai-video-cataloger/commit/b91cefe8)).
+  ([`dbcc5fd`](https://github.com/chomamateusz/ai-video-cataloger/commit/dbcc5fd1),
+  [`a232969`](https://github.com/chomamateusz/ai-video-cataloger/commit/a232969f),
+  [`a7ba8bf`](https://github.com/chomamateusz/ai-video-cataloger/commit/a7ba8bf6),
+  [`209f398`](https://github.com/chomamateusz/ai-video-cataloger/commit/209f3981)).
 - A whole-drive runner with discovery, resume, backoff and run bookkeeping
-  ([`1a938a1`](https://github.com/chomamateusz/ai-video-cataloger/commit/1a938a17)).
+  ([`7afcecc`](https://github.com/chomamateusz/ai-video-cataloger/commit/7afcecc9)).
 - Analyzer tags and GPS capture in the catalog
-  ([`dba990f`](https://github.com/chomamateusz/ai-video-cataloger/commit/dba990fa)).
+  ([`c3f69fc`](https://github.com/chomamateusz/ai-video-cataloger/commit/c3f69fcd)).
 - API keys are stored in the macOS Keychain, falling back to the config file
-  ([`3300749`](https://github.com/chomamateusz/ai-video-cataloger/commit/33007496)).
+  ([`2e7682a`](https://github.com/chomamateusz/ai-video-cataloger/commit/2e7682a0)).
 
 ### Fixed
 
 - Forgetting a person deletes its biometric observations instead of only
-  unassigning them ([`e375973`](https://github.com/chomamateusz/ai-video-cataloger/commit/e375973a)).
+  unassigning them ([`7ad0156`](https://github.com/chomamateusz/ai-video-cataloger/commit/7ad01567)).
 - Snapshot export is atomic, rejects newer-major snapshots and counts malformed
-  lines ([`d03f0bc`](https://github.com/chomamateusz/ai-video-cataloger/commit/d03f0bca)).
+  lines ([`4854893`](https://github.com/chomamateusz/ai-video-cataloger/commit/4854893b)).
 - A file that cannot be fingerprinted raises a warning event instead of failing
-  silently ([`31ce96f`](https://github.com/chomamateusz/ai-video-cataloger/commit/31ce96f4)).
+  silently ([`7311f32`](https://github.com/chomamateusz/ai-video-cataloger/commit/7311f32a)).
 - Global-catalog writes are batched, removing quadratic write amplification on
-  large folders ([`64d8e3c`](https://github.com/chomamateusz/ai-video-cataloger/commit/64d8e3c8)).
+  large folders ([`6d61c59`](https://github.com/chomamateusz/ai-video-cataloger/commit/6d61c59b)).
 - Face indexing is resumable and clusters across runs; aligned crop pixels are
   released so memory stays proportional to faces per file
-  ([`2e3108a`](https://github.com/chomamateusz/ai-video-cataloger/commit/2e3108a9),
-  [`5569638`](https://github.com/chomamateusz/ai-video-cataloger/commit/55696388)).
+  ([`0096970`](https://github.com/chomamateusz/ai-video-cataloger/commit/0096970b),
+  [`0238e50`](https://github.com/chomamateusz/ai-video-cataloger/commit/0238e508)).
 - The Keychain lookup times out after 10s and falls back to the config file
-  ([`47ed4bf`](https://github.com/chomamateusz/ai-video-cataloger/commit/47ed4bff)).
+  ([`9376f92`](https://github.com/chomamateusz/ai-video-cataloger/commit/9376f925)).
 - `whisper-cli` is preferred over CPU python whisper in system resolution
-  ([`6570094`](https://github.com/chomamateusz/ai-video-cataloger/commit/6570094b)).
+  ([`1180650`](https://github.com/chomamateusz/ai-video-cataloger/commit/11806500)).
 - Local AI requirements are probed only when the local analyzer is chosen
-  ([`a499530`](https://github.com/chomamateusz/ai-video-cataloger/commit/a4995302)).
+  ([`dee91a2`](https://github.com/chomamateusz/ai-video-cataloger/commit/dee91a20)).
