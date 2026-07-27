@@ -1,7 +1,22 @@
 import { describe, expect, it } from 'vitest';
 
 import { scanFolder } from './scan.js';
-import { InMemoryCatalogs, InMemoryFileSystem, InMemoryMedia, videoFixture } from '../../../test/server/usecases/test-fakes.js';
+import {
+  InMemoryCatalogs,
+  InMemoryFileSystem,
+  InMemoryGlobalCatalogStore,
+  InMemoryMedia,
+  videoFixture,
+} from '../../../test/server/usecases/test-fakes.js';
+
+class CountingGlobalCatalogStore extends InMemoryGlobalCatalogStore {
+  readonly locationInputs: string[][] = [];
+
+  override listAnalyzedFileLocations(fingerprints: readonly string[]) {
+    this.locationInputs.push([...fingerprints]);
+    return super.listAnalyzedFileLocations(fingerprints);
+  }
+}
 
 describe('scanFolder', () => {
   it('scans supported videos, matches catalog rows, and loads completed artifacts', async () => {
@@ -85,6 +100,100 @@ describe('scanFolder', () => {
         videos: [{ filename: 'fresh.mov', status: 'not_tracked', contentHash: 'fresh-hash' }],
         summary: { total: 1, tracked: 0, notTracked: 1 },
       },
+    });
+  });
+
+  it('marks same-folder and cross-folder copies through one batched global-index lookup', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/original.mp4', { size: 1024, hash: 'same-folder-hash' });
+    fs.addFile('/videos/local-copy.mp4', { size: 1024, hash: 'same-folder-hash' });
+    fs.addFile('/videos/remote-copy.mp4', { size: 1024, hash: 'cross-folder-hash' });
+    const catalogs = new InMemoryCatalogs([{
+      folder: '/videos',
+      videos: [videoFixture({
+        originalPath: '/videos/original.mp4',
+        originalName: 'original.mp4',
+        fileHash: 'same-folder-hash',
+        status: 'completed',
+      })],
+    }]);
+    const globalCatalog = new CountingGlobalCatalogStore();
+    await globalCatalog.upsertFolder({
+      folderId: 'current-folder',
+      currentPath: '/videos',
+      displayName: 'videos',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    await globalCatalog.upsertFolder({
+      folderId: 'canonical-folder',
+      currentPath: '/archive',
+      displayName: 'archive',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    await globalCatalog.upsertFile({
+      fingerprint: 'same-folder-hash',
+      folderId: 'current-folder',
+      fileName: 'original.mp4',
+      size: 1024,
+      durationS: null,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'openai',
+      model: 'gpt-4.1-mini',
+      missingAt: null,
+    });
+    await globalCatalog.upsertAnalysis({
+      fingerprint: 'same-folder-hash',
+      finalName: null,
+      description: 'local canonical',
+      transcript: null,
+      language: null,
+      tags: [],
+    });
+    await globalCatalog.upsertFile({
+      fingerprint: 'cross-folder-hash',
+      folderId: 'canonical-folder',
+      fileName: 'source.mp4',
+      size: 1024,
+      durationS: null,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'openai',
+      model: 'gpt-4.1-mini',
+      missingAt: null,
+    });
+    await globalCatalog.upsertAnalysis({
+      fingerprint: 'cross-folder-hash',
+      finalName: 'named-source.mp4',
+      description: 'remote canonical',
+      transcript: null,
+      language: null,
+      tags: [],
+    });
+
+    const result = await scanFolder({
+      catalogs,
+      fs,
+      media: new InMemoryMedia(),
+      globalCatalog,
+    }, { folder: '/videos' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const byName = new Map(result.value.videos.map((video) => [video.filename, video]));
+    expect(globalCatalog.locationInputs).toEqual([['cross-folder-hash', 'same-folder-hash']]);
+    expect(byName.get('original.mp4')?.duplicate).toBeUndefined();
+    expect(byName.get('local-copy.mp4')).toMatchObject({
+      status: 'completed',
+      duplicate: { canonicalPath: '/videos/original.mp4' },
+    });
+    expect(byName.get('remote-copy.mp4')).toMatchObject({
+      status: 'not_tracked',
+      duplicate: { canonicalPath: '/archive/named-source.mp4' },
     });
   });
 

@@ -1,4 +1,4 @@
-import { eq } from 'drizzle-orm';
+import { eq, inArray } from 'drizzle-orm';
 import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js';
 import {
   closeSync,
@@ -36,6 +36,7 @@ import {
   type Result,
 } from '@core/domain/index.js';
 import type {
+  AnalyzedFileLocation,
   CatalogFileRecord,
   FaceIndexCandidate,
   FaceStatusCounts,
@@ -81,6 +82,14 @@ const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'catalog.db';
 const AUTO_FLUSH_MUTATION_COUNT = 25;
 const LOCK_ACQUIRE_ATTEMPTS = 5;
+const analyzedFileLocationSchema = z.object({
+  fingerprint: z.string(),
+  folderId: z.string(),
+  fileName: z.string(),
+  finalName: z.string().nullable(),
+  folderPath: z.string().nullable(),
+});
+const analyzedFileLocationsSchema = z.array(analyzedFileLocationSchema);
 
 export interface CatalogLockFs {
   mkdirSync: (dir: string, options: { recursive: true }) => void;
@@ -314,6 +323,27 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .run();
       setAnalysisTags(db, analysis.fingerprint, analysis.tags);
       syncSearchDocument(db, client, analysis.fingerprint);
+    });
+  }
+
+  async listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>> {
+    if (fingerprints.length === 0) return ok([]);
+    return this.read((db) => {
+      const rows = db
+        .select({
+          fingerprint: files.fingerprint,
+          folderId: files.folderId,
+          fileName: files.fileName,
+          finalName: analyses.finalName,
+          folderPath: folders.currentPath,
+        })
+        .from(files)
+        .innerJoin(analyses, eq(analyses.fingerprint, files.fingerprint))
+        .leftJoin(folders, eq(folders.folderId, files.folderId))
+        .where(inArray(files.fingerprint, [...new Set(fingerprints)]))
+        .all();
+      return analyzedFileLocationsSchema.parse(rows)
+        .sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
     });
   }
 

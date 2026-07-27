@@ -112,12 +112,43 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
     videos.push(scanned.value);
   }
 
+  const enriched = await enrichWithDuplicates(deps, videos);
+  if (!enriched.ok) return enriched;
+
   return ok({
     folder,
     databasePath: repository.value.databasePath(),
-    videos,
-    summary: summarize(videos),
+    videos: enriched.value,
+    summary: summarize(enriched.value),
   });
+};
+
+const enrichWithDuplicates = async (
+  deps: ScanDeps,
+  videos: readonly ScanVideo[],
+): Promise<Result<ScanVideo[], AppError>> => {
+  const globalCatalog = deps.globalCatalog;
+  if (globalCatalog === undefined) return ok([...videos]);
+  const fingerprints = [...new Set(videos.flatMap((video) => video.contentHash === null ? [] : [video.contentHash]))]
+    .sort((left, right) => left.localeCompare(right));
+  if (fingerprints.length === 0) return ok([...videos]);
+  const locations = await globalCatalog.listAnalyzedFileLocations(fingerprints);
+  if (!locations.ok) return locations;
+  const byFingerprint = new Map(locations.value.map((location) => [location.fingerprint, location]));
+  return ok(videos.map((video) => {
+    if (video.contentHash === null) return video;
+    const location = byFingerprint.get(video.contentHash);
+    if (location === undefined) return video;
+    const recordedPath = location.folderPath === null
+      ? null
+      : deps.fs.join(location.folderPath, location.fileName);
+    if (recordedPath === video.path) return video;
+    const canonicalName = location.finalName ?? location.fileName;
+    const canonicalPath = location.folderPath === null
+      ? canonicalName
+      : deps.fs.join(location.folderPath, canonicalName);
+    return { ...video, duplicate: { canonicalPath } };
+  }));
 };
 
 // A folder the app cannot write keeps no catalog of its own: its analyses live only in the global

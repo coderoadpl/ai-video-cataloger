@@ -106,4 +106,44 @@ describe('listFolderRecords query count', () => {
     expect(largeRecords.ok && largeRecords.value.every((record) => record.file.fingerprint.startsWith('drive-large-'))).toBe(true);
     // Filling 510 rows under full-suite load overran the default 5s; the assertion is query counts, not speed.
   }, 30_000);
+
+  it('loads all requested analyzed file locations in one query', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await fill(store, small, 10);
+
+    counter.prepared = 0;
+    await store.listAnalyzedFileLocations(['drive-small-fp-0001']);
+    const singleFingerprintQueries = counter.prepared;
+    counter.prepared = 0;
+    const result = await store.listAnalyzedFileLocations([
+      'drive-small-fp-0009',
+      'drive-small-fp-0001',
+      'drive-small-fp-0009',
+      'not-indexed',
+    ]);
+    const batchedQueries = counter.prepared;
+
+    expect(batchedQueries).toBe(singleFingerprintQueries);
+    expect(batchedQueries).toBeLessThanOrEqual(4);
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        {
+          fingerprint: 'drive-small-fp-0001',
+          folderId: small.folderId,
+          fileName: 'clip-1.mp4',
+          finalName: 'drive-small-named-1.mp4',
+          folderPath: '/media/drive-small',
+        },
+        {
+          fingerprint: 'drive-small-fp-0009',
+          folderId: small.folderId,
+          fileName: 'clip-9.mp4',
+          finalName: 'drive-small-named-9.mp4',
+          folderPath: '/media/drive-small',
+        },
+      ],
+    });
+  });
 });

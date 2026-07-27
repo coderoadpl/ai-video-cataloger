@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Duplicate chips appear in folder scope, not only Whole-tree.
 - The project is licensed `Elastic-2.0` — `LICENSE` (ELv2) at the repo root and a root `package.json` declaration, per ADR-0009 (public source, paid convenience builds, license-key-gated features permitted).
 
 ## [0.5.26] - 2026-07-29

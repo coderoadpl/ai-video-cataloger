@@ -58,6 +58,14 @@ export interface CatalogFileRecord {
   analysis: CatalogAnalysis | null;
 }
 
+export interface AnalyzedFileLocation {
+  fingerprint: string;
+  folderId: string;
+  fileName: string;
+  finalName: string | null;
+  folderPath: string | null;
+}
+
 export interface CatalogTagSummary {
   name: string;
   count: number;
@@ -176,6 +184,7 @@ export interface GlobalCatalogStore {
   upsertFile(file: CatalogFile): Promise<Result<void, AppError>>;
   getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>>;
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>>;
+  listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>>;
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
   listTags(): Promise<Result<CatalogTagSummary[], AppError>>;
   aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>>;
