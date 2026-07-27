@@ -404,6 +404,7 @@ describe('KeychainCredentialsStore', () => {
       migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
     });
     legacy.failingDeletes = 4;
+    vi.setSystemTime(0);
 
     await store.set('openai', 'newer-key');
     expect(JSON.parse(await readFile(path.join(home, '.ai-video-cataloger', 'credentials.json'), 'utf8'))).toEqual({
@@ -411,6 +412,7 @@ describe('KeychainCredentialsStore', () => {
     });
 
     legacy.failingDeletes = 0;
+    vi.setSystemTime(30_000);
     expect(await store.get('openai')).toEqual({ ok: true, value: 'newer-key' });
     expect(secrets.values.get('openai')).toBe('newer-key');
     expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
@@ -523,12 +525,14 @@ describe('KeychainCredentialsStore', () => {
     const store = new KeychainCredentialsStore(secrets, legacy, {
       migrationLog: new NdjsonMigrationLog({ homeDirectory: home }),
     });
+    vi.setSystemTime(0);
 
     const outage = await store.get('openai');
     expect(outage.ok).toBe(false);
     expect(outage.ok === false && outage.error.code).toBe('keychain_unavailable');
 
     secrets.failingReads.delete('openai');
+    vi.setSystemTime(30_000);
     expect(await store.get('openai')).toEqual({ ok: true, value: 'live-key' });
     expect(await legacy.entry('openai')).toEqual({ ok: true, value: null });
   });
@@ -696,20 +700,72 @@ describe('KeychainCredentialsStore', () => {
     expect(await store.backend()).toEqual({ backend: 'keychain', reason: 'ok' });
   });
 
-  it('retries a failed migration once the keychain accepts writes again', async () => {
+  it('retries an incomplete migration only after the cooldown expires', async () => {
     const home = await tempHome();
     const legacy = new JsonCredentialsStore({ homeDirectory: home });
     await legacy.set('openai', 'legacy-key');
     const secrets = new FakeSecrets('available');
     secrets.failingAccounts.add('openai');
     const store = new KeychainCredentialsStore(secrets, legacy);
+    const list = vi.spyOn(legacy, 'list');
+    vi.setSystemTime(0);
 
     expect(await store.get('openai')).toEqual({ ok: true, value: 'legacy-key' });
+    expect(list).toHaveBeenCalledTimes(1);
 
     secrets.failingAccounts.delete('openai');
     expect(await store.get('openai')).toEqual({ ok: true, value: 'legacy-key' });
+    expect(await store.backend()).toEqual({ backend: 'file', reason: 'degraded' });
+    expect(list).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(29_999);
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'legacy-key' });
+    expect(list).toHaveBeenCalledTimes(1);
+
+    vi.setSystemTime(30_000);
+    expect(await store.get('openai')).toEqual({ ok: true, value: 'legacy-key' });
+    expect(list).toHaveBeenCalledTimes(2);
     expect(secrets.values.get('openai')).toBe('legacy-key');
     expect(await store.legacyPlaintextProviders()).toEqual({ ok: true, value: [] });
+  });
+
+  it('forces an incomplete migration retry before an explicit set during the cooldown', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    await legacy.set('openai', 'legacy-key');
+    const secrets = new FakeSecrets('available');
+    secrets.failingAccounts.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+    const list = vi.spyOn(legacy, 'list');
+    vi.setSystemTime(0);
+    await store.get('openai');
+
+    secrets.failingAccounts.delete('openai');
+    expect(await store.set('openai', 'new-key')).toEqual({ ok: true, value: undefined });
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(secrets.values.get('openai')).toBe('new-key');
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
+  });
+
+  it('forces an incomplete migration retry before an explicit delete during the cooldown', async () => {
+    const home = await tempHome();
+    const legacy = new JsonCredentialsStore({ homeDirectory: home });
+    await legacy.set('openai', 'legacy-key');
+    const secrets = new FakeSecrets('available');
+    secrets.failingAccounts.add('openai');
+    const store = new KeychainCredentialsStore(secrets, legacy);
+    const list = vi.spyOn(legacy, 'list');
+    vi.setSystemTime(0);
+    await store.get('openai');
+
+    secrets.failingAccounts.delete('openai');
+    expect(await store.delete('openai')).toEqual({
+      ok: true,
+      value: { cleared: ['keychain'], retained: [] },
+    });
+    expect(list).toHaveBeenCalledTimes(2);
+    expect(secrets.values.has('openai')).toBe(false);
+    expect(await legacy.get('openai')).toEqual({ ok: true, value: null });
   });
 
   it('promotes a fallback file write into the keychain once it accepts writes again', async () => {
@@ -807,10 +863,12 @@ describe('KeychainCredentialsStore', () => {
     const secrets = new FakeSecrets('available');
     secrets.failingAccounts.add('openai');
     const store = new KeychainCredentialsStore(secrets, legacy);
+    vi.setSystemTime(0);
 
     expect(await store.backend()).toEqual({ backend: 'file', reason: 'degraded' });
 
     secrets.failingAccounts.delete('openai');
+    vi.setSystemTime(30_000);
     expect(await store.backend()).toEqual({ backend: 'keychain', reason: 'ok' });
   });
 

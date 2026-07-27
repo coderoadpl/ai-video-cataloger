@@ -35,6 +35,7 @@ export interface CredentialEntry {
 }
 
 const CONFLICT_ARCHIVE_PREFIX = 'credentials.json.conflict-';
+const MIGRATION_RETRY_COOLDOWN_MS = 30_000;
 
 const readEntry = (stored: StoredEntry): CredentialEntry =>
   typeof stored === 'string' ? { value: stored, state: 'unmarked' } : stored;
@@ -271,6 +272,7 @@ export class KeychainCredentialsStore implements CredentialsStore {
   private keychainFailed = false;
   private plaintextPending = false;
   private migration: Promise<boolean> | null = null;
+  private migrationRetryAfter = 0;
 
   constructor(
     private readonly secrets: SecretsStore,
@@ -303,7 +305,7 @@ export class KeychainCredentialsStore implements CredentialsStore {
   async set(providerId: string, credential: string): Promise<Result<void, AppError>> {
     const availability = await this.secrets.availability();
     if (availability === 'available') {
-      await this.ensureMigrated();
+      await this.ensureMigrated(true);
       if (await this.storeVerified(providerId, credential)) {
         this.keychainFailed = false;
         return this.dropSupersededPlaintext(providerId);
@@ -324,7 +326,7 @@ export class KeychainCredentialsStore implements CredentialsStore {
 
   async delete(providerId: string): Promise<Result<CredentialDeletion, AppError>> {
     const availability = await this.secrets.availability();
-    if (availability === 'available') await this.ensureMigrated();
+    if (availability === 'available') await this.ensureMigrated(true);
     const keychain: CredentialDeletion = { cleared: [], retained: [] };
     // A delete against an unreachable keychain fails harmlessly, and skipping it would
     // report a key as gone while the keychain still holds it.
@@ -397,11 +399,15 @@ export class KeychainCredentialsStore implements CredentialsStore {
     return true;
   }
 
-  private async ensureMigrated(): Promise<void> {
+  private async ensureMigrated(force = false): Promise<void> {
+    if (this.migration === null && !force && Date.now() < this.migrationRetryAfter) return;
     const attempt = (this.migration ??= this.migrateLegacyFile());
     const complete = await attempt;
     this.plaintextPending = !complete;
-    if (!complete) this.migration = null;
+    if (!complete) {
+      this.migration = null;
+      this.migrationRetryAfter = Date.now() + MIGRATION_RETRY_COOLDOWN_MS;
+    }
   }
 
   private async migrateLegacyFile(): Promise<boolean> {

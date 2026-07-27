@@ -18,6 +18,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - The project is licensed `Elastic-2.0` — `LICENSE` (ELv2) at the repo root and a root `package.json` declaration, per ADR-0009 (public source, paid convenience builds, license-key-gated features permitted).
 
+### Fixed
+
+- An incomplete credential migration retries on a cooldown instead of re-running on every command.
+
 ## [0.5.26] - 2026-07-29
 
 ### Fixed
