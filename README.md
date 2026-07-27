@@ -242,3 +242,10 @@ it, and compares the layout skeletons against the darwin baselines committed in
 `visual/__screenshots__/`. It joins no gate — see
 [ADR-0005](docs/decisions/0005-visual-regression.md). Re-baseline an intentional
 UI change with `pnpm run visual --update-snapshots` and commit the PNGs.
+
+## License
+
+Elastic License 2.0 — public source ("fair source"), not OSI open source.
+You may use, modify and build from source freely; you may not offer the app
+as a managed service or circumvent license-key functionality. See
+[LICENSE](LICENSE) and [ADR-0009](docs/decisions/0009-license-elv2-voiceink-model.md).
