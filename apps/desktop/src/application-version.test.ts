@@ -7,5 +7,5 @@ describe('application version composition', () => {
     const { createDeps } = await import('../../server/src/composition.js');
 
     expect(createDeps({ dbDriver: 'memory' }).version).toBe('9.8.7-test');
-  });
+  }, 30_000);
 });

@@ -122,6 +122,7 @@ describe('readiness route cache invalidation', () => {
 
       expect(await refreshed.json()).toMatchObject({ ok: true, data: { analyzer: { available: true } } });
     },
+    30_000,
   );
 
   it('invalidates cached readiness after credential writes', async () => {

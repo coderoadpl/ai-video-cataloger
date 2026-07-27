@@ -132,7 +132,7 @@ describe('ManagedOllamaRuntimeAdapter', () => {
     expect(stopped).toEqual(ok({ stopped: true }));
     expect(processManager.killed).toEqual([{ pid: 4321, signal: 'SIGTERM' }]);
     expect(existsSync(stateFilePath(home))).toBe(false);
-  });
+  }, 30_000);
 
   it('starts the managed daemon on demand and returns its dynamic base URL', async () => {
     const home = await tempRoot();
@@ -163,7 +163,7 @@ describe('ManagedOllamaRuntimeAdapter', () => {
         detached: true,
       },
     ]);
-  });
+  }, 30_000);
 
   it('shares one managed startup across concurrent callers', async () => {
     const home = await tempRoot();

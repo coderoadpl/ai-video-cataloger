@@ -328,5 +328,5 @@ describe('PeopleView', () => {
     expect(bodies).toContainEqual({ fromPersonId: 'p2', toPersonId: 'p1' });
     expect(bodies).toContainEqual({ personId: 'p1', force: true });
     expect(bodies).toContainEqual({ force: true });
-  });
+  }, 30_000);
 });

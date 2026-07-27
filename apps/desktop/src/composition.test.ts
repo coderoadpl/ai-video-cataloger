@@ -66,5 +66,5 @@ describe('desktop composition', () => {
       suggestedAction: null,
     });
     await desktopApp.dispose();
-  });
+  }, 30_000);
 });

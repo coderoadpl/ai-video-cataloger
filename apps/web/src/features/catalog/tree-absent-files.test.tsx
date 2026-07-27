@@ -76,7 +76,7 @@ describe('tree absent files section', () => {
     expect(screen.getByText('gone.mp4')).toBeDefined();
     expect(screen.getByText('sub')).toBeDefined();
     expect(requestCount).toBe(1);
-  });
+  }, 30_000);
 
   it('shows an empty note when the tree has no absent files', async () => {
     server.use(

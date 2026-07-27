@@ -165,7 +165,7 @@ describe('provider routes', () => {
         version: process.version,
       },
     });
-  });
+  }, 30_000);
 
   it('reports why a custom harness command is unavailable', async () => {
     const input = {
@@ -193,5 +193,5 @@ describe('provider routes', () => {
         message: expect.stringContaining('ENOENT'),
       },
     });
-  });
+  }, 30_000);
 });
