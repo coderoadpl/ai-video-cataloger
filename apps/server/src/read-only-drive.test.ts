@@ -167,14 +167,14 @@ describe('drive run over a write-protected folder with the real adapter stack', 
   }, 60000);
 
   it('serves the hit through the search contract and resolves its details', async () => {
-    const { root, folder, deps } = await scaffold();
+    const { home, root, folder, deps } = await scaffold();
 
     const run = await processDrive(deps, driveInput(root));
     if (!run.ok) throw new Error(run.error.message);
 
     const globalCatalog = deps.globalCatalog;
     if (globalCatalog === undefined) throw new Error('missing global catalog');
-    const found = await search({ globalCatalog, fs: deps.fs }, { query: 'rabbit', limit: 50, offset: 0 });
+    const found = await search({ globalCatalog, fs: deps.fs, media: deps.media }, { query: 'rabbit', limit: 50, offset: 0 });
     if (!found.ok) throw new Error(found.error.message);
 
     const parsed = searchOutputSchema.safeParse(found.value);
@@ -183,6 +183,7 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     const hit = found.value.results[0];
     expect(hit?.folder.folderId).toMatch(/^path-[0-9a-f]{8}$/);
     expect(hit?.folder.currentPath).toBe(folder);
+    expect(hit?.thumbnailPath).toBe(path.join(await mirrorDirectory(home), 'thumbnails', 'clip.jpg'));
 
     const details = await scanFolder({ catalogs: deps.catalogs, fs: deps.fs, media: deps.media }, { folder });
     if (!details.ok) throw new Error(details.error.message);
@@ -201,7 +202,7 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     if (globalCatalog === undefined) throw new Error('missing global catalog');
     const files = await globalCatalog.counts();
     expect(files.ok === true && files.value.files).toBe(1);
-    const found = await search({ globalCatalog, fs: deps.fs }, { query: 'rabbit', limit: 50, offset: 0 });
+    const found = await search({ globalCatalog, fs: deps.fs, media: deps.media }, { query: 'rabbit', limit: 50, offset: 0 });
     if (!found.ok) throw new Error(found.error.message);
     const fingerprint = found.value.results[0]?.fingerprint ?? '';
 

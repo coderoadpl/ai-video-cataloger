@@ -1,12 +1,14 @@
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
-import type { FileSystemPort, GlobalCatalogStore } from '../ports.js';
+import type { CatalogSearchRow, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
 import { artifactPaths } from './shared.js';
 import { discoverArtifactRoot } from './artifact-root.js';
+import { generateThumbnail } from './thumbnail.js';
 
 export interface SearchDeps {
   globalCatalog: GlobalCatalogStore;
   fs: FileSystemPort;
+  media: MediaPort;
 }
 
 export interface SearchInput {
@@ -63,7 +65,7 @@ export const search = async (
   for (const row of rows.value) {
     const online = await deps.fs.exists(row.folder.currentPath);
     if (!online.ok) return online;
-    const thumbnailPath = await resolveThumbnailPath(deps.fs, row, online.value);
+    const thumbnailPath = await resolveThumbnailPath(deps, row, online.value);
     if (!thumbnailPath.ok) return thumbnailPath;
     results.push({
       fingerprint: row.fingerprint,
@@ -93,18 +95,24 @@ export const search = async (
 };
 
 const resolveThumbnailPath = async (
-  fs: FileSystemPort,
-  row: { folder: { currentPath: string }; fileName: string; finalName: string | null },
+  deps: SearchDeps,
+  row: CatalogSearchRow,
   online: boolean,
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
-  const videoPath = fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
-  const root = await discoverArtifactRoot(fs, row.folder.currentPath);
+  const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
+  const root = await discoverArtifactRoot(deps.fs, row.folder.currentPath);
   if (!root.ok) return root;
-  const { thumbnailPath } = artifactPaths(fs, root.value, videoPath, row.finalName);
-  const exists = await fs.exists(thumbnailPath);
+  const { thumbnailPath } = artifactPaths(deps.fs, root.value, videoPath, row.finalName);
+  const exists = await deps.fs.exists(thumbnailPath);
   if (!exists.ok) return exists;
-  return ok(exists.value ? thumbnailPath : null);
+  if (exists.value) return ok(thumbnailPath);
+  if (row.missing) return ok(null);
+  const analysis = await deps.globalCatalog.getAnalysis(row.fingerprint);
+  if (!analysis.ok) return analysis;
+  if (analysis.value === null) return ok(null);
+  const generated = await generateThumbnail(deps, { videoPath, force: false });
+  return ok(generated.ok ? generated.value.thumbnailPath : null);
 };
 
 export const sanitizeSearchQuery = (query: string): Result<SanitizedSearchQuery, AppError> => {
