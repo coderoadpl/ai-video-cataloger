@@ -144,7 +144,10 @@ describe('KeychainSecretsAdapter', () => {
   });
 
   it('addresses an explicit keychain file when one is configured', async () => {
-    const runner = new FakeSecurity((args) => (args[0] === 'find-generic-password' ? found('sk-temp') : notFound()));
+    const runner = new FakeSecurity((args) => {
+      if (args[0] === 'find-generic-password') return found('sk-temp');
+      return { code: 0, stdout: '', stderr: '' };
+    });
     const adapter = new KeychainSecretsAdapter({
       platform: 'darwin',
       service: 'svc',
@@ -156,6 +159,53 @@ describe('KeychainSecretsAdapter', () => {
     await adapter.set('openai', 'sk-temp');
     await adapter.delete('openai');
     for (const call of runner.calls) expect(call.args.at(-1)).toBe('/tmp/probe.keychain');
+  });
+
+  it('validates an explicit keychain once before writing to it', async () => {
+    const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
+    const adapter = new KeychainSecretsAdapter({
+      platform: 'darwin',
+      disabled: false,
+      keychainPath: '/tmp/valid.keychain',
+      commandRunner: runner,
+    });
+
+    expect(await adapter.availability()).toBe('available');
+    expect(await adapter.set('openai', 'sk-first')).toEqual({ ok: true, value: undefined });
+    expect(await adapter.set('gemini', 'sk-second')).toEqual({ ok: true, value: undefined });
+    expect(runner.calls.map((call) => call.args[0])).toEqual([
+      'show-keychain-info',
+      'add-generic-password',
+      'add-generic-password',
+    ]);
+    expect(runner.calls[0]?.args).toEqual(['show-keychain-info', '/tmp/valid.keychain']);
+  });
+
+  it('caches an invalid explicit keychain verdict and never attempts a write', async () => {
+    const runner = new FakeSecurity(() => ({
+      code: 36,
+      stdout: '',
+      stderr: 'The specified keychain could not be found.',
+    }));
+    const adapter = new KeychainSecretsAdapter({
+      platform: 'darwin',
+      disabled: false,
+      keychainPath: '/tmp/missing.keychain',
+      commandRunner: runner,
+    });
+
+    expect(await adapter.availability()).toBe('unavailable');
+    expect(await adapter.set('openai', 'sk-first')).toMatchObject({
+      ok: false,
+      error: { code: 'keychain_unavailable' },
+    });
+    expect(await adapter.set('gemini', 'sk-second')).toMatchObject({
+      ok: false,
+      error: { code: 'keychain_unavailable' },
+    });
+    expect(runner.calls.map((call) => call.args)).toEqual([
+      ['show-keychain-info', '/tmp/missing.keychain'],
+    ]);
   });
 
   it('never repeats the secret in a failure message', async () => {
