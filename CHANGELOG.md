@@ -18,6 +18,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - The project is licensed `Elastic-2.0` — `LICENSE` (ELv2) at the repo root and a root `package.json` declaration, per ADR-0009 (public source, paid convenience builds, license-key-gated features permitted).
 
+### Changed
+
+- Processing flags passed explicitly to `process` and `process-drive` now
+  override setup configuration, while unpassed flags defer to configured values
+  instead of applying their CLI defaults.
+- The processing command help now distinguishes `--force` from a catalog reset,
+  and the CLI documentation states that resumable drive runs with per-file
+  failures exit 0 and identifies the summary and NDJSON failure counts.
+
 ## [0.5.26] - 2026-07-29
 
 ### Fixed

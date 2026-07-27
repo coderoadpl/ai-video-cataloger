@@ -2,7 +2,7 @@
 
 Normative reference for this app. This document is a **delta** against the
 agentproofarch foundation
-([`../../agentproofarch/docs/architecture.md`](../../agentproofarch/docs/architecture.md),
+([architecture reference](https://github.com/chomamateusz/agentproofarch/blob/main/docs/architecture.md),
 read it first — its rules apply here except where this document overrides
 them). Provenance: foundation docs as of 2026-07-12; local-first decisions in
 [ADR-0001](decisions/0001-local-first-electron.md). Product scope:
