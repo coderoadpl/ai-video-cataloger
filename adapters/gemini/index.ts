@@ -115,6 +115,17 @@ const uploadResponseSchema = z.object({
   file: fileStateSchema.optional(),
 });
 
+const uploadReceivedOffsetSchema = z.string()
+  .regex(/^\d+$/)
+  .transform(Number)
+  .pipe(z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER));
+
+interface UploadQueryState {
+  response: Response;
+  receivedOffset: number | null;
+  final: boolean;
+}
+
 const INLINE_REQUEST_OVERHEAD_BYTES = 64 * 1024;
 
 // The 20 MB cap applies to the whole JSON request, and inline video travels
@@ -648,8 +659,14 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
         if (!attempt.retryable || retries >= UPLOAD_CHUNK_RETRIES) return attempt.failure;
         retries += 1;
         await this.sleep(UPLOAD_RETRY_DELAY_MS * retries);
-        const received = await this.receivedOffset(apiKey, uploadUrl, signal);
-        if (received !== null) offset = received;
+        const query = await this.queryUpload(apiKey, uploadUrl, signal);
+        if (query === null) continue;
+        if (query.final || query.receivedOffset === sizeBytes) {
+          const queriedFile = await uploadedFileName(query.response);
+          if (queriedFile.ok) return queriedFile;
+          return this.finalizeUpload(apiKey, uploadUrl, sizeBytes, signal, userSignal);
+        }
+        if (query.receivedOffset !== null) offset = query.receivedOffset;
       }
       return { ok: false, error: appError('read_error', 'Could not read video file for Gemini analysis') };
     } finally {
@@ -691,9 +708,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     }
   }
 
-  // The resumable protocol answers a `query` command with the byte count it actually holds,
-  // which is the only safe place to resume a chunk the server may have half received.
-  private async receivedOffset(apiKey: string, uploadUrl: string, signal: AbortSignal): Promise<number | null> {
+  private async queryUpload(apiKey: string, uploadUrl: string, signal: AbortSignal): Promise<UploadQueryState | null> {
     let response: Response;
     try {
       response = await this.fetchImpl(uploadUrl, {
@@ -705,8 +720,41 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
       return null;
     }
     if (!response.ok) return null;
-    const received = Number(response.headers.get('x-goog-upload-size-received'));
-    return Number.isSafeInteger(received) && received >= 0 ? received : null;
+    const receivedOffset = uploadReceivedOffsetSchema.safeParse(
+      response.headers.get('x-goog-upload-size-received'),
+    );
+    return {
+      response,
+      receivedOffset: receivedOffset.success ? receivedOffset.data : null,
+      final: z.literal('final').safeParse(response.headers.get('x-goog-upload-status')).success,
+    };
+  }
+
+  private async finalizeUpload(
+    apiKey: string,
+    uploadUrl: string,
+    sizeBytes: number,
+    signal: AbortSignal,
+    userSignal: AbortSignal | undefined,
+  ): Promise<Result<{ name: string }, AppError>> {
+    let response: Response;
+    try {
+      response = await this.fetchImpl(uploadUrl, {
+        method: 'POST',
+        headers: {
+          'x-goog-api-key': apiKey,
+          'X-Goog-Upload-Command': 'finalize',
+          'X-Goog-Upload-Offset': String(sizeBytes),
+          'Content-Length': '0',
+        },
+        body: new Uint8Array(0),
+        signal,
+      });
+    } catch (cause) {
+      return uploadFailure(userSignal, signal, cause);
+    }
+    if (!response.ok) return { ok: false, error: uploadHttpError(response.status) };
+    return uploadedFileName(response);
   }
 
   private async pollActive(

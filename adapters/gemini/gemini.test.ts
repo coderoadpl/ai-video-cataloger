@@ -485,6 +485,53 @@ describe('analyze — chunk upload resilience', () => {
     expect(finalize.map((call) => call.headers['x-goog-upload-offset'])).toEqual([String(received)]);
   });
 
+  it('finalizes from the server-confirmed size after the last chunk response is lost', async () => {
+    const sizeBytes = 20 * 1024 * 1024;
+    const video = fakeVideoFile(sizeBytes);
+    const { fetchImpl, calls } = sessionFetch((call) => {
+      const command = call.headers['x-goog-upload-command'];
+      if (command === 'query') {
+        return new Response(null, {
+          status: 200,
+          headers: { 'x-goog-upload-size-received': String(sizeBytes) },
+        });
+      }
+      if (command === 'upload, finalize') throw new Error('response lost');
+      if (command === 'finalize') return jsonResponse({ file: { name: 'files/c', state: 'PROCESSING' } });
+      return null;
+    });
+
+    const result = await adapterFor(fetchImpl, video.source).analyze(analyzeInput());
+
+    expect(result.ok).toBe(true);
+    const finalize = calls.filter((call) => call.headers['x-goog-upload-command'] === 'finalize');
+    expect(finalize.map((call) => call.headers['x-goog-upload-offset'])).toEqual([String(sizeBytes)]);
+    expect(finalize.map((call) => call.headers['content-length'])).toEqual(['0']);
+    expect(calls.some((call) => call.method === 'GET' && call.url.endsWith('/files/c'))).toBe(true);
+  });
+
+  it('uses the file resource returned by a final upload query', async () => {
+    const sizeBytes = 20 * 1024 * 1024;
+    const video = fakeVideoFile(sizeBytes);
+    const { fetchImpl, calls } = sessionFetch((call) => {
+      const command = call.headers['x-goog-upload-command'];
+      if (command === 'query') {
+        return jsonResponse(
+          { file: { name: 'files/c', state: 'PROCESSING' } },
+          { headers: { 'x-goog-upload-status': 'final' } },
+        );
+      }
+      if (command === 'upload, finalize') throw new Error('response lost');
+      return null;
+    });
+
+    const result = await adapterFor(fetchImpl, video.source).analyze(analyzeInput());
+
+    expect(result.ok).toBe(true);
+    expect(calls.some((call) => call.headers['x-goog-upload-command'] === 'finalize')).toBe(false);
+    expect(calls.some((call) => call.method === 'GET' && call.url.endsWith('/files/c'))).toBe(true);
+  });
+
   it('returns a typed upload error once the retries are exhausted', async () => {
     const video = fakeVideoFile(20 * 1024 * 1024);
     const { fetchImpl, calls } = sessionFetch((call) => {
