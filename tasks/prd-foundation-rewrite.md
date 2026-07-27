@@ -3,7 +3,7 @@
 ## Introduction
 
 Ground-up rewrite of AI Video Cataloger onto the
-[agentproofarch](../../agentproofarch/docs/architecture.md) foundation as a
+[agentproofarch](https://github.com/chomamateusz/agentproofarch/blob/main/docs/architecture.md) foundation as a
 **local-first Electron desktop app**: the app IS the server (no remote
 backend), the typed contract is the only bridge between core and every
 interface (GUI renderer, CLI), and every layer boundary is machine-enforced.

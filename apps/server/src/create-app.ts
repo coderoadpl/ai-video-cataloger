@@ -4,7 +4,7 @@ import type { AppError, Result } from '@core/domain/index.js';
 import { watchCatalogFolder, type FolderWatchSession, type JobsPort } from '@core/server/index.js';
 
 import { buildApp } from './app.js';
-import { createDeps, type AppConfig } from './composition.js';
+import { createDeps, type AppConfig, type InMemoryDepsFactory } from './composition.js';
 
 export interface App {
   honoApp: Hono;
@@ -18,8 +18,8 @@ export interface App {
   dispose: () => Promise<void>;
 }
 
-export const createApp = (config: AppConfig = {}): App => {
-  const deps = createDeps(config);
+export const createApp = (config: AppConfig = {}, inMemoryDepsFactory?: InMemoryDepsFactory): App => {
+  const deps = createDeps(config, inMemoryDepsFactory);
   return {
     honoApp: buildApp(deps),
     jobs: deps.jobs,

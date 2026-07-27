@@ -4,8 +4,8 @@ vi.mock('../../../package.json', () => ({ default: { version: '9.8.7-test' } }))
 
 describe('application version composition', () => {
   it('uses package metadata as the default server version', async () => {
-    const { createDeps } = await import('../../server/src/composition.js');
+    const { createInMemoryDeps } = await import('../../server/src/test-support/in-memory-deps.js');
 
-    expect(createDeps({ dbDriver: 'memory' }).version).toBe('9.8.7-test');
+    expect(createInMemoryDeps().version).toBe('9.8.7-test');
   });
 });
