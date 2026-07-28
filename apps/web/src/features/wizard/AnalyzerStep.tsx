@@ -81,6 +81,10 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
         </ToggleButton>
       </ToggleButtonGroup>
 
+      <Alert severity="warning" data-testid="wizard-gemini-privacy">
+        {dictionary.wizard.analyzer.geminiPrivacy}
+      </Alert>
+
       {analyzerFamily === 'local' ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }} data-testid="analyzer-local">
           {machine?.appleSilicon === false ? (
@@ -177,9 +181,6 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
             value={geminiDraft.credential}
             onChange={(event) => controller.setGeminiDraft({ credential: event.target.value })}
           />
-          <Alert severity="warning" data-testid="wizard-gemini-privacy">
-            {dictionary.wizard.analyzer.geminiPrivacy}
-          </Alert>
         </Box>
       ) : null}
 
