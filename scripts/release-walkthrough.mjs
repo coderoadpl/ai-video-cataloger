@@ -19,6 +19,7 @@ Options:
                                configured, so the analysis step reports itself skipped.
   --query <text>               Query typed into the header search (default: "video").
   --analyze-timeout <seconds>  Wait for one analysis run to finish (default: 300).
+  --window-size <WxH>          Window size for the driven app, e.g. 1920x1200 (default: 1920x1200).
   --dry-run                    Validate the inputs, write plan.json, stop before launching the app.
   --help                       Print this help.
 
@@ -34,6 +35,10 @@ const MENU_SHOW_SETUP_WIZARD = 'menu:showSetupWizard';
 const VISIBLE_TIMEOUT_MS = 15_000;
 const SETTLE_TIMEOUT_MS = 5_000;
 const FOLDER_TIMEOUT_MS = 60_000;
+const SCREENSHOT_SETTLE_TIMEOUT_MS = 3_000;
+const SCREENSHOT_SETTLE_FALLBACK_MS = 250;
+const DEFAULT_WINDOW_SIZE = '1920x1200';
+const WINDOW_SIZE_PATTERN = /^(\d+)x(\d+)$/;
 
 const optionsSchema = z.object({
   app: z.string().min(1),
@@ -42,8 +47,16 @@ const optionsSchema = z.object({
   home: z.string().min(1).optional(),
   query: z.string().min(1).default('video'),
   analyzeTimeout: z.coerce.number().int().positive().default(300),
+  windowSize: z.string().regex(WINDOW_SIZE_PATTERN, 'expected WxH, e.g. 1920x1200').default(DEFAULT_WINDOW_SIZE),
   dryRun: z.boolean().default(false),
 });
+
+const parseWindowSize = (windowSize) => {
+  const match = WINDOW_SIZE_PATTERN.exec(windowSize);
+  if (match === null) throw new Error(`invalid --window-size: ${windowSize}`);
+  const [, width, height] = match;
+  return { width: Number(width), height: Number(height) };
+};
 
 const readOptions = (argv) => {
   const { values } = parseArgs({
@@ -56,6 +69,7 @@ const readOptions = (argv) => {
       home: { type: 'string' },
       query: { type: 'string' },
       'analyze-timeout': { type: 'string' },
+      'window-size': { type: 'string' },
       'dry-run': { type: 'boolean' },
       help: { type: 'boolean' },
     },
@@ -69,6 +83,7 @@ const readOptions = (argv) => {
       home: values.home,
       query: values.query,
       analyzeTimeout: values['analyze-timeout'],
+      windowSize: values['window-size'],
       dryRun: values['dry-run'] ?? false,
     }),
   };
@@ -100,6 +115,7 @@ const buildPlan = (options) => {
   const homeDir = options.home === undefined
     ? mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-home-'))
     : requireDirectory(options.home, '--home');
+  const windowSize = parseWindowSize(options.windowSize);
   return {
     appPath,
     executablePath: executableInside(appPath),
@@ -109,6 +125,8 @@ const buildPlan = (options) => {
     homeDir,
     query: options.query,
     analyzeTimeoutMs: options.analyzeTimeout * 1000,
+    windowWidth: windowSize.width,
+    windowHeight: windowSize.height,
     dryRun: options.dryRun,
   };
 };
@@ -128,6 +146,13 @@ const seedOpenFolder = (plan) => {
   );
 };
 
+const seedWindowState = (plan) => {
+  writeFileSync(
+    path.join(plan.userDataDir, 'window-state.json'),
+    JSON.stringify({ width: plan.windowWidth, height: plan.windowHeight }, null, 2),
+  );
+};
+
 const appeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
   try {
     await locator.first().waitFor({ state: 'visible', timeout });
@@ -140,6 +165,20 @@ const appeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
 const done = (note = '') => ({ status: 'ok', note });
 const skipped = (note) => ({ status: 'skipped', note });
 
+/* eslint-disable no-undef -- runs inside the driven page via Playwright's waitForFunction, not this Node process */
+const noPendingTransitionsOrSpinners = () =>
+  document.getAnimations().every((animation) => animation.playState !== 'running') &&
+  document.querySelector('[role="progressbar"], [data-testid*="spinner" i], [data-testid*="loading" i]') === null;
+/* eslint-enable no-undef */
+
+const settle = async (page) => {
+  try {
+    await page.waitForFunction(noPendingTransitionsOrSpinners, { timeout: SCREENSHOT_SETTLE_TIMEOUT_MS });
+  } catch {
+    await page.waitForTimeout(SCREENSHOT_SETTLE_FALLBACK_MS);
+  }
+};
+
 const createRecorder = (page, outDir) => {
   const results = [];
   const record = async (name, body) => {
@@ -151,6 +190,7 @@ const createRecorder = (page, outDir) => {
     } catch (error) {
       outcome = { status: 'failed', note: error instanceof Error ? error.message : String(error) };
     }
+    await settle(page).catch(() => undefined);
     await page.screenshot({ path: path.join(outDir, screenshot) }).catch(() => undefined);
     results.push({ name, ...outcome, durationMs: Date.now() - startedAt, screenshot });
     console.log(`  ${outcome.status.padEnd(7)} ${name}${outcome.note === '' ? '' : ` — ${outcome.note}`}`);
@@ -177,6 +217,7 @@ const sendMenuEvent = async (app, channel) =>
 
 const drive = async (plan) => {
   seedOpenFolder(plan);
+  seedWindowState(plan);
   const launchedAt = Date.now();
   const app = await electron.launch({
     executablePath: plan.executablePath,
