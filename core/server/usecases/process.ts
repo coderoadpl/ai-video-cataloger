@@ -495,6 +495,15 @@ const runPipelineSteps = async (
     const notCancelled = cancellationBoundary(progress);
     if (!notCancelled.ok) return notCancelled;
     if (!transcript.ok) return transcript;
+    if (resolved.whisper !== 'skip' && !skipTranscription) {
+      const filterReported = await reportTranscriptFilter(
+        progress,
+        video.originalPath,
+        resolved.batch,
+        transcript.value,
+      );
+      if (!filterReported.ok) return filterReported;
+    }
     const updated = await repository.updateVideoStatus(video.id, 'transcribed', null);
     if (!updated.ok) return updated;
     video = updated.value;
@@ -1169,11 +1178,11 @@ const transcribe = async (
   audioPath: string | null,
   skip: boolean,
   signal: AbortSignal | undefined,
-): Promise<Result<void, AppError>> => {
+): Promise<Result<number, AppError>> => {
   const finalAudioPath = audioPath ?? tempAudioPath(deps.fs, videoPath);
   if (resolved.whisper === 'skip' || skip) {
     await deps.fs.deleteFile(finalAudioPath);
-    return ok(undefined);
+    return ok(0);
   }
   const result = await deps.transcriber.transcribe({
     audioPath: finalAudioPath,
@@ -1189,8 +1198,8 @@ const transcribe = async (
   });
   const cleanup = await deps.fs.deleteFile(finalAudioPath);
   if (!result.ok) return result;
-  if (!cleanup.ok) return ok(undefined);
-  return ok(undefined);
+  if (!cleanup.ok) return ok(result.value.filteredSegments);
+  return ok(result.value.filteredSegments);
 };
 
 const prerequisitesFailure = (message: string, details?: unknown): Result<never, AppError> => ({
@@ -1445,6 +1454,23 @@ const reportAnalyzerWarning = async (
     current: batch.current,
     total: batch.total,
     data: { video: videoPath, warning },
+  });
+  if (!reported.ok) return reported;
+  return cancellationBoundary(progress);
+};
+
+const reportTranscriptFilter = async (
+  progress: JobExecutionContext | undefined,
+  videoPath: string,
+  batch: ProcessBatchContext,
+  filteredSegments: number,
+): Promise<Result<void, AppError>> => {
+  if (progress === undefined) return ok(undefined);
+  const reported = await progress.reportProgress({
+    step: 'transcribing_audio',
+    current: batch.current,
+    total: batch.total,
+    data: { video: videoPath, filteredSegments },
   });
   if (!reported.ok) return reported;
   return cancellationBoundary(progress);

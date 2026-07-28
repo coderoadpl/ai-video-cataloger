@@ -36,6 +36,12 @@ const writeWhisperOutput = async (args: readonly string[], content: string): Pro
   await writeFile(`${outputPrefix}.txt`, content, 'utf8');
 };
 
+const writeWhisperJsonOutput = async (args: readonly string[], content: unknown): Promise<void> => {
+  const outputPrefix = requiredArg(args, args.indexOf('-of') + 1);
+  await mkdir(path.dirname(outputPrefix), { recursive: true });
+  await writeFile(`${outputPrefix}.json`, JSON.stringify(content), 'utf8');
+};
+
 const writeOpenAiWhisperOutput = async (args: readonly string[], content: string): Promise<void> => {
   const audioPath = requiredArg(args, 0);
   const outputDirectory = requiredArg(args, args.indexOf('--output_dir') + 1);
@@ -104,22 +110,61 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'auto',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'hello transcript' }));
-    expect(runner.commands).toContainEqual({
-      command: '/bundled/whisper',
-      args: [
-        '-m',
-        path.join(root, '.ai-video-cataloger', 'models', 'whisper', 'ggml-base.bin'),
-        '-f',
-        path.join(root, 'audio', 'Clip One.wav'),
-        '-l',
-        'auto',
-        '-otxt',
-        '-of',
-        transcriptPath.slice(0, -4),
-        '--no-prints',
-      ],
+    expect(result).toEqual(ok({ transcriptPath, content: 'hello transcript', filteredSegments: 0 }));
+    const run = runner.commands.find((entry) => entry.command === '/bundled/whisper' && entry.args[0] !== '--help');
+    expect(run?.args.slice(0, 9)).toEqual([
+      '-m',
+      path.join(root, '.ai-video-cataloger', 'models', 'whisper', 'ggml-base.bin'),
+      '-f',
+      path.join(root, 'audio', 'Clip One.wav'),
+      '-l',
+      'auto',
+      '-otxt',
+      '-of',
+      expect.stringContaining(`${path.sep}.whisper-`),
+    ]);
+    expect(run?.args.at(-1)).toBe('--no-prints');
+  });
+
+  it('filters whisper.cpp metadata output before persisting the transcript', async () => {
+    const root = await tempRoot();
+    const transcriptPath = path.join(root, 'transcripts', 'music.txt');
+    const transcriptJsonPath = path.join(root, 'transcripts', 'music.json');
+    const runner = new FakeCommandRunner({ '/bundled/whisper': 'whisper installed' });
+    runner.onRun = async (command, args) => {
+      if (command === '/bundled/whisper' && args[0] !== '--help') {
+        await writeWhisperOutput(args, 'A person opens the door. Shaya molen treska.');
+        await writeWhisperJsonOutput(args, {
+          transcription: [
+            { offsets: { from: 0, to: 2000 }, text: 'A person opens the door.', no_speech_prob: 0.02, avg_logprob: -0.2 },
+            { offsets: { from: 2000, to: 4000 }, text: 'Shaya molen treska.', no_speech_prob: 0.94, avg_logprob: -1.7 },
+          ],
+        });
+      }
+      return ok({ stdout: '', stderr: '' });
+    };
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      commandRunner: runner,
+      binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
     });
+
+    const result = await adapter.transcribe({
+      audioPath: path.join(root, 'music.wav'),
+      transcriptPath,
+      transcriptJsonPath,
+      mode: 'local',
+      model: 'base',
+      language: 'auto',
+    });
+
+    expect(result).toEqual(ok({
+      transcriptPath,
+      content: 'A person opens the door.',
+      filteredSegments: 1,
+    }));
+    expect(await readFile(transcriptPath, 'utf8')).toBe('A person opens the door.');
+    expect(await readFile(transcriptJsonPath, 'utf8')).not.toContain('Shaya molen treska');
   });
 
   it('transcribes with a direct-layout whisper.cpp model when the GGML-prefixed path is absent', async () => {
@@ -147,7 +192,7 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'auto',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'direct model transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'direct model transcript', filteredSegments: 0 }));
     const run = runner.commands.find((entry) => entry.command === '/bundled/whisper' && entry.args[0] !== '--help');
     expect(run?.args[run.args.indexOf('-m') + 1]).toBe(directPath);
   });
@@ -176,7 +221,7 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'auto',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'hashed audio transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'hashed audio transcript', filteredSegments: 0 }));
     expect(existsSync(path.join(root, 'transcripts', 'f1abec7d-Clip One.txt'))).toBe(false);
     expect(existsSync(transcriptPath)).toBe(true);
   });
@@ -207,19 +252,17 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'auto',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'system transcript' }));
-    expect(runner.commands).toContainEqual({
-      command: 'whisper',
-      args: [
-        audioPath,
-        '--model',
-        'base',
-        '--output_dir',
-        path.dirname(transcriptPath),
-        '--output_format',
-        'txt',
-      ],
-    });
+    expect(result).toEqual(ok({ transcriptPath, content: 'system transcript', filteredSegments: 0 }));
+    const run = runner.commands.find((entry) => entry.command === 'whisper' && entry.args[0] !== '--help');
+    expect(run?.args).toEqual([
+      audioPath,
+      '--model',
+      'base',
+      '--output_dir',
+      expect.stringContaining(`${path.sep}.whisper-`),
+      '--output_format',
+      'txt',
+    ]);
     expect(existsSync(path.join(root, 'transcripts', 'f1abec7d-Clip One.txt'))).toBe(false);
   });
 
@@ -247,7 +290,7 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'pl',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript', filteredSegments: 0 }));
     const run = runner.commands.find((entry) => entry.command === 'whisper' && entry.args[0] !== '--help');
     expect(run?.args).toContain('--language');
     expect(run?.args[run.args.indexOf('--language') + 1]).toBe('pl');
@@ -275,7 +318,7 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'pl',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript', filteredSegments: 0 }));
     const run = runner.commands.find((entry) => entry.command === '/bundled/whisper' && entry.args[0] !== '--help');
     expect(run?.args[run.args.indexOf('-l') + 1]).toBe('pl');
   });
@@ -415,7 +458,7 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'auto',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'cpu transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'cpu transcript', filteredSegments: 0 }));
     const whisperRuns = runner.commands.filter((entry) => entry.command === '/bundled/whisper' && entry.args[0] !== '--help');
     expect(whisperRuns).toHaveLength(2);
     expect(whisperRuns[1]?.args).toContain('--no-gpu');
@@ -456,12 +499,38 @@ describe('WhisperTranscriberAdapter', () => {
 
     const result = await adapter.transcribe({ audioPath, transcriptPath, mode: 'api', model: 'small', language: 'auto' });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'api transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'api transcript', filteredSegments: 0 }));
     expect(await readFile(transcriptPath, 'utf8')).toBe('api transcript');
     expect(apiClient.calls).toHaveLength(1);
     expect(apiClient.calls[0]?.model).toBe('whisper-1');
     expect(apiClient.calls[0]?.file).toBeInstanceOf(ReadStream);
     expect(apiClient.calls[0]).not.toHaveProperty('language');
+  });
+
+  it('filters API output before persisting the transcript', async () => {
+    const root = await tempRoot();
+    const audioPath = path.join(root, 'audio.wav');
+    const transcriptPath = path.join(root, 'transcripts', 'audio.txt');
+    const transcriptJsonPath = path.join(root, 'transcripts', 'audio.json');
+    await writeFile(audioPath, 'audio', 'utf8');
+    const apiClient = new FakeWhisperApiClient('Wracamy już do domu. Mamo, mamo, predko!', [
+      { start: 0, end: 2, text: 'Wracamy już do domu.' },
+      { start: 2, end: 4, text: 'Mamo, mamo, predko!' },
+    ]);
+    const adapter = new WhisperTranscriberAdapter({ apiKey: 'key', apiClient });
+
+    const result = await adapter.transcribe({
+      audioPath,
+      transcriptPath,
+      transcriptJsonPath,
+      mode: 'api',
+      model: 'small',
+      language: 'pl',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'Wracamy już do domu.', filteredSegments: 1 }));
+    expect(await readFile(transcriptPath, 'utf8')).toBe('Wracamy już do domu.');
+    expect(await readFile(transcriptJsonPath, 'utf8')).not.toContain('Mamo');
   });
 
   it('passes an explicit language to the OpenAI Whisper API', async () => {
@@ -480,7 +549,7 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'pl',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript', filteredSegments: 0 }));
     expect(apiClient.calls[0]?.language).toBe('pl');
   });
 
@@ -510,7 +579,7 @@ describe('WhisperTranscriberAdapter', () => {
       apiModel: 'whisper-large-v3',
     });
 
-    expect(result).toEqual(ok({ transcriptPath, content: 'custom transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'custom transcript', filteredSegments: 0 }));
     expect(credentialLookups).toEqual(['transcribe.example.com']);
     expect(apiClient.calls[0]?.model).toBe('whisper-large-v3');
   });
@@ -539,7 +608,7 @@ describe('WhisperTranscriberAdapter', () => {
     const result = await adapter.transcribe({ audioPath, transcriptPath, mode: 'api', model: 'base', language: 'auto' });
 
     expect(dependency).toMatchObject({ ok: true, value: { available: true } });
-    expect(result).toEqual(ok({ transcriptPath, content: 'stored credential transcript' }));
+    expect(result).toEqual(ok({ transcriptPath, content: 'stored credential transcript', filteredSegments: 0 }));
   });
 
   it('maps OpenAI API status errors to the app taxonomy', async () => {
@@ -565,7 +634,7 @@ describe('WhisperTranscriberAdapter', () => {
       language: 'auto',
     });
 
-    expect(result).toEqual(ok({ transcriptPath: '/tmp/transcript.txt', content: '' }));
+    expect(result).toEqual(ok({ transcriptPath: '/tmp/transcript.txt', content: '', filteredSegments: 0 }));
     expect(runner.commands).toEqual([]);
     expect(apiClient.calls).toEqual([]);
   });
@@ -818,11 +887,14 @@ class FakeCommandRunner implements CommandRunner {
 class FakeWhisperApiClient implements WhisperApiClient {
   readonly calls: Array<{ file: ReadStream; model: string; language?: string }> = [];
 
-  constructor(private readonly text: string) {}
+  constructor(
+    private readonly text: string,
+    private readonly segments?: Array<Record<string, unknown>>,
+  ) {}
 
-  createTranscription(input: { file: ReadStream; model: string; language?: string }): Promise<{ text: string }> {
+  createTranscription(input: { file: ReadStream; model: string; language?: string }): Promise<unknown> {
     this.calls.push(input);
-    return Promise.resolve({ text: this.text });
+    return Promise.resolve({ text: this.text, ...(this.segments === undefined ? {} : { segments: this.segments }) });
   }
 }
 
