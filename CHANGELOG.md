@@ -31,6 +31,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- The entity gate was reverted after three failed measured iterations, and fabrication control moves to a future verification pass.
 - Analysis prompt version 3 adds a concrete-attribute floor for filenames and tags when no entity is verifiable.
 - The gemini-native entity gate now applies one evidence rule across descriptions, filenames, and tags with attribute-based fallbacks, addressing the c11 blind-judge regression.
 - Selecting an analysis variant now refreshes its name-based artifacts and search document together; folder defaults resolve from the full processing configuration, and deletion promotes the newest survivor while retaining shared artifacts until their final reference is removed.

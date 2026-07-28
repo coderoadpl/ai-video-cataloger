@@ -9,16 +9,12 @@ const retrievalMarkers = [
   'Write for retrieval',
   'signs, placards, banners, shop and street names, vehicle registrations, printed or on-screen dates, screens, labels, numbers',
   'Never invent names or facts',
-  'never invent utterances, languages, or lyrics',
-  'setting and location claims only when visually supported',
-  'never reframe the visible setting as a different place',
-  'uncertain audio generically as music or ambience, without language or genre claims unless unambiguous',
   'the distinctive text or names you verified from the frames or the audio',
   'up to eight when the content earns them',
   'Never use filler words such as video, clip, footage, recording, scene or movie',
   'museum-exhibit',
   'tags that work as search handles',
-  'notable text or proper nouns that pass the shared entity evidence rule',
+  'notable text or proper nouns you read in frame',
 ];
 
 const framePrompt = (outputLanguage: string): string =>
@@ -32,60 +28,7 @@ const framePrompt = (outputLanguage: string): string =>
 
 describe('retrieval-grade prompt', () => {
   it('pins the prompt version used by configuration identity', () => {
-    expect(ANALYSIS_PROMPT_VERSION).toBe(3);
-  });
-
-  it.each([
-    ['frame-analyzer', framePrompt('auto')],
-    ['gemini', buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto' })],
-  ])('applies one entity evidence rule across every output field in the %s prompt', (_name, prompt) => {
-    expect(prompt).toContain('Apply the same entity evidence rule to every claim in the DESCRIPTION, FILENAME, and TAGS');
-    expect(prompt).toContain('replace it with a generic descriptor such as "boat exhibit placard" everywhere');
-    expect(prompt).toContain('must never survive in the description or tags while being suppressed from the filename');
-  });
-
-  it.each([
-    ['frame-analyzer', framePrompt('auto')],
-    ['gemini', buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto' })],
-  ])('requires attribute-based filename and tag fallbacks in the %s prompt', (_name, prompt) => {
-    expect(prompt).toContain('build the filename from verifiable attributes of the clip');
-    expect(prompt).toContain('square-sail-boat-17-knots or wooden-boat-cabin-green-wheel');
-    expect(prompt).toContain('Never fall back to meaningless names such as video or video-2');
-    expect(prompt).toContain('Tags must always carry the verifiable attributes of the clip');
-    expect(prompt).toContain('An empty TAGS value or empty tag array is forbidden');
-  });
-
-  it.each([
-    ['frame-analyzer', framePrompt('auto')],
-    ['gemini', buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto' })],
-  ])('enforces the concrete-attribute floor in the %s prompt', (_name, prompt) => {
-    expect(prompt).toContain('CONCRETE-ATTRIBUTE FLOOR');
-    expect(prompt).toContain(
-      'when no entity passes the evidence test, the filename and tags MUST be composed from directly visible attributes — subject + material/colour + setting/action',
-    );
-    expect(prompt).toContain('"wooden-boat-exhibit-hall-projection", "museum-sticker-covered-sign-closeup"');
-    expect(prompt).toContain(
-      'Producing "video", any numbered variant of it (e.g. "video-2"), or an empty tag array is a CONTRACT VIOLATION',
-    );
-    expect(prompt).toContain('A minimum of 3 attribute tags is always required');
-  });
-
-  it.each([
-    ['frame-analyzer', framePrompt('auto')],
-    ['gemini', buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto' })],
-  ])('includes the no-legible-entity museum example in the %s prompt', (_name, prompt) => {
-    expect(prompt).toContain(
-      'Worked example — no-legible-entity museum clip: FILENAME: wooden-boat-exhibit-hall-projection; TAGS: wooden-boat, exhibit-hall, wall-projection, museum-display',
-    );
-  });
-
-  it.each([
-    ['frame-analyzer', framePrompt('auto')],
-    ['gemini', buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto' })],
-  ])('prefers exact legible or audible strings in the %s prompt', (_name, prompt) => {
-    expect(prompt).toContain('Prefer exact on-screen or spoken strings when they are legibly readable on screen or clearly and audibly spoken');
-    expect(prompt).toContain('preserving distinctive specifics such as "jektemodell"');
-    expect(prompt).toContain('Prefer exact legible or audible strings when they pass the test');
+    expect(ANALYSIS_PROMPT_VERSION).toBe(4);
   });
 
   it.each(retrievalMarkers)('keeps "%s" in the frame-analyzer prompt', (marker) => {
