@@ -20,6 +20,7 @@ import {
   InMemoryGlobalCatalogStore,
   InMemoryJobs,
   InMemoryMedia,
+  InMemorySpendLedger,
   InMemoryTranscriber,
   videoFixture,
 } from '../../../test/server/usecases/test-fakes.js';
@@ -57,6 +58,7 @@ const makeDeps = (status: VideoStatus = 'pending', fs = new InMemoryFileSystem('
   media: InMemoryMedia;
   transcriber: InMemoryTranscriber;
   analyzer: InMemoryAnalyzer;
+  spendLedger: InMemorySpendLedger;
 } => {
   fs.addFile(videoPath, {
     size: 1000,
@@ -76,6 +78,7 @@ const makeDeps = (status: VideoStatus = 'pending', fs = new InMemoryFileSystem('
     media: new InMemoryMedia(),
     transcriber: new InMemoryTranscriber(fs),
     analyzer: new InMemoryAnalyzer(),
+    spendLedger: new InMemorySpendLedger(),
   };
 };
 
@@ -240,7 +243,7 @@ describe('process pipeline resume behavior', () => {
     deps.analyzer.rawResponse = 'DESCRIPTION: A boat museum hall.\nFILENAME: boat-museum-hall\nTAGS: boat, museum\nTRANSCRIPT:\n[00:00] czesc';
     deps.analyzer.usage = geminiUsageAccounting(
       { promptTokens: 1700, candidatesTokens: 800, thoughtsTokens: 100 },
-      { pricePerMTokensInput: 1.5, pricePerMTokensOutput: 7.5 },
+      'gemini-3.6-flash',
     );
     deps.analyzer.transcript = { text: 'czesc', segments: [{ start: 0, end: 1, text: 'czesc' }] };
 
@@ -253,7 +256,13 @@ describe('process pipeline resume behavior', () => {
       },
     });
 
-    expect(result).toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        status: 'completed',
+        costEstimate: { kind: 'estimate', model: 'gemini-3.6-flash', estimatedCostUsd: 0.0093 },
+      },
+    });
     expect(deps.media.frameInputs).toHaveLength(0);
     expect(deps.media.audioInputs).toHaveLength(0);
     expect(deps.transcriber.inputs).toHaveLength(0);
@@ -265,6 +274,16 @@ describe('process pipeline resume behavior', () => {
     expect(txt.ok && txt.value).toContain('czesc');
     const json = await deps.fs.readTextFile('/work/transcripts/Clip One.json');
     expect(json.ok && json.value).toContain('"start": 0');
+    expect(deps.spendLedger.entries).toHaveLength(1);
+    expect(deps.spendLedger.entries[0]).toMatchObject({
+      provider: 'gemini',
+      model: 'gemini-3.6-flash',
+      videoPath,
+      runId: null,
+      estimatedCostUsd: 0.0093,
+    });
+    const summary = await deps.fs.readTextFile('/work/summaries/Clip One.json');
+    expect(summary.ok && summary.value).toContain('"costEstimate"');
   });
 
   it('runs the native gemini path with rename and no transcript or usage', async () => {

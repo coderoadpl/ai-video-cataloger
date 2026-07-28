@@ -81,7 +81,7 @@ Two scopes remain, with catalog ownership revised by
   readable for migration but are not the canonical write target.
 - **Home scope** — `~/.ai-video-cataloger/` also holds global model state,
   managed runtime files, whisper models, provider credentials, and the
-  read-only mirror below.
+  append-only spend ledger and read-only mirror below.
 
 A source folder that cannot be written to (write-protected external drive,
 `chmod -w`) is not a failure: opening its catalog degrades to an in-memory
@@ -98,9 +98,9 @@ Processing-config resolution (owner decision 2026-07-17): **explicit CLI
 flag > folder config > home config > built-in default**, per key. The home
 scope holds global defaults (the wizard and `models use` write there when no
 folder is in play); a folder's own config overrides point-wise, preserving
-per-folder parity — a folder that sets a key always wins. Two app-global keys
-are exempt: `ui_language` and `faces_enabled` are always resolved home-scoped
-and ignore folder overrides. The GUI Prerequisites modal reads the
+per-folder parity — a folder that sets a key always wins. Three app-global keys
+are exempt: `ui_language`, `faces_enabled`, and `gemini_monthly_budget_usd` are
+always resolved home-scoped and ignore folder overrides. The GUI Prerequisites modal reads the
 configured-readiness section from `/api/readiness` with the selected folder;
 the doctor contract stays unchanged.
 

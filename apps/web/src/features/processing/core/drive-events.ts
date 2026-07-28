@@ -15,6 +15,13 @@ export type DriveMessage =
       readonly filesSkipped: number;
       readonly filesFailed: number;
     }
+  | {
+      readonly kind: 'budgetCapReached';
+      readonly level: 'info';
+      readonly month: string;
+      readonly budgetUsd: number;
+      readonly estimatedSpendUsd: number;
+    }
   | { readonly kind: 'fileSkipped'; readonly level: 'info'; readonly filename: string }
   | { readonly kind: 'snapshotSkipped'; readonly level: 'info'; readonly folder: string }
   | { readonly kind: 'batchUploadsRetained'; readonly level: 'info'; readonly retained: number }
@@ -28,6 +35,8 @@ export type DriveMessage =
       readonly filesDone: number;
       readonly filesSkipped: number;
       readonly filesFailed: number;
+      readonly estimatedCostUsd: number | null;
+      readonly costedFiles: number;
     }
   | { readonly kind: 'batchSubmitted'; readonly level: 'info'; readonly requestCount: number; readonly reattached: boolean }
   | { readonly kind: 'batchPoll'; readonly level: 'info'; readonly state: string; readonly requestCount: number }
@@ -112,6 +121,14 @@ const strField = (data: Record<string, unknown> | undefined, key: string): strin
 const strListField = (data: Record<string, unknown> | undefined, key: string): string[] => {
   const value = data?.[key];
   return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === 'string') : [];
+};
+
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const recordField = (data: Record<string, unknown> | undefined, key: string): Record<string, unknown> | undefined => {
+  const value = data?.[key];
+  return isRecord(value) ? value : undefined;
 };
 
 const idle = (counts: DriveCounts): DriveEventOutcome => ({
@@ -263,6 +280,7 @@ export const reduceDriveEvent = (
   }
 
   if (step === 'run-summary') {
+    const estimateRecord = recordField(data, 'costEstimate');
     return {
       ...idle(counts),
       messages: [
@@ -274,8 +292,23 @@ export const reduceDriveEvent = (
           filesDone: numField(data, 'filesDone'),
           filesSkipped: numField(data, 'filesSkipped'),
           filesFailed: numField(data, 'filesFailed'),
+          estimatedCostUsd: estimateRecord === undefined ? null : numField(estimateRecord, 'estimatedCostUsd'),
+          costedFiles: numField(estimateRecord, 'files'),
         },
       ],
+    };
+  }
+
+  if (step === 'budget_cap_reached') {
+    return {
+      ...idle(counts),
+      messages: [{
+        kind: 'budgetCapReached',
+        level: 'info',
+        month: strField(data, 'month'),
+        budgetUsd: numField(data, 'budgetUsd'),
+        estimatedSpendUsd: numField(data, 'estimatedSpendUsd'),
+      }],
     };
   }
 

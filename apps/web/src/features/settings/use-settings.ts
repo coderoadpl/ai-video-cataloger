@@ -122,7 +122,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       for (const key of keys) {
         try {
           await setConfig.mutateAsync({
-            ...(key === 'faces_enabled' || key === 'ui_language' ? {} : { folder }),
+            ...(key === 'faces_enabled' || key === 'ui_language' || key === 'gemini_monthly_budget_usd' ? {} : { folder }),
             key,
             value: serializeValue(draft, key),
           });

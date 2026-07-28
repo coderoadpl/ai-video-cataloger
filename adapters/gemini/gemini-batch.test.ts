@@ -88,13 +88,13 @@ describe('gemini batch pricing', () => {
     });
   });
 
-  it('halves explicit per-provider prices too', () => {
+  it('ignores explicit prices and halves the researched model rate', () => {
     const configured = provider({ pricePerMTokensInput: 3, pricePerMTokensOutput: 12 });
 
-    expect(geminiProviderPricing(configured)).toEqual({ pricePerMTokensInput: 3, pricePerMTokensOutput: 12 });
+    expect(geminiProviderPricing(configured)).toEqual({ pricePerMTokensInput: 1.5, pricePerMTokensOutput: 7.5 });
     expect(geminiProviderPricing(configured, 'batch')).toEqual({
-      pricePerMTokensInput: 1.5,
-      pricePerMTokensOutput: 6,
+      pricePerMTokensInput: 0.75,
+      pricePerMTokensOutput: 3.75,
     });
   });
 });

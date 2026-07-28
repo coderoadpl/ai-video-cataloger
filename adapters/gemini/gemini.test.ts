@@ -157,9 +157,9 @@ describe('config validation', () => {
   });
 
   it('builds a default provider with pricing from the model catalog', () => {
-    const provider = defaultGeminiNativeProvider('gemini-flash-lite-latest');
-    expect(provider.model).toBe('gemini-flash-lite-latest');
-    expect(provider.pricePerMTokensInput).toBe(0.1);
+    const provider = defaultGeminiNativeProvider('gemini-3.1-pro-preview');
+    expect(provider.model).toBe('gemini-3.1-pro-preview');
+    expect(provider.pricePerMTokensInput).toBe(2);
     expect(geminiNativeModelIds()).toContain('gemini-3.6-flash');
     expect(geminiNativeModelPricing('does-not-exist')).toBeNull();
   });
@@ -218,7 +218,7 @@ describe('cost accounting', () => {
   it('bills thoughts tokens as output', () => {
     const accounting = geminiUsageAccounting(
       { promptTokens: 16433, candidatesTokens: 2178, thoughtsTokens: 2026 },
-      { pricePerMTokensInput: 1.5, pricePerMTokensOutput: 7.5 },
+      'gemini-3.6-flash',
     );
     expect(accounting.billedOutputTokens).toBe(4204);
     expect(accounting.totalTokens).toBe(20637);
@@ -226,14 +226,17 @@ describe('cost accounting', () => {
   });
 
   it('returns null cost when pricing is absent', () => {
-    const accounting = geminiUsageAccounting({ promptTokens: 100, candidatesTokens: 10, thoughtsTokens: 0 }, {});
+    const accounting = geminiUsageAccounting(
+      { promptTokens: 100, candidatesTokens: 10, thoughtsTokens: 0 },
+      'unknown-model',
+    );
     expect(accounting.estimatedCostUsd).toBeNull();
   });
 
-  it('prefers explicit provider pricing over the model catalog', () => {
+  it('uses only the researched model table for estimates', () => {
     expect(geminiProviderPricing(geminiProvider({ pricePerMTokensInput: 9, pricePerMTokensOutput: 9 }))).toEqual({
-      pricePerMTokensInput: 9,
-      pricePerMTokensOutput: 9,
+      pricePerMTokensInput: 1.5,
+      pricePerMTokensOutput: 7.5,
     });
     const noPrice = geminiProvider();
     delete noPrice.pricePerMTokensInput;
@@ -242,6 +245,17 @@ describe('cost accounting', () => {
       pricePerMTokensInput: 1.5,
       pricePerMTokensOutput: 7.5,
     });
+    expect(geminiProviderPricing({ ...noPrice, model: 'unknown-model', pricePerMTokensInput: 1, pricePerMTokensOutput: 1 }))
+      .toEqual({});
+  });
+
+  it('uses the Pro long-context tier above 200k prompt tokens', () => {
+    const accounting = geminiUsageAccounting(
+      { promptTokens: 200_001, candidatesTokens: 1000, thoughtsTokens: 0 },
+      'gemini-3.1-pro-preview',
+    );
+    expect(accounting.inputPerMillionUsd).toBe(4);
+    expect(accounting.outputPerMillionUsd).toBe(18);
   });
 });
 

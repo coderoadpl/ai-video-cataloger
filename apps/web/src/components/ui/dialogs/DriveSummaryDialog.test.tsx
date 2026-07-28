@@ -15,7 +15,14 @@ describe('DriveSummaryDialog', () => {
     renderThemed(
       <DriveSummaryDialog
         open
-        counts={{ foldersDone: 3, filesDone: 5, filesSkipped: 2, filesFailed: 1 }}
+        counts={{
+          foldersDone: 3,
+          filesDone: 5,
+          filesSkipped: 2,
+          filesFailed: 1,
+          estimatedCostUsd: 0.1234,
+          costedFiles: 3,
+        }}
         onClose={vi.fn()}
       />,
     );
@@ -24,10 +31,30 @@ describe('DriveSummaryDialog', () => {
     expect(screen.getByTestId('drive-analyzed-count').textContent).toBe('5');
     expect(screen.getByTestId('drive-skipped-count').textContent).toBe('2');
     expect(screen.getByTestId('drive-failed-count').textContent).toBe('1');
+    expect(screen.getByTestId('drive-estimated-cost').textContent).toBe('$0.1234');
   });
 
   it('renders nothing when there are no counts', () => {
     renderThemed(<DriveSummaryDialog open counts={null} onClose={vi.fn()} />);
     expect(screen.queryByTestId('drive-summary-dialog')).toBeNull();
+  });
+
+  it('omits the estimate when no files have authoritative pricing', () => {
+    renderThemed(
+      <DriveSummaryDialog
+        open
+        counts={{
+          foldersDone: 1,
+          filesDone: 1,
+          filesSkipped: 0,
+          filesFailed: 0,
+          estimatedCostUsd: null,
+          costedFiles: 0,
+        }}
+        onClose={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('drive-estimated-cost')).toBeNull();
   });
 });

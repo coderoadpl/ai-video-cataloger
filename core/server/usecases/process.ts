@@ -3,12 +3,16 @@ import {
   WHISPER_MODES,
   CONFIG_DEFAULTS,
   appError,
+  geminiCostEstimateFromUsage,
   normalizeTagList,
   ok,
+  spendLedgerEntrySchema,
+  spendMonth,
   type AppConfig,
   type AppError,
   type AnalyzerProviderConfig,
   type GeminiPricingMode,
+  type GeminiCostEstimate,
   type GeminiUsageAccounting,
   type Result,
   type Video,
@@ -38,6 +42,7 @@ import {
   type JobExecutionContext,
   type JobProgress,
   type MediaPort,
+  type SpendLedgerPort,
   type TranscriberPort,
 } from '../ports.js';
 import {
@@ -63,6 +68,7 @@ export interface ProcessDeps {
   analyzer: AnalyzerPort;
   analyzerBatch?: AnalyzerBatchPort | undefined;
   globalCatalog?: GlobalCatalogStore | undefined;
+  spendLedger?: SpendLedgerPort | undefined;
 }
 
 export interface ProcessPipelineInput {
@@ -97,6 +103,7 @@ export interface ProcessCompletedOutput {
   path: string;
   status: 'completed';
   snapshotSkipped?: boolean;
+  costEstimate?: GeminiCostEstimate;
 }
 
 export interface ParsedAnalysis {
@@ -111,6 +118,7 @@ type ResumeStage = 'frames' | 'audio' | 'transcribe' | 'analyze' | 'rename' | 'd
 interface ProcessBatchContext {
   current: number;
   total: number;
+  runId?: string | undefined;
 }
 
 export const processVideoPipeline = async (
@@ -518,6 +526,7 @@ const runNativePipeline = async (
   let video = initialVideo;
   const paths = artifactPaths(deps.fs, resolved.artifactRoot, video.originalPath, video.newName);
   let parsed: ParsedAnalysis | null = null;
+  let costEstimate: GeminiCostEstimate | null = null;
 
   if (video.status !== 'analyzed') {
     const progressResult = await report(progress, 'analyzing_with_claude', 4, video.originalPath, resolved.batch);
@@ -560,6 +569,7 @@ const runNativePipeline = async (
         resolved.precomputedAnalysis?.pricingMode ?? 'interactive',
       );
       if (!reportedUsage.ok) return reportedUsage;
+      costEstimate = geminiCostEstimateFromUsage(analyzed.value.usage);
     }
     const debug = await writeDebugLog(deps.fs, paths.debugLogPath, {
       video,
@@ -571,15 +581,26 @@ const runNativePipeline = async (
     const parsedResult = parseAnalysisResponse(analyzed.value.rawResponse);
     if (!parsedResult.ok) return parsedResult;
     parsed = parsedResult.value;
+    const analyzedAt = new Date();
     const summary = await writeSummary(deps.fs, video.originalPath, paths.summaryJsonPath, paths.summaryPath, {
       schemaVersion: 1,
       description: parsed.description,
       suggestedFilename: parsed.suggestedFilename,
       fullAnalysis: parsed.fullAnalysis,
       tags: parsed.tags,
-      analyzedAt: new Date().toISOString(),
+      analyzedAt: analyzedAt.toISOString(),
+      ...(costEstimate === null ? {} : { costEstimate }),
     });
     if (!summary.ok) return summary;
+    const spendRecorded = await recordSpendEstimate(
+      deps.spendLedger,
+      resolved.analyzer.provider.providerId,
+      video.originalPath,
+      resolved.batch.runId ?? null,
+      analyzedAt,
+      costEstimate,
+    );
+    if (!spendRecorded.ok) return spendRecorded;
     const afterSummary = cancellationBoundary(progress);
     if (!afterSummary.ok) return afterSummary;
     const updated = await repository.updateVideoStatus(video.id, 'analyzed', null);
@@ -587,12 +608,18 @@ const runNativePipeline = async (
     video = updated.value;
   }
 
+  if (costEstimate === null) {
+    const stored = await loadOptionalSummary(deps.fs, paths.summaryJsonPath);
+    if (!stored.ok) return stored;
+    costEstimate = stored.value?.costEstimate ?? null;
+  }
+
   if (resolved.skipRename) {
     const progressResult = await report(progress, 'skipping_rename', 5, video.originalPath, resolved.batch);
     if (!progressResult.ok) return progressResult;
     const updated = await repository.updateVideoStatus(video.id, 'completed', null);
     if (!updated.ok) return updated;
-    return ok(completedOutput(deps.fs, updated.value));
+    return ok(completedOutputWithCost(deps.fs, updated.value, costEstimate));
   }
   const progressResult = await report(progress, 'renaming_video', 5, video.originalPath, resolved.batch);
   if (!progressResult.ok) return progressResult;
@@ -606,7 +633,36 @@ const runNativePipeline = async (
   if (!named.ok) return named;
   const completed = await repository.updateVideoStatus(video.id, 'completed', null);
   if (!completed.ok) return completed;
-  return ok({ video: deps.fs.basename(renamed.value.newPath), path: renamed.value.newPath, status: 'completed' });
+  return ok({
+    video: deps.fs.basename(renamed.value.newPath),
+    path: renamed.value.newPath,
+    status: 'completed',
+    ...(costEstimate === null ? {} : { costEstimate }),
+  });
+};
+
+const recordSpendEstimate = async (
+  ledger: SpendLedgerPort | undefined,
+  providerId: string,
+  videoPath: string,
+  runId: string | null,
+  recordedAt: Date,
+  estimate: GeminiCostEstimate | null,
+): Promise<Result<void, AppError>> => {
+  if (ledger === undefined || estimate === null) return ok(undefined);
+  const entry = spendLedgerEntrySchema.safeParse({
+    ...estimate,
+    schemaVersion: 1,
+    recordedAt: recordedAt.toISOString(),
+    month: spendMonth(recordedAt),
+    providerId,
+    videoPath,
+    runId,
+  });
+  if (!entry.success) {
+    return { ok: false, error: appError('internal', 'Gemini spend estimate does not match the ledger schema') };
+  }
+  return ledger.append(entry.data);
 };
 
 const writeNativeTranscript = async (
@@ -1202,6 +1258,15 @@ const completedOutput = (fs: FileSystemPort, video: Video): ProcessCompletedOutp
   video: video.newName ?? fs.basename(video.originalPath),
   path: video.newName === null ? video.originalPath : fs.join(fs.dirname(video.originalPath), video.newName),
   status: 'completed',
+});
+
+const completedOutputWithCost = (
+  fs: FileSystemPort,
+  video: Video,
+  costEstimate: GeminiCostEstimate | null,
+): ProcessCompletedOutput => ({
+  ...completedOutput(fs, video),
+  ...(costEstimate === null ? {} : { costEstimate }),
 });
 
 const alreadyIndexed = async (

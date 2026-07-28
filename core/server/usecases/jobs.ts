@@ -59,6 +59,7 @@ export const enqueueProcess = async (
     transcriber: deps.transcriber,
     analyzer: deps.analyzer,
     ...(deps.globalCatalog === undefined ? {} : { globalCatalog: deps.globalCatalog }),
+    ...(deps.spendLedger === undefined ? {} : { spendLedger: deps.spendLedger }),
   };
   const prerequisites = await checkProcessPrerequisites(processDeps, input);
   if (!prerequisites.ok) return prerequisites;
@@ -95,6 +96,7 @@ export const enqueueProcessDrive = async (
     analyzer: deps.analyzer,
     ...(deps.analyzerBatch === undefined ? {} : { analyzerBatch: deps.analyzerBatch }),
     globalCatalog: deps.globalCatalog,
+    ...(deps.spendLedger === undefined ? {} : { spendLedger: deps.spendLedger }),
   };
   return deps.jobs.enqueue({
     kind: 'process_drive',

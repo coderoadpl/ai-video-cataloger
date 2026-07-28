@@ -6,6 +6,7 @@ import {
   ok,
   type AppError,
   type GeminiUsageAccounting,
+  type GeminiPricingMode,
   type Result,
 } from '@core/domain/index.js';
 import type { AnalysisOutput, AnalyzerTranscript, AnalyzerTranscriptSegment } from '@core/server/index.js';
@@ -28,11 +29,6 @@ export const generateContentResponseSchema = z.object({
 });
 
 export type GeminiGenerateContentResponse = z.output<typeof generateContentResponseSchema>;
-
-export interface GeminiTokenPricing {
-  pricePerMTokensInput?: number | undefined;
-  pricePerMTokensOutput?: number | undefined;
-}
 
 const timestampToSeconds = (raw: string): number | null => {
   const parts = raw.split(':').map((part) => Number(part));
@@ -78,7 +74,8 @@ export const parseGeminiTranscript = (rawResponse: string): AnalyzerTranscript |
 
 export const analysisFromGenerateContent = (
   body: unknown,
-  pricing: GeminiTokenPricing,
+  model: string,
+  pricingMode: GeminiPricingMode = 'interactive',
 ): Result<AnalysisOutput, AppError> => {
   const parsed = generateContentResponseSchema.safeParse(body);
   if (!parsed.success) {
@@ -97,7 +94,8 @@ export const analysisFromGenerateContent = (
       candidatesTokens: parsed.data.usageMetadata?.candidatesTokenCount ?? 0,
       thoughtsTokens: parsed.data.usageMetadata?.thoughtsTokenCount ?? 0,
     },
-    pricing,
+    model,
+    pricingMode,
   );
   return ok({ rawResponse: text, usage, transcript: parseGeminiTranscript(text) });
 };
