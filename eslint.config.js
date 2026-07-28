@@ -186,6 +186,7 @@ export default tseslint.config(
       'scripts/ralph/**',
       'landing/**',
       '.claude/**',
+      '.cli-stage/**',
     ],
   },
   {
