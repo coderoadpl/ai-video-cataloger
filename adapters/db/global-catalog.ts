@@ -1,4 +1,4 @@
-import { eq, inArray } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js';
 import {
   closeSync,
@@ -22,6 +22,10 @@ import { z } from 'zod';
 import {
   FACE_ENGINE_VERSION,
   GLOBAL_CATALOG_SCHEMA_VERSION,
+  LEGACY_CONFIG_ID,
+  catalogVariantSchema,
+  configId,
+  configDescriptorSchema,
   parseDriveRunBatchState,
   appError,
   normalizeTagList,
@@ -31,6 +35,7 @@ import {
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
+  type CatalogVariant,
   type FaceObservation,
   type Person,
   type Result,
@@ -57,6 +62,7 @@ import type {
 
 import {
   analyses,
+  analysisConfigs,
   createGlobalCatalogSchemaSqlV1,
   driveRuns,
   faceIndexState,
@@ -72,6 +78,7 @@ import {
   migrateGlobalCatalogSchemaSqlV6,
   migrateGlobalCatalogSchemaSqlV7,
   migrateGlobalCatalogSchemaSqlV8,
+  migrateGlobalCatalogSchemaSqlV9,
   schemaMeta,
   tagAliases,
   tags,
@@ -302,46 +309,163 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>> {
     return this.read((db) => {
-      const row = db.select().from(analyses).where(eq(analyses.fingerprint, fingerprint)).get();
-      return row === undefined ? null : rowToAnalysis(row, tagsForFingerprint(db, fingerprint));
+      const row = selectedAnalysisRow(db, fingerprint);
+      return row === undefined ? null : rowToAnalysis(row, tagsForVariant(db, fingerprint, row.configId));
     });
   }
 
   async upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>> {
     return this.write((db, client) => {
+      const file = db.select().from(files).where(eq(files.fingerprint, analysis.fingerprint)).get();
+      const createdAt = file?.processedAt ?? new Date().toISOString();
       db.insert(analyses)
-        .values(analysis)
+        .values({
+          fingerprint: analysis.fingerprint,
+          configId: LEGACY_CONFIG_ID,
+          finalName: analysis.finalName,
+          description: analysis.description,
+          transcript: analysis.transcript,
+          language: analysis.language,
+          configJson: null,
+          analyzer: file?.analyzer ?? null,
+          model: file?.model ?? null,
+          createdAt,
+          usageJson: null,
+        })
         .onConflictDoUpdate({
-          target: analyses.fingerprint,
+          target: [analyses.fingerprint, analyses.configId],
           set: {
             finalName: analysis.finalName,
             description: analysis.description,
             transcript: analysis.transcript,
             language: analysis.language,
+            analyzer: file?.analyzer ?? null,
+            model: file?.model ?? null,
+            createdAt,
           },
         })
         .run();
-      setAnalysisTags(db, analysis.fingerprint, analysis.tags);
+      db.update(files)
+        .set({ selectedConfigId: LEGACY_CONFIG_ID })
+        .where(and(eq(files.fingerprint, analysis.fingerprint), isNull(files.selectedConfigId)))
+        .run();
+      setVariantTags(db, analysis.fingerprint, LEGACY_CONFIG_ID, analysis.tags);
       syncSearchDocument(db, client, analysis.fingerprint);
+    });
+  }
+
+  async listVariants(fingerprint: string): Promise<Result<CatalogVariant[], AppError>> {
+    return this.read((db) => db.select().from(analyses)
+      .where(eq(analyses.fingerprint, fingerprint))
+      .all()
+      .map((row) => rowToVariant(row, tagsForVariant(db, fingerprint, row.configId)))
+      .sort(compareVariants));
+  }
+
+  async getVariant(fingerprint: string, configIdValue: string): Promise<Result<CatalogVariant | null, AppError>> {
+    return this.read((db) => {
+      const row = db.select().from(analyses)
+        .where(and(eq(analyses.fingerprint, fingerprint), eq(analyses.configId, configIdValue)))
+        .get();
+      return row === undefined ? null : rowToVariant(row, tagsForVariant(db, fingerprint, configIdValue));
+    });
+  }
+
+  async upsertVariant(input: CatalogVariant): Promise<Result<void, AppError>> {
+    const parsed = catalogVariantSchema.safeParse(input);
+    if (!parsed.success) return { ok: false, error: appError('validation', parsed.error.message) };
+    const variant = parsed.data;
+    if (variant.configId === LEGACY_CONFIG_ID ? variant.descriptor !== null : variant.descriptor === null) {
+      return { ok: false, error: appError('validation', 'Only the legacy variant may omit its config descriptor') };
+    }
+    if (variant.descriptor !== null && configId(variant.descriptor) !== variant.configId) {
+      return { ok: false, error: appError('validation', 'Variant configId does not match its descriptor') };
+    }
+    return this.write((db, client) => {
+      upsertAnalysisConfig(db, variant);
+      db.insert(analyses)
+        .values(variantToRow(variant))
+        .onConflictDoUpdate({
+          target: [analyses.fingerprint, analyses.configId],
+          set: {
+            finalName: variant.finalName,
+            description: variant.description,
+            transcript: variant.transcript,
+            language: variant.language,
+            configJson: variant.descriptor === null ? null : JSON.stringify(variant.descriptor),
+            analyzer: variant.analyzer,
+            model: variant.model,
+            createdAt: variant.createdAt,
+            usageJson: variant.usage === null ? null : JSON.stringify(variant.usage),
+          },
+        })
+        .run();
+      setVariantTags(db, variant.fingerprint, variant.configId, variant.tags);
+      syncSearchDocument(db, client, variant.fingerprint);
+    });
+  }
+
+  async deleteVariant(fingerprint: string, configIdValue: string): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      db.delete(fileTags)
+        .where(and(eq(fileTags.fingerprint, fingerprint), eq(fileTags.configId, configIdValue)))
+        .run();
+      db.delete(analyses)
+        .where(and(eq(analyses.fingerprint, fingerprint), eq(analyses.configId, configIdValue)))
+        .run();
+      syncSearchDocument(db, client, fingerprint);
+    });
+  }
+
+  async setSelectedVariant(fingerprint: string, configIdValue: string | null): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      db.update(files).set({ selectedConfigId: configIdValue }).where(eq(files.fingerprint, fingerprint)).run();
+      syncSearchDocument(db, client, fingerprint);
+    });
+  }
+
+  async setFolderDefaultVariant(folderId: string, configIdValue: string | null): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      db.update(folders).set({ defaultConfigId: configIdValue }).where(eq(folders.folderId, folderId)).run();
+      const fileRows = db.select().from(files).where(eq(files.folderId, folderId)).all();
+      for (const fileRow of fileRows) syncSearchDocument(db, client, fileRow.fingerprint);
     });
   }
 
   async listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>> {
     if (fingerprints.length === 0) return ok([]);
-    return this.read((db) => {
-      const rows = db
-        .select({
-          fingerprint: files.fingerprint,
-          folderId: files.folderId,
-          fileName: files.fileName,
-          finalName: analyses.finalName,
-          folderPath: folders.currentPath,
-        })
-        .from(files)
-        .innerJoin(analyses, eq(analyses.fingerprint, files.fingerprint))
-        .leftJoin(folders, eq(folders.folderId, files.folderId))
-        .where(inArray(files.fingerprint, [...new Set(fingerprints)]))
-        .all();
+    return this.read((_db, client) => {
+      const unique = [...new Set(fingerprints)];
+      const parameters: Record<string, SqlValue> = {};
+      const placeholders = unique.map((fingerprint, index) => {
+        const name = `$fingerprint${String(index)}`;
+        parameters[name] = fingerprint;
+        return name;
+      });
+      const result = client.exec(
+        `SELECT f.fingerprint, f.folder_id, f.file_name, a.final_name, fo.current_path
+          FROM files f
+          LEFT JOIN folders fo ON fo.folder_id = f.folder_id
+          JOIN analyses a ON a.fingerprint = f.fingerprint
+            AND a.config_id = COALESCE(
+              (SELECT config_id FROM analyses
+                WHERE fingerprint = f.fingerprint AND config_id = f.selected_config_id),
+              (SELECT config_id FROM analyses
+                WHERE fingerprint = f.fingerprint AND config_id = fo.default_config_id),
+              (SELECT config_id FROM analyses
+                WHERE fingerprint = f.fingerprint
+                ORDER BY created_at DESC, config_id ASC LIMIT 1)
+            )
+          WHERE f.fingerprint IN (${placeholders.join(', ')})`,
+        parameters,
+      );
+      const rows = (result[0]?.values ?? []).map((row) => ({
+        fingerprint: stringValue(row[0]),
+        folderId: stringValue(row[1]),
+        fileName: stringValue(row[2]),
+        finalName: nullableStringValue(row[3]),
+        folderPath: nullableStringValue(row[4]),
+      }));
       return analyzedFileLocationsSchema.parse(rows)
         .sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
     });
@@ -357,21 +481,26 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .where(eq(files.folderId, folderId))
         .all();
       const tagRows = db
-        .select({ fingerprint: fileTags.fingerprint, name: tags.name })
+        .select({ fingerprint: fileTags.fingerprint, configId: fileTags.configId, name: tags.name })
         .from(fileTags)
         .innerJoin(tags, eq(tags.tagId, fileTags.tagId))
         .innerJoin(files, eq(files.fingerprint, fileTags.fingerprint))
         .where(eq(files.folderId, folderId))
         .all();
-      const analysisByFingerprint = new Map(analysisRows.map((row) => [row.analysis.fingerprint, row.analysis]));
-      const tagsByFingerprint = groupTagNames(tagRows);
+      const folderRow = db.select().from(folders).where(eq(folders.folderId, folderId)).get();
+      const analysesByFingerprint = groupAnalysisRows(analysisRows.map((row) => row.analysis));
+      const tagsByVariant = groupVariantTagNames(tagRows);
       return fileRows.map((fileRow) => {
-        const analysisRow = analysisByFingerprint.get(fileRow.fingerprint);
+        const analysisRow = resolveSelectedAnalysis(
+          analysesByFingerprint.get(fileRow.fingerprint) ?? [],
+          fileRow.selectedConfigId,
+          folderRow?.defaultConfigId ?? null,
+        );
         return {
           file: rowToFile(fileRow),
           analysis: analysisRow === undefined
             ? null
-            : rowToAnalysis(analysisRow, tagsByFingerprint.get(fileRow.fingerprint) ?? []),
+            : rowToAnalysis(analysisRow, tagsByVariant.get(variantKey(fileRow.fingerprint, analysisRow.configId)) ?? []),
         };
       });
     });
@@ -381,10 +510,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     return this.read((db) => {
       const tagRows = db.select().from(tags).all();
       const fileTagRows = db.select().from(fileTags).all();
+      const selectedKeys = new Set(db.select().from(files).all().flatMap((fileRow) => {
+        const selected = selectedAnalysisRow(db, fileRow.fingerprint);
+        return selected === undefined ? [] : [variantKey(fileRow.fingerprint, selected.configId)];
+      }));
       return tagRows
         .map((tag) => ({
           name: tag.name,
-          count: fileTagRows.filter((fileTag) => fileTag.tagId === tag.tagId).length,
+          count: fileTagRows.filter((fileTag) => (
+            fileTag.tagId === tag.tagId
+            && selectedKeys.has(variantKey(fileTag.fingerprint, fileTag.configId))
+          )).length,
         }))
         .filter((tag) => tag.count > 0)
         .sort((left, right) => right.count - left.count || left.name.localeCompare(right.name));
@@ -404,14 +540,14 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const affected = new Set<string>();
       if (aliasTag !== undefined && aliasTag.tagId !== canonicalTag.tagId) {
         const rows = db.select().from(fileTags).where(eq(fileTags.tagId, aliasTag.tagId)).all();
-        remappedFiles = rows.length;
         for (const row of rows) {
           affected.add(row.fingerprint);
           db.insert(fileTags)
-            .values({ fingerprint: row.fingerprint, tagId: canonicalTag.tagId })
+            .values({ fingerprint: row.fingerprint, configId: row.configId, tagId: canonicalTag.tagId })
             .onConflictDoNothing()
             .run();
         }
+        remappedFiles = affected.size;
         db.delete(fileTags).where(eq(fileTags.tagId, aliasTag.tagId)).run();
         db.delete(tags).where(eq(tags.tagId, aliasTag.tagId)).run();
       }
@@ -433,8 +569,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         `SELECT
           f.fingerprint,
           f.file_name,
-          a.final_name,
-          a.description,
+          NULLIF(sd.final_name, ''),
+          NULLIF(sd.description, ''),
           snippet(search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12),
           f.gps_lat,
           f.gps_lon,
@@ -450,7 +586,6 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         JOIN search_documents sd ON sd.docid = search_documents_fts.docid
         JOIN files f ON f.fingerprint = sd.fingerprint
         JOIN folders fo ON fo.folder_id = f.folder_id
-        LEFT JOIN analyses a ON a.fingerprint = f.fingerprint
         WHERE search_documents_fts MATCH $match`,
         { $match: input.match },
       );
@@ -577,13 +712,13 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       for (const folderRow of folderRows) {
         const fileRows = db.select().from(files).where(eq(files.folderId, folderRow.folderId)).all();
         for (const fileRow of fileRows) {
-          const analysisRow = db.select().from(analyses).where(eq(analyses.fingerprint, fileRow.fingerprint)).get();
+          const analysisRow = selectedAnalysisRow(db, fileRow.fingerprint);
           if (analysisRow === undefined) continue;
           const stateRow = db.select().from(faceIndexState).where(eq(faceIndexState.fingerprint, fileRow.fingerprint)).get();
           if (stateRow !== undefined && stateRow.engineVersion >= FACE_ENGINE_VERSION) continue;
           candidates.push({
             file: rowToFile(fileRow),
-            analysis: rowToAnalysis(analysisRow, tagsForFingerprint(db, fileRow.fingerprint)),
+            analysis: rowToAnalysis(analysisRow, tagsForVariant(db, fileRow.fingerprint, analysisRow.configId)),
             folder: rowToFolder(folderRow),
             previousEngineVersion: stateRow?.engineVersion ?? null,
           });
@@ -933,6 +1068,12 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 const migrate = (client: Database): boolean => {
   client.run('CREATE TABLE IF NOT EXISTS schema_meta (version INTEGER PRIMARY KEY)');
   const currentVersion = readSchemaVersion(client);
+  if (currentVersion > GLOBAL_CATALOG_SCHEMA_VERSION) {
+    throw new CatalogAppError(appError(
+      'snapshot_incompatible',
+      `Global catalog schema version ${String(currentVersion)} is newer than the supported version ${String(GLOBAL_CATALOG_SCHEMA_VERSION)}`,
+    ));
+  }
   let migrated = false;
   if (currentVersion < 1) {
     for (const statement of createGlobalCatalogSchemaSqlV1) client.run(statement);
@@ -966,6 +1107,10 @@ const migrate = (client: Database): boolean => {
     for (const statement of migrateGlobalCatalogSchemaSqlV8) runMigrationStatement(client, statement);
     migrated = true;
   }
+  if (currentVersion < 9) {
+    runV9Migration(client);
+    migrated = true;
+  }
   if (currentVersion < 4) {
     rebuildSearchIndex(drizzle(client, { schema: globalCatalogSchema }), client);
   }
@@ -976,6 +1121,18 @@ const migrate = (client: Database): boolean => {
     migrated = true;
   }
   return migrated;
+};
+
+const runV9Migration = (client: Database): void => {
+  client.run('BEGIN IMMEDIATE TRANSACTION');
+  try {
+    client.run('PRAGMA defer_foreign_keys = ON');
+    for (const statement of migrateGlobalCatalogSchemaSqlV9) client.run(statement);
+    client.run('COMMIT');
+  } catch (cause) {
+    client.run('ROLLBACK');
+    throw cause;
+  }
 };
 
 const runMigrationStatement = (client: Database, statement: string): void => {
@@ -1117,14 +1274,73 @@ const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
   missingAt: file.missingAt,
 });
 
-const rowToAnalysis = (row: typeof analyses.$inferSelect, analysisTags: string[]): CatalogAnalysis => ({
-  fingerprint: row.fingerprint,
-  finalName: row.finalName,
-  description: row.description,
-  transcript: row.transcript,
-  language: row.language,
-  tags: analysisTags,
+const rowToAnalysis = (row: typeof analyses.$inferSelect, analysisTags: string[]): CatalogAnalysis => {
+  const variant = rowToVariant(row, analysisTags);
+  return {
+    fingerprint: variant.fingerprint,
+    finalName: variant.finalName,
+    description: variant.description,
+    transcript: variant.transcript,
+    language: variant.language,
+    tags: variant.tags,
+  };
+};
+
+const rowToVariant = (row: typeof analyses.$inferSelect, analysisTags: string[]): CatalogVariant =>
+  catalogVariantSchema.parse({
+    fingerprint: row.fingerprint,
+    configId: row.configId,
+    finalName: row.finalName,
+    description: row.description,
+    transcript: row.transcript,
+    language: row.language,
+    tags: analysisTags,
+    descriptor: parseStoredJson(row.configJson, configDescriptorSchema),
+    analyzer: row.analyzer,
+    model: row.model,
+    createdAt: row.createdAt,
+    usage: parseStoredJson(row.usageJson, catalogVariantSchema.shape.usage),
+  });
+
+const variantToRow = (variant: CatalogVariant): typeof analyses.$inferInsert => ({
+  fingerprint: variant.fingerprint,
+  configId: variant.configId,
+  finalName: variant.finalName,
+  description: variant.description,
+  transcript: variant.transcript,
+  language: variant.language,
+  configJson: variant.descriptor === null ? null : JSON.stringify(variant.descriptor),
+  analyzer: variant.analyzer,
+  model: variant.model,
+  createdAt: variant.createdAt,
+  usageJson: variant.usage === null ? null : JSON.stringify(variant.usage),
 });
+
+const parseStoredJson = <T>(value: string | null, schema: z.ZodType<T>): T | null => {
+  if (value === null) return null;
+  const decoded: unknown = JSON.parse(value);
+  return schema.parse(decoded);
+};
+
+const upsertAnalysisConfig = (db: GlobalDrizzle, variant: CatalogVariant): void => {
+  const descriptorJson = variant.descriptor === null ? null : JSON.stringify(variant.descriptor);
+  const label = variant.configId === LEGACY_CONFIG_ID
+    ? 'settings partly unknown'
+    : [variant.analyzer, variant.model].filter((value) => value !== null && value.length > 0).join(' / ') || variant.configId;
+  db.insert(analysisConfigs)
+    .values({
+      configId: variant.configId,
+      descriptorJson,
+      label,
+      firstSeenAt: variant.createdAt,
+      lastUsedAt: variant.createdAt,
+    })
+    .onConflictDoUpdate({
+      target: analysisConfigs.configId,
+      set: { descriptorJson, label, lastUsedAt: variant.createdAt },
+    })
+    .run();
+};
 
 const rowToPerson = (row: typeof people.$inferSelect): Person => ({
   personId: row.personId,
@@ -1232,12 +1448,65 @@ const driveRunToRow = (run: DriveRunRecord): typeof driveRuns.$inferInsert => ({
   lastActivityAt: run.lastActivityAt,
 });
 
-const setAnalysisTags = (db: GlobalDrizzle, fingerprint: string, values: readonly string[]): void => {
-  db.delete(fileTags).where(eq(fileTags.fingerprint, fingerprint)).run();
+const compareVariantIdentity = (
+  left: { createdAt: string; configId: string },
+  right: { createdAt: string; configId: string },
+): number => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId);
+
+const compareVariants = (left: CatalogVariant, right: CatalogVariant): number =>
+  compareVariantIdentity(left, right);
+
+const resolveSelectedAnalysis = (
+  rows: readonly (typeof analyses.$inferSelect)[],
+  selectedConfigId: string | null,
+  defaultConfigId: string | null,
+): (typeof analyses.$inferSelect) | undefined => {
+  const explicit = rows.find((row) => row.configId === selectedConfigId);
+  if (explicit !== undefined) return explicit;
+  const folderDefault = rows.find((row) => row.configId === defaultConfigId);
+  if (folderDefault !== undefined) return folderDefault;
+  return [...rows].sort(compareVariantIdentity)[0];
+};
+
+const selectedAnalysisRow = (
+  db: GlobalDrizzle,
+  fingerprint: string,
+): (typeof analyses.$inferSelect) | undefined => {
+  const fileRow = db.select().from(files).where(eq(files.fingerprint, fingerprint)).get();
+  if (fileRow === undefined) return undefined;
+  const folderRow = db.select().from(folders).where(eq(folders.folderId, fileRow.folderId)).get();
+  const rows = db.select().from(analyses).where(eq(analyses.fingerprint, fingerprint)).all();
+  return resolveSelectedAnalysis(rows, fileRow.selectedConfigId, folderRow?.defaultConfigId ?? null);
+};
+
+const groupAnalysisRows = (
+  rows: readonly (typeof analyses.$inferSelect)[],
+): Map<string, (typeof analyses.$inferSelect)[]> => {
+  const grouped = new Map<string, (typeof analyses.$inferSelect)[]>();
+  for (const row of rows) {
+    const existing = grouped.get(row.fingerprint);
+    if (existing === undefined) grouped.set(row.fingerprint, [row]);
+    else existing.push(row);
+  }
+  return grouped;
+};
+
+const variantKey = (fingerprint: string, configIdValue: string): string =>
+  `${fingerprint}\u0000${configIdValue}`;
+
+const setVariantTags = (
+  db: GlobalDrizzle,
+  fingerprint: string,
+  configIdValue: string,
+  values: readonly string[],
+): void => {
+  db.delete(fileTags)
+    .where(and(eq(fileTags.fingerprint, fingerprint), eq(fileTags.configId, configIdValue)))
+    .run();
   for (const name of normalizeTagList(values)) {
     const tag = resolveCanonicalTag(db, name);
     db.insert(fileTags)
-      .values({ fingerprint, tagId: tag.tagId })
+      .values({ fingerprint, configId: configIdValue, tagId: tag.tagId })
       .onConflictDoNothing()
       .run();
   }
@@ -1259,8 +1528,10 @@ const ensureTag = (db: GlobalDrizzle, name: string): typeof tags.$inferSelect =>
   return row;
 };
 
-const tagsForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] => {
-  const rows = db.select().from(fileTags).where(eq(fileTags.fingerprint, fingerprint)).all();
+const tagsForVariant = (db: GlobalDrizzle, fingerprint: string, configIdValue: string): string[] => {
+  const rows = db.select().from(fileTags)
+    .where(and(eq(fileTags.fingerprint, fingerprint), eq(fileTags.configId, configIdValue)))
+    .all();
   const names: string[] = [];
   for (const row of rows) {
     const tag = db.select().from(tags).where(eq(tags.tagId, row.tagId)).get();
@@ -1269,15 +1540,18 @@ const tagsForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] =>
   return names.sort((left, right) => left.localeCompare(right));
 };
 
-const groupTagNames = (rows: readonly { fingerprint: string; name: string }[]): Map<string, string[]> => {
-  const byFingerprint = new Map<string, string[]>();
+const groupVariantTagNames = (
+  rows: readonly { fingerprint: string; configId: string; name: string }[],
+): Map<string, string[]> => {
+  const byVariant = new Map<string, string[]>();
   for (const row of rows) {
-    const names = byFingerprint.get(row.fingerprint);
-    if (names === undefined) byFingerprint.set(row.fingerprint, [row.name]);
+    const key = variantKey(row.fingerprint, row.configId);
+    const names = byVariant.get(key);
+    if (names === undefined) byVariant.set(key, [row.name]);
     else names.push(row.name);
   }
-  for (const names of byFingerprint.values()) names.sort((left, right) => left.localeCompare(right));
-  return byFingerprint;
+  for (const names of byVariant.values()) names.sort((left, right) => left.localeCompare(right));
+  return byVariant;
 };
 
 const faceNamesForFingerprint = (db: GlobalDrizzle, fingerprint: string): string[] => {
@@ -1299,14 +1573,17 @@ const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: st
     deleteSearchDocument(client, fingerprint);
     return;
   }
-  const analysis = db.select().from(analyses).where(eq(analyses.fingerprint, fingerprint)).get();
+  const analysis = selectedAnalysisRow(db, fingerprint);
   const document = {
     fingerprint,
     fileName: file.fileName,
     finalName: analysis?.finalName ?? '',
     description: analysis?.description ?? '',
     transcript: analysis?.transcript ?? '',
-    tagsText: [...tagsForFingerprint(db, fingerprint), ...faceNamesForFingerprint(db, fingerprint)].join('\n'),
+    tagsText: [
+      ...(analysis === undefined ? [] : tagsForVariant(db, fingerprint, analysis.configId)),
+      ...faceNamesForFingerprint(db, fingerprint),
+    ].join('\n'),
   };
   const existingDocid = searchDocumentId(client, fingerprint);
   if (existingDocid !== null) {

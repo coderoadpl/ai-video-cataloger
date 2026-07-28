@@ -2,6 +2,7 @@ import path from 'node:path';
 
 import {
   FACE_ENGINE_VERSION,
+  LEGACY_CONFIG_ID,
   appError,
   normalizeEmbedding,
   ok,
@@ -11,6 +12,7 @@ import {
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
+  type CatalogVariant,
   type ConfigKey,
   type FaceObservation,
   type FileArtifact,
@@ -854,6 +856,8 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly folders = new Map<string, CatalogFolder>();
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
+  private readonly variants = new Map<string, CatalogVariant>();
+  private readonly folderDefaultVariants = new Map<string, string>();
   private readonly aliases = new Map<string, string>();
   private readonly people = new Map<string, Person>();
   private readonly faceObservations = new Map<string, FaceObservation>();
@@ -924,10 +928,53 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>> {
-    this.analyses.set(analysis.fingerprint, {
+    const stored = {
       ...analysis,
       tags: analysis.tags.map((tag) => this.aliases.get(tag) ?? tag),
+    };
+    this.analyses.set(analysis.fingerprint, stored);
+    const file = this.files.get(analysis.fingerprint);
+    this.variants.set(`${analysis.fingerprint}\u0000${LEGACY_CONFIG_ID}`, {
+      ...stored,
+      configId: LEGACY_CONFIG_ID,
+      descriptor: null,
+      analyzer: file?.analyzer ?? null,
+      model: file?.model ?? null,
+      createdAt: file?.processedAt ?? '1970-01-01T00:00:00.000Z',
+      usage: null,
     });
+    return Promise.resolve(ok(undefined));
+  }
+
+  listVariants(fingerprint: string): Promise<Result<CatalogVariant[], AppError>> {
+    return Promise.resolve(ok([...this.variants.values()].filter((variant) => variant.fingerprint === fingerprint)));
+  }
+
+  getVariant(fingerprint: string, configId: string): Promise<Result<CatalogVariant | null, AppError>> {
+    return Promise.resolve(ok(this.variants.get(`${fingerprint}\u0000${configId}`) ?? null));
+  }
+
+  upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>> {
+    this.variants.set(`${variant.fingerprint}\u0000${variant.configId}`, variant);
+    if (!this.analyses.has(variant.fingerprint)) this.analyses.set(variant.fingerprint, variant);
+    return Promise.resolve(ok(undefined));
+  }
+
+  deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
+    this.variants.delete(`${fingerprint}\u0000${configId}`);
+    return Promise.resolve(ok(undefined));
+  }
+
+  setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>> {
+    if (configId === null) return Promise.resolve(ok(undefined));
+    const variant = this.variants.get(`${fingerprint}\u0000${configId}`);
+    if (variant !== undefined) this.analyses.set(fingerprint, variant);
+    return Promise.resolve(ok(undefined));
+  }
+
+  setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>> {
+    if (configId === null) this.folderDefaultVariants.delete(folderId);
+    else this.folderDefaultVariants.set(folderId, configId);
     return Promise.resolve(ok(undefined));
   }
 
@@ -1021,7 +1068,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok({
       folders: this.folders.size,
       files: this.files.size,
-      analyses: this.analyses.size,
+      analyses: this.variants.size,
     }));
   }
 
@@ -1067,6 +1114,9 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     }
     this.faceIndexState.delete(fingerprint);
     this.analyses.delete(fingerprint);
+    for (const key of this.variants.keys()) {
+      if (key.startsWith(`${fingerprint}\u0000`)) this.variants.delete(key);
+    }
     this.files.delete(fingerprint);
     for (const personId of affectedPersonIds) {
       const remaining = [...this.faceObservations.values()].filter((observation) => observation.personId === personId);

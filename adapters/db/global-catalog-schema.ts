@@ -6,6 +6,7 @@ export const folders = sqliteTable('folders', {
   displayName: text('display_name').notNull(),
   firstSeenAt: text('first_seen_at').notNull(),
   lastSeenAt: text('last_seen_at').notNull(),
+  defaultConfigId: text('default_config_id'),
 });
 
 export const files = sqliteTable('files', {
@@ -20,14 +21,31 @@ export const files = sqliteTable('files', {
   analyzer: text('analyzer'),
   model: text('model'),
   missingAt: integer('missing_at'),
+  selectedConfigId: text('selected_config_id'),
 });
 
 export const analyses = sqliteTable('analyses', {
-  fingerprint: text('fingerprint').primaryKey(),
+  fingerprint: text('fingerprint').notNull(),
+  configId: text('config_id').notNull(),
   finalName: text('final_name'),
   description: text('description'),
   transcript: text('transcript'),
   language: text('language'),
+  configJson: text('config_json'),
+  analyzer: text('analyzer'),
+  model: text('model'),
+  createdAt: text('created_at').notNull(),
+  usageJson: text('usage_json'),
+}, (table) => [
+  primaryKey({ columns: [table.fingerprint, table.configId] }),
+]);
+
+export const analysisConfigs = sqliteTable('analysis_configs', {
+  configId: text('config_id').primaryKey(),
+  descriptorJson: text('descriptor_json'),
+  label: text('label').notNull(),
+  firstSeenAt: text('first_seen_at').notNull(),
+  lastUsedAt: text('last_used_at').notNull(),
 });
 
 export const schemaMeta = sqliteTable('schema_meta', {
@@ -41,9 +59,10 @@ export const tags = sqliteTable('tags', {
 
 export const fileTags = sqliteTable('file_tags', {
   fingerprint: text('fingerprint').notNull(),
+  configId: text('config_id').notNull(),
   tagId: integer('tag_id').notNull(),
 }, (table) => [
-  primaryKey({ columns: [table.fingerprint, table.tagId] }),
+  primaryKey({ columns: [table.fingerprint, table.configId, table.tagId] }),
 ]);
 
 export const tagAliases = sqliteTable('tag_aliases', {
@@ -96,6 +115,7 @@ export const globalCatalogSchema = {
   folders,
   files,
   analyses,
+  analysisConfigs,
   schemaMeta,
   tags,
   fileTags,
@@ -234,4 +254,69 @@ export const migrateGlobalCatalogSchemaSqlV7 = [
 
 export const migrateGlobalCatalogSchemaSqlV8 = [
   'ALTER TABLE drive_runs ADD COLUMN batch_json TEXT',
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV9 = [
+  'ALTER TABLE files ADD COLUMN selected_config_id TEXT',
+  'ALTER TABLE folders ADD COLUMN default_config_id TEXT',
+  `CREATE TABLE analysis_configs (
+      config_id TEXT PRIMARY KEY,
+      descriptor_json TEXT,
+      label TEXT NOT NULL,
+      first_seen_at TEXT NOT NULL,
+      last_used_at TEXT NOT NULL
+    )`,
+  `INSERT INTO analysis_configs (config_id, descriptor_json, label, first_seen_at, last_used_at)
+      SELECT
+        'legacy',
+        NULL,
+        'settings partly unknown',
+        COALESCE(MIN(f.processed_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+        COALESCE(MAX(f.processed_at), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+      FROM files f
+      JOIN analyses a ON a.fingerprint = f.fingerprint`,
+  'ALTER TABLE analyses RENAME TO analyses_v8',
+  `CREATE TABLE analyses (
+      fingerprint TEXT NOT NULL,
+      config_id TEXT NOT NULL,
+      final_name TEXT,
+      description TEXT,
+      transcript TEXT,
+      language TEXT,
+      config_json TEXT,
+      analyzer TEXT,
+      model TEXT,
+      created_at TEXT NOT NULL,
+      usage_json TEXT,
+      PRIMARY KEY (fingerprint, config_id),
+      FOREIGN KEY (fingerprint) REFERENCES files(fingerprint) ON DELETE CASCADE,
+      FOREIGN KEY (config_id) REFERENCES analysis_configs(config_id)
+    )`,
+  `INSERT INTO analyses (
+      fingerprint, config_id, final_name, description, transcript, language,
+      config_json, analyzer, model, created_at, usage_json
+    )
+      SELECT
+        a.fingerprint, 'legacy', a.final_name, a.description, a.transcript, a.language,
+        NULL, f.analyzer, f.model, f.processed_at, NULL
+      FROM analyses_v8 a
+      JOIN files f ON f.fingerprint = a.fingerprint`,
+  'ALTER TABLE file_tags RENAME TO file_tags_v8',
+  `CREATE TABLE file_tags (
+      fingerprint TEXT NOT NULL,
+      config_id TEXT NOT NULL,
+      tag_id INTEGER NOT NULL,
+      PRIMARY KEY (fingerprint, config_id, tag_id),
+      FOREIGN KEY (fingerprint, config_id) REFERENCES analyses(fingerprint, config_id) ON DELETE CASCADE,
+      FOREIGN KEY (tag_id) REFERENCES tags(tag_id) ON DELETE CASCADE
+    )`,
+  `INSERT INTO file_tags (fingerprint, config_id, tag_id)
+      SELECT fingerprint, 'legacy', tag_id FROM file_tags_v8`,
+  `UPDATE files
+      SET selected_config_id = 'legacy'
+      WHERE EXISTS (
+        SELECT 1 FROM analyses WHERE analyses.fingerprint = files.fingerprint
+      )`,
+  'DROP TABLE file_tags_v8',
+  'DROP TABLE analyses_v8',
 ] as const;

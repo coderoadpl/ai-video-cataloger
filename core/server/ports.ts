@@ -6,6 +6,7 @@ import type {
   CatalogAnalysis,
   CatalogFile,
   CatalogFolder,
+  CatalogVariant,
   ConfigKey,
   CredentialDeletion,
   CredentialsBackendStatus,
@@ -185,6 +186,12 @@ export interface GlobalCatalogStore {
   upsertFile(file: CatalogFile): Promise<Result<void, AppError>>;
   getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>>;
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>>;
+  listVariants(fingerprint: string): Promise<Result<CatalogVariant[], AppError>>;
+  getVariant(fingerprint: string, configId: string): Promise<Result<CatalogVariant | null, AppError>>;
+  upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>>;
+  deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>>;
+  setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>>;
+  setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>>;
   listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>>;
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
   listTags(): Promise<Result<CatalogTagSummary[], AppError>>;

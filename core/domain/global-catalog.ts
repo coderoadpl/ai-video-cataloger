@@ -1,8 +1,9 @@
 import { z } from 'zod';
 
+import { configDescriptorSchema } from './config-descriptor.js';
 import { appError, type AppError } from './errors.js';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 8;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 9;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
 
@@ -63,6 +64,17 @@ export const catalogAnalysisSchema = z.object({
 });
 
 export type CatalogAnalysis = z.output<typeof catalogAnalysisSchema>;
+
+export const catalogVariantSchema = catalogAnalysisSchema.extend({
+  configId: z.string().min(1),
+  descriptor: configDescriptorSchema.nullable(),
+  analyzer: z.string().nullable(),
+  model: z.string().nullable(),
+  createdAt: z.iso.datetime(),
+  usage: z.record(z.string(), z.json()).nullable(),
+});
+
+export type CatalogVariant = z.output<typeof catalogVariantSchema>;
 
 export const catalogRecordSchema = z.object({
   file: catalogFileSchema,
