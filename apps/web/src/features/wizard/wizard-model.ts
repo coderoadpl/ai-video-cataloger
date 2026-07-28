@@ -23,6 +23,7 @@ export type WizardStep =
   | 'language'
   | 'analyzer'
   | 'transcription'
+  | 'faces'
   | 'downloads'
   | 'readiness'
   | 'done';
@@ -32,6 +33,7 @@ export const WIZARD_STEPS: readonly WizardStep[] = [
   'language',
   'analyzer',
   'transcription',
+  'faces',
   'downloads',
   'readiness',
   'done',

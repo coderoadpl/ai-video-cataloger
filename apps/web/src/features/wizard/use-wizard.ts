@@ -3,12 +3,16 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
 import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
-import type {
-  AnalyzerProviderConfig,
-  ConfigKey,
-  WhisperModelName,
+import {
+  configValueSchema,
+  type AnalyzerProviderConfig,
+  type ConfigKey,
+  type WhisperModelName,
 } from '@core/domain/index.js';
-import type { doctorOutputSchema, readinessOutputSchema } from '@core/contract/index.js';
+import type {
+  doctorOutputSchema,
+  readinessOutputSchema,
+} from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
 import type { Locale } from '../../i18n/dictionary.js';
@@ -85,6 +89,7 @@ export interface WizardController {
   whisperModelOptions: WhisperModelChoice[];
   whisperBinaryPath: string;
   whisperApiCredential: string;
+  facesEnabled: boolean;
   validation: ValidationStatus;
   validationMessage: string | null;
   downloads: DownloadProgress[];
@@ -111,6 +116,7 @@ export interface WizardController {
   setWhisperModel: (model: WhisperModelName) => void;
   setWhisperBinaryPath: (path: string) => void;
   setWhisperApiCredential: (credential: string) => void;
+  setFacesEnabled: (enabled: boolean) => void;
   next: () => void;
   back: () => void;
   finish: () => void;
@@ -131,12 +137,14 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const requirements = useQuery({ ...actions.localAiRequirements, enabled: open });
   const whisperRuntime = useQuery({ ...actions.whisperRuntime, enabled: open });
   const whisperModels = useQuery({ ...actions.modelsWhisper, enabled: open });
+  const faceArtifacts = useQuery({ ...actions.faceArtifacts, enabled: open });
   const setConfig = useMutation(actions.setConfig);
   const setCredential = useMutation(actions.setCredential);
   const testProvider = useMutation(actions.testProvider);
   const installWhisperRuntime = useMutation(actions.installWhisperRuntime);
   const pullLocalAiModel = useMutation(actions.pullLocalAiModel);
   const downloadWhisperModel = useMutation(actions.downloadWhisperModel);
+  const installFaceArtifacts = useMutation(actions.installFaceArtifacts);
   const activateWhisperModel = useMutation(actions.useWhisperModel);
 
   const tiers = useMemo(() => requirements.data?.tiers ?? [], [requirements.data]);
@@ -157,6 +165,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const [whisperModelChoice, setWhisperModelChoice] = useState<WhisperModelName | null>(null);
   const [whisperBinaryPath, setWhisperBinaryPath] = useState<string>('');
   const [whisperApiCredential, setWhisperApiCredential] = useState<string>('');
+  const [facesEnabledChoice, setFacesEnabledChoice] = useState<boolean | null>(null);
   const [validation, setValidation] = useState<ValidationStatus>('idle');
   const [validationMessage, setValidationMessage] = useState<string | null>(null);
   const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
@@ -179,6 +188,11 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     whisperModelChoice ?? bestInstalledWhisperModel(whisperModelOptions) ?? FALLBACK_WHISPER_MODEL;
   const transcriptionLocked = transcriptionLockedToSkip(analyzerFamily);
   const transcriptionMode = effectiveTranscriptionMode(analyzerFamily, selectedTranscriptionMode);
+  const storedFacesEnabled = configQuery.data !== undefined && 'effective' in configQuery.data
+    ? configQuery.data.effective.faces_enabled
+    : undefined;
+  const parsedFacesEnabled = configValueSchema.shape.faces_enabled.safeParse(storedFacesEnabled);
+  const facesEnabled = facesEnabledChoice ?? (parsedFacesEnabled.success ? parsedFacesEnabled.data : false);
 
   const setApiDraft = useCallback((patch: Partial<ApiDraft>) => {
     setApiDraftState((current) => ({ ...current, ...patch }));
@@ -349,12 +363,32 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       await persistTranscription();
       setValidation('ok');
       savedToastStore.show(dictionary.wizard.controller.transcriptionSaved);
-      setStep('downloads');
+      setStep('faces');
     } catch (error) {
       setValidation('error');
       setValidationMessage(messageOf(error));
     }
   }, [persistTranscription, transcriptionMode, whisperBinaryPath, dictionary]);
+
+  const setFacesEnabled = useCallback((enabled: boolean): void => {
+    setFacesEnabledChoice(enabled);
+    setValidation('idle');
+    setValidationMessage(null);
+  }, []);
+
+  const advanceFaces = useCallback(async (): Promise<void> => {
+    setValidation('testing');
+    setValidationMessage(null);
+    try {
+      await writeConfig('faces_enabled', facesEnabled ? 'true' : 'false');
+      setValidation('ok');
+      savedToastStore.show(dictionary.wizard.controller.facesSaved);
+      setStep('downloads');
+    } catch (error) {
+      setValidation('error');
+      setValidationMessage(messageOf(error));
+    }
+  }, [dictionary, facesEnabled, writeConfig]);
 
   const pollJob = useCallback(
     async (jobId: string, label: string, index: number): Promise<boolean> => {
@@ -389,7 +423,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   );
 
   const plannedDownloads = useMemo(() => {
-    const tasks: { kind: 'local-ai' | 'whisper-runtime' | 'whisper-model'; label: string }[] = [];
+    const tasks: { kind: 'local-ai' | 'whisper-runtime' | 'whisper-model' | 'face-artifacts'; label: string }[] = [];
     if (analyzerFamily === 'local') {
       const tier = tiers.find((entry) => entry.tag === effectiveLocalTag);
       if (tier === undefined || !tier.installed) {
@@ -407,8 +441,11 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         tasks.push({ kind: 'whisper-model', label: dictionary.wizard.controller.downloadingWhisperModel(effectiveWhisperModel) });
       }
     }
+    if (facesEnabled && faceArtifacts.data?.ready !== true) {
+      tasks.push({ kind: 'face-artifacts', label: dictionary.wizard.controller.downloadingFaceModels });
+    }
     return tasks;
-  }, [analyzerFamily, effectiveLocalTag, effectiveWhisperModel, tiers, transcriptionMode, whisperModelOptions, whisperRuntime.data, dictionary]);
+  }, [analyzerFamily, effectiveLocalTag, effectiveWhisperModel, faceArtifacts.data, facesEnabled, tiers, transcriptionMode, whisperModelOptions, whisperRuntime.data, dictionary]);
 
   const runDownloads = useCallback(async (): Promise<void> => {
     setIsDownloading(true);
@@ -423,8 +460,10 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
           jobId = (await pullLocalAiModel.mutateAsync({ tag: effectiveLocalTag })).jobId;
         } else if (task.kind === 'whisper-runtime') {
           jobId = (await installWhisperRuntime.mutateAsync(undefined)).jobId;
-        } else {
+        } else if (task.kind === 'whisper-model') {
           jobId = (await downloadWhisperModel.mutateAsync({ modelName: effectiveWhisperModel })).jobId;
+        } else {
+          jobId = (await installFaceArtifacts.mutateAsync({ force: false })).jobId;
         }
         const ok = await pollJob(jobId, task.label, index);
         if (!ok) {
@@ -444,6 +483,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     effectiveLocalTag,
     effectiveWhisperModel,
     installWhisperRuntime,
+    installFaceArtifacts,
     plannedDownloads,
     pollJob,
     pullLocalAiModel,
@@ -512,6 +552,9 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       case 'transcription':
         void advanceTranscription();
         return;
+      case 'faces':
+        void advanceFaces();
+        return;
       case 'downloads':
         void runDownloads();
         return;
@@ -522,7 +565,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
         onFinish();
         return;
     }
-  }, [step, advanceLanguage, validateAndAdvanceAnalyzer, advanceTranscription, runDownloads, onFinish]);
+  }, [step, advanceLanguage, validateAndAdvanceAnalyzer, advanceTranscription, advanceFaces, runDownloads, onFinish]);
 
   const back = useCallback(() => {
     setValidation('idle');
@@ -537,8 +580,11 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
       case 'transcription':
         setStep('analyzer');
         return;
-      case 'downloads':
+      case 'faces':
         setStep('transcription');
+        return;
+      case 'downloads':
+        setStep('faces');
         return;
       case 'readiness':
         setStep('downloads');
@@ -616,6 +662,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     whisperModelOptions,
     whisperBinaryPath,
     whisperApiCredential,
+    facesEnabled,
     validation,
     validationMessage,
     downloads,
@@ -642,6 +689,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
     setWhisperModel: setWhisperModelChoice,
     setWhisperBinaryPath,
     setWhisperApiCredential,
+    setFacesEnabled,
     next,
     back,
     finish,

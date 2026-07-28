@@ -189,6 +189,7 @@ export interface Dictionary {
       language: string;
       analyzer: string;
       transcription: string;
+      faces: string;
       downloads: string;
       readiness: string;
       done: string;
@@ -250,6 +251,12 @@ export interface Dictionary {
       openAiApiKey: string;
       openAiApiKeyHelper: string;
     };
+    faces: {
+      title: string;
+      localModels: string;
+      peopleIndex: string;
+      enableLabel: string;
+    };
     downloads: {
       title: string;
       done: string;
@@ -273,10 +280,12 @@ export interface Dictionary {
       analyzerSaved: string;
       whisperBinaryPathRequired: string;
       transcriptionSaved: string;
+      facesSaved: string;
       downloadFailed: string;
       downloadingLocalModel: (tag: string) => string;
       buildingManagedWhisperRuntime: string;
       downloadingWhisperModel: (model: string) => string;
+      downloadingFaceModels: string;
       whisperModelActive: (model: string) => string;
     };
     checklist: {
@@ -838,6 +847,7 @@ export const en: Dictionary = {
       language: 'Language',
       analyzer: 'Analyzer',
       transcription: 'Transcription',
+      faces: 'Faces',
       downloads: 'Downloads',
       readiness: 'Readiness',
       done: 'Done',
@@ -899,6 +909,12 @@ export const en: Dictionary = {
       openAiApiKey: 'OpenAI API key',
       openAiApiKeyHelper: 'Leave blank to keep an existing OpenAI credential.',
     },
+    faces: {
+      title: 'Choose face indexing',
+      localModels: 'Face detection and recognition run fully locally. YuNet detects faces and SFace creates embeddings; both are small on-device models.',
+      peopleIndex: 'This builds the people index used by the People tab and adds roughly 1–2 seconds of processing time per clip.',
+      enableLabel: 'Enable face detection and recognition',
+    },
     downloads: {
       title: 'Install what you chose',
       done: 'Done',
@@ -922,10 +938,12 @@ export const en: Dictionary = {
       analyzerSaved: 'Analyzer saved',
       whisperBinaryPathRequired: 'Whisper binary path is required',
       transcriptionSaved: 'Transcription saved',
+      facesSaved: 'Face indexing saved',
       downloadFailed: 'Download failed',
       downloadingLocalModel: (tag) => `Downloading local model ${tag}`,
       buildingManagedWhisperRuntime: 'Building the managed whisper.cpp runtime',
       downloadingWhisperModel: (model) => `Downloading whisper model ${model}`,
+      downloadingFaceModels: 'Downloading YuNet and SFace face models',
       whisperModelActive: (model) => `${model} is now active`,
     },
     checklist: {
@@ -1538,6 +1556,7 @@ export const pl: Dictionary = {
       language: 'Język',
       analyzer: 'Analizator',
       transcription: 'Transkrypcja',
+      faces: 'Twarze',
       downloads: 'Pobieranie',
       readiness: 'Gotowość',
       done: 'Koniec',
@@ -1599,6 +1618,12 @@ export const pl: Dictionary = {
       openAiApiKey: 'Klucz OpenAI API',
       openAiApiKeyHelper: 'Pozostaw puste, aby zachować istniejące dane OpenAI.',
     },
+    faces: {
+      title: 'Wybierz indeksowanie twarzy',
+      localModels: 'Wykrywanie i rozpoznawanie twarzy działa wyłącznie lokalnie. YuNet wykrywa twarze, a SFace tworzy embeddingi; oba są małymi modelami działającymi na urządzeniu.',
+      peopleIndex: 'Tworzy to indeks osób używany przez kartę Osoby i wydłuża przetwarzanie każdego klipu o około 1–2 sekundy.',
+      enableLabel: 'Włącz wykrywanie i rozpoznawanie twarzy',
+    },
     downloads: {
       title: 'Zainstaluj wybrane elementy',
       done: 'Gotowe',
@@ -1622,10 +1647,12 @@ export const pl: Dictionary = {
       analyzerSaved: 'Zapisano analizator',
       whisperBinaryPathRequired: 'Ścieżka do pliku whisper jest wymagana',
       transcriptionSaved: 'Zapisano transkrypcję',
+      facesSaved: 'Zapisano indeksowanie twarzy',
       downloadFailed: 'Pobieranie nie powiodło się',
       downloadingLocalModel: (tag) => `Pobieranie modelu lokalnego ${tag}`,
       buildingManagedWhisperRuntime: 'Budowanie zarządzanego whisper.cpp runtime',
       downloadingWhisperModel: (model) => `Pobieranie modelu whisper ${model}`,
+      downloadingFaceModels: 'Pobieranie modeli twarzy YuNet i SFace',
       whisperModelActive: (model) => `${model} jest teraz aktywny`,
     },
     checklist: {

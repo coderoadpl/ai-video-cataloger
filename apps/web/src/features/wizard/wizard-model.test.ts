@@ -14,6 +14,7 @@ import {
   harnessDescriptors,
   recommendedTier,
   transcriptionLockedToSkip,
+  WIZARD_STEPS,
   type LocalAiTier,
 } from './wizard-model.js';
 
@@ -29,6 +30,19 @@ const tier = (patch: Partial<LocalAiTier>): LocalAiTier => ({
 });
 
 describe('wizard-model builders', () => {
+  it('orders faces after transcription and before downloads', () => {
+    expect(WIZARD_STEPS).toEqual([
+      'welcome',
+      'language',
+      'analyzer',
+      'transcription',
+      'faces',
+      'downloads',
+      'readiness',
+      'done',
+    ]);
+  });
+
   it('builds a valid local provider config', () => {
     const provider = buildLocalProvider('gemma3:12b');
     expect(analyzerProviderConfigSchema.parse(provider)).toEqual(provider);

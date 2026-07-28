@@ -56,6 +56,7 @@ interface Recorders {
   configWrites: { folder?: string | undefined; key: string; value: string }[];
   credentialWrites: { providerId: string }[];
   providerTests: { family: string; providerId: string }[];
+  faceInstallRequests: number;
   readinessRefreshed: boolean;
   readinessScopes: Array<string | null>;
 }
@@ -63,6 +64,7 @@ interface Recorders {
 const configBodySchema = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
 const credentialBodySchema = z.object({ providerId: z.string() });
 const providerBodySchema = z.object({ family: z.string(), providerId: z.string() });
+const faceInstallBodySchema = z.object({ force: z.boolean() });
 
 const installHandlers = (
   overrides: {
@@ -73,17 +75,20 @@ const installHandlers = (
     ready?: boolean;
     rejectWhisperPath?: boolean;
     rejectConfigKey?: string;
+    facesEnabled?: boolean;
+    faceArtifactsReady?: boolean;
   } = {},
 ): Recorders => {
   const recorders: Recorders = {
     configWrites: [],
     credentialWrites: [],
     providerTests: [],
+    faceInstallRequests: 0,
     readinessRefreshed: false,
     readinessScopes: [],
   };
   server.use(
-    http.get('/api/config', () => ok(configView('en', 'auto'))),
+    http.get('/api/config', () => ok(configView('en', 'auto', overrides.facesEnabled ?? false))),
     http.get('/api/models/local-ai/requirements', () =>
       ok({ machine, runtimeUp: true, runtimeVersion: '0.1.0', tiers }),
     ),
@@ -102,6 +107,9 @@ const installHandlers = (
       ok({
         models: [{ name: 'base', size: '142 MB', downloaded: overrides.whisperDownloaded ?? false, active: true }],
       }),
+    ),
+    http.get('/api/models/faces', () =>
+      ok({ artifacts: [], ready: overrides.faceArtifactsReady ?? false }),
     ),
     http.post('/api/providers/test', async ({ request }) => {
       const body = providerBodySchema.parse(await request.json());
@@ -156,6 +164,11 @@ const installHandlers = (
     http.post('/api/models/local-ai/pull', () => ok({ jobId: 'job-local' })),
     http.post('/api/models/whisper-runtime/install', () => ok({ jobId: 'job-runtime' })),
     http.post('/api/models/whisper/download', () => ok({ jobId: 'job-whisper' })),
+    http.post('/api/models/faces/install', async ({ request }) => {
+      faceInstallBodySchema.parse(await request.json());
+      recorders.faceInstallRequests += 1;
+      return ok({ jobId: 'job-faces' });
+    }),
     http.get('/api/jobs/status', ({ request }) => {
       const jobId = new URL(request.url).searchParams.get('jobId') ?? 'job';
       return ok(completedJob(jobId));
@@ -222,8 +235,13 @@ const configDefaults = {
   ui_language: 'en',
 };
 
-const configView = (uiLanguage: string, outputLanguage: string) => {
-  const effective = { ...configDefaults, ui_language: uiLanguage, output_language: outputLanguage };
+const configView = (uiLanguage: string, outputLanguage: string, facesEnabled = false) => {
+  const effective = {
+    ...configDefaults,
+    faces_enabled: facesEnabled ? 'true' : 'false',
+    ui_language: uiLanguage,
+    output_language: outputLanguage,
+  };
   const config = Object.fromEntries(Object.keys(configDefaults).map((key) => [key, null]));
   const sources = Object.fromEntries(Object.keys(configDefaults).map((key) => [key, 'default']));
   return { config, defaults: configDefaults, effective, sources };
@@ -243,6 +261,12 @@ const passLanguageStep = async () => {
   await screen.findByTestId('wizard-step-analyzer');
 };
 
+const advanceFromFaces = async () => {
+  await screen.findByTestId('wizard-step-faces');
+  clickNext();
+  await screen.findByTestId('wizard-step-downloads');
+};
+
 describe('SetupWizard', () => {
   it('takes a fresh Apple-Silicon user through a fully local setup to a ready state', async () => {
     const recorders = installHandlers({ ready: true });
@@ -260,8 +284,7 @@ describe('SetupWizard', () => {
 
     await screen.findByTestId('wizard-step-transcription');
     clickNext();
-
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
     expect(screen.getAllByTestId('download-task').length).toBe(3);
     clickNext();
 
@@ -293,8 +316,7 @@ describe('SetupWizard', () => {
     await screen.findByTestId('wizard-step-transcription');
     fireEvent.click(screen.getByTestId('transcription-skip'));
     clickNext();
-
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
     expect(screen.getAllByTestId('download-task')).toHaveLength(1);
     expect(screen.getByTestId('wizard-next').textContent).toBe('Install & continue');
   });
@@ -362,7 +384,7 @@ describe('SetupWizard', () => {
     expect(within(screen.getByTestId('transcription-skip')).getByRole('radio', { checked: true })).toBeDefined();
     expect(within(screen.getByTestId('transcription-managed')).getByRole('radio').hasAttribute('disabled')).toBe(true);
     clickNext();
-
+    await advanceFromFaces();
     await screen.findByTestId('downloads-none');
     expect(recorders.configWrites.filter((write) => write.key === 'whisper_mode')).toEqual([
       { folder: undefined, key: 'whisper_mode', value: 'skip' },
@@ -439,7 +461,7 @@ describe('SetupWizard', () => {
     await screen.findByTestId('wizard-step-transcription');
     fireEvent.click(screen.getByTestId('transcription-skip'));
     clickNext();
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
     clickNext();
 
     await screen.findByTestId('readiness-ready');
@@ -460,7 +482,7 @@ describe('SetupWizard', () => {
     fireEvent.change(credential, { target: { value: 'whisper-secret' } });
 
     clickNext();
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
 
     expect(recorders.credentialWrites).toEqual([{ providerId: 'openai' }]);
     expect(recorders.configWrites).toContainEqual({ key: 'whisper_mode', value: 'api' });
@@ -489,11 +511,57 @@ describe('SetupWizard', () => {
     await screen.findByTestId('wizard-step-transcription');
     fireEvent.click(screen.getByTestId('transcription-skip'));
     clickNext();
-
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
     expect(screen.getByTestId('downloads-none')).toBeDefined();
     expect(screen.getByTestId('wizard-next').textContent).toBe('Continue');
   });
+
+  it('defaults face indexing from current config', async () => {
+    installHandlers({ facesEnabled: true, faceArtifactsReady: true });
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await passLanguageStep();
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-skip'));
+    clickNext();
+
+    await screen.findByTestId('wizard-step-faces');
+    await waitFor(() =>
+      expect(screen.getByRole('switch', { name: 'Enable face detection and recognition' })).toHaveProperty('checked', true),
+    );
+  });
+
+  it('persists face indexing and plans the YuNet and SFace download', async () => {
+    const recorders = installHandlers({ faceArtifactsReady: false });
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await passLanguageStep();
+    fireEvent.click(screen.getByTestId('analyzer-family-harness'));
+    await screen.findByTestId('harness-claude-code');
+    clickNext();
+    await screen.findByTestId('wizard-step-transcription');
+    fireEvent.click(screen.getByTestId('transcription-skip'));
+    clickNext();
+
+    const facesStep = await screen.findByTestId('wizard-step-faces');
+    expect(facesStep.textContent).toContain('fully locally');
+    expect(facesStep.textContent).toContain('YuNet');
+    expect(facesStep.textContent).toContain('SFace');
+    expect(facesStep.textContent).toContain('People tab');
+    expect(facesStep.textContent).toContain('1–2 seconds');
+    fireEvent.click(screen.getByTestId('wizard-faces-enabled-switch'));
+    clickNext();
+
+    await screen.findByTestId('wizard-step-downloads');
+    expect(recorders.configWrites).toContainEqual({ key: 'faces_enabled', value: 'true' });
+    expect(screen.getAllByTestId('download-task')).toHaveLength(1);
+    expect(screen.getByTestId('download-task').textContent).toContain('YuNet and SFace');
+
+    clickNext();
+    await screen.findByTestId('wizard-step-readiness');
+    expect(recorders.faceInstallRequests).toBe(1);
+  }, 10_000);
 
   it('downloads the whisper model when using an own binary', async () => {
     installHandlers();
@@ -507,8 +575,7 @@ describe('SetupWizard', () => {
     fireEvent.click(screen.getByTestId('transcription-own'));
     fireEvent.change(screen.getByLabelText('Whisper binary path'), { target: { value: '/opt/whisper' } });
     clickNext();
-
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
     expect(screen.getAllByTestId('download-task')).toHaveLength(1);
     expect(screen.getByTestId('download-task').textContent).toContain('whisper model base');
   });
@@ -554,8 +621,7 @@ describe('SetupWizard', () => {
     clickNext();
     await screen.findByTestId('wizard-step-transcription');
     clickNext();
-
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
     expect(screen.getByTestId('downloads-none')).toBeDefined();
   });
 
@@ -569,7 +635,7 @@ describe('SetupWizard', () => {
     await screen.findByTestId('wizard-step-transcription');
     fireEvent.click(screen.getByTestId('transcription-skip'));
     clickNext();
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
     clickNext();
     await screen.findByTestId('readiness-ready');
     clickNext();
@@ -595,7 +661,7 @@ describe('SetupWizard', () => {
     await screen.findByTestId('wizard-step-transcription');
     fireEvent.click(screen.getByTestId('transcription-skip'));
     clickNext();
-    await screen.findByTestId('wizard-step-downloads');
+    await advanceFromFaces();
     clickNext();
     await screen.findByTestId('wizard-step-readiness');
   };
