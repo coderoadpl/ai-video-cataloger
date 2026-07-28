@@ -30,6 +30,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- The gemini-native entity gate now applies one evidence rule across descriptions, filenames, and tags with attribute-based fallbacks, addressing the c11 blind-judge regression.
 - Selecting an analysis variant now refreshes its name-based artifacts and search document together; folder defaults resolve from the full processing configuration, and deletion promotes the newest survivor while retaining shared artifacts until their final reference is removed.
 - Processing deduplicates and force-replaces per content/configuration pair; completion and skip NDJSON name the configuration, and folder snapshots preserve every variant plus the selected configuration.
 - Name-based artifacts under `frames/`, `transcripts/`, and `summaries/` project the selected analysis variant.
