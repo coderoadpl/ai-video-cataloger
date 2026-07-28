@@ -4,3 +4,4 @@ out/
 public/downloads/
 .pnpm-store/
 .firebase/
+.source/

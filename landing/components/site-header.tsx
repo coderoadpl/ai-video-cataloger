@@ -46,6 +46,9 @@ export function SiteHeader({ dict }: { dict: Dictionary }) {
             <a className="transition-colors hover:text-black dark:hover:text-white" href="#faq">
               {dict.header.nav.faq}
             </a>
+            <Link className="transition-colors hover:text-black dark:hover:text-white" href="/blog">
+              {dict.header.nav.blog}
+            </Link>
           </nav>
         </div>
         <div className="flex items-center gap-3">

@@ -15,6 +15,7 @@ export type Dictionary = {
       features: string;
       privacy: string;
       faq: string;
+      blog: string;
     };
     languageLabel: string;
     download: string;
@@ -162,6 +163,7 @@ export const en: Dictionary = {
       features: "Features",
       privacy: "Privacy",
       faq: "FAQ",
+      blog: "Blog",
     },
     languageLabel: "Language",
     download: "Download",
@@ -453,6 +455,7 @@ export const pl: Dictionary = {
       features: "Funkcje",
       privacy: "Prywatność",
       faq: "FAQ",
+      blog: "Blog",
     },
     languageLabel: "Język",
     download: "Pobierz",

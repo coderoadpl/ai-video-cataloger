@@ -1,0 +1,363 @@
+---
+title: How Nine AI Configs Scored on Real Footage
+description: A benchmark of nine AI analysis configurations using the same real-world video footage.
+date: "2026-08-03"
+author: AI Video Cataloger
+tags:
+  - Benchmarks
+  - AI analysis
+featured: true
+readTime: 12 min read
+thumbnail: /blog/screenshots/06-analyze.png
+---
+
+AI Video Cataloger lets you point the same folder at very different analysis
+backends: a fully local Gemma model, an OpenAI-compatible API, an agent CLI you
+already have installed (Claude Code, Codex, Cursor), or Gemini's native video
+input. That flexibility is only useful if somebody has actually measured what
+the choice costs you — in quality, in wall-clock time, and in money.
+
+So we measured it. This post is the write-up of that benchmark, including the
+two experiments that failed and the one result that invalidated a conclusion we
+had already written down.
+
+## The footage
+
+Every number below comes from the same fixed set of **eleven real clips**, about
+1.1 GB in total. They are **handheld DJI Pocket clips** — a pocket gimbal
+camera, not a drone — taken from a real travel library during a museum visit.
+Clip length runs from three to thirty-one seconds. The material is genuinely
+hard for a cataloger in three specific ways:
+
+- **Mixed indoor lighting and motion.** Handheld pans across exhibits, with
+  reflections, glass cases and backlit windows.
+- **On-screen text in a language the owner does not speak.** Placards, door
+  signs and wall panels in a Scandinavian language — exactly the kind of string
+  a person later types into a search box.
+- **Polish narration.** The owner talks over roughly half the clips. On this
+  material the spoken track carries more retrievable information than the
+  picture does, and that turns out to be the whole story.
+
+A benchmark built from clean, well-lit, English-language stock footage would
+have ranked these backends in a different order, and would have missed the
+failure mode that ended up dominating the results.
+
+## Method
+
+The benchmark holds everything constant except the analyzer:
+
+| Parameter | Value |
+|---|---|
+| Frames per clip | 3 (the app default) |
+| Transcription | managed whisper, `large-v3-turbo`, identical for every leg |
+| Harness effort | `high` on every agent-harness leg |
+| Per-clip timeout | 900 s |
+| Input files | one APFS clone of the master set per leg, so no leg sees another leg's renames |
+
+Runs are resumable: a clip whose NDJSON already contains a `completed` event is
+skipped, so a leg that dies halfway does not restart from zero.
+
+**Judging is blind and dual-judge.** Each clip's per-backend outputs
+(description, filename, tags) are stripped of any backend identity and shuffled
+into a judge pack, with the per-clip label mapping held separately. Two
+independent judge models — **from different vendors** — score every anonymized
+output, under two deliberately different lenses:
+
+- a **retrieval** lens: would the owner find this clip again by typing what they
+  remember?
+- a **faithfulness** lens: is every claim in the description actually supported
+  by the frames and the transcript?
+
+Those two lenses disagree on purpose. A config that invents a plausible proper
+noun scores well on retrieval (the filename is specific and searchable) and
+badly on faithfulness (the specific thing is not true). Averaging them without
+looking at the split hides the most important property of a cataloging model.
+
+Every clip also has a **reference row** (`r0`): a human-written filename and
+description produced with the clip in view. It is not a competitor, it is a
+ceiling anchor — so we can tell "the best machine config" from "a good result".
+
+The headline table below has nine rows: eight machine configurations plus that
+human reference.
+
+## Round 1: the ranking table
+
+| Config | Backend | Judge mean | Per-clip wins | Median s/clip |
+|---|---|---:|---:|---:|
+| r0 | human-written reference | **9.18** | 10 | — |
+| c8 | Gemini native video, flash | 7.39 | n/a | 36.1 |
+| c4 | agent harness — Claude Code | 7.18 | 1 | 165.0 |
+| c6 | agent harness — Cursor Agent | 5.64 | 0 | 172.7 |
+| c5 | agent harness — Codex | 5.18 | 0 | 230.5 |
+| c2 | local Gemma 3, 12b | 5.00 | 0 | 11.5 |
+| c7 | OpenAI-compatible API, gpt-5.5 | 4.82 | 0 | 12.9 |
+| c3 | local Gemma 3, 27b | 4.00 | 0 | 70.9 |
+| c1 | local Gemma 3, 4b | 3.18 | 0 | 11.1 |
+
+Four things in that table matter more than the ordering.
+
+**The human reference wins ten clips out of eleven.** No machine config is close
+to a person who watched the clip. Any claim that automatic cataloging is
+"solved" is a claim about easier footage than this.
+
+**Bigger local is not better local.** Gemma 27b scored *below* Gemma 12b (4.00
+vs 5.00) while taking six times longer per clip. Its outputs were longer and
+more confident, and the extra confidence went into unsupported detail, which the
+faithfulness lens punishes hard. On this task, parameter count bought verbosity,
+not accuracy.
+
+**The API leg is fast and useless.** c7 ran in 12.9 s per clip and produced
+`maritime-museum-boat-exhibit` and `open-welcome-sign` — filenames that are
+never wrong and never findable. That is the generic-filler failure mode: the
+model declines to commit to anything specific, so every clip in the folder ends
+up with roughly the same name.
+
+**c8's mean is not derived the same way as c1–c7.** The round-1 configs were
+scored clip by clip; Gemini native was added later, and its 7.39 is the average
+of two whole-config judge verdicts (7.95 retrieval, 6.82 faithfulness). Same
+clips, same rubric, different derivation — so the 0.21-point gap between c8 and
+c4 sits inside the noise that difference creates.
+
+## Round 2: pinned models
+
+Round 1 compared *products* — an "agent harness" is whatever model that CLI
+happens to default to. Round 2 pinned the model explicitly on every leg and
+re-judged blind, again with two judges from different vendors.
+
+| Config | Retrieval judge | Faithfulness judge | Average | Wins |
+|---|---:|---:|---:|---:|
+| harness, frontier model A | 8.82 | 8.68 | **8.75** | 8 |
+| r0 (human reference) | 8.00 | 7.73 | 7.86 | 1.5 |
+| harness, frontier model B | 7.27 | 7.64 | 7.45 | 1 |
+| harness, fast reasoning model | 7.00 | 7.45 | 7.23 | 0 |
+| API + API whisper | 6.91 | 7.32 | 7.11 | 0 |
+| OpenAI-compatible API | 6.91 | 7.23 | 7.07 | 0 |
+| harness, high-effort reasoning | 6.82 | 7.27 | 7.05 | 0 |
+| harness, mid-tier model | 6.64 | 7.23 | 6.93 | 0.5 |
+| harness, gpt-5.5 | 6.45 | 6.77 | 6.61 | 0 |
+| local Gemma 3, 12b | 4.09 | 4.73 | 4.41 | 0 |
+| local Gemma 3, 4b | 3.27 | 4.05 | 3.66 | 0 |
+
+The top row beat the human reference. That is not a claim that the machine is
+better than a person — it is a warning about cross-round comparison. The
+reference row moved from 9.18 to 7.86 *without its text changing a single
+character*. What changed was the field around it: a stronger set of candidates
+shifts where a judge puts the middle of its scale. Judge scores are ordinal
+within a round and meaningless across rounds. We report both rounds separately
+for exactly that reason.
+
+The stable, cross-round finding is the bottom of the table: local Gemma legs
+score 3.7–4.4 on this footage regardless of round, model size or judge. When the
+information in a clip is small on-screen text in a foreign language, the local
+models we can actually run on a laptop are not yet in the same category.
+
+## Four outputs, verbatim
+
+Aggregates hide what these differences feel like. Four real examples, with
+identifying details of the library removed.
+
+**1. The same three-second clip, seven different hallucinated sentences.** One
+clip is a near-static shot of a hand-painted wooden sign reading `OPEN`, `11-17`,
+`velkommen`. There is no speech on it; a dog barks somewhere off-camera. Seven
+configs sharing the *same* whisper transcript reported the audio as, in turn:
+"What you like?", "I do not let go", "ok" repeated, "I'm ready" twice, "I",
+"I'm going to go to the next slide", and — from the smallest local model — a
+suggestion that this "might be part of a presentation or video demonstration".
+Every one of those is whisper hallucinating on near-silence, and six of the
+seven analyzers treated the hallucination as a fact about the clip.
+
+**2. The honest abstention.** On the same clip, one config wrote:
+
+> The audio transcript ("I do not let go") does not correspond to any visible
+> content and appears to be an unrelated or mistranscribed audio clip.
+
+That is the single most valuable behaviour we saw in the whole benchmark, and no
+aggregate score rewards it enough.
+
+**3. The invented placard.** On a clip where the human reference notes only that
+an information leaflet is held blurred in the foreground, the flash config
+produced a filename led by a proper noun — `Firroringen` — that the ground truth
+does not support. In a later round the pro model kept the name and added a long
+verbatim English "guidebook transcript" that conveniently corroborated it. The
+faithfulness judge's verdict was blunt: the fabrication is *load-bearing*,
+because it leads the filename. A wrong entity does not merely under-serve
+search, it poisons it — you will search for the real name forever and never find
+the clip.
+
+**4. The mistranslated narration.** The most consequential error class had
+nothing to do with the analyzer. Polish narration was decoded as English, so
+"alianckie łodzie podwodne" (Allied submarines) came back as a proper noun,
+`Allianz-Kerrall`, which the analyzer then wrote into the description as an
+entity that had damaged the ships. On other clips the same pipeline produced
+"the station was a website" repeated five times, and tags reading `*Pain*` and
+`Thank you` on a clip the model itself described as having no narration.
+
+## The entity gate, and why we reverted it
+
+Example 3 has an obvious fix: forbid the model from naming an entity unless the
+name is legibly visible in a frame. We tried that three times.
+
+| Round | Change | Judge result | Placeholder filenames | Median s/clip |
+|---|---|---|---:|---:|
+| c8 | baseline, no gate | 7.95 / 6.82 (retrieval / faithfulness) | 0 of 11 | 36.1 |
+| c11 | entity gate v1 | 6.27 / 5.64 | 4 of 11 | 38.7 |
+| c12 | re-cut gate: one evidence rule across description, filename and tags | not promoted | 2 of 11 | 43.7 |
+| c13 | prompt v3: concrete-attribute floor for filenames and tags | not promoted | 4 of 11 | 35.6 |
+
+The gate worked, in the sense that the fabrications went away. It also produced
+this, on a clip full of usable content:
+
+> **filename:** `video-3` · **tags:** *(none)* · **description:** "Inside a
+> maritime museum, the camera pans past traditional wooden fishing boats,
+> including a Lofotbåten exhibit with detailed rigging, wooden hulls, and
+> hanging nets..."
+
+The description still names the exhibit. The filename is `video-3` and there are
+no tags at all. The gate did not make the model more careful — it made the model
+*abandon the fields the gate was checking* while leaving the same unverified
+claim in the field it was not checking. Blind judges scored c11 at 6.27 and
+5.64, well below the ungated baseline on both lenses: the retrieval lens because
+four clips in eleven became unfindable, the faithfulness lens because a
+placeholder filename sitting over a confident description is not honesty, it is
+inconsistency.
+
+c12 halved the placeholder rate by applying one evidence rule to all three
+fields. c13 added a floor — if no entity is verifiable, name the concrete
+attributes you *can* see — and the placeholder rate went straight back to four in
+eleven. At that point we reverted the gate entirely.
+
+The honest lesson: **prompt-only entity gating trades fabrications for lost
+specificity, roughly one for one, and the trade is bad.** A rule that says "do
+not say what you cannot verify" is enforced by the same model that cannot tell
+what it can verify. Suppression is not verification. Fabrication control belongs
+in a separate pass that can genuinely re-check a claim against the frames, not
+in a longer prompt.
+
+## The pilot, and the variable we had been holding constant
+
+The eleven-clip benchmark said Gemini native video was the leading machine
+config. Before committing a full library to it we ran a **102-clip pilot** on a
+single folder: both legs to completion, zero errors, judges sampling every fifth
+clip (21 of 102).
+
+| Leg | Analyzer | Transcription | Retrieval | Faithfulness | Cost/clip | Median s/clip |
+|---|---|---|---:|---:|---:|---:|
+| A | agent harness, fast model, low effort | whisper, English-decoded | 5.4 | 6.8 | $0 | ~66 |
+| B | Gemini native video, flash, Batch API | provider-native | 6.43–7.38 | 7.29–8.6 | $0.00855 | ~10 (see note) |
+| C | agent harness, high-effort model | whisper, English-decoded | 6.6 | 7.4 | $0 | 28.6 (analysis only) |
+| E | agent harness, high-effort model | whisper, `language=auto` | **7.9** | **8.33** | $0 | 31.27 |
+
+Two medians need an asterisk. Leg B's ~10 s is dominated by upload and batch
+polling, and only 24 of the 102 clips were computed in that round, so it is not
+a single-pass end-to-end figure. Leg C reused cached transcripts, so its 28.6 s
+covers the analysis layer only. Leg E is the only harness number that includes
+transcription computed from scratch.
+
+Legs A, B and C said the same thing the eleven-clip benchmark had said, more
+loudly, and we wrote the recommendation: Gemini, roughly $36 for the whole
+library, a cost irrelevant next to a poisoned index.
+
+Then we went looking for *why* the harness legs kept inventing names, and found
+that the transcription adapter never passed a language flag to any whisper
+backend. Not to the local `whisper.cpp` binary, not to the API call. With no
+language specified, each backend fell back to an English-leaning default, so
+Polish narration was being *translated*, badly, before the analyzer ever saw it.
+`Allianz-Kerrall` was not the analyzer hallucinating. It was the analyzer
+faithfully reporting a corrupted input.
+
+Leg E is the same analyzer as leg C, with one config key changed
+(`whisper_language=auto`) and transcription recomputed from scratch instead of
+reused from cache. It moved from 6.6 / 7.4 to **7.9 / 8.33**, beating Gemini on
+both lenses for the first time in the entire study — at $0 instead of $36. All
+three headline fabrications from the earlier legs disappeared, including an
+invented door legend that a previous leg had promoted into a filename and tags,
+for a door that actually reads `CREW ONLY`.
+
+One caveat, because we tripped over it ourselves: an earlier attempt at leg E
+was invalid. The run found an existing variant for the same configuration id and
+skipped all 102 files, so the "fixed" leg was judged on cached English-decoded
+records. The judge caught it and said so — the comparison could not answer the
+question it was asked. Only the run with genuinely fresh transcription counts,
+and that is the one in the table.
+
+**We had been benchmarking analyzers while the decisive variable was
+transcription.** Four legs, two judges and a written recommendation, all
+comparing the wrong axis. The bug is fixed — `whisper_language` is now a real
+config key defaulting to `auto`, and a `--whisper-language` flag on the CLI —
+but the methodological lesson is worth more than the fix: if two legs share an
+upstream stage, you are not comparing the legs, you are comparing the stage.
+
+## Costs
+
+| Config | Measured $/clip | 11-clip benchmark run | Projected: 4,189-file library |
+|---|---:|---:|---:|
+| Gemini native, flash | $0.008941 | $0.098 | ~$37 |
+| Gemini native, pro-preview | $0.018284 | $0.201 | ~$77 |
+| Gemini flash, Batch API (pilot, measured over 102 clips) | $0.008552 | — | $35.82 |
+| Agent harness (existing CLI subscription) | $0 | $0 | $0 |
+| Local Gemma | $0 | $0 | $0 |
+
+Flash versus pro is the cleanest cost/quality data point we have: 7.39 against
+7.59 on the judge mean, 36.1 s against 44.3 s per clip, and roughly twice the
+price. The pro leg fixed three of the flash leg's seven recorded fabrications
+and introduced two new ones — including that fabricated guidebook transcript,
+which is a *worse* failure than the original, because it manufactures its own
+corroboration. Paying double for errors that are harder to spot is not an
+upgrade.
+
+Also worth recording, because it costs a day if you hit it blind: our attempt to
+benchmark the previous-generation pro model failed outright. Every request
+returned `404 NOT_FOUND` with "no longer available to new users", on a
+credential that lists the model and answers fine for the current preview. Model
+availability is not a property of the API, it is a property of your project's
+creation date.
+
+Time is the other currency, and the zero-dollar path is not free. The measured
+harness leg runs at 31.27 s per clip including fresh transcription, which
+projects to roughly 36 hours of machine time for a 4,189-file library — about a
+day and a half of background running, against a few hours for a batched cloud
+run. That is a real trade, and for plenty of people $37 is obviously the right
+answer.
+
+## What we recommend
+
+For this footage — a personal library with non-English narration — the
+recommendation is **an agent-harness analyzer with transcription language set to
+`auto`**, at $0. It wins both judge lenses, it is the only variant that preserves
+the owner's own spoken phrases as searchable text instead of flattening them
+into English summaries, and it never returned an empty tag set. The Gemini leg,
+by contrast, produced a `video` placeholder filename with zero tags on about 19%
+of sampled clips — reliably on the richest material.
+
+That recommendation is narrower than it looks. It holds because the information
+in this library lives in the audio. For silent footage the picture reverses: the
+same judges repeatedly noted that Gemini's native video reading caught on-screen
+text the frame-sampling legs missed, and a frames-only pipeline sampling three
+stills from a thirty-second pan loses whatever was legible in the other 27
+seconds.
+
+Which is why the app ships no single blessed configuration. Every analysis is
+stored as a **variant** keyed by its full configuration, so you can run two
+backends over the same folder and compare them side by side on your own
+material — the same thing we did here, minus the judges.
+
+## Limitations
+
+Stated plainly, because a benchmark that hides these is marketing:
+
+- **n = 11** for the main rounds, **21 of 102** sampled for the pilot. Small
+  samples: a 0.2-point difference in a judge mean means nothing.
+- **One shooting session, one subject, one narrator, one camera.** Everything
+  above is a statement about this library, not about video in general.
+- **The judges are LLMs.** Two vendors and two opposed lenses reduce
+  single-model bias; they do not eliminate it.
+- **Single runs.** Nothing was repeated, so we have no variance estimate and
+  cannot separate a real 0.5-point gap from run-to-run noise.
+- **Rounds are not comparable.** The reference row moved 1.3 points between
+  rounds with identical text. Compare within a table, never across.
+- **A snapshot in time.** Model versions, prices and availability all moved
+  during the study; two of the configs above cannot be reproduced today as run.
+
+The benchmark package — protocol, fixed clip set, runner scripts, raw NDJSON,
+judge packs and aggregates — is self-contained and re-runnable, which is the
+only real defence against every one of those limitations.
