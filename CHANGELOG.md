@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Read-only exFAT/fskit folders enter index-only mode when Node 22 masks recursive directory creation failures as `ENOENT`.
+
 ## [0.6.2] - 2026-08-04
 
 ### Added
