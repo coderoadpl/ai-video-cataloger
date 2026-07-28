@@ -1,6 +1,6 @@
 {
   "name": "ai-video-cataloger",
-  "version": "0.5.26",
+  "version": "0.6.0",
   "license": "Elastic-2.0",
   "private": true,
   "type": "module",
