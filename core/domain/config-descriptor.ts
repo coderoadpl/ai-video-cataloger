@@ -105,9 +105,8 @@ export const configDescriptorSchema = configDescriptorShape.superRefine((descrip
   if (descriptor.frames === undefined) {
     context.addIssue({ code: 'custom', path: ['frames'], message: 'frames is required' });
   }
-  if (descriptor.whisper_mode !== 'skip' && descriptor.whisper_language === undefined) {
-    context.addIssue({ code: 'custom', path: ['whisper_language'], message: 'whisper_language is required for transcription' });
-  }
+  // Descriptors persisted before whisper_language existed must keep parsing (their
+  // configId is history); the builder materializes the default for every new one.
   if (descriptor.whisper_mode === 'local') {
     if (descriptor.whisper_model === undefined) {
       context.addIssue({ code: 'custom', path: ['whisper_model'], message: 'whisper_model is required for local' });
