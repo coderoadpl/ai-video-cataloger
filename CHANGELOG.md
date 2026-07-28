@@ -24,6 +24,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- The gemini-native prompt gates named entities on legible evidence.
 - The packaged app no longer accepts the in-memory DB driver.
 - Processing flags passed explicitly to `process` and `process-drive` now
   override setup configuration, while unpassed flags defer to configured values
