@@ -407,20 +407,35 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async deleteVariant(fingerprint: string, configIdValue: string): Promise<Result<void, AppError>> {
     return this.write((db, client) => {
-      db.delete(fileTags)
-        .where(and(eq(fileTags.fingerprint, fingerprint), eq(fileTags.configId, configIdValue)))
-        .run();
-      db.delete(analyses)
-        .where(and(eq(analyses.fingerprint, fingerprint), eq(analyses.configId, configIdValue)))
-        .run();
-      syncSearchDocument(db, client, fingerprint);
+      const rows = db.select().from(analyses).where(eq(analyses.fingerprint, fingerprint)).all();
+      const deleted = rows.find((row) => row.configId === configIdValue);
+      if (deleted === undefined) return;
+      if (rows.length === 1) {
+        throw new CatalogAppError(appError('conflict', 'Cannot delete the last analysis variant'));
+      }
+      const selected = selectedAnalysisRow(db, fingerprint);
+      const survivor = rows.filter((row) => row.configId !== configIdValue).sort(compareVariantIdentity)[0];
+      runCatalogTransaction(client, () => {
+        db.delete(fileTags)
+          .where(and(eq(fileTags.fingerprint, fingerprint), eq(fileTags.configId, configIdValue)))
+          .run();
+        db.delete(analyses)
+          .where(and(eq(analyses.fingerprint, fingerprint), eq(analyses.configId, configIdValue)))
+          .run();
+        if (selected?.configId === configIdValue && survivor !== undefined) {
+          db.update(files).set({ selectedConfigId: survivor.configId }).where(eq(files.fingerprint, fingerprint)).run();
+        }
+        syncSearchDocument(db, client, fingerprint);
+      });
     });
   }
 
   async setSelectedVariant(fingerprint: string, configIdValue: string | null): Promise<Result<void, AppError>> {
     return this.write((db, client) => {
-      db.update(files).set({ selectedConfigId: configIdValue }).where(eq(files.fingerprint, fingerprint)).run();
-      syncSearchDocument(db, client, fingerprint);
+      runCatalogTransaction(client, () => {
+        db.update(files).set({ selectedConfigId: configIdValue }).where(eq(files.fingerprint, fingerprint)).run();
+        syncSearchDocument(db, client, fingerprint);
+      });
     });
   }
 
@@ -428,11 +443,21 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     return this.read((db) => selectedAnalysisRow(db, fingerprint)?.configId ?? null);
   }
 
+  async getExplicitSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>> {
+    return this.read((db) => db.select().from(files).where(eq(files.fingerprint, fingerprint)).get()?.selectedConfigId ?? null);
+  }
+
+  async getFolderDefaultConfigId(folderId: string): Promise<Result<string | null, AppError>> {
+    return this.read((db) => db.select().from(folders).where(eq(folders.folderId, folderId)).get()?.defaultConfigId ?? null);
+  }
+
   async setFolderDefaultVariant(folderId: string, configIdValue: string | null): Promise<Result<void, AppError>> {
     return this.write((db, client) => {
-      db.update(folders).set({ defaultConfigId: configIdValue }).where(eq(folders.folderId, folderId)).run();
-      const fileRows = db.select().from(files).where(eq(files.folderId, folderId)).all();
-      for (const fileRow of fileRows) syncSearchDocument(db, client, fileRow.fingerprint);
+      runCatalogTransaction(client, () => {
+        db.update(folders).set({ defaultConfigId: configIdValue }).where(eq(folders.folderId, folderId)).run();
+        const fileRows = db.select().from(files).where(eq(files.folderId, folderId)).all();
+        for (const fileRow of fileRows) syncSearchDocument(db, client, fileRow.fingerprint);
+      });
     });
   }
 
@@ -572,6 +597,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const result = client.exec(
         `SELECT
           f.fingerprint,
+          (SELECT COUNT(*) FROM analyses av WHERE av.fingerprint = f.fingerprint),
           f.file_name,
           NULLIF(sd.final_name, ''),
           NULLIF(sd.description, ''),
@@ -1642,6 +1668,18 @@ const rebuildSearchIndex = (db: GlobalDrizzle, client: Database): { indexed: num
   return { indexed: fileRows.length };
 };
 
+const runCatalogTransaction = <T>(client: Database, operation: () => T): T => {
+  client.run('BEGIN TRANSACTION');
+  try {
+    const value = operation();
+    client.run('COMMIT');
+    return value;
+  } catch (cause) {
+    client.run('ROLLBACK');
+    throw cause;
+  }
+};
+
 const searchDocumentId = (client: Database, fingerprint: string): number | null => {
   const result = client.exec('SELECT docid FROM search_documents WHERE fingerprint = $fingerprint', { $fingerprint: fingerprint });
   const value = result[0]?.values[0]?.[0];
@@ -1649,30 +1687,31 @@ const searchDocumentId = (client: Database, fingerprint: string): number | null 
 };
 
 const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): CatalogSearchRow => {
-  const fileName = stringValue(row[1]);
-  const finalName = nullableStringValue(row[2]);
-  const description = nullableStringValue(row[3]);
-  const snippet = stringValue(row[4]);
-  const gpsLat = nullableNumberValue(row[5]);
-  const gpsLon = nullableNumberValue(row[6]);
-  const tagsText = stringValue(row[12]);
-  const transcript = stringValue(row[13]);
+  const fileName = stringValue(row[2]);
+  const finalName = nullableStringValue(row[3]);
+  const description = nullableStringValue(row[4]);
+  const snippet = stringValue(row[5]);
+  const gpsLat = nullableNumberValue(row[6]);
+  const gpsLon = nullableNumberValue(row[7]);
+  const tagsText = stringValue(row[13]);
+  const transcript = stringValue(row[14]);
   return {
     fingerprint: stringValue(row[0]),
+    variantCount: numberValue(row[1]),
     fileName,
     finalName,
     description,
     snippet: snippet.length > 0 ? snippet : description ?? fileName,
     tags: tagsText.split('\n').filter((tag) => tag.length > 0),
     folder: {
-      folderId: stringValue(row[7]),
-      currentPath: stringValue(row[8]),
-      displayName: stringValue(row[9]),
-      firstSeenAt: stringValue(row[10]),
-      lastSeenAt: stringValue(row[11]),
+      folderId: stringValue(row[8]),
+      currentPath: stringValue(row[9]),
+      displayName: stringValue(row[10]),
+      firstSeenAt: stringValue(row[11]),
+      lastSeenAt: stringValue(row[12]),
     },
     gps: gpsLat === null || gpsLon === null ? null : { lat: gpsLat, lon: gpsLon },
-    missing: nullableNumberValue(row[14]) !== null,
+    missing: nullableNumberValue(row[15]) !== null,
     score: weightedSearchScore({
       fileName,
       finalName: finalName ?? '',
@@ -1721,6 +1760,8 @@ const nullableStringValue = (value: SqlValue | undefined): string | null => {
 };
 
 const nullableNumberValue = (value: SqlValue | undefined): number | null => typeof value === 'number' ? value : null;
+
+const numberValue = (value: SqlValue | undefined): number => z.number().int().nonnegative().parse(value);
 
 const uniqueFingerprints = (rows: readonly (typeof faceObservations.$inferSelect)[]): string[] =>
   [...new Set(rows.map((row) => row.fingerprint))].sort((left, right) => left.localeCompare(right));

@@ -44,6 +44,7 @@ const searchState: GlobalSearchState = {
       },
       results: [{
         fingerprint: 'fp-1',
+        variantCount: 2,
         fileName: 'clip.mp4',
         finalName: 'drone-clip.mp4',
         description: 'A drone clip',
@@ -69,6 +70,7 @@ const searchState: GlobalSearchState = {
       },
       results: [{
         fingerprint: 'fp-2',
+        variantCount: 1,
         fileName: 'field.mp4',
         finalName: null,
         description: null,

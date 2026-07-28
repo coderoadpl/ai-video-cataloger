@@ -3,6 +3,7 @@ import type { ErrorCode } from '@core/domain/index.js';
 export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
   validation: 400,
   not_found: 404,
+  variant_not_found: 404,
   conflict: 409,
   file_not_found: 404,
   invalid_file_type: 400,
@@ -45,6 +46,7 @@ export const HTTP_STATUS_BY_ERROR_CODE: Record<ErrorCode, number> = {
 export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
   validation: 2,
   not_found: 5,
+  variant_not_found: 45,
   conflict: 6,
   file_not_found: 11,
   invalid_file_type: 12,
@@ -87,6 +89,7 @@ export const EXIT_CODE_BY_ERROR_CODE: Record<ErrorCode, number> = {
 export const LEGACY_ERROR_CODE_BY_ERROR_CODE: Record<ErrorCode, string> = {
   validation: 'VALIDATION',
   not_found: 'NOT_FOUND',
+  variant_not_found: 'VARIANT_NOT_FOUND',
   conflict: 'CONFLICT',
   file_not_found: 'FILE_NOT_FOUND',
   invalid_file_type: 'INVALID_FILE_TYPE',

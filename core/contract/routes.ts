@@ -888,6 +888,7 @@ export const searchInputSchema = z.object({
 
 export const searchResultSchema = z.object({
   fingerprint: z.string().min(1),
+  variantCount: z.number().int().nonnegative(),
   fileName: z.string().min(1),
   finalName: z.string().nullable(),
   description: z.string().nullable(),

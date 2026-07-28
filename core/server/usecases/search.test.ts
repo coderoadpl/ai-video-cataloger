@@ -87,6 +87,7 @@ describe('search', () => {
     if (!result.ok) return;
     expect(result.value.results.map((row) => row.fingerprint)).toEqual(['fp-name', 'fp-transcript']);
     expect(result.value.results[0]?.folder.online).toBe(true);
+    expect(result.value.results[0]?.variantCount).toBe(1);
     expect(result.value.results[0]?.gps).toEqual({ lat: 51.1, lon: 17.2 });
     expect(result.value.results[1]?.folder.online).toBe(false);
     expect(result.value.results[1]?.tags).toEqual(['field']);

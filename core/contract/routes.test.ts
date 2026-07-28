@@ -170,6 +170,7 @@ describe('route schemas', () => {
       count: 1,
       results: [{
         fingerprint: 'fp-1',
+        variantCount: 2,
         fileName: 'clip.mp4',
         finalName: 'drone-clip.mp4',
         description: 'A drone clip',
@@ -197,6 +198,7 @@ describe('route schemas', () => {
       count: 1,
       results: [{
         fingerprint: 'fp-ro',
+        variantCount: 1,
         fileName: 'clip.mp4',
         finalName: null,
         description: null,

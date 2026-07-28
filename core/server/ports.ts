@@ -88,6 +88,7 @@ export interface CatalogSearchInput {
 
 export interface CatalogSearchRow {
   fingerprint: string;
+  variantCount: number;
   fileName: string;
   finalName: string | null;
   description: string | null;
@@ -191,7 +192,9 @@ export interface GlobalCatalogStore {
   upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>>;
   deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>>;
   setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>>;
+  getExplicitSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>>;
   getSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>>;
+  getFolderDefaultConfigId(folderId: string): Promise<Result<string | null, AppError>>;
   setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>>;
   listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>>;
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;

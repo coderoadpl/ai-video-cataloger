@@ -201,6 +201,26 @@ export const reusableTranscriptArtifact = async (
   return fs.isFile(parsed.data.path);
 };
 
+export const selectedVariantProjectionSource = async (
+  fs: FileSystemPort,
+  paths: VariantArtifactPaths,
+): Promise<Result<SelectedVariantProjectionSource, AppError>> => {
+  const transcript = await optionalFile(fs, paths.transcriptPath);
+  if (!transcript.ok) return transcript;
+  const transcriptJson = await optionalFile(fs, paths.transcriptJsonPath);
+  if (!transcriptJson.ok) return transcriptJson;
+  const debug = await optionalFile(fs, paths.debugLogPath);
+  if (!debug.ok) return debug;
+  return ok({
+    framesDirectory: paths.framesDirectory,
+    transcriptPath: transcript.value,
+    transcriptJsonPath: transcriptJson.value,
+    summaryPath: paths.summaryPath,
+    summaryJsonPath: paths.summaryJsonPath,
+    debugLogPath: debug.value,
+  });
+};
+
 export const materializeSelectedVariantProjection = async (
   fs: FileSystemPort,
   root: ArtifactRoot,
@@ -338,6 +358,12 @@ const cleanProjectionEntries = async (
   for (const entry of entries) {
     if (entry.temporary !== null) await fs.deletePath(entry.temporary);
   }
+};
+
+const optionalFile = async (fs: FileSystemPort, path: string): Promise<Result<string | null, AppError>> => {
+  const exists = await fs.isFile(path);
+  if (!exists.ok) return exists;
+  return ok(exists.value ? path : null);
 };
 
 const invalidArtifactInput = <T>(subject: string, details: unknown): Result<T, AppError> => ({

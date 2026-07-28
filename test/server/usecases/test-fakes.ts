@@ -1008,9 +1008,23 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(undefined));
   }
 
-  deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
+  async deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
+    const variants = [...this.variants.values()].filter((variant) => variant.fingerprint === fingerprint);
+    if (variants.some((variant) => variant.configId === configId) && variants.length === 1) {
+      return { ok: false, error: appError('conflict', 'Cannot delete the last analysis variant') };
+    }
+    const selected = await this.getSelectedConfigId(fingerprint);
     this.variants.delete(`${fingerprint}\u0000${configId}`);
-    return Promise.resolve(ok(undefined));
+    if (selected.ok && selected.value === configId) {
+      const promoted = variants
+        .filter((variant) => variant.configId !== configId)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+      if (promoted !== undefined) {
+        this.selectedConfigIds.set(fingerprint, promoted.configId);
+        this.analyses.set(fingerprint, promoted);
+      }
+    }
+    return ok(undefined);
   }
 
   setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>> {
@@ -1040,6 +1054,14 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .filter((variant) => variant.fingerprint === fingerprint)
       .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
     return Promise.resolve(ok(newest?.configId ?? null));
+  }
+
+  getExplicitSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.selectedConfigIds.get(fingerprint) ?? null));
+  }
+
+  getFolderDefaultConfigId(folderId: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.folderDefaultVariants.get(folderId) ?? null));
   }
 
   setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>> {
@@ -1113,6 +1135,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
         if (!matches) return null;
         return {
           fingerprint: file.fingerprint,
+          variantCount: [...this.variants.values()].filter((variant) => variant.fingerprint === file.fingerprint).length,
           fileName: file.fileName,
           finalName: analysis?.finalName ?? null,
           description: analysis?.description ?? null,

@@ -26,6 +26,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Selecting an analysis variant now refreshes its name-based artifacts and search document together; folder defaults resolve from the full processing configuration, and deletion promotes the newest survivor while retaining shared artifacts until their final reference is removed.
 - Processing deduplicates and force-replaces per content/configuration pair; completion and skip NDJSON name the configuration, and folder snapshots preserve every variant plus the selected configuration.
 - Name-based artifacts under `frames/`, `transcripts/`, and `summaries/` project the selected analysis variant.
 - The global catalog index uses schema version 9 and stores analyses by content fingerprint and configuration.

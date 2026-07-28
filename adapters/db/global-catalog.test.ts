@@ -151,11 +151,29 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(explicit.ok && explicit.value?.tags).toEqual(['alpha-tag']);
     const oldSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
     expect(oldSearch.ok && oldSearch.value).toEqual([]);
+    const selectedSearch = await store.search({ match: 'alphaonly*', rankingTerms: ['alphaonly'], limit: 10, offset: 0 });
+    expect(selectedSearch.ok && selectedSearch.value[0]).toMatchObject({
+      description: first.description,
+      variantCount: 2,
+    });
 
     expect((await store.setSelectedVariant(file.fingerprint, null)).ok).toBe(true);
     expect((await store.setFolderDefaultVariant(folder.folderId, first.configId)).ok).toBe(true);
     const folderSelected = await store.getAnalysis(file.fingerprint);
     expect(folderSelected.ok && folderSelected.value?.finalName).toBe(first.finalName);
+    expect((await store.setSelectedVariant(file.fingerprint, 'cfg_000000000000')).ok).toBe(true);
+    const danglingFallsToFolder = await store.getAnalysis(file.fingerprint);
+    expect(danglingFallsToFolder.ok && danglingFallsToFolder.value?.description).toBe(first.description);
+    expect((await store.setFolderDefaultVariant(folder.folderId, 'cfg_111111111111')).ok).toBe(true);
+    const danglingFallsToNewest = await store.getAnalysis(file.fingerprint);
+    expect(danglingFallsToNewest.ok && danglingFallsToNewest.value?.description).toBe(second.description);
+    expect((await store.upsertVariant({ ...first, createdAt: second.createdAt })).ok).toBe(true);
+    const tiedFallback = await store.getAnalysis(file.fingerprint);
+    const tiedWinner = first.configId.localeCompare(second.configId) < 0 ? first : second;
+    expect(tiedFallback.ok && tiedFallback.value?.description).toBe(tiedWinner.description);
+    expect((await store.upsertVariant(first)).ok).toBe(true);
+    expect((await store.setSelectedVariant(file.fingerprint, null)).ok).toBe(true);
+    expect((await store.setFolderDefaultVariant(folder.folderId, first.configId)).ok).toBe(true);
 
     const variants = await store.listVariants(file.fingerprint);
     expect(variants.ok && variants.value.map((variant) => variant.configId)).toEqual([
@@ -169,6 +187,16 @@ describe('SqlJsGlobalCatalogStore', () => {
     const survivor = await store.getAnalysis(file.fingerprint);
     expect(survivor.ok && survivor.value?.description).toBe(second.description);
     expect(survivor.ok && survivor.value?.tags).toEqual(['beta-tag']);
+    const promotedSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
+    expect(promotedSearch.ok && promotedSearch.value[0]).toMatchObject({
+      description: second.description,
+      variantCount: 1,
+    });
+    expect((await store.rebuildSearchIndex()).ok).toBe(true);
+    const rebuiltSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
+    expect(rebuiltSearch.ok && rebuiltSearch.value[0]?.description).toBe(second.description);
+    expect(await store.deleteVariant(file.fingerprint, second.configId))
+      .toMatchObject({ ok: false, error: { code: 'conflict' } });
   });
 
   it('rejects a second writer with catalog_locked and the owner PID', async () => {

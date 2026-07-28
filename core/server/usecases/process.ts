@@ -59,6 +59,7 @@ import {
   materializeSelectedVariantProjection,
   reusableFramesArtifact,
   reusableTranscriptArtifact,
+  selectedVariantProjectionSource,
   variantArtifactPaths,
   type VariantArtifactPaths,
 } from './artifact-store.js';
@@ -1526,7 +1527,7 @@ const recordGlobalCatalog = async (
   );
   if (!upserted.ok) return upserted;
   if (upserted.value.selectedConfigId === resolved.configId && resolved.variantPaths !== null) {
-    const projectionSource = await selectedProjectionSource(deps.fs, resolved.variantPaths);
+    const projectionSource = await selectedVariantProjectionSource(deps.fs, resolved.variantPaths);
     if (!projectionSource.ok) return projectionSource;
     const projected = await materializeSelectedVariantProjection(
       deps.fs,
@@ -1548,39 +1549,6 @@ const recordGlobalCatalog = async (
     snapshotSkipped: upserted.value.snapshotSkipped,
     selectedConfigId: upserted.value.selectedConfigId,
   });
-};
-
-const selectedProjectionSource = async (
-  fs: FileSystemPort,
-  paths: VariantArtifactPaths,
-): Promise<Result<{
-  framesDirectory: string | null;
-  transcriptPath: string | null;
-  transcriptJsonPath: string | null;
-  summaryPath: string;
-  summaryJsonPath: string;
-  debugLogPath: string | null;
-}, AppError>> => {
-  const transcript = await optionalFile(fs, paths.transcriptPath);
-  if (!transcript.ok) return transcript;
-  const transcriptJson = await optionalFile(fs, paths.transcriptJsonPath);
-  if (!transcriptJson.ok) return transcriptJson;
-  const debug = await optionalFile(fs, paths.debugLogPath);
-  if (!debug.ok) return debug;
-  return ok({
-    framesDirectory: paths.framesDirectory,
-    transcriptPath: transcript.value,
-    transcriptJsonPath: transcriptJson.value,
-    summaryPath: paths.summaryPath,
-    summaryJsonPath: paths.summaryJsonPath,
-    debugLogPath: debug.value,
-  });
-};
-
-const optionalFile = async (fs: FileSystemPort, path: string): Promise<Result<string | null, AppError>> => {
-  const exists = await fs.isFile(path);
-  if (!exists.ok) return exists;
-  return ok(exists.value ? path : null);
 };
 
 const usageRecord = (usage: GeminiUsageAccounting) =>

@@ -22,6 +22,7 @@ describe('domain taxonomy', () => {
     expect(ERROR_CODES).toEqual([
       'validation',
       'not_found',
+      'variant_not_found',
       'conflict',
       'file_not_found',
       'invalid_file_type',

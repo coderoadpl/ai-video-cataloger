@@ -19,6 +19,7 @@ export interface SearchInput {
 
 export interface SearchResult {
   fingerprint: string;
+  variantCount: number;
   fileName: string;
   finalName: string | null;
   description: string | null;
@@ -69,6 +70,7 @@ export const search = async (
     if (!thumbnailPath.ok) return thumbnailPath;
     results.push({
       fingerprint: row.fingerprint,
+      variantCount: row.variantCount,
       fileName: row.fileName,
       finalName: row.finalName,
       description: row.description,
