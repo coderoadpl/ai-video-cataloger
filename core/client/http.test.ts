@@ -108,7 +108,7 @@ describe('createApiClient route calls', () => {
 
   it('interpolates GET route params into the request URL', async () => {
     const fetchImpl: typeof fetch = async (input, init) => {
-      expect(input).toBe('/api/scan?folder=%2Fvideos%2FA+B');
+      expect(input).toBe('/api/scan?folder=%2Fvideos%2FA+B&cached=false');
       expect(init).toMatchObject({ method: 'GET' });
       return jsonResponse({
         ok: true,

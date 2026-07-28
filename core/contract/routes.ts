@@ -59,6 +59,11 @@ const queryInteger = (fallback: number, min: number, max: number) =>
     (value) => typeof value === 'string' && value.length > 0 ? Number.parseInt(value, 10) : value,
     z.number().int().min(min).max(max).default(fallback),
   );
+const queryBoolean = z.preprocess(
+  (value) => value === 'true' ? true : value === 'false' ? false : value,
+  z.boolean().default(false),
+);
+const scanInputSchema = folderInputSchema.extend({ cached: queryBoolean });
 
 export const summarySchema = z.object({
   schemaVersion: z.literal(1),
@@ -309,7 +314,9 @@ export const driveRunSummarySchema = z.object({
   failures: z.array(driveRunFailureSchema),
 });
 
-export const thumbnailInputSchema = videoPathInputSchema.merge(forceInputSchema);
+export const thumbnailInputSchema = videoPathInputSchema.merge(forceInputSchema).extend({
+  priority: z.enum(['foreground', 'background']).default('foreground'),
+});
 
 export const thumbnailOutputSchema = z.object({
   video: z.string(),
@@ -1097,7 +1104,7 @@ export const API_ROUTES = {
   healthReady: { method: 'GET', path: '/api/health/ready', input: emptyInputSchema, output: healthReadyOutputSchema },
   catalogLockStatus: { method: 'GET', path: '/api/catalog-lock', input: emptyInputSchema, output: catalogLockOutputSchema },
   catalogLockRetry: { method: 'POST', path: '/api/catalog-lock/retry', input: emptyInputSchema, output: catalogLockOutputSchema },
-  scan: { method: 'GET', path: '/api/scan', input: folderInputSchema, output: scanOutputSchema },
+  scan: { method: 'GET', path: '/api/scan', input: scanInputSchema, output: scanOutputSchema },
   catalogTree: { method: 'GET', path: '/api/catalog-tree', input: folderInputSchema, output: catalogTreeOutputSchema },
   catalogTreeFolder: { method: 'GET', path: '/api/catalog-tree/folder', input: folderInputSchema, output: catalogTreeFolderOutputSchema },
   catalogFolder: { method: 'GET', path: '/api/catalog-folder', input: folderInputSchema, output: catalogFolderOutputSchema },

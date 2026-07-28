@@ -82,6 +82,45 @@ export interface ScanDeps {
   globalCatalog?: GlobalCatalogStore | undefined;
 }
 
+export const cachedScanFolder = async (
+  deps: ScanDeps,
+  input: { folder: string },
+): Promise<Result<ScanOutput, AppError>> => {
+  const folder = deps.fs.resolve(input.folder);
+  const exists = await deps.fs.exists(folder);
+  if (!exists.ok) return exists;
+  if (!exists.value) return { ok: false, error: appError('folder_not_found', `Folder not found: ${folder}`) };
+
+  const directory = await deps.fs.isDirectory(folder);
+  if (!directory.ok) return directory;
+  if (!directory.value) return { ok: false, error: appError('not_a_directory', `Not a directory: ${folder}`) };
+
+  const indexed = await cachedIndexedVideos(deps, folder);
+  if (!indexed.ok) return indexed;
+  if (indexed.value.length > 0) {
+    return ok({
+      folder,
+      databasePath: deps.globalCatalog?.databasePath() ?? null,
+      videos: indexed.value,
+      summary: summarize(indexed.value),
+    });
+  }
+
+  const repository = await deps.catalogs.open(folder);
+  if (!repository.ok) return repository;
+  const stored = await repository.value.listVideos();
+  if (!stored.ok) return stored;
+  const videos = stored.value
+    .map((video) => cachedLegacyVideo(deps.fs, video))
+    .sort((left, right) => left.path.localeCompare(right.path));
+  return ok({
+    folder,
+    databasePath: repository.value.databasePath(),
+    videos,
+    summary: summarize(videos),
+  });
+};
+
 export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Promise<Result<ScanOutput, AppError>> => {
   const folder = deps.fs.resolve(input.folder);
   const exists = await deps.fs.exists(folder);
@@ -150,6 +189,92 @@ const enrichWithDuplicates = async (
     return { ...video, duplicate: { canonicalPath } };
   }));
 };
+
+const cachedIndexedVideos = async (
+  deps: ScanDeps,
+  folder: string,
+): Promise<Result<ScanVideo[], AppError>> => {
+  const globalCatalog = deps.globalCatalog;
+  if (globalCatalog === undefined) return ok([]);
+  const marker = await readFolderMarker(deps.fs, folder);
+  if (!marker.ok) return marker;
+  const folderId = marker.value?.folderId ?? derivedFolderId(folder);
+  if (marker.value === null) {
+    const indexedFolder = await globalCatalog.getFolder(folderId);
+    if (!indexedFolder.ok) return indexedFolder;
+    if (indexedFolder.value === null) return ok([]);
+  }
+  const records = await globalCatalog.listFolderRecords(folderId);
+  if (!records.ok) return records;
+  return ok(records.value
+    .filter((record) => record.file.missingAt === null)
+    .map((record) => cachedIndexedVideo(deps.fs, folder, record))
+    .sort((left, right) => left.path.localeCompare(right.path)));
+};
+
+const cachedIndexedVideo = (
+  fs: FileSystemPort,
+  folder: string,
+  record: CatalogFileRecord,
+): ScanVideo => {
+  const analysis = record.analysis;
+  const filename = fs.basename(record.file.fileName);
+  const duration = record.file.durationS;
+  return {
+    path: fs.join(folder, filename),
+    filename,
+    size: record.file.size,
+    sizeFormatted: formatSize(record.file.size),
+    duration,
+    durationFormatted: duration === null ? null : formatDuration(duration),
+    status: analysis === null ? 'pending' : 'completed',
+    errorMessage: null,
+    contentHash: record.file.fingerprint,
+    artifacts: {
+      framePaths: null,
+      transcriptContent: analysis?.transcript ?? null,
+      transcriptPath: null,
+      transcriptSegments: null,
+      summary: analysis?.description === null || analysis === null
+        ? null
+        : {
+            schemaVersion: 1,
+            description: analysis.description,
+            suggestedFilename: analysis.finalName ?? filename,
+            fullAnalysis: analysis.description,
+            tags: analysis.tags,
+            analyzedAt: record.file.processedAt,
+          },
+      summaryPath: null,
+      thumbnailPath: null,
+      thumbnailMtime: null,
+      newFilename: analysis?.finalName ?? null,
+    },
+  };
+};
+
+const cachedLegacyVideo = (fs: FileSystemPort, video: CatalogVideo): ScanVideo => ({
+  path: video.originalPath,
+  filename: fs.basename(video.originalPath),
+  size: 0,
+  sizeFormatted: formatSize(0),
+  duration: null,
+  durationFormatted: null,
+  status: video.status,
+  errorMessage: video.errorMessage,
+  contentHash: video.fileHash,
+  artifacts: {
+    framePaths: null,
+    transcriptContent: null,
+    transcriptPath: null,
+    transcriptSegments: null,
+    summary: null,
+    summaryPath: null,
+    thumbnailPath: null,
+    thumbnailMtime: null,
+    newFilename: video.newName,
+  },
+});
 
 // A folder the app cannot write keeps no catalog of its own: its analyses live only in the global
 // index, under the path-derived folder id. Without that lookup an analysed read-only folder reads

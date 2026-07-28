@@ -376,6 +376,7 @@ export interface ThumbnailInput {
   width: number;
   height: number;
   force: boolean;
+  priority?: 'foreground' | 'background' | undefined;
 }
 
 export interface ThumbnailGeneration {

@@ -73,6 +73,31 @@ const selectedFilename = (container: HTMLElement): string | null =>
   container.querySelector('.Mui-selected')?.getAttribute('data-video-filename') ?? null;
 
 describe('catalog', () => {
+  it('renders cached rows before the filesystem reconciliation finishes', async () => {
+    let releaseScan: (() => void) | undefined;
+    const scanPending = new Promise<void>((resolve) => {
+      releaseScan = resolve;
+    });
+    server.use(
+      http.get('/api/scan', async ({ request }) => {
+        const cached = new URL(request.url).searchParams.get('cached') === 'true';
+        if (!cached) await scanPending;
+        return HttpResponse.json({
+          ok: true,
+          data: makeScan([makeVideo({ path: cached ? '/videos/cached.mp4' : '/videos/reconciled.mp4' })]),
+        });
+      }),
+    );
+
+    renderThemed(<Harness folder={FOLDER} />);
+
+    expect(await screen.findByText('cached.mp4')).toBeDefined();
+    expect(screen.queryByText('Scanning folder…')).toBeNull();
+    expect(screen.queryByText('reconciled.mp4')).toBeNull();
+    releaseScan?.();
+    expect(await screen.findByText('reconciled.mp4')).toBeDefined();
+  });
+
   it('renders the scanned videos with their metadata', async () => {
     server.use(scanOk(makeScan([makeVideo({ path: '/videos/a.mp4', contentHash: 'hash-a' })])));
 
@@ -269,7 +294,7 @@ describe('catalog', () => {
     expect(await screen.findByRole('img', { name: 'a.mp4' })).toBeDefined();
   });
 
-  it('clears the generating indicator when a scan refetch supersedes the active thumbnail run', async () => {
+  it('settles the generating indicator after a scan refetch overlaps the active thumbnail run', async () => {
     let scanCalls = 0;
     let release: (() => void) | undefined;
     const pending = new Promise<void>((resolve) => {
@@ -313,7 +338,7 @@ describe('catalog', () => {
 
     expect(await screen.findByText('Generating thumbnails…')).toBeDefined();
     await queryClient.invalidateQueries();
-    await waitFor(() => expect(screen.queryByText('Generating thumbnails…')).toBeNull());
     release?.();
+    await waitFor(() => expect(screen.queryByText('Generating thumbnails…')).toBeNull());
   });
 });

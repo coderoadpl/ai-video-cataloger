@@ -63,9 +63,9 @@ describe('query descriptors', () => {
     const descriptor = scanQuery(api, { folder: '/videos/A B' });
     const queryClient = new QueryClient();
 
-    expect(descriptor.queryKey).toEqual(['scan', 'folder', '/videos/A B']);
+    expect(descriptor.queryKey).toEqual(['scan', 'folder', '/videos/A B', 'filesystem']);
     await expect(queryClient.fetchQuery(descriptor)).resolves.toMatchObject({ folder: '/videos/A B' });
-    expect(seenInputs).toEqual(['/api/scan?folder=%2Fvideos%2FA+B']);
+    expect(seenInputs).toEqual(['/api/scan?folder=%2Fvideos%2FA+B&cached=false']);
   });
 
   it('scopes config and model keys by resource', () => {
@@ -183,7 +183,7 @@ describe('query descriptors', () => {
     ]);
   });
 
-  it('keys variant reads by locator and invalidates every selection consumer', async () => {
+  it('caches variant reads and refreshes only selected-analysis consumers', async () => {
     const configId = 'cfg_0123456789ab';
     const calls: Array<{ url: string; method: string | undefined }> = [];
     const fetchImpl: typeof fetch = async (input, init) => {
@@ -228,6 +228,7 @@ describe('query descriptors', () => {
 
     expect(byPath.queryKey).toEqual(['variants', 'video-path', '/videos/clip.mp4']);
     expect(byFingerprint.queryKey).toEqual(['variants', 'fingerprint', 'fp-1']);
+    expect(byPath.staleTime).toBe(Number.POSITIVE_INFINITY);
     await queryClient.fetchQuery(byFingerprint);
 
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
@@ -240,9 +241,7 @@ describe('query descriptors', () => {
 
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
       ['scan'],
-      ['catalog-folder'],
       ['search'],
-      ['variants'],
     ]);
 
     invalidate.mockClear();
@@ -253,9 +252,7 @@ describe('query descriptors', () => {
 
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
       ['scan'],
-      ['catalog-folder'],
       ['search'],
-      ['variants'],
     ]);
     expect(calls).toEqual([
       { url: '/api/variants?fingerprint=fp-1', method: 'GET' },

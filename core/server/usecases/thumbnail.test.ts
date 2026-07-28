@@ -29,6 +29,7 @@ describe('generateThumbnail', () => {
         width: 128,
         height: 72,
         force: true,
+        priority: 'foreground',
       },
     ]);
   });

@@ -87,6 +87,13 @@ export interface FfmpegMediaAdapterOptions {
   commandProbe?: CommandProbe | undefined;
 }
 
+interface ThumbnailTask {
+  input: ThumbnailInput;
+  resolve: (result: Result<ThumbnailGeneration, AppError>) => void;
+}
+
+export const THUMBNAIL_CONCURRENCY = 4;
+
 export interface ResolvedBinary {
   path: string;
   source: 'bundled' | 'system' | null;
@@ -113,7 +120,9 @@ export class FfmpegMediaAdapter implements MediaPort {
   private readonly runtime: FfmpegRuntime;
   private readonly binaryResolver: BinaryResolver;
   private readonly commandProbe: CommandProbe;
-  private thumbnailTail: Promise<void> = Promise.resolve();
+  private readonly foregroundThumbnails: ThumbnailTask[] = [];
+  private readonly backgroundThumbnails: ThumbnailTask[] = [];
+  private activeThumbnails = 0;
 
   constructor(options: FfmpegMediaAdapterOptions = {}) {
     this.runtime = options.runtime ?? fluentFfmpegRuntime;
@@ -197,12 +206,28 @@ export class FfmpegMediaAdapter implements MediaPort {
   }
 
   thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
-    const queued = this.thumbnailTail.then(() => this.generateThumbnail(input));
-    this.thumbnailTail = queued.then(
-      () => undefined,
-      () => undefined,
-    );
-    return queued.catch((cause: unknown) => mediaFailure(cause, 'Failed to generate thumbnail'));
+    return new Promise((resolve) => {
+      const queue = input.priority === 'foreground'
+        ? this.foregroundThumbnails
+        : this.backgroundThumbnails;
+      queue.push({ input, resolve });
+      this.drainThumbnails();
+    });
+  }
+
+  private drainThumbnails(): void {
+    while (this.activeThumbnails < THUMBNAIL_CONCURRENCY) {
+      const task = this.foregroundThumbnails.shift() ?? this.backgroundThumbnails.shift();
+      if (task === undefined) return;
+      this.activeThumbnails += 1;
+      void this.generateThumbnail(task.input)
+        .catch((cause: unknown) => mediaFailure(cause, 'Failed to generate thumbnail'))
+        .then(task.resolve)
+        .finally(() => {
+          this.activeThumbnails -= 1;
+          this.drainThumbnails();
+        });
+    }
   }
 
   private async generateThumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {

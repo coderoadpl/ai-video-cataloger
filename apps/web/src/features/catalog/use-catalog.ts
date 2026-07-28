@@ -24,11 +24,15 @@ export interface CatalogState {
 }
 
 export const useCatalog = (folder: string | null): CatalogState => {
-  const scan = useQuery({
-    ...actions.scan({ folder: folder ?? SCAN_DISABLED_FOLDER }),
+  const cached = useQuery({
+    ...actions.scan({ folder: folder ?? SCAN_DISABLED_FOLDER, cached: true }),
     enabled: folder !== null,
   });
-  const videos = scan.data?.videos ?? EMPTY;
+  const scan = useQuery({
+    ...actions.scan({ folder: folder ?? SCAN_DISABLED_FOLDER, cached: false }),
+    enabled: folder !== null,
+  });
+  const videos = scan.data?.videos ?? cached.data?.videos ?? EMPTY;
 
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   useEffect(() => {
@@ -56,9 +60,9 @@ export const useCatalog = (folder: string | null): CatalogState => {
     selectedKey,
     select,
     selectKey,
-    isLoading: scan.isLoading,
-    isError: scan.isError,
-    error: scan.error,
+    isLoading: cached.isLoading && scan.isLoading,
+    isError: cached.isError && scan.isError,
+    error: scan.error ?? cached.error,
     isGeneratingThumbnails: isGenerating,
     thumbnailFailedPaths: failedPaths,
   };

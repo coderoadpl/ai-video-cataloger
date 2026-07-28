@@ -135,6 +135,7 @@ describe('search', () => {
       width: 128,
       height: 72,
       force: false,
+      priority: 'foreground',
     }]);
   });
 
