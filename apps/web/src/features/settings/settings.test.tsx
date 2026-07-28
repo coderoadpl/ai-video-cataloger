@@ -13,9 +13,11 @@ import type {
 } from '@core/contract/index.js';
 
 import { en } from '../../i18n/dictionary.js';
+import { savedToastStore } from '../../lib/saved-toast.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
+import { SavedSnackbar } from '../../components/ui/SavedSnackbar.js';
 import { credentialDeletionMessage } from './settings-model.js';
 import { SettingsModal } from './SettingsModal.js';
 import { SLOW_SAVE_HINT_MS } from './use-settings.js';
@@ -228,9 +230,20 @@ describe('settings modal', () => {
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
 
     expect(await screen.findByText('7 frames')).toBeDefined();
-    const hint = screen.getByTestId('settings-inherited-hint');
-    expect(hint.textContent).toContain('frames: 7 (home)');
-    expect(hint.textContent).toContain('whisper_model: small (home)');
+    const panel = screen.getByTestId('settings-inherited-panel');
+    const summary = within(panel).getByRole('button');
+    expect(summary.getAttribute('aria-expanded')).toBe('false');
+    fireEvent.click(summary);
+
+    const frames = screen.getByTestId('settings-inherited-frames');
+    expect(frames.textContent).toContain('Frame count');
+    expect(frames.textContent).toContain('7 frames');
+    expect(frames.textContent).toContain('home');
+    const provider = screen.getByTestId('settings-inherited-analyzer_provider');
+    expect(provider.textContent).toContain('claude-code');
+    expect(provider.textContent).not.toContain('{');
+    expect(screen.getByTestId('settings-inherited-hint').textContent)
+      .toBe(en.settingsModal.inheritedHint);
     expect(screen.getByTestId('settings-save').getAttribute('disabled')).not.toBeNull();
   });
 
@@ -321,6 +334,8 @@ describe('settings modal', () => {
     fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
 
     const budget = await screen.findByTestId('gemini-budget-input');
+    expect(screen.getByTestId('settings-analyzer-section').nextElementSibling)
+      .toBe(screen.getByTestId('gemini-budget-section'));
     await waitFor(() =>
       expect(screen.getByTestId('gemini-spend-readout').textContent)
         .toBe(en.settingsModal.geminiSpendReadout('2026-08', 1.2345, 4)));
@@ -332,6 +347,18 @@ describe('settings modal', () => {
     const saved = bodies.find((body) => body.key === 'gemini_monthly_budget_usd');
     expect(saved?.value).toBe('25.5');
     expect(saved?.folder).toBeUndefined();
+  });
+
+  it('hides the empty Gemini spend readout', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const backendSelect = await screen.findByTestId('analyzer-backend-select');
+    fireEvent.mouseDown(within(backendSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
+
+    await screen.findByTestId('gemini-budget-input');
+    expect(screen.queryByTestId('gemini-spend-readout')).toBeNull();
   });
 
   it('blocks saving a budget that is not a positive amount', async () => {
@@ -486,6 +513,34 @@ describe('settings modal', () => {
 
     await waitFor(() => expect(onClose).toHaveBeenCalled());
     expect(credentialBodies).toEqual([{ providerId: 'openrouter', credential: 'secret-from-ui' }]);
+  });
+
+  it('keeps the credential storage location visible after settings refresh', async () => {
+    savedToastStore.dismiss();
+    stubEndpoints(apiProviderConfig);
+    server.use(
+      http.post('/api/credentials', () => HttpResponse.json({
+        ok: true,
+        data: {
+          providerId: 'openai',
+          stored: true,
+          backend: { backend: 'file', reason: 'unsupported' },
+        },
+      })),
+    );
+    renderThemed(
+      <>
+        <SettingsModal open folder={FOLDER} onClose={vi.fn()} />
+        <SavedSnackbar />
+      </>,
+    );
+
+    fireEvent.change(await screen.findByLabelText('API credential'), { target: { value: 'secret' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    expect(await screen.findByText(en.credentials.savedFile)).toBeDefined();
+    expect(screen.getByTestId('saved-snackbar').textContent).toContain(en.credentials.savedFile);
+    savedToastStore.dismiss();
   });
 
   it('derives the API credential slot when the endpoint changes', async () => {

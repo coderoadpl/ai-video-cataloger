@@ -8,7 +8,7 @@ export type DetailsVideoData = z.output<typeof scanVideoSchema>;
 
 export type VariantLabelCopy =
   | { readonly key: 'legacySettingsUnknown' }
-  | { readonly key: 'nativeTranscription'; readonly providerId: string; readonly model: string | null }
+  | { readonly key: 'nativeTranscription' }
   | { readonly key: 'localTranscription'; readonly model: string | null }
   | { readonly key: 'apiTranscription'; readonly model: string | null }
   | { readonly key: 'transcriptionSkipped' };
@@ -35,7 +35,7 @@ const analyzerLabel = (variant: Pick<VariantData, 'analyzer' | 'descriptor' | 'm
     return [variant.analyzer, variant.model].filter((value): value is string => value !== null).join(' / ') || null;
   }
   const model = variant.descriptor.model ?? variant.descriptor.modelTag;
-  return model === undefined ? variant.descriptor.providerId : `${variant.descriptor.providerId} ${model}`;
+  return model ?? variant.descriptor.providerId;
 };
 
 export const variantLabelModel = (
@@ -48,11 +48,7 @@ export const variantLabelModel = (
   if (descriptor.family === 'gemini-native') {
     return {
       analyzer: analyzerLabel(variant),
-      transcription: {
-        key: 'nativeTranscription',
-        providerId: descriptor.providerId,
-        model: descriptor.model ?? null,
-      },
+      transcription: { key: 'nativeTranscription' },
       frames: null,
     };
   }

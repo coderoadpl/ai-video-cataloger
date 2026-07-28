@@ -6,10 +6,7 @@ const transcriptionLabel = (copy: VariantLabelCopy, dictionary: Dictionary): str
     case 'legacySettingsUnknown':
       return dictionary.details.variants.legacySettingsUnknown;
     case 'nativeTranscription':
-      return dictionary.details.variants.nativeTranscription(
-        copy.providerId,
-        copy.model ?? dictionary.details.unknown,
-      );
+      return dictionary.details.variants.nativeTranscription;
     case 'localTranscription':
       return dictionary.details.variants.localTranscription(copy.model ?? dictionary.details.unknown);
     case 'apiTranscription':

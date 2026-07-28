@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-import { CONFIG_KEYS } from '@core/domain/index.js';
 import type { IndexStatusOutput } from '@core/client/index.js';
+import type { CredentialsBackendStatus } from '@core/domain/index.js';
 
 import { actions } from '../../api.js';
 import { apiErrorMessage } from '../../i18n/api-error-message.js';
@@ -12,12 +12,15 @@ import {
   analyzerCredentialRef,
   changedKeys,
   credentialDeletionNotice,
+  credentialSavedMessage,
   draftFromEffective,
   formatBudgetInput,
   parseBudgetInput,
+  resolvedSettings,
   serializeValue,
   type CredentialNotice,
   type LocalAiTier,
+  type ResolvedSetting,
   type SettingsDraft,
 } from './settings-model.js';
 
@@ -39,7 +42,7 @@ export interface SettingsState {
   budgetInput: string;
   isBudgetInvalid: boolean;
   monthlySpend: MonthlySpend | null;
-  inherited: string[];
+  inherited: ResolvedSetting[];
   isForgettingCredential: boolean;
   forgetCredentialNotice: CredentialNotice | null;
   forgetCredential: () => void;
@@ -141,6 +144,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       const slowHint = setTimeout(() => setIsSaveSlow(true), SLOW_SAVE_HINT_MS);
       setSaveError(null);
       let allOk = true;
+      let savedCredentialBackend: CredentialsBackendStatus | null = null;
       for (const key of keys) {
         try {
           await setConfig.mutateAsync({
@@ -158,10 +162,11 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
         && (draft.analyzer_provider.family === 'api' || draft.analyzer_provider.family === 'gemini-native')
       ) {
         try {
-          await setCredential.mutateAsync({
+          const stored = await setCredential.mutateAsync({
             providerId: draft.analyzer_provider.apiKeyRef,
             credential: apiCredential,
           });
+          savedCredentialBackend = stored.backend;
           setApiCredential('');
         } catch (error) {
           allOk = false;
@@ -170,7 +175,8 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       }
       if (whisperApiCredential.length > 0 && draft.whisper_mode === 'api') {
         try {
-          await setCredential.mutateAsync({ providerId: 'openai', credential: whisperApiCredential });
+          const stored = await setCredential.mutateAsync({ providerId: 'openai', credential: whisperApiCredential });
+          savedCredentialBackend = stored.backend;
           setWhisperApiCredential('');
         } catch (error) {
           allOk = false;
@@ -184,7 +190,9 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       setOriginal(draft);
       await configQuery.refetch();
       await queryClient.invalidateQueries();
-      savedToastStore.show(dictionary.settings.savedToast);
+      savedToastStore.show(savedCredentialBackend === null
+        ? dictionary.settings.savedToast
+        : credentialSavedMessage(dictionary, savedCredentialBackend));
       onSaved?.();
     })();
   }, [
@@ -225,9 +233,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     isBudgetInvalid,
     monthlySpend: indexStatusQuery.data?.currentMonthSpend ?? null,
     inherited: data !== undefined && 'config' in data
-      ? CONFIG_KEYS
-        .filter((key) => data.sources[key] !== 'folder')
-        .map((key) => `${key}: ${data.effective[key]} (${data.sources[key]})`)
+      ? resolvedSettings(dictionary, draftFromEffective(data.effective), data.sources)
       : [],
     isForgettingCredential: deleteCredential.isPending,
     forgetCredentialNotice,

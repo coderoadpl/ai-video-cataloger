@@ -46,6 +46,7 @@ const VariantColumn = ({
   const preview = variantPreview(video, variant);
   const framePaths = preview.video.artifacts.framePaths ?? [];
   const descriptor = variant.descriptor;
+  const frameExtractionDisabled = descriptor?.family === 'gemini-native';
   const select = useCallback(() => onSelect(variant.configId), [onSelect, variant.configId]);
 
   return (
@@ -100,7 +101,25 @@ const VariantColumn = ({
       <Typography variant="caption">{dictionary.details.variants.selectionImpact}</Typography>
 
       <CompareSection title={dictionary.details.extractedFrames(framePaths.length)}>
-        {framePaths.length === 0 ? (
+        {frameExtractionDisabled ? (
+          <Box
+            data-testid={`variant-no-frames-${variant.configId}`}
+            sx={{
+              aspectRatio: '16 / 9',
+              borderRadius: 1,
+              bgcolor: 'action.disabledBackground',
+              color: 'text.disabled',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              p: 2,
+            }}
+          >
+            <Typography variant="caption" color="inherit" align="center">
+              {dictionary.details.variants.frameExtractionDisabled}
+            </Typography>
+          </Box>
+        ) : framePaths.length === 0 ? (
           <Typography variant="body2" color="text.secondary">
             {dictionary.details.variants.notRecorded}
           </Typography>

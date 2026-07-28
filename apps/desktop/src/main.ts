@@ -64,7 +64,7 @@ const createWindow = async (): Promise<void> => {
     ...(windowState.y === undefined ? {} : { y: windowState.y }),
     width: windowState.width,
     height: windowState.height,
-    minWidth: 900,
+    minWidth: 1280,
     minHeight: 600,
     show: true,
     backgroundColor: nativeTheme.shouldUseDarkColors ? '#1c1c1e' : '#f5f5f7',

@@ -130,12 +130,13 @@ export interface Dictionary {
       selected: string;
       legacySettingsUnknown: string;
       configuredLabel: (analyzer: string, transcription: string, frames: string) => string;
-      nativeTranscription: (providerId: string, model: string) => string;
+      nativeTranscription: string;
       localTranscription: (model: string) => string;
       apiTranscription: (model: string) => string;
       transcriptionSkipped: string;
       frameCount: (count: number) => string;
       noFrames: string;
+      frameExtractionDisabled: string;
       useAsSelected: string;
       selectionImpact: string;
       compare: string;
@@ -480,7 +481,37 @@ export interface Dictionary {
     title: string;
     selectFolderFirst: string;
     loading: string;
-    inheritedHint: (values: string) => string;
+    inheritedTitle: string;
+    inheritedHint: string;
+    inheritedSources: {
+      folder: string;
+      home: string;
+      default: string;
+    };
+    inheritedKeys: {
+      whisper_binary_path: string;
+      whisper_model: string;
+      whisper_language: string;
+      whisper_mode: string;
+      whisper_api_base_url: string;
+      whisper_api_model: string;
+      frames: string;
+      timeout: string;
+      skip_rename: string;
+      analyzer_backend: string;
+      local_model: string;
+      analyzer_provider: string;
+      faces_enabled: string;
+      gemini_batch_mode: string;
+      gemini_monthly_budget_usd: string;
+      output_language: string;
+      ui_language: string;
+    };
+    valueNotSet: string;
+    valueEnabled: string;
+    valueDisabled: string;
+    valueNoLimit: string;
+    secondsValue: (seconds: number) => string;
     frameCount: string;
     frameCountValue: (count: number) => string;
     frameCountHelper: string;
@@ -542,6 +573,8 @@ export interface Dictionary {
     forgetCredential: string;
   };
   credentials: {
+    savedKeychain: string;
+    savedFile: string;
     clearedKeychain: string;
     clearedFile: string;
     clearedBoth: string;
@@ -745,13 +778,14 @@ export const en: Dictionary = {
       count: (count) => `${count} ${count === 1 ? 'variant' : 'variants'}`,
       selected: 'Selected',
       legacySettingsUnknown: 'Settings partly unknown',
-      configuredLabel: (analyzer, transcription, frames) => `${analyzer} / ${transcription} / ${frames}`,
-      nativeTranscription: (providerId, model) => `Native transcript (${providerId} ${model})`,
+      configuredLabel: (analyzer, transcription, frames) => `${analyzer} - ${transcription} - ${frames}`,
+      nativeTranscription: 'native transcript',
       localTranscription: (model) => `Local Whisper (${model})`,
       apiTranscription: (model) => `Whisper API (${model})`,
       transcriptionSkipped: 'No transcription',
       frameCount: (count) => `${count} ${count === 1 ? 'frame' : 'frames'}`,
-      noFrames: 'No frames',
+      noFrames: 'no frames',
+      frameExtractionDisabled: 'This variant does not extract frames',
       useAsSelected: 'Use as selected',
       selectionImpact: 'This changes search results and the frames, transcript, and summary files on disk.',
       compare: 'Compare variants',
@@ -1135,7 +1169,37 @@ export const en: Dictionary = {
     title: 'Settings',
     selectFolderFirst: 'Please select a folder first to configure settings.',
     loading: 'Loading settings…',
-    inheritedHint: (values) => `Inherited values: ${values}. Most changed values create a folder override.`,
+    inheritedTitle: 'Inherited values',
+    inheritedHint: 'Most changed values create a folder override.',
+    inheritedSources: {
+      folder: 'folder',
+      home: 'home',
+      default: 'default',
+    },
+    inheritedKeys: {
+      whisper_binary_path: 'Custom whisper.cpp path',
+      whisper_model: 'Whisper model',
+      whisper_language: 'Transcription language',
+      whisper_mode: 'Transcription mode',
+      whisper_api_base_url: 'Whisper API base URL',
+      whisper_api_model: 'Whisper API model',
+      frames: 'Frame count',
+      timeout: 'Analyzer timeout',
+      skip_rename: 'Skip automatic renaming',
+      analyzer_backend: 'Analyzer backend',
+      local_model: 'Local model',
+      analyzer_provider: 'Analyzer',
+      faces_enabled: 'Local face grouping',
+      gemini_batch_mode: 'Gemini batch mode',
+      gemini_monthly_budget_usd: 'Gemini monthly budget',
+      output_language: 'Output language',
+      ui_language: 'Interface language',
+    },
+    valueNotSet: 'Not set',
+    valueEnabled: 'Enabled',
+    valueDisabled: 'Disabled',
+    valueNoLimit: 'No limit',
+    secondsValue: (seconds) => `${String(seconds)} seconds`,
     frameCount: 'Frame Count',
     frameCountValue: (count) => `${count} ${count === 1 ? 'frame' : 'frames'}`,
     frameCountHelper: 'Number of frames to extract from each video for analysis.',
@@ -1201,6 +1265,8 @@ export const en: Dictionary = {
     forgetCredential: 'Forget key',
   },
   credentials: {
+    savedKeychain: 'API key saved in the macOS Keychain.',
+    savedFile: 'API key saved in the config file.',
     clearedKeychain: 'Key removed from the macOS Keychain.',
     clearedFile: 'Key removed from the config file.',
     clearedBoth: 'Key removed from the macOS Keychain and the config file.',
@@ -1412,13 +1478,14 @@ export const pl: Dictionary = {
       count: (count) => `${count} ${plPlural(count, 'wariant', 'warianty', 'wariantów')}`,
       selected: 'Wybrany',
       legacySettingsUnknown: 'Ustawienia częściowo nieznane',
-      configuredLabel: (analyzer, transcription, frames) => `${analyzer} / ${transcription} / ${frames}`,
-      nativeTranscription: (providerId, model) => `Transkrypcja natywna (${providerId} ${model})`,
+      configuredLabel: (analyzer, transcription, frames) => `${analyzer} - ${transcription} - ${frames}`,
+      nativeTranscription: 'transkrypcja natywna',
       localTranscription: (model) => `Lokalny Whisper (${model})`,
       apiTranscription: (model) => `Whisper API (${model})`,
       transcriptionSkipped: 'Bez transkrypcji',
       frameCount: (count) => `${count} ${plPlural(count, 'klatka', 'klatki', 'klatek')}`,
-      noFrames: 'Bez klatek',
+      noFrames: 'bez klatek',
+      frameExtractionDisabled: 'ten wariant nie ekstrahuje klatek',
       useAsSelected: 'Użyj jako wybranego',
       selectionImpact: 'Zmienia wyniki wyszukiwania oraz pliki klatek, transkrypcji i streszczenia na dysku.',
       compare: 'Porównaj warianty',
@@ -1803,7 +1870,37 @@ export const pl: Dictionary = {
     title: 'Ustawienia',
     selectFolderFirst: 'Najpierw wybierz folder, aby skonfigurować ustawienia.',
     loading: 'Ładowanie ustawień…',
-    inheritedHint: (values) => `Wartości dziedziczone: ${values}. Większość zmienionych wartości tworzy nadpisanie dla folderu.`,
+    inheritedTitle: 'Wartości dziedziczone',
+    inheritedHint: 'Najczęściej zmieniane wartości tworzą nadpisanie w folderze.',
+    inheritedSources: {
+      folder: 'folder',
+      home: 'dom',
+      default: 'domyślne',
+    },
+    inheritedKeys: {
+      whisper_binary_path: 'Własna ścieżka whisper.cpp',
+      whisper_model: 'Model Whisper',
+      whisper_language: 'Język transkrypcji',
+      whisper_mode: 'Tryb transkrypcji',
+      whisper_api_base_url: 'Bazowy URL API Whisper',
+      whisper_api_model: 'Model API Whisper',
+      frames: 'Liczba klatek',
+      timeout: 'Limit czasu analizatora',
+      skip_rename: 'Pomiń automatyczną zmianę nazw',
+      analyzer_backend: 'Backend analizatora',
+      local_model: 'Model lokalny',
+      analyzer_provider: 'Analizator',
+      faces_enabled: 'Lokalne grupowanie twarzy',
+      gemini_batch_mode: 'Tryb wsadowy Gemini',
+      gemini_monthly_budget_usd: 'Miesięczny budżet Gemini',
+      output_language: 'Język wyniku',
+      ui_language: 'Język interfejsu',
+    },
+    valueNotSet: 'Nie ustawiono',
+    valueEnabled: 'Włączone',
+    valueDisabled: 'Wyłączone',
+    valueNoLimit: 'Bez limitu',
+    secondsValue: (seconds) => `${String(seconds)} s`,
     frameCount: 'Liczba klatek',
     frameCountValue: (count) => `${count} ${plPlural(count, 'klatka', 'klatki', 'klatek')}`,
     frameCountHelper: 'Liczba klatek wyodrębnianych z każdego filmu do analizy.',
@@ -1869,6 +1966,8 @@ export const pl: Dictionary = {
     forgetCredential: 'Usuń klucz',
   },
   credentials: {
+    savedKeychain: 'Klucz API zapisano w pęku kluczy macOS.',
+    savedFile: 'Klucz API zapisano w pliku konfiguracyjnym.',
     clearedKeychain: 'Klucz usunięty z pęku kluczy macOS.',
     clearedFile: 'Klucz usunięty z pliku konfiguracyjnego.',
     clearedBoth: 'Klucz usunięty z pęku kluczy macOS i pliku konfiguracyjnego.',
