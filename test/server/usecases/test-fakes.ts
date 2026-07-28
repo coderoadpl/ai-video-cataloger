@@ -75,6 +75,7 @@ import type {
   ThumbnailGeneration,
   ThumbnailInput,
   TranscribeInput,
+  TranscriptionOutput,
   TranscriberPort,
 } from '../../../core/server/ports.js';
 import { isReadOnlyWriteError } from '../../../core/server/usecases/folder-identity.js';
@@ -586,14 +587,15 @@ export class InMemoryTranscriber implements TranscriberPort {
     binaryPath?: string | undefined;
   } | undefined> = [];
   transcript = 'transcript';
+  filteredSegments = 0;
 
   constructor(private readonly fs: FileSystemPort = new InMemoryFileSystem()) {}
 
-  async transcribe(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+  async transcribe(input: TranscribeInput): Promise<Result<TranscriptionOutput, AppError>> {
     this.inputs.push(input);
     const written = await this.fs.writeTextFile(input.transcriptPath, this.transcript);
     if (!written.ok) return written;
-    return ok({ transcriptPath: input.transcriptPath, content: this.transcript });
+    return ok({ transcriptPath: input.transcriptPath, content: this.transcript, filteredSegments: this.filteredSegments });
   }
 
   dependency(input?: {

@@ -439,8 +439,14 @@ export interface TranscribeInput {
   signal?: AbortSignal | undefined;
 }
 
+export interface TranscriptionOutput {
+  transcriptPath: string;
+  content: string;
+  filteredSegments: number;
+}
+
 export interface TranscriberPort {
-  transcribe(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>>;
+  transcribe(input: TranscribeInput): Promise<Result<TranscriptionOutput, AppError>>;
   dependency(input?: {
     mode: AppConfig['whisper_mode'];
     model: WhisperModelName;

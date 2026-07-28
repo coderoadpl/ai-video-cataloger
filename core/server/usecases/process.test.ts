@@ -1052,6 +1052,7 @@ describe('process pipeline rename and jobs', () => {
 
   it('runs through JobsPort with typed progress sequence and supports skip rename', async () => {
     const deps = makeDeps('pending');
+    deps.transcriber.filteredSegments = 2;
     const jobs = new InMemoryJobs();
     const result = await enqueueProcess({ ...deps, jobs }, { ...baseInput, skipRename: true, skipRenameExplicit: true });
     const record = await jobs.get('job-1');
@@ -1061,16 +1062,21 @@ describe('process pipeline rename and jobs', () => {
       'extracting_frames',
       'extracting_audio',
       'transcribing_audio',
+      'transcribing_audio',
       'analyzing_with_claude',
       'skipping_rename',
     ]);
-    expect(jobs.progressEvents.map((event) => event.percentage)).toEqual([20, 40, 60, 80, 100]);
+    expect(jobs.progressEvents.map((event) => event.percentage)).toEqual([20, 40, 60, undefined, 80, 100]);
     expect(jobs.progressEvents[0]).toMatchObject({
       current: 1,
       total: 1,
       stepNumber: 1,
       totalSteps: 5,
       data: { video: videoPath, stepNumber: 1, totalSteps: 5 },
+    });
+    expect(jobs.progressEvents[3]).toMatchObject({
+      step: 'transcribing_audio',
+      data: { video: videoPath, filteredSegments: 2 },
     });
     expect(record).toMatchObject({ ok: true, value: { status: 'completed', progress: { step: 'skipping_rename' } } });
   });
