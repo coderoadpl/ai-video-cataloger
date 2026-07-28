@@ -1,7 +1,9 @@
 import { eq, sql, type SQL } from 'drizzle-orm';
 import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js';
 import {
+  accessSync,
   closeSync,
+  constants,
   existsSync,
   fsyncSync,
   mkdirSync,
@@ -325,14 +327,33 @@ const persistWhereWritable = (databasePath: string, client: Database): boolean =
     persistDatabase(databasePath, client);
     return true;
   } catch (cause) {
-    if (isReadOnlyErrno(cause)) return false;
+    if (isReadOnlyErrno(cause, path.dirname(databasePath))) return false;
     throw cause;
   }
 };
 
-const isReadOnlyErrno = (cause: unknown): boolean => {
+const nearestExistingAncestor = (target: string): string => {
+  let current = target;
+  while (!existsSync(current) && current !== path.dirname(current)) current = path.dirname(current);
+  return current;
+};
+
+const rejectsWrites = (target: string): boolean => {
+  try {
+    accessSync(nearestExistingAncestor(target), constants.W_OK);
+    return false;
+  } catch (cause) {
+    const parsed = errnoSchema.safeParse(cause);
+    return parsed.success && READ_ONLY_ERRNO_CODES.has(parsed.data.code);
+  }
+};
+
+const isReadOnlyErrno = (cause: unknown, target: string): boolean => {
   const parsed = errnoSchema.safeParse(cause);
-  return parsed.success && READ_ONLY_ERRNO_CODES.has(parsed.data.code);
+  if (!parsed.success) return false;
+  if (READ_ONLY_ERRNO_CODES.has(parsed.data.code)) return true;
+  // node 22 recursive mkdirSync reports EROFS as ENOENT on read-only exFAT/fskit mounts
+  return parsed.data.code === 'ENOENT' && rejectsWrites(target);
 };
 
 const persistDatabase = (databasePath: string, client: Database): void => {

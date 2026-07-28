@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { constants } from 'node:fs';
 import { access, copyFile, link, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
@@ -14,8 +15,10 @@ import type {
   FileStat,
   FileSystemPort,
 } from '@core/server/index.js';
+import { z } from 'zod';
 
 const PARTIAL_HASH_CHUNK_SIZE = 1024 * 1024;
+const READ_ONLY_ERRNO_CODES: ReadonlySet<string> = new Set(['EACCES', 'EROFS', 'EPERM']);
 
 export interface NodeFileSystemPortOptions {
   workingDirectory?: string | undefined;
@@ -139,7 +142,7 @@ export class NodeFileSystemPort implements FileSystemPort {
       await mkdir(value, { recursive: true });
       return ok(undefined);
     } catch (cause) {
-      return failure('internal', cause, `Failed to create directory: ${value}`);
+      return failure('internal', await unmaskedCause(value, cause), `Failed to create directory: ${value}`);
     }
   }
 
@@ -229,6 +232,34 @@ const directoryEntryKind = (entry: { isDirectory(): boolean; isSymbolicLink(): b
   if (entry.isSymbolicLink()) return 'symlink';
   if (entry.isDirectory()) return 'directory';
   return 'file';
+};
+
+const errnoCodeSchema = z.object({ code: z.string() });
+
+const nearestExistingAncestor = async (target: string): Promise<string> => {
+  let current = target;
+  while (current !== path.dirname(current)) {
+    try {
+      await access(current);
+      return current;
+    } catch {
+      current = path.dirname(current);
+    }
+  }
+  return current;
+};
+
+// node 22 recursive mkdir reports EROFS as ENOENT on read-only exFAT/fskit mounts
+const unmaskedCause = async (target: string, cause: unknown): Promise<unknown> => {
+  const parsed = errnoCodeSchema.safeParse(cause);
+  if (!parsed.success || parsed.data.code !== 'ENOENT') return cause;
+  try {
+    await access(await nearestExistingAncestor(target), constants.W_OK);
+    return cause;
+  } catch (denial) {
+    const parsedDenial = errnoCodeSchema.safeParse(denial);
+    return parsedDenial.success && READ_ONLY_ERRNO_CODES.has(parsedDenial.data.code) ? denial : cause;
+  }
 };
 
 const failure = <T>(code: 'read_error' | 'internal', cause: unknown, fallbackMessage: string): Result<T, AppError> => ({
