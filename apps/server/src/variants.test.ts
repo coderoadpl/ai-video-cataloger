@@ -53,7 +53,7 @@ const variant: CatalogVariant = {
 };
 
 const seededApp = async () => {
-  const deps = createInMemoryDeps({ workingDirectory: '/work' });
+  const deps = createInMemoryDeps({ workingDirectory: '/work', files: ['/work/clip.mp4'] });
   await deps.globalCatalog.upsertFolder(folder);
   await deps.globalCatalog.upsertFile(file);
   await deps.globalCatalog.upsertVariant(variant);

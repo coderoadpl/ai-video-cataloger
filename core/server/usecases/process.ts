@@ -60,6 +60,7 @@ import {
   type SummaryData,
 } from './shared.js';
 import { artifactRootFor, folderArtifactRoot, type ArtifactRoot } from './artifact-root.js';
+import { analyzedCanonicalIsReachable } from './canonical-reachability.js';
 import {
   materializeSelectedVariantProjection,
   reusableFramesArtifact,
@@ -1540,6 +1541,9 @@ const alreadyIndexed = async (
   const variant = await globalCatalog.getVariant(fingerprint, configIdValue);
   if (!variant.ok) return variant;
   if (variant.value === null) return ok(null);
+  const reachable = await analyzedCanonicalIsReachable({ fs: deps.fs, globalCatalog }, fingerprint);
+  if (!reachable.ok) return reachable;
+  if (!reachable.value) return ok(null);
   if (progress !== undefined) {
     const reported = await progress.reportProgress({
       step: 'catalog_index_skipped',

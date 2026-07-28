@@ -1029,6 +1029,15 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return ok(undefined);
   }
 
+  clearAnalysisVariants(fingerprint: string): Promise<Result<void, AppError>> {
+    for (const [key, variant] of this.variants) {
+      if (variant.fingerprint === fingerprint) this.variants.delete(key);
+    }
+    this.analyses.delete(fingerprint);
+    this.selectedConfigIds.delete(fingerprint);
+    return Promise.resolve(ok(undefined));
+  }
+
   setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>> {
     if (configId === null) {
       this.selectedConfigIds.delete(fingerprint);

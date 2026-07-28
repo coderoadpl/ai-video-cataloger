@@ -207,6 +207,46 @@ describe('drive processing', () => {
     }));
   });
 
+  it('heals a deleted canonical before listing and analyzes the present copy', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/library/canonical.mp4', 'hash-shared');
+    const seeded = await processDrive(deps, { ...baseInput, root: '/library' }, undefined, { runId: 'run-seed' });
+    expect(seeded.ok).toBe(true);
+
+    await deps.fs.renamePath('/library', '/removed/library');
+    addVideo(deps.fs, '/drive/present.mp4', 'hash-shared');
+    const listing = await scanTreeFolderDetails(deps, { folder: '/drive' });
+    const listed = listing.ok ? listing.value.videos[0] : undefined;
+    const healedVariants = await deps.globalCatalog.listVariants('hash-shared');
+    const healedSelection = await deps.globalCatalog.getSelectedConfigId('hash-shared');
+
+    expect(listed).toMatchObject({ path: '/drive/present.mp4', status: 'not_tracked' });
+    expect(listed?.duplicate).toBeUndefined();
+    expect(healedVariants.ok && healedVariants.value).toEqual([]);
+    expect(healedSelection.ok && healedSelection.value).toBe(null);
+
+    const run = await processDrive(
+      deps,
+      { ...baseInput, skipDuplicates: true },
+      undefined,
+      { runId: 'run-healed' },
+    );
+    const reElected = await deps.globalCatalog.getFile('hash-shared');
+    const folders = await deps.globalCatalog.listFolders();
+    const driveFolder = folders.ok ? folders.value.find((entry) => entry.currentPath === '/drive') : undefined;
+
+    expect(run).toMatchObject({
+      ok: true,
+      value: { filesDone: 1, filesSkipped: 0, filesDuplicateSkipped: 0, filesFailed: 0 },
+    });
+    expect(deps.analyzer.inputs.map((input) => input.videoPath)).toEqual([
+      '/library/canonical.mp4',
+      '/drive/present.mp4',
+    ]);
+    expect(reElected.ok && reElected.value?.folderId).toBe(driveFolder?.folderId);
+    expect(reElected.ok && reElected.value?.fileName).toBe('present.mp4');
+  });
+
   it('resumes by fingerprint and performs zero analyzer calls on the second run', async () => {
     const deps = makeDeps();
     addVideo(deps.fs, '/drive/one.mp4', 'hash-one');

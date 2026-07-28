@@ -181,6 +181,7 @@ describe('scanFolder', () => {
     fs.addFile('/videos/original.mp4', { size: 1024, hash: 'same-folder-hash' });
     fs.addFile('/videos/local-copy.mp4', { size: 1024, hash: 'same-folder-hash' });
     fs.addFile('/videos/remote-copy.mp4', { size: 1024, hash: 'cross-folder-hash' });
+    fs.addFile('/archive/named-source.mp4', { size: 1024, hash: 'cross-folder-hash' });
     const catalogs = new InMemoryCatalogs([{
       folder: '/videos',
       videos: [videoFixture({
@@ -268,6 +269,55 @@ describe('scanFolder', () => {
       status: 'not_tracked',
       duplicate: { canonicalPath: '/archive/named-source.mp4' },
     });
+  });
+
+  it('keeps a canonical reachable through readable variant artifacts when its source is absent', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/copy.mp4', { size: 1024, hash: 'artifact-hash' });
+    fs.addFile('/archive/.ai-video-cataloger/variants/artifact-hash/legacy/summary.json', { content: '{}' });
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    await globalCatalog.upsertFolder({
+      folderId: 'canonical-folder',
+      currentPath: '/archive',
+      displayName: 'archive',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    await globalCatalog.upsertFile({
+      fingerprint: 'artifact-hash',
+      folderId: 'canonical-folder',
+      fileName: 'missing.mp4',
+      size: 1024,
+      durationS: null,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'openai',
+      model: 'gpt-4.1-mini',
+      missingAt: null,
+    });
+    await globalCatalog.upsertAnalysis({
+      fingerprint: 'artifact-hash',
+      finalName: null,
+      description: 'artifact-backed canonical',
+      transcript: null,
+      language: null,
+      tags: [],
+    });
+
+    const result = await scanFolder({
+      catalogs: new InMemoryCatalogs(),
+      fs,
+      media: new InMemoryMedia(),
+      globalCatalog,
+    }, { folder: '/videos' });
+    const variants = await globalCatalog.listVariants('artifact-hash');
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { videos: [{ duplicate: { canonicalPath: '/archive/missing.mp4' } }] },
+    });
+    expect(variants.ok && variants.value).toHaveLength(1);
   });
 
   it('keeps summary null when only the human txt summary exists', async () => {

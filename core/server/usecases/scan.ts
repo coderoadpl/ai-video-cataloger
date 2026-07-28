@@ -19,6 +19,7 @@ import {
   type SummaryData,
 } from './shared.js';
 import { artifactRootFor, type ArtifactRoot } from './artifact-root.js';
+import { reachableAnalyzedFileLocations } from './canonical-reachability.js';
 import { healRestoredRecords } from './catalog-index.js';
 import { readFolderMarker } from './folder-identity.js';
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
@@ -173,7 +174,9 @@ const enrichWithDuplicates = async (
   if (fingerprints.length === 0) return ok([...videos]);
   const locations = await globalCatalog.listAnalyzedFileLocations(fingerprints);
   if (!locations.ok) return locations;
-  const byFingerprint = new Map(locations.value.map((location) => [location.fingerprint, location]));
+  const reachable = await reachableAnalyzedFileLocations({ fs: deps.fs, globalCatalog }, locations.value);
+  if (!reachable.ok) return reachable;
+  const byFingerprint = new Map(reachable.value.map((location) => [location.fingerprint, location]));
   return ok(videos.map((video) => {
     if (video.contentHash === null) return video;
     const location = byFingerprint.get(video.contentHash);

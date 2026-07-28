@@ -20,6 +20,7 @@ import type {
   JobsPort,
 } from '../ports.js';
 import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
+import { analyzedCanonicalIsReachable } from './canonical-reachability.js';
 import {
   materializeSelectedVariantProjection,
   selectedVariantProjectionSource,
@@ -150,6 +151,8 @@ export const listVariants = async (
   if (!parsed.success) return invalidVariantInput(parsed.error.issues);
   const target = await variantTarget(deps, parsed.data);
   if (!target.ok) return target;
+  const reachable = await analyzedCanonicalIsReachable(deps, target.value.fingerprint);
+  if (!reachable.ok) return reachable;
   const variants = await deps.globalCatalog.listVariants(target.value.fingerprint);
   if (!variants.ok) return variants;
   const storedFolderDefault = await deps.globalCatalog.getFolderDefaultConfigId(target.value.folderId);

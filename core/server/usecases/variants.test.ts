@@ -229,6 +229,28 @@ describe('variant selection', () => {
     });
   });
 
+  it('returns an empty variant list after healing an unreachable canonical', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const analyzer = new InMemoryAnalyzer();
+    const config = new InMemoryConfig();
+    const stored = variant(buildConfigDescriptor({}, 1), 'stale', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [stored]);
+    await store.setSelectedVariant(fingerprint, stored.configId);
+
+    const result = await listVariants(
+      { globalCatalog: store, fs, config, analyzer },
+      { fingerprint },
+    );
+    const selection = await store.getSelectedConfigId(fingerprint);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { fingerprint, variants: [] },
+    });
+    expect(selection.ok && selection.value).toBe(null);
+  });
+
   it('lists comparison-ready variant details by path or fingerprint', async () => {
     const fs = new InMemoryFileSystem(folderPath);
     const store = new InMemoryGlobalCatalogStore();
@@ -321,6 +343,7 @@ describe('variant selection', () => {
     };
     const videoPath = '/copies/clip.mp4';
     fs.addFile(videoPath, { hash: fingerprint, content: 'video' });
+    fs.addFile('/work/clip.mp4', { hash: fingerprint, content: 'video' });
     fs.addFile(folderMarkerPath(fs, viewingFolder.currentPath), { content: JSON.stringify({
       folderId: viewingFolder.folderId,
       schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION,

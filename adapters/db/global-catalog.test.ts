@@ -197,6 +197,10 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(rebuiltSearch.ok && rebuiltSearch.value[0]?.description).toBe(second.description);
     expect(await store.deleteVariant(file.fingerprint, second.configId))
       .toMatchObject({ ok: false, error: { code: 'conflict' } });
+    expect((await store.clearAnalysisVariants(file.fingerprint)).ok).toBe(true);
+    expect(await store.listVariants(file.fingerprint)).toEqual({ ok: true, value: [] });
+    expect(await store.getAnalysis(file.fingerprint)).toEqual({ ok: true, value: null });
+    expect(await store.getSelectedConfigId(file.fingerprint)).toEqual({ ok: true, value: null });
   });
 
   it('rejects a second writer with catalog_locked and the owner PID', async () => {

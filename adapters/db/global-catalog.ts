@@ -430,6 +430,17 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async clearAnalysisVariants(fingerprint: string): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      runCatalogTransaction(client, () => {
+        db.delete(fileTags).where(eq(fileTags.fingerprint, fingerprint)).run();
+        db.delete(analyses).where(eq(analyses.fingerprint, fingerprint)).run();
+        db.update(files).set({ selectedConfigId: null }).where(eq(files.fingerprint, fingerprint)).run();
+        syncSearchDocument(db, client, fingerprint);
+      });
+    });
+  }
+
   async setSelectedVariant(fingerprint: string, configIdValue: string | null): Promise<Result<void, AppError>> {
     return this.write((db, client) => {
       runCatalogTransaction(client, () => {
