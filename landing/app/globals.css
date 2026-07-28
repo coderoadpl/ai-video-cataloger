@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "tw-animate-css";
+@plugin "@tailwindcss/typography";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -216,4 +217,54 @@
   body {
     @apply bg-background text-foreground;
   }
+}
+
+.blog-prose {
+  --tw-prose-body: var(--foreground);
+  --tw-prose-headings: var(--foreground);
+  --tw-prose-lead: var(--muted-foreground);
+  --tw-prose-links: var(--foreground);
+  --tw-prose-bold: var(--foreground);
+  --tw-prose-counters: var(--muted-foreground);
+  --tw-prose-bullets: var(--border);
+  --tw-prose-hr: var(--border);
+  --tw-prose-quotes: var(--foreground);
+  --tw-prose-quote-borders: var(--border);
+  --tw-prose-captions: var(--muted-foreground);
+  --tw-prose-code: var(--foreground);
+  --tw-prose-pre-code: var(--foreground);
+  --tw-prose-pre-bg: var(--muted);
+  --tw-prose-th-borders: var(--border);
+  --tw-prose-td-borders: var(--border);
+}
+
+.blog-prose :where(h2, h3, h4) {
+  scroll-margin-top: calc(var(--navigation-height) + 2rem);
+  text-wrap: balance;
+}
+
+.blog-prose :where(a) {
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 0.2em;
+}
+
+.blog-prose :where(code):not(:where(pre *)) {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--muted);
+  padding: 0.15em 0.35em;
+}
+
+.blog-prose :where(code):not(:where(pre *))::before,
+.blog-prose :where(code):not(:where(pre *))::after {
+  content: none;
+}
+
+.blog-prose :where(pre) {
+  border: 1px solid var(--border);
+}
+
+.blog-prose :where(img) {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
 }

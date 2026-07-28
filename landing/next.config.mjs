@@ -1,3 +1,7 @@
+import { createMDX } from "fumadocs-mdx/next";
+
+const withMDX = createMDX();
+
 const nextConfig = {
   output: "export",
   trailingSlash: true,
@@ -6,4 +10,4 @@ const nextConfig = {
   },
 };
 
-export default nextConfig;
+export default withMDX(nextConfig);

@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- The landing site now includes an English blog with benchmark and getting-started article placeholders.
+
 ### Fixed
 
 - Transcription language is now configurable (`whisper_language`, default `auto`); previously no language was passed to any whisper backend and each fell back to an English-leaning default, causing intermittent misdecoding of non-English narration.

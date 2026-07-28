@@ -3,7 +3,7 @@ name: landing
 on:
   workflow_dispatch:
   push:
-    branches: [rewrite/foundation]
+    branches: [main]
     paths:
       - 'landing/**'
       - '.github/workflows/landing.yml'
