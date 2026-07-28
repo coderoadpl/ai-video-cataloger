@@ -10,6 +10,7 @@ export default defineConfig({
   resolve: {
     alias: {
       '@core': fileURLToPath(new URL('../../core', import.meta.url)),
+      'node:crypto': fileURLToPath(new URL('src/visual/node-crypto.ts', import.meta.url)),
     },
   },
   build: {

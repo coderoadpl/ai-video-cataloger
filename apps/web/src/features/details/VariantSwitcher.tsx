@@ -12,46 +12,9 @@ import {
 
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import {
-  variantLabelModel,
-  type VariantData,
-  type VariantLabelCopy,
-  type VariantLabelModel,
-} from './index.web.js';
+import { variantLabelModel, type VariantData } from './core/variant-model.js';
 import { type VariantsState } from './use-variants.js';
-
-const transcriptionLabel = (copy: VariantLabelCopy, dictionary: Dictionary): string => {
-  switch (copy.key) {
-    case 'legacySettingsUnknown':
-      return dictionary.details.variants.legacySettingsUnknown;
-    case 'nativeTranscription':
-      return dictionary.details.variants.nativeTranscription(
-        copy.providerId,
-        copy.model ?? dictionary.details.unknown,
-      );
-    case 'localTranscription':
-      return dictionary.details.variants.localTranscription(copy.model ?? dictionary.details.unknown);
-    case 'apiTranscription':
-      return dictionary.details.variants.apiTranscription(copy.model ?? dictionary.details.unknown);
-    case 'transcriptionSkipped':
-      return dictionary.details.variants.transcriptionSkipped;
-  }
-};
-
-export const variantLabelText = (model: VariantLabelModel, dictionary: Dictionary): string => {
-  if (model.transcription.key === 'legacySettingsUnknown') {
-    return dictionary.details.variants.legacySettingsUnknown;
-  }
-  const analyzer = model.analyzer ?? dictionary.details.unknown;
-  const frames = model.frames === null
-    ? dictionary.details.variants.noFrames
-    : dictionary.details.variants.frameCount(model.frames);
-  return dictionary.details.variants.configuredLabel(
-    analyzer,
-    transcriptionLabel(model.transcription, dictionary),
-    frames,
-  );
-};
+import { variantLabelText } from './variant-label.js';
 
 const VariantRow = ({
   variant,
@@ -111,6 +74,16 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
           />
         ))}
       </List>
+      {data.variants.length < 2 ? null : (
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={state.showComparison}
+          data-testid="compare-variants"
+        >
+          {dictionary.details.variants.compare}
+        </Button>
+      )}
       {state.previewVariant === null || state.previewVariant.selected ? null : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <Button

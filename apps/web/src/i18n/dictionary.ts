@@ -138,6 +138,15 @@ export interface Dictionary {
       noFrames: string;
       useAsSelected: string;
       selectionImpact: string;
+      compare: string;
+      compareTitle: string;
+      backToDetails: string;
+      configurationId: (configId: string) => string;
+      outputLanguage: (language: string) => string;
+      promptVersion: (version: number) => string;
+      videoDuration: (duration: string) => string;
+      estimatedCost: (amount: number) => string;
+      notRecorded: string;
       newVariant: string;
       existingVariant: string;
       analysisState: (label: string, state: string) => string;
@@ -732,6 +741,15 @@ export const en: Dictionary = {
       noFrames: 'No frames',
       useAsSelected: 'Use as selected',
       selectionImpact: 'This changes search results and the frames, transcript, and summary files on disk.',
+      compare: 'Compare variants',
+      compareTitle: 'Compare analysis variants',
+      backToDetails: 'Back to file details',
+      configurationId: (configId) => `Configuration: ${configId}`,
+      outputLanguage: (language) => `Output language: ${language}`,
+      promptVersion: (version) => `Prompt version: ${version}`,
+      videoDuration: (duration) => `Video duration: ${duration}`,
+      estimatedCost: (amount) => `Estimated cost: $${amount.toFixed(4)} USD`,
+      notRecorded: 'Not recorded',
       newVariant: 'Creates a new variant',
       existingVariant: 'Re-runs an existing variant with force',
       analysisState: (label, state) => `${label}. ${state}.`,
@@ -1375,6 +1393,15 @@ export const pl: Dictionary = {
       noFrames: 'Bez klatek',
       useAsSelected: 'Użyj jako wybranego',
       selectionImpact: 'Zmienia wyniki wyszukiwania oraz pliki klatek, transkrypcji i streszczenia na dysku.',
+      compare: 'Porównaj warianty',
+      compareTitle: 'Porównaj warianty analizy',
+      backToDetails: 'Wróć do szczegółów pliku',
+      configurationId: (configId) => `Konfiguracja: ${configId}`,
+      outputLanguage: (language) => `Język wyniku: ${language}`,
+      promptVersion: (version) => `Wersja promptu: ${version}`,
+      videoDuration: (duration) => `Czas trwania filmu: ${duration}`,
+      estimatedCost: (amount) => `Szacowany koszt: ${amount.toFixed(4)} USD`,
+      notRecorded: 'Nie zapisano',
       newVariant: 'Utworzy nowy wariant',
       existingVariant: 'Ponownie uruchomi istniejący wariant z wymuszeniem',
       analysisState: (label, state) => `${label}. ${state}.`,

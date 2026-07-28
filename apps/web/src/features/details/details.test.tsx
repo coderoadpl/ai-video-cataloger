@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -333,6 +333,55 @@ describe('details panel', () => {
       ['search'],
       ['variants'],
     ]);
+  });
+
+  it('compares variants in parallel and selects from a comparison column', async () => {
+    let selectionWrites = 0;
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
+        variant(firstConfigId, firstDescriptor, true, 'First summary'),
+        {
+          ...variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+          estimatedCostUsd: 0.0123,
+          usage: { totalTokens: 4321, estimatedCostUsd: 0.0123 },
+        },
+      ]))),
+      http.post('/api/variants/select', () => {
+        selectionWrites += 1;
+        return HttpResponse.json({ ok: true, data: { fingerprint: 'hash-a', configId: secondConfigId } });
+      }),
+    );
+    const video = makeVideo({
+      artifacts: {
+        ...makeVideo().artifacts,
+        framePaths: ['/selected/frame-001.jpg', '/selected/frame-002.jpg'],
+      },
+    });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} />);
+
+    await screen.findByTestId('variant-switcher');
+    fireEvent.click(screen.getByTestId('compare-variants'));
+
+    expect(screen.getByTestId('variant-compare-layout')).toBeDefined();
+    expect(screen.getByTestId('variant-compare-columns').children).toHaveLength(2);
+    const firstColumn = screen.getByTestId(`variant-compare-column-${firstConfigId}`);
+    const secondColumn = screen.getByTestId(`variant-compare-column-${secondConfigId}`);
+    expect(within(firstColumn).getByText('First summary')).toBeDefined();
+    expect(within(firstColumn).getByText('First summary transcript')).toBeDefined();
+    expect(within(firstColumn).getByText('First summary tag')).toBeDefined();
+    expect(within(firstColumn).getByTestId('active-frame')).toBeDefined();
+    expect(within(secondColumn).getByText('Second summary')).toBeDefined();
+    expect(within(secondColumn).getByText('Output language: pl')).toBeDefined();
+    expect(within(secondColumn).getByText('Prompt version: 1')).toBeDefined();
+    expect(within(secondColumn).getByText('Estimated cost: $0.0123 USD')).toBeDefined();
+    expect(screen.getAllByText('Video duration: 1:30')).toHaveLength(2);
+
+    const selectedAction = within(firstColumn).getByRole('button', { name: 'Use as selected' });
+    if (!(selectedAction instanceof HTMLButtonElement)) throw new Error('expected a button');
+    expect(selectedAction.disabled).toBe(true);
+    fireEvent.click(within(secondColumn).getByRole('button', { name: 'Use as selected' }));
+    await waitFor(() => expect(selectionWrites).toBe(1));
   });
 
   it('states when analysis creates a variant and sets the current configuration as folder default', async () => {

@@ -4,7 +4,7 @@ import { PlayCircleIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type DetailsVideo, isIncomplete } from './details-video.js';
 import { type AnalysisPlan } from './index.web.js';
-import { variantLabelText } from './VariantSwitcher.js';
+import { variantLabelText } from './variant-label.js';
 
 interface StatusActionsProps {
   video: DetailsVideo;

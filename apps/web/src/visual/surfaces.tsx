@@ -13,6 +13,11 @@ import type { LogLine } from '../components/ui/use-terminal-log.js';
 import { VideoStatusBadge } from '../components/ui/VideoStatusBadge.js';
 import { SidebarSkeleton } from '../features/catalog/SidebarSkeleton.js';
 import { DetailsSkeleton } from '../features/details/DetailsSkeleton.js';
+import { type DetailsVideo } from '../features/details/details-video.js';
+import {
+  VariantCompareView,
+  type VariantCompareVariant,
+} from '../features/details/VariantCompareView.js';
 import { getDict } from '../i18n/dictionary.js';
 
 const SURFACE_IDS = [
@@ -20,9 +25,11 @@ const SURFACE_IDS = [
   'shell-sidebar-collapsed',
   'shell-terminal-open',
   'shell-loading',
+  'variant-compare',
 ] as const;
 
 export type SurfaceId = (typeof SURFACE_IDS)[number];
+type ShellSurfaceId = Exclude<SurfaceId, 'variant-compare'>;
 
 const DEFAULT_SURFACE: SurfaceId = 'shell-default';
 
@@ -53,6 +60,104 @@ const LOG_LINES: readonly LogLine[] = [
   { id: 'visual-3', content: 'analyze beach-sunset-final.mp4 — done', type: 'success', isJson: false },
   { id: 'visual-4', content: 'ffprobe: drone-pass-north.mp4 is unreadable', type: 'error', isJson: false },
 ];
+
+const COMPARE_VIDEO: DetailsVideo = {
+  path: '/Volumes/Media/Clips/coastal-market.mp4',
+  filename: 'coastal-market.mp4',
+  size: 12_000_000,
+  sizeFormatted: '12 MB',
+  duration: 83,
+  durationFormatted: '1:23',
+  status: 'completed',
+  errorMessage: null,
+  contentHash: 'fixture-fingerprint',
+  artifacts: {
+    framePaths: ['/fixture/first/frame-001.jpg', '/fixture/first/frame-002.jpg'],
+    transcriptContent: 'A vendor describes the market as customers pass the camera.',
+    transcriptPath: '/fixture/first/transcript.txt',
+    summary: null,
+    summaryPath: '/fixture/first/summary.txt',
+    thumbnailPath: null,
+    thumbnailMtime: null,
+    newFilename: 'coastal-market-morning.mp4',
+  },
+};
+
+const COMPARE_VARIANTS: readonly VariantCompareVariant[] = [
+  {
+    configId: 'cfg_111111111111',
+    descriptor: {
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'local',
+      whisper_model: 'base',
+      frames: 2,
+      output_language: 'en',
+      promptVersion: 3,
+    },
+    label: 'local / gemma3:12b',
+    createdAt: '2026-08-02T10:00:00.000Z',
+    analyzer: 'local',
+    model: 'gemma3:12b',
+    usage: null,
+    estimatedCostUsd: null,
+    artifacts: {
+      framesDirectory: '/fixture/first',
+      transcriptPath: '/fixture/first/transcript.txt',
+      summaryPath: '/fixture/first/summary.txt',
+    },
+    selected: true,
+    finalName: 'coastal-market-morning.mp4',
+    description: 'A calm walkthrough of a coastal morning market with produce stalls and passing shoppers.',
+    transcript: 'A vendor describes the market as customers pass the camera.',
+    language: 'en',
+    tags: ['market', 'coast', 'morning'],
+  },
+  {
+    configId: 'cfg_222222222222',
+    descriptor: {
+      family: 'gemini-native',
+      providerId: 'gemini',
+      model: 'gemini-3.6-flash',
+      output_language: 'pl',
+      promptVersion: 3,
+    },
+    label: 'gemini / gemini-3.6-flash',
+    createdAt: '2026-08-02T10:04:00.000Z',
+    analyzer: 'gemini',
+    model: 'gemini-3.6-flash',
+    usage: { totalTokens: 3210, estimatedCostUsd: 0.0142 },
+    estimatedCostUsd: 0.0142,
+    artifacts: {
+      framesDirectory: null,
+      transcriptPath: '/fixture/second/transcript.txt',
+      summaryPath: '/fixture/second/summary.txt',
+    },
+    selected: false,
+    finalName: 'poranny-targ-nad-morzem.mp4',
+    description: 'A lively walk through a coastal market, focused on vendors and local produce.',
+    transcript: 'The narrator introduces the market while the camera moves between stalls.',
+    language: 'pl',
+    tags: ['market', 'vendors', 'produce'],
+  },
+];
+
+const fixtureFrameUrl = (path: string): string =>
+  path.endsWith('frame-002.jpg') ? '/compare-frame-2.svg' : '/compare-frame-1.svg';
+
+const VariantCompareFixture = () => (
+  <VariantCompareView
+    video={COMPARE_VIDEO}
+    variants={COMPARE_VARIANTS}
+    selecting={false}
+    actionError={null}
+    onBack={noop}
+    onSelect={noop}
+    frameUrl={fixtureFrameUrl}
+    dictionary={dictionary}
+  />
+);
 
 const Header = () => (
   <AppHeader
@@ -135,7 +240,7 @@ interface Surface {
   terminalCollapsed: boolean;
 }
 
-const surfaceFor = (id: SurfaceId): Surface => {
+const surfaceFor = (id: ShellSurfaceId): Surface => {
   switch (id) {
     case 'shell-default':
       return {
@@ -170,6 +275,13 @@ const surfaceFor = (id: SurfaceId): Surface => {
 };
 
 export const VisualSurface = ({ id }: { id: SurfaceId }) => {
+  if (id === 'variant-compare') {
+    return (
+      <Box data-testid="visual-surface-variant-compare" sx={{ minHeight: '100vh' }}>
+        <VariantCompareFixture />
+      </Box>
+    );
+  }
   const surface = surfaceFor(id);
 
   return (

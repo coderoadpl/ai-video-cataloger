@@ -64,7 +64,7 @@ export const ArtifactsSection = ({ video }: { video: DetailsVideo }) => {
       {hasFrames ? (
         <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
           <CardHeader icon={<ImageIcon fontSize="small" />} title={dictionary.details.extractedFrames(frames.length)} />
-          <FrameGallery key={video.path} framePaths={frames} />
+          <FrameGallery key={video.path} framePaths={frames} frameLabel={dictionary.details.frame} />
         </Paper>
       ) : null}
 

@@ -10,6 +10,7 @@ import { MetadataCard } from './MetadataCard.js';
 import { StatusActions } from './StatusActions.js';
 import { statusDescription } from './status-info.js';
 import { useVariants } from './use-variants.js';
+import { VariantCompareView } from './VariantCompareView.js';
 import { VariantSwitcher } from './VariantSwitcher.js';
 import { VideoPlayer } from './VideoPlayer.js';
 
@@ -99,6 +100,20 @@ export const VideoDetails = ({
   const variants = useVariants(video);
   const previewVideo = variants.preview?.video ?? video;
   const previewTags = variants.preview?.tags ?? video.artifacts.summary?.tags ?? [];
+
+  if (variants.comparing && variants.data !== null && variants.data.variants.length >= 2) {
+    return (
+      <VariantCompareView
+        video={video}
+        variants={variants.data.variants}
+        selecting={variants.selecting}
+        actionError={variants.actionError}
+        onBack={variants.hideComparison}
+        onSelect={variants.useAsSelected}
+        dictionary={dictionary}
+      />
+    );
+  }
 
   return (
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: { xs: 780, lg: 1180 } }}>

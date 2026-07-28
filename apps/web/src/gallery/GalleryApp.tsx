@@ -18,8 +18,14 @@ import { type WhisperModelEntry } from '../features/models/models-model.js';
 import { WhisperModelRow } from '../features/models/WhisperModelRow.js';
 import { getDict } from '../i18n/dictionary.js';
 import { createAppTheme, type ThemeMode } from '../theme.js';
+import { type DetailsVideo } from '../features/details/details-video.js';
+import {
+  VariantCompareView,
+  type VariantCompareVariant,
+} from '../features/details/VariantCompareView.js';
 
 const dictionary = getDict('en');
+const noop = (): void => undefined;
 
 interface Specimen {
   id: string;
@@ -28,6 +34,106 @@ interface Specimen {
 }
 
 const CANONICAL = '/Volumes/Media/Clips/original-take.mp4';
+
+const compareVideo: DetailsVideo = {
+  path: '/Volumes/Media/Clips/coastal-market.mp4',
+  filename: 'coastal-market.mp4',
+  size: 12_000_000,
+  sizeFormatted: '12 MB',
+  duration: 83,
+  durationFormatted: '1:23',
+  status: 'completed',
+  errorMessage: null,
+  contentHash: 'fixture-fingerprint',
+  artifacts: {
+    framePaths: ['/fixture/first/frame-001.jpg', '/fixture/first/frame-002.jpg'],
+    transcriptContent: 'A vendor describes the morning market while customers pass the camera.',
+    transcriptPath: '/fixture/first/transcript.txt',
+    summary: null,
+    summaryPath: '/fixture/first/summary.txt',
+    thumbnailPath: null,
+    thumbnailMtime: null,
+    newFilename: 'coastal-market-morning.mp4',
+  },
+};
+
+const compareVariants: readonly VariantCompareVariant[] = [
+  {
+    configId: 'cfg_111111111111',
+    descriptor: {
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'local',
+      whisper_model: 'base',
+      frames: 2,
+      output_language: 'en',
+      promptVersion: 3,
+    },
+    label: 'local / gemma3:12b',
+    createdAt: '2026-08-02T10:00:00.000Z',
+    analyzer: 'local',
+    model: 'gemma3:12b',
+    usage: null,
+    estimatedCostUsd: null,
+    artifacts: {
+      framesDirectory: '/fixture/first',
+      transcriptPath: '/fixture/first/transcript.txt',
+      summaryPath: '/fixture/first/summary.txt',
+    },
+    selected: true,
+    finalName: 'coastal-market-morning.mp4',
+    description: 'A calm walkthrough of a coastal morning market with produce stalls and passing shoppers.',
+    transcript: 'A vendor describes the morning market while customers pass the camera.',
+    language: 'en',
+    tags: ['market', 'coast', 'morning'],
+  },
+  {
+    configId: 'cfg_222222222222',
+    descriptor: {
+      family: 'gemini-native',
+      providerId: 'gemini',
+      model: 'gemini-3.6-flash',
+      output_language: 'pl',
+      promptVersion: 3,
+    },
+    label: 'gemini / gemini-3.6-flash',
+    createdAt: '2026-08-02T10:04:00.000Z',
+    analyzer: 'gemini',
+    model: 'gemini-3.6-flash',
+    usage: { totalTokens: 3210, estimatedCostUsd: 0.0142 },
+    estimatedCostUsd: 0.0142,
+    artifacts: {
+      framesDirectory: null,
+      transcriptPath: '/fixture/second/transcript.txt',
+      summaryPath: '/fixture/second/summary.txt',
+    },
+    selected: false,
+    finalName: 'poranny-targ-nad-morzem.mp4',
+    description: 'Dynamiczny spacer przez nadmorski targ, skupiony na sprzedawcach i lokalnych produktach.',
+    transcript: 'Sprzedawca opisuje poranny targ, gdy klienci przechodzą przed kamerą.',
+    language: 'pl',
+    tags: ['targ', 'wybrzeże', 'poranek'],
+  },
+];
+
+const fixtureFrameUrl = (path: string): string =>
+  path.endsWith('frame-002.jpg') ? '/compare-frame-2.svg' : '/compare-frame-1.svg';
+
+const CompareSpecimen = () => (
+  <Box data-testid="gallery-variant-compare" sx={{ border: 1, borderColor: 'divider' }}>
+    <VariantCompareView
+      video={compareVideo}
+      variants={compareVariants}
+      selecting={false}
+      actionError={null}
+      onBack={noop}
+      onSelect={noop}
+      frameUrl={fixtureFrameUrl}
+      dictionary={dictionary}
+    />
+  </Box>
+);
 
 const badgeSpecimens: readonly Specimen[] = [
   { id: 'badge-pending', label: 'Pending', node: <VideoStatusBadge status="pending" variant="details" /> },
@@ -227,6 +333,12 @@ const ThemePanel = ({ mode }: { mode: ThemeMode }) => (
           </Box>
         </Box>
       ))}
+      <Box sx={{ mb: 3 }}>
+        <Typography variant="h2" sx={{ mb: 1 }}>
+          Compare view skeleton
+        </Typography>
+        <CompareSpecimen />
+      </Box>
     </Box>
   </ThemeProvider>
 );
