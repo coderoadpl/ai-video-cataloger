@@ -14,27 +14,40 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.2] - 2026-08-04
+
 ### Added
 
-- The Setup Wizard now includes a Faces step for enabling local face detection and recognition before scanning.
-- The landing site now includes an English blog carrying the analyzer benchmark write-up and a getting-started walkthrough.
+- The Setup Wizard now includes a Faces step for enabling local face detection and recognition before scanning
+  ([`970c5080`](https://github.com/chomamateusz/ai-video-cataloger/commit/970c5080)).
+- The landing site now includes an English blog carrying the analyzer benchmark write-up and a getting-started walkthrough
+  ([`2a0a280e`](https://github.com/chomamateusz/ai-video-cataloger/commit/2a0a280e)).
 
 ### Changed
 
-- Gates refuse to run on the wrong Node.
-- `scripts/release-walkthrough.mjs` now opens the driven window at a configurable size (`--window-size`, default 1920x1200) so the details column no longer collapses in captured screenshots, and waits for pending transitions/spinners to settle before each screenshot.
+- Gates refuse to run on the wrong Node
+  ([`6d47349e`](https://github.com/chomamateusz/ai-video-cataloger/commit/6d47349e)).
+- `scripts/release-walkthrough.mjs` now opens the driven window at a configurable size (`--window-size`, default 1920x1200) so the details column no longer collapses in captured screenshots, and waits for pending transitions/spinners to settle before each screenshot
+  ([`0119e002`](https://github.com/chomamateusz/ai-video-cataloger/commit/0119e002)).
 
 ### Fixed
 
-- Duplicate detection now clears unreachable canonical analyses when neither their source file nor variant artifacts remain, so present copies return to pending and can elect a new canonical on analysis.
-- Variant selection now returns to details from comparison, keeps unrelated controls responsive while name-based artifacts refresh in the background, and enables the folder-default action whenever the selected configuration differs from the stored default.
-- GUI Analyze All runs now skip files marked as duplicates, report duplicate skips separately, and reserve duplicate analysis for the explicit Analyze anyway action.
-- GUI analysis completion now follows renamed files in the catalog and details view, refreshes variants by fingerprint, and offers a retry when variant loading fails.
-- Known folders render cached catalog rows before filesystem reconciliation, thumbnails generate in a bounded parallel priority queue, and loaded analysis variants are reused when switching.
-- Settings now show compact sourced values, place Gemini budget feedback by its model, preserve credential-save destinations, and omit empty spend; analysis details no longer collapse at supported window sizes, duplicate Gemini descriptors, or misalign frame-free comparisons.
+- Duplicate detection now clears unreachable canonical analyses when neither their source file nor variant artifacts remain, so present copies return to pending and can elect a new canonical on analysis
+  ([`a1ec5a3b`](https://github.com/chomamateusz/ai-video-cataloger/commit/a1ec5a3b)).
+- Variant selection now returns to details from comparison, keeps unrelated controls responsive while name-based artifacts refresh in the background, and enables the folder-default action whenever the selected configuration differs from the stored default
+  ([`c09522d6`](https://github.com/chomamateusz/ai-video-cataloger/commit/c09522d6)).
+- GUI Analyze All runs now skip files marked as duplicates, report duplicate skips separately, and reserve duplicate analysis for the explicit Analyze anyway action
+  ([`dd5a0e1e`](https://github.com/chomamateusz/ai-video-cataloger/commit/dd5a0e1e)).
+- GUI analysis completion now follows renamed files in the catalog and details view, refreshes variants by fingerprint, and offers a retry when variant loading fails
+  ([`5775760e`](https://github.com/chomamateusz/ai-video-cataloger/commit/5775760e)).
+- Known folders render cached catalog rows before filesystem reconciliation, thumbnails generate in a bounded parallel priority queue, and loaded analysis variants are reused when switching
+  ([`6a993533`](https://github.com/chomamateusz/ai-video-cataloger/commit/6a993533)).
+- Settings now show compact sourced values, place Gemini budget feedback by its model, preserve credential-save destinations, and omit empty spend; analysis details no longer collapse at supported window sizes, duplicate Gemini descriptors, or misalign frame-free comparisons
+  ([`90396ebf`](https://github.com/chomamateusz/ai-video-cataloger/commit/90396ebf)).
 - Landing header section links now return to the locale-specific home page from
   blog routes, and the benchmark article uses a concise title with its former
-  title retained as the visible subtitle.
+  title retained as the visible subtitle
+  ([`0f39e8b3`](https://github.com/chomamateusz/ai-video-cataloger/commit/0f39e8b3)).
 
 ## [0.6.1] - 2026-08-03
 
