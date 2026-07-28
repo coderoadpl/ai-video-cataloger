@@ -1,6 +1,6 @@
-import { createHash } from 'node:crypto';
-
 import { z } from 'zod';
+
+import { sha256Hex } from './sha256.js';
 
 import {
   configSchema,
@@ -210,6 +210,6 @@ const canonicalJson = (value: unknown): string => {
 
 export const configId = (descriptor: ConfigDescriptor): string => {
   const parsed = configDescriptorSchema.parse(descriptor);
-  const digest = createHash('sha256').update(canonicalJson(parsed)).digest('hex');
+  const digest = sha256Hex(canonicalJson(parsed));
   return `cfg_${digest.slice(0, 12)}`;
 };
