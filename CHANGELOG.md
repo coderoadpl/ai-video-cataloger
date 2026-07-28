@@ -14,45 +14,73 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-08-03
+
 ### Added
 
-- Settings expose the Gemini monthly budget cap alongside a read-only readout of this month's estimated Gemini spend and the number of analyses behind it.
-- File details can compare every analysis variant side by side, including configuration, frames, transcript, summary, tags, duration and recorded cost, and select a variant from its comparison column.
-- File details can preview and explicitly select analysis variants, show whether Analyze creates or replaces a variant, set the current configuration as the folder default, and badge multi-variant search results.
-- `variants list|select|delete|default` CLI commands inspect and manage analysis variants; process NDJSON identifies configurations and reports verbose artifact reuse.
-- Variant contract routes expose comparison-ready analysis descriptors and artifact paths, with client descriptors for listing, selection, deletion, and folder defaults.
-- Gemini native choices in the setup wizard and settings disclose before selection that the entire video and audio leave the Mac, how Google receives and retains the file, that the model creates the transcript, and the duration-based ballpark cost.
-- Gemini analyses show per-file and drive-run cost estimates, append them to a local monthly spend ledger, and pause resumable drive runs at a configured soft budget.
+- Settings expose the Gemini monthly budget cap alongside a read-only readout of this month's estimated Gemini spend and the number of analyses behind it
+  ([`8a9eb13`](https://github.com/chomamateusz/ai-video-cataloger/commit/8a9eb13f)).
+- File details can compare every analysis variant side by side, including configuration, frames, transcript, summary, tags, duration and recorded cost, and select a variant from its comparison column
+  ([`4f2e7c6`](https://github.com/chomamateusz/ai-video-cataloger/commit/4f2e7c64)).
+- File details can preview and explicitly select analysis variants, show whether Analyze creates or replaces a variant, set the current configuration as the folder default, and badge multi-variant search results
+  ([`0e74679`](https://github.com/chomamateusz/ai-video-cataloger/commit/0e74679d)).
+- `variants list|select|delete|default` CLI commands inspect and manage analysis variants; process NDJSON identifies configurations and reports verbose artifact reuse
+  ([`a17b7af`](https://github.com/chomamateusz/ai-video-cataloger/commit/a17b7af7)).
+- Variant contract routes expose comparison-ready analysis descriptors and artifact paths, with client descriptors for listing, selection, deletion, and folder defaults
+  ([`b2c182c`](https://github.com/chomamateusz/ai-video-cataloger/commit/b2c182c1)).
+- Gemini native choices in the setup wizard and settings disclose before selection that the entire video and audio leave the Mac, how Google receives and retains the file, that the model creates the transcript, and the duration-based ballpark cost
+  ([`439652f`](https://github.com/chomamateusz/ai-video-cataloger/commit/439652f3)).
+- Gemini analyses show per-file and drive-run cost estimates, append them to a local monthly spend ledger, and pause resumable drive runs at a configured soft budget
+  ([`b670895`](https://github.com/chomamateusz/ai-video-cataloger/commit/b670895f)).
 - The packaged app honors `AI_VIDEO_CATALOGER_USER_DATA_DIR` and the keychain
-  environment variables for fully isolated test runs.
-- Duplicate chips appear in folder scope, not only Whole-tree.
-- `pnpm run qa:walkthrough` drives a packaged build through launch, folder open, tree, analysis, search, settings and wizard against an isolated user-data directory, home and disabled keychain, capturing one screenshot per step; the release procedure now requires this self-QA pass and a review of its screenshots before a DMG is offered (`docs/qa/release-walkthrough.md`).
-- The project is licensed `Elastic-2.0` — `LICENSE` (ELv2) at the repo root and a root `package.json` declaration, per ADR-0009 (public source, paid convenience builds, license-key-gated features permitted).
+  environment variables for fully isolated test runs
+  ([`77c5a19`](https://github.com/chomamateusz/ai-video-cataloger/commit/77c5a193)).
+- Duplicate chips appear in folder scope, not only Whole-tree
+  ([`3e790ef`](https://github.com/chomamateusz/ai-video-cataloger/commit/3e790ef3)).
+- `pnpm run qa:walkthrough` drives a packaged build through launch, folder open, tree, analysis, search, settings and wizard against an isolated user-data directory, home and disabled keychain, capturing one screenshot per step; the release procedure now requires this self-QA pass and a review of its screenshots before a DMG is offered (`docs/qa/release-walkthrough.md`)
+  ([`8d61177`](https://github.com/chomamateusz/ai-video-cataloger/commit/8d611774)).
+- The project is licensed `Elastic-2.0` — `LICENSE` (ELv2) at the repo root and a root `package.json` declaration, per ADR-0009 (public source, paid convenience builds, license-key-gated features permitted)
+  ([`086394c`](https://github.com/chomamateusz/ai-video-cataloger/commit/086394c8)).
 
 ### Changed
 
-- The entity gate was reverted after three failed measured iterations, and fabrication control moves to a future verification pass.
-- Analysis prompt version 3 adds a concrete-attribute floor for filenames and tags when no entity is verifiable.
-- The gemini-native entity gate now applies one evidence rule across descriptions, filenames, and tags with attribute-based fallbacks, addressing the c11 blind-judge regression.
-- Selecting an analysis variant now refreshes its name-based artifacts and search document together; folder defaults resolve from the full processing configuration, and deletion promotes the newest survivor while retaining shared artifacts until their final reference is removed.
-- Processing deduplicates and force-replaces per content/configuration pair; completion and skip NDJSON name the configuration, and folder snapshots preserve every variant plus the selected configuration.
-- Name-based artifacts under `frames/`, `transcripts/`, and `summaries/` project the selected analysis variant.
-- The global catalog index uses schema version 9 and stores analyses by content fingerprint and configuration.
-- The gemini-native prompt gates named entities on legible evidence.
-- The packaged app no longer accepts the in-memory DB driver.
+- The entity gate was reverted after three failed measured iterations, and fabrication control moves to a future verification pass
+  ([`25a7bae`](https://github.com/chomamateusz/ai-video-cataloger/commit/25a7bae4)).
+- Analysis prompt version 3 adds a concrete-attribute floor for filenames and tags when no entity is verifiable
+  ([`07166c5`](https://github.com/chomamateusz/ai-video-cataloger/commit/07166c5a)).
+- The gemini-native entity gate now applies one evidence rule across descriptions, filenames, and tags with attribute-based fallbacks, addressing the c11 blind-judge regression
+  ([`424062c`](https://github.com/chomamateusz/ai-video-cataloger/commit/424062c4)).
+- Selecting an analysis variant now refreshes its name-based artifacts and search document together; folder defaults resolve from the full processing configuration, and deletion promotes the newest survivor while retaining shared artifacts until their final reference is removed
+  ([`d452e8e`](https://github.com/chomamateusz/ai-video-cataloger/commit/d452e8ef)).
+- Processing deduplicates and force-replaces per content/configuration pair; completion and skip NDJSON name the configuration, and folder snapshots preserve every variant plus the selected configuration
+  ([`d2c7c4b`](https://github.com/chomamateusz/ai-video-cataloger/commit/d2c7c4b9)).
+- Name-based artifacts under `frames/`, `transcripts/`, and `summaries/` project the selected analysis variant
+  ([`a69d68a`](https://github.com/chomamateusz/ai-video-cataloger/commit/a69d68a5)).
+- The global catalog index uses schema version 9 and stores analyses by content fingerprint and configuration
+  ([`74a3120`](https://github.com/chomamateusz/ai-video-cataloger/commit/74a31202)).
+- The gemini-native prompt gates named entities on legible evidence
+  ([`1ba611c`](https://github.com/chomamateusz/ai-video-cataloger/commit/1ba611c7)).
+- The packaged app no longer accepts the in-memory DB driver
+  ([`0d55a10`](https://github.com/chomamateusz/ai-video-cataloger/commit/0d55a103)).
 - Processing flags passed explicitly to `process` and `process-drive` now
   override setup configuration, while unpassed flags defer to configured values
-  instead of applying their CLI defaults.
+  instead of applying their CLI defaults
+  ([`335e544`](https://github.com/chomamateusz/ai-video-cataloger/commit/335e5448)).
 - The processing command help now distinguishes `--force` from a catalog reset,
   and the CLI documentation states that resumable drive runs with per-file
-  failures exit 0 and identifies the summary and NDJSON failure counts.
+  failures exit 0 and identifies the summary and NDJSON failure counts
+  ([`335e544`](https://github.com/chomamateusz/ai-video-cataloger/commit/335e5448)).
 
 ### Fixed
 
-- A Gemini native upload whose final response is lost now completes from the server-confirmed state instead of failing with `read_error`.
-- An incomplete credential migration retries on a cooldown instead of re-running on every command.
-- The keychain path configured by `AI_VIDEO_CATALOGER_KEYCHAIN` is validated before writes, so a bogus path can no longer send API keys to the login keychain.
-- Search results show real thumbnails for folders indexed via the CLI.
+- A Gemini native upload whose final response is lost now completes from the server-confirmed state instead of failing with `read_error`
+  ([`f8abc50`](https://github.com/chomamateusz/ai-video-cataloger/commit/f8abc506)).
+- An incomplete credential migration retries on a cooldown instead of re-running on every command
+  ([`f68d87d`](https://github.com/chomamateusz/ai-video-cataloger/commit/f68d87d2)).
+- The keychain path configured by `AI_VIDEO_CATALOGER_KEYCHAIN` is validated before writes, so a bogus path can no longer send API keys to the login keychain
+  ([`10c10ab`](https://github.com/chomamateusz/ai-video-cataloger/commit/10c10abd)).
+- Search results show real thumbnails for folders indexed via the CLI
+  ([`ae56d10`](https://github.com/chomamateusz/ai-video-cataloger/commit/ae56d105)).
 
 ## [0.5.26] - 2026-07-29
 
