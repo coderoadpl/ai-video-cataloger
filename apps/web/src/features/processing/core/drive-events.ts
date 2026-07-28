@@ -13,6 +13,7 @@ export type DriveMessage =
       readonly path: string;
       readonly filesDone: number;
       readonly filesSkipped: number;
+      readonly filesDuplicateSkipped: number;
       readonly filesFailed: number;
     }
   | {
@@ -22,7 +23,12 @@ export type DriveMessage =
       readonly budgetUsd: number;
       readonly estimatedSpendUsd: number;
     }
-  | { readonly kind: 'fileSkipped'; readonly level: 'info'; readonly filename: string }
+  | {
+      readonly kind: 'fileSkipped';
+      readonly level: 'info';
+      readonly filename: string;
+      readonly reason: 'already-analyzed' | 'duplicate';
+    }
   | { readonly kind: 'snapshotSkipped'; readonly level: 'info'; readonly folder: string }
   | { readonly kind: 'batchUploadsRetained'; readonly level: 'info'; readonly retained: number }
   | { readonly kind: 'batchOrphanJobs'; readonly level: 'info'; readonly jobNames: readonly string[] }
@@ -34,6 +40,7 @@ export type DriveMessage =
       readonly foldersTotal: number;
       readonly filesDone: number;
       readonly filesSkipped: number;
+      readonly filesDuplicateSkipped: number;
       readonly filesFailed: number;
       readonly estimatedCostUsd: number | null;
       readonly costedFiles: number;
@@ -182,6 +189,7 @@ export const reduceDriveEvent = (
           path: strField(data, 'path'),
           filesDone: numField(data, 'filesDone'),
           filesSkipped: numField(data, 'filesSkipped'),
+          filesDuplicateSkipped: numField(data, 'filesDuplicateSkipped'),
           filesFailed: numField(data, 'filesFailed'),
         },
       ],
@@ -194,7 +202,12 @@ export const reduceDriveEvent = (
     const video = strField(data, 'video');
     return {
       ...idle(counts),
-      messages: [{ kind: 'fileSkipped', level: 'info', filename: basename(video) }],
+      messages: [{
+        kind: 'fileSkipped',
+        level: 'info',
+        filename: basename(video),
+        reason: data?.['reason'] === 'duplicate' ? 'duplicate' : 'already-analyzed',
+      }],
       skippedPath: video,
     };
   }
@@ -291,6 +304,7 @@ export const reduceDriveEvent = (
           foldersTotal: numField(data, 'foldersTotal'),
           filesDone: numField(data, 'filesDone'),
           filesSkipped: numField(data, 'filesSkipped'),
+          filesDuplicateSkipped: numField(data, 'filesDuplicateSkipped'),
           filesFailed: numField(data, 'filesFailed'),
           estimatedCostUsd: estimateRecord === undefined ? null : numField(estimateRecord, 'estimatedCostUsd'),
           costedFiles: numField(estimateRecord, 'files'),

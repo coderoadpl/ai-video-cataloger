@@ -240,6 +240,7 @@ export const processDriveInputSchema = z.object({
   provider: analyzerProviderIdSchema.optional(),
   localModel: z.string().min(1).optional(),
   force: z.boolean().optional(),
+  skipDuplicates: z.boolean().optional(),
   geminiBatch: z.boolean().optional(),
   geminiBatchExplicit: z.boolean().optional(),
 }).transform((input) => ({
@@ -261,6 +262,7 @@ export const processDriveInputSchema = z.object({
   ...(input.provider === undefined ? {} : { provider: input.provider }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
   ...(input.force === undefined ? {} : { force: input.force }),
+  ...(input.skipDuplicates === undefined ? {} : { skipDuplicates: input.skipDuplicates }),
   ...(input.geminiBatch === undefined ? {} : { geminiBatch: input.geminiBatch }),
   geminiBatchExplicit: input.geminiBatchExplicit ?? input.geminiBatch !== undefined,
 }));
@@ -295,6 +297,7 @@ export const driveRunSummarySchema = z.object({
   filesTotal: z.number().int().nonnegative(),
   filesDone: z.number().int().nonnegative(),
   filesSkipped: z.number().int().nonnegative(),
+  filesDuplicateSkipped: z.number().int().nonnegative().default(0),
   filesFailed: z.number().int().nonnegative(),
   costEstimate: z.object({
     kind: z.literal('estimate'),

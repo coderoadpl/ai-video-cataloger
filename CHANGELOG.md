@@ -20,6 +20,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- GUI Analyze All runs now skip files marked as duplicates, report duplicate skips separately, and reserve duplicate analysis for the explicit Analyze anyway action.
 - GUI analysis completion now follows renamed files in the catalog and details view, refreshes variants by fingerprint, and offers a retry when variant loading fails.
 
 ## [0.6.1] - 2026-08-03

@@ -97,6 +97,7 @@ export interface ProcessDriveInput {
   provider?: AnalyzerProviderId | undefined;
   localModel?: string | undefined;
   force?: boolean | undefined;
+  skipDuplicates?: boolean | undefined;
   geminiBatch?: boolean | undefined;
   geminiBatchExplicit?: boolean | undefined;
 }
@@ -111,6 +112,7 @@ export interface DriveRunSummary {
   filesTotal: number;
   filesDone: number;
   filesSkipped: number;
+  filesDuplicateSkipped: number;
   filesFailed: number;
   costEstimate?: {
     kind: 'estimate';
@@ -149,13 +151,21 @@ interface PendingBatchFile {
 
 interface DeferredFolder {
   path: string;
-  counts: { filesDone: number; filesSkipped: number; filesFailed: number };
+  counts: FolderRunCounts;
   pending: PendingBatchFile[];
+}
+
+interface FolderRunCounts {
+  filesDone: number;
+  filesSkipped: number;
+  filesDuplicateSkipped: number;
+  filesFailed: number;
 }
 
 interface MutableRunState {
   run: DriveRunRecord;
   filesTotal: number;
+  filesDuplicateSkipped: number;
   snapshotSkipped: number;
   failures: DriveRunFailure[];
   startedMs: number;
@@ -238,6 +248,7 @@ export const processDrive = async (
       batch: adopted?.batch ?? null,
     },
     filesTotal: discovery.value.filesTotal,
+    filesDuplicateSkipped: 0,
     snapshotSkipped: 0,
     failures: [...discovery.value.failures],
     startedMs: started.getTime(),
@@ -298,13 +309,19 @@ export const processDrive = async (
       const done = await reportFolderDone(progress, folder.path, {
         filesDone: 0,
         filesSkipped: 0,
+        filesDuplicateSkipped: 0,
         filesFailed: 1,
       });
       if (!done.ok) return done;
       continue;
     }
 
-    const folderCounts = { filesDone: 0, filesSkipped: 0, filesFailed: 0 };
+    const folderCounts: FolderRunCounts = {
+      filesDone: 0,
+      filesSkipped: 0,
+      filesDuplicateSkipped: 0,
+      filesFailed: 0,
+    };
     const pendingBatchFiles: PendingBatchFile[] = [];
     const batchesHere = plan === null || !batchFolders.value.has(folder.path)
       ? ok(false)
@@ -314,6 +331,15 @@ export const processDrive = async (
       const cancellation = cancelled(progress);
       if (!cancellation.ok) return cancellation;
       fileIndex += 1;
+      if (input.skipDuplicates === true && video.duplicate != null) {
+        const skipReported = await report(progress, 'file-skipped', { video: video.path, reason: 'duplicate' });
+        if (!skipReported.ok) return skipReported;
+        state.run.filesSkipped += 1;
+        state.filesDuplicateSkipped += 1;
+        folderCounts.filesSkipped += 1;
+        folderCounts.filesDuplicateSkipped += 1;
+        continue;
+      }
       const batchIdentity = plan !== null && batchesHere.value
         ? resolvedBatchIdentity(plan, state.run.batch)
         : null;
@@ -840,7 +866,7 @@ const closeFolder = async (
   globalCatalog: GlobalCatalogStore,
   state: MutableRunState,
   folderPath: string,
-  counts: { filesDone: number; filesSkipped: number; filesFailed: number },
+  counts: FolderRunCounts,
   progress: JobExecutionContext | undefined,
   now: () => Date,
 ): Promise<Result<void, AppError>> => {
@@ -855,7 +881,7 @@ const closeFolder = async (
 const recordFileFailure = async (
   deps: ProcessDeps,
   state: MutableRunState,
-  counts: { filesDone: number; filesSkipped: number; filesFailed: number },
+  counts: FolderRunCounts,
   videoPath: string,
   error: AppError,
   now: () => Date,
@@ -1133,12 +1159,13 @@ const persistRun = async (
 const reportFolderDone = (
   progress: JobExecutionContext | undefined,
   folderPath: string,
-  counts: { filesDone: number; filesSkipped: number; filesFailed: number },
+  counts: FolderRunCounts,
 ): Promise<Result<void, AppError>> =>
   report(progress, 'folder-done', {
     path: folderPath,
     filesDone: counts.filesDone,
     filesSkipped: counts.filesSkipped,
+    filesDuplicateSkipped: counts.filesDuplicateSkipped,
     filesFailed: counts.filesFailed,
   });
 
@@ -1164,6 +1191,7 @@ const reportSummary = async (
     filesTotal: summary.filesTotal,
     filesDone: summary.filesDone,
     filesSkipped: summary.filesSkipped,
+    filesDuplicateSkipped: summary.filesDuplicateSkipped,
     filesFailed: summary.filesFailed,
     ...(summary.costEstimate === undefined ? {} : { costEstimate: summary.costEstimate }),
     snapshotSkipped: summary.snapshotSkipped,
@@ -1188,6 +1216,7 @@ const summaryFromState = (
   filesTotal: state.filesTotal,
   filesDone: state.run.filesDone,
   filesSkipped: state.run.filesSkipped,
+  filesDuplicateSkipped: state.filesDuplicateSkipped,
   filesFailed: state.run.filesFailed,
   ...(spend.entries === 0 ? {} : {
     costEstimate: {

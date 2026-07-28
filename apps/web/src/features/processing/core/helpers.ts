@@ -2,7 +2,7 @@ import { ApiError } from '@core/client/index.js';
 import type { z } from 'zod';
 import type { scanVideoSchema } from '@core/contract/index.js';
 
-export type ProcessVideo = Pick<z.output<typeof scanVideoSchema>, 'path' | 'filename' | 'status'>;
+export type ProcessVideo = Pick<z.output<typeof scanVideoSchema>, 'path' | 'filename' | 'status' | 'duplicate'>;
 
 export const isPending = (status: ProcessVideo['status']): boolean =>
   status === 'pending' || status === 'not_tracked';
