@@ -19,6 +19,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The Setup Wizard now includes a Faces step for enabling local face detection and recognition before scanning.
 - The landing site now includes an English blog carrying the analyzer benchmark write-up and a getting-started walkthrough.
 
+### Changed
+
+- Gates refuse to run on the wrong Node.
+
 ### Fixed
 
 - Duplicate detection now clears unreachable canonical analyses when neither their source file nor variant artifacts remain, so present copies return to pending and can elect a new canonical on analysis.
