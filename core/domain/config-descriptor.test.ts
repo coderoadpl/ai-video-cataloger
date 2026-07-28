@@ -205,6 +205,24 @@ describe('config descriptor identity', () => {
     }
   });
 
+  it('parses descriptors persisted before whisper_language existed', () => {
+    const stored = configDescriptorSchema.parse({
+      family: 'harness',
+      providerId: 'codex',
+      promptStyle: 'file-urls',
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'low',
+      whisper_mode: 'local',
+      whisper_model: 'large-v3-turbo',
+      frames: 3,
+      output_language: 'auto',
+      promptVersion: 4,
+    });
+
+    expect(stored.whisper_language).toBeUndefined();
+    expect(configId(stored)).not.toBe(configId({ ...stored, whisper_language: 'auto' }));
+  });
+
   it('classifies every config key as identity-bearing or excluded', () => {
     expect(Object.keys(CONFIG_IDENTITY_CLASSIFICATION).sort()).toEqual([...CONFIG_KEYS].sort());
     expect(Object.values(CONFIG_IDENTITY_CLASSIFICATION).every((value) => (
