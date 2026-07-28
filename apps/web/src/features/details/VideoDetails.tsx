@@ -106,7 +106,7 @@ export const VideoDetails = ({
       <VariantCompareView
         video={video}
         variants={variants.data.variants}
-        selecting={variants.selecting}
+        selectingConfigId={variants.selectingConfigId}
         actionError={variants.actionError}
         onBack={variants.hideComparison}
         onSelect={variants.useAsSelected}

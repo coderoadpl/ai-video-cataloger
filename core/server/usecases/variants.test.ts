@@ -1,13 +1,17 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  appError,
   buildConfigDescriptor,
   configId,
   GLOBAL_CATALOG_SCHEMA_VERSION,
+  ok,
+  type AppError,
   type CatalogFile,
   type CatalogFolder,
   type CatalogVariant,
   type ConfigDescriptor,
+  type Result,
 } from '@core/domain/index.js';
 
 import {
@@ -15,12 +19,25 @@ import {
   InMemoryConfig,
   InMemoryFileSystem,
   InMemoryGlobalCatalogStore,
+  InMemoryJobs,
 } from '../../../test/server/usecases/test-fakes.js';
+import type {
+  FileSystemPort,
+  GlobalCatalogStore,
+  JobExecutionContext,
+  JobsPort,
+} from '../ports.js';
 import { folderArtifactRoot } from './artifact-root.js';
 import { sharedArtifactPaths, variantOutputPaths } from './artifact-store.js';
 import { folderMarkerPath } from './folder-identity.js';
 import { artifactPaths } from './shared.js';
-import { deleteVariant, listVariants, selectVariant, setFolderDefaultVariant } from './variants.js';
+import {
+  deleteVariant,
+  listVariants,
+  selectVariant,
+  selectVariantByLocator,
+  setFolderDefaultVariant,
+} from './variants.js';
 
 const folderPath = '/work';
 const fingerprint = 'fingerprint-705';
@@ -94,6 +111,97 @@ const seedCatalog = async (
   for (const catalogVariant of variants) await store.upsertVariant(catalogVariant);
 };
 
+class ManualJobs extends InMemoryJobs {
+  readonly queued: Array<Parameters<JobsPort['enqueue']>[0]> = [];
+
+  override enqueue(input: Parameters<JobsPort['enqueue']>[0]): ReturnType<JobsPort['enqueue']> {
+    this.queued.push(input);
+    return Promise.resolve(ok({ jobId: `manual-${this.queued.length}` }));
+  }
+
+  run(index: number): Promise<Result<unknown, AppError>> {
+    const queued = this.queued[index];
+    if (queued?.run === undefined) throw new Error(`Expected queued job ${index}`);
+    const context: JobExecutionContext = {
+      signal: new AbortController().signal,
+      reportProgress: () => Promise.resolve(ok(undefined)),
+    };
+    return queued.run(context);
+  }
+}
+
+class RejectingJobs extends InMemoryJobs {
+  override enqueue(): ReturnType<JobsPort['enqueue']> {
+    return Promise.resolve({ ok: false, error: appError('internal', 'Queue unavailable') });
+  }
+}
+
+class ScriptedCatalogStore extends InMemoryGlobalCatalogStore {
+  readonly selectedConfigIdResults: Array<Result<string | null, AppError>> = [];
+  readonly explicitSelectedConfigIdResults: Array<Result<string | null, AppError>> = [];
+  readonly selectedVariantResults: Array<Result<void, AppError>> = [];
+  readonly variantErrors = new Map<string, AppError>();
+  readonly selectionChangesOnRead = new Map<number, string | null>();
+  selectedConfigIdReads = 0;
+
+  override async getSelectedConfigId(
+    selectedFingerprint: string,
+  ): ReturnType<GlobalCatalogStore['getSelectedConfigId']> {
+    this.selectedConfigIdReads += 1;
+    const scripted = this.selectedConfigIdResults.shift();
+    if (scripted !== undefined) return scripted;
+    if (this.selectionChangesOnRead.has(this.selectedConfigIdReads)) {
+      const changed = await super.setSelectedVariant(
+        selectedFingerprint,
+        this.selectionChangesOnRead.get(this.selectedConfigIdReads) ?? null,
+      );
+      if (!changed.ok) return changed;
+    }
+    return super.getSelectedConfigId(selectedFingerprint);
+  }
+
+  override getExplicitSelectedConfigId(
+    selectedFingerprint: string,
+  ): ReturnType<GlobalCatalogStore['getExplicitSelectedConfigId']> {
+    return Promise.resolve(
+      this.explicitSelectedConfigIdResults.shift()
+      ?? super.getExplicitSelectedConfigId(selectedFingerprint),
+    );
+  }
+
+  override getVariant(
+    selectedFingerprint: string,
+    selectedConfigId: string,
+  ): ReturnType<GlobalCatalogStore['getVariant']> {
+    const error = this.variantErrors.get(selectedConfigId);
+    return error === undefined
+      ? super.getVariant(selectedFingerprint, selectedConfigId)
+      : Promise.resolve({ ok: false, error });
+  }
+
+  override setSelectedVariant(
+    selectedFingerprint: string,
+    selectedConfigId: string | null,
+  ): ReturnType<GlobalCatalogStore['setSelectedVariant']> {
+    const scripted = this.selectedVariantResults.shift();
+    return scripted === undefined
+      ? super.setSelectedVariant(selectedFingerprint, selectedConfigId)
+      : Promise.resolve(scripted);
+  }
+}
+
+class FailingDeleteFileSystem extends InMemoryFileSystem {
+  failedDeletePath: string | null = null;
+
+  override deletePath(value: string): ReturnType<FileSystemPort['deletePath']> {
+    if (this.failedDeletePath !== null && this.resolve(value) === this.resolve(this.failedDeletePath)) {
+      this.failedDeletePath = null;
+      return Promise.resolve({ ok: false, error: appError('internal', 'Projection cleanup failed') });
+    }
+    return super.deletePath(value);
+  }
+}
+
 describe('variant selection', () => {
   it('describes the current configuration before a file has its first variant', async () => {
     const fs = new InMemoryFileSystem(folderPath);
@@ -114,6 +222,7 @@ describe('variant selection', () => {
         fingerprint: 'new-fingerprint',
         videoPath,
         folderPath,
+        folderDefaultConfigId: null,
         currentConfig: { configId: expect.stringMatching(/^cfg_/) },
         variants: [],
       },
@@ -265,6 +374,478 @@ describe('variant selection', () => {
 
     expect(await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: 'cfg_000000000000' }))
       .toMatchObject({ ok: false, error: { code: 'variant_not_found' } });
+  });
+
+  it('records a deferred selection before its projection job runs', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, second);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+
+    const result = await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    );
+
+    expect(result).toEqual({ ok: true, value: { fingerprint, configId: second.configId } });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: second.configId });
+    expect(jobs.queued).toMatchObject([{
+      kind: 'variant_projection',
+      payload: { fingerprint, configId: second.configId },
+    }]);
+    const firstProjection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', first.finalName);
+    const secondProjection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', second.finalName);
+    expect(await fs.exists(firstProjection.summaryJsonPath)).toEqual({ ok: true, value: true });
+    expect(await fs.exists(secondProjection.summaryJsonPath)).toEqual({ ok: true, value: false });
+
+    expect(await jobs.run(0)).toEqual({ ok: true, value: { fingerprint, configId: second.configId } });
+    expect(await fs.exists(firstProjection.summaryJsonPath)).toEqual({ ok: true, value: false });
+    expect(await fs.readTextFile(secondProjection.summaryJsonPath)).toEqual({
+      ok: true,
+      value: JSON.stringify({ description: second.description }),
+    });
+  });
+
+  it('restores the prior selection when a deferred projection cannot be queued', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    const catalogFolder = folder();
+    await seedCatalog(store, catalogFolder, [first, second]);
+    await store.setFolderDefaultVariant(catalogFolder.folderId, first.configId);
+
+    const result = await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs: new RejectingJobs() },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    );
+
+    expect(result).toEqual({ ok: false, error: appError('internal', 'Queue unavailable') });
+    expect(await store.getExplicitSelectedConfigId(fingerprint)).toEqual({ ok: true, value: null });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: first.configId });
+  });
+
+  it('projects the latest selection when several deferred choices are queued', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    const third = variant(buildConfigDescriptor({ output_language: 'fr' }, 1), 'third', '2026-08-03T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second, third]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, second);
+    await seedVariantArtifacts(fs, third);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+
+    await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    );
+    await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: third.configId, deferProjection: true },
+    );
+
+    expect(await jobs.run(0)).toEqual({ ok: true, value: { fingerprint, configId: third.configId } });
+    const thirdProjection = artifactPaths(fs, folderArtifactRoot(fs, folderPath), '/work/clip.mp4', third.finalName);
+    expect(await fs.readTextFile(thirdProjection.summaryJsonPath)).toEqual({
+      ok: true,
+      value: JSON.stringify({ description: third.description }),
+    });
+  });
+
+  it('fails the projection job without reverting its current selection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await seedVariantArtifacts(fs, first);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+
+    expect(await jobs.run(0)).toMatchObject({ ok: false, error: { code: 'file_not_found' } });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: second.configId });
+  });
+
+  it('rejects a missing variant before recording a deferred selection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    await seedCatalog(store, folder(), []);
+
+    const result = await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs: new ManualJobs() },
+      { fingerprint, configId: 'cfg_000000000000', deferProjection: true },
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'variant_not_found' } });
+  });
+
+  it('validates located selection input and preserves synchronous path selection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const jobs = new ManualJobs();
+    const selected = variant(buildConfigDescriptor({}, 1), 'selected', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [selected]);
+    await seedVariantArtifacts(fs, selected);
+
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint: '', configId: selected.configId },
+    )).toMatchObject({ ok: false, error: { code: 'validation' } });
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { videoPath: '/work/missing.mp4', configId: selected.configId },
+    )).toMatchObject({ ok: false, error: { code: 'file_not_found' } });
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: selected.configId },
+    )).toEqual({ ok: true, value: { fingerprint, configId: selected.configId } });
+    expect(jobs.queued).toEqual([]);
+  });
+
+  it('returns a selected-configuration lookup failure before enqueueing projection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const selected = variant(buildConfigDescriptor({}, 1), 'selected', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [selected]);
+    store.selectedConfigIdResults.push({ ok: false, error: appError('internal', 'Selection lookup failed') });
+
+    const result = await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: selected.configId, deferProjection: true },
+    );
+
+    expect(result).toEqual({ ok: false, error: appError('internal', 'Selection lookup failed') });
+    expect(jobs.queued).toEqual([]);
+  });
+
+  it('returns an explicit-selection lookup failure before enqueueing projection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const selected = variant(buildConfigDescriptor({}, 1), 'selected', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [selected]);
+    store.explicitSelectedConfigIdResults.push({
+      ok: false,
+      error: appError('internal', 'Explicit selection lookup failed'),
+    });
+
+    const result = await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: selected.configId, deferProjection: true },
+    );
+
+    expect(result).toEqual({ ok: false, error: appError('internal', 'Explicit selection lookup failed') });
+    expect(jobs.queued).toEqual([]);
+  });
+
+  it('returns a previous-variant lookup failure before changing selection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await store.setSelectedVariant(fingerprint, first.configId);
+    store.variantErrors.set(first.configId, appError('internal', 'Previous variant lookup failed'));
+
+    const result = await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    );
+
+    expect(result).toEqual({ ok: false, error: appError('internal', 'Previous variant lookup failed') });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: first.configId });
+    expect(jobs.queued).toEqual([]);
+  });
+
+  it('returns a selection-write failure before enqueueing projection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await store.setSelectedVariant(fingerprint, first.configId);
+    store.selectedVariantResults.push({ ok: false, error: appError('internal', 'Selection write failed') });
+
+    const result = await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    );
+
+    expect(result).toEqual({ ok: false, error: appError('internal', 'Selection write failed') });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: first.configId });
+    expect(jobs.queued).toEqual([]);
+  });
+
+  it('restores a previous explicit selection when projection enqueueing fails', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await store.setSelectedVariant(fingerprint, first.configId);
+
+    const result = await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs: new RejectingJobs() },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    );
+
+    expect(result).toEqual({ ok: false, error: appError('internal', 'Queue unavailable') });
+    expect(await store.getExplicitSelectedConfigId(fingerprint)).toEqual({ ok: true, value: first.configId });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: first.configId });
+  });
+
+  it('projects a deferred selection without cleanup when no prior selection resolves', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const selected = variant(buildConfigDescriptor({}, 1), 'selected', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [selected]);
+    await seedVariantArtifacts(fs, selected);
+    store.selectedConfigIdResults.push(ok(null));
+
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: selected.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    expect(await jobs.run(0)).toEqual({ ok: true, value: { fingerprint, configId: selected.configId } });
+  });
+
+  it('returns the initial selected-configuration lookup failure from a projection job', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const selected = variant(buildConfigDescriptor({}, 1), 'selected', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [selected]);
+    await seedVariantArtifacts(fs, selected);
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: selected.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    store.selectedConfigIdResults.push({ ok: false, error: appError('internal', 'Job selection lookup failed') });
+
+    expect(await jobs.run(0)).toEqual({ ok: false, error: appError('internal', 'Job selection lookup failed') });
+  });
+
+  it('fails a projection job when its selected configuration becomes unavailable', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const selected = variant(buildConfigDescriptor({}, 1), 'selected', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [selected]);
+    await seedVariantArtifacts(fs, selected);
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: selected.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    store.selectedConfigIdResults.push(ok(null));
+
+    expect(await jobs.run(0)).toEqual({
+      ok: false,
+      error: appError('internal', `Selected variant is unavailable: ${fingerprint}`),
+    });
+  });
+
+  it('fails a projection job when its selected variant disappears before projection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const selected = variant(buildConfigDescriptor({}, 1), 'selected', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [selected]);
+    await seedVariantArtifacts(fs, selected);
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: selected.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    store.selectedConfigIdResults.push(ok('cfg_000000000000'));
+
+    expect(await jobs.run(0)).toMatchObject({ ok: false, error: { code: 'variant_not_found' } });
+  });
+
+  it('retries with the latest selection when the first projection fails during a selection change', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    const third = variant(buildConfigDescriptor({ output_language: 'fr' }, 1), 'third', '2026-08-03T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second, third]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, third);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    store.selectedConfigIdReads = 0;
+    store.selectionChangesOnRead.set(2, third.configId);
+
+    expect(await jobs.run(0)).toEqual({ ok: true, value: { fingerprint, configId: third.configId } });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: third.configId });
+  });
+
+  it('returns a latest-selection lookup failure after projection fails', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await seedVariantArtifacts(fs, first);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    store.selectedConfigIdResults.push(
+      ok(second.configId),
+      { ok: false, error: appError('internal', 'Latest selection lookup failed') },
+    );
+
+    expect(await jobs.run(0)).toEqual({ ok: false, error: appError('internal', 'Latest selection lookup failed') });
+  });
+
+  it('returns a later projection failure after retrying a completed stale projection', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    const third = variant(buildConfigDescriptor({ output_language: 'fr' }, 1), 'third', '2026-08-03T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second, third]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, second);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    store.selectedConfigIdReads = 0;
+    store.selectionChangesOnRead.set(2, third.configId);
+
+    expect(await jobs.run(0)).toMatchObject({ ok: false, error: { code: 'file_not_found' } });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: third.configId });
+  });
+
+  it('returns a projection cleanup failure when the selection remains current', async () => {
+    const fs = new FailingDeleteFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, second);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    fs.failedDeletePath = artifactPaths(
+      fs,
+      folderArtifactRoot(fs, folderPath),
+      '/work/clip.mp4',
+      first.finalName,
+    ).framesDir;
+
+    expect(await jobs.run(0)).toEqual({
+      ok: false,
+      error: appError('internal', 'Projection cleanup failed'),
+    });
+  });
+
+  it('returns a latest-selection lookup failure after projection cleanup fails', async () => {
+    const fs = new FailingDeleteFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, second);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    fs.failedDeletePath = artifactPaths(
+      fs,
+      folderArtifactRoot(fs, folderPath),
+      '/work/clip.mp4',
+      first.finalName,
+    ).framesDir;
+    store.selectedConfigIdResults.push(
+      ok(second.configId),
+      { ok: false, error: appError('internal', 'Cleanup selection lookup failed') },
+    );
+
+    expect(await jobs.run(0)).toEqual({
+      ok: false,
+      error: appError('internal', 'Cleanup selection lookup failed'),
+    });
+  });
+
+  it('retries cleanup against the latest selection when selection changes during cleanup', async () => {
+    const fs = new FailingDeleteFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(buildConfigDescriptor({ output_language: 'pl' }, 1), 'second', '2026-08-02T00:00:00.000Z');
+    const third = variant(buildConfigDescriptor({ output_language: 'fr' }, 1), 'third', '2026-08-03T00:00:00.000Z');
+    await seedCatalog(store, folder(), [first, second, third]);
+    await seedVariantArtifacts(fs, first);
+    await seedVariantArtifacts(fs, second);
+    await seedVariantArtifacts(fs, third);
+    await selectVariant({ globalCatalog: store, fs }, { fingerprint, configId: first.configId });
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: second.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    fs.failedDeletePath = artifactPaths(
+      fs,
+      folderArtifactRoot(fs, folderPath),
+      '/work/clip.mp4',
+      first.finalName,
+    ).framesDir;
+    store.selectedConfigIdReads = 0;
+    store.selectionChangesOnRead.set(2, third.configId);
+
+    expect(await jobs.run(0)).toEqual({ ok: true, value: { fingerprint, configId: third.configId } });
+    expect(await store.getSelectedConfigId(fingerprint)).toEqual({ ok: true, value: third.configId });
+  });
+
+  it('returns a final selected-configuration lookup failure after projection succeeds', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new ScriptedCatalogStore();
+    const jobs = new ManualJobs();
+    const selected = variant(buildConfigDescriptor({}, 1), 'selected', '2026-08-01T00:00:00.000Z');
+    await seedCatalog(store, folder(), [selected]);
+    await seedVariantArtifacts(fs, selected);
+    expect(await selectVariantByLocator(
+      { globalCatalog: store, fs, jobs },
+      { fingerprint, configId: selected.configId, deferProjection: true },
+    )).toMatchObject({ ok: true });
+    store.selectedConfigIdResults.push(
+      ok(selected.configId),
+      { ok: false, error: appError('internal', 'Final selection lookup failed') },
+    );
+
+    expect(await jobs.run(0)).toEqual({ ok: false, error: appError('internal', 'Final selection lookup failed') });
   });
 
   it('resolves a cleared folder default from output language and prompt version', async () => {

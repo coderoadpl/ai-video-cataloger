@@ -151,7 +151,7 @@ const VariantCompareFixture = () => (
   <VariantCompareView
     video={COMPARE_VIDEO}
     variants={COMPARE_VARIANTS}
-    selecting={false}
+    selectingConfigId={null}
     actionError={null}
     onBack={noop}
     onSelect={noop}

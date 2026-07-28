@@ -126,7 +126,7 @@ const CompareSpecimen = () => (
     <VariantCompareView
       video={compareVideo}
       variants={compareVariants}
-      selecting={false}
+      selectingConfigId={null}
       actionError={null}
       onBack={noop}
       onSelect={noop}

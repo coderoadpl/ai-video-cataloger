@@ -1,5 +1,5 @@
 import { useCallback, type ReactNode } from 'react';
-import { Alert, Box, Button, Chip, Paper, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Paper, Typography } from '@mui/material';
 
 import { VariantCompareLayout } from '../../components/layout/VariantCompareLayout.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
@@ -13,7 +13,7 @@ export type VariantCompareVariant = VariantData;
 interface VariantCompareViewProps {
   video: DetailsVideo;
   variants: readonly VariantData[];
-  selecting: boolean;
+  selectingConfigId: string | null;
   actionError: unknown;
   onBack: () => void;
   onSelect: (configId: string) => void;
@@ -94,6 +94,7 @@ const VariantColumn = ({
         onClick={select}
         data-testid={`compare-use-as-selected-${variant.configId}`}
       >
+        {selecting ? <CircularProgress size={14} color="inherit" /> : null}
         {dictionary.details.variants.useAsSelected}
       </Button>
       <Typography variant="caption">{dictionary.details.variants.selectionImpact}</Typography>
@@ -153,7 +154,7 @@ const VariantColumn = ({
 export const VariantCompareView = ({
   video,
   variants,
-  selecting,
+  selectingConfigId,
   actionError,
   onBack,
   onSelect,
@@ -181,7 +182,7 @@ export const VariantCompareView = ({
           key={variant.configId}
           video={video}
           variant={variant}
-          selecting={selecting}
+          selecting={selectingConfigId === variant.configId}
           onSelect={onSelect}
           dictionary={dictionary}
           {...(frameUrl === undefined ? {} : { frameUrl })}

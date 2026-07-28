@@ -690,6 +690,7 @@ export interface ModelDownloadPort {
 export type JobKind =
   | 'process'
   | 'process_drive'
+  | 'variant_projection'
   | 'whisper_download'
   | 'whisper_runtime_install'
   | 'local_ai_pull'
