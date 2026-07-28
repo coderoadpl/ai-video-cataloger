@@ -39,6 +39,7 @@ const descriptor = (input: {
   family?: 'api' | 'local';
   frames?: number;
   providerId?: string;
+  whisperLanguage?: 'auto' | 'pl';
 } = {}): ConfigDescriptor => input.family === 'api'
   ? configDescriptorSchema.parse({
     family: 'api',
@@ -47,7 +48,7 @@ const descriptor = (input: {
     maxImageDetail: 'auto',
     whisper_mode: 'local',
     whisper_model: 'base',
-    whisper_language: 'auto',
+    whisper_language: input.whisperLanguage ?? 'auto',
     frames: input.frames ?? 3,
     output_language: 'en',
     promptVersion: 1,
@@ -58,7 +59,7 @@ const descriptor = (input: {
     modelTag: 'gemma3:12b',
     whisper_mode: 'local',
     whisper_model: 'base',
-    whisper_language: 'auto',
+    whisper_language: input.whisperLanguage ?? 'auto',
     frames: input.frames ?? 3,
     output_language: 'en',
     promptVersion: 1,
@@ -174,11 +175,13 @@ describe('content-addressed artifact paths', () => {
     const threeFrames = descriptor({ frames: 3 });
     const fiveFrames = descriptor({ frames: 5 });
     const analyzerOnlyChange = descriptor({ family: 'api' });
+    const polishTranscription = descriptor({ whisperLanguage: 'pl' });
 
     expect(framesKey(3)).toBe(framesKey(3));
     expect(framesKey(3)).not.toBe(framesKey(5));
     expect(transcriptKey(threeFrames)).toBe(transcriptKey(fiveFrames));
     expect(transcriptKey(threeFrames)).toBe(transcriptKey(analyzerOnlyChange));
+    expect(transcriptKey(threeFrames)).not.toBe(transcriptKey(polishTranscription));
     expect(transcriptKey(nativeDescriptor)).toBe('native:gemini:gemini-3.6-flash');
   });
 
