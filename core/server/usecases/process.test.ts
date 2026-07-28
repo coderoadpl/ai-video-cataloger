@@ -631,6 +631,53 @@ describe('process pipeline global catalog idempotency', () => {
     ]);
   });
 
+  it('reports cross-variant artifact reuse only for verbose processing', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    const first = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    const quietEvents: Array<{ step: string; data: Record<string, unknown> | undefined }> = [];
+    await processVideoPipeline({ ...deps, globalCatalog }, { ...input, provider: 'codex' }, {
+      signal: idleSignal,
+      reportProgress: (event) => {
+        quietEvents.push({ step: event.step, data: event.data });
+        return Promise.resolve({ ok: true, value: undefined });
+      },
+    });
+    const verboseEvents: Array<{ step: string; data: Record<string, unknown> | undefined }> = [];
+    const third = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...input, provider: 'cursor-agent', verbose: true },
+      {
+        signal: idleSignal,
+        reportProgress: (event) => {
+          verboseEvents.push({ step: event.step, data: event.data });
+          return Promise.resolve({ ok: true, value: undefined });
+        },
+      },
+    );
+
+    expect(quietEvents.some((event) => event.step === 'artifact_reused')).toBe(false);
+    expect(verboseEvents.filter((event) => event.step === 'artifact_reused')).toEqual([
+      {
+        step: 'artifact_reused',
+        data: {
+          kind: 'frames',
+          configId: third.ok ? third.value.configId : '',
+          sourceConfigId: first.ok ? first.value.configId : '',
+        },
+      },
+      {
+        step: 'artifact_reused',
+        data: {
+          kind: 'transcript',
+          configId: third.ok ? third.value.configId : '',
+          sourceConfigId: first.ok ? first.value.configId : '',
+        },
+      },
+    ]);
+  });
+
   it('force replaces only the addressed configuration variant', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();

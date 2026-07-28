@@ -60,6 +60,7 @@ import {
   reusableFramesArtifact,
   reusableTranscriptArtifact,
   selectedVariantProjectionSource,
+  sharedArtifactPaths,
   variantArtifactPaths,
   type VariantArtifactPaths,
 } from './artifact-store.js';
@@ -404,7 +405,7 @@ const runPipelineSteps = async (
   progress?: JobExecutionContext,
 ): Promise<Result<PipelineCompletedOutput, AppError>> => {
   let video = initialVideo;
-  let stage = await resumeStage(deps, video, resolved);
+  let stage = await resumeStage(deps, video, resolved, progress);
   if (!stage.ok) return stage;
   if (stage.value === 'done') return ok(completedOutput(deps.fs, video));
 
@@ -803,6 +804,7 @@ interface PipelineOptions extends ResolvedProcessOptions {
   artifactRoot: ArtifactRoot;
   descriptor: ConfigDescriptor;
   configId: string;
+  fingerprint: string | null;
   variantPaths: VariantArtifactPaths | null;
   force: boolean;
 }
@@ -839,6 +841,7 @@ const pipelineOptions = (
     artifactRoot,
     descriptor: identity.descriptor,
     configId: identity.configId,
+    fingerprint,
     variantPaths: fingerprint === null
       ? null
       : variantArtifactPaths(fs, artifactRoot, fingerprint, identity.descriptor),
@@ -1042,6 +1045,7 @@ const resumeStage = async (
   deps: ProcessDeps,
   video: Video,
   resolved: PipelineOptions,
+  progress: JobExecutionContext | undefined,
 ): Promise<Result<ResumeStage, AppError>> => {
   if (resolved.variantPaths !== null) {
     if (!resolved.force) {
@@ -1060,12 +1064,19 @@ const resumeStage = async (
     });
     if (!frames.ok) return frames;
     if (!frames.value.reusable) return ok('frames');
+    const reportedFrames = await reportArtifactReuse(deps, resolved, 'frames', progress);
+    if (!reportedFrames.ok) return reportedFrames;
     const transcript = await reusableTranscriptArtifact(deps.fs, {
       path: resolved.variantPaths.transcriptPath,
       expectedKey: resolved.variantPaths.transcriptKey,
     });
     if (!transcript.ok) return transcript;
-    if (transcript.value || resolved.whisper === 'skip') return ok('analyze');
+    if (transcript.value) {
+      const reportedTranscript = await reportArtifactReuse(deps, resolved, 'transcript', progress);
+      if (!reportedTranscript.ok) return reportedTranscript;
+      return ok('analyze');
+    }
+    if (resolved.whisper === 'skip') return ok('analyze');
     const audioExists = await deps.fs.exists(tempAudioPath(deps.fs, video.originalPath));
     if (!audioExists.ok) return audioExists;
     return ok(audioExists.value ? 'transcribe' : 'audio');
@@ -1090,6 +1101,43 @@ const resumeStage = async (
   }
   if (video.status === 'transcribed') return ok('analyze');
   return ok('rename');
+};
+
+const reportArtifactReuse = async (
+  deps: ProcessDeps,
+  resolved: PipelineOptions,
+  kind: 'frames' | 'transcript',
+  progress: JobExecutionContext | undefined,
+): Promise<Result<void, AppError>> => {
+  if (!resolved.verbose || progress === undefined || resolved.fingerprint === null || deps.globalCatalog === undefined) {
+    return ok(undefined);
+  }
+  const fingerprint = resolved.fingerprint;
+  const variants = await deps.globalCatalog.listVariants(fingerprint);
+  if (!variants.ok) return variants;
+  const selectedConfigId = await deps.globalCatalog.getSelectedConfigId(fingerprint);
+  if (!selectedConfigId.ok) return selectedConfigId;
+  const source = variants.value
+    .filter((variant) => variant.configId !== resolved.configId && variant.descriptor !== null)
+    .sort((left, right) => {
+      if (left.configId === selectedConfigId.value) return -1;
+      if (right.configId === selectedConfigId.value) return 1;
+      return left.createdAt.localeCompare(right.createdAt) || left.configId.localeCompare(right.configId);
+    })
+    .find((variant) => {
+      if (variant.descriptor === null || resolved.variantPaths === null) return false;
+      const paths = sharedArtifactPaths(deps.fs, resolved.artifactRoot, fingerprint, variant.descriptor);
+      return kind === 'frames'
+        ? paths.framesKey === resolved.variantPaths.framesKey
+        : paths.transcriptKey === resolved.variantPaths.transcriptKey;
+    });
+  if (source === undefined) return ok(undefined);
+  const reported = await progress.reportProgress({
+    step: 'artifact_reused',
+    data: { kind, configId: resolved.configId, sourceConfigId: source.configId },
+  });
+  if (!reported.ok) return reported;
+  return cancellationBoundary(progress);
 };
 
 const transcribe = async (

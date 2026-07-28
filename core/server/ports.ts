@@ -707,6 +707,7 @@ export type ProcessJobStep =
   | 'faces_detecting'
   | 'faces_clustering'
   | 'faces_done'
+  | 'artifact_reused'
   | 'catalog_index_skipped'
   | 'catalog_snapshot_skipped'
   | 'batch_submitted'

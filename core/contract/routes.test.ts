@@ -8,6 +8,7 @@ import {
   healthLiveOutputSchema,
   healthReadyOutputSchema,
   jobOutputSchema,
+  jobProgressSchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
@@ -363,6 +364,26 @@ describe('route schemas', () => {
       video: '/videos/clip.mp4',
       reason: 'variant_exists',
       configId,
+    });
+  });
+
+  it('accepts the additive artifact reuse progress step', () => {
+    const parsed = jobProgressSchema.parse({
+      step: 'artifact_reused',
+      data: {
+        kind: 'frames',
+        configId: 'cfg_0123456789ab',
+        sourceConfigId: 'cfg_abcdef012345',
+      },
+    });
+
+    expect(parsed).toEqual({
+      step: 'artifact_reused',
+      data: {
+        kind: 'frames',
+        configId: 'cfg_0123456789ab',
+        sourceConfigId: 'cfg_abcdef012345',
+      },
     });
   });
 
