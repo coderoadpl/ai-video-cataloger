@@ -185,6 +185,7 @@ export default tseslint.config(
       'visual/**',
       'scripts/ralph/**',
       'landing/**',
+      '.claude/**',
     ],
   },
   {
