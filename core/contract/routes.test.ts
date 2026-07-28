@@ -273,6 +273,43 @@ describe('route schemas', () => {
     expect(parsed.progressEvents.map((event) => event.sequence)).toEqual([1, 2, 3]);
   });
 
+  it('keeps variant identity on completed and catalog skip job payloads', () => {
+    const configId = 'cfg_0123456789ab';
+    const parsed = jobOutputSchema.parse({
+      jobId: 'job-variant',
+      kind: 'process',
+      status: 'completed',
+      progress: {
+        step: 'catalog_index_skipped',
+        data: { video: '/videos/clip.mp4', reason: 'variant_exists', configId },
+      },
+      progressEvents: [{
+        sequence: 1,
+        progress: {
+          step: 'catalog_index_skipped',
+          data: { video: '/videos/clip.mp4', reason: 'variant_exists', configId },
+        },
+      }],
+      result: {
+        video: 'clip.mp4',
+        path: '/videos/clip.mp4',
+        status: 'completed',
+        configId,
+        selectedConfigId: 'legacy',
+      },
+      error: null,
+      createdAt: '2026-08-02T10:00:00.000Z',
+      updatedAt: '2026-08-02T10:00:01.000Z',
+    });
+
+    expect(parsed.result).toMatchObject({ configId, selectedConfigId: 'legacy' });
+    expect(parsed.progress?.data).toEqual({
+      video: '/videos/clip.mp4',
+      reason: 'variant_exists',
+      configId,
+    });
+  });
+
   it('splits liveness and readiness into distinct additive GET routes', () => {
     expect(API_ROUTES.healthLive).toMatchObject({ method: 'GET', path: '/api/health/live' });
     expect(API_ROUTES.healthReady).toMatchObject({ method: 'GET', path: '/api/health/ready' });

@@ -27,6 +27,10 @@ const analyzerResponse = [
 ].join('\n');
 
 class StubAnalyzer implements AnalyzerPort {
+  promptVersion(): number {
+    return 1;
+  }
+
   analyze(): Promise<Result<AnalysisOutput, AppError>> {
     return Promise.resolve(ok({ rawResponse: analyzerResponse }));
   }

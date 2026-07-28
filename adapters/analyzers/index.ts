@@ -26,6 +26,7 @@ import type {
 } from '@core/server/index.js';
 
 import {
+  ANALYSIS_PROMPT_VERSION,
   descriptionInstruction,
   filenameInstruction,
   outputLanguageInstruction,
@@ -141,6 +142,10 @@ export class OpenAiCompatibleAnalyzerAdapter implements AnalyzerPort, ProvidersP
   private readonly fetchImpl: typeof fetch;
   private readonly readFrame: (framePath: string) => Promise<Uint8Array>;
 
+  promptVersion(): number {
+    return ANALYSIS_PROMPT_VERSION;
+  }
+
   constructor(options: OpenAiCompatibleAnalyzerAdapterOptions) {
     this.credentials = options.credentials;
     this.fetchImpl = options.fetchImpl ?? fetch;
@@ -240,6 +245,10 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
   private readonly writeStderr: (chunk: string) => void;
   private readonly prepare: (definition: HarnessRuntimeDefinition, homeDirectory: string, videoDirectory: string) => Promise<void>;
   private readonly resolveCommand: (command: string) => string;
+
+  promptVersion(): number {
+    return ANALYSIS_PROMPT_VERSION;
+  }
 
   constructor(options: HarnessAnalyzerAdapterOptions = {}) {
     this.commandRunner = options.commandRunner ?? childProcessAnalyzerCommandRunner;
@@ -373,6 +382,10 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
   private readonly readFrame: (framePath: string) => Promise<Uint8Array>;
   private readonly verbose: boolean;
   private readonly writeStdout: (chunk: string) => void;
+
+  promptVersion(): number {
+    return ANALYSIS_PROMPT_VERSION;
+  }
 
   constructor(options: OllamaAnalyzerAdapterOptions) {
     this.runtime = options.runtime;

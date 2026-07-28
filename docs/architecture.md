@@ -78,7 +78,9 @@ Two scopes remain, with catalog ownership revised by
   stays folder-scoped. `{folder}/.ai-video-cataloger/catalog.ndjson` is a
   derived snapshot written after processing and imported when a marked folder
   is unknown to the local index. Existing per-folder `catalog.db` files remain
-  readable for migration but are not the canonical write target.
+  readable for migration but are not the canonical write target. Its
+  `videos.status` columns describe the last processing run for each path;
+  configuration-specific analysis state is canonical only in the global index.
 - **Home scope** — `~/.ai-video-cataloger/` also holds global model state,
   managed runtime files, whisper models, provider credentials, and the
   append-only spend ledger and read-only mirror below.

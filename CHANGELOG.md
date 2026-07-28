@@ -26,6 +26,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Processing deduplicates and force-replaces per content/configuration pair; completion and skip NDJSON name the configuration, and folder snapshots preserve every variant plus the selected configuration.
 - Name-based artifacts under `frames/`, `transcripts/`, and `summaries/` project the selected analysis variant.
 - The global catalog index uses schema version 9 and stores analyses by content fingerprint and configuration.
 - The gemini-native prompt gates named entities on legible evidence.

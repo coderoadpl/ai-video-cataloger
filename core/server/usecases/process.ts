@@ -1,8 +1,10 @@
 import {
-  ANALYZER_PROVIDERS,
   WHISPER_MODES,
   CONFIG_DEFAULTS,
   appError,
+  buildConfigDescriptor,
+  configDescriptorSchema,
+  configId,
   geminiCostEstimateFromUsage,
   normalizeTagList,
   ok,
@@ -11,6 +13,7 @@ import {
   type AppConfig,
   type AppError,
   type AnalyzerProviderConfig,
+  type ConfigDescriptor,
   type GeminiPricingMode,
   type GeminiCostEstimate,
   type GeminiUsageAccounting,
@@ -52,9 +55,16 @@ import {
   type SummaryData,
 } from './shared.js';
 import { artifactRootFor, folderArtifactRoot, type ArtifactRoot } from './artifact-root.js';
+import {
+  materializeSelectedVariantProjection,
+  reusableFramesArtifact,
+  reusableTranscriptArtifact,
+  variantArtifactPaths,
+  type VariantArtifactPaths,
+} from './artifact-store.js';
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
 import { resolveConfigValues } from './config-resolution.js';
-import { hasProcessedAnalysis, resolveFolderIntoIndex, upsertProcessedVideo } from './catalog-index.js';
+import { resolveFolderIntoIndex, upsertProcessedVariant } from './catalog-index.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
@@ -92,19 +102,35 @@ export interface ProcessPipelineInput {
   precomputedAnalysis?: PrecomputedAnalysis | undefined;
 }
 
+const processConfigIdentitySchema = z.object({
+  descriptor: configDescriptorSchema,
+  configId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+}).strict().superRefine((identity, context) => {
+  if (configId(identity.descriptor) !== identity.configId) {
+    context.addIssue({ code: 'custom', path: ['configId'], message: 'configId does not match descriptor' });
+  }
+});
+
+export type ProcessConfigIdentity = z.output<typeof processConfigIdentitySchema>;
+
 export interface PrecomputedAnalysis {
   analysis: AnalysisOutput;
   pricingMode: GeminiPricingMode;
   model: string;
+  configIdentity: ProcessConfigIdentity;
 }
 
 export interface ProcessCompletedOutput {
   video: string;
   path: string;
   status: 'completed';
+  configId: string;
+  selectedConfigId: string;
   snapshotSkipped?: boolean;
   costEstimate?: GeminiCostEstimate;
 }
+
+type PipelineCompletedOutput = Omit<ProcessCompletedOutput, 'configId' | 'selectedConfigId'>;
 
 export interface ParsedAnalysis {
   description: string;
@@ -132,19 +158,51 @@ export const processVideoPipeline = async (
   if (!validation.ok) return validation;
   const videoPath = validation.value;
   const folder = deps.fs.dirname(videoPath);
+  const resolved = await resolveProcessOptions(deps.config, folder, input);
+  if (!resolved.ok) return resolved;
+  const identityInput = resolved.value.precomputedAnalysis?.configIdentity ?? processConfigIdentity(
+    resolved.value,
+    deps.analyzer.promptVersion(resolved.value.analyzer.provider),
+  );
+  const parsedIdentity = processConfigIdentitySchema.safeParse(identityInput);
+  if (!parsedIdentity.success) {
+    return { ok: false, error: appError('validation', 'Invalid process configuration identity', parsedIdentity.error.issues) };
+  }
+  const identity = parsedIdentity.data;
+  const fingerprint = await deps.fs.partialContentHash(videoPath);
+  if (!fingerprint.ok) return fingerprint;
   const repository = await deps.catalogs.open(folder);
   if (!repository.ok) return repository;
 
   const video = await findOrCreateVideo(deps, repository.value, videoPath);
   if (!video.ok) return video;
 
-  const skipped = await alreadyIndexed(deps, folder, videoPath, input.force === true);
+  const skipped = await alreadyIndexed(
+    deps,
+    folder,
+    videoPath,
+    deps.globalCatalog === undefined ? null : fingerprint.value,
+    identity.configId,
+    input.force === true,
+    progress,
+  );
   if (!skipped.ok) return skipped;
-  if (skipped.value) return ok(completedOutput(deps.fs, video.value));
-
-  const resolved = await resolveProcessOptions(deps.config, folder, input);
-  if (!resolved.ok) return resolved;
-  const options = pipelineOptions(deps.fs, folder, repository.value.writable(), resolved.value);
+  if (skipped.value !== null) {
+    return ok({
+      ...completedOutput(deps.fs, video.value),
+      configId: identity.configId,
+      selectedConfigId: skipped.value,
+    });
+  }
+  const options = pipelineOptions(
+    deps.fs,
+    folder,
+    repository.value.writable(),
+    resolved.value,
+    deps.globalCatalog === undefined ? null : fingerprint.value,
+    identity,
+    input.force === true,
+  );
 
   const runResult = await runPipelineSteps(deps, repository.value, video.value, options, progress);
   if (!runResult.ok) {
@@ -160,7 +218,12 @@ export const processVideoPipeline = async (
     const flushed = await flushGlobalCatalog(deps);
     if (!flushed.ok) return flushed;
   }
-  return ok({ ...runResult.value, snapshotSkipped: recorded.value.snapshotSkipped });
+  return ok({
+    ...runResult.value,
+    configId: identity.configId,
+    selectedConfigId: recorded.value.selectedConfigId,
+    snapshotSkipped: recorded.value.snapshotSkipped,
+  });
 };
 
 export const checkProcessPrerequisites = async (
@@ -338,15 +401,15 @@ const runPipelineSteps = async (
   initialVideo: Video,
   resolved: PipelineOptions,
   progress?: JobExecutionContext,
-): Promise<Result<ProcessCompletedOutput, AppError>> => {
+): Promise<Result<PipelineCompletedOutput, AppError>> => {
   let video = initialVideo;
   let stage = await resumeStage(deps, video, resolved);
   if (!stage.ok) return stage;
   if (stage.value === 'done') return ok(completedOutput(deps.fs, video));
 
-  if (resolved.native) return runNativePipeline(deps, repository, video, resolved, progress);
+  if (resolved.native) return runNativePipeline(deps, repository, video, resolved, stage.value, progress);
 
-  const paths = artifactPaths(deps.fs, resolved.artifactRoot, video.originalPath, video.newName);
+  const paths = pipelineArtifactPaths(deps.fs, resolved, video);
   let currentFramePaths: string[] | null = null;
 
   if (stage.value === 'frames') {
@@ -480,6 +543,7 @@ const runPipelineSteps = async (
       fullAnalysis: parsed.fullAnalysis,
       tags: parsed.tags,
       analyzedAt: new Date().toISOString(),
+      ...(analyzed.value.usage === undefined ? {} : { usage: usageRecord(analyzed.value.usage) }),
     });
     if (!summary.ok) return summary;
     const afterSummary = cancellationBoundary(progress);
@@ -521,14 +585,15 @@ const runNativePipeline = async (
   repository: CatalogRepository,
   initialVideo: Video,
   resolved: PipelineOptions,
+  stage: ResumeStage,
   progress?: JobExecutionContext,
-): Promise<Result<ProcessCompletedOutput, AppError>> => {
+): Promise<Result<PipelineCompletedOutput, AppError>> => {
   let video = initialVideo;
-  const paths = artifactPaths(deps.fs, resolved.artifactRoot, video.originalPath, video.newName);
+  const paths = pipelineArtifactPaths(deps.fs, resolved, video);
   let parsed: ParsedAnalysis | null = null;
   let costEstimate: GeminiCostEstimate | null = null;
 
-  if (video.status !== 'analyzed') {
+  if (stage !== 'rename') {
     const progressResult = await report(progress, 'analyzing_with_claude', 4, video.originalPath, resolved.batch);
     if (!progressResult.ok) return progressResult;
     const warnings: string[] = [];
@@ -590,6 +655,7 @@ const runNativePipeline = async (
       tags: parsed.tags,
       analyzedAt: analyzedAt.toISOString(),
       ...(costEstimate === null ? {} : { costEstimate }),
+      ...(analyzed.value.usage === undefined ? {} : { usage: usageRecord(analyzed.value.usage) }),
     });
     if (!summary.ok) return summary;
     const spendRecorded = await recordSpendEstimate(
@@ -734,18 +800,50 @@ interface ResolvedProcessOptions {
 
 interface PipelineOptions extends ResolvedProcessOptions {
   artifactRoot: ArtifactRoot;
+  descriptor: ConfigDescriptor;
+  configId: string;
+  variantPaths: VariantArtifactPaths | null;
+  force: boolean;
 }
+
+export const processConfigIdentity = (
+  resolved: ResolvedProcessOptions,
+  promptVersion: number,
+): ProcessConfigIdentity => {
+  const descriptor = buildConfigDescriptor({
+    analyzer_provider: resolved.analyzer.provider,
+    frames: resolved.frames,
+    whisper_mode: resolved.whisper,
+    whisper_model: resolved.whisperModel,
+    whisper_api_base_url: resolved.whisperApiBaseUrl,
+    whisper_api_model: resolved.whisperApiModel,
+    output_language: resolved.analyzer.outputLanguage,
+  }, promptVersion);
+  return { descriptor, configId: configId(descriptor) };
+};
 
 const pipelineOptions = (
   fs: FileSystemPort,
   folder: string,
   writable: boolean,
   resolved: ResolvedProcessOptions,
-): PipelineOptions => ({
-  ...resolved,
-  skipRename: resolved.skipRename || !writable,
-  artifactRoot: artifactRootFor(fs, folder, writable),
-});
+  fingerprint: string | null,
+  identity: ProcessConfigIdentity,
+  force: boolean,
+): PipelineOptions => {
+  const artifactRoot = artifactRootFor(fs, folder, writable);
+  return {
+    ...resolved,
+    skipRename: resolved.skipRename || !writable,
+    artifactRoot,
+    descriptor: identity.descriptor,
+    configId: identity.configId,
+    variantPaths: fingerprint === null
+      ? null
+      : variantArtifactPaths(fs, artifactRoot, fingerprint, identity.descriptor),
+    force,
+  };
+};
 
 export const resolveProcessOptions = async (
   config: ConfigStore,
@@ -833,10 +931,8 @@ const resolveAnalyzerProvider = (
   if (explicit === 'local') return legacyAnalyzerProvider('local', localModel);
   if (explicit === 'claude') return legacyAnalyzerProvider('claude', localModel);
   if (persisted?.family === 'api') return persisted;
-  const descriptor = ANALYZER_PROVIDERS.find((candidate) => candidate.family === 'api');
-  if (descriptor !== undefined && descriptor.family === 'api') {
-    return { ...descriptor, apiKeyRef: descriptor.providerId };
-  }
+  const apiProvider = builtInAnalyzerProvider('openai', localModel);
+  if (apiProvider?.family === 'api') return apiProvider;
   return {
     family: 'api',
     providerId: 'openai',
@@ -907,13 +1003,74 @@ const trimmedValue = (value: string | undefined): string | null => {
   return trimmed.length === 0 ? null : trimmed;
 };
 
+interface PipelineArtifactPaths {
+  framesDir: string;
+  transcriptPath: string;
+  transcriptJsonPath: string;
+  summaryPath: string;
+  summaryJsonPath: string;
+  debugLogPath: string;
+}
+
+const pipelineArtifactPaths = (
+  fs: FileSystemPort,
+  resolved: PipelineOptions,
+  video: Video,
+): PipelineArtifactPaths => pipelineArtifactPathsAt(fs, resolved, video.originalPath, video.newName);
+
+const pipelineArtifactPathsAt = (
+  fs: FileSystemPort,
+  resolved: PipelineOptions,
+  videoPath: string,
+  newName: string | null,
+): PipelineArtifactPaths => {
+  if (resolved.variantPaths === null) {
+    return artifactPaths(fs, resolved.artifactRoot, videoPath, newName);
+  }
+  return {
+    framesDir: resolved.variantPaths.framesDirectory ?? resolved.variantPaths.directory,
+    transcriptPath: resolved.variantPaths.transcriptPath,
+    transcriptJsonPath: resolved.variantPaths.transcriptJsonPath,
+    summaryPath: resolved.variantPaths.summaryPath,
+    summaryJsonPath: resolved.variantPaths.summaryJsonPath,
+    debugLogPath: resolved.variantPaths.debugLogPath,
+  };
+};
+
 const resumeStage = async (
   deps: ProcessDeps,
   video: Video,
   resolved: PipelineOptions,
 ): Promise<Result<ResumeStage, AppError>> => {
+  if (resolved.variantPaths !== null) {
+    if (!resolved.force) {
+      const summary = await loadOptionalSummary(deps.fs, resolved.variantPaths.summaryJsonPath);
+      if (!summary.ok) return summary;
+      if (summary.value !== null) return ok('rename');
+    }
+    if (resolved.native) return ok('analyze');
+    if (resolved.variantPaths.framesDirectory === null || resolved.variantPaths.framesKey === null) {
+      return ok('frames');
+    }
+    const frames = await reusableFramesArtifact(deps.fs, {
+      directory: resolved.variantPaths.framesDirectory,
+      expectedKey: resolved.variantPaths.framesKey,
+      requestedCount: resolved.frames,
+    });
+    if (!frames.ok) return frames;
+    if (!frames.value.reusable) return ok('frames');
+    const transcript = await reusableTranscriptArtifact(deps.fs, {
+      path: resolved.variantPaths.transcriptPath,
+      expectedKey: resolved.variantPaths.transcriptKey,
+    });
+    if (!transcript.ok) return transcript;
+    if (transcript.value || resolved.whisper === 'skip') return ok('analyze');
+    const audioExists = await deps.fs.exists(tempAudioPath(deps.fs, video.originalPath));
+    if (!audioExists.ok) return audioExists;
+    return ok(audioExists.value ? 'transcribe' : 'audio');
+  }
   if (video.status === 'completed') return ok('done');
-  const paths = artifactPaths(deps.fs, resolved.artifactRoot, video.originalPath, video.newName);
+  const paths = pipelineArtifactPaths(deps.fs, resolved, video);
   if (video.status === 'error') {
     const frames = await existingFrames(deps.fs, paths.framesDir);
     if (!frames.ok) return frames;
@@ -1255,7 +1412,7 @@ const datePrefix = (mtimeMs: number): string => {
   return `${date.getFullYear()}-${month}-${day}`;
 };
 
-const completedOutput = (fs: FileSystemPort, video: Video): ProcessCompletedOutput => ({
+const completedOutput = (fs: FileSystemPort, video: Video): PipelineCompletedOutput => ({
   video: video.newName ?? fs.basename(video.originalPath),
   path: video.newName === null ? video.originalPath : fs.join(fs.dirname(video.originalPath), video.newName),
   status: 'completed',
@@ -1265,7 +1422,7 @@ const completedOutputWithCost = (
   fs: FileSystemPort,
   video: Video,
   costEstimate: GeminiCostEstimate | null,
-): ProcessCompletedOutput => ({
+): PipelineCompletedOutput => ({
   ...completedOutput(fs, video),
   ...(costEstimate === null ? {} : { costEstimate }),
 });
@@ -1274,40 +1431,52 @@ const alreadyIndexed = async (
   deps: ProcessDeps,
   folder: string,
   videoPath: string,
+  fingerprint: string | null,
+  configIdValue: string,
   force: boolean,
-): Promise<Result<boolean, AppError>> => {
+  progress: JobExecutionContext | undefined,
+): Promise<Result<string | null, AppError>> => {
   const globalCatalog = deps.globalCatalog;
-  if (globalCatalog === undefined || force) return ok(false);
+  if (globalCatalog === undefined || force || fingerprint === null) return ok(null);
   const catalogDeps = { globalCatalog, fs: deps.fs };
   const resolved = await resolveFolderIntoIndex(catalogDeps, folder);
   if (!resolved.ok) return resolved;
-  const fingerprint = await deps.fs.partialContentHash(videoPath);
-  if (!fingerprint.ok) return fingerprint;
-  if (fingerprint.value === null) return ok(false);
-  return hasProcessedAnalysis(catalogDeps, fingerprint.value);
+  const variant = await globalCatalog.getVariant(fingerprint, configIdValue);
+  if (!variant.ok) return variant;
+  if (variant.value === null) return ok(null);
+  if (progress !== undefined) {
+    const reported = await progress.reportProgress({
+      step: 'catalog_index_skipped',
+      data: { video: videoPath, reason: 'variant_exists', configId: configIdValue },
+    });
+    if (!reported.ok) return reported;
+  }
+  return globalCatalog.getSelectedConfigId(fingerprint);
 };
 
 const recordGlobalCatalog = async (
   deps: ProcessDeps,
   repository: CatalogRepository,
   resolved: PipelineOptions,
-  completed: ProcessCompletedOutput,
+  completed: PipelineCompletedOutput,
   progress: JobExecutionContext | undefined,
-): Promise<Result<{ snapshotSkipped: boolean }, AppError>> => {
+): Promise<Result<{ snapshotSkipped: boolean; selectedConfigId: string }, AppError>> => {
   const globalCatalog = deps.globalCatalog;
-  if (globalCatalog === undefined) return ok({ snapshotSkipped: false });
+  if (globalCatalog === undefined) {
+    return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId });
+  }
   const finalPath = completed.path;
   const folder = deps.fs.dirname(finalPath);
   const fingerprint = await deps.fs.partialContentHash(finalPath);
   if (!fingerprint.ok) return fingerprint;
   if (fingerprint.value === null) {
-    if (progress === undefined) return ok({ snapshotSkipped: false });
+    if (progress === undefined) return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId });
     const reported = await progress.reportProgress({
       step: 'catalog_index_skipped',
-      data: { video: finalPath, reason: 'fingerprint_unavailable' },
+      data: { video: finalPath, reason: 'fingerprint_unavailable', configId: resolved.configId },
     });
     if (!reported.ok) return reported;
-    return ok({ snapshotSkipped: false });
+    return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId });
   }
   const stat = await deps.fs.stat(finalPath);
   if (!stat.ok) return stat;
@@ -1316,33 +1485,58 @@ const recordGlobalCatalog = async (
   const videoRow = await repository.findVideoByPath(finalPath);
   if (!videoRow.ok) return videoRow;
   const newName = videoRow.value?.newName ?? null;
-  const paths = artifactPaths(deps.fs, resolved.artifactRoot, finalPath, newName);
+  const paths = pipelineArtifactPathsAt(deps.fs, resolved, finalPath, newName);
   const summary = await loadOptionalSummary(deps.fs, paths.summaryJsonPath);
   if (!summary.ok) return summary;
   const transcript = await readFilteredTranscript(deps.fs, paths.transcriptPath, paths.transcriptJsonPath);
   if (!transcript.ok) return transcript;
   const provider = resolved.analyzer.provider;
-  const upserted = await upsertProcessedVideo(
+  const createdAt = summary.value?.analyzedAt ?? new Date().toISOString();
+  const upserted = await upsertProcessedVariant(
     { globalCatalog, fs: deps.fs },
     {
       folderPath: folder,
-      fingerprint: fingerprint.value,
-      fileName: deps.fs.basename(finalPath),
-      size: stat.value.size,
-      durationS: probe.value.duration,
-      gpsLat: probe.value.gpsLat,
-      gpsLon: probe.value.gpsLon,
-      processedAt: new Date().toISOString(),
-      analyzer: provider.providerId,
-      model: analysisModel(resolved),
-      finalName: newName,
-      description: summary.value?.description ?? null,
-      transcript: transcript.value,
-      language: null,
-      tags: summary.value?.tags ?? [],
+      file: {
+        fingerprint: fingerprint.value,
+        fileName: deps.fs.basename(finalPath),
+        size: stat.value.size,
+        durationS: probe.value.duration,
+        gpsLat: probe.value.gpsLat,
+        gpsLon: probe.value.gpsLon,
+        processedAt: createdAt,
+        analyzer: provider.providerId,
+        model: analysisModel(resolved),
+        missingAt: null,
+      },
+      variant: {
+        fingerprint: fingerprint.value,
+        configId: resolved.configId,
+        descriptor: resolved.descriptor,
+        analyzer: provider.providerId,
+        model: analysisModel(resolved),
+        createdAt,
+        usage: summary.value?.usage ?? null,
+        finalName: newName,
+        description: summary.value?.description ?? null,
+        transcript: transcript.value,
+        language: resolved.descriptor.output_language,
+        tags: summary.value?.tags ?? [],
+      },
     },
   );
   if (!upserted.ok) return upserted;
+  if (upserted.value.selectedConfigId === resolved.configId && resolved.variantPaths !== null) {
+    const projectionSource = await selectedProjectionSource(deps.fs, resolved.variantPaths);
+    if (!projectionSource.ok) return projectionSource;
+    const projected = await materializeSelectedVariantProjection(
+      deps.fs,
+      resolved.artifactRoot,
+      finalPath,
+      newName,
+      projectionSource.value,
+    );
+    if (!projected.ok) return projected;
+  }
   if (upserted.value.snapshotSkipped && progress !== undefined) {
     const warned = await progress.reportProgress({
       step: 'catalog_snapshot_skipped',
@@ -1350,8 +1544,47 @@ const recordGlobalCatalog = async (
     });
     if (!warned.ok) return warned;
   }
-  return ok({ snapshotSkipped: upserted.value.snapshotSkipped });
+  return ok({
+    snapshotSkipped: upserted.value.snapshotSkipped,
+    selectedConfigId: upserted.value.selectedConfigId,
+  });
 };
+
+const selectedProjectionSource = async (
+  fs: FileSystemPort,
+  paths: VariantArtifactPaths,
+): Promise<Result<{
+  framesDirectory: string | null;
+  transcriptPath: string | null;
+  transcriptJsonPath: string | null;
+  summaryPath: string;
+  summaryJsonPath: string;
+  debugLogPath: string | null;
+}, AppError>> => {
+  const transcript = await optionalFile(fs, paths.transcriptPath);
+  if (!transcript.ok) return transcript;
+  const transcriptJson = await optionalFile(fs, paths.transcriptJsonPath);
+  if (!transcriptJson.ok) return transcriptJson;
+  const debug = await optionalFile(fs, paths.debugLogPath);
+  if (!debug.ok) return debug;
+  return ok({
+    framesDirectory: paths.framesDirectory,
+    transcriptPath: transcript.value,
+    transcriptJsonPath: transcriptJson.value,
+    summaryPath: paths.summaryPath,
+    summaryJsonPath: paths.summaryJsonPath,
+    debugLogPath: debug.value,
+  });
+};
+
+const optionalFile = async (fs: FileSystemPort, path: string): Promise<Result<string | null, AppError>> => {
+  const exists = await fs.isFile(path);
+  if (!exists.ok) return exists;
+  return ok(exists.value ? path : null);
+};
+
+const usageRecord = (usage: GeminiUsageAccounting) =>
+  z.record(z.string(), z.json()).parse(usage);
 
 const flushGlobalCatalog = async (deps: ProcessDeps): Promise<Result<void, AppError>> => {
   if (deps.globalCatalog === undefined) return ok(undefined);

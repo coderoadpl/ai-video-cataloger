@@ -89,7 +89,7 @@ const makeDeps = (
   catalogs: new InMemoryCatalogs(),
   config: new InMemoryConfig(),
   fs,
-  media: new InMemoryMedia(),
+  media: new InMemoryMedia(fs),
   transcriber: new InMemoryTranscriber(fs),
   analyzer,
   globalCatalog: new InMemoryGlobalCatalogStore(),

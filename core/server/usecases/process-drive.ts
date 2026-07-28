@@ -2,6 +2,8 @@ import { randomUUID } from 'node:crypto';
 
 import {
   appError,
+  configDescriptorSchema,
+  configId,
   configValueSchema,
   driveRunBatchDisplayName,
   geminiModelPrice,
@@ -29,11 +31,11 @@ import {
   type GlobalCatalogStore,
   type JobExecutionContext,
 } from '../ports.js';
-import type { ProcessDeps, ProcessPipelineInput } from './process.js';
-import { hasProcessedAnalysis, reconcileFolderPresence, resolveFolderIntoIndex } from './catalog-index.js';
+import type { ProcessConfigIdentity, ProcessDeps, ProcessPipelineInput } from './process.js';
+import { reconcileFolderPresence, resolveFolderIntoIndex } from './catalog-index.js';
 import { exportFolderSnapshot } from './catalog-snapshot.js';
 import { isReadOnlyWriteError, readFolderMarker } from './folder-identity.js';
-import { processVideoPipeline, resolveProcessOptions } from './process.js';
+import { processConfigIdentity, processVideoPipeline, resolveProcessOptions } from './process.js';
 import {
   awaitBatchResults,
   batchJobFailureError,
@@ -131,6 +133,7 @@ interface DriveBatchPlan {
   analyzerBatch: AnalyzerBatchPort;
   provider: AnalyzerProviderConfig;
   model: string;
+  configIdentity: ProcessConfigIdentity;
   outputLanguage: AppConfig['output_language'];
   timeoutSeconds: number;
   reattachedRequests: Map<string, DriveRunBatchRequest> | null;
@@ -309,7 +312,10 @@ export const processDrive = async (
       const cancellation = cancelled(progress);
       if (!cancellation.ok) return cancellation;
       fileIndex += 1;
-      const skipped = await alreadyProcessed(deps, input, video);
+      const batchIdentity = plan !== null && batchesHere.value
+        ? resolvedBatchIdentity(plan, state.run.batch)
+        : null;
+      const skipped = await alreadyProcessed(deps, input, video, batchIdentity);
       if (!skipped.ok) return skipped;
       if (skipped.value) {
         const skipReported = await report(progress, 'file-skipped', { video: video.path });
@@ -517,6 +523,7 @@ const resolveBatchPlan = async (
     analyzerBatch: deps.analyzerBatch,
     provider,
     model: provider.model,
+    configIdentity: processConfigIdentity(resolved.value, deps.analyzer.promptVersion(provider)),
     outputLanguage: resolved.value.analyzer.outputLanguage,
     timeoutSeconds: resolved.value.analyzer.timeoutSeconds,
     reattachedRequests: null,
@@ -577,6 +584,17 @@ const batchConfigKey = (
     outputLanguage,
     timeoutSeconds,
   ]);
+
+const resolvedBatchIdentity = (
+  plan: DriveBatchPlan,
+  persisted: DriveRunBatchState | null | undefined,
+): ProcessConfigIdentity => {
+  if (persisted?.configIdentity !== undefined) return persisted.configIdentity;
+  const model = persisted?.model ?? plan.model;
+  if (model === plan.model) return plan.configIdentity;
+  const descriptor = configDescriptorSchema.parse({ ...plan.configIdentity.descriptor, model });
+  return { descriptor, configId: configId(descriptor) };
+};
 
 const enrolInBatch = async (
   plan: DriveBatchPlan,
@@ -650,11 +668,13 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
   // already have created is findable by display name, so a configuration that moved since never
   // overwrites it.
   const persistedModel = persistedBatch?.model ?? null;
+  const configIdentity = resolvedBatchIdentity(plan, persistedBatch);
   state.run.batch = {
     displayName,
     jobName: persistedBatch?.jobName ?? null,
     state: persistedBatch?.jobName == null ? 'preparing' : 'submitted',
     model: persistedModel ?? plan.model,
+    configIdentity,
     requests,
   };
   const beforeSubmit = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
@@ -688,7 +708,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
     });
     if (!modelReported.ok) return modelReported;
   }
-  state.run.batch = { displayName, jobName: job.value.jobName, state: 'submitted', model, requests };
+  state.run.batch = { displayName, jobName: job.value.jobName, state: 'submitted', model, configIdentity, requests };
   const afterSubmit = await persistBatchIdentity(deps, pass.globalCatalog, state, now);
   if (!afterSubmit.ok) return afterSubmit;
   const submitReported = await report(progress, 'batch_submitted', {
@@ -743,7 +763,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
           pass.deps,
           {
             ...processInput(pass.input, pending.video.path, pending.fileIndex, state.filesTotal, state.run.runId),
-            precomputedAnalysis: { analysis: outcome.value, pricingMode: 'batch', model },
+            precomputedAnalysis: { analysis: outcome.value, pricingMode: 'batch', model, configIdentity },
           },
           progress,
         )
@@ -779,7 +799,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
   }
   state.run.batch = expired
     ? null
-    : { displayName, jobName: job.value.jobName, state: 'completed', model, requests };
+    : { displayName, jobName: job.value.jobName, state: 'completed', model, configIdentity, requests };
   return persistBatchIdentity(deps, pass.globalCatalog, state, now);
 };
 
@@ -1079,9 +1099,19 @@ const alreadyProcessed = async (
   deps: ProcessDeps,
   input: ProcessDriveInput,
   video: ScanVideo,
+  configIdentity: ProcessConfigIdentity | null,
 ): Promise<Result<boolean, AppError>> => {
   if (input.force === true || deps.globalCatalog === undefined || video.contentHash === null) return ok(false);
-  return hasProcessedAnalysis({ globalCatalog: deps.globalCatalog, fs: deps.fs }, video.contentHash);
+  const folder = deps.fs.dirname(video.path);
+  const resolved = await resolveProcessOptions(deps.config, folder, processInput(input, video.path, 1, 1));
+  if (!resolved.ok) return resolved;
+  const identity = configIdentity ?? processConfigIdentity(
+    resolved.value,
+    deps.analyzer.promptVersion(resolved.value.analyzer.provider),
+  );
+  const variant = await deps.globalCatalog.getVariant(video.contentHash, identity.configId);
+  if (!variant.ok) return variant;
+  return ok(variant.value !== null);
 };
 
 const persistRun = async (

@@ -1,9 +1,10 @@
 import { z } from 'zod';
 
-import { configDescriptorSchema } from './config-descriptor.js';
+import { configDescriptorSchema, configId } from './config-descriptor.js';
 import { appError, type AppError } from './errors.js';
 
 export const GLOBAL_CATALOG_SCHEMA_VERSION = 9;
+export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 10;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
 
@@ -90,19 +91,28 @@ export const snapshotHeaderLineSchema = z.object({
   exportedAt: z.iso.datetime(),
 });
 
-export const snapshotRecordLineSchema = z.object({
+export const legacySnapshotRecordLineSchema = z.object({
   type: z.literal('record'),
   file: catalogFileSchema,
   analysis: catalogAnalysisSchema.nullable(),
 });
 
-export const snapshotLineSchema = z.discriminatedUnion('type', [
+export const snapshotRecordLineSchema = z.object({
+  type: z.literal('record'),
+  file: catalogFileSchema,
+  analyses: z.array(catalogVariantSchema),
+  selectedConfigId: z.string().min(1).nullable(),
+});
+
+export const snapshotLineSchema = z.union([
   snapshotHeaderLineSchema,
+  legacySnapshotRecordLineSchema,
   snapshotRecordLineSchema,
 ]);
 
 export type SnapshotHeaderLine = z.output<typeof snapshotHeaderLineSchema>;
 export type SnapshotRecordLine = z.output<typeof snapshotRecordLineSchema>;
+export type LegacySnapshotRecordLine = z.output<typeof legacySnapshotRecordLineSchema>;
 
 export const driveRunBatchRequestSchema = z.object({
   key: z.string().min(1),
@@ -113,11 +123,21 @@ export const driveRunBatchRequestSchema = z.object({
 
 export type DriveRunBatchRequest = z.output<typeof driveRunBatchRequestSchema>;
 
+const processConfigIdentitySchema = z.object({
+  descriptor: configDescriptorSchema,
+  configId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+}).strict().superRefine((identity, context) => {
+  if (configId(identity.descriptor) !== identity.configId) {
+    context.addIssue({ code: 'custom', path: ['configId'], message: 'configId does not match descriptor' });
+  }
+});
+
 export const driveRunBatchStateSchema = z.object({
   displayName: z.string().min(1),
   jobName: z.string().min(1).nullable(),
   state: z.enum(['preparing', 'submitted', 'completed', 'failed']),
   model: z.string().min(1),
+  configIdentity: processConfigIdentitySchema.optional(),
   requests: z.array(driveRunBatchRequestSchema),
 });
 

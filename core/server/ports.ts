@@ -191,6 +191,7 @@ export interface GlobalCatalogStore {
   upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>>;
   deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>>;
   setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>>;
+  getSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>>;
   setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>>;
   listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>>;
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
@@ -571,6 +572,7 @@ export interface AnalyzerBatchPort {
 }
 
 export interface AnalyzerPort {
+  promptVersion(provider: AnalyzerProviderConfig): number;
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>>;
   dependency(input?: {
     backend: AppConfig['analyzer_backend'];

@@ -262,6 +262,8 @@ export const processCompletedOutputSchema = z.object({
   video: z.string(),
   path: z.string(),
   status: z.literal('completed'),
+  configId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+  selectedConfigId: z.string().min(1),
   costEstimate: geminiCostEstimateSchema.optional(),
 });
 

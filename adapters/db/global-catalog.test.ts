@@ -975,6 +975,13 @@ describe('SqlJsGlobalCatalogStore', () => {
   it('migrates an existing v2 database to the current version and persists drive run bookkeeping, batch state included', async () => {
     const home = await tempHome();
     await writeV2Catalog(home);
+    const descriptor = configDescriptorSchema.parse({
+      family: 'gemini-native',
+      providerId: 'gemini',
+      model: 'gemini-3.6-flash',
+      output_language: 'auto',
+      promptVersion: 1,
+    });
 
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     const started = await store.startDriveRun({
@@ -1007,6 +1014,7 @@ describe('SqlJsGlobalCatalogStore', () => {
         jobName: 'batches/9',
         state: 'submitted',
         model: 'gemini-3.6-flash',
+        configIdentity: { descriptor, configId: configId(descriptor) },
         requests: [{ key: '/drive/a.mp4', videoPath: '/drive/a.mp4', fileName: 'files/a', fileUri: 'https://files/a' }],
       },
     });
@@ -1024,6 +1032,10 @@ describe('SqlJsGlobalCatalogStore', () => {
       batch: {
         jobName: 'batches/9',
         state: 'submitted',
+        configIdentity: {
+          configId: configId(descriptor),
+          descriptor: { output_language: 'auto', promptVersion: 1 },
+        },
         requests: [{ key: '/drive/a.mp4', fileUri: 'https://files/a' }],
       },
     });

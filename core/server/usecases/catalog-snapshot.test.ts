@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 
-import { GLOBAL_CATALOG_SCHEMA_VERSION, type CatalogFile, type CatalogFolder } from '@core/domain/index.js';
+import {
+  CATALOG_SNAPSHOT_SCHEMA_VERSION,
+  buildConfigDescriptor,
+  configId,
+  type CatalogFile,
+  type CatalogFolder,
+} from '@core/domain/index.js';
 
 import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
@@ -64,7 +70,9 @@ describe('catalog snapshot roundtrip', () => {
     expect(exported.value.records).toBe(2);
     const snapshot = await fs.readTextFile(folderSnapshotPath(fs, '/work'));
     expect(snapshot.ok && snapshot.value !== null).toBe(true);
-    expect(snapshot.ok && snapshot.value).toContain(`"version":${GLOBAL_CATALOG_SCHEMA_VERSION}`);
+    expect(snapshot.ok && snapshot.value).toContain(`"version":${CATALOG_SNAPSHOT_SCHEMA_VERSION}`);
+    expect(snapshot.ok && snapshot.value).toContain('"analyses":[');
+    expect(snapshot.ok && snapshot.value).toContain('"selectedConfigId":"legacy"');
     expect(snapshot.ok && snapshot.value).toContain('"tags":["dji-drone","wide-shot"]');
     expect(snapshot.ok && snapshot.value).toContain('"gpsLat":69.6492');
 
@@ -173,6 +181,60 @@ describe('catalog snapshot roundtrip', () => {
     expect(present.ok && present.value?.missingAt).toBeNull();
   });
 
+  it('round-trips every variant and the selected configuration', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const source = new InMemoryGlobalCatalogStore();
+    const firstDescriptor = buildConfigDescriptor({}, 1);
+    const secondDescriptor = buildConfigDescriptor({ output_language: 'pl' }, 1);
+    const firstConfigId = configId(firstDescriptor);
+    const secondConfigId = configId(secondDescriptor);
+    await source.upsertFolder(folder('/work'));
+    await source.upsertFile(file('variants', '2026-01-05T00:00:00.000Z'));
+    await source.upsertVariant({
+      fingerprint: 'variants',
+      configId: firstConfigId,
+      descriptor: firstDescriptor,
+      analyzer: 'claude-code',
+      model: null,
+      createdAt: '2026-01-05T00:00:00.000Z',
+      usage: null,
+      finalName: 'first.mp4',
+      description: 'First',
+      transcript: 'shared',
+      language: 'en',
+      tags: ['first'],
+    });
+    await source.upsertVariant({
+      fingerprint: 'variants',
+      configId: secondConfigId,
+      descriptor: secondDescriptor,
+      analyzer: 'claude-code',
+      model: null,
+      createdAt: '2026-01-06T00:00:00.000Z',
+      usage: null,
+      finalName: 'second.mp4',
+      description: 'Second',
+      transcript: 'shared',
+      language: 'pl',
+      tags: ['second'],
+    });
+    await source.setSelectedVariant('variants', firstConfigId);
+    expect(await exportFolderSnapshot({ globalCatalog: source, fs }, folder('/work'))).toMatchObject({ ok: true });
+
+    const target = new InMemoryGlobalCatalogStore();
+    const imported = await importFolderSnapshot({ globalCatalog: target, fs }, '/work');
+    const variants = await target.listVariants('variants');
+    const selected = await target.getSelectedConfigId('variants');
+
+    expect(imported.ok && imported.value.imported).toBe(1);
+    expect(variants.ok && variants.value.map((variant) => variant.configId).sort()).toEqual([
+      firstConfigId,
+      secondConfigId,
+    ].sort());
+    expect(selected).toEqual({ ok: true, value: firstConfigId });
+  });
+
   it('keeps the newer processed_at row when importing a conflicting snapshot', async () => {
     const fs = new InMemoryFileSystem('/work');
     fs.addDirectory('/work');
@@ -218,7 +280,7 @@ describe('catalog snapshot roundtrip', () => {
     fs.addDirectory('/work');
     const header = JSON.stringify({
       type: 'header',
-      version: GLOBAL_CATALOG_SCHEMA_VERSION + 1,
+      version: CATALOG_SNAPSHOT_SCHEMA_VERSION + 1,
       folder: folder('/work'),
       exportedAt: '2026-01-02T00:00:00.000Z',
     });
@@ -236,7 +298,7 @@ describe('catalog snapshot roundtrip', () => {
     fs.addDirectory('/work');
     const header = JSON.stringify({
       type: 'header',
-      version: GLOBAL_CATALOG_SCHEMA_VERSION,
+      version: CATALOG_SNAPSHOT_SCHEMA_VERSION,
       folder: folder('/work'),
       exportedAt: '2026-01-02T00:00:00.000Z',
     });

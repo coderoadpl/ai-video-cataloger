@@ -424,6 +424,10 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async getSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>> {
+    return this.read((db) => selectedAnalysisRow(db, fingerprint)?.configId ?? null);
+  }
+
   async setFolderDefaultVariant(folderId: string, configIdValue: string | null): Promise<Result<void, AppError>> {
     return this.write((db, client) => {
       db.update(folders).set({ defaultConfigId: configIdValue }).where(eq(folders.folderId, folderId)).run();

@@ -347,6 +347,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
   private readonly variants = new Map<string, CatalogVariant>();
+  private readonly selectedConfigIds = new Map<string, string>();
   private readonly folderDefaultVariants = new Map<string, string>();
   private readonly driveRuns = new Map<string, DriveRunRecord>();
   private readonly people = new Map<string, Person>();
@@ -419,6 +420,9 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       createdAt: file?.processedAt ?? '1970-01-01T00:00:00.000Z',
       usage: null,
     });
+    if (!this.selectedConfigIds.has(analysis.fingerprint)) {
+      this.selectedConfigIds.set(analysis.fingerprint, LEGACY_CONFIG_ID);
+    }
     return Promise.resolve(ok(undefined));
   }
 
@@ -442,10 +446,32 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>> {
-    if (configId === null) return Promise.resolve(ok(undefined));
+    if (configId === null) {
+      this.selectedConfigIds.delete(fingerprint);
+      return Promise.resolve(ok(undefined));
+    }
     const variant = this.variants.get(`${fingerprint}\u0000${configId}`);
-    if (variant !== undefined) this.analyses.set(fingerprint, variant);
+    if (variant !== undefined) {
+      this.selectedConfigIds.set(fingerprint, configId);
+      this.analyses.set(fingerprint, variant);
+    }
     return Promise.resolve(ok(undefined));
+  }
+
+  getSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>> {
+    const explicit = this.selectedConfigIds.get(fingerprint);
+    if (explicit !== undefined && this.variants.has(`${fingerprint}\u0000${explicit}`)) {
+      return Promise.resolve(ok(explicit));
+    }
+    const file = this.files.get(fingerprint);
+    const folderDefault = file === undefined ? undefined : this.folderDefaultVariants.get(file.folderId);
+    if (folderDefault !== undefined && this.variants.has(`${fingerprint}\u0000${folderDefault}`)) {
+      return Promise.resolve(ok(folderDefault));
+    }
+    const newest = [...this.variants.values()]
+      .filter((variant) => variant.fingerprint === fingerprint)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+    return Promise.resolve(ok(newest?.configId ?? null));
   }
 
   setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>> {
@@ -974,6 +1000,10 @@ class InMemoryWhisperRuntimePort implements WhisperRuntimePort {
 }
 
 class InMemoryAnalyzerPort implements AnalyzerPort {
+  promptVersion(): number {
+    return 1;
+  }
+
   analyze(): Promise<Result<{ rawResponse: string }, AppError>> {
     return Promise.resolve(ok({ rawResponse: 'DESCRIPTION: Placeholder analysis\nFILENAME: placeholder-video' }));
   }

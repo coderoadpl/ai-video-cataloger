@@ -2,10 +2,18 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readdirSync } from 'nod
 import { join } from 'node:path';
 
 import { describe, expect, it, beforeEach, afterEach } from 'vitest';
+import { framesKey } from '@core/server/index.js';
 
 import { createFailingClaudeBinary, createFakeVideoFile } from '../helpers/fixtures.js';
 import { findEvent, getProjectRoot, parseJsonEvents, runCli } from '../helpers/cli-runner.js';
 import { cleanupTestDir, createTestDir } from '../setup.js';
+
+const storedFramesDirectory = (catalogDirectory: string, count: number): string => {
+  const fingerprintRoot = join(catalogDirectory, 'artifacts', 'frames');
+  const fingerprint = readdirSync(fingerprintRoot)[0];
+  if (fingerprint === undefined) throw new Error('Expected a fingerprint artifact directory');
+  return join(fingerprintRoot, fingerprint, framesKey(count));
+};
 
 describe('process-drive command', () => {
   let testDir: string;
@@ -67,13 +75,14 @@ describe('process-drive command', () => {
       );
       const summary = findEvent(parseJsonEvents(result.stdout), 'run-summary');
 
-      expect(result.exitCode).toBe(0);
+      expect(result.exitCode, `${result.stdout}\n${result.stderr}`).toBe(0);
       expect(summary).toMatchObject({ foldersTotal: 1, filesTotal: 1 });
       expect(JSON.stringify(summary?.failures)).not.toContain('EACCES');
       expect(readdirSync(folder)).toEqual(['clip.mp4']);
       const mirrors = readdirSync(join(home, '.ai-video-cataloger', 'read-only-folders'));
       expect(mirrors).toHaveLength(1);
-      expect(existsSync(join(home, '.ai-video-cataloger', 'read-only-folders', mirrors[0] ?? '', 'frames', 'clip', 'frame-001.jpg'))).toBe(true);
+      const mirror = join(home, '.ai-video-cataloger', 'read-only-folders', mirrors[0] ?? '');
+      expect(existsSync(join(storedFramesDirectory(mirror, 1), 'frame-001.jpg'))).toBe(true);
     } finally {
       chmodSync(folder, 0o755);
       cleanupTestDir(home);
@@ -91,12 +100,12 @@ describe('process-drive command', () => {
     const configured = await runCli(['process-drive', testDir, '--json'], { cwd: testDir, env });
 
     expect(configured.exitCode).toBe(0);
-    expect(readdirSync(join(testDir, 'frames', 'clip'))).toHaveLength(1);
+    expect(readdirSync(storedFramesDirectory(join(testDir, '.ai-video-cataloger'), 1))).toHaveLength(1);
 
     const overridden = await runCli(['process-drive', testDir, '--frames', '2', '--json'], { cwd: testDir, env });
 
     expect(overridden.exitCode).toBe(0);
-    expect(readdirSync(join(testDir, 'frames', 'clip'))).toHaveLength(2);
+    expect(readdirSync(storedFramesDirectory(join(testDir, '.ai-video-cataloger'), 2))).toHaveLength(2);
     cleanupTestDir(home);
   });
 });
