@@ -26,6 +26,7 @@ export interface VariantsState {
   selecting: boolean;
   settingFolderDefault: boolean;
   comparing: boolean;
+  retryLoad: () => void;
   previewConfig: (configId: string) => void;
   showComparison: () => void;
   hideComparison: () => void;
@@ -34,10 +35,14 @@ export interface VariantsState {
   useCurrentAsFolderDefault: () => void;
 }
 
+const variantLocator = (video: DetailsVideo): { fingerprint: string } | { videoPath: string } =>
+  video.contentHash === null ? { videoPath: video.path } : { fingerprint: video.contentHash };
+
 export const useVariants = (video: DetailsVideo): VariantsState => {
   const [previewConfigId, setPreviewConfigId] = useState<string | null>(null);
   const [comparing, setComparing] = useState(false);
-  const query = useQuery(variants({ videoPath: video.path }));
+  const locator = variantLocator(video);
+  const query = useQuery(variants(locator));
   const selection = useMutation(selectVariant);
   const folderDefault = useMutation(setFolderDefaultVariant);
   const data = query.data ?? null;
@@ -46,8 +51,8 @@ export const useVariants = (video: DetailsVideo): VariantsState => {
   const plan = data === null ? null : analysisPlan(data);
 
   const selectConfig = useCallback((configId: string) => {
-    selection.mutate({ videoPath: video.path, configId });
-  }, [selection, video.path]);
+    selection.mutate({ ...locator, configId });
+  }, [locator, selection]);
 
   const usePreviewAsSelected = useCallback(() => {
     if (previewVariant === null || previewVariant.selected) return;
@@ -73,6 +78,7 @@ export const useVariants = (video: DetailsVideo): VariantsState => {
     selecting: selection.isPending,
     settingFolderDefault: folderDefault.isPending,
     comparing,
+    retryLoad: () => { void query.refetch(); },
     previewConfig: setPreviewConfigId,
     showComparison,
     hideComparison,

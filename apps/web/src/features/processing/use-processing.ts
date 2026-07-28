@@ -262,10 +262,10 @@ export const useProcessing = ({
         busyRef.current = false;
         setAnalyzingPath(null);
         setProgress(null);
-        await queryClient.invalidateQueries();
         if (outcome.completedPath !== undefined && outcome.completedPath !== video.path) {
           onVideoRenamed?.(video.path, outcome.completedPath);
         }
+        await queryClient.invalidateQueries();
       })();
     },
     [runVideo, addLine, queryClient, checkReadiness, dictionary, onVideoRenamed],

@@ -18,6 +18,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - The landing site now includes an English blog carrying the analyzer benchmark write-up and a getting-started walkthrough.
 
+### Fixed
+
+- GUI analysis completion now follows renamed files in the catalog and details view, refreshes variants by fingerprint, and offers a retry when variant loading fails.
+
 ## [0.6.1] - 2026-08-03
 
 ### Fixed

@@ -52,7 +52,18 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
     );
   }
   if (state.loadError !== null) {
-    return <Alert severity="error">{dictionary.details.variants.loadError}</Alert>;
+    return (
+      <Alert
+        severity="error"
+        action={(
+          <Button color="inherit" size="small" onClick={state.retryLoad}>
+            {dictionary.details.variants.retry}
+          </Button>
+        )}
+      >
+        {dictionary.details.variants.loadError}
+      </Alert>
+    );
   }
   if (data === null) return null;
   const currentIsDefault = data.folderDefaultConfigId === data.currentConfig.configId;

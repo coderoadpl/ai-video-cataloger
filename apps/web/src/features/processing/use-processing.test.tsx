@@ -159,6 +159,7 @@ describe('useProcessing batch', () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     const onVideoRenamed = vi.fn();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     server.use(
       http.post('/api/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job:rename' } })),
       http.get('/api/jobs/status', () => HttpResponse.json({
@@ -190,6 +191,8 @@ describe('useProcessing batch', () => {
 
     await waitFor(() => expect(result.current.isBusy).toBe(false));
     await waitFor(() => expect(onVideoRenamed).toHaveBeenCalledWith('/v/good1.mp4', '/v/2026-01-01_renamed.mp4'));
+    expect(invalidate).toHaveBeenCalled();
+    expect(onVideoRenamed.mock.invocationCallOrder[0]).toBeLessThan(invalidate.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('does not report a rename when the completed path is unchanged', async () => {

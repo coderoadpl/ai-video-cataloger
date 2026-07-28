@@ -1,5 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -250,6 +251,93 @@ describe('details panel', () => {
     expect(active.getAttribute('src')).toContain('frame-001.jpg');
     fireEvent.click(screen.getByRole('button', { name: 'Frame 2' }));
     expect(active.getAttribute('src')).toContain('frame-002.jpg');
+  });
+
+  it('loads the actual variants by stable fingerprint on the initial details open', async () => {
+    const locators: string[] = [];
+    server.use(
+      http.get('/api/variants', ({ request }) => {
+        const url = new URL(request.url);
+        locators.push(url.search);
+        return HttpResponse.json(variantsResponse([
+          variant(firstConfigId, firstDescriptor, true, 'First summary'),
+          variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+        ]));
+      }),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+
+    await screen.findByTestId('variant-switcher');
+    expect(screen.getByText('2 variants')).toBeDefined();
+    expect(locators).toEqual(['?fingerprint=hash-a']);
+  });
+
+  it('offers a retry when a variant lookup fails and renders the recovered variants', async () => {
+    let requests = 0;
+    server.use(
+      http.get('/api/variants', () => {
+        requests += 1;
+        if (requests === 1) {
+          return HttpResponse.json(
+            { ok: false, error: { code: 'internal', message: 'Catalog is catching up' } },
+            { status: 503 },
+          );
+        }
+        return HttpResponse.json(variantsResponse([
+          variant(firstConfigId, firstDescriptor, true, 'Recovered summary'),
+        ]));
+      }),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Could not load analysis variants.');
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    await screen.findByTestId('variant-switcher');
+    expect(screen.getByText('1 variant')).toBeDefined();
+    expect(requests).toBe(2);
+  });
+
+  it('keeps post-rename details and variant refreshes on the completed fingerprint', async () => {
+    const locators: string[] = [];
+    server.use(
+      http.get('/api/variants', ({ request }) => {
+        const url = new URL(request.url);
+        locators.push(url.search);
+        if (url.searchParams.get('fingerprint') !== 'hash-a') {
+          return HttpResponse.json(
+            { ok: false, error: { code: 'file_not_found', message: `File not found: ${url.searchParams.get('videoPath') ?? ''}` } },
+            { status: 404 },
+          );
+        }
+        return HttpResponse.json(variantsResponse([
+          variant(firstConfigId, firstDescriptor, true, 'Fresh summary'),
+        ]));
+      }),
+    );
+    const rendered = renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+    await screen.findByTestId('variant-switcher');
+    const renamed = makeVideo({
+      path: '/videos/2026-08-03_renamed.mp4',
+      filename: '2026-08-03_renamed.mp4',
+    });
+
+    rendered.rerender(
+      <QueryClientProvider client={rendered.queryClient}>
+        <ThemeProvider theme={theme}>
+          <DetailsPanel video={renamed} analyzing={false} />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+    await rendered.queryClient.invalidateQueries();
+
+    expect(await screen.findByRole('heading', { name: '2026-08-03_renamed.mp4' })).toBeDefined();
+    expect(screen.getByText('/videos/2026-08-03_renamed.mp4')).toBeDefined();
+    expect(screen.getByText('1 variant')).toBeDefined();
+    expect(screen.queryByText('Settings partly unknown')).toBeNull();
+    expect(locators.every((locator) => locator === '?fingerprint=hash-a')).toBe(true);
   });
 
   it('renders every variant and previews frames, transcript, summary and tags without mutating', async () => {

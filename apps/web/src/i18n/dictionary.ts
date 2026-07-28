@@ -156,6 +156,7 @@ export interface Dictionary {
       folderDefault: string;
       loading: string;
       loadError: string;
+      retry: string;
       actionError: string;
     };
     status: {
@@ -765,6 +766,7 @@ export const en: Dictionary = {
       folderDefault: 'Current configuration is the folder default',
       loading: 'Loading analysis variants…',
       loadError: 'Could not load analysis variants.',
+      retry: 'Retry',
       actionError: 'Could not update the analysis variant.',
     },
     status: {
@@ -1425,6 +1427,7 @@ export const pl: Dictionary = {
       folderDefault: 'Bieżąca konfiguracja jest domyślna dla folderu',
       loading: 'Wczytywanie wariantów analizy…',
       loadError: 'Nie udało się wczytać wariantów analizy.',
+      retry: 'Ponów',
       actionError: 'Nie udało się zaktualizować wariantu analizy.',
     },
     status: {
