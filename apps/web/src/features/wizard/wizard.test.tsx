@@ -321,10 +321,18 @@ describe('SetupWizard', () => {
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
     await passLanguageStep();
 
-    fireEvent.click(screen.getByTestId('analyzer-family-gemini'));
     const privacy = screen.getByTestId('wizard-gemini-privacy').textContent ?? '';
-    expect(privacy).toContain('uploaded to Google');
-    expect(privacy).toContain('48 hours');
+    expect(screen.queryByTestId('analyzer-gemini')).toBeNull();
+    expect(privacy).toContain('exception to local-first processing');
+    expect(privacy).toContain('entire video file, including audio');
+    expect(privacy).toContain('under about 20 MB');
+    expect(privacy).toContain('Files API');
+    expect(privacy).toContain('Google\'s side for about 48 hours');
+    expect(privacy).toContain('model produces the transcript');
+    expect(privacy).toContain('tokens per second, independent of resolution');
+    expect(privacy).toContain('a few cents per minute');
+
+    fireEvent.click(screen.getByTestId('analyzer-family-gemini'));
 
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'gemini-secret' } });
     clickNext();

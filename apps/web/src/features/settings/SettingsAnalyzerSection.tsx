@@ -139,6 +139,10 @@ export const SettingsAnalyzerSection = ({
         </Select>
       </FormControl>
 
+      <Alert severity="warning" data-testid="gemini-privacy-copy">
+        {dictionary.settingsAnalyzer.geminiPrivacy}
+      </Alert>
+
       {backend === 'local' ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <FormControl fullWidth size="small">
@@ -257,9 +261,6 @@ export const SettingsAnalyzerSection = ({
             onChange={onApiCredentialChange}
             onForget={onForgetCredential}
           />
-          <Typography variant="caption" color="warning.main" data-testid="gemini-privacy-copy">
-            {dictionary.settingsAnalyzer.geminiPrivacy}
-          </Typography>
         </Box>
       ) : null}
     </Box>

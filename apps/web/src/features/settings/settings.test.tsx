@@ -227,6 +227,16 @@ describe('settings modal', () => {
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
 
     const backendSelect = await screen.findByTestId('analyzer-backend-select');
+    const privacy = screen.getByTestId('gemini-privacy-copy').textContent ?? '';
+    expect(screen.queryByTestId('gemini-provider-settings')).toBeNull();
+    expect(privacy).toContain('exception to local-first processing');
+    expect(privacy).toContain('entire video file, including audio');
+    expect(privacy).toContain('under about 20 MB');
+    expect(privacy).toContain('Files API');
+    expect(privacy).toContain('Google\'s side for about 48 hours');
+    expect(privacy).toContain('model produces the transcript');
+    expect(privacy).toContain('tokens per second, independent of resolution');
+    expect(privacy).toContain('a few cents per minute');
     fireEvent.mouseDown(within(backendSelect).getByRole('combobox'));
     fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
 
