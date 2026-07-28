@@ -485,6 +485,8 @@ test('wizard-folder-gui × local-managed × managed-whisper', { tag: '@gui' }, a
     await expect(page.getByTestId('wizard-step-transcription')).toBeVisible({ timeout: 60_000 });
     await expect(page.getByTestId('transcription-managed')).toBeVisible();
     await page.getByTestId('wizard-next').click();
+    await expect(page.getByTestId('wizard-step-faces')).toBeVisible();
+    await page.getByTestId('wizard-next').click();
     await expect(page.getByTestId('wizard-step-downloads')).toBeVisible();
     await page.getByTestId('wizard-next').click();
     await expect(page.getByTestId('wizard-step-readiness')).toBeVisible({ timeout: CELL_TIMEOUT_MS });
