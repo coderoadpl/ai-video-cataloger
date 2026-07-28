@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import type { TranscriptionCreateParamsNonStreaming } from 'openai/resources/audio/transcriptions.js';
 import { execFile } from 'node:child_process';
 import { accessSync, createReadStream, createWriteStream, type ReadStream, type WriteStream } from 'node:fs';
-import { access, mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -18,17 +18,26 @@ import {
   type Result,
   type WhisperModelName,
 } from '@core/domain/index.js';
-import type {
-  DependencyStatus,
-  CredentialsStore,
-  FileArtifactDownloadProgress,
-  ModelDownloadPort,
-  TranscribeInput,
-  TranscriberPort,
-  WhisperDownloadProgress,
-  WhisperRuntimePort,
-  WhisperRuntimeStatus,
+import {
+  filterTranscript,
+  parseRichSegments,
+  type FilteredTranscript,
+  type DependencyStatus,
+  type CredentialsStore,
+  type FileArtifactDownloadProgress,
+  type ModelDownloadPort,
+  type TranscriptionOutput,
+  type TranscribeInput,
+  type TranscriberPort,
+  type WhisperDownloadProgress,
+  type WhisperRuntimePort,
+  type WhisperRuntimeStatus,
 } from '@core/server/index.js';
+
+const whisperApiTranscriptionSchema = z.object({
+  text: z.string(),
+  segments: z.array(z.unknown()).optional(),
+}).passthrough();
 
 const openAiErrorSchema = z.object({
   status: z.number().optional(),
@@ -59,7 +68,7 @@ export interface WhisperApiClient {
       timestamp_granularities?: ['segment'];
     },
     options?: { signal?: AbortSignal | undefined },
-  ): Promise<{ text: string; segments?: Array<{ start: number; end: number; text: string }> | undefined }>;
+  ): Promise<unknown>;
 }
 
 export interface OpenAiWhisperClientOptions {
@@ -105,8 +114,8 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     this.credentials = options.credentials;
   }
 
-  async transcribe(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
-    if (input.mode === 'skip') return ok({ transcriptPath: input.transcriptPath, content: '' });
+  async transcribe(input: TranscribeInput): Promise<Result<TranscriptionOutput, AppError>> {
+    if (input.mode === 'skip') return ok({ transcriptPath: input.transcriptPath, content: '', filteredSegments: 0 });
     if (input.mode === 'api') return this.transcribeWithApi(input);
     return this.transcribeWithLocal(input);
   }
@@ -187,7 +196,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     });
   }
 
-  private async transcribeWithLocal(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+  private async transcribeWithLocal(input: TranscribeInput): Promise<Result<TranscriptionOutput, AppError>> {
     const binary = await this.resolvedBinary(input.binaryPath);
     if (!binary.available) {
       return {
@@ -195,35 +204,55 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
         error: appError('prerequisites_failed', 'Whisper is not available'),
       };
     }
+    let stagingDirectory: string | null = null;
     try {
       await mkdir(path.dirname(input.transcriptPath), { recursive: true });
+      stagingDirectory = await mkdtemp(path.join(path.dirname(input.transcriptPath), '.whisper-'));
+      const stagedInput: TranscribeInput = {
+        ...input,
+        transcriptPath: path.join(stagingDirectory, path.basename(input.transcriptPath)),
+        ...(input.transcriptJsonPath === undefined
+          ? {}
+          : { transcriptJsonPath: path.join(stagingDirectory, path.basename(input.transcriptJsonPath)) }),
+      };
       const modelPath = await resolveWhisperCppModelPath(this.homeDirectory, input.model);
       const openAiDialect = usesOpenAiWhisperDialect(binary);
       let run = await this.commandRunner.run(
         binary.path,
         openAiDialect
-          ? openAiWhisperArgs(input)
-          : whisperCppArgs(modelPath, input),
+          ? openAiWhisperArgs(stagedInput)
+          : whisperCppArgs(modelPath, stagedInput),
         { signal: input.signal },
       );
       if (!run.ok && !openAiDialect && input.signal?.aborted !== true) {
         run = await this.commandRunner.run(
           binary.path,
-          [...whisperCppArgs(modelPath, input), '--no-gpu'],
+          [...whisperCppArgs(modelPath, stagedInput), '--no-gpu'],
           { signal: input.signal },
         );
       }
       if (!run.ok) return run;
       if (openAiDialect) {
-        await relocateOpenAiWhisperOutput(input, 'txt', input.transcriptPath);
-        if (input.transcriptJsonPath !== undefined) {
-          await relocateOpenAiWhisperOutput(input, 'json', input.transcriptJsonPath);
+        await relocateOpenAiWhisperOutput(stagedInput, 'txt', stagedInput.transcriptPath);
+        if (stagedInput.transcriptJsonPath !== undefined) {
+          await relocateOpenAiWhisperOutput(stagedInput, 'json', stagedInput.transcriptJsonPath);
         }
       }
-      const content = (await readFile(input.transcriptPath, 'utf8')).trim();
-      return ok({ transcriptPath: input.transcriptPath, content });
+      const rawText = (await readFile(stagedInput.transcriptPath, 'utf8')).trim();
+      const decoded = stagedInput.transcriptJsonPath === undefined
+        ? null
+        : await readJsonFile(stagedInput.transcriptJsonPath);
+      const filtered = filterTranscript(rawText, parseRichSegments(decoded));
+      await persistFilteredTranscript(input, filtered);
+      return ok({
+        transcriptPath: input.transcriptPath,
+        content: filtered.text,
+        filteredSegments: filtered.filteredSegments,
+      });
     } catch (cause) {
       return transcriptionFailure(cause, 'Failed to transcribe audio');
+    } finally {
+      if (stagingDirectory !== null) await rm(stagingDirectory, { recursive: true, force: true });
     }
   }
 
@@ -236,7 +265,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     return { path: runtime.value.path, source: runtime.value.source, available: true };
   }
 
-  private async transcribeWithApi(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+  private async transcribeWithApi(input: TranscribeInput): Promise<Result<TranscriptionOutput, AppError>> {
     const apiKey = await this.resolveApiKey(input.apiBaseUrl ?? DEFAULT_WHISPER_API_BASE_URL);
     if (!apiKey.ok) return apiKey;
     if (apiKey.value === null) {
@@ -248,19 +277,27 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
     try {
       await mkdir(path.dirname(input.transcriptPath), { recursive: true });
       const client = this.apiClient ?? createOpenAiWhisperClient(apiKey.value, input.apiBaseUrl ?? DEFAULT_WHISPER_API_BASE_URL);
-      const transcription = await client.createTranscription({
+      const response = await client.createTranscription({
         file: createReadStream(input.audioPath),
         model: input.apiModel ?? DEFAULT_WHISPER_API_MODEL,
         ...(input.language === 'auto' ? {} : { language: input.language }),
         response_format: 'verbose_json',
         timestamp_granularities: ['segment'],
       }, { signal: input.signal });
-      const content = transcription.text.trim();
-      await writeFile(input.transcriptPath, content, 'utf8');
-      if (input.transcriptJsonPath !== undefined && transcription.segments !== undefined) {
-        await writeFile(input.transcriptJsonPath, JSON.stringify({ text: content, segments: transcription.segments }, null, 2), 'utf8');
+      const transcription = whisperApiTranscriptionSchema.safeParse(response);
+      if (!transcription.success) {
+        return {
+          ok: false,
+          error: appError('processing_error', 'Whisper API returned invalid transcription data', transcription.error),
+        };
       }
-      return ok({ transcriptPath: input.transcriptPath, content });
+      const filtered = filterTranscript(transcription.data.text.trim(), parseRichSegments(transcription.data));
+      await persistFilteredTranscript(input, filtered);
+      return ok({
+        transcriptPath: input.transcriptPath,
+        content: filtered.text,
+        filteredSegments: filtered.filteredSegments,
+      });
     } catch (cause) {
       return openAiFailure(cause);
     }
@@ -631,6 +668,34 @@ const relocateOpenAiWhisperOutput = async (
     `${path.basename(input.audioPath, path.extname(input.audioPath))}.${extension}`,
   );
   if (producedPath !== targetPath) await rename(producedPath, targetPath);
+};
+
+const readJsonFile = async (filePath: string): Promise<unknown> => {
+  const content = await readFile(filePath, 'utf8');
+  try {
+    return JSON.parse(content);
+  } catch {
+    return null;
+  }
+};
+
+const persistFilteredTranscript = async (
+  input: TranscribeInput,
+  filtered: FilteredTranscript,
+): Promise<void> => {
+  await writeFile(input.transcriptPath, filtered.text, 'utf8');
+  if (input.transcriptJsonPath === undefined) return;
+  await mkdir(path.dirname(input.transcriptJsonPath), { recursive: true });
+  await writeFile(input.transcriptJsonPath, JSON.stringify({
+    text: filtered.text,
+    segments: filtered.segments.map((segment) => ({
+      start: segment.start,
+      end: segment.end,
+      text: segment.text,
+      no_speech_prob: segment.noSpeechProb,
+      avg_logprob: segment.avgLogprob,
+    })),
+  }, null, 2), 'utf8');
 };
 
 const childProcessCommandRunner: CommandRunner = {

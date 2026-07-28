@@ -43,8 +43,8 @@ class ToggleAnalyzer implements AnalyzerPort {
 }
 
 class ReadyTranscriber implements TranscriberPort {
-  transcribe(input: TranscribeInput): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
-    return Promise.resolve(ok({ transcriptPath: input.transcriptPath, content: '' }));
+  transcribe(input: TranscribeInput): ReturnType<TranscriberPort['transcribe']> {
+    return Promise.resolve(ok({ transcriptPath: input.transcriptPath, content: '', filteredSegments: 0 }));
   }
 
   dependency(): Promise<Result<DependencyStatus, AppError>> {

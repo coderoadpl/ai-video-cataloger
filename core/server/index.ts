@@ -24,4 +24,5 @@ export * from './usecases/search.js';
 export * from './usecases/status.js';
 export * from './usecases/tags.js';
 export * from './usecases/thumbnail.js';
+export * from './usecases/transcript-hallucinations.js';
 export * from './usecases/variants.js';

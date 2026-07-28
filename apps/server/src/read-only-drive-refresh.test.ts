@@ -41,7 +41,7 @@ class StubAnalyzer implements AnalyzerPort {
 }
 
 class UnusedTranscriber implements TranscriberPort {
-  transcribe(): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
+  transcribe(): ReturnType<TranscriberPort['transcribe']> {
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'transcription is skipped' } });
   }
 

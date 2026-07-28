@@ -987,8 +987,8 @@ class InMemoryMediaPort implements MediaPort {
 }
 
 class InMemoryTranscriberPort implements TranscriberPort {
-  transcribe(): Promise<Result<{ transcriptPath: string; content: string }, AppError>> {
-    return Promise.resolve(ok({ transcriptPath: '', content: '' }));
+  transcribe(): ReturnType<TranscriberPort['transcribe']> {
+    return Promise.resolve(ok({ transcriptPath: '', content: '', filteredSegments: 0 }));
   }
 
   dependency(): Promise<Result<DependencyStatus, AppError>> {

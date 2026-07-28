@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Whisper transcripts are filtered before storage and analysis to remove probable no-speech segments, reviewed silence-tail hallucinations, and degenerate sentence loops across local and API backends.
 - Transcription language is now configurable (`whisper_language`, default `auto`); previously no language was passed to any whisper backend and each fell back to an English-leaning default, causing intermittent misdecoding of non-English narration.
 
 ## [0.6.0] - 2026-08-03
