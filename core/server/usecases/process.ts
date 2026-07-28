@@ -21,7 +21,12 @@ import {
   type Video,
   type WhisperModelName,
 } from '@core/domain/index.js';
-import { analyzerBackendSchema, configValueSchema, outputLanguageSchema } from '@core/domain/config.js';
+import {
+  analyzerBackendSchema,
+  configValueSchema,
+  outputLanguageSchema,
+  whisperLanguageSchema,
+} from '@core/domain/config.js';
 import { whisperModelNameSchema } from '@core/domain/models.js';
 import {
   analyzerProviderConfigSchema,
@@ -96,6 +101,8 @@ export interface ProcessPipelineInput {
   whisperExplicit?: boolean | undefined;
   whisperModel: WhisperModelName;
   whisperModelExplicit?: boolean | undefined;
+  whisperLanguage?: AppConfig['whisper_language'] | undefined;
+  whisperLanguageExplicit?: boolean | undefined;
   analyzer?: AppConfig['analyzer_backend'] | 'api' | undefined;
   provider?: AnalyzerProviderId | undefined;
   localModel?: string | undefined;
@@ -791,6 +798,7 @@ interface ResolvedProcessOptions {
   verbose: boolean;
   whisper: AppConfig['whisper_mode'];
   whisperModel: WhisperModelName;
+  whisperLanguage: AppConfig['whisper_language'];
   whisperBinaryPath: string;
   whisperApiBaseUrl: string;
   whisperApiModel: string;
@@ -818,6 +826,7 @@ export const processConfigIdentity = (
     frames: resolved.frames,
     whisper_mode: resolved.whisper,
     whisper_model: resolved.whisperModel,
+    whisper_language: resolved.whisperLanguage,
     whisper_api_base_url: resolved.whisperApiBaseUrl,
     whisper_api_model: resolved.whisperApiModel,
     output_language: resolved.analyzer.outputLanguage,
@@ -865,6 +874,10 @@ export const resolveProcessOptions = async (
     input.whisperModelExplicit === true
       ? input.whisperModel
       : storedWhisperModel(effective.whisper_model) ?? CONFIG_DEFAULTS.whisper_model;
+  const whisperLanguage =
+    input.whisperLanguageExplicit === true && input.whisperLanguage !== undefined
+      ? input.whisperLanguage
+      : storedWhisperLanguage(effective.whisper_language) ?? CONFIG_DEFAULTS.whisper_language;
   const whisperBinaryPath = effective.whisper_binary_path;
   const whisperApiBaseUrl = effective.whisper_api_base_url;
   const whisperApiModel = effective.whisper_api_model;
@@ -885,6 +898,7 @@ export const resolveProcessOptions = async (
     verbose: input.verbose,
     whisper,
     whisperModel,
+    whisperLanguage,
     whisperBinaryPath,
     whisperApiBaseUrl,
     whisperApiModel,
@@ -999,6 +1013,12 @@ const storedWhisperModel = (value: string | undefined): WhisperModelName | null 
   } catch {
     return null;
   }
+};
+
+const storedWhisperLanguage = (value: string | undefined): AppConfig['whisper_language'] | null => {
+  if (value === undefined) return null;
+  const parsed = whisperLanguageSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
 };
 
 const trimmedValue = (value: string | undefined): string | null => {
@@ -1161,6 +1181,7 @@ const transcribe = async (
     transcriptJsonPath,
     mode: resolved.whisper,
     model: resolved.whisperModel,
+    language: resolved.whisperLanguage,
     apiBaseUrl: resolved.whisperApiBaseUrl,
     apiModel: resolved.whisperApiModel,
     binaryPath: resolved.whisperBinaryPath,

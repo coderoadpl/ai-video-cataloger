@@ -87,6 +87,7 @@ describe('config use-cases', () => {
     const homeValues = {
       whisper_binary_path: '/home/whisper',
       whisper_model: 'small',
+      whisper_language: 'en',
       whisper_mode: 'api',
       whisper_api_base_url: 'https://home.example.com/v1',
       whisper_api_model: 'home-whisper',
@@ -117,6 +118,7 @@ describe('config use-cases', () => {
         sources: {
           whisper_binary_path: 'home',
           whisper_model: 'home',
+          whisper_language: 'home',
           whisper_mode: 'home',
           whisper_api_base_url: 'home',
           whisper_api_model: 'home',
@@ -181,6 +183,7 @@ describe('config use-cases', () => {
     const homeValues = {
       whisper_binary_path: '/home/whisper',
       whisper_model: 'small',
+      whisper_language: 'en',
       whisper_mode: 'api',
       whisper_api_base_url: 'https://home.example.com/v1',
       whisper_api_model: 'home-whisper',
@@ -199,6 +202,7 @@ describe('config use-cases', () => {
     const folderValues = {
       whisper_binary_path: '/folder/whisper',
       whisper_model: 'tiny',
+      whisper_language: 'pl',
       whisper_mode: 'local',
       whisper_api_base_url: 'https://folder.example.com/v1',
       whisper_api_model: 'folder-whisper',
@@ -242,6 +246,7 @@ describe('config use-cases', () => {
         sources: {
           whisper_binary_path: 'folder',
           whisper_model: 'folder',
+          whisper_language: 'folder',
           whisper_mode: 'folder',
           whisper_api_base_url: 'folder',
           whisper_api_model: 'folder',

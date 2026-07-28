@@ -432,6 +432,7 @@ export interface TranscribeInput {
   transcriptJsonPath?: string | undefined;
   mode: AppConfig['whisper_mode'];
   model: WhisperModelName;
+  language: AppConfig['whisper_language'];
   apiBaseUrl?: string | undefined;
   apiModel?: string | undefined;
   binaryPath?: string | undefined;

@@ -1219,12 +1219,13 @@ describe('process pipeline rename and jobs', () => {
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'frames', '5');
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'whisper_mode', 'api');
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'whisper_model', 'small');
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'whisper_language', 'pl');
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'skip_rename', 'true');
 
     await processVideoPipeline(deps, baseInput);
 
     expect(deps.media.frameInputs[0]?.frameCount).toBe(5);
-    expect(deps.transcriber.inputs[0]).toMatchObject({ mode: 'api', model: 'small' });
+    expect(deps.transcriber.inputs[0]).toMatchObject({ mode: 'api', model: 'small', language: 'pl' });
     expect(await deps.fs.exists('/work/Clip One.mp4')).toEqual({ ok: true, value: true });
   });
 
@@ -1233,6 +1234,7 @@ describe('process pipeline rename and jobs', () => {
     await deps.config.set({ kind: 'home' }, 'frames', '4');
     await deps.config.set({ kind: 'home' }, 'whisper_mode', 'api');
     await deps.config.set({ kind: 'home' }, 'whisper_model', 'small');
+    await deps.config.set({ kind: 'home' }, 'whisper_language', 'pl');
     await deps.config.set({ kind: 'home' }, 'whisper_binary_path', '/home/whisper');
     await deps.config.set({ kind: 'home' }, 'skip_rename', 'true');
     await deps.config.set({ kind: 'home' }, 'analyzer_backend', 'local');
@@ -1245,6 +1247,7 @@ describe('process pipeline rename and jobs', () => {
     expect(deps.transcriber.inputs[0]).toMatchObject({
       mode: 'api',
       model: 'small',
+      language: 'pl',
       binaryPath: '/home/whisper',
     });
     expect(deps.analyzer.inputs[0]).toMatchObject({
@@ -1262,6 +1265,7 @@ describe('process pipeline rename and jobs', () => {
       await deps.config.set(scope, 'frames', folder ? '6' : '4');
       await deps.config.set(scope, 'whisper_mode', folder ? 'local' : 'api');
       await deps.config.set(scope, 'whisper_model', folder ? 'tiny' : 'small');
+      await deps.config.set(scope, 'whisper_language', folder ? 'pl' : 'en');
       await deps.config.set(scope, 'whisper_binary_path', folder ? '/folder/whisper' : '/home/whisper');
       await deps.config.set(scope, 'skip_rename', folder ? 'false' : 'true');
       await deps.config.set(scope, 'analyzer_backend', folder ? 'claude' : 'local');
@@ -1275,6 +1279,7 @@ describe('process pipeline rename and jobs', () => {
     expect(deps.transcriber.inputs[0]).toMatchObject({
       mode: 'local',
       model: 'tiny',
+      language: 'pl',
       binaryPath: '/folder/whisper',
     });
     expect(deps.analyzer.inputs[0]).toMatchObject({
@@ -1290,6 +1295,7 @@ describe('process pipeline rename and jobs', () => {
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'frames', '5');
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'whisper_mode', 'api');
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'whisper_model', 'small');
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'whisper_language', 'en');
     await deps.config.set({ kind: 'folder', folder: '/work' }, 'skip_rename', 'true');
 
     await processVideoPipeline(deps, {
@@ -1302,10 +1308,12 @@ describe('process pipeline rename and jobs', () => {
       whisperExplicit: true,
       whisperModel: 'base',
       whisperModelExplicit: true,
+      whisperLanguage: 'pl',
+      whisperLanguageExplicit: true,
     });
 
     expect(deps.media.frameInputs[0]?.frameCount).toBe(2);
-    expect(deps.transcriber.inputs[0]).toMatchObject({ mode: 'local', model: 'base' });
+    expect(deps.transcriber.inputs[0]).toMatchObject({ mode: 'local', model: 'base', language: 'pl' });
     expect(await deps.fs.exists('/work/2024-05-06_useful-clip.mp4')).toEqual({ ok: true, value: true });
   });
 });

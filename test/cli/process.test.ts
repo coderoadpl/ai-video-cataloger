@@ -3,7 +3,7 @@
  * Processes a single video file
  */
 
-import { copyFileSync, readdirSync } from 'node:fs';
+import { chmodSync, copyFileSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
@@ -156,6 +156,7 @@ describe('process command', () => {
       timeout: 120,
       whisper: 'local',
       whisperModel: 'base',
+      whisperLanguage: 'auto',
     });
   });
 
@@ -248,6 +249,55 @@ describe('process command', () => {
 
     expect(overridden.exitCode).toBeGreaterThan(0);
     expect(readdirSync(storedFramesDirectory(join(testDir, '.ai-video-cataloger'), 2))).toHaveLength(2);
+    cleanupTestDir(home);
+  });
+
+  it('defers unpassed --whisper-language to config and lets explicit --whisper-language win', async () => {
+    const home = createTestDir();
+    const binDir = createFailingClaudeBinary(home);
+    const whisperPath = join(binDir, 'whisper-test');
+    const languageLog = join(home, 'whisper-language.log');
+    const modelDirectory = join(home, '.ai-video-cataloger', 'models', 'whisper');
+    mkdirSync(modelDirectory, { recursive: true });
+    writeFileSync(join(modelDirectory, 'ggml-base.bin'), 'model');
+    writeFileSync(whisperPath, `#!/bin/sh
+if [ "$1" = "--help" ]; then
+  printf "whisper.cpp 1.9.1\\n"
+  exit 0
+fi
+language=""
+prefix=""
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -l) language="$2"; shift 2 ;;
+    -of) prefix="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+printf "%s" "$language" > "$HOME/whisper-language.log"
+mkdir -p "$(dirname "$prefix")"
+printf "transcript" > "\${prefix}.txt"
+`);
+    chmodSync(whisperPath, 0o755);
+    const env = { HOME: home, PATH: `${binDir}:${process.env.PATH ?? ''}` };
+    const configDirectory = join(home, '.ai-video-cataloger');
+    mkdirSync(configDirectory, { recursive: true });
+    writeFileSync(join(configDirectory, 'config.json'), JSON.stringify({
+      whisper_binary_path: whisperPath,
+      whisper_language: 'en',
+      frames: '1',
+    }));
+    const configuredVideo = join(testDir, 'configured.mp4');
+    const overriddenVideo = join(testDir, 'overridden.mp4');
+    copyFileSync(join(getProjectRoot(), 'test', 'BigBuckBunny480p30s.mp4'), configuredVideo);
+    copyFileSync(join(getProjectRoot(), 'test', 'BigBuckBunny480p30s.mp4'), overriddenVideo);
+    writeFileSync(overriddenVideo, Buffer.from([0]), { flag: 'a' });
+
+    await runCli(['process', configuredVideo, '--json'], { cwd: testDir, env });
+    expect(readFileSync(languageLog, 'utf8')).toBe('en');
+
+    await runCli(['process', overriddenVideo, '--whisper-language', 'pl', '--json'], { cwd: testDir, env });
+    expect(readFileSync(languageLog, 'utf8')).toBe('pl');
     cleanupTestDir(home);
   });
 });

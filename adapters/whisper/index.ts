@@ -51,7 +51,13 @@ export interface ResolvedWhisperBinary {
 
 export interface WhisperApiClient {
   createTranscription(
-    input: { file: ReadStream; model: string; response_format?: 'verbose_json'; timestamp_granularities?: ['segment'] },
+    input: {
+      file: ReadStream;
+      model: string;
+      language?: string;
+      response_format?: 'verbose_json';
+      timestamp_granularities?: ['segment'];
+    },
     options?: { signal?: AbortSignal | undefined },
   ): Promise<{ text: string; segments?: Array<{ start: number; end: number; text: string }> | undefined }>;
 }
@@ -245,6 +251,7 @@ export class WhisperTranscriberAdapter implements TranscriberPort {
       const transcription = await client.createTranscription({
         file: createReadStream(input.audioPath),
         model: input.apiModel ?? DEFAULT_WHISPER_API_MODEL,
+        ...(input.language === 'auto' ? {} : { language: input.language }),
         response_format: 'verbose_json',
         timestamp_granularities: ['segment'],
       }, { signal: input.signal });
@@ -593,6 +600,8 @@ const whisperCppArgs = (modelPath: string, input: TranscribeInput): readonly str
     modelPath,
     '-f',
     input.audioPath,
+    '-l',
+    input.language,
     '-otxt',
     ...(input.transcriptJsonPath === undefined ? [] : ['-oj']),
     '-of',
@@ -605,6 +614,7 @@ const openAiWhisperArgs = (input: TranscribeInput): readonly string[] => [
   input.audioPath,
   '--model',
   input.model,
+  ...(input.language === 'auto' ? [] : ['--language', input.language]),
   '--output_dir',
   path.dirname(input.transcriptPath),
   '--output_format',

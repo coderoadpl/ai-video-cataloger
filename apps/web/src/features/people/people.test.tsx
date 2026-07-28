@@ -49,6 +49,7 @@ const configData = (facesEnabled: boolean) => ({
   config: {
     whisper_binary_path: null,
     whisper_model: null,
+    whisper_language: null,
     whisper_mode: null,
     whisper_api_base_url: null,
     whisper_api_model: null,
@@ -69,6 +70,7 @@ const configData = (facesEnabled: boolean) => ({
   sources: {
     whisper_binary_path: 'default',
     whisper_model: 'default',
+    whisper_language: 'default',
     whisper_mode: 'default',
     whisper_api_base_url: 'default',
     whisper_api_model: 'default',
@@ -89,6 +91,7 @@ const configData = (facesEnabled: boolean) => ({
 const defaults = (facesEnabled: boolean) => ({
   whisper_binary_path: '',
   whisper_model: 'base',
+  whisper_language: 'auto',
   whisper_mode: 'local',
   whisper_api_base_url: 'https://api.openai.com/v1',
   whisper_api_model: 'whisper-1',

@@ -22,11 +22,12 @@ const goldenVectors = [
       maxImageDetail: 'high',
       whisper_mode: 'local',
       whisper_model: 'base',
+      whisper_language: 'auto',
       frames: 3,
       output_language: 'en',
       promptVersion,
     }),
-    id: 'cfg_5cd3e8040691',
+    id: 'cfg_5a3e7a0cd390',
   },
   {
     descriptor: configDescriptorSchema.parse({
@@ -36,13 +37,14 @@ const goldenVectors = [
       model: 'gpt-5.6-sol',
       reasoningEffort: 'high',
       whisper_mode: 'api',
+      whisper_language: 'auto',
       whisper_api_base_url: 'https://api.openai.com/v1',
       whisper_api_model: 'whisper-1',
       frames: 8,
       output_language: 'pl',
       promptVersion,
     }),
-    id: 'cfg_ce49e6594cd1',
+    id: 'cfg_2fa33be067a7',
   },
   {
     descriptor: configDescriptorSchema.parse({
@@ -73,11 +75,12 @@ const goldenVectors = [
       promptStyle: 'file-urls',
       whisper_mode: 'local',
       whisper_model: 'small',
+      whisper_language: 'auto',
       frames: 3,
       output_language: 'pt-BR',
       promptVersion: 2,
     }),
-    id: 'cfg_509391b48905',
+    id: 'cfg_46625534e8ab',
   },
   {
     descriptor: configDescriptorSchema.parse({
@@ -85,13 +88,14 @@ const goldenVectors = [
       providerId: 'local',
       modelTag: 'gemma3:27b',
       whisper_mode: 'api',
+      whisper_language: 'auto',
       whisper_api_base_url: 'https://speech.example.test/v1',
       whisper_api_model: 'whisper-large-v3',
       frames: 10,
       output_language: 'auto',
       promptVersion: 3,
     }),
-    id: 'cfg_5992254f6bdb',
+    id: 'cfg_161154c06d8d',
   },
 ];
 
@@ -111,7 +115,7 @@ describe('config descriptor identity', () => {
     }).success).toBe(false);
   });
 
-  it('pins the canonical descriptor hashes as golden vectors', () => {
+  it('pins canonical descriptor hashes with auto whisper language materialized for transcription', () => {
     expect(goldenVectors.map((vector) => configId(vector.descriptor))).toEqual(
       goldenVectors.map((vector) => vector.id),
     );
@@ -184,10 +188,13 @@ describe('config descriptor identity', () => {
     expect(JSON.stringify(base)).not.toContain('secret-one');
   });
 
-  it('includes output language and prompt version in identity', () => {
+  it('includes output language, whisper language, and prompt version in identity', () => {
     const base = buildConfigDescriptor({}, promptVersion);
 
     expect(configId(buildConfigDescriptor({ output_language: 'pl' }, promptVersion))).not.toBe(configId(base));
+    expect(configId(buildConfigDescriptor({ whisper_language: 'pl' }, promptVersion))).not.toBe(
+      configId(buildConfigDescriptor({ whisper_language: 'auto' }, promptVersion)),
+    );
     expect(configId(buildConfigDescriptor({}, promptVersion + 1))).not.toBe(configId(base));
   });
 
