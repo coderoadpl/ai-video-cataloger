@@ -96,6 +96,7 @@ export type VariantsInput = z.input<typeof API_ROUTES.variantsList.input>;
 export type SelectVariantInput = z.input<typeof API_ROUTES.variantsSelect.input>;
 export type DeleteVariantInput = z.input<typeof API_ROUTES.variantsDelete.input>;
 export type SetFolderDefaultVariantInput = z.input<typeof API_ROUTES.variantsFolderDefault.input>;
+export type IndexStatusOutput = z.output<typeof API_ROUTES.indexStatus.output>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
 export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
@@ -212,6 +213,11 @@ export const facesScopes = {
   all: () => ['faces'] as const,
   status: () => ['faces', 'status'] as const,
   people: () => ['faces', 'people'] as const,
+};
+
+export const indexScopes = {
+  all: () => ['index'] as const,
+  status: () => ['index', 'status'] as const,
 };
 
 export const mutationScopes = {
@@ -471,6 +477,13 @@ export const facesPeopleQuery = (api: ApiClient) =>
     queryKey: facesScopes.people(),
     staleTime: 0,
     call: ({ signal }) => api.facesPeople(signal),
+  });
+
+export const indexStatusQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: indexScopes.status(),
+    staleTime: 0,
+    call: ({ signal }) => api.indexStatus(signal),
   });
 
 export const processVideoMutation = (api: ApiClient) =>
