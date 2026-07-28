@@ -88,6 +88,7 @@ const stubCliPathPort: CliPathPort = {
 interface InMemoryDepsConfig {
   version?: string;
   workingDirectory?: string;
+  files?: readonly string[];
 }
 
 export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
@@ -102,7 +103,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     globalCatalog: new InMemoryGlobalCatalogStore(),
     config: configStore,
     credentials,
-    fs: new InMemoryFileSystemPort(config.workingDirectory ?? process.cwd()),
+    fs: new InMemoryFileSystemPort(config.workingDirectory ?? process.cwd(), config.files ?? []),
     folderWatcher: new InertFolderWatcherPort(),
     media: new InMemoryMediaPort(),
     transcriber: new InMemoryTranscriberPort(),
@@ -457,6 +458,15 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       }
     }
     return ok(undefined);
+  }
+
+  clearAnalysisVariants(fingerprint: string): Promise<Result<void, AppError>> {
+    for (const [key, variant] of this.variants) {
+      if (variant.fingerprint === fingerprint) this.variants.delete(key);
+    }
+    this.analyses.delete(fingerprint);
+    this.selectedConfigIds.delete(fingerprint);
+    return Promise.resolve(ok(undefined));
   }
 
   setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>> {
@@ -862,7 +872,11 @@ class InMemoryCredentialsStore implements CredentialsStore {
 }
 
 class InMemoryFileSystemPort implements FileSystemPort {
-  constructor(private readonly workingDirectory: string) {}
+  private readonly files: Set<string>;
+
+  constructor(private readonly workingDirectory: string, files: readonly string[]) {
+    this.files = new Set(files.map((file) => path.resolve(workingDirectory, file)));
+  }
 
   cwd(): string {
     return this.workingDirectory;
@@ -896,12 +910,16 @@ class InMemoryFileSystemPort implements FileSystemPort {
     return Promise.resolve(ok(value === this.workingDirectory || value === path.resolve(this.workingDirectory)));
   }
 
-  isFile(): Promise<Result<boolean, AppError>> {
-    return Promise.resolve(ok(false));
+  isFile(value: string): Promise<Result<boolean, AppError>> {
+    return Promise.resolve(ok(this.files.has(path.resolve(this.workingDirectory, value))));
   }
 
   exists(value: string): Promise<Result<boolean, AppError>> {
-    return Promise.resolve(ok(value === this.workingDirectory || value === path.resolve(this.workingDirectory)));
+    const resolved = path.resolve(this.workingDirectory, value);
+    return Promise.resolve(ok(
+      resolved === path.resolve(this.workingDirectory)
+      || this.files.has(resolved),
+    ));
   }
 
   listDirectory(): Promise<Result<DirectoryEntry[], AppError>> {

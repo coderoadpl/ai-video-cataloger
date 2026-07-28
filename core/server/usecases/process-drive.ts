@@ -32,6 +32,7 @@ import {
   type JobExecutionContext,
 } from '../ports.js';
 import type { ProcessConfigIdentity, ProcessDeps, ProcessPipelineInput } from './process.js';
+import { analyzedCanonicalIsReachable } from './canonical-reachability.js';
 import { reconcileFolderPresence, resolveFolderIntoIndex } from './catalog-index.js';
 import { exportFolderSnapshot } from './catalog-snapshot.js';
 import { isReadOnlyWriteError, readFolderMarker } from './folder-identity.js';
@@ -1141,7 +1142,8 @@ const alreadyProcessed = async (
   );
   const variant = await deps.globalCatalog.getVariant(video.contentHash, identity.configId);
   if (!variant.ok) return variant;
-  return ok(variant.value !== null);
+  if (variant.value === null) return ok(false);
+  return analyzedCanonicalIsReachable({ fs: deps.fs, globalCatalog: deps.globalCatalog }, video.contentHash);
 };
 
 const persistRun = async (

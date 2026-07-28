@@ -608,6 +608,30 @@ describe('process pipeline global catalog idempotency', () => {
     });
   });
 
+  it('does not skip an existing configuration whose canonical source and artifacts are gone', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    const first = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    expect(first.ok).toBe(true);
+
+    await deps.fs.renamePath('/work', '/removed/work');
+    deps.fs.addFile('/copy/Clip One.mp4', { size: 1000, hash: 'hash-clip' });
+    const second = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...input, videoPath: '/copy/Clip One.mp4' },
+    );
+    const variants = await globalCatalog.listVariants('hash-clip');
+    const indexed = await globalCatalog.getFile('hash-clip');
+    const folders = await globalCatalog.listFolders();
+    const copyFolder = folders.ok ? folders.value.find((entry) => entry.currentPath === '/copy') : undefined;
+
+    expect(second).toMatchObject({ ok: true, value: { status: 'completed', configId: first.ok ? first.value.configId : '' } });
+    expect(deps.analyzer.inputs).toHaveLength(2);
+    expect(variants.ok && variants.value).toHaveLength(1);
+    expect(indexed.ok && indexed.value?.folderId).toBe(copyFolder?.folderId);
+  });
+
   it('keeps two configurations intact, reuses shared inputs, and does not select the later variant', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();

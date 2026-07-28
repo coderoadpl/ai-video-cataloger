@@ -190,6 +190,7 @@ export interface GlobalCatalogStore {
   listVariants(fingerprint: string): Promise<Result<CatalogVariant[], AppError>>;
   getVariant(fingerprint: string, configId: string): Promise<Result<CatalogVariant | null, AppError>>;
   upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>>;
+  clearAnalysisVariants(fingerprint: string): Promise<Result<void, AppError>>;
   deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>>;
   setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>>;
   getExplicitSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>>;
