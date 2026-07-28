@@ -18,7 +18,7 @@ const retrievalMarkers = [
   'Never use filler words such as video, clip, footage, recording, scene or movie',
   'museum-exhibit',
   'tags that work as search handles',
-  'notable text or proper nouns you read in frame',
+  'notable text or proper nouns that pass the shared entity evidence rule',
 ];
 
 const framePrompt = (outputLanguage: string): string =>
