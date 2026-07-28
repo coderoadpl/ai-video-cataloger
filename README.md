@@ -90,6 +90,10 @@ scan <folder> [--json]
 search <query> [--json]
 process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper-model model] [--analyzer claude|local|api] [--provider openai|claude-code|codex|cursor-agent|local|gemini] [--local-model tag] [--json]
 process-drive <root> [--gemini-batch] [--json]
+variants list <path> [--json]
+variants select <path> --config <configId> [--json]
+variants delete <path> --config <configId> [--json]
+variants default <folder> (--config <configId>|--clear) [--json]
 thumbnail <video-path> [--force] [--json]
 status [--json]
 reset [filename] [--force] [--json]
@@ -105,6 +109,32 @@ models whisper-runtime status|install
 ```
 
 Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`, `gemini_batch_mode`.
+
+Each file handled by `process` or `process-drive` uses one resolved
+configuration; an invocation does not request a configuration matrix. Running
+the same content with a different analyzer, transcription source, frame count,
+output language, or prompt version adds an analysis variant. Repeating the same
+content and configuration is skipped, while `--force` replaces only that
+variant.
+
+Use `variants list` to inspect every stored configuration for a video.
+`variants select` chooses the variant used by search and by the name-based
+artifacts on disk. `variants delete` removes one variant but refuses to remove
+the last one. `variants default` sets the preferred configuration for files in
+a folder; `--clear` restores the resolved processing configuration as the
+folder fallback. A file's explicit selection is shared by duplicate copies of
+the same content.
+
+In `--json` mode, a successful `process` completion adds `configId` and
+`selectedConfigId` to its `completed.data`. A `catalog_index_skipped` progress
+event adds `configId`; an existing variant reports `reason: "variant_exists"`.
+Verbose processing can emit `artifact_reused` with `kind` (`frames` or
+`transcript`), `configId`, and `sourceConfigId`. `variants list --json` writes
+one NDJSON row per variant with `configId`, `descriptor`, `selected`,
+`createdAt`, analyzer, model, and `estimatedCostUsd` when known, followed by its
+normal `completed` envelope. The per-folder `catalog.ndjson` snapshot records
+an `analyses` array and `selectedConfigId`; older single-analysis snapshots
+remain importable.
 
 `--gemini-batch` (config key `gemini_batch_mode`) sends a whole `process-drive`
 run to the Gemini Batch API at half the interactive token price; results
@@ -190,10 +220,24 @@ your-videos/
 ├── summaries/
 │   └── descriptive-name.txt
 └── .ai-video-cataloger/
+    ├── artifacts/
+    │   ├── frames/{fingerprint}/{framesKey}/frame-NNN.jpg
+    │   └── transcripts/{fingerprint}/{transcriptKey}.txt|.json
+    ├── variants/{fingerprint}/{configId}/
+    │   ├── summary.txt
+    │   ├── summary.json
+    │   └── debug.log
     ├── folder-id          # UUID marker identifying this folder
     ├── catalog.ndjson     # derived snapshot, re-imported when the folder is unknown
     └── config.json
 ```
+
+Frames and transcripts are content-addressed so configurations that use the
+same inputs share them. The top-level `frames/`, `transcripts/`, and
+`summaries/` names remain the compatibility view of the selected variant; the
+app re-points them atomically with hard links where supported and copies as a
+fallback. For read-only source folders, the same additions live under
+`~/.ai-video-cataloger/read-only-folders/{folderId}/`.
 
 The canonical catalog now lives home-scoped at `~/.ai-video-cataloger/catalog.db`
 (per [ADR-0002](docs/decisions/0002-global-catalog-layer.md)); the per-folder
