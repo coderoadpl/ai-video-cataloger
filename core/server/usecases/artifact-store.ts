@@ -92,10 +92,12 @@ export const transcriptKey = (input: ConfigDescriptor): string => {
       return `trx_${shortHash(JSON.stringify({
         whisper_mode: descriptor.whisper_mode,
         whisper_model: descriptor.whisper_model,
+        whisper_language: descriptor.whisper_language,
       }))}`;
     case 'api':
       return `trx_${shortHash(JSON.stringify({
         whisper_mode: descriptor.whisper_mode,
+        whisper_language: descriptor.whisper_language,
         whisper_api_base_url: descriptor.whisper_api_base_url,
         whisper_api_model: descriptor.whisper_api_model,
       }))}`;
