@@ -16,6 +16,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- File details can compare every analysis variant side by side, including configuration, frames, transcript, summary, tags, duration and recorded cost, and select a variant from its comparison column.
+- File details can preview and explicitly select analysis variants, show whether Analyze creates or replaces a variant, set the current configuration as the folder default, and badge multi-variant search results.
+- `variants list|select|delete|default` CLI commands inspect and manage analysis variants; process NDJSON identifies configurations and reports verbose artifact reuse.
+- Variant contract routes expose comparison-ready analysis descriptors and artifact paths, with client descriptors for listing, selection, deletion, and folder defaults.
 - Gemini native choices in the setup wizard and settings disclose before selection that the entire video and audio leave the Mac, how Google receives and retains the file, that the model creates the transcript, and the duration-based ballpark cost.
 - Gemini analyses show per-file and drive-run cost estimates, append them to a local monthly spend ledger, and pause resumable drive runs at a configured soft budget.
 - The packaged app honors `AI_VIDEO_CATALOGER_USER_DATA_DIR` and the keychain
@@ -26,6 +30,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Selecting an analysis variant now refreshes its name-based artifacts and search document together; folder defaults resolve from the full processing configuration, and deletion promotes the newest survivor while retaining shared artifacts until their final reference is removed.
+- Processing deduplicates and force-replaces per content/configuration pair; completion and skip NDJSON name the configuration, and folder snapshots preserve every variant plus the selected configuration.
+- Name-based artifacts under `frames/`, `transcripts/`, and `summaries/` project the selected analysis variant.
+- The global catalog index uses schema version 9 and stores analyses by content fingerprint and configuration.
 - The gemini-native prompt gates named entities on legible evidence.
 - The packaged app no longer accepts the in-memory DB driver.
 - Processing flags passed explicitly to `process` and `process-drive` now

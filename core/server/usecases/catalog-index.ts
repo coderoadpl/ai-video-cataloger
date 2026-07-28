@@ -1,10 +1,12 @@
 import {
+  appError,
   ok,
   spendMonth,
   type AppError,
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
+  type CatalogVariant,
   type Result,
 } from '@core/domain/index.js';
 
@@ -47,6 +49,12 @@ export interface ProcessedVideoInput {
 
 export interface ForgetCatalogEntryResult extends ForgetEntryResult {
   snapshotSkipped: boolean;
+}
+
+export interface ProcessedVariantInput {
+  folderPath: string;
+  file: Omit<CatalogFile, 'folderId'>;
+  variant: CatalogVariant;
 }
 
 export interface IndexStatusFolder {
@@ -156,6 +164,41 @@ export const upsertProcessedVideo = async (
     return snapshot;
   }
   return ok({ snapshotSkipped: false });
+};
+
+export const upsertProcessedVariant = async (
+  deps: CatalogIndexDeps,
+  input: ProcessedVariantInput,
+): Promise<Result<{ snapshotSkipped: boolean; selectedConfigId: string }, AppError>> => {
+  const resolved = await resolveFolderIntoIndex(deps, input.folderPath);
+  if (!resolved.ok) return resolved;
+  const existingVariants = await deps.globalCatalog.listVariants(input.file.fingerprint);
+  if (!existingVariants.ok) return existingVariants;
+  const upsertedFile = await deps.globalCatalog.upsertFile({ ...input.file, folderId: resolved.value.folderId });
+  if (!upsertedFile.ok) return upsertedFile;
+  const upsertedVariant = await deps.globalCatalog.upsertVariant(input.variant);
+  if (!upsertedVariant.ok) return upsertedVariant;
+  if (existingVariants.value.length === 0) {
+    const selected = await deps.globalCatalog.setSelectedVariant(input.file.fingerprint, input.variant.configId);
+    if (!selected.ok) return selected;
+  }
+  const selectedConfigId = await deps.globalCatalog.getSelectedConfigId(input.file.fingerprint);
+  if (!selectedConfigId.ok) return selectedConfigId;
+  if (selectedConfigId.value === null) {
+    return { ok: false, error: appError('internal', 'Processed variant has no selected configuration') };
+  }
+  const folder = await deps.globalCatalog.getFolder(resolved.value.folderId);
+  if (!folder.ok) return folder;
+  if (folder.value === null) return ok({ snapshotSkipped: false, selectedConfigId: selectedConfigId.value });
+  if (!resolved.value.persistent) return ok({ snapshotSkipped: true, selectedConfigId: selectedConfigId.value });
+  const snapshot = await exportFolderSnapshot(deps, folder.value);
+  if (!snapshot.ok) {
+    if (isReadOnlyWriteError(snapshot.error)) {
+      return ok({ snapshotSkipped: true, selectedConfigId: selectedConfigId.value });
+    }
+    return snapshot;
+  }
+  return ok({ snapshotSkipped: false, selectedConfigId: selectedConfigId.value });
 };
 
 export const reconcileFolderPresence = async (

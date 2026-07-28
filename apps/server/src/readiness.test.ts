@@ -22,6 +22,10 @@ import { createInMemoryDeps } from './test-support/in-memory-deps.js';
 class ToggleAnalyzer implements AnalyzerPort {
   available = false;
 
+  promptVersion(): number {
+    return 1;
+  }
+
   analyze(): Promise<Result<AnalysisOutput, AppError>> {
     return Promise.resolve(ok({ rawResponse: '' }));
   }

@@ -14,6 +14,7 @@ import {
   analyzerProviderDescriptorSchema,
   analyzerProviderFamilySchema,
   analyzerProviderIdSchema,
+  configDescriptorSchema,
   configKeySchema,
   credentialDeletionSchema,
   credentialsBackendStatusSchema,
@@ -51,6 +52,7 @@ const optionalFolderInputSchema = z.object({ folder: z.string().min(1).optional(
 const videoPathInputSchema = z.object({ videoPath: z.string().min(1) });
 const forceInputSchema = z.object({ force: z.boolean().default(false) });
 const jobIdInputSchema = z.object({ jobId: z.string().min(1) });
+const configIdSchema = z.union([z.literal('legacy'), z.string().regex(/^cfg_[0-9a-f]{12}$/)]);
 const queryInteger = (fallback: number, min: number, max: number) =>
   z.preprocess(
     (value) => typeof value === 'string' && value.length > 0 ? Number.parseInt(value, 10) : value,
@@ -262,6 +264,8 @@ export const processCompletedOutputSchema = z.object({
   video: z.string(),
   path: z.string(),
   status: z.literal('completed'),
+  configId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+  selectedConfigId: z.string().min(1),
   costEstimate: geminiCostEstimateSchema.optional(),
 });
 
@@ -738,6 +742,7 @@ export const jobProgressStepSchema = z.enum([
   'faces_detecting',
   'faces_clustering',
   'faces_done',
+  'artifact_reused',
   'catalog_index_skipped',
   'catalog_snapshot_skipped',
   'batch_submitted',
@@ -886,6 +891,7 @@ export const searchInputSchema = z.object({
 
 export const searchResultSchema = z.object({
   fingerprint: z.string().min(1),
+  variantCount: z.number().int().nonnegative(),
   fileName: z.string().min(1),
   finalName: z.string().nullable(),
   description: z.string().nullable(),
@@ -912,6 +918,78 @@ export const searchOutputSchema = z.object({
   count: z.number().int().nonnegative(),
   results: z.array(searchResultSchema),
 });
+
+const variantLocatorSchema = z.object({
+  videoPath: z.string().min(1).optional(),
+  fingerprint: z.string().min(1).optional(),
+}).strict().refine(
+  (input) => (input.videoPath === undefined) !== (input.fingerprint === undefined),
+  { message: 'Exactly one of videoPath or fingerprint is required' },
+);
+
+export const variantsListInputSchema = variantLocatorSchema;
+
+export const variantMutationInputSchema = variantLocatorSchema.safeExtend({
+  configId: configIdSchema,
+});
+
+export const variantFolderDefaultInputSchema = z.object({
+  folderPath: z.string().min(1),
+  configId: configIdSchema.nullable(),
+}).strict();
+
+export const variantArtifactsSchema = z.object({
+  framesDirectory: z.string().min(1).nullable(),
+  transcriptPath: z.string().min(1).nullable(),
+  summaryPath: z.string().min(1),
+}).strict();
+
+export const variantDetailsSchema = z.object({
+  configId: configIdSchema,
+  descriptor: configDescriptorSchema.nullable(),
+  label: z.string().min(1),
+  createdAt: z.iso.datetime(),
+  analyzer: z.string().nullable(),
+  model: z.string().nullable(),
+  usage: z.record(z.string(), z.json()).nullable(),
+  estimatedCostUsd: z.number().nonnegative().nullable(),
+  artifacts: variantArtifactsSchema,
+  selected: z.boolean(),
+  finalName: z.string().nullable(),
+  description: z.string().nullable(),
+  transcript: z.string().nullable(),
+  language: z.string().nullable(),
+  tags: z.array(z.string()),
+}).strict();
+
+export const variantsListOutputSchema = z.object({
+  fingerprint: z.string().min(1),
+  videoPath: z.string().min(1),
+  folderPath: z.string().min(1),
+  folderDefaultConfigId: configIdSchema,
+  currentConfig: z.object({
+    configId: configIdSchema,
+    descriptor: configDescriptorSchema,
+  }).strict(),
+  variants: z.array(variantDetailsSchema),
+}).strict();
+
+export const variantSelectOutputSchema = z.object({
+  fingerprint: z.string().min(1),
+  configId: configIdSchema,
+}).strict();
+
+export const variantDeleteOutputSchema = z.object({
+  fingerprint: z.string().min(1),
+  configId: configIdSchema,
+  selectedConfigId: configIdSchema,
+}).strict();
+
+export const variantFolderDefaultOutputSchema = z.object({
+  folderId: folderIdSchema,
+  defaultConfigId: configIdSchema.nullable(),
+  resolvedConfigId: configIdSchema,
+}).strict();
 
 export const facesIndexInputSchema = z.object({
   root: z.string().min(1),
@@ -1125,6 +1203,30 @@ export const API_ROUTES = {
   tagsList: { method: 'GET', path: '/api/tags', input: emptyInputSchema, output: tagsListOutputSchema },
   tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
   searchQuery: { method: 'GET', path: '/api/search', input: searchInputSchema, output: searchOutputSchema },
+  variantsList: {
+    method: 'GET',
+    path: '/api/variants',
+    input: variantsListInputSchema,
+    output: variantsListOutputSchema,
+  },
+  variantsSelect: {
+    method: 'POST',
+    path: '/api/variants/select',
+    input: variantMutationInputSchema,
+    output: variantSelectOutputSchema,
+  },
+  variantsDelete: {
+    method: 'POST',
+    path: '/api/variants/delete',
+    input: variantMutationInputSchema,
+    output: variantDeleteOutputSchema,
+  },
+  variantsFolderDefault: {
+    method: 'POST',
+    path: '/api/variants/folder-default',
+    input: variantFolderDefaultInputSchema,
+    output: variantFolderDefaultOutputSchema,
+  },
   facesIndex: { method: 'POST', path: '/api/faces/index', input: facesIndexInputSchema, output: jobAcceptedOutputSchema },
   facesPeople: { method: 'GET', path: '/api/faces/people', input: emptyInputSchema, output: facesPeopleOutputSchema },
   facesName: { method: 'POST', path: '/api/faces/name', input: facesNameInputSchema, output: facesNameOutputSchema },
@@ -1182,6 +1284,10 @@ export const API_PATHS = {
   tagsList: API_ROUTES.tagsList.path,
   tagsAlias: API_ROUTES.tagsAlias.path,
   searchQuery: API_ROUTES.searchQuery.path,
+  variantsList: API_ROUTES.variantsList.path,
+  variantsSelect: API_ROUTES.variantsSelect.path,
+  variantsDelete: API_ROUTES.variantsDelete.path,
+  variantsFolderDefault: API_ROUTES.variantsFolderDefault.path,
   facesIndex: API_ROUTES.facesIndex.path,
   facesPeople: API_ROUTES.facesPeople.path,
   facesName: API_ROUTES.facesName.path,

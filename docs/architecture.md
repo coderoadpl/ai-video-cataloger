@@ -73,15 +73,41 @@ Two scopes remain, with catalog ownership revised by
   canonical working store for catalog rows. Folder identity is a UUID marker
   stored inside `{folder}/.ai-video-cataloger/`; paths are attributes that can
   change, not identities. The repository dimension is one global database keyed
-  by folder id and content fingerprint.
+  by folder id and content fingerprint. A file has one row per fingerprint and
+  its analyses are variants keyed by `(fingerprint, configId)`. The `configId`
+  is `cfg_` plus the first 12 hex characters of SHA-256 over the normalized,
+  key-sorted config descriptor. That closed descriptor includes every
+  result-shaping analyzer field, the transcription source, frame count where
+  applicable, `output_language`, and `promptVersion`. See
+  [ADR-0010](decisions/0010-analysis-variant-identity-artifacts-and-dedup.md).
 - **Per-folder sidecar artifacts** — `{folder}/.ai-video-cataloger/config.json`
   stays folder-scoped. `{folder}/.ai-video-cataloger/catalog.ndjson` is a
   derived snapshot written after processing and imported when a marked folder
   is unknown to the local index. Existing per-folder `catalog.db` files remain
-  readable for migration but are not the canonical write target.
+  readable for migration but are not the canonical write target. Its
+  `videos.status` columns describe the last processing run for each path;
+  configuration-specific analysis state is canonical only in the global index.
+  Shared inputs live in the content-addressed
+  `.ai-video-cataloger/artifacts/frames/{fingerprint}/{framesKey}/` and
+  `.ai-video-cataloger/artifacts/transcripts/{fingerprint}/{transcriptKey}.txt|.json`
+  trees. Per-variant outputs live in
+  `.ai-video-cataloger/variants/{fingerprint}/{configId}/`. The established
+  name-based `frames/`, `transcripts/`, and `summaries/` paths remain a
+  selected-variant projection, materialized as hard links with a copy fallback
+  and re-pointed atomically when selection changes.
 - **Home scope** — `~/.ai-video-cataloger/` also holds global model state,
   managed runtime files, whisper models, provider credentials, and the
   append-only spend ledger and read-only mirror below.
+
+Exactly one variant resolves as selected for a file. Resolution uses the
+file's explicit `selected_config_id` when that variant exists, then the viewing
+folder's default configuration when that variant exists for the file, then the
+newest variant by `createdAt` with `configId` as the tie-breaker. A folder's
+default is its explicit `folders.default_config_id`, or otherwise the configId
+of its resolved processing configuration. Explicit selection is stored per
+fingerprint and is therefore shared by duplicate copies of the content; only
+the folder-default fallback is folder-relative. Search indexes the resolved
+variant only.
 
 A source folder that cannot be written to (write-protected external drive,
 `chmod -w`) is not a failure: opening its catalog degrades to an in-memory

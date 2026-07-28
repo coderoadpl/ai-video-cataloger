@@ -34,6 +34,7 @@ export const summaryDataSchema = z.object({
   tags: z.array(z.string()).default([]),
   analyzedAt: z.string(),
   costEstimate: geminiCostEstimateSchema.optional(),
+  usage: z.record(z.string(), z.json()).optional(),
 });
 
 export type SummaryData = z.output<typeof summaryDataSchema>;

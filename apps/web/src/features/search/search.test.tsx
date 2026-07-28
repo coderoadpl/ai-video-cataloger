@@ -44,6 +44,7 @@ const searchState: GlobalSearchState = {
       },
       results: [{
         fingerprint: 'fp-1',
+        variantCount: 2,
         fileName: 'clip.mp4',
         finalName: 'drone-clip.mp4',
         description: 'A drone clip',
@@ -69,6 +70,7 @@ const searchState: GlobalSearchState = {
       },
       results: [{
         fingerprint: 'fp-2',
+        variantCount: 1,
         fileName: 'field.mp4',
         finalName: null,
         description: null,
@@ -99,6 +101,7 @@ describe('SearchResults', () => {
 
     expect(screen.getByText('drive not connected')).toBeDefined();
     expect(screen.getByText('aerial')).toBeDefined();
+    expect(screen.getByTestId('search-variant-count').textContent).toBe('2 variants');
 
     fireEvent.click(screen.getByText('drone-clip.mp4'));
     expect(onOpenResult).toHaveBeenCalledWith('/online', '/online/clip.mp4');

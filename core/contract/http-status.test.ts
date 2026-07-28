@@ -38,4 +38,10 @@ describe('error taxonomy mappings', () => {
     expect(codes.every((code) => code > 0)).toBe(true);
     expect(new Set(codes).size).toBe(codes.length);
   });
+
+  it('maps variant_not_found to HTTP 404 and its dedicated CLI exit code', () => {
+    expect(HTTP_STATUS_BY_ERROR_CODE.variant_not_found).toBe(404);
+    expect(EXIT_CODE_BY_ERROR_CODE.variant_not_found).toBe(45);
+    expect(LEGACY_ERROR_CODE_BY_ERROR_CODE.variant_not_found).toBe('VARIANT_NOT_FOUND');
+  });
 });

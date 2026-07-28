@@ -75,7 +75,7 @@ const makeDeps = (status: VideoStatus = 'pending', fs = new InMemoryFileSystem('
     catalogs,
     config: new InMemoryConfig(),
     fs,
-    media: new InMemoryMedia(),
+    media: new InMemoryMedia(fs),
     transcriber: new InMemoryTranscriber(fs),
     analyzer: new InMemoryAnalyzer(),
     spendLedger: new InMemorySpendLedger(),
@@ -557,18 +557,234 @@ describe('process pipeline global catalog idempotency', () => {
     fs.addFile('/work/.ai-video-cataloger/catalog.ndjson', { content: `${header}\n${record}\n` });
   };
 
-  it('imports a foreign folder snapshot before deciding to skip', async () => {
+  it('imports a legacy folder snapshot and adds the requested configuration as an unselected variant', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();
     seedForeignDriveArtifacts(deps.fs);
 
     const result = await processVideoPipeline({ ...deps, globalCatalog }, baseInput);
 
-    expect(result).toMatchObject({ ok: true, value: { status: 'completed' } });
-    expect(deps.analyzer.inputs).toHaveLength(0);
-    expect(deps.transcriber.inputs).toHaveLength(0);
+    expect(result).toMatchObject({
+      ok: true,
+      value: { status: 'completed', configId: expect.stringMatching(/^cfg_/), selectedConfigId: 'legacy' },
+    });
+    expect(deps.analyzer.inputs).toHaveLength(1);
+    expect(deps.transcriber.inputs).toHaveLength(1);
     const analysis = await globalCatalog.getAnalysis('hash-clip');
     expect(analysis.ok && analysis.value?.description).toBe('Done elsewhere');
+    const variants = await globalCatalog.listVariants('hash-clip');
+    expect(variants.ok && variants.value).toHaveLength(2);
+  });
+
+  it('skips only an existing configuration pair and reports its configId', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    const first = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    const events: Array<{ step: string; data: Record<string, unknown> | undefined }> = [];
+    const second = await processVideoPipeline({ ...deps, globalCatalog }, input, {
+      signal: idleSignal,
+      reportProgress: (event) => {
+        events.push({ step: event.step, data: event.data });
+        return Promise.resolve({ ok: true, value: undefined });
+      },
+    });
+
+    expect(first).toMatchObject({
+      ok: true,
+      value: { configId: expect.stringMatching(/^cfg_/), selectedConfigId: expect.stringMatching(/^cfg_/) },
+    });
+    expect(second).toMatchObject({ ok: true, value: { configId: first.ok ? first.value.configId : '' } });
+    expect(deps.analyzer.inputs).toHaveLength(1);
+    const variants = await globalCatalog.listVariants('hash-clip');
+    expect(variants.ok && variants.value).toHaveLength(1);
+    expect(events).toContainEqual({
+      step: 'catalog_index_skipped',
+      data: {
+        video: videoPath,
+        reason: 'variant_exists',
+        configId: first.ok ? first.value.configId : '',
+      },
+    });
+  });
+
+  it('keeps two configurations intact, reuses shared inputs, and does not select the later variant', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    deps.analyzer.rawResponse = 'DESCRIPTION: First variant\nFILENAME: first-variant\nTAGS: first';
+    const first = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    deps.analyzer.rawResponse = 'DESCRIPTION: Second variant\nFILENAME: second-variant\nTAGS: second';
+    const second = await processVideoPipeline({ ...deps, globalCatalog }, { ...input, provider: 'codex' });
+
+    expect(first.ok && second.ok && first.value.configId).not.toBe(second.ok ? second.value.configId : '');
+    expect(second).toMatchObject({
+      ok: true,
+      value: { selectedConfigId: first.ok ? first.value.configId : '' },
+    });
+    expect(deps.media.frameInputs).toHaveLength(1);
+    expect(deps.transcriber.inputs).toHaveLength(1);
+    const variants = await globalCatalog.listVariants('hash-clip');
+    expect(variants.ok && variants.value.map((variant) => variant.description).sort()).toEqual([
+      'First variant',
+      'Second variant',
+    ]);
+  });
+
+  it('reports cross-variant artifact reuse only for verbose processing', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    const first = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    const quietEvents: Array<{ step: string; data: Record<string, unknown> | undefined }> = [];
+    await processVideoPipeline({ ...deps, globalCatalog }, { ...input, provider: 'codex' }, {
+      signal: idleSignal,
+      reportProgress: (event) => {
+        quietEvents.push({ step: event.step, data: event.data });
+        return Promise.resolve({ ok: true, value: undefined });
+      },
+    });
+    const verboseEvents: Array<{ step: string; data: Record<string, unknown> | undefined }> = [];
+    const third = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...input, provider: 'cursor-agent', verbose: true },
+      {
+        signal: idleSignal,
+        reportProgress: (event) => {
+          verboseEvents.push({ step: event.step, data: event.data });
+          return Promise.resolve({ ok: true, value: undefined });
+        },
+      },
+    );
+
+    expect(quietEvents.some((event) => event.step === 'artifact_reused')).toBe(false);
+    expect(verboseEvents.filter((event) => event.step === 'artifact_reused')).toEqual([
+      {
+        step: 'artifact_reused',
+        data: {
+          kind: 'frames',
+          configId: third.ok ? third.value.configId : '',
+          sourceConfigId: first.ok ? first.value.configId : '',
+        },
+      },
+      {
+        step: 'artifact_reused',
+        data: {
+          kind: 'transcript',
+          configId: third.ok ? third.value.configId : '',
+          sourceConfigId: first.ok ? first.value.configId : '',
+        },
+      },
+    ]);
+  });
+
+  it('force replaces only the addressed configuration variant', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    deps.analyzer.rawResponse = 'DESCRIPTION: Selected bytes\nFILENAME: selected-bytes';
+    const selected = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    deps.analyzer.rawResponse = 'DESCRIPTION: Replace me\nFILENAME: replace-me';
+    const replaceable = await processVideoPipeline({ ...deps, globalCatalog }, { ...input, provider: 'codex' });
+    const before = selected.ok ? await globalCatalog.getVariant('hash-clip', selected.value.configId) : null;
+    deps.analyzer.rawResponse = 'DESCRIPTION: Replaced\nFILENAME: replaced';
+    const forced = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...input, provider: 'codex', force: true },
+    );
+    const after = selected.ok ? await globalCatalog.getVariant('hash-clip', selected.value.configId) : null;
+    const replaced = replaceable.ok
+      ? await globalCatalog.getVariant('hash-clip', replaceable.value.configId)
+      : null;
+
+    expect(forced).toMatchObject({
+      ok: true,
+      value: {
+        configId: replaceable.ok ? replaceable.value.configId : '',
+        selectedConfigId: selected.ok ? selected.value.configId : '',
+      },
+    });
+    expect(JSON.stringify(after)).toBe(JSON.stringify(before));
+    expect(replaced !== null && replaced.ok && replaced.value?.description).toBe('Replaced');
+    const variants = await globalCatalog.listVariants('hash-clip');
+    expect(variants.ok && variants.value).toHaveLength(2);
+  });
+
+  it('does not resume from frames or transcripts keyed to another configuration', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    deps.analyzer.rawResponse = 'DESCRIPTION: missing filename';
+    const failed = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...baseInput, skipRename: true, skipRenameExplicit: true },
+    );
+    deps.analyzer.rawResponse = 'DESCRIPTION: Clean resume\nFILENAME: clean-resume';
+    deps.transcriber.transcript = 'second transcript';
+    const resumed = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      {
+        ...baseInput,
+        frames: 4,
+        framesExplicit: true,
+        whisperModel: 'small',
+        whisperModelExplicit: true,
+        skipRename: true,
+        skipRenameExplicit: true,
+      },
+    );
+
+    expect(failed).toMatchObject({ ok: false, error: { code: 'analysis_parse_failed' } });
+    expect(resumed).toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(deps.media.frameInputs.map((entry) => entry.frameCount)).toEqual([3, 4]);
+    expect(deps.transcriber.inputs).toHaveLength(2);
+    expect(deps.analyzer.inputs[1]?.framePaths).toHaveLength(4);
+    expect(deps.analyzer.inputs[1]?.transcript).toBe('second transcript');
+  });
+
+  it('stores reported analyzer usage on the variant', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    await deps.config.set(
+      { kind: 'folder', folder: '/work' },
+      'analyzer_provider',
+      JSON.stringify(defaultGeminiNativeProvider('gemini-3.6-flash')),
+    );
+    deps.analyzer.rawResponse = 'DESCRIPTION: Native usage\nFILENAME: native-usage';
+    deps.analyzer.usage = geminiUsageAccounting(
+      { promptTokens: 100, candidatesTokens: 20, thoughtsTokens: 5 },
+      'gemini-3.6-flash',
+    );
+    const result = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...baseInput, skipRename: true, skipRenameExplicit: true },
+    );
+    const variant = result.ok ? await globalCatalog.getVariant('hash-clip', result.value.configId) : null;
+
+    expect(result).toMatchObject({ ok: true });
+    expect(variant !== null && variant.ok && variant.value?.usage).toMatchObject({
+      promptTokens: 100,
+      billedOutputTokens: 25,
+      totalTokens: 125,
+    });
+  });
+
+  it('treats output language and prompt version changes as new configurations', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    const first = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'output_language', 'pl');
+    const languageChanged = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    deps.analyzer.analysisPromptVersion = 2;
+    const promptChanged = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    const variants = await globalCatalog.listVariants('hash-clip');
+
+    const ids = [first, languageChanged, promptChanged].map((result) => result.ok ? result.value.configId : '');
+    expect(new Set(ids).size).toBe(3);
+    expect(variants.ok && variants.value).toHaveLength(3);
+    expect(deps.analyzer.inputs).toHaveLength(3);
+    expect(deps.media.frameInputs).toHaveLength(1);
+    expect(deps.transcriber.inputs).toHaveLength(1);
   });
 
   it('reprocesses an already indexed fingerprint when force is set', async () => {
@@ -755,7 +971,10 @@ describe('process pipeline rename and jobs', () => {
     deps.fs.addFile('/work/frames/Clip One/frame-001.jpg');
     deps.fs.addFile('/work/transcripts/Clip One.txt', { content: 'transcript' });
     deps.fs.addFile('/work/summaries/Clip One.txt', { content: 'summary txt' });
+    deps.fs.addFile('/work/summaries/Clip One-debug.log', { content: 'debug' });
     deps.fs.addFile('/work/.ai-video-cataloger/thumbnails/Clip One.jpg');
+    deps.fs.addFile('/work/.ai-video-cataloger/artifacts/frames/hash-clip/frm_key/frame-001.jpg');
+    deps.fs.addFile('/work/.ai-video-cataloger/variants/hash-clip/cfg_0123456789ab/summary.json', { content: '{}' });
 
     const result = await processVideoPipeline(deps, baseInput);
     const repo = deps.catalogs.repo('/work');
@@ -792,7 +1011,16 @@ describe('process pipeline rename and jobs', () => {
     await expect(deps.fs.exists('/work/transcripts/2024-05-06_existing-summary-2.txt')).resolves.toEqual({ ok: true, value: true });
     await expect(deps.fs.exists('/work/summaries/2024-05-06_existing-summary-2.txt')).resolves.toEqual({ ok: true, value: true });
     await expect(deps.fs.exists('/work/summaries/2024-05-06_existing-summary-2.json')).resolves.toEqual({ ok: true, value: true });
+    await expect(deps.fs.exists('/work/summaries/2024-05-06_existing-summary-2-debug.log')).resolves.toEqual({ ok: true, value: true });
     await expect(deps.fs.exists('/work/.ai-video-cataloger/thumbnails/2024-05-06_existing-summary-2.jpg')).resolves.toEqual({
+      ok: true,
+      value: true,
+    });
+    await expect(deps.fs.exists('/work/.ai-video-cataloger/artifacts/frames/hash-clip/frm_key/frame-001.jpg')).resolves.toEqual({
+      ok: true,
+      value: true,
+    });
+    await expect(deps.fs.exists('/work/.ai-video-cataloger/variants/hash-clip/cfg_0123456789ab/summary.json')).resolves.toEqual({
       ok: true,
       value: true,
     });

@@ -1,5 +1,5 @@
 import {
-  GLOBAL_CATALOG_SCHEMA_VERSION,
+  CATALOG_SNAPSHOT_SCHEMA_VERSION,
   appError,
   newerWins,
   ok,
@@ -8,6 +8,7 @@ import {
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
+  type CatalogVariant,
   type Result,
 } from '@core/domain/index.js';
 
@@ -34,13 +35,22 @@ export const exportFolderSnapshot = async (
   const lines: string[] = [
     JSON.stringify({
       type: 'header',
-      version: GLOBAL_CATALOG_SCHEMA_VERSION,
+      version: CATALOG_SNAPSHOT_SCHEMA_VERSION,
       folder,
       exportedAt: new Date().toISOString(),
     }),
   ];
   for (const record of records.value) {
-    lines.push(JSON.stringify({ type: 'record', file: record.file, analysis: record.analysis }));
+    const variants = await deps.globalCatalog.listVariants(record.file.fingerprint);
+    if (!variants.ok) return variants;
+    const selectedConfigId = await deps.globalCatalog.getSelectedConfigId(record.file.fingerprint);
+    if (!selectedConfigId.ok) return selectedConfigId;
+    lines.push(JSON.stringify({
+      type: 'record',
+      file: record.file,
+      analyses: variants.value,
+      selectedConfigId: selectedConfigId.value,
+    }));
   }
 
   const snapshotPath = folderSnapshotPath(deps.fs, folder.currentPath);
@@ -81,19 +91,21 @@ export const importFolderSnapshot = async (
       continue;
     }
     if (parsed.data.type === 'header') {
-      if (parsed.data.version > GLOBAL_CATALOG_SCHEMA_VERSION) {
+      if (parsed.data.version > CATALOG_SNAPSHOT_SCHEMA_VERSION) {
         return {
           ok: false,
           error: appError(
             'snapshot_incompatible',
-            `Snapshot schema version ${String(parsed.data.version)} is newer than the supported version ${String(GLOBAL_CATALOG_SCHEMA_VERSION)}; upgrade the app to import it`,
+            `Snapshot schema version ${String(parsed.data.version)} is newer than the supported version ${String(CATALOG_SNAPSHOT_SCHEMA_VERSION)}; upgrade the app to import it`,
           ),
         };
       }
       header = parsed.data.folder;
       continue;
     }
-    const applied = await applyRecord(deps, parsed.data.file, parsed.data.analysis);
+    const applied = 'analysis' in parsed.data
+      ? await applyLegacyRecord(deps, parsed.data.file, parsed.data.analysis)
+      : await applyRecord(deps, parsed.data.file, parsed.data.analyses, parsed.data.selectedConfigId);
     if (!applied.ok) return applied;
     if (applied.value) imported += 1;
   }
@@ -101,6 +113,28 @@ export const importFolderSnapshot = async (
 };
 
 const applyRecord = async (
+  deps: CatalogSyncDeps,
+  file: CatalogFile,
+  variants: readonly CatalogVariant[],
+  selectedConfigId: string | null,
+): Promise<Result<boolean, AppError>> => {
+  const existing = await deps.globalCatalog.getFile(file.fingerprint);
+  if (!existing.ok) return existing;
+  if (existing.value !== null && !newerWins(existing.value.processedAt, file.processedAt)) {
+    return ok(false);
+  }
+  const upsertedFile = await deps.globalCatalog.upsertFile(file);
+  if (!upsertedFile.ok) return upsertedFile;
+  for (const variant of variants) {
+    const upsertedVariant = await deps.globalCatalog.upsertVariant(variant);
+    if (!upsertedVariant.ok) return upsertedVariant;
+  }
+  const selected = await deps.globalCatalog.setSelectedVariant(file.fingerprint, selectedConfigId);
+  if (!selected.ok) return selected;
+  return ok(true);
+};
+
+const applyLegacyRecord = async (
   deps: CatalogSyncDeps,
   file: CatalogFile,
   analysis: CatalogAnalysis | null,

@@ -1,15 +1,19 @@
 import { describe, expect, it } from 'vitest';
 
+import { buildConfigDescriptor, configId } from '@core/domain/index.js';
+
 import {
   API_ROUTES,
   doctorOutputSchema,
   healthLiveOutputSchema,
   healthReadyOutputSchema,
   jobOutputSchema,
+  jobProgressSchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
   searchOutputSchema,
+  variantsListOutputSchema,
 } from './routes.js';
 
 describe('route schemas', () => {
@@ -170,6 +174,7 @@ describe('route schemas', () => {
       count: 1,
       results: [{
         fingerprint: 'fp-1',
+        variantCount: 2,
         fileName: 'clip.mp4',
         finalName: 'drone-clip.mp4',
         description: 'A drone clip',
@@ -189,6 +194,62 @@ describe('route schemas', () => {
     expect(parsed.results[0]?.folder.online).toBe(true);
   });
 
+  it('defines closed variant locators and a comparison-ready response', () => {
+    const descriptor = buildConfigDescriptor({ output_language: 'pl' }, 3);
+    const resolvedConfigId = configId(descriptor);
+
+    expect(API_ROUTES.variantsList.input.parse({ videoPath: '/videos/clip.mp4' })).toEqual({
+      videoPath: '/videos/clip.mp4',
+    });
+    expect(API_ROUTES.variantsList.input.parse({ fingerprint: 'fp-1' })).toEqual({ fingerprint: 'fp-1' });
+    expect(API_ROUTES.variantsList.input.safeParse({}).success).toBe(false);
+    expect(API_ROUTES.variantsList.input.safeParse({ videoPath: '/videos/clip.mp4', fingerprint: 'fp-1' }).success)
+      .toBe(false);
+    expect(API_ROUTES.variantsSelect.input.safeParse({
+      fingerprint: 'fp-1',
+      configId: resolvedConfigId,
+      unexpected: true,
+    }).success).toBe(false);
+
+    const parsed = variantsListOutputSchema.parse({
+      fingerprint: 'fp-1',
+      videoPath: '/videos/clip.mp4',
+      folderPath: '/videos',
+      folderDefaultConfigId: resolvedConfigId,
+      currentConfig: {
+        configId: resolvedConfigId,
+        descriptor,
+      },
+      variants: [{
+        configId: resolvedConfigId,
+        descriptor,
+        label: 'claude-code',
+        createdAt: '2026-08-02T10:00:00.000Z',
+        analyzer: 'claude-code',
+        model: null,
+        usage: { inputTokens: 12, estimatedCostUsd: 0.01 },
+        estimatedCostUsd: 0.01,
+        artifacts: {
+          framesDirectory: '/videos/.ai-video-cataloger/artifacts/frames/fp-1/frm_1',
+          transcriptPath: '/videos/.ai-video-cataloger/artifacts/transcripts/fp-1/trx_1.txt',
+          summaryPath: `/videos/.ai-video-cataloger/variants/fp-1/${resolvedConfigId}/summary.txt`,
+        },
+        selected: true,
+        finalName: 'named.mp4',
+        description: 'A description',
+        transcript: 'A transcript',
+        language: 'pl',
+        tags: ['example'],
+      }],
+    });
+
+    expect(parsed.variants[0]).toMatchObject({
+      configId: resolvedConfigId,
+      descriptor: { output_language: 'pl', promptVersion: 3 },
+      selected: true,
+    });
+  });
+
   it('accepts the derived path folder id a read-only folder produces', () => {
     const parsed = searchOutputSchema.parse({
       query: 'drone',
@@ -197,6 +258,7 @@ describe('route schemas', () => {
       count: 1,
       results: [{
         fingerprint: 'fp-ro',
+        variantCount: 1,
         fileName: 'clip.mp4',
         finalName: null,
         description: null,
@@ -273,6 +335,63 @@ describe('route schemas', () => {
     expect(parsed.progressEvents.map((event) => event.sequence)).toEqual([1, 2, 3]);
   });
 
+  it('keeps variant identity on completed and catalog skip job payloads', () => {
+    const configId = 'cfg_0123456789ab';
+    const parsed = jobOutputSchema.parse({
+      jobId: 'job-variant',
+      kind: 'process',
+      status: 'completed',
+      progress: {
+        step: 'catalog_index_skipped',
+        data: { video: '/videos/clip.mp4', reason: 'variant_exists', configId },
+      },
+      progressEvents: [{
+        sequence: 1,
+        progress: {
+          step: 'catalog_index_skipped',
+          data: { video: '/videos/clip.mp4', reason: 'variant_exists', configId },
+        },
+      }],
+      result: {
+        video: 'clip.mp4',
+        path: '/videos/clip.mp4',
+        status: 'completed',
+        configId,
+        selectedConfigId: 'legacy',
+      },
+      error: null,
+      createdAt: '2026-08-02T10:00:00.000Z',
+      updatedAt: '2026-08-02T10:00:01.000Z',
+    });
+
+    expect(parsed.result).toMatchObject({ configId, selectedConfigId: 'legacy' });
+    expect(parsed.progress?.data).toEqual({
+      video: '/videos/clip.mp4',
+      reason: 'variant_exists',
+      configId,
+    });
+  });
+
+  it('accepts the additive artifact reuse progress step', () => {
+    const parsed = jobProgressSchema.parse({
+      step: 'artifact_reused',
+      data: {
+        kind: 'frames',
+        configId: 'cfg_0123456789ab',
+        sourceConfigId: 'cfg_abcdef012345',
+      },
+    });
+
+    expect(parsed).toEqual({
+      step: 'artifact_reused',
+      data: {
+        kind: 'frames',
+        configId: 'cfg_0123456789ab',
+        sourceConfigId: 'cfg_abcdef012345',
+      },
+    });
+  });
+
   it('splits liveness and readiness into distinct additive GET routes', () => {
     expect(API_ROUTES.healthLive).toMatchObject({ method: 'GET', path: '/api/health/live' });
     expect(API_ROUTES.healthReady).toMatchObject({ method: 'GET', path: '/api/health/ready' });
@@ -302,6 +421,7 @@ describe('route schemas', () => {
     expect(API_ROUTES.jobsList.method).toBe('GET');
     expect(API_ROUTES.tagsList.method).toBe('GET');
     expect(API_ROUTES.searchQuery).toMatchObject({ method: 'GET', path: '/api/search' });
+    expect(API_ROUTES.variantsList).toMatchObject({ method: 'GET', path: '/api/variants' });
 
     expect(API_ROUTES.process.method).toBe('POST');
     expect(API_ROUTES.thumbnail.method).toBe('POST');
@@ -315,6 +435,12 @@ describe('route schemas', () => {
     expect(API_ROUTES.localAiDaemonStop.method).toBe('POST');
     expect(API_ROUTES.jobCancel.method).toBe('POST');
     expect(API_ROUTES.tagsAlias.method).toBe('POST');
+    expect(API_ROUTES.variantsSelect).toMatchObject({ method: 'POST', path: '/api/variants/select' });
+    expect(API_ROUTES.variantsDelete).toMatchObject({ method: 'POST', path: '/api/variants/delete' });
+    expect(API_ROUTES.variantsFolderDefault).toMatchObject({
+      method: 'POST',
+      path: '/api/variants/folder-default',
+    });
 
     expect(API_ROUTES.whisperModelDelete.method).toBe('DELETE');
     expect(API_ROUTES.localAiRm.method).toBe('DELETE');

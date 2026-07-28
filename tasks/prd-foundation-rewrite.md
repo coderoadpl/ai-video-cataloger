@@ -378,6 +378,11 @@ the CLI consume the same partition.
      analyzed. Own-lineage nested catalogs are reported separately as
      `ownNestedPaths` (informational, exit 0); a foreign nested database still
      blocks the GUI open and still exits `nested_databases_found`.
+  8. The global-index skip is evaluated per `(content, configuration)` instead
+     of per content. A script that relied on a second run of the same file
+     always being a no-op sees processing when the configuration changed.
+     `--force` correspondingly replaces only the addressed configuration
+     variant and leaves the file's other variants intact.
 - **Foundation reuse**: copy configs/patterns from `agentproofarch/demo`
   (eslint boundaries setup, local eslint plugin with probe-proven rules,
   depcruise mirror, vitest projects, theme.ts discipline, query policies)

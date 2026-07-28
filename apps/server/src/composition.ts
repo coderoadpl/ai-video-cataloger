@@ -318,6 +318,13 @@ class ProviderRoutingAnalyzerAdapter implements AnalyzerPort {
     private readonly gemini: AnalyzerPort,
   ) {}
 
+  promptVersion(provider: AnalyzerProviderConfig): number {
+    if (provider.family === 'gemini-native') return this.gemini.promptVersion(provider);
+    if (provider.family === 'api') return this.api.promptVersion(provider);
+    if (provider.family === 'local') return this.local.promptVersion(provider);
+    return this.harness.promptVersion(provider);
+  }
+
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>> {
     if (input.provider?.family === 'gemini-native') return this.gemini.analyze(input);
     if (input.provider?.family === 'api') return this.api.analyze(input);

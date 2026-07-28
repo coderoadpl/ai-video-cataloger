@@ -7,6 +7,7 @@ import { copyFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { framesKey } from '@core/server/index.js';
 
 import { runCli, parseJsonEvents, findEvent, getProjectRoot } from '../helpers/cli-runner.js';
 import { createTestDir, cleanupTestDir } from '../setup.js';
@@ -16,6 +17,13 @@ import {
   createNonVideoFile,
   createSubDir,
 } from '../helpers/fixtures.js';
+
+const storedFramesDirectory = (catalogDirectory: string, count: number): string => {
+  const fingerprintRoot = join(catalogDirectory, 'artifacts', 'frames');
+  const fingerprint = readdirSync(fingerprintRoot)[0];
+  if (fingerprint === undefined) throw new Error('Expected a fingerprint artifact directory');
+  return join(fingerprintRoot, fingerprint, framesKey(count));
+};
 
 describe('process command', () => {
   let testDir: string;
@@ -234,12 +242,12 @@ describe('process command', () => {
     const configured = await runCli(['process', videoPath, '--json'], { cwd: testDir, env });
 
     expect(configured.exitCode).toBeGreaterThan(0);
-    expect(readdirSync(join(testDir, 'frames', 'clip'))).toHaveLength(1);
+    expect(readdirSync(storedFramesDirectory(join(testDir, '.ai-video-cataloger'), 1))).toHaveLength(1);
 
     const overridden = await runCli(['process', videoPath, '--frames', '2', '--json'], { cwd: testDir, env });
 
     expect(overridden.exitCode).toBeGreaterThan(0);
-    expect(readdirSync(join(testDir, 'frames', 'clip'))).toHaveLength(2);
+    expect(readdirSync(storedFramesDirectory(join(testDir, '.ai-video-cataloger'), 2))).toHaveLength(2);
     cleanupTestDir(home);
   });
 });

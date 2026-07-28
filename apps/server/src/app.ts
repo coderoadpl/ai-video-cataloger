@@ -12,6 +12,7 @@ import {
   checkReady,
   checkNestedDatabases,
   deleteCredential,
+  deleteVariantByLocator,
   deleteWhisperModel,
   downloadWhisperModel,
   enqueueProcess,
@@ -39,6 +40,7 @@ import {
   listTags,
   listJobs,
   listProviders,
+  listVariants,
   listWhisperModels,
   localAiRequirements,
   pullLocalAiModel,
@@ -54,6 +56,8 @@ import {
   search,
   setConfig,
   setCredential,
+  selectVariantByLocator,
+  setFolderDefaultVariant,
   stopLocalAiDaemon,
   testProvider,
   useWhisperModel,
@@ -399,6 +403,45 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.searchQuery.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.searchQuery.output);
     return respond(await search(deps, input.value), API_ROUTES.searchQuery.output);
+  });
+
+  app.get(API_ROUTES.variantsList.path, async (context) => {
+    const input = parseInput(API_ROUTES.variantsList.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.variantsList.output);
+    return respond(await listVariants(deps, input.value), API_ROUTES.variantsList.output);
+  });
+
+  app.post(API_ROUTES.variantsSelect.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.variantsSelect.output);
+    const input = parseInput(API_ROUTES.variantsSelect.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.variantsSelect.output);
+    return respond(
+      await withCatalogWriteLock(deps, () => selectVariantByLocator(deps, input.value)),
+      API_ROUTES.variantsSelect.output,
+    );
+  });
+
+  app.post(API_ROUTES.variantsDelete.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.variantsDelete.output);
+    const input = parseInput(API_ROUTES.variantsDelete.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.variantsDelete.output);
+    return respond(
+      await withCatalogWriteLock(deps, () => deleteVariantByLocator(deps, input.value)),
+      API_ROUTES.variantsDelete.output,
+    );
+  });
+
+  app.post(API_ROUTES.variantsFolderDefault.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.variantsFolderDefault.output);
+    const input = parseInput(API_ROUTES.variantsFolderDefault.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.variantsFolderDefault.output);
+    return respond(
+      await withCatalogWriteLock(deps, () => setFolderDefaultVariant(deps, input.value)),
+      API_ROUTES.variantsFolderDefault.output,
+    );
   });
 
   app.get(API_ROUTES.faceArtifactsStatus.path, async () =>

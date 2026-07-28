@@ -165,7 +165,13 @@ describe('useProcessing batch', () => {
         ok: true,
         data: {
           ...jobSnapshot('job:rename'),
-          result: { video: '2026-01-01_renamed.mp4', path: '/v/2026-01-01_renamed.mp4', status: 'completed' },
+          result: {
+            video: '2026-01-01_renamed.mp4',
+            path: '/v/2026-01-01_renamed.mp4',
+            status: 'completed',
+            configId: 'cfg_0123456789ab',
+            selectedConfigId: 'cfg_0123456789ab',
+          },
         },
       })),
     );
@@ -198,7 +204,13 @@ describe('useProcessing batch', () => {
         ok: true,
         data: {
           ...jobSnapshot('job:same'),
-          result: { video: 'good1.mp4', path: '/v/good1.mp4', status: 'completed' },
+          result: {
+            video: 'good1.mp4',
+            path: '/v/good1.mp4',
+            status: 'completed',
+            configId: 'cfg_0123456789ab',
+            selectedConfigId: 'cfg_0123456789ab',
+          },
         },
       })),
     );

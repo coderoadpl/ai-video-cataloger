@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { buildGeminiPrompt } from '@adapters/gemini/index.js';
 
 import { buildAnalyzerPrompt } from './index.js';
-import { outputLanguageInstruction } from './prompt.js';
+import { ANALYSIS_PROMPT_VERSION, outputLanguageInstruction } from './prompt.js';
 
 const retrievalMarkers = [
   'Write for retrieval',
@@ -34,6 +34,10 @@ const framePrompt = (outputLanguage: string): string =>
   });
 
 describe('retrieval-grade prompt', () => {
+  it('pins the prompt version used by configuration identity', () => {
+    expect(ANALYSIS_PROMPT_VERSION).toBe(1);
+  });
+
   it.each(retrievalMarkers)('keeps "%s" in the frame-analyzer prompt', (marker) => {
     expect(framePrompt('auto')).toContain(marker);
   });

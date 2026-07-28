@@ -1,6 +1,7 @@
 export const ERROR_CODES = [
   'validation',
   'not_found',
+  'variant_not_found',
   'conflict',
   'file_not_found',
   'invalid_file_type',

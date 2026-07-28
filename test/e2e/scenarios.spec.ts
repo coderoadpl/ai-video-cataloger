@@ -1,6 +1,7 @@
 import { test as base, expect } from '@playwright/test';
 import { existsSync, readFileSync, readdirSync, rmSync } from 'node:fs';
 import { basename, extname, join } from 'node:path';
+import { z } from 'zod';
 
 import { analyzerCliFlags } from './analyzer-mode.js';
 import { CliDriver } from './drivers/cli-driver.js';
@@ -10,7 +11,7 @@ import {
   addCorruptVideoTo,
   addSampleTo,
   completedData,
-  createOldDataCompatFixture,
+  createPreFeatureInstallationFixture,
   findKeyword,
   listVideos,
   makeEmptyWorkdir,
@@ -19,10 +20,49 @@ import {
   readCatalog,
   revertRenames,
   runCli,
+  type CliResult,
 } from './helpers.js';
 import { SAMPLES, selectedSamples, type VideoSample } from './samples.js';
 
 const RENAMED_PATTERN = /^\d{4}-\d{2}-\d{2}_[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/;
+const configIdSchema = z.string().regex(/^cfg_[0-9a-f]{12}$/);
+const processCompletionSchema = z.object({
+  configId: configIdSchema,
+  selectedConfigId: z.union([configIdSchema, z.literal('legacy')]),
+  path: z.string(),
+});
+const variantRowSchema = z.object({
+  configId: z.union([configIdSchema, z.literal('legacy')]),
+  descriptor: z.unknown().nullable(),
+  selected: z.boolean(),
+  createdAt: z.string(),
+  analyzer: z.string().nullable(),
+  model: z.string().nullable(),
+});
+const variantsCompletionSchema = z.object({
+  fingerprint: z.string().min(1),
+  count: z.number().int().nonnegative(),
+});
+const searchCompletionSchema = z.object({
+  count: z.number().int().nonnegative(),
+  results: z.array(z.object({
+    fingerprint: z.string(),
+    variantCount: z.number().int().positive(),
+    description: z.string().nullable(),
+  }).passthrough()),
+}).passthrough();
+const indexRebuildSchema = z.object({
+  reconciledFolders: z.number().int().nonnegative(),
+  importedFiles: z.number().int().nonnegative(),
+}).passthrough();
+const summaryArtifactSchema = z.object({
+  schemaVersion: z.literal(1),
+  description: z.string().min(1),
+  suggestedFilename: z.string().min(1),
+  fullAnalysis: z.string(),
+  tags: z.array(z.string()),
+  analyzedAt: z.string(),
+}).passthrough();
 
 interface Fixtures {
   driver: PipelineDriver;
@@ -95,6 +135,20 @@ function sampleById(id: string): VideoSample {
   const sample = SAMPLES.find((candidate) => candidate.id === id);
   if (sample === undefined) throw new Error(`Missing sample: ${id}`);
   return sample;
+}
+
+function expectCliSuccess(result: CliResult, label: string): void {
+  const errors = result.events
+    .filter((event) => event.type === 'error')
+    .map((event) => event.message ?? event.error ?? event.code ?? 'unknown error');
+  expect(result.code, `${label}: ${errors.join(' | ')}\n${result.stderr}`).toBe(0);
+}
+
+function variantRows(result: CliResult): z.output<typeof variantRowSchema>[] {
+  return result.jsonValues.flatMap((value) => {
+    const parsed = variantRowSchema.safeParse(value);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 for (const sample of selectedSamples()) {
@@ -185,17 +239,44 @@ test('S4 batch: good videos complete, corrupt one fails, queue continues', async
   expect(rows.find((row) => row.original_name === corruptName)?.status).not.toBe('completed');
 });
 
-test('S5 old-data compat: CLI reads old schema and resumes from artifacts', async ({ workdir }, testInfo) => {
+test('S5 pre-feature installation migrates, searches, resumes, and renames', async ({ workdir }, testInfo) => {
   test.skip(testInfo.project.name !== 'cli', 'CLI-only old-data compatibility scenario');
   test.setTimeout(420_000);
-  const originalName = await createOldDataCompatFixture(workdir);
+  const fixture = await createPreFeatureInstallationFixture(workdir);
+
+  const searchBefore = await runCli(['search', 'skyline', '--json'], workdir);
+  expectCliSuccess(searchBefore, 'pre-feature search');
+  const searchBeforeData = searchCompletionSchema.parse(completedData(searchBefore));
+  expect(searchBeforeData.results).toEqual([
+    expect.objectContaining({
+      fingerprint: fixture.fingerprint,
+      variantCount: 1,
+      description: fixture.analysisDescription,
+    }),
+  ]);
+
+  const variantsBefore = await runCli(['variants', 'list', fixture.analyzedPath, '--json'], workdir);
+  expectCliSuccess(variantsBefore, 'pre-feature variants');
+  expect(variantsCompletionSchema.parse(completedData(variantsBefore))).toMatchObject({
+    fingerprint: fixture.fingerprint,
+    count: 1,
+  });
+  expect(variantRows(variantsBefore)).toEqual([
+    expect.objectContaining({ configId: 'legacy', descriptor: null, selected: true }),
+  ]);
+  expect(readFileSync(join(workdir, 'summaries', 'legacy-catalog.json'), 'utf8')).toContain(fixture.analysisDescription);
+  expect(readFileSync(join(workdir, 'transcripts', 'legacy-catalog.txt'), 'utf8')).toBe(fixture.analysisTranscript);
+
+  const rebuild = await runCli(['index', 'rebuild', '--json'], workdir);
+  expectCliSuccess(rebuild, 'pre-feature snapshot rebuild');
+  expect(indexRebuildSchema.parse(completedData(rebuild))).toMatchObject({ reconciledFolders: 1, importedFiles: 1 });
 
   const scanBefore = await runCli(['scan', workdir, '--json'], workdir);
   expect(scanBefore.code).toBe(0);
   const scanData = parseScanOutput(completedData(scanBefore));
-  expect(scanData.summary).toMatchObject({ total: 1, tracked: 1, error: 1 });
-  expect(scanData.videos[0]).toMatchObject({
-    filename: originalName,
+  expect(scanData.summary).toMatchObject({ total: 2, tracked: 2, completed: 1, error: 1 });
+  expect(scanData.videos.find((video) => video.filename === fixture.resumeName)).toMatchObject({
+    filename: fixture.resumeName,
     status: 'error',
     artifacts: {
       transcriptPath: join(workdir, 'transcripts', 'legacy-resume.txt'),
@@ -207,26 +288,129 @@ test('S5 old-data compat: CLI reads old schema and resumes from artifacts', asyn
   const statusBefore = await runCli(['status', '--json'], workdir);
   expect(statusBefore.code).toBe(0);
   const statusData = parseStatusOutput(completedData(statusBefore));
-  expect(statusData.summary).toMatchObject({ total: 1, error: 1 });
-  expect(statusData.videos[0]).toMatchObject({
-    originalName,
+  expect(statusData.summary).toMatchObject({ total: 2, completed: 1, error: 1 });
+  expect(statusData.videos.find((video) => video.originalName === fixture.resumeName)).toMatchObject({
+    originalName: fixture.resumeName,
     newName: null,
     status: 'error',
   });
 
   const resume = await runCli(
-    ['process', join(workdir, originalName), '--json', '--whisper', 'skip', ...analyzerCliFlags()],
+    ['process', join(workdir, fixture.resumeName), '--json', '--whisper', 'skip', ...analyzerCliFlags()],
     workdir,
     420_000,
   );
-  const errors = resume.events.filter((event) => event.type === 'error').map((event) => event.message ?? event.code ?? 'unknown error');
-  expect(resume.code, errors.join(' | ')).toBe(0);
+  expectCliSuccess(resume, 'pre-feature resume');
   expect(resume.events.some((event) => event.type === 'completed')).toBe(true);
 
   const rows = await readCatalog(workdir);
-  expect(rows).toHaveLength(1);
-  expect(rows[0]?.status).toBe('completed');
-  expect(rows[0]?.original_name).toBe(originalName);
-  expect(rows[0]?.new_name).toMatch(RENAMED_PATTERN);
-  expect(listVideos(workdir)).toEqual([rows[0]?.new_name]);
+  expect(rows).toHaveLength(2);
+  const resumed = rows.find((row) => row.original_name === fixture.resumeName);
+  expect(resumed?.status).toBe('completed');
+  expect(resumed?.new_name).toMatch(RENAMED_PATTERN);
+  if (resumed?.new_name === null || resumed?.new_name === undefined) throw new Error('Legacy resume did not rename the video');
+  expect(listVideos(workdir)).toEqual([fixture.analyzedName, resumed.new_name].sort());
+
+  const variantsAfter = await runCli(['variants', 'list', fixture.analyzedPath, '--json'], workdir);
+  expectCliSuccess(variantsAfter, 'post-resume legacy variants');
+  expect(variantRows(variantsAfter)).toEqual([
+    expect.objectContaining({ configId: 'legacy', descriptor: null, selected: true }),
+  ]);
+  const searchedAfter = await runCli(['search', 'skyline', '--json'], workdir);
+  expectCliSuccess(searchedAfter, 'post-resume legacy search');
+  const searchAfter = searchCompletionSchema.parse(completedData(searchedAfter));
+  expect(searchAfter.results[0]).toMatchObject({
+    fingerprint: fixture.fingerprint,
+    variantCount: 1,
+    description: fixture.analysisDescription,
+  });
+});
+
+test('S6 two configurations share a transcript and switch selected search and artifacts', async ({ workdir }, testInfo) => {
+  test.skip(testInfo.project.name !== 'cli', 'CLI-only variant scenario');
+  test.setTimeout(1_200_000);
+  const sample = sampleById('sintel');
+  await addSampleTo(workdir, sample);
+  const videoPath = join(workdir, sample.file);
+  const processArgs = [
+    'process',
+    videoPath,
+    '--frames',
+    '1',
+    '--skip-rename',
+    '--whisper',
+    'local',
+    '--json',
+    ...analyzerCliFlags(),
+  ];
+
+  const first = await runCli(processArgs, workdir, 600_000);
+  expectCliSuccess(first, 'configuration A');
+  const firstCompletion = processCompletionSchema.parse(completedData(first));
+
+  const language = await runCli(['config', 'set', 'output_language', 'pl', '--json'], workdir);
+  expectCliSuccess(language, 'configuration B language');
+  const second = await runCli([...processArgs, '--verbose'], workdir, 600_000);
+  expectCliSuccess(second, 'configuration B');
+  const secondCompletion = processCompletionSchema.parse(completedData(second));
+  expect(secondCompletion.configId).not.toBe(firstCompletion.configId);
+  expect(secondCompletion.selectedConfigId).toBe(firstCompletion.configId);
+
+  const listed = await runCli(['variants', 'list', videoPath, '--json'], workdir);
+  expectCliSuccess(listed, 'two variants');
+  const listing = variantsCompletionSchema.parse(completedData(listed));
+  expect(listing.count).toBe(2);
+  expect(variantRows(listed)).toEqual(expect.arrayContaining([
+    expect.objectContaining({ configId: firstCompletion.configId, selected: true }),
+    expect.objectContaining({ configId: secondCompletion.configId, selected: false }),
+  ]));
+
+  const variantsRoot = join(workdir, '.ai-video-cataloger', 'variants', listing.fingerprint);
+  const firstSummaryPath = join(variantsRoot, firstCompletion.configId, 'summary.json');
+  const secondSummaryPath = join(variantsRoot, secondCompletion.configId, 'summary.json');
+  const firstSummaryText = readFileSync(firstSummaryPath, 'utf8');
+  const secondSummaryText = readFileSync(secondSummaryPath, 'utf8');
+  const firstSummary = summaryArtifactSchema.parse(JSON.parse(firstSummaryText));
+  const secondSummary = summaryArtifactSchema.parse(JSON.parse(secondSummaryText));
+  expect(firstSummary.description).not.toBe(secondSummary.description);
+  expect(firstSummaryText).not.toBe(secondSummaryText);
+
+  const sharedTranscriptDirectory = join(
+    workdir,
+    '.ai-video-cataloger',
+    'artifacts',
+    'transcripts',
+    listing.fingerprint,
+  );
+  expect(readdirSync(sharedTranscriptDirectory).filter((name) => name.endsWith('.txt'))).toHaveLength(1);
+
+  const projectionPath = join(workdir, 'summaries', `${basename(sample.file, extname(sample.file))}.json`);
+  expect(readFileSync(projectionPath, 'utf8')).toBe(firstSummaryText);
+  const searchedFirst = await runCli(['search', 'searching', '--json'], workdir);
+  expectCliSuccess(searchedFirst, 'search configuration A');
+  const searchFirst = searchCompletionSchema.parse(completedData(searchedFirst));
+  expect(searchFirst.results[0]).toMatchObject({
+    fingerprint: listing.fingerprint,
+    variantCount: 2,
+    description: firstSummary.description,
+  });
+
+  const selected = await runCli([
+    'variants',
+    'select',
+    videoPath,
+    '--config',
+    secondCompletion.configId,
+    '--json',
+  ], workdir);
+  expectCliSuccess(selected, 'select configuration B');
+  expect(readFileSync(projectionPath, 'utf8')).toBe(secondSummaryText);
+  const searchedSecond = await runCli(['search', 'searching', '--json'], workdir);
+  expectCliSuccess(searchedSecond, 'search configuration B');
+  const searchSecond = searchCompletionSchema.parse(completedData(searchedSecond));
+  expect(searchSecond.results[0]).toMatchObject({
+    fingerprint: listing.fingerprint,
+    variantCount: 2,
+    description: secondSummary.description,
+  });
 });

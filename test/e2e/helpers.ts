@@ -9,6 +9,7 @@ import {
   readFileSync,
   renameSync,
   rmSync,
+  statSync,
   symlinkSync,
   unlinkSync,
   writeFileSync,
@@ -366,7 +367,7 @@ export function addCorruptVideoTo(dir: string, name = 'corrupt-video.mp4'): stri
   return name;
 }
 
-function writeMinimalVideo(dest: string): void {
+function writeMinimalVideo(dest: string, color = 'gray'): void {
   mkdirSync(dirname(dest), { recursive: true });
   const tmp = `${dest}.tmp-${String(process.pid)}-${String(Date.now())}`;
   try {
@@ -377,7 +378,7 @@ function writeMinimalVideo(dest: string): void {
         '-f',
         'lavfi',
         '-i',
-        'color=c=gray:size=320x240:rate=5:duration=1',
+        `color=c=${color}:size=320x240:rate=5:duration=1`,
         '-c:v',
         'libx264',
         '-pix_fmt',
@@ -402,24 +403,60 @@ function writeMinimalVideo(dest: string): void {
   }
 }
 
-export async function createOldDataCompatFixture(dir: string): Promise<string> {
-  const originalName = 'legacy-resume.mp4';
-  const originalPath = join(dir, originalName);
+export interface PreFeatureInstallationFixture {
+  analyzedName: string;
+  analyzedPath: string;
+  analysisDescription: string;
+  analysisTranscript: string;
+  fingerprint: string;
+  resumeName: string;
+}
+
+export async function createPreFeatureInstallationFixture(dir: string): Promise<PreFeatureInstallationFixture> {
+  const resumeName = 'legacy-resume.mp4';
+  const resumePath = join(dir, resumeName);
   const baseName = 'legacy-resume';
-  writeMinimalVideo(originalPath);
+  const analyzedName = 'legacy-catalog.mp4';
+  const analyzedPath = join(dir, analyzedName);
+  const analyzedBaseName = 'legacy-catalog';
+  const analysisDescription = 'A blue-hour skyline preserved by the pre-feature catalog.';
+  const analysisTranscript = 'First line from the legacy transcript. Second line mentions Warsaw.';
+  const folderId = '88888888-8888-4888-8888-888888888888';
+  writeMinimalVideo(resumePath);
+  writeMinimalVideo(analyzedPath, 'blue');
+  const fingerprint = partialContentFingerprint(analyzedPath);
 
   mkdirSync(join(dir, 'frames', baseName), { recursive: true });
+  mkdirSync(join(dir, 'frames', analyzedBaseName), { recursive: true });
   mkdirSync(join(dir, 'transcripts'), { recursive: true });
+  mkdirSync(join(dir, 'summaries'), { recursive: true });
   writeFileSync(join(dir, 'frames', baseName, 'frame-001.jpg'), legacyJpeg());
+  writeFileSync(join(dir, 'frames', analyzedBaseName, 'frame-001.jpg'), legacyJpeg());
   writeFileSync(
     join(dir, 'transcripts', `${baseName}.txt`),
     'A legacy compatibility clip about pasta, tomato sauce, and a kitchen workflow.',
     'utf8',
   );
+  writeFileSync(join(dir, 'transcripts', `${analyzedBaseName}.txt`), analysisTranscript, 'utf8');
+  writeFileSync(join(dir, 'summaries', `${analyzedBaseName}.txt`), analysisDescription, 'utf8');
+  writeFileSync(join(dir, 'summaries', `${analyzedBaseName}.json`), JSON.stringify({
+    schemaVersion: 1,
+    description: analysisDescription,
+    suggestedFilename: analyzedBaseName,
+    fullAnalysis: analysisDescription,
+    tags: ['night-sky', 'warsaw'],
+    analyzedAt: '2026-01-02T03:04:05.678Z',
+  }, null, 2), 'utf8');
+  writeFileSync(join(dir, 'summaries', `${analyzedBaseName}-debug.log`), 'legacy debug output', 'utf8');
 
   const dbDir = join(dir, '.ai-video-cataloger');
   mkdirSync(dbDir, { recursive: true });
   writeFileSync(join(dbDir, 'config.json'), JSON.stringify({ frames: '1', whisper_mode: 'skip' }, null, 2), 'utf8');
+  writeFileSync(join(dbDir, 'folder-id'), JSON.stringify({
+    folderId,
+    schemaVersion: 8,
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }, null, 2), 'utf8');
 
   const SQL = await initSqlJs();
   const db = new SQL.Database();
@@ -436,19 +473,118 @@ export async function createOldDataCompatFixture(dir: string): Promise<string> {
       error_message
     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
     [
-      originalPath,
-      originalName,
+      resumePath,
+      resumeName,
       null,
-      'legacy-hash',
+      'legacy-resume-hash',
       'error',
       '2026-07-12 10:11:12',
       '2026-07-12 10:12:13',
       'Legacy interrupted run',
     ],
   );
+  db.run(
+    `INSERT INTO videos (
+      original_path,
+      original_name,
+      new_name,
+      file_hash,
+      status,
+      created_at,
+      updated_at,
+      error_message
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      analyzedPath,
+      'legacy-catalog-source.mp4',
+      analyzedName,
+      fingerprint,
+      'completed',
+      '2026-01-02 03:04:05',
+      '2026-01-02 03:04:05',
+      null,
+    ],
+  );
   writeFileSync(join(dbDir, 'catalog.db'), Buffer.from(db.export()));
   db.close();
-  return originalName;
+
+  const globalDb = new SQL.Database();
+  globalDb.run(readFileSync(join(REPO_ROOT, 'adapters', 'db', 'fixtures', 'global-catalog-v8.sql'), 'utf8'));
+  globalDb.run('DELETE FROM files WHERE fingerprint = ?', ['fixture-v8-unprocessed']);
+  globalDb.run('UPDATE folders SET current_path = ?, display_name = ? WHERE folder_id = ?', [dir, 'pre-feature fixture', folderId]);
+  globalDb.run(
+    `UPDATE files
+      SET fingerprint = ?, file_name = ?, size = ?, processed_at = ?
+      WHERE fingerprint = ?`,
+    [fingerprint, analyzedName, statSync(analyzedPath).size, '2026-01-02T03:04:05.678Z', 'fixture-v8-analysis'],
+  );
+  globalDb.run(
+    `UPDATE analyses
+      SET fingerprint = ?, final_name = ?, description = ?, transcript = ?
+      WHERE fingerprint = ?`,
+    [fingerprint, analyzedName, analysisDescription, analysisTranscript, 'fixture-v8-analysis'],
+  );
+  globalDb.run('UPDATE file_tags SET fingerprint = ? WHERE fingerprint = ?', [fingerprint, 'fixture-v8-analysis']);
+  globalDb.run(
+    `UPDATE search_documents
+      SET fingerprint = ?, file_name = ?, final_name = ?, description = ?, transcript = ?
+      WHERE fingerprint = ?`,
+    [fingerprint, analyzedName, analyzedName, analysisDescription, analysisTranscript, 'fixture-v8-analysis'],
+  );
+  const globalPath = join(isolatedHome(dir), '.ai-video-cataloger', 'catalog.db');
+  writeFileSync(globalPath, Buffer.from(globalDb.export()));
+  globalDb.close();
+
+  const snapshot = [
+    {
+      type: 'header',
+      version: 1,
+      folder: {
+        folderId,
+        currentPath: dir,
+        displayName: 'pre-feature fixture',
+        firstSeenAt: '2026-01-01T00:00:00.000Z',
+        lastSeenAt: '2026-01-02T03:04:05.678Z',
+      },
+      exportedAt: '2026-01-03T00:00:00.000Z',
+    },
+    {
+      type: 'record',
+      file: {
+        fingerprint,
+        folderId,
+        fileName: analyzedName,
+        size: statSync(analyzedPath).size,
+        durationS: 1,
+        gpsLat: null,
+        gpsLon: null,
+        processedAt: '2026-01-03T00:00:00.000Z',
+        analyzer: 'harness:claude-code',
+        model: 'claude-sonnet-4',
+        missingAt: null,
+      },
+      analysis: {
+        fingerprint,
+        finalName: analyzedName,
+        description: analysisDescription,
+        transcript: analysisTranscript,
+        language: 'en',
+        tags: ['night-sky', 'warsaw'],
+      },
+    },
+  ];
+  writeFileSync(join(dbDir, 'catalog.ndjson'), `${snapshot.map((line) => JSON.stringify(line)).join('\n')}\n`, 'utf8');
+
+  return { analyzedName, analyzedPath, analysisDescription, analysisTranscript, fingerprint, resumeName };
+}
+
+function partialContentFingerprint(filePath: string): string {
+  const content = readFileSync(filePath);
+  return createHash('sha256')
+    .update(Buffer.from(String(content.length)))
+    .update(content)
+    .digest('hex')
+    .substring(0, 16);
 }
 
 function oldSchemaStatements(): string[] {

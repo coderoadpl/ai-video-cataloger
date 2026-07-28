@@ -101,6 +101,18 @@ interface SearchOptions extends JsonOption {
   limit: number;
 }
 
+interface VariantConfigOptions extends JsonOption {
+  config: string;
+}
+
+interface VariantDefaultOptions extends JsonOption {
+  config?: string | undefined;
+  clear?: boolean | undefined;
+}
+
+type VariantsListOutput = Awaited<ReturnType<ApiClient['listVariants']>> extends Result<infer T, AppError> ? T : never;
+type VariantListItem = VariantsListOutput['variants'][number];
+
 const cliWorkingDirectory = process.env.AVC_WORKING_DIRECTORY ?? process.cwd();
 const cliHomeDirectory = process.env.AVC_HOME_DIRECTORY ?? homedir();
 const cliConfigFolder = path.resolve(cliWorkingDirectory) === path.resolve(cliHomeDirectory)
@@ -859,6 +871,100 @@ program
     await runSimple(json, 'search', () => api.search({ query, limit: options.limit, offset: 0 }), searchHuman, { raw: true });
   });
 
+const variants = program.command('variants').description('Inspect and manage analysis variants');
+
+variants
+  .command('list')
+  .description('List every analysis variant for a video')
+  .argument('<path>', 'video path')
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (videoPath: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    const resolvedVideoPath = path.resolve(cliWorkingDirectory, videoPath);
+    emitStarted(json, 'variants_list', { videoPath: resolvedVideoPath });
+    const result = await api.listVariants({ videoPath: resolvedVideoPath });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    if (json) {
+      for (const variant of result.value.variants) emitRaw(true, variantNdjsonRow(variant), '');
+      emitCompleted(true, {
+        fingerprint: result.value.fingerprint,
+        videoPath: result.value.videoPath,
+        folderDefaultConfigId: result.value.folderDefaultConfigId,
+        count: result.value.variants.length,
+      });
+      return;
+    }
+    emitCompleted(false, result.value, variantsListHuman(result.value));
+  });
+
+variants
+  .command('select')
+  .description('Select the analysis variant used by search and projected artifacts')
+  .argument('<path>', 'video path')
+  .requiredOption('--config <configId>', 'configuration id to select')
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (videoPath: string, options: VariantConfigOptions) => {
+    const json = isJsonMode(options);
+    const resolvedVideoPath = path.resolve(cliWorkingDirectory, videoPath);
+    await runSimple(
+      json,
+      'variants_select',
+      () => api.selectVariant({ videoPath: resolvedVideoPath, configId: options.config }),
+      (data) => `Selected ${data.configId} for ${resolvedVideoPath}`,
+      { startData: { videoPath: resolvedVideoPath, configId: options.config } },
+    );
+  });
+
+variants
+  .command('delete')
+  .description('Delete one analysis variant while preserving other variants')
+  .argument('<path>', 'video path')
+  .requiredOption('--config <configId>', 'configuration id to delete')
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (videoPath: string, options: VariantConfigOptions) => {
+    const json = isJsonMode(options);
+    const resolvedVideoPath = path.resolve(cliWorkingDirectory, videoPath);
+    await runSimple(
+      json,
+      'variants_delete',
+      () => api.deleteVariant({ videoPath: resolvedVideoPath, configId: options.config }),
+      (data) => `Deleted ${data.configId}; selected variant is ${data.selectedConfigId}`,
+      { startData: { videoPath: resolvedVideoPath, configId: options.config } },
+    );
+  });
+
+variants
+  .command('default')
+  .description('Set or clear the default analysis configuration for a folder')
+  .argument('<folder>', 'folder path')
+  .option('--config <configId>', 'configuration id to use by default')
+  .option('--clear', 'clear the explicit folder default', false)
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (folderPath: string, options: VariantDefaultOptions) => {
+    const json = isJsonMode(options);
+    const resolvedFolderPath = path.resolve(cliWorkingDirectory, folderPath);
+    const clear = options.clear === true;
+    const invalid = (clear && options.config !== undefined) || (!clear && options.config === undefined);
+    if (invalid) {
+      emitStarted(json, 'variants_default', { folderPath: resolvedFolderPath });
+      emitError(json, appError('validation', 'Use exactly one of --config <configId> or --clear'));
+      return;
+    }
+    const selectedConfigId = clear ? null : options.config ?? null;
+    await runSimple(
+      json,
+      'variants_default',
+      () => api.setFolderDefaultVariant({ folderPath: resolvedFolderPath, configId: selectedConfigId }),
+      (data) => data.defaultConfigId === null
+        ? `Cleared the folder default; resolved configuration is ${data.resolvedConfigId}`
+        : `Set the folder default to ${data.defaultConfigId}`,
+      { startData: { folderPath: resolvedFolderPath, configId: selectedConfigId } },
+    );
+  });
+
 program
   .command('doctor')
   .option('--json', 'machine-readable JSON output', false)
@@ -1240,6 +1346,32 @@ const searchHuman = (data: Awaited<ReturnType<ApiClient['search']>> extends Resu
     ].join('\t');
   });
   return [...rows, `${data.count} result(s)`].join('\n');
+};
+
+const variantNdjsonRow = (variant: VariantListItem) => ({
+  configId: variant.configId,
+  descriptor: variant.descriptor,
+  selected: variant.selected,
+  createdAt: variant.createdAt,
+  analyzer: variant.analyzer,
+  model: variant.model,
+  ...(variant.estimatedCostUsd === null ? {} : { estimatedCostUsd: variant.estimatedCostUsd }),
+});
+
+const variantsListHuman = (data: VariantsListOutput): string => {
+  if (data.variants.length === 0) return 'No analysis variants found';
+  const rows = data.variants.map((variant) => [
+    variant.selected ? '*' : '',
+    variant.configId,
+    variant.analyzer ?? '-',
+    variant.model ?? '-',
+    variant.createdAt,
+    variant.estimatedCostUsd === null ? '-' : `$${variant.estimatedCostUsd.toFixed(4)}`,
+  ].join('\t'));
+  return [
+    'SELECTED\tCONFIG\tANALYZER\tMODEL\tCREATED\tESTIMATED COST (USD)',
+    ...rows,
+  ].join('\n');
 };
 
 const warnIgnoredFolderConfig = (key: string, ignoredFolderValue: string | null): void => {

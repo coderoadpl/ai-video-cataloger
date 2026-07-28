@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { access, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
+import { access, copyFile, link, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -143,6 +143,24 @@ export class NodeFileSystemPort implements FileSystemPort {
     }
   }
 
+  async linkFile(from: string, to: string): Promise<Result<void, AppError>> {
+    try {
+      await link(from, to);
+      return ok(undefined);
+    } catch (cause) {
+      return failure('internal', cause, `Failed to link ${from} to ${to}`);
+    }
+  }
+
+  async copyFile(from: string, to: string): Promise<Result<void, AppError>> {
+    try {
+      await copyFile(from, to);
+      return ok(undefined);
+    } catch (cause) {
+      return failure('internal', cause, `Failed to copy ${from} to ${to}`);
+    }
+  }
+
   async renamePath(from: string, to: string): Promise<Result<void, AppError>> {
     try {
       await rename(from, to);
@@ -158,6 +176,15 @@ export class NodeFileSystemPort implements FileSystemPort {
       return ok(undefined);
     } catch (cause) {
       return failure('internal', cause, `Failed to delete file: ${value}`);
+    }
+  }
+
+  async deletePath(value: string): Promise<Result<void, AppError>> {
+    try {
+      await rm(value, { force: true, recursive: true });
+      return ok(undefined);
+    } catch (cause) {
+      return failure('internal', cause, `Failed to delete path: ${value}`);
     }
   }
 

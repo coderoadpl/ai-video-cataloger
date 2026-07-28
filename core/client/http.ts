@@ -45,6 +45,10 @@ import {
   tagsAliasOutputSchema,
   tagsListOutputSchema,
   thumbnailOutputSchema,
+  variantDeleteOutputSchema,
+  variantFolderDefaultOutputSchema,
+  variantSelectOutputSchema,
+  variantsListOutputSchema,
   type HttpMethod,
   type ReadMethod,
   type WriteMethod,
@@ -571,6 +575,60 @@ export const createApiClient = (options: ApiClientOptions) => ({
       ]),
       searchOutputSchema,
       undefined,
+      signal,
+    );
+  },
+  listVariants: (input: z.input<typeof API_ROUTES.variantsList.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.variantsList.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.variantsList.method,
+      queryPath(API_ROUTES.variantsList.path, [
+        ['videoPath', parsed.value.videoPath],
+        ['fingerprint', parsed.value.fingerprint],
+      ]),
+      variantsListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  selectVariant: (input: z.input<typeof API_ROUTES.variantsSelect.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.variantsSelect.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.variantsSelect.method,
+      API_ROUTES.variantsSelect.path,
+      variantSelectOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  deleteVariant: (input: z.input<typeof API_ROUTES.variantsDelete.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.variantsDelete.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.variantsDelete.method,
+      API_ROUTES.variantsDelete.path,
+      variantDeleteOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  setFolderDefaultVariant: (
+    input: z.input<typeof API_ROUTES.variantsFolderDefault.input>,
+    signal?: AbortSignal,
+  ) => {
+    const parsed = parseInput(API_ROUTES.variantsFolderDefault.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.variantsFolderDefault.method,
+      API_ROUTES.variantsFolderDefault.path,
+      variantFolderDefaultOutputSchema,
+      parsed.value,
       signal,
     );
   },

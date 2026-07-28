@@ -50,6 +50,7 @@ export const DetailsPanel = ({ video, analyzing, loading = false, onAnalyze, onN
     <Welcome dictionary={dictionary} />
   ) : (
     <VideoDetails
+      key={video.path}
       video={video}
       analyzing={analyzing}
       onAnalyze={onAnalyze}

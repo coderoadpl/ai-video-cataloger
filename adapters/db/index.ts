@@ -16,6 +16,7 @@ export {
 } from './global-catalog.js';
 export {
   analyses,
+  analysisConfigs,
   createGlobalCatalogSchemaSqlV1,
   files,
   folders,

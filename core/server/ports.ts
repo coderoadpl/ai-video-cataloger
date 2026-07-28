@@ -6,6 +6,7 @@ import type {
   CatalogAnalysis,
   CatalogFile,
   CatalogFolder,
+  CatalogVariant,
   ConfigKey,
   CredentialDeletion,
   CredentialsBackendStatus,
@@ -87,6 +88,7 @@ export interface CatalogSearchInput {
 
 export interface CatalogSearchRow {
   fingerprint: string;
+  variantCount: number;
   fileName: string;
   finalName: string | null;
   description: string | null;
@@ -185,6 +187,15 @@ export interface GlobalCatalogStore {
   upsertFile(file: CatalogFile): Promise<Result<void, AppError>>;
   getAnalysis(fingerprint: string): Promise<Result<CatalogAnalysis | null, AppError>>;
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>>;
+  listVariants(fingerprint: string): Promise<Result<CatalogVariant[], AppError>>;
+  getVariant(fingerprint: string, configId: string): Promise<Result<CatalogVariant | null, AppError>>;
+  upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>>;
+  deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>>;
+  setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>>;
+  getExplicitSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>>;
+  getSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>>;
+  getFolderDefaultConfigId(folderId: string): Promise<Result<string | null, AppError>>;
+  setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>>;
   listAnalyzedFileLocations(fingerprints: readonly string[]): Promise<Result<AnalyzedFileLocation[], AppError>>;
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
   listTags(): Promise<Result<CatalogTagSummary[], AppError>>;
@@ -298,8 +309,11 @@ export interface FileSystemPort {
   readTextFile(path: string): Promise<Result<string | null, AppError>>;
   writeTextFile(path: string, content: string): Promise<Result<void, AppError>>;
   ensureDirectory(path: string): Promise<Result<void, AppError>>;
+  linkFile(from: string, to: string): Promise<Result<void, AppError>>;
+  copyFile(from: string, to: string): Promise<Result<void, AppError>>;
   renamePath(from: string, to: string): Promise<Result<void, AppError>>;
   deleteFile(path: string): Promise<Result<void, AppError>>;
+  deletePath(path: string): Promise<Result<void, AppError>>;
   partialContentHash(path: string): Promise<Result<string | null, AppError>>;
   tempDirectory(): string;
   homeDirectory(): string;
@@ -561,6 +575,7 @@ export interface AnalyzerBatchPort {
 }
 
 export interface AnalyzerPort {
+  promptVersion(provider: AnalyzerProviderConfig): number;
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>>;
   dependency(input?: {
     backend: AppConfig['analyzer_backend'];
@@ -692,6 +707,7 @@ export type ProcessJobStep =
   | 'faces_detecting'
   | 'faces_clustering'
   | 'faces_done'
+  | 'artifact_reused'
   | 'catalog_index_skipped'
   | 'catalog_snapshot_skipped'
   | 'batch_submitted'

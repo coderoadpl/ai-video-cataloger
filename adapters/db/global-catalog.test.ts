@@ -2,10 +2,19 @@ import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
-import initSqlJs from 'sql.js';
+import initSqlJs, { type Database } from 'sql.js';
 import { afterEach, describe, expect, it } from 'vitest';
 
-import type { CatalogFile, CatalogFolder, FaceObservation, Person } from '@core/domain/index.js';
+import {
+  GLOBAL_CATALOG_SCHEMA_VERSION,
+  configDescriptorSchema,
+  configId,
+  type CatalogFile,
+  type CatalogFolder,
+  type CatalogVariant,
+  type FaceObservation,
+  type Person,
+} from '@core/domain/index.js';
 
 import { SqlJsGlobalCatalogStore } from './global-catalog.js';
 import {
@@ -84,6 +93,110 @@ describe('SqlJsGlobalCatalogStore', () => {
     const search = await reopened.search({ match: 'clip*', rankingTerms: ['clip'], limit: 10, offset: 0 });
     expect(search.ok && search.value[0]?.fingerprint).toBe(file.fingerprint);
     expect(search.ok && search.value[0]?.tags).toEqual(['a-clip']);
+  });
+
+  it('stores variants independently and resolves explicit, folder-default, and newest selection', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    const firstDescriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'en',
+      promptVersion: 1,
+    });
+    const secondDescriptor = configDescriptorSchema.parse({
+      ...firstDescriptor,
+      output_language: 'pl',
+      promptVersion: 2,
+    });
+    const first: CatalogVariant = {
+      fingerprint: file.fingerprint,
+      configId: configId(firstDescriptor),
+      descriptor: firstDescriptor,
+      finalName: 'alpha.mp4',
+      description: 'alphaonly description',
+      transcript: 'shared words',
+      language: 'en',
+      tags: ['alpha-tag'],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    };
+    const second: CatalogVariant = {
+      ...first,
+      configId: configId(secondDescriptor),
+      descriptor: secondDescriptor,
+      finalName: 'beta.mp4',
+      description: 'betaonly description',
+      language: 'pl',
+      tags: ['beta-tag'],
+      createdAt: '2026-01-04T00:00:00.000Z',
+      usage: { inputTokens: 10, outputTokens: 20, estimatedCostUsd: 0.01 },
+    };
+
+    expect((await store.upsertVariant(first)).ok).toBe(true);
+    expect((await store.upsertVariant(second)).ok).toBe(true);
+    const newest = await store.getAnalysis(file.fingerprint);
+    expect(newest.ok && newest.value?.description).toBe(second.description);
+
+    expect((await store.setSelectedVariant(file.fingerprint, first.configId)).ok).toBe(true);
+    const explicit = await store.getAnalysis(file.fingerprint);
+    expect(explicit.ok && explicit.value?.description).toBe(first.description);
+    expect(explicit.ok && explicit.value?.tags).toEqual(['alpha-tag']);
+    const oldSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
+    expect(oldSearch.ok && oldSearch.value).toEqual([]);
+    const selectedSearch = await store.search({ match: 'alphaonly*', rankingTerms: ['alphaonly'], limit: 10, offset: 0 });
+    expect(selectedSearch.ok && selectedSearch.value[0]).toMatchObject({
+      description: first.description,
+      variantCount: 2,
+    });
+
+    expect((await store.setSelectedVariant(file.fingerprint, null)).ok).toBe(true);
+    expect((await store.setFolderDefaultVariant(folder.folderId, first.configId)).ok).toBe(true);
+    const folderSelected = await store.getAnalysis(file.fingerprint);
+    expect(folderSelected.ok && folderSelected.value?.finalName).toBe(first.finalName);
+    expect((await store.setSelectedVariant(file.fingerprint, 'cfg_000000000000')).ok).toBe(true);
+    const danglingFallsToFolder = await store.getAnalysis(file.fingerprint);
+    expect(danglingFallsToFolder.ok && danglingFallsToFolder.value?.description).toBe(first.description);
+    expect((await store.setFolderDefaultVariant(folder.folderId, 'cfg_111111111111')).ok).toBe(true);
+    const danglingFallsToNewest = await store.getAnalysis(file.fingerprint);
+    expect(danglingFallsToNewest.ok && danglingFallsToNewest.value?.description).toBe(second.description);
+    expect((await store.upsertVariant({ ...first, createdAt: second.createdAt })).ok).toBe(true);
+    const tiedFallback = await store.getAnalysis(file.fingerprint);
+    const tiedWinner = first.configId.localeCompare(second.configId) < 0 ? first : second;
+    expect(tiedFallback.ok && tiedFallback.value?.description).toBe(tiedWinner.description);
+    expect((await store.upsertVariant(first)).ok).toBe(true);
+    expect((await store.setSelectedVariant(file.fingerprint, null)).ok).toBe(true);
+    expect((await store.setFolderDefaultVariant(folder.folderId, first.configId)).ok).toBe(true);
+
+    const variants = await store.listVariants(file.fingerprint);
+    expect(variants.ok && variants.value.map((variant) => variant.configId)).toEqual([
+      second.configId,
+      first.configId,
+    ]);
+    const storedSecond = await store.getVariant(file.fingerprint, second.configId);
+    expect(storedSecond.ok && storedSecond.value).toEqual(second);
+
+    expect((await store.deleteVariant(file.fingerprint, first.configId)).ok).toBe(true);
+    const survivor = await store.getAnalysis(file.fingerprint);
+    expect(survivor.ok && survivor.value?.description).toBe(second.description);
+    expect(survivor.ok && survivor.value?.tags).toEqual(['beta-tag']);
+    const promotedSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
+    expect(promotedSearch.ok && promotedSearch.value[0]).toMatchObject({
+      description: second.description,
+      variantCount: 1,
+    });
+    expect((await store.rebuildSearchIndex()).ok).toBe(true);
+    const rebuiltSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
+    expect(rebuiltSearch.ok && rebuiltSearch.value[0]?.description).toBe(second.description);
+    expect(await store.deleteVariant(file.fingerprint, second.configId))
+      .toMatchObject({ ok: false, error: { code: 'conflict' } });
   });
 
   it('rejects a second writer with catalog_locked and the owner PID', async () => {
@@ -746,11 +859,99 @@ describe('SqlJsGlobalCatalogStore', () => {
     const missingResult = reopened.exec('SELECT missing_at FROM files WHERE fingerprint = ?', [file.fingerprint]);
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(8);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
     const columnNames = columnResult[0]?.values.map((row) => row[1]) ?? [];
     expect(columnNames).toContain('missing_at');
     expect(driveRunColumnResult[0]?.values.map((row) => row[1]) ?? []).toContain('batch_json');
     expect(missingResult[0]?.values[0]?.[0]).toBe(7000);
+  });
+
+  it('migrates the captured v8 fixture to v9 without changing analysis, tags, or search hits', async () => {
+    const home = await tempHome();
+    const before = await writeV8CatalogFixture(home);
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+
+    const analysis = await store.getAnalysis('fixture-v8-analysis');
+    const variant = await store.getVariant('fixture-v8-analysis', 'legacy');
+    const search = await store.search({ match: 'skyline*', rankingTerms: ['skyline'], limit: 10, offset: 0 });
+
+    expect(analysis.ok && analysis.value).toEqual({
+      fingerprint: 'fixture-v8-analysis',
+      finalName: '2026-01-02-night-sky.mp4',
+      description: 'A blue-hour skyline — preserved byte for byte.',
+      transcript: 'First line.\\nSecond line with “quotes”.',
+      language: 'en',
+      tags: ['night-sky', 'warsaw'],
+    });
+    expect(variant.ok && variant.value).toMatchObject({
+      configId: 'legacy',
+      descriptor: null,
+      analyzer: 'harness:claude-code',
+      model: 'claude-sonnet-4',
+      createdAt: '2026-01-02T03:04:05.678Z',
+      usage: null,
+    });
+    expect(search.ok && search.value.map((row) => row.fingerprint)).toEqual(['fixture-v8-analysis']);
+
+    const SQL = await initSqlJs();
+    const migrated = new SQL.Database(await readFile(store.databasePath()));
+    const after = catalogContentsSnapshot(migrated);
+    const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
+    const analysisColumns = migrated.exec('PRAGMA table_info(analyses)')[0]?.values ?? [];
+    const fileSelections = migrated.exec(
+      'SELECT fingerprint, selected_config_id FROM files ORDER BY fingerprint',
+    )[0]?.values;
+    const folderDefaults = migrated.exec('SELECT default_config_id FROM folders')[0]?.values;
+    const legacyConfig = migrated.exec(
+      'SELECT config_id, descriptor_json, label FROM analysis_configs',
+    )[0]?.values;
+    const migratedVariant = migrated.exec(
+      `SELECT config_id, config_json, analyzer, model, created_at, usage_json
+        FROM analyses WHERE fingerprint = 'fixture-v8-analysis'`,
+    )[0]?.values;
+    const migratedTags = migrated.exec(
+      'SELECT fingerprint, config_id, tag_id FROM file_tags ORDER BY tag_id',
+    )[0]?.values;
+    migrated.close();
+
+    expect(after).toEqual(before);
+    expect(version).toBe(9);
+    expect(analysisColumns.filter((column) => column[5] !== 0).map((column) => [column[1], column[5]])).toEqual([
+      ['fingerprint', 1],
+      ['config_id', 2],
+    ]);
+    expect(fileSelections).toEqual([
+      ['fixture-v8-analysis', 'legacy'],
+      ['fixture-v8-unprocessed', null],
+    ]);
+    expect(folderDefaults).toEqual([[null]]);
+    expect(legacyConfig).toEqual([['legacy', null, 'settings partly unknown']]);
+    expect(migratedVariant).toEqual([[
+      'legacy',
+      null,
+      'harness:claude-code',
+      'claude-sonnet-4',
+      '2026-01-02T03:04:05.678Z',
+      null,
+    ]]);
+    expect(migratedTags).toEqual([
+      ['fixture-v8-analysis', 'legacy', 1],
+      ['fixture-v8-analysis', 'legacy', 2],
+    ]);
+  });
+
+  it('fails closed when the catalog schema is newer than the binary', async () => {
+    const home = await tempHome();
+    await writeV8CatalogFixture(home, GLOBAL_CATALOG_SCHEMA_VERSION + 1);
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+
+    const result = await store.counts();
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('snapshot_incompatible');
+      expect(result.error.message).toContain('newer than the supported version');
+    }
   });
 
   it('migrates an existing v1 database to the current version and persists the migrated schema immediately', async () => {
@@ -770,7 +971,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     );
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(8);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
     const columnNames = columnResult[0]?.values.map((row) => row[1]).filter((value) => typeof value === 'string') ?? [];
     expect(columnNames).toContain('gps_lat');
     expect(columnNames).toContain('gps_lon');
@@ -795,13 +996,20 @@ describe('SqlJsGlobalCatalogStore', () => {
     const stateResult = reopened.exec('SELECT fingerprint, engine_version FROM face_index_state');
     reopened.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(8);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
     expect(stateResult[0]?.values).toEqual([['fp-abc', 1]]);
   });
 
   it('migrates an existing v2 database to the current version and persists drive run bookkeeping, batch state included', async () => {
     const home = await tempHome();
     await writeV2Catalog(home);
+    const descriptor = configDescriptorSchema.parse({
+      family: 'gemini-native',
+      providerId: 'gemini',
+      model: 'gemini-3.6-flash',
+      output_language: 'auto',
+      promptVersion: 1,
+    });
 
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     const started = await store.startDriveRun({
@@ -834,6 +1042,7 @@ describe('SqlJsGlobalCatalogStore', () => {
         jobName: 'batches/9',
         state: 'submitted',
         model: 'gemini-3.6-flash',
+        configIdentity: { descriptor, configId: configId(descriptor) },
         requests: [{ key: '/drive/a.mp4', videoPath: '/drive/a.mp4', fileName: 'files/a', fileUri: 'https://files/a' }],
       },
     });
@@ -851,6 +1060,10 @@ describe('SqlJsGlobalCatalogStore', () => {
       batch: {
         jobName: 'batches/9',
         state: 'submitted',
+        configIdentity: {
+          configId: configId(descriptor),
+          descriptor: { output_language: 'auto', promptVersion: 1 },
+        },
         requests: [{ key: '/drive/a.mp4', fileUri: 'https://files/a' }],
       },
     });
@@ -1119,4 +1332,52 @@ const writeV6Catalog = async (home: string): Promise<void> => {
   await mkdir(path.dirname(databasePath), { recursive: true });
   await writeFile(databasePath, Buffer.from(client.export()));
   client.close();
+};
+
+interface CatalogContentsSnapshot {
+  analysis: string;
+  tags: string;
+  searchHits: string;
+  searchColumns: string;
+  searchFtsSql: string;
+}
+
+const catalogContentsSnapshot = (client: Database): CatalogContentsSnapshot => ({
+  analysis: JSON.stringify(client.exec(
+    'SELECT fingerprint, final_name, description, transcript, language FROM analyses ORDER BY fingerprint',
+  )[0]?.values ?? []),
+  tags: JSON.stringify(client.exec(
+    `SELECT ft.fingerprint, t.name
+      FROM file_tags ft
+      JOIN tags t ON t.tag_id = ft.tag_id
+      ORDER BY ft.fingerprint, t.name`,
+  )[0]?.values ?? []),
+  searchHits: JSON.stringify(client.exec(
+    `SELECT sd.fingerprint, sd.file_name, sd.final_name, sd.description, sd.transcript, sd.tags_text
+      FROM search_documents_fts
+      JOIN search_documents sd ON sd.docid = search_documents_fts.docid
+      WHERE search_documents_fts MATCH 'skyline*'`,
+  )[0]?.values ?? []),
+  searchColumns: JSON.stringify(client.exec('PRAGMA table_info(search_documents)')[0]?.values ?? []),
+  searchFtsSql: JSON.stringify(client.exec(
+    `SELECT sql FROM sqlite_master
+      WHERE type = 'table' AND name = 'search_documents_fts'`,
+  )[0]?.values ?? []),
+});
+
+const writeV8CatalogFixture = async (
+  home: string,
+  schemaVersion = 8,
+): Promise<CatalogContentsSnapshot> => {
+  const SQL = await initSqlJs();
+  const client = new SQL.Database();
+  const fixtureSql = await readFile(new URL('./fixtures/global-catalog-v8.sql', import.meta.url), 'utf8');
+  client.run(fixtureSql);
+  if (schemaVersion !== 8) client.run('UPDATE schema_meta SET version = ?', [schemaVersion]);
+  const snapshot = catalogContentsSnapshot(client);
+  const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+  await mkdir(path.dirname(databasePath), { recursive: true });
+  await writeFile(databasePath, Buffer.from(client.export()));
+  client.close();
+  return snapshot;
 };

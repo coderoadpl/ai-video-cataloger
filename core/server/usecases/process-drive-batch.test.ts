@@ -749,6 +749,57 @@ describe('gemini batch drive runs', () => {
     });
   });
 
+  it('keeps the submitted identity when language and prompt version change before re-attachment', async () => {
+    const interrupted = new FakeBatchPort({ statuses: [{ state: 'running', message: null, results: null }] });
+    const deps = makeDeps(interrupted);
+    await useGemini(deps);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+
+    await processDrive(deps, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-a',
+      now: () => new Date('2026-01-01T00:00:00.000Z'),
+      sleep: () => Promise.reject(new Error('killed')),
+    }).catch(() => undefined);
+    const submitted = await deps.globalCatalog.latestDriveRun();
+    const submittedIdentity = submitted.ok ? submitted.value?.batch?.configIdentity : undefined;
+    await deps.config.set({ kind: 'home' }, 'output_language', 'pl');
+    deps.analyzer.analysisPromptVersion = 2;
+    const interactive = await processDrive(deps, { ...batchInput, geminiBatch: false }, undefined, {
+      ...runOptions,
+      runId: 'run-b',
+      now: () => new Date('2026-01-01T01:00:00.000Z'),
+    });
+
+    const resumed = new FakeBatchPort({ statuses: [succeeded()], existingJobName: 'batches/42' });
+    const completed = await processDrive({ ...deps, analyzerBatch: resumed }, batchInput, undefined, {
+      ...runOptions,
+      runId: 'run-c',
+      now: () => new Date('2026-01-01T02:00:00.000Z'),
+    });
+    const variants = await deps.globalCatalog.listVariants('hash-one');
+    const selectedConfigId = await deps.globalCatalog.getSelectedConfigId('hash-one');
+    const currentConfigId = variants.ok
+      ? variants.value.find((variant) => (
+        variant.descriptor?.output_language === 'pl' && variant.descriptor.promptVersion === 2
+      ))?.configId
+      : undefined;
+
+    expect(submittedIdentity).toMatchObject({
+      configId: expect.stringMatching(/^cfg_/),
+      descriptor: { output_language: 'auto', promptVersion: 1 },
+    });
+    expect(interactive).toMatchObject({ ok: true, value: { filesDone: 1 } });
+    expect(completed).toMatchObject({ ok: true, value: { runId: 'run-a', filesDone: 1, filesSkipped: 0 } });
+    expect(variants.ok && variants.value).toHaveLength(2);
+    expect(variants.ok && variants.value.map((variant) => variant.descriptor)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ output_language: 'auto', promptVersion: 1 }),
+      expect.objectContaining({ output_language: 'pl', promptVersion: 2 }),
+    ]));
+    expect(currentConfigId).toBeDefined();
+    expect(selectedConfigId).toEqual({ ok: true, value: currentConfigId });
+  });
+
   it('stamps a display-name re-attach with the model the interrupted submit used', async () => {
     const dying = new DiesInsideSubmit();
     const deps = makeDeps(dying);

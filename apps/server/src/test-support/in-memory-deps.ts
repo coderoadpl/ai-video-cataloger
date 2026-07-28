@@ -5,12 +5,14 @@ import packageJson from '../../../../package.json' with { type: 'json' };
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import {
   FACE_ENGINE_VERSION,
+  LEGACY_CONFIG_ID,
   appError,
   ok,
   type AppError,
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
+  type CatalogVariant,
   type ConfigKey,
   type CredentialDeletion,
   type CredentialsBackendStatus,
@@ -344,6 +346,9 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly folders = new Map<string, CatalogFolder>();
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
+  private readonly variants = new Map<string, CatalogVariant>();
+  private readonly selectedConfigIds = new Map<string, string>();
+  private readonly folderDefaultVariants = new Map<string, string>();
   private readonly driveRuns = new Map<string, DriveRunRecord>();
   private readonly people = new Map<string, Person>();
   private readonly faceObservations = new Map<string, FaceObservation>();
@@ -405,6 +410,95 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>> {
     this.analyses.set(analysis.fingerprint, analysis);
+    const file = this.files.get(analysis.fingerprint);
+    this.variants.set(`${analysis.fingerprint}\u0000${LEGACY_CONFIG_ID}`, {
+      ...analysis,
+      configId: LEGACY_CONFIG_ID,
+      descriptor: null,
+      analyzer: file?.analyzer ?? null,
+      model: file?.model ?? null,
+      createdAt: file?.processedAt ?? '1970-01-01T00:00:00.000Z',
+      usage: null,
+    });
+    if (!this.selectedConfigIds.has(analysis.fingerprint)) {
+      this.selectedConfigIds.set(analysis.fingerprint, LEGACY_CONFIG_ID);
+    }
+    return Promise.resolve(ok(undefined));
+  }
+
+  listVariants(fingerprint: string): Promise<Result<CatalogVariant[], AppError>> {
+    return Promise.resolve(ok([...this.variants.values()].filter((variant) => variant.fingerprint === fingerprint)));
+  }
+
+  getVariant(fingerprint: string, configId: string): Promise<Result<CatalogVariant | null, AppError>> {
+    return Promise.resolve(ok(this.variants.get(`${fingerprint}\u0000${configId}`) ?? null));
+  }
+
+  upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>> {
+    this.variants.set(`${variant.fingerprint}\u0000${variant.configId}`, variant);
+    if (!this.analyses.has(variant.fingerprint)) this.analyses.set(variant.fingerprint, variant);
+    return Promise.resolve(ok(undefined));
+  }
+
+  async deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
+    const variants = [...this.variants.values()].filter((variant) => variant.fingerprint === fingerprint);
+    if (variants.some((variant) => variant.configId === configId) && variants.length === 1) {
+      return { ok: false, error: appError('conflict', 'Cannot delete the last analysis variant') };
+    }
+    const selected = await this.getSelectedConfigId(fingerprint);
+    this.variants.delete(`${fingerprint}\u0000${configId}`);
+    if (selected.ok && selected.value === configId) {
+      const promoted = variants
+        .filter((variant) => variant.configId !== configId)
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+      if (promoted !== undefined) {
+        this.selectedConfigIds.set(fingerprint, promoted.configId);
+        this.analyses.set(fingerprint, promoted);
+      }
+    }
+    return ok(undefined);
+  }
+
+  setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>> {
+    if (configId === null) {
+      this.selectedConfigIds.delete(fingerprint);
+      return Promise.resolve(ok(undefined));
+    }
+    const variant = this.variants.get(`${fingerprint}\u0000${configId}`);
+    if (variant !== undefined) {
+      this.selectedConfigIds.set(fingerprint, configId);
+      this.analyses.set(fingerprint, variant);
+    }
+    return Promise.resolve(ok(undefined));
+  }
+
+  getSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>> {
+    const explicit = this.selectedConfigIds.get(fingerprint);
+    if (explicit !== undefined && this.variants.has(`${fingerprint}\u0000${explicit}`)) {
+      return Promise.resolve(ok(explicit));
+    }
+    const file = this.files.get(fingerprint);
+    const folderDefault = file === undefined ? undefined : this.folderDefaultVariants.get(file.folderId);
+    if (folderDefault !== undefined && this.variants.has(`${fingerprint}\u0000${folderDefault}`)) {
+      return Promise.resolve(ok(folderDefault));
+    }
+    const newest = [...this.variants.values()]
+      .filter((variant) => variant.fingerprint === fingerprint)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+    return Promise.resolve(ok(newest?.configId ?? null));
+  }
+
+  getExplicitSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.selectedConfigIds.get(fingerprint) ?? null));
+  }
+
+  getFolderDefaultConfigId(folderId: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.folderDefaultVariants.get(folderId) ?? null));
+  }
+
+  setFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>> {
+    if (configId === null) this.folderDefaultVariants.delete(folderId);
+    else this.folderDefaultVariants.set(folderId, configId);
     return Promise.resolve(ok(undefined));
   }
 
@@ -463,6 +557,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
         if (!matches) return null;
         return {
           fingerprint: file.fingerprint,
+          variantCount: [...this.variants.values()].filter((variant) => variant.fingerprint === file.fingerprint).length,
           fileName: file.fileName,
           finalName: analysis?.finalName ?? null,
           description: analysis?.description ?? null,
@@ -519,6 +614,9 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     }
     this.faceIndexState.delete(fingerprint);
     this.analyses.delete(fingerprint);
+    for (const key of this.variants.keys()) {
+      if (key.startsWith(`${fingerprint}\u0000`)) this.variants.delete(key);
+    }
     this.files.delete(fingerprint);
     return Promise.resolve(ok({ fingerprint, deleted: true, folderId: file.folderId, cropPaths }));
   }
@@ -531,7 +629,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok({
       folders: this.folders.size,
       files: this.files.size,
-      analyses: this.analyses.size,
+      analyses: this.variants.size,
     }));
   }
 
@@ -826,11 +924,23 @@ class InMemoryFileSystemPort implements FileSystemPort {
     return Promise.resolve(ok(undefined));
   }
 
+  linkFile(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  copyFile(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
   renamePath(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
   }
 
   deleteFile(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  deletePath(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
   }
 
@@ -913,6 +1023,10 @@ class InMemoryWhisperRuntimePort implements WhisperRuntimePort {
 }
 
 class InMemoryAnalyzerPort implements AnalyzerPort {
+  promptVersion(): number {
+    return 1;
+  }
+
   analyze(): Promise<Result<{ rawResponse: string }, AppError>> {
     return Promise.resolve(ok({ rawResponse: 'DESCRIPTION: Placeholder analysis\nFILENAME: placeholder-video' }));
   }

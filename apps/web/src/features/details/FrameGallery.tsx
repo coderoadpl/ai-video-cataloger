@@ -1,11 +1,17 @@
 import { useState } from 'react';
 import { Box, ButtonBase } from '@mui/material';
 
-import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 
-export const FrameGallery = ({ framePaths }: { framePaths: readonly string[] }) => {
-  const dictionary = useDictionary();
+export const FrameGallery = ({
+  framePaths,
+  frameLabel,
+  frameUrl = mediaUrl,
+}: {
+  framePaths: readonly string[];
+  frameLabel: (index: number) => string;
+  frameUrl?: (path: string) => string;
+}) => {
   const [selected, setSelected] = useState(0);
   const active = Math.min(selected, framePaths.length - 1);
   const activeFrame = framePaths[active];
@@ -25,8 +31,8 @@ export const FrameGallery = ({ framePaths }: { framePaths: readonly string[] }) 
         <Box
           component="img"
           data-testid="active-frame"
-          src={mediaUrl(activeFrame)}
-          alt={dictionary.details.frame(active + 1)}
+          src={frameUrl(activeFrame)}
+          alt={frameLabel(active + 1)}
           sx={{ width: '100%', height: '100%', objectFit: 'contain' }}
         />
       </Box>
@@ -36,7 +42,7 @@ export const FrameGallery = ({ framePaths }: { framePaths: readonly string[] }) 
             <ButtonBase
               key={framePath}
               onClick={() => setSelected(index)}
-              aria-label={dictionary.details.frame(index + 1)}
+              aria-label={frameLabel(index + 1)}
               sx={(theme) => ({
                 flexShrink: 0,
                 width: 80,
@@ -50,8 +56,8 @@ export const FrameGallery = ({ framePaths }: { framePaths: readonly string[] }) 
             >
               <Box
                 component="img"
-                src={mediaUrl(framePath)}
-                alt={dictionary.details.frame(index + 1)}
+                src={frameUrl(framePath)}
+                alt={frameLabel(index + 1)}
                 sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
               />
             </ButtonBase>

@@ -45,6 +45,7 @@ import {
 import { analysisFromGenerateContent } from './response.js';
 
 import {
+  ANALYSIS_PROMPT_VERSION,
   descriptionInstruction,
   filenameInstruction,
   outputLanguageInstruction,
@@ -162,6 +163,10 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
   private readonly maxPollAttempts: number;
   private readonly uploadChunkBytes: number;
   private readonly warn: (message: string) => void;
+
+  promptVersion(): number {
+    return ANALYSIS_PROMPT_VERSION;
+  }
 
   constructor(options: GeminiNativeAnalyzerAdapterOptions) {
     this.credentials = options.credentials;
