@@ -875,11 +875,23 @@ class InMemoryFileSystemPort implements FileSystemPort {
     return Promise.resolve(ok(undefined));
   }
 
+  linkFile(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  copyFile(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
   renamePath(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
   }
 
   deleteFile(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  deletePath(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
   }
 

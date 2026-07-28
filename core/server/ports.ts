@@ -305,8 +305,11 @@ export interface FileSystemPort {
   readTextFile(path: string): Promise<Result<string | null, AppError>>;
   writeTextFile(path: string, content: string): Promise<Result<void, AppError>>;
   ensureDirectory(path: string): Promise<Result<void, AppError>>;
+  linkFile(from: string, to: string): Promise<Result<void, AppError>>;
+  copyFile(from: string, to: string): Promise<Result<void, AppError>>;
   renamePath(from: string, to: string): Promise<Result<void, AppError>>;
   deleteFile(path: string): Promise<Result<void, AppError>>;
+  deletePath(path: string): Promise<Result<void, AppError>>;
   partialContentHash(path: string): Promise<Result<string | null, AppError>>;
   tempDirectory(): string;
   homeDirectory(): string;

@@ -1114,6 +1114,7 @@ const renameVideoAndArtifacts = async (
     { from: oldArtifacts.transcriptJsonPath, to: fs.join(folder, 'transcripts', `${newBase}.json`), required: false },
     { from: oldArtifacts.summaryPath, to: fs.join(folder, 'summaries', `${newBase}.txt`), required: false },
     { from: oldArtifacts.summaryJsonPath, to: fs.join(folder, 'summaries', `${newBase}.json`), required: false },
+    { from: oldArtifacts.debugLogPath, to: fs.join(folder, 'summaries', `${newBase}-debug.log`), required: false },
     {
       from: oldArtifacts.thumbnailPath,
       to: fs.join(folder, '.ai-video-cataloger', 'thumbnails', `${newBase}.jpg`),

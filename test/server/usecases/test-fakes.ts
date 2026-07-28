@@ -206,6 +206,28 @@ export class InMemoryFileSystem implements FileSystemPort {
     return Promise.resolve(ok(undefined));
   }
 
+  linkFile(from: string, to: string): Promise<Result<void, AppError>> {
+    const source = this.files.get(this.normalize(from));
+    if (source === undefined) {
+      return Promise.resolve({ ok: false, error: appError('file_not_found', `File not found: ${from}`) });
+    }
+    const normalizedTo = this.normalize(to);
+    this.addDirectory(path.dirname(normalizedTo));
+    this.files.set(normalizedTo, source);
+    return Promise.resolve(ok(undefined));
+  }
+
+  copyFile(from: string, to: string): Promise<Result<void, AppError>> {
+    const source = this.files.get(this.normalize(from));
+    if (source === undefined) {
+      return Promise.resolve({ ok: false, error: appError('file_not_found', `File not found: ${from}`) });
+    }
+    const normalizedTo = this.normalize(to);
+    this.addDirectory(path.dirname(normalizedTo));
+    this.files.set(normalizedTo, { ...source });
+    return Promise.resolve(ok(undefined));
+  }
+
   renamePath(from: string, to: string): Promise<Result<void, AppError>> {
     const normalizedFrom = this.normalize(from);
     const normalizedTo = this.normalize(to);
@@ -240,6 +262,22 @@ export class InMemoryFileSystem implements FileSystemPort {
 
   deleteFile(value: string): Promise<Result<void, AppError>> {
     this.files.delete(this.normalize(value));
+    return Promise.resolve(ok(undefined));
+  }
+
+  deletePath(value: string): Promise<Result<void, AppError>> {
+    const normalized = this.normalize(value);
+    this.files.delete(normalized);
+    this.symlinks.delete(normalized);
+    for (const filePath of this.files.keys()) {
+      if (filePath.startsWith(`${normalized}/`)) this.files.delete(filePath);
+    }
+    for (const directory of this.directories) {
+      if (directory === normalized || directory.startsWith(`${normalized}/`)) this.directories.delete(directory);
+    }
+    for (const linkPath of this.symlinks) {
+      if (linkPath.startsWith(`${normalized}/`)) this.symlinks.delete(linkPath);
+    }
     return Promise.resolve(ok(undefined));
   }
 

@@ -755,7 +755,10 @@ describe('process pipeline rename and jobs', () => {
     deps.fs.addFile('/work/frames/Clip One/frame-001.jpg');
     deps.fs.addFile('/work/transcripts/Clip One.txt', { content: 'transcript' });
     deps.fs.addFile('/work/summaries/Clip One.txt', { content: 'summary txt' });
+    deps.fs.addFile('/work/summaries/Clip One-debug.log', { content: 'debug' });
     deps.fs.addFile('/work/.ai-video-cataloger/thumbnails/Clip One.jpg');
+    deps.fs.addFile('/work/.ai-video-cataloger/artifacts/frames/hash-clip/frm_key/frame-001.jpg');
+    deps.fs.addFile('/work/.ai-video-cataloger/variants/hash-clip/cfg_0123456789ab/summary.json', { content: '{}' });
 
     const result = await processVideoPipeline(deps, baseInput);
     const repo = deps.catalogs.repo('/work');
@@ -792,7 +795,16 @@ describe('process pipeline rename and jobs', () => {
     await expect(deps.fs.exists('/work/transcripts/2024-05-06_existing-summary-2.txt')).resolves.toEqual({ ok: true, value: true });
     await expect(deps.fs.exists('/work/summaries/2024-05-06_existing-summary-2.txt')).resolves.toEqual({ ok: true, value: true });
     await expect(deps.fs.exists('/work/summaries/2024-05-06_existing-summary-2.json')).resolves.toEqual({ ok: true, value: true });
+    await expect(deps.fs.exists('/work/summaries/2024-05-06_existing-summary-2-debug.log')).resolves.toEqual({ ok: true, value: true });
     await expect(deps.fs.exists('/work/.ai-video-cataloger/thumbnails/2024-05-06_existing-summary-2.jpg')).resolves.toEqual({
+      ok: true,
+      value: true,
+    });
+    await expect(deps.fs.exists('/work/.ai-video-cataloger/artifacts/frames/hash-clip/frm_key/frame-001.jpg')).resolves.toEqual({
+      ok: true,
+      value: true,
+    });
+    await expect(deps.fs.exists('/work/.ai-video-cataloger/variants/hash-clip/cfg_0123456789ab/summary.json')).resolves.toEqual({
       ok: true,
       value: true,
     });
