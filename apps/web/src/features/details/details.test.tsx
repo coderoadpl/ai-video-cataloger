@@ -396,13 +396,17 @@ describe('details panel', () => {
     expect(selectionWrites).toBe(0);
   });
 
-  it('selects the preview once and invalidates scan, catalog, search and variant reads', async () => {
+  it('selects the preview once while retaining the loaded variant payload', async () => {
     let selectionWrites = 0;
+    let variantReads = 0;
     server.use(
-      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
-        variant(firstConfigId, firstDescriptor, true, 'First summary'),
-        variant(secondConfigId, secondDescriptor, false, 'Second summary'),
-      ]))),
+      http.get('/api/variants', () => {
+        variantReads += 1;
+        return HttpResponse.json(variantsResponse([
+          variant(firstConfigId, firstDescriptor, true, 'First summary'),
+          variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+        ]));
+      }),
       http.post('/api/variants/select', () => {
         selectionWrites += 1;
         return HttpResponse.json({ ok: true, data: { fingerprint: 'hash-a', configId: secondConfigId } });
@@ -418,10 +422,11 @@ describe('details panel', () => {
     await waitFor(() => expect(selectionWrites).toBe(1));
     expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
       ['scan'],
-      ['catalog-folder'],
       ['search'],
-      ['variants'],
     ]);
+    expect(variantReads).toBe(1);
+    expect(within(screen.getByTestId(`variant-option-${secondConfigId}`)).getByText('Selected')).toBeDefined();
+    expect(within(screen.getByTestId(`variant-option-${firstConfigId}`)).queryByText('Selected')).toBeNull();
   });
 
   it('compares variants in parallel and selects from a comparison column', async () => {

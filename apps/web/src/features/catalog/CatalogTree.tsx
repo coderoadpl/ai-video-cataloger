@@ -314,7 +314,7 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, thum
     return collected.length === 0 ? EMPTY_SUBFOLDER_VIDEOS : collected;
   }, [fetchTargets, loaded]);
 
-  const subfolderThumbnails = useThumbnailGeneration(root.path, subfolderVideos);
+  const subfolderThumbnails = useThumbnailGeneration(root.path, subfolderVideos, 'background');
   const isThumbnailLoading = useCallback(
     (video: CatalogVideo): boolean =>
       thumbnailLoading(video, thumbnailFailedPaths) && thumbnailLoading(video, subfolderThumbnails.failedPaths),

@@ -111,7 +111,8 @@ export const catalogLockScopes = {
 
 export const scanScopes = {
   all: () => ['scan'] as const,
-  folder: (input: z.output<typeof API_ROUTES.scan.input>) => ['scan', 'folder', input.folder] as const,
+  folder: (input: z.output<typeof API_ROUTES.scan.input>) =>
+    ['scan', 'folder', input.folder, input.cached ? 'cached' : 'filesystem'] as const,
 };
 
 export const catalogTreeScopes = {
@@ -256,10 +257,55 @@ const invalidateVariantConsumers = async (
 ): Promise<void> => {
   await Promise.all([
     context.client.invalidateQueries({ queryKey: scanScopes.all() }),
-    context.client.invalidateQueries({ queryKey: catalogFolderScopes.all() }),
     context.client.invalidateQueries({ queryKey: searchScopes.all() }),
-    context.client.invalidateQueries({ queryKey: variantsScopes.all() }),
   ]);
+};
+
+type VariantsOutput = z.output<typeof API_ROUTES.variantsList.output>;
+
+const updateSelectedVariant = (
+  context: MutationFunctionContext,
+  fingerprint: string,
+  configId: string,
+): void => {
+  context.client.setQueriesData<VariantsOutput>({ queryKey: variantsScopes.all() }, (current) => {
+    if (current === undefined || current.fingerprint !== fingerprint) return current;
+    return {
+      ...current,
+      variants: current.variants.map((variant) => ({
+        ...variant,
+        selected: variant.configId === configId,
+      })),
+    };
+  });
+};
+
+const removeCachedVariant = (
+  context: MutationFunctionContext,
+  fingerprint: string,
+  configId: string,
+  selectedConfigId: string,
+): void => {
+  context.client.setQueriesData<VariantsOutput>({ queryKey: variantsScopes.all() }, (current) => {
+    if (current === undefined || current.fingerprint !== fingerprint) return current;
+    return {
+      ...current,
+      variants: current.variants
+        .filter((variant) => variant.configId !== configId)
+        .map((variant) => ({ ...variant, selected: variant.configId === selectedConfigId })),
+    };
+  });
+};
+
+const updateCachedFolderDefault = (
+  context: MutationFunctionContext,
+  folderPath: string,
+  configId: string | null,
+): void => {
+  context.client.setQueriesData<VariantsOutput>({ queryKey: variantsScopes.all() }, (current) => {
+    if (current === undefined || current.folderPath !== folderPath || configId === null) return current;
+    return { ...current, folderDefaultConfigId: configId };
+  });
 };
 
 interface RefetchQuery<TData> {
@@ -454,7 +500,7 @@ export const variantsQuery = (api: ApiClient, input: VariantsInput) => {
   const parsed = API_ROUTES.variantsList.input.parse(input);
   return defineQuery({
     queryKey: variantsScopes.target(parsed),
-    staleTime: 0,
+    staleTime: Number.POSITIVE_INFINITY,
     call: ({ signal }) => api.listVariants(parsed, signal),
   });
 };
@@ -634,19 +680,28 @@ export const selectVariantMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.selectVariant(),
     call: (variables: SelectVariantInput) => api.selectVariant(variables),
-    onSuccess: (_data, _variables, _onMutateResult, context) => invalidateVariantConsumers(context),
+    onSuccess: (data, _variables, _onMutateResult, context) => {
+      updateSelectedVariant(context, data.fingerprint, data.configId);
+      void invalidateVariantConsumers(context);
+    },
   });
 
 export const deleteVariantMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.deleteVariant(),
     call: (variables: DeleteVariantInput) => api.deleteVariant(variables),
-    onSuccess: (_data, _variables, _onMutateResult, context) => invalidateVariantConsumers(context),
+    onSuccess: (data, _variables, _onMutateResult, context) => {
+      removeCachedVariant(context, data.fingerprint, data.configId, data.selectedConfigId);
+      void invalidateVariantConsumers(context);
+    },
   });
 
 export const setFolderDefaultVariantMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.setFolderDefaultVariant(),
     call: (variables: SetFolderDefaultVariantInput) => api.setFolderDefaultVariant(variables),
-    onSuccess: (_data, _variables, _onMutateResult, context) => invalidateVariantConsumers(context),
+    onSuccess: (data, variables, _onMutateResult, context) => {
+      updateCachedFolderDefault(context, variables.folderPath, data.defaultConfigId);
+      void invalidateVariantConsumers(context);
+    },
   });

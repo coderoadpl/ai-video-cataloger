@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { scanFolder } from './scan.js';
+import { cachedScanFolder, scanFolder } from './scan.js';
 import {
   InMemoryCatalogs,
   InMemoryFileSystem,
@@ -18,7 +18,80 @@ class CountingGlobalCatalogStore extends InMemoryGlobalCatalogStore {
   }
 }
 
+class CountingDirectoryFileSystem extends InMemoryFileSystem {
+  directoryReads = 0;
+
+  override listDirectory(value: string) {
+    this.directoryReads += 1;
+    return super.listDirectory(value);
+  }
+}
+
 describe('scanFolder', () => {
+  it('returns indexed folder rows without waiting for a filesystem directory scan', async () => {
+    const folderId = '11111111-1111-4111-8111-111111111111';
+    const fs = new CountingDirectoryFileSystem('/videos');
+    fs.addFile('/videos/.ai-video-cataloger/folder-id', {
+      content: JSON.stringify({ folderId, schemaVersion: 1, createdAt: '2026-01-01T00:00:00.000Z' }),
+    });
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    await globalCatalog.upsertFolder({
+      folderId,
+      currentPath: '/videos',
+      displayName: 'videos',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    await globalCatalog.upsertFile({
+      fingerprint: 'cached-hash',
+      folderId,
+      fileName: 'cached.mp4',
+      size: 2048,
+      durationS: 65,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      missingAt: null,
+    });
+    await globalCatalog.upsertAnalysis({
+      fingerprint: 'cached-hash',
+      finalName: 'cached.mp4',
+      description: 'Cached description',
+      transcript: 'Cached transcript',
+      language: 'en',
+      tags: ['cached'],
+    });
+
+    const result = await cachedScanFolder({
+      catalogs: new InMemoryCatalogs(),
+      fs,
+      media: new InMemoryMedia(),
+      globalCatalog,
+    }, { folder: '/videos' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        databasePath: '/home/.ai-video-cataloger/catalog.db',
+        videos: [{
+          path: '/videos/cached.mp4',
+          filename: 'cached.mp4',
+          sizeFormatted: '2.0 KB',
+          durationFormatted: '1:05',
+          status: 'completed',
+          contentHash: 'cached-hash',
+          artifacts: {
+            transcriptContent: 'Cached transcript',
+            summary: { description: 'Cached description', tags: ['cached'] },
+          },
+        }],
+      },
+    });
+    expect(fs.directoryReads).toBe(0);
+  });
+
   it('scans supported videos, matches catalog rows, and loads completed artifacts', async () => {
     const fs = new InMemoryFileSystem('/videos');
     fs.addFile('/videos/clip.mp4', { size: 2048, hash: 'hash-1' });

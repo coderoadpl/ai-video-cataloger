@@ -19,7 +19,7 @@ export interface ThumbnailOutput {
 
 export const generateThumbnail = async (
   deps: ThumbnailDeps,
-  input: { videoPath: string; force: boolean },
+  input: { videoPath: string; force: boolean; priority?: 'foreground' | 'background' | undefined },
 ): Promise<Result<ThumbnailOutput, AppError>> => {
   const videoPath = deps.fs.resolve(input.videoPath);
   const exists = await deps.fs.exists(videoPath);
@@ -44,6 +44,7 @@ export const generateThumbnail = async (
     width: 128,
     height: 72,
     force: input.force,
+    priority: input.priority ?? 'foreground',
   });
   if (!thumbnail.ok) return { ok: false, error: appError('thumbnail_error', thumbnail.error.message, thumbnail.error) };
 

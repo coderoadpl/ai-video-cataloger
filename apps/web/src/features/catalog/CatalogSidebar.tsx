@@ -53,7 +53,10 @@ export const CatalogSidebar = ({
 
   const treeRoot = tree?.root ?? null;
   const useTree = showTree && tree !== undefined;
-  const showTreeSkeleton = useTree && treeRoot === null && (tree.isLoading || catalog.isLoading);
+  const showTreeSkeleton = useTree
+    && treeRoot === null
+    && catalog.videos.length === 0
+    && (tree.isLoading || catalog.isLoading);
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>

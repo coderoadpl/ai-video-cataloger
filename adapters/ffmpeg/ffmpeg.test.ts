@@ -15,6 +15,7 @@ import {
   parseIso6709Location,
   resolveFfmpegBinaries,
   tempAudioPathForVideo,
+  THUMBNAIL_CONCURRENCY,
   thumbnailPathForVideo,
   thumbnailScaleFilter,
   type BinaryResolver,
@@ -276,41 +277,76 @@ describe('FfmpegMediaAdapter', () => {
     expect(runtime.commands).toHaveLength(1);
   });
 
-  it('serializes concurrent thumbnail generation', async () => {
+  it('bounds concurrent thumbnail generation to the worker-pool size', async () => {
     const root = await tempRoot();
     const runtime = new FakeFfmpegRuntime();
     runtime.autoComplete = false;
     const adapter = adapterWithFakeRuntime(runtime);
-    const firstThumbnailPath = path.join(root, 'first.jpg');
-    const secondThumbnailPath = path.join(root, 'second.jpg');
-
-    const first = adapter.thumbnail({
-      videoPath: path.join(root, 'first.mp4'),
-      thumbnailPath: firstThumbnailPath,
+    const count = THUMBNAIL_CONCURRENCY * 2 + 1;
+    const thumbnails = Array.from({ length: count }, (_value, index) => adapter.thumbnail({
+      videoPath: path.join(root, `${String(index)}.mp4`),
+      thumbnailPath: path.join(root, `${String(index)}.jpg`),
       seekPercent: 0.25,
       width: 128,
       height: 72,
       force: true,
-    });
-    const second = adapter.thumbnail({
-      videoPath: path.join(root, 'second.mp4'),
-      thumbnailPath: secondThumbnailPath,
+      priority: 'background',
+    }));
+
+    await expect.poll(() => runtime.commands.length).toBe(THUMBNAIL_CONCURRENCY);
+    expect(runtime.maxActiveCommands).toBe(THUMBNAIL_CONCURRENCY);
+    for (let index = 0; index < count; index += 1) {
+      const command = runtime.commands[index];
+      if (command === undefined) throw new Error(`missing thumbnail command ${String(index)}`);
+      command.complete();
+      if (index + THUMBNAIL_CONCURRENCY < count) {
+        await expect.poll(() => runtime.commands.length).toBe(index + THUMBNAIL_CONCURRENCY + 1);
+      }
+    }
+    await Promise.all(thumbnails);
+
+    expect(runtime.maxActiveCommands).toBeLessThanOrEqual(THUMBNAIL_CONCURRENCY);
+  });
+
+  it('starts a queued foreground thumbnail before background backfill', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    runtime.autoComplete = false;
+    const adapter = adapterWithFakeRuntime(runtime);
+    const background = Array.from({ length: THUMBNAIL_CONCURRENCY + 2 }, (_value, index) => adapter.thumbnail({
+      videoPath: path.join(root, `background-${String(index)}.mp4`),
+      thumbnailPath: path.join(root, `background-${String(index)}.jpg`),
       seekPercent: 0.25,
       width: 128,
       height: 72,
       force: true,
+      priority: 'background',
+    }));
+    await expect.poll(() => runtime.commands.length).toBe(THUMBNAIL_CONCURRENCY);
+    const foreground = adapter.thumbnail({
+      videoPath: path.join(root, 'visible.mp4'),
+      thumbnailPath: path.join(root, 'visible.jpg'),
+      seekPercent: 0.25,
+      width: 128,
+      height: 72,
+      force: true,
+      priority: 'foreground',
     });
 
-    await expect.poll(() => runtime.commands.length).toBe(1);
-    const firstCommand = runtime.commands[0];
-    if (firstCommand === undefined) throw new Error('missing first thumbnail command');
-    firstCommand.complete();
-    await expect(first).resolves.toEqual(ok({ path: firstThumbnailPath, generated: true, skipped: false }));
-    await expect.poll(() => runtime.commands.length).toBe(2);
-    const secondCommand = runtime.commands[1];
-    if (secondCommand === undefined) throw new Error('missing second thumbnail command');
-    secondCommand.complete();
-    await expect(second).resolves.toEqual(ok({ path: secondThumbnailPath, generated: true, skipped: false }));
+    runtime.commands[0]?.complete();
+    await expect.poll(() => runtime.commands.length).toBe(THUMBNAIL_CONCURRENCY + 1);
+    expect(runtime.commands[THUMBNAIL_CONCURRENCY]?.videoPath).toBe(path.join(root, 'visible.mp4'));
+
+    const count = THUMBNAIL_CONCURRENCY + 3;
+    for (let index = 1; index < count; index += 1) {
+      const command = runtime.commands[index];
+      if (command === undefined) throw new Error(`missing thumbnail command ${String(index)}`);
+      command.complete();
+      if (index + THUMBNAIL_CONCURRENCY < count) {
+        await expect.poll(() => runtime.commands.length).toBe(index + THUMBNAIL_CONCURRENCY + 1);
+      }
+    }
+    await Promise.all([...background, foreground]);
   });
 
   it('builds an aspect-preserving even-dimension scale filter bounded by the requested box', () => {
@@ -566,6 +602,8 @@ class FakeFfmpegRuntime implements FfmpegRuntime {
     streams: [{ codec_type: 'video' }, { codec_type: 'audio' }],
   };
   autoComplete = true;
+  activeCommands = 0;
+  maxActiveCommands = 0;
 
   setFfmpegPath(ffmpegPath: string): void {
     const last = this.configurations[this.configurations.length - 1];
@@ -590,7 +628,17 @@ class FakeFfmpegRuntime implements FfmpegRuntime {
   }
 
   command(videoPath: string): FfmpegCommand {
-    const command = new FakeFfmpegCommand(videoPath, this.autoComplete);
+    const command = new FakeFfmpegCommand(
+      videoPath,
+      this.autoComplete,
+      () => {
+        this.activeCommands += 1;
+        this.maxActiveCommands = Math.max(this.maxActiveCommands, this.activeCommands);
+      },
+      () => {
+        this.activeCommands -= 1;
+      },
+    );
     this.commands.push(command);
     return command;
   }
@@ -613,8 +661,14 @@ class FakeFfmpegCommand implements FfmpegCommand {
   readonly operations: CommandOperation[] = [];
   private endListener: (() => void) | null = null;
   private errorListener: ((error: Error) => void) | null = null;
+  private finished = false;
 
-  constructor(readonly videoPath: string, private readonly autoComplete: boolean) {}
+  constructor(
+    readonly videoPath: string,
+    private readonly autoComplete: boolean,
+    private readonly onStart: () => void,
+    private readonly onFinish: () => void,
+  ) {}
 
   seekInput(seconds: number): FfmpegCommand {
     this.operations.push({ name: 'seekInput', value: seconds });
@@ -680,14 +734,26 @@ class FakeFfmpegCommand implements FfmpegCommand {
 
   run(): void {
     this.operations.push({ name: 'run' });
-    if (this.autoComplete && this.endListener !== null) this.endListener();
+    this.onStart();
+    if (this.autoComplete && this.endListener !== null) {
+      this.finish();
+      this.endListener();
+    }
   }
 
   fail(error: Error): void {
+    this.finish();
     if (this.errorListener !== null) this.errorListener(error);
   }
 
   complete(): void {
+    this.finish();
     if (this.endListener !== null) this.endListener();
+  }
+
+  private finish(): void {
+    if (this.finished) return;
+    this.finished = true;
+    this.onFinish();
   }
 }

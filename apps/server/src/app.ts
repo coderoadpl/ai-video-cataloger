@@ -49,6 +49,7 @@ import {
   resetSingle,
   requireCatalogWriteLock,
   runDoctor,
+  cachedScanFolder,
   scanFolder,
   scanTree,
   scanTreeFolderDetails,
@@ -162,7 +163,12 @@ export const buildApp = (deps: AppDeps): Hono => {
   app.get(API_ROUTES.scan.path, async (context) => {
     const input = parseInput(API_ROUTES.scan.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.scan.output);
-    return respond(await scanFolder(deps, input.value), API_ROUTES.scan.output);
+    return respond(
+      input.value.cached
+        ? await cachedScanFolder(deps, input.value)
+        : await scanFolder(deps, input.value),
+      API_ROUTES.scan.output,
+    );
   });
 
   app.get(API_ROUTES.catalogTree.path, async (context) => {

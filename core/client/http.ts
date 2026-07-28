@@ -164,7 +164,10 @@ export const createApiClient = (options: ApiClientOptions) => ({
     return request(
       options,
       API_ROUTES.scan.method,
-      queryPath(API_ROUTES.scan.path, [['folder', parsed.value.folder]]),
+      queryPath(API_ROUTES.scan.path, [
+        ['folder', parsed.value.folder],
+        ['cached', String(parsed.value.cached)],
+      ]),
       scanOutputSchema,
       undefined,
       signal,
