@@ -34,16 +34,28 @@ export function SiteHeader({ dict }: { dict: Dictionary }) {
             <span className="font-medium">AI Video Cataloger</span>
           </Link>
           <nav className="hidden items-center gap-6 text-sm text-gray-600 dark:text-gray-400 md:flex">
-            <a className="transition-colors hover:text-black dark:hover:text-white" href="#how-it-works">
+            <a
+              className="transition-colors hover:text-black dark:hover:text-white"
+              href={`${homeHref}#how-it-works`}
+            >
               {dict.header.nav.howItWorks}
             </a>
-            <a className="transition-colors hover:text-black dark:hover:text-white" href="#features">
+            <a
+              className="transition-colors hover:text-black dark:hover:text-white"
+              href={`${homeHref}#features`}
+            >
               {dict.header.nav.features}
             </a>
-            <a className="transition-colors hover:text-black dark:hover:text-white" href="#privacy">
+            <a
+              className="transition-colors hover:text-black dark:hover:text-white"
+              href={`${homeHref}#privacy`}
+            >
               {dict.header.nav.privacy}
             </a>
-            <a className="transition-colors hover:text-black dark:hover:text-white" href="#faq">
+            <a
+              className="transition-colors hover:text-black dark:hover:text-white"
+              href={`${homeHref}#faq`}
+            >
               {dict.header.nav.faq}
             </a>
             <Link className="transition-colors hover:text-black dark:hover:text-white" href="/blog">
