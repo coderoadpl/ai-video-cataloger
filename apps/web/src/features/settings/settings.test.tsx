@@ -33,6 +33,7 @@ const FOLDER = '/videos';
 const defaults = {
   whisper_binary_path: '',
   whisper_model: 'base',
+  whisper_language: 'auto',
   whisper_mode: 'local',
   whisper_api_base_url: 'https://api.openai.com/v1',
   whisper_api_model: 'whisper-1',
@@ -60,6 +61,7 @@ const emptyConfig: StoredConfig = {
   gemini_batch_mode: null,
   gemini_monthly_budget_usd: null,
   whisper_model: null,
+  whisper_language: null,
   whisper_mode: null,
   whisper_api_base_url: null,
   whisper_api_model: null,
@@ -120,6 +122,7 @@ const stubEndpoints = (
   const effective = inherited?.effective ?? {
     whisper_binary_path: config.whisper_binary_path ?? defaults.whisper_binary_path,
     whisper_model: config.whisper_model ?? defaults.whisper_model,
+    whisper_language: config.whisper_language ?? defaults.whisper_language,
     whisper_mode: config.whisper_mode ?? defaults.whisper_mode,
     whisper_api_base_url: config.whisper_api_base_url ?? defaults.whisper_api_base_url,
     whisper_api_model: config.whisper_api_model ?? defaults.whisper_api_model,
@@ -138,6 +141,7 @@ const stubEndpoints = (
   const sources = inherited?.sources ?? {
     whisper_binary_path: config.whisper_binary_path === null ? 'default' : 'folder',
     whisper_model: config.whisper_model === null ? 'default' : 'folder',
+    whisper_language: config.whisper_language === null ? 'default' : 'folder',
     whisper_mode: config.whisper_mode === null ? 'default' : 'folder',
     whisper_api_base_url: config.whisper_api_base_url === null ? 'default' : 'folder',
     whisper_api_model: config.whisper_api_model === null ? 'default' : 'folder',
@@ -204,6 +208,7 @@ describe('settings modal', () => {
     const sources = {
       whisper_binary_path: 'default',
       whisper_model: 'home',
+      whisper_language: 'default',
       whisper_mode: 'default',
       whisper_api_base_url: 'default',
       whisper_api_model: 'default',

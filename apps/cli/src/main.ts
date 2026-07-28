@@ -21,10 +21,12 @@ import {
   configKeySchema,
   CREDENTIALS_BACKEND_LABELS,
   err,
+  whisperLanguageSchema,
   type AnalyzerProviderConfig,
   type AnalyzerProviderId,
   type AppError,
   type Result,
+  type WhisperLanguage,
   type WhisperModelName,
 } from '@core/domain/index.js';
 import { createApp } from '@server/src/create-app.js';
@@ -69,6 +71,7 @@ interface ProcessOptions extends JsonOption {
   timeout: number;
   whisper: 'local' | 'api' | 'skip';
   whisperModel: string;
+  whisperLanguage: WhisperLanguage;
   analyzer?: 'claude' | 'local' | 'api' | undefined;
   provider?: AnalyzerProviderId | undefined;
   localModel?: string | undefined;
@@ -145,6 +148,11 @@ const parseWhisperModel = (modelName: string): Result<WhisperModelName, AppError
     if (modelName === model) return { ok: true, value: model };
   }
   return err(appError('invalid_model', `Invalid model: ${modelName}`));
+};
+const whisperLanguageOption = (value: string): WhisperLanguage => {
+  const parsed = whisperLanguageSchema.safeParse(value);
+  if (parsed.success) return parsed.data;
+  throw new InvalidArgumentError(`Invalid whisper language: ${value}`);
 };
 
 const analyzerSelection = (options: ProcessOptions): AnalyzerSelection => ({
@@ -573,6 +581,7 @@ program
   .option('-t, --timeout <seconds>', 'analysis timeout', numberOption, 120)
   .option('-w, --whisper <mode>', 'whisper mode', whisperOption, 'local')
   .option('--whisper-model <model>', 'whisper model', 'base')
+  .option('--whisper-language <language>', 'whisper transcription language', whisperLanguageOption, 'auto')
   .option('--analyzer <backend>', 'analyzer backend: claude, local, or api', analyzerBackendOption)
   .option(
     '--provider <id>',
@@ -604,6 +613,7 @@ program
       timeout: options.timeout,
       whisper: options.whisper,
       whisperModel: options.whisperModel,
+      whisperLanguage: options.whisperLanguage,
     };
     emitStarted(json, 'process_single', { videoPath: validatedPath.value, options: commandOptions });
     await emitApiCostNotice(json, analyzerSelection(options), options.frames);
@@ -624,6 +634,7 @@ program
       ...(optionWasPassed(command, 'timeout') ? { timeout: options.timeout } : {}),
       ...(optionWasPassed(command, 'whisper') ? { whisper: options.whisper } : {}),
       ...(optionWasPassed(command, 'whisperModel') && whisperModel !== undefined ? { whisperModel } : {}),
+      ...(optionWasPassed(command, 'whisperLanguage') ? { whisperLanguage: options.whisperLanguage } : {}),
       ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
       ...(options.provider === undefined ? {} : { provider: options.provider }),
       ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
@@ -645,6 +656,7 @@ program
   .option('-t, --timeout <seconds>', 'analysis timeout', numberOption, 120)
   .option('-w, --whisper <mode>', 'whisper mode', whisperOption, 'local')
   .option('--whisper-model <model>', 'whisper model', 'base')
+  .option('--whisper-language <language>', 'whisper transcription language', whisperLanguageOption, 'auto')
   .option('--analyzer <backend>', 'analyzer backend: claude, local, or api', analyzerBackendOption)
   .option(
     '--provider <id>',
@@ -682,6 +694,7 @@ program
       timeout: options.timeout,
       whisper: options.whisper,
       whisperModel: options.whisperModel,
+      whisperLanguage: options.whisperLanguage,
       force: options.force === true,
     };
     emitStarted(json, 'process_drive', { root: validatedRoot.value, options: commandOptions });
@@ -705,6 +718,7 @@ program
         ...(optionWasPassed(command, 'timeout') ? { timeout: options.timeout } : {}),
         ...(optionWasPassed(command, 'whisper') ? { whisper: options.whisper } : {}),
         ...(optionWasPassed(command, 'whisperModel') && whisperModel !== undefined ? { whisperModel } : {}),
+        ...(optionWasPassed(command, 'whisperLanguage') ? { whisperLanguage: options.whisperLanguage } : {}),
         ...(options.analyzer === undefined ? {} : { analyzer: options.analyzer }),
         ...(options.provider === undefined ? {} : { provider: options.provider }),
         ...(options.localModel === undefined ? {} : { localModel: options.localModel }),

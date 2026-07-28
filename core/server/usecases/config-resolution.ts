@@ -94,6 +94,7 @@ const sourceRank = (source: ConfigValueSource): number => {
 const defaultSources = (): Record<ConfigKey, ConfigValueSource> => ({
   whisper_binary_path: 'default',
   whisper_model: 'default',
+  whisper_language: 'default',
   whisper_mode: 'default',
   whisper_api_base_url: 'default',
   whisper_api_model: 'default',

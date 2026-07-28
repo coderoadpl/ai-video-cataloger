@@ -82,6 +82,7 @@ describe('config schema', () => {
     expect(CONFIG_DEFAULTS).toEqual({
       whisper_binary_path: '',
       whisper_model: 'base',
+      whisper_language: 'auto',
       whisper_mode: 'local',
       whisper_api_base_url: 'https://api.openai.com/v1',
       whisper_api_model: 'whisper-1',
@@ -129,6 +130,13 @@ describe('config schema', () => {
     expect(configSchema.parse({}).output_language).toBe('auto');
     for (const value of ['auto', 'en', 'pl', 'pt-BR', 'zh-Hant']) {
       expect(configSchema.parse({ output_language: value }).output_language).toBe(value);
+    }
+  });
+
+  it('accepts auto, known, and BCP-47-like whisper languages', () => {
+    expect(configSchema.parse({}).whisper_language).toBe('auto');
+    for (const value of ['auto', 'en', 'pl', 'pt-BR', 'zh-Hant']) {
+      expect(configSchema.parse({ whisper_language: value }).whisper_language).toBe(value);
     }
   });
 

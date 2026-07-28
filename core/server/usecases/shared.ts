@@ -9,6 +9,7 @@ import {
 import {
   analyzerBackendSchema,
   configValueSchema,
+  whisperLanguageSchema,
   whisperModeSchema,
 } from '@core/domain/config.js';
 import { whisperModelNameSchema } from '@core/domain/models.js';
@@ -137,6 +138,8 @@ export const configValueForKey = (key: ConfigKey, value: string): AppConfig[Conf
       return configValueSchema.shape.whisper_binary_path.parse(value);
     case 'whisper_model':
       return whisperModelNameSchema.parse(value);
+    case 'whisper_language':
+      return whisperLanguageSchema.parse(value);
     case 'whisper_mode':
       return whisperModeSchema.parse(value);
     case 'whisper_api_base_url':
@@ -179,6 +182,7 @@ const stripExtension = (filename: string): string => {
 export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
   whisper_binary_path: null,
   whisper_model: null,
+  whisper_language: null,
   whisper_mode: null,
   whisper_api_base_url: null,
   whisper_api_model: null,
@@ -198,6 +202,7 @@ export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
 export const storedDefaults = (): Record<ConfigKey, string> => ({
   whisper_binary_path: stringifyConfigDefault('whisper_binary_path'),
   whisper_model: stringifyConfigDefault('whisper_model'),
+  whisper_language: stringifyConfigDefault('whisper_language'),
   whisper_mode: stringifyConfigDefault('whisper_mode'),
   whisper_api_base_url: stringifyConfigDefault('whisper_api_base_url'),
   whisper_api_model: stringifyConfigDefault('whisper_api_model'),

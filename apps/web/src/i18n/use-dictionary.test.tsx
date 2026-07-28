@@ -9,6 +9,7 @@ import { useDictionary } from './use-dictionary.js';
 const CONFIG_KEYS = [
   'whisper_binary_path',
   'whisper_model',
+  'whisper_language',
   'whisper_mode',
   'whisper_api_base_url',
   'whisper_api_model',

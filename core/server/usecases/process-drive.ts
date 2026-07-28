@@ -91,6 +91,8 @@ export interface ProcessDriveInput {
   whisperExplicit?: boolean | undefined;
   whisperModel: WhisperModelName;
   whisperModelExplicit?: boolean | undefined;
+  whisperLanguage?: AppConfig['whisper_language'] | undefined;
+  whisperLanguageExplicit?: boolean | undefined;
   analyzer?: AppConfig['analyzer_backend'] | 'api' | undefined;
   provider?: AnalyzerProviderId | undefined;
   localModel?: string | undefined;
@@ -1017,6 +1019,8 @@ const processInput = (
   ...(input.whisperExplicit === undefined ? {} : { whisperExplicit: input.whisperExplicit }),
   whisperModel: input.whisperModel,
   ...(input.whisperModelExplicit === undefined ? {} : { whisperModelExplicit: input.whisperModelExplicit }),
+  ...(input.whisperLanguage === undefined ? {} : { whisperLanguage: input.whisperLanguage }),
+  ...(input.whisperLanguageExplicit === undefined ? {} : { whisperLanguageExplicit: input.whisperLanguageExplicit }),
   ...(input.analyzer === undefined ? {} : { analyzer: input.analyzer }),
   ...(input.provider === undefined ? {} : { provider: input.provider }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),

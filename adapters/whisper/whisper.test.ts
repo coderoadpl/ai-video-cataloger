@@ -101,6 +101,7 @@ describe('WhisperTranscriberAdapter', () => {
       transcriptPath,
       mode: 'local',
       model: 'base',
+      language: 'auto',
     });
 
     expect(result).toEqual(ok({ transcriptPath, content: 'hello transcript' }));
@@ -111,6 +112,8 @@ describe('WhisperTranscriberAdapter', () => {
         path.join(root, '.ai-video-cataloger', 'models', 'whisper', 'ggml-base.bin'),
         '-f',
         path.join(root, 'audio', 'Clip One.wav'),
+        '-l',
+        'auto',
         '-otxt',
         '-of',
         transcriptPath.slice(0, -4),
@@ -141,6 +144,7 @@ describe('WhisperTranscriberAdapter', () => {
       transcriptPath,
       mode: 'local',
       model: 'small',
+      language: 'auto',
     });
 
     expect(result).toEqual(ok({ transcriptPath, content: 'direct model transcript' }));
@@ -169,6 +173,7 @@ describe('WhisperTranscriberAdapter', () => {
       transcriptPath,
       mode: 'local',
       model: 'base',
+      language: 'auto',
     });
 
     expect(result).toEqual(ok({ transcriptPath, content: 'hashed audio transcript' }));
@@ -199,6 +204,7 @@ describe('WhisperTranscriberAdapter', () => {
       transcriptPath,
       mode: 'local',
       model: 'base',
+      language: 'auto',
     });
 
     expect(result).toEqual(ok({ transcriptPath, content: 'system transcript' }));
@@ -215,6 +221,63 @@ describe('WhisperTranscriberAdapter', () => {
       ],
     });
     expect(existsSync(path.join(root, 'transcripts', 'f1abec7d-Clip One.txt'))).toBe(false);
+  });
+
+  it('passes an explicit language to the OpenAI Whisper CLI', async () => {
+    const root = await tempRoot();
+    const audioPath = path.join(root, 'audio.wav');
+    const transcriptPath = path.join(root, 'transcripts', 'audio.txt');
+    const runner = new FakeCommandRunner({ whisper: 'usage: whisper [--model MODEL] audio [audio ...]' });
+    runner.onRun = async (command, args) => {
+      if (command === 'whisper-cli') return { ok: false, error: appError('processing_error', 'whisper-cli not found') };
+      if (command === 'whisper' && args[0] !== '--help') await writeOpenAiWhisperOutput(args, 'polish transcript');
+      return ok({ stdout: '', stderr: '' });
+    };
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      commandRunner: runner,
+      binaryResolver: { bundledWhisperPath: () => null },
+    });
+
+    const result = await adapter.transcribe({
+      audioPath,
+      transcriptPath,
+      mode: 'local',
+      model: 'base',
+      language: 'pl',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript' }));
+    const run = runner.commands.find((entry) => entry.command === 'whisper' && entry.args[0] !== '--help');
+    expect(run?.args).toContain('--language');
+    expect(run?.args[run.args.indexOf('--language') + 1]).toBe('pl');
+  });
+
+  it('passes an explicit language to whisper.cpp', async () => {
+    const root = await tempRoot();
+    const transcriptPath = path.join(root, 'transcripts', 'audio.txt');
+    const runner = new FakeCommandRunner({ '/bundled/whisper': 'whisper installed' });
+    runner.onRun = async (command, args) => {
+      if (command === '/bundled/whisper' && args[0] !== '--help') await writeWhisperOutput(args, 'polish transcript');
+      return ok({ stdout: '', stderr: '' });
+    };
+    const adapter = new WhisperTranscriberAdapter({
+      homeDirectory: root,
+      commandRunner: runner,
+      binaryResolver: { bundledWhisperPath: () => '/bundled/whisper' },
+    });
+
+    const result = await adapter.transcribe({
+      audioPath: path.join(root, 'audio.wav'),
+      transcriptPath,
+      mode: 'local',
+      model: 'base',
+      language: 'pl',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript' }));
+    const run = runner.commands.find((entry) => entry.command === '/bundled/whisper' && entry.args[0] !== '--help');
+    expect(run?.args[run.args.indexOf('-l') + 1]).toBe('pl');
   });
 
   it('does not accept an OpenAI Whisper cache file for a whisper.cpp runtime', async () => {
@@ -349,6 +412,7 @@ describe('WhisperTranscriberAdapter', () => {
       transcriptPath,
       mode: 'local',
       model: 'base',
+      language: 'auto',
     });
 
     expect(result).toEqual(ok({ transcriptPath, content: 'cpu transcript' }));
@@ -375,6 +439,7 @@ describe('WhisperTranscriberAdapter', () => {
       transcriptPath: path.join(root, 'transcript.txt'),
       mode: 'local',
       model: 'base',
+      language: 'auto',
       signal: controller.signal,
     });
 
@@ -389,13 +454,34 @@ describe('WhisperTranscriberAdapter', () => {
     const apiClient = new FakeWhisperApiClient(' api transcript \n');
     const adapter = new WhisperTranscriberAdapter({ apiKey: 'key', apiClient });
 
-    const result = await adapter.transcribe({ audioPath, transcriptPath, mode: 'api', model: 'small' });
+    const result = await adapter.transcribe({ audioPath, transcriptPath, mode: 'api', model: 'small', language: 'auto' });
 
     expect(result).toEqual(ok({ transcriptPath, content: 'api transcript' }));
     expect(await readFile(transcriptPath, 'utf8')).toBe('api transcript');
     expect(apiClient.calls).toHaveLength(1);
     expect(apiClient.calls[0]?.model).toBe('whisper-1');
     expect(apiClient.calls[0]?.file).toBeInstanceOf(ReadStream);
+    expect(apiClient.calls[0]).not.toHaveProperty('language');
+  });
+
+  it('passes an explicit language to the OpenAI Whisper API', async () => {
+    const root = await tempRoot();
+    const audioPath = path.join(root, 'audio.wav');
+    const transcriptPath = path.join(root, 'transcripts', 'audio.txt');
+    await writeFile(audioPath, 'audio', 'utf8');
+    const apiClient = new FakeWhisperApiClient('polish transcript');
+    const adapter = new WhisperTranscriberAdapter({ apiKey: 'key', apiClient });
+
+    const result = await adapter.transcribe({
+      audioPath,
+      transcriptPath,
+      mode: 'api',
+      model: 'small',
+      language: 'pl',
+    });
+
+    expect(result).toEqual(ok({ transcriptPath, content: 'polish transcript' }));
+    expect(apiClient.calls[0]?.language).toBe('pl');
   });
 
   it('uses custom Whisper API model and base URL credential host', async () => {
@@ -419,6 +505,7 @@ describe('WhisperTranscriberAdapter', () => {
       transcriptPath,
       mode: 'api',
       model: 'base',
+      language: 'auto',
       apiBaseUrl: 'https://transcribe.example.com/v1',
       apiModel: 'whisper-large-v3',
     });
@@ -449,7 +536,7 @@ describe('WhisperTranscriberAdapter', () => {
     const adapter = new WhisperTranscriberAdapter({ apiKey: '', apiClient, credentials });
 
     const dependency = await adapter.dependency({ mode: 'api', model: 'base' });
-    const result = await adapter.transcribe({ audioPath, transcriptPath, mode: 'api', model: 'base' });
+    const result = await adapter.transcribe({ audioPath, transcriptPath, mode: 'api', model: 'base', language: 'auto' });
 
     expect(dependency).toMatchObject({ ok: true, value: { available: true } });
     expect(result).toEqual(ok({ transcriptPath, content: 'stored credential transcript' }));
@@ -475,6 +562,7 @@ describe('WhisperTranscriberAdapter', () => {
       transcriptPath: '/tmp/transcript.txt',
       mode: 'skip',
       model: 'tiny',
+      language: 'auto',
     });
 
     expect(result).toEqual(ok({ transcriptPath: '/tmp/transcript.txt', content: '' }));
@@ -668,6 +756,7 @@ const apiFailureStatus = async (audioPath: string, status: number): Promise<Resu
     transcriptPath: path.join(path.dirname(audioPath), `${status}.txt`),
     mode: 'api',
     model: 'base',
+    language: 'auto',
   });
 };
 
@@ -727,11 +816,11 @@ class FakeCommandRunner implements CommandRunner {
 }
 
 class FakeWhisperApiClient implements WhisperApiClient {
-  readonly calls: Array<{ file: ReadStream; model: string }> = [];
+  readonly calls: Array<{ file: ReadStream; model: string; language?: string }> = [];
 
   constructor(private readonly text: string) {}
 
-  createTranscription(input: { file: ReadStream; model: string }): Promise<{ text: string }> {
+  createTranscription(input: { file: ReadStream; model: string; language?: string }): Promise<{ text: string }> {
     this.calls.push(input);
     return Promise.resolve({ text: this.text });
   }

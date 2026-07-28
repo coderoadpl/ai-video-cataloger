@@ -171,6 +171,8 @@ describe('createApiClient route calls', () => {
           whisperExplicit: false,
           whisperModel: 'base',
           whisperModelExplicit: false,
+          whisperLanguage: 'auto',
+          whisperLanguageExplicit: false,
         }),
       });
       return jsonResponse({ ok: true, data: { jobId: 'job-1' } });

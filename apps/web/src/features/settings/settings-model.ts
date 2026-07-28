@@ -29,6 +29,7 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
   const raw = {
     whisper_binary_path: config.whisper_binary_path ?? defaults.whisper_binary_path,
     whisper_model: config.whisper_model ?? defaults.whisper_model,
+    whisper_language: config.whisper_language ?? defaults.whisper_language,
     whisper_mode: config.whisper_mode ?? defaults.whisper_mode,
     frames: config.frames ?? defaults.frames,
     timeout: config.timeout ?? defaults.timeout,

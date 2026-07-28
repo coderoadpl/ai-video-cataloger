@@ -41,6 +41,7 @@ const seedVariants = async (folder: string, home: string): Promise<VariantFixtur
     modelTag: 'gemma3:12b',
     whisper_mode: 'local',
     whisper_model: 'base',
+    whisper_language: 'auto',
     frames: 3,
     output_language: 'en',
     promptVersion: 1,

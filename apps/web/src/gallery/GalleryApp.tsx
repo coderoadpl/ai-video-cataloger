@@ -66,6 +66,7 @@ const compareVariants: readonly VariantCompareVariant[] = [
       modelTag: 'gemma3:12b',
       whisper_mode: 'local',
       whisper_model: 'base',
+      whisper_language: 'auto',
       frames: 2,
       output_language: 'en',
       promptVersion: 3,

@@ -10,6 +10,7 @@ export const whisperModeSchema = z.enum(WHISPER_MODES);
 export const analyzerBackendSchema = z.enum(ANALYZER_BACKENDS);
 
 export const OUTPUT_LANGUAGES = ['auto', 'en', 'pl'] as const;
+export const WHISPER_LANGUAGES = ['auto', 'en', 'pl'] as const;
 const bcp47LikePattern = /^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$/;
 export const outputLanguageSchema = z
   .string()
@@ -18,6 +19,14 @@ export const outputLanguageSchema = z
     message: 'Output language must be "auto" or a BCP-47-like code (e.g. en, pl, pt-BR)',
   });
 export type OutputLanguage = z.output<typeof outputLanguageSchema>;
+
+export const whisperLanguageSchema = z.union([
+  z.enum(WHISPER_LANGUAGES),
+  z.string().trim().regex(bcp47LikePattern, {
+    message: 'Whisper language must be "auto" or a BCP-47-like code (e.g. en, pl, pt-BR)',
+  }),
+]);
+export type WhisperLanguage = z.output<typeof whisperLanguageSchema>;
 
 export const LANGUAGE_DISPLAY_NAMES: Record<string, string> = {
   en: 'English',
@@ -63,6 +72,7 @@ const providerFromPersistedValue = (value: unknown): unknown => {
 export const configValueSchema = z.object({
   whisper_binary_path: z.string().default(''),
   whisper_model: whisperModelNameSchema.default('base'),
+  whisper_language: whisperLanguageSchema.default('auto'),
   whisper_mode: whisperModeSchema.default('local'),
   whisper_api_base_url: z.url().default('https://api.openai.com/v1'),
   whisper_api_model: z.string().trim().min(1).default('whisper-1'),
@@ -90,6 +100,7 @@ export type ConfigInput = z.input<typeof configSchema>;
 export const CONFIG_KEYS = [
   'whisper_binary_path',
   'whisper_model',
+  'whisper_language',
   'whisper_mode',
   'whisper_api_base_url',
   'whisper_api_model',
@@ -120,6 +131,7 @@ export const CONFIG_DEFAULTS = configSchema.parse({});
 export const configDescriptions: Record<ConfigKey, string> = {
   whisper_binary_path: 'Path to a custom whisper.cpp executable',
   whisper_model: `Whisper model (${WHISPER_MODEL_NAMES.join(', ')})`,
+  whisper_language: 'Transcription language (auto, en, pl, or a BCP-47 code)',
   whisper_mode: 'Transcription mode',
   whisper_api_base_url: 'OpenAI-compatible Whisper API base URL',
   whisper_api_model: 'OpenAI-compatible Whisper API model',

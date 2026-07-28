@@ -5,6 +5,7 @@ import { sha256Hex } from './sha256.js';
 import {
   configSchema,
   outputLanguageSchema,
+  whisperLanguageSchema,
   type AppConfig,
   type ConfigInput,
   type ConfigKey,
@@ -21,6 +22,7 @@ export const LEGACY_CONFIG_ID = 'legacy';
 export const CONFIG_IDENTITY_CLASSIFICATION = {
   whisper_binary_path: 'excluded',
   whisper_model: 'identity',
+  whisper_language: 'identity',
   whisper_mode: 'identity',
   whisper_api_base_url: 'identity',
   whisper_api_model: 'identity',
@@ -47,6 +49,7 @@ const configDescriptorShape = z.object({
   reasoningEffort: harnessReasoningEffortSchema.optional(),
   whisper_mode: z.enum(['local', 'api', 'skip']).optional(),
   whisper_model: whisperModelNameSchema.optional(),
+  whisper_language: whisperLanguageSchema.optional(),
   whisper_api_base_url: z.url().optional(),
   whisper_api_model: z.string().trim().min(1).optional(),
   frames: z.number().int().min(1).max(10).optional(),
@@ -88,7 +91,7 @@ export const configDescriptorSchema = configDescriptorShape.superRefine((descrip
   }
 
   if (descriptor.family === 'gemini-native') {
-    for (const field of ['whisper_mode', 'whisper_model', 'whisper_api_base_url', 'whisper_api_model', 'frames'] as const) {
+    for (const field of ['whisper_mode', 'whisper_model', 'whisper_language', 'whisper_api_base_url', 'whisper_api_model', 'frames'] as const) {
       if (descriptor[field] !== undefined) {
         context.addIssue({ code: 'custom', path: [field], message: `${field} is not valid for gemini-native` });
       }
@@ -101,6 +104,9 @@ export const configDescriptorSchema = configDescriptorShape.superRefine((descrip
   }
   if (descriptor.frames === undefined) {
     context.addIssue({ code: 'custom', path: ['frames'], message: 'frames is required' });
+  }
+  if (descriptor.whisper_mode !== 'skip' && descriptor.whisper_language === undefined) {
+    context.addIssue({ code: 'custom', path: ['whisper_language'], message: 'whisper_language is required for transcription' });
   }
   if (descriptor.whisper_mode === 'local') {
     if (descriptor.whisper_model === undefined) {
@@ -123,6 +129,7 @@ export const configDescriptorSchema = configDescriptorShape.superRefine((descrip
   }
   if (descriptor.whisper_mode === 'skip' && (
     descriptor.whisper_model !== undefined
+    || descriptor.whisper_language !== undefined
     || descriptor.whisper_api_base_url !== undefined
     || descriptor.whisper_api_model !== undefined
   )) {
@@ -135,10 +142,15 @@ export type ConfigDescriptor = z.output<typeof configDescriptorSchema>;
 const transcriptionIdentity = (config: AppConfig) => {
   switch (config.whisper_mode) {
     case 'local':
-      return { whisper_mode: config.whisper_mode, whisper_model: config.whisper_model };
+      return {
+        whisper_mode: config.whisper_mode,
+        whisper_model: config.whisper_model,
+        whisper_language: config.whisper_language,
+      };
     case 'api':
       return {
         whisper_mode: config.whisper_mode,
+        whisper_language: config.whisper_language,
         whisper_api_base_url: config.whisper_api_base_url,
         whisper_api_model: config.whisper_api_model,
       };

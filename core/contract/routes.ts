@@ -21,6 +21,7 @@ import {
   folderIdSchema,
   geminiCostEstimateSchema,
   videoStatusSchema,
+  whisperLanguageSchema,
   whisperEngineSchema,
 } from '@core/domain/index.js';
 
@@ -191,6 +192,8 @@ export const processInputSchema = videoPathInputSchema.extend({
   whisperExplicit: z.boolean().optional(),
   whisperModel: z.enum(WHISPER_MODEL_NAMES).optional(),
   whisperModelExplicit: z.boolean().optional(),
+  whisperLanguage: whisperLanguageSchema.optional(),
+  whisperLanguageExplicit: z.boolean().optional(),
   analyzer: z.enum([...ANALYZER_BACKENDS, 'api']).optional(),
   provider: analyzerProviderIdSchema.optional(),
   localModel: z.string().min(1).optional(),
@@ -209,6 +212,8 @@ export const processInputSchema = videoPathInputSchema.extend({
   whisperExplicit: input.whisperExplicit ?? input.whisper !== undefined,
   whisperModel: input.whisperModel ?? CONFIG_DEFAULTS.whisper_model,
   whisperModelExplicit: input.whisperModelExplicit ?? input.whisperModel !== undefined,
+  whisperLanguage: input.whisperLanguage ?? CONFIG_DEFAULTS.whisper_language,
+  whisperLanguageExplicit: input.whisperLanguageExplicit ?? input.whisperLanguage !== undefined,
   ...(input.analyzer === undefined ? {} : { analyzer: input.analyzer }),
   ...(input.provider === undefined ? {} : { provider: input.provider }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
@@ -229,6 +234,8 @@ export const processDriveInputSchema = z.object({
   whisperExplicit: z.boolean().optional(),
   whisperModel: z.enum(WHISPER_MODEL_NAMES).optional(),
   whisperModelExplicit: z.boolean().optional(),
+  whisperLanguage: whisperLanguageSchema.optional(),
+  whisperLanguageExplicit: z.boolean().optional(),
   analyzer: z.enum([...ANALYZER_BACKENDS, 'api']).optional(),
   provider: analyzerProviderIdSchema.optional(),
   localModel: z.string().min(1).optional(),
@@ -248,6 +255,8 @@ export const processDriveInputSchema = z.object({
   whisperExplicit: input.whisperExplicit ?? input.whisper !== undefined,
   whisperModel: input.whisperModel ?? CONFIG_DEFAULTS.whisper_model,
   whisperModelExplicit: input.whisperModelExplicit ?? input.whisperModel !== undefined,
+  whisperLanguage: input.whisperLanguage ?? CONFIG_DEFAULTS.whisper_language,
+  whisperLanguageExplicit: input.whisperLanguageExplicit ?? input.whisperLanguage !== undefined,
   ...(input.analyzer === undefined ? {} : { analyzer: input.analyzer }),
   ...(input.provider === undefined ? {} : { provider: input.provider }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
@@ -372,6 +381,7 @@ export const configGetInputSchema = z.object({
 export const storedConfigSchema = z.object({
   whisper_binary_path: z.string().nullable(),
   whisper_model: z.string().nullable(),
+  whisper_language: z.string().nullable(),
   whisper_mode: z.string().nullable(),
   whisper_api_base_url: z.string().nullable(),
   whisper_api_model: z.string().nullable(),
@@ -391,6 +401,7 @@ export const storedConfigSchema = z.object({
 export const storedConfigDefaultsSchema = z.object({
   whisper_binary_path: z.string(),
   whisper_model: z.string(),
+  whisper_language: z.string(),
   whisper_mode: z.string(),
   whisper_api_base_url: z.string(),
   whisper_api_model: z.string(),
@@ -410,6 +421,7 @@ export const storedConfigDefaultsSchema = z.object({
 export const configValueSourcesSchema = z.object({
   whisper_binary_path: z.enum(['folder', 'home', 'default']),
   whisper_model: z.enum(['folder', 'home', 'default']),
+  whisper_language: z.enum(['folder', 'home', 'default']),
   whisper_mode: z.enum(['folder', 'home', 'default']),
   whisper_api_base_url: z.enum(['folder', 'home', 'default']),
   whisper_api_model: z.enum(['folder', 'home', 'default']),

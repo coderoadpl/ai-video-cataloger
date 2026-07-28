@@ -199,6 +199,7 @@ const clickNext = () => fireEvent.click(screen.getByTestId('wizard-next'));
 const configDefaults = {
   whisper_binary_path: '',
   whisper_model: 'base',
+  whisper_language: 'auto',
   whisper_mode: 'local',
   whisper_api_base_url: 'https://api.openai.com/v1',
   whisper_api_model: 'whisper-1',
