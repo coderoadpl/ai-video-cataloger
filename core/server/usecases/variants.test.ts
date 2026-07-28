@@ -20,7 +20,7 @@ import { folderArtifactRoot } from './artifact-root.js';
 import { sharedArtifactPaths, variantOutputPaths } from './artifact-store.js';
 import { folderMarkerPath } from './folder-identity.js';
 import { artifactPaths } from './shared.js';
-import { deleteVariant, selectVariant, setFolderDefaultVariant } from './variants.js';
+import { deleteVariant, listVariants, selectVariant, setFolderDefaultVariant } from './variants.js';
 
 const folderPath = '/work';
 const fingerprint = 'fingerprint-705';
@@ -95,6 +95,120 @@ const seedCatalog = async (
 };
 
 describe('variant selection', () => {
+  it('lists comparison-ready variant details by path or fingerprint', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const analyzer = new InMemoryAnalyzer();
+    const config = new InMemoryConfig();
+    const first = {
+      ...variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z'),
+      usage: { inputTokens: 10, estimatedCostUsd: 0.012 },
+    };
+    const second = variant(
+      buildConfigDescriptor({ output_language: 'pl' }, 2),
+      'second',
+      '2026-08-02T00:00:00.000Z',
+    );
+    const catalogFolder = folder();
+    const videoPath = fs.join(folderPath, 'clip.mp4');
+    fs.addFile(videoPath, { hash: fingerprint, content: 'video' });
+    fs.addFile(folderMarkerPath(fs, folderPath), { content: JSON.stringify({
+      folderId: catalogFolder.folderId,
+      schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION,
+      createdAt: '2026-08-01T00:00:00.000Z',
+    }) });
+    await seedCatalog(store, catalogFolder, [first, second]);
+    await store.setSelectedVariant(fingerprint, second.configId);
+    await store.setFolderDefaultVariant(catalogFolder.folderId, first.configId);
+
+    const byPath = await listVariants(
+      { globalCatalog: store, fs, config, analyzer },
+      { videoPath },
+    );
+    const byFingerprint = await listVariants(
+      { globalCatalog: store, fs, config, analyzer },
+      { fingerprint },
+    );
+
+    expect(byPath).toEqual(byFingerprint);
+    expect(byPath).toMatchObject({
+      ok: true,
+      value: {
+        fingerprint,
+        videoPath,
+        folderDefaultConfigId: first.configId,
+        variants: [
+          {
+            configId: second.configId,
+            descriptor: expect.objectContaining({ output_language: 'pl', promptVersion: 2 }),
+            label: 'claude-code',
+            selected: true,
+          },
+          {
+            configId: first.configId,
+            estimatedCostUsd: 0.012,
+            usage: { inputTokens: 10, estimatedCostUsd: 0.012 },
+            selected: false,
+            artifacts: {
+              framesDirectory: expect.stringContaining(`/artifacts/frames/${fingerprint}/`),
+              transcriptPath: expect.stringContaining(`/artifacts/transcripts/${fingerprint}/`),
+              summaryPath: expect.stringContaining(`/variants/${fingerprint}/${first.configId}/summary.txt`),
+            },
+          },
+        ],
+      },
+    });
+    expect(await listVariants(
+      { globalCatalog: store, fs, config, analyzer },
+      { videoPath, fingerprint },
+    )).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('resolves selection against the requested path folder default', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const analyzer = new InMemoryAnalyzer();
+    const config = new InMemoryConfig();
+    const first = variant(buildConfigDescriptor({}, 1), 'first', '2026-08-01T00:00:00.000Z');
+    const second = variant(
+      buildConfigDescriptor({ output_language: 'pl' }, 1),
+      'second',
+      '2026-08-02T00:00:00.000Z',
+    );
+    const viewingFolder: CatalogFolder = {
+      ...folder('22222222-2222-4222-8222-222222222222'),
+      currentPath: '/copies',
+      displayName: 'copies',
+    };
+    const videoPath = '/copies/clip.mp4';
+    fs.addFile(videoPath, { hash: fingerprint, content: 'video' });
+    fs.addFile(folderMarkerPath(fs, viewingFolder.currentPath), { content: JSON.stringify({
+      folderId: viewingFolder.folderId,
+      schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION,
+      createdAt: '2026-08-01T00:00:00.000Z',
+    }) });
+    await seedCatalog(store, folder(), [first, second]);
+    await store.upsertFolder(viewingFolder);
+    await store.setFolderDefaultVariant(viewingFolder.folderId, second.configId);
+
+    const result = await listVariants(
+      { globalCatalog: store, fs, config, analyzer },
+      { videoPath },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        videoPath,
+        folderDefaultConfigId: second.configId,
+        variants: [
+          { configId: second.configId, selected: true },
+          { configId: first.configId, selected: false },
+        ],
+      },
+    });
+  });
+
   it('validates existence, refreshes the name projection, and changes the selected search document', async () => {
     const fs = new InMemoryFileSystem(folderPath);
     const store = new InMemoryGlobalCatalogStore();

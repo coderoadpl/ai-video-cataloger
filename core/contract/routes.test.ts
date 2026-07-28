@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
+import { buildConfigDescriptor, configId } from '@core/domain/index.js';
+
 import {
   API_ROUTES,
   doctorOutputSchema,
@@ -10,6 +12,7 @@ import {
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
   searchOutputSchema,
+  variantsListOutputSchema,
 } from './routes.js';
 
 describe('route schemas', () => {
@@ -190,6 +193,57 @@ describe('route schemas', () => {
     expect(parsed.results[0]?.folder.online).toBe(true);
   });
 
+  it('defines closed variant locators and a comparison-ready response', () => {
+    const descriptor = buildConfigDescriptor({ output_language: 'pl' }, 3);
+    const resolvedConfigId = configId(descriptor);
+
+    expect(API_ROUTES.variantsList.input.parse({ videoPath: '/videos/clip.mp4' })).toEqual({
+      videoPath: '/videos/clip.mp4',
+    });
+    expect(API_ROUTES.variantsList.input.parse({ fingerprint: 'fp-1' })).toEqual({ fingerprint: 'fp-1' });
+    expect(API_ROUTES.variantsList.input.safeParse({}).success).toBe(false);
+    expect(API_ROUTES.variantsList.input.safeParse({ videoPath: '/videos/clip.mp4', fingerprint: 'fp-1' }).success)
+      .toBe(false);
+    expect(API_ROUTES.variantsSelect.input.safeParse({
+      fingerprint: 'fp-1',
+      configId: resolvedConfigId,
+      unexpected: true,
+    }).success).toBe(false);
+
+    const parsed = variantsListOutputSchema.parse({
+      fingerprint: 'fp-1',
+      videoPath: '/videos/clip.mp4',
+      folderDefaultConfigId: resolvedConfigId,
+      variants: [{
+        configId: resolvedConfigId,
+        descriptor,
+        label: 'claude-code',
+        createdAt: '2026-08-02T10:00:00.000Z',
+        analyzer: 'claude-code',
+        model: null,
+        usage: { inputTokens: 12, estimatedCostUsd: 0.01 },
+        estimatedCostUsd: 0.01,
+        artifacts: {
+          framesDirectory: '/videos/.ai-video-cataloger/artifacts/frames/fp-1/frm_1',
+          transcriptPath: '/videos/.ai-video-cataloger/artifacts/transcripts/fp-1/trx_1.txt',
+          summaryPath: `/videos/.ai-video-cataloger/variants/fp-1/${resolvedConfigId}/summary.txt`,
+        },
+        selected: true,
+        finalName: 'named.mp4',
+        description: 'A description',
+        transcript: 'A transcript',
+        language: 'pl',
+        tags: ['example'],
+      }],
+    });
+
+    expect(parsed.variants[0]).toMatchObject({
+      configId: resolvedConfigId,
+      descriptor: { output_language: 'pl', promptVersion: 3 },
+      selected: true,
+    });
+  });
+
   it('accepts the derived path folder id a read-only folder produces', () => {
     const parsed = searchOutputSchema.parse({
       query: 'drone',
@@ -341,6 +395,7 @@ describe('route schemas', () => {
     expect(API_ROUTES.jobsList.method).toBe('GET');
     expect(API_ROUTES.tagsList.method).toBe('GET');
     expect(API_ROUTES.searchQuery).toMatchObject({ method: 'GET', path: '/api/search' });
+    expect(API_ROUTES.variantsList).toMatchObject({ method: 'GET', path: '/api/variants' });
 
     expect(API_ROUTES.process.method).toBe('POST');
     expect(API_ROUTES.thumbnail.method).toBe('POST');
@@ -354,6 +409,12 @@ describe('route schemas', () => {
     expect(API_ROUTES.localAiDaemonStop.method).toBe('POST');
     expect(API_ROUTES.jobCancel.method).toBe('POST');
     expect(API_ROUTES.tagsAlias.method).toBe('POST');
+    expect(API_ROUTES.variantsSelect).toMatchObject({ method: 'POST', path: '/api/variants/select' });
+    expect(API_ROUTES.variantsDelete).toMatchObject({ method: 'POST', path: '/api/variants/delete' });
+    expect(API_ROUTES.variantsFolderDefault).toMatchObject({
+      method: 'POST',
+      path: '/api/variants/folder-default',
+    });
 
     expect(API_ROUTES.whisperModelDelete.method).toBe('DELETE');
     expect(API_ROUTES.localAiRm.method).toBe('DELETE');

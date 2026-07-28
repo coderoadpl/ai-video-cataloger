@@ -1,5 +1,5 @@
 import { QueryClient } from '@tanstack/query-core';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import { createApiClient } from './http.js';
 import {
@@ -11,6 +11,9 @@ import {
   providersQuery,
   readinessQuery,
   scanQuery,
+  deleteVariantMutation,
+  selectVariantMutation,
+  variantsQuery,
   useWhisperModelMutation,
   testProviderMutation,
   type JobOutput,
@@ -177,6 +180,74 @@ describe('query descriptors', () => {
         method: 'POST',
         body: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'gemma3:12b' }),
       },
+    ]);
+  });
+
+  it('keys variant reads by locator and invalidates every selection consumer', async () => {
+    const configId = 'cfg_0123456789ab';
+    const calls: Array<{ url: string; method: string | undefined }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      const url = String(input);
+      calls.push({ url, method: init?.method });
+      if (url.startsWith('/api/variants?')) {
+        return jsonResponse({
+          ok: true,
+          data: {
+            fingerprint: 'fp-1',
+            videoPath: '/videos/clip.mp4',
+            folderDefaultConfigId: configId,
+            variants: [],
+          },
+        });
+      }
+      if (url.endsWith('/delete')) {
+        return jsonResponse({
+          ok: true,
+          data: { fingerprint: 'fp-1', configId, selectedConfigId: 'legacy' },
+        });
+      }
+      return jsonResponse({ ok: true, data: { fingerprint: 'fp-1', configId } });
+    };
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const queryClient = new QueryClient();
+    const byPath = variantsQuery(api, { videoPath: '/videos/clip.mp4' });
+    const byFingerprint = variantsQuery(api, { fingerprint: 'fp-1' });
+
+    expect(byPath.queryKey).toEqual(['variants', 'video-path', '/videos/clip.mp4']);
+    expect(byFingerprint.queryKey).toEqual(['variants', 'fingerprint', 'fp-1']);
+    await queryClient.fetchQuery(byFingerprint);
+
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+    const variables = { fingerprint: 'fp-1', configId };
+    const context = { client: queryClient, meta: undefined, mutationKey: ['variants'] };
+    const selection = selectVariantMutation(api);
+    const selected = await selection.mutationFn(variables, context);
+    if (selection.onSuccess === undefined) throw new Error('Selection descriptor must invalidate consumers');
+    await selection.onSuccess(selected, variables, undefined, context);
+
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ['scan'],
+      ['catalog-folder'],
+      ['search'],
+      ['variants'],
+    ]);
+
+    invalidate.mockClear();
+    const deletion = deleteVariantMutation(api);
+    const deleted = await deletion.mutationFn(variables, context);
+    if (deletion.onSuccess === undefined) throw new Error('Deletion descriptor must invalidate consumers');
+    await deletion.onSuccess(deleted, variables, undefined, context);
+
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ['scan'],
+      ['catalog-folder'],
+      ['search'],
+      ['variants'],
+    ]);
+    expect(calls).toEqual([
+      { url: '/api/variants?fingerprint=fp-1', method: 'GET' },
+      { url: '/api/variants/select', method: 'POST' },
+      { url: '/api/variants/delete', method: 'POST' },
     ]);
   });
 

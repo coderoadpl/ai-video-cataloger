@@ -1,6 +1,7 @@
 import type {
   DefaultError,
   MutationFunction,
+  MutationFunctionContext,
   MutationKey,
   MutationOptions,
   QueryObserverOptions,
@@ -91,6 +92,10 @@ export type FacesMergeInput = z.input<typeof API_ROUTES.facesMerge.input>;
 export type FacesForgetInput = z.input<typeof API_ROUTES.facesForget.input>;
 export type FacesPurgeInput = z.input<typeof API_ROUTES.facesPurge.input>;
 export type IndexForgetInput = z.input<typeof API_ROUTES.indexForget.input>;
+export type VariantsInput = z.input<typeof API_ROUTES.variantsList.input>;
+export type SelectVariantInput = z.input<typeof API_ROUTES.variantsSelect.input>;
+export type DeleteVariantInput = z.input<typeof API_ROUTES.variantsDelete.input>;
+export type SetFolderDefaultVariantInput = z.input<typeof API_ROUTES.variantsFolderDefault.input>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
 export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
@@ -192,6 +197,13 @@ export const tagsScopes = {
   all: () => ['tags'] as const,
 };
 
+export const variantsScopes = {
+  all: () => ['variants'] as const,
+  target: (input: z.output<typeof API_ROUTES.variantsList.input>) => input.fingerprint === undefined
+    ? ['variants', 'video-path', input.videoPath] as const
+    : ['variants', 'fingerprint', input.fingerprint] as const,
+};
+
 export const faceArtifactsScopes = {
   all: () => ['models', 'faces'] as const,
 };
@@ -228,6 +240,20 @@ export const mutationScopes = {
   facesForget: () => ['facesForget'] as const,
   facesPurge: () => ['facesPurge'] as const,
   indexForget: () => ['indexForget'] as const,
+  selectVariant: () => ['variants', 'select'] as const,
+  deleteVariant: () => ['variants', 'delete'] as const,
+  setFolderDefaultVariant: () => ['variants', 'folder-default'] as const,
+};
+
+const invalidateVariantConsumers = async (
+  context: MutationFunctionContext,
+): Promise<void> => {
+  await Promise.all([
+    context.client.invalidateQueries({ queryKey: scanScopes.all() }),
+    context.client.invalidateQueries({ queryKey: catalogFolderScopes.all() }),
+    context.client.invalidateQueries({ queryKey: searchScopes.all() }),
+    context.client.invalidateQueries({ queryKey: variantsScopes.all() }),
+  ]);
 };
 
 interface RefetchQuery<TData> {
@@ -418,6 +444,15 @@ export const tagsListQuery = (api: ApiClient) =>
     call: ({ signal }) => api.listTags(signal),
   });
 
+export const variantsQuery = (api: ApiClient, input: VariantsInput) => {
+  const parsed = API_ROUTES.variantsList.input.parse(input);
+  return defineQuery({
+    queryKey: variantsScopes.target(parsed),
+    staleTime: 0,
+    call: ({ signal }) => api.listVariants(parsed, signal),
+  });
+};
+
 export const faceArtifactsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: faceArtifactsScopes.all(),
@@ -580,4 +615,25 @@ export const indexForgetMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.indexForget(),
     call: (variables: IndexForgetInput) => api.indexForget(variables),
+  });
+
+export const selectVariantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.selectVariant(),
+    call: (variables: SelectVariantInput) => api.selectVariant(variables),
+    onSuccess: (_data, _variables, _onMutateResult, context) => invalidateVariantConsumers(context),
+  });
+
+export const deleteVariantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.deleteVariant(),
+    call: (variables: DeleteVariantInput) => api.deleteVariant(variables),
+    onSuccess: (_data, _variables, _onMutateResult, context) => invalidateVariantConsumers(context),
+  });
+
+export const setFolderDefaultVariantMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.setFolderDefaultVariant(),
+    call: (variables: SetFolderDefaultVariantInput) => api.setFolderDefaultVariant(variables),
+    onSuccess: (_data, _variables, _onMutateResult, context) => invalidateVariantConsumers(context),
   });

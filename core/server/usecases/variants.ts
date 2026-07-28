@@ -3,6 +3,7 @@ import { z } from 'zod';
 import {
   CONFIG_DEFAULTS,
   appError,
+  derivedFolderId,
   ok,
   type AppError,
   type CatalogFile,
@@ -27,6 +28,7 @@ import {
   type SelectedVariantProjectionSource,
 } from './artifact-store.js';
 import { resolveFolderIntoIndex } from './catalog-index.js';
+import { readFolderMarker } from './folder-identity.js';
 import { processConfigIdentity, resolveProcessOptions } from './process.js';
 import { artifactPaths } from './shared.js';
 
@@ -67,6 +69,40 @@ export interface DeleteVariantOutput {
   selectedConfigId: string;
 }
 
+export interface VariantListItem {
+  configId: string;
+  descriptor: CatalogVariant['descriptor'];
+  label: string;
+  createdAt: string;
+  analyzer: string | null;
+  model: string | null;
+  usage: CatalogVariant['usage'];
+  estimatedCostUsd: number | null;
+  artifacts: {
+    framesDirectory: string | null;
+    transcriptPath: string | null;
+    summaryPath: string;
+  };
+  selected: boolean;
+  finalName: string | null;
+  description: string | null;
+  transcript: string | null;
+  language: string | null;
+  tags: string[];
+}
+
+export interface ListVariantsOutput {
+  fingerprint: string;
+  videoPath: string;
+  folderDefaultConfigId: string;
+  variants: VariantListItem[];
+}
+
+export interface VariantLocator {
+  videoPath?: string | undefined;
+  fingerprint?: string | undefined;
+}
+
 interface VariantProjectionContext {
   file: CatalogFile;
   folder: CatalogFolder;
@@ -78,6 +114,78 @@ interface FolderSelectionChange {
   before: CatalogVariant;
   after: CatalogVariant;
 }
+
+const variantLocatorSchema = z.object({
+  videoPath: z.string().min(1).optional(),
+  fingerprint: z.string().min(1).optional(),
+}).strict().refine(
+  (input) => (input.videoPath === undefined) !== (input.fingerprint === undefined),
+  { message: 'Exactly one of videoPath or fingerprint is required' },
+);
+
+const locatedVariantInputSchema = variantLocatorSchema.safeExtend({
+  configId: configIdSchema,
+});
+
+export const listVariants = async (
+  deps: FolderDefaultVariantDeps,
+  input: VariantLocator,
+): Promise<Result<ListVariantsOutput, AppError>> => {
+  const parsed = variantLocatorSchema.safeParse(input);
+  if (!parsed.success) return invalidVariantInput(parsed.error.issues);
+  const target = await variantTarget(deps, parsed.data);
+  if (!target.ok) return target;
+  const variants = await deps.globalCatalog.listVariants(target.value.fingerprint);
+  if (!variants.ok) return variants;
+  const storedFolderDefault = await deps.globalCatalog.getFolderDefaultConfigId(target.value.folderId);
+  if (!storedFolderDefault.ok) return storedFolderDefault;
+  const folderDefault = storedFolderDefault.value === null
+    ? await resolvedFolderConfigId(deps, target.value.folderPath)
+    : ok(storedFolderDefault.value);
+  if (!folderDefault.ok) return folderDefault;
+  const root = await discoverArtifactRoot(deps.fs, target.value.folderPath);
+  if (!root.ok) return root;
+  const selectedConfigId = await selectedVariantConfigId(
+    deps.globalCatalog,
+    target.value.fingerprint,
+    variants.value,
+    folderDefault.value,
+  );
+  if (!selectedConfigId.ok) return selectedConfigId;
+  return ok({
+    fingerprint: target.value.fingerprint,
+    videoPath: target.value.videoPath,
+    folderDefaultConfigId: folderDefault.value,
+    variants: variants.value.sort(compareVariants).map((variant) => variantListItem(
+      deps.fs,
+      root.value,
+      variant,
+      selectedConfigId.value,
+    )),
+  });
+};
+
+export const selectVariantByLocator = async (
+  deps: VariantSelectionDeps,
+  input: VariantLocator & { configId: string },
+): Promise<Result<SelectVariantOutput, AppError>> => {
+  const parsed = locatedVariantInputSchema.safeParse(input);
+  if (!parsed.success) return invalidVariantInput(parsed.error.issues);
+  const fingerprint = await variantFingerprint(deps, parsed.data);
+  if (!fingerprint.ok) return fingerprint;
+  return selectVariant(deps, { fingerprint: fingerprint.value, configId: parsed.data.configId });
+};
+
+export const deleteVariantByLocator = async (
+  deps: VariantSelectionDeps,
+  input: VariantLocator & { configId: string },
+): Promise<Result<DeleteVariantOutput, AppError>> => {
+  const parsed = locatedVariantInputSchema.safeParse(input);
+  if (!parsed.success) return invalidVariantInput(parsed.error.issues);
+  const fingerprint = await variantFingerprint(deps, parsed.data);
+  if (!fingerprint.ok) return fingerprint;
+  return deleteVariant(deps, { fingerprint: fingerprint.value, configId: parsed.data.configId });
+};
 
 export const selectVariant = async (
   deps: VariantSelectionDeps,
@@ -339,6 +447,117 @@ const resolvedFolderConfigId = async (
     deps.analyzer.promptVersion(resolved.value.analyzer.provider),
   );
   return ok(identity.configId);
+};
+
+const variantFingerprint = async (
+  deps: VariantSelectionDeps,
+  locator: VariantLocator,
+): Promise<Result<string, AppError>> => {
+  if (locator.fingerprint !== undefined) return ok(locator.fingerprint);
+  if (locator.videoPath === undefined) return invalidVariantInput('Missing variant locator');
+  const videoPath = deps.fs.resolve(locator.videoPath);
+  const exists = await deps.fs.isFile(videoPath);
+  if (!exists.ok) return exists;
+  if (!exists.value) return { ok: false, error: appError('file_not_found', `File not found: ${videoPath}`) };
+  const fingerprint = await deps.fs.partialContentHash(videoPath);
+  if (!fingerprint.ok) return fingerprint;
+  if (fingerprint.value === null) {
+    return { ok: false, error: appError('video_not_found', `Video fingerprint is unavailable: ${videoPath}`) };
+  }
+  return ok(fingerprint.value);
+};
+
+const variantTarget = async (
+  deps: VariantSelectionDeps,
+  locator: VariantLocator,
+): Promise<Result<{
+  fingerprint: string;
+  folderId: string;
+  folderPath: string;
+  videoPath: string;
+}, AppError>> => {
+  const fingerprint = await variantFingerprint(deps, locator);
+  if (!fingerprint.ok) return fingerprint;
+  const file = await deps.globalCatalog.getFile(fingerprint.value);
+  if (!file.ok) return file;
+  if (file.value === null) {
+    return { ok: false, error: appError('video_not_found', `Catalog video not found: ${fingerprint.value}`) };
+  }
+  const folder = await deps.globalCatalog.getFolder(file.value.folderId);
+  if (!folder.ok) return folder;
+  if (folder.value === null) {
+    return { ok: false, error: appError('folder_not_found', `Catalog folder not found: ${file.value.folderId}`) };
+  }
+  const locatedVideoPath = locator.videoPath === undefined
+    ? deps.fs.join(folder.value.currentPath, file.value.fileName)
+    : deps.fs.resolve(locator.videoPath);
+  const locatedFolderPath = deps.fs.dirname(locatedVideoPath);
+  const marker = locator.videoPath === undefined ? ok(null) : await readFolderMarker(deps.fs, locatedFolderPath);
+  if (!marker.ok) return marker;
+  return ok({
+    fingerprint: fingerprint.value,
+    folderId: marker.value?.folderId ?? (
+      locator.videoPath === undefined ? file.value.folderId : derivedFolderId(deps.fs.resolve(locatedFolderPath))
+    ),
+    folderPath: locatedFolderPath,
+    videoPath: locatedVideoPath,
+  });
+};
+
+const selectedVariantConfigId = async (
+  store: GlobalCatalogStore,
+  fingerprint: string,
+  variants: readonly CatalogVariant[],
+  folderDefaultConfigId: string,
+): Promise<Result<string | null, AppError>> => {
+  const explicit = await store.getExplicitSelectedConfigId(fingerprint);
+  if (!explicit.ok) return explicit;
+  if (explicit.value !== null && variants.some((variant) => variant.configId === explicit.value)) {
+    return ok(explicit.value);
+  }
+  if (variants.some((variant) => variant.configId === folderDefaultConfigId)) return ok(folderDefaultConfigId);
+  return ok([...variants].sort(compareVariants)[0]?.configId ?? null);
+};
+
+const variantListItem = (
+  fs: FileSystemPort,
+  root: ArtifactRoot,
+  variant: CatalogVariant,
+  selectedConfigId: string | null,
+): VariantListItem => {
+  const output = variantOutputPaths(fs, root, variant.fingerprint, variant.configId);
+  const shared = variant.descriptor === null
+    ? null
+    : sharedArtifactPaths(fs, root, variant.fingerprint, variant.descriptor);
+  const estimatedCost = z.number().nonnegative().safeParse(variant.usage?.['estimatedCostUsd']);
+  return {
+    configId: variant.configId,
+    descriptor: variant.descriptor,
+    label: variantLabel(variant),
+    createdAt: variant.createdAt,
+    analyzer: variant.analyzer,
+    model: variant.model,
+    usage: variant.usage,
+    estimatedCostUsd: estimatedCost.success ? estimatedCost.data : null,
+    artifacts: {
+      framesDirectory: shared?.framesDirectory ?? null,
+      transcriptPath: shared?.transcriptPath ?? null,
+      summaryPath: output.summaryPath,
+    },
+    selected: selectedConfigId === variant.configId,
+    finalName: variant.finalName,
+    description: variant.description,
+    transcript: variant.transcript,
+    language: variant.language,
+    tags: variant.tags,
+  };
+};
+
+const variantLabel = (variant: CatalogVariant): string => {
+  if (variant.configId === 'legacy') return 'settings partly unknown';
+  return [variant.analyzer, variant.model]
+    .filter((value): value is string => value !== null && value.length > 0)
+    .join(' / ') || variant.configId;
 };
 
 const removePreviousProjection = async (
