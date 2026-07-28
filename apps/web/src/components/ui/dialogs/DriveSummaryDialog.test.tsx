@@ -19,6 +19,7 @@ describe('DriveSummaryDialog', () => {
           foldersDone: 3,
           filesDone: 5,
           filesSkipped: 2,
+          filesDuplicateSkipped: 1,
           filesFailed: 1,
           estimatedCostUsd: 0.1234,
           costedFiles: 3,
@@ -30,6 +31,7 @@ describe('DriveSummaryDialog', () => {
     expect(screen.getByTestId('drive-folders-count').textContent).toBe('3');
     expect(screen.getByTestId('drive-analyzed-count').textContent).toBe('5');
     expect(screen.getByTestId('drive-skipped-count').textContent).toBe('2');
+    expect(screen.getByTestId('drive-duplicate-skipped-count').textContent).toBe('1');
     expect(screen.getByTestId('drive-failed-count').textContent).toBe('1');
     expect(screen.getByTestId('drive-estimated-cost').textContent).toBe('$0.1234');
   });
@@ -47,6 +49,7 @@ describe('DriveSummaryDialog', () => {
           foldersDone: 1,
           filesDone: 1,
           filesSkipped: 0,
+          filesDuplicateSkipped: 0,
           filesFailed: 0,
           estimatedCostUsd: null,
           costedFiles: 0,

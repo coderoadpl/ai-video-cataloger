@@ -9,7 +9,7 @@ import {
   type Result,
 } from '@core/domain/index.js';
 
-import type { AnalysisOutput, AnalyzeInput, DirectoryEntry } from '../ports.js';
+import type { AnalysisOutput, AnalyzeInput, DirectoryEntry, JobProgress } from '../ports.js';
 import { folderCatalogRecords, indexStatus } from './catalog-index.js';
 import { catalogTreeAbsentFiles, scanTreeFolderDetails } from './catalog-tree.js';
 import { discoverCatalogFolders, processDrive, shouldRelocateCanonical, type ProcessDriveInput } from './process-drive.js';
@@ -108,6 +108,14 @@ const folderAt = (currentPath: string, firstSeenAt: string): CatalogFolder => ({
   lastSeenAt: firstSeenAt,
 });
 
+const recordingProgress = (events: JobProgress[]) => ({
+  signal: new AbortController().signal,
+  reportProgress: (progress: JobProgress): Promise<Result<void, AppError>> => {
+    events.push(progress);
+    return Promise.resolve(ok(undefined));
+  },
+});
+
 describe('shouldRelocateCanonical', () => {
   it('does not adopt a sorting-earlier sibling clone while the recorded location is present', () => {
     const recorded = folderAt('/drive/originals', '2026-01-01T00:00:00.000Z');
@@ -159,6 +167,46 @@ describe('drive discovery', () => {
 });
 
 describe('drive processing', () => {
+  it('skips duplicate-marked files when the caller enables the GUI duplicate policy', async () => {
+    const deps = makeDeps();
+    addVideo(deps.fs, '/library/canonical.mp4', 'hash-shared');
+    const seeded = await processDrive(deps, { ...baseInput, root: '/library' }, undefined, { runId: 'run-seed' });
+    expect(seeded.ok).toBe(true);
+
+    addVideo(deps.fs, '/drive/duplicate.mp4', 'hash-shared');
+    addVideo(deps.fs, '/drive/unique.mp4', 'hash-unique');
+    const events: JobProgress[] = [];
+    const run = await processDrive(
+      deps,
+      { ...baseInput, skipDuplicates: true },
+      recordingProgress(events),
+      { runId: 'run-gui' },
+    );
+
+    expect(run).toMatchObject({
+      ok: true,
+      value: {
+        filesTotal: 2,
+        filesDone: 1,
+        filesSkipped: 1,
+        filesDuplicateSkipped: 1,
+        filesFailed: 0,
+      },
+    });
+    expect(deps.analyzer.inputs.map((input) => input.videoPath)).toEqual([
+      '/library/canonical.mp4',
+      '/drive/unique.mp4',
+    ]);
+    expect(events).toContainEqual(expect.objectContaining({
+      step: 'file-skipped',
+      data: { video: '/drive/duplicate.mp4', reason: 'duplicate' },
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      step: 'run-summary',
+      data: expect.objectContaining({ filesDuplicateSkipped: 1 }),
+    }));
+  });
+
   it('resumes by fingerprint and performs zero analyzer calls on the second run', async () => {
     const deps = makeDeps();
     addVideo(deps.fs, '/drive/one.mp4', 'hash-one');

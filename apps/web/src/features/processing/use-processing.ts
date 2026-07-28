@@ -94,6 +94,7 @@ const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): s
         message.path,
         message.filesDone,
         message.filesSkipped,
+        message.filesDuplicateSkipped,
         message.filesFailed,
       );
     case 'budgetCapReached':
@@ -103,7 +104,9 @@ const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): s
         message.budgetUsd,
       );
     case 'fileSkipped':
-      return dictionary.processing.driveFileSkipped(message.filename);
+      return message.reason === 'duplicate'
+        ? dictionary.processing.driveDuplicateSkipped(message.filename)
+        : dictionary.processing.driveFileSkipped(message.filename);
     case 'snapshotSkipped':
       return dictionary.processing.driveSnapshotSkipped(message.folder);
     case 'runComplete':
@@ -112,6 +115,7 @@ const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): s
         message.foldersTotal,
         message.filesDone,
         message.filesSkipped,
+        message.filesDuplicateSkipped,
         message.filesFailed,
         message.estimatedCostUsd,
         message.costedFiles,
@@ -262,10 +266,10 @@ export const useProcessing = ({
         busyRef.current = false;
         setAnalyzingPath(null);
         setProgress(null);
-        await queryClient.invalidateQueries();
         if (outcome.completedPath !== undefined && outcome.completedPath !== video.path) {
           onVideoRenamed?.(video.path, outcome.completedPath);
         }
+        await queryClient.invalidateQueries();
       })();
     },
     [runVideo, addLine, queryClient, checkReadiness, dictionary, onVideoRenamed],
@@ -301,20 +305,29 @@ export const useProcessing = ({
           totalCount: pending.length,
           currentFilename: video.filename,
         });
+        if (video.duplicate != null) {
+          addLine(dictionary.processing.duplicateSkipped(video.filename), 'info');
+          results.push({ filename: video.filename, outcome: 'duplicate-skipped' });
+          continue;
+        }
         setAnalyzingPath(video.path);
         addLine(dictionary.processing.batchProcessing(index + 1, pending.length, video.filename), 'info');
         const outcome = await runVideo(video);
         results.push({
           filename: video.filename,
-          success: outcome.success,
+          outcome: outcome.success ? 'analyzed' : 'failed',
           ...(outcome.success ? {} : { error: outcome.error }),
         });
       }
 
-      const successCount = results.filter((result) => result.success).length;
-      const failedCount = results.length - successCount;
+      const successCount = results.filter((result) => result.outcome === 'analyzed').length;
+      const failedCount = results.filter((result) => result.outcome === 'failed').length;
+      const duplicateSkippedCount = results.filter((result) => result.outcome === 'duplicate-skipped').length;
       addLine(dictionary.processing.batchComplete, 'info');
       addLine(dictionary.processing.successCount(successCount), 'success');
+      if (duplicateSkippedCount > 0) {
+        addLine(dictionary.processing.duplicateSkippedCount(duplicateSkippedCount), 'info');
+      }
       if (failedCount > 0) addLine(dictionary.processing.failedCount(failedCount), 'error');
 
       busyRef.current = false;
@@ -334,7 +347,7 @@ export const useProcessing = ({
 
       let jobId: string;
       try {
-        const accepted = await processDriveAsync({ root });
+        const accepted = await processDriveAsync({ root, skipDuplicates: true });
         jobId = accepted.jobId;
       } catch (error) {
         const message = messageOf(error);
@@ -364,6 +377,7 @@ export const useProcessing = ({
                     foldersDone: message.foldersDone,
                     filesDone: message.filesDone,
                     filesSkipped: message.filesSkipped,
+                    filesDuplicateSkipped: message.filesDuplicateSkipped,
                     filesFailed: message.filesFailed,
                     estimatedCostUsd: message.estimatedCostUsd,
                     costedFiles: message.costedFiles,

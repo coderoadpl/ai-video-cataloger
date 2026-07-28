@@ -210,6 +210,11 @@ describe('route schemas', () => {
       configId: resolvedConfigId,
       unexpected: true,
     }).success).toBe(false);
+    expect(API_ROUTES.variantsSelect.input.parse({
+      fingerprint: 'fp-1',
+      configId: resolvedConfigId,
+      deferProjection: true,
+    })).toEqual({ fingerprint: 'fp-1', configId: resolvedConfigId, deferProjection: true });
 
     const parsed = variantsListOutputSchema.parse({
       fingerprint: 'fp-1',

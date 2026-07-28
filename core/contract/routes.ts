@@ -240,6 +240,7 @@ export const processDriveInputSchema = z.object({
   provider: analyzerProviderIdSchema.optional(),
   localModel: z.string().min(1).optional(),
   force: z.boolean().optional(),
+  skipDuplicates: z.boolean().optional(),
   geminiBatch: z.boolean().optional(),
   geminiBatchExplicit: z.boolean().optional(),
 }).transform((input) => ({
@@ -261,6 +262,7 @@ export const processDriveInputSchema = z.object({
   ...(input.provider === undefined ? {} : { provider: input.provider }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
   ...(input.force === undefined ? {} : { force: input.force }),
+  ...(input.skipDuplicates === undefined ? {} : { skipDuplicates: input.skipDuplicates }),
   ...(input.geminiBatch === undefined ? {} : { geminiBatch: input.geminiBatch }),
   geminiBatchExplicit: input.geminiBatchExplicit ?? input.geminiBatch !== undefined,
 }));
@@ -295,6 +297,7 @@ export const driveRunSummarySchema = z.object({
   filesTotal: z.number().int().nonnegative(),
   filesDone: z.number().int().nonnegative(),
   filesSkipped: z.number().int().nonnegative(),
+  filesDuplicateSkipped: z.number().int().nonnegative().default(0),
   filesFailed: z.number().int().nonnegative(),
   costEstimate: z.object({
     kind: z.literal('estimate'),
@@ -728,6 +731,7 @@ export const jobStatusSchema = z.enum(['queued', 'running', 'completed', 'failed
 export const jobKindSchema = z.enum([
   'process',
   'process_drive',
+  'variant_projection',
   'whisper_download',
   'whisper_runtime_install',
   'local_ai_pull',
@@ -945,6 +949,10 @@ export const variantMutationInputSchema = variantLocatorSchema.safeExtend({
   configId: configIdSchema,
 });
 
+export const variantSelectInputSchema = variantMutationInputSchema.safeExtend({
+  deferProjection: z.boolean().optional(),
+});
+
 export const variantFolderDefaultInputSchema = z.object({
   folderPath: z.string().min(1),
   configId: configIdSchema.nullable(),
@@ -978,7 +986,7 @@ export const variantsListOutputSchema = z.object({
   fingerprint: z.string().min(1),
   videoPath: z.string().min(1),
   folderPath: z.string().min(1),
-  folderDefaultConfigId: configIdSchema,
+  folderDefaultConfigId: configIdSchema.nullable(),
   currentConfig: z.object({
     configId: configIdSchema,
     descriptor: configDescriptorSchema,
@@ -1224,7 +1232,7 @@ export const API_ROUTES = {
   variantsSelect: {
     method: 'POST',
     path: '/api/variants/select',
-    input: variantMutationInputSchema,
+    input: variantSelectInputSchema,
     output: variantSelectOutputSchema,
   },
   variantsDelete: {

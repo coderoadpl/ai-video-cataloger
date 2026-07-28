@@ -17,6 +17,7 @@ import type {
   ConfigStore,
   FileSystemPort,
   GlobalCatalogStore,
+  JobsPort,
 } from '../ports.js';
 import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
 import {
@@ -49,6 +50,10 @@ const folderDefaultInputSchema = z.object({
 export interface VariantSelectionDeps {
   globalCatalog: GlobalCatalogStore;
   fs: FileSystemPort;
+}
+
+export interface DeferredVariantSelectionDeps extends VariantSelectionDeps {
+  jobs: JobsPort;
 }
 
 export interface FolderDefaultVariantDeps extends VariantSelectionDeps {
@@ -99,7 +104,7 @@ export interface ListVariantsOutput {
   fingerprint: string;
   videoPath: string;
   folderPath: string;
-  folderDefaultConfigId: string;
+  folderDefaultConfigId: string | null;
   currentConfig: ProcessConfigIdentity;
   variants: VariantListItem[];
 }
@@ -133,6 +138,10 @@ const locatedVariantInputSchema = variantLocatorSchema.safeExtend({
   configId: configIdSchema,
 });
 
+const locatedVariantSelectionInputSchema = locatedVariantInputSchema.safeExtend({
+  deferProjection: z.boolean().optional(),
+});
+
 export const listVariants = async (
   deps: FolderDefaultVariantDeps,
   input: VariantLocator,
@@ -147,21 +156,21 @@ export const listVariants = async (
   if (!storedFolderDefault.ok) return storedFolderDefault;
   const currentConfig = await resolvedFolderConfigIdentity(deps, target.value.folderPath);
   if (!currentConfig.ok) return currentConfig;
-  const folderDefaultConfigId = storedFolderDefault.value ?? currentConfig.value.configId;
+  const resolvedFolderDefaultConfigId = storedFolderDefault.value ?? currentConfig.value.configId;
   const root = await discoverArtifactRoot(deps.fs, target.value.folderPath);
   if (!root.ok) return root;
   const selectedConfigId = await selectedVariantConfigId(
     deps.globalCatalog,
     target.value.fingerprint,
     variants.value,
-    folderDefaultConfigId,
+    resolvedFolderDefaultConfigId,
   );
   if (!selectedConfigId.ok) return selectedConfigId;
   return ok({
     fingerprint: target.value.fingerprint,
     videoPath: target.value.videoPath,
     folderPath: target.value.folderPath,
-    folderDefaultConfigId,
+    folderDefaultConfigId: storedFolderDefault.value,
     currentConfig: currentConfig.value,
     variants: variants.value.sort(compareVariants).map((variant) => variantListItem(
       deps.fs,
@@ -173,14 +182,45 @@ export const listVariants = async (
 };
 
 export const selectVariantByLocator = async (
-  deps: VariantSelectionDeps,
-  input: VariantLocator & { configId: string },
+  deps: DeferredVariantSelectionDeps,
+  input: VariantLocator & { configId: string; deferProjection?: boolean | undefined },
 ): Promise<Result<SelectVariantOutput, AppError>> => {
-  const parsed = locatedVariantInputSchema.safeParse(input);
+  const parsed = locatedVariantSelectionInputSchema.safeParse(input);
   if (!parsed.success) return invalidVariantInput(parsed.error.issues);
   const fingerprint = await variantFingerprint(deps, parsed.data);
   if (!fingerprint.ok) return fingerprint;
-  return selectVariant(deps, { fingerprint: fingerprint.value, configId: parsed.data.configId });
+  if (parsed.data.deferProjection !== true) {
+    return selectVariant(deps, { fingerprint: fingerprint.value, configId: parsed.data.configId });
+  }
+  return selectVariantDeferred(deps, { fingerprint: fingerprint.value, configId: parsed.data.configId });
+};
+
+const selectVariantDeferred = async (
+  deps: DeferredVariantSelectionDeps,
+  input: { fingerprint: string; configId: string },
+): Promise<Result<SelectVariantOutput, AppError>> => {
+  const variant = await requiredVariant(deps.globalCatalog, input.fingerprint, input.configId);
+  if (!variant.ok) return variant;
+  const previousConfigId = await deps.globalCatalog.getSelectedConfigId(input.fingerprint);
+  if (!previousConfigId.ok) return previousConfigId;
+  const previousExplicitConfigId = await deps.globalCatalog.getExplicitSelectedConfigId(input.fingerprint);
+  if (!previousExplicitConfigId.ok) return previousExplicitConfigId;
+  const previous = previousConfigId.value === null
+    ? ok<CatalogVariant | null>(null)
+    : await deps.globalCatalog.getVariant(input.fingerprint, previousConfigId.value);
+  if (!previous.ok) return previous;
+  const selected = await deps.globalCatalog.setSelectedVariant(input.fingerprint, input.configId);
+  if (!selected.ok) return selected;
+  const queued = await deps.jobs.enqueue({
+    kind: 'variant_projection',
+    payload: input,
+    run: () => synchronizeSelectedVariantProjection(deps, input.fingerprint, previous.value),
+  });
+  if (!queued.ok) {
+    await deps.globalCatalog.setSelectedVariant(input.fingerprint, previousExplicitConfigId.value);
+    return { ok: false, error: queued.error };
+  }
+  return ok({ fingerprint: input.fingerprint, configId: input.configId });
 };
 
 export const deleteVariantByLocator = async (
@@ -336,6 +376,48 @@ const variantNotFound = <T>(fingerprint: string, configId: string): Result<T, Ap
   ok: false,
   error: appError('variant_not_found', `Analysis variant not found: ${fingerprint}/${configId}`),
 });
+
+const synchronizeSelectedVariantProjection = async (
+  deps: VariantSelectionDeps,
+  fingerprint: string,
+  initialPrevious: CatalogVariant | null,
+): Promise<Result<SelectVariantOutput, AppError>> => {
+  let previous = initialPrevious;
+  while (true) {
+    const selectedConfigId = await deps.globalCatalog.getSelectedConfigId(fingerprint);
+    if (!selectedConfigId.ok) return selectedConfigId;
+    if (selectedConfigId.value === null) {
+      return { ok: false, error: appError('internal', `Selected variant is unavailable: ${fingerprint}`) };
+    }
+    const selected = await requiredVariant(deps.globalCatalog, fingerprint, selectedConfigId.value);
+    if (!selected.ok) return selected;
+    const projected = await projectVariant(deps, selected.value);
+    if (!projected.ok) {
+      const latest = await deps.globalCatalog.getSelectedConfigId(fingerprint);
+      if (!latest.ok) return latest;
+      if (latest.value !== selected.value.configId) continue;
+      return projected;
+    }
+    if (previous !== null && previous.configId !== selected.value.configId) {
+      const cleaned = await removePreviousProjection(deps.fs, projected.value, previous, selected.value);
+      if (!cleaned.ok) {
+        const latest = await deps.globalCatalog.getSelectedConfigId(fingerprint);
+        if (!latest.ok) return latest;
+        if (latest.value !== selected.value.configId) {
+          previous = selected.value;
+          continue;
+        }
+        return cleaned;
+      }
+    }
+    const latest = await deps.globalCatalog.getSelectedConfigId(fingerprint);
+    if (!latest.ok) return latest;
+    if (latest.value === selected.value.configId) {
+      return ok({ fingerprint, configId: selected.value.configId });
+    }
+    previous = selected.value;
+  }
+};
 
 const projectVariant = async (
   deps: VariantSelectionDeps,

@@ -23,9 +23,10 @@ export interface VariantsState {
   loading: boolean;
   loadError: unknown;
   actionError: unknown;
-  selecting: boolean;
+  selectingConfigId: string | null;
   settingFolderDefault: boolean;
   comparing: boolean;
+  retryLoad: () => void;
   previewConfig: (configId: string) => void;
   showComparison: () => void;
   hideComparison: () => void;
@@ -34,10 +35,14 @@ export interface VariantsState {
   useCurrentAsFolderDefault: () => void;
 }
 
+const variantLocator = (video: DetailsVideo): { fingerprint: string } | { videoPath: string } =>
+  video.contentHash === null ? { videoPath: video.path } : { fingerprint: video.contentHash };
+
 export const useVariants = (video: DetailsVideo): VariantsState => {
   const [previewConfigId, setPreviewConfigId] = useState<string | null>(null);
   const [comparing, setComparing] = useState(false);
-  const query = useQuery(variants({ videoPath: video.path }));
+  const locator = variantLocator(video);
+  const query = useQuery(variants(locator));
   const selection = useMutation(selectVariant);
   const folderDefault = useMutation(setFolderDefaultVariant);
   const data = query.data ?? null;
@@ -45,9 +50,13 @@ export const useVariants = (video: DetailsVideo): VariantsState => {
   const preview = previewVariant === null ? null : variantPreview(video, previewVariant);
   const plan = data === null ? null : analysisPlan(data);
 
-  const selectConfig = useCallback((configId: string) => {
-    selection.mutate({ videoPath: video.path, configId });
-  }, [selection, video.path]);
+  const selectConfig = useCallback((configId: string, onSuccess?: () => void) => {
+    setPreviewConfigId(configId);
+    selection.mutate(
+      { ...locator, configId, deferProjection: true },
+      onSuccess === undefined ? undefined : { onSuccess },
+    );
+  }, [locator, selection]);
 
   const usePreviewAsSelected = useCallback(() => {
     if (previewVariant === null || previewVariant.selected) return;
@@ -56,10 +65,14 @@ export const useVariants = (video: DetailsVideo): VariantsState => {
 
   const showComparison = useCallback(() => setComparing(true), []);
   const hideComparison = useCallback(() => setComparing(false), []);
+  const selectFromComparison = useCallback((configId: string) => {
+    selectConfig(configId, hideComparison);
+  }, [hideComparison, selectConfig]);
 
   const useCurrentAsFolderDefault = useCallback(() => {
-    if (data === null || data.folderDefaultConfigId === data.currentConfig.configId) return;
-    folderDefault.mutate({ folderPath: data.folderPath, configId: data.currentConfig.configId });
+    const selected = data?.variants.find((variant) => variant.selected);
+    if (data === null || selected === undefined || data.folderDefaultConfigId === selected.configId) return;
+    folderDefault.mutate({ folderPath: data.folderPath, configId: selected.configId });
   }, [data, folderDefault]);
 
   return {
@@ -70,13 +83,14 @@ export const useVariants = (video: DetailsVideo): VariantsState => {
     loading: query.isLoading,
     loadError: query.error,
     actionError: selection.error ?? folderDefault.error,
-    selecting: selection.isPending,
+    selectingConfigId: selection.isPending ? selection.variables?.configId ?? null : null,
     settingFolderDefault: folderDefault.isPending,
     comparing,
+    retryLoad: () => { void query.refetch(); },
     previewConfig: setPreviewConfigId,
     showComparison,
     hideComparison,
-    useAsSelected: selectConfig,
+    useAsSelected: selectFromComparison,
     usePreviewAsSelected,
     useCurrentAsFolderDefault,
   };

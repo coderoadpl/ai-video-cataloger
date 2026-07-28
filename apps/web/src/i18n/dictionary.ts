@@ -156,6 +156,7 @@ export interface Dictionary {
       folderDefault: string;
       loading: string;
       loadError: string;
+      retry: string;
       actionError: string;
     };
     status: {
@@ -376,14 +377,16 @@ export interface Dictionary {
   processing: {
     driveRunStarted: (folders: number, files: number) => string;
     driveFolderStarted: (path: string, files: number) => string;
-    driveFolderDone: (path: string, done: number, skipped: number, failed: number) => string;
+    driveFolderDone: (path: string, done: number, skipped: number, duplicatesSkipped: number, failed: number) => string;
     driveFileSkipped: (filename: string) => string;
+    driveDuplicateSkipped: (filename: string) => string;
     driveSnapshotSkipped: (folder: string) => string;
     driveRunComplete: (
       foldersDone: number,
       foldersTotal: number,
       done: number,
       skipped: number,
+      duplicatesSkipped: number,
       failed: number,
       estimatedCostUsd: number | null,
       costedFiles: number,
@@ -409,8 +412,10 @@ export interface Dictionary {
     batchStart: (count: number) => string;
     batchCancelled: (processed: number, total: number) => string;
     batchProcessing: (current: number, total: number, filename: string) => string;
+    duplicateSkipped: (filename: string) => string;
     batchComplete: string;
     successCount: (count: number) => string;
+    duplicateSkippedCount: (count: number) => string;
     failedCount: (count: number) => string;
     folderTreeCompleted: string;
     driveProcessingFailed: string;
@@ -568,6 +573,7 @@ export interface Dictionary {
     title: string;
     successful: string;
     failed: string;
+    duplicatesSkipped: string;
     failedVideos: string;
     unknownError: string;
   };
@@ -576,6 +582,7 @@ export interface Dictionary {
     folders: string;
     analyzed: string;
     skipped: string;
+    duplicatesSkipped: string;
     failed: string;
     estimatedCost: (files: number) => string;
   };
@@ -765,6 +772,7 @@ export const en: Dictionary = {
       folderDefault: 'Current configuration is the folder default',
       loading: 'Loading analysis variants…',
       loadError: 'Could not load analysis variants.',
+      retry: 'Retry',
       actionError: 'Could not update the analysis variant.',
     },
     status: {
@@ -1006,14 +1014,16 @@ export const en: Dictionary = {
   processing: {
     driveRunStarted: (folders, files) => `Scanning ${String(folders)} folder(s), ${String(files)} file(s)…`,
     driveFolderStarted: (path, files) => `→ ${path} (${String(files)} file(s))`,
-    driveFolderDone: (path, done, skipped, failed) => `✓ ${path}: ${String(done)} done, ${String(skipped)} skipped, ${String(failed)} failed`,
+    driveFolderDone: (path, done, skipped, duplicatesSkipped, failed) =>
+      `✓ ${path}: ${String(done)} done, ${String(skipped)} skipped (${String(duplicatesSkipped)} duplicates), ${String(failed)} failed`,
     driveFileSkipped: (filename) => `↷ Skipped (already analyzed): ${filename}`,
+    driveDuplicateSkipped: (filename) => `↷ Skipped duplicate: ${filename}`,
     driveSnapshotSkipped: (folder) => `⚠ Folder read-only — snapshot skipped: ${folder}`,
-    driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed, estimatedCostUsd, costedFiles) => {
+    driveRunComplete: (foldersDone, foldersTotal, done, skipped, duplicatesSkipped, failed, estimatedCostUsd, costedFiles) => {
       const estimate = estimatedCostUsd === null
         ? ''
         : `, estimated Gemini cost $${estimatedCostUsd.toFixed(4)} USD (${String(costedFiles)} file(s))`;
-      return `=== Drive run complete: ${String(foldersDone)}/${String(foldersTotal)} folder(s), ${String(done)} done, ${String(skipped)} skipped, ${String(failed)} failed${estimate} ===`;
+      return `=== Drive run complete: ${String(foldersDone)}/${String(foldersTotal)} folder(s), ${String(done)} done, ${String(skipped)} skipped (${String(duplicatesSkipped)} duplicates), ${String(failed)} failed${estimate} ===`;
     },
     driveBudgetCapReached: (month, estimatedSpendUsd, budgetUsd) =>
       `Gemini budget reached for ${month}: estimated spend $${estimatedSpendUsd.toFixed(4)} USD / $${budgetUsd.toFixed(2)} USD. Drive run paused.`,
@@ -1046,8 +1056,10 @@ export const en: Dictionary = {
     batchStart: (count) => `=== Starting batch analysis of ${String(count)} video(s) ===`,
     batchCancelled: (processed, total) => `Batch processing cancelled. Processed ${String(processed)} of ${String(total)} videos.`,
     batchProcessing: (current, total, filename) => `[${String(current)}/${String(total)}] Processing: ${filename}`,
+    duplicateSkipped: (filename) => `↷ Skipped duplicate: ${filename}`,
     batchComplete: '=== Batch analysis complete ===',
     successCount: (count) => `Success: ${String(count)}`,
+    duplicateSkippedCount: (count) => `Duplicates skipped: ${String(count)}`,
     failedCount: (count) => `Failed: ${String(count)}`,
     folderTreeCompleted: '✓ Folder tree analysis completed',
     driveProcessingFailed: 'Drive processing failed',
@@ -1220,6 +1232,7 @@ export const en: Dictionary = {
     title: 'Batch Analysis Complete',
     successful: 'successful',
     failed: 'failed',
+    duplicatesSkipped: 'duplicates skipped',
     failedVideos: 'Failed videos:',
     unknownError: 'Unknown error',
   },
@@ -1228,6 +1241,7 @@ export const en: Dictionary = {
     folders: 'folders',
     analyzed: 'analyzed',
     skipped: 'skipped',
+    duplicatesSkipped: 'duplicates skipped',
     failed: 'failed',
     estimatedCost: (files) => `estimated Gemini cost · ${String(files)} priced file(s)`,
   },
@@ -1425,6 +1439,7 @@ export const pl: Dictionary = {
       folderDefault: 'Bieżąca konfiguracja jest domyślna dla folderu',
       loading: 'Wczytywanie wariantów analizy…',
       loadError: 'Nie udało się wczytać wariantów analizy.',
+      retry: 'Ponów',
       actionError: 'Nie udało się zaktualizować wariantu analizy.',
     },
     status: {
@@ -1666,14 +1681,16 @@ export const pl: Dictionary = {
   processing: {
     driveRunStarted: (folders, files) => `Skanowanie: ${String(folders)} folder(y), ${String(files)} plik(i)…`,
     driveFolderStarted: (path, files) => `→ ${path} (${String(files)} plik(i))`,
-    driveFolderDone: (path, done, skipped, failed) => `✓ ${path}: ${String(done)} gotowe, ${String(skipped)} pominięte, ${String(failed)} błędne`,
+    driveFolderDone: (path, done, skipped, duplicatesSkipped, failed) =>
+      `✓ ${path}: ${String(done)} gotowe, ${String(skipped)} pominięte (${String(duplicatesSkipped)} duplikatów), ${String(failed)} błędne`,
     driveFileSkipped: (filename) => `↷ Pominięto (już przeanalizowano): ${filename}`,
+    driveDuplicateSkipped: (filename) => `↷ Pominięto duplikat: ${filename}`,
     driveSnapshotSkipped: (folder) => `⚠ Folder tylko do odczytu — pominięto migawkę: ${folder}`,
-    driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed, estimatedCostUsd, costedFiles) => {
+    driveRunComplete: (foldersDone, foldersTotal, done, skipped, duplicatesSkipped, failed, estimatedCostUsd, costedFiles) => {
       const estimate = estimatedCostUsd === null
         ? ''
         : `, szacowany koszt Gemini ${estimatedCostUsd.toFixed(4)} USD (${String(costedFiles)} plik(i))`;
-      return `=== Analiza drzewa ukończona: ${String(foldersDone)}/${String(foldersTotal)} folder(y), ${String(done)} gotowe, ${String(skipped)} pominięte, ${String(failed)} błędne${estimate} ===`;
+      return `=== Analiza drzewa ukończona: ${String(foldersDone)}/${String(foldersTotal)} folder(y), ${String(done)} gotowe, ${String(skipped)} pominięte (${String(duplicatesSkipped)} duplikatów), ${String(failed)} błędne${estimate} ===`;
     },
     driveBudgetCapReached: (month, estimatedSpendUsd, budgetUsd) =>
       `Osiągnięto budżet Gemini za ${month}: szacowane wydatki ${estimatedSpendUsd.toFixed(4)} USD / ${budgetUsd.toFixed(2)} USD. Analiza dysku została wstrzymana.`,
@@ -1707,8 +1724,10 @@ export const pl: Dictionary = {
     batchStart: (count) => `=== Rozpoczynanie analizy wsadowej ${String(count)} film(ów) ===`,
     batchCancelled: (processed, total) => `Przetwarzanie wsadowe anulowane. Przetworzono ${String(processed)} z ${String(total)} filmów.`,
     batchProcessing: (current, total, filename) => `[${String(current)}/${String(total)}] Przetwarzanie: ${filename}`,
+    duplicateSkipped: (filename) => `↷ Pominięto duplikat: ${filename}`,
     batchComplete: '=== Analiza wsadowa ukończona ===',
     successCount: (count) => `Sukces: ${String(count)}`,
+    duplicateSkippedCount: (count) => `Pominięte duplikaty: ${String(count)}`,
     failedCount: (count) => `Błędy: ${String(count)}`,
     folderTreeCompleted: '✓ Analiza drzewa folderów ukończona',
     driveProcessingFailed: 'Przetwarzanie dysku nie powiodło się',
@@ -1881,6 +1900,7 @@ export const pl: Dictionary = {
     title: 'Analiza wsadowa ukończona',
     successful: 'udanych',
     failed: 'nieudanych',
+    duplicatesSkipped: 'pominiętych duplikatów',
     failedVideos: 'Nieudane filmy:',
     unknownError: 'Nieznany błąd',
   },
@@ -1889,6 +1909,7 @@ export const pl: Dictionary = {
     folders: 'folderów',
     analyzed: 'przeanalizowanych',
     skipped: 'pominiętych',
+    duplicatesSkipped: 'pominiętych duplikatów',
     failed: 'nieudanych',
     estimatedCost: (files) => `szacowany koszt Gemini · ${String(files)} wycenionych plików`,
   },

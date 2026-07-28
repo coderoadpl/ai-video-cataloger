@@ -91,9 +91,51 @@ describe('useProcessing batch', () => {
 
     const summary = result.current.batchSummary.results;
     expect(summary.map((r) => r.filename)).toEqual(['bad.mp4', 'good1.mp4', 'good2.mp4']);
-    expect(summary.map((r) => r.success)).toEqual([false, true, true]);
+    expect(summary.map((r) => r.outcome)).toEqual(['failed', 'analyzed', 'analyzed']);
     expect(summary.at(0)?.error).toBe('ffmpeg exploded');
     expect(result.current.batchProgress).toBeNull();
+  });
+
+  it('reports duplicate skips without sending those files for analysis', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const processed: string[] = [];
+    server.use(
+      http.post('/api/process', async ({ request }) => {
+        const { videoPath } = processBodySchema.parse(await request.json());
+        processed.push(videoPath);
+        return HttpResponse.json({ ok: true, data: { jobId: `job:${videoPath}` } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({ ok: true, data: jobSnapshot(jobId) });
+      }),
+    );
+    const batchVideos: Videos = [
+      { path: '/v/original.mp4', filename: 'original.mp4', status: 'pending', duplicate: null },
+      {
+        path: '/v/duplicate.mp4',
+        filename: 'duplicate.mp4',
+        status: 'pending',
+        duplicate: { canonicalPath: '/catalog/original.mp4' },
+      },
+    ];
+    const { result } = renderHook(() => useProcessing({ videos: batchVideos, addLine: vi.fn(), intervalMs: 0 }), {
+      wrapper,
+    });
+
+    act(() => {
+      result.current.batchAnalyze();
+    });
+    await waitFor(() => expect(result.current.batchSummary.open).toBe(true));
+
+    expect(processed).toEqual(['/v/original.mp4']);
+    expect(result.current.batchSummary.results).toEqual([
+      { filename: 'original.mp4', outcome: 'analyzed' },
+      { filename: 'duplicate.mp4', outcome: 'duplicate-skipped' },
+    ]);
   });
 
   it('keeps the busy guard until a cancelled job actually settles', async () => {
@@ -159,6 +201,7 @@ describe('useProcessing batch', () => {
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     );
     const onVideoRenamed = vi.fn();
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
     server.use(
       http.post('/api/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job:rename' } })),
       http.get('/api/jobs/status', () => HttpResponse.json({
@@ -190,6 +233,8 @@ describe('useProcessing batch', () => {
 
     await waitFor(() => expect(result.current.isBusy).toBe(false));
     await waitFor(() => expect(onVideoRenamed).toHaveBeenCalledWith('/v/good1.mp4', '/v/2026-01-01_renamed.mp4'));
+    expect(invalidate).toHaveBeenCalled();
+    expect(onVideoRenamed.mock.invocationCallOrder[0]).toBeLessThan(invalidate.mock.invocationCallOrder[0] ?? 0);
   });
 
   it('does not report a rename when the completed path is unchanged', async () => {

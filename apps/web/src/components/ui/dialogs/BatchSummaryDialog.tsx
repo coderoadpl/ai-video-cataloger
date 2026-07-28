@@ -14,7 +14,7 @@ import { useDictionary } from '../../../i18n/use-dictionary.js';
 
 export interface BatchResultItem {
   filename: string;
-  success: boolean;
+  outcome: 'analyzed' | 'failed' | 'duplicate-skipped';
   error?: string;
 }
 
@@ -26,8 +26,9 @@ interface BatchSummaryDialogProps {
 
 export const BatchSummaryDialog = ({ open, results, onClose }: BatchSummaryDialogProps) => {
   const dictionary = useDictionary();
-  const failed = results.filter((result) => !result.success);
-  const successCount = results.length - failed.length;
+  const failed = results.filter((result) => result.outcome === 'failed');
+  const successCount = results.filter((result) => result.outcome === 'analyzed').length;
+  const duplicateSkippedCount = results.filter((result) => result.outcome === 'duplicate-skipped').length;
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth data-testid="batch-summary-dialog">
@@ -45,6 +46,12 @@ export const BatchSummaryDialog = ({ open, results, onClose }: BatchSummaryDialo
               {failed.length}
             </Box>{' '}
             {dictionary.batchSummary.failed}
+          </Typography>
+          <Typography variant="body2">
+            <Box component="span" data-testid="batch-duplicate-skipped-count" sx={{ fontWeight: 600 }}>
+              {duplicateSkippedCount}
+            </Box>{' '}
+            {dictionary.batchSummary.duplicatesSkipped}
           </Typography>
         </Box>
         {failed.length > 0 ? (

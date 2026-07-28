@@ -82,6 +82,30 @@ describe('catalog', () => {
     expect(screen.getByText('1.0 KB')).toBeDefined();
   });
 
+  it('replaces the list row path and name after the completion refresh reports a rename', async () => {
+    let renamed = false;
+    server.use(
+      http.get('/api/scan', () => HttpResponse.json({
+        ok: true,
+        data: makeScan([
+          makeVideo({
+            path: renamed ? '/videos/2026-08-03_renamed.mp4' : '/videos/clip.mp4',
+            contentHash: 'hash-a',
+            status: renamed ? 'completed' : 'pending',
+          }),
+        ]),
+      })),
+    );
+    const rendered = renderThemed(<Harness folder={FOLDER} />);
+    await screen.findByText('clip.mp4');
+
+    renamed = true;
+    await rendered.queryClient.invalidateQueries({ queryKey: ['scan'] });
+
+    expect(await screen.findByText('2026-08-03_renamed.mp4')).toBeDefined();
+    expect(screen.queryByText('clip.mp4')).toBeNull();
+  });
+
   it('renders square thumbnail bounding boxes regardless of source aspect', async () => {
     server.use(scanOk(makeScan([
       makeVideo({ path: '/videos/landscape.mp4', contentHash: 'hash-a', source: { width: 1920, height: 1080, rotation: 0 } }),

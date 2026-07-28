@@ -9,7 +9,7 @@ import { createTestQueryClient } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { useProcessing } from './use-processing.js';
 
-const driveBodySchema = z.object({ root: z.string() });
+const driveBodySchema = z.object({ root: z.string(), skipDuplicates: z.literal(true) });
 
 const driveJob = (jobId: string) => ({
   jobId,
@@ -81,7 +81,7 @@ describe('useProcessing drive', () => {
     expect(roots).toEqual(['/videos']);
     expect(lines.some((line) => line.includes('/videos/a'))).toBe(true);
     expect(lines.some((line) => line.includes('/videos/b'))).toBe(true);
-    expect(lines.some((line) => line.includes('2 done, 1 skipped, 0 failed'))).toBe(true);
+    expect(lines.some((line) => line.includes('2 done, 1 skipped (0 duplicates), 0 failed'))).toBe(true);
     expect(lines.some((line) => line.startsWith('=== Drive run complete:'))).toBe(true);
     expect(invalidate).toHaveBeenCalled();
     expect(result.current.driveSummary).toEqual({
@@ -90,6 +90,7 @@ describe('useProcessing drive', () => {
         foldersDone: 2,
         filesDone: 2,
         filesSkipped: 1,
+        filesDuplicateSkipped: 0,
         filesFailed: 0,
         estimatedCostUsd: null,
         costedFiles: 0,

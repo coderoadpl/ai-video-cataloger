@@ -1,5 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
+import { QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -92,7 +93,7 @@ const variant = (
 const variantsResponse = (
   variants: readonly VariantData[],
   currentConfig: VariantsData['currentConfig'] = { configId: firstConfigId, descriptor: firstDescriptor },
-  folderDefaultConfigId = firstConfigId,
+  folderDefaultConfigId: string | null = firstConfigId,
 ) => ({
   ok: true,
   data: {
@@ -252,6 +253,93 @@ describe('details panel', () => {
     expect(active.getAttribute('src')).toContain('frame-002.jpg');
   });
 
+  it('loads the actual variants by stable fingerprint on the initial details open', async () => {
+    const locators: string[] = [];
+    server.use(
+      http.get('/api/variants', ({ request }) => {
+        const url = new URL(request.url);
+        locators.push(url.search);
+        return HttpResponse.json(variantsResponse([
+          variant(firstConfigId, firstDescriptor, true, 'First summary'),
+          variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+        ]));
+      }),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+
+    await screen.findByTestId('variant-switcher');
+    expect(screen.getByText('2 variants')).toBeDefined();
+    expect(locators).toEqual(['?fingerprint=hash-a']);
+  });
+
+  it('offers a retry when a variant lookup fails and renders the recovered variants', async () => {
+    let requests = 0;
+    server.use(
+      http.get('/api/variants', () => {
+        requests += 1;
+        if (requests === 1) {
+          return HttpResponse.json(
+            { ok: false, error: { code: 'internal', message: 'Catalog is catching up' } },
+            { status: 503 },
+          );
+        }
+        return HttpResponse.json(variantsResponse([
+          variant(firstConfigId, firstDescriptor, true, 'Recovered summary'),
+        ]));
+      }),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+
+    const alert = await screen.findByRole('alert');
+    expect(alert.textContent).toContain('Could not load analysis variants.');
+    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    await screen.findByTestId('variant-switcher');
+    expect(screen.getByText('1 variant')).toBeDefined();
+    expect(requests).toBe(2);
+  });
+
+  it('keeps post-rename details and variant refreshes on the completed fingerprint', async () => {
+    const locators: string[] = [];
+    server.use(
+      http.get('/api/variants', ({ request }) => {
+        const url = new URL(request.url);
+        locators.push(url.search);
+        if (url.searchParams.get('fingerprint') !== 'hash-a') {
+          return HttpResponse.json(
+            { ok: false, error: { code: 'file_not_found', message: `File not found: ${url.searchParams.get('videoPath') ?? ''}` } },
+            { status: 404 },
+          );
+        }
+        return HttpResponse.json(variantsResponse([
+          variant(firstConfigId, firstDescriptor, true, 'Fresh summary'),
+        ]));
+      }),
+    );
+    const rendered = renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+    await screen.findByTestId('variant-switcher');
+    const renamed = makeVideo({
+      path: '/videos/2026-08-03_renamed.mp4',
+      filename: '2026-08-03_renamed.mp4',
+    });
+
+    rendered.rerender(
+      <QueryClientProvider client={rendered.queryClient}>
+        <ThemeProvider theme={theme}>
+          <DetailsPanel video={renamed} analyzing={false} />
+        </ThemeProvider>
+      </QueryClientProvider>,
+    );
+    await rendered.queryClient.invalidateQueries();
+
+    expect(await screen.findByRole('heading', { name: '2026-08-03_renamed.mp4' })).toBeDefined();
+    expect(screen.getByText('/videos/2026-08-03_renamed.mp4')).toBeDefined();
+    expect(screen.getByText('1 variant')).toBeDefined();
+    expect(screen.queryByText('Settings partly unknown')).toBeNull();
+    expect(locators.every((locator) => locator === '?fingerprint=hash-a')).toBe(true);
+  });
+
   it('renders every variant and previews frames, transcript, summary and tags without mutating', async () => {
     let selectionWrites = 0;
     const onAnalyze = vi.fn();
@@ -338,17 +426,19 @@ describe('details panel', () => {
 
   it('compares variants in parallel and selects from a comparison column', async () => {
     let selectionWrites = 0;
+    let selectedConfigId = firstConfigId;
     server.use(
       http.get('/api/variants', () => HttpResponse.json(variantsResponse([
-        variant(firstConfigId, firstDescriptor, true, 'First summary'),
+        variant(firstConfigId, firstDescriptor, selectedConfigId === firstConfigId, 'First summary'),
         {
-          ...variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+          ...variant(secondConfigId, secondDescriptor, selectedConfigId === secondConfigId, 'Second summary'),
           estimatedCostUsd: 0.0123,
           usage: { totalTokens: 4321, estimatedCostUsd: 0.0123 },
         },
       ]))),
       http.post('/api/variants/select', () => {
         selectionWrites += 1;
+        selectedConfigId = secondConfigId;
         return HttpResponse.json({ ok: true, data: { fingerprint: 'hash-a', configId: secondConfigId } });
       }),
     );
@@ -383,27 +473,63 @@ describe('details panel', () => {
     expect(selectedAction.disabled).toBe(true);
     fireEvent.click(within(secondColumn).getByRole('button', { name: 'Use as selected' }));
     await waitFor(() => expect(selectionWrites).toBe(1));
+    await screen.findByTestId('detail-layout');
+    expect(screen.queryByTestId('variant-compare-layout')).toBeNull();
+    expect(screen.getByText('Second summary')).toBeDefined();
+    await waitFor(() => expect(
+      within(screen.getByTestId(`variant-option-${secondConfigId}`)).getByText('Selected'),
+    ).toBeDefined());
   });
 
-  it('states when analysis creates a variant and sets the current configuration as folder default', async () => {
+  it('keeps unrelated comparison controls usable while one selection is pending', async () => {
+    let selectionCompleted = false;
+    let releaseSelection: () => void = () => undefined;
+    const pendingSelection = new Promise<void>((resolve) => {
+      releaseSelection = () => resolve();
+    });
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
+        variant(firstConfigId, firstDescriptor, true, 'First summary'),
+        variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+        variant(thirdConfigId, thirdDescriptor, false, 'Third summary'),
+      ]))),
+      http.post('/api/variants/select', async () => {
+        await pendingSelection;
+        selectionCompleted = true;
+        return HttpResponse.json({ ok: true, data: { fingerprint: 'hash-a', configId: secondConfigId } });
+      }),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+
+    await screen.findByTestId('variant-switcher');
+    fireEvent.click(screen.getByTestId('compare-variants'));
+    const pendingAction = screen.getByTestId(`compare-use-as-selected-${secondConfigId}`);
+    const unrelatedAction = screen.getByTestId(`compare-use-as-selected-${thirdConfigId}`);
+    const back = screen.getByRole('button', { name: 'Back to file details' });
+    fireEvent.click(pendingAction);
+
+    await waitFor(() => {
+      if (!(pendingAction instanceof HTMLButtonElement)) throw new Error('expected a button');
+      expect(pendingAction.disabled).toBe(true);
+    });
+    if (!(unrelatedAction instanceof HTMLButtonElement)) throw new Error('expected a button');
+    if (!(back instanceof HTMLButtonElement)) throw new Error('expected a button');
+    expect(unrelatedAction.disabled).toBe(false);
+    expect(back.disabled).toBe(false);
+    fireEvent.click(back);
+    expect(screen.getByTestId('detail-layout')).toBeDefined();
+    releaseSelection();
+    await waitFor(() => expect(selectionCompleted).toBe(true));
+  });
+
+  it('states when analysis creates a variant', async () => {
     const onAnalyze = vi.fn();
-    const defaultWrites: unknown[] = [];
     server.use(
       http.get('/api/variants', () => HttpResponse.json(variantsResponse(
         [variant(firstConfigId, firstDescriptor, true, 'First summary')],
         { configId: thirdConfigId, descriptor: thirdDescriptor },
       ))),
-      http.post('/api/variants/folder-default', async ({ request }) => {
-        defaultWrites.push(await request.json());
-        return HttpResponse.json({
-          ok: true,
-          data: {
-            folderId: '11111111-1111-4111-8111-111111111111',
-            defaultConfigId: thirdConfigId,
-            resolvedConfigId: thirdConfigId,
-          },
-        });
-      }),
     );
 
     renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} onAnalyze={onAnalyze} />);
@@ -413,11 +539,42 @@ describe('details panel', () => {
     expect(screen.getByText(/Creates a new variant/)).toBeDefined();
     fireEvent.click(analyze);
     expect(onAnalyze).toHaveBeenCalledWith(makeVideo());
+  });
 
-    fireEvent.click(screen.getByTestId('set-folder-default-variant'));
+  it('enables the folder default action until the selected configuration is the stored default', async () => {
+    const defaultWrites: unknown[] = [];
+    let folderDefaultConfigId: string | null = null;
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
+        variant(firstConfigId, firstDescriptor, false, 'First summary'),
+        variant(secondConfigId, secondDescriptor, true, 'Second summary'),
+      ], { configId: thirdConfigId, descriptor: thirdDescriptor }, folderDefaultConfigId))),
+      http.post('/api/variants/folder-default', async ({ request }) => {
+        defaultWrites.push(await request.json());
+        folderDefaultConfigId = secondConfigId;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            folderId: '11111111-1111-4111-8111-111111111111',
+            defaultConfigId: secondConfigId,
+            resolvedConfigId: secondConfigId,
+          },
+        });
+      }),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+
+    const defaultAction = await screen.findByTestId('set-folder-default-variant');
+    if (!(defaultAction instanceof HTMLButtonElement)) throw new Error('expected a button');
+    expect(defaultAction.disabled).toBe(false);
+    expect(defaultAction.textContent).toContain('Use current configuration as folder default');
+    fireEvent.click(defaultAction);
     await waitFor(() => expect(defaultWrites).toEqual([
-      { folderPath: '/videos', configId: thirdConfigId },
+      { folderPath: '/videos', configId: secondConfigId },
     ]));
+    await waitFor(() => expect(defaultAction.disabled).toBe(true));
+    expect(defaultAction.textContent).toContain('Current configuration is the folder default');
   });
 });
 

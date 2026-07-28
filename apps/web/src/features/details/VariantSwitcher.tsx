@@ -52,10 +52,23 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
     );
   }
   if (state.loadError !== null) {
-    return <Alert severity="error">{dictionary.details.variants.loadError}</Alert>;
+    return (
+      <Alert
+        severity="error"
+        action={(
+          <Button color="inherit" size="small" onClick={state.retryLoad}>
+            {dictionary.details.variants.retry}
+          </Button>
+        )}
+      >
+        {dictionary.details.variants.loadError}
+      </Alert>
+    );
   }
   if (data === null) return null;
-  const currentIsDefault = data.folderDefaultConfigId === data.currentConfig.configId;
+  const selectedVariant = data.variants.find((variant) => variant.selected);
+  const selectedIsDefault = selectedVariant !== undefined
+    && data.folderDefaultConfigId === selectedVariant.configId;
 
   return (
     <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -89,10 +102,13 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
           <Button
             variant="contained"
             size="small"
-            disabled={state.selecting}
+            disabled={state.selectingConfigId === state.previewVariant.configId}
             onClick={state.usePreviewAsSelected}
             data-testid="use-preview-as-selected"
           >
+            {state.selectingConfigId === state.previewVariant.configId
+              ? <CircularProgress size={14} color="inherit" />
+              : null}
             {dictionary.details.variants.useAsSelected}
           </Button>
           <Typography variant="caption">{dictionary.details.variants.selectionImpact}</Typography>
@@ -101,11 +117,16 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
       <Button
         variant="outlined"
         size="small"
-        disabled={currentIsDefault || state.settingFolderDefault}
+        disabled={
+          selectedVariant === undefined
+          || selectedIsDefault
+          || state.selectingConfigId !== null
+          || state.settingFolderDefault
+        }
         onClick={state.useCurrentAsFolderDefault}
         data-testid="set-folder-default-variant"
       >
-        {currentIsDefault
+        {selectedIsDefault
           ? dictionary.details.variants.folderDefault
           : dictionary.details.variants.setFolderDefault}
       </Button>

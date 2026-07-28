@@ -14,6 +14,7 @@ export interface DriveSummaryCounts {
   foldersDone: number;
   filesDone: number;
   filesSkipped: number;
+  filesDuplicateSkipped: number;
   filesFailed: number;
   estimatedCostUsd: number | null;
   costedFiles: number;
@@ -45,6 +46,11 @@ export const DriveSummaryDialog = ({ open, counts, onClose }: DriveSummaryDialog
         <Stat testId="drive-folders-count" value={counts.foldersDone} label={dictionary.driveSummary.folders} />
         <Stat testId="drive-analyzed-count" value={counts.filesDone} label={dictionary.driveSummary.analyzed} />
         <Stat testId="drive-skipped-count" value={counts.filesSkipped} label={dictionary.driveSummary.skipped} />
+        <Stat
+          testId="drive-duplicate-skipped-count"
+          value={counts.filesDuplicateSkipped}
+          label={dictionary.driveSummary.duplicatesSkipped}
+        />
         <Stat testId="drive-failed-count" value={counts.filesFailed} label={dictionary.driveSummary.failed} />
         {counts.estimatedCostUsd === null ? null : (
           <Stat
