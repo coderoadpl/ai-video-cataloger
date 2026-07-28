@@ -2,9 +2,12 @@ import { randomUUID } from 'node:crypto';
 
 import {
   appError,
+  configValueSchema,
   driveRunBatchDisplayName,
+  geminiModelPrice,
   isBatchSubmitRejection,
   ok,
+  spendMonth,
   type AnalyzerProviderConfig,
   type AnalyzerProviderId,
   type AppConfig,
@@ -105,6 +108,12 @@ export interface DriveRunSummary {
   filesDone: number;
   filesSkipped: number;
   filesFailed: number;
+  costEstimate?: {
+    kind: 'estimate';
+    currency: 'USD';
+    files: number;
+    estimatedCostUsd: number;
+  } | undefined;
   snapshotSkipped: number;
   elapsedMs: number;
   failures: DriveRunFailure[];
@@ -181,6 +190,8 @@ export const processDrive = async (
     return { ok: false, error: appError('internal', 'Global catalog is required for drive processing') };
   }
   const globalCatalog = deps.globalCatalog;
+  const budget = await geminiMonthlyBudget(deps);
+  if (!budget.ok) return budget;
   const discovery = await discoverCatalogFolders(deps.fs, { root: input.root });
   if (!discovery.ok) return discovery;
   if (discovery.value.folders.length === 0) {
@@ -201,6 +212,12 @@ export const processDrive = async (
     : await resumableBatchRun(globalCatalog, discovery.value.root);
   if (!resumable.ok) return resumable;
   const adopted = resumable.value.adopted;
+  const usesPricedGemini = await driveUsesPricedGemini(deps, input, discovery.value.folders);
+  if (!usesPricedGemini.ok) return usesPricedGemini;
+  const activeBudget = usesPricedGemini.value
+    || (adopted?.batch !== null && adopted?.batch !== undefined && geminiModelPrice(adopted.batch.model, 0) !== null)
+    ? budget.value
+    : null;
   const state: MutableRunState = {
     run: {
       runId: adopted?.runId ?? options.runId ?? randomUUID(),
@@ -242,6 +259,9 @@ export const processDrive = async (
     filesTotal: state.filesTotal,
   });
   if (!runStarted.ok) return runStarted;
+
+  const initialBudgetPause = await pauseForBudget(deps, state, progress, now, activeBudget);
+  if (!initialBudgetPause.ok) return initialBudgetPause;
 
   if (resumable.value.orphanJobNames.length > 0) {
     const orphansReported = await report(progress, 'batch_orphan_jobs', {
@@ -311,7 +331,17 @@ export const processDrive = async (
           continue;
         }
       }
-      const result = await runDriveFile(deps, input, video.path, fileIndex, state.filesTotal, skipped.value, progress, options);
+      const result = await runDriveFile(
+        deps,
+        input,
+        video.path,
+        fileIndex,
+        state.filesTotal,
+        state.run.runId,
+        skipped.value,
+        progress,
+        options,
+      );
       if (result.ok) {
         consecutiveFailures = 0;
         if (result.value.snapshotSkipped) state.snapshotSkipped += 1;
@@ -325,12 +355,16 @@ export const processDrive = async (
           state.run.filesDone += 1;
           folderCounts.filesDone += 1;
         }
+        const budgetPause = await pauseForBudget(deps, state, progress, now, activeBudget);
+        if (!budgetPause.ok) return budgetPause;
         continue;
       }
 
       consecutiveFailures += 1;
       const recorded = await recordFileFailure(deps, state, folderCounts, video.path, result.error, now);
       if (!recorded.ok) return recorded;
+      const budgetPause = await pauseForBudget(deps, state, progress, now, activeBudget);
+      if (!budgetPause.ok) return budgetPause;
       if (consecutiveFailures >= maxConsecutiveFailures) return abortedRun(deps, state, progress, now);
     }
 
@@ -360,6 +394,7 @@ export const processDrive = async (
       progress,
       options,
       now,
+      budget: activeBudget,
     });
     if (!mapped.ok) return mapped;
   } else if (plan !== null && state.run.batch !== null) {
@@ -441,6 +476,20 @@ const resolveBatchFolders = async (
     if (stored.value.effective.gemini_batch_mode === 'true') enabled.add(folder.path);
   }
   return ok(enabled);
+};
+
+const driveUsesPricedGemini = async (
+  deps: ProcessDeps,
+  input: ProcessDriveInput,
+  folders: readonly CatalogFolderDiscovery[],
+): Promise<Result<boolean, AppError>> => {
+  for (const folder of folders) {
+    const resolved = await resolveProcessOptions(deps.config, folder.path, processInput(input, folder.path, 1, 1));
+    if (!resolved.ok) return resolved;
+    const provider = resolved.value.analyzer.provider;
+    if (provider.family === 'gemini-native' && geminiModelPrice(provider.model, 0) !== null) return ok(true);
+  }
+  return ok(false);
 };
 
 const resolveBatchPlan = async (
@@ -562,6 +611,7 @@ interface BatchPassInput {
   progress: JobExecutionContext | undefined;
   options: DriveRunOptions;
   now: () => Date;
+  budget: number | null;
 }
 
 // Every file of the adopted job is already in the index, so its answers would only duplicate rows
@@ -692,7 +742,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
         ? await processVideoPipeline(
           pass.deps,
           {
-            ...processInput(pass.input, pending.video.path, pending.fileIndex, state.filesTotal),
+            ...processInput(pass.input, pending.video.path, pending.fileIndex, state.filesTotal, state.run.runId),
             precomputedAnalysis: { analysis: outcome.value, pricingMode: 'batch', model },
           },
           progress,
@@ -701,11 +751,15 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
       if (!completed.ok) {
         const recorded = await recordFileFailure(deps, state, folder.counts, pending.video.path, completed.error, now);
         if (!recorded.ok) return recorded;
+        const budgetPause = await pauseForBudget(deps, state, progress, now, pass.budget);
+        if (!budgetPause.ok) return budgetPause;
         continue;
       }
       if (completed.value.snapshotSkipped === true) state.snapshotSkipped += 1;
       state.run.filesDone += 1;
       folder.counts.filesDone += 1;
+      const budgetPause = await pauseForBudget(deps, state, progress, now, pass.budget);
+      if (!budgetPause.ok) return budgetPause;
     }
     const closed = await closeFolder(deps, pass.globalCatalog, state, folder.path, folder.counts, progress, now);
     if (!closed.ok) return closed;
@@ -808,6 +862,67 @@ const abortedRun = async (
   };
 };
 
+const geminiMonthlyBudget = async (deps: ProcessDeps): Promise<Result<number | null, AppError>> => {
+  const resolved = await resolveConfigValues(deps.config);
+  if (!resolved.ok) return resolved;
+  const parsed = configValueSchema.shape.gemini_monthly_budget_usd.safeParse(
+    resolved.value.effective.gemini_monthly_budget_usd,
+  );
+  if (!parsed.success) {
+    return {
+      ok: false,
+      error: appError('invalid_config_value', 'gemini_monthly_budget_usd does not match the config schema'),
+    };
+  }
+  return ok(parsed.data);
+};
+
+const pauseForBudget = async (
+  deps: ProcessDeps,
+  state: MutableRunState,
+  progress: JobExecutionContext | undefined,
+  now: () => Date,
+  budgetUsd: number | null,
+): Promise<Result<void, AppError>> => {
+  if (budgetUsd === null) return ok(undefined);
+  if (deps.spendLedger === undefined || deps.globalCatalog === undefined) {
+    return { ok: false, error: appError('internal', 'Spend ledger dependencies are required for a Gemini budget cap') };
+  }
+  const month = spendMonth(now());
+  const spend = await deps.spendLedger.total({ provider: 'gemini', month });
+  if (!spend.ok) return spend;
+  if (spend.value.estimatedCostUsd < budgetUsd) return ok(undefined);
+  const persisted = await persistRun(deps, state, now);
+  if (!persisted.ok) return persisted;
+  const flushed = await deps.globalCatalog.flush();
+  if (!flushed.ok) return flushed;
+  const reported = await report(progress, 'budget_cap_reached', {
+    provider: 'gemini',
+    month,
+    budgetUsd,
+    estimatedSpendUsd: spend.value.estimatedCostUsd,
+    estimated: true,
+    runId: state.run.runId,
+  });
+  if (!reported.ok) return reported;
+  const summary = await reportSummary(deps, state, progress, now);
+  if (!summary.ok) return summary;
+  return {
+    ok: false,
+    error: appError(
+      'drive_run_aborted',
+      `Paused drive run because the local Gemini cost estimate for ${month} is $${spend.value.estimatedCostUsd.toFixed(4)} `
+      + `against the $${budgetUsd.toFixed(2)} budget. Raise or unset gemini_monthly_budget_usd and re-run the same root to resume.`,
+      {
+        runId: state.run.runId,
+        month,
+        budgetUsd,
+        estimatedSpendUsd: spend.value.estimatedCostUsd,
+      },
+    ),
+  };
+};
+
 const walkCatalogTree = async (
   fs: FileSystemPort,
   folder: string,
@@ -841,18 +956,19 @@ const runDriveFile = async (
   videoPath: string,
   current: number,
   total: number,
+  runId: string,
   skipped: boolean,
   progress: JobExecutionContext | undefined,
   options: DriveRunOptions,
 ): Promise<Result<{ snapshotSkipped: boolean }, AppError>> => {
   if (skipped) {
-    const result = await processVideoPipeline(deps, processInput(input, videoPath, current, total), progress);
+    const result = await processVideoPipeline(deps, processInput(input, videoPath, current, total, runId), progress);
     return result.ok ? ok({ snapshotSkipped: result.value.snapshotSkipped === true }) : result;
   }
 
   let attempt = 0;
   while (attempt <= maxRetries) {
-    const result = await processVideoPipeline(deps, processInput(input, videoPath, current, total), progress);
+    const result = await processVideoPipeline(deps, processInput(input, videoPath, current, total, runId), progress);
     if (result.ok) return ok({ snapshotSkipped: result.value.snapshotSkipped === true });
     if (!isRetryable(result.error) || attempt === maxRetries) return result;
     const delay = backoffDelayMs(attempt, options);
@@ -867,6 +983,7 @@ const processInput = (
   videoPath: string,
   current: number,
   total: number,
+  runId?: string,
 ): ProcessPipelineInput => ({
   videoPath,
   frames: input.frames,
@@ -884,7 +1001,7 @@ const processInput = (
   ...(input.provider === undefined ? {} : { provider: input.provider }),
   ...(input.localModel === undefined ? {} : { localModel: input.localModel }),
   ...(input.force === undefined ? {} : { force: input.force }),
-  batch: { current, total },
+  batch: { current, total, ...(runId === undefined ? {} : { runId }) },
 });
 
 const relocateResumedFile = async (
@@ -1000,7 +1117,11 @@ const reportSummary = async (
   if (deps.globalCatalog === undefined) {
     return { ok: false, error: appError('internal', 'Global catalog is required for drive processing') };
   }
-  const summary = summaryFromState(state, now);
+  const spend = deps.spendLedger === undefined
+    ? ok({ entries: 0, estimatedCostUsd: 0 })
+    : await deps.spendLedger.total({ provider: 'gemini', runId: state.run.runId });
+  if (!spend.ok) return spend;
+  const summary = summaryFromState(state, now, spend.value);
   const reported = await report(progress, 'run-summary', {
     runId: summary.runId,
     root: summary.root,
@@ -1010,6 +1131,7 @@ const reportSummary = async (
     filesDone: summary.filesDone,
     filesSkipped: summary.filesSkipped,
     filesFailed: summary.filesFailed,
+    ...(summary.costEstimate === undefined ? {} : { costEstimate: summary.costEstimate }),
     snapshotSkipped: summary.snapshotSkipped,
     elapsedMs: summary.elapsedMs,
     failures: summary.failures,
@@ -1018,7 +1140,11 @@ const reportSummary = async (
   return ok(summary);
 };
 
-const summaryFromState = (state: MutableRunState, now: () => Date): DriveRunSummary => ({
+const summaryFromState = (
+  state: MutableRunState,
+  now: () => Date,
+  spend: { entries: number; estimatedCostUsd: number },
+): DriveRunSummary => ({
   runId: state.run.runId,
   root: state.run.root,
   startedAt: state.run.startedAt,
@@ -1029,6 +1155,14 @@ const summaryFromState = (state: MutableRunState, now: () => Date): DriveRunSumm
   filesDone: state.run.filesDone,
   filesSkipped: state.run.filesSkipped,
   filesFailed: state.run.filesFailed,
+  ...(spend.entries === 0 ? {} : {
+    costEstimate: {
+      kind: 'estimate',
+      currency: 'USD',
+      files: spend.entries,
+      estimatedCostUsd: spend.estimatedCostUsd,
+    },
+  }),
   snapshotSkipped: state.snapshotSkipped,
   elapsedMs: Math.max(0, now().getTime() - state.startedMs),
   failures: state.failures,

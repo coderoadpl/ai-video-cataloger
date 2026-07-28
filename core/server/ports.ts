@@ -16,6 +16,7 @@ import type {
   FileArtifact,
   FileArtifactId,
   GeminiUsageAccounting,
+  SpendLedgerEntry,
   MachineProfile,
   Person,
   Result,
@@ -224,6 +225,20 @@ export interface ConfigStore {
   get(scope: ConfigScope, key: ConfigKey): Promise<Result<string | null, AppError>>;
   getAll(scope: ConfigScope): Promise<Result<Partial<Record<ConfigKey, string>>, AppError>>;
   set(scope: ConfigScope, key: ConfigKey, value: string): Promise<Result<{ previousValue: string | null }, AppError>>;
+}
+
+export interface SpendLedgerTotal {
+  entries: number;
+  estimatedCostUsd: number;
+}
+
+export interface SpendLedgerPort {
+  append(entry: SpendLedgerEntry): Promise<Result<void, AppError>>;
+  total(input: {
+    provider: 'gemini';
+    month?: string | undefined;
+    runId?: string | undefined;
+  }): Promise<Result<SpendLedgerTotal, AppError>>;
 }
 
 export interface CredentialValueConflict {
@@ -684,7 +699,8 @@ export type ProcessJobStep =
   | 'batch_completed'
   | 'batch_uploads_retained'
   | 'batch_orphan_jobs'
-  | 'batch_model_changed';
+  | 'batch_model_changed'
+  | 'budget_cap_reached';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

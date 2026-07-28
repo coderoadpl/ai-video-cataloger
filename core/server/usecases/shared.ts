@@ -1,6 +1,7 @@
 import {
   CONFIG_DEFAULTS,
   CONFIG_KEYS,
+  geminiCostEstimateSchema,
   type AppConfig,
   type ConfigKey,
   type VideoStatus,
@@ -32,6 +33,7 @@ export const summaryDataSchema = z.object({
   fullAnalysis: z.string(),
   tags: z.array(z.string()).default([]),
   analyzedAt: z.string(),
+  costEstimate: geminiCostEstimateSchema.optional(),
 });
 
 export type SummaryData = z.output<typeof summaryDataSchema>;
@@ -158,6 +160,8 @@ export const configValueForKey = (key: ConfigKey, value: string): AppConfig[Conf
       return configValueSchema.shape.faces_enabled.parse(value);
     case 'gemini_batch_mode':
       return configValueSchema.shape.gemini_batch_mode.parse(value);
+    case 'gemini_monthly_budget_usd':
+      return configValueSchema.shape.gemini_monthly_budget_usd.parse(value);
     case 'output_language':
       return configValueSchema.shape.output_language.parse(value);
     case 'ui_language':
@@ -185,6 +189,7 @@ export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
   analyzer_provider: null,
   faces_enabled: null,
   gemini_batch_mode: null,
+  gemini_monthly_budget_usd: null,
   output_language: null,
   ui_language: null,
 });
@@ -203,6 +208,7 @@ export const storedDefaults = (): Record<ConfigKey, string> => ({
   analyzer_provider: stringifyConfigDefault('analyzer_provider'),
   faces_enabled: stringifyConfigDefault('faces_enabled'),
   gemini_batch_mode: stringifyConfigDefault('gemini_batch_mode'),
+  gemini_monthly_budget_usd: stringifyConfigDefault('gemini_monthly_budget_usd'),
   output_language: stringifyConfigDefault('output_language'),
   ui_language: stringifyConfigDefault('ui_language'),
 });

@@ -104,6 +104,7 @@ export interface Dictionary {
     location: string;
     summary: string;
     suggestedFilename: string;
+    estimatedGeminiCost: (amount: number, model: string, pricingMode: string) => string;
     noSummaryAvailable: string;
     extractedFrames: (count: number) => string;
     frame: (index: number) => string;
@@ -343,7 +344,16 @@ export interface Dictionary {
     driveFolderDone: (path: string, done: number, skipped: number, failed: number) => string;
     driveFileSkipped: (filename: string) => string;
     driveSnapshotSkipped: (folder: string) => string;
-    driveRunComplete: (foldersDone: number, foldersTotal: number, done: number, skipped: number, failed: number) => string;
+    driveRunComplete: (
+      foldersDone: number,
+      foldersTotal: number,
+      done: number,
+      skipped: number,
+      failed: number,
+      estimatedCostUsd: number | null,
+      costedFiles: number,
+    ) => string;
+    driveBudgetCapReached: (month: string, estimatedSpendUsd: number, budgetUsd: number) => string;
     driveBatchSubmitted: (requestCount: number, reattached: boolean) => string;
     driveBatchPoll: (state: string, requestCount: number) => string;
     driveBatchCompleted: (succeeded: number, failed: number) => string;
@@ -526,6 +536,7 @@ export interface Dictionary {
     analyzed: string;
     skipped: string;
     failed: string;
+    estimatedCost: (files: number) => string;
   };
   harnessModelPicker: {
     model: string;
@@ -660,6 +671,8 @@ export const en: Dictionary = {
     location: 'Location',
     summary: 'Summary',
     suggestedFilename: 'Suggested filename:',
+    estimatedGeminiCost: (amount, model, pricingMode) =>
+      `Estimated Gemini cost: $${amount.toFixed(4)} USD · ${model} · ${pricingMode}`,
     noSummaryAvailable: 'No summary available. Run the analysis again to generate it.',
     extractedFrames: (count) => `Extracted Frames (${count})`,
     frame: (index) => `Frame ${index}`,
@@ -920,8 +933,14 @@ export const en: Dictionary = {
     driveFolderDone: (path, done, skipped, failed) => `✓ ${path}: ${String(done)} done, ${String(skipped)} skipped, ${String(failed)} failed`,
     driveFileSkipped: (filename) => `↷ Skipped (already analyzed): ${filename}`,
     driveSnapshotSkipped: (folder) => `⚠ Folder read-only — snapshot skipped: ${folder}`,
-    driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed) =>
-      `=== Drive run complete: ${String(foldersDone)}/${String(foldersTotal)} folder(s), ${String(done)} done, ${String(skipped)} skipped, ${String(failed)} failed ===`,
+    driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed, estimatedCostUsd, costedFiles) => {
+      const estimate = estimatedCostUsd === null
+        ? ''
+        : `, estimated Gemini cost $${estimatedCostUsd.toFixed(4)} USD (${String(costedFiles)} file(s))`;
+      return `=== Drive run complete: ${String(foldersDone)}/${String(foldersTotal)} folder(s), ${String(done)} done, ${String(skipped)} skipped, ${String(failed)} failed${estimate} ===`;
+    },
+    driveBudgetCapReached: (month, estimatedSpendUsd, budgetUsd) =>
+      `Gemini budget reached for ${month}: estimated spend $${estimatedSpendUsd.toFixed(4)} USD / $${budgetUsd.toFixed(2)} USD. Drive run paused.`,
     driveBatchSubmitted: (requestCount, reattached) =>
       reattached
         ? `↻ Re-attached to the batch job already running for ${String(requestCount)} file(s)`
@@ -1126,6 +1145,7 @@ export const en: Dictionary = {
     analyzed: 'analyzed',
     skipped: 'skipped',
     failed: 'failed',
+    estimatedCost: (files) => `estimated Gemini cost · ${String(files)} priced file(s)`,
   },
   harnessModelPicker: {
     model: 'Model',
@@ -1268,6 +1288,8 @@ export const pl: Dictionary = {
     location: 'Lokalizacja',
     summary: 'Streszczenie',
     suggestedFilename: 'Sugerowana nazwa pliku:',
+    estimatedGeminiCost: (amount, model, pricingMode) =>
+      `Szacowany koszt Gemini: ${amount.toFixed(4)} USD · ${model} · ${pricingMode}`,
     noSummaryAvailable: 'Brak streszczenia. Uruchom analizę ponownie, aby je wygenerować.',
     extractedFrames: (count) => `Wyodrębnione klatki (${count})`,
     frame: (index) => `Klatka ${index}`,
@@ -1528,8 +1550,14 @@ export const pl: Dictionary = {
     driveFolderDone: (path, done, skipped, failed) => `✓ ${path}: ${String(done)} gotowe, ${String(skipped)} pominięte, ${String(failed)} błędne`,
     driveFileSkipped: (filename) => `↷ Pominięto (już przeanalizowano): ${filename}`,
     driveSnapshotSkipped: (folder) => `⚠ Folder tylko do odczytu — pominięto migawkę: ${folder}`,
-    driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed) =>
-      `=== Analiza drzewa ukończona: ${String(foldersDone)}/${String(foldersTotal)} folder(y), ${String(done)} gotowe, ${String(skipped)} pominięte, ${String(failed)} błędne ===`,
+    driveRunComplete: (foldersDone, foldersTotal, done, skipped, failed, estimatedCostUsd, costedFiles) => {
+      const estimate = estimatedCostUsd === null
+        ? ''
+        : `, szacowany koszt Gemini ${estimatedCostUsd.toFixed(4)} USD (${String(costedFiles)} plik(i))`;
+      return `=== Analiza drzewa ukończona: ${String(foldersDone)}/${String(foldersTotal)} folder(y), ${String(done)} gotowe, ${String(skipped)} pominięte, ${String(failed)} błędne${estimate} ===`;
+    },
+    driveBudgetCapReached: (month, estimatedSpendUsd, budgetUsd) =>
+      `Osiągnięto budżet Gemini za ${month}: szacowane wydatki ${estimatedSpendUsd.toFixed(4)} USD / ${budgetUsd.toFixed(2)} USD. Analiza dysku została wstrzymana.`,
     driveBatchSubmitted: (requestCount, reattached) =>
       reattached
         ? `↻ Podpięto do już uruchomionego zadania wsadowego dla ${String(requestCount)} plik(ów)`
@@ -1735,6 +1763,7 @@ export const pl: Dictionary = {
     analyzed: 'przeanalizowanych',
     skipped: 'pominiętych',
     failed: 'nieudanych',
+    estimatedCost: (files) => `szacowany koszt Gemini · ${String(files)} wycenionych plików`,
   },
   harnessModelPicker: {
     model: 'Model',

@@ -1,5 +1,6 @@
 import {
   ok,
+  spendMonth,
   type AppError,
   type CatalogAnalysis,
   type CatalogFile,
@@ -13,6 +14,7 @@ import type {
   FileSystemPort,
   ForgetEntryResult,
   GlobalCatalogStore,
+  SpendLedgerPort,
   ReconcileFolderResult,
 } from '../ports.js';
 import { isReadOnlyWriteError, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
@@ -22,6 +24,7 @@ import { isSupportedVideoExtension } from './shared.js';
 export interface CatalogIndexDeps {
   globalCatalog: GlobalCatalogStore;
   fs: FileSystemPort;
+  spendLedger?: SpendLedgerPort | undefined;
 }
 
 export interface ProcessedVideoInput {
@@ -57,6 +60,13 @@ export interface IndexStatusOutput {
   counts: { folders: number; files: number; analyses: number };
   folders: IndexStatusFolder[];
   latestRun: DriveRunRecord | null;
+  currentMonthSpend: {
+    kind: 'estimate';
+    provider: 'gemini';
+    month: string;
+    entries: number;
+    estimatedCostUsd: number;
+  };
 }
 
 export interface IndexRebuildOutput {
@@ -294,11 +304,23 @@ export const indexStatus = async (deps: CatalogIndexDeps): Promise<Result<IndexS
   if (!folders.ok) return folders;
   const latestRun = await deps.globalCatalog.latestDriveRun();
   if (!latestRun.ok) return latestRun;
+  const month = spendMonth(new Date());
+  const spend = deps.spendLedger === undefined
+    ? ok({ entries: 0, estimatedCostUsd: 0 })
+    : await deps.spendLedger.total({ provider: 'gemini', month });
+  if (!spend.ok) return spend;
   return ok({
     databasePath: deps.globalCatalog.databasePath(),
     counts: counts.value,
     folders: folders.value.map(toStatusFolder),
     latestRun: latestRun.value,
+    currentMonthSpend: {
+      kind: 'estimate',
+      provider: 'gemini',
+      month,
+      entries: spend.value.entries,
+      estimatedCostUsd: spend.value.estimatedCostUsd,
+    },
   });
 };
 

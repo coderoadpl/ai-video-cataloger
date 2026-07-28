@@ -40,6 +40,15 @@ export const ArtifactsSection = ({ video }: { video: DetailsVideo }) => {
               </Box>
             </Typography>
           ) : null}
+          {summary.costEstimate === undefined ? null : (
+            <Typography variant="caption" data-testid="gemini-cost-estimate">
+              {dictionary.details.estimatedGeminiCost(
+                summary.costEstimate.estimatedCostUsd,
+                summary.costEstimate.model,
+                summary.costEstimate.pricingMode,
+              )}
+            </Typography>
+          )}
         </Paper>
       ) : null}
 

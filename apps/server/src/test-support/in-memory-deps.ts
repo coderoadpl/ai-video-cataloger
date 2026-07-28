@@ -18,6 +18,7 @@ import {
   type FileArtifact,
   type Person,
   type Result,
+  type SpendLedgerEntry,
   type WhisperModelName,
 } from '@core/domain/index.js';
 import { ReadinessCache } from '@core/server/index.js';
@@ -66,6 +67,8 @@ import type {
   ProviderTestResult,
   ReconcileFolderInput,
   ReconcileFolderResult,
+  SpendLedgerPort,
+  SpendLedgerTotal,
   ThumbnailGeneration,
   TranscriberPort,
   WhisperRuntimePort,
@@ -104,6 +107,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     whisperRuntime: new InMemoryWhisperRuntimePort(),
     analyzer: new InMemoryAnalyzerPort(),
     providers: new ProvidersNotWiredPort(),
+    spendLedger: new InMemorySpendLedger(),
     localAi: new InMemoryLocalAiRuntimePort(),
     downloads: new InMemoryModelDownloadPort(),
     faceEngine: new InMemoryFaceEnginePort(),
@@ -686,6 +690,30 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return [...new Set([...this.faceObservations.values()]
       .filter((observation) => observation.personId === personId)
       .map((observation) => observation.fingerprint))];
+  }
+}
+
+class InMemorySpendLedger implements SpendLedgerPort {
+  private readonly entries: SpendLedgerEntry[] = [];
+
+  append(entry: SpendLedgerEntry): Promise<Result<void, AppError>> {
+    this.entries.push(structuredClone(entry));
+    return Promise.resolve(ok(undefined));
+  }
+
+  total(input: {
+    provider: 'gemini';
+    month?: string | undefined;
+    runId?: string | undefined;
+  }): Promise<Result<SpendLedgerTotal, AppError>> {
+    const matching = this.entries.filter((entry) =>
+      entry.provider === input.provider
+      && (input.month === undefined || entry.month === input.month)
+      && (input.runId === undefined || entry.runId === input.runId));
+    return Promise.resolve(ok({
+      entries: matching.length,
+      estimatedCostUsd: matching.reduce((total, entry) => total + entry.estimatedCostUsd, 0),
+    }));
   }
 }
 

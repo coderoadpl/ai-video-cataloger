@@ -4,7 +4,6 @@ import {
   appError,
   batchSubmitRejection,
   defaultGeminiNativeProvider,
-  geminiNativeModelPricing,
   geminiUsageAccounting,
   ok,
   type AppError,
@@ -30,6 +29,7 @@ import {
   InMemoryFileSystem,
   InMemoryGlobalCatalogStore,
   InMemoryMedia,
+  InMemorySpendLedger,
   InMemoryTranscriber,
 } from '../../../test/server/usecases/test-fakes.js';
 
@@ -59,7 +59,8 @@ const batchAnalysis = (model: string): AnalysisOutput => ({
   rawResponse: RESPONSE_TEXT,
   usage: geminiUsageAccounting(
     { promptTokens: 1000, candidatesTokens: 500, thoughtsTokens: 500 },
-    geminiNativeModelPricing(model, 'batch') ?? {},
+    model,
+    'batch',
   ),
   transcript: { text: 'czesc', segments: [{ start: 1, end: 2, text: 'czesc' }] },
 });
@@ -179,6 +180,7 @@ const makeDeps = (batch: AnalyzerBatchPort) => {
     analyzer: new InMemoryAnalyzer(),
     analyzerBatch: batch,
     globalCatalog: new InMemoryGlobalCatalogStore(),
+    spendLedger: new InMemorySpendLedger(),
   };
 };
 
@@ -217,7 +219,16 @@ describe('gemini batch drive runs', () => {
 
     const result = await processDrive(deps, batchInput, progress, { ...runOptions, runId: 'run-1' });
 
-    expect(result).toMatchObject({ ok: true, value: { filesDone: 2, filesFailed: 0, filesSkipped: 0 } });
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        filesDone: 2,
+        filesFailed: 0,
+        filesSkipped: 0,
+        costEstimate: { kind: 'estimate', files: 2, estimatedCostUsd: 0.009 },
+      },
+    });
+    expect(deps.spendLedger.entries).toHaveLength(2);
     expect(batch.uploads).toEqual(['/drive/one.mp4', '/drive/nested/two.mp4']);
     expect(batch.submissions).toEqual([{ displayName: 'avc-drive-run-1', keys: ['r0', 'r1'] }]);
     expect(deps.analyzer.inputs).toHaveLength(0);

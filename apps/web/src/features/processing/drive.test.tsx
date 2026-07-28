@@ -86,7 +86,14 @@ describe('useProcessing drive', () => {
     expect(invalidate).toHaveBeenCalled();
     expect(result.current.driveSummary).toEqual({
       open: true,
-      counts: { foldersDone: 2, filesDone: 2, filesSkipped: 1, filesFailed: 0 },
+      counts: {
+        foldersDone: 2,
+        filesDone: 2,
+        filesSkipped: 1,
+        filesFailed: 0,
+        estimatedCostUsd: null,
+        costedFiles: 0,
+      },
     });
   });
 

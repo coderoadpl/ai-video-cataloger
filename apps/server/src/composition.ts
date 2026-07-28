@@ -18,6 +18,7 @@ import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { NodeFolderWatcherPort } from '@adapters/fs/folder-watcher.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { ManagedOllamaRuntimeAdapter } from '@adapters/ollama-runtime/index.js';
+import { NdjsonSpendLedger } from '@adapters/spend-ledger/index.js';
 import { ManagedWhisperRuntimeAdapter } from '@adapters/whisper-runtime/index.js';
 import { HuggingFaceWhisperModelDownloader, WhisperTranscriberAdapter } from '@adapters/whisper/index.js';
 import {
@@ -57,6 +58,7 @@ import type {
   ModelDownloadPort,
   ProvidersPort,
   ProviderTestResult,
+  SpendLedgerPort,
   TranscriberPort,
   WhisperRuntimePort,
 } from '@core/server/index.js';
@@ -79,6 +81,7 @@ export interface AppDeps {
   analyzer: AnalyzerPort;
   analyzerBatch?: AnalyzerBatchPort | undefined;
   providers: ProvidersPort;
+  spendLedger: SpendLedgerPort;
   localAi: LocalAiRuntimePort;
   downloads: ModelDownloadPort;
   faceEngine: FaceEnginePort;
@@ -161,6 +164,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     analyzer: new ProviderRoutingAnalyzerAdapter(harness, ollamaAnalyzer, apiAnalyzer, geminiAnalyzer),
     analyzerBatch: geminiAnalyzer,
     providers: new ProviderRoutingProvidersPort(harness, ollamaAnalyzer, apiAnalyzer, geminiAnalyzer),
+    spendLedger: new NdjsonSpendLedger({ homeDirectory }),
     localAi,
     downloads,
     faceEngine: new OnnxFaceEngineAdapter({ downloads }),

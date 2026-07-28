@@ -18,6 +18,7 @@ import {
   type MachineProfile,
   type Person,
   type Result,
+  type SpendLedgerEntry,
   type Video,
   type WhisperModelName,
 } from '@core/domain/index.js';
@@ -44,6 +45,8 @@ import type {
   GlobalCatalogStore,
   ReconcileFolderInput,
   ReconcileFolderResult,
+  SpendLedgerPort,
+  SpendLedgerTotal,
   AnalyzerPort,
   AnalysisOutput,
   AnalyzerTranscript,
@@ -390,6 +393,30 @@ export class InMemoryCatalogs implements CatalogRepositoryFactory {
     if (!isReadOnlyWriteError(ensured.error)) return ensured;
     repository.markReadOnly();
     return ok(repository);
+  }
+}
+
+export class InMemorySpendLedger implements SpendLedgerPort {
+  readonly entries: SpendLedgerEntry[] = [];
+
+  append(entry: SpendLedgerEntry): Promise<Result<void, AppError>> {
+    this.entries.push(structuredClone(entry));
+    return Promise.resolve(ok(undefined));
+  }
+
+  total(input: {
+    provider: 'gemini';
+    month?: string | undefined;
+    runId?: string | undefined;
+  }): Promise<Result<SpendLedgerTotal, AppError>> {
+    const matching = this.entries.filter((entry) =>
+      entry.provider === input.provider
+      && (input.month === undefined || entry.month === input.month)
+      && (input.runId === undefined || entry.runId === input.runId));
+    return Promise.resolve(ok({
+      entries: matching.length,
+      estimatedCostUsd: matching.reduce((total, entry) => total + entry.estimatedCostUsd, 0),
+    }));
   }
 }
 

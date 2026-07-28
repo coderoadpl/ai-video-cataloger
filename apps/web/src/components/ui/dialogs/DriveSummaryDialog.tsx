@@ -15,6 +15,8 @@ export interface DriveSummaryCounts {
   filesDone: number;
   filesSkipped: number;
   filesFailed: number;
+  estimatedCostUsd: number | null;
+  costedFiles: number;
 }
 
 interface DriveSummaryDialogProps {
@@ -23,7 +25,7 @@ interface DriveSummaryDialogProps {
   onClose: () => void;
 }
 
-const Stat = ({ testId, value, label }: { testId: string; value: number; label: string }) => (
+const Stat = ({ testId, value, label }: { testId: string; value: number | string; label: string }) => (
   <Typography variant="body2">
     <Box component="span" data-testid={testId} sx={{ fontWeight: 600 }}>
       {value}
@@ -44,6 +46,13 @@ export const DriveSummaryDialog = ({ open, counts, onClose }: DriveSummaryDialog
         <Stat testId="drive-analyzed-count" value={counts.filesDone} label={dictionary.driveSummary.analyzed} />
         <Stat testId="drive-skipped-count" value={counts.filesSkipped} label={dictionary.driveSummary.skipped} />
         <Stat testId="drive-failed-count" value={counts.filesFailed} label={dictionary.driveSummary.failed} />
+        {counts.estimatedCostUsd === null ? null : (
+          <Stat
+            testId="drive-estimated-cost"
+            value={`$${counts.estimatedCostUsd.toFixed(4)}`}
+            label={dictionary.driveSummary.estimatedCost(counts.costedFiles)}
+          />
+        )}
       </DialogContent>
       <DialogActions>
         <Button data-testid="drive-summary-close" variant="contained" onClick={onClose}>

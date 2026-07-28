@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Gemini analyses show per-file and drive-run cost estimates, append them to a local monthly spend ledger, and pause resumable drive runs at a configured soft budget.
 - The packaged app honors `AI_VIDEO_CATALOGER_USER_DATA_DIR` and the keychain
   environment variables for fully isolated test runs.
 - Duplicate chips appear in folder scope, not only Whole-tree.
