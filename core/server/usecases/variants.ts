@@ -29,7 +29,11 @@ import {
 } from './artifact-store.js';
 import { resolveFolderIntoIndex } from './catalog-index.js';
 import { readFolderMarker } from './folder-identity.js';
-import { processConfigIdentity, resolveProcessOptions } from './process.js';
+import {
+  processConfigIdentity,
+  resolveProcessOptions,
+  type ProcessConfigIdentity,
+} from './process.js';
 import { artifactPaths } from './shared.js';
 
 const configIdSchema = z.union([z.literal('legacy'), z.string().regex(/^cfg_[0-9a-f]{12}$/)]);
@@ -94,7 +98,9 @@ export interface VariantListItem {
 export interface ListVariantsOutput {
   fingerprint: string;
   videoPath: string;
+  folderPath: string;
   folderDefaultConfigId: string;
+  currentConfig: ProcessConfigIdentity;
   variants: VariantListItem[];
 }
 
@@ -139,23 +145,24 @@ export const listVariants = async (
   if (!variants.ok) return variants;
   const storedFolderDefault = await deps.globalCatalog.getFolderDefaultConfigId(target.value.folderId);
   if (!storedFolderDefault.ok) return storedFolderDefault;
-  const folderDefault = storedFolderDefault.value === null
-    ? await resolvedFolderConfigId(deps, target.value.folderPath)
-    : ok(storedFolderDefault.value);
-  if (!folderDefault.ok) return folderDefault;
+  const currentConfig = await resolvedFolderConfigIdentity(deps, target.value.folderPath);
+  if (!currentConfig.ok) return currentConfig;
+  const folderDefaultConfigId = storedFolderDefault.value ?? currentConfig.value.configId;
   const root = await discoverArtifactRoot(deps.fs, target.value.folderPath);
   if (!root.ok) return root;
   const selectedConfigId = await selectedVariantConfigId(
     deps.globalCatalog,
     target.value.fingerprint,
     variants.value,
-    folderDefault.value,
+    folderDefaultConfigId,
   );
   if (!selectedConfigId.ok) return selectedConfigId;
   return ok({
     fingerprint: target.value.fingerprint,
     videoPath: target.value.videoPath,
-    folderDefaultConfigId: folderDefault.value,
+    folderPath: target.value.folderPath,
+    folderDefaultConfigId,
+    currentConfig: currentConfig.value,
     variants: variants.value.sort(compareVariants).map((variant) => variantListItem(
       deps.fs,
       root.value,
@@ -241,11 +248,13 @@ export const setFolderDefaultVariant = async (
   if (!records.ok) return records;
   const before = await selectedVariants(deps.globalCatalog, records.value.map((record) => record.file.fingerprint));
   if (!before.ok) return before;
-  const fallback = parsed.data.configId === null
-    ? await resolvedFolderConfigId(deps, folderPath)
-    : ok(parsed.data.configId);
-  if (!fallback.ok) return fallback;
-  const stored = await deps.globalCatalog.setFolderDefaultVariant(folderId, fallback.value);
+  let fallbackConfigId = parsed.data.configId;
+  if (fallbackConfigId === null) {
+    const fallback = await resolvedFolderConfigIdentity(deps, folderPath);
+    if (!fallback.ok) return fallback;
+    fallbackConfigId = fallback.value.configId;
+  }
+  const stored = await deps.globalCatalog.setFolderDefaultVariant(folderId, fallbackConfigId);
   if (!stored.ok) return stored;
   const after = await selectedVariants(deps.globalCatalog, records.value.map((record) => record.file.fingerprint));
   if (!after.ok) {
@@ -268,7 +277,7 @@ export const setFolderDefaultVariant = async (
   return ok({
     folderId,
     defaultConfigId: parsed.data.configId,
-    resolvedConfigId: fallback.value,
+    resolvedConfigId: fallbackConfigId,
   });
 };
 
@@ -428,10 +437,10 @@ const rollbackFolderSelections = async (
   }
 };
 
-const resolvedFolderConfigId = async (
+const resolvedFolderConfigIdentity = async (
   deps: FolderDefaultVariantDeps,
   folderPath: string,
-): Promise<Result<string, AppError>> => {
+): Promise<Result<ProcessConfigIdentity, AppError>> => {
   const resolved = await resolveProcessOptions(deps.config, folderPath, {
     videoPath: deps.fs.join(folderPath, 'variant-default.mp4'),
     frames: CONFIG_DEFAULTS.frames,
@@ -446,7 +455,7 @@ const resolvedFolderConfigId = async (
     resolved.value,
     deps.analyzer.promptVersion(resolved.value.analyzer.provider),
   );
-  return ok(identity.configId);
+  return ok(identity);
 };
 
 const variantFingerprint = async (
@@ -480,16 +489,16 @@ const variantTarget = async (
   if (!fingerprint.ok) return fingerprint;
   const file = await deps.globalCatalog.getFile(fingerprint.value);
   if (!file.ok) return file;
-  if (file.value === null) {
+  if (file.value === null && locator.videoPath === undefined) {
     return { ok: false, error: appError('video_not_found', `Catalog video not found: ${fingerprint.value}`) };
   }
-  const folder = await deps.globalCatalog.getFolder(file.value.folderId);
+  const folder = file.value === null ? ok(null) : await deps.globalCatalog.getFolder(file.value.folderId);
   if (!folder.ok) return folder;
-  if (folder.value === null) {
-    return { ok: false, error: appError('folder_not_found', `Catalog folder not found: ${file.value.folderId}`) };
+  if (folder.value === null && locator.videoPath === undefined) {
+    return { ok: false, error: appError('folder_not_found', `Catalog folder not found: ${file.value?.folderId ?? ''}`) };
   }
   const locatedVideoPath = locator.videoPath === undefined
-    ? deps.fs.join(folder.value.currentPath, file.value.fileName)
+    ? deps.fs.join(folder.value?.currentPath ?? '', file.value?.fileName ?? '')
     : deps.fs.resolve(locator.videoPath);
   const locatedFolderPath = deps.fs.dirname(locatedVideoPath);
   const marker = locator.videoPath === undefined ? ok(null) : await readFolderMarker(deps.fs, locatedFolderPath);
@@ -497,7 +506,9 @@ const variantTarget = async (
   return ok({
     fingerprint: fingerprint.value,
     folderId: marker.value?.folderId ?? (
-      locator.videoPath === undefined ? file.value.folderId : derivedFolderId(deps.fs.resolve(locatedFolderPath))
+      locator.videoPath === undefined
+        ? file.value?.folderId ?? derivedFolderId(deps.fs.resolve(locatedFolderPath))
+        : derivedFolderId(deps.fs.resolve(locatedFolderPath))
     ),
     folderPath: locatedFolderPath,
     videoPath: locatedVideoPath,

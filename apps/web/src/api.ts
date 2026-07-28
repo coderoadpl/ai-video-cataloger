@@ -41,11 +41,14 @@ import {
   resetSingleMutation,
   scanQuery,
   searchQuery,
+  selectVariantMutation,
   setConfigMutation,
   setCredentialMutation,
+  setFolderDefaultVariantMutation,
   statusQuery,
   stopLocalAiDaemonMutation,
   tagsListQuery,
+  variantsQuery,
   useWhisperModelMutation as bindActivateWhisperModel,
   whisperRuntimeQuery,
   type CatalogFolderInput,
@@ -59,6 +62,7 @@ import {
   type SearchInput,
   type ReadinessInput,
   type StatusInput,
+  type VariantsInput,
 } from '@core/client/index.js';
 import type { DesktopApiBridge, DesktopBridge } from '@core/contract/index.js';
 
@@ -145,6 +149,9 @@ export const actions = {
   catalogFolder: (input: CatalogFolderInput) => catalogFolderQuery(apiClient, input),
   catalogTreeAbsent: (input: CatalogTreeAbsentInput) => catalogTreeAbsentQuery(apiClient, input),
   search: (input: SearchInput) => searchQuery(apiClient, input),
+  variants: (input: VariantsInput) => variantsQuery(apiClient, input),
+  selectVariant: selectVariantMutation(apiClient),
+  setFolderDefaultVariant: setFolderDefaultVariantMutation(apiClient),
   tagsList: tagsListQuery(apiClient),
   facesStatus: facesStatusQuery(apiClient),
   facesPeople: facesPeopleQuery(apiClient),

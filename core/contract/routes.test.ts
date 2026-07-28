@@ -214,7 +214,12 @@ describe('route schemas', () => {
     const parsed = variantsListOutputSchema.parse({
       fingerprint: 'fp-1',
       videoPath: '/videos/clip.mp4',
+      folderPath: '/videos',
       folderDefaultConfigId: resolvedConfigId,
+      currentConfig: {
+        configId: resolvedConfigId,
+        descriptor,
+      },
       variants: [{
         configId: resolvedConfigId,
         descriptor,

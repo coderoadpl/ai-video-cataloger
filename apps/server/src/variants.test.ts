@@ -74,7 +74,12 @@ describe('variant routes', () => {
       data: {
         fingerprint,
         videoPath: '/work/clip.mp4',
+        folderPath: '/work',
         folderDefaultConfigId: resolvedConfigId,
+        currentConfig: {
+          configId: expect.stringMatching(/^cfg_/),
+          descriptor: expect.objectContaining({ output_language: 'auto' }),
+        },
         variants: [{
           configId: resolvedConfigId,
           descriptor: { output_language: 'pl', promptVersion: 4 },

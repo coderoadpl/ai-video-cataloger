@@ -95,6 +95,31 @@ const seedCatalog = async (
 };
 
 describe('variant selection', () => {
+  it('describes the current configuration before a file has its first variant', async () => {
+    const fs = new InMemoryFileSystem(folderPath);
+    const store = new InMemoryGlobalCatalogStore();
+    const analyzer = new InMemoryAnalyzer();
+    const config = new InMemoryConfig();
+    const videoPath = fs.join(folderPath, 'new.mp4');
+    fs.addFile(videoPath, { hash: 'new-fingerprint', content: 'video' });
+
+    const result = await listVariants(
+      { globalCatalog: store, fs, config, analyzer },
+      { videoPath },
+    );
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        fingerprint: 'new-fingerprint',
+        videoPath,
+        folderPath,
+        currentConfig: { configId: expect.stringMatching(/^cfg_/) },
+        variants: [],
+      },
+    });
+  });
+
   it('lists comparison-ready variant details by path or fingerprint', async () => {
     const fs = new InMemoryFileSystem(folderPath);
     const store = new InMemoryGlobalCatalogStore();
@@ -136,7 +161,12 @@ describe('variant selection', () => {
       value: {
         fingerprint,
         videoPath,
+        folderPath,
         folderDefaultConfigId: first.configId,
+        currentConfig: {
+          configId: first.configId,
+          descriptor: first.descriptor,
+        },
         variants: [
           {
             configId: second.configId,

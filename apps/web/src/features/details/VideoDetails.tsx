@@ -9,6 +9,8 @@ import { type DetailsVideo } from './details-video.js';
 import { MetadataCard } from './MetadataCard.js';
 import { StatusActions } from './StatusActions.js';
 import { statusDescription } from './status-info.js';
+import { useVariants } from './use-variants.js';
+import { VariantSwitcher } from './VariantSwitcher.js';
 import { VideoPlayer } from './VideoPlayer.js';
 
 interface VideoDetailsProps {
@@ -94,6 +96,9 @@ export const VideoDetails = ({
 }: VideoDetailsProps) => {
   const dictionary = useDictionary();
   const duplicate = video.duplicate ?? null;
+  const variants = useVariants(video);
+  const previewVideo = variants.preview?.video ?? video;
+  const previewTags = variants.preview?.tags ?? video.artifacts.summary?.tags ?? [];
 
   return (
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: { xs: 780, lg: 1180 } }}>
@@ -120,14 +125,22 @@ export const VideoDetails = ({
 
           <MetadataCard video={video} />
 
-          <TagRow tags={video.artifacts.summary?.tags ?? []} onTagSearch={onTagSearch} label={dictionary.details.videoTags} />
+          <VariantSwitcher state={variants} />
+
+          <TagRow tags={previewTags} onTagSearch={onTagSearch} label={dictionary.details.videoTags} />
 
           {duplicate === null ? (
             <>
               <Typography variant="body2" color="text.secondary">
                 {statusDescription(dictionary, video.status, analyzing)}
               </Typography>
-              <StatusActions video={video} analyzing={analyzing} onAnalyze={onAnalyze} disabledReason={disabledReason} />
+              <StatusActions
+                video={video}
+                analyzing={analyzing}
+                onAnalyze={onAnalyze}
+                disabledReason={disabledReason}
+                analysisPlan={variants.plan}
+              />
             </>
           ) : (
             <DuplicateDetail
@@ -147,7 +160,7 @@ export const VideoDetails = ({
         </Box>
       </Box>
 
-      <ArtifactsSection video={video} />
+      <ArtifactsSection video={previewVideo} />
     </Box>
   );
 };

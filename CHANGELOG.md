@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- File details can preview and explicitly select analysis variants, show whether Analyze creates or replaces a variant, set the current configuration as the folder default, and badge multi-variant search results.
 - `variants list|select|delete|default` CLI commands inspect and manage analysis variants; process NDJSON identifies configurations and reports verbose artifact reuse.
 - Variant contract routes expose comparison-ready analysis descriptors and artifact paths, with client descriptors for listing, selection, deletion, and folder defaults.
 - Gemini native choices in the setup wizard and settings disclose before selection that the entire video and audio leave the Mac, how Google receives and retains the file, that the model creates the transcript, and the duration-based ballpark cost.

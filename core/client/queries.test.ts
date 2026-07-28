@@ -195,7 +195,20 @@ describe('query descriptors', () => {
           data: {
             fingerprint: 'fp-1',
             videoPath: '/videos/clip.mp4',
+            folderPath: '/videos',
             folderDefaultConfigId: configId,
+            currentConfig: {
+              configId,
+              descriptor: {
+                family: 'local',
+                providerId: 'local',
+                modelTag: 'gemma3:12b',
+                whisper_mode: 'skip',
+                frames: 3,
+                output_language: 'en',
+                promptVersion: 1,
+              },
+            },
             variants: [],
           },
         });

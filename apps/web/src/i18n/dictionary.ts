@@ -124,6 +124,31 @@ export interface Dictionary {
     duplicateExplanation: string;
     duplicateCanonicalLabel: string;
     analyzeAnyway: string;
+    variants: {
+      title: string;
+      count: (count: number) => string;
+      selected: string;
+      legacySettingsUnknown: string;
+      configuredLabel: (analyzer: string, transcription: string, frames: string) => string;
+      nativeTranscription: (providerId: string, model: string) => string;
+      localTranscription: (model: string) => string;
+      apiTranscription: (model: string) => string;
+      transcriptionSkipped: string;
+      frameCount: (count: number) => string;
+      noFrames: string;
+      useAsSelected: string;
+      selectionImpact: string;
+      newVariant: string;
+      existingVariant: string;
+      analysisState: (label: string, state: string) => string;
+      createNewVariant: string;
+      rerunExistingVariant: string;
+      setFolderDefault: string;
+      folderDefault: string;
+      loading: string;
+      loadError: string;
+      actionError: string;
+    };
     status: {
       analyzing: string;
       completed: string;
@@ -144,6 +169,7 @@ export interface Dictionary {
     resultsFor: (query: string) => string;
     driveNotConnected: string;
     fileMissing: string;
+    multipleVariants: (count: number) => string;
     back: string;
   };
   wizard: {
@@ -692,6 +718,31 @@ export const en: Dictionary = {
     duplicateExplanation: 'This file has the same content as another video already in your catalog, so it is not analyzed automatically.',
     duplicateCanonicalLabel: 'Original file',
     analyzeAnyway: 'Analyze anyway',
+    variants: {
+      title: 'Analysis variants',
+      count: (count) => `${count} ${count === 1 ? 'variant' : 'variants'}`,
+      selected: 'Selected',
+      legacySettingsUnknown: 'Settings partly unknown',
+      configuredLabel: (analyzer, transcription, frames) => `${analyzer} / ${transcription} / ${frames}`,
+      nativeTranscription: (providerId, model) => `Native transcript (${providerId} ${model})`,
+      localTranscription: (model) => `Local Whisper (${model})`,
+      apiTranscription: (model) => `Whisper API (${model})`,
+      transcriptionSkipped: 'No transcription',
+      frameCount: (count) => `${count} ${count === 1 ? 'frame' : 'frames'}`,
+      noFrames: 'No frames',
+      useAsSelected: 'Use as selected',
+      selectionImpact: 'This changes search results and the frames, transcript, and summary files on disk.',
+      newVariant: 'Creates a new variant',
+      existingVariant: 'Re-runs an existing variant with force',
+      analysisState: (label, state) => `${label}. ${state}.`,
+      createNewVariant: 'Analyze as new variant',
+      rerunExistingVariant: 'Re-run existing variant',
+      setFolderDefault: 'Use current configuration as folder default',
+      folderDefault: 'Current configuration is the folder default',
+      loading: 'Loading analysis variants…',
+      loadError: 'Could not load analysis variants.',
+      actionError: 'Could not update the analysis variant.',
+    },
     status: {
       analyzing: 'Video is being processed…',
       completed: 'Analysis complete. Summary, transcript, and frames are available.',
@@ -712,6 +763,7 @@ export const en: Dictionary = {
     resultsFor: (query) => `Search results for ${query}`,
     driveNotConnected: 'drive not connected',
     fileMissing: 'file missing',
+    multipleVariants: (count) => `${count} variants`,
     back: 'Back to catalog',
   },
   wizard: {
@@ -1309,6 +1361,31 @@ export const pl: Dictionary = {
     duplicateExplanation: 'Ten plik ma tę samą zawartość co inny film już w katalogu, więc nie jest analizowany automatycznie.',
     duplicateCanonicalLabel: 'Plik oryginalny',
     analyzeAnyway: 'Analizuj mimo to',
+    variants: {
+      title: 'Warianty analizy',
+      count: (count) => `${count} ${plPlural(count, 'wariant', 'warianty', 'wariantów')}`,
+      selected: 'Wybrany',
+      legacySettingsUnknown: 'Ustawienia częściowo nieznane',
+      configuredLabel: (analyzer, transcription, frames) => `${analyzer} / ${transcription} / ${frames}`,
+      nativeTranscription: (providerId, model) => `Transkrypcja natywna (${providerId} ${model})`,
+      localTranscription: (model) => `Lokalny Whisper (${model})`,
+      apiTranscription: (model) => `Whisper API (${model})`,
+      transcriptionSkipped: 'Bez transkrypcji',
+      frameCount: (count) => `${count} ${plPlural(count, 'klatka', 'klatki', 'klatek')}`,
+      noFrames: 'Bez klatek',
+      useAsSelected: 'Użyj jako wybranego',
+      selectionImpact: 'Zmienia wyniki wyszukiwania oraz pliki klatek, transkrypcji i streszczenia na dysku.',
+      newVariant: 'Utworzy nowy wariant',
+      existingVariant: 'Ponownie uruchomi istniejący wariant z wymuszeniem',
+      analysisState: (label, state) => `${label}. ${state}.`,
+      createNewVariant: 'Analizuj jako nowy wariant',
+      rerunExistingVariant: 'Uruchom istniejący wariant ponownie',
+      setFolderDefault: 'Ustaw bieżącą konfigurację jako domyślną folderu',
+      folderDefault: 'Bieżąca konfiguracja jest domyślna dla folderu',
+      loading: 'Wczytywanie wariantów analizy…',
+      loadError: 'Nie udało się wczytać wariantów analizy.',
+      actionError: 'Nie udało się zaktualizować wariantu analizy.',
+    },
     status: {
       analyzing: 'Film jest przetwarzany…',
       completed: 'Analiza zakończona. Streszczenie, transkrypcja i klatki są dostępne.',
@@ -1329,6 +1406,7 @@ export const pl: Dictionary = {
     resultsFor: (query) => `Wyniki wyszukiwania dla ${query}`,
     driveNotConnected: 'dysk niepodłączony',
     fileMissing: 'brak pliku',
+    multipleVariants: (count) => `${count} ${plPlural(count, 'wariant', 'warianty', 'wariantów')}`,
     back: 'Powrót do katalogu',
   },
   wizard: {

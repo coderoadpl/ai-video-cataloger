@@ -219,6 +219,14 @@ const SearchResultRow = ({
               })}
             />
           ) : null}
+          {result.variantCount > 1 ? (
+            <Chip
+              size="small"
+              variant="outlined"
+              label={dictionary.search.multipleVariants(result.variantCount)}
+              data-testid="search-variant-count"
+            />
+          ) : null}
         </Box>
         <Typography variant="caption" component="div" sx={{ whiteSpace: 'normal' }}>
           <HighlightedSnippet value={result.snippet} />

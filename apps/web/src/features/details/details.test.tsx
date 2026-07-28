@@ -1,15 +1,19 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { z } from 'zod';
 
 import type { scanVideoSchema } from '@core/contract/index.js';
+import type { ConfigDescriptor } from '@core/domain/index.js';
 
 import { renderWithProviders } from '../../test/render.js';
+import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
 import { DetailsPanel } from './DetailsPanel.js';
+import type { VariantData, VariantsData } from './index.web.js';
 import { StatusActions } from './StatusActions.js';
 
 const theme = createAppTheme('light');
@@ -39,6 +43,71 @@ const makeVideo = (overrides: Partial<DetailsVideo> = {}): DetailsVideo => ({
     newFilename: null,
   },
   ...overrides,
+});
+
+const firstConfigId = 'cfg_111111111111';
+const secondConfigId = 'cfg_222222222222';
+const thirdConfigId = 'cfg_333333333333';
+const firstDescriptor = {
+  family: 'local',
+  providerId: 'local',
+  modelTag: 'gemma3:12b',
+  whisper_mode: 'local',
+  whisper_model: 'base',
+  frames: 2,
+  output_language: 'en',
+  promptVersion: 1,
+} as const;
+const secondDescriptor = { ...firstDescriptor, output_language: 'pl' } as const;
+const thirdDescriptor = { ...firstDescriptor, modelTag: 'gemma3:27b' } as const;
+
+const variant = (
+  configId: string,
+  descriptor: ConfigDescriptor,
+  selected: boolean,
+  description: string,
+): VariantData => ({
+  configId,
+  descriptor,
+  label: descriptor.modelTag ?? descriptor.model ?? descriptor.providerId,
+  createdAt: selected ? '2026-08-01T00:00:00.000Z' : '2026-08-02T00:00:00.000Z',
+  analyzer: descriptor.providerId,
+  model: descriptor.modelTag ?? descriptor.model ?? null,
+  usage: null,
+  estimatedCostUsd: null,
+  artifacts: {
+    framesDirectory: `/catalog/artifacts/frames/hash-a/${configId}`,
+    transcriptPath: `/catalog/artifacts/transcripts/hash-a/${configId}.txt`,
+    summaryPath: `/catalog/variants/hash-a/${configId}/summary.txt`,
+  },
+  selected,
+  finalName: `${configId}.mp4`,
+  description,
+  transcript: `${description} transcript`,
+  language: descriptor.output_language,
+  tags: [`${description} tag`],
+});
+
+const variantsResponse = (
+  variants: readonly VariantData[],
+  currentConfig: VariantsData['currentConfig'] = { configId: firstConfigId, descriptor: firstDescriptor },
+  folderDefaultConfigId = firstConfigId,
+) => ({
+  ok: true,
+  data: {
+    fingerprint: 'hash-a',
+    videoPath: '/videos/clip.mp4',
+    folderPath: '/videos',
+    folderDefaultConfigId,
+    currentConfig,
+    variants,
+  },
+});
+
+beforeEach(() => {
+  server.use(
+    http.get('/api/variants', () => HttpResponse.json(variantsResponse([]))),
+  );
 });
 
 describe('details panel', () => {
@@ -180,6 +249,125 @@ describe('details panel', () => {
     expect(active.getAttribute('src')).toContain('frame-001.jpg');
     fireEvent.click(screen.getByRole('button', { name: 'Frame 2' }));
     expect(active.getAttribute('src')).toContain('frame-002.jpg');
+  });
+
+  it('renders every variant and previews frames, transcript, summary and tags without mutating', async () => {
+    let selectionWrites = 0;
+    const onAnalyze = vi.fn();
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
+        variant(firstConfigId, firstDescriptor, true, 'First summary'),
+        variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+        {
+          ...variant(thirdConfigId, thirdDescriptor, false, 'Legacy summary'),
+          configId: 'legacy',
+          descriptor: null,
+          label: 'settings partly unknown',
+        },
+      ]))),
+      http.post('/api/variants/select', () => {
+        selectionWrites += 1;
+        return HttpResponse.json({ ok: true, data: { fingerprint: 'hash-a', configId: secondConfigId } });
+      }),
+    );
+    const video = makeVideo({
+      artifacts: {
+        ...makeVideo().artifacts,
+        framePaths: ['/selected/frame-001.jpg', '/selected/frame-002.jpg'],
+        transcriptContent: 'First summary transcript',
+        summary: {
+          schemaVersion: 1,
+          description: 'First summary',
+          suggestedFilename: 'first.mp4',
+          fullAnalysis: 'First full analysis',
+          tags: ['First summary tag'],
+          analyzedAt: '2026-08-01T00:00:00.000Z',
+        },
+      },
+    });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} onAnalyze={onAnalyze} />);
+
+    await screen.findByTestId('variant-switcher');
+    expect(screen.getAllByTestId(/^variant-option-/)).toHaveLength(3);
+    expect(screen.getByText('Selected')).toBeDefined();
+    expect(screen.getByText('Settings partly unknown')).toBeDefined();
+    const analyze = screen.getByTestId('analyze-button');
+    expect(analyze.textContent).toContain('Re-run existing variant');
+    fireEvent.click(analyze);
+    expect(onAnalyze).toHaveBeenCalledWith(video, { force: true });
+    fireEvent.click(screen.getByTestId(`variant-option-${secondConfigId}`));
+
+    expect(screen.getByText('Second summary')).toBeDefined();
+    expect(screen.getByText('Second summary transcript')).toBeDefined();
+    expect(screen.getByText('Second summary tag')).toBeDefined();
+    expect(screen.getByTestId('active-frame').getAttribute('src')).toContain(
+      `${secondConfigId}%2Fframe-001.jpg`,
+    );
+    expect(selectionWrites).toBe(0);
+  });
+
+  it('selects the preview once and invalidates scan, catalog, search and variant reads', async () => {
+    let selectionWrites = 0;
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
+        variant(firstConfigId, firstDescriptor, true, 'First summary'),
+        variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+      ]))),
+      http.post('/api/variants/select', () => {
+        selectionWrites += 1;
+        return HttpResponse.json({ ok: true, data: { fingerprint: 'hash-a', configId: secondConfigId } });
+      }),
+    );
+    const rendered = renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} onAnalyze={vi.fn()} />);
+    const invalidate = vi.spyOn(rendered.queryClient, 'invalidateQueries');
+
+    await screen.findByTestId('variant-switcher');
+    fireEvent.click(screen.getByTestId(`variant-option-${secondConfigId}`));
+    fireEvent.click(screen.getByTestId('use-preview-as-selected'));
+
+    await waitFor(() => expect(selectionWrites).toBe(1));
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      ['scan'],
+      ['catalog-folder'],
+      ['search'],
+      ['variants'],
+    ]);
+  });
+
+  it('states when analysis creates a variant and sets the current configuration as folder default', async () => {
+    const onAnalyze = vi.fn();
+    const defaultWrites: unknown[] = [];
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse(
+        [variant(firstConfigId, firstDescriptor, true, 'First summary')],
+        { configId: thirdConfigId, descriptor: thirdDescriptor },
+      ))),
+      http.post('/api/variants/folder-default', async ({ request }) => {
+        defaultWrites.push(await request.json());
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            folderId: '11111111-1111-4111-8111-111111111111',
+            defaultConfigId: thirdConfigId,
+            resolvedConfigId: thirdConfigId,
+          },
+        });
+      }),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} onAnalyze={onAnalyze} />);
+
+    const analyze = await screen.findByTestId('analyze-button');
+    expect(analyze.textContent).toContain('Analyze as new variant');
+    expect(screen.getByText(/Creates a new variant/)).toBeDefined();
+    fireEvent.click(analyze);
+    expect(onAnalyze).toHaveBeenCalledWith(makeVideo());
+
+    fireEvent.click(screen.getByTestId('set-folder-default-variant'));
+    await waitFor(() => expect(defaultWrites).toEqual([
+      { folderPath: '/videos', configId: thirdConfigId },
+    ]));
   });
 });
 

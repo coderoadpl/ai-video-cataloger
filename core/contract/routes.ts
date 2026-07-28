@@ -965,7 +965,12 @@ export const variantDetailsSchema = z.object({
 export const variantsListOutputSchema = z.object({
   fingerprint: z.string().min(1),
   videoPath: z.string().min(1),
+  folderPath: z.string().min(1),
   folderDefaultConfigId: configIdSchema,
+  currentConfig: z.object({
+    configId: configIdSchema,
+    descriptor: configDescriptorSchema,
+  }).strict(),
   variants: z.array(variantDetailsSchema),
 }).strict();
 

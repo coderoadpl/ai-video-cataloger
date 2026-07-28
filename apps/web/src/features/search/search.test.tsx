@@ -101,6 +101,7 @@ describe('SearchResults', () => {
 
     expect(screen.getByText('drive not connected')).toBeDefined();
     expect(screen.getByText('aerial')).toBeDefined();
+    expect(screen.getByTestId('search-variant-count').textContent).toBe('2 variants');
 
     fireEvent.click(screen.getByText('drone-clip.mp4'));
     expect(onOpenResult).toHaveBeenCalledWith('/online', '/online/clip.mp4');
