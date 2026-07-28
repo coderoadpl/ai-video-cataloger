@@ -20,6 +20,7 @@ const CONFIG_KEYS = [
   'analyzer_provider',
   'faces_enabled',
   'gemini_batch_mode',
+  'gemini_monthly_budget_usd',
   'output_language',
   'ui_language',
 ] as const;

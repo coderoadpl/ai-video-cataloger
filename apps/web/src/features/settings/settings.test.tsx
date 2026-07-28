@@ -50,6 +50,7 @@ const defaults = {
   }),
   faces_enabled: 'false',
   gemini_batch_mode: 'false',
+  gemini_monthly_budget_usd: 'null',
   output_language: 'auto',
   ui_language: 'en',
 };
@@ -57,6 +58,7 @@ const defaults = {
 const emptyConfig: StoredConfig = {
   whisper_binary_path: null,
   gemini_batch_mode: null,
+  gemini_monthly_budget_usd: null,
   whisper_model: null,
   whisper_mode: null,
   whisper_api_base_url: null,
@@ -120,6 +122,7 @@ const stubEndpoints = (
     analyzer_provider: config.analyzer_provider ?? defaults.analyzer_provider,
     faces_enabled: config.faces_enabled ?? defaults.faces_enabled,
     gemini_batch_mode: config.gemini_batch_mode ?? defaults.gemini_batch_mode,
+    gemini_monthly_budget_usd: config.gemini_monthly_budget_usd ?? defaults.gemini_monthly_budget_usd,
     output_language: config.output_language ?? defaults.output_language,
     ui_language: config.ui_language ?? defaults.ui_language,
   };
@@ -139,6 +142,7 @@ const stubEndpoints = (
     output_language: config.output_language === null ? 'default' : 'folder',
     ui_language: config.ui_language === null ? 'default' : 'folder',
     gemini_batch_mode: config.gemini_batch_mode === null ? 'default' : 'folder',
+    gemini_monthly_budget_usd: config.gemini_monthly_budget_usd === null ? 'default' : 'home',
   } as const;
   server.use(
     http.get('/api/config', ({ request }) => {
@@ -201,6 +205,7 @@ describe('settings modal', () => {
       analyzer_provider: 'default',
       faces_enabled: 'default',
       gemini_batch_mode: 'default',
+      gemini_monthly_budget_usd: 'default',
       output_language: 'default',
       ui_language: 'default',
     } as const;

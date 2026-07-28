@@ -5,7 +5,6 @@ import {
   appError,
   batchSubmitRejection,
   geminiNativeModelPricing,
-  geminiPricingModeMultiplier,
   ok,
   GEMINI_NATIVE_API_BASE_URL,
   GEMINI_NATIVE_FILES_API_LIMIT_BYTES,
@@ -137,27 +136,9 @@ export const geminiProviderPricing = (
   provider: GeminiNativeProvider,
   mode: GeminiPricingMode = 'interactive',
 ): { pricePerMTokensInput?: number | undefined; pricePerMTokensOutput?: number | undefined } => {
-  if (provider.pricePerMTokensInput !== undefined && provider.pricePerMTokensOutput !== undefined) {
-    const multiplier = geminiPricingModeMultiplier(mode);
-    return {
-      pricePerMTokensInput: provider.pricePerMTokensInput * multiplier,
-      pricePerMTokensOutput: provider.pricePerMTokensOutput * multiplier,
-    };
-  }
   const fromModel = geminiNativeModelPricing(provider.model, mode);
   return fromModel ?? {};
 };
-
-// The answers belong to the model the job was submitted with; a price override stored on the
-// provider describes the model it was set for, so a job whose model has since changed is priced
-// from the published table for its own model instead.
-const batchAnswerPricing = (
-  provider: GeminiNativeProvider,
-  jobModel: string,
-): { pricePerMTokensInput?: number | undefined; pricePerMTokensOutput?: number | undefined } =>
-  jobModel === provider.model
-    ? geminiProviderPricing(provider, 'batch')
-    : geminiNativeModelPricing(jobModel, 'batch') ?? {};
 
 export const buildGeminiPrompt = (input: { videoName: string; outputLanguage: string }): string =>
   `You are analyzing a video file named "${input.videoName}". You can see the video and hear its full audio track: speech, music and ambient sound.
@@ -492,7 +473,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     return ok({
       state,
       message: null,
-      results: batchResults(operation.value, input.requestKeys, batchAnswerPricing(provider, input.model)),
+      results: batchResults(operation.value, input.requestKeys, input.model),
     });
   }
 
@@ -848,7 +829,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     } catch {
       return { ok: false, error: appError('provider_error', 'Gemini API returned invalid JSON') };
     }
-    return analysisFromGenerateContent(body, geminiProviderPricing(provider));
+    return analysisFromGenerateContent(body, provider.model);
   }
 }
 

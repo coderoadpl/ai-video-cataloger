@@ -37,6 +37,7 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
     local_model: config.local_model ?? defaults.local_model,
     faces_enabled: config.faces_enabled ?? defaults.faces_enabled,
     gemini_batch_mode: config.gemini_batch_mode ?? defaults.gemini_batch_mode,
+    gemini_monthly_budget_usd: config.gemini_monthly_budget_usd ?? defaults.gemini_monthly_budget_usd,
     output_language: config.output_language ?? defaults.output_language,
     ui_language: config.ui_language ?? defaults.ui_language,
     ...(config.analyzer_provider === null ? {} : { analyzer_provider: config.analyzer_provider }),

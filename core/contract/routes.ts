@@ -18,6 +18,7 @@ import {
   credentialDeletionSchema,
   credentialsBackendStatusSchema,
   folderIdSchema,
+  geminiCostEstimateSchema,
   videoStatusSchema,
   whisperEngineSchema,
 } from '@core/domain/index.js';
@@ -63,6 +64,7 @@ export const summarySchema = z.object({
   fullAnalysis: z.string(),
   tags: z.array(z.string()).default([]),
   analyzedAt: z.string(),
+  costEstimate: geminiCostEstimateSchema.optional(),
 });
 
 export const transcriptSegmentSchema = z.object({
@@ -260,6 +262,7 @@ export const processCompletedOutputSchema = z.object({
   video: z.string(),
   path: z.string(),
   status: z.literal('completed'),
+  costEstimate: geminiCostEstimateSchema.optional(),
 });
 
 export const driveRunFailureSchema = z.object({
@@ -280,6 +283,12 @@ export const driveRunSummarySchema = z.object({
   filesDone: z.number().int().nonnegative(),
   filesSkipped: z.number().int().nonnegative(),
   filesFailed: z.number().int().nonnegative(),
+  costEstimate: z.object({
+    kind: z.literal('estimate'),
+    currency: z.literal('USD'),
+    files: z.number().int().nonnegative(),
+    estimatedCostUsd: z.number().nonnegative(),
+  }).optional(),
   elapsedMs: z.number().int().nonnegative(),
   failures: z.array(driveRunFailureSchema),
 });
@@ -370,6 +379,7 @@ export const storedConfigSchema = z.object({
   analyzer_provider: z.string().nullable(),
   faces_enabled: z.string().nullable(),
   gemini_batch_mode: z.string().nullable(),
+  gemini_monthly_budget_usd: z.string().nullable(),
   output_language: z.string().nullable(),
   ui_language: z.string().nullable(),
 });
@@ -388,6 +398,7 @@ export const storedConfigDefaultsSchema = z.object({
   analyzer_provider: z.string(),
   faces_enabled: z.string(),
   gemini_batch_mode: z.string(),
+  gemini_monthly_budget_usd: z.string(),
   output_language: z.string(),
   ui_language: z.string(),
 });
@@ -406,6 +417,7 @@ export const configValueSourcesSchema = z.object({
   analyzer_provider: z.enum(['folder', 'home', 'default']),
   faces_enabled: z.enum(['folder', 'home', 'default']),
   gemini_batch_mode: z.enum(['folder', 'home', 'default']),
+  gemini_monthly_budget_usd: z.enum(['folder', 'home', 'default']),
   output_language: z.enum(['folder', 'home', 'default']),
   ui_language: z.enum(['folder', 'home', 'default']),
 });
@@ -734,6 +746,7 @@ export const jobProgressStepSchema = z.enum([
   'batch_uploads_retained',
   'batch_orphan_jobs',
   'batch_model_changed',
+  'budget_cap_reached',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -820,6 +833,13 @@ export const indexStatusOutputSchema = z.object({
     filesFailed: z.number().int().nonnegative(),
     lastActivityAt: z.string(),
   }).nullable(),
+  currentMonthSpend: z.object({
+    kind: z.literal('estimate'),
+    provider: z.literal('gemini'),
+    month: z.string().regex(/^\d{4}-\d{2}$/),
+    entries: z.number().int().nonnegative(),
+    estimatedCostUsd: z.number().nonnegative(),
+  }),
 });
 
 export const indexRebuildOutputSchema = z.object({

@@ -17,6 +17,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Added
 
 - Gemini native choices in the setup wizard and settings disclose before selection that the entire video and audio leave the Mac, how Google receives and retains the file, that the model creates the transcript, and the duration-based ballpark cost.
+- Gemini analyses show per-file and drive-run cost estimates, append them to a local monthly spend ledger, and pause resumable drive runs at a configured soft budget.
 - The packaged app honors `AI_VIDEO_CATALOGER_USER_DATA_DIR` and the keychain
   environment variables for fully isolated test runs.
 - Duplicate chips appear in folder scope, not only Whole-tree.

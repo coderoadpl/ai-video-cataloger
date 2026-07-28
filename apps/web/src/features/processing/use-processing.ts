@@ -96,6 +96,12 @@ const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): s
         message.filesSkipped,
         message.filesFailed,
       );
+    case 'budgetCapReached':
+      return dictionary.processing.driveBudgetCapReached(
+        message.month,
+        message.estimatedSpendUsd,
+        message.budgetUsd,
+      );
     case 'fileSkipped':
       return dictionary.processing.driveFileSkipped(message.filename);
     case 'snapshotSkipped':
@@ -107,6 +113,8 @@ const translateDriveMessage = (dictionary: Dictionary, message: DriveMessage): s
         message.filesDone,
         message.filesSkipped,
         message.filesFailed,
+        message.estimatedCostUsd,
+        message.costedFiles,
       );
     case 'batchSubmitted':
       return dictionary.processing.driveBatchSubmitted(message.requestCount, message.reattached);
@@ -357,6 +365,8 @@ export const useProcessing = ({
                     filesDone: message.filesDone,
                     filesSkipped: message.filesSkipped,
                     filesFailed: message.filesFailed,
+                    estimatedCostUsd: message.estimatedCostUsd,
+                    costedFiles: message.costedFiles,
                   };
                 }
               }

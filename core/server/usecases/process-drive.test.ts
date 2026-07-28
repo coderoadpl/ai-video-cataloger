@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 
-import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
+import {
+  appError,
+  defaultGeminiNativeProvider,
+  geminiUsageAccounting,
+  ok,
+  type AppError,
+  type Result,
+} from '@core/domain/index.js';
 
 import type { AnalysisOutput, AnalyzeInput, DirectoryEntry } from '../ports.js';
 import { folderCatalogRecords, indexStatus } from './catalog-index.js';
@@ -14,6 +21,7 @@ import {
   InMemoryFileSystem,
   InMemoryGlobalCatalogStore,
   InMemoryMedia,
+  InMemorySpendLedger,
   InMemoryTranscriber,
 } from '../../../test/server/usecases/test-fakes.js';
 
@@ -85,6 +93,7 @@ const makeDeps = (
   transcriber: new InMemoryTranscriber(fs),
   analyzer,
   globalCatalog: new InMemoryGlobalCatalogStore(),
+  spendLedger: new InMemorySpendLedger(),
 });
 
 const addVideo = (fs: InMemoryFileSystem, videoPath: string, hash: string): void => {
@@ -160,6 +169,7 @@ describe('drive processing', () => {
     const second = await processDrive(deps, baseInput, undefined, { runId: 'run-2' });
 
     expect(first).toMatchObject({ ok: true, value: { filesDone: 2, filesSkipped: 0, filesFailed: 0 } });
+    expect(first.ok && first.value.costEstimate).toBeUndefined();
     expect(callsAfterFirst).toBe(2);
     expect(second).toMatchObject({ ok: true, value: { filesDone: 0, filesSkipped: 2, filesFailed: 0 } });
     expect(deps.analyzer.inputs).toHaveLength(callsAfterFirst);
@@ -414,5 +424,56 @@ describe('drive processing', () => {
       finishedAt: null,
       filesFailed: 5,
     });
+  });
+
+  it('pauses at the local Gemini budget and resumes after the cap is raised', async () => {
+    const analyzer = new PathResponseAnalyzer();
+    const deps = makeDeps(new InMemoryFileSystem('/drive'), analyzer);
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+    addVideo(deps.fs, '/drive/two.mp4', 'hash-two');
+    await deps.config.set(
+      { kind: 'home' },
+      'analyzer_provider',
+      JSON.stringify(defaultGeminiNativeProvider('gemini-3.6-flash')),
+    );
+    await deps.config.set({ kind: 'home' }, 'gemini_monthly_budget_usd', '0.001');
+    analyzer.responses.set('/drive/one.mp4', [ok({
+      rawResponse: 'DESCRIPTION: one\nFILENAME: one',
+      usage: geminiUsageAccounting(
+        { promptTokens: 1000, candidatesTokens: 0, thoughtsTokens: 0 },
+        'gemini-3.6-flash',
+      ),
+    })]);
+    const events: string[] = [];
+
+    const paused = await processDrive(deps, baseInput, {
+      signal: new AbortController().signal,
+      reportProgress: (event) => {
+        events.push(event.step);
+        return Promise.resolve(ok(undefined));
+      },
+    }, { runId: 'run-budget' });
+
+    expect(paused).toMatchObject({
+      ok: false,
+      error: {
+        code: 'drive_run_aborted',
+        details: { runId: 'run-budget', budgetUsd: 0.001, estimatedSpendUsd: 0.0015 },
+      },
+    });
+    expect(events).toContain('budget_cap_reached');
+    expect(deps.spendLedger.entries).toHaveLength(1);
+
+    await deps.config.set({ kind: 'home' }, 'gemini_monthly_budget_usd', '1');
+    analyzer.responses.set('/drive/two.mp4', [ok({
+      rawResponse: 'DESCRIPTION: two\nFILENAME: two',
+      usage: geminiUsageAccounting(
+        { promptTokens: 1000, candidatesTokens: 0, thoughtsTokens: 0 },
+        'gemini-3.6-flash',
+      ),
+    })]);
+    const resumed = await processDrive(deps, baseInput, undefined, { runId: 'run-budget-resumed' });
+
+    expect(resumed).toMatchObject({ ok: true, value: { filesDone: 1, filesSkipped: 1 } });
   });
 });

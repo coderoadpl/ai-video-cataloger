@@ -44,6 +44,13 @@ const booleanFromPersistedValue = (value: unknown): unknown => {
   return value;
 };
 
+const nullablePositiveNumberFromPersistedValue = (value: unknown): unknown => {
+  if (value === null || value === '' || value === 'null') return null;
+  if (typeof value === 'number') return value;
+  if (typeof value !== 'string' || !/^\d+(?:\.\d+)?$/.test(value)) return value;
+  return Number(value);
+};
+
 const providerFromPersistedValue = (value: unknown): unknown => {
   if (typeof value !== 'string') return value;
   try {
@@ -67,6 +74,7 @@ export const configValueSchema = z.object({
   analyzer_provider: z.preprocess(providerFromPersistedValue, analyzerProviderConfigSchema.optional()),
   faces_enabled: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
   gemini_batch_mode: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
+  gemini_monthly_budget_usd: z.preprocess(nullablePositiveNumberFromPersistedValue, z.number().positive().nullable()).default(null),
   output_language: outputLanguageSchema.default('auto'),
   ui_language: uiLanguageSchema.default('en'),
 });
@@ -93,6 +101,7 @@ export const CONFIG_KEYS = [
   'analyzer_provider',
   'faces_enabled',
   'gemini_batch_mode',
+  'gemini_monthly_budget_usd',
   'output_language',
   'ui_language',
 ] as const;
@@ -100,7 +109,7 @@ export const CONFIG_KEYS = [
 export const configKeySchema = z.enum(CONFIG_KEYS);
 export type ConfigKey = z.output<typeof configKeySchema>;
 
-export const APP_GLOBAL_CONFIG_KEYS: readonly ConfigKey[] = ['ui_language', 'faces_enabled'];
+export const APP_GLOBAL_CONFIG_KEYS: readonly ConfigKey[] = ['ui_language', 'faces_enabled', 'gemini_monthly_budget_usd'];
 
 export const isAppGlobalConfigKey = (key: ConfigKey): boolean => APP_GLOBAL_CONFIG_KEYS.includes(key);
 
@@ -122,6 +131,7 @@ export const configDescriptions: Record<ConfigKey, string> = {
   analyzer_provider: 'Analyzer provider configuration',
   faces_enabled: 'Experimental local face grouping (opt-in, all data stays on this machine)',
   gemini_batch_mode: 'Send gemini-native drive runs through the Gemini Batch API (half price, results may take up to 24h)',
+  gemini_monthly_budget_usd: 'Pause Gemini drive runs when the local monthly estimated spend reaches this amount in USD',
   output_language: 'Language for generated descriptions and filenames (auto, en, pl, or a BCP-47 code)',
   ui_language: 'Language of the desktop app interface (en, pl)',
 };

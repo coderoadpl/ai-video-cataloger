@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 import type { AnalyzerBatchJobState, AnalyzerBatchResult } from '@core/server/index.js';
 
-import { analysisFromGenerateContent, type GeminiTokenPricing } from './response.js';
+import { analysisFromGenerateContent } from './response.js';
 
 export const BATCH_INLINE_REQUEST_LIMIT_BYTES = 18 * 1024 * 1024;
 
@@ -177,7 +177,7 @@ const requestErrorFor = (error: z.output<typeof statusErrorSchema>): AppError =>
 export const batchResults = (
   operation: GeminiBatchOperation,
   requestKeys: readonly string[],
-  pricing: GeminiTokenPricing,
+  model: string,
 ): AnalyzerBatchResult[] => {
   const inlined = inlinedResponseList(operation);
   const results: AnalyzerBatchResult[] = [];
@@ -190,7 +190,7 @@ export const batchResults = (
       results.push({ key, outcome: { ok: false, error: requestErrorFor(entry.error) } });
       return;
     }
-    results.push({ key, outcome: analysisFromGenerateContent(entry.response, pricing) });
+    results.push({ key, outcome: analysisFromGenerateContent(entry.response, model, 'batch') });
   });
   for (const key of requestKeys) {
     if (answered.has(key)) continue;

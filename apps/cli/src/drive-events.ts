@@ -9,6 +9,7 @@ export const DRIVE_EVENT_STEPS = [
   'batch_uploads_retained',
   'batch_orphan_jobs',
   'batch_model_changed',
+  'budget_cap_reached',
 ] as const;
 
 export type DriveEventStep = (typeof DRIVE_EVENT_STEPS)[number];

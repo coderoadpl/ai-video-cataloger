@@ -1208,6 +1208,7 @@ const indexStatusHuman = (data: Awaited<ReturnType<ApiClient['indexStatus']>> ex
     `Folders: ${data.counts.folders}`,
     `Files: ${data.counts.files}`,
     `Analyses: ${data.counts.analyses}`,
+    `Estimated Gemini spend (${data.currentMonthSpend.month}): $${data.currentMonthSpend.estimatedCostUsd.toFixed(4)} (${String(data.currentMonthSpend.entries)} analyses)`,
   ];
   if (data.latestRun !== null) {
     const finished = data.latestRun.finishedAt ?? 'running';
@@ -1252,7 +1253,13 @@ const configGetHuman = (data: Awaited<ReturnType<ApiClient['config']>> extends R
 };
 
 const processHuman = (data: unknown): string => {
-  if (isRecord(data) && typeof data.video === 'string') return `Completed ${data.video}`;
+  if (isRecord(data) && typeof data.video === 'string') {
+    const estimate = data.costEstimate;
+    const cost = isRecord(estimate) && typeof estimate.estimatedCostUsd === 'number'
+      ? `; estimated Gemini cost $${estimate.estimatedCostUsd.toFixed(4)} USD`
+      : '';
+    return `Completed ${data.video}${cost}`;
+  }
   return 'Completed processing';
 };
 
@@ -1261,7 +1268,10 @@ const processDriveHuman = (data: unknown): string => {
   const done = typeof data.filesDone === 'number' ? data.filesDone : 0;
   const skipped = typeof data.filesSkipped === 'number' ? data.filesSkipped : 0;
   const failed = typeof data.filesFailed === 'number' ? data.filesFailed : 0;
-  return `Drive run complete: done=${done} skipped=${skipped} failed=${failed}`;
+  const cost = isRecord(data.costEstimate) && typeof data.costEstimate.estimatedCostUsd === 'number'
+    ? ` estimated-cost=$${data.costEstimate.estimatedCostUsd.toFixed(4)} USD`
+    : '';
+  return `Drive run complete: done=${done} skipped=${skipped} failed=${failed}${cost}`;
 };
 
 const downloadedHuman = (data: unknown, model: string): string => {

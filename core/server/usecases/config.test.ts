@@ -98,6 +98,7 @@ describe('config use-cases', () => {
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'home:model' }),
       faces_enabled: 'true',
       gemini_batch_mode: 'false',
+      gemini_monthly_budget_usd: '12.5',
       output_language: 'pl',
       ui_language: 'pl',
     } as const;
@@ -127,6 +128,7 @@ describe('config use-cases', () => {
           analyzer_provider: 'home',
           faces_enabled: 'home',
           gemini_batch_mode: 'home',
+          gemini_monthly_budget_usd: 'home',
           output_language: 'home',
           ui_language: 'home',
         },
@@ -190,6 +192,7 @@ describe('config use-cases', () => {
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'home:model' }),
       faces_enabled: 'false',
       gemini_batch_mode: 'false',
+      gemini_monthly_budget_usd: '12.5',
       output_language: 'en',
       ui_language: 'en',
     } as const;
@@ -207,6 +210,7 @@ describe('config use-cases', () => {
       analyzer_provider: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'folder:model' }),
       faces_enabled: 'true',
       gemini_batch_mode: 'false',
+      gemini_monthly_budget_usd: '9',
       output_language: 'pl',
       ui_language: 'pl',
     } as const;
@@ -228,8 +232,13 @@ describe('config use-cases', () => {
     expect(result).toMatchObject({
       ok: true,
       value: {
-        config: { ...folderValues, faces_enabled: null, ui_language: null },
-        effective: { ...folderValues, ui_language: 'en', faces_enabled: 'false' },
+        config: { ...folderValues, faces_enabled: null, gemini_monthly_budget_usd: null, ui_language: null },
+        effective: {
+          ...folderValues,
+          ui_language: 'en',
+          faces_enabled: 'false',
+          gemini_monthly_budget_usd: '12.5',
+        },
         sources: {
           whisper_binary_path: 'folder',
           whisper_model: 'folder',
@@ -244,6 +253,7 @@ describe('config use-cases', () => {
           analyzer_provider: 'folder',
           faces_enabled: 'home',
           gemini_batch_mode: 'folder',
+          gemini_monthly_budget_usd: 'home',
           output_language: 'folder',
           ui_language: 'home',
         },
