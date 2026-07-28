@@ -18,7 +18,7 @@ const retrievalMarkers = [
   'Never use filler words such as video, clip, footage, recording, scene or movie',
   'museum-exhibit',
   'tags that work as search handles',
-  'notable text or proper nouns you read in frame',
+  'notable text or proper nouns that pass the shared entity evidence rule',
 ];
 
 const framePrompt = (outputLanguage: string): string =>
@@ -32,7 +32,7 @@ const framePrompt = (outputLanguage: string): string =>
 
 describe('retrieval-grade prompt', () => {
   it('pins the prompt version used by configuration identity', () => {
-    expect(ANALYSIS_PROMPT_VERSION).toBe(2);
+    expect(ANALYSIS_PROMPT_VERSION).toBe(3);
   });
 
   it.each([
@@ -53,6 +53,30 @@ describe('retrieval-grade prompt', () => {
     expect(prompt).toContain('Never fall back to meaningless names such as video or video-2');
     expect(prompt).toContain('Tags must always carry the verifiable attributes of the clip');
     expect(prompt).toContain('An empty TAGS value or empty tag array is forbidden');
+  });
+
+  it.each([
+    ['frame-analyzer', framePrompt('auto')],
+    ['gemini', buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto' })],
+  ])('enforces the concrete-attribute floor in the %s prompt', (_name, prompt) => {
+    expect(prompt).toContain('CONCRETE-ATTRIBUTE FLOOR');
+    expect(prompt).toContain(
+      'when no entity passes the evidence test, the filename and tags MUST be composed from directly visible attributes — subject + material/colour + setting/action',
+    );
+    expect(prompt).toContain('"wooden-boat-exhibit-hall-projection", "museum-sticker-covered-sign-closeup"');
+    expect(prompt).toContain(
+      'Producing "video", any numbered variant of it (e.g. "video-2"), or an empty tag array is a CONTRACT VIOLATION',
+    );
+    expect(prompt).toContain('A minimum of 3 attribute tags is always required');
+  });
+
+  it.each([
+    ['frame-analyzer', framePrompt('auto')],
+    ['gemini', buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto' })],
+  ])('includes the no-legible-entity museum example in the %s prompt', (_name, prompt) => {
+    expect(prompt).toContain(
+      'Worked example — no-legible-entity museum clip: FILENAME: wooden-boat-exhibit-hall-projection; TAGS: wooden-boat, exhibit-hall, wall-projection, museum-display',
+    );
   });
 
   it.each([
