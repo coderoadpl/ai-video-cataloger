@@ -16,7 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
-- The landing site now includes an English blog with benchmark and getting-started article placeholders.
+- The landing site now includes an English blog carrying the analyzer benchmark write-up and a getting-started walkthrough.
 
 ### Fixed
 

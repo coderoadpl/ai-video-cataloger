@@ -9,6 +9,8 @@ export default defineConfig({
   lastModifiedTime: "git",
   mdxOptions: {
     providerImportSource: "@/mdx-components",
+    // Static image imports resolve to objects only next/image can render, and this export is unoptimized.
+    remarkImageOptions: false,
   },
 });
 
