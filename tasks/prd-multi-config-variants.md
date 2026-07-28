@@ -68,6 +68,8 @@ Included, per owner decision 5's identity triple:
 | Analyzer | `family`, `providerId`, and the family's result-shaping fields: `model`/`modelTag`, `maxImageDetail` (api), `promptStyle` + `reasoningEffort` (harness) |
 | Transcription source | `whisper_mode`, plus `whisper_model` (local) or `whisper_api_base_url` + `whisper_api_model` (api); `skip` carries nothing else; a `gemini-native` analyzer carries `native:<providerId>:<model>` because the model returns the transcript itself |
 | Frame settings | `frames` (frame count); omitted for the `gemini-native` family, whose path extracts no frames |
+| Output language | `output_language` (owner ruling 2026-08-02: two runs differing only in output language are two variants) |
+| Prompt version | `promptVersion` — an integer constant next to the prompt template, bumped by hand whenever the template changes (owner ruling 2026-08-02); a bump gives new runs a new configId, which is the honest outcome |
 
 Excluded, with the reason each exclusion is safe:
 
@@ -511,24 +513,16 @@ CHANGELOG (`[Unreleased]`, one factual line per behaviour-visible story commit):
 - No configId appears in any log, event or artifact alongside a credential
   (grep assertion in the existing secret-leak test).
 
-## Open Questions
+## Decisions (owner, 2026-08-02 — all four former open questions ruled)
 
-1. **`output_language` and identity.** It is not in the owner's identity triple,
-   but two runs differing only in output language produce different descriptions
-   and filenames and would collide under one configId. Recommendation: include
-   it in the descriptor. Needs an explicit owner ruling because it widens the
-   immutable requirement.
-2. **Prompt version.** A change to the analysis prompt template changes results
-   under an unchanged configId, making old and new variants incomparable.
-   Recommendation: add a `promptVersion` integer to the descriptor, bumped by
-   hand when the template changes. Cost: every existing variant becomes a
-   different configId at the bump, which is the honest outcome but a visible one.
-3. **Variant cap.** Should a file's variant count be capped (say 10) with the
-   oldest unselected one evicted, or is unbounded growth acceptable given that
-   frames and transcripts are shared? Recommendation: no cap in v1, revisit if
-   disk complaints appear.
-4. **Per-folder default scope.** The folder default is proposed as a global-index
-   attribute of the folder. The alternative is a `default_config_id` key in the
-   folder's `config.json`, which travels with the folder to another machine.
-   Recommendation: index attribute in v1 (no new config key, no new precedence
-   interaction), snapshot it later if portability is wanted.
+1. **`output_language` joins the identity.** Two runs differing only in output
+   language produce different descriptions and filenames, so they are two
+   variants. The descriptor table above carries it.
+2. **`promptVersion` joins the identity.** An integer constant maintained next
+   to the prompt template, bumped by hand whenever the template changes. A bump
+   gives new runs a new configId — accepted as the honest, visible outcome.
+3. **No variant cap in v1.** Frames and transcripts are shared, so growth is
+   modest; revisit only if disk complaints appear. No silent eviction.
+4. **Folder default lives in the global index** (`folders.default_config_id`),
+   not in the folder's `config.json` — no new config key, no new precedence
+   interaction in v1; snapshot portability can be added later if wanted.
