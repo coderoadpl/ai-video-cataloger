@@ -41,6 +41,23 @@ const ollamaTagsSchema = z.object({
     model: z.string().optional(),
   })),
 });
+const processCompletionSchema = z.object({
+  configId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+  selectedConfigId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+});
+const variantsCompletionSchema = z.object({
+  fingerprint: z.string().min(1),
+  count: z.number().int().nonnegative(),
+});
+const reusedTranscriptEventSchema = z.object({
+  type: z.literal('progress'),
+  step: z.literal('artifact_reused'),
+  data: z.object({
+    kind: z.literal('transcript'),
+    configId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+    sourceConfigId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+  }),
+}).passthrough();
 
 test.describe.configure({ mode: 'serial' });
 
@@ -142,6 +159,7 @@ const assertPipeline = async (
   sample: VideoSample,
   environment: NodeJS.ProcessEnv,
   transcriptExpected: boolean,
+  secondVariant = false,
 ): Promise<void> => {
   await addSampleTo(workdir, sample);
   const result = await runCli(
@@ -188,6 +206,64 @@ const assertPipeline = async (
     const transcript = readFileSync(transcriptPath, 'utf8');
     expect(findKeyword(transcript, sample.transcriptKeywords ?? [])).toBeTruthy();
   }
+  if (!secondVariant) return;
+
+  const firstCompletion = processCompletionSchema.parse(
+    result.events.find((event) => event.type === 'completed')?.data,
+  );
+  const language = await runCli(['config', 'set', 'output_language', 'pl', '--json'], workdir, 60_000, environment);
+  expect(language.code, `${cell}: failed to configure the second variant\n${language.stderr}`).toBe(0);
+  const second = await runCli(
+    [
+      'process',
+      join(workdir, renamed ?? ''),
+      '--frames',
+      '1',
+      '--timeout',
+      '900',
+      '--skip-rename',
+      '--verbose',
+      '--json',
+    ],
+    workdir,
+    PIPELINE_TIMEOUT_MS,
+    environment,
+  );
+  const secondErrors = second.events
+    .filter((event) => event.type === 'error')
+    .map((event) => event.error ?? event.message ?? event.code ?? 'unknown error');
+  expect(second.code, `${cell} second variant: ${secondErrors.join(' | ')}\n${second.stderr}`).toBe(0);
+  const secondCompletion = processCompletionSchema.parse(
+    second.events.find((event) => event.type === 'completed')?.data,
+  );
+  expect(secondCompletion.configId).not.toBe(firstCompletion.configId);
+  expect(secondCompletion.selectedConfigId).toBe(firstCompletion.configId);
+  const reused = second.jsonValues.flatMap((value) => {
+    const parsed = reusedTranscriptEventSchema.safeParse(value);
+    return parsed.success ? [parsed.data] : [];
+  });
+  expect(reused).toContainEqual(expect.objectContaining({
+    data: {
+      kind: 'transcript',
+      configId: secondCompletion.configId,
+      sourceConfigId: firstCompletion.configId,
+    },
+  }));
+
+  const variants = await runCli(['variants', 'list', join(workdir, renamed ?? ''), '--json'], workdir, 60_000, environment);
+  expect(variants.code, `${cell}: failed to list variants\n${variants.stderr}`).toBe(0);
+  const listing = variantsCompletionSchema.parse(
+    variants.events.find((event) => event.type === 'completed')?.data,
+  );
+  expect(listing.count).toBe(2);
+  const transcriptDirectory = join(
+    workdir,
+    '.ai-video-cataloger',
+    'artifacts',
+    'transcripts',
+    listing.fingerprint,
+  );
+  expect(readdirSync(transcriptDirectory).filter((name) => name.endsWith('.txt'))).toHaveLength(1);
 };
 
 const runCliCell = async (
@@ -250,6 +326,7 @@ test('local-managed × managed-whisper', async () => {
     sampleById('speech'),
     environment,
     ['--analyzer', 'local', '--local-model', MATRIX_MODEL, '--transcription', 'managed', '--whisper-model', WHISPER_MODEL],
+    true,
     true,
   );
 });

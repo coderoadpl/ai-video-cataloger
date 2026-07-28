@@ -1,5 +1,15 @@
 import { spawn } from 'node:child_process';
-import { accessSync, constants, existsSync, mkdtempSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import {
+  accessSync,
+  constants,
+  existsSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
@@ -240,6 +250,33 @@ const errorEvent = (runResult: Run, label: string): z.output<typeof jsonEventSch
   return found;
 };
 
+const textFilesUnder = (root: string): string[] => {
+  if (!existsSync(root)) return [];
+  const paths: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const entryPath = join(root, entry.name);
+    if (entry.isDirectory()) paths.push(...textFilesUnder(entryPath));
+    else if (entry.isFile()) paths.push(entryPath);
+  }
+  return paths;
+};
+
+const assertCredentialNeverSharesPayloadWithConfigId = (
+  secret: string,
+  roots: readonly string[],
+  outputs: readonly string[],
+): void => {
+  const persisted = roots.flatMap((root) => textFilesUnder(root).map((filePath) => ({
+    label: filePath,
+    content: readFileSync(filePath).toString('utf8'),
+  })));
+  const emitted = outputs.map((content, index) => ({ label: `CLI output ${String(index + 1)}`, content }));
+  const leaks = [...persisted, ...emitted]
+    .filter((candidate) => candidate.content.includes(secret) && /cfg_[0-9a-f]{12}/.test(candidate.content))
+    .map((candidate) => candidate.label);
+  assert(leaks.length === 0, `credential and configId appeared together in: ${leaks.join(', ')}`);
+};
+
 const requiredValue = <T>(result: Result<T, AppError>, label: string): T => {
   if (!result.ok) return fail(`${label}: ${result.error.message}`);
   return result.value;
@@ -337,18 +374,6 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
   z.object({ providerId: z.literal('smoke-provider'), stored: z.literal(true) })
     .parse(completedData(setCredential, 'config set-credential'));
 
-  const deleteCredential = await run(['config', 'delete-credential', 'smoke-provider', '--json'], env, folder);
-  assert(
-    deleteCredential.code === 0,
-    `config delete-credential: expected exit 0, got ${deleteCredential.code}.\nstderr: ${deleteCredential.stderr}`,
-  );
-  assert(!deleteCredential.stdout.includes(secret), 'config delete-credential: the credential leaked into stdout.');
-  z.object({
-    providerId: z.literal('smoke-provider'),
-    cleared: z.array(z.literal('file')).length(1),
-    retained: z.array(z.string()).length(0),
-  }).parse(completedData(deleteCredential, 'config delete-credential'));
-
   const status = await run(['status', '--json'], env, folder);
   assert(status.code === 0, `status: expected exit 0, got ${status.code}.\nstdout: ${status.stdout}\nstderr: ${status.stderr}`);
   z.object({ videos: z.array(z.unknown()), summary: z.object({ total: z.number() }) }).parse(completedData(status, 'status'));
@@ -373,6 +398,26 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
     .map((parsed) => parsed.data);
   assert(variantRows.length === 1, `variants list: expected one variant row, got ${variantRows.length}`);
   assert(variantRows[0]?.selected === true, 'variants list: expected the smoke variant to be selected');
+  assertCredentialNeverSharesPayloadWithConfigId(secret, [home, folder], [
+    setCredential.stdout,
+    setCredential.stderr,
+    indexStatus.stdout,
+    indexStatus.stderr,
+    variants.stdout,
+    variants.stderr,
+  ]);
+
+  const deleteCredential = await run(['config', 'delete-credential', 'smoke-provider', '--json'], env, folder);
+  assert(
+    deleteCredential.code === 0,
+    `config delete-credential: expected exit 0, got ${deleteCredential.code}.\nstderr: ${deleteCredential.stderr}`,
+  );
+  assert(!deleteCredential.stdout.includes(secret), 'config delete-credential: the credential leaked into stdout.');
+  z.object({
+    providerId: z.literal('smoke-provider'),
+    cleared: z.array(z.literal('file')).length(1),
+    retained: z.array(z.string()).length(0),
+  }).parse(completedData(deleteCredential, 'config delete-credential'));
 
   const missingFolder = join(folder, 'missing');
   const missing = await run(['scan', missingFolder, '--json'], env, folder);
