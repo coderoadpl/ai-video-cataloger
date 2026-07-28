@@ -1,7 +1,11 @@
 import {
+  Accordion,
+  AccordionDetails,
+  AccordionSummary,
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -72,10 +76,107 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, py: 1 }}>
             {settings.error === null ? null : <Alert severity="error">{settings.error}</Alert>}
             {settings.inherited.length === 0 ? null : (
-              <Typography variant="caption" color="text.secondary" data-testid="settings-inherited-hint">
-                {dictionary.settingsModal.inheritedHint(settings.inherited.join(', '))}
-              </Typography>
+              <Accordion
+                disableGutters
+                data-testid="settings-inherited-panel"
+                slotProps={{ transition: { unmountOnExit: true } }}
+              >
+                <AccordionSummary>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {dictionary.settingsModal.inheritedTitle}
+                  </Typography>
+                </AccordionSummary>
+                <AccordionDetails sx={{ pt: 0 }}>
+                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                    {settings.inherited.map((setting) => (
+                      <Box
+                        key={setting.key}
+                        data-testid={`settings-inherited-${setting.key}`}
+                        sx={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'space-between',
+                          gap: 2,
+                          py: 0.75,
+                          borderBottom: 1,
+                          borderColor: 'divider',
+                        }}
+                      >
+                        <Box sx={{ minWidth: 0 }}>
+                          <Typography variant="caption" component="div">
+                            {setting.label}
+                          </Typography>
+                          <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+                            {setting.value}
+                          </Typography>
+                        </Box>
+                        <Chip size="small" variant="outlined" label={setting.sourceLabel} />
+                      </Box>
+                    ))}
+                  </Box>
+                  <Typography
+                    variant="caption"
+                    color="text.secondary"
+                    data-testid="settings-inherited-hint"
+                    sx={{ display: 'block', mt: 1 }}
+                  >
+                    {dictionary.settingsModal.inheritedHint}
+                  </Typography>
+                </AccordionDetails>
+              </Accordion>
             )}
+
+            <SettingsAnalyzerSection
+              backend={draft.analyzer_backend}
+              localModel={draft.local_model}
+              tiers={settings.tiers}
+              provider={draft.analyzer_provider}
+              frameCount={draft.frames}
+              apiCredential={settings.apiCredential}
+              onBackendChange={(backend) => patch({ analyzer_backend: backend })}
+              onLocalModelChange={(tag) => patch({ local_model: tag })}
+              onProviderChange={(provider) =>
+                patch(provider.family === 'gemini-native'
+                  ? { analyzer_provider: provider, whisper_mode: 'skip' }
+                  : { analyzer_provider: provider })}
+              onApiCredentialChange={settings.setApiCredential}
+              isForgettingCredential={settings.isForgettingCredential}
+              forgetCredentialNotice={settings.forgetCredentialNotice}
+              onForgetCredential={settings.forgetCredential}
+            />
+
+            {nativeAnalyzer ? (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }} data-testid="gemini-budget-section">
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {dictionary.settingsModal.geminiBudgetSectionTitle}
+                </Typography>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={dictionary.settingsModal.geminiBudgetLabel}
+                  value={settings.budgetInput}
+                  error={settings.isBudgetInvalid}
+                  onChange={(event) => settings.setBudgetInput(event.target.value)}
+                  helperText={settings.isBudgetInvalid
+                    ? dictionary.settingsModal.geminiBudgetInvalid
+                    : dictionary.settingsModal.geminiBudgetHelper}
+                  slotProps={{ htmlInput: { 'data-testid': 'gemini-budget-input', inputMode: 'decimal' } }}
+                />
+                {settings.monthlySpend === null ? (
+                  <Typography variant="caption" data-testid="gemini-spend-readout">
+                    {dictionary.settingsModal.geminiSpendUnknown}
+                  </Typography>
+                ) : settings.monthlySpend.estimatedCostUsd === 0 && settings.monthlySpend.entries === 0 ? null : (
+                  <Typography variant="caption" data-testid="gemini-spend-readout">
+                    {dictionary.settingsModal.geminiSpendReadout(
+                      settings.monthlySpend.month,
+                      settings.monthlySpend.estimatedCostUsd,
+                      settings.monthlySpend.entries,
+                    )}
+                  </Typography>
+                )}
+              </Box>
+            ) : null}
 
             <Box>
               <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
@@ -171,25 +272,6 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               />
             ) : null}
 
-            <SettingsAnalyzerSection
-              backend={draft.analyzer_backend}
-              localModel={draft.local_model}
-              tiers={settings.tiers}
-              provider={draft.analyzer_provider}
-              frameCount={draft.frames}
-              apiCredential={settings.apiCredential}
-              onBackendChange={(backend) => patch({ analyzer_backend: backend })}
-              onLocalModelChange={(tag) => patch({ local_model: tag })}
-              onProviderChange={(provider) =>
-                patch(provider.family === 'gemini-native'
-                  ? { analyzer_provider: provider, whisper_mode: 'skip' }
-                  : { analyzer_provider: provider })}
-              onApiCredentialChange={settings.setApiCredential}
-              isForgettingCredential={settings.isForgettingCredential}
-              forgetCredentialNotice={settings.forgetCredentialNotice}
-              onForgetCredential={settings.forgetCredential}
-            />
-
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
               <Typography variant="body2" sx={{ fontWeight: 600 }}>
                 {dictionary.settings.languageSectionTitle}
@@ -252,52 +334,24 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
             </Box>
 
             {nativeAnalyzer ? (
-              <>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {dictionary.settingsModal.geminiBatchSectionTitle}
-                  </Typography>
-                  <FormControlLabel
-                    control={
-                      <Switch
-                        checked={draft.gemini_batch_mode}
-                        data-testid="gemini-batch-switch"
-                        onChange={(event) => patch({ gemini_batch_mode: event.target.checked })}
-                      />
-                    }
-                    label={dictionary.settingsModal.geminiBatchEnableLabel}
-                  />
-                  <Typography variant="caption">
-                    {dictionary.settingsModal.geminiBatchHelper}
-                  </Typography>
-                </Box>
-                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {dictionary.settingsModal.geminiBudgetSectionTitle}
-                  </Typography>
-                  <TextField
-                    fullWidth
-                    size="small"
-                    label={dictionary.settingsModal.geminiBudgetLabel}
-                    value={settings.budgetInput}
-                    error={settings.isBudgetInvalid}
-                    onChange={(event) => settings.setBudgetInput(event.target.value)}
-                    helperText={settings.isBudgetInvalid
-                      ? dictionary.settingsModal.geminiBudgetInvalid
-                      : dictionary.settingsModal.geminiBudgetHelper}
-                    slotProps={{ htmlInput: { 'data-testid': 'gemini-budget-input', inputMode: 'decimal' } }}
-                  />
-                  <Typography variant="caption" data-testid="gemini-spend-readout">
-                    {settings.monthlySpend === null
-                      ? dictionary.settingsModal.geminiSpendUnknown
-                      : dictionary.settingsModal.geminiSpendReadout(
-                        settings.monthlySpend.month,
-                        settings.monthlySpend.estimatedCostUsd,
-                        settings.monthlySpend.entries,
-                      )}
-                  </Typography>
-                </Box>
-              </>
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {dictionary.settingsModal.geminiBatchSectionTitle}
+                </Typography>
+                <FormControlLabel
+                  control={
+                    <Switch
+                      checked={draft.gemini_batch_mode}
+                      data-testid="gemini-batch-switch"
+                      onChange={(event) => patch({ gemini_batch_mode: event.target.checked })}
+                    />
+                  }
+                  label={dictionary.settingsModal.geminiBatchEnableLabel}
+                />
+                <Typography variant="caption">
+                  {dictionary.settingsModal.geminiBatchHelper}
+                </Typography>
+              </Box>
             ) : null}
 
             <FormControlLabel

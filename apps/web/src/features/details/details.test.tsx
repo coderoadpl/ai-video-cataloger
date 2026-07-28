@@ -62,6 +62,13 @@ const firstDescriptor = {
 } as const;
 const secondDescriptor = { ...firstDescriptor, output_language: 'pl' } as const;
 const thirdDescriptor = { ...firstDescriptor, modelTag: 'gemma3:27b' } as const;
+const geminiDescriptor = {
+  family: 'gemini-native',
+  providerId: 'gemini',
+  model: 'gemini-3.6-flash',
+  output_language: 'pl',
+  promptVersion: 3,
+} as const;
 
 const variant = (
   configId: string,
@@ -528,7 +535,40 @@ describe('details panel', () => {
     await waitFor(() => expect(selectionCompleted).toBe(true));
   });
 
-  it('states when analysis creates a variant', async () => {
+  it('formats Gemini native labels once and keeps a placeholder in the frames row', async () => {
+    const geminiConfigId = 'cfg_444444444444';
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
+        variant(firstConfigId, firstDescriptor, true, 'First summary'),
+        {
+          ...variant(geminiConfigId, geminiDescriptor, false, 'Gemini summary'),
+          artifacts: {
+            framesDirectory: null,
+            transcriptPath: `/catalog/artifacts/transcripts/hash-a/${geminiConfigId}.txt`,
+            summaryPath: `/catalog/variants/hash-a/${geminiConfigId}/summary.txt`,
+          },
+        },
+      ]))),
+    );
+    const video = makeVideo({
+      artifacts: {
+        ...makeVideo().artifacts,
+        framePaths: ['/selected/frame-001.jpg', '/selected/frame-002.jpg'],
+      },
+    });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} />);
+
+    await screen.findByTestId('variant-switcher');
+    fireEvent.click(screen.getByTestId('compare-variants'));
+
+    const geminiColumn = screen.getByTestId(`variant-compare-column-${geminiConfigId}`);
+    expect(within(geminiColumn).getByText('gemini-3.6-flash - native transcript - no frames')).toBeDefined();
+    const placeholder = within(geminiColumn).getByTestId(`variant-no-frames-${geminiConfigId}`);
+    expect(placeholder.textContent).toBe('This variant does not extract frames');
+  });
+
+  it('states when analysis creates a variant and sets the current configuration as folder default', async () => {
     const onAnalyze = vi.fn();
     server.use(
       http.get('/api/variants', () => HttpResponse.json(variantsResponse(

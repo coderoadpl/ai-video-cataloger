@@ -56,6 +56,19 @@ describe('dictionary', () => {
     expect(getDict('en')).toBe(en);
   });
 
+  it('keeps the Polish settings polish copy idiomatic', () => {
+    expect(pl.settingsModal.inheritedTitle).toBe('Wartości dziedziczone');
+    expect(pl.settingsModal.inheritedHint)
+      .toBe('Najczęściej zmieniane wartości tworzą nadpisanie w folderze.');
+    expect(pl.credentials.savedKeychain).toBe('Klucz API zapisano w pęku kluczy macOS.');
+    expect(pl.details.variants.configuredLabel(
+      'gemini-3.6-flash',
+      pl.details.variants.nativeTranscription,
+      pl.details.variants.noFrames,
+    )).toBe('gemini-3.6-flash - transkrypcja natywna - bez klatek');
+    expect(pl.details.variants.frameExtractionDisabled).toBe('ten wariant nie ekstrahuje klatek');
+  });
+
   it('keeps swept UI literals inside the dictionary', () => {
     const literals = ['Search catalog', 'Analyze All', 'Getting Started', 'Only this folder', 'Not detected', 'Open Folder', 'Not Tracked', 'Local (Whisper.cpp)', 'Skip Transcription', 'No output yet. Run an analysis to see job progress here.'];
     const standaloneSaved = /(?<![A-Za-z])Saved(?![A-Za-z])/;
