@@ -22,6 +22,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Changed
 
 - Gates refuse to run on the wrong Node.
+- `scripts/release-walkthrough.mjs` now opens the driven window at a configurable size (`--window-size`, default 1920x1200) so the details column no longer collapses in captured screenshots, and waits for pending transitions/spinners to settle before each screenshot.
 
 ### Fixed
 

@@ -11,6 +11,14 @@ The runner is `scripts/release-walkthrough.mjs`, wrapped by
 `manifest.json` (step, status, duration, screenshot, time-to-window) next to
 them.
 
+Every run opens the driven window at **1920x1200** by default — large enough
+that the details column never collapses in the captured screenshots — via a
+seeded `window-state.json` in the fresh user-data directory. Override it with
+`--window-size WxH` (for example `--window-size 1440x900`). Before each
+screenshot the runner waits for pending CSS transitions/animations and any
+spinner/loading indicator to clear, falling back to a short fixed delay when
+that can't be detected, so a shot never lands mid-spinner or mid-fade.
+
 ## Isolation
 
 Every run launches with:
@@ -87,7 +95,7 @@ Read every screenshot against the sensitivities that have burned us before:
 - **Polish copy** — with the UI language set to PL, no `key.path` leaks, no
   English fallback sentence, no clipped label in a narrower Polish string.
 - **Layout** — the modal set (settings, wizard) is centred and fully inside the
-  window at the packaged default window size.
+  window at the walkthrough's window size (1920x1200 by default).
 
 The manual suites in [manual-test-checklists.md](manual-test-checklists.md) stay
 the deeper pass; this walkthrough is the always-run floor beneath them.
