@@ -252,24 +252,52 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
             </Box>
 
             {nativeAnalyzer ? (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {dictionary.settingsModal.geminiBatchSectionTitle}
-                </Typography>
-                <FormControlLabel
-                  control={
-                    <Switch
-                      checked={draft.gemini_batch_mode}
-                      data-testid="gemini-batch-switch"
-                      onChange={(event) => patch({ gemini_batch_mode: event.target.checked })}
-                    />
-                  }
-                  label={dictionary.settingsModal.geminiBatchEnableLabel}
-                />
-                <Typography variant="caption">
-                  {dictionary.settingsModal.geminiBatchHelper}
-                </Typography>
-              </Box>
+              <>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {dictionary.settingsModal.geminiBatchSectionTitle}
+                  </Typography>
+                  <FormControlLabel
+                    control={
+                      <Switch
+                        checked={draft.gemini_batch_mode}
+                        data-testid="gemini-batch-switch"
+                        onChange={(event) => patch({ gemini_batch_mode: event.target.checked })}
+                      />
+                    }
+                    label={dictionary.settingsModal.geminiBatchEnableLabel}
+                  />
+                  <Typography variant="caption">
+                    {dictionary.settingsModal.geminiBatchHelper}
+                  </Typography>
+                </Box>
+                <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
+                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                    {dictionary.settingsModal.geminiBudgetSectionTitle}
+                  </Typography>
+                  <TextField
+                    fullWidth
+                    size="small"
+                    label={dictionary.settingsModal.geminiBudgetLabel}
+                    value={settings.budgetInput}
+                    error={settings.isBudgetInvalid}
+                    onChange={(event) => settings.setBudgetInput(event.target.value)}
+                    helperText={settings.isBudgetInvalid
+                      ? dictionary.settingsModal.geminiBudgetInvalid
+                      : dictionary.settingsModal.geminiBudgetHelper}
+                    slotProps={{ htmlInput: { 'data-testid': 'gemini-budget-input', inputMode: 'decimal' } }}
+                  />
+                  <Typography variant="caption" data-testid="gemini-spend-readout">
+                    {settings.monthlySpend === null
+                      ? dictionary.settingsModal.geminiSpendUnknown
+                      : dictionary.settingsModal.geminiSpendReadout(
+                        settings.monthlySpend.month,
+                        settings.monthlySpend.estimatedCostUsd,
+                        settings.monthlySpend.entries,
+                      )}
+                  </Typography>
+                </Box>
+              </>
             ) : null}
 
             <FormControlLabel
@@ -313,7 +341,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
         <Button
           variant="contained"
           onClick={settings.save}
-          disabled={!settings.hasChanges || settings.isSaving || folder === null}
+          disabled={!settings.canSave || settings.isSaving || folder === null}
           data-testid="settings-save"
         >
           {settings.isSaving ? dictionary.settingsModal.saving : dictionary.common.save}

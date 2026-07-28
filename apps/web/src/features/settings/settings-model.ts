@@ -103,6 +103,22 @@ export const credentialDeletionMessage = (
     : `${withKeychain} ${dictionary.credentials.entryUnreadableRetained}`;
 };
 
+export type BudgetInput =
+  | { kind: 'empty' }
+  | { kind: 'valid'; amountUsd: number }
+  | { kind: 'invalid' };
+
+export const parseBudgetInput = (raw: string): BudgetInput => {
+  const trimmed = raw.trim();
+  if (trimmed.length === 0) return { kind: 'empty' };
+  if (!/^\d+(?:[.,]\d+)?$/.test(trimmed)) return { kind: 'invalid' };
+  const amountUsd = Number(trimmed.replace(',', '.'));
+  return amountUsd > 0 ? { kind: 'valid', amountUsd } : { kind: 'invalid' };
+};
+
+export const formatBudgetInput = (amountUsd: number | null): string =>
+  amountUsd === null ? '' : String(amountUsd);
+
 export const serializeValue = (draft: SettingsDraft, key: ConfigKey): string => {
   const value = draft[key];
   return typeof value === 'object' ? JSON.stringify(value) : String(value);

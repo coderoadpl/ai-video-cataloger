@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 import { CONFIG_KEYS } from '@core/domain/index.js';
+import type { IndexStatusOutput } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import { apiErrorMessage } from '../../i18n/api-error-message.js';
@@ -12,6 +13,8 @@ import {
   changedKeys,
   credentialDeletionNotice,
   draftFromEffective,
+  formatBudgetInput,
+  parseBudgetInput,
   serializeValue,
   type CredentialNotice,
   type LocalAiTier,
@@ -20,22 +23,29 @@ import {
 
 export const SLOW_SAVE_HINT_MS = 2000;
 
+type MonthlySpend = IndexStatusOutput['currentMonthSpend'];
+
 export interface SettingsState {
   isLoading: boolean;
   error: string | null;
   draft: SettingsDraft | null;
   hasChanges: boolean;
+  canSave: boolean;
   isSaving: boolean;
   isSaveSlow: boolean;
   tiers: LocalAiTier[] | null;
   apiCredential: string;
   whisperApiCredential: string;
+  budgetInput: string;
+  isBudgetInvalid: boolean;
+  monthlySpend: MonthlySpend | null;
   inherited: string[];
   isForgettingCredential: boolean;
   forgetCredentialNotice: CredentialNotice | null;
   forgetCredential: () => void;
   setApiCredential: (credential: string) => void;
   setWhisperApiCredential: (credential: string) => void;
+  setBudgetInput: (raw: string) => void;
   setDraft: (patch: Partial<SettingsDraft>) => void;
   save: () => void;
   reset: () => void;
@@ -53,6 +63,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const queryClient = useQueryClient();
   const configQuery = useQuery({ ...actions.config(folder === null ? {} : { folder }), enabled });
   const requirementsQuery = useQuery({ ...actions.localAiRequirements, enabled });
+  const indexStatusQuery = useQuery({ ...actions.indexStatus, enabled });
   const setConfig = useMutation(actions.setConfig);
   const setCredential = useMutation(actions.setCredential);
   const deleteCredential = useMutation(actions.deleteCredential);
@@ -64,6 +75,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const [saveError, setSaveError] = useState<string | null>(null);
   const [apiCredential, setApiCredential] = useState('');
   const [whisperApiCredential, setWhisperApiCredential] = useState('');
+  const [budgetInput, setBudgetInputState] = useState('');
   const [forgetCredentialNotice, setForgetCredentialNotice] = useState<CredentialNotice | null>(null);
 
   const data = configQuery.data;
@@ -74,6 +86,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       setSaveError(null);
       setApiCredential('');
       setWhisperApiCredential('');
+      setBudgetInputState('');
       setForgetCredentialNotice(null);
       return;
     }
@@ -81,14 +94,23 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     const seeded = draftFromEffective(data.effective);
     setDraftState(seeded);
     setOriginal(seeded);
+    setBudgetInputState(formatBudgetInput(seeded.gemini_monthly_budget_usd));
   }, [open, data, draft]);
 
   const setDraft = useCallback((patch: Partial<SettingsDraft>) => {
     setDraftState((current) => (current === null ? current : { ...current, ...patch }));
   }, []);
 
+  const setBudgetInput = useCallback((raw: string) => {
+    setBudgetInputState(raw);
+    const parsed = parseBudgetInput(raw);
+    if (parsed.kind === 'invalid') return;
+    setDraft({ gemini_monthly_budget_usd: parsed.kind === 'empty' ? null : parsed.amountUsd });
+  }, [setDraft]);
+
   const reset = useCallback(() => {
     setDraftState(original);
+    setBudgetInputState(original === null ? '' : formatBudgetInput(original.gemini_monthly_budget_usd));
     setSaveError(null);
   }, [original]);
 
@@ -185,17 +207,23 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       || apiCredential.length > 0
       || whisperApiCredential.length > 0
     );
+  const isBudgetInvalid =
+    draft?.analyzer_provider.family === 'gemini-native' && parseBudgetInput(budgetInput).kind === 'invalid';
 
   return {
     isLoading: enabled && draft === null && configQuery.error === null,
     error: saveError ?? (configQuery.error === null ? null : apiErrorMessage(configQuery.error, dictionary)),
     draft,
     hasChanges,
+    canSave: hasChanges && !isBudgetInvalid,
     isSaving,
     isSaveSlow,
     tiers: requirementsQuery.data?.tiers ?? null,
     apiCredential,
     whisperApiCredential,
+    budgetInput,
+    isBudgetInvalid,
+    monthlySpend: indexStatusQuery.data?.currentMonthSpend ?? null,
     inherited: data !== undefined && 'config' in data
       ? CONFIG_KEYS
         .filter((key) => data.sources[key] !== 'folder')
@@ -206,6 +234,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     forgetCredential,
     setApiCredential,
     setWhisperApiCredential,
+    setBudgetInput,
     setDraft,
     save,
     reset,

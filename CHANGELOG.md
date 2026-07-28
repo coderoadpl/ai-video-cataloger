@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Settings expose the Gemini monthly budget cap alongside a read-only readout of this month's estimated Gemini spend and the number of analyses behind it.
 - File details can compare every analysis variant side by side, including configuration, frames, transcript, summary, tags, duration and recorded cost, and select a variant from its comparison column.
 - File details can preview and explicitly select analysis variants, show whether Analyze creates or replaces a variant, set the current configuration as the folder default, and badge multi-variant search results.
 - `variants list|select|delete|default` CLI commands inspect and manage analysis variants; process NDJSON identifies configurations and reports verbose artifact reuse.

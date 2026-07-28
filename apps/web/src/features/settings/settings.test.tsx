@@ -103,10 +103,19 @@ const requirements = (tiers: Tier[]): Requirements => ({
   tiers,
 });
 
+const indexStatus = (currentMonthSpend: { month: string; entries: number; estimatedCostUsd: number }) => ({
+  databasePath: '/catalog.db',
+  counts: { folders: 0, files: 0, analyses: 0 },
+  folders: [],
+  latestRun: null,
+  currentMonthSpend: { kind: 'estimate' as const, provider: 'gemini' as const, ...currentMonthSpend },
+});
+
 const stubEndpoints = (
   config: StoredConfig,
   tiers: Tier[] = [],
   inherited?: { effective: typeof defaults; sources: Record<keyof StoredConfig, 'folder' | 'home' | 'default'> } | undefined,
+  spend: { month: string; entries: number; estimatedCostUsd: number } = { month: '2026-08', entries: 0, estimatedCostUsd: 0 },
 ) => {
   const effective = inherited?.effective ?? {
     whisper_binary_path: config.whisper_binary_path ?? defaults.whisper_binary_path,
@@ -153,6 +162,7 @@ const stubEndpoints = (
     http.get('/api/models/local-ai/requirements', () =>
       HttpResponse.json({ ok: true, data: requirements(tiers) }),
     ),
+    http.get('/api/index/status', () => HttpResponse.json({ ok: true, data: indexStatus(spend) })),
   );
 };
 
@@ -282,6 +292,59 @@ describe('settings modal', () => {
 
     await waitFor(() => expect(bodies.some((body) => body.key === 'gemini_batch_mode')).toBe(true));
     expect(bodies.find((body) => body.key === 'gemini_batch_mode')?.value).toBe('true');
+  });
+
+  it('shows the monthly Gemini budget with this month\'s estimated spend and saves the cap globally', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { folder?: string | undefined; key: string; value: string }[] = [];
+    stubEndpoints(emptyConfig, [], undefined, { month: '2026-08', entries: 4, estimatedCostUsd: 1.2345 });
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push(body);
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null },
+        });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const backendSelect = await screen.findByTestId('analyzer-backend-select');
+    expect(screen.queryByTestId('gemini-budget-input')).toBeNull();
+    fireEvent.mouseDown(within(backendSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
+
+    const budget = await screen.findByTestId('gemini-budget-input');
+    await waitFor(() =>
+      expect(screen.getByTestId('gemini-spend-readout').textContent)
+        .toBe(en.settingsModal.geminiSpendReadout('2026-08', 1.2345, 4)));
+
+    fireEvent.change(budget, { target: { value: '25.5' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(bodies.some((body) => body.key === 'gemini_monthly_budget_usd')).toBe(true));
+    const saved = bodies.find((body) => body.key === 'gemini_monthly_budget_usd');
+    expect(saved?.value).toBe('25.5');
+    expect(saved?.folder).toBeUndefined();
+  });
+
+  it('blocks saving a budget that is not a positive amount', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const backendSelect = await screen.findByTestId('analyzer-backend-select');
+    fireEvent.mouseDown(within(backendSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
+
+    const budget = await screen.findByTestId('gemini-budget-input');
+    fireEvent.change(budget, { target: { value: '0' } });
+
+    await waitFor(() => expect(screen.getByText(en.settingsModal.geminiBudgetInvalid)).toBeDefined());
+    expect(screen.getByTestId('settings-save').getAttribute('disabled')).not.toBeNull();
+
+    fireEvent.change(budget, { target: { value: '' } });
+    await waitFor(() => expect(screen.getByTestId('settings-save').getAttribute('disabled')).toBeNull());
   });
 
   it('saves only the changed keys and closes on success', async () => {

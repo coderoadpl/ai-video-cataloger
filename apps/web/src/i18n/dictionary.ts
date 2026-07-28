@@ -491,6 +491,12 @@ export interface Dictionary {
     geminiBatchSectionTitle: string;
     geminiBatchEnableLabel: string;
     geminiBatchHelper: string;
+    geminiBudgetSectionTitle: string;
+    geminiBudgetLabel: string;
+    geminiBudgetHelper: string;
+    geminiBudgetInvalid: string;
+    geminiSpendReadout: (month: string, estimatedCostUsd: number, entries: number) => string;
+    geminiSpendUnknown: string;
     skipAutoRename: string;
     runSetupWizard: string;
     reset: string;
@@ -1135,6 +1141,14 @@ export const en: Dictionary = {
     geminiBatchHelper: 'Files are uploaded one by one, then the whole run waits for a single batch job. '
       + 'Results usually arrive in minutes, but Google allows up to 24 hours, so there is no per-file progress bar. '
       + 'Analyzing a single video is never batched. Quitting is safe: the run re-attaches to the same job.',
+    geminiBudgetSectionTitle: 'Gemini monthly budget',
+    geminiBudgetLabel: 'Monthly budget (USD)',
+    geminiBudgetHelper: 'Whole-tree runs pause once this month\'s estimated Gemini spend reaches the cap. '
+      + 'Leave blank for no cap. The figure is a local estimate from token counts, not a Google invoice.',
+    geminiBudgetInvalid: 'Enter an amount above 0, or leave the field blank.',
+    geminiSpendReadout: (month, estimatedCostUsd, entries) =>
+      `Estimated spend for ${month}: $${estimatedCostUsd.toFixed(4)} USD across ${String(entries)} analyses.`,
+    geminiSpendUnknown: 'Estimated spend for this month is not available yet.',
     skipAutoRename: 'Skip Auto-Rename',
     runSetupWizard: 'Run Setup Wizard',
     reset: 'Reset',
@@ -1788,6 +1802,14 @@ export const pl: Dictionary = {
     geminiBatchHelper: 'Pliki lecą po kolei, a potem cały bieg czeka na jedno zadanie wsadowe. '
       + 'Wyniki zwykle są w kilka minut, ale Google dopuszcza do 24 godzin, więc nie ma paska postępu per plik. '
       + 'Analiza pojedynczego filmu nigdy nie idzie wsadowo. Zamknięcie aplikacji jest bezpieczne: bieg podepnie się do tego samego zadania.',
+    geminiBudgetSectionTitle: 'Miesięczny budżet Gemini',
+    geminiBudgetLabel: 'Budżet miesięczny (USD)',
+    geminiBudgetHelper: 'Analiza drzewa zatrzyma się, gdy szacowane wydatki Gemini w tym miesiącu osiągną limit. '
+      + 'Puste pole oznacza brak limitu. Kwota to lokalny szacunek z liczby tokenów, a nie faktura od Google.',
+    geminiBudgetInvalid: 'Podaj kwotę większą od 0 albo zostaw pole puste.',
+    geminiSpendReadout: (month, estimatedCostUsd, entries) =>
+      `Szacowane wydatki za ${month}: ${estimatedCostUsd.toFixed(4)} USD w ${String(entries)} analizach.`,
+    geminiSpendUnknown: 'Szacowane wydatki za ten miesiąc nie są jeszcze dostępne.',
     skipAutoRename: 'Pomiń automatyczną zmianę nazw',
     runSetupWizard: 'Uruchom kreatora konfiguracji',
     reset: 'Resetuj',
