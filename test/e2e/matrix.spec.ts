@@ -245,12 +245,12 @@ const assertPipeline = async (
   const listing = variantsCompletionSchema.parse(
     variants.events.find((event) => event.type === 'completed')?.data,
   );
-  const rows = variants.jsonValues.flatMap((value) => {
+  const variantRows = variants.jsonValues.flatMap((value) => {
     const parsed = variantRowSchema.safeParse(value);
     return parsed.success ? [parsed.data] : [];
   });
-  expect(rows).toContainEqual({ configId: firstCompletion.configId, selected: true });
-  expect(rows).toContainEqual({ configId: secondCompletion.configId, selected: false });
+  expect(variantRows).toContainEqual({ configId: firstCompletion.configId, selected: true });
+  expect(variantRows).toContainEqual({ configId: secondCompletion.configId, selected: false });
   const transcriptDirectory = join(
     workdir,
     '.ai-video-cataloger',
