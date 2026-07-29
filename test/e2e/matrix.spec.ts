@@ -123,6 +123,24 @@ const requireCommandAuthentication = (
   }
 };
 
+const requireCursorAgentUsable = (cell: string, environment: NodeJS.ProcessEnv): void => {
+  const probeDir = mkdtempSync(join(tmpdir(), 'avc-matrix-cursor-probe-'));
+  try {
+    const result = spawnSync(
+      'cursor-agent',
+      ['--print', '--trust', '--mode', 'ask', '--workspace', probeDir, 'Reply with the single word: ok'],
+      { env: environment, encoding: 'utf8', timeout: 60_000 },
+    );
+    if (result.error !== undefined) failOrSkip(cell, `cursor-agent is not usable: ${result.error.message}`);
+    if (result.status !== 0) {
+      const detail = `${result.stdout}\n${result.stderr}`.trim();
+      failOrSkip(cell, `cursor-agent is not usable${detail.length === 0 ? '' : `: ${detail}`}`);
+    }
+  } finally {
+    rmSync(probeDir, { recursive: true, force: true });
+  }
+};
+
 const requireSystemOllamaModel = async (cell: string, baseUrl: string, model: string): Promise<void> => {
   const reason = await systemOllamaModelMissingReason(baseUrl, model);
   if (reason !== null) failOrSkip(cell, reason);
@@ -393,8 +411,11 @@ for (const harness of [
     // agent CLIs resolve auth stores (keychain paths incl.) via HOME; a faked HOME logs them out
     const environment = cellEnvironment(realHome);
     requireCommandAuthentication(harness.cell, harness.command, harness.auth, environment);
-    if (harness.provider === 'cursor-agent' && process.env.E2E_SKIP_CURSOR === '1') {
-      failOrSkip(harness.cell, 'cursor-agent leg skipped by operator (E2E_SKIP_CURSOR=1, e.g. plan usage exhausted)');
+    if (harness.provider === 'cursor-agent') {
+      if (process.env.E2E_SKIP_CURSOR === '1') {
+        failOrSkip(harness.cell, 'cursor-agent leg skipped by operator (E2E_SKIP_CURSOR=1, e.g. plan usage exhausted)');
+      }
+      requireCursorAgentUsable(harness.cell, environment);
     }
     await runCliCell(
       harness.cell,

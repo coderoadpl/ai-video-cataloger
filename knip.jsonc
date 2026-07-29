@@ -47,7 +47,8 @@
     "sips", // scripts/build-app-icon.mjs: rasterize the logo
     "iconutil", // scripts/build-app-icon.mjs: assemble the .icns
     "say", // test/e2e/helpers.ts: synthesize sample audio for transcription fixtures
-    "hdiutil" // test/e2e/ro-mount.ts: create/attach/detach real read-only disk images
+    "hdiutil", // test/e2e/ro-mount.ts: create/attach/detach real read-only disk images
+    "cursor-agent" // test/e2e/matrix.spec.ts: trivial-invocation availability probe for the harness leg
   ],
   "rules": {
     // Unambiguous dead weight fails `check`: dead files, undeclared/unused
