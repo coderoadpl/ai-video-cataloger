@@ -16,6 +16,8 @@ import {
 } from '@core/domain/index.js';
 import type { CredentialsStore, DependencyStatus, LocalAiRuntimePort, LocalAiRuntimeStatus } from '@core/server/index.js';
 
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
+
 import {
   HarnessAnalyzerAdapter,
   OllamaAnalyzerAdapter,
@@ -398,7 +400,7 @@ describe('HarnessAnalyzerAdapter', () => {
       ok: false,
       error: { message: expect.stringContaining(cause === 'timeout' ? 'timed out' : 'cancelled') },
     });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });
 
 describe('OllamaAnalyzerAdapter', () => {
@@ -806,7 +808,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
 
     expect(await analyzing).toMatchObject({ ok: false, error: { code: 'processing_error', message: 'API analysis cancelled' } });
     await server.close();
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('honors the configured request timeout', async () => {
     const fetchImpl: typeof fetch = (_input, init) => new Promise((_resolve, reject) => {
@@ -836,7 +838,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
     });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'provider_error', message: 'API provider request timed out' } });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('reports missing credentials as unavailable with actionable readiness guidance', async () => {
     const adapter = new OpenAiCompatibleAnalyzerAdapter({ credentials: new FakeCredentialsStore(null) });

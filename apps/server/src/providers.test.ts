@@ -9,6 +9,7 @@ import type { ProvidersPort, ProviderTestResult } from '@core/server/index.js';
 import { buildApp } from './app.js';
 import { createDeps, type AppDeps } from './composition.js';
 import { createInMemoryDeps } from './test-support/in-memory-deps.js';
+import { scaledTimeout } from '../../../test/helpers/gate-timeout.js';
 
 class FakeProvidersPort implements ProvidersPort {
   readonly tested: AnalyzerProviderConfig[] = [];
@@ -166,7 +167,7 @@ describe('provider routes', () => {
         version: process.version,
       },
     });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('reports why a custom harness command is unavailable', async () => {
     const input = {
@@ -194,5 +195,5 @@ describe('provider routes', () => {
         message: expect.stringContaining('ENOENT'),
       },
     });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });

@@ -306,6 +306,12 @@ pnpm run check
 pnpm run smoke
 ```
 
+`AVC_GATE_TIMEOUT_FACTOR` (default `1`) multiplies every vitest test/hook
+timeout and every CLI-suite spawn timeout at once, for the case where the gates
+share the machine with other heavy work; a non-numeric or non-positive value
+falls back to `1`. It buys headroom on a loaded machine — it never excuses a red
+gate, which stays a P1 under the flake doctrine.
+
 CI (`check`, `smoke`, `e2e`, `ai-review`) runs on a self-hosted Apple-silicon
 Mac and is dormant until the owner registers that runner and sets the
 `CI_RUNNER_READY` repository variable; dormant jobs skip under a name that says

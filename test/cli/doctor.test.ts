@@ -6,6 +6,7 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import { runCli, parseJsonEvents, findEvent } from '../helpers/cli-runner.js';
 import { createTestDir, cleanupTestDir } from '../setup.js';
+import { scaledTimeout } from '../helpers/gate-timeout.js';
 
 describe('doctor command', () => {
   let testDir: string;
@@ -37,7 +38,7 @@ describe('doctor command', () => {
       expect(dep).toHaveProperty('name');
       expect(dep).toHaveProperty('available');
     }
-  }, 75_000);
+  }, scaledTimeout(75_000));
 
   it('should report if some dependencies are missing', async () => {
     const result = await runCli(['doctor', '--json'], { cwd: testDir, timeout: 60_000 });
@@ -50,7 +51,7 @@ describe('doctor command', () => {
     const data = completedEvent?.data as Record<string, unknown>;
     expect(data).toHaveProperty('allAvailable');
     expect(typeof data.allAvailable).toBe('boolean');
-  }, 75_000);
+  }, scaledTimeout(75_000));
 
   it('should have proper JSON output structure', async () => {
     const result = await runCli(['doctor', '--json'], { cwd: testDir });

@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { findEvent, parseJsonEvents, runCli } from '../helpers/cli-runner.js';
 import { cleanupTestDir, createTestDir } from '../setup.js';
+import { scaledTimeout } from '../helpers/gate-timeout.js';
 
 const roots: string[] = [];
 
@@ -47,7 +48,7 @@ describe('API credentials', () => {
     const completed = findEvent(parseJsonEvents(result.stdout), 'completed');
     const data = completed?.data as { credentials?: { backend?: string; reason?: string } };
     expect(data.credentials).toEqual({ backend: 'file', reason: 'disabled' });
-  }, 75_000);
+  }, scaledTimeout(75_000));
 
   it('keeps the key out of events and debug artifacts after a failing configured API run', async () => {
     const home = createTestDir();

@@ -10,6 +10,7 @@ import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { runCli, parseJsonEvents } from '../helpers/cli-runner.js';
 import { createTestDir, cleanupTestDir } from '../setup.js';
+import { scaledTimeout } from '../helpers/gate-timeout.js';
 
 describe('models list/use are folder-independent', () => {
   let cwd: string;
@@ -36,5 +37,5 @@ describe('models list/use are folder-independent', () => {
 
     // The command must not have created a database in the working directory
     expect(existsSync(join(cwd, '.ai-video-cataloger'))).toBe(false);
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });

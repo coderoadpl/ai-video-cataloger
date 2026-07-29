@@ -22,6 +22,7 @@ import type {
   JobProgress,
 } from '../ports.js';
 import { processDrive, type ProcessDriveInput } from './process-drive.js';
+import { scaledTimeout } from '../../../test/helpers/gate-timeout.js';
 import {
   InMemoryAnalyzer,
   InMemoryCatalogs,
@@ -496,7 +497,7 @@ describe('gemini batch drive runs', () => {
     });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'processing_error' } });
-  }, 2000);
+  }, scaledTimeout(2000));
 
   it('keeps the display name after an uncertain submit failure so recovery can find the job', async () => {
     const batch = new FakeBatchPort({ submitError: appError('provider_error', 'fetch failed') });

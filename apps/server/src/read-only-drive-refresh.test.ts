@@ -19,6 +19,7 @@ import { SqlJsCatalogRepositoryFactory, JsonConfigStore } from '@adapters/db/sql
 import { SqlJsGlobalCatalogStore } from '@adapters/db/global-catalog.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
+import { scaledTimeout } from '../../../test/helpers/gate-timeout.js';
 
 const analyzerResponse = [
   'DESCRIPTION: A rabbit wakes up in a meadow.',
@@ -151,5 +152,5 @@ describe('drive run whose end-of-run snapshot refresh lands on a now read-only t
     expect(second.value.snapshotSkipped).toBeGreaterThan(0);
     const skipped = events.filter((event) => event.step === 'catalog_snapshot_skipped');
     expect(skipped.some((event) => event.data?.['folder'] === target)).toBe(true);
-  }, 120000);
+  }, scaledTimeout(120000));
 });

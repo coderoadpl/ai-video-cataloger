@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { scaledTimeout } from '../../../../../test/helpers/gate-timeout.js';
 import { createAppTheme } from '../../theme.js';
 import { type CatalogTreeNode } from './core/index.js';
 import { TreeAbsentFilesSection } from './TreeAbsentFilesSection.js';
@@ -76,7 +77,7 @@ describe('tree absent files section', () => {
     expect(screen.getByText('gone.mp4')).toBeDefined();
     expect(screen.getByText('sub')).toBeDefined();
     expect(requestCount).toBe(1);
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('shows an empty note when the tree has no absent files', async () => {
     server.use(

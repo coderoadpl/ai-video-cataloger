@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import { createTestQueryClient } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { scaledTimeout } from '../../../../../test/helpers/gate-timeout.js';
 import { useProcessing } from './use-processing.js';
 
 type Videos = Parameters<typeof useProcessing>[0]['videos'];
@@ -193,7 +194,7 @@ describe('useProcessing batch', () => {
       result.current.analyze(second);
     });
     await waitFor(() => expect(processed).toEqual(['/v/good1.mp4', '/v/good2.mp4']));
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('reports the renamed path after a completed analysis so selection can follow', async () => {
     const queryClient = createTestQueryClient();

@@ -4,6 +4,8 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { scaledTimeout } from './gate-timeout.js';
+
 const CURRENT_DIR = dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = join(CURRENT_DIR, '..', '..');
 const CLI_PATH = join(PROJECT_ROOT, 'apps', 'cli', 'src', 'main.ts');
@@ -24,7 +26,7 @@ export function runCli(
   },
 ): Promise<CommandResult> {
   const effectiveCwd = options?.cwd ?? PROJECT_ROOT;
-  const timeout = options?.timeout ?? 30000;
+  const timeout = scaledTimeout(options?.timeout ?? 30000);
 
   return new Promise((resolve, reject) => {
     const generatedHome = options?.env?.HOME === undefined ? mkdtempSync(join(tmpdir(), 'avc-cli-home-')) : null;

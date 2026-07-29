@@ -23,6 +23,7 @@ import { SqlJsCatalogRepositoryFactory, JsonConfigStore } from '@adapters/db/sql
 import { SqlJsGlobalCatalogStore } from '@adapters/db/global-catalog.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
+import { scaledTimeout } from '../../../test/helpers/gate-timeout.js';
 
 const analyzerResponse = [
   'DESCRIPTION: A rabbit wakes up in a meadow.',
@@ -166,7 +167,7 @@ describe('drive run over a write-protected folder with the real adapter stack', 
 
     const counts = await deps.globalCatalog?.counts();
     expect(counts?.ok === true && counts.value).toMatchObject({ folders: 1, files: 1, analyses: 1 });
-  }, 60000);
+  }, scaledTimeout(60000));
 
   it('resumes by fingerprint on a second pass without re-analyzing', async () => {
     const { root, deps, analyzer } = await scaffold();
@@ -181,7 +182,7 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     expect(second.value.filesSkipped).toBe(1);
     expect(second.value.filesFailed).toBe(0);
     expect(analyzer.calls).toBe(1);
-  }, 60000);
+  }, scaledTimeout(60000));
 
   it('serves the hit through the search contract and resolves its details', async () => {
     const { home, root, folder, deps } = await scaffold();
@@ -207,7 +208,7 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     const detail = details.value.videos.find((video) => video.filename === 'clip.mp4');
     expect(detail?.artifacts.summary?.description).toContain('rabbit');
     expect(detail?.status).toBe('completed');
-  }, 60000);
+  }, scaledTimeout(60000));
 
   it('forgets an entry globally and reports the skipped folder snapshot instead of failing', async () => {
     const { root, deps } = await scaffold();
@@ -231,5 +232,5 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     expect(indexForgetOutputSchema.safeParse(forgotten.value).success).toBe(true);
     const after = await globalCatalog.counts();
     expect(after.ok === true && after.value.files).toBe(0);
-  }, 60000);
+  }, scaledTimeout(60000));
 });

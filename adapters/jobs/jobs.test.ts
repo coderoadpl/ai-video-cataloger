@@ -4,6 +4,7 @@ import { appError, ok } from '@core/domain/index.js';
 import type { JobRecord } from '@core/server/index.js';
 
 import { InProcessJobsPort } from './index.js';
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
 describe('InProcessJobsPort', () => {
   it('atomically rejects duplicate active resource keys', async () => {
@@ -80,7 +81,7 @@ describe('InProcessJobsPort', () => {
       { sequence: 2, progress: expect.objectContaining({ step: 'extracting_audio' }) },
     ]);
     expect(listed).toMatchObject({ ok: true, value: [expect.objectContaining({ jobId: 'job-1' })] });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('cancels a running job at the next progress boundary', async () => {
     const jobs = new InProcessJobsPort({ nowIso: tickingClock() });
@@ -111,7 +112,7 @@ describe('InProcessJobsPort', () => {
       progress: { step: 'extracting_frames', percentage: 20 },
       error: null,
     });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('keeps terminal statuses queryable', async () => {
     const jobs = new InProcessJobsPort({ nowIso: tickingClock() });
@@ -139,7 +140,7 @@ describe('InProcessJobsPort', () => {
       error: { code: 'ollama_unavailable', message: 'Ollama unavailable' },
     });
     expect(completedCancel).toEqual(ok({ jobId: 'job-1', cancelled: false }));
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('isolates concurrent jobs', async () => {
     const jobs = new InProcessJobsPort({ nowIso: tickingClock() });
@@ -180,7 +181,7 @@ describe('InProcessJobsPort', () => {
     expect(firstDone).toMatchObject({ status: 'completed', progress: { data: { video: '/work/one.mp4' } } });
     expect(secondStillRunning).toMatchObject({ status: 'running', progress: { data: { video: '/work/two.mp4' } } });
     expect(secondDone).toMatchObject({ status: 'completed', progress: { step: 'transcribing_audio' } });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('rejects jobs without a run function instead of leaving them queued', async () => {
     const jobs = new InProcessJobsPort();
@@ -241,7 +242,7 @@ describe('InProcessJobsPort', () => {
     expect(completedSettled).toBe(1);
     expect(failedSettled).toBe(1);
     expect(cancelledSettled).toBe(1);
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('fires a settle callback immediately when the job is already terminal', async () => {
     const jobs = new InProcessJobsPort();
@@ -259,7 +260,7 @@ describe('InProcessJobsPort', () => {
     });
 
     expect(settled).toBe(1);
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('retains only the newest 200 terminal records', async () => {
     const jobs = new InProcessJobsPort();
@@ -284,7 +285,7 @@ describe('InProcessJobsPort', () => {
     expect(listed.value).toHaveLength(200);
     expect(oldest).toEqual(ok(null));
     expect(newest).toMatchObject({ ok: true, value: { status: 'completed' } });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });
 
 interface Deferred {

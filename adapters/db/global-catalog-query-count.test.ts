@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type initSqlJs from 'sql.js';
 
 import type { CatalogFolder } from '@core/domain/index.js';
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 
 const counter = vi.hoisted(() => ({ prepared: 0 }));
 
@@ -105,7 +106,7 @@ describe('listFolderRecords query count', () => {
     expect(largeRecords.ok && largeRecords.value[13]?.analysis?.tags).toEqual(['beach', 'clip-6']);
     expect(largeRecords.ok && largeRecords.value.every((record) => record.file.fingerprint.startsWith('drive-large-'))).toBe(true);
     // Filling 510 rows under full-suite load overran the default 5s; the assertion is query counts, not speed.
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('loads all requested analyzed file locations in one query', async () => {
     const home = await tempHome();

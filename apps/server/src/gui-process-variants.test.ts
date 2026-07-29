@@ -11,6 +11,7 @@ import { resolveFolderIdentity, type GlobalCatalogStore } from '@core/server/ind
 import { type AppDeps } from './composition.js';
 import { createApp } from './create-app.js';
 import { createInMemoryDeps } from './test-support/in-memory-deps.js';
+import { scaledTimeout } from '../../../test/helpers/gate-timeout.js';
 
 const responsePayload = async (response: Response): Promise<unknown> => {
   const envelope = looseEnvelopeSchema.parse(await response.json());
@@ -108,7 +109,7 @@ describe('GUI process route variant identity', () => {
         rm(folder, { recursive: true, force: true }),
       ]);
     }
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('materializes the legacy folder layout when the file was catalogued before the variants store existed', async () => {
     const home = await mkdtemp(path.join(tmpdir(), 'avc-gui-legacy-home-'));
@@ -225,5 +226,5 @@ describe('GUI process route variant identity', () => {
         rm(folder, { recursive: true, force: true }),
       ]);
     }
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });

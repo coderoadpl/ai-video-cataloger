@@ -6,6 +6,7 @@ import { z } from 'zod';
 import { en, pl } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { scaledTimeout } from '../../../../../test/helpers/gate-timeout.js';
 import { SetupWizard } from './SetupWizard.js';
 
 const ok = (data: unknown) => HttpResponse.json({ ok: true, data });
@@ -303,7 +304,7 @@ describe('SetupWizard', () => {
     expect(recorders.configWrites).toContainEqual({ key: 'local_model', value: 'gemma3:4b' });
     expect(recorders.configWrites).toContainEqual({ key: 'whisper_binary_path', value: '' });
     expect(recorders.configWrites.every((write) => write.folder === undefined)).toBe(true);
-  }, 10_000);
+  }, scaledTimeout(10_000));
 
   it('shows a missing local model as a download and offers to install it', async () => {
     installHandlers();
@@ -486,7 +487,7 @@ describe('SetupWizard', () => {
 
     expect(recorders.credentialWrites).toEqual([{ providerId: 'openai' }]);
     expect(recorders.configWrites).toContainEqual({ key: 'whisper_mode', value: 'api' });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('shows detected-installed badges for agent harnesses', async () => {
     installHandlers({ harnessAvailable: (providerId) => providerId === 'claude-code' });
@@ -561,7 +562,7 @@ describe('SetupWizard', () => {
     clickNext();
     await screen.findByTestId('wizard-step-readiness');
     expect(recorders.faceInstallRequests).toBe(1);
-  }, 10_000);
+  }, scaledTimeout(10_000));
 
   it('downloads the whisper model when using an own binary', async () => {
     installHandlers();
@@ -737,7 +738,7 @@ describe('SetupWizard', () => {
     fireEvent.click(action);
     await waitFor(() => expect(activations).toEqual(['large-v3-turbo']));
     await screen.findByTestId('readiness-ready');
-  }, 10_000);
+  }, scaledTimeout(10_000));
 
   it('defaults the managed whisper model picker to the best already-installed model', async () => {
     installHandlers({ runtimeAvailable: true });

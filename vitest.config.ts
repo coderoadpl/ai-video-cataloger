@@ -2,6 +2,8 @@ import { fileURLToPath } from 'node:url';
 
 import { defineConfig } from 'vitest/config';
 
+import { scaledTimeout } from './test/helpers/gate-timeout.js';
+
 export default defineConfig({
   resolve: {
     alias: {
@@ -12,6 +14,8 @@ export default defineConfig({
   },
   test: {
     maxWorkers: 4,
+    testTimeout: scaledTimeout(5000),
+    hookTimeout: scaledTimeout(10000),
     // Gates must never read or write the developer's real macOS Keychain.
     env: { AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1' },
     coverage: {
@@ -83,7 +87,7 @@ export default defineConfig({
           environment: 'jsdom',
           include: ['apps/web/**/*.test.{ts,tsx}'],
           setupFiles: ['apps/web/src/test/setup.ts'],
-          testTimeout: 30000,
+          testTimeout: scaledTimeout(30000),
         },
       },
       {
@@ -100,7 +104,7 @@ export default defineConfig({
           name: 'cli',
           environment: 'node',
           include: ['test/cli/**/*.test.ts', 'apps/cli/**/*.test.ts'],
-          testTimeout: 30000,
+          testTimeout: scaledTimeout(30000),
         },
       },
       {
@@ -109,10 +113,10 @@ export default defineConfig({
           name: 'config',
           environment: 'node',
           include: ['config-regression/**/*.test.ts'],
-          testTimeout: 120000,
+          testTimeout: scaledTimeout(120000),
           // The beforeAll boots a real eslint subprocess over planted fixtures;
           // under coverage instrumentation that first run exceeds the 10s default.
-          hookTimeout: 120000,
+          hookTimeout: scaledTimeout(120000),
         },
       },
       {

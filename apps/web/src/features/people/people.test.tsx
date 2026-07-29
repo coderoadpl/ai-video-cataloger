@@ -11,6 +11,7 @@ import type { facesPeopleOutputSchema } from '@core/contract/index.js';
 
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
+import { scaledTimeout } from '../../../../../test/helpers/gate-timeout.js';
 import { createAppTheme } from '../../theme.js';
 import { PeopleView } from './PeopleView.js';
 
@@ -334,5 +335,5 @@ describe('PeopleView', () => {
     expect(bodies).toContainEqual({ fromPersonId: 'p2', toPersonId: 'p1' });
     expect(bodies).toContainEqual({ personId: 'p1', force: true });
     expect(bodies).toContainEqual({ force: true });
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });

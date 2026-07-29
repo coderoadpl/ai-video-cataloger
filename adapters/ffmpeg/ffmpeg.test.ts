@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
+
 import {
   anchoredNodeModulesPath,
   FfmpegMediaAdapter,
@@ -502,7 +504,7 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     expect(decoded.value.data.some((value) => value !== 0)).toBe(true);
     expect(existsSync(cropPath)).toBe(true);
     expect(existsSync(thumbnailPath)).toBe(true);
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it.skipIf(!canRunRealBinaries)('preserves source orientation and even dimensions when generating thumbnails', async () => {
     const root = await tempRoot();
@@ -546,7 +548,7 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     for (const dimension of [landscapeDims.width, landscapeDims.height, portraitDims.width, portraitDims.height]) {
       expect(dimension % 2).toBe(0);
     }
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });
 
 const emptyResolver: BinaryResolver = {

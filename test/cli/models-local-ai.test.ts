@@ -9,6 +9,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { describe, it, expect } from 'vitest';
 import { runCli, parseJsonEvents } from '../helpers/cli-runner.js';
+import { scaledTimeout } from '../helpers/gate-timeout.js';
 
 interface TierView {
   tag: string;
@@ -39,14 +40,14 @@ describe('models requirements', () => {
       expect(['ok', 'insufficient-ram', 'unsupported-platform']).toContain(tier.supportLevel);
       expect(typeof tier.installed).toBe('boolean');
     }
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('prints a human table with the machine line', async () => {
     const result = await runCli(['models', 'requirements']);
     expect(result.exitCode).toBe(0);
     expect(result.stdout).toContain('Your machine:');
     expect(result.stdout).toContain('gemma3:12b');
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });
 
 describe('models list (local AI section)', () => {
@@ -60,7 +61,7 @@ describe('models list (local AI section)', () => {
     expect(result.stdout).toMatch(/compatible|not enough RAM|Apple Silicon required/);
     // Runtime probing must not hang (1s probe timeouts)
     expect(Date.now() - start).toBeLessThan(15_000);
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });
 
 describe('models pull validation', () => {
@@ -78,7 +79,7 @@ describe('models pull validation', () => {
       const error = parseJsonEvents(result.stdout).find((event) => event.type === 'error');
       expect(error?.code).toBe('HW_REQUIREMENTS_NOT_MET');
     }
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });
 
 describe('managed daemon lifetime', () => {
@@ -125,5 +126,5 @@ describe('managed daemon lifetime', () => {
       if (daemon.exitCode === null && daemon.signalCode === null) daemon.kill('SIGTERM');
       await rm(home, { recursive: true, force: true });
     }
-  }, 30_000);
+  }, scaledTimeout(30_000));
 });

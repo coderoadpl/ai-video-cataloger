@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createApiClient, unwrap } from '@core/client/index.js';
 
 import { createDesktopApp } from './composition.js';
+import { scaledTimeout } from '../../../test/helpers/gate-timeout.js';
 
 const roots: string[] = [];
 
@@ -66,7 +67,7 @@ describe('desktop composition', () => {
       suggestedAction: null,
     });
     await desktopApp.dispose();
-  }, 30_000);
+  }, scaledTimeout(30_000));
 
   it('refuses the in-memory database driver in packaged builds', async () => {
     vi.stubEnv('DB_DRIVER', 'memory');

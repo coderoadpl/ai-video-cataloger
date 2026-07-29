@@ -22,6 +22,7 @@ import { SqlJsCatalogRepositoryFactory, JsonConfigStore } from '@adapters/db/sql
 import { SqlJsGlobalCatalogStore } from '@adapters/db/global-catalog.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
+import { scaledTimeout } from '../../../test/helpers/gate-timeout.js';
 
 const analyzerResponse = [
   'DESCRIPTION: A rabbit wakes up in a meadow.',
@@ -130,7 +131,7 @@ describe('materialize over a folder analysed read-only, with the real adapter st
 
     expect(attempted).toMatchObject({ ok: false, error: { code: 'target_read_only' } });
     expect(await readdir(folder)).toEqual(['clip.mp4']);
-  }, 60000);
+  }, scaledTimeout(60000));
 
   it('applies the catalog once the mount becomes writable, never re-analyzing, and survives the reachability sweep', async () => {
     const { root, folder, deps, materializeDeps, analyzer } = await scaffold();
@@ -186,5 +187,5 @@ describe('materialize over a folder analysed read-only, with the real adapter st
 
     const countsAfterSweep = await globalCatalog.counts();
     expect(countsAfterSweep.ok === true && countsAfterSweep.value).toMatchObject({ files: 1, analyses: 1 });
-  }, 120000);
+  }, scaledTimeout(120000));
 });
