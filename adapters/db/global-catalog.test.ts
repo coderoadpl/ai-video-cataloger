@@ -1199,6 +1199,137 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(reAliased.ok && reAliased.value.remappedFiles).toBe(0);
   });
 
+  it('re-points a dangling alias when its canonical tag is merged again, preserving the chain', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: null,
+      transcript: null,
+      language: null,
+      tags: ['dogs'],
+    });
+
+    await store.aliasTag({ from: 'dogs', to: 'psy' });
+    await store.aliasTag({ from: 'psy', to: 'pieski' });
+
+    const aliases = await store.listTagAliases();
+    expect(aliases.ok && aliases.value).toEqual([
+      { alias: 'dogs', canonical: 'pieski' },
+      { alias: 'psy', canonical: 'pieski' },
+    ]);
+
+    const expanded = await store.expandTagTerms(['dogs']);
+    expect(expanded.ok && expanded.value).toEqual([
+      { term: 'dogs', equivalents: ['pieski', 'psy'] },
+    ]);
+  });
+
+  it('resolves a tag term through tag_aliases in both directions', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: null,
+      transcript: null,
+      language: null,
+      tags: ['dogs'],
+    });
+
+    await store.aliasTag({ from: 'dogs', to: 'psy' });
+
+    const fromAlias = await store.expandTagTerms(['dogs']);
+    expect(fromAlias.ok && fromAlias.value).toEqual([{ term: 'dogs', equivalents: ['psy'] }]);
+
+    const fromCanonical = await store.expandTagTerms(['psy']);
+    expect(fromCanonical.ok && fromCanonical.value).toEqual([{ term: 'psy', equivalents: ['dogs'] }]);
+  });
+
+  it('ignores a dangling alias row whose tag was already deleted', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: null,
+      transcript: null,
+      language: null,
+      tags: [],
+    });
+    expect((await store.flush()).ok).toBe(true);
+
+    const SQL = await initSqlJs();
+    const raw = new SQL.Database(await readFile(store.databasePath()));
+    raw.run("INSERT INTO tag_aliases(alias, tag_id) VALUES ('dogs', 999999)");
+    await writeFile(store.databasePath(), raw.export());
+    raw.close();
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const aliases = await reopened.listTagAliases();
+    expect(aliases.ok && aliases.value).toEqual([]);
+
+    const expanded = await reopened.expandTagTerms(['dogs']);
+    expect(expanded.ok && expanded.value).toEqual([]);
+  });
+
+  it('finds a file through the alternation match built from an alias in both directions', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: null,
+      transcript: null,
+      language: null,
+      tags: ['psy'],
+    });
+    await store.aliasTag({ from: 'dogs', to: 'psy' });
+
+    const search = await store.search({ match: '(dogs* OR psy)', rankingTerms: ['dogs'], limit: 10, offset: 0 });
+
+    expect(search.ok && search.value.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
+  });
+
+  it('does not resurrect a merged-away tag when ingesting through a chained alias', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: null,
+      transcript: null,
+      language: null,
+      tags: ['dogs'],
+    });
+
+    await store.aliasTag({ from: 'dogs', to: 'psy' });
+    await store.aliasTag({ from: 'psy', to: 'pieski' });
+
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: null,
+      transcript: null,
+      language: null,
+      tags: ['dogs'],
+    });
+
+    const tagsList = await store.listTags();
+    expect(tagsList.ok && tagsList.value).toEqual([{ name: 'pieski', count: 1 }]);
+  });
+
   it('drops stale terms from the FTS index when a document is re-analyzed', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });

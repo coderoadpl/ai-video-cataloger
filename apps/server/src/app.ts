@@ -38,6 +38,7 @@ import {
   installWhisperRuntime,
   aliasTag,
   listTags,
+  suggestTagAliases,
   listJobs,
   listProviders,
   listVariants,
@@ -422,6 +423,10 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!input.ok) return respond(input, API_ROUTES.tagsAlias.output);
     return respond(await withCatalogWriteLock(deps, () => aliasTag(deps, input.value)), API_ROUTES.tagsAlias.output);
   });
+
+  app.get(API_ROUTES.tagsSuggestAliases.path, async () =>
+    respond(await suggestTagAliases(deps), API_ROUTES.tagsSuggestAliases.output),
+  );
 
   app.get(API_ROUTES.searchQuery.path, async (context) => {
     const input = parseInput(API_ROUTES.searchQuery.input, queryInput(context));

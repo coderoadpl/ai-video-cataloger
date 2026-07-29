@@ -34,6 +34,7 @@ import type {
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
+  CatalogTagAlias,
   CatalogTagAliasResult,
   CatalogTagSummary,
   FaceIndexCandidate,
@@ -49,6 +50,7 @@ import type {
   ReconcileFolderResult,
   SpendLedgerPort,
   SpendLedgerTotal,
+  TagTermExpansion,
   AnalyzerPort,
   AnalysisOutput,
   AnalyzerTranscript,
@@ -1192,7 +1194,29 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok({ alias: input.from, canonical: input.to, remappedFiles }));
   }
 
+  listTagAliases(): Promise<Result<CatalogTagAlias[], AppError>> {
+    return Promise.resolve(ok([...this.aliases.entries()]
+      .map(([alias, canonical]) => ({ alias, canonical }))
+      .sort((left, right) => left.alias.localeCompare(right.alias))));
+  }
+
+  expandTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>> {
+    const expansions = terms.flatMap((term) => {
+      const canonical = this.aliases.get(term) ?? term;
+      const group = new Set<string>([canonical]);
+      for (const [alias, target] of this.aliases.entries()) {
+        if (target === canonical) group.add(alias);
+      }
+      group.delete(term);
+      return group.size === 0 ? [] : [{ term, equivalents: [...group].sort((left, right) => left.localeCompare(right)) }];
+    });
+    return Promise.resolve(ok(expansions));
+  }
+
+  lastSearchInput: CatalogSearchInput | null = null;
+
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>> {
+    this.lastSearchInput = input;
     const rows = [...this.files.values()]
       .map((file) => {
         const analysis = this.analyses.get(file.fingerprint) ?? null;

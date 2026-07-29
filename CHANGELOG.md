@@ -20,12 +20,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `process` and `process-drive` write each completed file's thumbnail during the run (one downscale of the frame already on disk), so a finished drive run leaves a catalog with covers instead of generating them lazily on first display; on a read-only source the cover lands in the home mirror and the source tree stays untouched.
 - Terminal panel gains a persisted Raw mode that shows each log line's attached raw job payload and interleaves a capped (500-entry) ring buffer of every renderer→server request/response, captured once at the `apps/web/src/api.ts` fetch seam.
 - Tag language is now configurable (`tag_language`, folder- or home-scoped): tags are generated in that language regardless of the language spoken in the clip. Unset, it follows `output_language`. The analyzer prompt also demands ASCII transliteration, so pinned non-English tags stay kebab-case.
+- `tags suggest-aliases [--json]` proposes tag merges from the existing catalog — normalisation (diacritics, case, separators), English and Polish plurals, a curated Polish irregular lexicon, and single-character spelling variants (`fiord`/`fjord`) — with file counts and a rule label per proposal; it never writes, and each proposal is applied by hand with `tags alias <from> <to>`.
 
 ### Changed
 
 - `thumbnail <video-path>` and the GUI's lazy generation prefer the stored analysis frame over re-decoding the video, so a cover can be produced for a file whose drive is detached or mounted read-only, and an existing thumbnail is reported as skipped without starting ffmpeg.
 - The terminal panel no longer auto-expands on the first job output; it stays collapsed until opened from the header button or the `View` menu.
 - `tag_language` joins the analysis config descriptor, so pinning it (or having `output_language` pinned) produces a new `configId`; runs with `output_language` and `tag_language` both `auto` keep their existing configIds. Previously tags followed whatever language was narrated in the video, which split one concept into per-language tags.
+- Search now follows `tag_aliases` in both directions: a merged-away term still finds the files that carry its canonical tag, and the canonical term also matches text occurrences of its aliases. Quoted phrases stay literal and literal hits still outrank alias hits.
 
 ### Fixed
 
@@ -33,6 +35,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 - A corrupted stored variant descriptor or usage JSON in the global catalog surfaces as `read_error` (`READ_ERROR`, exit 28) instead of an untyped `internal` error.
 - Settings and the setup wizard only render the amber Gemini privacy warning when the selected analyzer is Gemini (native video); it no longer appears under Claude, local, or OpenAI-compatible API selections.
 - The `harness-cursor-agent × skip` e2e matrix leg now probes cursor-agent with a trivial invocation (not just `status`) before running the full pipeline, so an authenticated but usage-exhausted CLI self-skips instead of failing the leg.
+- `tags alias` re-points existing aliases at the new canonical tag instead of leaving them pointing at the deleted tag row, so chained merges (`dogs` → `psy`, then `psy` → `pieski`) keep resolving and no longer resurrect the merged-away tag on the next ingest.
 
 ## [0.6.3] - 2026-07-29
 

@@ -86,6 +86,16 @@ export interface CatalogSearchInput {
   offset: number;
 }
 
+export interface CatalogTagAlias {
+  alias: string;
+  canonical: string;
+}
+
+export interface TagTermExpansion {
+  term: string;
+  equivalents: string[];
+}
+
 export interface CatalogSearchRow {
   fingerprint: string;
   variantCount: number;
@@ -201,6 +211,8 @@ export interface GlobalCatalogStore {
   listFolderRecords(folderId: string): Promise<Result<CatalogFileRecord[], AppError>>;
   listTags(): Promise<Result<CatalogTagSummary[], AppError>>;
   aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>>;
+  listTagAliases(): Promise<Result<CatalogTagAlias[], AppError>>;
+  expandTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;

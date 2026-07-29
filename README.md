@@ -104,7 +104,7 @@ config set <key> <value> [--json]
 config set-credential <providerId>
 config delete-credential <providerId> [--json]
 index status|rebuild|forget
-tags list|alias
+tags list|alias|suggest-aliases
 faces index|people|name|merge|forget|purge|status
 models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|faces install
 models whisper-runtime status|install
@@ -126,6 +126,12 @@ the last one. `variants default` sets the preferred configuration for files in
 a folder; `--clear` restores the resolved processing configuration as the
 folder fallback. A file's explicit selection is shared by duplicate copies of
 the same content.
+
+`tags suggest-aliases` proposes tag merges (normalisation, English and Polish
+plurals, spelling variants) with file counts and never writes anything; apply
+one with `tags alias <from> <to>`. Search follows aliases in both directions,
+so after merging `dogs` into `psy` a search for either term finds the same
+files. Quoted phrases are matched literally and are not expanded.
 
 In `--json` mode, a successful `process` completion adds `configId` and
 `selectedConfigId` to its `completed.data`. A `catalog_index_skipped` progress

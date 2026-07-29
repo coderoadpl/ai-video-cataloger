@@ -386,6 +386,13 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
     folders: z.array(z.unknown()),
   }).parse(completedData(indexStatus, 'index status'));
 
+  const suggestAliases = await run(['tags', 'suggest-aliases', '--json'], env, folder);
+  assert(
+    suggestAliases.code === 0,
+    `tags suggest-aliases: expected exit 0, got ${suggestAliases.code}.\nstdout: ${suggestAliases.stdout}\nstderr: ${suggestAliases.stderr}`,
+  );
+  z.object({ proposals: z.array(z.unknown()) }).parse(completedData(suggestAliases, 'tags suggest-aliases'));
+
   const variantPath = await seedSmokeVariant(home, folder);
   const variants = await run(['variants', 'list', variantPath, '--json'], env, folder);
   assert(variants.code === 0, `variants list: expected exit 0, got ${variants.code}.\nstdout: ${variants.stdout}\nstderr: ${variants.stderr}`);

@@ -233,6 +233,7 @@ Every `--json` run emits newline-delimited JSON: a `started` object, zero+
 | CLI-23 | P3 | `ai-video-cataloger setup --analyzer local --transcription skip --yes --json` | Non-interactive setup; emits progress + completed; exit 0. |
 | CLI-24 | P3 | `ai-video-cataloger process <video>` on a locked catalog | **CATALOG_LOCKED** exit **43** with holder PID (see LOCK-01). |
 | CLI-25 | P2 | `ai-video-cataloger process-drive <root> --skip-faces --json` | `run-summary` carries `faces.skippedReason: "flag"`, no `faces_scanning` event, exit 0. |
+| CLI-26 | P2 | `ai-video-cataloger tags suggest-aliases --json` | proposals carry `from`/`to`/counts/`rule`; the catalog is unchanged afterwards (`tags list` identical); exit 0. |
 
 **Negative/boundary CLI extras:** run any command with an unknown flag →
 commander usage error; run `process-drive` on an empty dir → **DRIVE_ROOT_EMPTY**

@@ -1112,6 +1112,14 @@ tags
     await runSimple(json, 'tags_alias', () => api.aliasTag({ from, to }), tagsAliasHuman, { raw: true });
   });
 
+tags
+  .command('suggest-aliases')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(json, 'tags_suggest_aliases', () => api.suggestTagAliases(), tagsSuggestAliasesHuman, { raw: true });
+  });
+
 const faces = program.command('faces').description('Index and manage people detected across the catalog');
 
 faces
@@ -1409,6 +1417,14 @@ const tagsListHuman = (data: Awaited<ReturnType<ApiClient['listTags']>> extends 
 
 const tagsAliasHuman = (data: Awaited<ReturnType<ApiClient['aliasTag']>> extends Result<infer T, AppError> ? T : never): string =>
   `Aliased ${data.alias} -> ${data.canonical}; remapped ${data.remappedFiles} files`;
+
+const tagsSuggestAliasesHuman = (data: Awaited<ReturnType<ApiClient['suggestTagAliases']>> extends Result<infer T, AppError> ? T : never): string => {
+  if (data.proposals.length === 0) return 'No alias proposals';
+  const lines = data.proposals.map((proposal) =>
+    `${proposal.from} (${proposal.fromCount}) -> ${proposal.to} (${proposal.toCount})\t${proposal.rule}`);
+  lines.push(`${data.proposals.length} proposals. Apply one with: ai-video-cataloger tags alias <from> <to>`);
+  return lines.join('\n');
+};
 
 const searchHuman = (data: Awaited<ReturnType<ApiClient['search']>> extends Result<infer T, AppError> ? T : never): string => {
   if (data.results.length === 0) return 'No results found';

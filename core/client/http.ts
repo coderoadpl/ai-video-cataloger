@@ -44,6 +44,7 @@ import {
   statusOutputSchema,
   tagsAliasOutputSchema,
   tagsListOutputSchema,
+  tagsSuggestAliasesOutputSchema,
   thumbnailOutputSchema,
   variantDeleteOutputSchema,
   variantFolderDefaultOutputSchema,
@@ -671,6 +672,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  suggestTagAliases: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.tagsSuggestAliases.method,
+      API_ROUTES.tagsSuggestAliases.path,
+      tagsSuggestAliasesOutputSchema,
+      undefined,
+      signal,
+    ),
   faceArtifactsStatus: (signal?: AbortSignal) =>
     request(
       options,

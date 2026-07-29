@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogAnalysis, CatalogFile, CatalogFolder } from '@core/domain/index.js';
 
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
-import { sanitizeSearchQuery, search } from './search.js';
+import { buildSearchMatch, sanitizeSearchQuery, search } from './search.js';
 
 const folderA: CatalogFolder = {
   folderId: '11111111-1111-4111-8111-111111111111',
@@ -51,10 +51,12 @@ describe('sanitizeSearchQuery', () => {
   it('ANDs terms, prefix-matches plain terms, and preserves sanitized phrases', () => {
     const sanitized = sanitizeSearchQuery(' drone (bay*) -test "golden gate" Łódź ');
 
-    expect(sanitized.ok && sanitized.value).toEqual({
-      match: 'drone* AND bay* AND test* AND "golden gate" AND łódź*',
-      rankingTerms: ['drone', 'bay', 'test', 'golden', 'gate', 'łódź'],
-    });
+    expect(sanitized.ok).toBe(true);
+    if (!sanitized.ok) return;
+    expect(sanitized.value.rankingTerms).toEqual(['drone', 'bay', 'test', 'golden', 'gate', 'łódź']);
+    expect(buildSearchMatch(sanitized.value.parts, new Map())).toBe(
+      'drone* AND bay* AND test* AND "golden gate" AND łódź*',
+    );
   });
 
   it('rejects syntax-only input before it reaches MATCH', () => {
@@ -62,6 +64,38 @@ describe('sanitizeSearchQuery', () => {
       ok: false,
       error: { code: 'validation' },
     });
+  });
+});
+
+describe('buildSearchMatch', () => {
+  it('expands a term into an alternation when it has an alias equivalent (alias -> canonical)', () => {
+    const sanitized = sanitizeSearchQuery('dogs');
+    expect(sanitized.ok).toBe(true);
+    if (!sanitized.ok) return;
+    expect(buildSearchMatch(sanitized.value.parts, new Map([['dogs', ['psy']]]))).toBe('(dogs* OR psy)');
+  });
+
+  it('expands the canonical term back to its aliases (canonical -> alias)', () => {
+    const sanitized = sanitizeSearchQuery('psy');
+    expect(sanitized.ok).toBe(true);
+    if (!sanitized.ok) return;
+    expect(buildSearchMatch(sanitized.value.parts, new Map([['psy', ['dogs']]]))).toBe('(psy* OR dogs)');
+  });
+
+  it('renders a multi-word equivalent as a phrase', () => {
+    const sanitized = sanitizeSearchQuery('campervan');
+    expect(sanitized.ok).toBe(true);
+    if (!sanitized.ok) return;
+    expect(buildSearchMatch(sanitized.value.parts, new Map([['campervan', ['camper van']]]))).toBe(
+      '(campervan* OR "camper van")',
+    );
+  });
+
+  it('never expands a quoted phrase even when it has a matching alias', () => {
+    const sanitized = sanitizeSearchQuery('"dogs"');
+    expect(sanitized.ok).toBe(true);
+    if (!sanitized.ok) return;
+    expect(buildSearchMatch(sanitized.value.parts, new Map([['dogs', ['psy']]]))).toBe('"dogs"');
   });
 });
 
@@ -151,5 +185,29 @@ describe('search', () => {
 
     expect(result.ok && result.value.results[0]?.thumbnailPath).toBeNull();
     expect(media.thumbnailInputs).toEqual([]);
+  });
+
+  it('expands the match handed to the store through a tag alias in both directions', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.aliasTag({ from: 'dogs', to: 'psy' });
+
+    await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'dogs', limit: 10, offset: 0 });
+    expect(store.lastSearchInput?.match).toBe('(dogs* OR psy)');
+
+    await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'psy', limit: 10, offset: 0 });
+    expect(store.lastSearchInput?.match).toBe('(psy* OR dogs)');
+  });
+
+  it('propagates an expandTagTerms failure as a failed Result', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    store.expandTagTerms = () => Promise.resolve({ ok: false, error: { code: 'read_error', message: 'boom' } });
+
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'drone', limit: 10, offset: 0 });
+
+    expect(result).toEqual({ ok: false, error: { code: 'read_error', message: 'boom' } });
   });
 });

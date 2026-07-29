@@ -50,6 +50,7 @@ import type {
   CatalogLockSnapshot,
   CatalogSearchInput,
   CatalogSearchRow,
+  CatalogTagAlias,
   CatalogTagAliasResult,
   CatalogTagSummary,
   DriveRunRecord,
@@ -58,6 +59,7 @@ import type {
   GlobalCatalogStore,
   ReconcileFolderInput,
   ReconcileFolderResult,
+  TagTermExpansion,
 } from '@core/server/index.js';
 
 import {
@@ -589,6 +591,10 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         }
         remappedFiles = affected.size;
         db.delete(fileTags).where(eq(fileTags.tagId, aliasTag.tagId)).run();
+        db.update(tagAliases)
+          .set({ tagId: canonicalTag.tagId })
+          .where(eq(tagAliases.tagId, aliasTag.tagId))
+          .run();
         db.delete(tags).where(eq(tags.tagId, aliasTag.tagId)).run();
       }
       db.insert(tagAliases)
@@ -600,6 +606,59 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       .run();
       for (const fingerprint of affected) syncSearchDocument(db, client, fingerprint);
       return { alias, canonical: canonicalTag.name, remappedFiles };
+    });
+  }
+
+  async listTagAliases(): Promise<Result<CatalogTagAlias[], AppError>> {
+    return this.read((db) => {
+      const names = new Map(db.select().from(tags).all().map((tag) => [tag.tagId, tag.name]));
+      return db.select().from(tagAliases).all()
+        .flatMap((row) => {
+          const canonical = names.get(row.tagId);
+          return canonical === undefined ? [] : [{ alias: row.alias, canonical }];
+        })
+        .sort((left, right) => left.alias.localeCompare(right.alias));
+    });
+  }
+
+  async expandTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>> {
+    const unique = [...new Set(terms)].filter((term) => term.length > 0);
+    if (unique.length === 0) return { ok: true, value: [] };
+    return this.read((db, client) => {
+      const placeholders = unique.map((_, index) => `$t${String(index)}`);
+      const params = Object.fromEntries(unique.map((term, index) => [`$t${String(index)}`, term]));
+      const list = placeholders.join(', ');
+      const result = client.exec(
+        `SELECT t.name AS canonical, a.alias AS alias
+          FROM tags t
+          LEFT JOIN tag_aliases a ON a.tag_id = t.tag_id
+          WHERE t.tag_id IN (
+            SELECT tag_id FROM tags WHERE name IN (${list})
+            UNION
+            SELECT tag_id FROM tag_aliases WHERE alias IN (${list})
+          )`,
+        params,
+      );
+      const rows = result[0]?.values ?? [];
+      const groups = new Map<string, Set<string>>();
+      for (const row of rows) {
+        const canonical = String(row[0]);
+        const alias = row[1] === null ? null : String(row[1]);
+        const group = groups.get(canonical) ?? new Set<string>();
+        group.add(canonical);
+        if (alias !== null) group.add(alias);
+        groups.set(canonical, group);
+      }
+      const members = new Map<string, Set<string>>();
+      for (const group of groups.values()) {
+        for (const member of group) members.set(member, group);
+      }
+      return unique.flatMap((term) => {
+        const group = members.get(term);
+        if (group === undefined) return [];
+        const equivalents = [...group].filter((member) => member !== term).sort((left, right) => left.localeCompare(right));
+        return equivalents.length === 0 ? [] : [{ term, equivalents }];
+      });
     });
   }
 

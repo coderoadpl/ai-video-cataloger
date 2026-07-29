@@ -1,4 +1,4 @@
-import { appError, normalizeTagName, ok, type AppError, type Result } from '@core/domain/index.js';
+import { appError, normalizeTagName, ok, proposeTagAliases, type AppError, type Result, type TagAliasProposal } from '@core/domain/index.js';
 
 import type { CatalogTagAliasResult, CatalogTagSummary, GlobalCatalogStore } from '../ports.js';
 
@@ -11,6 +11,10 @@ export interface TagsListOutput {
 }
 
 export type TagsAliasOutput = CatalogTagAliasResult;
+
+export interface TagsSuggestAliasesOutput {
+  proposals: TagAliasProposal[];
+}
 
 export const listTags = async (deps: TagsDeps): Promise<Result<TagsListOutput, AppError>> => {
   const tags = await deps.globalCatalog.listTags();
@@ -32,4 +36,12 @@ export const aliasTag = async (
   const flushed = await deps.globalCatalog.flush();
   if (!flushed.ok) return flushed;
   return aliased;
+};
+
+export const suggestTagAliases = async (deps: TagsDeps): Promise<Result<TagsSuggestAliasesOutput, AppError>> => {
+  const tags = await deps.globalCatalog.listTags();
+  if (!tags.ok) return tags;
+  const aliases = await deps.globalCatalog.listTagAliases();
+  if (!aliases.ok) return aliases;
+  return ok({ proposals: proposeTagAliases({ tags: tags.value, aliases: aliases.value }) });
 };

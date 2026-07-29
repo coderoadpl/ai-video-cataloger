@@ -7,6 +7,7 @@ import {
   FILE_ARTIFACT_IDS,
   LOCAL_AI_MODEL_TAGS,
   LOCAL_AI_SUPPORT_LEVELS,
+  TAG_ALIAS_RULES,
   VIDEO_STATUSES,
   WHISPER_MODEL_NAMES,
   WHISPER_MODES,
@@ -979,6 +980,17 @@ export const tagsAliasOutputSchema = z.object({
   remappedFiles: z.number().int().nonnegative(),
 });
 
+export const tagsSuggestAliasesOutputSchema = z.object({
+  proposals: z.array(z.object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+    fromCount: z.number().int().nonnegative(),
+    toCount: z.number().int().nonnegative(),
+    rule: z.enum(TAG_ALIAS_RULES),
+    canonicalLocked: z.boolean(),
+  })),
+});
+
 export const searchInputSchema = z.object({
   query: z.string().min(1),
   limit: queryInteger(50, 1, 200),
@@ -1304,6 +1316,7 @@ export const API_ROUTES = {
   indexForget: { method: 'POST', path: '/api/index/forget', input: indexForgetInputSchema, output: indexForgetOutputSchema },
   tagsList: { method: 'GET', path: '/api/tags', input: emptyInputSchema, output: tagsListOutputSchema },
   tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
+  tagsSuggestAliases: { method: 'GET', path: '/api/tags/suggest-aliases', input: emptyInputSchema, output: tagsSuggestAliasesOutputSchema },
   searchQuery: { method: 'GET', path: '/api/search', input: searchInputSchema, output: searchOutputSchema },
   variantsList: {
     method: 'GET',
@@ -1387,6 +1400,7 @@ export const API_PATHS = {
   indexForget: API_ROUTES.indexForget.path,
   tagsList: API_ROUTES.tagsList.path,
   tagsAlias: API_ROUTES.tagsAlias.path,
+  tagsSuggestAliases: API_ROUTES.tagsSuggestAliases.path,
   searchQuery: API_ROUTES.searchQuery.path,
   variantsList: API_ROUTES.variantsList.path,
   variantsSelect: API_ROUTES.variantsSelect.path,

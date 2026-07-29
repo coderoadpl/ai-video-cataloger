@@ -14,6 +14,7 @@ import {
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
   searchOutputSchema,
+  tagsSuggestAliasesOutputSchema,
   variantsListOutputSchema,
 } from './routes.js';
 
@@ -506,6 +507,7 @@ describe('route schemas', () => {
     expect(API_ROUTES.jobStatus.method).toBe('GET');
     expect(API_ROUTES.jobsList.method).toBe('GET');
     expect(API_ROUTES.tagsList.method).toBe('GET');
+    expect(API_ROUTES.tagsSuggestAliases).toMatchObject({ method: 'GET', path: '/api/tags/suggest-aliases' });
     expect(API_ROUTES.searchQuery).toMatchObject({ method: 'GET', path: '/api/search' });
     expect(API_ROUTES.variantsList).toMatchObject({ method: 'GET', path: '/api/variants' });
 
@@ -568,5 +570,18 @@ describe('route schemas', () => {
 
     expect(parsed.success).toBe(true);
     expect(parsed.success && parsed.data.transcriber).toMatchObject({ engine: null, binaryPath: null, warning: null });
+  });
+
+  it('rejects an unknown rule in a tag alias proposal', () => {
+    const proposal = {
+      from: 'kampery', to: 'kamper', fromCount: 63, toCount: 373, rule: 'unknown-rule', canonicalLocked: false,
+    };
+
+    expect(tagsSuggestAliasesOutputSchema.safeParse({ proposals: [proposal] }).success).toBe(false);
+    expect(
+      tagsSuggestAliasesOutputSchema.safeParse({
+        proposals: [{ ...proposal, rule: 'pl-plural' }],
+      }).success,
+    ).toBe(true);
   });
 });

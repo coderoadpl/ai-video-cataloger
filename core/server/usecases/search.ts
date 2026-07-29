@@ -44,8 +44,12 @@ export interface SearchOutput {
   results: SearchResult[];
 }
 
+export type SearchMatchPart =
+  | { kind: 'phrase'; tokens: string[] }
+  | { kind: 'term'; token: string };
+
 export interface SanitizedSearchQuery {
-  match: string;
+  parts: SearchMatchPart[];
   rankingTerms: string[];
 }
 
@@ -55,8 +59,11 @@ export const search = async (
 ): Promise<Result<SearchOutput, AppError>> => {
   const sanitized = sanitizeSearchQuery(input.query);
   if (!sanitized.ok) return sanitized;
+  const expansions = await deps.globalCatalog.expandTagTerms(sanitized.value.rankingTerms);
+  if (!expansions.ok) return expansions;
+  const equivalents = new Map(expansions.value.map((entry) => [entry.term, entry.equivalents]));
   const rows = await deps.globalCatalog.search({
-    match: sanitized.value.match,
+    match: buildSearchMatch(sanitized.value.parts, equivalents),
     rankingTerms: sanitized.value.rankingTerms,
     limit: input.limit,
     offset: input.offset,
@@ -118,23 +125,41 @@ const resolveThumbnailPath = async (
 };
 
 export const sanitizeSearchQuery = (query: string): Result<SanitizedSearchQuery, AppError> => {
-  const parts: string[] = [];
+  const parts: SearchMatchPart[] = [];
   const rankingTerms: string[] = [];
   for (const segment of parseQuerySegments(query)) {
     const tokens = tokenize(segment.value);
     if (tokens.length === 0) continue;
     rankingTerms.push(...tokens);
     if (segment.quoted) {
-      parts.push(`"${tokens.join(' ')}"`);
+      parts.push({ kind: 'phrase', tokens });
       continue;
     }
-    parts.push(...tokens.map((token) => `${token}*`));
+    for (const token of tokens) parts.push({ kind: 'term', token });
   }
   const uniqueRankingTerms = [...new Set(rankingTerms)];
   if (parts.length === 0) {
     return { ok: false, error: appError('validation', 'Search query must contain at least one searchable term') };
   }
-  return ok({ match: parts.join(' AND '), rankingTerms: uniqueRankingTerms });
+  return ok({ parts, rankingTerms: uniqueRankingTerms });
+};
+
+export const buildSearchMatch = (
+  parts: readonly SearchMatchPart[],
+  equivalents: ReadonlyMap<string, readonly string[]>,
+): string =>
+  parts
+    .map((part) => {
+      if (part.kind === 'phrase') return `"${part.tokens.join(' ')}"`;
+      const alternatives = (equivalents.get(part.token) ?? []).map(renderEquivalent).filter((value) => value !== null);
+      return alternatives.length === 0 ? `${part.token}*` : `(${part.token}* OR ${alternatives.join(' OR ')})`;
+    })
+    .join(' AND ');
+
+const renderEquivalent = (equivalent: string): string | null => {
+  const tokens = tokenize(equivalent);
+  if (tokens.length === 0) return null;
+  return tokens.length === 1 ? tokens[0] ?? null : `"${tokens.join(' ')}"`;
 };
 
 interface QuerySegment {

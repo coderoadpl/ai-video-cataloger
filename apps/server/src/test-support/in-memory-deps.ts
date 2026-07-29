@@ -35,6 +35,7 @@ import type {
   CatalogResetSingleResult,
   CatalogSearchInput,
   CatalogSearchRow,
+  CatalogTagAlias,
   CatalogTagAliasResult,
   CatalogTagSummary,
   CatalogVideo,
@@ -71,6 +72,7 @@ import type {
   ReconcileFolderResult,
   SpendLedgerPort,
   SpendLedgerTotal,
+  TagTermExpansion,
   ThumbnailFromFrameInput,
   ThumbnailGeneration,
   TranscriberPort,
@@ -549,6 +551,14 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>> {
     return Promise.resolve(ok({ alias: input.from, canonical: input.to, remappedFiles: 0 }));
+  }
+
+  listTagAliases(): Promise<Result<CatalogTagAlias[], AppError>> {
+    return Promise.resolve(ok([]));
+  }
+
+  expandTagTerms(): Promise<Result<TagTermExpansion[], AppError>> {
+    return Promise.resolve(ok([]));
   }
 
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>> {
