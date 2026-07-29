@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 
 import { AppLayout, type TerminalPanelState } from './AppLayout.js';
 import { type LogLine } from './components/ui/use-terminal-log.js';
@@ -30,11 +30,32 @@ const terminalPanel: TerminalPanelState = {
   onClear: () => undefined,
 };
 
-const logLine: LogLine = { id: 'line-1', content: 'scan started', type: 'info', isJson: false };
+const logLine: LogLine = {
+  id: 'line-1',
+  at: 1,
+  content: 'scan started',
+  type: 'info',
+  raw: JSON.stringify({ step: 'scan' }, null, 2),
+};
+
+const apiLine: LogLine = {
+  id: 'api-1-req',
+  at: 0,
+  content: '→ POST /api/v1/scan',
+  type: 'stdout',
+  raw: '→ POST /api/v1/scan\n{"root":"/clips"}',
+};
 
 const EMIT_LABEL = 'emit-line';
+const RAW_MODE_KEY = 'avc.terminalRawMode';
 
-const TerminalHarness = ({ initialLines = [] }: { initialLines?: readonly LogLine[] }) => {
+interface TerminalHarnessProps {
+  initialLines?: readonly LogLine[];
+  apiLines?: readonly LogLine[];
+  onCopy?: (text: string) => void;
+}
+
+const TerminalHarness = ({ initialLines = [], apiLines = [], onCopy }: TerminalHarnessProps) => {
   const [lines, setLines] = useState<readonly LogLine[]>(initialLines);
   return (
     <ThemeProvider theme={createAppTheme('light')}>
@@ -45,13 +66,21 @@ const TerminalHarness = ({ initialLines = [] }: { initialLines?: readonly LogLin
         shell={stubShell}
         sidebar={<div />}
         content={<div />}
-        terminal={{ ...terminalPanel, lines }}
+        terminal={{ ...terminalPanel, lines, apiLines, onCopy: onCopy ?? terminalPanel.onCopy }}
       />
     </ThemeProvider>
   );
 };
 
+const expandTerminal = () => {
+  fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalExpand }));
+};
+
 describe('AppLayout composition', () => {
+  beforeEach(() => {
+    window.localStorage.removeItem(RAW_MODE_KEY);
+  });
+
   it('renders the header, injected slots and terminal chrome', () => {
     renderWithProviders(
       <AppLayout
@@ -112,7 +141,8 @@ describe('AppLayout composition', () => {
     expect(screen.queryByRole('button', { name: en.appFrame.terminalCopy })).toBeNull();
     unmount();
 
-    renderWithProviders(<TerminalHarness initialLines={[logLine]} />);
+    const harness = renderWithProviders(<TerminalHarness initialLines={[logLine]} />);
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalExpand }));
 
     expect(screen.getByRole('button', { name: en.appFrame.terminalCopy })).toBeDefined();
     expect(screen.getByRole('button', { name: en.appFrame.terminalClear })).toBeDefined();
@@ -121,25 +151,71 @@ describe('AppLayout composition', () => {
 
     expect(screen.queryByRole('button', { name: en.appFrame.terminalCopy })).toBeNull();
     expect(screen.getByRole('button', { name: en.appFrame.terminalExpand })).toBeDefined();
+    harness.unmount();
   });
 
-  it('starts the terminal collapsed while it is empty and expands on the first output', () => {
+  it('starts the terminal panel collapsed regardless of buffered output', () => {
+    renderWithProviders(<TerminalHarness initialLines={[logLine]} />);
+
+    expect(screen.getByRole('button', { name: en.appFrame.terminalExpand })).toBeDefined();
+    expect(screen.queryByRole('button', { name: en.appFrame.terminalCollapse })).toBeNull();
+  });
+
+  it('never auto-expands the terminal panel when output arrives after mount', () => {
     renderWithProviders(<TerminalHarness />);
 
     expect(screen.getByRole('button', { name: en.appFrame.terminalExpand })).toBeDefined();
 
     fireEvent.click(screen.getByRole('button', { name: EMIT_LABEL }));
 
-    expect(screen.getByRole('button', { name: en.appFrame.terminalCollapse })).toBeDefined();
+    expect(screen.getByRole('button', { name: en.appFrame.terminalExpand })).toBeDefined();
+    expect(screen.queryByRole('button', { name: en.appFrame.terminalCollapse })).toBeNull();
   });
 
-  it('keeps a terminal the user collapsed collapsed when output arrives', () => {
-    renderWithProviders(<TerminalHarness />);
+  it('toggles raw mode and renders the raw payload of a line once expanded', () => {
+    renderWithProviders(<TerminalHarness initialLines={[logLine]} />);
 
     fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalExpand }));
-    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalCollapse }));
-    fireEvent.click(screen.getByRole('button', { name: EMIT_LABEL }));
+    expect(screen.getByText('scan started')).toBeDefined();
+    expect(screen.queryByText(logLine.raw ?? '')).toBeNull();
 
-    expect(screen.getByRole('button', { name: en.appFrame.terminalExpand })).toBeDefined();
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalRaw }));
+
+    expect(document.body.textContent).toContain(logLine.raw ?? '__missing__');
+  });
+
+  it('persists the raw-mode choice so a fresh mount starts in raw mode', () => {
+    const first = renderWithProviders(<TerminalHarness initialLines={[logLine]} />);
+    expandTerminal();
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalRaw }));
+
+    expect(window.localStorage.getItem(RAW_MODE_KEY)).toBe('1');
+    first.unmount();
+
+    const second = renderWithProviders(<TerminalHarness initialLines={[logLine]} />);
+    expandTerminal();
+
+    expect(document.body.textContent).toContain(logLine.raw ?? '__missing__');
+    expect(screen.queryByText('scan started')).toBeNull();
+
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalRaw }));
+    expect(window.localStorage.getItem(RAW_MODE_KEY)).toBe('0');
+    second.unmount();
+  });
+
+  it('copies the merged raw text that raw mode puts on screen', () => {
+    const copied: string[] = [];
+    renderWithProviders(
+      <TerminalHarness initialLines={[logLine]} apiLines={[apiLine]} onCopy={(text) => copied.push(text)} />,
+    );
+    expandTerminal();
+
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalCopy }));
+    expect(copied).toEqual(['scan started']);
+
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalRaw }));
+    fireEvent.click(screen.getByRole('button', { name: en.appFrame.terminalCopy }));
+
+    expect(copied.at(-1)).toBe(`${apiLine.raw ?? ''}\n${logLine.raw ?? ''}`);
   });
 });

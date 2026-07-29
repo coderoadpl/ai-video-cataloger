@@ -67,7 +67,7 @@ import {
 } from '@core/client/index.js';
 import type { DesktopApiBridge, DesktopBridge } from '@core/contract/index.js';
 
-type FetchLike = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
+import { instrumentFetch, type FetchLike } from './api-log.js';
 
 const headerRecord = (headers: HeadersInit | undefined): Record<string, string> | undefined => {
   if (headers === undefined) return undefined;
@@ -125,10 +125,10 @@ const realBridge: DesktopBridge | undefined =
 
 export const bridge: DesktopBridge = realBridge ?? devBridge;
 
-const apiClient =
-  realBridge === undefined
-    ? createApiClient({ baseUrl: '' })
-    : createApiClient({ baseUrl: '', fetchImpl: bridgeFetch(realBridge.api) });
+const rawFetch: FetchLike =
+  realBridge === undefined ? (input, init) => fetch(input, init) : bridgeFetch(realBridge.api);
+
+const apiClient = createApiClient({ baseUrl: '', fetchImpl: instrumentFetch(rawFetch) });
 
 export const actions = {
   health: healthQuery(apiClient),

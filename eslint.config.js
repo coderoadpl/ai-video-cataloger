@@ -82,6 +82,7 @@ const HTTP_GLOBALS = ['fetch', 'XMLHttpRequest', 'EventSource', 'WebSocket'].map
   name,
   message: NO_HTTP,
 }));
+const HTTP_GLOBALS_EXCEPT_FETCH = HTTP_GLOBALS.filter((global) => global.name !== 'fetch');
 const HTTP_IMPORT_BANS = ['axios', 'ky', 'got'].map((name) => ({ name, message: NO_HTTP }));
 
 const STORAGE_MESSAGE =
@@ -233,7 +234,7 @@ export default tseslint.config(
         { type: 'web-shell', pattern: 'apps/web/src/AppLayout*', mode: 'full' },
         { type: 'web-gallery', pattern: 'apps/web/src/gallery/**', mode: 'full' },
         { type: 'web-visual', pattern: 'apps/web/src/visual/**', mode: 'full' },
-        { type: 'web-api', pattern: 'apps/web/src/api.ts', mode: 'full' },
+        { type: 'web-api', pattern: 'apps/web/src/api*.ts', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
         {
           type: 'web-island-core',
@@ -597,6 +598,7 @@ export default tseslint.config(
   {
     files: ['apps/web/src/api.ts'],
     rules: {
+      'no-restricted-globals': ['error', ...HTTP_GLOBALS_EXCEPT_FETCH, ...STORAGE_GLOBALS],
       'no-restricted-imports': [
         'error',
         {

@@ -183,6 +183,17 @@ size cap applies to images only, not the supported video extensions.
 The old GUI shelled out to a staged CLI and parsed NDJSON; that machinery is
 deleted. Renderer and CLI are peers on the same contract.
 
+The terminal panel (`components/ui/TerminalLog.tsx`) has a persisted **Raw**
+mode (`avc.terminalRawMode` in `localStorage`, the same precedent as
+`avc.sidebarWidth`): friendly mode shows the translated job lines only, raw
+mode renders each line's attached NDJSON-shaped payload and interleaves a
+capped ring buffer of every renderer→server request/response. That buffer is
+captured once, at the single `fetchImpl` seam `api.ts` passes to
+`createApiClient` — wrapping there (`api-log.ts`, `instrumentFetch`) sees every
+bound action without a per-component tap. The panel itself starts collapsed on
+every launch and only opens from the header button or the `View` menu; it no
+longer auto-expands on the first line.
+
 Renderer user-facing copy lives in a typed dictionary layer (`apps/web/src/i18n`,
 lint boundary `web-i18n`): `en`/`pl` dictionaries with structural parity, and a
 `useDictionary` hook that reads the effective `ui_language` config value so a

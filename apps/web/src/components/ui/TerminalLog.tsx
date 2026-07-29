@@ -2,12 +2,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box, Button, Typography, type Theme } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import type { LogLine, LogLineType } from './use-terminal-log.js';
+import { mergeLogLines, renderLine, type LogLine, type LogLineType, type TerminalViewMode } from './use-terminal-log.js';
 
 interface TerminalLogProps {
   lines: readonly LogLine[];
+  apiLines?: readonly LogLine[];
   droppedCount?: number;
-  showJson?: boolean;
+  mode?: TerminalViewMode;
 }
 
 const AT_BOTTOM_THRESHOLD = 24;
@@ -28,14 +29,19 @@ const colorForType =
     }
   };
 
-export const TerminalLog = ({ lines, droppedCount = 0, showJson = false }: TerminalLogProps) => {
+export const TerminalLog = ({
+  lines,
+  apiLines = [],
+  droppedCount = 0,
+  mode = 'friendly',
+}: TerminalLogProps) => {
   const dictionary = useDictionary();
   const scrollRef = useRef<HTMLDivElement>(null);
   const [pinnedUp, setPinnedUp] = useState(false);
 
   const visibleLines = useMemo(
-    () => (showJson ? lines : lines.filter((line) => !line.isJson)),
-    [lines, showJson],
+    () => (mode === 'raw' ? mergeLogLines(lines, apiLines) : lines),
+    [lines, apiLines, mode],
   );
 
   const scrollToBottom = useCallback(() => {
@@ -69,7 +75,7 @@ export const TerminalLog = ({ lines, droppedCount = 0, showJson = false }: Termi
             component="div"
             sx={{ color: 'grey.500', fontStyle: 'italic', mb: 0.5 }}
           >
-            {droppedCount} earlier line(s) dropped
+            {dictionary.appFrame.terminalDropped(droppedCount)}
           </Typography>
         ) : null}
         {visibleLines.length === 0 ? (
@@ -88,7 +94,7 @@ export const TerminalLog = ({ lines, droppedCount = 0, showJson = false }: Termi
                 color: colorForType(line.type)(theme),
               })}
             >
-              {line.content}
+              {renderLine(line, mode)}
             </Box>
           ))
         )}
@@ -100,7 +106,7 @@ export const TerminalLog = ({ lines, droppedCount = 0, showJson = false }: Termi
           onClick={scrollToBottom}
           sx={{ position: 'absolute', bottom: 8, right: 12, minWidth: 0, py: 0.25, px: 1 }}
         >
-          Scroll to bottom
+          {dictionary.appFrame.terminalScrollToBottom}
         </Button>
       ) : null}
     </Box>

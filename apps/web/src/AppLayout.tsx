@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { Alert, Button, Snackbar, Typography } from '@mui/material';
 
 import {
@@ -11,7 +11,7 @@ import {
 import { AppHeader, type AppHeaderTag } from './components/ui/AppHeader.js';
 import { NestedDbDialog } from './components/ui/dialogs/NestedDbDialog.js';
 import { TerminalLog } from './components/ui/TerminalLog.js';
-import type { LogLine } from './components/ui/use-terminal-log.js';
+import { mergeLogLines, renderLine, type LogLine, type TerminalViewMode } from './components/ui/use-terminal-log.js';
 import { useMenuEvents } from './features/shell/use-menu-events.js';
 import { type ShellState } from './features/shell/use-shell.js';
 import { useDictionary } from './i18n/use-dictionary.js';
@@ -20,8 +20,9 @@ export type ShellModal = 'settings' | 'models' | 'prerequisites' | 'setup';
 
 export interface TerminalPanelState {
   lines: readonly LogLine[];
+  apiLines?: readonly LogLine[];
   droppedCount: number;
-  onCopy: () => void;
+  onCopy: (text: string) => void;
   onClear: () => void;
 }
 
@@ -49,6 +50,18 @@ const readSidebarWidth = (): number => {
 const writeSidebarWidth = (value: number): void => {
   if (typeof window === 'undefined' || typeof window.localStorage.setItem !== 'function') return;
   window.localStorage.setItem(SIDEBAR_WIDTH_KEY, String(Math.round(value)));
+};
+
+const TERMINAL_RAW_MODE_KEY = 'avc.terminalRawMode';
+
+const readTerminalRawMode = (): TerminalViewMode => {
+  if (typeof window === 'undefined' || typeof window.localStorage.getItem !== 'function') return 'friendly';
+  return window.localStorage.getItem(TERMINAL_RAW_MODE_KEY) === '1' ? 'raw' : 'friendly';
+};
+
+const writeTerminalRawMode = (mode: TerminalViewMode): void => {
+  if (typeof window === 'undefined' || typeof window.localStorage.setItem !== 'function') return;
+  window.localStorage.setItem(TERMINAL_RAW_MODE_KEY, mode === 'raw' ? '1' : '0');
 };
 
 interface AppLayoutProps {
@@ -96,23 +109,33 @@ export const AppLayout = ({
 }: AppLayoutProps) => {
   const dictionary = useDictionary();
   const [modal, setModal] = useState<ShellModal | null>(null);
-  const [showJson, setShowJson] = useState(false);
+  const [mode, setMode] = useState<TerminalViewMode>(readTerminalRawMode);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [terminalCollapsed, setTerminalCollapsed] = useState(true);
-  const terminalChosenByUser = useRef(false);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
   const [terminalHeight, setTerminalHeight] = useState(TERMINAL_DEFAULT_SIZE);
 
   const toggleTerminal = useCallback(() => {
-    terminalChosenByUser.current = true;
     setTerminalCollapsed((value) => !value);
   }, []);
 
-  const hasTerminalOutput = (terminal?.lines.length ?? 0) > 0;
-  useEffect(() => {
-    if (!hasTerminalOutput || terminalChosenByUser.current) return;
-    setTerminalCollapsed(false);
-  }, [hasTerminalOutput]);
+  const toggleRawMode = useCallback(() => {
+    setMode((value) => {
+      const next: TerminalViewMode = value === 'raw' ? 'friendly' : 'raw';
+      writeTerminalRawMode(next);
+      return next;
+    });
+  }, []);
+
+  const terminalLines = useMemo(() => terminal?.lines ?? [], [terminal?.lines]);
+  const terminalApiLines = useMemo(() => terminal?.apiLines ?? [], [terminal?.apiLines]);
+  const visibleText = useMemo(
+    () =>
+      (mode === 'raw' ? mergeLogLines(terminalLines, terminalApiLines) : terminalLines)
+        .map((line) => renderLine(line, mode))
+        .join('\n'),
+    [terminalLines, terminalApiLines, mode],
+  );
 
   useMenuEvents({
     onShowSettings: () => setModal('settings'),
@@ -196,15 +219,19 @@ export const AppLayout = ({
             {terminalCollapsed ? null : (
               <Button
                 size="small"
-                sx={{ color: showJson ? 'primary.light' : 'grey.400', minWidth: 0 }}
-                onClick={() => setShowJson(!showJson)}
+                sx={{ color: mode === 'raw' ? 'primary.light' : 'grey.400', minWidth: 0 }}
+                onClick={toggleRawMode}
               >
-                {dictionary.appFrame.terminalJson}
+                {dictionary.appFrame.terminalRaw}
               </Button>
             )}
             {terminalCollapsed || terminal === undefined ? null : (
               <>
-                <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }} onClick={terminal.onCopy}>
+                <Button
+                  size="small"
+                  sx={{ color: 'grey.400', minWidth: 0 }}
+                  onClick={() => terminal.onCopy(visibleText)}
+                >
                   {dictionary.appFrame.terminalCopy}
                 </Button>
                 <Button size="small" sx={{ color: 'grey.400', minWidth: 0 }} onClick={terminal.onClear}>
@@ -219,9 +246,10 @@ export const AppLayout = ({
         }
         terminal={
           <TerminalLog
-            lines={terminal?.lines ?? []}
+            lines={terminalLines}
+            apiLines={terminalApiLines}
             droppedCount={terminal?.droppedCount ?? 0}
-            showJson={showJson}
+            mode={mode}
           />
         }
         terminalCollapsed={terminalCollapsed}

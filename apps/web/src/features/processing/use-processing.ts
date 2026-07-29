@@ -214,8 +214,9 @@ export const useProcessing = ({
             const key = `${view.step}:${String(view.percentage)}`;
             if (key !== lastProgressKeyRef.current) {
               lastProgressKeyRef.current = key;
-              addLine(dictionary.processing.progressLine(view.percentage, view.stepLabel), 'info');
-              addLine(JSON.stringify(job.progress), 'info', true);
+              addLine(dictionary.processing.progressLine(view.percentage, view.stepLabel), 'info', {
+                raw: job.progress,
+              });
             }
           },
         });
@@ -230,8 +231,7 @@ export const useProcessing = ({
             return { success: false, error: dictionary.processing.cancelledByUser };
           case 'failed': {
             const message = final.error?.message ?? dictionary.processing.processingFailed;
-            addLine(dictionary.processing.error(message), 'error');
-            if (final.error !== null) addLine(JSON.stringify(final.error), 'error', true);
+            addLine(dictionary.processing.error(message), 'error', { raw: final.error });
             return { success: false, error: message };
           }
           case 'queued':
@@ -371,7 +371,7 @@ export const useProcessing = ({
               const outcome = reduceDriveEvent(event.progress, counts);
               counts = outcome.counts;
               for (const message of outcome.messages) {
-                addLine(translateDriveMessage(dictionary, message), message.level);
+                addLine(translateDriveMessage(dictionary, message), message.level, { raw: event.progress });
                 if (message.kind === 'runComplete') {
                   driveSummaryRef.current = {
                     foldersDone: message.foldersDone,
@@ -400,8 +400,7 @@ export const useProcessing = ({
             return { success: false, error: dictionary.processing.cancelledByUser };
           case 'failed': {
             const message = final.error?.message ?? dictionary.processing.driveProcessingFailed;
-            addLine(dictionary.processing.error(message), 'error');
-            if (final.error !== null) addLine(JSON.stringify(final.error), 'error', true);
+            addLine(dictionary.processing.error(message), 'error', { raw: final.error });
             return { success: false, error: message };
           }
           case 'queued':

@@ -36,12 +36,14 @@ export interface Dictionary {
     navVideos: string;
     navPeople: string;
     terminalTitle: string;
-    terminalJson: string;
+    terminalRaw: string;
     terminalCopy: string;
     terminalClear: string;
     terminalCollapse: string;
     terminalExpand: string;
     terminalEmpty: string;
+    terminalDropped: (count: number) => string;
+    terminalScrollToBottom: string;
   };
   appHeader: {
     searchPlaceholder: string;
@@ -686,12 +688,14 @@ export const en: Dictionary = {
     navVideos: 'Videos',
     navPeople: 'People',
     terminalTitle: 'Terminal',
-    terminalJson: 'JSON',
+    terminalRaw: 'Raw',
     terminalCopy: 'Copy',
     terminalClear: 'Clear',
     terminalCollapse: 'Collapse',
     terminalExpand: 'Expand',
     terminalEmpty: 'No output yet. Run an analysis to see job progress here.',
+    terminalDropped: (count) => `Dropped earlier lines: ${String(count)}`,
+    terminalScrollToBottom: 'Scroll to bottom',
   },
   appHeader: {
     searchPlaceholder: 'Search catalog',
@@ -1398,12 +1402,14 @@ export const pl: Dictionary = {
     navVideos: 'Filmy',
     navPeople: 'Osoby',
     terminalTitle: 'Terminal',
-    terminalJson: 'JSON',
+    terminalRaw: 'Surowe',
     terminalCopy: 'Kopiuj',
     terminalClear: 'Wyczyść',
     terminalCollapse: 'Zwiń',
     terminalExpand: 'Rozwiń',
     terminalEmpty: 'Brak danych wyjściowych. Uruchom analizę, aby zobaczyć postęp zadania.',
+    terminalDropped: (count) => `Pominięte wcześniejsze wiersze: ${String(count)}`,
+    terminalScrollToBottom: 'Przewiń na dół',
   },
   appHeader: {
     searchPlaceholder: 'Szukaj w katalogu',

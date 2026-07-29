@@ -55,10 +55,10 @@ const CATALOG_ROWS: readonly { name: string; meta: string; status: 'completed' |
   ];
 
 const LOG_LINES: readonly LogLine[] = [
-  { id: 'visual-1', content: '$ ai-video-cataloger scan /Volumes/Media/Clips', type: 'info', isJson: false },
-  { id: 'visual-2', content: 'scanned 3 files, 1 pending', type: 'stdout', isJson: false },
-  { id: 'visual-3', content: 'analyze beach-sunset-final.mp4 — done', type: 'success', isJson: false },
-  { id: 'visual-4', content: 'ffprobe: drone-pass-north.mp4 is unreadable', type: 'error', isJson: false },
+  { id: 'visual-1', at: 1, content: '$ ai-video-cataloger scan /Volumes/Media/Clips', type: 'info', raw: null },
+  { id: 'visual-2', at: 2, content: 'scanned 3 files, 1 pending', type: 'stdout', raw: null },
+  { id: 'visual-3', at: 3, content: 'analyze beach-sunset-final.mp4 — done', type: 'success', raw: null },
+  { id: 'visual-4', at: 4, content: 'ffprobe: drone-pass-north.mp4 is unreadable', type: 'error', raw: null },
 ];
 
 const COMPARE_VIDEO: DetailsVideo = {

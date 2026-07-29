@@ -27,6 +27,7 @@ import { useGlobalSearch } from '../features/search/use-global-search.js';
 import { SetupWizard } from '../features/wizard/SetupWizard.js';
 import { useFirstLaunch } from '../features/wizard/use-first-launch.js';
 import { useProcessing } from '../features/processing/use-processing.js';
+import { useApiLog } from '../features/shell/use-api-log.js';
 import { SettingsModal } from '../features/settings/SettingsModal.js';
 import { AppLayout } from '../AppLayout.js';
 import { useShell } from '../features/shell/use-shell.js';
@@ -40,6 +41,7 @@ export const IndexRoute = () => {
   const [scope, setScope] = useScopePreference(shell.currentFolder);
   const globalSearch = useGlobalSearch();
   const terminal = useTerminalLog();
+  const apiLog = useApiLog();
   const catalog = useCatalog(shell.currentFolder);
   const videoRegistry = useCatalogVideoRegistry();
   const tree = useCatalogTree(shell.currentFolder);
@@ -240,11 +242,15 @@ export const IndexRoute = () => {
       onAutoOpenSetupConsumed={firstLaunch.markSeen}
       terminal={{
         lines: terminal.lines,
+        apiLines: apiLog.lines,
         droppedCount: terminal.droppedCount,
-        onCopy: () => {
-          void navigator.clipboard.writeText(terminal.copyText());
+        onCopy: (text) => {
+          void navigator.clipboard.writeText(text);
         },
-        onClear: terminal.clear,
+        onClear: () => {
+          terminal.clear();
+          apiLog.clear();
+        },
       }}
       overlays={overlays}
       renderBanner={(openModal) => readiness.data === null ? null : (
