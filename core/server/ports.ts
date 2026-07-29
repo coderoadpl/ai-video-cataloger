@@ -394,6 +394,7 @@ export interface MediaProbe {
   rotation: number | null;
   gpsLat: number | null;
   gpsLon: number | null;
+  createdAtUtc: string | null;
 }
 
 export interface ExtractFramesInput {

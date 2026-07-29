@@ -319,6 +319,13 @@ const seedSmokeVariant = async (home: string, folder: string): Promise<string> =
     analyzer: 'local',
     model: 'gemma3:12b',
     missingAt: null,
+    capturedAt: null,
+    capturedAtSource: null,
+    gpsSource: null,
+    gpsAccuracyM: null,
+    gpsIntervalKind: null,
+    gpsResolvedAt: null,
+    place: null,
   }), 'variants fixture file');
   requiredValue(await store.upsertVariant({
     fingerprint,

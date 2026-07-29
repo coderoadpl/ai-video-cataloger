@@ -1610,6 +1610,13 @@ const recordGlobalCatalog = async (
         analyzer: provider.providerId,
         model: analysisModel(resolved),
         missingAt: null,
+        capturedAt: probe.value.createdAtUtc,
+        capturedAtSource: probe.value.createdAtUtc === null ? null : 'container',
+        gpsSource: probe.value.gpsLat === null || probe.value.gpsLon === null ? null : 'camera',
+        gpsAccuracyM: null,
+        gpsIntervalKind: null,
+        gpsResolvedAt: null,
+        place: null,
       },
       variant: {
         fingerprint: fingerprint.value,

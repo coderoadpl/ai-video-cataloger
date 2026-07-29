@@ -33,13 +33,16 @@ import {
   normalizeTagName,
   ok,
   type AppError,
+  acceptsGpsWrite,
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
   type CatalogVariant,
   type FaceObservation,
+  type GpsSource,
   type Person,
   type Result,
+  type TimelineIntervalKind,
 } from '@core/domain/index.js';
 import type {
   AnalyzedFileLocation,
@@ -85,6 +88,7 @@ import {
   migrateGlobalCatalogSchemaSqlV7,
   migrateGlobalCatalogSchemaSqlV8,
   migrateGlobalCatalogSchemaSqlV9,
+  migrateGlobalCatalogSchemaSqlV10,
   schemaMeta,
   tagAliases,
   tags,
@@ -291,21 +295,45 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async upsertFile(file: CatalogFile): Promise<Result<void, AppError>> {
     return this.write((db, client) => {
+      const existingRow = db.select().from(files).where(eq(files.fingerprint, file.fingerprint)).get();
+      const existing = existingRow === undefined ? null : rowToFile(existingRow);
+      const incomingSource: GpsSource = file.gpsSource ?? 'camera';
+      const accepted = acceptsGpsWrite(
+        { lat: existing?.gpsLat ?? null, lon: existing?.gpsLon ?? null, source: existing?.gpsSource ?? null },
+        { lat: file.gpsLat, lon: file.gpsLon, source: incomingSource },
+      );
+      const merged: CatalogFile = accepted
+        ? { ...file, gpsSource: file.gpsLat === null || file.gpsLon === null ? null : incomingSource }
+        : {
+          ...file,
+          gpsLat: existing?.gpsLat ?? null,
+          gpsLon: existing?.gpsLon ?? null,
+          gpsSource: existing?.gpsSource ?? null,
+          gpsAccuracyM: existing?.gpsAccuracyM ?? null,
+          gpsIntervalKind: existing?.gpsIntervalKind ?? null,
+          gpsResolvedAt: existing?.gpsResolvedAt ?? null,
+        };
       db.insert(files)
-        .values(fileToRow(file))
+        .values(fileToRow(merged))
         .onConflictDoUpdate({
           target: files.fingerprint,
           set: {
-            folderId: file.folderId,
-            fileName: canonicalPath(file.fileName),
-            size: file.size,
-            durationS: file.durationS,
-            gpsLat: file.gpsLat,
-            gpsLon: file.gpsLon,
-            processedAt: file.processedAt,
-            analyzer: file.analyzer,
-            model: file.model,
-            missingAt: file.missingAt,
+            folderId: merged.folderId,
+            fileName: canonicalPath(merged.fileName),
+            size: merged.size,
+            durationS: merged.durationS,
+            gpsLat: merged.gpsLat,
+            gpsLon: merged.gpsLon,
+            gpsSource: merged.gpsSource,
+            gpsAccuracyM: merged.gpsAccuracyM,
+            gpsIntervalKind: merged.gpsIntervalKind,
+            gpsResolvedAt: merged.gpsResolvedAt,
+            processedAt: merged.processedAt,
+            analyzer: merged.analyzer,
+            model: merged.model,
+            missingAt: merged.missingAt,
+            capturedAt: merged.capturedAt ?? existing?.capturedAt ?? null,
+            capturedAtSource: merged.capturedAt === null ? existing?.capturedAtSource ?? null : merged.capturedAtSource,
           },
         })
         .run();
@@ -686,7 +714,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           fo.last_seen_at,
           sd.tags_text,
           sd.transcript,
-          f.missing_at
+          f.missing_at,
+          sd.place
         FROM search_documents_fts
         JOIN search_documents sd ON sd.docid = search_documents_fts.docid
         JOIN files f ON f.fingerprint = sd.fingerprint
@@ -1292,8 +1321,10 @@ const migrate = (client: Database): boolean => {
     runV9Migration(client);
     migrated = true;
   }
-  if (currentVersion < 4) {
+  if (currentVersion < 10) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV10) runMigrationStatement(client, statement);
     rebuildSearchIndex(drizzle(client, { schema: globalCatalogSchema }), client);
+    migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
@@ -1439,7 +1470,27 @@ const rowToFile = (row: typeof files.$inferSelect): CatalogFile => ({
   analyzer: row.analyzer,
   model: row.model,
   missingAt: row.missingAt,
+  capturedAt: row.capturedAt,
+  capturedAtSource: row.capturedAtSource === 'container' || row.capturedAtSource === 'manual' ? row.capturedAtSource : null,
+  gpsSource: parseGpsSource(row.gpsSource),
+  gpsAccuracyM: row.gpsAccuracyM,
+  gpsIntervalKind: parseIntervalKind(row.gpsIntervalKind),
+  gpsResolvedAt: row.gpsResolvedAt,
+  place: row.placeName === null ? null : {
+    name: row.placeName,
+    region: row.placeRegion,
+    country: row.placeCountry,
+    countryCode: row.placeCountryCode,
+    distanceM: row.placeDistanceM ?? 0,
+    dataset: row.placeDataset ?? '',
+  },
 });
+
+const parseGpsSource = (value: string | null): GpsSource | null =>
+  value === 'camera' || value === 'timeline' || value === 'manual' ? value : null;
+
+const parseIntervalKind = (value: string | null): TimelineIntervalKind | null =>
+  value === 'visit' || value === 'activity' || value === 'path' ? value : null;
 
 const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
   fingerprint: file.fingerprint,
@@ -1453,6 +1504,18 @@ const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
   analyzer: file.analyzer,
   model: file.model,
   missingAt: file.missingAt,
+  capturedAt: file.capturedAt,
+  capturedAtSource: file.capturedAtSource,
+  gpsSource: file.gpsSource,
+  gpsAccuracyM: file.gpsAccuracyM,
+  gpsIntervalKind: file.gpsIntervalKind,
+  gpsResolvedAt: file.gpsResolvedAt,
+  placeName: file.place?.name ?? null,
+  placeRegion: file.place?.region ?? null,
+  placeCountry: file.place?.country ?? null,
+  placeCountryCode: file.place?.countryCode ?? null,
+  placeDistanceM: file.place?.distanceM ?? null,
+  placeDataset: file.place?.dataset ?? null,
 });
 
 const rowToAnalysis = (row: typeof analyses.$inferSelect, analysisTags: string[]): CatalogAnalysis => {
@@ -1774,20 +1837,22 @@ const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: st
       ...(analysis === undefined ? [] : tagsForVariant(db, fingerprint, analysis.configId)),
       ...faceNamesForFingerprint(db, fingerprint),
     ].join('\n'),
+    place: [file.placeName, file.placeRegion, file.placeCountry].filter((value): value is string => value !== null).join('\n'),
   };
   const existingDocid = searchDocumentId(client, fingerprint);
   if (existingDocid !== null) {
     client.run('DELETE FROM search_documents_fts WHERE docid = $docid', { $docid: existingDocid });
   }
   client.run(
-    `INSERT INTO search_documents (fingerprint, file_name, final_name, description, transcript, tags_text)
-      VALUES ($fingerprint, $fileName, $finalName, $description, $transcript, $tagsText)
+    `INSERT INTO search_documents (fingerprint, file_name, final_name, description, transcript, tags_text, place)
+      VALUES ($fingerprint, $fileName, $finalName, $description, $transcript, $tagsText, $place)
       ON CONFLICT(fingerprint) DO UPDATE SET
         file_name = excluded.file_name,
         final_name = excluded.final_name,
         description = excluded.description,
         transcript = excluded.transcript,
-        tags_text = excluded.tags_text`,
+        tags_text = excluded.tags_text,
+        place = excluded.place`,
     {
       $fingerprint: document.fingerprint,
       $fileName: document.fileName,
@@ -1795,13 +1860,14 @@ const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: st
       $description: document.description,
       $transcript: document.transcript,
       $tagsText: document.tagsText,
+      $place: document.place,
     },
   );
   const docid = searchDocumentId(client, fingerprint);
   if (docid === null) throw new Error(`Could not create search document: ${fingerprint}`);
   client.run(
-    `INSERT INTO search_documents_fts (docid, file_name, final_name, description, transcript, tags_text)
-      VALUES ($docid, $fileName, $finalName, $description, $transcript, $tagsText)`,
+    `INSERT INTO search_documents_fts (docid, file_name, final_name, description, transcript, tags_text, place)
+      VALUES ($docid, $fileName, $finalName, $description, $transcript, $tagsText, $place)`,
     {
       $docid: docid,
       $fileName: document.fileName,
@@ -1809,6 +1875,7 @@ const syncSearchDocument = (db: GlobalDrizzle, client: Database, fingerprint: st
       $description: document.description,
       $transcript: document.transcript,
       $tagsText: document.tagsText,
+      $place: document.place,
     },
   );
 };
@@ -1855,6 +1922,7 @@ const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): 
   const gpsLon = nullableNumberValue(row[7]);
   const tagsText = stringValue(row[13]);
   const transcript = stringValue(row[14]);
+  const place = stringValue(row[16]);
   return {
     fingerprint: stringValue(row[0]),
     variantCount: numberValue(row[1]),
@@ -1878,6 +1946,7 @@ const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): 
       description: description ?? '',
       tagsText,
       transcript,
+      place,
     }, rankingTerms),
   };
 };
@@ -1905,13 +1974,21 @@ const locationRowFromValues = (row: SqlValue[]): CatalogLocationRow | null => {
 };
 
 const weightedSearchScore = (
-  columns: { fileName: string; finalName: string; description: string; tagsText: string; transcript: string },
+  columns: {
+    fileName: string;
+    finalName: string;
+    description: string;
+    tagsText: string;
+    transcript: string;
+    place: string;
+  },
   rankingTerms: readonly string[],
 ): number => {
   let score = 0;
   for (const term of rankingTerms) {
     score += countTerm(columns.fileName, term) * 80;
     score += countTerm(columns.finalName, term) * 70;
+    score += countTerm(columns.place, term) * 55;
     score += countTerm(columns.tagsText, term) * 45;
     score += countTerm(columns.description, term) * 30;
     score += countTerm(columns.transcript, term) * 5;

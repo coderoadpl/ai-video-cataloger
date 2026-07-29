@@ -33,6 +33,13 @@ const file = (fingerprint: string, processedAt: string): CatalogFile => ({
   analyzer: 'openai',
   model: 'gpt-4.1-mini',
   missingAt: null,
+  capturedAt: null,
+  capturedAtSource: null,
+  gpsSource: null,
+  gpsAccuracyM: null,
+  gpsIntervalKind: null,
+  gpsResolvedAt: null,
+  place: null,
 });
 
 describe('catalog snapshot roundtrip', () => {

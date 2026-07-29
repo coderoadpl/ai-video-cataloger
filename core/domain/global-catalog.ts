@@ -4,8 +4,8 @@ import { configDescriptorSchema, configId } from './config-descriptor.js';
 import { appError, type AppError } from './errors.js';
 import { canonicalPath } from './paths.js';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 9;
-export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 10;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 10;
+export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 11;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
 
@@ -41,6 +41,24 @@ export const catalogFolderSchema = z.object({
 
 export type CatalogFolder = z.output<typeof catalogFolderSchema>;
 
+export const GPS_SOURCES = ['camera', 'timeline', 'manual'] as const;
+export const gpsSourceSchema = z.enum(GPS_SOURCES);
+export type GpsSource = z.output<typeof gpsSourceSchema>;
+
+export const TIMELINE_INTERVAL_KINDS = ['visit', 'activity', 'path'] as const;
+export const timelineIntervalKindSchema = z.enum(TIMELINE_INTERVAL_KINDS);
+export type TimelineIntervalKind = z.output<typeof timelineIntervalKindSchema>;
+
+export const catalogPlaceSchema = z.object({
+  name: z.string().min(1),
+  region: z.string().nullable(),
+  country: z.string().nullable(),
+  countryCode: z.string().length(2).nullable(),
+  distanceM: z.number().nonnegative(),
+  dataset: z.string().min(1),
+});
+export type CatalogPlace = z.output<typeof catalogPlaceSchema>;
+
 export const catalogFileSchema = z.object({
   fingerprint: z.string().min(1),
   folderId: folderIdSchema,
@@ -53,9 +71,34 @@ export const catalogFileSchema = z.object({
   analyzer: z.string().nullable(),
   model: z.string().nullable(),
   missingAt: z.number().int().nonnegative().nullable().default(null),
+  capturedAt: z.iso.datetime().nullable().default(null),
+  capturedAtSource: z.enum(['container', 'manual']).nullable().default(null),
+  gpsSource: gpsSourceSchema.nullable().default(null),
+  gpsAccuracyM: z.number().nonnegative().nullable().default(null),
+  gpsIntervalKind: timelineIntervalKindSchema.nullable().default(null),
+  gpsResolvedAt: z.iso.datetime().nullable().default(null),
+  place: catalogPlaceSchema.nullable().default(null),
 });
 
 export type CatalogFile = z.output<typeof catalogFileSchema>;
+
+const GPS_SOURCE_RANK: Record<GpsSource, number> = { timeline: 1, camera: 2, manual: 3 };
+
+export interface GpsWriteCandidate {
+  lat: number | null;
+  lon: number | null;
+  source: GpsSource;
+}
+
+export const acceptsGpsWrite = (
+  existing: { lat: number | null; lon: number | null; source: GpsSource | null },
+  incoming: GpsWriteCandidate,
+): boolean => {
+  if (incoming.lat === null || incoming.lon === null) return false;
+  if (existing.lat === null || existing.lon === null) return true;
+  const existingRank = GPS_SOURCE_RANK[existing.source ?? 'camera'];
+  return GPS_SOURCE_RANK[incoming.source] >= existingRank;
+};
 
 export const catalogAnalysisSchema = z.object({
   fingerprint: z.string().min(1),

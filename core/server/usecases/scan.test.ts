@@ -54,6 +54,13 @@ describe('scanFolder', () => {
       analyzer: 'local',
       model: 'gemma3:12b',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await globalCatalog.upsertAnalysis({
       fingerprint: 'cached-hash',
@@ -218,6 +225,13 @@ describe('scanFolder', () => {
       analyzer: 'openai',
       model: 'gpt-4.1-mini',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await globalCatalog.upsertAnalysis({
       fingerprint: 'same-folder-hash',
@@ -239,6 +253,13 @@ describe('scanFolder', () => {
       analyzer: 'openai',
       model: 'gpt-4.1-mini',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await globalCatalog.upsertAnalysis({
       fingerprint: 'cross-folder-hash',
@@ -295,6 +316,13 @@ describe('scanFolder', () => {
       analyzer: 'openai',
       model: 'gpt-4.1-mini',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await globalCatalog.upsertAnalysis({
       fingerprint: 'artifact-hash',

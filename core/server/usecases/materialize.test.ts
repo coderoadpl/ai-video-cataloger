@@ -103,6 +103,13 @@ const seedFixture = async (options: SeedOptions = {}): Promise<Fixture> => {
     analyzer: 'local',
     model: 'gemma3:12b',
     missingAt: null,
+    capturedAt: null,
+    capturedAtSource: null,
+    gpsSource: null,
+    gpsAccuracyM: null,
+    gpsIntervalKind: null,
+    gpsResolvedAt: null,
+    place: null,
   };
   await globalCatalog.upsertFile(file);
   const variant: CatalogVariant = {
@@ -212,6 +219,41 @@ describe('materializeCatalog', () => {
     expect(fileEvent?.data).toMatchObject({
       operations: ['artifact_store', 'catalog_final_name', 'rename_video', 'catalog_relocate', 'project_selected', 'copy_thumbnail'],
     });
+  });
+
+  it('P6: never writes a timeline-sourced coordinate into the media file', async () => {
+    const { fs, globalCatalog, originalFolderId } = await seedFixture();
+    await globalCatalog.upsertFile({
+      fingerprint,
+      folderId: originalFolderId,
+      fileName: 'clip.mp4',
+      size: 2048,
+      durationS: null,
+      gpsLat: 10.5,
+      gpsLon: 20.5,
+      processedAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      missingAt: null,
+      capturedAt: '2026-01-02T09:35:11.000Z',
+      capturedAtSource: 'container',
+      gpsSource: 'timeline',
+      gpsAccuracyM: 150,
+      gpsIntervalKind: 'visit',
+      gpsResolvedAt: '2026-01-03T00:00:00.000Z',
+      place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 120, dataset: 'test-dataset' },
+    });
+    const before = await fs.readTextFile(videoPath);
+
+    const result = await materializeCatalog({ fs, globalCatalog }, { root: folder, dryRun: false });
+
+    if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+    expect(result.value.filesMaterialized).toBe(1);
+    const after = await fs.readTextFile(`${folder}/2026-01-02_beach-walk.mp4`);
+    expect(before).toEqual({ ok: true, value: 'video-bytes' });
+    expect(after).toEqual(before);
+    const stored = await globalCatalog.getFile(fingerprint);
+    expect(stored.ok && stored.value?.gpsSource).toBe('timeline');
   });
 
   it('is a no-op on a second run', async () => {
@@ -410,6 +452,13 @@ describe('materializeCatalog', () => {
         analyzer: 'local',
         model: 'gemma3:12b',
         missingAt: null,
+        capturedAt: null,
+        capturedAtSource: null,
+        gpsSource: null,
+        gpsAccuracyM: null,
+        gpsIntervalKind: null,
+        gpsResolvedAt: null,
+        place: null,
       });
       await globalCatalog.upsertVariant({
         fingerprint: extraFingerprint,

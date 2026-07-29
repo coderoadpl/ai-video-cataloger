@@ -1065,6 +1065,7 @@ class InMemoryMediaPort implements MediaPort {
       rotation: null,
       gpsLat: null,
       gpsLon: null,
+      createdAtUtc: null,
     }));
   }
 

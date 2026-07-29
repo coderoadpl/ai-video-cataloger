@@ -114,6 +114,20 @@ fingerprint and is therefore shared by duplicate copies of the content; only
 the folder-default fallback is folder-relative. Search indexes the resolved
 variant only.
 
+`files` records where a coordinate came from — `gps_source`
+(`camera | timeline | manual`), `gps_accuracy_m`, `gps_interval_kind`
+(`visit | activity | path` for a timeline fix), `gps_resolved_at` — and a
+capture instant, `captured_at`, always in UTC from the container's
+`creation_time`, never a filename. A pure precedence rule
+(`manual > camera > timeline`) guards every write, including reprocessing: a
+probe that finds no GPS never erases a stored coordinate. `search_documents`
+carries a `place` column alongside `tags_text`, ranked between tags and the
+final name, so a resolved place name is searchable rather than requiring a
+render-time geocode. See
+[ADR-0015](decisions/0015-timeline-gps-provenance-and-offline-places.md) for
+the schema and the still-pending timeline backfill and offline place
+resolver.
+
 A source folder that cannot be written to (write-protected external drive,
 `chmod -w`) is not a failure: opening its catalog degrades to an in-memory
 repository (`CatalogRepository.writable()` reports it), artifacts are mirrored

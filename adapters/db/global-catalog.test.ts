@@ -54,6 +54,13 @@ const file: CatalogFile = {
   analyzer: 'openai',
   model: 'gpt-4.1-mini',
   missingAt: null,
+  capturedAt: null,
+  capturedAtSource: null,
+  gpsSource: null,
+  gpsAccuracyM: null,
+  gpsIntervalKind: null,
+  gpsResolvedAt: null,
+  place: null,
 };
 
 describe('SqlJsGlobalCatalogStore', () => {
@@ -479,6 +486,51 @@ describe('SqlJsGlobalCatalogStore', () => {
 
     const search = await store.search({ match: 'renamed*', rankingTerms: ['renamed'], limit: 10, offset: 0 });
     expect(search.ok && search.value.map((row) => row.fileName)).toEqual(['renamed.mp4']);
+  });
+
+  it('P1: a re-probe that finds no GPS no longer erases a stored coordinate', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({ ...file, gpsLat: 10, gpsLon: 20, gpsSource: 'camera' });
+    await store.upsertFile({ ...file, gpsLat: null, gpsLon: null, gpsSource: null });
+
+    const stored = await store.getFile(file.fingerprint);
+    expect(stored.ok && stored.value?.gpsLat).toBe(10);
+    expect(stored.ok && stored.value?.gpsLon).toBe(20);
+    expect(stored.ok && stored.value?.gpsSource).toBe('camera');
+  });
+
+  it('P2: a timeline write never overwrites camera GPS, but camera always wins over timeline', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+
+    await store.upsertFile({ ...file, gpsLat: 1, gpsLon: 1, gpsSource: 'camera' });
+    await store.upsertFile({ ...file, gpsLat: 2, gpsLon: 2, gpsSource: 'timeline' });
+    const afterTimelineAttempt = await store.getFile(file.fingerprint);
+    expect(afterTimelineAttempt.ok && afterTimelineAttempt.value?.gpsLat).toBe(1);
+    expect(afterTimelineAttempt.ok && afterTimelineAttempt.value?.gpsSource).toBe('camera');
+
+    const reversedFingerprint = { ...file, fingerprint: 'fp-reversed' };
+    await store.upsertFile({ ...reversedFingerprint, gpsLat: 3, gpsLon: 3, gpsSource: 'timeline' });
+    await store.upsertFile({ ...reversedFingerprint, gpsLat: 4, gpsLon: 4, gpsSource: 'camera' });
+    const afterCameraOverwrite = await store.getFile(reversedFingerprint.fingerprint);
+    expect(afterCameraOverwrite.ok && afterCameraOverwrite.value?.gpsLat).toBe(4);
+    expect(afterCameraOverwrite.ok && afterCameraOverwrite.value?.gpsSource).toBe('camera');
+  });
+
+  it('P5: a place name reaches the search index through the new place column', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({
+      ...file,
+      place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 120, dataset: 'test-dataset' },
+    });
+
+    const search = await store.search({ match: 'fjordvik*', rankingTerms: ['fjordvik'], limit: 10, offset: 0 });
+    expect(search.ok && search.value.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
   });
 
   it('batches writes: a crash before flush loses only un-flushed rows and a re-run heals', async () => {
@@ -985,7 +1037,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(missingResult[0]?.values[0]?.[0]).toBe(7000);
   });
 
-  it('migrates the captured v8 fixture to v9 without changing analysis, tags, or search hits', async () => {
+  it('migrates the captured v8 fixture to v10 without changing analysis or tags, and rebuilds search with the new place column', async () => {
     const home = await tempHome();
     const before = await writeV8CatalogFixture(home);
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -1033,8 +1085,21 @@ describe('SqlJsGlobalCatalogStore', () => {
     )[0]?.values;
     migrated.close();
 
-    expect(after).toEqual(before);
-    expect(version).toBe(9);
+    expect(after.analysis).toEqual(before.analysis);
+    expect(after.tags).toEqual(before.tags);
+    expect(JSON.parse(after.searchHits)).toEqual([[
+      'fixture-v8-analysis',
+      'source clip.mp4',
+      '2026-01-02-night-sky.mp4',
+      'A blue-hour skyline — preserved byte for byte.',
+      'First line.\\nSecond line with “quotes”.',
+      'night-sky\nwarsaw',
+    ]]);
+    expect(JSON.parse(after.searchColumns).map((column: unknown[]) => column[1])).toEqual([
+      'docid', 'fingerprint', 'file_name', 'final_name', 'description', 'transcript', 'tags_text', 'place',
+    ]);
+    expect(after.searchFtsSql).toContain('place');
+    expect(version).toBe(10);
     expect(analysisColumns.filter((column) => column[5] !== 0).map((column) => [column[1], column[5]])).toEqual([
       ['fingerprint', 1],
       ['config_id', 2],

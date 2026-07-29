@@ -326,6 +326,13 @@ describe('facesIndex', () => {
       analyzer: 'claude',
       model: 'sonnet',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await deps.globalCatalog.upsertAnalysis({
       fingerprint: 'fp-clip',
@@ -484,6 +491,13 @@ describe('facesIndex', () => {
       analyzer: 'claude',
       model: 'sonnet',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await deps.globalCatalog.upsertAnalysis({
       fingerprint: 'fp-clip',
@@ -569,6 +583,13 @@ const seedFile = async (deps: FacesDeps, fingerprint: string, fileName: string):
     analyzer: 'claude',
     model: 'sonnet',
     missingAt: null,
+    capturedAt: null,
+    capturedAtSource: null,
+    gpsSource: null,
+    gpsAccuracyM: null,
+    gpsIntervalKind: null,
+    gpsResolvedAt: null,
+    place: null,
   });
   await deps.globalCatalog.upsertAnalysis({
     fingerprint,
@@ -1119,6 +1140,13 @@ const seedCatalogFor = async (deps: FacesDeps & { fs: InMemoryFileSystem }): Pro
     analyzer: 'claude',
     model: 'sonnet',
     missingAt: null,
+    capturedAt: null,
+    capturedAtSource: null,
+    gpsSource: null,
+    gpsAccuracyM: null,
+    gpsIntervalKind: null,
+    gpsResolvedAt: null,
+    place: null,
   });
   await deps.globalCatalog.upsertAnalysis({
     fingerprint: 'fp-clip',
@@ -1155,6 +1183,13 @@ describe('facesExemplars', () => {
       analyzer: 'claude',
       model: 'sonnet',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await deps.globalCatalog.upsertAnalysis({
       fingerprint,
@@ -1227,6 +1262,13 @@ describe('facesExemplars', () => {
       analyzer: 'claude',
       model: 'sonnet',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await deps.globalCatalog.upsertAnalysis({
       fingerprint: 'fp-missing',
@@ -1270,6 +1312,13 @@ describe('facesExemplars', () => {
       analyzer: 'claude',
       model: 'sonnet',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await dryDeps.globalCatalog.upsertAnalysis({
       fingerprint: 'fp-missing',

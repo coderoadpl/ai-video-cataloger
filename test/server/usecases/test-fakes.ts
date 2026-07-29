@@ -574,6 +574,7 @@ export class InMemoryMedia implements MediaPort {
   readonly audioInputs: Array<{ videoPath: string; outputPath: string }> = [];
   readonly durations = new Map<string, number | null>();
   readonly locations = new Map<string, { gpsLat: number; gpsLon: number }>();
+  readonly createdAtUtc = new Map<string, string>();
   readonly frameFailures = new Map<string, AppError>();
   readonly frameFailureMinFrameCount = new Map<string, number>();
   readonly frameLimits = new Map<string, number>();
@@ -590,6 +591,7 @@ export class InMemoryMedia implements MediaPort {
       rotation: null,
       gpsLat: location?.gpsLat ?? null,
       gpsLon: location?.gpsLon ?? null,
+      createdAtUtc: this.createdAtUtc.get(input.videoPath) ?? null,
     }));
   }
 

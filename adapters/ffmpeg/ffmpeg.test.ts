@@ -120,8 +120,8 @@ describe('FfmpegMediaAdapter', () => {
     const second = await adapter.probe({ videoPath: '/video/clip.mp4' });
     const dependencies = await adapter.dependencies();
 
-    expect(first).toEqual(ok({ duration: 100, width: null, height: null, rotation: null, gpsLat: null, gpsLon: null }));
-    expect(second).toEqual(ok({ duration: 100, width: null, height: null, rotation: null, gpsLat: null, gpsLon: null }));
+    expect(first).toEqual(ok({ duration: 100, width: null, height: null, rotation: null, gpsLat: null, gpsLon: null, createdAtUtc: null }));
+    expect(second).toEqual(ok({ duration: 100, width: null, height: null, rotation: null, gpsLat: null, gpsLon: null, createdAtUtc: null }));
     expect(runtime.configurations).toEqual([{ ffmpegPath: '/bundled/ffmpeg', ffprobePath: '/bundled/ffprobe' }]);
     expect(dependencies).toEqual(ok([
       {
@@ -471,6 +471,7 @@ describe('FfmpegMediaAdapter', () => {
       rotation: null,
       gpsLat: 69.6492,
       gpsLon: 18.9553,
+      createdAtUtc: null,
     }));
   });
 
@@ -496,7 +497,63 @@ describe('FfmpegMediaAdapter', () => {
       rotation: 90,
       gpsLat: null,
       gpsLon: null,
+      createdAtUtc: null,
     }));
+  });
+
+  it('extracts creation_time from the container tags and normalises it to UTC', async () => {
+    const runtime = new FakeFfmpegRuntime();
+    runtime.metadata = {
+      format: { duration: 100, tags: { creation_time: '2025-09-01T09:35:11.000000Z' } },
+      streams: [{ codec_type: 'video' }],
+    };
+    const adapter = adapterWithFakeRuntime(runtime);
+
+    const result = await adapter.probe({ videoPath: '/video/clip.mp4' });
+
+    expect(result.ok && result.value.createdAtUtc).toBe('2025-09-01T09:35:11.000Z');
+  });
+
+  it('falls back to a stream tag when the format has no creation_time', async () => {
+    const runtime = new FakeFfmpegRuntime();
+    runtime.metadata = {
+      format: { duration: 100 },
+      streams: [{ codec_type: 'video', tags: { creation_time: '2025-09-01T09:35:11Z' } }],
+    };
+    const adapter = adapterWithFakeRuntime(runtime);
+
+    const result = await adapter.probe({ videoPath: '/video/clip.mp4' });
+
+    expect(result.ok && result.value.createdAtUtc).toBe('2025-09-01T09:35:11.000Z');
+  });
+
+  it('normalises a non-Z offset creation_time to the same UTC instant', async () => {
+    const runtime = new FakeFfmpegRuntime();
+    runtime.metadata = {
+      format: { duration: 100, tags: { creation_time: '2025-09-01T11:35:11+02:00' } },
+      streams: [{ codec_type: 'video' }],
+    };
+    const adapter = adapterWithFakeRuntime(runtime);
+
+    const result = await adapter.probe({ videoPath: '/video/clip.mp4' });
+
+    expect(result.ok && result.value.createdAtUtc).toBe('2025-09-01T09:35:11.000Z');
+  });
+
+  it('returns null for absent, unparseable, and pre-2000 sentinel creation_time values', async () => {
+    const cases = [undefined, 'not-a-date', '1904-01-01T00:00:00Z', '1970-01-01T00:00:00Z'];
+    for (const creationTime of cases) {
+      const runtime = new FakeFfmpegRuntime();
+      runtime.metadata = {
+        format: { duration: 100, tags: creationTime === undefined ? undefined : { creation_time: creationTime } },
+        streams: [{ codec_type: 'video' }],
+      };
+      const adapter = adapterWithFakeRuntime(runtime);
+
+      const result = await adapter.probe({ videoPath: '/video/clip.mp4' });
+
+      expect(result.ok && result.value.createdAtUtc).toBeNull();
+    }
   });
 });
 

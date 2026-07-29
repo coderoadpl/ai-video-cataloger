@@ -42,6 +42,7 @@ class CountingMedia extends InMemoryMedia {
       rotation: 0,
       gpsLat: null,
       gpsLon: null,
+      createdAtUtc: null,
     }));
   }
 }
@@ -127,6 +128,13 @@ describe('scanTree', () => {
       analyzer: 'openai',
       model: 'gpt-4.1-mini',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await store.upsertFile({
       fingerprint: 'fp-2',
@@ -140,6 +148,13 @@ describe('scanTree', () => {
       analyzer: 'openai',
       model: 'gpt-4.1-mini',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await store.upsertAnalysis({
       fingerprint: 'fp-1',
@@ -198,6 +213,13 @@ describe('scanTree', () => {
       analyzer: 'gemini',
       model: 'gemini-2.5-flash',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await store.upsertAnalysis({
       fingerprint: 'hash-done',
@@ -281,6 +303,13 @@ describe('scanTree', () => {
       analyzer: 'openai',
       model: 'gpt-4.1-mini',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await store.upsertAnalysis({
       fingerprint: 'shared-fp',
@@ -329,6 +358,13 @@ describe('catalogTreeAbsentFiles', () => {
         analyzer: 'openai',
         model: 'gpt-4.1-mini',
         missingAt: file.missingAt,
+        capturedAt: null,
+        capturedAtSource: null,
+        gpsSource: null,
+        gpsAccuracyM: null,
+        gpsIntervalKind: null,
+        gpsResolvedAt: null,
+        place: null,
       });
       await store.upsertAnalysis({
         fingerprint: file.fingerprint,

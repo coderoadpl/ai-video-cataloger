@@ -33,6 +33,13 @@ const file = (fingerprint: string, folderId: string, fileName: string): CatalogF
   analyzer: null,
   model: null,
   missingAt: null,
+  capturedAt: null,
+  capturedAtSource: null,
+  gpsSource: null,
+  gpsAccuracyM: null,
+  gpsIntervalKind: null,
+  gpsResolvedAt: null,
+  place: null,
 });
 
 const analysis = (

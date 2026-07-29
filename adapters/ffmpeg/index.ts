@@ -149,6 +149,7 @@ export class FfmpegMediaAdapter implements MediaPort {
       rotation: dimensions.rotation,
       gpsLat: gps?.lat ?? null,
       gpsLon: gps?.lon ?? null,
+      createdAtUtc: createdAtFromMetadata(metadata.value),
     });
   }
 
@@ -573,6 +574,24 @@ const gpsFromMetadata = (metadata: FfmpegMetadata): { lat: number; lon: number }
     if (gps !== null) return gps;
   }
   return null;
+};
+
+const CREATION_TIME_EPOCH_FLOOR_MS = Date.parse('2000-01-01T00:00:00Z');
+
+export const createdAtFromMetadata = (metadata: FfmpegMetadata): string | null => {
+  const raw = creationTimeTag(metadata.format.tags)
+    ?? metadata.streams.map((stream) => creationTimeTag(stream.tags)).find((value) => value !== null)
+    ?? null;
+  if (raw === null) return null;
+  const parsedMs = Date.parse(raw);
+  if (!Number.isFinite(parsedMs) || parsedMs < CREATION_TIME_EPOCH_FLOOR_MS) return null;
+  return new Date(parsedMs).toISOString();
+};
+
+const creationTimeTag = (tagsValue: Record<string, string | number | null | undefined> | undefined): string | null => {
+  if (tagsValue === undefined) return null;
+  const value = tagsValue.creation_time;
+  return typeof value === 'string' ? value : null;
 };
 
 const gpsFromTags = (tagsValue: Record<string, string | number | null | undefined> | undefined): { lat: number; lon: number } | null => {

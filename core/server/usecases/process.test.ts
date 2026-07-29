@@ -594,6 +594,37 @@ describe('process pipeline global catalog idempotency', () => {
     expect(legacyVariant?.description).toBe('Done elsewhere');
   });
 
+  it('stores the container creation time as the catalog capture instant', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    deps.media.createdAtUtc.set(videoPath, '2025-09-01T09:35:11.000Z');
+
+    const result = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...baseInput, skipRename: true, skipRenameExplicit: true },
+    );
+
+    expect(result.ok).toBe(true);
+    const stored = await globalCatalog.getFile('hash-clip');
+    expect(stored.ok && stored.value?.capturedAt).toBe('2025-09-01T09:35:11.000Z');
+    expect(stored.ok && stored.value?.capturedAtSource).toBe('container');
+  });
+
+  it('leaves the capture instant empty when the container carries no creation time', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+
+    const result = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...baseInput, skipRename: true, skipRenameExplicit: true },
+    );
+
+    expect(result.ok).toBe(true);
+    const stored = await globalCatalog.getFile('hash-clip');
+    expect(stored.ok && stored.value?.capturedAt).toBeNull();
+    expect(stored.ok && stored.value?.capturedAtSource).toBeNull();
+  });
+
   it('materializes the legacy folder layout when a pre-variant legacy record is selected', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();

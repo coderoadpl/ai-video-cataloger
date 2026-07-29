@@ -22,6 +22,18 @@ export const files = sqliteTable('files', {
   model: text('model'),
   missingAt: integer('missing_at'),
   selectedConfigId: text('selected_config_id'),
+  capturedAt: text('captured_at'),
+  capturedAtSource: text('captured_at_source'),
+  gpsSource: text('gps_source'),
+  gpsAccuracyM: real('gps_accuracy_m'),
+  gpsIntervalKind: text('gps_interval_kind'),
+  gpsResolvedAt: text('gps_resolved_at'),
+  placeName: text('place_name'),
+  placeRegion: text('place_region'),
+  placeCountry: text('place_country'),
+  placeCountryCode: text('place_country_code'),
+  placeDistanceM: real('place_distance_m'),
+  placeDataset: text('place_dataset'),
 });
 
 export const analyses = sqliteTable('analyses', {
@@ -319,4 +331,32 @@ export const migrateGlobalCatalogSchemaSqlV9 = [
       )`,
   'DROP TABLE file_tags_v8',
   'DROP TABLE analyses_v8',
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV10 = [
+  'ALTER TABLE files ADD COLUMN captured_at TEXT',
+  'ALTER TABLE files ADD COLUMN captured_at_source TEXT',
+  'ALTER TABLE files ADD COLUMN gps_source TEXT',
+  'ALTER TABLE files ADD COLUMN gps_accuracy_m REAL',
+  'ALTER TABLE files ADD COLUMN gps_interval_kind TEXT',
+  'ALTER TABLE files ADD COLUMN gps_resolved_at TEXT',
+  'ALTER TABLE files ADD COLUMN place_name TEXT',
+  'ALTER TABLE files ADD COLUMN place_region TEXT',
+  'ALTER TABLE files ADD COLUMN place_country TEXT',
+  'ALTER TABLE files ADD COLUMN place_country_code TEXT',
+  'ALTER TABLE files ADD COLUMN place_distance_m REAL',
+  'ALTER TABLE files ADD COLUMN place_dataset TEXT',
+  "UPDATE files SET gps_source = 'camera' WHERE gps_lat IS NOT NULL AND gps_lon IS NOT NULL",
+  "ALTER TABLE search_documents ADD COLUMN place TEXT NOT NULL DEFAULT ''",
+  'DROP TABLE IF EXISTS search_documents_fts',
+  `CREATE VIRTUAL TABLE search_documents_fts USING fts4(
+      content="search_documents",
+      file_name,
+      final_name,
+      description,
+      transcript,
+      tags_text,
+      place,
+      tokenize=unicode61
+    )`,
 ] as const;

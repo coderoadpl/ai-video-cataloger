@@ -172,6 +172,13 @@ describe('GUI process route variant identity', () => {
       analyzer: 'claude',
       model: null,
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     };
     const upsertedFolder = await globalCatalog.upsertFolder(folderRecord);
     if (!upsertedFolder.ok) throw new Error(upsertedFolder.error.message);

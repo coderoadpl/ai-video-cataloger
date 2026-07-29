@@ -139,6 +139,13 @@ export const upsertProcessedVideo = async (
     analyzer: input.analyzer,
     model: input.model,
     missingAt: null,
+    capturedAt: null,
+    capturedAtSource: null,
+    gpsSource: input.gpsLat === null || input.gpsLon === null ? null : 'camera',
+    gpsAccuracyM: null,
+    gpsIntervalKind: null,
+    gpsResolvedAt: null,
+    place: null,
   };
   const upsertedFile = await deps.globalCatalog.upsertFile(file);
   if (!upsertedFile.ok) return upsertedFile;

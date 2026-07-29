@@ -35,6 +35,13 @@ const file: CatalogFile = {
   analyzer: 'claude-code',
   model: null,
   missingAt: null,
+  capturedAt: null,
+  capturedAtSource: null,
+  gpsSource: null,
+  gpsAccuracyM: null,
+  gpsIntervalKind: null,
+  gpsResolvedAt: null,
+  place: null,
 };
 
 const variant: CatalogVariant = {

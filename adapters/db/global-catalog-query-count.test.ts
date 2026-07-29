@@ -66,6 +66,13 @@ const fill = async (
       analyzer: 'openai',
       model: 'gpt-4.1-mini',
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     })).ok).toBe(true);
     expect((await store.upsertAnalysis({
       fingerprint,

@@ -51,6 +51,13 @@ describe('suggestTagAliases', () => {
       analyzer: null,
       model: null,
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await store.upsertAnalysis({
       fingerprint: 'fp-1',
@@ -81,6 +88,13 @@ describe('suggestTagAliases', () => {
       analyzer: null,
       model: null,
       missingAt: null,
+      capturedAt: null,
+      capturedAtSource: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
     });
     await store.upsertAnalysis({
       fingerprint: 'fp-2',
