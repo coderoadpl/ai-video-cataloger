@@ -2,7 +2,6 @@ import { _electron as electron, expect, test } from '@playwright/test';
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { z } from 'zod';
 
 import {
   ELECTRON_MAIN,
@@ -12,7 +11,7 @@ import {
   readCatalog,
   runCli,
 } from './helpers.js';
-import { matrixAllowsSkip, missingLegMessage } from './matrix-support.js';
+import { matrixAllowsSkip, missingLegMessage, systemOllamaModelMissingReason } from './matrix-support.js';
 import { SAMPLES, type VideoSample } from './samples.js';
 
 const CELL = 'drive-gui × local-system × skip';
@@ -25,10 +24,6 @@ const TREE_LAYOUT = [
 ] as const;
 const RENAMED_PATTERN = /^\d{4}-\d{2}-\d{2}_[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/;
 
-const ollamaTagsSchema = z.object({
-  models: z.array(z.object({ name: z.string().optional(), model: z.string().optional() })),
-});
-
 test.describe.configure({ mode: 'serial' });
 
 const failOrSkip = (reason: string): never => {
@@ -38,16 +33,8 @@ const failOrSkip = (reason: string): never => {
 };
 
 const requireSystemOllamaModel = async (baseUrl: string, model: string): Promise<void> => {
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/tags`, { signal: AbortSignal.timeout(5_000) });
-  } catch (error) {
-    failOrSkip(`Ollama ${baseUrl} is unavailable: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  if (!response.ok) failOrSkip(`Ollama ${baseUrl} returned HTTP ${String(response.status)}`);
-  const tags = ollamaTagsSchema.parse(await response.json());
-  const installed = tags.models.some((entry) => entry.name === model || entry.model === model);
-  if (!installed) failOrSkip(`Ollama ${baseUrl} does not have ${model} installed`);
+  const reason = await systemOllamaModelMissingReason(baseUrl, model);
+  if (reason !== null) failOrSkip(reason);
 };
 
 const sampleById = (id: string): VideoSample => {

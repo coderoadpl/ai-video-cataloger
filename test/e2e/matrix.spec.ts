@@ -27,7 +27,7 @@ import {
   runCli,
   type CliResult,
 } from './helpers.js';
-import { matrixAllowsSkip, matrixHome, missingLegMessage } from './matrix-support.js';
+import { matrixAllowsSkip, matrixHome, missingLegMessage, systemOllamaModelMissingReason } from './matrix-support.js';
 import { SAMPLES, type VideoSample } from './samples.js';
 
 const MATRIX_MODEL = 'gemma3:4b';
@@ -35,12 +35,6 @@ const WHISPER_MODEL = 'base';
 const CELL_TIMEOUT_MS = 7_200_000;
 const PIPELINE_TIMEOUT_MS = 1_200_000;
 const RENAMED_PATTERN = /^\d{4}-\d{2}-\d{2}_[a-z0-9][a-z0-9-]*\.[a-z0-9]+$/;
-const ollamaTagsSchema = z.object({
-  models: z.array(z.object({
-    name: z.string().optional(),
-    model: z.string().optional(),
-  })),
-});
 const processCompletionSchema = z.object({
   configId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
   selectedConfigId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
@@ -126,16 +120,8 @@ const requireCommandAuthentication = (
 };
 
 const requireSystemOllamaModel = async (cell: string, baseUrl: string, model: string): Promise<void> => {
-  let response: Response;
-  try {
-    response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/tags`, { signal: AbortSignal.timeout(5_000) });
-  } catch (error) {
-    failOrSkip(cell, `Ollama ${baseUrl} is unavailable: ${error instanceof Error ? error.message : String(error)}`);
-  }
-  if (!response.ok) failOrSkip(cell, `Ollama ${baseUrl} returned HTTP ${String(response.status)}`);
-  const tags = ollamaTagsSchema.parse(await response.json());
-  const installed = tags.models.some((entry) => entry.name === model || entry.model === model);
-  if (!installed) failOrSkip(cell, `Ollama ${baseUrl} does not have ${model} installed`);
+  const reason = await systemOllamaModelMissingReason(baseUrl, model);
+  if (reason !== null) failOrSkip(cell, reason);
 };
 
 const setup = async (

@@ -46,7 +46,8 @@
     "caffeinate", // apps/cli: keep the Mac awake during long scans
     "sips", // scripts/build-app-icon.mjs: rasterize the logo
     "iconutil", // scripts/build-app-icon.mjs: assemble the .icns
-    "say" // test/e2e/helpers.ts: synthesize sample audio for transcription fixtures
+    "say", // test/e2e/helpers.ts: synthesize sample audio for transcription fixtures
+    "hdiutil" // test/e2e/ro-mount.ts: create/attach/detach real read-only disk images
   ],
   "rules": {
     // Unambiguous dead weight fails `check`: dead files, undeclared/unused

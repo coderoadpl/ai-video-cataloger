@@ -14,6 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- `pnpm run test:e2e:matrix` gains two `ro-mount` legs that build an `hdiutil` disk image, re-attach it read-only, and assert index-only mode against a real read-only filesystem: detection and zero writes to the mount (never skippable on macOS), then a full drive run whose artifacts land in `~/.ai-video-cataloger/read-only-folders/`.
+
 ### Fixed
 
 - Read-only exFAT/fskit folders enter index-only mode when Node 22 masks recursive directory creation failures as `ENOENT`.

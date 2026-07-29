@@ -115,6 +115,10 @@ export default defineConfig({
           hookTimeout: 120000,
         },
       },
+      {
+        extends: true,
+        test: { name: 'e2e-support', environment: 'node', include: ['test/e2e/**/*.test.ts'] },
+      },
     ],
   },
 });

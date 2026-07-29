@@ -71,9 +71,13 @@ re-run.
 - `pnpm run test:e2e:matrix` = batch-end/pre-release real-provider suite. It
   uses the persistent `~/repositories/claude-tmp/avc-e2e-matrix-home` cache,
   exercises managed/system/API/harness analyzers and every transcription
-  source, fails on unavailable legs unless `E2E_MATRIX_ALLOW_SKIP=1` is set,
-  and is intentionally outside `check`, `smoke`, and parity. Run it after a
-  completed work batch and before a release; never add it to a normal gate.
+  source, plus two `ro-mount` legs that mount a real read-only `hdiutil` image
+  and assert index-only mode (the detection leg is never skippable on macOS),
+  fails on unavailable legs unless `E2E_MATRIX_ALLOW_SKIP=1` is set, and is
+  intentionally outside `check`, `smoke`, and parity. Run it after a completed
+  work batch and before a release; never add it to a normal gate. It must be
+  run from a normal (unsandboxed) shell — `hdiutil create` fails with `Device
+  not configured` under an agent Bash sandbox.
 - `pnpm run visual` = screenshot comparison of the layout skeletons against the
   darwin baselines in `visual/__screenshots__/`
   ([ADR-0005](docs/decisions/0005-visual-regression.md)). It builds and previews

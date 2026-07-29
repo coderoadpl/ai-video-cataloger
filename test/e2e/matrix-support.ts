@@ -1,11 +1,36 @@
 import { homedir } from 'node:os';
 import { join } from 'node:path';
+import { z } from 'zod';
 
 export interface MatrixSummaryRow {
   cell: string;
   result: string;
   durationMs: number;
 }
+
+const ollamaTagsSchema = z.object({
+  models: z.array(z.object({
+    name: z.string().optional(),
+    model: z.string().optional(),
+  })),
+});
+
+export const systemOllamaModelMissingReason = async (
+  baseUrl: string,
+  model: string,
+): Promise<string | null> => {
+  let response: Response;
+  try {
+    response = await fetch(`${baseUrl.replace(/\/$/, '')}/api/tags`, { signal: AbortSignal.timeout(5_000) });
+  } catch (error) {
+    return `Ollama ${baseUrl} is unavailable: ${error instanceof Error ? error.message : String(error)}`;
+  }
+  if (!response.ok) return `Ollama ${baseUrl} returned HTTP ${String(response.status)}`;
+  const tags = ollamaTagsSchema.parse(await response.json());
+  const installed = tags.models.some((entry) => entry.name === model || entry.model === model);
+  if (!installed) return `Ollama ${baseUrl} does not have ${model} installed`;
+  return null;
+};
 
 export const matrixHome = (environment: NodeJS.ProcessEnv): string =>
   environment.E2E_MATRIX_HOME ?? join(homedir(), 'repositories', 'claude-tmp', 'avc-e2e-matrix-home');

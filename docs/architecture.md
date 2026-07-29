@@ -115,7 +115,12 @@ repository (`CatalogRepository.writable()` reports it), artifacts are mirrored
 to `~/.ai-video-cataloger/read-only-folders/{folderId}/`, renaming is forced
 off, the NDJSON snapshot is skipped with a `catalog_snapshot_skipped` warning
 per file, and the analysis still lands in the canonical global index. See
-[ADR-0002](decisions/0002-global-catalog-layer.md) §(f).
+[ADR-0002](decisions/0002-global-catalog-layer.md) §(f). Read-only detection is
+verified against a real mount, not a simulated one: the `ro-mount` legs of
+`pnpm run test:e2e:matrix` build a disk image with `hdiutil`, re-attach it
+`-readonly`, and assert index-only mode end to end — Node 22 reports a
+rejected recursive directory creation on such a mount as `ENOENT`, so a
+permission-simulating fake cannot stand in for one.
 
 Existing databases and on-disk artifacts written by the old implementation
 must remain readable with no migration.
