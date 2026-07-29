@@ -370,4 +370,21 @@ describe('catalogTreeAbsentFiles', () => {
     const result = await catalogTreeAbsentFiles({ fs }, { folder: '/drive' });
     expect(result.ok && result.value.groups).toEqual([]);
   });
+
+  it('finds a diacritic folder stored NFC when the caller passes an NFD root', async () => {
+    const fs = new InMemoryFileSystem('/drive');
+    const store = new InMemoryGlobalCatalogStore();
+    const nfcFolder = '/drive/Å-ring'.normalize('NFC');
+    const nfdRoot = '/drive/Å-ring'.normalize('NFD');
+    await upsertFolderWithMissing(store, '44444444-4444-4444-8444-444444444444', nfcFolder, [
+      { fingerprint: 'fp-d1', fileName: 'd1.mp4', finalName: null, missingAt: 1738368000000 },
+    ]);
+
+    const result = await catalogTreeAbsentFiles({ fs, globalCatalog: store }, { folder: nfdRoot });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.groups).toHaveLength(1);
+    expect(result.value.groups[0]?.folderPath).toBe(nfcFolder);
+  });
 });

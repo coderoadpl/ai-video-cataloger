@@ -17,6 +17,7 @@ import {
   analyzerProviderIdSchema,
   configDescriptorSchema,
   configKeySchema,
+  canonicalPath,
   credentialDeletionSchema,
   credentialsBackendStatusSchema,
   folderIdSchema,
@@ -48,10 +49,12 @@ export const healthReadyOutputSchema = z.object({
   checks: z.array(readyCheckSchema),
 });
 
+const canonicalPathString = () => z.string().min(1).transform(canonicalPath);
+
 const emptyInputSchema = z.object({});
-const folderInputSchema = z.object({ folder: z.string().min(1) });
-const optionalFolderInputSchema = z.object({ folder: z.string().min(1).optional() });
-const videoPathInputSchema = z.object({ videoPath: z.string().min(1) });
+const folderInputSchema = z.object({ folder: canonicalPathString() });
+const optionalFolderInputSchema = z.object({ folder: canonicalPathString().optional() });
+const videoPathInputSchema = z.object({ videoPath: canonicalPathString() });
 const forceInputSchema = z.object({ force: z.boolean().default(false) });
 const jobIdInputSchema = z.object({ jobId: z.string().min(1) });
 const configIdSchema = z.union([z.literal('legacy'), z.string().regex(/^cfg_[0-9a-f]{12}$/)]);
@@ -228,7 +231,7 @@ export const processInputSchema = videoPathInputSchema.extend({
 }));
 
 export const processDriveInputSchema = z.object({
-  root: z.string().min(1),
+  root: canonicalPathString(),
   frames: z.number().int().optional(),
   framesExplicit: z.boolean().optional(),
   skipRename: z.boolean().optional(),
@@ -332,7 +335,7 @@ export const driveRunSummarySchema = z.object({
 });
 
 export const materializeInputSchema = z.object({
-  root: z.string().min(1),
+  root: canonicalPathString(),
   dryRun: z.boolean().default(false),
 });
 
@@ -374,7 +377,7 @@ export const thumbnailOutputSchema = z.object({
 });
 
 export const thumbnailsInputSchema = z.object({
-  root: z.string().min(1),
+  root: canonicalPathString(),
   force: z.boolean().default(false),
 });
 
@@ -442,8 +445,8 @@ export const resetAllOutputSchema = z.union([
 ]);
 
 export const resetSingleInputSchema = z.object({
-  folder: z.string().min(1).optional(),
-  filename: z.string().min(1),
+  folder: canonicalPathString().optional(),
+  filename: canonicalPathString(),
   force: z.boolean().default(false),
 });
 
@@ -463,7 +466,7 @@ export const resetSingleOutputSchema = z.union([
 ]);
 
 export const configGetInputSchema = z.object({
-  folder: z.string().min(1).optional(),
+  folder: canonicalPathString().optional(),
   key: configKeySchema.nullable().default(null),
 });
 
@@ -551,7 +554,7 @@ export const configGetOutputSchema = z.union([
 ]);
 
 export const configSetInputSchema = z.object({
-  folder: z.string().min(1).optional(),
+  folder: canonicalPathString().optional(),
   key: configKeySchema,
   value: z.string(),
 });
@@ -790,7 +793,7 @@ export const readinessOutputSchema = z.object({
 });
 
 export const readinessInputSchema = z.object({
-  folder: z.string().min(1).optional(),
+  folder: canonicalPathString().optional(),
   scope: z.literal('home').optional(),
   refresh: z.enum(['true', 'false']).default('false').transform((value) => value === 'true'),
 }).refine((input) => input.folder === undefined || input.scope === undefined, {
@@ -892,6 +895,8 @@ export const facesIndexFailureSchema = z.object({
 
 export const facesIndexOutputSchema = z.object({
   root: z.string().min(1),
+  foldersMatched: z.number().int().nonnegative(),
+  filesInScope: z.number().int().nonnegative(),
   filesScanned: z.number().int().nonnegative(),
   filesIndexed: z.number().int().nonnegative(),
   observationsAdded: z.number().int().nonnegative(),
@@ -1081,7 +1086,7 @@ export const catalogLocationsOutputSchema = z.object({
 }).strict();
 
 const variantLocatorSchema = z.object({
-  videoPath: z.string().min(1).optional(),
+  videoPath: canonicalPathString().optional(),
   fingerprint: z.string().min(1).optional(),
 }).strict().refine(
   (input) => (input.videoPath === undefined) !== (input.fingerprint === undefined),
@@ -1099,7 +1104,7 @@ export const variantSelectInputSchema = variantMutationInputSchema.safeExtend({
 });
 
 export const variantFolderDefaultInputSchema = z.object({
-  folderPath: z.string().min(1),
+  folderPath: canonicalPathString(),
   configId: configIdSchema.nullable(),
 }).strict();
 
@@ -1157,7 +1162,7 @@ export const variantFolderDefaultOutputSchema = z.object({
 }).strict();
 
 export const facesIndexInputSchema = z.object({
-  root: z.string().min(1),
+  root: canonicalPathString(),
 });
 
 export const facePersonSchema = z.object({

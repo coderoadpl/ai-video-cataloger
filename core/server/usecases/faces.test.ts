@@ -289,7 +289,8 @@ describe('faces forget and purge delete crop files', () => {
 });
 
 describe('facesIndex', () => {
-  const seedCatalog = async (deps: FacesDeps): Promise<void> => {
+  const seedCatalog = async (deps: FacesDeps & { fs: InMemoryFileSystem }): Promise<void> => {
+    deps.fs.addDirectory('/work/videos');
     await deps.globalCatalog.upsertFolder({
       folderId: '11111111-1111-1111-1111-111111111111',
       currentPath: '/work/videos',
@@ -439,11 +440,79 @@ describe('facesIndex', () => {
     expect(result.value.filesIndexed).toBe(1);
     expect(result.value.observationsAdded).toBeGreaterThan(0);
   });
+
+  it('indexes an NFD-passed root against an NFC-stored catalog folder', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    const nfcRoot = '/work/Å-ring'.normalize('NFC');
+    const nfdRoot = '/work/Å-ring'.normalize('NFD');
+    deps.fs.addDirectory(nfdRoot);
+    await deps.globalCatalog.upsertFolder({
+      folderId: '11111111-1111-1111-1111-111111111111',
+      currentPath: nfcRoot,
+      displayName: 'Å-ring',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    });
+    await deps.globalCatalog.upsertFile({
+      fingerprint: 'fp-clip',
+      folderId: '11111111-1111-1111-1111-111111111111',
+      fileName: 'clip.mp4',
+      size: 1,
+      durationS: 10,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'claude',
+      model: 'sonnet',
+      missingAt: null,
+    });
+    await deps.globalCatalog.upsertAnalysis({
+      fingerprint: 'fp-clip',
+      finalName: 'clip',
+      description: 'a clip',
+      transcript: null,
+      language: null,
+      tags: [],
+    });
+    deps.media.durations.set(`${nfcRoot}/clip.mp4`, 14);
+
+    const result = await runFacesIndexPass(deps, { root: nfdRoot });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.foldersMatched).toBe(1);
+    expect(result.value.filesScanned).toBe(1);
+    expect(result.value.filesIndexed).toBe(1);
+  });
+
+  it('fails with drive_root_empty when the root exists but no catalog folder matches', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    deps.fs.addDirectory('/work/videos');
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected drive_root_empty');
+    expect(result.error.code).toBe('drive_root_empty');
+  });
+
+  it('fails with folder_not_found when the root does not exist on disk', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+
+    const result = await runFacesIndexPass(deps, { root: '/work/does-not-exist' });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) throw new Error('expected folder_not_found');
+    expect(result.error.code).toBe('folder_not_found');
+  });
 });
 
 const folderId = '11111111-1111-1111-1111-111111111111';
 
-const buildScriptableDeps = (): FacesDeps => {
+const buildScriptableDeps = (): FacesDeps & { fs: InMemoryFileSystem } => {
   const downloads = new InMemoryDownloads();
   downloads.downloadedArtifacts.add('face-detector/yunet-2023mar');
   downloads.downloadedArtifacts.add('face-embedder/sface-2021dec');
@@ -458,7 +527,8 @@ const buildScriptableDeps = (): FacesDeps => {
   };
 };
 
-const seedFolder = async (deps: FacesDeps): Promise<void> => {
+const seedFolder = async (deps: FacesDeps & { fs: InMemoryFileSystem }): Promise<void> => {
+  deps.fs.addDirectory('/work/videos');
   await deps.globalCatalog.upsertFolder({
     folderId,
     currentPath: '/work/videos',
@@ -873,7 +943,8 @@ describe('facesRecluster does not invalidate the engine version', () => {
   });
 });
 
-const seedCatalogFor = async (deps: FacesDeps): Promise<void> => {
+const seedCatalogFor = async (deps: FacesDeps & { fs: InMemoryFileSystem }): Promise<void> => {
+  deps.fs.addDirectory('/work/videos');
   await deps.globalCatalog.upsertFolder({
     folderId: '11111111-1111-1111-1111-111111111111',
     currentPath: '/work/videos',

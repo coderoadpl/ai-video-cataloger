@@ -74,6 +74,8 @@ export interface FacesIndexFailure {
 
 export interface FacesIndexOutput {
   root: string;
+  foldersMatched: number;
+  filesInScope: number;
   filesScanned: number;
   filesIndexed: number;
   observationsAdded: number;
@@ -417,13 +419,30 @@ export const runFacesIndexPass = async (
   const artifactsReady = await faceArtifactsInstalled(deps.downloads);
   if (!artifactsReady.ok) return artifactsReady;
   if (!artifactsReady.value) return { ok: false, error: appError('model_not_installed', 'Face artifacts are not installed') };
-  const candidates = await deps.globalCatalog.listFaceIndexCandidates(input.root);
-  if (!candidates.ok) return candidates;
+  const rootExists = await deps.fs.exists(input.root);
+  if (!rootExists.ok) return rootExists;
+  if (!rootExists.value) return { ok: false, error: appError('folder_not_found', `Root not found: ${input.root}`) };
+  const scope = await deps.globalCatalog.listFaceIndexCandidates(input.root);
+  if (!scope.ok) return scope;
+  if (scope.value.foldersMatched === 0) {
+    return {
+      ok: false,
+      error: appError('drive_root_empty', `No catalog folders found under: ${input.root}`, {
+        root: input.root,
+        catalogFolders: 0,
+      }),
+    };
+  }
   const started = await report(progress, {
     step: 'faces_scanning',
     percentage: 0,
-    total: Math.max(candidates.value.length, 1),
-    data: { root: input.root, filesTotal: candidates.value.length },
+    total: Math.max(scope.value.candidates.length, 1),
+    data: {
+      root: input.root,
+      filesTotal: scope.value.candidates.length,
+      foldersTotal: scope.value.foldersMatched,
+      filesInScope: scope.value.filesInScope,
+    },
   });
   if (!started.ok) return started;
 
@@ -442,12 +461,12 @@ export const runFacesIndexPass = async (
   let contexts: ObservationContext[] = seeded.value.map(persistedContext);
 
   try {
-    for (let candidateIndex = 0; candidateIndex < candidates.value.length; candidateIndex += 1) {
-      const candidate = candidates.value[candidateIndex];
+    for (let candidateIndex = 0; candidateIndex < scope.value.candidates.length; candidateIndex += 1) {
+      const candidate = scope.value.candidates[candidateIndex];
       if (candidate === undefined) continue;
       const cancellation = cancelled(progress);
       if (!cancellation.ok) return cancellation;
-      const outcome = await indexCandidate(deps, candidate, contexts, progress, candidateIndex, candidates.value.length);
+      const outcome = await indexCandidate(deps, candidate, contexts, progress, candidateIndex, scope.value.candidates.length);
       contexts = outcome.contexts;
       if (!outcome.result.ok) {
         if (isCancellation(progress, outcome.result.error)) return outcome.result;
@@ -459,7 +478,7 @@ export const runFacesIndexPass = async (
         const failed = await report(progress, {
           step: 'faces_file_failed',
           current: candidateIndex + 1,
-          total: candidates.value.length,
+          total: scope.value.candidates.length,
           data: { fingerprint, videoPath, code: failureCode, message: outcome.result.error.message },
         });
         if (!failed.ok) return failed;
@@ -493,7 +512,9 @@ export const runFacesIndexPass = async (
   if (!done.ok) return done;
   return ok({
     root: input.root,
-    filesScanned: candidates.value.length,
+    foldersMatched: scope.value.foldersMatched,
+    filesInScope: scope.value.filesInScope,
+    filesScanned: scope.value.candidates.length,
     filesIndexed,
     observationsAdded,
     peopleCreated,

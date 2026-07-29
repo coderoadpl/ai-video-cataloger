@@ -7,6 +7,7 @@ import {
   FACE_ENGINE_VERSION,
   LEGACY_CONFIG_ID,
   appError,
+  canonicalPath,
   ok,
   type AppError,
   type CatalogAnalysis,
@@ -52,6 +53,7 @@ import type {
   FaceDetection,
   FaceEnginePort,
   FaceIndexCandidate,
+  FaceIndexScope,
   FaceStatusCounts,
   FileStat,
   FileSystemPort,
@@ -397,7 +399,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   upsertFolder(folder: CatalogFolder): Promise<Result<void, AppError>> {
-    this.folders.set(folder.folderId, folder);
+    this.folders.set(folder.folderId, { ...folder, currentPath: canonicalPath(folder.currentPath) });
     return Promise.resolve(ok(undefined));
   }
 
@@ -406,7 +408,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   upsertFile(file: CatalogFile): Promise<Result<void, AppError>> {
-    this.files.set(file.fingerprint, file);
+    this.files.set(file.fingerprint, { ...file, fileName: canonicalPath(file.fileName) });
     return Promise.resolve(ok(undefined));
   }
 
@@ -700,18 +702,26 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(runs));
   }
 
-  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {
+  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexScope, AppError>> {
+    const canonicalRoot = canonicalPath(rootPath);
+    const matchedFolderIds = new Set(
+      [...this.folders.values()]
+        .filter((folder) => folder.currentPath === canonicalRoot || folder.currentPath.startsWith(`${canonicalRoot}${path.sep}`))
+        .map((folder) => folder.folderId),
+    );
     const candidates: FaceIndexCandidate[] = [];
+    let filesInScope = 0;
     for (const file of this.files.values()) {
       const folder = this.folders.get(file.folderId);
+      if (folder === undefined || !matchedFolderIds.has(folder.folderId)) continue;
       const analysis = this.analyses.get(file.fingerprint);
-      if (folder === undefined || analysis === undefined) continue;
-      if (folder.currentPath !== rootPath && !folder.currentPath.startsWith(`${rootPath}${path.sep}`)) continue;
+      if (analysis === undefined) continue;
+      filesInScope += 1;
       const state = this.faceIndexState.get(file.fingerprint);
       if (state !== undefined && state.engineVersion >= FACE_ENGINE_VERSION) continue;
       candidates.push({ file, analysis, folder, previousEngineVersion: state?.engineVersion ?? null });
     }
-    return Promise.resolve(ok(candidates));
+    return Promise.resolve(ok({ foldersMatched: matchedFolderIds.size, filesInScope, candidates }));
   }
 
   completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>> {

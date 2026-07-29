@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { configDescriptorSchema, configId } from './config-descriptor.js';
 import { appError, type AppError } from './errors.js';
+import { canonicalPath } from './paths.js';
 
 export const GLOBAL_CATALOG_SCHEMA_VERSION = 9;
 export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 10;
@@ -14,9 +15,10 @@ export const folderIdSchema = z.union([
 ]);
 
 export const derivedFolderId = (folder: string): string => {
+  const canonical = canonicalPath(folder);
   let hash = 2_166_136_261;
-  for (let index = 0; index < folder.length; index += 1) {
-    hash = Math.imul(hash ^ folder.charCodeAt(index), 16_777_619);
+  for (let index = 0; index < canonical.length; index += 1) {
+    hash = Math.imul(hash ^ canonical.charCodeAt(index), 16_777_619);
   }
   return `path-${(hash >>> 0).toString(16).padStart(8, '0')}`;
 };

@@ -28,6 +28,7 @@ import {
   configDescriptorSchema,
   parseDriveRunBatchState,
   appError,
+  canonicalPath,
   normalizeTagList,
   normalizeTagName,
   ok,
@@ -44,6 +45,7 @@ import type {
   AnalyzedFileLocation,
   CatalogFileRecord,
   FaceIndexCandidate,
+  FaceIndexScope,
   FaceStatusCounts,
   CatalogLockInfo,
   CatalogLockProcessName,
@@ -270,7 +272,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .onConflictDoUpdate({
           target: folders.folderId,
           set: {
-            currentPath: folder.currentPath,
+            currentPath: canonicalPath(folder.currentPath),
             displayName: folder.displayName,
             firstSeenAt: folder.firstSeenAt,
             lastSeenAt: folder.lastSeenAt,
@@ -295,7 +297,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           target: files.fingerprint,
           set: {
             folderId: file.folderId,
-            fileName: file.fileName,
+            fileName: canonicalPath(file.fileName),
             size: file.size,
             durationS: file.durationS,
             gpsLat: file.gpsLat,
@@ -322,11 +324,12 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     return this.write((db, client) => {
       const file = db.select().from(files).where(eq(files.fingerprint, analysis.fingerprint)).get();
       const createdAt = file?.processedAt ?? new Date().toISOString();
+      const finalName = analysis.finalName === null ? null : canonicalPath(analysis.finalName);
       db.insert(analyses)
         .values({
           fingerprint: analysis.fingerprint,
           configId: LEGACY_CONFIG_ID,
-          finalName: analysis.finalName,
+          finalName,
           description: analysis.description,
           transcript: analysis.transcript,
           language: analysis.language,
@@ -339,7 +342,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .onConflictDoUpdate({
           target: [analyses.fingerprint, analyses.configId],
           set: {
-            finalName: analysis.finalName,
+            finalName,
             description: analysis.description,
             transcript: analysis.transcript,
             language: analysis.language,
@@ -392,7 +395,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .onConflictDoUpdate({
           target: [analyses.fingerprint, analyses.configId],
           set: {
-            finalName: variant.finalName,
+            finalName: variant.finalName === null ? null : canonicalPath(variant.finalName),
             description: variant.description,
             transcript: variant.transcript,
             language: variant.language,
@@ -836,16 +839,20 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       .map(rowToDriveRun));
   }
 
-  async listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {
+  async listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexScope, AppError>> {
     return this.read((db) => {
+      const canonicalRoot = canonicalPath(rootPath);
       const candidates: FaceIndexCandidate[] = [];
       const folderRows = db.select().from(folders).all()
-        .filter((folder) => folder.currentPath === rootPath || folder.currentPath.startsWith(`${rootPath}${path.sep}`));
+        .filter((folder) => folder.currentPath === canonicalRoot
+          || folder.currentPath.startsWith(`${canonicalRoot}${path.sep}`));
+      let filesInScope = 0;
       for (const folderRow of folderRows) {
         const fileRows = db.select().from(files).where(eq(files.folderId, folderRow.folderId)).all();
         for (const fileRow of fileRows) {
           const analysisRow = selectedAnalysisRow(db, fileRow.fingerprint);
           if (analysisRow === undefined) continue;
+          filesInScope += 1;
           const stateRow = db.select().from(faceIndexState).where(eq(faceIndexState.fingerprint, fileRow.fingerprint)).get();
           if (stateRow !== undefined && stateRow.engineVersion >= FACE_ENGINE_VERSION) continue;
           candidates.push({
@@ -856,8 +863,12 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           });
         }
       }
-      return candidates.sort((left, right) => left.folder.currentPath.localeCompare(right.folder.currentPath)
-        || left.file.fileName.localeCompare(right.file.fileName));
+      return {
+        foldersMatched: folderRows.length,
+        filesInScope,
+        candidates: candidates.sort((left, right) => left.folder.currentPath.localeCompare(right.folder.currentPath)
+          || left.file.fileName.localeCompare(right.file.fileName)),
+      };
     });
   }
 
@@ -1402,7 +1413,7 @@ const isNodeErrorCode = (cause: unknown, code: string): boolean =>
 
 const rowToFolder = (row: typeof folders.$inferSelect): CatalogFolder => ({
   folderId: row.folderId,
-  currentPath: row.currentPath,
+  currentPath: canonicalPath(row.currentPath),
   displayName: row.displayName,
   firstSeenAt: row.firstSeenAt,
   lastSeenAt: row.lastSeenAt,
@@ -1410,7 +1421,7 @@ const rowToFolder = (row: typeof folders.$inferSelect): CatalogFolder => ({
 
 const folderToRow = (folder: CatalogFolder): typeof folders.$inferInsert => ({
   folderId: folder.folderId,
-  currentPath: folder.currentPath,
+  currentPath: canonicalPath(folder.currentPath),
   displayName: folder.displayName,
   firstSeenAt: folder.firstSeenAt,
   lastSeenAt: folder.lastSeenAt,
@@ -1419,7 +1430,7 @@ const folderToRow = (folder: CatalogFolder): typeof folders.$inferInsert => ({
 const rowToFile = (row: typeof files.$inferSelect): CatalogFile => ({
   fingerprint: row.fingerprint,
   folderId: row.folderId,
-  fileName: row.fileName,
+  fileName: canonicalPath(row.fileName),
   size: row.size,
   durationS: row.durationS,
   gpsLat: row.gpsLat,
@@ -1433,7 +1444,7 @@ const rowToFile = (row: typeof files.$inferSelect): CatalogFile => ({
 const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
   fingerprint: file.fingerprint,
   folderId: file.folderId,
-  fileName: file.fileName,
+  fileName: canonicalPath(file.fileName),
   size: file.size,
   durationS: file.durationS,
   gpsLat: file.gpsLat,
@@ -1460,7 +1471,7 @@ const rowToVariant = (row: typeof analyses.$inferSelect, analysisTags: string[])
   catalogVariantSchema.parse({
     fingerprint: row.fingerprint,
     configId: row.configId,
-    finalName: row.finalName,
+    finalName: row.finalName === null ? null : canonicalPath(row.finalName),
     description: row.description,
     transcript: row.transcript,
     language: row.language,
@@ -1475,7 +1486,7 @@ const rowToVariant = (row: typeof analyses.$inferSelect, analysisTags: string[])
 const variantToRow = (variant: CatalogVariant): typeof analyses.$inferInsert => ({
   fingerprint: variant.fingerprint,
   configId: variant.configId,
-  finalName: variant.finalName,
+  finalName: variant.finalName === null ? null : canonicalPath(variant.finalName),
   description: variant.description,
   transcript: variant.transcript,
   language: variant.language,
@@ -1854,7 +1865,7 @@ const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): 
     tags: tagsText.split('\n').filter((tag) => tag.length > 0),
     folder: {
       folderId: stringValue(row[8]),
-      currentPath: stringValue(row[9]),
+      currentPath: canonicalPath(stringValue(row[9])),
       displayName: stringValue(row[10]),
       firstSeenAt: stringValue(row[11]),
       lastSeenAt: stringValue(row[12]),

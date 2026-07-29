@@ -120,4 +120,29 @@ describe('runThumbnailsPass', () => {
 
     expect(result).toMatchObject({ ok: false, error: { message: 'Job cancelled' } });
   });
+
+  it('generates a thumbnail for a file under a diacritic subfolder written NFD on disk', async () => {
+    const fs = new InMemoryFileSystem('/root');
+    const media = new InMemoryMedia(fs);
+    const nfdSubfolder = '/root/Å-ring'.normalize('NFD');
+    fs.addFile(`${nfdSubfolder}/a.mp4`, { size: 100 });
+    fs.addFile(`${nfdSubfolder}/summaries/a.json`, {
+      content: JSON.stringify({
+        schemaVersion: 1,
+        description: 'd',
+        suggestedFilename: 'a',
+        fullAnalysis: 'DESCRIPTION: d\nFILENAME: x',
+        analyzedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    });
+    fs.addFile(`${nfdSubfolder}/frames/a/frame-001.jpg`);
+
+    const result = await runThumbnailsPass({ fs, media }, { root: '/root', force: false });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.candidates).toBe(1);
+    expect(result.value.generated).toBe(1);
+    expect(result.value.failed).toBe(0);
+  });
 });

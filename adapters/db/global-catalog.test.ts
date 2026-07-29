@@ -1477,6 +1477,56 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(staleTranscript.ok && staleTranscript.value).toEqual([]);
     expect(current.ok && current.value[0]?.fingerprint).toBe(file.fingerprint);
   });
+
+  it('matches an NFC-stored folder from an NFD root query', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const nfcFolder: CatalogFolder = { ...folder, currentPath: '/media/Å-ring'.normalize('NFC') };
+    await store.upsertFolder(nfcFolder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: 'a-clip.mp4',
+      description: 'A clip',
+      transcript: 'words',
+      language: 'en',
+      tags: ['a-clip'],
+    });
+
+    const nfdRoot = '/media/Å-ring'.normalize('NFD');
+    const scope = await store.listFaceIndexCandidates(nfdRoot);
+
+    expect(scope.ok).toBe(true);
+    if (!scope.ok) return;
+    expect(scope.value.foldersMatched).toBe(1);
+    expect(scope.value.filesInScope).toBe(1);
+    expect(scope.value.candidates).toHaveLength(1);
+  });
+
+  it('matches an NFD-stored legacy folder from an NFC root query', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const nfdFolder: CatalogFolder = { ...folder, currentPath: '/media/Å-ring'.normalize('NFD') };
+    await store.upsertFolder(nfdFolder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: 'a-clip.mp4',
+      description: 'A clip',
+      transcript: 'words',
+      language: 'en',
+      tags: ['a-clip'],
+    });
+
+    const nfcRoot = '/media/Å-ring'.normalize('NFC');
+    const scope = await store.listFaceIndexCandidates(nfcRoot);
+
+    expect(scope.ok).toBe(true);
+    if (!scope.ok) return;
+    expect(scope.value.foldersMatched).toBe(1);
+    expect(scope.value.filesInScope).toBe(1);
+    expect(scope.value.candidates).toHaveLength(1);
+  });
 });
 
 const lockPath = (home: string): string => path.join(home, '.ai-video-cataloger', 'catalog.lock');

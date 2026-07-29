@@ -1341,6 +1341,12 @@ const facesIndexHuman = (data: unknown): string => {
   const observations = typeof data.observationsAdded === 'number' ? data.observationsAdded : 0;
   const people = typeof data.peopleCreated === 'number' ? data.peopleCreated : 0;
   const failed = typeof data.filesFailed === 'number' ? data.filesFailed : 0;
+  const scanned = typeof data.filesScanned === 'number' ? data.filesScanned : 0;
+  if (scanned === 0) {
+    const folders = typeof data.foldersMatched === 'number' ? data.foldersMatched : 0;
+    const filesInScope = typeof data.filesInScope === 'number' ? data.filesInScope : 0;
+    return `Nothing to index: ${folders} catalog folders, ${filesInScope} analyzed files already indexed`;
+  }
   return `Indexed ${indexed} files, added ${observations} observations, created ${people} people`
     + (failed > 0 ? `, ${failed} file(s) failed` : '');
 };

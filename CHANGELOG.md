@@ -34,10 +34,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `thumbnail <video-path>` and the GUI's lazy generation prefer the stored analysis frame over re-decoding the video, so a cover can be produced for a file whose drive is detached or mounted read-only, and an existing thumbnail is reported as skipped without starting ffmpeg.
 - The terminal panel no longer auto-expands on the first job output; it stays collapsed until opened from the header button or the `View` menu.
 - `tag_language` joins the analysis config descriptor, so pinning it (or having `output_language` pinned) produces a new `configId`; runs with `output_language` and `tag_language` both `auto` keep their existing configIds. Previously tags followed whatever language was narrated in the video, which split one concept into per-language tags.
+- `pnpm run check` fails on a direct `.normalize('NFC')` call outside `core/domain/paths.ts` and test files, so path canonicalization stays at the three boundaries that own it.
 - Search now follows `tag_aliases` in both directions: a merged-away term still finds the files that carry its canonical tag, and the canonical term also matches text occurrences of its aliases. Quoted phrases stay literal and literal hits still outrank alias hits.
 
 ### Fixed
 
+- Folders whose names carry diacritics are no longer silently skipped: every path entering the catalog is canonicalized to NFC at the contract, filesystem and store boundaries, so a path handed in as NFD (the on-disk form on macOS) matches the NFC rows the catalog stores. In a real-world catalog this recovered affected analyzed files that `faces index` had reported as a successful zero-file run.
+- `faces index <root>` no longer reports success over an empty set: a root that does not exist fails with `folder_not_found`, and an existing root with no catalog folders under it fails with `drive_root_empty` (exit 39), matching `materialize` and `process-drive`; a root whose files are all already indexed still succeeds and now reports the folders and analyzed files it saw.
+- A read-only mirror created before path canonicalization keeps its frames and thumbnails: the mirror id derived from the old decomposed folder name is rebuilt and used when no canonical mirror exists, so a diacritic folder is not silently re-mirrored from scratch.
 - A second person could never be founded once the unassigned pool held more than one identity: the new-cluster seed demanded that *all* candidate observations be mutually similar, so a mixed pool always returned nothing and every good detection was absorbed by the first person in a real-world catalog.
 - `driveRunSummarySchema` carries `snapshotSkipped` through the completed `process-drive` job payload instead of stripping it.
 - A corrupted stored variant descriptor or usage JSON in the global catalog surfaces as `read_error` (`READ_ERROR`, exit 28) instead of an untyped `internal` error.

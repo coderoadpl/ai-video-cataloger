@@ -14,6 +14,11 @@ const AS_BAN = {
   message: 'Type assertions (`as`) are forbidden; parse or narrow instead. `as const` is allowed.',
 };
 
+const NFC_NORMALIZE_BAN = {
+  selector: 'CallExpression[callee.property.name="normalize"][arguments.0.value="NFC"]',
+  message: 'Use canonicalPath from core/domain instead of calling .normalize(\'NFC\') directly.',
+};
+
 const RAW_COLOR_BAN = {
   selector: 'Literal[value=/(#[0-9a-fA-F]{3,8}|rgba?\\(|hsla?\\()/i]',
   message: 'Raw color values are banned outside theme.ts; read colors from the MUI theme tokens.',
@@ -71,6 +76,7 @@ const VI_MOCK_BAN = {
 
 const WEB_SYNTAX_BANS = [
   AS_BAN,
+  NFC_NORMALIZE_BAN,
   ...REACT_API_BANS,
   ...QUERY_HOOK_BANS,
   NEW_QUERY_CLIENT_BAN,
@@ -272,7 +278,7 @@ export default tseslint.config(
       '@typescript-eslint/no-floating-promises': 'error',
       '@typescript-eslint/no-misused-promises': 'error',
       '@typescript-eslint/switch-exhaustiveness-check': 'error',
-      'no-restricted-syntax': ['error', AS_BAN],
+      'no-restricted-syntax': ['error', AS_BAN, NFC_NORMALIZE_BAN],
       'boundaries/element-types': [
         'error',
         {
@@ -516,6 +522,12 @@ export default tseslint.config(
           ],
         },
       ],
+    },
+  },
+  {
+    files: ['core/domain/paths.ts', '**/*.test.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', AS_BAN],
     },
   },
   {

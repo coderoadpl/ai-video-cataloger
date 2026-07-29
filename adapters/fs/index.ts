@@ -6,6 +6,7 @@ import path from 'node:path';
 
 import {
   appError,
+  canonicalPath,
   ok,
   type AppError,
   type Result,
@@ -38,23 +39,23 @@ export class NodeFileSystemPort implements FileSystemPort {
   }
 
   cwd(): string {
-    return this.workingDirectory;
+    return canonicalPath(this.workingDirectory);
   }
 
   resolve(value: string): string {
-    return path.resolve(this.workingDirectory, value);
+    return canonicalPath(path.resolve(this.workingDirectory, value));
   }
 
   dirname(value: string): string {
-    return path.dirname(value);
+    return canonicalPath(path.dirname(value));
   }
 
   basename(value: string): string {
-    return path.basename(value);
+    return canonicalPath(path.basename(value));
   }
 
   basenameWithoutExtension(value: string): string {
-    return path.basename(value, path.extname(value));
+    return canonicalPath(path.basename(value, path.extname(value)));
   }
 
   extname(value: string): string {
@@ -62,7 +63,7 @@ export class NodeFileSystemPort implements FileSystemPort {
   }
 
   join(...segments: string[]): string {
-    return path.join(...segments);
+    return canonicalPath(path.join(...segments));
   }
 
   async isDirectory(value: string): Promise<Result<boolean, AppError>> {
@@ -95,12 +96,14 @@ export class NodeFileSystemPort implements FileSystemPort {
     }
   }
 
+  // macOS APFS and exFAT lookups are normalization-insensitive (measured on this machine), so
+  // handing back NFC here is safe: opening an NFD-named file with its NFC path still resolves.
   async listDirectory(value: string): Promise<Result<DirectoryEntry[], AppError>> {
     try {
       const entries = await readdir(value, { withFileTypes: true });
       return ok(entries.map((entry) => ({
-        name: entry.name,
-        path: path.join(value, entry.name),
+        name: canonicalPath(entry.name),
+        path: canonicalPath(path.join(value, entry.name)),
         kind: directoryEntryKind(entry),
       })));
     } catch (cause) {
@@ -229,11 +232,11 @@ export class NodeFileSystemPort implements FileSystemPort {
   }
 
   tempDirectory(): string {
-    return this.tempRoot;
+    return canonicalPath(this.tempRoot);
   }
 
   homeDirectory(): string {
-    return this.homeRoot;
+    return canonicalPath(this.homeRoot);
   }
 }
 

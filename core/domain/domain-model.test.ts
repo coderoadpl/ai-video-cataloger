@@ -10,6 +10,7 @@ import {
   WHISPER_MODEL_NAMES,
   WHISPER_MODELS,
   configSchema,
+  derivedFolderId,
   getLocalAiSupportLevel,
   analyzerProviderConfigSchema,
   builtInAnalyzerProvider,
@@ -257,6 +258,15 @@ describe('built-in analyzer providers', () => {
       modelTag: 'gemma3:4b',
     });
     expect(builtInAnalyzerProvider('not-a-provider')).toBeNull();
+  });
+});
+
+describe('derivedFolderId', () => {
+  it('is form-independent between NFC and NFD of the same folder name', () => {
+    const nfc = '/Volumes/video_lib/Å-ring';
+    const nfd = '/Volumes/video_lib/Å-ring';
+    expect(nfc).not.toBe(nfd);
+    expect(derivedFolderId(nfd)).toBe(derivedFolderId(nfc));
   });
 });
 

@@ -585,6 +585,27 @@ describe('route schemas', () => {
     expect(parsed.success && parsed.data.transcriber).toMatchObject({ engine: null, binaryPath: null, warning: null });
   });
 
+  it('canonicalizes every path-shaped input field to NFC', () => {
+    const nfd = '/w/Å-ring';
+    const nfc = '/w/Å-ring';
+    expect(nfd).not.toBe(nfc);
+
+    expect(API_ROUTES.status.input.parse({ folder: nfd })).toEqual({ folder: nfc });
+    expect(API_ROUTES.resetAll.input.parse({ folder: nfd, force: false })).toMatchObject({ folder: nfc });
+    expect(API_ROUTES.catalogTree.input.parse({ folder: nfd })).toEqual({ folder: nfc });
+    expect(API_ROUTES.process.input.parse({ videoPath: `${nfd}/a.mp4` })).toMatchObject({ videoPath: `${nfc}/a.mp4` });
+    expect(API_ROUTES.processDrive.input.parse({ root: nfd })).toMatchObject({ root: nfc });
+    expect(API_ROUTES.materialize.input.parse({ root: nfd })).toMatchObject({ root: nfc });
+    expect(API_ROUTES.thumbnails.input.parse({ root: nfd })).toMatchObject({ root: nfc });
+    expect(API_ROUTES.resetSingle.input.parse({ folder: nfd, filename: 'clip.mp4' })).toMatchObject({ folder: nfc });
+    expect(API_ROUTES.configGet.input.parse({ folder: nfd })).toMatchObject({ folder: nfc });
+    expect(API_ROUTES.configSet.input.parse({ folder: nfd, key: 'frames', value: '3' })).toMatchObject({ folder: nfc });
+    expect(API_ROUTES.readiness.input.parse({ folder: nfd })).toMatchObject({ folder: nfc });
+    expect(API_ROUTES.variantsList.input.parse({ videoPath: `${nfd}/a.mp4` })).toMatchObject({ videoPath: `${nfc}/a.mp4` });
+    expect(API_ROUTES.variantsFolderDefault.input.parse({ folderPath: nfd, configId: null })).toMatchObject({ folderPath: nfc });
+    expect(API_ROUTES.facesIndex.input.parse({ root: nfd })).toEqual({ root: nfc });
+  });
+
   it('rejects an unknown rule in a tag alias proposal', () => {
     const proposal = {
       from: 'kampery', to: 'kamper', fromCount: 63, toCount: 373, rule: 'unknown-rule', canonicalLocked: false,
@@ -695,6 +716,8 @@ describe('route schemas', () => {
   it('keeps filesFailed, failures and aborted on facesIndexOutputSchema through jobResultSchema', () => {
     const output = {
       root: '/videos',
+      foldersMatched: 1,
+      filesInScope: 3,
       filesScanned: 3,
       filesIndexed: 2,
       observationsAdded: 4,

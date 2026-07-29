@@ -163,6 +163,28 @@ always resolved home-scoped and ignore folder overrides. The GUI Prerequisites m
 configured-readiness section from `/api/readiness` with the selected folder;
 the doctor contract stays unchanged.
 
+### Path canonicalization
+
+NFC is the one canonical Unicode normalization form for every path and file
+name that crosses into the catalog layer. Canonicalization happens at exactly
+three boundaries — the contract's input schemas (`core/contract/routes.ts`),
+the Node filesystem adapter's output (`adapters/fs/index.ts`), and the global
+catalog store's row mappers (`adapters/db/global-catalog.ts`) — never
+scattered across use-cases; a lint rule (`no-restricted-syntax` on
+`.normalize('NFC')`) enforces that the helper, `canonicalPath` in
+`core/domain/paths.ts`, is the only call site. Folder identity
+(`derivedFolderId`) hashes the canonical form, so an NFC and an NFD spelling
+of the same folder always resolve to the same id and the same read-only
+mirror. This matters because macOS on-disk names can be NFD (measured: an
+exFAT-mounted external drive returns NFD from `readdir`, matching Nordic and
+Polish diacritics in real folder names) while the catalog always stores NFC —
+without canonicalization, a raw string comparison between a catalog row's
+`currentPath` and a filesystem-derived path silently matches zero rows. Both
+macOS APFS and exFAT lookups are normalization-insensitive (`stat`/`open`
+succeed for either form of the same path), so handing an NFC path to the
+filesystem is always safe on the platforms this product targets; a
+non-macOS target would have to revisit the filesystem-adapter boundary.
+
 ## Delta 4 — Electron shape (t3code model)
 
 `apps/desktop` (main process) is a composition root, nothing else. Platform

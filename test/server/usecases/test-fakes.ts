@@ -4,6 +4,7 @@ import {
   FACE_ENGINE_VERSION,
   LEGACY_CONFIG_ID,
   appError,
+  canonicalPath,
   normalizeEmbedding,
   ok,
   type AppConfig,
@@ -40,6 +41,7 @@ import type {
   CatalogTagAliasResult,
   CatalogTagSummary,
   FaceIndexCandidate,
+  FaceIndexScope,
   FaceDetection,
   FaceEnginePort,
   FaceStatusCounts,
@@ -97,16 +99,20 @@ export class InMemoryFileSystem implements FileSystemPort {
   private readonly directories = new Set<string>();
   private readonly symlinks = new Set<string>();
   private readonly readOnlyPaths = new Set<string>();
+  private readonly onDiskForms = new Map<string, string>();
 
   constructor(private readonly workingDirectory = '/work') {
     this.addDirectory(workingDirectory);
   }
 
   addDirectory(value: string): void {
-    const normalized = this.normalize(value);
-    const parent = path.dirname(normalized);
-    if (parent !== normalized && !this.directories.has(parent)) this.addDirectory(parent);
-    this.directories.add(normalized);
+    const literal = path.normalize(value);
+    const canonical = this.normalize(literal);
+    const parentLiteral = path.dirname(literal);
+    const parentCanonical = this.normalize(parentLiteral);
+    if (parentCanonical !== canonical && !this.directories.has(parentCanonical)) this.addDirectory(parentLiteral);
+    this.directories.add(canonical);
+    this.onDiskForms.set(canonical, literal);
   }
 
   markReadOnly(value: string): void {
@@ -125,20 +131,24 @@ export class InMemoryFileSystem implements FileSystemPort {
     value: string,
     options: { content?: string; size?: number; mtimeMs?: number; hash?: string } = {},
   ): void {
-    const normalized = this.normalize(value);
-    this.addDirectory(path.dirname(normalized));
-    this.files.set(normalized, {
+    const literal = path.normalize(value);
+    const canonical = this.normalize(literal);
+    this.addDirectory(path.dirname(literal));
+    this.files.set(canonical, {
       content: options.content ?? null,
       size: options.size ?? options.content?.length ?? 0,
       mtimeMs: options.mtimeMs ?? 0,
       hash: options.hash ?? null,
     });
+    this.onDiskForms.set(canonical, literal);
   }
 
   addSymlink(value: string): void {
-    const normalized = this.normalize(value);
-    this.addDirectory(path.dirname(normalized));
-    this.symlinks.add(normalized);
+    const literal = path.normalize(value);
+    const canonical = this.normalize(literal);
+    this.addDirectory(path.dirname(literal));
+    this.symlinks.add(canonical);
+    this.onDiskForms.set(canonical, literal);
   }
 
   cwd(): string {
@@ -190,15 +200,18 @@ export class InMemoryFileSystem implements FileSystemPort {
     const entries: DirectoryEntry[] = [];
     for (const directory of this.directories) {
       if (directory === normalized || path.dirname(directory) !== normalized) continue;
-      entries.push({ name: path.basename(directory), path: directory, kind: 'directory' });
+      const onDisk = this.onDiskForms.get(directory) ?? directory;
+      entries.push({ name: path.basename(onDisk), path: onDisk, kind: 'directory' });
     }
     for (const filePath of this.files.keys()) {
       if (path.dirname(filePath) !== normalized) continue;
-      entries.push({ name: path.basename(filePath), path: filePath, kind: 'file' });
+      const onDisk = this.onDiskForms.get(filePath) ?? filePath;
+      entries.push({ name: path.basename(onDisk), path: onDisk, kind: 'file' });
     }
     for (const linkPath of this.symlinks) {
       if (path.dirname(linkPath) !== normalized) continue;
-      entries.push({ name: path.basename(linkPath), path: linkPath, kind: 'symlink' });
+      const onDisk = this.onDiskForms.get(linkPath) ?? linkPath;
+      entries.push({ name: path.basename(onDisk), path: onDisk, kind: 'symlink' });
     }
     return Promise.resolve(ok(entries));
   }
@@ -250,6 +263,7 @@ export class InMemoryFileSystem implements FileSystemPort {
     }
     this.addDirectory(path.dirname(normalizedTo));
     this.files.set(normalizedTo, { ...source });
+    this.onDiskForms.set(normalizedTo, path.normalize(to));
     return Promise.resolve(ok(undefined));
   }
 
@@ -267,6 +281,7 @@ export class InMemoryFileSystem implements FileSystemPort {
       this.addDirectory(path.dirname(normalizedTo));
       this.files.delete(normalizedFrom);
       this.files.set(normalizedTo, file);
+      this.onDiskForms.set(normalizedTo, path.normalize(to));
       return Promise.resolve(ok(undefined));
     }
     if (this.directories.has(normalizedFrom)) {
@@ -278,10 +293,14 @@ export class InMemoryFileSystem implements FileSystemPort {
       for (const directory of movedDirectories) this.directories.delete(directory);
       for (const [filePath] of movedFiles) this.files.delete(filePath);
       for (const directory of movedDirectories) {
-        this.directories.add(`${normalizedTo}${directory.slice(normalizedFrom.length)}`);
+        const movedKey = `${normalizedTo}${directory.slice(normalizedFrom.length)}`;
+        this.directories.add(movedKey);
+        this.onDiskForms.set(movedKey, movedKey);
       }
       for (const [filePath, movedFile] of movedFiles) {
-        this.files.set(`${normalizedTo}${filePath.slice(normalizedFrom.length)}`, movedFile);
+        const movedKey = `${normalizedTo}${filePath.slice(normalizedFrom.length)}`;
+        this.files.set(movedKey, movedFile);
+        this.onDiskForms.set(movedKey, movedKey);
       }
       return Promise.resolve(ok(undefined));
     }
@@ -297,14 +316,24 @@ export class InMemoryFileSystem implements FileSystemPort {
     const normalized = this.normalize(value);
     this.files.delete(normalized);
     this.symlinks.delete(normalized);
-    for (const filePath of this.files.keys()) {
-      if (filePath.startsWith(`${normalized}/`)) this.files.delete(filePath);
+    this.onDiskForms.delete(normalized);
+    for (const filePath of [...this.files.keys()]) {
+      if (filePath.startsWith(`${normalized}/`)) {
+        this.files.delete(filePath);
+        this.onDiskForms.delete(filePath);
+      }
     }
-    for (const directory of this.directories) {
-      if (directory === normalized || directory.startsWith(`${normalized}/`)) this.directories.delete(directory);
+    for (const directory of [...this.directories]) {
+      if (directory === normalized || directory.startsWith(`${normalized}/`)) {
+        this.directories.delete(directory);
+        this.onDiskForms.delete(directory);
+      }
     }
-    for (const linkPath of this.symlinks) {
-      if (linkPath.startsWith(`${normalized}/`)) this.symlinks.delete(linkPath);
+    for (const linkPath of [...this.symlinks]) {
+      if (linkPath.startsWith(`${normalized}/`)) {
+        this.symlinks.delete(linkPath);
+        this.onDiskForms.delete(linkPath);
+      }
     }
     return Promise.resolve(ok(undefined));
   }
@@ -328,7 +357,7 @@ export class InMemoryFileSystem implements FileSystemPort {
   }
 
   private normalize(value: string): string {
-    return path.normalize(value);
+    return canonicalPath(path.normalize(value));
   }
 
   private isUnderReadOnly(normalized: string): boolean {
@@ -1037,7 +1066,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   upsertFolder(folder: CatalogFolder): Promise<Result<void, AppError>> {
-    this.folders.set(folder.folderId, folder);
+    this.folders.set(folder.folderId, { ...folder, currentPath: canonicalPath(folder.currentPath) });
     return Promise.resolve(ok(undefined));
   }
 
@@ -1046,7 +1075,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   upsertFile(file: CatalogFile): Promise<Result<void, AppError>> {
-    this.files.set(file.fingerprint, file);
+    this.files.set(file.fingerprint, { ...file, fileName: canonicalPath(file.fileName) });
     return Promise.resolve(ok(undefined));
   }
 
@@ -1385,20 +1414,31 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(runs));
   }
 
-  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>> {
+  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexScope, AppError>> {
+    const canonicalRoot = canonicalPath(rootPath);
+    const matchedFolderIds = new Set(
+      [...this.folders.values()]
+        .filter((folder) => folder.currentPath === canonicalRoot || folder.currentPath.startsWith(`${canonicalRoot}${path.sep}`))
+        .map((folder) => folder.folderId),
+    );
     const candidates: FaceIndexCandidate[] = [];
+    let filesInScope = 0;
     for (const file of this.files.values()) {
+      const folder = this.folders.get(file.folderId);
+      if (folder === undefined || !matchedFolderIds.has(folder.folderId)) continue;
       const analysis = this.analyses.get(file.fingerprint);
       if (analysis === undefined) continue;
-      const folder = this.folders.get(file.folderId);
-      if (folder === undefined) continue;
-      if (folder.currentPath !== rootPath && !folder.currentPath.startsWith(`${rootPath}${path.sep}`)) continue;
+      filesInScope += 1;
       const state = this.faceIndexState.get(file.fingerprint);
       if (state !== undefined && state.engineVersion >= FACE_ENGINE_VERSION) continue;
       candidates.push({ file, analysis, folder, previousEngineVersion: state?.engineVersion ?? null });
     }
-    return Promise.resolve(ok(candidates.sort((left, right) => left.folder.currentPath.localeCompare(right.folder.currentPath)
-      || left.file.fileName.localeCompare(right.file.fileName))));
+    return Promise.resolve(ok({
+      foldersMatched: matchedFolderIds.size,
+      filesInScope,
+      candidates: candidates.sort((left, right) => left.folder.currentPath.localeCompare(right.folder.currentPath)
+        || left.file.fileName.localeCompare(right.file.fileName)),
+    }));
   }
 
   completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>> {

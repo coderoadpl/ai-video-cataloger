@@ -174,6 +174,12 @@ export interface FaceIndexCandidate {
   previousEngineVersion: number | null;
 }
 
+export interface FaceIndexScope {
+  foldersMatched: number;
+  filesInScope: number;
+  candidates: FaceIndexCandidate[];
+}
+
 export interface FaceStatusCounts {
   people: number;
   observations: number;
@@ -239,7 +245,7 @@ export interface GlobalCatalogStore {
   updateDriveRun(run: DriveRunRecord): Promise<Result<void, AppError>>;
   latestDriveRun(): Promise<Result<DriveRunRecord | null, AppError>>;
   unfinishedDriveRuns(root: string): Promise<Result<DriveRunRecord[], AppError>>;
-  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexCandidate[], AppError>>;
+  listFaceIndexCandidates(rootPath: string): Promise<Result<FaceIndexScope, AppError>>;
   completeFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
   deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>>;
   listUnassignedFaceObservations(): Promise<Result<FaceObservation[], AppError>>;

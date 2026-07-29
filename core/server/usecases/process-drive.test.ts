@@ -407,6 +407,19 @@ describe('drive processing', () => {
     expect(emptied.ok && emptied.value?.missingAt).not.toBe(null);
   });
 
+  it('does not mass-flag a diacritic subfolder missing when its on-disk form is NFD and the catalog stores NFC', async () => {
+    const deps = makeDeps();
+    const nfdSubfolder = '/drive/Å-ring'.normalize('NFD');
+    addVideo(deps.fs, `${nfdSubfolder}/clip.mp4`, 'hash-diacritic');
+
+    await processDrive(deps, baseInput, undefined, { runId: 'run-seed' });
+    const second = await processDrive(deps, baseInput, undefined, { runId: 'run-again' });
+    expect(second.ok).toBe(true);
+
+    const preserved = await deps.globalCatalog.getFile('hash-diacritic');
+    expect(preserved.ok && preserved.value?.missingAt).toBe(null);
+  });
+
   it('does not mark files missing in a folder that failed discovery but still exists on disk', async () => {
     const fs = new DiscoveryFailureFileSystem('/drive');
     const deps = makeDeps(fs);

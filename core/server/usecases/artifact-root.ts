@@ -27,6 +27,17 @@ export const readOnlyArtifactRoot = (fs: FileSystemPort, folder: string): Artifa
 export const artifactRootFor = (fs: FileSystemPort, folder: string, writable: boolean): ArtifactRoot =>
   writable ? folderArtifactRoot(fs, folder) : readOnlyArtifactRoot(fs, folder);
 
+// a mirror created before path canonicalization is keyed by an id hashed from the decomposed
+// on-disk name macOS used to hand over, which no caller can still produce: rebuild that form here
+// so a pre-existing read-only mirror for a diacritic folder is not silently orphaned
+const legacyDerivedFolderId = (folder: string): string => {
+  let hash = 2_166_136_261;
+  for (let index = 0; index < folder.length; index += 1) {
+    hash = Math.imul(hash ^ folder.charCodeAt(index), 16_777_619);
+  }
+  return `path-${(hash >>> 0).toString(16).padStart(8, '0')}`;
+};
+
 export const discoverArtifactRoot = async (
   fs: FileSystemPort,
   folder: string,
@@ -37,5 +48,9 @@ export const discoverArtifactRoot = async (
   const mirror = readOnlyArtifactRoot(fs, folder);
   const mirrored = await fs.exists(mirror.path);
   if (!mirrored.ok) return mirrored;
-  return ok(mirrored.value ? mirror : folderArtifactRoot(fs, folder));
+  if (mirrored.value) return ok(mirror);
+  const legacyMirror = readOnlyArtifactRootById(fs, legacyDerivedFolderId(fs.resolve(folder).normalize('NFD')));
+  const legacyMirrored = await fs.exists(legacyMirror.path);
+  if (!legacyMirrored.ok) return legacyMirrored;
+  return ok(legacyMirrored.value ? legacyMirror : folderArtifactRoot(fs, folder));
 };
