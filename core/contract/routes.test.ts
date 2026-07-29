@@ -7,6 +7,7 @@ import {
   doctorOutputSchema,
   healthLiveOutputSchema,
   healthReadyOutputSchema,
+  jobKindSchema,
   jobOutputSchema,
   jobProgressSchema,
   materializeSummarySchema,
@@ -428,6 +429,13 @@ describe('route schemas', () => {
         sourceConfigId: 'cfg_abcdef012345',
       },
     });
+  });
+
+  it('exposes the faces recluster route with a defaulted dryRun input', () => {
+    expect(API_ROUTES.facesRecluster).toMatchObject({ method: 'POST', path: '/api/faces/recluster' });
+    expect(API_ROUTES.facesRecluster.input.parse({})).toEqual({ dryRun: false });
+    expect(API_ROUTES.facesRecluster.input.parse({ dryRun: true })).toEqual({ dryRun: true });
+    expect(jobKindSchema.parse('faces_recluster')).toBe('faces_recluster');
   });
 
   it('exposes the materialize route and round-trips its summary and progress step', () => {

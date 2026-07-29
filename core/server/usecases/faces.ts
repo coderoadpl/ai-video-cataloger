@@ -3,30 +3,34 @@ import {
   FACE_LIMITS,
   FILE_ARTIFACTS,
   classifyFace,
+  clusterFaceObservations,
   findNewClusterSeed,
   normalizeEmbedding,
   passesFaceQuality,
+  shouldStoreExemplar,
   updateCentroid,
   appError,
   ok,
   type AppError,
+  type FaceClusterInput,
   type FaceObservation,
   type Person,
   type Result,
 } from '@core/domain/index.js';
 
-import type {
-  AlignedFaceCrop,
-  FaceDetection,
-  FaceEnginePort,
-  FileSystemPort,
-  GlobalCatalogStore,
-  JobExecutionContext,
-  JobProgress,
-  JobsPort,
-  MediaPort,
-  ModelDownloadPort,
-  ConfigStore,
+import {
+  JOB_CANCELLED_ERROR_MESSAGE,
+  type AlignedFaceCrop,
+  type FaceDetection,
+  type FaceEnginePort,
+  type FileSystemPort,
+  type GlobalCatalogStore,
+  type JobExecutionContext,
+  type JobProgress,
+  type JobsPort,
+  type MediaPort,
+  type ModelDownloadPort,
+  type ConfigStore,
 } from '../ports.js';
 import { resolveConfigValues } from './config-resolution.js';
 
@@ -41,6 +45,22 @@ export interface FacesDeps {
 }
 
 export type FacesIndexDeps = Omit<FacesDeps, 'jobs'>;
+
+export type FacesReclusterDeps = Pick<FacesDeps, 'config' | 'fs' | 'globalCatalog'>;
+
+export interface FacesReclusterOutput {
+  dryRun: boolean;
+  observations: number;
+  personsBefore: number;
+  personsAfter: number;
+  observationsReassigned: number;
+  observationsAssigned: number;
+  observationsUnassigned: number;
+  namesCarried: number;
+  namesDropped: string[];
+  personsWithoutExemplar: number;
+  elapsedMs: number;
+}
 
 export interface FacesIndexOutput {
   root: string;
@@ -69,6 +89,7 @@ interface ObservationContext {
 interface FacePersonView extends Person {
   observationCount: number;
   exemplarCropPath: string | null;
+  exemplarCropPaths: string[];
 }
 
 export const facesIndex = async (
@@ -83,6 +104,179 @@ export const facesIndex = async (
     resourceKey: `faces-index:${deps.fs.resolve(input.root)}`,
     run: (context) => runFacesIndexPass(deps, { root: deps.fs.resolve(input.root) }, context),
   });
+};
+
+export const facesRecluster = async (
+  deps: FacesDeps,
+  input: { dryRun: boolean },
+): Promise<Result<{ jobId: string }, AppError>> => {
+  const enabled = await ensureFacesEnabled(deps);
+  if (!enabled.ok) return enabled;
+  return deps.jobs.enqueue({
+    kind: 'faces_recluster',
+    payload: input,
+    resourceKey: 'faces-recluster',
+    run: (context) => runFacesReclusterPass(deps, input, context),
+  });
+};
+
+export const runFacesReclusterPass = async (
+  deps: FacesReclusterDeps,
+  input: { dryRun: boolean },
+  progress?: JobExecutionContext,
+): Promise<Result<FacesReclusterOutput, AppError>> => {
+  const startedAt = Date.now();
+  const observations = await deps.globalCatalog.listFaceObservations();
+  if (!observations.ok) return observations;
+  const peopleBefore = await deps.globalCatalog.listPeople();
+  if (!peopleBefore.ok) return peopleBefore;
+
+  const started = await report(progress, {
+    step: 'faces_clustering',
+    percentage: 0,
+    total: Math.max(observations.value.length, 1),
+    data: { dryRun: input.dryRun, observations: observations.value.length },
+  });
+  if (!started.ok) return started;
+
+  const preCancellation = cancelled(progress);
+  if (!preCancellation.ok) return preCancellation;
+
+  const clusterInputs: FaceClusterInput[] = observations.value.map((observation) => ({
+    obsId: observation.obsId,
+    embedding: observation.embedding,
+    quality: observation.quality,
+  }));
+  const outcome = clusterFaceObservations(clusterInputs);
+
+  const postCancellation = cancelled(progress);
+  if (!postCancellation.ok) return postCancellation;
+
+  const namedPeople = inheritNames(outcome, {
+    oldPeople: peopleBefore.value,
+    oldAssignments: new Map(observations.value.map((observation) => [observation.obsId, observation.personId])),
+  });
+
+  const nowIso = new Date().toISOString();
+  const people: Person[] = namedPeople.clusters.map((cluster) => ({
+    personId: cluster.personId,
+    displayName: cluster.displayName,
+    kind: 'face',
+    createdAt: nowIso,
+    centroid: cluster.centroid,
+    exemplarCount: cluster.memberObsIds.length,
+  }));
+  const assignments: { obsId: string; personId: string | null }[] = [
+    ...outcome.clusters.flatMap((cluster) => cluster.memberObsIds.map((obsId) => ({ obsId, personId: cluster.personId }))),
+    ...outcome.unassignedObsIds.map((obsId) => ({ obsId, personId: null })),
+  ];
+
+  const cropPathByObsId = new Map(observations.value.map((observation) => [observation.obsId, observation.cropPath]));
+  const personsWithoutExemplar = outcome.clusters.filter((cluster) =>
+    !cluster.memberObsIds.some((obsId) => cropPathByObsId.get(obsId) !== null)).length;
+
+  let observationsReassigned: number;
+  if (input.dryRun) {
+    const before = new Map(observations.value.map((observation) => [observation.obsId, observation.personId]));
+    observationsReassigned = assignments.filter((assignment) => before.get(assignment.obsId) !== assignment.personId).length;
+  } else {
+    const replaced = await deps.globalCatalog.replaceFaceClustering({ people, assignments });
+    if (!replaced.ok) return replaced;
+    observationsReassigned = replaced.value.observationsReassigned;
+    const flushed = await deps.globalCatalog.flush();
+    if (!flushed.ok) return flushed;
+  }
+
+  const output: FacesReclusterOutput = {
+    dryRun: input.dryRun,
+    observations: observations.value.length,
+    personsBefore: peopleBefore.value.length,
+    personsAfter: people.length,
+    observationsReassigned,
+    observationsAssigned: outcome.clusters.reduce((sum, cluster) => sum + cluster.memberObsIds.length, 0),
+    observationsUnassigned: outcome.unassignedObsIds.length,
+    namesCarried: namedPeople.namesCarried,
+    namesDropped: namedPeople.namesDropped,
+    personsWithoutExemplar,
+    elapsedMs: Date.now() - startedAt,
+  };
+
+  const done = await report(progress, { step: 'faces_done', percentage: 100, data: { ...output } });
+  if (!done.ok) return done;
+  return ok(output);
+};
+
+interface NamedCluster {
+  personId: string;
+  displayName: string | null;
+  centroid: number[];
+  memberObsIds: string[];
+}
+
+const inheritNames = (
+  outcome: { clusters: readonly { personId: string; centroid: number[]; memberObsIds: readonly string[] }[] },
+  history: { oldPeople: readonly Person[]; oldAssignments: ReadonlyMap<string, string | null> },
+): { clusters: NamedCluster[]; namesCarried: number; namesDropped: string[] } => {
+  const oldNames = new Map(
+    history.oldPeople
+      .filter((person): person is Person & { displayName: string } => person.displayName !== null)
+      .map((person) => [person.personId, person.displayName]),
+  );
+
+  const claimedNames = new Set<string>();
+  const clusters: NamedCluster[] = [];
+  for (const cluster of outcome.clusters) {
+    const plurality = new Map<string, number>();
+    for (const obsId of cluster.memberObsIds) {
+      const oldPersonId = history.oldAssignments.get(obsId);
+      if (oldPersonId === null || oldPersonId === undefined) continue;
+      const name = oldNames.get(oldPersonId);
+      if (name === undefined) continue;
+      plurality.set(name, (plurality.get(name) ?? 0) + 1);
+    }
+    const ranked = [...plurality.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+    clusters.push({
+      personId: cluster.personId,
+      displayName: ranked[0]?.[0] ?? null,
+      centroid: cluster.centroid,
+      memberObsIds: [...cluster.memberObsIds],
+    });
+  }
+
+  const byName = new Map<string, { clusterIndex: number; votes: number }[]>();
+  clusters.forEach((cluster, index) => {
+    if (cluster.displayName === null) return;
+    const votes = cluster.memberObsIds.filter((obsId) => {
+      const oldPersonId = history.oldAssignments.get(obsId);
+      return oldPersonId !== null && oldPersonId !== undefined && oldNames.get(oldPersonId) === cluster.displayName;
+    }).length;
+    const existing = byName.get(cluster.displayName) ?? [];
+    existing.push({ clusterIndex: index, votes });
+    byName.set(cluster.displayName, existing);
+  });
+
+  const clusterSize = (index: number): number => clusters[index]?.memberObsIds.length ?? 0;
+  const clusterPersonId = (index: number): string => clusters[index]?.personId ?? '';
+
+  let namesCarried = 0;
+  for (const [name, candidates] of byName) {
+    const winner = [...candidates].sort((left, right) =>
+      right.votes - left.votes
+      || clusterSize(right.clusterIndex) - clusterSize(left.clusterIndex)
+      || clusterPersonId(left.clusterIndex).localeCompare(clusterPersonId(right.clusterIndex)))[0];
+    for (const candidate of candidates) {
+      if (winner !== undefined && candidate.clusterIndex === winner.clusterIndex) continue;
+      const loser = clusters[candidate.clusterIndex];
+      if (loser !== undefined) loser.displayName = null;
+    }
+    if (winner !== undefined) {
+      claimedNames.add(name);
+      namesCarried += 1;
+    }
+  }
+
+  const namesDropped = [...oldNames.values()].filter((name) => !claimedNames.has(name)).sort();
+  return { clusters, namesCarried, namesDropped };
 };
 
 export const facesPeople = async (deps: FacesDeps): Promise<Result<{ people: FacePersonView[] }, AppError>> => {
@@ -169,6 +363,13 @@ export const facesStatus = async (deps: FacesDeps): Promise<Result<FacesStatusOu
   const artifactsReady = await faceArtifactsInstalled(deps.downloads);
   if (!artifactsReady.ok) return artifactsReady;
   return ok({ enabled: true, artifactsReady: artifactsReady.value, ...counts.value });
+};
+
+const cancelled = (progress: JobExecutionContext | undefined): Result<void, AppError> => {
+  if (progress?.signal.aborted === true) {
+    return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
+  }
+  return ok(undefined);
 };
 
 const report = (
@@ -339,7 +540,7 @@ const indexDetection = async (
   if (!people.ok) return people;
   const assignment = classifyFace(embedding, people.value.map((person) => ({ personId: person.personId, centroid: person.centroid })));
   const assignedPersonId = assignment.decision === 'assign' ? assignment.personId : null;
-  const cropPath = assignedPersonId === null ? null : await nextCropPath(deps, assignedPersonId, aligned.value);
+  const cropPath = assignedPersonId === null ? null : await nextCropPath(deps, assignedPersonId, input.fingerprint, aligned.value);
   if (typeof cropPath !== 'string' && cropPath !== null) return cropPath;
   const observation: FaceObservation = {
     obsId,
@@ -385,12 +586,11 @@ const seedNewPersonIfReady = async (
   };
   const stored = await deps.globalCatalog.upsertPerson(person);
   if (!stored.ok) return stored;
-  let assigned = 0;
   for (const index of seed) {
     const context = unassigned[index];
     if (context === undefined) continue;
-    const cropPath = assigned < FACE_LIMITS.maxExemplarsPerPerson && context.alignedCrop.data !== undefined
-      ? await nextCropPath(deps, personId, context.alignedCrop)
+    const cropPath = context.alignedCrop.data !== undefined
+      ? await nextCropPath(deps, personId, context.observation.fingerprint, context.alignedCrop)
       : null;
     if (typeof cropPath !== 'string' && cropPath !== null) return cropPath;
     const observation = { ...context.observation, personId, cropPath };
@@ -398,7 +598,6 @@ const seedNewPersonIfReady = async (
     if (!updated.ok) return updated;
     context.observation = observation;
     releaseCropPixels(context.alignedCrop);
-    assigned += 1;
   }
   return ok(1);
 };
@@ -424,12 +623,13 @@ const updatePersonCentroid = async (
 const nextCropPath = async (
   deps: FacesIndexDeps,
   personId: string,
+  fingerprint: string,
   alignedCrop: AlignedFaceCrop,
 ): Promise<string | null | Result<never, AppError>> => {
   const observations = await deps.globalCatalog.listFaceObservations({ personId });
   if (!observations.ok) return observations;
+  if (!shouldStoreExemplar({ existing: observations.value, fingerprint })) return null;
   const crops = observations.value.filter((observation) => observation.cropPath !== null).length;
-  if (crops >= FACE_LIMITS.maxExemplarsPerPerson) return null;
   const directory = deps.fs.join(deps.fs.dirname(deps.globalCatalog.databasePath()), 'faces', personId);
   const ensured = await deps.fs.ensureDirectory(directory);
   if (!ensured.ok) return ensured;
@@ -470,11 +670,15 @@ export const faceArtifactsInstalled = async (downloads: ModelDownloadPort): Prom
 
 const personView = (person: Person, observations: readonly FaceObservation[]): FacePersonView => {
   const matching = observations.filter((observation) => observation.personId === person.personId);
-  const exemplar = matching.find((observation) => observation.cropPath !== null);
+  const exemplarCropPaths = matching
+    .filter((observation): observation is FaceObservation & { cropPath: string } => observation.cropPath !== null)
+    .map((observation) => observation.cropPath)
+    .slice(0, FACE_LIMITS.maxExemplarsPerPerson);
   return {
     ...person,
     observationCount: matching.length,
-    exemplarCropPath: exemplar?.cropPath ?? null,
+    exemplarCropPath: exemplarCropPaths[0] ?? null,
+    exemplarCropPaths,
   };
 };
 

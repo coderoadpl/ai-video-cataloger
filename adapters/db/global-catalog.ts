@@ -1010,6 +1010,44 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async replaceFaceClustering(input: {
+    people: readonly Person[];
+    assignments: readonly { obsId: string; personId: string | null }[];
+  }): Promise<Result<{
+    personsDeleted: number;
+    personsCreated: number;
+    observationsReassigned: number;
+    affectedFingerprints: string[];
+  }, AppError>> {
+    return this.write((db, client) => {
+      const beforeObservations = new Map(
+        db.select().from(faceObservations).all().map((row) => [row.obsId, row.personId]),
+      );
+      const personsDeleted = db.select().from(people).all().length;
+      db.delete(people).run();
+      for (const person of input.people) db.insert(people).values(personToRow(person)).run();
+
+      let observationsReassigned = 0;
+      const affected = new Set<string>();
+      for (const assignment of input.assignments) {
+        const row = db.select().from(faceObservations).where(eq(faceObservations.obsId, assignment.obsId)).get();
+        if (row === undefined) continue;
+        if (beforeObservations.get(assignment.obsId) !== assignment.personId) {
+          observationsReassigned += 1;
+          affected.add(row.fingerprint);
+        }
+        db.update(faceObservations).set({ personId: assignment.personId }).where(eq(faceObservations.obsId, assignment.obsId)).run();
+      }
+      for (const fingerprint of affected) syncSearchDocument(db, client, fingerprint);
+      return {
+        personsDeleted,
+        personsCreated: input.people.length,
+        observationsReassigned,
+        affectedFingerprints: [...affected],
+      };
+    });
+  }
+
   private async read<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
       const state = await this.ensureOpen(this.lockMode === 'none');

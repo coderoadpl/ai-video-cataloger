@@ -608,12 +608,16 @@ export class InMemoryMedia implements MediaPort {
 export class InMemoryFaceEngine implements FaceEnginePort {
   dependencyValue: DependencyStatus = dependency('faces', true);
   readonly cropWrites: string[] = [];
+  loadCalls = 0;
+  detectCalls = 0;
 
   load(): Promise<Result<void, AppError>> {
+    this.loadCalls += 1;
     return Promise.resolve(ok(undefined));
   }
 
   detect(): Promise<Result<FaceDetection[], AppError>> {
+    this.detectCalls += 1;
     return Promise.resolve(ok([]));
   }
 
@@ -975,6 +979,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly faceObservations = new Map<string, FaceObservation>();
   readonly faceIndexState = new Map<string, { completedAt: string; engineVersion: number }>();
   readonly driveRuns = new Map<string, DriveRunRecord>();
+  deleteFaceObservationsForFileCalls = 0;
 
   constructor(private readonly path = '/home/.ai-video-cataloger/catalog.db') {}
 
@@ -1370,6 +1375,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   deleteFaceObservationsForFile(fingerprint: string): Promise<Result<{ cropPaths: string[] }, AppError>> {
+    this.deleteFaceObservationsForFileCalls += 1;
     const cropPaths: string[] = [];
     for (const observation of [...this.faceObservations.values()]) {
       if (observation.fingerprint !== fingerprint) continue;
@@ -1466,6 +1472,37 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       unassignedObservations: observationRows.filter((observation) => observation.personId === null).length,
       filesIndexed: new Set(observationRows.map((observation) => observation.fingerprint)).size,
       staleVersionFiles: [...this.faceIndexState.values()].filter((state) => state.engineVersion < FACE_ENGINE_VERSION).length,
+    }));
+  }
+
+  replaceFaceClustering(input: {
+    people: readonly Person[];
+    assignments: readonly { obsId: string; personId: string | null }[];
+  }): Promise<Result<{
+    personsDeleted: number;
+    personsCreated: number;
+    observationsReassigned: number;
+    affectedFingerprints: string[];
+  }, AppError>> {
+    const personsDeleted = this.people.size;
+    this.people.clear();
+    for (const person of input.people) this.people.set(person.personId, person);
+    let observationsReassigned = 0;
+    const affected = new Set<string>();
+    for (const assignment of input.assignments) {
+      const existing = this.faceObservations.get(assignment.obsId);
+      if (existing === undefined) continue;
+      if (existing.personId !== assignment.personId) {
+        observationsReassigned += 1;
+        affected.add(existing.fingerprint);
+      }
+      this.faceObservations.set(assignment.obsId, { ...existing, personId: assignment.personId });
+    }
+    return Promise.resolve(ok({
+      personsDeleted,
+      personsCreated: input.people.length,
+      observationsReassigned,
+      affectedFingerprints: [...affected],
     }));
   }
 

@@ -388,6 +388,20 @@ export const thumbnailsSummarySchema = z.object({
   failures: z.array(driveRunFailureSchema),
 });
 
+export const facesReclusterOutputSchema = z.object({
+  dryRun: z.boolean(),
+  observations: z.number().int().nonnegative(),
+  personsBefore: z.number().int().nonnegative(),
+  personsAfter: z.number().int().nonnegative(),
+  observationsReassigned: z.number().int().nonnegative(),
+  observationsAssigned: z.number().int().nonnegative(),
+  observationsUnassigned: z.number().int().nonnegative(),
+  namesCarried: z.number().int().nonnegative(),
+  namesDropped: z.array(z.string()),
+  personsWithoutExemplar: z.number().int().nonnegative(),
+  elapsedMs: z.number().int().nonnegative(),
+});
+
 export const statusVideoSchema = z.object({
   path: z.string(),
   originalName: z.string(),
@@ -809,6 +823,7 @@ export const jobKindSchema = z.enum([
   'local_ai_pull',
   'face_artifact_download',
   'faces_index',
+  'faces_recluster',
   'materialize',
   'thumbnails',
 ]);
@@ -880,6 +895,7 @@ export const jobResultSchema = z.union([
   }),
   materializeSummarySchema,
   thumbnailsSummarySchema,
+  facesReclusterOutputSchema,
 ]);
 
 export const jobOutputSchema = z.object({
@@ -1116,6 +1132,7 @@ export const facePersonSchema = z.object({
   exemplarCount: z.number().int().nonnegative(),
   observationCount: z.number().int().nonnegative(),
   exemplarCropPath: z.string().min(1).nullable(),
+  exemplarCropPaths: z.array(z.string().min(1)),
 });
 
 export const facesPeopleOutputSchema = z.object({
@@ -1174,6 +1191,10 @@ export const facesStatusOutputSchema = z.object({
   unassignedObservations: z.number().int().nonnegative(),
   filesIndexed: z.number().int().nonnegative(),
   staleVersionFiles: z.number().int().nonnegative(),
+});
+
+export const facesReclusterInputSchema = z.object({
+  dryRun: z.boolean().default(false),
 });
 
 export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.ZodTypeAny> {
@@ -1349,6 +1370,12 @@ export const API_ROUTES = {
   facesForget: { method: 'POST', path: '/api/faces/forget', input: facesForgetInputSchema, output: facesForgetOutputSchema },
   facesPurge: { method: 'POST', path: '/api/faces/purge', input: facesPurgeInputSchema, output: facesPurgeOutputSchema },
   facesStatus: { method: 'GET', path: '/api/faces/status', input: emptyInputSchema, output: facesStatusOutputSchema },
+  facesRecluster: {
+    method: 'POST',
+    path: '/api/faces/recluster',
+    input: facesReclusterInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -1413,4 +1440,5 @@ export const API_PATHS = {
   facesForget: API_ROUTES.facesForget.path,
   facesPurge: API_ROUTES.facesPurge.path,
   facesStatus: API_ROUTES.facesStatus.path,
+  facesRecluster: API_ROUTES.facesRecluster.path,
 } as const;

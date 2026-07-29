@@ -8,12 +8,16 @@ export const FACE_EMBEDDING_DIM = 128;
 
 export const FACE_ENGINE_VERSION = 2;
 
+// SFace cosine: same person ~0.4-0.6, different ~0.1-0.3 (OpenCV's reference verification
+// threshold is 0.363). A false merge is unrecoverable without a full rebuild and poisons
+// the centroid; a false split is one `faces merge` away — so the floor sits high, and
+// founding an identity never needs a higher similarity than joining one (ADR-0012).
 export const FACE_CLUSTERING = {
-  autoAssignSimilarity: 0.45,
+  autoAssignSimilarity: 0.5,
   autoAssignMargin: 0.05,
   reviewBandMin: 0.36,
   newClusterSimilarity: 0.5,
-  newClusterMinObservations: 3,
+  newClusterMinObservations: 2,
   autoMergeSimilarity: 0.55,
   autoMergeMinPairs: 2,
 } as const;
@@ -26,8 +30,19 @@ export const FACE_QUALITY = {
 export const FACE_LIMITS = {
   maxFramesPerVideo: 6,
   maxExemplarsPerPerson: 5,
+  maxExemplarsPerFile: 1,
   exemplarCropMaxPx: 160,
 } as const;
+
+export const shouldStoreExemplar = (input: {
+  existing: readonly { fingerprint: string; cropPath: string | null }[];
+  fingerprint: string;
+}): boolean => {
+  const withCrops = input.existing.filter((observation) => observation.cropPath !== null);
+  if (withCrops.length >= FACE_LIMITS.maxExemplarsPerPerson) return false;
+  return withCrops.filter((observation) => observation.fingerprint === input.fingerprint).length
+    < FACE_LIMITS.maxExemplarsPerFile;
+};
 
 export const faceBoxSchema = z.object({
   x: z.number(),
@@ -152,28 +167,103 @@ export const classifyFace = (
   return { decision: 'unassigned', similarity: best.similarity, margin };
 };
 
-const isPairwiseSimilar = (embeddings: readonly (readonly number[])[], indices: readonly number[]): boolean =>
-  indices.every((left, position) =>
-    indices
-      .slice(position + 1)
-      .every(
-        (right) =>
-          cosineSimilarity(embeddings[left] ?? [], embeddings[right] ?? []) >= FACE_CLUSTERING.newClusterSimilarity,
-      ),
+export const findNewClusterSeed = (embeddings: readonly (readonly number[])[]): number[] => {
+  const ranked = embeddings
+    .map((candidate, index) => ({
+      index,
+      supporters: embeddings
+        .flatMap((other, otherIndex) =>
+          otherIndex === index ? [] : [{ otherIndex, similarity: cosineSimilarity(candidate, other) }])
+        .filter((supporter) => supporter.similarity >= FACE_CLUSTERING.newClusterSimilarity)
+        .sort((left, right) => right.similarity - left.similarity || left.otherIndex - right.otherIndex),
+    }))
+    .sort((left, right) => right.supporters.length - left.supporters.length || left.index - right.index);
+
+  for (const candidate of ranked) {
+    if (candidate.supporters.length + 1 < FACE_CLUSTERING.newClusterMinObservations) break;
+    const group = [candidate.index];
+    for (const supporter of candidate.supporters) {
+      const coherent = group.every((member) =>
+        cosineSimilarity(embeddings[member] ?? [], embeddings[supporter.otherIndex] ?? [])
+          >= FACE_CLUSTERING.newClusterSimilarity);
+      if (coherent) group.push(supporter.otherIndex);
+    }
+    if (group.length >= FACE_CLUSTERING.newClusterMinObservations) return [...group].sort((l, r) => l - r);
+  }
+  return [];
+};
+
+export interface FaceClusterInput {
+  obsId: string;
+  embedding: readonly number[];
+  quality: number;
+}
+
+export interface FaceCluster {
+  personId: string;
+  centroid: number[];
+  memberObsIds: string[];
+}
+
+export interface FaceClusteringOutcome {
+  clusters: FaceCluster[];
+  unassignedObsIds: string[];
+}
+
+const personIdFromSeed = (seedObsId: string, taken: ReadonlySet<string>): string => {
+  const base = `person-${seedObsId.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase().slice(0, 32)}`;
+  if (!taken.has(base)) return base;
+  let suffix = 2;
+  while (taken.has(`${base}-${suffix}`)) suffix += 1;
+  return `${base}-${suffix}`;
+};
+
+export const clusterFaceObservations = (observations: readonly FaceClusterInput[]): FaceClusteringOutcome => {
+  const ordered = [...observations].sort(
+    (left, right) => right.quality - left.quality || left.obsId.localeCompare(right.obsId),
   );
 
-export const findNewClusterSeed = (embeddings: readonly (readonly number[])[]): number[] => {
-  const members: number[] = [];
-  embeddings.forEach((candidate, index) => {
-    const supporters = embeddings.filter(
-      (other, otherIndex) =>
-        otherIndex !== index && cosineSimilarity(candidate, other) >= FACE_CLUSTERING.newClusterSimilarity,
+  interface ProvisionalCluster {
+    seedObsId: string;
+    centroid: number[];
+    memberObsIds: string[];
+  }
+
+  const provisional: ProvisionalCluster[] = [];
+  for (const observation of ordered) {
+    const assignment = classifyFace(
+      observation.embedding,
+      provisional.map((cluster) => ({ personId: cluster.seedObsId, centroid: cluster.centroid })),
     );
-    if (supporters.length + 1 >= FACE_CLUSTERING.newClusterMinObservations) members.push(index);
-  });
-  if (members.length < FACE_CLUSTERING.newClusterMinObservations) return [];
-  if (!isPairwiseSimilar(embeddings, members)) return [];
-  return members;
+    const target = assignment.decision === 'assign'
+      ? provisional.find((cluster) => cluster.seedObsId === assignment.personId)
+      : undefined;
+    if (target !== undefined) {
+      target.centroid = updateCentroid(target.centroid, target.memberObsIds.length, observation.embedding);
+      target.memberObsIds.push(observation.obsId);
+      continue;
+    }
+    provisional.push({
+      seedObsId: observation.obsId,
+      centroid: normalizeEmbedding(observation.embedding),
+      memberObsIds: [observation.obsId],
+    });
+  }
+
+  const taken = new Set<string>();
+  const clusters: FaceCluster[] = [];
+  const unassignedObsIds: string[] = [];
+  for (const cluster of provisional) {
+    if (cluster.memberObsIds.length < FACE_CLUSTERING.newClusterMinObservations) {
+      unassignedObsIds.push(...cluster.memberObsIds);
+      continue;
+    }
+    const personId = personIdFromSeed(cluster.seedObsId, taken);
+    taken.add(personId);
+    clusters.push({ personId, centroid: cluster.centroid, memberObsIds: [...cluster.memberObsIds].sort() });
+  }
+  unassignedObsIds.sort();
+  return { clusters, unassignedObsIds };
 };
 
 export const shouldMergePeople = (

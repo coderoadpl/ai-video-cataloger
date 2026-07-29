@@ -805,6 +805,37 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     }));
   }
 
+  replaceFaceClustering(input: {
+    people: readonly Person[];
+    assignments: readonly { obsId: string; personId: string | null }[];
+  }): Promise<Result<{
+    personsDeleted: number;
+    personsCreated: number;
+    observationsReassigned: number;
+    affectedFingerprints: string[];
+  }, AppError>> {
+    const personsDeleted = this.people.size;
+    this.people.clear();
+    for (const person of input.people) this.people.set(person.personId, person);
+    let observationsReassigned = 0;
+    const affected = new Set<string>();
+    for (const assignment of input.assignments) {
+      const existing = this.faceObservations.get(assignment.obsId);
+      if (existing === undefined) continue;
+      if (existing.personId !== assignment.personId) {
+        observationsReassigned += 1;
+        affected.add(existing.fingerprint);
+      }
+      this.faceObservations.set(assignment.obsId, { ...existing, personId: assignment.personId });
+    }
+    return Promise.resolve(ok({
+      personsDeleted,
+      personsCreated: input.people.length,
+      observationsReassigned,
+      affectedFingerprints: [...affected],
+    }));
+  }
+
   private affectedFingerprints(personId: string): string[] {
     return [...new Set([...this.faceObservations.values()]
       .filter((observation) => observation.personId === personId)

@@ -6,6 +6,7 @@ import {
   FACE_ENGINE_VERSION,
   FACE_QUALITY,
   classifyFace,
+  clusterFaceObservations,
   cosineSimilarity,
   faceObservationSchema,
   findNewClusterSeed,
@@ -13,12 +14,27 @@ import {
   passesFaceQuality,
   personSchema,
   shouldMergePeople,
+  shouldStoreExemplar,
   updateCentroid,
 } from './faces.js';
 
 const unitAtCosine = (cosine: number): number[] => [cosine, Math.sqrt(Math.max(0, 1 - cosine * cosine))];
 
+const unitAtAngleDeg = (deg: number): number[] => {
+  const rad = (deg * Math.PI) / 180;
+  return [Math.cos(rad), Math.sin(rad)];
+};
+
 const embedding = (fill: number): number[] => Array.from({ length: FACE_EMBEDDING_DIM }, () => fill);
+
+const twoDistinctIdentityPool = (): number[][] => [
+  unitAtAngleDeg(0),
+  unitAtAngleDeg(2),
+  unitAtAngleDeg(-2),
+  unitAtAngleDeg(90),
+  unitAtAngleDeg(92),
+  unitAtAngleDeg(88),
+];
 
 describe('cosineSimilarity', () => {
   it('is 1 for identical, 0 for orthogonal, -1 for opposite', () => {
@@ -52,6 +68,12 @@ describe('classifyFace', () => {
     expect(result.decision).toBe('review');
   });
 
+  it('does not absorb an observation that is too weak to found an identity', () => {
+    const result = classifyFace(anchor, [{ personId: 'a', centroid: unitAtCosine(0.46) }]);
+    expect(result.decision).not.toBe('assign');
+    expect(result.decision).toBe('review');
+  });
+
   it('sends to review inside the review band', () => {
     const result = classifyFace(anchor, [{ personId: 'a', centroid: unitAtCosine(0.4) }]);
     expect(result.decision).toBe('review');
@@ -80,19 +102,83 @@ describe('updateCentroid', () => {
 });
 
 describe('findNewClusterSeed', () => {
-  it('groups three mutually-similar unassigned observations', () => {
+  it('groups two mutually-similar unassigned observations', () => {
     const members = findNewClusterSeed([unitAtCosine(0), unitAtCosine(0.02), unitAtCosine(0.04)]);
     expect(members).toEqual([0, 1, 2]);
   });
 
-  it('does not seed a cluster from two close observations and an outlier', () => {
-    const members = findNewClusterSeed([unitAtCosine(0), unitAtCosine(0.02), unitAtCosine(0.99)]);
+  it('does not seed a cluster from a single close observation and an outlier', () => {
+    const members = findNewClusterSeed([unitAtCosine(0), unitAtCosine(0.99)]);
     expect(members).toEqual([]);
   });
 
-  it('does not seed a cluster from a similarity chain that is not pairwise similar', () => {
+  it('seeds one identity from a pool that holds two distinct identities', () => {
+    const pool = twoDistinctIdentityPool();
+    const seed = findNewClusterSeed(pool);
+    expect(seed.length).toBeGreaterThanOrEqual(2);
+    const angles = seed.map((index) => (index < 3 ? 'A' : 'B'));
+    expect(new Set(angles).size).toBe(1);
+  });
+
+  it('seeds only the mutually-similar pair from a similarity chain', () => {
     const members = findNewClusterSeed([unitAtCosine(0), unitAtCosine(0.62), unitAtCosine(0.95)]);
-    expect(members).toEqual([]);
+    expect(members.length).toBeGreaterThanOrEqual(2);
+    for (const left of members) {
+      for (const right of members) {
+        if (left === right) continue;
+        const embeddings = [unitAtCosine(0), unitAtCosine(0.62), unitAtCosine(0.95)];
+        expect(cosineSimilarity(embeddings[left] ?? [], embeddings[right] ?? []))
+          .toBeGreaterThanOrEqual(FACE_CLUSTERING.newClusterSimilarity);
+      }
+    }
+  });
+});
+
+describe('clusterFaceObservations', () => {
+  const poolInputs = (): { obsId: string; embedding: readonly number[]; quality: number }[] =>
+    twoDistinctIdentityPool().map((vector, index) => ({
+      obsId: `o${index}`,
+      embedding: vector,
+      quality: 0.9,
+    }));
+
+  it('clusters two clearly distinct embedding sets into two people', () => {
+    const outcome = clusterFaceObservations(poolInputs());
+    expect(outcome.clusters.length).toBe(2);
+    expect(outcome.unassignedObsIds).toEqual([]);
+    for (const cluster of outcome.clusters) {
+      expect(new Set(cluster.memberObsIds.map((obsId) => (Number(obsId.slice(1)) < 3 ? 'A' : 'B'))).size).toBe(1);
+    }
+  });
+
+  it('is deterministic and independent of input order', () => {
+    const inputs = poolInputs();
+    const shuffled = [inputs[4], inputs[0], inputs[5], inputs[1], inputs[3], inputs[2]]
+      .filter((value): value is typeof inputs[number] => value !== undefined);
+    const first = clusterFaceObservations(inputs);
+    const second = clusterFaceObservations(shuffled);
+    const normalize = (outcome: typeof first) =>
+      outcome.clusters
+        .map((cluster) => [...cluster.memberObsIds].sort())
+        .sort((left, right) => (left[0] ?? '').localeCompare(right[0] ?? ''));
+    expect(normalize(second)).toEqual(normalize(first));
+  });
+});
+
+describe('shouldStoreExemplar', () => {
+  it('stores at most one exemplar per file until the person spans five files', () => {
+    const existingFromOneFile = Array.from({ length: 4 }, (_unused, index) => ({
+      fingerprint: 'fp-a',
+      cropPath: `crop-${index}`,
+    }));
+    expect(shouldStoreExemplar({ existing: existingFromOneFile, fingerprint: 'fp-a' })).toBe(false);
+    expect(shouldStoreExemplar({ existing: existingFromOneFile, fingerprint: 'fp-b' })).toBe(true);
+
+    const fiveDistinctFiles = Array.from({ length: 5 }, (_unused, index) => ({
+      fingerprint: `fp-${index}`,
+      cropPath: `crop-${index}`,
+    }));
+    expect(shouldStoreExemplar({ existing: fiveDistinctFiles, fingerprint: 'fp-new' })).toBe(false);
   });
 });
 
@@ -164,20 +250,24 @@ describe('face schemas', () => {
 });
 
 describe('research thresholds are pinned', () => {
-  it('matches the P5 clustering decisions', () => {
+  it('matches the ADR-0012 clustering decisions', () => {
     expect(FACE_CLUSTERING).toEqual({
-      autoAssignSimilarity: 0.45,
+      autoAssignSimilarity: 0.5,
       autoAssignMargin: 0.05,
       reviewBandMin: 0.36,
       newClusterSimilarity: 0.5,
-      newClusterMinObservations: 3,
+      newClusterMinObservations: 2,
       autoMergeSimilarity: 0.55,
       autoMergeMinPairs: 2,
     });
     expect(FACE_EMBEDDING_DIM).toBe(128);
   });
 
-  it('pins the corrected embedding-space engine version', () => {
+  it('never makes founding an identity harder than joining one', () => {
+    expect(FACE_CLUSTERING.newClusterSimilarity).toBeLessThanOrEqual(FACE_CLUSTERING.autoAssignSimilarity);
+  });
+
+  it('a threshold change is not an extraction change — the engine version stays 2', () => {
     expect(FACE_ENGINE_VERSION).toBe(2);
   });
 });

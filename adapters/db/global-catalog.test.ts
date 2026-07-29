@@ -552,6 +552,60 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(status.ok && status.value.observations).toBe(0);
   });
 
+  it('replaceFaceClustering rebuilds people and reassigns observations in one write', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertPerson({
+      personId: 'person-old',
+      displayName: 'Old',
+      kind: 'face',
+      createdAt: '2026-01-04T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.1),
+      exemplarCount: 1,
+    });
+    await store.upsertFaceObservation({
+      obsId: 'obs-1',
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-old',
+      cropPath: '/home/.ai-video-cataloger/faces/person-old/exemplar-001.jpg',
+    });
+    await store.completeFaceIndex(file.fingerprint, 2);
+
+    const replaced = await store.replaceFaceClustering({
+      people: [{
+        personId: 'person-new',
+        displayName: null,
+        kind: 'face',
+        createdAt: '2026-02-01T00:00:00.000Z',
+        centroid: Array.from({ length: 128 }, () => 0.2),
+        exemplarCount: 1,
+      }],
+      assignments: [{ obsId: 'obs-1', personId: 'person-new' }],
+    });
+    expect(replaced.ok).toBe(true);
+    if (!replaced.ok) throw new Error('expected ok');
+    expect(replaced.value.personsDeleted).toBe(1);
+    expect(replaced.value.personsCreated).toBe(1);
+    expect(replaced.value.observationsReassigned).toBe(1);
+    expect((await store.flush()).ok).toBe(true);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const people = await reopened.listPeople();
+    expect(people.ok && people.value.map((person) => person.personId)).toEqual(['person-new']);
+    const observations = await reopened.listFaceObservations();
+    expect(observations.ok && observations.value[0]?.personId).toBe('person-new');
+    expect(observations.ok && observations.value[0]?.cropPath).toBe('/home/.ai-video-cataloger/faces/person-old/exemplar-001.jpg');
+    const status = await reopened.faceStatus();
+    expect(status.ok && status.value.staleVersionFiles).toBe(0);
+  });
+
   it('forgetEntry returns the crop paths of the removed face observations', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });

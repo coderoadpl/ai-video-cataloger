@@ -105,7 +105,7 @@ config set-credential <providerId>
 config delete-credential <providerId> [--json]
 index status|rebuild|forget
 tags list|alias|suggest-aliases
-faces index|people|name|merge|forget|purge|status
+faces index|people|name|merge|forget|purge|status|recluster
 models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|faces install
 models whisper-runtime status|install
 ```
@@ -159,6 +159,13 @@ run — models not installed, engine unavailable, run cancelled, pass failed —
 still succeeds and says so through a `faces_pass_skipped` event and the same summary
 block; `ai-video-cataloger faces index <root>` builds the index afterwards
 ([ADR-0011](docs/decisions/0011-faces-pass-in-drive-runs.md)).
+
+`ai-video-cataloger faces recluster [--dry-run]` rebuilds every person and every
+assignment from the embeddings already stored in the catalog — no video is opened and no
+model runs, so tuning the clustering thresholds costs minutes instead of a full
+re-index. It reports people before/after, how many observations changed owner, and which
+owner-set names it could not carry. Person ids change on every rebuild; names follow the
+plurality of their observations ([ADR-0012](docs/decisions/0012-face-clustering-symmetry-and-recluster.md)).
 
 A completed `process-drive` run exits 0 even when individual files fail. This
 partial-success behavior keeps drive runs resumable — and `materialize`

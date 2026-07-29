@@ -780,6 +780,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  facesRecluster: (input: z.input<typeof API_ROUTES.facesRecluster.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesRecluster.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.facesRecluster.method,
+      API_ROUTES.facesRecluster.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;

@@ -7,19 +7,22 @@ import {
   facesName,
   facesPeople,
   facesPurge,
+  facesRecluster,
   facesStatus,
   runFacesIndexPass,
+  runFacesReclusterPass,
 } from './faces.js';
-import type { FacesDeps } from './faces.js';
+import type { FacesDeps, FacesReclusterDeps } from './faces.js';
 import {
   InMemoryConfig,
   InMemoryDownloads,
+  InMemoryFaceEngine,
   InMemoryFileSystem,
   InMemoryGlobalCatalogStore,
   InMemoryJobs,
   InMemoryMedia,
 } from '../../../test/server/usecases/test-fakes.js';
-import { appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
+import { FACE_ENGINE_VERSION, appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
 import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput } from '../ports.js';
 
 const unit128 = (offset = 0): number[] =>
@@ -173,7 +176,7 @@ const buildDeps = (): FacesDeps & {
   };
 };
 
-const enableFaces = async (deps: FacesDeps): Promise<void> => {
+const enableFaces = async (deps: Pick<FacesDeps, 'config'>): Promise<void> => {
   await deps.config.set({ kind: 'home' }, 'faces_enabled', 'true');
 };
 
@@ -343,7 +346,7 @@ describe('facesIndex', () => {
     expect(afterSecond.ok && afterSecond.value.observations).toBe(6);
   });
 
-  it('caps exemplar crops per person at the configured limit', async () => {
+  it('caps exemplar crops at one per file until the person spans five files', async () => {
     const deps = buildDeps();
     await enableFaces(deps);
     await seedCatalog(deps);
@@ -360,7 +363,7 @@ describe('facesIndex', () => {
     expect(observations.ok).toBe(true);
     if (!observations.ok) throw new Error(observations.error.message);
     const crops = observations.value.filter((observation) => observation.cropPath !== null).length;
-    expect(crops).toBe(5);
+    expect(crops).toBe(1);
   });
 
   it('releases aligned crop pixel data so memory does not grow with the whole run', async () => {
@@ -514,14 +517,14 @@ describe('facesIndex cross-run clustering', () => {
     await seedFile(deps, 'fp-a', 'a.mp4');
 
     const firstEngine = new ScriptedFaceEngine();
-    firstEngine.maxDetections = 2;
+    firstEngine.maxDetections = 1;
     deps.faceEngine = firstEngine;
     const firstRun = await facesIndex(deps, { root: '/work/videos' });
     expect(firstRun.ok).toBe(true);
 
     const afterFirst = await facesStatus(deps);
     expect(afterFirst.ok && afterFirst.value.people).toBe(0);
-    expect(afterFirst.ok && afterFirst.value.unassignedObservations).toBe(2);
+    expect(afterFirst.ok && afterFirst.value.unassignedObservations).toBe(1);
 
     await seedFile(deps, 'fp-b', 'b.mp4');
     const secondEngine = new ScriptedFaceEngine();
@@ -534,7 +537,7 @@ describe('facesIndex cross-run clustering', () => {
     expect(afterSecond.ok).toBe(true);
     if (!afterSecond.ok) throw new Error(afterSecond.error.message);
     expect(afterSecond.value.people).toBe(1);
-    expect(afterSecond.value.assignedObservations).toBe(3);
+    expect(afterSecond.value.assignedObservations).toBe(2);
     expect(afterSecond.value.unassignedObservations).toBe(0);
 
     const reloaded = await deps.globalCatalog.listFaceObservations({ fingerprint: 'fp-a' });
@@ -579,3 +582,185 @@ describe('facesIndex stale-version re-indexing', () => {
     expect(afterStatus.value.people).toBe(1);
   });
 });
+
+describe('facesRecluster', () => {
+  const buildReclusterDeps = (): FacesDeps & {
+    config: InMemoryConfig;
+    downloads: InMemoryDownloads;
+    globalCatalog: InMemoryGlobalCatalogStore;
+    fs: InMemoryFileSystem;
+    media: InMemoryMedia;
+    faceEngine: InMemoryFaceEngine;
+  } => ({
+    ...buildDeps(),
+    faceEngine: new InMemoryFaceEngine(),
+  });
+
+  it('recluster never extracts a frame and never runs the detector', async () => {
+    const deps = buildReclusterDeps();
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'o1', fingerprint: 'fp-a', embedding: unit128(0) }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'o2', fingerprint: 'fp-b', embedding: unit128(0) }));
+
+    const result = await facesRecluster(deps, { dryRun: false });
+    expect(result.ok).toBe(true);
+
+    expect(deps.media.frameInputs.length).toBe(0);
+    expect(deps.faceEngine.loadCalls).toBe(0);
+    expect(deps.faceEngine.detectCalls).toBe(0);
+  });
+
+  it('splits a merged person into two and carries the owner name to the larger half', async () => {
+    const deps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: new InMemoryGlobalCatalogStore() };
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'ala', displayName: 'Ala' }));
+    for (let index = 0; index < 4; index += 1) {
+      await deps.globalCatalog.upsertFaceObservation(observationFixture({
+        obsId: `a${index}`,
+        fingerprint: `fp-a${index}`,
+        embedding: unit128(0),
+        personId: 'ala',
+      }));
+    }
+    for (let index = 0; index < 2; index += 1) {
+      await deps.globalCatalog.upsertFaceObservation(observationFixture({
+        obsId: `b${index}`,
+        fingerprint: `fp-b${index}`,
+        embedding: unit128(5),
+        personId: 'ala',
+      }));
+    }
+
+    const result = await runFacesReclusterPass(deps, { dryRun: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.personsBefore).toBe(1);
+    expect(result.value.personsAfter).toBe(2);
+    expect(result.value.observationsReassigned).toBe(6);
+    expect(result.value.namesCarried).toBe(1);
+    expect(result.value.namesDropped).toEqual([]);
+
+    const people = await deps.globalCatalog.listPeople();
+    expect(people.ok).toBe(true);
+    if (!people.ok) throw new Error('expected people');
+    const named = people.value.filter((person) => person.displayName === 'Ala');
+    expect(named.length).toBe(1);
+    expect(named[0]?.exemplarCount).toBe(4);
+  });
+
+  it('writes nothing on a dry run but predicts the real run', async () => {
+    const dryStore = new InMemoryGlobalCatalogStore();
+    const realStore = new InMemoryGlobalCatalogStore();
+    const dryDeps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: dryStore };
+    const realDeps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: realStore };
+    for (const deps of [dryDeps, realDeps]) {
+      await enableFaces(deps);
+      await deps.globalCatalog.upsertPerson(personFixture({ personId: 'ala', displayName: 'Ala' }));
+      await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'a0', fingerprint: 'fp-a0', embedding: unit128(0), personId: 'ala' }));
+      await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'a1', fingerprint: 'fp-a1', embedding: unit128(0), personId: 'ala' }));
+    }
+    const flushCountBefore = dryStore.flushCount;
+
+    const dryRunResult = await runFacesReclusterPass(dryDeps, { dryRun: true });
+    const realResult = await runFacesReclusterPass(realDeps, { dryRun: false });
+    expect(dryRunResult.ok).toBe(true);
+    expect(realResult.ok).toBe(true);
+    if (!dryRunResult.ok || !realResult.ok) throw new Error('expected ok');
+    expect(dryRunResult.value.personsAfter).toBe(realResult.value.personsAfter);
+    expect(dryRunResult.value.observationsReassigned).toBe(realResult.value.observationsReassigned);
+    expect(dryStore.flushCount).toBe(flushCountBefore);
+
+    const peopleAfterDry = await dryDeps.globalCatalog.listPeople();
+    expect(peopleAfterDry.ok).toBe(true);
+    if (!peopleAfterDry.ok) throw new Error('expected people');
+    expect(peopleAfterDry.value.some((person) => person.personId === 'ala')).toBe(true);
+  });
+
+  it('carries crop paths under the new owner and counts persons without an exemplar', async () => {
+    const deps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: new InMemoryGlobalCatalogStore() };
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'ala', displayName: 'Ala' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'a0',
+      fingerprint: 'fp-a0',
+      embedding: unit128(0),
+      personId: 'ala',
+      cropPath: '/home/.ai-video-cataloger/faces/ala/exemplar-001.jpg',
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'a1',
+      fingerprint: 'fp-a1',
+      embedding: unit128(0),
+      personId: 'ala',
+      cropPath: null,
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'b0', fingerprint: 'fp-b0', embedding: unit128(5) }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'b1', fingerprint: 'fp-b1', embedding: unit128(5) }));
+
+    const result = await runFacesReclusterPass(deps, { dryRun: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.personsWithoutExemplar).toBe(1);
+
+    const reloaded = await deps.globalCatalog.listFaceObservations();
+    expect(reloaded.ok).toBe(true);
+    if (!reloaded.ok) throw new Error('expected observations');
+    const carried = reloaded.value.find((observation) => observation.obsId === 'a0');
+    expect(carried?.cropPath).toBe('/home/.ai-video-cataloger/faces/ala/exemplar-001.jpg');
+  });
+});
+
+describe('facesRecluster does not invalidate the engine version', () => {
+  it('leaves faceIndexState untouched', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedCatalogFor(deps);
+    await deps.globalCatalog.completeFaceIndex('fp-clip', FACE_ENGINE_VERSION);
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'o1', fingerprint: 'fp-clip', embedding: unit128(0) }));
+
+    const before = deps.globalCatalog.deleteFaceObservationsForFileCalls;
+    const indexed = await runFacesIndexPass(deps, { root: '/work/videos' });
+    expect(indexed.ok).toBe(true);
+    expect(deps.globalCatalog.deleteFaceObservationsForFileCalls).toBe(before);
+    const observations = await deps.globalCatalog.listFaceObservations({ fingerprint: 'fp-clip' });
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error('expected observations');
+    expect(observations.value.map((observation) => observation.obsId)).toContain('o1');
+
+    const reclustered = await runFacesReclusterPass(deps, { dryRun: false });
+    expect(reclustered.ok).toBe(true);
+    const status = await deps.globalCatalog.faceStatus();
+    expect(status.ok && status.value.staleVersionFiles).toBe(0);
+  });
+});
+
+const seedCatalogFor = async (deps: FacesDeps): Promise<void> => {
+  await deps.globalCatalog.upsertFolder({
+    folderId: '11111111-1111-1111-1111-111111111111',
+    currentPath: '/work/videos',
+    displayName: 'videos',
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:00:00.000Z',
+  });
+  await deps.globalCatalog.upsertFile({
+    fingerprint: 'fp-clip',
+    folderId: '11111111-1111-1111-1111-111111111111',
+    fileName: 'clip.mp4',
+    size: 1,
+    durationS: 10,
+    gpsLat: null,
+    gpsLon: null,
+    processedAt: '2026-01-01T00:00:00.000Z',
+    analyzer: 'claude',
+    model: 'sonnet',
+    missingAt: null,
+  });
+  await deps.globalCatalog.upsertAnalysis({
+    fingerprint: 'fp-clip',
+    finalName: 'clip',
+    description: 'a clip',
+    transcript: null,
+    language: null,
+    tags: [],
+  });
+};

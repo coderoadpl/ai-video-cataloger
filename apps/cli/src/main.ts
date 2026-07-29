@@ -1219,6 +1219,23 @@ faces
     await runSimple(json, 'faces_status', () => api.facesStatus(), facesStatusHuman, { raw: true });
   });
 
+faces
+  .command('recluster')
+  .description('rebuild people and assignments from stored embeddings (person ids change)')
+  .option('--dry-run', 'compute the report without writing', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption & { dryRun?: boolean }) => {
+    const json = isJsonMode(options);
+    const dryRun = options.dryRun === true;
+    emitStarted(json, 'faces_recluster', { dryRun });
+    const result = await api.facesRecluster({ dryRun });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, facesReclusterHuman, true);
+  });
+
 const configKey = (key: string | undefined) => {
   if (key === undefined) return null;
   const parsed = configKeySchema.safeParse(key);
@@ -1306,7 +1323,7 @@ const facesPeopleHuman = (
 ): string => {
   if (data.people.length === 0) return 'No people indexed yet';
   return data.people
-    .map((person) => `${person.personId} ${person.displayName ?? '(unnamed)'} - ${person.exemplarCount} exemplars`)
+    .map((person) => `${person.personId} ${person.displayName ?? '(unnamed)'} - ${person.exemplarCount} exemplars (${person.exemplarCropPaths.length} crops)`)
     .join('\n');
 };
 
@@ -1324,6 +1341,22 @@ const facesIndexHuman = (data: unknown): string => {
   const observations = typeof data.observationsAdded === 'number' ? data.observationsAdded : 0;
   const people = typeof data.peopleCreated === 'number' ? data.peopleCreated : 0;
   return `Indexed ${indexed} files, added ${observations} observations, created ${people} people`;
+};
+
+const facesReclusterHuman = (data: unknown): string => {
+  if (!isRecord(data)) return 'Recluster complete';
+  const observations = typeof data.observations === 'number' ? data.observations : 0;
+  const personsBefore = typeof data.personsBefore === 'number' ? data.personsBefore : 0;
+  const personsAfter = typeof data.personsAfter === 'number' ? data.personsAfter : 0;
+  const reassigned = typeof data.observationsReassigned === 'number' ? data.observationsReassigned : 0;
+  const unassigned = typeof data.observationsUnassigned === 'number' ? data.observationsUnassigned : 0;
+  const namesCarried = typeof data.namesCarried === 'number' ? data.namesCarried : 0;
+  const namesDropped = Array.isArray(data.namesDropped) ? data.namesDropped.length : 0;
+  const dryRun = data.dryRun === true;
+  return `Reclustered ${observations} observations: ${personsBefore} → ${personsAfter} people `
+    + `(${reassigned} reassigned, ${unassigned} unassigned), `
+    + `${namesCarried} names carried, ${namesDropped} dropped`
+    + (dryRun ? ' — dry run, nothing written' : '');
 };
 
 const modelsListHuman = (

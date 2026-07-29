@@ -44,6 +44,7 @@ const person = (overrides: Partial<FacePerson> & { personId: string }): FacePers
   exemplarCount: overrides.exemplarCount ?? 1,
   observationCount: overrides.observationCount ?? 1,
   exemplarCropPath: overrides.exemplarCropPath ?? null,
+  exemplarCropPaths: overrides.exemplarCropPaths ?? [],
 });
 
 const configData = (facesEnabled: boolean) => ({

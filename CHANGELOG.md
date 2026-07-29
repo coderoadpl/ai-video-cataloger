@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- `faces recluster [--dry-run]` rebuilds every person and every face assignment from the embeddings already stored in the catalog — no frame extraction, no detector and no `FACE_ENGINE_VERSION` bump — reporting people before/after, observations that changed owner, owner-set names carried or dropped, and people left without an exemplar; `--dry-run` computes the same report and writes nothing.
 - `thumbnails <root>` generates every missing catalog thumbnail under a folder tree by downscaling the analysis frame the selected variant already stored — no source video is opened, so it works on an index-only mirror of a read-only mount — reporting `thumbnails_scanning`/`thumbnails_file`/`thumbnails_done` NDJSON events and `generated`/`skipped`/`fromFrame`/`fromSource`/`failed` counts with per-file `failures`; a second run is a no-op and `--force` regenerates everything.
 - `process` and `process-drive` write each completed file's thumbnail during the run (one downscale of the frame already on disk), so a finished drive run leaves a catalog with covers instead of generating them lazily on first display; on a read-only source the cover lands in the home mirror and the source tree stays untouched.
 - Terminal panel gains a persisted Raw mode that shows each log line's attached raw job payload and interleaves a capped (500-entry) ring buffer of every renderer→server request/response, captured once at the `apps/web/src/api.ts` fetch seam.
@@ -24,6 +25,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Face clustering no longer makes founding an identity harder than joining one: the auto-assign floor rises to 0.50, matching the new-cluster floor, and a new identity needs two mutually similar observations instead of three (ADR-0012).
+- Exemplar crops are sampled across files — at most one per file until a person has five — so a person spanning many folders is verifiable instead of showing five near-duplicates from one day; `faces people` now returns every stored exemplar path.
 - `thumbnail <video-path>` and the GUI's lazy generation prefer the stored analysis frame over re-decoding the video, so a cover can be produced for a file whose drive is detached or mounted read-only, and an existing thumbnail is reported as skipped without starting ffmpeg.
 - The terminal panel no longer auto-expands on the first job output; it stays collapsed until opened from the header button or the `View` menu.
 - `tag_language` joins the analysis config descriptor, so pinning it (or having `output_language` pinned) produces a new `configId`; runs with `output_language` and `tag_language` both `auto` keep their existing configIds. Previously tags followed whatever language was narrated in the video, which split one concept into per-language tags.
@@ -31,6 +34,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- A second person could never be founded once the unassigned pool held more than one identity: the new-cluster seed demanded that *all* candidate observations be mutually similar, so a mixed pool always returned nothing and every good detection was absorbed by the first person in a real-world catalog.
 - `driveRunSummarySchema` carries `snapshotSkipped` through the completed `process-drive` job payload instead of stripping it.
 - A corrupted stored variant descriptor or usage JSON in the global catalog surfaces as `read_error` (`READ_ERROR`, exit 28) instead of an untyped `internal` error.
 - Settings and the setup wizard only render the amber Gemini privacy warning when the selected analyzer is Gemini (native video); it no longer appears under Claude, local, or OpenAI-compatible API selections.

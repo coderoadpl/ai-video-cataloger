@@ -67,6 +67,7 @@ describe('catalog write-lock funnel (hotspot 4)', () => {
       'facesMerge',
       'facesForget',
       'facesPurge',
+      'facesRecluster',
     ]) {
       expect(wrapped.has(known)).toBe(true);
     }

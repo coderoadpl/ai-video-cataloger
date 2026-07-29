@@ -333,6 +333,14 @@ block in the run summary, never a failed run. Runs that end early (consecutive-f
 abort, budget cap, failed batch job) skip the pass; the resumed run indexes everything.
 ADR-0011.
 
+Face identity is rebuildable without re-extraction: every observation keeps its
+embedding, so `faces recluster` recomputes all people and assignments from the stored
+vectors alone — no frame extraction, no detector, no `FACE_ENGINE_VERSION` bump (a
+version bump means the *extraction* changed and purges observations; a clustering-rule
+change never does). The rebuild is a replace: person ids are re-minted, owner-set names
+follow the plurality of their old observations, and exemplar crops stay attached to the
+observation that produced them. ADR-0012.
+
 ## Delta 6 — observability
 
 OTel facade + wide events per the foundation, but this is a privacy-sensitive

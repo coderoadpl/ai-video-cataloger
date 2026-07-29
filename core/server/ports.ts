@@ -241,6 +241,15 @@ export interface GlobalCatalogStore {
   forgetPerson(personId: string): Promise<Result<{ personId: string; deleted: boolean; cropPaths: string[]; affectedFingerprints: string[] }, AppError>>;
   purgeFaces(): Promise<Result<{ peopleDeleted: number; observationsDeleted: number; cropPaths: string[] }, AppError>>;
   faceStatus(): Promise<Result<FaceStatusCounts, AppError>>;
+  replaceFaceClustering(input: {
+    people: readonly Person[];
+    assignments: readonly { obsId: string; personId: string | null }[];
+  }): Promise<Result<{
+    personsDeleted: number;
+    personsCreated: number;
+    observationsReassigned: number;
+    affectedFingerprints: string[];
+  }, AppError>>;
 }
 
 export type ConfigScope = { kind: 'folder'; folder: string } | { kind: 'home' };
@@ -724,6 +733,7 @@ export type JobKind =
   | 'local_ai_pull'
   | 'face_artifact_download'
   | 'faces_index'
+  | 'faces_recluster'
   | 'materialize'
   | 'thumbnails';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
