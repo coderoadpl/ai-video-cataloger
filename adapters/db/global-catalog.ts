@@ -763,6 +763,15 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         FROM files f
         JOIN folders fo ON fo.folder_id = f.folder_id
         LEFT JOIN analyses a ON a.fingerprint = f.fingerprint
+          AND a.config_id = COALESCE(
+            (SELECT config_id FROM analyses
+              WHERE fingerprint = f.fingerprint AND config_id = f.selected_config_id),
+            (SELECT config_id FROM analyses
+              WHERE fingerprint = f.fingerprint AND config_id = fo.default_config_id),
+            (SELECT config_id FROM analyses
+              WHERE fingerprint = f.fingerprint
+              ORDER BY created_at DESC, config_id ASC LIMIT 1)
+          )
         WHERE f.gps_lat IS NOT NULL AND f.gps_lon IS NOT NULL
         ORDER BY f.file_name`,
       );

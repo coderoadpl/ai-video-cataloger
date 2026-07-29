@@ -60,6 +60,16 @@ const truncate = (text: string): string =>
 const urlOf = (input: RequestInfo | URL): string =>
   typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
 
+const REDACTED_BODY_ROUTES = ['/api/credentials'];
+
+const isRedactedRoute = (url: string): boolean =>
+  REDACTED_BODY_ROUTES.some((route) => new URL(url, 'http://localhost').pathname === route);
+
+const requestBodyFor = (url: string, body: RequestInit['body']): string | null => {
+  if (typeof body !== 'string') return null;
+  return isRedactedRoute(url) ? '[redacted]' : truncate(body);
+};
+
 let requestCounter = 0;
 const nextRequestId = (): string => {
   requestCounter += 1;
@@ -80,7 +90,7 @@ export const instrumentFetch = (fetchImpl: FetchLike): FetchLike => async (input
     url,
     status: null,
     durationMs: null,
-    body: typeof init?.body === 'string' ? truncate(init.body) : null,
+    body: requestBodyFor(url, init?.body),
   });
 
   let response: Response;

@@ -59,6 +59,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `tags alias` re-points existing aliases at the new canonical tag instead of leaving them pointing at the deleted tag row, so chained merges (`dogs` → `psy`, then `psy` → `pieski`) keep resolving and no longer resurrect the merged-away tag on the next ingest.
 - One undecodable or very short video no longer kills a whole face-indexing pass: `faces index` and the faces pass chained into `process-drive` record the file in a `faces_file_failed` event and in the `faces` summary block (`filesFailed`, `failureCodes`, `aborted`), keep going, and exit 0 with partial results; only five consecutive failures of the same class abort the pass (`DRIVE_RUN_ABORTED`, exit 40).
 - Asking for more frames than a clip contains is no longer an error: frame extraction returns the frames ffmpeg actually wrote — and fails typed only when none did — and an RGB decode that seeks past the last frame falls back to the extracted frame image instead of failing with `Decoded RGB frame size mismatch: expected 15925248, got 0`.
+- `listLocations` resolves the selected variant (explicit selection, then folder default, then newest) instead of joining every stored variant, so a file with more than one analysis variant no longer produces a duplicate map pin, an inflated "located files" count, and a nondeterministic final name.
+- The API-log terminal seam no longer records the plaintext body of a `POST /api/credentials` request, so an entered provider API key never lands in the debug terminal's Raw view or on the clipboard via Copy.
 
 ## [0.6.3] - 2026-07-29
 

@@ -123,6 +123,20 @@ describe('instrumentFetch', () => {
     expect(entries[1]).toMatchObject({ direction: 'error', method: 'GET', body: 'Error: network down' });
   });
 
+  it('redacts the request body of a credential submission instead of logging the plaintext key', async () => {
+    const response = new Response('{"ok":true}', { status: 200 });
+    const fetchImpl = instrumentFetch(async () => response);
+
+    await fetchImpl('/api/credentials', {
+      method: 'POST',
+      body: JSON.stringify({ providerId: 'gemini', credential: 'sk-super-secret' }),
+    });
+
+    const entries = apiLogStore.snapshot();
+    expect(entries[0]?.body).not.toContain('sk-super-secret');
+    expect(entries[0]).toMatchObject({ direction: 'request', method: 'POST', url: '/api/credentials' });
+  });
+
   it('defaults the method to GET and reads a Request input url', async () => {
     const response = new Response(null, { status: 204 });
     const fetchImpl = instrumentFetch(async () => response);

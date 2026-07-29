@@ -976,6 +976,63 @@ describe('SqlJsGlobalCatalogStore', () => {
     });
   });
 
+  it('listLocations resolves the selected variant instead of duplicating a row per variant', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({ ...file, gpsLat: 50.0614, gpsLon: 19.9366 });
+    const firstDescriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'en',
+      promptVersion: 1,
+    });
+    const secondDescriptor = configDescriptorSchema.parse({
+      ...firstDescriptor,
+      output_language: 'pl',
+      promptVersion: 2,
+    });
+    const first: CatalogVariant = {
+      fingerprint: file.fingerprint,
+      configId: configId(firstDescriptor),
+      descriptor: firstDescriptor,
+      finalName: 'alpha.mp4',
+      description: 'alpha description',
+      transcript: 'shared words',
+      language: 'en',
+      tags: ['alpha-tag'],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    };
+    const second: CatalogVariant = {
+      ...first,
+      configId: configId(secondDescriptor),
+      descriptor: secondDescriptor,
+      finalName: 'beta.mp4',
+      description: 'beta description',
+      language: 'pl',
+      tags: ['beta-tag'],
+      createdAt: '2026-01-04T00:00:00.000Z',
+      usage: null,
+    };
+    expect((await store.upsertVariant(first)).ok).toBe(true);
+    expect((await store.upsertVariant(second)).ok).toBe(true);
+    expect((await store.setSelectedVariant(file.fingerprint, first.configId)).ok).toBe(true);
+
+    const result = await store.listLocations();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.totalFiles).toBe(1);
+    expect(result.value.rows).toHaveLength(1);
+    expect(result.value.rows[0]?.finalName).toBe('alpha.mp4');
+  });
+
   it('listGeoBackfillCandidates returns non-missing files scoped to a root and excludes nothing by kind', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
