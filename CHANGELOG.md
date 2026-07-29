@@ -14,23 +14,34 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.3] - 2026-07-29
+
 ### Added
 
-- `pnpm run test:e2e:matrix` gains two `ro-mount` legs that build an `hdiutil` disk image, re-attach it read-only, and assert index-only mode against a real read-only filesystem: detection and zero writes to the mount (never skippable on macOS), then a full drive run whose artifacts land in `~/.ai-video-cataloger/read-only-folders/`.
-- `materialize <root>` applies an existing catalog to a now-writable drive without re-analysis: it looks each file up by fingerprint, applies the selected variant's final name, artifacts, projection and snapshot only where they are missing, resolves name collisions with the established numeric suffix, reports files it cannot place, is a no-op on a second run, previews everything with `--dry-run`, and exits `TARGET_READ_ONLY` (46) when the target is still mounted read-only.
-- `process-drive` builds the people index itself when `faces_enabled=true`: a completed run indexes faces over its own root in one pass, reports `faces_scanning`/`faces_done` NDJSON events and a `faces` block in `run-summary`, and accepts `--skip-faces` to opt one run out.
-- `pnpm run workflow-lint` (part of `pnpm run check`) fails when a workflow guards a repository other than the one in `package.json`, when a self-hosted job is missing its `CI_RUNNER_READY` arming variable, or when a job consumes a `CLAUDE_CODE_OAUTH_TOKEN` slot without `AI_REVIEW_READY`.
+- `pnpm run test:e2e:matrix` gains two `ro-mount` legs that build an `hdiutil` disk image, re-attach it read-only, and assert index-only mode against a real read-only filesystem: detection and zero writes to the mount (never skippable on macOS), then a full drive run whose artifacts land in `~/.ai-video-cataloger/read-only-folders/`
+  ([`5565fae`](https://github.com/coderoadpl/ai-video-cataloger/commit/5565fae)).
+- `materialize <root>` applies an existing catalog to a now-writable drive without re-analysis: it looks each file up by fingerprint, applies the selected variant's final name, artifacts, projection and snapshot only where they are missing, resolves name collisions with the established numeric suffix, reports files it cannot place, is a no-op on a second run, previews everything with `--dry-run`, and exits `TARGET_READ_ONLY` (46) when the target is still mounted read-only
+  ([`6a22887`](https://github.com/coderoadpl/ai-video-cataloger/commit/6a22887)).
+- `process-drive` builds the people index itself when `faces_enabled=true`: a completed run indexes faces over its own root in one pass, reports `faces_scanning`/`faces_done` NDJSON events and a `faces` block in `run-summary`, and accepts `--skip-faces` to opt one run out
+  ([`c22b43d`](https://github.com/coderoadpl/ai-video-cataloger/commit/c22b43d)).
+- `pnpm run workflow-lint` (part of `pnpm run check`) fails when a workflow guards a repository other than the one in `package.json`, when a self-hosted job is missing its `CI_RUNNER_READY` arming variable, or when a job consumes a `CLAUDE_CODE_OAUTH_TOKEN` slot without `AI_REVIEW_READY`
+  ([`e565287`](https://github.com/coderoadpl/ai-video-cataloger/commit/e565287)).
 
 ### Changed
 
-- CI workflows (`check`, `smoke`, `e2e`, `ai-review`) now name the current repository, trigger on `main` instead of the retired `rewrite/foundation`, and stay dormant until the owner registers the self-hosted macOS runner and sets the `CI_RUNNER_READY` repository variable (`ai-review` additionally needs `CLAUDE_CODE_OAUTH_TOKEN_1` and `AI_REVIEW_READY`); a dormant job skips under a name that states the enable step instead of queueing on a runner that does not exist. See [docs/ci.md](docs/ci.md).
-- `pnpm run check` now builds the shipped renderer bundle and fails when any Node builtin reaches the renderer module graph, closing the gap that let `electron:build:renderer` break on a green `main`.
+- CI workflows (`check`, `smoke`, `e2e`, `ai-review`) now name the current repository, trigger on `main` instead of the retired `rewrite/foundation`, and stay dormant until the owner registers the self-hosted macOS runner and sets the `CI_RUNNER_READY` repository variable (`ai-review` additionally needs `CLAUDE_CODE_OAUTH_TOKEN_1` and `AI_REVIEW_READY`); a dormant job skips under a name that states the enable step instead of queueing on a runner that does not exist. See [docs/ci.md](docs/ci.md)
+  ([`e565287`](https://github.com/coderoadpl/ai-video-cataloger/commit/e565287)).
+- `pnpm run check` now builds the shipped renderer bundle and fails when any Node builtin reaches the renderer module graph, closing the gap that let `electron:build:renderer` break on a green `main`
+  ([`ec6447b`](https://github.com/coderoadpl/ai-video-cataloger/commit/ec6447b)).
 
 ### Fixed
 
-- Read-only exFAT/fskit folders enter index-only mode when Node 22 masks recursive directory creation failures as `ENOENT`.
-- A drive run that cannot index faces — models not installed, engine unavailable, `--skip-faces`, cancelled or failed pass — now says so in the run summary and in a `faces_pass_skipped` NDJSON event instead of finishing silently with an empty people index.
-- A completed `process` run again writes the established `frames/{base}/`, `transcripts/{base}.*` and `summaries/{base}.*` files next to the video when the file was first catalogued by a pre-variant install: the selected-variant projection is now materialized on every completed run, and a freshly processed variant takes selection from an index-only `legacy` record that has no artifacts to project.
+- Read-only exFAT/fskit folders enter index-only mode when Node 22 masks recursive directory creation failures as `ENOENT`
+  ([`5ffddfd`](https://github.com/coderoadpl/ai-video-cataloger/commit/5ffddfd)).
+- A drive run that cannot index faces — models not installed, engine unavailable, `--skip-faces`, cancelled or failed pass — now says so in the run summary and in a `faces_pass_skipped` NDJSON event instead of finishing silently with an empty people index
+  ([`c22b43d`](https://github.com/coderoadpl/ai-video-cataloger/commit/c22b43d)).
+- A completed `process` run again writes the established `frames/{base}/`, `transcripts/{base}.*` and `summaries/{base}.*` files next to the video when the file was first catalogued by a pre-variant install: the selected-variant projection is now materialized on every completed run, and a freshly processed variant takes selection from an index-only `legacy` record that has no artifacts to project
+  ([`e8abb26`](https://github.com/coderoadpl/ai-video-cataloger/commit/e8abb26)).
 
 ## [0.6.2] - 2026-08-04
 
