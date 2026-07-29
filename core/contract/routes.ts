@@ -1043,6 +1043,27 @@ export const searchOutputSchema = z.object({
   results: z.array(searchResultSchema),
 });
 
+export const catalogLocationSchema = z.object({
+  fingerprint: z.string().min(1),
+  fileName: z.string().min(1),
+  finalName: z.string().nullable(),
+  lat: z.number().min(-90).max(90),
+  lon: z.number().min(-180).max(180),
+  missing: z.boolean(),
+  folder: z.object({
+    folderId: folderIdSchema,
+    currentPath: z.string().min(1),
+    displayName: z.string(),
+    online: z.boolean(),
+  }),
+}).strict();
+
+export const catalogLocationsOutputSchema = z.object({
+  totalFiles: z.number().int().nonnegative(),
+  locatedFiles: z.number().int().nonnegative(),
+  locations: z.array(catalogLocationSchema),
+}).strict();
+
 const variantLocatorSchema = z.object({
   videoPath: z.string().min(1).optional(),
   fingerprint: z.string().min(1).optional(),
@@ -1214,6 +1235,12 @@ export const API_ROUTES = {
   catalogTree: { method: 'GET', path: '/api/catalog-tree', input: folderInputSchema, output: catalogTreeOutputSchema },
   catalogTreeFolder: { method: 'GET', path: '/api/catalog-tree/folder', input: folderInputSchema, output: catalogTreeFolderOutputSchema },
   catalogFolder: { method: 'GET', path: '/api/catalog-folder', input: folderInputSchema, output: catalogFolderOutputSchema },
+  catalogLocations: {
+    method: 'GET',
+    path: '/api/catalog/locations',
+    input: emptyInputSchema,
+    output: catalogLocationsOutputSchema,
+  },
   catalogTreeAbsent: { method: 'GET', path: '/api/catalog-tree/absent', input: folderInputSchema, output: catalogTreeAbsentOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
   processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
@@ -1392,6 +1419,7 @@ export const API_PATHS = {
   catalogTree: API_ROUTES.catalogTree.path,
   catalogTreeFolder: API_ROUTES.catalogTreeFolder.path,
   catalogFolder: API_ROUTES.catalogFolder.path,
+  catalogLocations: API_ROUTES.catalogLocations.path,
   process: API_ROUTES.process.path,
   processDrive: API_ROUTES.processDrive.path,
   materialize: API_ROUTES.materialize.path,

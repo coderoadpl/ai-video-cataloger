@@ -3,6 +3,7 @@ import { type z } from 'zod';
 import {
   API_ROUTES,
   catalogFolderOutputSchema,
+  catalogLocationsOutputSchema,
   catalogLockOutputSchema,
   catalogTreeAbsentOutputSchema,
   catalogTreeFolderOutputSchema,
@@ -587,6 +588,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.tagsList.method,
       API_ROUTES.tagsList.path,
       tagsListOutputSchema,
+      undefined,
+      signal,
+    ),
+  catalogLocations: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.catalogLocations.method,
+      API_ROUTES.catalogLocations.path,
+      catalogLocationsOutputSchema,
       undefined,
       signal,
     ),

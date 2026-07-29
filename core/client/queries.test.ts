@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { createApiClient } from './http.js';
 import {
   ApiError,
+  catalogLocationsQuery,
   configQuery,
   jobProgressRefetchInterval,
   jobQuery,
@@ -181,6 +182,22 @@ describe('query descriptors', () => {
         body: JSON.stringify({ family: 'local', providerId: 'local', modelTag: 'gemma3:12b' }),
       },
     ]);
+  });
+
+  it('keys the catalog locations query hierarchically and requests it', async () => {
+    const calls: Array<{ url: string; method: string | undefined }> = [];
+    const fetchImpl: typeof fetch = async (input, init) => {
+      calls.push({ url: String(input), method: init?.method });
+      return jsonResponse({ ok: true, data: { totalFiles: 3752, locatedFiles: 1, locations: [] } });
+    };
+    const api = createApiClient({ baseUrl: '', fetchImpl });
+    const queryClient = new QueryClient();
+    const descriptor = catalogLocationsQuery(api);
+
+    expect(descriptor.queryKey).toEqual(['catalog', 'locations']);
+    await queryClient.fetchQuery(descriptor);
+
+    expect(calls).toEqual([{ url: '/api/catalog/locations', method: 'GET' }]);
   });
 
   it('caches variant reads and refreshes only selected-analysis consumers', async () => {

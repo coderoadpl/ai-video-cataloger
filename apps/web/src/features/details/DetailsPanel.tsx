@@ -14,6 +14,8 @@ interface DetailsPanelProps {
   onNavigateToCanonical?: ((canonicalPath: string) => void) | undefined;
   disabledReason?: string | undefined;
   onTagSearch?: ((tag: string) => void) | undefined;
+  location?: { lat: number; lon: number } | null | undefined;
+  onShowOnMap?: (() => void) | undefined;
 }
 
 const Welcome = ({ dictionary }: { dictionary: Dictionary }) => (
@@ -41,7 +43,17 @@ const Welcome = ({ dictionary }: { dictionary: Dictionary }) => (
   </Box>
 );
 
-export const DetailsPanel = ({ video, analyzing, loading = false, onAnalyze, onNavigateToCanonical, disabledReason, onTagSearch }: DetailsPanelProps) => {
+export const DetailsPanel = ({
+  video,
+  analyzing,
+  loading = false,
+  onAnalyze,
+  onNavigateToCanonical,
+  disabledReason,
+  onTagSearch,
+  location,
+  onShowOnMap,
+}: DetailsPanelProps) => {
   const dictionary = useDictionary();
 
   if (video === null && loading) return <DetailsSkeleton />;
@@ -57,6 +69,8 @@ export const DetailsPanel = ({ video, analyzing, loading = false, onAnalyze, onN
       onNavigateToCanonical={onNavigateToCanonical}
       disabledReason={disabledReason}
       onTagSearch={onTagSearch}
+      location={location}
+      onShowOnMap={onShowOnMap}
     />
   );
 };

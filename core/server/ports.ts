@@ -110,6 +110,21 @@ export interface CatalogSearchRow {
   score: number;
 }
 
+export interface CatalogLocationRow {
+  fingerprint: string;
+  fileName: string;
+  finalName: string | null;
+  lat: number;
+  lon: number;
+  missing: boolean;
+  folder: CatalogFolder;
+}
+
+export interface CatalogLocationsSnapshot {
+  totalFiles: number;
+  rows: CatalogLocationRow[];
+}
+
 export interface ReconcileFolderInput {
   folderId: string;
   presentFingerprints: readonly string[];
@@ -214,6 +229,7 @@ export interface GlobalCatalogStore {
   listTagAliases(): Promise<Result<CatalogTagAlias[], AppError>>;
   expandTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>>;
+  listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
   reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>>;

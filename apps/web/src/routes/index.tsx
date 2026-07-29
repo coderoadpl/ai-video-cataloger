@@ -17,6 +17,8 @@ import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
+import { MapView } from '../features/map/MapView.js';
+import { useCatalogLocations } from '../features/map/use-catalog-locations.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { PeopleView } from '../features/people/PeopleView.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
@@ -36,6 +38,7 @@ import { ViewNav, type MainView } from '../components/ui/ViewNav.js';
 
 export const IndexRoute = () => {
   const [activeView, setActiveView] = useState<MainView>('videos');
+  const [mapFocus, setMapFocus] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const shell = useShell();
   const [scope, setScope] = useScopePreference(shell.currentFolder);
@@ -76,6 +79,9 @@ export const IndexRoute = () => {
       : flattenTreeVideos(tree.root).find((video) => keyOf(video) === catalog.selectedKey) ?? null;
     return fromTree ?? videoRegistry.lookup(catalog.selectedKey);
   }, [catalog.selectedVideo, catalog.selectedKey, tree.root, videoRegistry]);
+  const selectedFingerprint = selected?.contentHash ?? null;
+  const locations = useCatalogLocations({ enabled: activeView === 'map' || selectedFingerprint !== null });
+  const selectedLocation = selectedFingerprint === null ? null : locations.byFingerprint(selectedFingerprint);
   const analyzing = selected !== null && selected.path === processing.analyzingPath;
   const overlay = analyzing ? processing.progress : null;
 
@@ -100,6 +106,7 @@ export const IndexRoute = () => {
   const openSearchResult = useCallback(
     (folderPath: string, videoPath: string) => {
       clearSearch();
+      setActiveView('videos');
       if (currentFolder === folderPath) {
         selectKey(videoPath);
         return;
@@ -172,6 +179,11 @@ export const IndexRoute = () => {
       onNavigateToCanonical={catalog.selectKey}
       disabledReason={disabledReason}
       onTagSearch={globalSearch.submitSearch}
+      location={selectedLocation === null ? null : { lat: selectedLocation.lat, lon: selectedLocation.lon }}
+      onShowOnMap={selectedFingerprint === null ? undefined : () => {
+        setMapFocus(selectedFingerprint);
+        setActiveView('map');
+      }}
     />
   );
 
@@ -228,6 +240,13 @@ export const IndexRoute = () => {
             addLine={terminal.addLine}
             onOpenSettings={() => setModalRequest('settings')}
             lockReason={catalogLock.disabledReason}
+          />
+        ) : activeView === 'map' ? (
+          <MapView
+            active={activeView === 'map'}
+            focusFingerprint={mapFocus}
+            onFocusConsumed={() => setMapFocus(null)}
+            onOpenLocation={openSearchResult}
           />
         ) : content
       }

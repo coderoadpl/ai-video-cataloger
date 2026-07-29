@@ -3,13 +3,14 @@ import { homedir } from 'node:os';
 import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
-import { app, BrowserWindow, dialog, nativeTheme } from 'electron';
+import { app, BrowserWindow, dialog, nativeTheme, session } from 'electron';
 
 import { derivedFolderId } from '@core/domain/index.js';
 import type { App } from '@server/src/create-app.js';
 
 import { resolveDesktopAppVersion } from './app-version.js';
 import { CHANNELS } from './channels.js';
+import { cspHeaders } from './csp.js';
 import { createDesktopApp } from './composition.js';
 import { folderStorePath, FolderStore } from './folder-store.js';
 import { FolderWatchController } from './folder-watch.js';
@@ -133,6 +134,17 @@ const mirrorFolderIds = async (
 };
 
 const bootstrap = async (): Promise<void> => {
+  if (!isDevelopment()) {
+    session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+      const headers = cspHeaders(details.responseHeaders ?? {});
+      const responseHeaders: Record<string, string[]> = {};
+      for (const [name, value] of Object.entries(headers)) {
+        if (value !== undefined) responseHeaders[name] = value;
+      }
+      callback({ responseHeaders });
+    });
+  }
+
   const appVersion = resolveDesktopAppVersion({
     isPackaged: app.isPackaged,
     packagedVersion: app.getVersion(),

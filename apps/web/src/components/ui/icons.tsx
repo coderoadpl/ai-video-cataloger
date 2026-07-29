@@ -108,3 +108,27 @@ export const SkipNextIcon = (props: SvgIconProps) => (
     <path d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z" />
   </SvgIcon>
 );
+
+export const PlaceIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5A2.5 2.5 0 1 1 12 6.5a2.5 2.5 0 0 1 0 5z" />
+  </SvgIcon>
+);
+
+export const AddIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z" />
+  </SvgIcon>
+);
+
+export const RemoveIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M19 13H5v-2h14v2z" />
+  </SvgIcon>
+);
+
+export const RestartAltIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M12 5V2L8 6l4 4V7c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46A7.93 7.93 0 0 0 20 13c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 8.74A7.93 7.93 0 0 0 4 13c0 4.42 3.58 8 8 8v3l4-4-4-4v3z" />
+  </SvgIcon>
+);

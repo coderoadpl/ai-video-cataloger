@@ -184,6 +184,18 @@ size cap applies to images only, not the supported video extensions.
 The old GUI shelled out to a staged CLI and parsed NDJSON; that machinery is
 deleted. Renderer and CLI are peers on the same contract.
 
+Packaged (non-dev) renderer loads carry a `Content-Security-Policy` response
+header (`apps/desktop/src/csp.ts`) with no remote origin in any directive:
+`connect-src`/`img-src` are pinned to `'self'` plus `media:` (the app's own
+`media://` protocol, not a remote scheme) and `data:`/`blob:`. The two
+relaxations are `style-src 'unsafe-inline'` (required by emotion/MUI's
+runtime style injection) and `worker-src blob:` (Vite/MUI worker shims); both
+are recorded, with rationale, in
+[ADR-0013](decisions/0013-map-view-and-tile-privacy.md), which also records
+the preconditions for ever loading a remote map tile. The Vite dev server is
+exempt (HMR websocket + eval'd modules need it) — the header is registered
+only for production loads.
+
 The terminal panel (`components/ui/TerminalLog.tsx`) has a persisted **Raw**
 mode (`avc.terminalRawMode` in `localStorage`, the same precedent as
 `avc.sidebarWidth`): friendly mode shows the translated job lines only, raw
@@ -259,6 +271,15 @@ apps/web/src/
   lib/               pure TS utilities → no react
   theme.ts           the entire visual language (MUI theme)
 ```
+
+The `map` feature (`features/map/`) plots catalogued GPS coordinates on an
+offline vector basemap; its island core (`features/map/core/**`) is a
+DOM-free Web Mercator projection + grid-clustering module. `features/details`
+reaches map data (coordinates, jump-to-map) through route-supplied props only,
+never through a cross-feature import — the route (`routes/index.tsx`) owns the
+`catalogLocations` query and passes the derived slice down. See
+[ADR-0013](decisions/0013-map-view-and-tile-privacy.md) for why the map ships
+zero map-tile networking.
 
 ### The layout layer (page skeletons)
 
@@ -376,7 +397,9 @@ managed runtimes, and its working-directory fallback.
 ## Ports (complete list for this app)
 
 - `CatalogRepository` (global catalog index with folder-id dimension) +
-  home-scope repository — drizzle.
+  home-scope repository — drizzle. `GlobalCatalogStore.listLocations()` —
+  every catalog file that carries GPS coordinates, plus the catalog-wide file
+  total the map's coverage caption is measured against.
 - `ConfigStore` — per-folder `config.json` (schema in `core/domain`).
 - `CredentialsStore` — home-scoped provider secrets; per-folder configuration
   contains provider references only. The primary backend is the macOS Keychain

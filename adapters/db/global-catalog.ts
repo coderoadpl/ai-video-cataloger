@@ -48,6 +48,8 @@ import type {
   CatalogLockInfo,
   CatalogLockProcessName,
   CatalogLockSnapshot,
+  CatalogLocationRow,
+  CatalogLocationsSnapshot,
   CatalogSearchInput,
   CatalogSearchRow,
   CatalogTagAlias,
@@ -694,6 +696,36 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .map((row) => searchRowFromValues(row, input.rankingTerms))
         .sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
         .slice(input.offset, input.offset + input.limit);
+    });
+  }
+
+  async listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>> {
+    return this.read((db, client) => {
+      const totalFiles = db.select().from(files).all().length;
+      const result = client.exec(
+        `SELECT
+          f.fingerprint,
+          f.file_name,
+          NULLIF(a.final_name, ''),
+          f.gps_lat,
+          f.gps_lon,
+          f.missing_at,
+          fo.folder_id,
+          fo.current_path,
+          fo.display_name,
+          fo.first_seen_at,
+          fo.last_seen_at
+        FROM files f
+        JOIN folders fo ON fo.folder_id = f.folder_id
+        LEFT JOIN analyses a ON a.fingerprint = f.fingerprint
+        WHERE f.gps_lat IS NOT NULL AND f.gps_lon IS NOT NULL
+        ORDER BY f.file_name`,
+      );
+      const values = result[0]?.values ?? [];
+      const rows = values
+        .map(locationRowFromValues)
+        .filter((row): row is CatalogLocationRow => row !== null);
+      return { totalFiles, rows };
     });
   }
 
@@ -1836,6 +1868,28 @@ const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): 
       tagsText,
       transcript,
     }, rankingTerms),
+  };
+};
+
+const locationRowFromValues = (row: SqlValue[]): CatalogLocationRow | null => {
+  const lat = nullableNumberValue(row[3]);
+  const lon = nullableNumberValue(row[4]);
+  if (lat === null || lon === null || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  return {
+    fingerprint: stringValue(row[0]),
+    fileName: stringValue(row[1]),
+    finalName: nullableStringValue(row[2]),
+    lat,
+    lon,
+    missing: nullableNumberValue(row[5]) !== null,
+    folder: {
+      folderId: stringValue(row[6]),
+      currentPath: stringValue(row[7]),
+      displayName: stringValue(row[8]),
+      firstSeenAt: stringValue(row[9]),
+      lastSeenAt: stringValue(row[10]),
+    },
   };
 };
 

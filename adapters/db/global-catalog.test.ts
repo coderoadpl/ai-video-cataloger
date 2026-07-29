@@ -855,6 +855,67 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(after.ok && after.value[0]?.missing).toBe(true);
   });
 
+  it('listLocations returns only the file that carries GPS, keyed to its folder', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const secondFolder: CatalogFolder = {
+      ...folder,
+      folderId: '33333333-3333-4333-8333-333333333333',
+      currentPath: '/media/drive-b',
+      displayName: 'drive-b',
+    };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(secondFolder);
+    await store.upsertFile({ ...file, gpsLat: 50.0614, gpsLon: 19.9366 });
+    await store.upsertFile({ ...file, fingerprint: 'fp-no-gps', folderId: secondFolder.folderId, fileName: 'other.mp4' });
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: 'a-clip.mp4',
+      description: 'A clip',
+      transcript: 'words',
+      language: 'en',
+      tags: ['a-clip'],
+    });
+
+    const result = await store.listLocations();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.totalFiles).toBe(2);
+    expect(result.value.rows).toEqual([{
+      fingerprint: file.fingerprint,
+      fileName: file.fileName,
+      finalName: 'a-clip.mp4',
+      lat: 50.0614,
+      lon: 19.9366,
+      missing: false,
+      folder,
+    }]);
+  });
+
+  it('listLocations skips a row whose stored latitude is out of range', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({ ...file, gpsLat: 50, gpsLon: 19 });
+    await store.flush();
+
+    const dbPath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+    const SQL = await initSqlJs();
+    const bytes = await readFile(dbPath);
+    const rawClient: Database = new SQL.Database(bytes);
+    rawClient.run('UPDATE files SET gps_lat = 91 WHERE fingerprint = $fingerprint', { $fingerprint: file.fingerprint });
+    await writeFile(dbPath, Buffer.from(rawClient.export()));
+    rawClient.close();
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const result = await reopened.listLocations();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.rows).toEqual([]);
+  });
+
   it('forgetEntry deletes the file, analysis, and search rows including FTS', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });

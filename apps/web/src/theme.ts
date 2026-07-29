@@ -21,12 +21,25 @@ export interface StatusColor {
 
 export type StatusPalette = Record<StatusToken, StatusColor>;
 
+export interface MapPalette {
+  canvas: string;
+  land: string;
+  landBorder: string;
+  graticule: string;
+  pin: string;
+  pinMuted: string;
+  cluster: string;
+  clusterText: string;
+}
+
 declare module '@mui/material/styles' {
   interface Palette {
     status: StatusPalette;
+    map: MapPalette;
   }
   interface PaletteOptions {
     status?: StatusPalette;
+    map?: MapPalette;
   }
 }
 
@@ -51,6 +64,16 @@ const LIGHT = {
     error: { main: '#b91c1c', soft: '#fee2e2', contrastText: '#1d1d1f' },
     notTracked: { main: '#4e4e53', soft: '#e3e3e6', contrastText: '#1d1d1f' },
   } satisfies StatusPalette,
+  map: {
+    canvas: '#eef2f6',
+    land: '#dfe5ea',
+    landBorder: '#c3ccd4',
+    graticule: '#e3e8ec',
+    pin: '#007AFF',
+    pinMuted: '#a1a1a6',
+    cluster: '#007AFF',
+    clusterText: '#ffffff',
+  } satisfies MapPalette,
 };
 
 const DARK = {
@@ -68,6 +91,16 @@ const DARK = {
     error: { main: '#f87171', soft: 'rgba(248, 113, 113, 0.16)', contrastText: '#1c1c1e' },
     notTracked: { main: '#c7c7cc', soft: 'rgba(199, 199, 204, 0.20)', contrastText: '#1c1c1e' },
   } satisfies StatusPalette,
+  map: {
+    canvas: '#242426',
+    land: '#3a3a3c',
+    landBorder: '#4a4a4d',
+    graticule: '#2f2f31',
+    pin: '#0a84ff',
+    pinMuted: '#6e6e73',
+    cluster: '#0a84ff',
+    clusterText: '#0b0b0c',
+  } satisfies MapPalette,
 };
 
 const RADIUS = 8;
@@ -87,6 +120,7 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
       text: { primary: c.ink, secondary: c.inkSoft },
       divider: c.border,
       status: c.status,
+      map: c.map,
     },
     shape: { borderRadius: RADIUS },
     typography: {

@@ -37,6 +37,7 @@ export interface Dictionary {
     showSidebar: string;
     navVideos: string;
     navPeople: string;
+    navMap: string;
     terminalTitle: string;
     terminalRaw: string;
     terminalCopy: string;
@@ -106,6 +107,8 @@ export interface Dictionary {
     unknown: string;
     size: string;
     location: string;
+    coordinates: string;
+    showOnMap: string;
     summary: string;
     suggestedFilename: string;
     estimatedGeminiCost: (amount: number, model: string, pricingMode: string) => string;
@@ -490,6 +493,21 @@ export interface Dictionary {
     deletedAllFaceDataLog: string;
     deleteAllFaceDataFailedLog: string;
   };
+  map: {
+    title: string;
+    subtitle: string;
+    loading: string;
+    coverage: (located: number, total: number) => string;
+    emptyTitle: string;
+    emptyBody: string;
+    canvasLabel: string;
+    clusterLabel: (count: number) => string;
+    zoomIn: string;
+    zoomOut: string;
+    resetView: string;
+    openVideo: string;
+    coordinates: string;
+  };
   settingsModal: {
     title: string;
     selectFolderFirst: string;
@@ -692,6 +710,7 @@ export const en: Dictionary = {
     showSidebar: 'Show',
     navVideos: 'Videos',
     navPeople: 'People',
+    navMap: 'Map',
     terminalTitle: 'Terminal',
     terminalRaw: 'Raw',
     terminalCopy: 'Copy',
@@ -768,6 +787,8 @@ export const en: Dictionary = {
     unknown: 'Unknown',
     size: 'Size',
     location: 'Location',
+    coordinates: 'Coordinates',
+    showOnMap: 'Show on map',
     summary: 'Summary',
     suggestedFilename: 'Suggested filename:',
     estimatedGeminiCost: (amount, model, pricingMode) =>
@@ -1195,6 +1216,21 @@ export const en: Dictionary = {
     deletedAllFaceDataLog: 'Deleted all face data',
     deleteAllFaceDataFailedLog: 'Failed to delete all face data',
   },
+  map: {
+    title: 'Map',
+    subtitle: 'Where your catalogued videos were recorded — offline, no map tiles are ever downloaded.',
+    loading: 'Reading locations from the catalog…',
+    coverage: (located, total) => `${located} of ${total} catalogued files have location`,
+    emptyTitle: 'No files with location yet',
+    emptyBody: 'Location comes from GPS metadata the camera wrote into the file. Analyse a folder to add its files to the catalog; files without GPS metadata never appear here.',
+    canvasLabel: 'Map of catalogued videos',
+    clusterLabel: (count) => `${count} videos in this area`,
+    zoomIn: 'Zoom in',
+    zoomOut: 'Zoom out',
+    resetView: 'Reset view',
+    openVideo: 'Open video',
+    coordinates: 'Coordinates',
+  },
   settingsModal: {
     title: 'Settings',
     selectFolderFirst: 'Please select a folder first to configure settings.',
@@ -1409,6 +1445,7 @@ export const pl: Dictionary = {
     showSidebar: 'Pokaż',
     navVideos: 'Filmy',
     navPeople: 'Osoby',
+    navMap: 'Mapa',
     terminalTitle: 'Terminal',
     terminalRaw: 'Surowe',
     terminalCopy: 'Kopiuj',
@@ -1485,6 +1522,8 @@ export const pl: Dictionary = {
     unknown: 'Nieznany',
     size: 'Rozmiar',
     location: 'Lokalizacja',
+    coordinates: 'Współrzędne',
+    showOnMap: 'Pokaż na mapie',
     summary: 'Streszczenie',
     suggestedFilename: 'Sugerowana nazwa pliku:',
     estimatedGeminiCost: (amount, model, pricingMode) =>
@@ -1912,6 +1951,21 @@ export const pl: Dictionary = {
     deleteGroupingFailedLog: 'Nie udało się usunąć grupy twarzy',
     deletedAllFaceDataLog: 'Usunięto wszystkie dane twarzy',
     deleteAllFaceDataFailedLog: 'Nie udało się usunąć wszystkich danych twarzy',
+  },
+  map: {
+    title: 'Mapa',
+    subtitle: 'Gdzie nagrano skatalogowane filmy — offline, kafelki mapy nigdy nie są pobierane.',
+    loading: 'Wczytywanie lokalizacji z katalogu…',
+    coverage: (located, total) => `${located} z ${total} skatalogowanych plików ma lokalizację`,
+    emptyTitle: 'Brak plików z lokalizacją',
+    emptyBody: 'Lokalizacja pochodzi z metadanych GPS zapisanych przez aparat. Przeanalizuj folder, aby dodać jego pliki do katalogu; pliki bez metadanych GPS nigdy się tu nie pojawią.',
+    canvasLabel: 'Mapa skatalogowanych filmów',
+    clusterLabel: (count) => `${count} filmów w tym obszarze`,
+    zoomIn: 'Przybliż',
+    zoomOut: 'Oddal',
+    resetView: 'Zresetuj widok',
+    openVideo: 'Otwórz film',
+    coordinates: 'Współrzędne',
   },
   settingsModal: {
     title: 'Ustawienia',

@@ -21,6 +21,8 @@ interface VideoDetailsProps {
   onNavigateToCanonical?: ((canonicalPath: string) => void) | undefined;
   disabledReason?: string | undefined;
   onTagSearch?: ((tag: string) => void) | undefined;
+  location?: { lat: number; lon: number } | null | undefined;
+  onShowOnMap?: (() => void) | undefined;
 }
 
 const DuplicateDetail = ({
@@ -94,6 +96,8 @@ export const VideoDetails = ({
   onNavigateToCanonical,
   disabledReason,
   onTagSearch,
+  location,
+  onShowOnMap,
 }: VideoDetailsProps) => {
   const dictionary = useDictionary();
   const duplicate = video.duplicate ?? null;
@@ -138,7 +142,7 @@ export const VideoDetails = ({
             </Box>
           </Box>
 
-          <MetadataCard video={video} />
+          <MetadataCard video={video} location={location} onShowOnMap={onShowOnMap} />
 
           <VariantSwitcher state={variants} />
 

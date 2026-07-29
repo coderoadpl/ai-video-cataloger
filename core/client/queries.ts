@@ -100,6 +100,7 @@ export type IndexStatusOutput = z.output<typeof API_ROUTES.indexStatus.output>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
 export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
+export type CatalogLocationsOutput = z.output<typeof API_ROUTES.catalogLocations.output>;
 
 export const healthScopes = {
   all: () => ['health'] as const,
@@ -197,6 +198,10 @@ export const searchScopes = {
 
 export const tagsScopes = {
   all: () => ['tags'] as const,
+};
+
+export const catalogLocationsScopes = {
+  all: () => ['catalog', 'locations'] as const,
 };
 
 export const variantsScopes = {
@@ -494,6 +499,12 @@ export const tagsListQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: tagsScopes.all(),
     call: ({ signal }) => api.listTags(signal),
+  });
+
+export const catalogLocationsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: catalogLocationsScopes.all(),
+    call: ({ signal }) => api.catalogLocations(signal),
   });
 
 export const variantsQuery = (api: ApiClient, input: VariantsInput) => {

@@ -8,6 +8,7 @@ import {
   cancelJob,
   acquireCatalogWriteLock,
   catalogLockStatus,
+  catalogLocations,
   checkHealth,
   checkReady,
   checkNestedDatabases,
@@ -192,6 +193,9 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!input.ok) return respond(input, API_ROUTES.catalogFolder.output);
     return respond(await folderCatalogRecords(deps, input.value), API_ROUTES.catalogFolder.output);
   });
+
+  app.get(API_ROUTES.catalogLocations.path, async () =>
+    respond(await catalogLocations(deps), API_ROUTES.catalogLocations.output));
 
   app.get(API_ROUTES.catalogTreeAbsent.path, async (context) => {
     const input = parseInput(API_ROUTES.catalogTreeAbsent.input, queryInput(context));

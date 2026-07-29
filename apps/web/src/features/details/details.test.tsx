@@ -178,6 +178,32 @@ describe('details panel', () => {
     expect(onTagSearch).toHaveBeenCalledWith('pasta');
   });
 
+  it('shows the recorded coordinates and a jump-to-map action', () => {
+    const onShowOnMap = vi.fn();
+    const video = makeVideo();
+
+    renderThemed(
+      <DetailsPanel
+        video={video}
+        analyzing={false}
+        location={{ lat: 50.0614, lon: 19.9366 }}
+        onShowOnMap={onShowOnMap}
+      />,
+    );
+
+    expect(screen.getByTestId('details-coordinates').textContent).toBe('50.0614° N, 19.9366° E');
+    fireEvent.click(screen.getByTestId('details-show-on-map'));
+    expect(onShowOnMap).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders no coordinates row when the video has no location', () => {
+    const video = makeVideo();
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} location={null} />);
+
+    expect(screen.queryByTestId('details-coordinates')).toBeNull();
+  });
+
   it('renders the inline player with media source and no subtitles when segments are absent', () => {
     renderThemed(<DetailsPanel video={makeVideo({ status: 'pending' })} analyzing={false} />);
 

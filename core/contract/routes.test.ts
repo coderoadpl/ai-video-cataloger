@@ -17,6 +17,7 @@ import {
   searchOutputSchema,
   tagsSuggestAliasesOutputSchema,
   variantsListOutputSchema,
+  catalogLocationsOutputSchema,
 } from './routes.js';
 
 describe('route schemas', () => {
@@ -591,5 +592,65 @@ describe('route schemas', () => {
         proposals: [{ ...proposal, rule: 'pl-plural' }],
       }).success,
     ).toBe(true);
+  });
+
+  describe('catalog locations', () => {
+    it('exposes a catalog locations route', () => {
+      expect(API_ROUTES.catalogLocations.path).toBe('/api/catalog/locations');
+      expect(API_ROUTES.catalogLocations.method).toBe('GET');
+    });
+
+    const validLocation = {
+      fingerprint: 'fp-1',
+      fileName: 'clip.mp4',
+      finalName: 'drone-clip.mp4',
+      lat: 50.0614,
+      lon: 19.9366,
+      missing: false,
+      folder: {
+        folderId: '11111111-1111-4111-8111-111111111111',
+        currentPath: '/drive',
+        displayName: 'drive',
+        online: true,
+      },
+    };
+
+    it('round-trips a located file with an online folder', () => {
+      const parsed = catalogLocationsOutputSchema.parse({
+        totalFiles: 3752,
+        locatedFiles: 1,
+        locations: [validLocation],
+      });
+      expect(parsed.locations[0]?.missing).toBe(false);
+    });
+
+    it('rejects an out-of-range latitude or longitude', () => {
+      expect(catalogLocationsOutputSchema.safeParse({
+        totalFiles: 1,
+        locatedFiles: 1,
+        locations: [{ ...validLocation, lat: 91 }],
+      }).success).toBe(false);
+      expect(catalogLocationsOutputSchema.safeParse({
+        totalFiles: 1,
+        locatedFiles: 1,
+        locations: [{ ...validLocation, lon: -181 }],
+      }).success).toBe(false);
+    });
+
+    it('rejects an unknown key on a location row', () => {
+      expect(catalogLocationsOutputSchema.safeParse({
+        totalFiles: 1,
+        locatedFiles: 1,
+        locations: [{ ...validLocation, unexpected: true }],
+      }).success).toBe(false);
+    });
+
+    it('does not couple locatedFiles to locations.length', () => {
+      expect(catalogLocationsOutputSchema.safeParse({
+        totalFiles: 10,
+        locatedFiles: 5,
+        locations: [validLocation],
+      }).success).toBe(true);
+    });
   });
 });

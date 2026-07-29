@@ -1,6 +1,7 @@
 import {
   cancelJobMutation,
   catalogFolderQuery,
+  catalogLocationsQuery,
   catalogLockQuery,
   catalogLockRetryMutation,
   catalogTreeAbsentQuery,
@@ -148,6 +149,7 @@ export const actions = {
   catalogTree: (input: CatalogTreeInput) => catalogTreeQuery(apiClient, input),
   catalogTreeFolder: (input: CatalogTreeFolderInput) => catalogTreeFolderQuery(apiClient, input),
   catalogFolder: (input: CatalogFolderInput) => catalogFolderQuery(apiClient, input),
+  catalogLocations: catalogLocationsQuery(apiClient),
   catalogTreeAbsent: (input: CatalogTreeAbsentInput) => catalogTreeAbsentQuery(apiClient, input),
   search: (input: SearchInput) => searchQuery(apiClient, input),
   variants: (input: VariantsInput) => variantsQuery(apiClient, input),

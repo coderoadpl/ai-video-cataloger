@@ -33,6 +33,8 @@ import type {
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
+  CatalogLocationRow,
+  CatalogLocationsSnapshot,
   CatalogSearchInput,
   CatalogSearchRow,
   CatalogTagAlias,
@@ -593,6 +595,28 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .filter((row): row is CatalogSearchRow => row !== null)
       .slice(input.offset, input.offset + input.limit);
     return Promise.resolve(ok(rows));
+  }
+
+  listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>> {
+    const rows = [...this.files.values()]
+      .map((file) => {
+        if (file.gpsLat === null || file.gpsLon === null) return null;
+        const folder = this.folders.get(file.folderId);
+        if (folder === undefined) return null;
+        const analysis = this.analyses.get(file.fingerprint) ?? null;
+        return {
+          fingerprint: file.fingerprint,
+          fileName: file.fileName,
+          finalName: analysis?.finalName ?? null,
+          lat: file.gpsLat,
+          lon: file.gpsLon,
+          missing: file.missingAt !== null,
+          folder,
+        };
+      })
+      .filter((row): row is CatalogLocationRow => row !== null)
+      .sort((left, right) => left.fileName.localeCompare(right.fileName));
+    return Promise.resolve(ok({ totalFiles: this.files.size, rows }));
   }
 
   reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>> {
