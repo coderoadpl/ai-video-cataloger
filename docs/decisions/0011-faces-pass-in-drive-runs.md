@@ -74,3 +74,16 @@ block naming the reason — the run's analysis result still stands.
   per-folder override cannot poison it.
 - `doctor` needs no change: its faces dependency row and its
   "Run: ai-video-cataloger models faces install" warning stay true under this decision.
+
+## Amendment 2026-07-29 — single-file tolerance
+
+A file the pass cannot index no longer ends the pass. `runFacesIndexPass` records
+the file (`faces_file_failed` event, `filesFailed` + `failures` in its output) and
+continues, exactly as `process_drive` and `materialize` treat a failing file; it
+gives up only after five consecutive failures carrying the same `ErrorCode`, and
+that abort reuses `drive_run_aborted` (exit 40) rather than widening the closed
+union — the same reuse `materialize` already makes. Partial success stays exit 0.
+The `faces` block in `run-summary` gains `filesFailed`, `failureCodes` and
+`aborted`; a tolerated pass reports `ran: true`, so `faces_pass_skipped` keeps its
+narrower meaning. Failed files are not marked complete, so the next run retries
+them — no failure state is persisted.

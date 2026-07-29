@@ -118,6 +118,9 @@ export interface DriveRunFacesSummary {
   filesIndexed: number;
   observationsAdded: number;
   peopleCreated: number;
+  filesFailed: number;
+  failureCodes: { code: AppError['code']; count: number }[];
+  aborted: boolean;
   error: { code: AppError['code']; message: string } | null;
 }
 
@@ -933,9 +936,20 @@ const runDriveFacesPass = async (
     filesIndexed: pass.value.filesIndexed,
     observationsAdded: pass.value.observationsAdded,
     peopleCreated: pass.value.peopleCreated,
+    filesFailed: pass.value.filesFailed,
+    failureCodes: aggregateFailureCodes(pass.value.failures),
+    aborted: pass.value.aborted,
     error: null,
   };
   return ok(undefined);
+};
+
+const aggregateFailureCodes = (failures: readonly { code: AppError['code'] }[]): { code: AppError['code']; count: number }[] => {
+  const counts = new Map<AppError['code'], number>();
+  for (const failure of failures) counts.set(failure.code, (counts.get(failure.code) ?? 0) + 1);
+  return [...counts.entries()]
+    .map(([code, count]) => ({ code, count }))
+    .sort((left, right) => right.count - left.count || left.code.localeCompare(right.code));
 };
 
 const skipFacesPass = async (
@@ -951,6 +965,9 @@ const skipFacesPass = async (
     filesIndexed: 0,
     observationsAdded: 0,
     peopleCreated: 0,
+    filesFailed: 0,
+    failureCodes: [],
+    aborted: false,
     error: error === null ? null : { code: error.code, message: error.message },
   };
   return report(progress, 'faces_pass_skipped', {

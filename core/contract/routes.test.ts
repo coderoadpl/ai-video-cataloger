@@ -5,11 +5,15 @@ import { buildConfigDescriptor, configId } from '@core/domain/index.js';
 import {
   API_ROUTES,
   doctorOutputSchema,
+  driveRunFacesSchema,
+  facesIndexOutputSchema,
   healthLiveOutputSchema,
   healthReadyOutputSchema,
   jobKindSchema,
   jobOutputSchema,
   jobProgressSchema,
+  jobProgressStepSchema,
+  jobResultSchema,
   materializeSummarySchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
@@ -652,5 +656,56 @@ describe('route schemas', () => {
         locations: [validLocation],
       }).success).toBe(true);
     });
+  });
+
+  it('accepts faces_file_failed as a job progress step', () => {
+    expect(jobProgressStepSchema.safeParse('faces_file_failed').success).toBe(true);
+  });
+
+  it('defaults the driveRunFacesSchema tolerance fields when a run predates them', () => {
+    const parsed = driveRunFacesSchema.parse({
+      ran: true,
+      skippedReason: null,
+      filesIndexed: 3,
+      observationsAdded: 12,
+      peopleCreated: 2,
+      error: null,
+    });
+
+    expect(parsed).toMatchObject({ filesFailed: 0, failureCodes: [], aborted: false });
+  });
+
+  it('round-trips filesFailed, failureCodes and aborted on driveRunFacesSchema', () => {
+    const parsed = driveRunFacesSchema.parse({
+      ran: true,
+      skippedReason: null,
+      filesIndexed: 3,
+      observationsAdded: 12,
+      peopleCreated: 2,
+      filesFailed: 1,
+      failureCodes: [{ code: 'processing_error', count: 1 }],
+      aborted: false,
+      error: null,
+    });
+
+    expect(parsed.filesFailed).toBe(1);
+    expect(parsed.failureCodes).toEqual([{ code: 'processing_error', count: 1 }]);
+  });
+
+  it('keeps filesFailed, failures and aborted on facesIndexOutputSchema through jobResultSchema', () => {
+    const output = {
+      root: '/videos',
+      filesScanned: 3,
+      filesIndexed: 2,
+      observationsAdded: 4,
+      peopleCreated: 1,
+      filesFailed: 1,
+      failures: [{ path: '/videos/bad.mp4', fingerprint: 'fp-bad', code: 'processing_error', message: 'boom' }],
+      aborted: false,
+    };
+
+    expect(facesIndexOutputSchema.parse(output)).toMatchObject(output);
+    const viaUnion = jobResultSchema.parse(output);
+    expect(viaUnion).toMatchObject({ filesFailed: 1, failures: output.failures, aborted: false });
   });
 });

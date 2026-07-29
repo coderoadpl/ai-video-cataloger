@@ -301,6 +301,9 @@ export const driveRunFacesSchema = z.object({
   filesIndexed: z.number().int().nonnegative(),
   observationsAdded: z.number().int().nonnegative(),
   peopleCreated: z.number().int().nonnegative(),
+  filesFailed: z.number().int().nonnegative().default(0),
+  failureCodes: z.array(z.object({ code: z.enum(ERROR_CODES), count: z.number().int().positive() })).default([]),
+  aborted: z.boolean().default(false),
   error: z.object({ code: z.enum(ERROR_CODES), message: z.string() }).nullable(),
 });
 
@@ -845,6 +848,7 @@ export const jobProgressStepSchema = z.enum([
   'faces_scanning',
   'faces_extracting_frames',
   'faces_detecting',
+  'faces_file_failed',
   'faces_clustering',
   'faces_done',
   'faces_pass_skipped',
@@ -879,6 +883,24 @@ export const sequencedJobProgressSchema = z.object({
   progress: jobProgressSchema,
 });
 
+export const facesIndexFailureSchema = z.object({
+  path: z.string().min(1),
+  fingerprint: z.string().min(1),
+  code: z.enum(ERROR_CODES),
+  message: z.string(),
+});
+
+export const facesIndexOutputSchema = z.object({
+  root: z.string().min(1),
+  filesScanned: z.number().int().nonnegative(),
+  filesIndexed: z.number().int().nonnegative(),
+  observationsAdded: z.number().int().nonnegative(),
+  peopleCreated: z.number().int().nonnegative(),
+  filesFailed: z.number().int().nonnegative().default(0),
+  failures: z.array(facesIndexFailureSchema).default([]),
+  aborted: z.boolean().default(false),
+});
+
 export const jobResultSchema = z.union([
   processCompletedOutputSchema,
   driveRunSummarySchema,
@@ -886,13 +908,7 @@ export const jobResultSchema = z.union([
   whisperRuntimeInstallOutputSchema,
   localAiPullOutputSchema,
   faceArtifactsStatusOutputSchema,
-  z.object({
-    root: z.string().min(1),
-    filesScanned: z.number().int().nonnegative(),
-    filesIndexed: z.number().int().nonnegative(),
-    observationsAdded: z.number().int().nonnegative(),
-    peopleCreated: z.number().int().nonnegative(),
-  }),
+  facesIndexOutputSchema,
   materializeSummarySchema,
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,

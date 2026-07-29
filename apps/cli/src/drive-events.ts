@@ -11,6 +11,7 @@ export const DRIVE_EVENT_STEPS = [
   'batch_model_changed',
   'budget_cap_reached',
   'faces_scanning',
+  'faces_file_failed',
   'faces_done',
   'faces_pass_skipped',
 ] as const;

@@ -1,7 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg';
 import { execFile } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { existsSync, mkdirSync, statSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -119,7 +119,7 @@ export interface RgbFrame {
 export type DecodeFrameRgbInput =
   | { kind: 'image-path'; imagePath: string }
   | { kind: 'jpeg-buffer'; jpegBuffer: Uint8Array }
-  | { kind: 'video-timestamp'; videoPath: string; timestampS: number };
+  | { kind: 'video-timestamp'; videoPath: string; timestampS: number; fallbackImagePath?: string | undefined };
 
 export class FfmpegMediaAdapter implements MediaPort {
   private readonly runtime: FfmpegRuntime;
@@ -162,6 +162,7 @@ export class FfmpegMediaAdapter implements MediaPort {
     try {
       mkdirSync(input.outputDirectory, { recursive: true });
       const framePaths: string[] = [];
+      let firstCommandError: AppError | null = null;
       for (let index = 1; index <= input.frameCount; index += 1) {
         const timestamp = duration.value * (index / (input.frameCount + 1));
         const framePath = frameOutputPath(input.outputDirectory, index);
@@ -173,8 +174,17 @@ export class FfmpegMediaAdapter implements MediaPort {
             .output(framePath),
           input.signal,
         );
-        if (!extracted.ok) return extracted;
-        framePaths.push(framePath);
+        if (!extracted.ok) {
+          firstCommandError ??= extracted.error;
+          continue;
+        }
+        if (frameMaterialized(framePath)) framePaths.push(framePath);
+      }
+      if (framePaths.length === 0) {
+        return {
+          ok: false,
+          error: firstCommandError ?? appError('processing_error', `No frames could be extracted from ${input.videoPath}`),
+        };
       }
       return ok({ framePaths });
     } catch (cause) {
@@ -312,15 +322,12 @@ export class FfmpegMediaAdapter implements MediaPort {
     if (!binaries.ffmpeg.available || !binaries.ffprobe.available) {
       return { ok: false, error: appError('prerequisites_failed', 'FFmpeg and ffprobe are required to decode RGB frames') };
     }
-    const dimensions = await frameDimensions(input, this.runtime, binaries.ffprobe.path);
-    if (!dimensions.ok) return dimensions;
-    const decoded = await decodeRawRgb(input, binaries.ffmpeg.path);
-    if (!decoded.ok) return decoded;
-    const expected = dimensions.value.width * dimensions.value.height * 3;
-    if (decoded.value.length !== expected) {
-      return { ok: false, error: appError('processing_error', `Decoded RGB frame size mismatch: expected ${expected}, got ${decoded.value.length}`) };
+    const primary = await decodeSource(input, this.runtime, binaries);
+    if (primary.ok) return primary;
+    if (input.kind === 'video-timestamp' && input.fallbackImagePath !== undefined && existsSync(input.fallbackImagePath)) {
+      return decodeSource({ kind: 'image-path', imagePath: input.fallbackImagePath }, this.runtime, binaries);
     }
-    return ok({ ...dimensions.value, data: decoded.value });
+    return primary;
   }
 
   async encodeRgbJpeg(frame: RgbFrame, outputPath: string): Promise<Result<void, AppError>> {
@@ -370,6 +377,11 @@ export const framesDirectoryForVideo = (videoPath: string): string =>
 
 export const frameOutputPath = (outputDirectory: string, frameNumber: number): string =>
   path.join(outputDirectory, `frame-${frameNumber.toString().padStart(3, '0')}.jpg`);
+
+const frameMaterialized = (framePath: string): boolean => {
+  if (!existsSync(framePath)) return false;
+  return statSync(framePath).size > 0;
+};
 
 export const tempAudioPathForVideo = (videoPath: string, tempRoot = tmpdir()): string =>
   path.join(
@@ -477,6 +489,22 @@ const numericMetadataValue = (value: string | number | null | undefined): number
 const normalizeRotation = (value: number): number => {
   const normalized = value % 360;
   return normalized < 0 ? normalized + 360 : normalized;
+};
+
+const decodeSource = async (
+  source: DecodeFrameRgbInput,
+  runtime: FfmpegRuntime,
+  binaries: ResolvedFfmpegBinaries,
+): Promise<Result<RgbFrame, AppError>> => {
+  const dimensions = await frameDimensions(source, runtime, binaries.ffprobe.path);
+  if (!dimensions.ok) return dimensions;
+  const decoded = await decodeRawRgb(source, binaries.ffmpeg.path);
+  if (!decoded.ok) return decoded;
+  const expected = dimensions.value.width * dimensions.value.height * 3;
+  if (decoded.value.length !== expected) {
+    return { ok: false, error: appError('processing_error', `Decoded RGB frame size mismatch: expected ${expected}, got ${decoded.value.length}`) };
+  }
+  return ok({ ...dimensions.value, data: decoded.value });
 };
 
 const frameDimensions = async (

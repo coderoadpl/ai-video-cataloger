@@ -1340,7 +1340,9 @@ const facesIndexHuman = (data: unknown): string => {
   const indexed = typeof data.filesIndexed === 'number' ? data.filesIndexed : 0;
   const observations = typeof data.observationsAdded === 'number' ? data.observationsAdded : 0;
   const people = typeof data.peopleCreated === 'number' ? data.peopleCreated : 0;
-  return `Indexed ${indexed} files, added ${observations} observations, created ${people} people`;
+  const failed = typeof data.filesFailed === 'number' ? data.filesFailed : 0;
+  return `Indexed ${indexed} files, added ${observations} observations, created ${people} people`
+    + (failed > 0 ? `, ${failed} file(s) failed` : '');
 };
 
 const facesReclusterHuman = (data: unknown): string => {

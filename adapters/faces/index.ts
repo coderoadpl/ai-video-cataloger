@@ -87,7 +87,12 @@ const ffmpegImageIO = (): FaceImageIO => {
   return {
     decodeFrameRgb: (input) => input.kind === 'image-path'
       ? media.decodeFrameRgb({ kind: 'image-path', imagePath: input.frameJpegPath })
-      : media.decodeFrameRgb({ kind: 'video-timestamp', videoPath: input.videoPath, timestampS: input.timestampS }),
+      : media.decodeFrameRgb({
+          kind: 'video-timestamp',
+          videoPath: input.videoPath,
+          timestampS: input.timestampS,
+          ...(input.fallbackFrameJpegPath === undefined ? {} : { fallbackImagePath: input.fallbackFrameJpegPath }),
+        }),
     encodeJpeg: (frame, outputPath) => media.encodeRgbJpeg(frame, outputPath),
   };
 };

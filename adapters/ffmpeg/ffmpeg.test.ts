@@ -1,6 +1,6 @@
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdirSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -146,6 +146,7 @@ describe('FfmpegMediaAdapter', () => {
   it('extracts frames at even offsets to frame-NNN jpg paths', async () => {
     const root = await tempRoot();
     const runtime = new FakeFfmpegRuntime();
+    runtime.writesOutputs = true;
     const adapter = adapterWithFakeRuntime(runtime);
     const outputDirectory = path.join(root, 'frames', 'clip');
 
@@ -182,6 +183,50 @@ describe('FfmpegMediaAdapter', () => {
         { name: 'run' },
       ],
     ]);
+  });
+
+  it('returns only the frames ffmpeg actually wrote', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    runtime.writesOutputs = true;
+    const outputDirectory = path.join(root, 'frames', 'clip');
+    runtime.suppressedOutputs.add(path.join(outputDirectory, 'frame-005.jpg'));
+    runtime.suppressedOutputs.add(path.join(outputDirectory, 'frame-006.jpg'));
+    const adapter = adapterWithFakeRuntime(runtime);
+
+    const extracted = await adapter.extractFrames({
+      videoPath: path.join(root, 'clip.mp4'),
+      outputDirectory,
+      frameCount: 6,
+    });
+
+    expect(extracted).toEqual(ok({
+      framePaths: [
+        path.join(outputDirectory, 'frame-001.jpg'),
+        path.join(outputDirectory, 'frame-002.jpg'),
+        path.join(outputDirectory, 'frame-003.jpg'),
+        path.join(outputDirectory, 'frame-004.jpg'),
+      ],
+    }));
+  });
+
+  it('fails typed when no frame materializes', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    runtime.writesOutputs = false;
+    const adapter = adapterWithFakeRuntime(runtime);
+    const videoPath = path.join(root, 'clip.mp4');
+
+    const extracted = await adapter.extractFrames({
+      videoPath,
+      outputDirectory: path.join(root, 'frames', 'clip'),
+      frameCount: 3,
+    });
+
+    expect(extracted).toMatchObject({
+      ok: false,
+      error: { code: 'processing_error', message: expect.stringContaining(videoPath) },
+    });
   });
 
   it('extracts mono 16k WAV audio to the requested temp path', async () => {
@@ -486,11 +531,13 @@ const probeDimensions = (videoPath: string): { width: number; height: number } =
   return { width: width ?? 0, height: height ?? 0 };
 };
 
-const synthesizeVideo = (outputPath: string, size: string): void => {
+const synthesizeVideo = (outputPath: string, size: string, options: { rate?: number; duration?: number } = {}): void => {
+  const rate = options.rate ?? 30;
+  const duration = options.duration ?? 2;
   execFileSync(realBinaries.ffmpeg.path, [
     '-y', '-v', 'error',
     '-f', 'lavfi',
-    '-i', `testsrc=size=${size}:rate=30:duration=2`,
+    '-i', `testsrc=size=${size}:rate=${String(rate)}:duration=${String(duration)}`,
     '-pix_fmt', 'yuv420p',
     outputPath,
   ]);
@@ -614,6 +661,49 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     expect(dims.width % 2).toBe(0);
     expect(dims.height % 2).toBe(0);
   }, scaledTimeout(30_000));
+
+  it.skipIf(!canRunRealBinaries)('extracts only the frames a short real clip actually contains', async () => {
+    const root = await tempRoot();
+    const clip = path.join(root, 'short.mp4');
+    synthesizeVideo(clip, '64x36', { rate: 30, duration: 0.1 });
+    const adapter = new FfmpegMediaAdapter();
+
+    const extracted = await adapter.extractFrames({
+      videoPath: clip,
+      outputDirectory: path.join(root, 'frames', 'short'),
+      frameCount: 6,
+    });
+
+    if (!extracted.ok) throw new Error(extracted.error.message);
+    expect(extracted.value.framePaths.length).toBeLessThan(6);
+    expect(extracted.value.framePaths.length).toBeGreaterThan(0);
+    for (const framePath of extracted.value.framePaths) expect(existsSync(framePath)).toBe(true);
+  }, scaledTimeout(30_000));
+
+  it.skipIf(!canRunRealBinaries)('falls back to the extracted frame image when a timestamp seeks past the last frame', async () => {
+    const root = await tempRoot();
+    const clip = path.join(root, 'short.mp4');
+    synthesizeVideo(clip, '64x36', { rate: 30, duration: 0.1 });
+    const adapter = new FfmpegMediaAdapter();
+    const outputDirectory = path.join(root, 'frames', 'short');
+
+    const extracted = await adapter.extractFrames({ videoPath: clip, outputDirectory, frameCount: 6 });
+    if (!extracted.ok) throw new Error(extracted.error.message);
+    const fallbackImagePath = extracted.value.framePaths[0];
+    if (fallbackImagePath === undefined) throw new Error('expected at least one extracted frame');
+
+    const withoutFallback = await adapter.decodeFrameRgb({ kind: 'video-timestamp', videoPath: clip, timestampS: 0.0715 });
+    expect(withoutFallback).toMatchObject({ ok: false, error: { code: 'processing_error' } });
+
+    const withFallback = await adapter.decodeFrameRgb({
+      kind: 'video-timestamp',
+      videoPath: clip,
+      timestampS: 0.0715,
+      fallbackImagePath,
+    });
+    if (!withFallback.ok) throw new Error(withFallback.error.message);
+    expect(withFallback.value.data).toHaveLength(withFallback.value.width * withFallback.value.height * 3);
+  }, scaledTimeout(30_000));
 });
 
 const emptyResolver: BinaryResolver = {
@@ -671,6 +761,8 @@ class FakeFfmpegRuntime implements FfmpegRuntime {
   autoComplete = true;
   activeCommands = 0;
   maxActiveCommands = 0;
+  writesOutputs = false;
+  readonly suppressedOutputs = new Set<string>();
 
   setFfmpegPath(ffmpegPath: string): void {
     const last = this.configurations[this.configurations.length - 1];
@@ -705,6 +797,11 @@ class FakeFfmpegRuntime implements FfmpegRuntime {
       () => {
         this.activeCommands -= 1;
       },
+      (outputPath) => {
+        if (!this.writesOutputs || this.suppressedOutputs.has(outputPath)) return;
+        mkdirSync(path.dirname(outputPath), { recursive: true });
+        writeFileSync(outputPath, 'f');
+      },
     );
     this.commands.push(command);
     return command;
@@ -735,6 +832,7 @@ class FakeFfmpegCommand implements FfmpegCommand {
     private readonly autoComplete: boolean,
     private readonly onStart: () => void,
     private readonly onFinish: () => void,
+    private readonly onWriteOutput: (outputPath: string) => void,
   ) {}
 
   seekInput(seconds: number): FfmpegCommand {
@@ -802,6 +900,8 @@ class FakeFfmpegCommand implements FfmpegCommand {
   run(): void {
     this.operations.push({ name: 'run' });
     this.onStart();
+    const output = this.operations.find((operation) => operation.name === 'output');
+    if (output !== undefined) this.onWriteOutput(output.value);
     if (this.autoComplete && this.endListener !== null) {
       this.finish();
       this.endListener();

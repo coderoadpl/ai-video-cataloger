@@ -23,6 +23,7 @@ import {
   type AlignedFaceCrop,
   type FaceDetection,
   type FaceEnginePort,
+  type FaceIndexCandidate,
   type FileSystemPort,
   type GlobalCatalogStore,
   type JobExecutionContext,
@@ -62,12 +63,24 @@ export interface FacesReclusterOutput {
   elapsedMs: number;
 }
 
+const maxConsecutiveFailures = 5;
+
+export interface FacesIndexFailure {
+  path: string;
+  fingerprint: string;
+  code: AppError['code'];
+  message: string;
+}
+
 export interface FacesIndexOutput {
   root: string;
   filesScanned: number;
   filesIndexed: number;
   observationsAdded: number;
   peopleCreated: number;
+  filesFailed: number;
+  failures: FacesIndexFailure[];
+  aborted: boolean;
 }
 
 export interface FacesStatusOutput {
@@ -102,8 +115,26 @@ export const facesIndex = async (
     kind: 'faces_index',
     payload: input,
     resourceKey: `faces-index:${deps.fs.resolve(input.root)}`,
-    run: (context) => runFacesIndexPass(deps, { root: deps.fs.resolve(input.root) }, context),
+    run: (context) => runFacesIndexJob(deps, { root: deps.fs.resolve(input.root) }, context),
   });
+};
+
+export const runFacesIndexJob = async (
+  deps: FacesIndexDeps,
+  input: { root: string },
+  progress?: JobExecutionContext,
+): Promise<Result<FacesIndexOutput, AppError>> => {
+  const pass = await runFacesIndexPass(deps, input, progress);
+  if (!pass.ok || !pass.value.aborted) return pass;
+  const lastCode = pass.value.failures[pass.value.failures.length - 1]?.code ?? 'processing_error';
+  return {
+    ok: false,
+    error: appError(
+      'drive_run_aborted',
+      `Aborted faces index after ${maxConsecutiveFailures} consecutive ${lastCode} failures. Re-run the same root to resume.`,
+      { root: input.root, filesIndexed: pass.value.filesIndexed, failures: pass.value.failures },
+    ),
+  };
 };
 
 export const facesRecluster = async (
@@ -401,6 +432,11 @@ export const runFacesIndexPass = async (
   let filesIndexed = 0;
   let observationsAdded = 0;
   let peopleCreated = 0;
+  let filesFailed = 0;
+  let aborted = false;
+  const failures: FacesIndexFailure[] = [];
+  let streak = 0;
+  let streakCode: AppError['code'] | null = null;
   const seeded = await deps.globalCatalog.listUnassignedFaceObservations();
   if (!seeded.ok) return seeded;
   let contexts: ObservationContext[] = seeded.value.map(persistedContext);
@@ -409,51 +445,37 @@ export const runFacesIndexPass = async (
     for (let candidateIndex = 0; candidateIndex < candidates.value.length; candidateIndex += 1) {
       const candidate = candidates.value[candidateIndex];
       if (candidate === undefined) continue;
-      const fingerprint = candidate.file.fingerprint;
-      const stale = candidate.previousEngineVersion !== null && candidate.previousEngineVersion < FACE_ENGINE_VERSION;
-      if (stale) {
-        const purged = await deps.globalCatalog.deleteFaceObservationsForFile(fingerprint);
-        if (!purged.ok) return purged;
-        const removedCrops = await deleteCropPaths(deps.fs, purged.value.cropPaths);
-        if (!removedCrops.ok) return removedCrops;
-        contexts = contexts.filter((context) => context.observation.fingerprint !== fingerprint);
+      const cancellation = cancelled(progress);
+      if (!cancellation.ok) return cancellation;
+      const outcome = await indexCandidate(deps, candidate, contexts, progress, candidateIndex, candidates.value.length);
+      contexts = outcome.contexts;
+      if (!outcome.result.ok) {
+        if (isCancellation(progress, outcome.result.error)) return outcome.result;
+        const fingerprint = candidate.file.fingerprint;
+        const videoPath = deps.fs.join(candidate.folder.currentPath, candidate.file.fileName);
+        const failureCode = outcome.result.error.code;
+        failures.push({ path: videoPath, fingerprint, code: failureCode, message: outcome.result.error.message });
+        filesFailed += 1;
+        const failed = await report(progress, {
+          step: 'faces_file_failed',
+          current: candidateIndex + 1,
+          total: candidates.value.length,
+          data: { fingerprint, videoPath, code: failureCode, message: outcome.result.error.message },
+        });
+        if (!failed.ok) return failed;
+        streak = failureCode === streakCode ? streak + 1 : 1;
+        streakCode = failureCode;
+        if (streak >= maxConsecutiveFailures) {
+          aborted = true;
+          break;
+        }
+        continue;
       }
-      const existing = await deps.globalCatalog.listFaceObservations({ fingerprint });
-      if (!existing.ok) return existing;
-      const existingObsIds = new Set(existing.value.map((observation) => observation.obsId));
-      const videoPath = deps.fs.join(candidate.folder.currentPath, candidate.file.fileName);
-      const frameDirectory = deps.fs.join(deps.fs.tempDirectory(), 'ai-video-cataloger', 'faces', fingerprint);
-      const extracting = await report(progress, {
-        step: 'faces_extracting_frames',
-        current: candidateIndex + 1,
-        total: candidates.value.length,
-        data: { fingerprint, videoPath },
-      });
-      if (!extracting.ok) return extracting;
-      const frames = await deps.media.extractFrames({
-        videoPath,
-        outputDirectory: frameDirectory,
-        frameCount: FACE_LIMITS.maxFramesPerVideo,
-        signal: progress?.signal,
-      });
-      if (!frames.ok) return frames;
-      const probe = await deps.media.probe({ videoPath });
-      if (!probe.ok) return probe;
-      const added = await indexFramesForFile(deps, {
-        fingerprint,
-        videoPath,
-        durationS: probe.value.duration,
-        framePaths: frames.value.framePaths,
-      }, contexts, existingObsIds, progress);
-      if (!added.ok) return added;
-      const completed = await deps.globalCatalog.completeFaceIndex(fingerprint, FACE_ENGINE_VERSION);
-      if (!completed.ok) return completed;
-      // best effort: a leftover temp frame directory is a disk-space leak, not a reason to
-      // fail an index that is already stored
-      await deps.fs.deletePath(frameDirectory);
-      observationsAdded += added.value.observationsAdded;
-      peopleCreated += added.value.peopleCreated;
+      observationsAdded += outcome.result.value.observationsAdded;
+      peopleCreated += outcome.result.value.peopleCreated;
       filesIndexed += 1;
+      streak = 0;
+      streakCode = null;
       for (const context of contexts) releaseCropPixels(context.alignedCrop);
     }
   } finally {
@@ -466,7 +488,7 @@ export const runFacesIndexPass = async (
   const done = await report(progress, {
     step: 'faces_done',
     percentage: 100,
-    data: { filesIndexed, observationsAdded, peopleCreated },
+    data: { filesIndexed, observationsAdded, peopleCreated, filesFailed, aborted },
   });
   if (!done.ok) return done;
   return ok({
@@ -475,7 +497,84 @@ export const runFacesIndexPass = async (
     filesIndexed,
     observationsAdded,
     peopleCreated,
+    filesFailed,
+    failures,
+    aborted,
   });
+};
+
+const isCancellation = (progress: JobExecutionContext | undefined, error: AppError): boolean =>
+  progress?.signal.aborted === true || error.message === JOB_CANCELLED_ERROR_MESSAGE;
+
+interface IndexCandidateOutcome {
+  result: Result<{ observationsAdded: number; peopleCreated: number }, AppError>;
+  contexts: ObservationContext[];
+}
+
+const indexCandidate = async (
+  deps: FacesIndexDeps,
+  candidate: FaceIndexCandidate,
+  contextsIn: ObservationContext[],
+  progress: JobExecutionContext | undefined,
+  candidateIndex: number,
+  candidatesTotal: number,
+): Promise<IndexCandidateOutcome> => {
+  let contexts = contextsIn;
+  const fingerprint = candidate.file.fingerprint;
+  const stale = candidate.previousEngineVersion !== null && candidate.previousEngineVersion < FACE_ENGINE_VERSION;
+  if (stale) {
+    const purged = await deps.globalCatalog.deleteFaceObservationsForFile(fingerprint);
+    if (!purged.ok) return { result: purged, contexts };
+    const removedCrops = await deleteCropPaths(deps.fs, purged.value.cropPaths);
+    if (!removedCrops.ok) return { result: removedCrops, contexts };
+    contexts = contexts.filter((context) => context.observation.fingerprint !== fingerprint);
+  }
+  const existing = await deps.globalCatalog.listFaceObservations({ fingerprint });
+  if (!existing.ok) return { result: existing, contexts };
+  const existingObsIds = new Set(existing.value.map((observation) => observation.obsId));
+  const videoPath = deps.fs.join(candidate.folder.currentPath, candidate.file.fileName);
+  const frameDirectory = deps.fs.join(deps.fs.tempDirectory(), 'ai-video-cataloger', 'faces', fingerprint);
+  const extracting = await report(progress, {
+    step: 'faces_extracting_frames',
+    current: candidateIndex + 1,
+    total: candidatesTotal,
+    data: { fingerprint, videoPath },
+  });
+  if (!extracting.ok) return { result: extracting, contexts };
+  const frames = await deps.media.extractFrames({
+    videoPath,
+    outputDirectory: frameDirectory,
+    frameCount: FACE_LIMITS.maxFramesPerVideo,
+    signal: progress?.signal,
+  });
+  if (!frames.ok) {
+    await deps.fs.deletePath(frameDirectory);
+    return { result: frames, contexts };
+  }
+  const probe = await deps.media.probe({ videoPath });
+  if (!probe.ok) {
+    await deps.fs.deletePath(frameDirectory);
+    return { result: probe, contexts };
+  }
+  const added = await indexFramesForFile(deps, {
+    fingerprint,
+    videoPath,
+    durationS: probe.value.duration,
+    framePaths: frames.value.framePaths,
+  }, contexts, existingObsIds, progress);
+  if (!added.ok) {
+    await deps.fs.deletePath(frameDirectory);
+    return { result: added, contexts };
+  }
+  const completed = await deps.globalCatalog.completeFaceIndex(fingerprint, FACE_ENGINE_VERSION);
+  if (!completed.ok) {
+    await deps.fs.deletePath(frameDirectory);
+    return { result: completed, contexts };
+  }
+  // best effort: a leftover temp frame directory is a disk-space leak, not a reason to
+  // fail an index that is already stored
+  await deps.fs.deletePath(frameDirectory);
+  return { result: added, contexts };
 };
 
 const indexFramesForFile = async (

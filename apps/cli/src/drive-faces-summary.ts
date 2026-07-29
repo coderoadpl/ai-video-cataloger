@@ -5,8 +5,14 @@ export const driveFacesSummaryLine = (value: unknown): string | null => {
   if (!parsed.success) return null;
   const faces = parsed.data;
   if (faces.ran) {
+    const failedSuffix = faces.filesFailed > 0
+      ? `, ${String(faces.filesFailed)} file(s) failed (${faces.failureCodes.map((entry) => `${entry.code}×${String(entry.count)}`).join(', ')})`
+      : '';
+    const abortedSuffix = faces.aborted
+      ? ' — faces pass aborted after 5 consecutive failures; re-run "ai-video-cataloger faces index <root>"'
+      : '';
     return `faces: indexed ${String(faces.filesIndexed)} file(s), ${String(faces.observationsAdded)} observation(s), `
-      + `${String(faces.peopleCreated)} new person(s)`;
+      + `${String(faces.peopleCreated)} new person(s)${failedSuffix}${abortedSuffix}`;
   }
   switch (faces.skippedReason) {
     case 'flag':

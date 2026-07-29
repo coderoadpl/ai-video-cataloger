@@ -158,7 +158,10 @@ root, emitting `faces_scanning` and `faces_done` NDJSON events and a `faces` blo
 run — models not installed, engine unavailable, run cancelled, pass failed — the run
 still succeeds and says so through a `faces_pass_skipped` event and the same summary
 block; `ai-video-cataloger faces index <root>` builds the index afterwards
-([ADR-0011](docs/decisions/0011-faces-pass-in-drive-runs.md)).
+([ADR-0011](docs/decisions/0011-faces-pass-in-drive-runs.md)). A file that cannot be
+decoded is reported and skipped rather than stopping the pass; it stops only after five
+consecutive failures of the same kind (`DRIVE_RUN_ABORTED`, exit 40), and a run with
+skipped files still exits 0.
 
 `ai-video-cataloger faces recluster [--dry-run]` rebuilds every person and every
 assignment from the embeddings already stored in the catalog — no video is opened and no

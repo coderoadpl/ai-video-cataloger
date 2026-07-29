@@ -544,6 +544,9 @@ export class InMemoryMedia implements MediaPort {
   readonly audioInputs: Array<{ videoPath: string; outputPath: string }> = [];
   readonly durations = new Map<string, number | null>();
   readonly locations = new Map<string, { gpsLat: number; gpsLon: number }>();
+  readonly frameFailures = new Map<string, AppError>();
+  readonly frameFailureMinFrameCount = new Map<string, number>();
+  readonly frameLimits = new Map<string, number>();
   dependenciesValue: DependencyStatus[] = [dependency('ffmpeg', true), dependency('ffprobe', true)];
   hasAudio = true;
   failFromFrame = false;
@@ -562,7 +565,12 @@ export class InMemoryMedia implements MediaPort {
 
   async extractFrames(input: { videoPath: string; outputDirectory: string; frameCount: number }): Promise<Result<{ framePaths: string[] }, AppError>> {
     this.frameInputs.push(input);
-    const paths = Array.from({ length: input.frameCount }, (_value, index) =>
+    const failure = this.frameFailures.get(input.videoPath);
+    if (failure !== undefined && input.frameCount >= (this.frameFailureMinFrameCount.get(input.videoPath) ?? 0)) {
+      return { ok: false, error: failure };
+    }
+    const framesAvailable = Math.min(input.frameCount, this.frameLimits.get(input.videoPath) ?? input.frameCount);
+    const paths = Array.from({ length: framesAvailable }, (_value, index) =>
       path.join(input.outputDirectory, `frame-${String(index + 1).padStart(3, '0')}.jpg`),
     );
     if (this.fs === undefined) return ok({ framePaths: paths });

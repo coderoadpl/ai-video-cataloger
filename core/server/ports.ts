@@ -770,6 +770,7 @@ export type ProcessJobStep =
   | 'faces_scanning'
   | 'faces_extracting_frames'
   | 'faces_detecting'
+  | 'faces_file_failed'
   | 'faces_clustering'
   | 'faces_done'
   | 'faces_pass_skipped'

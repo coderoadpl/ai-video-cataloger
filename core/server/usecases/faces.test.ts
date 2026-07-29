@@ -9,6 +9,7 @@ import {
   facesPurge,
   facesRecluster,
   facesStatus,
+  runFacesIndexJob,
   runFacesIndexPass,
   runFacesReclusterPass,
 } from './faces.js';
@@ -23,7 +24,7 @@ import {
   InMemoryMedia,
 } from '../../../test/server/usecases/test-fakes.js';
 import { FACE_ENGINE_VERSION, appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
-import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput } from '../ports.js';
+import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput, JobExecutionContext, JobProgress } from '../ports.js';
 
 const unit128 = (offset = 0): number[] =>
   normalizeEmbedding(Array.from({ length: 128 }, (_value, index) => (index === offset ? 1 : 0.001)));
@@ -422,6 +423,22 @@ describe('facesIndex', () => {
     const status = await facesStatus(deps);
     expect(status.ok && status.value.observations).toBe(6);
   });
+
+  it('indexes a clip that has fewer frames than requested', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedCatalog(deps);
+    deps.media.durations.set('/work/videos/clip.mp4', 0.1);
+    deps.media.frameLimits.set('/work/videos/clip.mp4', 3);
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.filesFailed).toBe(0);
+    expect(result.value.filesIndexed).toBe(1);
+    expect(result.value.observationsAdded).toBeGreaterThan(0);
+  });
 });
 
 const folderId = '11111111-1111-1111-1111-111111111111';
@@ -580,6 +597,128 @@ describe('facesIndex stale-version re-indexing', () => {
     if (!afterStatus.ok) throw new Error(afterStatus.error.message);
     expect(afterStatus.value.staleVersionFiles).toBe(0);
     expect(afterStatus.value.people).toBe(1);
+  });
+});
+
+const events = (progress: JobProgress[], signal = new AbortController().signal): JobExecutionContext => ({
+  signal,
+  reportProgress: (event) => {
+    progress.push(event);
+    return Promise.resolve(ok(undefined));
+  },
+});
+
+describe('facesIndex single-file tolerance', () => {
+  it('records an undecodable file and keeps indexing', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    await seedFile(deps, 'fp-a', 'a.mp4');
+    await seedFile(deps, 'fp-b', 'b.mp4');
+    await seedFile(deps, 'fp-c', 'c.mp4');
+    deps.media.frameFailures.set('/work/videos/b.mp4', appError('processing_error', 'Decoded RGB frame size mismatch: expected 15925248, got 0'));
+    const progress: JobProgress[] = [];
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' }, events(progress));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.filesIndexed).toBe(2);
+    expect(result.value.filesFailed).toBe(1);
+    expect(result.value.aborted).toBe(false);
+    expect(result.value.failures).toHaveLength(1);
+    expect(result.value.failures[0]).toMatchObject({ fingerprint: 'fp-b', code: 'processing_error' });
+    expect(deps.globalCatalog.faceIndexState.has('fp-b')).toBe(false);
+    expect(deps.globalCatalog.faceIndexState.has('fp-a')).toBe(true);
+    expect(deps.globalCatalog.faceIndexState.has('fp-c')).toBe(true);
+    expect(progress.filter((event) => event.step === 'faces_file_failed')).toHaveLength(1);
+  });
+
+  it('aborts after five consecutive same-class failures', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    const fileNames = ['a.mp4', 'b.mp4', 'c.mp4', 'd.mp4', 'e.mp4', 'f.mp4'];
+    for (const [index, fileName] of fileNames.entries()) {
+      await seedFile(deps, `fp-${String(index)}`, fileName);
+    }
+    for (const fileName of fileNames.slice(0, 5)) {
+      deps.media.frameFailures.set(`/work/videos/${fileName}`, appError('processing_error', 'poisoned'));
+    }
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.aborted).toBe(true);
+    expect(result.value.filesFailed).toBe(5);
+    expect(deps.media.frameInputs).toHaveLength(5);
+  });
+
+  it('does not abort when failure classes alternate', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    const fileNames = Array.from({ length: 8 }, (_value, index) => `${String(index)}.mp4`);
+    for (const [index, fileName] of fileNames.entries()) {
+      await seedFile(deps, `fp-${String(index)}`, fileName);
+      const code = index % 2 === 0 ? 'processing_error' : 'read_error';
+      deps.media.frameFailures.set(`/work/videos/${fileName}`, appError(code, 'poisoned'));
+    }
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.aborted).toBe(false);
+    expect(result.value.filesFailed).toBe(8);
+    expect(deps.media.frameInputs).toHaveLength(8);
+  });
+
+  it('faces index job maps a streak abort to drive_run_aborted', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    const fileNames = ['a.mp4', 'b.mp4', 'c.mp4', 'd.mp4', 'e.mp4'];
+    for (const [index, fileName] of fileNames.entries()) {
+      await seedFile(deps, `fp-${String(index)}`, fileName);
+      deps.media.frameFailures.set(`/work/videos/${fileName}`, appError('processing_error', 'poisoned'));
+    }
+
+    const jobResult = await facesIndex(deps, { root: '/work/videos' });
+    expect(jobResult.ok).toBe(true);
+    if (!jobResult.ok) throw new Error(jobResult.error.message);
+    const jobs = await deps.jobs.list();
+    expect(jobs.ok).toBe(true);
+    if (!jobs.ok) throw new Error('expected jobs');
+    const record = jobs.value.find((job) => job.jobId === jobResult.value.jobId);
+    expect(record?.status).toBe('failed');
+    expect(record?.error?.code).toBe('drive_run_aborted');
+
+    const direct = await runFacesIndexJob(deps, { root: '/work/videos' });
+    expect(direct).toMatchObject({ ok: false, error: { code: 'drive_run_aborted' } });
+  });
+
+  it('cancellation still stops the pass without recording it as a per-file failure', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    await seedFile(deps, 'fp-a', 'a.mp4');
+    await seedFile(deps, 'fp-b', 'b.mp4');
+    const controller = new AbortController();
+    const progress: JobProgress[] = [];
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' }, {
+      signal: controller.signal,
+      reportProgress: (event) => {
+        progress.push(event);
+        if (event.step === 'faces_extracting_frames' && event.data?.fingerprint === 'fp-a') controller.abort();
+        return Promise.resolve(ok(undefined));
+      },
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { message: 'Job cancelled' } });
+    expect(progress.some((event) => event.step === 'faces_file_failed')).toBe(false);
   });
 });
 

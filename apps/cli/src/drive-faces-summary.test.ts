@@ -25,6 +25,26 @@ describe('driveFacesSummaryLine', () => {
     expect(driveFacesSummaryLine(ranFaces)).toBe('faces: indexed 3 file(s), 12 observation(s), 2 new person(s)');
   });
 
+  it('appends the failure breakdown when files failed', () => {
+    expect(driveFacesSummaryLine({
+      ...ranFaces,
+      filesFailed: 4,
+      failureCodes: [{ code: 'processing_error', count: 3 }, { code: 'read_error', count: 1 }],
+    })).toBe('faces: indexed 3 file(s), 12 observation(s), 2 new person(s), 4 file(s) failed (processing_error×3, read_error×1)');
+  });
+
+  it('appends the abort suffix when the pass gave up after a streak', () => {
+    expect(driveFacesSummaryLine({
+      ...ranFaces,
+      filesFailed: 5,
+      failureCodes: [{ code: 'processing_error', count: 5 }],
+      aborted: true,
+    })).toBe(
+      'faces: indexed 3 file(s), 12 observation(s), 2 new person(s), 5 file(s) failed (processing_error×5)'
+        + ' — faces pass aborted after 5 consecutive failures; re-run "ai-video-cataloger faces index <root>"',
+    );
+  });
+
   it('names --skip-faces as the reason and the recovery command', () => {
     expect(driveFacesSummaryLine(skipped('flag')))
       .toBe('faces: NOT indexed (--skip-faces) — run "ai-video-cataloger faces index <root>" to build them');

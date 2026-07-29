@@ -44,6 +44,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Settings and the setup wizard only render the amber Gemini privacy warning when the selected analyzer is Gemini (native video); it no longer appears under Claude, local, or OpenAI-compatible API selections.
 - The `harness-cursor-agent × skip` e2e matrix leg now probes cursor-agent with a trivial invocation (not just `status`) before running the full pipeline, so an authenticated but usage-exhausted CLI self-skips instead of failing the leg.
 - `tags alias` re-points existing aliases at the new canonical tag instead of leaving them pointing at the deleted tag row, so chained merges (`dogs` → `psy`, then `psy` → `pieski`) keep resolving and no longer resurrect the merged-away tag on the next ingest.
+- One undecodable or very short video no longer kills a whole face-indexing pass: `faces index` and the faces pass chained into `process-drive` record the file in a `faces_file_failed` event and in the `faces` summary block (`filesFailed`, `failureCodes`, `aborted`), keep going, and exit 0 with partial results; only five consecutive failures of the same class abort the pass (`DRIVE_RUN_ABORTED`, exit 40).
+- Asking for more frames than a clip contains is no longer an error: frame extraction returns the frames ffmpeg actually wrote — and fails typed only when none did — and an RGB decode that seeks past the last frame falls back to the extracted frame image instead of failing with `Decoded RGB frame size mismatch: expected 15925248, got 0`.
 
 ## [0.6.3] - 2026-07-29
 

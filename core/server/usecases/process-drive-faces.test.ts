@@ -243,6 +243,49 @@ describe('process-drive faces pass', () => {
     expect(run.ok && run.value.faces?.skippedReason).toBe('unavailable');
   });
 
+  it('a poisoned file does not stop the chained faces pass', async () => {
+    const deps = makeDeps();
+    await enableFaces(deps);
+    addVideo(deps.fs, '/drive/good.mp4', 'hash-good');
+    addVideo(deps.fs, '/drive/bad.mp4', 'hash-bad');
+    deps.media.frameFailures.set('/drive/bad.mp4', appError('processing_error', 'Decoded RGB frame size mismatch: expected 15925248, got 0'));
+    deps.media.frameFailureMinFrameCount.set('/drive/bad.mp4', 4);
+    const events: JobProgress[] = [];
+
+    const run = await processDrive(deps, baseInput, recordingProgress(events), { runId: 'run-poisoned-faces' });
+
+    expect(run.ok).toBe(true);
+    if (!run.ok) throw new Error(run.error.message);
+    expect(run.value.faces).toMatchObject({
+      ran: true,
+      skippedReason: null,
+      filesIndexed: 1,
+      filesFailed: 1,
+      failureCodes: [{ code: 'processing_error', count: 1 }],
+      aborted: false,
+    });
+    expect(events).not.toContainEqual(expect.objectContaining({ step: 'faces_pass_skipped' }));
+  });
+
+  it('a streak abort inside a drive run leaves the run green', async () => {
+    const deps = makeDeps();
+    await enableFaces(deps);
+    const fileNames = ['one', 'two', 'three', 'four', 'five'];
+    for (const name of fileNames) {
+      addVideo(deps.fs, `/drive/${name}.mp4`, `hash-${name}`);
+      deps.media.frameFailures.set(`/drive/${name}.mp4`, appError('processing_error', 'poisoned'));
+      deps.media.frameFailureMinFrameCount.set(`/drive/${name}.mp4`, 4);
+    }
+
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-faces-streak-abort' });
+
+    expect(run.ok).toBe(true);
+    if (!run.ok) throw new Error(run.error.message);
+    expect(run.value.faces?.ran).toBe(true);
+    expect(run.value.faces?.aborted).toBe(true);
+    expect(run.value.faces?.filesFailed).toBe(5);
+  });
+
   it('reports cancelled when the job is aborted while the pass is starting', async () => {
     const deps = makeDeps();
     await enableFaces(deps);
