@@ -1,6 +1,10 @@
 {
   "name": "ai-video-cataloger",
   "version": "0.6.2",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/coderoadpl/ai-video-cataloger.git"
+  },
   "license": "Elastic-2.0",
   "private": true,
   "type": "module",
@@ -19,7 +23,7 @@
     "test:coverage": "vitest run --coverage",
     "knip": "knip",
     "doc-lint": "node --import tsx scripts/doc-lint.ts",
-    "check": "node scripts/assert-node.mjs && pnpm run typecheck && pnpm run typecheck:islands && pnpm run lint && pnpm run depcruise && pnpm run knip && pnpm run doc-lint && pnpm run test:coverage",
+    "check": "node scripts/assert-node.mjs && pnpm run typecheck && pnpm run typecheck:islands && pnpm run lint && pnpm run depcruise && pnpm run knip && pnpm run doc-lint && pnpm run workflow-lint && pnpm run test:coverage",
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "node scripts/assert-node.mjs && node --import tsx scripts/smoke.ts",
     "electron:build:renderer": "vite build --config apps/web/vite.config.ts",
@@ -35,7 +39,8 @@
     "visual": "playwright test --config visual/playwright.visual.config.ts",
     "verify:package": "node scripts/verify-package.mjs",
     "qa:walkthrough": "node scripts/release-walkthrough.mjs",
-    "lock-lint": "node scripts/lock-lint.mjs"
+    "lock-lint": "node scripts/lock-lint.mjs",
+    "workflow-lint": "node scripts/workflow-lint.mjs"
   },
   "engines": {
     "node": "22.x",

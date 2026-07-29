@@ -452,7 +452,9 @@ literal path materialized), `lock-lint` under pnpm frozen-lockfile semantics,
 boot the real in-process app, drive doctor/scan/config/status through the CLI
 in an isolated temp HOME + temp folder, assert envelope shapes and taxonomy
 exit codes. Both green = done; every new lint rule proves itself with a
-violating probe before it counts.
+violating probe before it counts. `pnpm run workflow-lint` holds the CI
+workflow guards to this repository's slug and keeps every self-hosted job
+behind its arming variable ([docs/ci.md](ci.md)).
 
 The package manager is pnpm, pinned by `packageManager` and activated through
 Corepack; dependency install scripts are off by default and the exceptions are

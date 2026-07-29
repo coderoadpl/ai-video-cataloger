@@ -1,9 +1,10 @@
 name: e2e
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
-    branches: [rewrite/foundation]
+    branches: [main]
 
 concurrency:
   group: e2e-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -17,8 +18,13 @@ jobs:
   # nothing binds a socket, so the upstream vite-dev-server port guard has no
   # surface here and is intentionally omitted.
   e2e-cli:
+    name: "${{ vars.CI_RUNNER_READY == 'true' && 'e2e-cli' || 'e2e-cli (dormant: register the self-hosted macOS runner, then set repository variable CI_RUNNER_READY=true; see docs/ci.md)' }}"
+    # `CI_RUNNER_READY` is the arming switch: an unmatched self-hosted job would
+    # queue for 24h on every PR instead of skipping. Never a fork head — this
+    # runner is the owner's Mac.
     if: >-
-      github.repository == 'chomamateusz/ai-video-cataloger' &&
+      vars.CI_RUNNER_READY == 'true' &&
+      github.repository == 'coderoadpl/ai-video-cataloger' &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     # The self-hosted Mac already holds the real `claude` CLI login and `whisper`

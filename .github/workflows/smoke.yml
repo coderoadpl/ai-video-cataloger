@@ -1,9 +1,10 @@
 name: smoke
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
-    branches: [rewrite/foundation]
+    branches: [main]
 
 concurrency:
   group: smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -11,8 +12,13 @@ concurrency:
 
 jobs:
   smoke:
+    name: "${{ vars.CI_RUNNER_READY == 'true' && 'smoke' || 'smoke (dormant: register the self-hosted macOS runner, then set repository variable CI_RUNNER_READY=true; see docs/ci.md)' }}"
+    # `CI_RUNNER_READY` is the arming switch: an unmatched self-hosted job would
+    # queue for 24h on every PR instead of skipping. Never a fork head — this
+    # runner is the owner's Mac.
     if: >-
-      github.repository == 'chomamateusz/ai-video-cataloger' &&
+      vars.CI_RUNNER_READY == 'true' &&
+      github.repository == 'coderoadpl/ai-video-cataloger' &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: [self-hosted, macOS, arm64]

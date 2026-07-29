@@ -1,9 +1,10 @@
 name: ai-review
 
 # Fail-closed AI code-review gate (foundation DECIDE F1). The status-check context
-# is the job name `ai-review`; the owner adds it to the branch ruleset to make it
-# required. Until then it runs and posts without blocking. The ONLY green path is a
-# positive PASS verdict from a token slot; every other outcome — a FAIL verdict, an
+# is the job name `ai-review`. Branch rulesets are unavailable on this private Free
+# repo, so the gate is advisory until the repo is public or on a paid plan; it still
+# reports RED on the PR. The ONLY green path is a positive PASS verdict from a token
+# slot; every other outcome — a FAIL verdict, an
 # infra failure (rate-limit / auth / network / timeout) on all available slots, an
 # empty/malformed model output, or a missing slot-1 secret — exits the gate RED.
 # "Could not verify" and "verified safe" never collapse to one colour. The ONLY
@@ -17,7 +18,7 @@ on:
     # ready_for_review fires when a draft is marked ready, so a PR opened as a
     # draft still gets gated the moment it leaves draft state.
     types: [opened, synchronize, ready_for_review]
-    branches: [rewrite/foundation]
+    branches: [main]
 
 # One in-flight review per PR; a new push cancels the superseded run.
 concurrency:
@@ -30,12 +31,18 @@ permissions:
 
 jobs:
   ai-review:
-    # Self-hosted safety: this repo only, non-draft, and never a fork PR — unlike
-    # the ubuntu-hosted upstream this runner is the owner's Mac, so a fork head
-    # must not execute here at all (a skipped fork run cannot fail closed to RED
-    # the way it does on a disposable hosted runner).
+    name: "${{ (vars.CI_RUNNER_READY == 'true' && vars.AI_REVIEW_READY == 'true') && 'ai-review' || 'ai-review (dormant: add secret CLAUDE_CODE_OAUTH_TOKEN_1 and set repository variables CI_RUNNER_READY and AI_REVIEW_READY to true; see docs/ci.md)' }}"
+    # `AI_REVIEW_READY` exists because a job-level `if:` cannot read the `secrets`
+    # context: this gate is fail-closed, so without `CLAUDE_CODE_OAUTH_TOKEN_1` it
+    # would mark every PR RED, and `CI_RUNNER_READY` alone would queue it on a
+    # runner that is not registered. Self-hosted safety: this repo only, non-draft,
+    # and never a fork PR — unlike the ubuntu-hosted upstream this runner is the
+    # owner's Mac, so a fork head must not execute here at all (a skipped fork run
+    # cannot fail closed to RED the way it does on a disposable hosted runner).
     if: >-
-      github.repository == 'chomamateusz/ai-video-cataloger' &&
+      vars.CI_RUNNER_READY == 'true' &&
+      vars.AI_REVIEW_READY == 'true' &&
+      github.repository == 'coderoadpl/ai-video-cataloger' &&
       github.event.pull_request.draft == false &&
       github.event.pull_request.head.repo.full_name == github.repository
     runs-on: [self-hosted, macOS, arm64]
@@ -46,11 +53,11 @@ jobs:
       REVIEW_PROMPT: |
         You are the fail-closed AI review gate for the ai-video-cataloger
         repository. Review ONLY the changes in this pull request — the diff of the
-        PR head against origin/rewrite/foundation — not the whole repository.
+        PR head against origin/main — not the whole repository.
 
         Obtain the diff yourself:
-          git fetch --no-tags --depth=200 origin rewrite/foundation
-          git diff origin/rewrite/foundation...HEAD
+          git fetch --no-tags --depth=200 origin main
+          git diff origin/main...HEAD
 
         Judge the diff against this repo's doctrine. Read the files you need:
         `CLAUDE.md`, `docs/architecture.md`, and the relevant

@@ -1,9 +1,10 @@
 name: check
 
 on:
+  workflow_dispatch:
   pull_request:
   push:
-    branches: [rewrite/foundation]
+    branches: [main]
 
 # One run per ref; a new push cancels the superseded run so the single
 # self-hosted runner is never blocked behind stale work.
@@ -13,10 +14,15 @@ concurrency:
 
 jobs:
   check:
-    # Self-hosted safety: this repo only, and never a fork PR — a fork's head
-    # would otherwise execute untrusted code on the owner's Mac.
+    name: "${{ vars.CI_RUNNER_READY == 'true' && 'check' || 'check (dormant: register the self-hosted macOS runner, then set repository variable CI_RUNNER_READY=true; see docs/ci.md)' }}"
+    # `CI_RUNNER_READY` is the arming switch: this job targets a self-hosted Mac
+    # that only the owner can register, and an unmatched self-hosted job queues
+    # for 24h on every PR instead of skipping. Self-hosted safety: this repo
+    # only, and never a fork PR — a fork's head would otherwise execute
+    # untrusted code on the owner's Mac.
     if: >-
-      github.repository == 'chomamateusz/ai-video-cataloger' &&
+      vars.CI_RUNNER_READY == 'true' &&
+      github.repository == 'coderoadpl/ai-video-cataloger' &&
       (github.event_name != 'pull_request' ||
        github.event.pull_request.head.repo.full_name == github.repository)
     # Native arm64 the packaged build (Electron + onnxruntime) actually targets,

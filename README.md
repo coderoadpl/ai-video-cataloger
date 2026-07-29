@@ -306,6 +306,12 @@ pnpm run check
 pnpm run smoke
 ```
 
+CI (`check`, `smoke`, `e2e`, `ai-review`) runs on a self-hosted Apple-silicon
+Mac and is dormant until the owner registers that runner and sets the
+`CI_RUNNER_READY` repository variable; dormant jobs skip under a name that says
+so. `pnpm run workflow-lint` (part of `pnpm run check`) keeps the workflow
+guards pointed at this repository. See [docs/ci.md](docs/ci.md).
+
 E2E:
 
 ```bash

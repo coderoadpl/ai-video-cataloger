@@ -19,6 +19,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `pnpm run test:e2e:matrix` gains two `ro-mount` legs that build an `hdiutil` disk image, re-attach it read-only, and assert index-only mode against a real read-only filesystem: detection and zero writes to the mount (never skippable on macOS), then a full drive run whose artifacts land in `~/.ai-video-cataloger/read-only-folders/`.
 - `materialize <root>` applies an existing catalog to a now-writable drive without re-analysis: it looks each file up by fingerprint, applies the selected variant's final name, artifacts, projection and snapshot only where they are missing, resolves name collisions with the established numeric suffix, reports files it cannot place, is a no-op on a second run, previews everything with `--dry-run`, and exits `TARGET_READ_ONLY` (46) when the target is still mounted read-only.
 - `process-drive` builds the people index itself when `faces_enabled=true`: a completed run indexes faces over its own root in one pass, reports `faces_scanning`/`faces_done` NDJSON events and a `faces` block in `run-summary`, and accepts `--skip-faces` to opt one run out.
+- `pnpm run workflow-lint` (part of `pnpm run check`) fails when a workflow guards a repository other than the one in `package.json`, when a self-hosted job is missing its `CI_RUNNER_READY` arming variable, or when a job consumes a `CLAUDE_CODE_OAUTH_TOKEN` slot without `AI_REVIEW_READY`.
+
+### Changed
+
+- CI workflows (`check`, `smoke`, `e2e`, `ai-review`) now name the current repository, trigger on `main` instead of the retired `rewrite/foundation`, and stay dormant until the owner registers the self-hosted macOS runner and sets the `CI_RUNNER_READY` repository variable (`ai-review` additionally needs `CLAUDE_CODE_OAUTH_TOKEN_1` and `AI_REVIEW_READY`); a dormant job skips under a name that states the enable step instead of queueing on a runner that does not exist. See [docs/ci.md](docs/ci.md).
 
 ### Fixed
 
