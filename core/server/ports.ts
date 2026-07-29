@@ -316,6 +316,7 @@ export interface FileSystemPort {
   deleteFile(path: string): Promise<Result<void, AppError>>;
   deletePath(path: string): Promise<Result<void, AppError>>;
   partialContentHash(path: string): Promise<Result<string | null, AppError>>;
+  isWritable(path: string): Promise<Result<boolean, AppError>>;
   tempDirectory(): string;
   homeDirectory(): string;
 }
@@ -697,7 +698,8 @@ export type JobKind =
   | 'whisper_runtime_install'
   | 'local_ai_pull'
   | 'face_artifact_download'
-  | 'faces_index';
+  | 'faces_index'
+  | 'materialize';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -706,6 +708,7 @@ export type ProcessJobStep =
   | 'folder-done'
   | 'file-skipped'
   | 'run-summary'
+  | 'materialize_file'
   | 'extracting_frames'
   | 'extracting_audio'
   | 'transcribing_audio'

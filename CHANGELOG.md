@@ -17,6 +17,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Added
 
 - `pnpm run test:e2e:matrix` gains two `ro-mount` legs that build an `hdiutil` disk image, re-attach it read-only, and assert index-only mode against a real read-only filesystem: detection and zero writes to the mount (never skippable on macOS), then a full drive run whose artifacts land in `~/.ai-video-cataloger/read-only-folders/`.
+- `materialize <root>` applies an existing catalog to a now-writable drive without re-analysis: it looks each file up by fingerprint, applies the selected variant's final name, artifacts, projection and snapshot only where they are missing, resolves name collisions with the established numeric suffix, reports files it cannot place, is a no-op on a second run, previews everything with `--dry-run`, and exits `TARGET_READ_ONLY` (46) when the target is still mounted read-only.
 
 ### Fixed
 

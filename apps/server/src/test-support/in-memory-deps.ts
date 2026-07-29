@@ -966,6 +966,10 @@ class InMemoryFileSystemPort implements FileSystemPort {
     return Promise.resolve(ok(null));
   }
 
+  isWritable(): Promise<Result<boolean, AppError>> {
+    return Promise.resolve(ok(true));
+  }
+
   tempDirectory(): string {
     return '/tmp';
   }

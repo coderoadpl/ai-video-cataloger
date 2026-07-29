@@ -48,6 +48,7 @@ describe('domain taxonomy', () => {
       'nested_databases_found',
       'drive_root_empty',
       'drive_run_aborted',
+      'target_read_only',
       'thumbnail_error',
       'processing_error',
       'analysis_parse_failed',

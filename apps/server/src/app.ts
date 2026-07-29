@@ -43,6 +43,7 @@ import {
   listVariants,
   listWhisperModels,
   localAiRequirements,
+  enqueueMaterialize,
   pullLocalAiModel,
   removeLocalAiModel,
   resetAll,
@@ -209,6 +210,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.processDrive.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.processDrive.output);
     return respond(await withCatalogWriteLockForJob(deps, () => enqueueProcessDrive(deps, input.value)), API_ROUTES.processDrive.output);
+  });
+
+  app.post(API_ROUTES.materialize.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.materialize.output);
+    const input = parseInput(API_ROUTES.materialize.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.materialize.output);
+    return respond(await withCatalogWriteLockForJob(deps, () => enqueueMaterialize(deps, input.value)), API_ROUTES.materialize.output);
   });
 
   app.post(API_ROUTES.thumbnail.path, async (context) => {

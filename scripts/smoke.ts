@@ -419,6 +419,25 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
     retained: z.array(z.string()).length(0),
   }).parse(completedData(deleteCredential, 'config delete-credential'));
 
+  const beforeMaterialize = readdirSync(folder).sort();
+  const materializeDryRun = await run(['materialize', folder, '--dry-run', '--json'], env, folder);
+  assert(
+    materializeDryRun.code === 0,
+    `materialize --dry-run: expected exit 0, got ${materializeDryRun.code}.\nstdout: ${materializeDryRun.stdout}\nstderr: ${materializeDryRun.stderr}`,
+  );
+  z.object({ dryRun: z.literal(true), filesTotal: z.number() }).parse(completedData(materializeDryRun, 'materialize --dry-run'));
+  assert(
+    JSON.stringify(readdirSync(folder).sort()) === JSON.stringify(beforeMaterialize),
+    'materialize --dry-run: the folder listing changed even though nothing should have been written',
+  );
+
+  const materializeMissing = await run(['materialize', join(folder, 'missing'), '--json'], env, folder);
+  const materializeMissingExpected = EXIT_CODE_BY_ERROR_CODE.folder_not_found;
+  assert(
+    materializeMissing.code === materializeMissingExpected,
+    `materialize missing: expected exit ${materializeMissingExpected}, got ${materializeMissing.code}.\nstdout: ${materializeMissing.stdout}\nstderr: ${materializeMissing.stderr}`,
+  );
+
   const missingFolder = join(folder, 'missing');
   const missing = await run(['scan', missingFolder, '--json'], env, folder);
   const expected = EXIT_CODE_BY_ERROR_CODE.folder_not_found;

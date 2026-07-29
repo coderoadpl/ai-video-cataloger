@@ -364,6 +364,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  materialize: (input: z.input<typeof API_ROUTES.materialize.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.materialize.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.materialize.method,
+      API_ROUTES.materialize.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   generateThumbnail: (input: z.input<typeof API_ROUTES.thumbnail.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.thumbnail.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

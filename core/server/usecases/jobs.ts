@@ -7,9 +7,10 @@ import {
   type WhisperModelName,
 } from '@core/domain/index.js';
 
-import type { JobRecord, JobsPort } from '../ports.js';
+import type { FileSystemPort, GlobalCatalogStore, JobRecord, JobsPort } from '../ports.js';
 import { checkProcessPrerequisites, processVideoPipeline, type ProcessDeps } from './process.js';
 import { processDrive, type ProcessDriveInput } from './process-drive.js';
+import { materializeCatalog, type MaterializeInput } from './materialize.js';
 
 export interface JobsDeps extends Partial<ProcessDeps> {
   jobs: JobsPort;
@@ -112,6 +113,24 @@ export const enqueueProcessDrive = async (
     payload: input,
     resourceKey,
     run: (context) => processDrive(processDeps, input, context),
+  });
+};
+
+export const enqueueMaterialize = async (
+  deps: JobsDeps,
+  input: MaterializeInput,
+): Promise<Result<{ jobId: string }, AppError>> => {
+  if (deps.fs === undefined || deps.globalCatalog === undefined) {
+    return { ok: false, error: appError('internal', 'Materialize job dependencies are incomplete') };
+  }
+  const fs: FileSystemPort = deps.fs;
+  const globalCatalog: GlobalCatalogStore = deps.globalCatalog;
+  const resourceKey = fs.resolve(input.root);
+  return deps.jobs.enqueue({
+    kind: 'materialize',
+    payload: input,
+    resourceKey,
+    run: (context) => materializeCatalog({ fs, globalCatalog }, input, context),
   });
 };
 

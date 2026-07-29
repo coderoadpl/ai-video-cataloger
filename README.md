@@ -90,6 +90,7 @@ scan <folder> [--json]
 search <query> [--json]
 process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper-model model] [--analyzer claude|local|api] [--provider openai|claude-code|codex|cursor-agent|local|gemini] [--local-model tag] [--json]
 process-drive <root> [--gemini-batch] [--json]
+materialize <root> [--dry-run] [--keep-awake] [--json]
 variants list <path> [--json]
 variants select <path> --config <configId> [--json]
 variants delete <path> --config <configId> [--json]
@@ -143,9 +144,34 @@ mid-flight re-attaches to the same job on the next run
 ([ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)).
 
 A completed `process-drive` run exits 0 even when individual files fail. This
-partial-success behavior keeps drive runs resumable: the human run summary
-shows `failed=N`, while `--json` reports the count in the `folder-done` and
-`run-summary` NDJSON events.
+partial-success behavior keeps drive runs resumable — and `materialize`
+follows the same rule: the human run summary shows `failed=N`, while `--json`
+reports the count in the `folder-done` and `run-summary` NDJSON events.
+
+`materialize <root>` applies an already-cataloged drive to disk without
+re-analysis: a drive analysed read-only (a write-protected mount, or a mirror
+of one — see `read-only-folders/` below) records its analyses in the global
+catalog but never renames anything on disk. Once the drive is remounted
+writable, `materialize` walks it exactly like `process-drive` discovers it,
+computes each file's fingerprint, looks up the **selected** variant in the
+global catalog, and replays only the writes that are still missing: the
+folder marker and folder row, the content-addressed artifacts and variant
+outputs, the date-prefixed rename (`YYYY-MM-DD_slug.ext`, with the same `-2`,
+`-3`, … numeric suffix on a name collision — never an overwrite), the
+catalog's `finalName`/`fileName`, the selected-variant projection, the
+thumbnail, and the folder's `catalog.ndjson` snapshot. It never calls an
+analyzer. A file with no catalog entry, no stored variant, or no derivable
+final name is reported and skipped, not analyzed — as is a duplicate whose
+canonical copy already exists elsewhere; skip reasons are `not_in_catalog`,
+`no_variant`, `no_final_name`, `fingerprint_unavailable`, and `duplicate`.
+Every write is applied only when missing, so a second `materialize` run over
+the same root is a no-op. `--dry-run` computes and reports the identical plan
+— every operation it would perform — without touching disk. NDJSON events are
+`run-started`, `folder-started`, `materialize_file`, `file-skipped`,
+`folder-done`, and `run-summary`. A target still mounted read-only exits with
+`TARGET_READ_ONLY` (46) instead of silently doing nothing. Because artifacts
+are found through the catalog's folder id rather than the current path, the
+drive does not have to return to the exact mount path it was analysed at.
 
 OpenAI-compatible analyzers use `analyzer_provider` JSON configuration. API
 credentials live in the macOS Keychain (service `com.ai-video-cataloger.app`,

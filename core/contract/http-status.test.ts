@@ -44,4 +44,10 @@ describe('error taxonomy mappings', () => {
     expect(EXIT_CODE_BY_ERROR_CODE.variant_not_found).toBe(45);
     expect(LEGACY_ERROR_CODE_BY_ERROR_CODE.variant_not_found).toBe('VARIANT_NOT_FOUND');
   });
+
+  it('maps target_read_only to HTTP 409 and its dedicated CLI exit code', () => {
+    expect(HTTP_STATUS_BY_ERROR_CODE.target_read_only).toBe(409);
+    expect(EXIT_CODE_BY_ERROR_CODE.target_read_only).toBe(46);
+    expect(LEGACY_ERROR_CODE_BY_ERROR_CODE.target_read_only).toBe('TARGET_READ_ONLY');
+  });
 });

@@ -216,6 +216,18 @@ export class NodeFileSystemPort implements FileSystemPort {
     }
   }
 
+  async isWritable(value: string): Promise<Result<boolean, AppError>> {
+    try {
+      await access(value, constants.W_OK);
+      return ok(true);
+    } catch (cause) {
+      if (isMissing(cause)) return ok(false);
+      const parsed = errnoCodeSchema.safeParse(cause);
+      if (parsed.success && READ_ONLY_ERRNO_CODES.has(parsed.data.code)) return ok(false);
+      return failure('read_error', cause, `Failed to check writability: ${value}`);
+    }
+  }
+
   tempDirectory(): string {
     return this.tempRoot;
   }

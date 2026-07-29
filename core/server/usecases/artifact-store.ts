@@ -284,7 +284,7 @@ const stageProjectionEntry = async (
   const ensured = await fs.ensureDirectory(fs.dirname(temporary));
   if (!ensured.ok) return ensured;
   if (entry.kind === 'file') {
-    const materialized = await materializeFile(fs, entry.source, temporary);
+    const materialized = await materializeArtifactFile(fs, entry.source, temporary);
     if (!materialized.ok) await fs.deletePath(temporary);
     return materialized.ok ? ok(staged) : materialized;
   }
@@ -302,7 +302,7 @@ const stageProjectionEntry = async (
   }
   for (const sourceEntry of sourceEntries.value) {
     if (sourceEntry.kind !== 'file' || !frameFileNamePattern.test(sourceEntry.name)) continue;
-    const materialized = await materializeFile(fs, sourceEntry.path, fs.join(temporary, sourceEntry.name));
+    const materialized = await materializeArtifactFile(fs, sourceEntry.path, fs.join(temporary, sourceEntry.name));
     if (!materialized.ok) {
       await fs.deletePath(temporary);
       return materialized;
@@ -311,7 +311,7 @@ const stageProjectionEntry = async (
   return ok(staged);
 };
 
-const materializeFile = async (
+export const materializeArtifactFile = async (
   fs: FileSystemPort,
   source: string,
   target: string,

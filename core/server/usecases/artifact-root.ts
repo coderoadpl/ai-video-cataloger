@@ -16,15 +16,13 @@ export const folderArtifactRoot = (fs: FileSystemPort, folder: string): Artifact
   catalogDirectory: fs.join(folder, catalogDirectoryName),
 });
 
-export const readOnlyArtifactRoot = (fs: FileSystemPort, folder: string): ArtifactRoot => {
-  const mirror = fs.join(
-    fs.homeDirectory(),
-    catalogDirectoryName,
-    readOnlyMirrorDirectoryName,
-    derivedFolderId(fs.resolve(folder)),
-  );
+export const readOnlyArtifactRootById = (fs: FileSystemPort, folderId: string): ArtifactRoot => {
+  const mirror = fs.join(fs.homeDirectory(), catalogDirectoryName, readOnlyMirrorDirectoryName, folderId);
   return { path: mirror, catalogDirectory: mirror };
 };
+
+export const readOnlyArtifactRoot = (fs: FileSystemPort, folder: string): ArtifactRoot =>
+  readOnlyArtifactRootById(fs, derivedFolderId(fs.resolve(folder)));
 
 export const artifactRootFor = (fs: FileSystemPort, folder: string, writable: boolean): ArtifactRoot =>
   writable ? folderArtifactRoot(fs, folder) : readOnlyArtifactRoot(fs, folder);

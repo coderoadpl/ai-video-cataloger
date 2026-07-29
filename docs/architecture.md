@@ -122,6 +122,20 @@ verified against a real mount, not a simulated one: the `ro-mount` legs of
 rejected recursive directory creation on such a mount as `ENOENT`, so a
 permission-simulating fake cannot stand in for one.
 
+A folder analysed read-only can be **materialized** once its mount becomes
+writable: `materialize <root>` looks every file up by fingerprint, takes the
+selected variant, and replays the writes the writable path would have made —
+folder marker and folder row, the content-addressed artifacts and the variant
+outputs copied out of the read-only mirror, the date-prefixed rename with the
+established `-2` collision suffix, the catalog's `finalName`/`fileName`, the
+selected-variant projection, the thumbnail, and the `catalog.ndjson`
+snapshot. It re-analyses nothing (its dependencies are the filesystem and the
+global catalog, nothing else), applies only the writes that are missing, and
+repeats as a no-op. The non-canonical per-folder `catalog.db` is the one
+write it does not replay. `finalName` is written to the catalog before the
+rename and `fileName` after it, so the canonical copy is reachable by name at
+every instant and the reachability sweep can never clear a live analysis.
+
 Existing databases and on-disk artifacts written by the old implementation
 must remain readable with no migration.
 
@@ -383,8 +397,10 @@ managed runtimes, and its working-directory fallback.
   feature; ONNX Runtime adapter (darwin-only binding).
 - `ProvidersPort` — analyzer-provider listing and credential/connectivity
   test, routed across the same three analyzer families.
-- `FileSystemPort` — fs primitives incl. `partialContentHash` (named by
-  ADR-0002(c)); Node adapter in production, in-memory fake in tests.
+- `FileSystemPort` — fs primitives incl. `partialContentHash` (ADR-0002(c))
+  and a non-mutating `isWritable` (`access(W_OK)`) that lets a dry run report
+  a still-read-only mount without touching it; Node adapter in production,
+  in-memory fake in tests.
 - `FolderWatcherPort` — recursive watch of the opened folder tree. The Node
   adapter (`adapters/fs/folder-watcher.ts`) wraps `fs.watch` with
   `recursive: true` (FSEvents on macOS), drops `.ai-video-cataloger` paths and

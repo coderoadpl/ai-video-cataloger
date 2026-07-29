@@ -314,6 +314,36 @@ export const driveRunSummarySchema = z.object({
   failures: z.array(driveRunFailureSchema),
 });
 
+export const materializeInputSchema = z.object({
+  root: z.string().min(1),
+  dryRun: z.boolean().default(false),
+});
+
+export const materializeSummarySchema = z.object({
+  root: z.string().min(1),
+  dryRun: z.boolean(),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable(),
+  foldersTotal: z.number().int().nonnegative(),
+  foldersDone: z.number().int().nonnegative(),
+  foldersNotWritable: z.number().int().nonnegative(),
+  filesTotal: z.number().int().nonnegative(),
+  filesMaterialized: z.number().int().nonnegative(),
+  filesUnchanged: z.number().int().nonnegative(),
+  filesSkipped: z.number().int().nonnegative(),
+  filesFailed: z.number().int().nonnegative(),
+  collisions: z.number().int().nonnegative(),
+  skipped: z.object({
+    notInCatalog: z.number().int().nonnegative(),
+    noVariant: z.number().int().nonnegative(),
+    noFinalName: z.number().int().nonnegative(),
+    fingerprintUnavailable: z.number().int().nonnegative(),
+    duplicate: z.number().int().nonnegative(),
+  }),
+  elapsedMs: z.number().int().nonnegative(),
+  failures: z.array(driveRunFailureSchema),
+});
+
 export const thumbnailInputSchema = videoPathInputSchema.merge(forceInputSchema).extend({
   priority: z.enum(['foreground', 'background']).default('foreground'),
 });
@@ -744,6 +774,7 @@ export const jobKindSchema = z.enum([
   'local_ai_pull',
   'face_artifact_download',
   'faces_index',
+  'materialize',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -775,6 +806,7 @@ export const jobProgressStepSchema = z.enum([
   'batch_orphan_jobs',
   'batch_model_changed',
   'budget_cap_reached',
+  'materialize_file',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -806,6 +838,7 @@ export const jobResultSchema = z.union([
     observationsAdded: z.number().int().nonnegative(),
     peopleCreated: z.number().int().nonnegative(),
   }),
+  materializeSummarySchema,
 ]);
 
 export const jobOutputSchema = z.object({
@@ -1111,6 +1144,7 @@ export const API_ROUTES = {
   catalogTreeAbsent: { method: 'GET', path: '/api/catalog-tree/absent', input: folderInputSchema, output: catalogTreeAbsentOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
   processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
+  materialize: { method: 'POST', path: '/api/materialize', input: materializeInputSchema, output: jobAcceptedOutputSchema },
   thumbnail: { method: 'POST', path: '/api/thumbnail', input: thumbnailInputSchema, output: thumbnailOutputSchema },
   status: { method: 'GET', path: '/api/status', input: optionalFolderInputSchema, output: statusOutputSchema },
   resetAll: { method: 'POST', path: '/api/reset/all', input: resetAllInputSchema, output: resetAllOutputSchema },
@@ -1279,6 +1313,7 @@ export const API_PATHS = {
   catalogFolder: API_ROUTES.catalogFolder.path,
   process: API_ROUTES.process.path,
   processDrive: API_ROUTES.processDrive.path,
+  materialize: API_ROUTES.materialize.path,
   thumbnail: API_ROUTES.thumbnail.path,
   status: API_ROUTES.status.path,
   resetAll: API_ROUTES.resetAll.path,

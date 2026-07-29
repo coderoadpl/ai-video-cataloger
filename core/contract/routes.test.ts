@@ -9,6 +9,7 @@ import {
   healthReadyOutputSchema,
   jobOutputSchema,
   jobProgressSchema,
+  materializeSummarySchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
@@ -395,6 +396,55 @@ describe('route schemas', () => {
         sourceConfigId: 'cfg_abcdef012345',
       },
     });
+  });
+
+  it('exposes the materialize route and round-trips its summary and progress step', () => {
+    expect(API_ROUTES.materialize).toMatchObject({ method: 'POST', path: '/api/materialize' });
+    expect(API_ROUTES.materialize.input.parse({ root: '/videos' })).toEqual({ root: '/videos', dryRun: false });
+
+    const summary = materializeSummarySchema.parse({
+      root: '/videos',
+      dryRun: false,
+      startedAt: '2026-08-04T00:00:00.000Z',
+      finishedAt: '2026-08-04T00:00:05.000Z',
+      foldersTotal: 1,
+      foldersDone: 1,
+      foldersNotWritable: 0,
+      filesTotal: 1,
+      filesMaterialized: 1,
+      filesUnchanged: 0,
+      filesSkipped: 0,
+      filesFailed: 0,
+      collisions: 0,
+      skipped: {
+        notInCatalog: 0,
+        noVariant: 0,
+        noFinalName: 0,
+        fingerprintUnavailable: 0,
+        duplicate: 0,
+      },
+      elapsedMs: 5000,
+      failures: [],
+    });
+    expect(summary.filesMaterialized).toBe(1);
+
+    const parsed = jobProgressSchema.parse({
+      step: 'materialize_file',
+      current: 1,
+      total: 1,
+      data: {
+        video: '/videos/clip.mp4',
+        fingerprint: 'fp1',
+        configId: 'cfg_0123456789ab',
+        finalName: '2026-01-02_beach-walk.mp4',
+        appliedName: '2026-01-02_beach-walk.mp4',
+        collision: false,
+        changed: true,
+        dryRun: false,
+        operations: ['artifact_store', 'catalog_final_name', 'rename_video', 'catalog_relocate', 'project_selected'],
+      },
+    });
+    expect(parsed.step).toBe('materialize_file');
   });
 
   it('splits liveness and readiness into distinct additive GET routes', () => {

@@ -9,8 +9,9 @@ import {
   type VideoStatus,
 } from '@core/domain/index.js';
 
+import { normalizeKebabSlug } from './final-name.js';
 import { enqueueProcess } from './jobs.js';
-import { normalizeKebabSlug, parseAnalysisResponse, parseTagsLine, processVideoPipeline, tempAudioPath, type ProcessDeps } from './process.js';
+import { parseAnalysisResponse, parseTagsLine, processVideoPipeline, tempAudioPath, type ProcessDeps } from './process.js';
 import { scanFolder } from './scan.js';
 import {
   InMemoryAnalyzer,

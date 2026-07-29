@@ -73,6 +73,7 @@ import {
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
 import { resolveConfigValues } from './config-resolution.js';
 import { resolveFolderIntoIndex, upsertProcessedVariant } from './catalog-index.js';
+import { finalVideoName, normalizeKebabSlug, uniqueFilename } from './final-name.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
@@ -347,16 +348,6 @@ export const parseAnalysisResponse = (response: string): Result<ParsedAnalysis, 
 export const parseTagsLine = (value: string): string[] => {
   const hasSeparators = value.includes(',') || value.includes(';');
   return normalizeTagList(hasSeparators ? value.split(/[;,]/) : value.split(/\s+/));
-};
-
-export const normalizeKebabSlug = (value: string): string => {
-  const slug = value
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .replace(/^-|-$/g, '');
-  return slug.length === 0 ? 'video' : slug;
 };
 
 const validateVideoPath = async (fs: FileSystemPort, inputPath: string): Promise<Result<string, AppError>> => {
@@ -1338,7 +1329,7 @@ const renameVideoAndArtifacts = async (
   if (!stat.ok) return stat;
   const folder = fs.dirname(video.originalPath);
   const extension = fs.extname(video.originalPath);
-  const baseName = `${datePrefix(stat.value.mtimeMs)}_${normalizeKebabSlug(suggestedFilename)}`;
+  const baseName = finalVideoName(stat.value.mtimeMs, suggestedFilename);
   const newName = await uniqueFilename(fs, folder, baseName, extension);
   if (!newName.ok) return newName;
   const newPath = fs.join(folder, newName.value);
@@ -1398,25 +1389,6 @@ const rollbackAndPreserve = async (
 
 const preservesCatalog = (error: AppError): boolean =>
   z.object({ preserveCatalog: z.literal(true) }).passthrough().safeParse(error.details).success;
-
-const uniqueFilename = async (
-  fs: FileSystemPort,
-  folder: string,
-  baseName: string,
-  extension: string,
-): Promise<Result<string, AppError>> => {
-  let counter = 1;
-  let candidate = `${baseName}${extension}`;
-  let exists = await fs.exists(fs.join(folder, candidate));
-  if (!exists.ok) return exists;
-  while (exists.value) {
-    counter += 1;
-    candidate = `${baseName}-${counter}${extension}`;
-    exists = await fs.exists(fs.join(folder, candidate));
-    if (!exists.ok) return exists;
-  }
-  return ok(candidate);
-};
 
 const report = async (
   progress: JobExecutionContext | undefined,
@@ -1501,13 +1473,6 @@ const cancellationBoundary = (context: JobExecutionContext | undefined): Result<
 
 const cancellationError = (): AppError =>
   appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE);
-
-const datePrefix = (mtimeMs: number): string => {
-  const date = new Date(mtimeMs);
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const day = String(date.getDate()).padStart(2, '0');
-  return `${date.getFullYear()}-${month}-${day}`;
-};
 
 const completedOutput = (fs: FileSystemPort, video: Video): PipelineCompletedOutput => ({
   video: video.newName ?? fs.basename(video.originalPath),

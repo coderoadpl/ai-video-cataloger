@@ -80,7 +80,7 @@ import type {
 } from '../../../core/server/ports.js';
 import { isReadOnlyWriteError } from '../../../core/server/usecases/folder-identity.js';
 
-interface FakeFile {
+export interface FakeFile {
   content: string | null;
   size: number;
   mtimeMs: number;
@@ -91,6 +91,7 @@ export class InMemoryFileSystem implements FileSystemPort {
   private readonly files = new Map<string, FakeFile>();
   private readonly directories = new Set<string>();
   private readonly symlinks = new Set<string>();
+  private readonly readOnlyPaths = new Set<string>();
 
   constructor(private readonly workingDirectory = '/work') {
     this.addDirectory(workingDirectory);
@@ -101,6 +102,18 @@ export class InMemoryFileSystem implements FileSystemPort {
     const parent = path.dirname(normalized);
     if (parent !== normalized && !this.directories.has(parent)) this.addDirectory(parent);
     this.directories.add(normalized);
+  }
+
+  markReadOnly(value: string): void {
+    this.readOnlyPaths.add(this.normalize(value));
+  }
+
+  snapshot(): { files: [string, FakeFile][]; directories: string[]; symlinks: string[] } {
+    return {
+      files: [...this.files.entries()].map(([value, file]): [string, FakeFile] => [value, { ...file }]).sort(),
+      directories: [...this.directories].sort(),
+      symlinks: [...this.symlinks].sort(),
+    };
   }
 
   addFile(
@@ -198,32 +211,38 @@ export class InMemoryFileSystem implements FileSystemPort {
   }
 
   writeTextFile(value: string, content: string): Promise<Result<void, AppError>> {
+    const normalized = this.normalize(value);
+    if (this.isUnderReadOnly(normalized)) return Promise.resolve(this.readOnlyFailure(normalized));
     this.addFile(value, { content, size: content.length });
     return Promise.resolve(ok(undefined));
   }
 
   ensureDirectory(value: string): Promise<Result<void, AppError>> {
+    const normalized = this.normalize(value);
+    if (this.isUnderReadOnly(normalized)) return Promise.resolve(this.readOnlyFailure(normalized));
     this.addDirectory(value);
     return Promise.resolve(ok(undefined));
   }
 
   linkFile(from: string, to: string): Promise<Result<void, AppError>> {
+    const normalizedTo = this.normalize(to);
+    if (this.isUnderReadOnly(normalizedTo)) return Promise.resolve(this.readOnlyFailure(normalizedTo));
     const source = this.files.get(this.normalize(from));
     if (source === undefined) {
       return Promise.resolve({ ok: false, error: appError('file_not_found', `File not found: ${from}`) });
     }
-    const normalizedTo = this.normalize(to);
     this.addDirectory(path.dirname(normalizedTo));
     this.files.set(normalizedTo, source);
     return Promise.resolve(ok(undefined));
   }
 
   copyFile(from: string, to: string): Promise<Result<void, AppError>> {
+    const normalizedTo = this.normalize(to);
+    if (this.isUnderReadOnly(normalizedTo)) return Promise.resolve(this.readOnlyFailure(normalizedTo));
     const source = this.files.get(this.normalize(from));
     if (source === undefined) {
       return Promise.resolve({ ok: false, error: appError('file_not_found', `File not found: ${from}`) });
     }
-    const normalizedTo = this.normalize(to);
     this.addDirectory(path.dirname(normalizedTo));
     this.files.set(normalizedTo, { ...source });
     return Promise.resolve(ok(undefined));
@@ -232,6 +251,9 @@ export class InMemoryFileSystem implements FileSystemPort {
   renamePath(from: string, to: string): Promise<Result<void, AppError>> {
     const normalizedFrom = this.normalize(from);
     const normalizedTo = this.normalize(to);
+    if (this.isUnderReadOnly(normalizedFrom) || this.isUnderReadOnly(normalizedTo)) {
+      return Promise.resolve(this.readOnlyFailure(normalizedTo));
+    }
     if (this.directories.has(normalizedTo)) {
       return Promise.resolve({ ok: false, error: appError('conflict', `Path already exists: ${normalizedTo}`) });
     }
@@ -286,6 +308,12 @@ export class InMemoryFileSystem implements FileSystemPort {
     return Promise.resolve(ok(this.files.get(this.normalize(value))?.hash ?? null));
   }
 
+  isWritable(value: string): Promise<Result<boolean, AppError>> {
+    const normalized = this.normalize(value);
+    if (!this.directories.has(normalized) && !this.files.has(normalized)) return Promise.resolve(ok(false));
+    return Promise.resolve(ok(!this.isUnderReadOnly(normalized)));
+  }
+
   tempDirectory(): string {
     return '/tmp';
   }
@@ -296,6 +324,17 @@ export class InMemoryFileSystem implements FileSystemPort {
 
   private normalize(value: string): string {
     return path.normalize(value);
+  }
+
+  private isUnderReadOnly(normalized: string): boolean {
+    for (const readOnlyPath of this.readOnlyPaths) {
+      if (normalized === readOnlyPath || normalized.startsWith(`${readOnlyPath}/`)) return true;
+    }
+    return false;
+  }
+
+  private readOnlyFailure<T>(value: string): Result<T, AppError> {
+    return { ok: false, error: appError('internal', `Read-only mount: ${value}`, { code: 'EROFS' }) };
   }
 }
 

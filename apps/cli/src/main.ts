@@ -83,6 +83,11 @@ interface ProcessDriveOptions extends ProcessOptions {
   geminiBatch?: boolean | undefined;
 }
 
+interface MaterializeOptions extends JsonOption {
+  dryRun?: boolean | undefined;
+  keepAwake?: boolean | undefined;
+}
+
 interface AnalyzerSelection {
   analyzer: ProcessOptions['analyzer'];
   provider: ProcessOptions['provider'];
@@ -249,7 +254,11 @@ const waitForJobAndEmit = async (
   });
 };
 
-const waitForDriveJobAndEmit = async (json: boolean, jobId: string): Promise<void> => {
+const waitForDriveJobAndEmit = async (
+  json: boolean,
+  jobId: string,
+  completedHuman: (data: unknown) => string = processDriveHuman,
+): Promise<void> => {
   await waitForJob(jobId, {
     fetchJob: (id) => api.job({ jobId: id }),
     onProgress: (progress) => {
@@ -259,7 +268,7 @@ const waitForDriveJobAndEmit = async (json: boolean, jobId: string): Promise<voi
       }
       emitProgress(json, progressEvent(progress));
     },
-    onCompleted: (data) => emitCompleted(json, data, processDriveHuman(data)),
+    onCompleted: (data) => emitCompleted(json, data, completedHuman(data)),
     onError: (error) => emitError(json, error),
   });
 };
@@ -730,6 +739,35 @@ program
         return;
       }
       await waitForDriveJobAndEmit(json, result.value.jobId);
+    } finally {
+      keepAwake?.kill();
+    }
+  });
+
+program
+  .command('materialize')
+  .argument('<root>')
+  .description('Apply an existing catalog to a now-writable drive, without re-analysis')
+  .option('--dry-run', 'list every planned operation without touching disk', false)
+  .option('--keep-awake', 'keep macOS awake while the run is active', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string, options: MaterializeOptions) => {
+    const json = isJsonMode(options);
+    const validatedRoot = await validateProcessRoot(root);
+    if (!validatedRoot.ok) {
+      emitError(json, validatedRoot.error, validatedRoot.data);
+      return;
+    }
+    const dryRun = options.dryRun === true;
+    emitStarted(json, 'materialize', { root: validatedRoot.value, dryRun });
+    const keepAwake = startKeepAwake(options.keepAwake === true);
+    try {
+      const result = await api.materialize({ root: validatedRoot.value, dryRun });
+      if (!result.ok) {
+        emitError(json, result.error);
+        return;
+      }
+      await waitForDriveJobAndEmit(json, result.value.jobId, materializeHuman);
     } finally {
       keepAwake?.kill();
     }
@@ -1418,6 +1456,26 @@ const processDriveHuman = (data: unknown): string => {
     ? ` estimated-cost=$${data.costEstimate.estimatedCostUsd.toFixed(4)} USD`
     : '';
   return `Drive run complete: done=${done} skipped=${skipped} failed=${failed}${cost}`;
+};
+
+const materializeHuman = (data: unknown): string => {
+  if (!isRecord(data)) return 'Completed materialize';
+  const materialized = typeof data.filesMaterialized === 'number' ? data.filesMaterialized : 0;
+  const unchanged = typeof data.filesUnchanged === 'number' ? data.filesUnchanged : 0;
+  const skipped = typeof data.filesSkipped === 'number' ? data.filesSkipped : 0;
+  const failed = typeof data.filesFailed === 'number' ? data.filesFailed : 0;
+  const foldersTotal = typeof data.foldersTotal === 'number' ? data.foldersTotal : 0;
+  const elapsedS = typeof data.elapsedMs === 'number' ? (data.elapsedMs / 1000).toFixed(1) : '0.0';
+  const lines = [
+    `Materialized ${materialized} files, ${unchanged} already current, ${skipped} skipped, `
+    + `${failed} failed across ${foldersTotal} folders in ${elapsedS}s`,
+  ];
+  const collisions = typeof data.collisions === 'number' ? data.collisions : 0;
+  if (collisions > 0) lines.push(`Name collisions resolved with a numeric suffix: ${collisions}`);
+  if (data.dryRun === true) lines.push('Dry run: nothing was written.');
+  const foldersNotWritable = typeof data.foldersNotWritable === 'number' ? data.foldersNotWritable : 0;
+  if (foldersNotWritable > 0) lines.push(`Folders still read-only: ${foldersNotWritable}`);
+  return lines.join('\n');
 };
 
 const downloadedHuman = (data: unknown, model: string): string => {
