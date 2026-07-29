@@ -43,6 +43,10 @@ const variantsCompletionSchema = z.object({
   fingerprint: z.string().min(1),
   count: z.number().int().nonnegative(),
 });
+const variantRowSchema = z.object({
+  configId: z.union([z.string().regex(/^cfg_[0-9a-f]{12}$/), z.literal('legacy')]),
+  selected: z.boolean(),
+});
 const reusedTranscriptEventSchema = z.object({
   type: z.literal('progress'),
   step: z.literal('artifact_reused'),
@@ -241,7 +245,12 @@ const assertPipeline = async (
   const listing = variantsCompletionSchema.parse(
     variants.events.find((event) => event.type === 'completed')?.data,
   );
-  expect(listing.count).toBe(2);
+  const rows = variants.jsonValues.flatMap((value) => {
+    const parsed = variantRowSchema.safeParse(value);
+    return parsed.success ? [parsed.data] : [];
+  });
+  expect(rows).toContainEqual({ configId: firstCompletion.configId, selected: true });
+  expect(rows).toContainEqual({ configId: secondCompletion.configId, selected: false });
   const transcriptDirectory = join(
     workdir,
     '.ai-video-cataloger',
@@ -250,6 +259,17 @@ const assertPipeline = async (
     listing.fingerprint,
   );
   expect(readdirSync(transcriptDirectory).filter((name) => name.endsWith('.txt'))).toHaveLength(1);
+
+  const legacySummaryJson = readFileSync(join(workdir, 'summaries', `${base}.json`));
+  const variantSummaryJson = readFileSync(join(
+    workdir,
+    '.ai-video-cataloger',
+    'variants',
+    listing.fingerprint,
+    firstCompletion.configId,
+    'summary.json',
+  ));
+  expect(legacySummaryJson.equals(variantSummaryJson)).toBe(true);
 };
 
 const runCliCell = async (
@@ -258,11 +278,12 @@ const runCliCell = async (
   environment: NodeJS.ProcessEnv,
   setupArgs: readonly string[],
   transcriptExpected = false,
+  secondVariant = false,
 ): Promise<void> => {
   const workdir = makeEmptyWorkdir(cell);
   try {
     await setup(cell, workdir, environment, setupArgs);
-    await assertPipeline(cell, workdir, sample, environment, transcriptExpected);
+    await assertPipeline(cell, workdir, sample, environment, transcriptExpected, secondVariant);
   } finally {
     rmSync(workdir, { recursive: true, force: true });
   }

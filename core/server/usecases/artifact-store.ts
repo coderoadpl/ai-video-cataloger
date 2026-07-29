@@ -203,6 +203,50 @@ export const reusableTranscriptArtifact = async (
   return fs.isFile(parsed.data.path);
 };
 
+export interface ProjectableVariant {
+  fingerprint: string;
+  configId: string;
+  descriptor: ConfigDescriptor | null;
+}
+
+export const variantProjectionSource = async (
+  fs: FileSystemPort,
+  root: ArtifactRoot,
+  variant: ProjectableVariant,
+): Promise<Result<SelectedVariantProjectionSource | null, AppError>> => {
+  const outputs = variantOutputPaths(fs, root, variant.fingerprint, variant.configId);
+  const hasSummary = await fs.isFile(outputs.summaryJsonPath);
+  if (!hasSummary.ok) return hasSummary;
+  if (!hasSummary.value) return ok(null);
+  const debugLogPath = await optionalFile(fs, outputs.debugLogPath);
+  if (!debugLogPath.ok) return debugLogPath;
+  if (variant.descriptor === null) {
+    return ok({
+      framesDirectory: null,
+      transcriptPath: null,
+      transcriptJsonPath: null,
+      summaryPath: outputs.summaryPath,
+      summaryJsonPath: outputs.summaryJsonPath,
+      debugLogPath: debugLogPath.value,
+    });
+  }
+  const shared = sharedArtifactPaths(fs, root, variant.fingerprint, variant.descriptor);
+  const transcriptPath = await optionalFile(fs, shared.transcriptPath);
+  if (!transcriptPath.ok) return transcriptPath;
+  const transcriptJsonPath = await optionalFile(fs, shared.transcriptJsonPath);
+  if (!transcriptJsonPath.ok) return transcriptJsonPath;
+  const framesDirectory = await optionalDirectory(fs, shared.framesDirectory);
+  if (!framesDirectory.ok) return framesDirectory;
+  return ok({
+    framesDirectory: framesDirectory.value,
+    transcriptPath: transcriptPath.value,
+    transcriptJsonPath: transcriptJsonPath.value,
+    summaryPath: outputs.summaryPath,
+    summaryJsonPath: outputs.summaryJsonPath,
+    debugLogPath: debugLogPath.value,
+  });
+};
+
 export const selectedVariantProjectionSource = async (
   fs: FileSystemPort,
   paths: VariantArtifactPaths,
@@ -364,6 +408,13 @@ const cleanProjectionEntries = async (
 
 const optionalFile = async (fs: FileSystemPort, path: string): Promise<Result<string | null, AppError>> => {
   const exists = await fs.isFile(path);
+  if (!exists.ok) return exists;
+  return ok(exists.value ? path : null);
+};
+
+const optionalDirectory = async (fs: FileSystemPort, path: string | null): Promise<Result<string | null, AppError>> => {
+  if (path === null) return ok(null);
+  const exists = await fs.isDirectory(path);
   if (!exists.ok) return exists;
   return ok(exists.value ? path : null);
 };

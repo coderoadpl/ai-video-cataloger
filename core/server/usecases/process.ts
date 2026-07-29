@@ -70,6 +70,7 @@ import {
   selectedVariantProjectionSource,
   sharedArtifactPaths,
   variantArtifactPaths,
+  variantProjectionSource,
   type VariantArtifactPaths,
 } from './artifact-store.js';
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
@@ -1536,24 +1537,27 @@ const recordGlobalCatalog = async (
   }
   const finalPath = completed.path;
   const folder = deps.fs.dirname(finalPath);
+  const videoRow = await repository.findVideoByPath(finalPath);
+  if (!videoRow.ok) return videoRow;
+  const newName = videoRow.value?.newName ?? null;
   const fingerprint = await deps.fs.partialContentHash(finalPath);
   if (!fingerprint.ok) return fingerprint;
   if (fingerprint.value === null) {
-    if (progress === undefined) return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId });
-    const reported = await progress.reportProgress({
-      step: 'catalog_index_skipped',
-      data: { video: finalPath, reason: 'fingerprint_unavailable', configId: resolved.configId },
-    });
-    if (!reported.ok) return reported;
+    if (progress !== undefined) {
+      const reported = await progress.reportProgress({
+        step: 'catalog_index_skipped',
+        data: { video: finalPath, reason: 'fingerprint_unavailable', configId: resolved.configId },
+      });
+      if (!reported.ok) return reported;
+    }
+    const projected = await projectRunVariant(deps, resolved, finalPath, newName);
+    if (!projected.ok) return projected;
     return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId });
   }
   const stat = await deps.fs.stat(finalPath);
   if (!stat.ok) return stat;
   const probe = await deps.media.probe({ videoPath: finalPath });
   if (!probe.ok) return probe;
-  const videoRow = await repository.findVideoByPath(finalPath);
-  if (!videoRow.ok) return videoRow;
-  const newName = videoRow.value?.newName ?? null;
   const paths = pipelineArtifactPathsAt(deps.fs, resolved, finalPath, newName);
   const summary = await loadOptionalSummary(deps.fs, paths.summaryJsonPath);
   if (!summary.ok) return summary;
@@ -1594,18 +1598,16 @@ const recordGlobalCatalog = async (
     },
   );
   if (!upserted.ok) return upserted;
-  if (upserted.value.selectedConfigId === resolved.configId && resolved.variantPaths !== null) {
-    const projectionSource = await selectedVariantProjectionSource(deps.fs, resolved.variantPaths);
-    if (!projectionSource.ok) return projectionSource;
-    const projected = await materializeSelectedVariantProjection(
-      deps.fs,
-      resolved.artifactRoot,
-      finalPath,
-      newName,
-      projectionSource.value,
-    );
-    if (!projected.ok) return projected;
-  }
+  const ensured = await ensureSelectedProjection(
+    deps,
+    globalCatalog,
+    resolved,
+    fingerprint.value,
+    finalPath,
+    newName,
+    upserted.value.selectedConfigId,
+  );
+  if (!ensured.ok) return ensured;
   if (upserted.value.snapshotSkipped && progress !== undefined) {
     const warned = await progress.reportProgress({
       step: 'catalog_snapshot_skipped',
@@ -1615,8 +1617,66 @@ const recordGlobalCatalog = async (
   }
   return ok({
     snapshotSkipped: upserted.value.snapshotSkipped,
-    selectedConfigId: upserted.value.selectedConfigId,
+    selectedConfigId: ensured.value,
   });
+};
+
+const projectRunVariant = async (
+  deps: ProcessDeps,
+  resolved: PipelineOptions,
+  finalPath: string,
+  newName: string | null,
+): Promise<Result<void, AppError>> => {
+  if (resolved.variantPaths === null) return ok(undefined);
+  const source = await selectedVariantProjectionSource(deps.fs, resolved.variantPaths);
+  if (!source.ok) return source;
+  return materializeSelectedVariantProjection(deps.fs, resolved.artifactRoot, finalPath, newName, source.value);
+};
+
+const ensureSelectedProjection = async (
+  deps: ProcessDeps,
+  globalCatalog: GlobalCatalogStore,
+  resolved: PipelineOptions,
+  fingerprint: string,
+  finalPath: string,
+  newName: string | null,
+  selectedConfigId: string,
+): Promise<Result<string, AppError>> => {
+  if (resolved.variantPaths === null) return ok(selectedConfigId);
+  if (selectedConfigId === resolved.configId) {
+    const projected = await projectRunVariant(deps, resolved, finalPath, newName);
+    return projected.ok ? ok(selectedConfigId) : projected;
+  }
+  const incumbent = await globalCatalog.getVariant(fingerprint, selectedConfigId);
+  if (!incumbent.ok) return incumbent;
+  const source = incumbent.value === null
+    ? ok(null)
+    : await variantProjectionSource(deps.fs, resolved.artifactRoot, incumbent.value);
+  if (!source.ok) return source;
+  if (source.value === null) {
+    const previous = await globalCatalog.getExplicitSelectedConfigId(fingerprint);
+    if (!previous.ok) return previous;
+    const claimed = await globalCatalog.setSelectedVariant(fingerprint, resolved.configId);
+    if (!claimed.ok) return claimed;
+    const projected = await projectRunVariant(deps, resolved, finalPath, newName);
+    if (!projected.ok) {
+      await globalCatalog.setSelectedVariant(fingerprint, previous.value);
+      return projected;
+    }
+    return ok(resolved.configId);
+  }
+  const target = artifactPaths(deps.fs, resolved.artifactRoot, finalPath, newName);
+  const present = await deps.fs.isFile(target.summaryJsonPath);
+  if (!present.ok) return present;
+  if (present.value) return ok(selectedConfigId);
+  const healed = await materializeSelectedVariantProjection(
+    deps.fs,
+    resolved.artifactRoot,
+    finalPath,
+    newName,
+    source.value,
+  );
+  return healed.ok ? ok(selectedConfigId) : healed;
 };
 
 const usageRecord = (usage: GeminiUsageAccounting) =>

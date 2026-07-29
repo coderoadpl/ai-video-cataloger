@@ -30,6 +30,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Read-only exFAT/fskit folders enter index-only mode when Node 22 masks recursive directory creation failures as `ENOENT`.
 - A drive run that cannot index faces — models not installed, engine unavailable, `--skip-faces`, cancelled or failed pass — now says so in the run summary and in a `faces_pass_skipped` NDJSON event instead of finishing silently with an empty people index.
+- A completed `process` run again writes the established `frames/{base}/`, `transcripts/{base}.*` and `summaries/{base}.*` files next to the video when the file was first catalogued by a pre-variant install: the selected-variant projection is now materialized on every completed run, and a freshly processed variant takes selection from an index-only `legacy` record that has no artifacts to project.
 
 ## [0.6.2] - 2026-08-04
 

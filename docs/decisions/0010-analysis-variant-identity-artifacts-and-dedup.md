@@ -65,6 +65,9 @@ Variant-specific outputs are stored separately:
 The established `frames/{base}/`, `transcripts/{base}.txt`, and
 `summaries/{base}.*` paths project the selected variant. Projection uses hard
 links with a copy fallback and is replaced atomically when selection changes.
+A `legacy` variant carries no artifacts, so it cannot be projected; processing
+a new configuration for such a file takes selection instead of leaving the
+name-based paths empty.
 
 This is chosen over variant-only directories with legacy names pinned to the
 first result, because those names would stop meaning the file's active analysis.

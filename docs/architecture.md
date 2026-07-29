@@ -94,7 +94,11 @@ Two scopes remain, with catalog ownership revised by
   `.ai-video-cataloger/variants/{fingerprint}/{configId}/`. The established
   name-based `frames/`, `transcripts/`, and `summaries/` paths remain a
   selected-variant projection, materialized as hard links with a copy fallback
-  and re-pointed atomically when selection changes.
+  and re-pointed atomically when selection changes. Every completed processing
+  run leaves that projection materialized for the resolved selected variant,
+  and a run's own variant takes selection when the resolved one is an
+  index-only record (`legacy`, imported from a pre-variant catalog) with no
+  artifacts to project.
 - **Home scope** — `~/.ai-video-cataloger/` also holds global model state,
   managed runtime files, whisper models, provider credentials, and the
   append-only spend ledger and read-only mirror below.

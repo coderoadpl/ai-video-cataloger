@@ -9,6 +9,7 @@ import {
   type VideoStatus,
 } from '@core/domain/index.js';
 
+import { readOnlyArtifactRoot } from './artifact-root.js';
 import { normalizeKebabSlug } from './final-name.js';
 import { enqueueProcess } from './jobs.js';
 import { parseAnalysisResponse, parseTagsLine, processVideoPipeline, tempAudioPath, type ProcessDeps } from './process.js';
@@ -49,6 +50,17 @@ class ThirdArtifactRenameFailureFileSystem extends InMemoryFileSystem {
       }
     }
     return super.renamePath(from, to);
+  }
+}
+
+class RenamedFingerprintUnavailableFileSystem extends InMemoryFileSystem {
+  constructor(private readonly originalVideoPath: string) {
+    super();
+  }
+
+  override partialContentHash(value: string): Promise<Result<string | null, AppError>> {
+    if (this.resolve(value) !== this.resolve(this.originalVideoPath)) return Promise.resolve({ ok: true, value: null });
+    return super.partialContentHash(value);
   }
 }
 
@@ -558,23 +570,136 @@ describe('process pipeline global catalog idempotency', () => {
     fs.addFile('/work/.ai-video-cataloger/catalog.ndjson', { content: `${header}\n${record}\n` });
   };
 
-  it('imports a legacy folder snapshot and adds the requested configuration as an unselected variant', async () => {
+  it('imports a legacy folder snapshot and selects it over the index-only legacy record', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();
     seedForeignDriveArtifacts(deps.fs);
 
     const result = await processVideoPipeline({ ...deps, globalCatalog }, baseInput);
 
-    expect(result).toMatchObject({
-      ok: true,
-      value: { status: 'completed', configId: expect.stringMatching(/^cfg_/), selectedConfigId: 'legacy' },
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({
+      status: 'completed',
+      configId: expect.stringMatching(/^cfg_/),
+      selectedConfigId: result.value.configId,
     });
     expect(deps.analyzer.inputs).toHaveLength(1);
     expect(deps.transcriber.inputs).toHaveLength(1);
     const analysis = await globalCatalog.getAnalysis('hash-clip');
-    expect(analysis.ok && analysis.value?.description).toBe('Done elsewhere');
+    expect(analysis.ok && analysis.value?.description).toBe('A useful clip.');
     const variants = await globalCatalog.listVariants('hash-clip');
     expect(variants.ok && variants.value).toHaveLength(2);
+    const legacyVariant = variants.ok ? variants.value.find((variant) => variant.configId === 'legacy') : undefined;
+    expect(legacyVariant?.description).toBe('Done elsewhere');
+  });
+
+  it('materializes the legacy folder layout when a pre-variant legacy record is selected', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    seedForeignDriveArtifacts(deps.fs);
+
+    const result = await processVideoPipeline({ ...deps, globalCatalog }, baseInput);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.selectedConfigId).toBe(result.value.configId);
+    const newBase = deps.fs.basenameWithoutExtension(result.value.path);
+    const summaryTxt = await deps.fs.isFile(`/work/summaries/${newBase}.txt`);
+    const summaryJson = await deps.fs.isFile(`/work/summaries/${newBase}.json`);
+    const framesDir = await deps.fs.isDirectory(`/work/frames/${newBase}`);
+    const transcriptTxt = await deps.fs.isFile(`/work/transcripts/${newBase}.txt`);
+    expect(summaryTxt).toMatchObject({ ok: true, value: true });
+    expect(summaryJson).toMatchObject({ ok: true, value: true });
+    expect(framesDir).toMatchObject({ ok: true, value: true });
+    expect(transcriptTxt).toMatchObject({ ok: true, value: true });
+  });
+
+  it('projects the run\'s variant when the fingerprint has no catalog fingerprint', async () => {
+    const fs = new RenamedFingerprintUnavailableFileSystem(videoPath);
+    const deps = makeDeps('pending', fs);
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const events: Array<{ step: string; data: Record<string, unknown> | undefined }> = [];
+
+    const result = await processVideoPipeline({ ...deps, globalCatalog }, baseInput, {
+      signal: idleSignal,
+      reportProgress: (event) => {
+        events.push({ step: event.step, data: event.data });
+        return Promise.resolve({ ok: true, value: undefined });
+      },
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const newBase = deps.fs.basenameWithoutExtension(result.value.path);
+    const summaryJson = await deps.fs.isFile(`/work/summaries/${newBase}.json`);
+    expect(summaryJson).toMatchObject({ ok: true, value: true });
+    expect(events).toContainEqual({
+      step: 'catalog_index_skipped',
+      data: { video: result.value.path, reason: 'fingerprint_unavailable', configId: result.value.configId },
+    });
+  });
+
+  it('leaves an explicitly selected variant projected when a later configuration is processed', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    const first = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const second = await processVideoPipeline({ ...deps, globalCatalog }, { ...input, provider: 'codex' });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+
+    expect(second.value.selectedConfigId).toBe(first.value.configId);
+    const legacySummary = await deps.fs.readTextFile('/work/summaries/Clip One.json');
+    const variantSummary = await deps.fs.readTextFile(
+      `/work/.ai-video-cataloger/variants/hash-clip/${first.value.configId}/summary.json`,
+    );
+    expect(legacySummary.ok && legacySummary.value).not.toBeNull();
+    expect(legacySummary).toEqual(variantSummary);
+  });
+
+  it('re-materializes a lost projection for the selected variant', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    const first = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    const variantSummary = await deps.fs.readTextFile(
+      `/work/.ai-video-cataloger/variants/hash-clip/${first.value.configId}/summary.json`,
+    );
+    await deps.fs.deletePath('/work/summaries');
+    await deps.fs.deletePath('/work/frames');
+
+    const second = await processVideoPipeline({ ...deps, globalCatalog }, { ...input, provider: 'codex' });
+
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.selectedConfigId).toBe(first.value.configId);
+    const healedSummary = await deps.fs.readTextFile('/work/summaries/Clip One.json');
+    expect(healedSummary).toEqual(variantSummary);
+    const healedFrames = await deps.fs.isDirectory('/work/frames/Clip One');
+    expect(healedFrames).toMatchObject({ ok: true, value: true });
+  });
+
+  it('keeps the source folder artifact-free in index-only mode', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    seedForeignDriveArtifacts(deps.fs);
+    deps.catalogs.repo('/work').markReadOnly();
+
+    const result = await processVideoPipeline({ ...deps, globalCatalog }, baseInput);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const newBase = deps.fs.basenameWithoutExtension(result.value.path);
+    const legacySummary = await deps.fs.exists(`/work/summaries/${newBase}.json`);
+    expect(legacySummary).toMatchObject({ ok: true, value: false });
+    const mirror = readOnlyArtifactRoot(deps.fs, '/work').path;
+    const mirroredSummary = await deps.fs.isFile(`${mirror}/summaries/${newBase}.json`);
+    expect(mirroredSummary).toMatchObject({ ok: true, value: true });
   });
 
   it('skips only an existing configuration pair and reports its configId', async () => {
