@@ -388,6 +388,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  thumbnails: (input: z.input<typeof API_ROUTES.thumbnails.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.thumbnails.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.thumbnails.method,
+      API_ROUTES.thumbnails.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   resetAll: (input: z.input<typeof API_ROUTES.resetAll.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.resetAll.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

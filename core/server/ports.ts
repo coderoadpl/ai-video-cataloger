@@ -387,6 +387,15 @@ export interface ThumbnailGeneration {
   skipped: boolean;
 }
 
+export interface ThumbnailFromFrameInput {
+  framePath: string;
+  thumbnailPath: string;
+  width: number;
+  height: number;
+  force: boolean;
+  priority?: 'foreground' | 'background' | undefined;
+}
+
 export interface FaceDetection {
   bbox: FaceBox;
   landmarks: FaceLandmarks;
@@ -426,6 +435,7 @@ export interface MediaPort {
   extractFrames(input: ExtractFramesInput): Promise<Result<{ framePaths: string[] }, AppError>>;
   extractAudio(input: ExtractAudioInput): Promise<Result<AudioExtraction, AppError>>;
   thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>>;
+  thumbnailFromFrame(input: ThumbnailFromFrameInput): Promise<Result<ThumbnailGeneration, AppError>>;
   dependencies(): Promise<Result<DependencyStatus[], AppError>>;
 }
 
@@ -699,7 +709,8 @@ export type JobKind =
   | 'local_ai_pull'
   | 'face_artifact_download'
   | 'faces_index'
-  | 'materialize';
+  | 'materialize'
+  | 'thumbnails';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -730,7 +741,10 @@ export type ProcessJobStep =
   | 'batch_uploads_retained'
   | 'batch_orphan_jobs'
   | 'batch_model_changed'
-  | 'budget_cap_reached';
+  | 'budget_cap_reached'
+  | 'thumbnails_scanning'
+  | 'thumbnails_file'
+  | 'thumbnails_done';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

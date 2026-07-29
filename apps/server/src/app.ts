@@ -62,6 +62,7 @@ import {
   setFolderDefaultVariant,
   stopLocalAiDaemon,
   testProvider,
+  thumbnailsBackfill,
   useWhisperModel,
   whisperRuntimeStatus,
 } from '@core/server/index.js';
@@ -226,6 +227,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.thumbnail.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.thumbnail.output);
     return respond(await generateThumbnail(deps, input.value), API_ROUTES.thumbnail.output);
+  });
+
+  app.post(API_ROUTES.thumbnails.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.thumbnails.output);
+    const input = parseInput(API_ROUTES.thumbnails.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.thumbnails.output);
+    return respond(await thumbnailsBackfill(deps, input.value), API_ROUTES.thumbnails.output);
   });
 
   app.get(API_ROUTES.status.path, async (context) => {

@@ -35,6 +35,7 @@ const mutating = routes.filter((route) => MUTATING_METHODS.has(route.method));
 const NO_LOCK_REASON: Record<string, string> = {
   catalogLockRetry: 'acquires the write lock itself; it is the lock primitive, not a guarded write',
   thumbnail: 'writes the derived thumbnail cache, never the canonical global catalog',
+  thumbnails: 'writes only derived thumbnail-cache files, never the canonical global catalog',
   configSet: 'writes the user-settings store, not the global catalog',
   credentialSet: 'writes the OS keychain, not the global catalog',
   credentialDelete: 'clears the OS keychain and the credentials file, not the global catalog',

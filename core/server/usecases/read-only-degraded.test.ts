@@ -305,6 +305,21 @@ describe('drive processing over a read-only folder', () => {
       .toBe(`${mirrorRoot(fs, '/drive/ro')}/thumbnails/clip.jpg`);
   });
 
+  it('writes the drive-run thumbnail into the mirror and leaves the read-only source untouched', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const deps = makeDeps(fs);
+
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro-thumb' });
+
+    expect(run.ok && run.value.filesDone).toBe(1);
+    const mirror = mirrorRoot(fs, '/drive/ro');
+    const mirroredThumbnail = await fs.exists(`${mirror}/thumbnails/clip.jpg`);
+    expect(mirroredThumbnail.ok && mirroredThumbnail.value).toBe(true);
+    const folderEntries = await fs.listDirectory('/drive/ro');
+    expect(folderEntries.ok && folderEntries.value.map((entry) => entry.name)).toEqual(['clip.mp4']);
+  });
+
   it('leaves a read-only folder nothing analysed reported as untracked', async () => {
     const fs = new ReadOnlyFolderFileSystem('/drive/ro');
     fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });

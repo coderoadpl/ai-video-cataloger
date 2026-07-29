@@ -16,6 +16,7 @@ import {
   type ArtifactRoot,
 } from './artifact-root.js';
 import {
+  FRAME_FILE_NAME_PATTERN,
   materializeArtifactFile,
   materializeSelectedVariantProjection,
   sharedArtifactPaths,
@@ -31,7 +32,6 @@ import { reportStep } from './process-drive-batch.js';
 import { summaryDataSchema } from './shared.js';
 
 const maxConsecutiveFailures = 5;
-const frameFileNamePattern = /^frame-[0-9]{3}\.jpg$/;
 
 export interface MaterializeDeps {
   fs: FileSystemPort;
@@ -595,7 +595,7 @@ const planArtifactStoreOps = async (
     const entries = await deps.fs.listDirectory(sourceShared.framesDirectory);
     if (!entries.ok) return entries;
     for (const entry of entries.value) {
-      if (entry.kind !== 'file' || !frameFileNamePattern.test(entry.name)) continue;
+      if (entry.kind !== 'file' || !FRAME_FILE_NAME_PATTERN.test(entry.name)) continue;
       const added = await addOp(entry.path, deps.fs.join(targetShared.framesDirectory, entry.name));
       if (!added.ok) return added;
     }

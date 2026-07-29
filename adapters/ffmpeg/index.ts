@@ -21,6 +21,7 @@ import type {
   ExtractFramesInput,
   MediaPort,
   MediaProbe,
+  ThumbnailFromFrameInput,
   ThumbnailGeneration,
   ThumbnailInput,
 } from '@core/server/index.js';
@@ -87,8 +88,12 @@ export interface FfmpegMediaAdapterOptions {
   commandProbe?: CommandProbe | undefined;
 }
 
+type ThumbnailJob =
+  | { kind: 'video'; input: ThumbnailInput }
+  | { kind: 'frame'; input: ThumbnailFromFrameInput };
+
 interface ThumbnailTask {
-  input: ThumbnailInput;
+  job: ThumbnailJob;
   resolve: (result: Result<ThumbnailGeneration, AppError>) => void;
 }
 
@@ -210,7 +215,17 @@ export class FfmpegMediaAdapter implements MediaPort {
       const queue = input.priority === 'foreground'
         ? this.foregroundThumbnails
         : this.backgroundThumbnails;
-      queue.push({ input, resolve });
+      queue.push({ job: { kind: 'video', input }, resolve });
+      this.drainThumbnails();
+    });
+  }
+
+  thumbnailFromFrame(input: ThumbnailFromFrameInput): Promise<Result<ThumbnailGeneration, AppError>> {
+    return new Promise((resolve) => {
+      const queue = input.priority === 'foreground'
+        ? this.foregroundThumbnails
+        : this.backgroundThumbnails;
+      queue.push({ job: { kind: 'frame', input }, resolve });
       this.drainThumbnails();
     });
   }
@@ -220,7 +235,7 @@ export class FfmpegMediaAdapter implements MediaPort {
       const task = this.foregroundThumbnails.shift() ?? this.backgroundThumbnails.shift();
       if (task === undefined) return;
       this.activeThumbnails += 1;
-      void this.generateThumbnail(task.input)
+      void this.runThumbnailJob(task.job)
         .catch((cause: unknown) => mediaFailure(cause, 'Failed to generate thumbnail'))
         .then(task.resolve)
         .finally(() => {
@@ -228,6 +243,10 @@ export class FfmpegMediaAdapter implements MediaPort {
           this.drainThumbnails();
         });
     }
+  }
+
+  private async runThumbnailJob(job: ThumbnailJob): Promise<Result<ThumbnailGeneration, AppError>> {
+    return job.kind === 'video' ? this.generateThumbnail(job.input) : this.generateThumbnailFromFrame(job.input);
   }
 
   private async generateThumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
@@ -253,6 +272,29 @@ export class FfmpegMediaAdapter implements MediaPort {
       return ok({ path: input.thumbnailPath, generated: true, skipped: false });
     } catch (cause) {
       return mediaFailure(cause, 'Failed to generate thumbnail');
+    }
+  }
+
+  private async generateThumbnailFromFrame(input: ThumbnailFromFrameInput): Promise<Result<ThumbnailGeneration, AppError>> {
+    const configured = await this.configure();
+    if (!configured.ok) return configured;
+    if (existsSync(input.thumbnailPath) && !input.force) {
+      return ok({ path: input.thumbnailPath, generated: false, skipped: true });
+    }
+
+    try {
+      mkdirSync(path.dirname(input.thumbnailPath), { recursive: true });
+      const generated = await runCommand(
+        this.runtime
+          .command(input.framePath)
+          .frames(1)
+          .videoFilters(thumbnailScaleFilter(input.width, input.height))
+          .output(input.thumbnailPath),
+      );
+      if (!generated.ok) return generated;
+      return ok({ path: input.thumbnailPath, generated: true, skipped: false });
+    } catch (cause) {
+      return mediaFailure(cause, 'Failed to generate thumbnail from frame');
     }
   }
 

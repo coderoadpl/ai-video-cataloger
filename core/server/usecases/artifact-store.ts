@@ -19,7 +19,7 @@ const safePathSegmentSchema = z.string().min(1).regex(/^[a-zA-Z0-9._:-]+$/);
 const configIdSchema = z.union([z.literal('legacy'), z.string().regex(/^cfg_[0-9a-f]{12}$/)]);
 const fingerprintSchema = safePathSegmentSchema;
 const frameCountSchema = z.number().int().min(1).max(10);
-const frameFileNamePattern = /^frame-[0-9]{3}\.jpg$/;
+export const FRAME_FILE_NAME_PATTERN = /^frame-[0-9]{3}\.jpg$/;
 
 const frameExtractionParameters = {
   format: 'jpeg',
@@ -184,7 +184,7 @@ export const reusableFramesArtifact = async (
   const entries = await fs.listDirectory(parsed.data.directory);
   if (!entries.ok) return entries;
   const framePaths = entries.value
-    .filter((entry) => entry.kind === 'file' && frameFileNamePattern.test(entry.name))
+    .filter((entry) => entry.kind === 'file' && FRAME_FILE_NAME_PATTERN.test(entry.name))
     .map((entry) => entry.path)
     .sort();
   return ok({ reusable: framePaths.length >= parsed.data.requestedCount, framePaths });
@@ -345,7 +345,7 @@ const stageProjectionEntry = async (
     return sourceEntries;
   }
   for (const sourceEntry of sourceEntries.value) {
-    if (sourceEntry.kind !== 'file' || !frameFileNamePattern.test(sourceEntry.name)) continue;
+    if (sourceEntry.kind !== 'file' || !FRAME_FILE_NAME_PATTERN.test(sourceEntry.name)) continue;
     const materialized = await materializeArtifactFile(fs, sourceEntry.path, fs.join(temporary, sourceEntry.name));
     if (!materialized.ok) {
       await fs.deletePath(temporary);

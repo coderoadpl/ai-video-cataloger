@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline/promises';
 import { Command, InvalidArgumentError } from 'commander';
 
 import { createApiClient, type ApiClient } from '@core/client/index.js';
-import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
+import { EXIT_CODE_BY_ERROR_CODE, thumbnailsSummarySchema } from '@core/contract/index.js';
 import {
   ANALYZER_PROVIDER_IDS,
   CONFIG_KEYS,
@@ -797,6 +797,25 @@ program
     emitCompleted(json, result.value, human);
   });
 
+program
+  .command('thumbnails')
+  .argument('<root>')
+  .description('Generate every missing catalog thumbnail under a folder tree')
+  .option('--force', 'regenerate thumbnails that already exist', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string, options: ForceJsonOption) => {
+    const json = isJsonMode(options);
+    const resolvedRoot = path.resolve(cliWorkingDirectory, root);
+    const force = options.force === true;
+    emitStarted(json, 'thumbnails', { root: resolvedRoot, force });
+    const result = await api.thumbnails({ root: resolvedRoot, force });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, thumbnailsHuman);
+  });
+
 const config = program.command('config');
 
 config
@@ -1481,6 +1500,13 @@ const materializeHuman = (data: unknown): string => {
   const foldersNotWritable = typeof data.foldersNotWritable === 'number' ? data.foldersNotWritable : 0;
   if (foldersNotWritable > 0) lines.push(`Folders still read-only: ${foldersNotWritable}`);
   return lines.join('\n');
+};
+
+const thumbnailsHuman = (data: unknown): string => {
+  const parsed = thumbnailsSummarySchema.safeParse(data);
+  if (!parsed.success) return 'Thumbnail generation complete';
+  const { generated, fromFrame, fromSource, skipped, failed, filesScanned } = parsed.data;
+  return `Thumbnails: generated=${generated} (frame=${fromFrame}, video=${fromSource}) skipped=${skipped} failed=${failed} over ${filesScanned} files`;
 };
 
 const downloadedHuman = (data: unknown, model: string): string => {

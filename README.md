@@ -96,6 +96,7 @@ variants select <path> --config <configId> [--json]
 variants delete <path> --config <configId> [--json]
 variants default <folder> (--config <configId>|--clear) [--json]
 thumbnail <video-path> [--force] [--json]
+thumbnails <root> [--force] [--json]
 status [--json]
 reset [filename] [--force] [--json]
 config get [key] [--json]
@@ -182,6 +183,25 @@ the same root is a no-op. `--dry-run` computes and reports the identical plan
 `TARGET_READ_ONLY` (46) instead of silently doing nothing. Because artifacts
 are found through the catalog's folder id rather than the current path, the
 drive does not have to return to the exact mount path it was analysed at.
+
+`thumbnails <root>` fills in the covers a catalog is missing. It walks the
+tree exactly like `process-drive` discovers it, treats a file as ready when
+its projected `summaries/<name>.json` is on disk, and writes
+`.ai-video-cataloger/thumbnails/<name>.jpg` by downscaling the analysis frame
+the selected variant already stored — the source video is never opened, so
+the command works on an index-only mirror of a read-only mount. A file with
+no stored frame (a Gemini-native analysis) falls back to a 25% seek of the
+source. A second run is a no-op; `--force` regenerates everything. NDJSON
+events are `thumbnails_scanning`, `thumbnails_file` and `thumbnails_done`,
+and the completion payload carries `generated`, `skipped`, `fromFrame`,
+`fromSource`, `failed` and per-file `failures`. Per-file failures do not
+change the exit code.
+
+`process` and `process-drive` write each file's cover as they go, from the
+same frame, so a finished run leaves a browsable catalog instead of
+generating covers lazily on first display. With a non-default `frames`
+setting the cover is the first analysis frame — `duration/(frames+1)` — not
+necessarily the 25% mark.
 
 OpenAI-compatible analyzers use `analyzer_provider` JSON configuration. API
 credentials live in the macOS Keychain (service `com.ai-video-cataloger.app`,

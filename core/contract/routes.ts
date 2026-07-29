@@ -369,6 +369,24 @@ export const thumbnailOutputSchema = z.object({
   skipped: z.boolean(),
 });
 
+export const thumbnailsInputSchema = z.object({
+  root: z.string().min(1),
+  force: z.boolean().default(false),
+});
+
+export const thumbnailsSummarySchema = z.object({
+  root: z.string().min(1),
+  foldersScanned: z.number().int().nonnegative(),
+  filesScanned: z.number().int().nonnegative(),
+  candidates: z.number().int().nonnegative(),
+  generated: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  fromFrame: z.number().int().nonnegative(),
+  fromSource: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+  failures: z.array(driveRunFailureSchema),
+});
+
 export const statusVideoSchema = z.object({
   path: z.string(),
   originalName: z.string(),
@@ -788,6 +806,7 @@ export const jobKindSchema = z.enum([
   'face_artifact_download',
   'faces_index',
   'materialize',
+  'thumbnails',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -821,6 +840,9 @@ export const jobProgressStepSchema = z.enum([
   'batch_model_changed',
   'budget_cap_reached',
   'materialize_file',
+  'thumbnails_scanning',
+  'thumbnails_file',
+  'thumbnails_done',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -853,6 +875,7 @@ export const jobResultSchema = z.union([
     peopleCreated: z.number().int().nonnegative(),
   }),
   materializeSummarySchema,
+  thumbnailsSummarySchema,
 ]);
 
 export const jobOutputSchema = z.object({
@@ -1160,6 +1183,7 @@ export const API_ROUTES = {
   processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
   materialize: { method: 'POST', path: '/api/materialize', input: materializeInputSchema, output: jobAcceptedOutputSchema },
   thumbnail: { method: 'POST', path: '/api/thumbnail', input: thumbnailInputSchema, output: thumbnailOutputSchema },
+  thumbnails: { method: 'POST', path: '/api/thumbnails', input: thumbnailsInputSchema, output: jobAcceptedOutputSchema },
   status: { method: 'GET', path: '/api/status', input: optionalFolderInputSchema, output: statusOutputSchema },
   resetAll: { method: 'POST', path: '/api/reset/all', input: resetAllInputSchema, output: resetAllOutputSchema },
   resetSingle: {
@@ -1329,6 +1353,7 @@ export const API_PATHS = {
   processDrive: API_ROUTES.processDrive.path,
   materialize: API_ROUTES.materialize.path,
   thumbnail: API_ROUTES.thumbnail.path,
+  thumbnails: API_ROUTES.thumbnails.path,
   status: API_ROUTES.status.path,
   resetAll: API_ROUTES.resetAll.path,
   resetSingle: API_ROUTES.resetSingle.path,

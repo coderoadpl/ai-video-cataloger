@@ -279,6 +279,42 @@ describe('FfmpegMediaAdapter', () => {
     expect(runtime.commands).toHaveLength(1);
   });
 
+  it('generates a thumbnail from a stored frame without seeking, and skips existing thumbnails without force', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    const adapter = adapterWithFakeRuntime(runtime);
+    const framePath = path.join(root, 'frames', 'clip', 'frame-001.jpg');
+    const thumbnailPath = path.join(root, '.ai-video-cataloger', 'thumbnails', 'clip.jpg');
+
+    const generated = await adapter.thumbnailFromFrame({
+      framePath,
+      thumbnailPath,
+      width: 128,
+      height: 72,
+      force: false,
+    });
+    await mkdir(path.dirname(thumbnailPath), { recursive: true });
+    await writeFile(thumbnailPath, 'existing');
+    const skipped = await adapter.thumbnailFromFrame({
+      framePath,
+      thumbnailPath,
+      width: 128,
+      height: 72,
+      force: false,
+    });
+
+    expect(generated).toEqual(ok({ path: thumbnailPath, generated: true, skipped: false }));
+    expect(skipped).toEqual(ok({ path: thumbnailPath, generated: false, skipped: true }));
+    expect(runtime.commands[0]?.operations).toEqual([
+      { name: 'frames', value: 1 },
+      { name: 'videoFilters', value: thumbnailScaleFilter(128, 72) },
+      { name: 'output', value: thumbnailPath },
+      { name: 'run' },
+    ]);
+    expect(runtime.commands).toHaveLength(1);
+    expect(runtime.commands[0]?.videoPath).toBe(framePath);
+  });
+
   it('bounds concurrent thumbnail generation to the worker-pool size', async () => {
     const root = await tempRoot();
     const runtime = new FakeFfmpegRuntime();
@@ -548,6 +584,35 @@ describe('FfmpegMediaAdapter optional real-binary smoke', () => {
     for (const dimension of [landscapeDims.width, landscapeDims.height, portraitDims.width, portraitDims.height]) {
       expect(dimension % 2).toBe(0);
     }
+  }, scaledTimeout(30_000));
+
+  it.skipIf(!canRunRealBinaries)('downscales a stored frame image to an aspect-preserving even-dimension thumbnail', async () => {
+    const root = await tempRoot();
+    const adapter = new FfmpegMediaAdapter();
+    const framePath = path.join(root, 'frame-001.jpg');
+    execFileSync(realBinaries.ffmpeg.path, [
+      '-y', '-v', 'error',
+      '-f', 'lavfi',
+      '-i', 'testsrc=size=64x36:rate=1',
+      '-frames:v', '1',
+      framePath,
+    ]);
+    const thumbnailPath = path.join(root, 'from-frame.jpg');
+
+    const result = await adapter.thumbnailFromFrame({
+      framePath,
+      thumbnailPath,
+      width: 128,
+      height: 72,
+      force: true,
+    });
+
+    if (!result.ok) throw new Error(result.error.message);
+    const dims = probeDimensions(thumbnailPath);
+    expect(dims.width).toBeLessThanOrEqual(128);
+    expect(dims.height).toBeLessThanOrEqual(72);
+    expect(dims.width % 2).toBe(0);
+    expect(dims.height % 2).toBe(0);
   }, scaledTimeout(30_000));
 });
 

@@ -1012,6 +1012,43 @@ describe('process pipeline global catalog idempotency', () => {
   });
 });
 
+describe('process pipeline thumbnail generation', () => {
+  it('writes the completed file\'s cover from the projected analysis frame', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+
+    const result = await processVideoPipeline({ ...deps, globalCatalog }, {
+      ...baseInput,
+      skipRename: true,
+      skipRenameExplicit: true,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const finalBase = deps.fs.basenameWithoutExtension(result.value.path);
+    expect(deps.media.thumbnailFromFrameInputs).toEqual([
+      expect.objectContaining({
+        framePath: `/work/frames/${finalBase}/frame-001.jpg`,
+        thumbnailPath: `/work/.ai-video-cataloger/thumbnails/${finalBase}.jpg`,
+      }),
+    ]);
+  });
+
+  it('does not fail the pipeline when the best-effort thumbnail write fails', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    deps.media.failFromFrame = true;
+
+    const result = await processVideoPipeline({ ...deps, globalCatalog }, {
+      ...baseInput,
+      skipRename: true,
+      skipRenameExplicit: true,
+    });
+
+    expect(result.ok).toBe(true);
+  });
+});
+
 describe('process pipeline rename and jobs', () => {
   it('rejects a concurrent process job for the same resolved video path', async () => {
     const deps = makeDeps('pending');

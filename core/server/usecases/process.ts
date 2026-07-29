@@ -77,6 +77,7 @@ import { filterTranscript, parseRichSegments } from './transcript-hallucinations
 import { resolveConfigValues } from './config-resolution.js';
 import { resolveFolderIntoIndex, upsertProcessedVariant } from './catalog-index.js';
 import { finalVideoName, normalizeKebabSlug, uniqueFilename } from './final-name.js';
+import { generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
@@ -230,6 +231,7 @@ export const processVideoPipeline = async (
 
   const recorded = await recordGlobalCatalog(deps, repository.value, options, runResult.value, progress);
   if (!recorded.ok) return recorded;
+  await ensureCompletedThumbnail(deps, options, runResult.value.path, recorded.value.finalName);
   if (input.batch === undefined) {
     const flushed = await flushGlobalCatalog(deps);
     if (!flushed.ok) return flushed;
@@ -1524,16 +1526,39 @@ const alreadyIndexed = async (
   return globalCatalog.getSelectedConfigId(fingerprint);
 };
 
+const ensureCompletedThumbnail = async (
+  deps: ProcessDeps,
+  resolved: PipelineOptions,
+  finalPath: string,
+  newName: string | null,
+): Promise<void> => {
+  const paths = artifactPaths(deps.fs, resolved.artifactRoot, finalPath, newName);
+  const framePath = await storedAnalysisFramePath(deps.fs, paths.framesDir);
+  // best effort: a cover is not worth failing an analysed file whose artifacts are already committed
+  if (framePath.ok && framePath.value !== null) {
+    await deps.media.thumbnailFromFrame({
+      framePath: framePath.value,
+      thumbnailPath: paths.thumbnailPath,
+      width: 128,
+      height: 72,
+      force: false,
+      priority: 'background',
+    });
+    return;
+  }
+  await generateThumbnail(deps, { videoPath: finalPath, force: false, priority: 'background' });
+};
+
 const recordGlobalCatalog = async (
   deps: ProcessDeps,
   repository: CatalogRepository,
   resolved: PipelineOptions,
   completed: PipelineCompletedOutput,
   progress: JobExecutionContext | undefined,
-): Promise<Result<{ snapshotSkipped: boolean; selectedConfigId: string }, AppError>> => {
+): Promise<Result<{ snapshotSkipped: boolean; selectedConfigId: string; finalName: string | null }, AppError>> => {
   const globalCatalog = deps.globalCatalog;
   if (globalCatalog === undefined) {
-    return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId });
+    return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId, finalName: null });
   }
   const finalPath = completed.path;
   const folder = deps.fs.dirname(finalPath);
@@ -1552,7 +1577,7 @@ const recordGlobalCatalog = async (
     }
     const projected = await projectRunVariant(deps, resolved, finalPath, newName);
     if (!projected.ok) return projected;
-    return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId });
+    return ok({ snapshotSkipped: false, selectedConfigId: resolved.configId, finalName: newName });
   }
   const stat = await deps.fs.stat(finalPath);
   if (!stat.ok) return stat;
@@ -1618,6 +1643,7 @@ const recordGlobalCatalog = async (
   return ok({
     snapshotSkipped: upserted.value.snapshotSkipped,
     selectedConfigId: ensured.value,
+    finalName: newName,
   });
 };
 

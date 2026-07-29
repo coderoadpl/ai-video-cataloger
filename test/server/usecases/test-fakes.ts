@@ -72,6 +72,7 @@ import type {
   ModelDownloadPort,
   ProvidersPort,
   ProviderTestResult,
+  ThumbnailFromFrameInput,
   ThumbnailGeneration,
   ThumbnailInput,
   TranscribeInput,
@@ -534,12 +535,14 @@ export class InMemoryMedia implements MediaPort {
   constructor(private readonly fs?: FileSystemPort) {}
 
   readonly thumbnailInputs: ThumbnailInput[] = [];
+  readonly thumbnailFromFrameInputs: ThumbnailFromFrameInput[] = [];
   readonly frameInputs: Array<{ videoPath: string; outputDirectory: string; frameCount: number }> = [];
   readonly audioInputs: Array<{ videoPath: string; outputPath: string }> = [];
   readonly durations = new Map<string, number | null>();
   readonly locations = new Map<string, { gpsLat: number; gpsLon: number }>();
   dependenciesValue: DependencyStatus[] = [dependency('ffmpeg', true), dependency('ffprobe', true)];
   hasAudio = true;
+  failFromFrame = false;
 
   probe(input: { videoPath: string }): Promise<Result<MediaProbe, AppError>> {
     const location = this.locations.get(input.videoPath);
@@ -576,6 +579,23 @@ export class InMemoryMedia implements MediaPort {
   thumbnail(input: ThumbnailInput): Promise<Result<ThumbnailGeneration, AppError>> {
     this.thumbnailInputs.push(input);
     return Promise.resolve(ok({ path: input.thumbnailPath, generated: input.force, skipped: !input.force }));
+  }
+
+  async thumbnailFromFrame(input: ThumbnailFromFrameInput): Promise<Result<ThumbnailGeneration, AppError>> {
+    this.thumbnailFromFrameInputs.push(input);
+    if (this.failFromFrame) {
+      return { ok: false, error: appError('processing_error', 'Failed to generate thumbnail from frame') };
+    }
+    if (this.fs !== undefined) {
+      const existing = await this.fs.isFile(input.thumbnailPath);
+      if (existing.ok && existing.value && !input.force) {
+        return ok({ path: input.thumbnailPath, generated: false, skipped: true });
+      }
+      const written = await this.fs.writeTextFile(input.thumbnailPath, 'thumbnail');
+      if (!written.ok) return written;
+      return ok({ path: input.thumbnailPath, generated: true, skipped: false });
+    }
+    return ok({ path: input.thumbnailPath, generated: true, skipped: false });
   }
 
   dependencies(): Promise<Result<DependencyStatus[], AppError>> {

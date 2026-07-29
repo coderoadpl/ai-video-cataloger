@@ -71,6 +71,7 @@ import type {
   ReconcileFolderResult,
   SpendLedgerPort,
   SpendLedgerTotal,
+  ThumbnailFromFrameInput,
   ThumbnailGeneration,
   TranscriberPort,
   WhisperRuntimePort,
@@ -1000,6 +1001,10 @@ class InMemoryMediaPort implements MediaPort {
   }
 
   thumbnail(input: { thumbnailPath: string; force: boolean }): Promise<Result<ThumbnailGeneration, AppError>> {
+    return Promise.resolve(ok({ path: input.thumbnailPath, generated: input.force, skipped: !input.force }));
+  }
+
+  thumbnailFromFrame(input: ThumbnailFromFrameInput): Promise<Result<ThumbnailGeneration, AppError>> {
     return Promise.resolve(ok({ path: input.thumbnailPath, generated: input.force, skipped: !input.force }));
   }
 

@@ -42,4 +42,102 @@ describe('generateThumbnail', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'invalid_file_type' } });
   });
+
+  it('prefers the stored analysis frame over seeking the source video', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/clip.mp4', { size: 100 });
+    fs.addFile('/work/frames/clip/frame-001.jpg');
+    fs.addFile('/work/frames/clip/frame-002.jpg');
+
+    const result = await generateThumbnail({ fs, media }, { videoPath: 'clip.mp4', force: true });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        video: 'clip.mp4',
+        path: '/work/clip.mp4',
+        thumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.jpg',
+        generated: true,
+        skipped: false,
+      },
+    });
+    expect(media.thumbnailFromFrameInputs).toEqual([
+      {
+        framePath: '/work/frames/clip/frame-001.jpg',
+        thumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.jpg',
+        width: 128,
+        height: 72,
+        force: true,
+        priority: 'foreground',
+      },
+    ]);
+    expect(media.thumbnailInputs).toEqual([]);
+  });
+
+  it('succeeds from the stored frame when the source video is gone', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/frames/clip/frame-001.jpg');
+
+    const result = await generateThumbnail({ fs, media }, { videoPath: 'clip.mp4', force: true });
+
+    expect(result.ok).toBe(true);
+    expect(media.thumbnailFromFrameInputs).toHaveLength(1);
+    expect(media.thumbnailInputs).toEqual([]);
+  });
+
+  it('reports skipped without calling media when a thumbnail already exists and force is false', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/clip.mp4', { size: 100 });
+    fs.addFile('/work/frames/clip/frame-001.jpg');
+    fs.addFile('/work/.ai-video-cataloger/thumbnails/clip.jpg');
+
+    const result = await generateThumbnail({ fs, media }, { videoPath: 'clip.mp4', force: false });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        video: 'clip.mp4',
+        path: '/work/clip.mp4',
+        thumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.jpg',
+        generated: false,
+        skipped: true,
+      },
+    });
+    expect(media.thumbnailFromFrameInputs).toEqual([]);
+    expect(media.thumbnailInputs).toEqual([]);
+  });
+
+  it('falls back to the source seek when no frame is stored', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/clip.mp4', { size: 100 });
+
+    const result = await generateThumbnail({ fs, media }, { videoPath: 'clip.mp4', force: true });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        video: 'clip.mp4',
+        path: '/work/clip.mp4',
+        thumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.jpg',
+        generated: true,
+        skipped: false,
+      },
+    });
+    expect(media.thumbnailInputs).toEqual([
+      {
+        videoPath: '/work/clip.mp4',
+        thumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.jpg',
+        seekPercent: 0.25,
+        width: 128,
+        height: 72,
+        force: true,
+        priority: 'foreground',
+      },
+    ]);
+    expect(media.thumbnailFromFrameInputs).toEqual([]);
+  });
 });
