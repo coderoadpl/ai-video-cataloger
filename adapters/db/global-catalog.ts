@@ -1359,8 +1359,17 @@ const variantToRow = (variant: CatalogVariant): typeof analyses.$inferInsert => 
 
 const parseStoredJson = <T>(value: string | null, schema: z.ZodType<T>): T | null => {
   if (value === null) return null;
-  const decoded: unknown = JSON.parse(value);
-  return schema.parse(decoded);
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(value);
+  } catch (cause) {
+    throw new CatalogAppError(appError('read_error', 'Stored JSON is not valid', cause));
+  }
+  const parsed = schema.safeParse(decoded);
+  if (!parsed.success) {
+    throw new CatalogAppError(appError('read_error', 'Stored JSON does not match the expected shape', parsed.error.flatten()));
+  }
+  return parsed.data;
 };
 
 const upsertAnalysisConfig = (db: GlobalDrizzle, variant: CatalogVariant): void => {

@@ -322,6 +322,7 @@ export const driveRunSummarySchema = z.object({
     estimatedCostUsd: z.number().nonnegative(),
   }).optional(),
   faces: driveRunFacesSchema.optional(),
+  snapshotSkipped: z.number().int().nonnegative().default(0),
   elapsedMs: z.number().int().nonnegative(),
   failures: z.array(driveRunFailureSchema),
 });

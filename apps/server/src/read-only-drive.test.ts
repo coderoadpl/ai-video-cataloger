@@ -5,7 +5,7 @@ import path from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
 
 import { ok, type AppError, type Result } from '@core/domain/index.js';
-import { indexForgetOutputSchema, searchOutputSchema } from '@core/contract/index.js';
+import { API_ROUTES, indexForgetOutputSchema, searchOutputSchema } from '@core/contract/index.js';
 import {
   forgetCatalogEntry,
   processDrive,
@@ -143,6 +143,19 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     expect(run.value.filesFailed).toBe(0);
     expect(run.value.snapshotSkipped).toBe(1);
     expect(run.value.failures).toEqual([]);
+
+    const jobPayload = API_ROUTES.jobStatus.output.parse({
+      jobId: 'job-read-only-drive',
+      kind: 'process_drive',
+      status: 'completed',
+      progress: null,
+      progressEvents: [],
+      result: run.value,
+      error: null,
+      createdAt: run.value.startedAt,
+      updatedAt: run.value.finishedAt,
+    });
+    expect(jobPayload.result).toMatchObject({ snapshotSkipped: 1 });
     expect(events.filter((event) => event.step === 'catalog_snapshot_skipped')).toHaveLength(1);
 
     expect(await readdir(folder)).toEqual(['clip.mp4']);

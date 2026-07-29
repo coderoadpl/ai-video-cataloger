@@ -378,6 +378,37 @@ describe('route schemas', () => {
     });
   });
 
+  it('carries snapshotSkipped on a completed drive-run job payload', () => {
+    const parsed = jobOutputSchema.parse({
+      jobId: 'job-drive-1',
+      kind: 'process_drive',
+      status: 'completed',
+      progress: null,
+      progressEvents: [],
+      result: {
+        runId: 'run-1',
+        root: '/videos',
+        startedAt: '2026-07-29T10:00:00.000Z',
+        finishedAt: '2026-07-29T10:01:00.000Z',
+        foldersTotal: 1,
+        foldersDone: 1,
+        filesTotal: 1,
+        filesDone: 1,
+        filesSkipped: 0,
+        filesDuplicateSkipped: 0,
+        filesFailed: 0,
+        snapshotSkipped: 1,
+        elapsedMs: 60000,
+        failures: [],
+      },
+      error: null,
+      createdAt: '2026-07-29T10:00:00.000Z',
+      updatedAt: '2026-07-29T10:01:00.000Z',
+    });
+
+    expect(parsed.result).toMatchObject({ snapshotSkipped: 1 });
+  });
+
   it('accepts the additive artifact reuse progress step', () => {
     const parsed = jobProgressSchema.parse({
       step: 'artifact_reused',

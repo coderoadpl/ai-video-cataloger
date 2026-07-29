@@ -958,6 +958,52 @@ describe('SqlJsGlobalCatalogStore', () => {
     }
   });
 
+  it('returns a typed error instead of throwing when a stored variant descriptor is corrupted', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    const descriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'en',
+      promptVersion: 1,
+    });
+    const variant: CatalogVariant = {
+      fingerprint: file.fingerprint,
+      configId: configId(descriptor),
+      descriptor,
+      finalName: 'alpha.mp4',
+      description: 'alpha description',
+      transcript: 'shared words',
+      language: 'en',
+      tags: ['alpha-tag'],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    };
+    expect((await store.upsertVariant(variant)).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    const SQL = await initSqlJs();
+    const raw = new SQL.Database(await readFile(store.databasePath()));
+    raw.run('UPDATE analyses SET config_json = ? WHERE fingerprint = ?', ['{not-json', file.fingerprint]);
+    await writeFile(store.databasePath(), raw.export());
+    raw.close();
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const result = await reopened.getVariant(file.fingerprint, variant.configId);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe('read_error');
+    }
+  });
+
   it('migrates an existing v1 database to the current version and persists the migrated schema immediately', async () => {
     const home = await tempHome();
     await writeV1Catalog(home);
