@@ -27,7 +27,9 @@ Ground-up rewrite on the agentproofarch foundation
 ## The two gates
 
 - `pnpm run check` = typecheck + eslint (boundaries; the local plugin joins
-  with the renderer phase) + dependency-cruiser + vitest.
+  with the renderer phase) + dependency-cruiser + the renderer bundle build
+  (`electron:build:renderer`, which refuses any Node builtin in the renderer
+  module graph) + vitest.
 - `pnpm run smoke` = installed-tree check → lockfile lint → boot the real
   in-process app in a temp HOME/folder → drive doctor/scan/config/status
   through the CLI → assert envelope shapes and taxonomy exit codes.

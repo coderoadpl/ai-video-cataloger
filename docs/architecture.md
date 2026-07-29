@@ -446,7 +446,12 @@ vocabulary, never wrapped.
 ## Gates
 
 `pnpm run check` — typecheck, eslint (boundaries + local plugin), depcruise
-mirror, vitest projects. `pnpm run smoke` — installed-tree check (every
+mirror, the shipped renderer bundle build, vitest projects. The renderer build
+is part of `check` because the bundler's resolution is the only authority on
+the renderer's real module graph: `core/domain` is in that graph, and a Node
+builtin reaching it fails the build by name-import and is silently
+externalized otherwise, so `apps/web/vite.config.ts` refuses any builtin in the
+client graph outright. `pnpm run smoke` — installed-tree check (every
 declared dependency linked, every native asset the packaged bundle reads as a
 literal path materialized), `lock-lint` under pnpm frozen-lockfile semantics,
 boot the real in-process app, drive doctor/scan/config/status through the CLI

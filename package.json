@@ -23,7 +23,7 @@
     "test:coverage": "vitest run --coverage",
     "knip": "knip",
     "doc-lint": "node --import tsx scripts/doc-lint.ts",
-    "check": "node scripts/assert-node.mjs && pnpm run typecheck && pnpm run typecheck:islands && pnpm run lint && pnpm run depcruise && pnpm run knip && pnpm run doc-lint && pnpm run workflow-lint && pnpm run test:coverage",
+    "check": "node scripts/assert-node.mjs && pnpm run typecheck && pnpm run typecheck:islands && pnpm run lint && pnpm run depcruise && pnpm run electron:build:renderer && pnpm run knip && pnpm run doc-lint && pnpm run workflow-lint && pnpm run test:coverage",
     "cli": "tsx apps/cli/src/main.ts",
     "smoke": "node scripts/assert-node.mjs && node --import tsx scripts/smoke.ts",
     "electron:build:renderer": "vite build --config apps/web/vite.config.ts",

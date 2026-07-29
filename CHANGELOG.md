@@ -24,6 +24,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Changed
 
 - CI workflows (`check`, `smoke`, `e2e`, `ai-review`) now name the current repository, trigger on `main` instead of the retired `rewrite/foundation`, and stay dormant until the owner registers the self-hosted macOS runner and sets the `CI_RUNNER_READY` repository variable (`ai-review` additionally needs `CLAUDE_CODE_OAUTH_TOKEN_1` and `AI_REVIEW_READY`); a dormant job skips under a name that states the enable step instead of queueing on a runner that does not exist. See [docs/ci.md](docs/ci.md).
+- `pnpm run check` now builds the shipped renderer bundle and fails when any Node builtin reaches the renderer module graph, closing the gap that let `electron:build:renderer` break on a green `main`.
 
 ### Fixed
 
