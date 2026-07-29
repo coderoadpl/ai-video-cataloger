@@ -201,7 +201,13 @@ const assertPipeline = async (
   const firstCompletion = processCompletionSchema.parse(
     result.events.find((event) => event.type === 'completed')?.data,
   );
-  const language = await runCli(['config', 'set', 'output_language', 'pl', '--json'], workdir, 60_000, environment);
+  const secondVariantOutputLanguage = `pl-${Date.now().toString(36)}`;
+  const language = await runCli(
+    ['config', 'set', 'output_language', secondVariantOutputLanguage, '--json'],
+    workdir,
+    60_000,
+    environment,
+  );
   expect(language.code, `${cell}: failed to configure the second variant\n${language.stderr}`).toBe(0);
   const second = await runCli(
     [
