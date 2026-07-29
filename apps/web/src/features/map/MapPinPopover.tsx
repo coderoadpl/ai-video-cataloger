@@ -37,6 +37,25 @@ export const MapPinPopover = ({ anchorEl, location, onClose, onOpenLocation }: M
           >
             {formatCoordinates(location.lat, location.lon)}
           </Typography>
+          {location.place !== null && (
+            <Typography variant="caption" data-testid="map-pin-place">
+              {[location.place.name, location.place.region, location.place.country].filter((value) => value !== null).join(' · ')}
+            </Typography>
+          )}
+          {location.source !== null && (
+            <Chip
+              size="small"
+              data-testid="map-pin-source-badge"
+              label={location.source === 'camera'
+                ? dictionary.map.source.camera
+                : `${dictionary.map.source[location.source]}${location.accuracyM === null ? '' : ` ${dictionary.map.accuracy(Math.round(location.accuracyM))}`}`}
+              sx={(theme) => ({
+                alignSelf: 'flex-start',
+                bgcolor: location.source === 'camera' ? theme.palette.status.completed.soft : theme.palette.map.pinApproximateHalo,
+                color: location.source === 'camera' ? theme.palette.status.completed.main : theme.palette.map.pinApproximate,
+              })}
+            />
+          )}
           {location.folder.online ? null : (
             <Chip
               size="small"

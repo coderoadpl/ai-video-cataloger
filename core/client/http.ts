@@ -402,6 +402,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  gpsBackfill: (input: z.input<typeof API_ROUTES.gpsBackfill.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.gpsBackfill.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.gpsBackfill.method,
+      API_ROUTES.gpsBackfill.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   resetAll: (input: z.input<typeof API_ROUTES.resetAll.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.resetAll.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

@@ -87,6 +87,10 @@ describe('catalogLocations', () => {
       lon: 19,
       missing: false,
       folder: { folderId: folderA.folderId, currentPath: folderA.currentPath, displayName: folderA.displayName, online: true },
+      source: null,
+      accuracyM: null,
+      intervalKind: null,
+      place: null,
     }]);
   });
 

@@ -204,6 +204,37 @@ describe('details panel', () => {
     expect(screen.queryByTestId('details-coordinates')).toBeNull();
   });
 
+  it('badges a timeline-sourced location as approximate with its accuracy and shows the place', () => {
+    const video = makeVideo();
+
+    renderThemed(
+      <DetailsPanel
+        video={video}
+        analyzing={false}
+        location={{
+          lat: 10.5,
+          lon: 20.5,
+          source: 'timeline',
+          accuracyM: 150,
+          place: { name: 'Fjordvik', region: 'Nordland', country: 'Norway' },
+        }}
+      />,
+    );
+
+    expect(screen.getByTestId('details-gps-source-badge').textContent).toContain('±150 m');
+    expect(screen.getByTestId('details-place').textContent).toBe('Fjordvik · Nordland · Norway');
+  });
+
+  it('badges a camera-sourced location as measured, without an accuracy figure', () => {
+    const video = makeVideo();
+
+    renderThemed(
+      <DetailsPanel video={video} analyzing={false} location={{ lat: 50.0614, lon: 19.9366, source: 'camera' }} />,
+    );
+
+    expect(screen.getByTestId('details-gps-source-badge').textContent).toBe('Measured (camera)');
+  });
+
   it('renders the inline player with media source and no subtitles when segments are absent', () => {
     renderThemed(<DetailsPanel video={makeVideo({ status: 'pending' })} analyzing={false} />);
 

@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline/promises';
 import { Command, InvalidArgumentError } from 'commander';
 
 import { createApiClient, type ApiClient } from '@core/client/index.js';
-import { EXIT_CODE_BY_ERROR_CODE, thumbnailsSummarySchema } from '@core/contract/index.js';
+import { EXIT_CODE_BY_ERROR_CODE, gpsBackfillSummarySchema, thumbnailsSummarySchema } from '@core/contract/index.js';
 import {
   ANALYZER_PROVIDER_IDS,
   CONFIG_KEYS,
@@ -816,6 +816,41 @@ program
     await waitForJobAndEmit(json, result.value.jobId, thumbnailsHuman);
   });
 
+const gps = program.command('gps');
+
+gps
+  .command('backfill')
+  .argument('<timeline-path>')
+  .description('Fill empty catalog coordinates from a Google Timeline export')
+  .option('--root <path>', 'restrict the backfill to files under this folder')
+  .option('--dry-run', 'report matches without writing', false)
+  .option('--tolerance-minutes <minutes>', 'match tolerance in minutes', '30')
+  .option('--max-visit-hours <hours>', 'visits longer than this are treated as low-accuracy', '36')
+  .option('--reresolve-places', 're-resolve place names even where one is already stored', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (
+    timelinePath: string,
+    options: { root?: string; dryRun?: boolean; toleranceMinutes: string; maxVisitHours: string; reresolvePlaces?: boolean; json?: boolean },
+  ) => {
+    const json = isJsonMode(options);
+    const resolvedTimelinePath = path.resolve(cliWorkingDirectory, timelinePath);
+    const input = {
+      timelinePath: resolvedTimelinePath,
+      root: options.root === undefined ? undefined : path.resolve(cliWorkingDirectory, options.root),
+      dryRun: options.dryRun === true,
+      toleranceMinutes: Number.parseInt(options.toleranceMinutes, 10),
+      maxVisitHours: Number.parseInt(options.maxVisitHours, 10),
+      reresolvePlaces: options.reresolvePlaces === true,
+    };
+    emitStarted(json, 'gps_backfill', input);
+    const result = await api.gpsBackfill(input);
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, gpsBackfillHuman, true);
+  });
+
 const config = program.command('config');
 
 config
@@ -1602,6 +1637,23 @@ const thumbnailsHuman = (data: unknown): string => {
   if (!parsed.success) return 'Thumbnail generation complete';
   const { generated, fromFrame, fromSource, skipped, failed, filesScanned } = parsed.data;
   return `Thumbnails: generated=${generated} (frame=${fromFrame}, video=${fromSource}) skipped=${skipped} failed=${failed} over ${filesScanned} files`;
+};
+
+const gpsBackfillHuman = (data: unknown): string => {
+  const parsed = gpsBackfillSummarySchema.safeParse(data);
+  if (!parsed.success) return 'GPS backfill complete';
+  const summary = parsed.data;
+  const lines = [
+    summary.dryRun ? 'GPS backfill (dry run):' : 'GPS backfill:',
+    `Files considered: ${summary.filesConsidered} of ${summary.filesTotal} (camera-protected: ${summary.skipped.cameraGps}, manual-protected: ${summary.skipped.manualGps})`,
+    `Matched: visit=${summary.matched.visit} activity=${summary.matched.activity} path=${summary.matched.path} unmatched=${summary.unmatched}`,
+    `Accuracy median=${summary.accuracy.medianM ?? '-'}m p90=${summary.accuracy.p90M ?? '-'}m`,
+    `Written: ${summary.written}, unchanged: ${summary.unchanged}`,
+    `Skipped: offline=${summary.skipped.offline} noCapturedAt=${summary.skipped.noCapturedAt}`,
+    `Places: resolved=${summary.places.resolved} unresolved=${summary.places.unresolved} skippedNoDataset=${summary.places.skippedNoDataset}`,
+  ];
+  if (summary.skewSuspicious > 0) lines.push(`Filename/capture-time skew flagged on ${summary.skewSuspicious} files`);
+  return lines.join('\n');
 };
 
 const downloadedHuman = (data: unknown, model: string): string => {

@@ -37,6 +37,7 @@ import {
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
+  type CatalogPlace,
   type CatalogVariant,
   type FaceObservation,
   type GpsSource,
@@ -46,10 +47,13 @@ import {
 } from '@core/domain/index.js';
 import type {
   AnalyzedFileLocation,
+  ApplyGeoBackfillInput,
+  ApplyGeoBackfillResult,
   CatalogFileRecord,
   FaceIndexCandidate,
   FaceIndexScope,
   FaceStatusCounts,
+  GeoBackfillCandidate,
   CatalogLockInfo,
   CatalogLockProcessName,
   CatalogLockSnapshot,
@@ -746,7 +750,16 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           fo.current_path,
           fo.display_name,
           fo.first_seen_at,
-          fo.last_seen_at
+          fo.last_seen_at,
+          f.gps_source,
+          f.gps_accuracy_m,
+          f.gps_interval_kind,
+          f.place_name,
+          f.place_region,
+          f.place_country,
+          f.place_country_code,
+          f.place_distance_m,
+          f.place_dataset
         FROM files f
         JOIN folders fo ON fo.folder_id = f.folder_id
         LEFT JOIN analyses a ON a.fingerprint = f.fingerprint
@@ -758,6 +771,97 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .map(locationRowFromValues)
         .filter((row): row is CatalogLocationRow => row !== null);
       return { totalFiles, rows };
+    });
+  }
+
+  async listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>> {
+    return this.read((db, client) => {
+      const root = input.root === null ? null : canonicalPath(input.root);
+      const result = client.exec(
+        `SELECT
+          f.fingerprint,
+          f.folder_id,
+          fo.current_path,
+          f.file_name,
+          f.captured_at,
+          f.gps_lat,
+          f.gps_lon,
+          f.gps_source,
+          f.place_name
+        FROM files f
+        JOIN folders fo ON fo.folder_id = f.folder_id
+        WHERE f.missing_at IS NULL
+          AND ($root IS NULL OR fo.current_path = $root OR fo.current_path LIKE $rootPrefix)
+        ORDER BY fo.current_path, f.file_name`,
+        { $root: root, $rootPrefix: root === null ? null : `${root}/%` },
+      );
+      const values = result[0]?.values ?? [];
+      return values.map(geoBackfillCandidateFromValues);
+    });
+  }
+
+  async applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>> {
+    return this.write((db, client) => {
+      const existingRow = db.select().from(files).where(eq(files.fingerprint, input.fingerprint)).get();
+      if (existingRow === undefined) return 'skipped_precedence';
+      const existing = rowToFile(existingRow);
+
+      let outcome: ApplyGeoBackfillResult = 'unchanged';
+      const nextCapturedAt = input.capturedAt === undefined ? existing.capturedAt : input.capturedAt.at;
+      const nextCapturedAtSource = input.capturedAt === undefined ? existing.capturedAtSource : input.capturedAt.source;
+      if (input.capturedAt !== undefined && existing.capturedAt !== input.capturedAt.at) outcome = 'written';
+
+      let nextGpsLat = existing.gpsLat;
+      let nextGpsLon = existing.gpsLon;
+      let nextGpsSource = existing.gpsSource;
+      let nextAccuracyM = existing.gpsAccuracyM;
+      let nextIntervalKind = existing.gpsIntervalKind;
+      let nextResolvedAt = existing.gpsResolvedAt;
+      if (input.location !== undefined) {
+        const accepted = acceptsGpsWrite(
+          { lat: existing.gpsLat, lon: existing.gpsLon, source: existing.gpsSource },
+          { lat: input.location.lat, lon: input.location.lon, source: input.location.source },
+        );
+        if (!accepted) {
+          if (outcome !== 'written') outcome = 'skipped_precedence';
+        } else {
+          const unchangedCoordinates = existing.gpsLat !== null && existing.gpsLon !== null
+            && roundTo6(existing.gpsLat) === roundTo6(input.location.lat)
+            && roundTo6(existing.gpsLon) === roundTo6(input.location.lon)
+            && existing.gpsIntervalKind === input.location.intervalKind;
+          nextGpsLat = input.location.lat;
+          nextGpsLon = input.location.lon;
+          nextGpsSource = input.location.source;
+          nextAccuracyM = input.location.accuracyM;
+          nextIntervalKind = input.location.intervalKind;
+          nextResolvedAt = input.location.resolvedAt;
+          if (!unchangedCoordinates) outcome = 'written';
+        }
+      }
+
+      let nextPlace = existing.place;
+      if (input.place !== undefined && !placesEqual(existing.place, input.place)) {
+        nextPlace = input.place;
+        if (outcome !== 'skipped_precedence' || input.location === undefined) outcome = 'written';
+      }
+
+      const merged: CatalogFile = {
+        ...existing,
+        capturedAt: nextCapturedAt,
+        capturedAtSource: nextCapturedAtSource,
+        gpsLat: nextGpsLat,
+        gpsLon: nextGpsLon,
+        gpsSource: nextGpsSource,
+        gpsAccuracyM: nextAccuracyM,
+        gpsIntervalKind: nextIntervalKind,
+        gpsResolvedAt: nextResolvedAt,
+        place: nextPlace,
+      };
+      if (outcome === 'written') {
+        db.update(files).set(fileToRow(merged)).where(eq(files.fingerprint, input.fingerprint)).run();
+        syncSearchDocument(db, client, input.fingerprint);
+      }
+      return outcome;
     });
   }
 
@@ -1956,6 +2060,7 @@ const locationRowFromValues = (row: SqlValue[]): CatalogLocationRow | null => {
   const lon = nullableNumberValue(row[4]);
   if (lat === null || lon === null || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
   if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  const placeName = nullableStringValue(row[14]);
   return {
     fingerprint: stringValue(row[0]),
     fileName: stringValue(row[1]),
@@ -1970,7 +2075,39 @@ const locationRowFromValues = (row: SqlValue[]): CatalogLocationRow | null => {
       firstSeenAt: stringValue(row[9]),
       lastSeenAt: stringValue(row[10]),
     },
+    source: parseGpsSource(nullableStringValue(row[11])),
+    accuracyM: nullableNumberValue(row[12]),
+    intervalKind: parseIntervalKind(nullableStringValue(row[13])),
+    place: placeName === null ? null : {
+      name: placeName,
+      region: nullableStringValue(row[15]),
+      country: nullableStringValue(row[16]),
+      countryCode: nullableStringValue(row[17]),
+      distanceM: nullableNumberValue(row[18]) ?? 0,
+      dataset: nullableStringValue(row[19]) ?? '',
+    },
   };
+};
+
+const geoBackfillCandidateFromValues = (row: SqlValue[]): GeoBackfillCandidate => ({
+  fingerprint: stringValue(row[0]),
+  folderId: stringValue(row[1]),
+  folderPath: stringValue(row[2]),
+  fileName: stringValue(row[3]),
+  capturedAt: nullableStringValue(row[4]),
+  gpsLat: nullableNumberValue(row[5]),
+  gpsLon: nullableNumberValue(row[6]),
+  gpsSource: parseGpsSource(nullableStringValue(row[7])),
+  placeName: nullableStringValue(row[8]),
+});
+
+const roundTo6 = (value: number): number => Math.round(value * 1_000_000) / 1_000_000;
+
+const placesEqual = (left: CatalogPlace | null, right: CatalogPlace | null): boolean => {
+  if (left === null || right === null) return left === right;
+  return left.name === right.name && left.region === right.region && left.country === right.country
+    && left.countryCode === right.countryCode && left.dataset === right.dataset
+    && Math.abs(left.distanceM - right.distanceM) < 0.5;
 };
 
 const weightedSearchScore = (

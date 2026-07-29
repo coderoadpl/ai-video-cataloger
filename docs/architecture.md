@@ -123,10 +123,17 @@ capture instant, `captured_at`, always in UTC from the container's
 probe that finds no GPS never erases a stored coordinate. `search_documents`
 carries a `place` column alongside `tags_text`, ranked between tags and the
 final name, so a resolved place name is searchable rather than requiring a
-render-time geocode. See
+render-time geocode; the renderer never resolves places itself — every place
+string it shows comes from the catalog row. The `gps backfill <timeline.json>`
+job-backed use case (`core/server/usecases/gps-backfill.ts`) matches each
+file's `captured_at` against a parsed Google Timeline export
+(`core/domain/timeline.ts`), writes through
+`GlobalCatalogStore.applyGeoBackfill` (which re-checks the precedence rule
+inside the transaction), and resolves place text through the offline
+`PlacesPort` — a nearest-settlement lookup over a versioned, self-generated
+GeoNames snapshot, never a render-time geocoder. See
 [ADR-0015](decisions/0015-timeline-gps-provenance-and-offline-places.md) for
-the schema and the still-pending timeline backfill and offline place
-resolver.
+the schema and the still-pending production dataset.
 
 A source folder that cannot be written to (write-protected external drive,
 `chmod -w`) is not a failure: opening its catalog degrades to an in-memory

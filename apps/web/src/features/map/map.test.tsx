@@ -37,6 +37,10 @@ interface LocationOverrides {
   lon?: number;
   missing?: boolean;
   folder?: typeof onlineFolder;
+  source?: 'camera' | 'timeline' | 'manual' | null;
+  accuracyM?: number | null;
+  intervalKind?: 'visit' | 'activity' | 'path' | null;
+  place?: { name: string; region: string | null; country: string | null; countryCode: string | null; distanceM: number; dataset: string } | null;
 }
 
 const location = (overrides: LocationOverrides = {}) => ({
@@ -47,6 +51,10 @@ const location = (overrides: LocationOverrides = {}) => ({
   lon: 10,
   missing: false,
   folder: onlineFolder,
+  source: 'camera' as const,
+  accuracyM: null,
+  intervalKind: null,
+  place: null,
   ...overrides,
 });
 
@@ -253,5 +261,52 @@ describe('MapView', () => {
 
     expect(screen.getByTestId('map-loading')).toBeDefined();
     await waitFor(() => expect(screen.getByTestId('map-empty-state')).toBeDefined());
+  });
+
+  it('draws a hollow pin with an accuracy halo for a timeline-sourced location, never for a camera one', async () => {
+    respondWith({
+      totalFiles: 2,
+      locatedFiles: 2,
+      locations: [
+        location({ fingerprint: 'fp-camera', source: 'camera' }),
+        location({ fingerprint: 'fp-timeline', lat: 20, lon: 20, source: 'timeline', accuracyM: 150, intervalKind: 'visit' }),
+      ],
+    });
+
+    renderThemed(
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(2));
+    const pins = screen.getAllByTestId('map-pin');
+    const approximateFlags = pins.map((pin) => pin.getAttribute('data-approximate'));
+    expect(approximateFlags).toContain('true');
+    expect(approximateFlags).toContain('false');
+    expect(screen.getByTestId('map-pin-accuracy-halo')).toBeDefined();
+  });
+
+  it('shows the source badge and place line in the pin popover for an approximate location', async () => {
+    respondWith({
+      totalFiles: 1,
+      locatedFiles: 1,
+      locations: [location({
+        fingerprint: 'fp-1',
+        source: 'timeline',
+        accuracyM: 150,
+        intervalKind: 'visit',
+        place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 30, dataset: 'test' },
+      })],
+    });
+
+    renderThemed(
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('map-pin')).toBeDefined());
+    fireEvent.click(screen.getByTestId('map-pin'));
+
+    await waitFor(() => expect(screen.getByTestId('map-pin-source-badge')).toBeDefined());
+    expect(screen.getByTestId('map-pin-source-badge').textContent).toContain('±150 m');
+    expect(screen.getByTestId('map-pin-place').textContent).toBe('Fjordvik · Norway');
   });
 });

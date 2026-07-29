@@ -1,7 +1,9 @@
 # ADR-0015: GPS provenance, a UTC capture-time key, and place search — schema first
 
-Date: 2026-07-29 · Status: accepted (schema and domain landed; backfill CLI,
-offline place resolution and GUI honesty deferred — see Consequences)
+Date: 2026-07-29 · Status: accepted (schema, domain, the `gps backfill`
+use case/CLI, `PlacesPort` resolution machinery and GUI honesty are shipped;
+only the production GeoNames dataset itself remains deferred — see
+Consequences)
 
 ## Context
 
@@ -71,14 +73,31 @@ naive "just copy the nearest point" backfill actively harmful:
   `filenameLocalTimestamp` skew counter that never becomes the matching key)
   is fully implemented and unit-tested in `core/domain/timeline.ts`, ready to
   be driven by a backfill use case.
-- **Deferred, in the scope-shrink order the design spec names**: the
-  `gps backfill` CLI/job that drives the matching algorithm end-to-end against
-  a real timeline export; the offline GeoNames dataset, generator script and
-  `PlacesPort` adapter (so `place` stays empty until a follow-up wave); GUI
-  pin/badge honesty (measured vs approximate) on the W14 map and details
-  panel; and the closer's real-data validation run, which needs the CLI
-  command to exist. Each is additive on top of the schema landed here and does
-  not require another migration.
+- **Shipped in wave W15b**: the `gps backfill <timeline.json>` use case, job
+  wiring and NDJSON events (`gps_timeline_loaded` / `gps_backfill_file` /
+  `gps_backfill_done`), `GlobalCatalogStore.listGeoBackfillCandidates` /
+  `applyGeoBackfill` (re-checking `acceptsGpsWrite` inside the transaction so
+  camera/manual rows are provably untouched), the CLI command
+  (`avc gps backfill …`), the `PlacesPort` interface and a real
+  `GeoNamesPlacesAdapter` (bucketed nearest-settlement resolution, ring
+  widening to 5°, tested against a synthetic fixture), and the GUI honesty
+  pass — a hollow pin with an accuracy halo, a `Measured (camera)` /
+  `Approximate (…) ±m` badge and a place line, in both the map popover and the
+  details panel `MetadataCard`, themed via `MapPalette.pinApproximate` /
+  `pinApproximateHalo` and translated en/pl.
+- **Still deferred, and the one piece this wave could not close**: the actual
+  production GeoNames dataset. The generator script
+  (`scripts/generate-places-dataset.mjs`) is written per the spec's format,
+  but running it needs upstream `cities1000.txt` / `admin1CodesASCII.txt` /
+  `countryInfo.txt` downloaded by hand, and publishing the pinned tsv as a
+  GitHub release asset is an owner action outside an implementation session —
+  neither happened here. `GeoNamesPlacesAdapter` is wired into composition
+  with `datasetPath: null`, so `places.dependency().available` is honestly
+  `false`, every backfill run reports `places.skippedNoDataset` instead of
+  resolving names, and the `FILE_ARTIFACTS` registration / doctor entry /
+  `models places status|install` CLI plumbing described in the design spec's
+  §4.5 do not exist yet — adding them is a follow-up wave once a real dataset
+  is published, and requires no further schema change.
 - **Rejected**, per the design spec: tags for places; Google Places /
   Nominatim / any render-time geocoder; Google `placeID`s; a single pin style
   for measured and approximate locations.

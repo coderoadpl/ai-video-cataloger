@@ -28,6 +28,8 @@ export interface MapPalette {
   graticule: string;
   pin: string;
   pinMuted: string;
+  pinApproximate: string;
+  pinApproximateHalo: string;
   cluster: string;
   clusterText: string;
 }
@@ -71,6 +73,8 @@ const LIGHT = {
     graticule: '#e3e8ec',
     pin: '#007AFF',
     pinMuted: '#a1a1a6',
+    pinApproximate: '#f59e0b',
+    pinApproximateHalo: 'rgba(245,158,11,0.18)',
     cluster: '#007AFF',
     clusterText: '#ffffff',
   } satisfies MapPalette,
@@ -98,6 +102,8 @@ const DARK = {
     graticule: '#2f2f31',
     pin: '#0a84ff',
     pinMuted: '#6e6e73',
+    pinApproximate: '#fbbf24',
+    pinApproximateHalo: 'rgba(251,191,36,0.22)',
     cluster: '#0a84ff',
     clusterText: '#0b0b0c',
   } satisfies MapPalette,

@@ -6,7 +6,7 @@ import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { ArtifactsSection } from './ArtifactsSection.js';
 import { type DetailsVideo } from './details-video.js';
-import { MetadataCard } from './MetadataCard.js';
+import { MetadataCard, type DetailsLocation } from './MetadataCard.js';
 import { StatusActions } from './StatusActions.js';
 import { statusDescription } from './status-info.js';
 import { useVariants } from './use-variants.js';
@@ -21,7 +21,7 @@ interface VideoDetailsProps {
   onNavigateToCanonical?: ((canonicalPath: string) => void) | undefined;
   disabledReason?: string | undefined;
   onTagSearch?: ((tag: string) => void) | undefined;
-  location?: { lat: number; lon: number } | null | undefined;
+  location?: DetailsLocation | null | undefined;
   onShowOnMap?: (() => void) | undefined;
 }
 

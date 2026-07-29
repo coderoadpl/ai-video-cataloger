@@ -179,7 +179,13 @@ export const IndexRoute = () => {
       onNavigateToCanonical={catalog.selectKey}
       disabledReason={disabledReason}
       onTagSearch={globalSearch.submitSearch}
-      location={selectedLocation === null ? null : { lat: selectedLocation.lat, lon: selectedLocation.lon }}
+      location={selectedLocation === null ? null : {
+        lat: selectedLocation.lat,
+        lon: selectedLocation.lon,
+        source: selectedLocation.source,
+        accuracyM: selectedLocation.accuracyM,
+        place: selectedLocation.place,
+      }}
       onShowOnMap={selectedFingerprint === null ? undefined : () => {
         setMapFocus(selectedFingerprint);
         setActiveView('map');

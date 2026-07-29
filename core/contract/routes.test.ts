@@ -645,6 +645,10 @@ describe('route schemas', () => {
         displayName: 'drive',
         online: true,
       },
+      source: 'camera',
+      accuracyM: null,
+      intervalKind: null,
+      place: null,
     };
 
     it('round-trips a located file with an online folder', () => {

@@ -507,6 +507,18 @@ export interface Dictionary {
     resetView: string;
     openVideo: string;
     coordinates: string;
+    source: {
+      camera: string;
+      timeline: string;
+      manual: string;
+    };
+    interval: {
+      visit: string;
+      activity: string;
+      path: string;
+    };
+    accuracy: (meters: number) => string;
+    place: string;
   };
   settingsModal: {
     title: string;
@@ -1230,6 +1242,18 @@ export const en: Dictionary = {
     resetView: 'Reset view',
     openVideo: 'Open video',
     coordinates: 'Coordinates',
+    source: {
+      camera: 'Measured (camera)',
+      timeline: 'Approximate (timeline)',
+      manual: 'Set by hand',
+    },
+    interval: {
+      visit: 'place',
+      activity: 'route leg',
+      path: 'route point',
+    },
+    accuracy: (meters) => `±${meters} m`,
+    place: 'Place',
   },
   settingsModal: {
     title: 'Settings',
@@ -1966,6 +1990,18 @@ export const pl: Dictionary = {
     resetView: 'Zresetuj widok',
     openVideo: 'Otwórz film',
     coordinates: 'Współrzędne',
+    source: {
+      camera: 'Zmierzone (aparat)',
+      timeline: 'Przybliżone (oś czasu)',
+      manual: 'Ustawione ręcznie',
+    },
+    interval: {
+      visit: 'miejsce',
+      activity: 'odcinek trasy',
+      path: 'punkt trasy',
+    },
+    accuracy: (meters) => `±${meters} m`,
+    place: 'Miejsce',
   },
   settingsModal: {
     title: 'Ustawienia',

@@ -452,6 +452,27 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
     `materialize missing: expected exit ${materializeMissingExpected}, got ${materializeMissing.code}.\nstdout: ${materializeMissing.stdout}\nstderr: ${materializeMissing.stderr}`,
   );
 
+  const timelinePath = join(folder, 'timeline.json');
+  writeFileSync(timelinePath, JSON.stringify([{
+    startTime: '2026-01-01T09:00:00Z',
+    endTime: '2026-01-01T11:00:00Z',
+    visit: { topCandidate: { placeLocation: 'geo:10.000000,20.000000' } },
+  }]));
+  const gpsBackfill = await run(['gps', 'backfill', timelinePath, '--dry-run', '--json'], env, folder);
+  assert(
+    gpsBackfill.code === 0,
+    `gps backfill --dry-run: expected exit 0, got ${gpsBackfill.code}.\nstdout: ${gpsBackfill.stdout}\nstderr: ${gpsBackfill.stderr}`,
+  );
+  z.object({ dryRun: z.literal(true), written: z.literal(0), timeline: z.object({ intervals: z.literal(1) }) })
+    .parse(completedData(gpsBackfill, 'gps backfill --dry-run'));
+
+  const gpsBackfillMissing = await run(['gps', 'backfill', join(folder, 'missing-timeline.json'), '--json'], env, folder);
+  const gpsBackfillMissingExpected = EXIT_CODE_BY_ERROR_CODE.file_not_found;
+  assert(
+    gpsBackfillMissing.code === gpsBackfillMissingExpected,
+    `gps backfill missing: expected exit ${gpsBackfillMissingExpected}, got ${gpsBackfillMissing.code}.\nstdout: ${gpsBackfillMissing.stdout}\nstderr: ${gpsBackfillMissing.stderr}`,
+  );
+
   const missingFolder = join(folder, 'missing');
   const missing = await run(['scan', missingFolder, '--json'], env, folder);
   const expected = EXIT_CODE_BY_ERROR_CODE.folder_not_found;

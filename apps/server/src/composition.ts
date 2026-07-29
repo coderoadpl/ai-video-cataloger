@@ -14,6 +14,7 @@ import { JsonConfigStore, SqlJsCatalogRepositoryFactory, SqlJsGlobalCatalogStore
 import { NodeCliPathAdapter } from '@adapters/cli-path/index.js';
 import { OnnxFaceEngineAdapter } from '@adapters/faces/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
+import { GeoNamesPlacesAdapter } from '@adapters/places/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { NodeFolderWatcherPort } from '@adapters/fs/folder-watcher.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
@@ -56,6 +57,7 @@ import type {
   LocalAiRuntimePort,
   MediaPort,
   ModelDownloadPort,
+  PlacesPort,
   ProvidersPort,
   ProviderTestResult,
   SpendLedgerPort,
@@ -85,6 +87,7 @@ export interface AppDeps {
   localAi: LocalAiRuntimePort;
   downloads: ModelDownloadPort;
   faceEngine: FaceEnginePort;
+  places: PlacesPort;
   jobs: JobsPort;
   readiness: ReadinessCache;
 }
@@ -168,6 +171,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     localAi,
     downloads,
     faceEngine: new OnnxFaceEngineAdapter({ downloads }),
+    places: new GeoNamesPlacesAdapter({ fs: new NodeFileSystemPort({ workingDirectory, homeDirectory }), datasetPath: null }),
     jobs,
     readiness,
   };

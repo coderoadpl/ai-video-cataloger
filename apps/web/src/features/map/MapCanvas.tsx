@@ -31,6 +31,14 @@ const worldCopyOffsetsPx = (viewport: Viewport): number[] => {
 const isControlTarget = (target: EventTarget | null): boolean =>
   target instanceof Element && target.closest('button') !== null;
 
+const EARTH_CIRCUMFERENCE_M = 40_075_016.686;
+
+const metersPerPixel = (viewport: Viewport, lat: number): number => {
+  const world = worldSizePx(viewport);
+  if (world <= 0) return 1;
+  return (EARTH_CIRCUMFERENCE_M * Math.cos((lat * Math.PI) / 180)) / world;
+};
+
 const graticuleLines = (viewport: Viewport): { x1: number; y1: number; x2: number; y2: number }[] => {
   const lines: { x1: number; y1: number; x2: number; y2: number }[] = [];
   for (let lon = -180; lon <= 180; lon += 30) {
@@ -202,33 +210,63 @@ export const MapCanvas = ({
           const item = cluster.items[0];
           const location = item === undefined ? null : byFingerprint.get(item.id) ?? null;
           if (location === null) return null;
+          const approximate = location.source !== null && location.source !== 'camera';
+          const haloRadiusPx = approximate
+            ? Math.min(64, Math.max(6, (location.accuracyM ?? 0) / metersPerPixel(viewport, location.lat)))
+            : 0;
           return (
-            <ButtonBase
-              key={cluster.id}
-              ref={(node) => {
-                if (node === null) pinRefs.current.delete(location.fingerprint);
-                else pinRefs.current.set(location.fingerprint, node);
-              }}
-              data-testid="map-pin"
-              aria-label={location.finalName ?? location.fileName}
-              onClick={() => setSelectedFingerprint(location.fingerprint)}
-              sx={{
-                position: 'absolute',
-                left: cluster.x - 8,
-                top: cluster.y - 16,
-                width: 16,
-                height: 16,
-                borderRadius: '50% 50% 50% 0',
-                transform: 'rotate(-45deg)',
-                bgcolor: location.folder.online && !location.missing ? theme.palette.map.pin : theme.palette.map.pinMuted,
-              }}
-            />
+            <Box key={cluster.id} sx={{ position: 'absolute', left: cluster.x, top: cluster.y }}>
+              {approximate && (
+                <Box
+                  aria-hidden="true"
+                  data-testid="map-pin-accuracy-halo"
+                  sx={{
+                    position: 'absolute',
+                    left: -haloRadiusPx,
+                    top: -haloRadiusPx,
+                    width: haloRadiusPx * 2,
+                    height: haloRadiusPx * 2,
+                    borderRadius: '50%',
+                    bgcolor: theme.palette.map.pinApproximateHalo,
+                    pointerEvents: 'none',
+                  }}
+                />
+              )}
+              <ButtonBase
+                ref={(node) => {
+                  if (node === null) pinRefs.current.delete(location.fingerprint);
+                  else pinRefs.current.set(location.fingerprint, node);
+                }}
+                data-testid="map-pin"
+                data-approximate={approximate}
+                aria-label={location.finalName ?? location.fileName}
+                onClick={() => setSelectedFingerprint(location.fingerprint)}
+                sx={{
+                  position: 'absolute',
+                  left: -8,
+                  top: -16,
+                  width: 16,
+                  height: 16,
+                  borderRadius: approximate ? '50%' : '50% 50% 50% 0',
+                  transform: approximate ? undefined : 'rotate(-45deg)',
+                  border: approximate ? `2px solid ${theme.palette.map.pinApproximate}` : undefined,
+                  bgcolor: approximate
+                    ? 'transparent'
+                    : location.folder.online && !location.missing ? theme.palette.map.pin : theme.palette.map.pinMuted,
+                }}
+              />
+            </Box>
           );
         }
+        const clusterHasApproximate = cluster.items.some((item) => {
+          const location = byFingerprint.get(item.id);
+          return location !== undefined && location.source !== null && location.source !== 'camera';
+        });
         return (
           <ButtonBase
             key={cluster.id}
             data-testid="map-cluster"
+            data-approximate={clusterHasApproximate}
             aria-label={dictionary.map.clusterLabel(cluster.count)}
             onClick={() => handleClusterClick(cluster)}
             sx={{
@@ -238,8 +276,9 @@ export const MapCanvas = ({
               width: 32,
               height: 32,
               borderRadius: '50%',
-              bgcolor: theme.palette.map.cluster,
-              color: theme.palette.map.clusterText,
+              bgcolor: clusterHasApproximate ? 'transparent' : theme.palette.map.cluster,
+              border: clusterHasApproximate ? `2px solid ${theme.palette.map.pinApproximate}` : undefined,
+              color: clusterHasApproximate ? theme.palette.map.pinApproximate : theme.palette.map.clusterText,
               fontSize: '0.75rem',
               fontWeight: 600,
               display: 'flex',

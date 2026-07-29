@@ -942,7 +942,88 @@ describe('SqlJsGlobalCatalogStore', () => {
       lon: 19.9366,
       missing: false,
       folder,
+      source: 'camera',
+      accuracyM: null,
+      intervalKind: null,
+      place: null,
     }]);
+  });
+
+  it('listLocations carries provenance and place through to the row', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({
+      ...file,
+      gpsLat: 10.5,
+      gpsLon: 20.5,
+      gpsSource: 'timeline',
+      gpsAccuracyM: 150,
+      gpsIntervalKind: 'visit',
+      gpsResolvedAt: '2026-08-01T00:00:00.000Z',
+      place: { name: 'Fjordvik', region: 'Nordland', country: 'Norway', countryCode: 'NO', distanceM: 12, dataset: 'test-dataset' },
+    });
+
+    const result = await store.listLocations();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.rows[0]?.source).toBe('timeline');
+    expect(result.value.rows[0]?.accuracyM).toBe(150);
+    expect(result.value.rows[0]?.intervalKind).toBe('visit');
+    expect(result.value.rows[0]?.place).toEqual({
+      name: 'Fjordvik', region: 'Nordland', country: 'Norway', countryCode: 'NO', distanceM: 12, dataset: 'test-dataset',
+    });
+  });
+
+  it('listGeoBackfillCandidates returns non-missing files scoped to a root and excludes nothing by kind', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({ ...file, capturedAt: '2026-01-01T10:00:00.000Z' });
+    await store.upsertFile({ ...file, fingerprint: 'fp-missing', missingAt: 1_700_000_000 });
+
+    const scoped = await store.listGeoBackfillCandidates({ root: folder.currentPath });
+    expect(scoped.ok).toBe(true);
+    if (!scoped.ok) return;
+    expect(scoped.value.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
+    expect(scoped.value[0]?.capturedAt).toBe('2026-01-01T10:00:00.000Z');
+
+    const unscoped = await store.listGeoBackfillCandidates({ root: null });
+    expect(unscoped.ok && unscoped.value.length).toBe(1);
+
+    const otherRoot = await store.listGeoBackfillCandidates({ root: '/media/nowhere' });
+    expect(otherRoot.ok && otherRoot.value.length).toBe(0);
+  });
+
+  it('applyGeoBackfill respects precedence, is idempotent, and refreshes the search document with the place', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({ ...file, gpsLat: 1, gpsLon: 1, gpsSource: 'camera' });
+
+    const cameraAttempt = await store.applyGeoBackfill({
+      fingerprint: file.fingerprint,
+      location: { lat: 2, lon: 2, source: 'timeline', accuracyM: 150, intervalKind: 'visit', resolvedAt: '2026-01-01T00:00:00.000Z' },
+    });
+    expect(cameraAttempt.ok && cameraAttempt.value).toBe('skipped_precedence');
+    const untouched = await store.getFile(file.fingerprint);
+    expect(untouched.ok && untouched.value?.gpsLat).toBe(1);
+
+    await store.upsertFile({ ...file, fingerprint: 'fp-empty', gpsLat: null, gpsLon: null });
+    const location = { lat: 60.1, lon: 24.9, source: 'timeline' as const, accuracyM: 150, intervalKind: 'visit' as const, resolvedAt: '2026-01-01T00:00:00.000Z' };
+    const first = await store.applyGeoBackfill({
+      fingerprint: 'fp-empty',
+      location,
+      place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 30, dataset: 'test-dataset' },
+    });
+    expect(first.ok && first.value).toBe('written');
+
+    const second = await store.applyGeoBackfill({ fingerprint: 'fp-empty', location, place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 30, dataset: 'test-dataset' } });
+    expect(second.ok && second.value).toBe('unchanged');
+
+    const found = await store.search({ match: 'fjordvik*', rankingTerms: ['fjordvik'], limit: 10, offset: 0 });
+    expect(found.ok && found.value[0]?.fingerprint).toBe('fp-empty');
   });
 
   it('listLocations skips a row whose stored latitude is out of range', async () => {

@@ -394,6 +394,63 @@ export const thumbnailsSummarySchema = z.object({
   failures: z.array(driveRunFailureSchema),
 });
 
+export const gpsBackfillInputSchema = z.object({
+  timelinePath: z.string().min(1),
+  root: canonicalPathString().optional(),
+  dryRun: z.boolean().default(false),
+  toleranceMinutes: z.number().int().min(0).max(240).default(30),
+  maxVisitHours: z.number().int().min(1).max(720).default(36),
+  reresolvePlaces: z.boolean().default(false),
+});
+
+export const gpsBackfillSummarySchema = z.object({
+  timelinePath: z.string().min(1),
+  dryRun: z.boolean(),
+  startedAt: z.iso.datetime(),
+  finishedAt: z.iso.datetime().nullable(),
+  timeline: z.object({
+    entries: z.number().int().nonnegative(),
+    entriesSkipped: z.number().int().nonnegative(),
+    entriesIgnored: z.number().int().nonnegative(),
+    intervals: z.number().int().nonnegative(),
+    firstStart: z.string().nullable(),
+    lastEnd: z.string().nullable(),
+  }),
+  filesTotal: z.number().int().nonnegative(),
+  filesConsidered: z.number().int().nonnegative(),
+  capturedAtProbed: z.number().int().nonnegative(),
+  matched: z.object({
+    visit: z.number().int().nonnegative(),
+    activity: z.number().int().nonnegative(),
+    path: z.number().int().nonnegative(),
+  }),
+  matchedWithinTolerance: z.number().int().nonnegative(),
+  written: z.number().int().nonnegative(),
+  unchanged: z.number().int().nonnegative(),
+  unmatched: z.number().int().nonnegative(),
+  skipped: z.object({
+    cameraGps: z.number().int().nonnegative(),
+    manualGps: z.number().int().nonnegative(),
+    noCapturedAt: z.number().int().nonnegative(),
+    offline: z.number().int().nonnegative(),
+  }),
+  skewSuspicious: z.number().int().nonnegative(),
+  skewSamples: z.array(z.string()),
+  accuracy: z.object({
+    buckets: z.array(z.object({ upToM: z.number().nonnegative().nullable(), files: z.number().int().nonnegative() })),
+    medianM: z.number().nonnegative().nullable(),
+    p90M: z.number().nonnegative().nullable(),
+  }),
+  places: z.object({
+    datasetId: z.string().nullable(),
+    resolved: z.number().int().nonnegative(),
+    unresolved: z.number().int().nonnegative(),
+    skippedNoDataset: z.number().int().nonnegative(),
+  }),
+  failures: z.array(driveRunFailureSchema),
+  elapsedMs: z.number().int().nonnegative(),
+});
+
 export const facesReclusterOutputSchema = z.object({
   dryRun: z.boolean(),
   observations: z.number().int().nonnegative(),
@@ -849,6 +906,7 @@ export const jobKindSchema = z.enum([
   'faces_exemplars',
   'materialize',
   'thumbnails',
+  'gps_backfill',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -886,6 +944,9 @@ export const jobProgressStepSchema = z.enum([
   'thumbnails_scanning',
   'thumbnails_file',
   'thumbnails_done',
+  'gps_timeline_loaded',
+  'gps_backfill_file',
+  'gps_backfill_done',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -935,6 +996,7 @@ export const jobResultSchema = z.union([
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,
   facesExemplarsOutputSchema,
+  gpsBackfillSummarySchema,
 ]);
 
 export const jobOutputSchema = z.object({
@@ -1082,6 +1144,15 @@ export const searchOutputSchema = z.object({
   results: z.array(searchResultSchema),
 });
 
+export const catalogLocationPlaceSchema = z.object({
+  name: z.string().min(1),
+  region: z.string().nullable(),
+  country: z.string().nullable(),
+  countryCode: z.string().length(2).nullable(),
+  distanceM: z.number().nonnegative(),
+  dataset: z.string().min(1),
+});
+
 export const catalogLocationSchema = z.object({
   fingerprint: z.string().min(1),
   fileName: z.string().min(1),
@@ -1095,6 +1166,10 @@ export const catalogLocationSchema = z.object({
     displayName: z.string(),
     online: z.boolean(),
   }),
+  source: z.enum(['camera', 'timeline', 'manual']).nullable(),
+  accuracyM: z.number().nonnegative().nullable(),
+  intervalKind: z.enum(['visit', 'activity', 'path']).nullable(),
+  place: catalogLocationPlaceSchema.nullable(),
 }).strict();
 
 export const catalogLocationsOutputSchema = z.object({
@@ -1291,6 +1366,7 @@ export const API_ROUTES = {
   materialize: { method: 'POST', path: '/api/materialize', input: materializeInputSchema, output: jobAcceptedOutputSchema },
   thumbnail: { method: 'POST', path: '/api/thumbnail', input: thumbnailInputSchema, output: thumbnailOutputSchema },
   thumbnails: { method: 'POST', path: '/api/thumbnails', input: thumbnailsInputSchema, output: jobAcceptedOutputSchema },
+  gpsBackfill: { method: 'POST', path: '/api/gps/backfill', input: gpsBackfillInputSchema, output: jobAcceptedOutputSchema },
   status: { method: 'GET', path: '/api/status', input: optionalFolderInputSchema, output: statusOutputSchema },
   resetAll: { method: 'POST', path: '/api/reset/all', input: resetAllInputSchema, output: resetAllOutputSchema },
   resetSingle: {
@@ -1475,6 +1551,7 @@ export const API_PATHS = {
   materialize: API_ROUTES.materialize.path,
   thumbnail: API_ROUTES.thumbnail.path,
   thumbnails: API_ROUTES.thumbnails.path,
+  gpsBackfill: API_ROUTES.gpsBackfill.path,
   status: API_ROUTES.status.path,
   resetAll: API_ROUTES.resetAll.path,
   resetSingle: API_ROUTES.resetSingle.path,

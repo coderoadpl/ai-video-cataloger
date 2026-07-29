@@ -3,6 +3,7 @@ import path from 'node:path';
 import {
   FACE_ENGINE_VERSION,
   LEGACY_CONFIG_ID,
+  acceptsGpsWrite,
   appError,
   canonicalPath,
   normalizeEmbedding,
@@ -28,6 +29,8 @@ import {
 
 import type {
   AnalyzedFileLocation,
+  ApplyGeoBackfillInput,
+  ApplyGeoBackfillResult,
   CatalogFileRecord,
   CatalogLockSnapshot,
   CatalogLocationRow,
@@ -49,6 +52,7 @@ import type {
   AlignedFaceCrop,
   FileArtifactDownloadProgress,
   ForgetEntryResult,
+  GeoBackfillCandidate,
   GlobalCatalogCounts,
   GlobalCatalogStore,
   ReconcileFolderInput,
@@ -1314,11 +1318,99 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
           lon: file.gpsLon,
           missing: file.missingAt !== null,
           folder,
+          source: file.gpsSource,
+          accuracyM: file.gpsAccuracyM,
+          intervalKind: file.gpsIntervalKind,
+          place: file.place,
         };
       })
       .filter((row): row is CatalogLocationRow => row !== null)
       .sort((left, right) => left.fileName.localeCompare(right.fileName));
     return Promise.resolve(ok({ totalFiles: this.files.size, rows }));
+  }
+
+  listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>> {
+    const root = input.root === null ? null : canonicalPath(input.root);
+    const rows = [...this.files.values()]
+      .filter((file) => file.missingAt === null)
+      .map((file) => {
+        const folder = this.folders.get(file.folderId);
+        if (folder === undefined) return null;
+        if (root !== null && folder.currentPath !== root && !folder.currentPath.startsWith(`${root}/`)) return null;
+        const candidate: GeoBackfillCandidate = {
+          fingerprint: file.fingerprint,
+          folderId: folder.folderId,
+          folderPath: folder.currentPath,
+          fileName: file.fileName,
+          capturedAt: file.capturedAt,
+          gpsLat: file.gpsLat,
+          gpsLon: file.gpsLon,
+          gpsSource: file.gpsSource,
+          placeName: file.place?.name ?? null,
+        };
+        return candidate;
+      })
+      .filter((row): row is GeoBackfillCandidate => row !== null)
+      .sort((left, right) => `${left.folderPath}/${left.fileName}`.localeCompare(`${right.folderPath}/${right.fileName}`));
+    return Promise.resolve(ok(rows));
+  }
+
+  applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>> {
+    const existing = this.files.get(input.fingerprint);
+    if (existing === undefined) return Promise.resolve(ok('skipped_precedence'));
+
+    let outcome: ApplyGeoBackfillResult = 'unchanged';
+    const nextCapturedAt = input.capturedAt === undefined ? existing.capturedAt : input.capturedAt.at;
+    const nextCapturedAtSource = input.capturedAt === undefined ? existing.capturedAtSource : input.capturedAt.source;
+    if (input.capturedAt !== undefined && existing.capturedAt !== input.capturedAt.at) outcome = 'written';
+
+    let nextGpsLat = existing.gpsLat;
+    let nextGpsLon = existing.gpsLon;
+    let nextGpsSource = existing.gpsSource;
+    let nextAccuracyM = existing.gpsAccuracyM;
+    let nextIntervalKind = existing.gpsIntervalKind;
+    let nextResolvedAt = existing.gpsResolvedAt;
+    if (input.location !== undefined) {
+      const accepted = acceptsGpsWrite(
+        { lat: existing.gpsLat, lon: existing.gpsLon, source: existing.gpsSource },
+        { lat: input.location.lat, lon: input.location.lon, source: input.location.source },
+      );
+      if (!accepted) {
+        if (outcome !== 'written') outcome = 'skipped_precedence';
+      } else {
+        const unchanged = existing.gpsLat === input.location.lat && existing.gpsLon === input.location.lon
+          && existing.gpsIntervalKind === input.location.intervalKind;
+        nextGpsLat = input.location.lat;
+        nextGpsLon = input.location.lon;
+        nextGpsSource = input.location.source;
+        nextAccuracyM = input.location.accuracyM;
+        nextIntervalKind = input.location.intervalKind;
+        nextResolvedAt = input.location.resolvedAt;
+        if (!unchanged) outcome = 'written';
+      }
+    }
+
+    let nextPlace = existing.place;
+    if (input.place !== undefined && JSON.stringify(existing.place) !== JSON.stringify(input.place)) {
+      nextPlace = input.place;
+      outcome = 'written';
+    }
+
+    if (outcome === 'written') {
+      this.files.set(input.fingerprint, {
+        ...existing,
+        capturedAt: nextCapturedAt,
+        capturedAtSource: nextCapturedAtSource,
+        gpsLat: nextGpsLat,
+        gpsLon: nextGpsLon,
+        gpsSource: nextGpsSource,
+        gpsAccuracyM: nextAccuracyM,
+        gpsIntervalKind: nextIntervalKind,
+        gpsResolvedAt: nextResolvedAt,
+        place: nextPlace,
+      });
+    }
+    return Promise.resolve(ok(outcome));
   }
 
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>> {

@@ -146,7 +146,7 @@ const intervalFromEntry = (
 
 const EARTH_RADIUS_M = 6_371_000;
 
-const haversineM = (a: { lat: number; lon: number }, b: { lat: number; lon: number }): number => {
+export const haversineM = (a: { lat: number; lon: number }, b: { lat: number; lon: number }): number => {
   const toRad = (deg: number): number => (deg * Math.PI) / 180;
   const dLat = toRad(b.lat - a.lat);
   const dLon = toRad(b.lon - a.lon);
@@ -161,11 +161,15 @@ export interface TimelineMatchOptions {
   maxVisitHours: number;
 }
 
-export interface TimelineMatch {
+export interface TimelineFix {
   lat: number;
   lon: number;
   accuracyM: number;
   kind: TimelineIntervalKind;
+}
+
+export interface TimelineMatch extends TimelineFix {
+  contained: boolean;
 }
 
 interface Candidate {
@@ -204,16 +208,17 @@ export const matchTimeline = (
 
   const best = candidates[0];
   if (best === undefined) return null;
-  return best.contains
+  const fix = best.contains
     ? matchWithinInterval(best.interval, capturedAtMs, options)
     : matchOutsideInterval(best.interval, capturedAtMs, best.gapMs, options);
+  return { ...fix, contained: best.contains };
 };
 
 const matchWithinInterval = (
   interval: TimelineInterval,
   capturedAtMs: number,
   options: TimelineMatchOptions,
-): TimelineMatch => {
+): TimelineFix => {
   if (interval.kind === 'visit') {
     const point = interval.points[0];
     if (point === undefined) throw new Error('Visit interval has no point');
@@ -235,7 +240,7 @@ const matchWithinInterval = (
   return matchPathPoint(interval, capturedAtMs);
 };
 
-const matchPathPoint = (interval: TimelineInterval, capturedAtMs: number): TimelineMatch => {
+const matchPathPoint = (interval: TimelineInterval, capturedAtMs: number): TimelineFix => {
   const points = interval.points;
   if (points.length === 0) throw new Error('Path interval has no points');
   if (points.length === 1) {
@@ -275,7 +280,7 @@ const matchOutsideInterval = (
   capturedAtMs: number,
   gapMs: number,
   options: TimelineMatchOptions,
-): TimelineMatch => {
+): TimelineFix => {
   const base = matchWithinInterval(
     interval,
     capturedAtMs <= interval.startMs ? interval.startMs : interval.endMs,

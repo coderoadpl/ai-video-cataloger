@@ -6,6 +6,7 @@ import type {
   CatalogAnalysis,
   CatalogFile,
   CatalogFolder,
+  CatalogPlace,
   CatalogVariant,
   ConfigKey,
   CredentialDeletion,
@@ -17,10 +18,12 @@ import type {
   FileArtifact,
   FileArtifactId,
   GeminiUsageAccounting,
+  GpsSource,
   SpendLedgerEntry,
   MachineProfile,
   Person,
   Result,
+  TimelineIntervalKind,
   Video,
   WhisperEngine,
   WhisperModelName,
@@ -118,6 +121,55 @@ export interface CatalogLocationRow {
   lon: number;
   missing: boolean;
   folder: CatalogFolder;
+  source: GpsSource | null;
+  accuracyM: number | null;
+  intervalKind: TimelineIntervalKind | null;
+  place: CatalogPlace | null;
+}
+
+export interface GeoBackfillCandidate {
+  fingerprint: string;
+  folderId: string;
+  folderPath: string;
+  fileName: string;
+  capturedAt: string | null;
+  gpsLat: number | null;
+  gpsLon: number | null;
+  gpsSource: GpsSource | null;
+  placeName: string | null;
+}
+
+export interface GeoBackfillLocation {
+  lat: number;
+  lon: number;
+  source: GpsSource;
+  accuracyM: number;
+  intervalKind: TimelineIntervalKind;
+  resolvedAt: string;
+}
+
+export interface ApplyGeoBackfillInput {
+  fingerprint: string;
+  capturedAt?: { at: string; source: 'container' } | undefined;
+  location?: GeoBackfillLocation | undefined;
+  place?: CatalogPlace | null | undefined;
+}
+
+export type ApplyGeoBackfillResult = 'written' | 'unchanged' | 'skipped_precedence';
+
+export interface PlaceMatch {
+  name: string;
+  region: string | null;
+  country: string | null;
+  countryCode: string | null;
+  distanceM: number;
+  dataset: string;
+}
+
+export interface PlacesPort {
+  dependency(): Promise<Result<DependencyStatus, AppError>>;
+  isReady(): Promise<Result<boolean, AppError>>;
+  resolve(input: { lat: number; lon: number }): Promise<Result<PlaceMatch | null, AppError>>;
 }
 
 export interface CatalogLocationsSnapshot {
@@ -236,6 +288,8 @@ export interface GlobalCatalogStore {
   expandTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>>;
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>>;
+  listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>>;
+  applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;
   counts(): Promise<Result<GlobalCatalogCounts, AppError>>;
   reconcileFolder(input: ReconcileFolderInput): Promise<Result<ReconcileFolderResult, AppError>>;
@@ -759,7 +813,8 @@ export type JobKind =
   | 'faces_recluster'
   | 'faces_exemplars'
   | 'materialize'
-  | 'thumbnails';
+  | 'thumbnails'
+  | 'gps_backfill';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -794,7 +849,10 @@ export type ProcessJobStep =
   | 'budget_cap_reached'
   | 'thumbnails_scanning'
   | 'thumbnails_file'
-  | 'thumbnails_done';
+  | 'thumbnails_done'
+  | 'gps_timeline_loaded'
+  | 'gps_backfill_file'
+  | 'gps_backfill_done';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

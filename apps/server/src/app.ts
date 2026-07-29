@@ -65,6 +65,7 @@ import {
   selectVariantByLocator,
   setFolderDefaultVariant,
   stopLocalAiDaemon,
+  gpsBackfill,
   testProvider,
   thumbnailsBackfill,
   useWhisperModel,
@@ -242,6 +243,24 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.thumbnails.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.thumbnails.output);
     return respond(await thumbnailsBackfill(deps, input.value), API_ROUTES.thumbnails.output);
+  });
+
+  app.post(API_ROUTES.gpsBackfill.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.gpsBackfill.output);
+    const input = parseInput(API_ROUTES.gpsBackfill.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.gpsBackfill.output);
+    return respond(
+      await withCatalogWriteLockForJob(deps, () => gpsBackfill(deps, {
+        timelinePath: input.value.timelinePath,
+        root: input.value.root ?? null,
+        dryRun: input.value.dryRun,
+        toleranceMinutes: input.value.toleranceMinutes,
+        maxVisitHours: input.value.maxVisitHours,
+        reresolvePlaces: input.value.reresolvePlaces,
+      })),
+      API_ROUTES.gpsBackfill.output,
+    );
   });
 
   app.get(API_ROUTES.status.path, async (context) => {

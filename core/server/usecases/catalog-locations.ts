@@ -1,4 +1,4 @@
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { ok, type AppError, type CatalogPlace, type GpsSource, type Result, type TimelineIntervalKind } from '@core/domain/index.js';
 
 import type { FileSystemPort, GlobalCatalogStore } from '../ports.js';
 
@@ -20,6 +20,10 @@ export interface CatalogLocation {
     displayName: string;
     online: boolean;
   };
+  source: GpsSource | null;
+  accuracyM: number | null;
+  intervalKind: TimelineIntervalKind | null;
+  place: CatalogPlace | null;
 }
 
 export interface CatalogLocationsOutput {
@@ -57,6 +61,10 @@ export const catalogLocations = async (
         displayName: row.folder.displayName,
         online,
       },
+      source: row.source,
+      accuracyM: row.accuracyM,
+      intervalKind: row.intervalKind,
+      place: row.place,
     });
   }
 
