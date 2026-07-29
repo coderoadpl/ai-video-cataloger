@@ -86,11 +86,13 @@ export const configValueSchema = z.object({
   gemini_batch_mode: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
   gemini_monthly_budget_usd: z.preprocess(nullablePositiveNumberFromPersistedValue, z.number().positive().nullable()).default(null),
   output_language: outputLanguageSchema.default('auto'),
+  tag_language: outputLanguageSchema.optional(),
   ui_language: uiLanguageSchema.default('en'),
 });
 
 export const configSchema = configValueSchema.transform((config) => ({
   ...config,
+  tag_language: config.tag_language ?? config.output_language,
   analyzer_provider: config.analyzer_provider ?? legacyAnalyzerProvider(config.analyzer_backend, config.local_model),
 }));
 
@@ -114,6 +116,7 @@ export const CONFIG_KEYS = [
   'gemini_batch_mode',
   'gemini_monthly_budget_usd',
   'output_language',
+  'tag_language',
   'ui_language',
 ] as const;
 
@@ -145,5 +148,6 @@ export const configDescriptions: Record<ConfigKey, string> = {
   gemini_batch_mode: 'Send gemini-native drive runs through the Gemini Batch API (half price, results may take up to 24h)',
   gemini_monthly_budget_usd: 'Pause Gemini drive runs when the local monthly estimated spend reaches this amount in USD',
   output_language: 'Language for generated descriptions and filenames (auto, en, pl, or a BCP-47 code)',
+  tag_language: 'Language of generated tags (auto, en, pl, or a BCP-47 code); unset follows output_language',
   ui_language: 'Language of the desktop app interface (en, pl)',
 };

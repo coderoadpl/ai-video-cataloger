@@ -101,6 +101,7 @@ describe('config use-cases', () => {
       gemini_batch_mode: 'false',
       gemini_monthly_budget_usd: '12.5',
       output_language: 'pl',
+      tag_language: 'en',
       ui_language: 'pl',
     } as const;
     for (const key of CONFIG_KEYS) {
@@ -132,6 +133,7 @@ describe('config use-cases', () => {
           gemini_batch_mode: 'home',
           gemini_monthly_budget_usd: 'home',
           output_language: 'home',
+          tag_language: 'home',
           ui_language: 'home',
         },
       },
@@ -197,6 +199,7 @@ describe('config use-cases', () => {
       gemini_batch_mode: 'false',
       gemini_monthly_budget_usd: '12.5',
       output_language: 'en',
+      tag_language: 'en',
       ui_language: 'en',
     } as const;
     const folderValues = {
@@ -216,6 +219,7 @@ describe('config use-cases', () => {
       gemini_batch_mode: 'false',
       gemini_monthly_budget_usd: '9',
       output_language: 'pl',
+      tag_language: 'pl',
       ui_language: 'pl',
     } as const;
     for (const key of CONFIG_KEYS) {
@@ -260,8 +264,45 @@ describe('config use-cases', () => {
           gemini_batch_mode: 'folder',
           gemini_monthly_budget_usd: 'home',
           output_language: 'folder',
+          tag_language: 'folder',
           ui_language: 'home',
         },
+      },
+    });
+  });
+
+  it('inherits tag_language from output_language until it is explicitly set, then tracks the folder scope', async () => {
+    const config = new InMemoryConfig();
+    const deps = { config, fs: new InMemoryFileSystem('/work') };
+    await setConfig(deps, { key: 'output_language', value: 'pl' });
+
+    const beforeSet = await getConfig(deps, { key: null });
+    expect(beforeSet).toMatchObject({
+      ok: true,
+      value: {
+        config: { tag_language: null },
+        effective: { tag_language: 'pl' },
+        sources: { tag_language: 'home' },
+      },
+    });
+
+    await setConfig(deps, { key: 'tag_language', value: 'en' });
+    const afterHomeSet = await getConfig(deps, { key: null });
+    expect(afterHomeSet).toMatchObject({
+      ok: true,
+      value: {
+        effective: { tag_language: 'en', output_language: 'pl' },
+        sources: { tag_language: 'home' },
+      },
+    });
+
+    await setConfig(deps, { folder: '/work', key: 'tag_language', value: 'auto' });
+    const withFolderOverride = await getConfig(deps, { folder: '/work', key: null });
+    expect(withFolderOverride).toMatchObject({
+      ok: true,
+      value: {
+        effective: { tag_language: 'auto' },
+        sources: { tag_language: 'folder' },
       },
     });
   });

@@ -233,6 +233,7 @@ const configDefaults = {
   gemini_batch_mode: 'false',
   gemini_monthly_budget_usd: 'null',
   output_language: 'auto',
+  tag_language: 'auto',
   ui_language: 'en',
 };
 

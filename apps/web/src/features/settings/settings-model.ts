@@ -52,6 +52,7 @@ export const draftFromStored = (config: StoredConfig, defaults: StoredDefaults):
     output_language: config.output_language ?? defaults.output_language,
     ui_language: config.ui_language ?? defaults.ui_language,
     ...(config.analyzer_provider === null ? {} : { analyzer_provider: config.analyzer_provider }),
+    ...(config.tag_language === null ? {} : { tag_language: config.tag_language }),
   };
   const parsed = configSchema.safeParse(raw);
   return parsed.success ? parsed.data : CONFIG_DEFAULTS;
@@ -188,6 +189,8 @@ const resolvedSettingValue = (
         : `${String(config.gemini_monthly_budget_usd)} USD`;
     case 'output_language':
       return languageValue(dictionary, config.output_language);
+    case 'tag_language':
+      return languageValue(dictionary, config.tag_language);
     case 'ui_language':
       return languageValue(dictionary, config.ui_language);
   }

@@ -312,6 +312,26 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                   ))}
                 </Select>
               </FormControl>
+              <FormControl fullWidth size="small">
+                <InputLabel id="tag-language-label">{dictionary.language.tagLabel}</InputLabel>
+                <Select
+                  labelId="tag-language-label"
+                  label={dictionary.language.tagLabel}
+                  value={draft.tag_language}
+                  data-testid="tag-language-select"
+                  onChange={(event) => patch({ tag_language: event.target.value })}
+                >
+                  {OUTPUT_LANGUAGE_OPTIONS.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.value === 'auto'
+                        ? dictionary.language.optionAuto
+                        : option.value === 'pl'
+                          ? dictionary.language.optionPolish
+                          : dictionary.language.optionEnglish}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
             </Box>
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>

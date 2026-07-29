@@ -21,6 +21,8 @@ export interface Dictionary {
     uiHelper: string;
     outputLabel: string;
     outputHelper: string;
+    tagLabel: string;
+    tagHelper: string;
     optionAuto: string;
     optionEnglish: string;
     optionPolish: string;
@@ -516,6 +518,7 @@ export interface Dictionary {
       gemini_batch_mode: string;
       gemini_monthly_budget_usd: string;
       output_language: string;
+      tag_language: string;
       ui_language: string;
     };
     valueNotSet: string;
@@ -672,7 +675,9 @@ export const en: Dictionary = {
     uiLabel: 'App language',
     uiHelper: 'Language of the desktop app interface.',
     outputLabel: 'Description language',
-    outputHelper: 'Language the AI writes descriptions and filenames in. Tags always stay in English.',
+    outputHelper: 'Language the AI writes descriptions and filenames in.',
+    tagLabel: 'Tag language',
+    tagHelper: 'Language the AI writes tags in. Follows the description language unless you set it.',
     optionAuto: 'Automatic (model chooses)',
     optionEnglish: 'English',
     optionPolish: 'Polish',
@@ -1218,6 +1223,7 @@ export const en: Dictionary = {
       gemini_batch_mode: 'Gemini batch mode',
       gemini_monthly_budget_usd: 'Gemini monthly budget',
       output_language: 'Output language',
+      tag_language: 'Tag language',
       ui_language: 'Interface language',
     },
     valueNotSet: 'Not set',
@@ -1386,7 +1392,9 @@ export const pl: Dictionary = {
     uiLabel: 'Język aplikacji',
     uiHelper: 'Język interfejsu aplikacji na komputerze.',
     outputLabel: 'Język opisów',
-    outputHelper: 'Język, w którym AI pisze opisy i nazwy plików. Tagi zawsze pozostają po angielsku.',
+    outputHelper: 'Język, w którym AI pisze opisy i nazwy plików.',
+    tagLabel: 'Język tagów',
+    tagHelper: 'Język, w którym AI zapisuje tagi. Domyślnie taki jak język opisów.',
     optionAuto: 'Automatycznie (wybiera model)',
     optionEnglish: 'Angielski',
     optionPolish: 'Polski',
@@ -1933,6 +1941,7 @@ export const pl: Dictionary = {
       gemini_batch_mode: 'Tryb wsadowy Gemini',
       gemini_monthly_budget_usd: 'Miesięczny budżet Gemini',
       output_language: 'Język wyniku',
+      tag_language: 'Język tagów',
       ui_language: 'Język interfejsu',
     },
     valueNotSet: 'Nie ustawiono',

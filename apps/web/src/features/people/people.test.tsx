@@ -64,6 +64,7 @@ const configData = (facesEnabled: boolean) => ({
     gemini_batch_mode: null,
     gemini_monthly_budget_usd: null,
     output_language: null,
+    tag_language: null,
     ui_language: null,
   },
   defaults: defaults(facesEnabled),
@@ -85,6 +86,7 @@ const configData = (facesEnabled: boolean) => ({
     gemini_batch_mode: 'default',
     gemini_monthly_budget_usd: 'default',
     output_language: 'default',
+    tag_language: 'default',
     ui_language: 'default',
   },
 });
@@ -112,6 +114,7 @@ const defaults = (facesEnabled: boolean) => ({
   gemini_batch_mode: 'false',
   gemini_monthly_budget_usd: 'null',
   output_language: 'auto',
+  tag_language: 'auto',
   ui_language: 'en',
 });
 

@@ -29,7 +29,7 @@ import {
   ANALYSIS_PROMPT_VERSION,
   descriptionInstruction,
   filenameInstruction,
-  outputLanguageInstruction,
+  languageInstruction,
   retrievalBriefing,
   tagsInstruction,
 } from './prompt.js';
@@ -194,6 +194,7 @@ export class OpenAiCompatibleAnalyzerAdapter implements AnalyzerPort, ProvidersP
       framePaths: input.framePaths,
       frameMode: 'attached-images',
       outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
     });
     const result = await postOpenAiCompatibleChat(this.fetchImpl, {
       provider,
@@ -282,6 +283,7 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       framePaths: input.framePaths,
       frameMode: provider.promptStyle === 'file-urls' ? 'file-url' : 'dir-access',
       outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
     });
     const runtime = harnessRuntimeDefinition(provider.providerId);
     try {
@@ -455,6 +457,7 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       framePaths: input.framePaths,
       frameMode: 'attached-images',
       outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
     });
     if (verbose) {
       this.writeStdout(`[verbose] Local analysis via ${baseUrl} model ${input.localModel}\n`);
@@ -640,6 +643,7 @@ export const buildAnalyzerPrompt = (input: {
   framePaths: readonly string[];
   frameMode: 'file-url' | 'dir-access' | 'attached-images';
   outputLanguage: string;
+  tagLanguage: string;
 }): string => {
   const transcriptBlock = input.transcript === null
     ? 'This video has no audio or transcript available.\n\n'
@@ -649,7 +653,7 @@ export const buildAnalyzerPrompt = (input: {
     : input.frameMode === 'dir-access'
       ? `Read these ${input.framePaths.length} frame file(s) from the accessible video workspace:\n${input.framePaths.join('\n')}\n\n`
       : `Attached are ${input.framePaths.length} frame(s) extracted from the video (as images).\n\n`;
-  return `You are analyzing a video file named "${input.videoName}".\n\n${transcriptBlock}${frameBlock}${responseContractInstructions(input.transcript !== null)}${outputLanguageInstruction(input.outputLanguage)}`;
+  return `You are analyzing a video file named "${input.videoName}".\n\n${transcriptBlock}${frameBlock}${responseContractInstructions(input.transcript !== null)}${languageInstruction({ outputLanguage: input.outputLanguage, tagLanguage: input.tagLanguage })}`;
 };
 
 const responseContractInstructions = (hasTranscript: boolean): string =>

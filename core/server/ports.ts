@@ -511,6 +511,7 @@ export interface AnalyzeInput {
   provider?: AnalyzerProviderConfig | undefined;
   timeoutSeconds: number;
   outputLanguage: AppConfig['output_language'];
+  tagLanguage: AppConfig['tag_language'];
   verbose: boolean;
   signal?: AbortSignal | undefined;
   onWarning?: ((warning: string) => void) | undefined;
@@ -539,6 +540,7 @@ export interface AnalyzerBatchUploadInput {
   key: string;
   videoPath: string;
   outputLanguage: AppConfig['output_language'];
+  tagLanguage: AppConfig['tag_language'];
   provider: AnalyzerProviderConfig;
   timeoutSeconds: number;
   signal?: AbortSignal | undefined;
@@ -550,6 +552,7 @@ export interface AnalyzerBatchRequest {
   fileName: string;
   fileUri: string;
   outputLanguage: AppConfig['output_language'];
+  tagLanguage: AppConfig['tag_language'];
 }
 
 export interface AnalyzerBatchSubmission {

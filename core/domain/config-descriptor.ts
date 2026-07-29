@@ -36,6 +36,7 @@ export const CONFIG_IDENTITY_CLASSIFICATION = {
   gemini_batch_mode: 'excluded',
   gemini_monthly_budget_usd: 'excluded',
   output_language: 'identity',
+  tag_language: 'identity',
   ui_language: 'excluded',
 } satisfies Record<ConfigKey, 'identity' | 'excluded'>;
 
@@ -54,6 +55,9 @@ const configDescriptorShape = z.object({
   whisper_api_model: z.string().trim().min(1).optional(),
   frames: z.number().int().min(1).max(10).optional(),
   output_language: outputLanguageSchema,
+  // Descriptors persisted before tag_language existed must keep parsing (their configId is
+  // history); the builder omits it only when it equals the pre-key prompt text (see buildConfigDescriptor).
+  tag_language: outputLanguageSchema.optional(),
   promptVersion: z.number().int().min(1),
 }).strict();
 
@@ -138,6 +142,9 @@ export const configDescriptorSchema = configDescriptorShape.superRefine((descrip
 
 export type ConfigDescriptor = z.output<typeof configDescriptorSchema>;
 
+export const descriptorTagLanguage = (descriptor: ConfigDescriptor): string =>
+  descriptor.tag_language ?? descriptor.output_language;
+
 const transcriptionIdentity = (config: AppConfig) => {
   switch (config.whisper_mode) {
     case 'local':
@@ -160,7 +167,11 @@ const transcriptionIdentity = (config: AppConfig) => {
 
 export const buildConfigDescriptor = (input: ConfigInput, promptVersion: number): ConfigDescriptor => {
   const config = configSchema.parse(input);
-  const common = { output_language: config.output_language, promptVersion };
+  const common = {
+    output_language: config.output_language,
+    ...(config.output_language === 'auto' && config.tag_language === 'auto' ? {} : { tag_language: config.tag_language }),
+    promptVersion,
+  };
   const provider = config.analyzer_provider;
   switch (provider.family) {
     case 'api':

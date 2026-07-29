@@ -55,6 +55,7 @@ const defaults = {
   gemini_batch_mode: 'false',
   gemini_monthly_budget_usd: 'null',
   output_language: 'auto',
+  tag_language: 'auto',
   ui_language: 'en',
 };
 
@@ -75,6 +76,7 @@ const emptyConfig: StoredConfig = {
   analyzer_provider: null,
   faces_enabled: null,
   output_language: null,
+  tag_language: null,
   ui_language: null,
 };
 
@@ -138,6 +140,7 @@ const stubEndpoints = (
     gemini_batch_mode: config.gemini_batch_mode ?? defaults.gemini_batch_mode,
     gemini_monthly_budget_usd: config.gemini_monthly_budget_usd ?? defaults.gemini_monthly_budget_usd,
     output_language: config.output_language ?? defaults.output_language,
+    tag_language: config.tag_language ?? defaults.tag_language,
     ui_language: config.ui_language ?? defaults.ui_language,
   };
   const sources = inherited?.sources ?? {
@@ -155,6 +158,7 @@ const stubEndpoints = (
     analyzer_provider: config.analyzer_provider === null ? 'default' : 'folder',
     faces_enabled: config.faces_enabled === null ? 'default' : 'folder',
     output_language: config.output_language === null ? 'default' : 'folder',
+    tag_language: config.tag_language === null ? 'default' : 'folder',
     ui_language: config.ui_language === null ? 'default' : 'folder',
     gemini_batch_mode: config.gemini_batch_mode === null ? 'default' : 'folder',
     gemini_monthly_budget_usd: config.gemini_monthly_budget_usd === null ? 'default' : 'home',
@@ -224,6 +228,7 @@ describe('settings modal', () => {
       gemini_batch_mode: 'default',
       gemini_monthly_budget_usd: 'default',
       output_language: 'default',
+      tag_language: 'default',
       ui_language: 'default',
     } as const;
     stubEndpoints(emptyConfig, [], { effective, sources });
@@ -330,6 +335,56 @@ describe('settings modal', () => {
 
     await waitFor(() => expect(bodies.some((body) => body.key === 'gemini_batch_mode')).toBe(true));
     expect(bodies.find((body) => body.key === 'gemini_batch_mode')?.value).toBe('true');
+  });
+
+  it('saves a changed tag language as its own config write', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { key: string; value: string }[] = [];
+    stubEndpoints(emptyConfig);
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push({ key: body.key, value: body.value });
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'folder' as const, ignoredFolderValue: null },
+        });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const tagLanguageSelect = await screen.findByTestId('tag-language-select');
+    fireEvent.mouseDown(within(tagLanguageSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Polish' }));
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(bodies.some((body) => body.key === 'tag_language')).toBe(true));
+    expect(bodies).toEqual([{ key: 'tag_language', value: 'pl' }]);
+  });
+
+  it('writes only output_language when the tag language is left inherited', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { key: string; value: string }[] = [];
+    stubEndpoints(emptyConfig);
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push({ key: body.key, value: body.value });
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'folder' as const, ignoredFolderValue: null },
+        });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const outputLanguageSelect = await screen.findByTestId('output-language-select');
+    fireEvent.mouseDown(within(outputLanguageSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Polish' }));
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(bodies.some((body) => body.key === 'output_language')).toBe(true));
+    expect(bodies).toEqual([{ key: 'output_language', value: 'pl' }]);
   });
 
   it('shows the monthly Gemini budget with this month\'s estimated spend and saves the cap globally', async () => {

@@ -64,6 +64,7 @@ const batchRequest = (key: string, videoPath: string): AnalyzerBatchRequest => (
   fileName: `files/${key}`,
   fileUri: `https://files/${key}`,
   outputLanguage: 'auto',
+  tagLanguage: 'auto',
 });
 
 const adapterWith = (fetchImpl: typeof fetch): GeminiNativeAnalyzerAdapter =>
@@ -135,6 +136,7 @@ describe('gemini batch lifecycle', () => {
       key: 'r0',
       videoPath: '/drive/one.mp4',
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       provider: provider(),
       timeoutSeconds: 120,
     });

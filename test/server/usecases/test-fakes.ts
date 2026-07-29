@@ -686,6 +686,8 @@ export class InMemoryAnalyzer implements AnalyzerPort {
     localModel: string;
     timeoutSeconds: number;
     verbose: boolean;
+    outputLanguage: AppConfig['output_language'];
+    tagLanguage: AppConfig['tag_language'];
   }> = [];
   rawResponse = 'DESCRIPTION: A useful clip.\nFILENAME: useful-clip';
   usage: GeminiUsageAccounting | undefined = undefined;
@@ -699,6 +701,8 @@ export class InMemoryAnalyzer implements AnalyzerPort {
     localModel: string;
     timeoutSeconds: number;
     verbose: boolean;
+    outputLanguage: AppConfig['output_language'];
+    tagLanguage: AppConfig['tag_language'];
   }): Promise<Result<AnalysisOutput, AppError>> {
     this.inputs.push(input);
     if (this.analyzeError !== null) return Promise.resolve({ ok: false, error: this.analyzeError });

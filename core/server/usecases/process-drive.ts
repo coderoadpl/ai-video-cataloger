@@ -159,6 +159,7 @@ interface DriveBatchPlan {
   model: string;
   configIdentity: ProcessConfigIdentity;
   outputLanguage: AppConfig['output_language'];
+  tagLanguage: AppConfig['tag_language'];
   timeoutSeconds: number;
   reattachedRequests: Map<string, DriveRunBatchRequest> | null;
 }
@@ -578,6 +579,7 @@ const resolveBatchPlan = async (
     model: provider.model,
     configIdentity: processConfigIdentity(resolved.value, deps.analyzer.promptVersion(provider)),
     outputLanguage: resolved.value.analyzer.outputLanguage,
+    tagLanguage: resolved.value.analyzer.tagLanguage,
     timeoutSeconds: resolved.value.analyzer.timeoutSeconds,
     reattachedRequests: null,
   });
@@ -622,19 +624,21 @@ const folderTakesBatch = async (
   const analyzer = resolved.value.analyzer;
   return ok(
     analyzer.provider.family === 'gemini-native'
-    && batchConfigKey(analyzer.provider, analyzer.outputLanguage, analyzer.timeoutSeconds)
-      === batchConfigKey(plan.provider, plan.outputLanguage, plan.timeoutSeconds),
+    && batchConfigKey(analyzer.provider, analyzer.outputLanguage, analyzer.tagLanguage, analyzer.timeoutSeconds)
+      === batchConfigKey(plan.provider, plan.outputLanguage, plan.tagLanguage, plan.timeoutSeconds),
   );
 };
 
 const batchConfigKey = (
   provider: AnalyzerProviderConfig,
   outputLanguage: AppConfig['output_language'],
+  tagLanguage: AppConfig['tag_language'],
   timeoutSeconds: number,
 ): string =>
   JSON.stringify([
     Object.entries(provider).sort(([left], [right]) => left.localeCompare(right)),
     outputLanguage,
+    tagLanguage,
     timeoutSeconds,
   ]);
 
@@ -659,12 +663,13 @@ const enrolInBatch = async (
   if (plan.reattachedRequests !== null) {
     return ok(persisted === undefined
       ? null
-      : { ...persisted, outputLanguage: plan.outputLanguage });
+      : { ...persisted, outputLanguage: plan.outputLanguage, tagLanguage: plan.tagLanguage });
   }
   return plan.analyzerBatch.uploadForBatch({
     key,
     videoPath,
     outputLanguage: plan.outputLanguage,
+    tagLanguage: plan.tagLanguage,
     provider: plan.provider,
     timeoutSeconds: plan.timeoutSeconds,
     ...(signal === undefined ? {} : { signal }),

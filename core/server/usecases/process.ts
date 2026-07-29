@@ -528,6 +528,7 @@ const runPipelineSteps = async (
       backend: resolved.analyzer.backend,
       localModel: resolved.analyzer.localModel,
       outputLanguage: resolved.analyzer.outputLanguage,
+      tagLanguage: resolved.analyzer.tagLanguage,
       provider: resolved.analyzer.provider,
       timeoutSeconds: resolved.analyzer.timeoutSeconds,
       verbose: resolved.verbose,
@@ -622,6 +623,7 @@ const runNativePipeline = async (
         backend: resolved.analyzer.backend,
         localModel: resolved.analyzer.localModel,
         outputLanguage: resolved.analyzer.outputLanguage,
+        tagLanguage: resolved.analyzer.tagLanguage,
         provider: resolved.analyzer.provider,
         timeoutSeconds: resolved.analyzer.timeoutSeconds,
         verbose: resolved.verbose,
@@ -797,6 +799,7 @@ interface ResolvedAnalyzer {
   localModel: string;
   timeoutSeconds: number;
   outputLanguage: AppConfig['output_language'];
+  tagLanguage: AppConfig['tag_language'];
   provider: AnalyzerProviderConfig;
 }
 
@@ -838,6 +841,7 @@ export const processConfigIdentity = (
     whisper_api_base_url: resolved.whisperApiBaseUrl,
     whisper_api_model: resolved.whisperApiModel,
     output_language: resolved.analyzer.outputLanguage,
+    tag_language: resolved.analyzer.tagLanguage,
   }, promptVersion);
   return { descriptor, configId: configId(descriptor) };
 };
@@ -915,6 +919,7 @@ export const resolveProcessOptions = async (
       localModel: provider.family === 'local' ? provider.modelTag : localModel,
       timeoutSeconds,
       outputLanguage: outputLanguageSchema.parse(effective.output_language ?? CONFIG_DEFAULTS.output_language),
+      tagLanguage: outputLanguageSchema.parse(effective.tag_language),
       provider,
     },
     native: provider.family === 'gemini-native',

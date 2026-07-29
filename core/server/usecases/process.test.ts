@@ -937,6 +937,24 @@ describe('process pipeline global catalog idempotency', () => {
     expect(deps.transcriber.inputs).toHaveLength(1);
   });
 
+  it('resolves tag_language from output_language, passes it to the analyzer, and separates configIds when it diverges', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'output_language', 'pl');
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    const inherited = await processVideoPipeline({ ...deps, globalCatalog }, input);
+
+    expect(deps.analyzer.inputs[0]?.outputLanguage).toBe('pl');
+    expect(deps.analyzer.inputs[0]?.tagLanguage).toBe('pl');
+
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'tag_language', 'en');
+    const pinned = await processVideoPipeline({ ...deps, globalCatalog }, input);
+
+    expect(deps.analyzer.inputs[1]?.outputLanguage).toBe('pl');
+    expect(deps.analyzer.inputs[1]?.tagLanguage).toBe('en');
+    expect(inherited.ok && pinned.ok && inherited.value.configId).not.toBe(pinned.ok ? pinned.value.configId : '');
+  });
+
   it('reprocesses an already indexed fingerprint when force is set', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();

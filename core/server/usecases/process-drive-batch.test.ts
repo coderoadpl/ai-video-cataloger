@@ -100,6 +100,7 @@ class FakeBatchPort implements AnalyzerBatchPort {
       fileName: `files/${input.key}`,
       fileUri: `https://files/${input.key}`,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
     }));
   }
 
@@ -951,6 +952,21 @@ describe('gemini batch drive runs', () => {
     expect(result).toMatchObject({ ok: true, value: { filesDone: 2, filesFailed: 0 } });
     expect(batch.uploads).toEqual(['/drive/one.mp4']);
     expect(deps.analyzer.inputs.map((entry) => entry.videoPath)).toEqual(['/drive/polish/two.mp4']);
+  });
+
+  it('keeps a folder with a different tag language out of the root batch', async () => {
+    const batch = new FakeBatchPort({ statuses: [succeeded()] });
+    const deps = makeDeps(batch);
+    await useGemini(deps);
+    await deps.config.set({ kind: 'folder', folder: '/drive/polish-tags' }, 'tag_language', 'pl');
+    addVideo(deps.fs, '/drive/one.mp4', 'hash-one');
+    addVideo(deps.fs, '/drive/polish-tags/two.mp4', 'hash-two');
+
+    const result = await processDrive(deps, batchInput, undefined, { ...runOptions, runId: 'run-1' });
+
+    expect(result).toMatchObject({ ok: true, value: { filesDone: 2, filesFailed: 0 } });
+    expect(batch.uploads).toEqual(['/drive/one.mp4']);
+    expect(deps.analyzer.inputs.map((entry) => entry.videoPath)).toEqual(['/drive/polish-tags/two.mp4']);
   });
 
   it('lets the explicit flag override every folder key', async () => {

@@ -33,6 +33,9 @@ The strict descriptor includes:
   and model, or the native Gemini provider and model;
 - `frames` except for `gemini-native`, which extracts no frames;
 - `output_language`;
+- `tag_language`, omitted only when it and `output_language` both resolve to
+  `auto` — the single state whose analyzer prompt is byte-identical to runs made
+  before the key existed, so those descriptors keep their historical ids;
 - `promptVersion`, an integer next to each prompt template that is bumped when
   the template changes.
 
@@ -91,8 +94,8 @@ multiple variants come from multiple runs.
 ## Consequences
 
 - Configuration identity is portable and deterministic, with golden vectors
-  guarding it from accidental drift. Changing only `output_language` or
-  `promptVersion` intentionally creates a new variant.
+  guarding it from accidental drift. Changing only `output_language`,
+  `tag_language`, or `promptVersion` intentionally creates a new variant.
 - Files remain one row per fingerprint, so duplicate copies of the same content
   share their variant set and explicit selection.
 - Shared inputs are reused only after their key and on-disk presence are

@@ -1157,6 +1157,48 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(afterRebuild.ok && afterRebuild.value[0]?.fingerprint).toBe(file.fingerprint);
   });
 
+  it('resolves a new analysis tag through an existing alias, never writing the aliased name', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.aliasTag({ from: 'dogs', to: 'psy' });
+
+    const descriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'pl',
+      tag_language: 'en',
+      promptVersion: 1,
+    });
+    await store.upsertVariant({
+      fingerprint: file.fingerprint,
+      configId: configId(descriptor),
+      descriptor,
+      finalName: 'walk.mp4',
+      description: 'A dog walks in the park',
+      transcript: '',
+      language: null,
+      tags: ['dogs'],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    });
+
+    const found = await store.search({ match: 'psy*', rankingTerms: ['psy'], limit: 10, offset: 0 });
+    expect(found.ok && found.value[0]?.tags).toEqual(['psy']);
+
+    const notFound = await store.search({ match: 'dogs*', rankingTerms: ['dogs'], limit: 10, offset: 0 });
+    expect(notFound.ok && notFound.value).toEqual([]);
+
+    const reAliased = await store.aliasTag({ from: 'dogs', to: 'psy' });
+    expect(reAliased.ok && reAliased.value.remappedFiles).toBe(0);
+  });
+
   it('drops stale terms from the FTS index when a document is re-analyzed', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });

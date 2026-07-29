@@ -103,6 +103,7 @@ describe('config schema', () => {
       gemini_batch_mode: false,
       gemini_monthly_budget_usd: null,
       output_language: 'auto',
+      tag_language: 'auto',
       ui_language: 'en',
     });
   });
@@ -144,6 +145,16 @@ describe('config schema', () => {
   it('rejects malformed output languages', () => {
     for (const value of ['english', '', 'e', 'EN', 'pl_PL', 'p-l', '123']) {
       expect(configSchema.safeParse({ output_language: value }).success).toBe(false);
+    }
+  });
+
+  it('accepts the output-language value domain for tag_language and inherits when unset', () => {
+    expect(configSchema.parse({ output_language: 'pl' }).tag_language).toBe('pl');
+    for (const value of ['auto', 'en', 'pl', 'pt-BR', 'zh-Hant']) {
+      expect(configSchema.parse({ tag_language: value }).tag_language).toBe(value);
+    }
+    for (const value of ['english', '', 'EN', 'pl_PL']) {
+      expect(configSchema.safeParse({ tag_language: value }).success).toBe(false);
     }
   });
 });

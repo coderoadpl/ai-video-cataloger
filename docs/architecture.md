@@ -78,7 +78,8 @@ Two scopes remain, with catalog ownership revised by
   is `cfg_` plus the first 12 hex characters of SHA-256 over the normalized,
   key-sorted config descriptor. That closed descriptor includes every
   result-shaping analyzer field, the transcription source, frame count where
-  applicable, `output_language`, and `promptVersion`. See
+  applicable, `output_language`, `tag_language` when it is pinned, and
+  `promptVersion`. See
   [ADR-0010](decisions/0010-analysis-variant-identity-artifacts-and-dedup.md).
 - **Per-folder sidecar artifacts** — `{folder}/.ai-video-cataloger/config.json`
   stays folder-scoped. `{folder}/.ai-video-cataloger/catalog.ndjson` is a

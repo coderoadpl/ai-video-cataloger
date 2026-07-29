@@ -52,6 +52,7 @@ const analyzeInput = (overrides: Partial<AnalyzeInput> = {}): AnalyzeInput => ({
   provider: geminiProvider(),
   timeoutSeconds: 120,
   outputLanguage: 'auto',
+  tagLanguage: 'auto',
   verbose: false,
   ...overrides,
 });
@@ -167,7 +168,7 @@ describe('config validation', () => {
 
 describe('prompt', () => {
   it('requests the retrieval-grade markers and a timestamped transcript', () => {
-    const prompt = buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto' });
+    const prompt = buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto', tagLanguage: 'auto' });
     expect(prompt).toContain('DESCRIPTION:');
     expect(prompt).toContain('FILENAME:');
     expect(prompt).toContain('TAGS:');
@@ -177,8 +178,13 @@ describe('prompt', () => {
   });
 
   it('adds an output-language instruction for non-auto languages', () => {
-    const prompt = buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'pl' });
+    const prompt = buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'pl', tagLanguage: 'auto' });
     expect(prompt).toContain('Polish');
+  });
+
+  it('adds a tag-language instruction for non-auto tag languages', () => {
+    const prompt = buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'auto', tagLanguage: 'pl' });
+    expect(prompt).toContain('Write every TAG in Polish');
   });
 });
 

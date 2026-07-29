@@ -97,6 +97,35 @@ const goldenVectors = [
     }),
     id: 'cfg_161154c06d8d',
   },
+  {
+    descriptor: configDescriptorSchema.parse({
+      family: 'harness',
+      providerId: 'codex',
+      promptStyle: 'dir-access',
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'high',
+      whisper_mode: 'api',
+      whisper_language: 'auto',
+      whisper_api_base_url: 'https://api.openai.com/v1',
+      whisper_api_model: 'whisper-1',
+      frames: 8,
+      output_language: 'pl',
+      tag_language: 'en',
+      promptVersion,
+    }),
+    id: 'cfg_42eee147a85d',
+  },
+  {
+    descriptor: configDescriptorSchema.parse({
+      family: 'gemini-native',
+      providerId: 'gemini',
+      model: 'gemini-3.6-flash',
+      output_language: 'auto',
+      tag_language: 'pl',
+      promptVersion,
+    }),
+    id: 'cfg_9a046ebf1b1b',
+  },
 ];
 
 describe('config descriptor identity', () => {
@@ -196,6 +225,42 @@ describe('config descriptor identity', () => {
       configId(buildConfigDescriptor({ whisper_language: 'auto' }, promptVersion)),
     );
     expect(configId(buildConfigDescriptor({}, promptVersion + 1))).not.toBe(configId(base));
+  });
+
+  it('includes tag_language in identity when it diverges from output_language', () => {
+    const withoutTagLanguage = buildConfigDescriptor({ output_language: 'pl' }, promptVersion);
+    const withTagLanguage = buildConfigDescriptor({ output_language: 'pl', tag_language: 'en' }, promptVersion);
+
+    expect(configId(withTagLanguage)).not.toBe(configId(withoutTagLanguage));
+  });
+
+  it('omits tag_language from the descriptor only when it and output_language both resolve to auto', () => {
+    const defaultDescriptor = buildConfigDescriptor({}, promptVersion);
+    expect(defaultDescriptor.tag_language).toBeUndefined();
+
+    const pinnedOutput = buildConfigDescriptor({ output_language: 'pl' }, promptVersion);
+    expect(pinnedOutput.tag_language).toBe('pl');
+
+    const explicitlyEqual = buildConfigDescriptor({ output_language: 'pl', tag_language: 'pl' }, promptVersion);
+    expect(configId(explicitlyEqual)).toBe(configId(pinnedOutput));
+  });
+
+  it('parses descriptors persisted before tag_language existed and keeps their historical configId', () => {
+    const stored = configDescriptorSchema.parse({
+      family: 'harness',
+      providerId: 'codex',
+      promptStyle: 'file-urls',
+      model: 'gpt-5.6-sol',
+      reasoningEffort: 'low',
+      whisper_mode: 'local',
+      whisper_model: 'large-v3-turbo',
+      frames: 3,
+      output_language: 'auto',
+      promptVersion: 4,
+    });
+
+    expect(stored.tag_language).toBeUndefined();
+    expect(configId(stored)).not.toBe(configId({ ...stored, tag_language: 'auto' }));
   });
 
   it('reserves legacy outside the generated id namespace', () => {

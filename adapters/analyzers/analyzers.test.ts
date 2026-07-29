@@ -72,6 +72,7 @@ describe('HarnessAnalyzerAdapter', () => {
       localModel: 'gemma3:12b',
       timeoutSeconds: 120,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
     });
 
@@ -116,6 +117,7 @@ describe('HarnessAnalyzerAdapter', () => {
       localModel: 'gemma3:12b',
       timeoutSeconds: 30,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: true,
     });
 
@@ -140,6 +142,7 @@ describe('HarnessAnalyzerAdapter', () => {
       localModel: 'unused',
       timeoutSeconds: 30,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
       signal: controller.signal,
     });
@@ -489,6 +492,7 @@ describe('OllamaAnalyzerAdapter', () => {
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
     });
 
@@ -516,6 +520,7 @@ describe('OllamaAnalyzerAdapter', () => {
         localModel: 'gemma3:12b',
         timeoutSeconds: 300,
         outputLanguage: 'auto',
+        tagLanguage: 'auto',
         verbose: false,
       });
 
@@ -558,6 +563,7 @@ describe('OllamaAnalyzerAdapter', () => {
         localModel: 'gemma3:12b',
         timeoutSeconds: 300,
         outputLanguage: 'auto',
+        tagLanguage: 'auto',
         verbose: false,
       });
 
@@ -585,6 +591,7 @@ describe('OllamaAnalyzerAdapter', () => {
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
     });
 
@@ -609,6 +616,7 @@ describe('OllamaAnalyzerAdapter', () => {
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
     });
 
@@ -649,6 +657,7 @@ describe('OllamaAnalyzerAdapter', () => {
       localModel: 'gemma3:12b',
       timeoutSeconds: 300,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
       signal: controller.signal,
     });
@@ -688,6 +697,7 @@ describe('OllamaAnalyzerAdapter', () => {
       localModel: 'gemma3:12b',
       timeoutSeconds: 0.01,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
     });
 
@@ -725,6 +735,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
         provider: apiProvider(server.origin),
         timeoutSeconds: 30,
         outputLanguage: 'auto',
+        tagLanguage: 'auto',
         verbose: false,
       });
 
@@ -773,6 +784,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
         provider: apiProvider(server.origin),
         timeoutSeconds: 30,
         outputLanguage: 'auto',
+        tagLanguage: 'auto',
         verbose: false,
       });
       expect(result).toMatchObject({ ok: false, error: { code } });
@@ -800,6 +812,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
       provider: apiProvider(server.origin),
       timeoutSeconds: 30,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
       signal: controller.signal,
     });
@@ -834,6 +847,7 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
       provider: apiProvider('https://provider.example'),
       timeoutSeconds: 0.01,
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
       verbose: false,
     });
 
@@ -875,6 +889,7 @@ describe('analyzer helpers', () => {
       framePaths: ['/frame.jpg'],
       frameMode: 'attached-images',
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
     });
 
     expect(prompt).toContain('Attached are 1 frame(s) extracted from the video (as images).');
@@ -888,18 +903,20 @@ describe('analyzer helpers', () => {
       framePaths: ['/frame.jpg'],
       frameMode: 'attached-images',
       outputLanguage: 'auto',
+      tagLanguage: 'auto',
     });
 
     expect(prompt).not.toContain('Write the DESCRIPTION');
   });
 
-  it('instructs the model to write description and filename in the configured language while keeping tags in English', () => {
+  it('instructs the model to write description and filename in the configured language', () => {
     const polish = buildAnalyzerPrompt({
       videoName: 'Clip.mp4',
       transcript: null,
       framePaths: ['/frame.jpg'],
       frameMode: 'attached-images',
       outputLanguage: 'pl',
+      tagLanguage: 'auto',
     });
     const custom = buildAnalyzerPrompt({
       videoName: 'Clip.mp4',
@@ -907,11 +924,25 @@ describe('analyzer helpers', () => {
       framePaths: ['/frame.jpg'],
       frameMode: 'attached-images',
       outputLanguage: 'pt-BR',
+      tagLanguage: 'auto',
     });
 
     expect(polish).toContain('Write the DESCRIPTION and the FILENAME in Polish.');
-    expect(polish).toContain('Keep the TAGS in ASCII kebab-case English');
     expect(custom).toContain('Write the DESCRIPTION and the FILENAME in pt-BR.');
+  });
+
+  it('instructs the model to write tags in the pinned tag language, independent of narration', () => {
+    const prompt = buildAnalyzerPrompt({
+      videoName: 'Clip.mp4',
+      transcript: null,
+      framePaths: ['/frame.jpg'],
+      frameMode: 'attached-images',
+      outputLanguage: 'auto',
+      tagLanguage: 'pl',
+    });
+
+    expect(prompt).toContain('Write every TAG in Polish, whatever language is spoken in the video or used in the description.');
+    expect(prompt).toContain('transliterate diacritics');
   });
 });
 
@@ -924,6 +955,7 @@ const analyzeInput = (provider: Extract<AnalyzerProviderConfig, { family: 'harne
   provider,
   timeoutSeconds: 30,
   outputLanguage: 'auto',
+  tagLanguage: 'auto',
   verbose: false,
 });
 

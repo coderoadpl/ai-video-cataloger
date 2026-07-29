@@ -110,7 +110,7 @@ models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|fa
 models whisper-runtime status|install
 ```
 
-Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`, `gemini_batch_mode`.
+Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`, `gemini_batch_mode`, `output_language`, `tag_language`. `tag_language` follows `output_language` until you set it.
 
 Each file handled by `process` or `process-drive` uses one resolved
 configuration; an invocation does not request a configuration matrix. Running

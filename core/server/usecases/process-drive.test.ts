@@ -49,6 +49,8 @@ class PathResponseAnalyzer extends InMemoryAnalyzer {
       localModel: input.localModel,
       timeoutSeconds: input.timeoutSeconds,
       verbose: input.verbose,
+      outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
     });
     const queue = this.responses.get(input.videoPath);
     const next = queue?.shift();

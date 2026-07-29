@@ -14,7 +14,15 @@ export const filenameInstruction =
 export const tagsInstruction =
   '3-8 comma-separated kebab-case tags that work as search handles: concrete objects, place type, activity, and notable text or proper nouns you read in frame. Prefer the specific over the generic and never tag the medium itself (video, clip, footage).';
 
-export const outputLanguageInstruction = (outputLanguage: string): string =>
-  outputLanguage === 'auto'
+const displayName = (language: string): string => LANGUAGE_DISPLAY_NAMES[language] ?? language;
+
+export const languageInstruction = (input: { outputLanguage: string; tagLanguage: string }): string => {
+  const description = input.outputLanguage === 'auto'
     ? ''
-    : `\n\nWrite the DESCRIPTION and the FILENAME in ${LANGUAGE_DISPLAY_NAMES[outputLanguage] ?? outputLanguage}. Keep the TAGS in ASCII kebab-case English regardless of the description language.`;
+    : `Write the DESCRIPTION and the FILENAME in ${displayName(input.outputLanguage)}.`;
+  const tags = input.tagLanguage === 'auto'
+    ? ''
+    : `Write every TAG in ${displayName(input.tagLanguage)}, whatever language is spoken in the video or used in the description. Keep tags in ASCII kebab-case: transliterate diacritics (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z) and use only a-z, 0-9 and hyphens.`;
+  const parts = [description, tags].filter((part) => part.length > 0);
+  return parts.length === 0 ? '' : `\n\n${parts.join(' ')}`;
+};

@@ -46,6 +46,10 @@ export const resolveConfigValues = async (
       sources[key] = 'home';
     }
   }
+  if (folderValues.value.tag_language === undefined && home.value.tag_language === undefined) {
+    effective.tag_language = effective.output_language;
+    sources.tag_language = sources.output_language;
+  }
   const analyzerScope = folderValues.value.analyzer_provider !== undefined
     || folderValues.value.analyzer_backend !== undefined
     ? { values: folderValues.value, source: 'folder' } as const
@@ -108,5 +112,6 @@ const defaultSources = (): Record<ConfigKey, ConfigValueSource> => ({
   gemini_batch_mode: 'default',
   gemini_monthly_budget_usd: 'default',
   output_language: 'default',
+  tag_language: 'default',
   ui_language: 'default',
 });

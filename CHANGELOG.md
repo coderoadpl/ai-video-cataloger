@@ -19,11 +19,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `thumbnails <root>` generates every missing catalog thumbnail under a folder tree by downscaling the analysis frame the selected variant already stored — no source video is opened, so it works on an index-only mirror of a read-only mount — reporting `thumbnails_scanning`/`thumbnails_file`/`thumbnails_done` NDJSON events and `generated`/`skipped`/`fromFrame`/`fromSource`/`failed` counts with per-file `failures`; a second run is a no-op and `--force` regenerates everything.
 - `process` and `process-drive` write each completed file's thumbnail during the run (one downscale of the frame already on disk), so a finished drive run leaves a catalog with covers instead of generating them lazily on first display; on a read-only source the cover lands in the home mirror and the source tree stays untouched.
 - Terminal panel gains a persisted Raw mode that shows each log line's attached raw job payload and interleaves a capped (500-entry) ring buffer of every renderer→server request/response, captured once at the `apps/web/src/api.ts` fetch seam.
+- Tag language is now configurable (`tag_language`, folder- or home-scoped): tags are generated in that language regardless of the language spoken in the clip. Unset, it follows `output_language`. The analyzer prompt also demands ASCII transliteration, so pinned non-English tags stay kebab-case.
 
 ### Changed
 
 - `thumbnail <video-path>` and the GUI's lazy generation prefer the stored analysis frame over re-decoding the video, so a cover can be produced for a file whose drive is detached or mounted read-only, and an existing thumbnail is reported as skipped without starting ffmpeg.
 - The terminal panel no longer auto-expands on the first job output; it stays collapsed until opened from the header button or the `View` menu.
+- `tag_language` joins the analysis config descriptor, so pinning it (or having `output_language` pinned) produces a new `configId`; runs with `output_language` and `tag_language` both `auto` keep their existing configIds. Previously tags followed whatever language was narrated in the video, which split one concept into per-language tags.
 
 ### Fixed
 

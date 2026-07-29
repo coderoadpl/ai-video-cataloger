@@ -48,7 +48,7 @@ import {
   ANALYSIS_PROMPT_VERSION,
   descriptionInstruction,
   filenameInstruction,
-  outputLanguageInstruction,
+  languageInstruction,
   retrievalBriefing,
   tagsInstruction,
 } from '@adapters/analyzers/prompt.js';
@@ -141,7 +141,7 @@ export const geminiProviderPricing = (
   return fromModel ?? {};
 };
 
-export const buildGeminiPrompt = (input: { videoName: string; outputLanguage: string }): string =>
+export const buildGeminiPrompt = (input: { videoName: string; outputLanguage: string; tagLanguage: string }): string =>
   `You are analyzing a video file named "${input.videoName}". You can see the video and hear its full audio track: speech, music and ambient sound.
 
 ${retrievalBriefing}
@@ -150,7 +150,7 @@ Respond in exactly this format:
 DESCRIPTION: ${descriptionInstruction} If there is no speech, say so and describe the music or ambient sound instead.
 FILENAME: ${filenameInstruction}
 TAGS: ${tagsInstruction}
-TRANSCRIPT: verbatim speech and on-screen text with timestamps, one segment per line formatted [MM:SS] text. If there is no speech at all, write exactly: NONE${outputLanguageInstruction(input.outputLanguage)}`;
+TRANSCRIPT: verbatim speech and on-screen text with timestamps, one segment per line formatted [MM:SS] text. If there is no speech at all, write exactly: NONE${languageInstruction({ outputLanguage: input.outputLanguage, tagLanguage: input.tagLanguage })}`;
 
 const bytesToBase64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString('base64');
 
@@ -274,7 +274,11 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     if (sizeBytes > GEMINI_NATIVE_FILES_API_LIMIT_BYTES) {
       return { ok: false, error: appError('provider_error', tooLargeMessage(sizeBytes)) };
     }
-    const prompt = buildGeminiPrompt({ videoName: basename(input.videoPath), outputLanguage: input.outputLanguage });
+    const prompt = buildGeminiPrompt({
+      videoName: basename(input.videoPath),
+      outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
+    });
     const timeoutMs = input.timeoutSeconds * 1000;
     const signal = combinedSignal(input.signal, timeoutMs);
 
@@ -340,6 +344,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
       fileName: uploaded.value.name,
       fileUri: active.value,
       outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
     });
   }
 
@@ -363,6 +368,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
         prompt: buildGeminiPrompt({
           videoName: basename(request.videoPath),
           outputLanguage: request.outputLanguage,
+          tagLanguage: request.tagLanguage,
         }),
       })),
     );

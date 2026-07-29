@@ -466,6 +466,7 @@ export const storedConfigSchema = z.object({
   gemini_batch_mode: z.string().nullable(),
   gemini_monthly_budget_usd: z.string().nullable(),
   output_language: z.string().nullable(),
+  tag_language: z.string().nullable(),
   ui_language: z.string().nullable(),
 });
 
@@ -486,6 +487,7 @@ export const storedConfigDefaultsSchema = z.object({
   gemini_batch_mode: z.string(),
   gemini_monthly_budget_usd: z.string(),
   output_language: z.string(),
+  tag_language: z.string(),
   ui_language: z.string(),
 });
 
@@ -506,6 +508,7 @@ export const configValueSourcesSchema = z.object({
   gemini_batch_mode: z.enum(['folder', 'home', 'default']),
   gemini_monthly_budget_usd: z.enum(['folder', 'home', 'default']),
   output_language: z.enum(['folder', 'home', 'default']),
+  tag_language: z.enum(['folder', 'home', 'default']),
   ui_language: z.enum(['folder', 'home', 'default']),
 });
 

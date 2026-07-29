@@ -9,6 +9,7 @@ import {
 import {
   analyzerBackendSchema,
   configValueSchema,
+  outputLanguageSchema,
   whisperLanguageSchema,
   whisperModeSchema,
 } from '@core/domain/config.js';
@@ -168,6 +169,8 @@ export const configValueForKey = (key: ConfigKey, value: string): AppConfig[Conf
       return configValueSchema.shape.gemini_monthly_budget_usd.parse(value);
     case 'output_language':
       return configValueSchema.shape.output_language.parse(value);
+    case 'tag_language':
+      return outputLanguageSchema.parse(value);
     case 'ui_language':
       return configValueSchema.shape.ui_language.parse(value);
   }
@@ -196,6 +199,7 @@ export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
   gemini_batch_mode: null,
   gemini_monthly_budget_usd: null,
   output_language: null,
+  tag_language: null,
   ui_language: null,
 });
 
@@ -216,6 +220,7 @@ export const storedDefaults = (): Record<ConfigKey, string> => ({
   gemini_batch_mode: stringifyConfigDefault('gemini_batch_mode'),
   gemini_monthly_budget_usd: stringifyConfigDefault('gemini_monthly_budget_usd'),
   output_language: stringifyConfigDefault('output_language'),
+  tag_language: stringifyConfigDefault('tag_language'),
   ui_language: stringifyConfigDefault('ui_language'),
 });
 
