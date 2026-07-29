@@ -329,6 +329,7 @@ describe('SetupWizard', () => {
 
     fireEvent.click(screen.getByTestId('analyzer-family-api'));
     expect(screen.getByTestId('api-cost-notice').textContent).toContain('charged by your API provider');
+    expect(screen.queryByTestId('wizard-gemini-privacy')).toBeNull();
 
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'sk-secret' } });
     clickNext();
@@ -346,8 +347,12 @@ describe('SetupWizard', () => {
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
     await passLanguageStep();
 
-    const privacy = screen.getByTestId('wizard-gemini-privacy').textContent ?? '';
     expect(screen.queryByTestId('analyzer-gemini')).toBeNull();
+    expect(screen.queryByTestId('wizard-gemini-privacy')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('analyzer-family-gemini'));
+
+    const privacy = screen.getByTestId('wizard-gemini-privacy').textContent ?? '';
     expect(privacy).toContain('exception to local-first processing');
     expect(privacy).toContain('entire video file, including audio');
     expect(privacy).toContain('under about 20 MB');
@@ -356,8 +361,6 @@ describe('SetupWizard', () => {
     expect(privacy).toContain('model produces the transcript');
     expect(privacy).toContain('tokens per second, independent of resolution');
     expect(privacy).toContain('a few cents per minute');
-
-    fireEvent.click(screen.getByTestId('analyzer-family-gemini'));
 
     fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'gemini-secret' } });
     clickNext();

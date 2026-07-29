@@ -18,6 +18,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - `driveRunSummarySchema` carries `snapshotSkipped` through the completed `process-drive` job payload instead of stripping it.
 - A corrupted stored variant descriptor or usage JSON in the global catalog surfaces as `read_error` (`READ_ERROR`, exit 28) instead of an untyped `internal` error.
+- Settings and the setup wizard only render the amber Gemini privacy warning when the selected analyzer is Gemini (native video); it no longer appears under Claude, local, or OpenAI-compatible API selections.
 
 ## [0.6.3] - 2026-07-29
 

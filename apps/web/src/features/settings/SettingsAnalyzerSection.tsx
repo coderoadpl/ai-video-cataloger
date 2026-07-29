@@ -139,9 +139,11 @@ export const SettingsAnalyzerSection = ({
         </Select>
       </FormControl>
 
-      <Alert severity="warning" data-testid="gemini-privacy-copy">
-        {dictionary.settingsAnalyzer.geminiPrivacy}
-      </Alert>
+      {provider.family === 'gemini-native' ? (
+        <Alert severity="warning" data-testid="gemini-privacy-copy">
+          {dictionary.settingsAnalyzer.geminiPrivacy}
+        </Alert>
+      ) : null}
 
       {backend === 'local' ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>

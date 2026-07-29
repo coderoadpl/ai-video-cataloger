@@ -260,16 +260,8 @@ describe('settings modal', () => {
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
 
     const backendSelect = await screen.findByTestId('analyzer-backend-select');
-    const privacy = screen.getByTestId('gemini-privacy-copy').textContent ?? '';
     expect(screen.queryByTestId('gemini-provider-settings')).toBeNull();
-    expect(privacy).toContain('exception to local-first processing');
-    expect(privacy).toContain('entire video file, including audio');
-    expect(privacy).toContain('under about 20 MB');
-    expect(privacy).toContain('Files API');
-    expect(privacy).toContain('Google\'s side for about 48 hours');
-    expect(privacy).toContain('model produces the transcript');
-    expect(privacy).toContain('tokens per second, independent of resolution');
-    expect(privacy).toContain('a few cents per minute');
+    expect(screen.queryByTestId('gemini-privacy-copy')).toBeNull();
     fireEvent.mouseDown(within(backendSelect).getByRole('combobox'));
     fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
 
@@ -278,6 +270,34 @@ describe('settings modal', () => {
     });
     expect(screen.queryByTestId('whisper-model-control')).toBeNull();
     expect(within(screen.getByTestId('whisper-mode-select')).getByRole('combobox').getAttribute('aria-disabled')).toBe('true');
+
+    const privacy = screen.getByTestId('gemini-privacy-copy').textContent ?? '';
+    expect(privacy).toContain('exception to local-first processing');
+    expect(privacy).toContain('entire video file, including audio');
+    expect(privacy).toContain('under about 20 MB');
+    expect(privacy).toContain('Files API');
+    expect(privacy).toContain('Google\'s side for about 48 hours');
+    expect(privacy).toContain('model produces the transcript');
+    expect(privacy).toContain('tokens per second, independent of resolution');
+    expect(privacy).toContain('a few cents per minute');
+  });
+
+  it('hides the Gemini privacy warning for local and API-compatible analyzer selections', async () => {
+    stubEndpoints({ ...emptyConfig, analyzer_backend: 'local', local_model: 'gemma3:27b' }, [
+      makeTier({ tag: 'gemma3:27b', recommended: true }),
+    ]);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    await screen.findByTestId('whisper-mode-select');
+    expect(screen.queryByTestId('gemini-privacy-copy')).toBeNull();
+  });
+
+  it('hides the Gemini privacy warning for an OpenAI-compatible API analyzer selection', async () => {
+    stubEndpoints(apiProviderConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    await screen.findByTestId('api-provider-settings');
+    expect(screen.queryByTestId('gemini-privacy-copy')).toBeNull();
   });
 
   it('offers batch mode only for Gemini and saves the opt-in with honest waiting copy', async () => {

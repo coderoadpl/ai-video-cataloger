@@ -81,9 +81,11 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
         </ToggleButton>
       </ToggleButtonGroup>
 
-      <Alert severity="warning" data-testid="wizard-gemini-privacy">
-        {dictionary.wizard.analyzer.geminiPrivacy}
-      </Alert>
+      {analyzerFamily === 'gemini-native' ? (
+        <Alert severity="warning" data-testid="wizard-gemini-privacy">
+          {dictionary.wizard.analyzer.geminiPrivacy}
+        </Alert>
+      ) : null}
 
       {analyzerFamily === 'local' ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }} data-testid="analyzer-local">
