@@ -25,6 +25,7 @@ import {
   facesName,
   facesPeople,
   facesPurge,
+  facesExemplars,
   facesRecluster,
   facesStatus,
   generateThumbnail,
@@ -544,6 +545,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.facesRecluster.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesRecluster.output);
     return respond(await withCatalogWriteLockForJob(deps, () => facesRecluster(deps, input.value)), API_ROUTES.facesRecluster.output);
+  });
+
+  app.post(API_ROUTES.facesExemplars.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.facesExemplars.output);
+    const input = parseInput(API_ROUTES.facesExemplars.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.facesExemplars.output);
+    return respond(await withCatalogWriteLockForJob(deps, () => facesExemplars(deps, input.value)), API_ROUTES.facesExemplars.output);
   });
 
   return app;

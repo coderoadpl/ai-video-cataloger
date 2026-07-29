@@ -5,17 +5,22 @@ import {
   FACE_EMBEDDING_DIM,
   FACE_ENGINE_VERSION,
   FACE_QUALITY,
+  boxIoU,
   classifyFace,
   clusterFaceObservations,
   cosineSimilarity,
   faceObservationSchema,
   findNewClusterSeed,
   normalizeEmbedding,
+  parseFaceObsId,
   passesFaceQuality,
   personSchema,
+  planExemplarBackfill,
+  selectExemplars,
   shouldMergePeople,
-  shouldStoreExemplar,
   updateCentroid,
+  type ExemplarCandidate,
+  type ExemplarPlanObservation,
 } from './faces.js';
 
 const unitAtCosine = (cosine: number): number[] => [cosine, Math.sqrt(Math.max(0, 1 - cosine * cosine))];
@@ -165,20 +170,86 @@ describe('clusterFaceObservations', () => {
   });
 });
 
-describe('shouldStoreExemplar', () => {
-  it('stores at most one exemplar per file until the person spans five files', () => {
-    const existingFromOneFile = Array.from({ length: 4 }, (_unused, index) => ({
-      fingerprint: 'fp-a',
-      cropPath: `crop-${index}`,
-    }));
-    expect(shouldStoreExemplar({ existing: existingFromOneFile, fingerprint: 'fp-a' })).toBe(false);
-    expect(shouldStoreExemplar({ existing: existingFromOneFile, fingerprint: 'fp-b' })).toBe(true);
+describe('selectExemplars', () => {
+  it('selects at most one exemplar per file, best quality first', () => {
+    const candidates: ExemplarCandidate[] = [
+      { obsId: 'a1', fingerprint: 'fp-a', quality: 0.9, cropPath: 'a1.jpg' },
+      { obsId: 'a2', fingerprint: 'fp-a', quality: 0.95, cropPath: 'a2.jpg' },
+      { obsId: 'a3', fingerprint: 'fp-a', quality: 0.8, cropPath: 'a3.jpg' },
+      { obsId: 'b1', fingerprint: 'fp-b', quality: 0.7, cropPath: 'b1.jpg' },
+      { obsId: 'b2', fingerprint: 'fp-b', quality: 0.85, cropPath: 'b2.jpg' },
+      { obsId: 'c1', fingerprint: 'fp-c', quality: 0.6, cropPath: 'c1.jpg' },
+      { obsId: 'c2', fingerprint: 'fp-c', quality: 0.55, cropPath: 'c2.jpg' },
+    ];
+    const selected = selectExemplars(candidates);
+    expect(selected.map((observation) => observation.obsId)).toEqual(['a2', 'b2', 'c1']);
+  });
 
-    const fiveDistinctFiles = Array.from({ length: 5 }, (_unused, index) => ({
-      fingerprint: `fp-${index}`,
-      cropPath: `crop-${index}`,
+  it('selects a single exemplar for a person confined to one file', () => {
+    const candidates: ExemplarCandidate[] = Array.from({ length: 5 }, (_unused, index) => ({
+      obsId: `o${index}`,
+      fingerprint: 'fp-a',
+      quality: 0.5 + index * 0.01,
+      cropPath: `o${index}.jpg`,
     }));
-    expect(shouldStoreExemplar({ existing: fiveDistinctFiles, fingerprint: 'fp-new' })).toBe(false);
+    expect(selectExemplars(candidates)).toHaveLength(1);
+  });
+
+  it('caps the selection at five files, deterministic under input shuffling', () => {
+    const candidates: ExemplarCandidate[] = Array.from({ length: 8 }, (_unused, index) => ({
+      obsId: `o${index}`,
+      fingerprint: `fp-${index}`,
+      quality: index,
+      cropPath: `o${index}.jpg`,
+    }));
+    const expected = ['o7', 'o6', 'o5', 'o4', 'o3'];
+    expect(selectExemplars(candidates).map((observation) => observation.obsId)).toEqual(expected);
+    const shuffled = [...candidates].reverse();
+    expect(selectExemplars(shuffled).map((observation) => observation.obsId)).toEqual(expected);
+  });
+});
+
+describe('parseFaceObsId', () => {
+  it('parses the frame and detection numbers out of an observation id', () => {
+    expect(parseFaceObsId('abc:face:3:2')).toEqual({ fingerprint: 'abc', frameIndex: 3, detectionIndex: 2 });
+    expect(parseFaceObsId('abc')).toBeNull();
+    expect(parseFaceObsId('abc:face:x:1')).toBeNull();
+    expect(parseFaceObsId('abc:face:1')).toBeNull();
+  });
+});
+
+describe('planExemplarBackfill', () => {
+  it('plans a backfill only for the exemplars a person is missing', () => {
+    const observations: ExemplarPlanObservation[] = [
+      { obsId: 'p1:face:1:1', fingerprint: 'fp-a', quality: 0.9, cropPath: 'existing.jpg', personId: 'p1', frameTsS: 1, bbox: { x: 0, y: 0, width: 10, height: 10 } },
+      { obsId: 'p1:face:1:2', fingerprint: 'fp-b', quality: 0.5, cropPath: null, personId: 'p1', frameTsS: 2, bbox: { x: 0, y: 0, width: 10, height: 10 } },
+      { obsId: 'p1:face:1:3', fingerprint: 'fp-c', quality: 0.4, cropPath: null, personId: 'p1', frameTsS: 3, bbox: { x: 0, y: 0, width: 10, height: 10 } },
+      { obsId: 'p2:face:1:1', fingerprint: 'fp-d', quality: 0.3, cropPath: null, personId: 'p2', frameTsS: 4, bbox: { x: 0, y: 0, width: 10, height: 10 } },
+    ];
+    const plan = planExemplarBackfill(observations);
+    expect(plan.items.map((item) => item.obsId)).toEqual(['p1:face:1:2', 'p1:face:1:3', 'p2:face:1:1']);
+    expect(plan.items.map((item) => item.fingerprint)).toEqual(['fp-b', 'fp-c', 'fp-d']);
+    expect(plan.personsWithoutExemplar).toBe(1);
+    expect(plan.observationsUnaddressable).toBe(0);
+  });
+
+  it('counts an unparsable observation id as unaddressable rather than throwing', () => {
+    const observations: ExemplarPlanObservation[] = [
+      { obsId: 'not-a-valid-id', fingerprint: 'fp-a', quality: 0.9, cropPath: null, personId: 'p1', frameTsS: 1, bbox: { x: 0, y: 0, width: 10, height: 10 } },
+    ];
+    const plan = planExemplarBackfill(observations);
+    expect(plan.items).toEqual([]);
+    expect(plan.observationsUnaddressable).toBe(1);
+    expect(plan.personsWithoutExemplar).toBe(1);
+  });
+});
+
+describe('boxIoU', () => {
+  it('is 1 for identical boxes, 0 for disjoint boxes, 1/3 at half-overlap', () => {
+    const box = { x: 0, y: 0, width: 10, height: 10 };
+    expect(boxIoU(box, box)).toBeCloseTo(1);
+    expect(boxIoU(box, { x: 100, y: 100, width: 10, height: 10 })).toBe(0);
+    expect(boxIoU(box, { x: 5, y: 0, width: 10, height: 10 })).toBeCloseTo(1 / 3);
   });
 });
 
@@ -267,7 +338,7 @@ describe('research thresholds are pinned', () => {
     expect(FACE_CLUSTERING.newClusterSimilarity).toBeLessThanOrEqual(FACE_CLUSTERING.autoAssignSimilarity);
   });
 
-  it('a threshold change is not an extraction change — the engine version stays 2', () => {
+  it('a threshold or crop-policy change is not an extraction change — the engine version stays 2', () => {
     expect(FACE_ENGINE_VERSION).toBe(2);
   });
 });

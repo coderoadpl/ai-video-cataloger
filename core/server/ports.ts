@@ -450,7 +450,7 @@ export type FaceFrameInput =
   | { kind: 'video-timestamp'; videoPath: string; timestampS: number; fallbackFrameJpegPath?: string | undefined };
 
 export interface AlignedFaceCrop {
-  frameJpegPath: string;
+  frame: FaceFrameInput;
   detection: FaceDetection;
   width: number;
   height: number;
@@ -460,7 +460,7 @@ export interface AlignedFaceCrop {
 export interface FaceEnginePort {
   load(): Promise<Result<void, AppError>>;
   detect(frame: FaceFrameInput | string): Promise<Result<FaceDetection[], AppError>>;
-  align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>>;
+  align(frame: FaceFrameInput | string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>>;
   embed(alignedCrop: AlignedFaceCrop): Promise<Result<Float32Array, AppError>>;
   writeCrop(alignedCrop: AlignedFaceCrop, outputPath: string): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
@@ -756,6 +756,7 @@ export type JobKind =
   | 'face_artifact_download'
   | 'faces_index'
   | 'faces_recluster'
+  | 'faces_exemplars'
   | 'materialize'
   | 'thumbnails';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';

@@ -1236,6 +1236,25 @@ faces
     await waitForJobAndEmit(json, result.value.jobId, facesReclusterHuman, true);
   });
 
+faces
+  .command('exemplars')
+  .description('fill missing exemplar crops by re-cutting the frames the observations came from')
+  .option('--dry-run', 'compute the plan without writing', false)
+  .option('--limit <n>', 'process at most this many files', (value: string) => Number.parseInt(value, 10))
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: JsonOption & { dryRun?: boolean; limit?: number }) => {
+    const json = isJsonMode(options);
+    const dryRun = options.dryRun === true;
+    const limit = options.limit ?? null;
+    emitStarted(json, 'faces_exemplars', { dryRun, limit });
+    const result = await api.facesExemplars({ dryRun, limit });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, facesExemplarsHuman, true);
+  });
+
 const configKey = (key: string | undefined) => {
   if (key === undefined) return null;
   const parsed = configKeySchema.safeParse(key);
@@ -1360,11 +1379,30 @@ const facesReclusterHuman = (data: unknown): string => {
   const unassigned = typeof data.observationsUnassigned === 'number' ? data.observationsUnassigned : 0;
   const namesCarried = typeof data.namesCarried === 'number' ? data.namesCarried : 0;
   const namesDropped = Array.isArray(data.namesDropped) ? data.namesDropped.length : 0;
+  const personsWithoutExemplar = typeof data.personsWithoutExemplar === 'number' ? data.personsWithoutExemplar : 0;
   const dryRun = data.dryRun === true;
   return `Reclustered ${observations} observations: ${personsBefore} → ${personsAfter} people `
     + `(${reassigned} reassigned, ${unassigned} unassigned), `
     + `${namesCarried} names carried, ${namesDropped} dropped`
-    + (dryRun ? ' — dry run, nothing written' : '');
+    + (dryRun ? ' — dry run, nothing written' : '')
+    + (personsWithoutExemplar > 0 ? ` — ${personsWithoutExemplar} people have no photo yet, run \`faces exemplars\`` : '');
+};
+
+const facesExemplarsHuman = (data: unknown): string => {
+  if (!isRecord(data)) return 'Exemplars complete';
+  const cropsWritten = typeof data.cropsWritten === 'number' ? data.cropsWritten : 0;
+  const filesVisited = typeof data.filesVisited === 'number' ? data.filesVisited : 0;
+  const filesUnavailable = typeof data.filesUnavailable === 'number' ? data.filesUnavailable : 0;
+  const detectionsMismatched = typeof data.detectionsMismatched === 'number' ? data.detectionsMismatched : 0;
+  const peopleWithoutExemplarBefore = typeof data.peopleWithoutExemplarBefore === 'number' ? data.peopleWithoutExemplarBefore : 0;
+  const peopleWithoutExemplarAfter = typeof data.peopleWithoutExemplarAfter === 'number' ? data.peopleWithoutExemplarAfter : 0;
+  const dryRun = data.dryRun === true;
+  const limitReached = data.limitReached === true;
+  return `Exemplars: wrote ${cropsWritten} crops over ${filesVisited} files `
+    + `(${filesUnavailable} unavailable, ${detectionsMismatched} detections no longer matched), `
+    + `${peopleWithoutExemplarBefore} → ${peopleWithoutExemplarAfter} people without a photo`
+    + (dryRun ? ' — dry run, nothing written' : '')
+    + (limitReached ? ' (limit reached)' : '');
 };
 
 const modelsListHuman = (

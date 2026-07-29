@@ -34,14 +34,127 @@ export const FACE_LIMITS = {
   exemplarCropMaxPx: 160,
 } as const;
 
-export const shouldStoreExemplar = (input: {
-  existing: readonly { fingerprint: string; cropPath: string | null }[];
+export const EXEMPLAR_BBOX_MIN_IOU = 0.5;
+
+export interface ExemplarCandidate {
+  obsId: string;
   fingerprint: string;
-}): boolean => {
-  const withCrops = input.existing.filter((observation) => observation.cropPath !== null);
-  if (withCrops.length >= FACE_LIMITS.maxExemplarsPerPerson) return false;
-  return withCrops.filter((observation) => observation.fingerprint === input.fingerprint).length
-    < FACE_LIMITS.maxExemplarsPerFile;
+  quality: number;
+  cropPath: string | null;
+}
+
+export const selectExemplars = <T extends ExemplarCandidate>(observations: readonly T[]): T[] => {
+  const ordered = [...observations].sort(
+    (left, right) => right.quality - left.quality || left.obsId.localeCompare(right.obsId),
+  );
+  const takenFingerprints = new Set<string>();
+  const selected: T[] = [];
+  for (const candidate of ordered) {
+    if (selected.length >= FACE_LIMITS.maxExemplarsPerPerson) break;
+    if (takenFingerprints.has(candidate.fingerprint)) continue;
+    takenFingerprints.add(candidate.fingerprint);
+    selected.push(candidate);
+  }
+  return selected;
+};
+
+export interface FaceObsIdParts {
+  fingerprint: string;
+  frameIndex: number;
+  detectionIndex: number;
+}
+
+export const parseFaceObsId = (obsId: string): FaceObsIdParts | null => {
+  const marker = ':face:';
+  const markerIndex = obsId.indexOf(marker);
+  if (markerIndex <= 0) return null;
+  const fingerprint = obsId.slice(0, markerIndex);
+  const rest = obsId.slice(markerIndex + marker.length).split(':');
+  if (rest.length !== 2) return null;
+  const [frameRaw, detectionRaw] = rest;
+  if (frameRaw === undefined || detectionRaw === undefined) return null;
+  if (!/^[1-9][0-9]*$/.test(frameRaw) || !/^[1-9][0-9]*$/.test(detectionRaw)) return null;
+  return { fingerprint, frameIndex: Number(frameRaw), detectionIndex: Number(detectionRaw) };
+};
+
+export const faceCropFileName = (parts: FaceObsIdParts): string => `${parts.frameIndex}-${parts.detectionIndex}.jpg`;
+
+export const boxIoU = (left: FaceBox, right: FaceBox): number => {
+  if (left.width <= 0 || left.height <= 0 || right.width <= 0 || right.height <= 0) return 0;
+  const x1 = Math.max(left.x, right.x);
+  const y1 = Math.max(left.y, right.y);
+  const x2 = Math.min(left.x + left.width, right.x + right.width);
+  const y2 = Math.min(left.y + left.height, right.y + right.height);
+  const intersection = Math.max(0, x2 - x1) * Math.max(0, y2 - y1);
+  if (intersection === 0) return 0;
+  const union = left.width * left.height + right.width * right.height - intersection;
+  return union <= 0 ? 0 : intersection / union;
+};
+
+export interface ExemplarPlanObservation extends ExemplarCandidate {
+  personId: string;
+  frameTsS: number;
+  bbox: FaceBox;
+}
+
+export interface ExemplarBackfillItem {
+  obsId: string;
+  fingerprint: string;
+  personId: string;
+  frameIndex: number;
+  detectionIndex: number;
+  frameTsS: number;
+  bbox: FaceBox;
+}
+
+export interface ExemplarBackfillPlan {
+  items: ExemplarBackfillItem[];
+  personsWithoutExemplar: number;
+  observationsUnaddressable: number;
+}
+
+export const planExemplarBackfill = (
+  observations: readonly ExemplarPlanObservation[],
+): ExemplarBackfillPlan => {
+  const byPerson = new Map<string, ExemplarPlanObservation[]>();
+  for (const observation of observations) {
+    const bucket = byPerson.get(observation.personId);
+    if (bucket === undefined) byPerson.set(observation.personId, [observation]);
+    else bucket.push(observation);
+  }
+
+  const items: ExemplarBackfillItem[] = [];
+  let personsWithoutExemplar = 0;
+  let observationsUnaddressable = 0;
+
+  for (const members of byPerson.values()) {
+    const selected = selectExemplars(members);
+    if (!selected.some((observation) => observation.cropPath !== null)) personsWithoutExemplar += 1;
+    for (const observation of selected) {
+      if (observation.cropPath !== null) continue;
+      const parsed = parseFaceObsId(observation.obsId);
+      if (parsed === null) {
+        observationsUnaddressable += 1;
+        continue;
+      }
+      items.push({
+        obsId: observation.obsId,
+        fingerprint: observation.fingerprint,
+        personId: observation.personId,
+        frameIndex: parsed.frameIndex,
+        detectionIndex: parsed.detectionIndex,
+        frameTsS: observation.frameTsS,
+        bbox: observation.bbox,
+      });
+    }
+  }
+
+  items.sort((left, right) =>
+    left.fingerprint.localeCompare(right.fingerprint)
+    || left.frameIndex - right.frameIndex
+    || left.detectionIndex - right.detectionIndex);
+
+  return { items, personsWithoutExemplar, observationsUnaddressable };
 };
 
 export const faceBoxSchema = z.object({

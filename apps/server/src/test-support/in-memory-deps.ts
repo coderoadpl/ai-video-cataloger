@@ -52,6 +52,7 @@ import type {
   DriveRunRecord,
   FaceDetection,
   FaceEnginePort,
+  FaceFrameInput,
   FaceIndexCandidate,
   FaceIndexScope,
   FaceStatusCounts,
@@ -1242,8 +1243,9 @@ class InMemoryFaceEnginePort implements FaceEnginePort {
     return Promise.resolve(ok([]));
   }
 
-  align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
-    return Promise.resolve(ok({ frameJpegPath, detection, width: 112, height: 112 }));
+  align(frame: FaceFrameInput | string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
+    const normalized = typeof frame === 'string' ? { kind: 'image-path' as const, frameJpegPath: frame } : frame;
+    return Promise.resolve(ok({ frame: normalized, detection, width: 112, height: 112 }));
   }
 
   embed(): Promise<Result<Float32Array, AppError>> {

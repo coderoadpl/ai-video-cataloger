@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { appError, normalizeEmbedding, ok, type AppError, type Result } from '@core/domain/index.js';
 
-import { JOB_CANCELLED_ERROR_MESSAGE, type AlignedFaceCrop, type DependencyStatus, type FaceDetection, type FaceEnginePort, type JobProgress } from '../ports.js';
+import { JOB_CANCELLED_ERROR_MESSAGE, type AlignedFaceCrop, type DependencyStatus, type FaceDetection, type FaceEnginePort, type FaceFrameInput, type JobProgress } from '../ports.js';
 import { processDrive, type ProcessDriveInput } from './process-drive.js';
 import {
   InMemoryAnalyzer,
@@ -51,8 +51,9 @@ class StubFaceEngine implements FaceEnginePort {
     return Promise.resolve(ok([this.detection]));
   }
 
-  align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
-    return Promise.resolve(ok({ frameJpegPath, detection, width: 112, height: 112, data: new Uint8Array(112 * 112 * 3) }));
+  align(frame: FaceFrameInput | string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
+    const normalized: FaceFrameInput = typeof frame === 'string' ? { kind: 'image-path', frameJpegPath: frame } : frame;
+    return Promise.resolve(ok({ frame: normalized, detection, width: 112, height: 112, data: new Uint8Array(112 * 112 * 3) }));
   }
 
   embed(): Promise<Result<Float32Array, AppError>> {

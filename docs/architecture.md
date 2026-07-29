@@ -384,6 +384,14 @@ change never does). The rebuild is a replace: person ids are re-minted, owner-se
 follow the plurality of their old observations, and exemplar crops stay attached to the
 observation that produced them. ADR-0012.
 
+A face crop belongs to the observation it was cut from, not to the person that observation
+currently belongs to: indexing writes one crop per detected face under
+`faces/obs/<fingerprint>/`, and the up-to-five exemplars a person shows — at most one per
+file, best quality first — are chosen at read time by a pure function over that person's
+observations. Identity can therefore be rebuilt as often as the thresholds change without
+ever costing the catalog a photograph, and `faces exemplars` exists only to repair catalogs
+indexed before this rule (or crops deleted off disk). ADR-0014.
+
 ## Delta 6 — observability
 
 OTel facade + wide events per the foundation, but this is a privacy-sensitive

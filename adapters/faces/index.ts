@@ -142,20 +142,21 @@ export class OnnxFaceEngineAdapter implements FaceEnginePort {
     return ok(parseDetections(output.value, prepared.meta));
   }
 
-  async align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
-    const frame = await this.readFrame(frameJpegPath);
-    if (!frame.ok) return frame;
+  async align(frame: FaceFrameInput | string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
+    const input = normalizeFrameInput(frame);
+    const decoded = await this.readFrame(input);
+    if (!decoded.ok) return decoded;
     const transform = estimateSimilarityTransform(faceAlignmentSource(detection.landmarks), SFACE_ALIGNMENT_TEMPLATE);
     const transformedNose = applySimilarityTransform(transform, detection.landmarks.nose);
     if (!Number.isFinite(transformedNose.x) || !Number.isFinite(transformedNose.y)) {
       return { ok: false, error: appError('processing_error', 'Face alignment failed') };
     }
     return ok({
-      frameJpegPath,
+      frame: input,
       detection,
       width: SFACE_INPUT_SIZE,
       height: SFACE_INPUT_SIZE,
-      data: warpAlignedFaceRgb(frame.value, transform, SFACE_INPUT_SIZE, SFACE_INPUT_SIZE),
+      data: warpAlignedFaceRgb(decoded.value, transform, SFACE_INPUT_SIZE, SFACE_INPUT_SIZE),
     });
   }
 
@@ -168,7 +169,7 @@ export class OnnxFaceEngineAdapter implements FaceEnginePort {
     const inputName = this.embedder.inputNames[0] ?? 'input';
     const output = await this.runSession(this.embedder, {
       [inputName]: this.sessionFactory.tensor(createSFaceTensor(crop.value), [1, 3, alignedCrop.height, alignedCrop.width]),
-    }, `Failed to embed face crop from ${alignedCrop.frameJpegPath}`);
+    }, `Failed to embed face crop from ${frameLabel(alignedCrop.frame)}`);
     if (!output.ok) return output;
     const tensor = firstTensor(output.value);
     if (tensor === null) return { ok: false, error: appError('processing_error', 'Face embedding output is empty') };
@@ -230,7 +231,7 @@ export class OnnxFaceEngineAdapter implements FaceEnginePort {
     if (alignedCrop.data !== undefined) {
       return ok({ width: alignedCrop.width, height: alignedCrop.height, data: alignedCrop.data });
     }
-    const aligned = await this.align(alignedCrop.frameJpegPath, alignedCrop.detection);
+    const aligned = await this.align(alignedCrop.frame, alignedCrop.detection);
     if (!aligned.ok) return aligned;
     const data = aligned.value.data;
     if (data === undefined) return { ok: false, error: appError('processing_error', 'Face alignment produced no pixels') };

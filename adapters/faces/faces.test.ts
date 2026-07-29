@@ -405,7 +405,7 @@ describe('OnnxFaceEngineAdapter with fake ort sessions', () => {
   });
 
   it('returns a normalized 128-dimensional embedding and guards zero-norm output', async () => {
-    const aligned: AlignedFaceCrop = { frameJpegPath: '/tmp/frame.jpg', width: 112, height: 112, detection: centeredDetection(), data: new Uint8Array(112 * 112 * 3).fill(1) };
+    const aligned: AlignedFaceCrop = { frame: { kind: 'image-path', frameJpegPath: '/tmp/frame.jpg' }, width: 112, height: 112, detection: centeredDetection(), data: new Uint8Array(112 * 112 * 3).fill(1) };
     const adapter = buildAdapter(onePixelFrame(1, 2, 3), () => Promise.resolve(detectorOutputs()));
     const result = await adapter.embed(aligned);
     expect(result.ok).toBe(true);

@@ -408,6 +408,22 @@ export const facesReclusterOutputSchema = z.object({
   elapsedMs: z.number().int().nonnegative(),
 });
 
+export const facesExemplarsOutputSchema = z.object({
+  dryRun: z.boolean(),
+  people: z.number().int().nonnegative(),
+  peopleWithoutExemplarBefore: z.number().int().nonnegative(),
+  peopleWithoutExemplarAfter: z.number().int().nonnegative(),
+  filesPlanned: z.number().int().nonnegative(),
+  filesVisited: z.number().int().nonnegative(),
+  filesUnavailable: z.number().int().nonnegative(),
+  cropsPlanned: z.number().int().nonnegative(),
+  cropsWritten: z.number().int().nonnegative(),
+  detectionsMismatched: z.number().int().nonnegative(),
+  observationsUnaddressable: z.number().int().nonnegative(),
+  limitReached: z.boolean(),
+  elapsedMs: z.number().int().nonnegative(),
+});
+
 export const statusVideoSchema = z.object({
   path: z.string(),
   originalName: z.string(),
@@ -830,6 +846,7 @@ export const jobKindSchema = z.enum([
   'face_artifact_download',
   'faces_index',
   'faces_recluster',
+  'faces_exemplars',
   'materialize',
   'thumbnails',
 ]);
@@ -917,6 +934,7 @@ export const jobResultSchema = z.union([
   materializeSummarySchema,
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,
+  facesExemplarsOutputSchema,
 ]);
 
 export const jobOutputSchema = z.object({
@@ -1239,6 +1257,11 @@ export const facesReclusterInputSchema = z.object({
   dryRun: z.boolean().default(false),
 });
 
+export const facesExemplarsInputSchema = z.object({
+  dryRun: z.boolean().default(false),
+  limit: z.number().int().positive().nullable().default(null),
+});
+
 export interface RouteDescriptor<Input extends z.ZodTypeAny, Output extends z.ZodTypeAny> {
   method: 'GET' | 'POST' | 'DELETE';
   path: string;
@@ -1424,6 +1447,12 @@ export const API_ROUTES = {
     input: facesReclusterInputSchema,
     output: jobAcceptedOutputSchema,
   },
+  facesExemplars: {
+    method: 'POST',
+    path: '/api/faces/exemplars',
+    input: facesExemplarsInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -1490,4 +1519,5 @@ export const API_PATHS = {
   facesPurge: API_ROUTES.facesPurge.path,
   facesStatus: API_ROUTES.facesStatus.path,
   facesRecluster: API_ROUTES.facesRecluster.path,
+  facesExemplars: API_ROUTES.facesExemplars.path,
 } as const;

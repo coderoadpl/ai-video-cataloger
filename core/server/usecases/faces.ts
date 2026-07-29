@@ -1,17 +1,23 @@
 import {
+  EXEMPLAR_BBOX_MIN_IOU,
   FACE_ENGINE_VERSION,
   FACE_LIMITS,
   FILE_ARTIFACTS,
+  boxIoU,
   classifyFace,
   clusterFaceObservations,
   findNewClusterSeed,
   normalizeEmbedding,
+  parseFaceObsId,
   passesFaceQuality,
-  shouldStoreExemplar,
+  planExemplarBackfill,
+  faceCropFileName,
+  selectExemplars,
   updateCentroid,
   appError,
   ok,
   type AppError,
+  type ExemplarPlanObservation,
   type FaceClusterInput,
   type FaceObservation,
   type Person,
@@ -48,6 +54,24 @@ export interface FacesDeps {
 export type FacesIndexDeps = Omit<FacesDeps, 'jobs'>;
 
 export type FacesReclusterDeps = Pick<FacesDeps, 'config' | 'fs' | 'globalCatalog'>;
+
+export type FacesExemplarsDeps = Omit<FacesDeps, 'jobs'>;
+
+export interface FacesExemplarsOutput {
+  dryRun: boolean;
+  people: number;
+  peopleWithoutExemplarBefore: number;
+  peopleWithoutExemplarAfter: number;
+  filesPlanned: number;
+  filesVisited: number;
+  filesUnavailable: number;
+  cropsPlanned: number;
+  cropsWritten: number;
+  detectionsMismatched: number;
+  observationsUnaddressable: number;
+  limitReached: boolean;
+  elapsedMs: number;
+}
 
 export interface FacesReclusterOutput {
   dryRun: boolean;
@@ -94,11 +118,6 @@ export interface FacesStatusOutput {
   unassignedObservations: number;
   filesIndexed: number;
   staleVersionFiles: number;
-}
-
-interface ObservationContext {
-  observation: FaceObservation;
-  alignedCrop: AlignedFaceCrop;
 }
 
 interface FacePersonView extends Person {
@@ -153,6 +172,20 @@ export const facesRecluster = async (
   });
 };
 
+export const facesExemplars = async (
+  deps: FacesDeps,
+  input: { dryRun: boolean; limit: number | null },
+): Promise<Result<{ jobId: string }, AppError>> => {
+  const enabled = await ensureFacesEnabled(deps);
+  if (!enabled.ok) return enabled;
+  return deps.jobs.enqueue({
+    kind: 'faces_exemplars',
+    payload: input,
+    resourceKey: 'faces-exemplars',
+    run: (context) => runFacesExemplarsPass(deps, input, context),
+  });
+};
+
 export const runFacesReclusterPass = async (
   deps: FacesReclusterDeps,
   input: { dryRun: boolean },
@@ -204,9 +237,13 @@ export const runFacesReclusterPass = async (
     ...outcome.unassignedObsIds.map((obsId) => ({ obsId, personId: null })),
   ];
 
-  const cropPathByObsId = new Map(observations.value.map((observation) => [observation.obsId, observation.cropPath]));
-  const personsWithoutExemplar = outcome.clusters.filter((cluster) =>
-    !cluster.memberObsIds.some((obsId) => cropPathByObsId.get(obsId) !== null)).length;
+  const observationByObsId = new Map(observations.value.map((observation) => [observation.obsId, observation]));
+  const personsWithoutExemplar = outcome.clusters.filter((cluster) => {
+    const members = cluster.memberObsIds
+      .map((obsId) => observationByObsId.get(obsId))
+      .filter((observation): observation is FaceObservation => observation !== undefined);
+    return !selectExemplars(members).some((observation) => observation.cropPath !== null);
+  }).length;
 
   let observationsReassigned: number;
   if (input.dryRun) {
@@ -458,7 +495,7 @@ export const runFacesIndexPass = async (
   let streakCode: AppError['code'] | null = null;
   const seeded = await deps.globalCatalog.listUnassignedFaceObservations();
   if (!seeded.ok) return seeded;
-  let contexts: ObservationContext[] = seeded.value.map(persistedContext);
+  let pool: FaceObservation[] = [...seeded.value];
 
   try {
     for (let candidateIndex = 0; candidateIndex < scope.value.candidates.length; candidateIndex += 1) {
@@ -466,8 +503,8 @@ export const runFacesIndexPass = async (
       if (candidate === undefined) continue;
       const cancellation = cancelled(progress);
       if (!cancellation.ok) return cancellation;
-      const outcome = await indexCandidate(deps, candidate, contexts, progress, candidateIndex, scope.value.candidates.length);
-      contexts = outcome.contexts;
+      const outcome = await indexCandidate(deps, candidate, pool, progress, candidateIndex, scope.value.candidates.length);
+      pool = outcome.pool;
       if (!outcome.result.ok) {
         if (isCancellation(progress, outcome.result.error)) return outcome.result;
         const fingerprint = candidate.file.fingerprint;
@@ -495,7 +532,6 @@ export const runFacesIndexPass = async (
       filesIndexed += 1;
       streak = 0;
       streakCode = null;
-      for (const context of contexts) releaseCropPixels(context.alignedCrop);
     }
   } finally {
     await deps.faceEngine.dispose();
@@ -529,29 +565,29 @@ const isCancellation = (progress: JobExecutionContext | undefined, error: AppErr
 
 interface IndexCandidateOutcome {
   result: Result<{ observationsAdded: number; peopleCreated: number }, AppError>;
-  contexts: ObservationContext[];
+  pool: FaceObservation[];
 }
 
 const indexCandidate = async (
   deps: FacesIndexDeps,
   candidate: FaceIndexCandidate,
-  contextsIn: ObservationContext[],
+  poolIn: FaceObservation[],
   progress: JobExecutionContext | undefined,
   candidateIndex: number,
   candidatesTotal: number,
 ): Promise<IndexCandidateOutcome> => {
-  let contexts = contextsIn;
+  let pool = poolIn;
   const fingerprint = candidate.file.fingerprint;
   const stale = candidate.previousEngineVersion !== null && candidate.previousEngineVersion < FACE_ENGINE_VERSION;
   if (stale) {
     const purged = await deps.globalCatalog.deleteFaceObservationsForFile(fingerprint);
-    if (!purged.ok) return { result: purged, contexts };
+    if (!purged.ok) return { result: purged, pool };
     const removedCrops = await deleteCropPaths(deps.fs, purged.value.cropPaths);
-    if (!removedCrops.ok) return { result: removedCrops, contexts };
-    contexts = contexts.filter((context) => context.observation.fingerprint !== fingerprint);
+    if (!removedCrops.ok) return { result: removedCrops, pool };
+    pool = pool.filter((observation) => observation.fingerprint !== fingerprint);
   }
   const existing = await deps.globalCatalog.listFaceObservations({ fingerprint });
-  if (!existing.ok) return { result: existing, contexts };
+  if (!existing.ok) return { result: existing, pool };
   const existingObsIds = new Set(existing.value.map((observation) => observation.obsId));
   const videoPath = deps.fs.join(candidate.folder.currentPath, candidate.file.fileName);
   const frameDirectory = deps.fs.join(deps.fs.tempDirectory(), 'ai-video-cataloger', 'faces', fingerprint);
@@ -561,7 +597,7 @@ const indexCandidate = async (
     total: candidatesTotal,
     data: { fingerprint, videoPath },
   });
-  if (!extracting.ok) return { result: extracting, contexts };
+  if (!extracting.ok) return { result: extracting, pool };
   const frames = await deps.media.extractFrames({
     videoPath,
     outputDirectory: frameDirectory,
@@ -570,38 +606,206 @@ const indexCandidate = async (
   });
   if (!frames.ok) {
     await deps.fs.deletePath(frameDirectory);
-    return { result: frames, contexts };
+    return { result: frames, pool };
   }
   const probe = await deps.media.probe({ videoPath });
   if (!probe.ok) {
     await deps.fs.deletePath(frameDirectory);
-    return { result: probe, contexts };
+    return { result: probe, pool };
   }
   const added = await indexFramesForFile(deps, {
     fingerprint,
     videoPath,
     durationS: probe.value.duration,
     framePaths: frames.value.framePaths,
-  }, contexts, existingObsIds, progress);
+  }, pool, existingObsIds, progress);
   if (!added.ok) {
     await deps.fs.deletePath(frameDirectory);
-    return { result: added, contexts };
+    return { result: added, pool };
   }
   const completed = await deps.globalCatalog.completeFaceIndex(fingerprint, FACE_ENGINE_VERSION);
   if (!completed.ok) {
     await deps.fs.deletePath(frameDirectory);
-    return { result: completed, contexts };
+    return { result: completed, pool };
   }
   // best effort: a leftover temp frame directory is a disk-space leak, not a reason to
   // fail an index that is already stored
   await deps.fs.deletePath(frameDirectory);
-  return { result: added, contexts };
+  return { result: added, pool };
+};
+
+export const runFacesExemplarsPass = async (
+  deps: FacesExemplarsDeps,
+  input: { dryRun: boolean; limit: number | null },
+  progress?: JobExecutionContext,
+): Promise<Result<FacesExemplarsOutput, AppError>> => {
+  const startedAt = Date.now();
+  const artifactsReady = await faceArtifactsInstalled(deps.downloads);
+  if (!artifactsReady.ok) return artifactsReady;
+  if (!artifactsReady.value) return { ok: false, error: appError('model_not_installed', 'Face artifacts are not installed') };
+
+  const people = await deps.globalCatalog.listPeople();
+  if (!people.ok) return people;
+  const observations = await deps.globalCatalog.listFaceObservations();
+  if (!observations.ok) return observations;
+
+  const planObservations: ExemplarPlanObservation[] = [];
+  for (const observation of observations.value) {
+    if (observation.personId === null) continue;
+    let cropPath = observation.cropPath;
+    if (cropPath !== null) {
+      const exists = await deps.fs.exists(cropPath);
+      if (!exists.ok) return exists;
+      if (!exists.value) cropPath = null;
+    }
+    planObservations.push({
+      obsId: observation.obsId,
+      fingerprint: observation.fingerprint,
+      quality: observation.quality,
+      cropPath,
+      personId: observation.personId,
+      frameTsS: observation.frameTsS,
+      bbox: observation.bbox,
+    });
+  }
+
+  const plan = planExemplarBackfill(planObservations);
+
+  const fingerprintsOrdered: string[] = [];
+  const seenFingerprints = new Set<string>();
+  for (const item of plan.items) {
+    if (seenFingerprints.has(item.fingerprint)) continue;
+    seenFingerprints.add(item.fingerprint);
+    fingerprintsOrdered.push(item.fingerprint);
+  }
+  const limitReached = input.limit !== null && fingerprintsOrdered.length > input.limit;
+  const selectedFingerprints = input.limit === null ? fingerprintsOrdered : fingerprintsOrdered.slice(0, input.limit);
+  const selectedFingerprintSet = new Set(selectedFingerprints);
+  const items = plan.items.filter((item) => selectedFingerprintSet.has(item.fingerprint));
+
+  const locations = await deps.globalCatalog.listAnalyzedFileLocations(selectedFingerprints);
+  if (!locations.ok) return locations;
+  const locationByFingerprint = new Map(locations.value.map((location) => [location.fingerprint, location]));
+
+  const itemsByFingerprint = new Map<string, typeof items>();
+  for (const item of items) {
+    const bucket = itemsByFingerprint.get(item.fingerprint);
+    if (bucket === undefined) itemsByFingerprint.set(item.fingerprint, [item]);
+    else bucket.push(item);
+  }
+
+  const observationByObsId = new Map(observations.value.map((observation) => [observation.obsId, observation]));
+  const cropPathByObsId = new Map<string, string>();
+
+  let filesVisited = 0;
+  let filesUnavailable = 0;
+  let cropsWritten = 0;
+  let detectionsMismatched = 0;
+
+  try {
+    for (let fileIndex = 0; fileIndex < selectedFingerprints.length; fileIndex += 1) {
+      const fingerprint = selectedFingerprints[fileIndex];
+      if (fingerprint === undefined) continue;
+      const location = locationByFingerprint.get(fingerprint);
+      const fingerprintItems = itemsByFingerprint.get(fingerprint) ?? [];
+      if (location === undefined || location.folderPath === null) {
+        filesUnavailable += 1;
+        continue;
+      }
+      const videoPath = deps.fs.join(location.folderPath, location.fileName);
+      const extracting = await report(progress, {
+        step: 'faces_extracting_frames',
+        current: fileIndex + 1,
+        total: selectedFingerprints.length,
+        data: { fingerprint, videoPath },
+      });
+      if (!extracting.ok) return extracting;
+      const exists = await deps.fs.exists(videoPath);
+      if (!exists.ok) return exists;
+      if (!exists.value) {
+        filesUnavailable += 1;
+        continue;
+      }
+      const cancellation = cancelled(progress);
+      if (!cancellation.ok) return cancellation;
+      if (input.dryRun) {
+        filesVisited += 1;
+        continue;
+      }
+
+      let undecodable = false;
+      for (const item of fingerprintItems) {
+        const detecting = await report(progress, {
+          step: 'faces_detecting',
+          current: fileIndex + 1,
+          total: selectedFingerprints.length,
+          data: { fingerprint, videoPath, frameTsS: item.frameTsS },
+        });
+        if (!detecting.ok) return detecting;
+        const detections = await deps.faceEngine.detect({ kind: 'video-timestamp', videoPath, timestampS: item.frameTsS });
+        if (!detections.ok) {
+          undecodable = true;
+          break;
+        }
+        const detected = detections.value[item.detectionIndex - 1];
+        if (detected === undefined || boxIoU(item.bbox, detected.bbox) < EXEMPLAR_BBOX_MIN_IOU) {
+          detectionsMismatched += 1;
+          continue;
+        }
+        const aligned = await deps.faceEngine.align({ kind: 'video-timestamp', videoPath, timestampS: item.frameTsS }, detected);
+        if (!aligned.ok) return aligned;
+        const cropPath = await writeObservationCrop(deps, item.obsId, aligned.value);
+        if (typeof cropPath !== 'string') return cropPath;
+        const original = observationByObsId.get(item.obsId);
+        if (original === undefined) continue;
+        const updated = await deps.globalCatalog.upsertFaceObservation({ ...original, cropPath });
+        if (!updated.ok) return updated;
+        cropPathByObsId.set(item.obsId, cropPath);
+        cropsWritten += 1;
+      }
+      if (undecodable) filesUnavailable += 1;
+      else filesVisited += 1;
+    }
+  } finally {
+    await deps.faceEngine.dispose();
+  }
+
+  if (!input.dryRun) {
+    const flushed = await deps.globalCatalog.flush();
+    if (!flushed.ok) return flushed;
+  }
+
+  const afterObservations = planObservations.map((observation) => ({
+    ...observation,
+    cropPath: cropPathByObsId.get(observation.obsId) ?? observation.cropPath,
+  }));
+  const peopleWithoutExemplarAfter = planExemplarBackfill(afterObservations).personsWithoutExemplar;
+
+  const output: FacesExemplarsOutput = {
+    dryRun: input.dryRun,
+    people: people.value.length,
+    peopleWithoutExemplarBefore: plan.personsWithoutExemplar,
+    peopleWithoutExemplarAfter,
+    filesPlanned: selectedFingerprints.length,
+    filesVisited,
+    filesUnavailable,
+    cropsPlanned: items.length,
+    cropsWritten,
+    detectionsMismatched,
+    observationsUnaddressable: plan.observationsUnaddressable,
+    limitReached,
+    elapsedMs: Date.now() - startedAt,
+  };
+
+  const done = await report(progress, { step: 'faces_done', percentage: 100, data: { ...output } });
+  if (!done.ok) return done;
+  return ok(output);
 };
 
 const indexFramesForFile = async (
   deps: FacesIndexDeps,
   input: { fingerprint: string; videoPath: string; durationS: number | null; framePaths: string[] },
-  contexts: ObservationContext[],
+  pool: FaceObservation[],
   existingObsIds: ReadonlySet<string>,
   progress: JobExecutionContext | undefined,
 ): Promise<Result<{ observationsAdded: number; peopleCreated: number }, AppError>> => {
@@ -627,7 +831,7 @@ const indexFramesForFile = async (
     if (!detections.ok) return detections;
     let detectionIndex = 0;
     for (const detection of detections.value) {
-      const indexed = await indexDetection(deps, { fingerprint: input.fingerprint, frameTsS: timestampS }, framePath, frameIndex, detectionIndex, detection, contexts, existingObsIds);
+      const indexed = await indexDetection(deps, { fingerprint: input.fingerprint, frameTsS: timestampS }, framePath, frameIndex, detectionIndex, detection, pool, existingObsIds);
       if (!indexed.ok) return indexed;
       observationsAdded += indexed.value.observationsAdded;
       peopleCreated += indexed.value.peopleCreated;
@@ -644,7 +848,7 @@ const indexDetection = async (
   frameIndex: number,
   detectionIndex: number,
   detection: FaceDetection,
-  contexts: ObservationContext[],
+  pool: FaceObservation[],
   existingObsIds: ReadonlySet<string>,
 ): Promise<Result<{ observationsAdded: number; peopleCreated: number }, AppError>> => {
   const obsId = `${input.fingerprint}:face:${frameIndex + 1}:${detectionIndex + 1}`;
@@ -653,6 +857,8 @@ const indexDetection = async (
   if (!passesFaceQuality({ score: detection.score, boxPx })) return ok({ observationsAdded: 0, peopleCreated: 0 });
   const aligned = await deps.faceEngine.align(framePath, detection);
   if (!aligned.ok) return aligned;
+  const cropPath = await writeObservationCrop(deps, obsId, aligned.value);
+  if (typeof cropPath !== 'string') return cropPath;
   const embedded = await deps.faceEngine.embed(aligned.value);
   if (!embedded.ok) return embedded;
   const embedding = normalizeEmbedding([...embedded.value]);
@@ -660,8 +866,6 @@ const indexDetection = async (
   if (!people.ok) return people;
   const assignment = classifyFace(embedding, people.value.map((person) => ({ personId: person.personId, centroid: person.centroid })));
   const assignedPersonId = assignment.decision === 'assign' ? assignment.personId : null;
-  const cropPath = assignedPersonId === null ? null : await nextCropPath(deps, assignedPersonId, input.fingerprint, aligned.value);
-  if (typeof cropPath !== 'string' && cropPath !== null) return cropPath;
   const observation: FaceObservation = {
     obsId,
     fingerprint: input.fingerprint,
@@ -675,27 +879,26 @@ const indexDetection = async (
   };
   const stored = await deps.globalCatalog.upsertFaceObservation(observation);
   if (!stored.ok) return stored;
-  if (assignedPersonId !== null) releaseCropPixels(aligned.value);
-  contexts.push({ observation, alignedCrop: aligned.value });
+  pool.push(observation);
   if (assignedPersonId !== null) {
     const updated = await updatePersonCentroid(deps.globalCatalog, assignedPersonId, embedding);
     if (!updated.ok) return updated;
     return ok({ observationsAdded: 1, peopleCreated: 0 });
   }
-  const clustered = await seedNewPersonIfReady(deps, contexts);
+  const clustered = await seedNewPersonIfReady(deps, pool);
   if (!clustered.ok) return clustered;
   return ok({ observationsAdded: 1, peopleCreated: clustered.value });
 };
 
 const seedNewPersonIfReady = async (
   deps: FacesIndexDeps,
-  contexts: ObservationContext[],
+  pool: FaceObservation[],
 ): Promise<Result<number, AppError>> => {
-  const unassigned = contexts.filter((context) => context.observation.personId === null);
-  const seed = findNewClusterSeed(unassigned.map((context) => context.observation.embedding));
+  const unassigned = pool.filter((observation) => observation.personId === null);
+  const seed = findNewClusterSeed(unassigned.map((observation) => observation.embedding));
   if (seed.length === 0) return ok(0);
   const personId = `person-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
-  const embeddings = seed.map((index) => unassigned[index]?.observation.embedding).filter((value): value is number[] => value !== undefined);
+  const embeddings = seed.map((index) => unassigned[index]?.embedding).filter((value): value is number[] => value !== undefined);
   const person: Person = {
     personId,
     displayName: null,
@@ -707,17 +910,13 @@ const seedNewPersonIfReady = async (
   const stored = await deps.globalCatalog.upsertPerson(person);
   if (!stored.ok) return stored;
   for (const index of seed) {
-    const context = unassigned[index];
-    if (context === undefined) continue;
-    const cropPath = context.alignedCrop.data !== undefined
-      ? await nextCropPath(deps, personId, context.observation.fingerprint, context.alignedCrop)
-      : null;
-    if (typeof cropPath !== 'string' && cropPath !== null) return cropPath;
-    const observation = { ...context.observation, personId, cropPath };
-    const updated = await deps.globalCatalog.upsertFaceObservation(observation);
+    const observation = unassigned[index];
+    if (observation === undefined) continue;
+    const updatedObservation = { ...observation, personId };
+    const updated = await deps.globalCatalog.upsertFaceObservation(updatedObservation);
     if (!updated.ok) return updated;
-    context.observation = observation;
-    releaseCropPixels(context.alignedCrop);
+    const poolIndex = pool.indexOf(observation);
+    if (poolIndex !== -1) pool[poolIndex] = updatedObservation;
   }
   return ok(1);
 };
@@ -740,20 +939,17 @@ const updatePersonCentroid = async (
   });
 };
 
-const nextCropPath = async (
-  deps: FacesIndexDeps,
-  personId: string,
-  fingerprint: string,
+const writeObservationCrop = async (
+  deps: Pick<FacesIndexDeps, 'faceEngine' | 'fs' | 'globalCatalog'>,
+  obsId: string,
   alignedCrop: AlignedFaceCrop,
-): Promise<string | null | Result<never, AppError>> => {
-  const observations = await deps.globalCatalog.listFaceObservations({ personId });
-  if (!observations.ok) return observations;
-  if (!shouldStoreExemplar({ existing: observations.value, fingerprint })) return null;
-  const crops = observations.value.filter((observation) => observation.cropPath !== null).length;
-  const directory = deps.fs.join(deps.fs.dirname(deps.globalCatalog.databasePath()), 'faces', personId);
+): Promise<string | Result<never, AppError>> => {
+  const parsed = parseFaceObsId(obsId);
+  if (parsed === null) return { ok: false, error: appError('internal', `Cannot parse face observation id: ${obsId}`) };
+  const directory = deps.fs.join(deps.fs.dirname(deps.globalCatalog.databasePath()), 'faces', 'obs', parsed.fingerprint);
   const ensured = await deps.fs.ensureDirectory(directory);
   if (!ensured.ok) return ensured;
-  const cropPath = deps.fs.join(directory, `exemplar-${String(crops + 1).padStart(3, '0')}.jpg`);
+  const cropPath = deps.fs.join(directory, faceCropFileName(parsed));
   const written = await deps.faceEngine.writeCrop(alignedCrop, cropPath);
   if (!written.ok) return written;
   return cropPath;
@@ -790,10 +986,10 @@ export const faceArtifactsInstalled = async (downloads: ModelDownloadPort): Prom
 
 const personView = (person: Person, observations: readonly FaceObservation[]): FacePersonView => {
   const matching = observations.filter((observation) => observation.personId === person.personId);
-  const exemplarCropPaths = matching
+  const selected = selectExemplars(matching);
+  const exemplarCropPaths = selected
     .filter((observation): observation is FaceObservation & { cropPath: string } => observation.cropPath !== null)
-    .map((observation) => observation.cropPath)
-    .slice(0, FACE_LIMITS.maxExemplarsPerPerson);
+    .map((observation) => observation.cropPath);
   return {
     ...person,
     observationCount: matching.length,
@@ -801,31 +997,6 @@ const personView = (person: Person, observations: readonly FaceObservation[]): F
     exemplarCropPaths,
   };
 };
-
-const releaseCropPixels = (crop: AlignedFaceCrop): void => {
-  crop.data = undefined;
-};
-
-const persistedContext = (observation: FaceObservation): ObservationContext => ({
-  observation,
-  alignedCrop: {
-    frameJpegPath: observation.cropPath ?? '',
-    detection: {
-      bbox: observation.bbox,
-      landmarks: {
-        leftEye: { x: 0, y: 0 },
-        rightEye: { x: 0, y: 0 },
-        nose: { x: 0, y: 0 },
-        leftMouth: { x: 0, y: 0 },
-        rightMouth: { x: 0, y: 0 },
-      },
-      score: observation.quality,
-    },
-    width: 0,
-    height: 0,
-    data: undefined,
-  },
-});
 
 const deleteCropPaths = async (fs: FileSystemPort, cropPaths: readonly string[]): Promise<Result<number, AppError>> => {
   let deleted = 0;

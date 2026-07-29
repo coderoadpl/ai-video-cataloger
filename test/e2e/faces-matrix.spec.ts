@@ -138,7 +138,7 @@ const structuredCrop = (kind: 'diagonal' | 'rings'): Uint8Array => {
 };
 
 const alignedCrop = (data: Uint8Array) => ({
-  frameJpegPath: '/synthetic/crop.jpg',
+  frame: { kind: 'image-path' as const, frameJpegPath: '/synthetic/crop.jpg' },
   detection: detectionFixture(),
   width: 112,
   height: 112,

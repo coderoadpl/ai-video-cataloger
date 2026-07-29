@@ -443,6 +443,13 @@ describe('route schemas', () => {
     expect(jobKindSchema.parse('faces_recluster')).toBe('faces_recluster');
   });
 
+  it('exposes the faces exemplars route with defaulted dryRun and limit inputs', () => {
+    expect(API_ROUTES.facesExemplars).toMatchObject({ method: 'POST', path: '/api/faces/exemplars' });
+    expect(API_ROUTES.facesExemplars.input.parse({})).toEqual({ dryRun: false, limit: null });
+    expect(API_ROUTES.facesExemplars.input.parse({ dryRun: true, limit: 5 })).toEqual({ dryRun: true, limit: 5 });
+    expect(jobKindSchema.parse('faces_exemplars')).toBe('faces_exemplars');
+  });
+
   it('exposes the materialize route and round-trips its summary and progress step', () => {
     expect(API_ROUTES.materialize).toMatchObject({ method: 'POST', path: '/api/materialize' });
     expect(API_ROUTES.materialize.input.parse({ root: '/videos' })).toEqual({ root: '/videos', dryRun: false });

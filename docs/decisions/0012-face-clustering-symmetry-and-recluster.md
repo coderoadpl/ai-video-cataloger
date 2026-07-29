@@ -55,14 +55,18 @@ Two independent mechanisms caused this, both in `core/domain/faces.ts`:
   most one new cluster, and `namesDropped` reports names no cluster could claim. Exemplar
   crops are per-observation and are never touched or renumbered — recluster has no aligned
   pixels and no detector, so a freshly un-glued person can start with no exemplar
-  (`personsWithoutExemplar`).
+  (`personsWithoutExemplar`). Superseded in part by
+  [ADR-0014](0014-per-observation-face-crops.md): crops are now written for every
+  observation at index time, so a fresh catalog never has a photo-less person after this
+  point; `faces exemplars` repairs the catalogs indexed before it.
 - **`FACE_ENGINE_VERSION` stays 2.** It gates *extraction*; a clustering-rule change does
   not change a single stored embedding, so bumping it would purge every observation and
   buy back the extraction cost recluster exists to eliminate.
 - **Exemplar sampling is per-file, not first-encountered** (`FACE_LIMITS.maxExemplarsPerFile:
   1`): at most one exemplar crop is stored per file until a person has five, so a person
   spanning many folders is verifiable by the owner instead of showing five near-duplicate
-  crops from one day.
+  crops from one day. Superseded in part by [ADR-0014](0014-per-observation-face-crops.md):
+  the cap moved from a write-time gate to the read-time `selectExemplars`.
 
 ## Alternatives rejected
 

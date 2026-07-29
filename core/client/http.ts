@@ -802,6 +802,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  facesExemplars: (input: z.input<typeof API_ROUTES.facesExemplars.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.facesExemplars.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.facesExemplars.method,
+      API_ROUTES.facesExemplars.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
 });
 
 export type ApiClient = ReturnType<typeof createApiClient>;

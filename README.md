@@ -105,7 +105,7 @@ config set-credential <providerId>
 config delete-credential <providerId> [--json]
 index status|rebuild|forget
 tags list|alias|suggest-aliases
-faces index|people|name|merge|forget|purge|status|recluster
+faces index|people|name|merge|forget|purge|status|recluster|exemplars
 models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|faces install
 models whisper-runtime status|install
 ```
@@ -169,6 +169,15 @@ model runs, so tuning the clustering thresholds costs minutes instead of a full
 re-index. It reports people before/after, how many observations changed owner, and which
 owner-set names it could not carry. Person ids change on every rebuild; names follow the
 plurality of their observations ([ADR-0012](docs/decisions/0012-face-clustering-symmetry-and-recluster.md)).
+
+`ai-video-cataloger faces exemplars [--dry-run] [--limit <n>]` fills in missing face
+photographs: for every person that a rebuild left without one, it decodes exactly the frame
+the observation came from, re-detects the face, and stores the crop next to the
+observation. Catalogs indexed from this version on never need it — indexing already crops
+every detected face — so it is a repair tool for older catalogs and for crops deleted off
+disk. It reports how many crops it planned and wrote, how many files it could not reach, and
+how many people still have no photograph
+([ADR-0014](docs/decisions/0014-per-observation-face-crops.md)).
 
 A completed `process-drive` run exits 0 even when individual files fail. This
 partial-success behavior keeps drive runs resumable — and `materialize`
