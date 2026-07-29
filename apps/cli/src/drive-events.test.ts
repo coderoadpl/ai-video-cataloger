@@ -13,7 +13,11 @@ describe('drive NDJSON events', () => {
     expect(isDriveEventStep('batch_orphan_jobs')).toBe(true);
     expect(isDriveEventStep('batch_model_changed')).toBe(true);
     expect(isDriveEventStep('budget_cap_reached')).toBe(true);
+    expect(isDriveEventStep('faces_scanning')).toBe(true);
+    expect(isDriveEventStep('faces_done')).toBe(true);
+    expect(isDriveEventStep('faces_pass_skipped')).toBe(true);
     expect(isDriveEventStep('extracting_frames')).toBe(false);
+    expect(isDriveEventStep('faces_detecting')).toBe(false);
   });
 
   it('flattens the step payload next to the type and timestamp', () => {

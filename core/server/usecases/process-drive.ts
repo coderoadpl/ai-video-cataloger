@@ -35,6 +35,7 @@ import type { ProcessConfigIdentity, ProcessDeps, ProcessPipelineInput } from '.
 import { analyzedCanonicalIsReachable } from './canonical-reachability.js';
 import { reconcileFolderPresence, resolveFolderIntoIndex } from './catalog-index.js';
 import { exportFolderSnapshot } from './catalog-snapshot.js';
+import { faceArtifactsInstalled, facesEnabled, runFacesIndexPass, type FacesIndexDeps } from './faces.js';
 import { isReadOnlyWriteError, readFolderMarker } from './folder-identity.js';
 import { processConfigIdentity, processVideoPipeline, resolveProcessOptions } from './process.js';
 import {
@@ -101,6 +102,23 @@ export interface ProcessDriveInput {
   skipDuplicates?: boolean | undefined;
   geminiBatch?: boolean | undefined;
   geminiBatchExplicit?: boolean | undefined;
+  skipFaces?: boolean | undefined;
+}
+
+export type DriveRunFacesSkipReason =
+  | 'flag'
+  | 'artifacts_missing'
+  | 'unavailable'
+  | 'cancelled'
+  | 'failed';
+
+export interface DriveRunFacesSummary {
+  ran: boolean;
+  skippedReason: DriveRunFacesSkipReason | null;
+  filesIndexed: number;
+  observationsAdded: number;
+  peopleCreated: number;
+  error: { code: AppError['code']; message: string } | null;
 }
 
 export interface DriveRunSummary {
@@ -121,6 +139,7 @@ export interface DriveRunSummary {
     files: number;
     estimatedCostUsd: number;
   } | undefined;
+  faces?: DriveRunFacesSummary | undefined;
   snapshotSkipped: number;
   elapsedMs: number;
   failures: DriveRunFailure[];
@@ -170,6 +189,7 @@ interface MutableRunState {
   snapshotSkipped: number;
   failures: DriveRunFailure[];
   startedMs: number;
+  faces: DriveRunFacesSummary | null;
 }
 
 export const discoverCatalogFolders = async (
@@ -253,6 +273,7 @@ export const processDrive = async (
     snapshotSkipped: 0,
     failures: [...discovery.value.failures],
     startedMs: started.getTime(),
+    faces: null,
   };
   const plan = batchPlan.value === null || adopted?.batch == null
     ? batchPlan.value
@@ -485,6 +506,9 @@ export const processDrive = async (
     const refreshed = await refreshFolderSnapshot(deps, globalCatalog, state, folder.value, progress);
     if (!refreshed.ok) return refreshed;
   }
+
+  const faces = await runDriveFacesPass(deps, state, input, globalCatalog, progress);
+  if (!faces.ok) return faces;
 
   state.run.finishedAt = now().toISOString();
   const persisted = await persistRun(deps, state, now);
@@ -862,6 +886,75 @@ const refreshFolderSnapshot = async (
   });
 };
 
+const runDriveFacesPass = async (
+  deps: ProcessDeps,
+  state: MutableRunState,
+  input: ProcessDriveInput,
+  globalCatalog: GlobalCatalogStore,
+  progress: JobExecutionContext | undefined,
+): Promise<Result<void, AppError>> => {
+  const root = state.run.root;
+  const enabled = await facesEnabled(deps, root);
+  if (!enabled.ok) return enabled;
+  if (!enabled.value) return ok(undefined);
+
+  if (input.skipFaces === true) return skipFacesPass(state, progress, root, 'flag', null);
+  if (deps.faceEngine === undefined || deps.downloads === undefined) {
+    return skipFacesPass(state, progress, root, 'unavailable', null);
+  }
+  if (isProgressAborted(progress)) return skipFacesPass(state, progress, root, 'cancelled', null);
+
+  const artifactsReady = await faceArtifactsInstalled(deps.downloads);
+  if (!artifactsReady.ok) return skipFacesPass(state, progress, root, 'failed', artifactsReady.error);
+  if (!artifactsReady.value) return skipFacesPass(state, progress, root, 'artifacts_missing', null);
+
+  const facesDeps: FacesIndexDeps = {
+    config: deps.config,
+    downloads: deps.downloads,
+    faceEngine: deps.faceEngine,
+    fs: deps.fs,
+    globalCatalog,
+    media: deps.media,
+  };
+  const pass = await runFacesIndexPass(facesDeps, { root }, progress);
+  if (!pass.ok) {
+    const reason = isProgressAborted(progress) ? 'cancelled' : 'failed';
+    return skipFacesPass(state, progress, root, reason, pass.error);
+  }
+
+  state.faces = {
+    ran: true,
+    skippedReason: null,
+    filesIndexed: pass.value.filesIndexed,
+    observationsAdded: pass.value.observationsAdded,
+    peopleCreated: pass.value.peopleCreated,
+    error: null,
+  };
+  return ok(undefined);
+};
+
+const skipFacesPass = async (
+  state: MutableRunState,
+  progress: JobExecutionContext | undefined,
+  root: string,
+  reason: DriveRunFacesSkipReason,
+  error: AppError | null,
+): Promise<Result<void, AppError>> => {
+  state.faces = {
+    ran: false,
+    skippedReason: reason,
+    filesIndexed: 0,
+    observationsAdded: 0,
+    peopleCreated: 0,
+    error: error === null ? null : { code: error.code, message: error.message },
+  };
+  return report(progress, 'faces_pass_skipped', {
+    root,
+    reason,
+    ...(error === null ? {} : { message: error.message }),
+  });
+};
+
 const closeFolder = async (
   deps: ProcessDeps,
   globalCatalog: GlobalCatalogStore,
@@ -1196,6 +1289,7 @@ const reportSummary = async (
     filesDuplicateSkipped: summary.filesDuplicateSkipped,
     filesFailed: summary.filesFailed,
     ...(summary.costEstimate === undefined ? {} : { costEstimate: summary.costEstimate }),
+    ...(summary.faces === undefined ? {} : { faces: summary.faces }),
     snapshotSkipped: summary.snapshotSkipped,
     elapsedMs: summary.elapsedMs,
     failures: summary.failures,
@@ -1228,6 +1322,7 @@ const summaryFromState = (
       estimatedCostUsd: spend.estimatedCostUsd,
     },
   }),
+  ...(state.faces === null ? {} : { faces: state.faces }),
   snapshotSkipped: state.snapshotSkipped,
   elapsedMs: Math.max(0, now().getTime() - state.startedMs),
   failures: state.failures,
@@ -1251,8 +1346,10 @@ const backoffDelayMs = (attempt: number, options: DriveRunOptions): number => {
 const sleep = (milliseconds: number): Promise<void> =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
 
+const isProgressAborted = (progress: JobExecutionContext | undefined): boolean => progress?.signal.aborted === true;
+
 const cancelled = (progress: JobExecutionContext | undefined): Result<void, AppError> => {
-  if (progress?.signal.aborted === true) {
+  if (isProgressAborted(progress)) {
     return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
   }
   return ok(undefined);

@@ -154,6 +154,8 @@ Blocking gate: any FAIL here stops the release. Run on the packaged build.
 | FACE-09 | P1 | Entry with faces, then forget the catalog entry | 1. Forget a cataloged video that had face observations. | Face observations/crops tied to that entry are cleaned up (faces hygiene on forget) — no orphaned embeddings. |
 | FACE-10 | P2 | Re-index after engine change | 1. Re-run indexing. | Stale-version observations re-indexed; `faces status` stale count returns to 0. |
 | FACE-11 | P1 | Any faces workflow | 1. Monitor network during index. | **Privacy**: no outbound network calls for face processing (all local). |
+| FACE-12 | P1 | Faces on, models installed, unanalyzed folder tree | 1. Run a folder-tree analysis (GUI or `process-drive`). | Groupings appear in People **without** clicking *Index faces*; run summary reports `faces: indexed …`. |
+| FACE-13 | P1 | Faces on, models **missing** | 1. Run `process-drive <root> --json`. | Run exits 0; a `faces_pass_skipped` event with `reason: "artifacts_missing"`; `run-summary` carries `faces.ran: false`; the human line names `models faces install`. |
 
 ### 3.6 SETTINGS + WIZARD — languages, models, readiness
 
@@ -230,6 +232,7 @@ Every `--json` run emits newline-delimited JSON: a `started` object, zero+
 | CLI-22 | P1 | `ai-video-cataloger faces purge --force --json` | Wipes all people/observations/crops; exit 0. **Privacy verification anchor.** |
 | CLI-23 | P3 | `ai-video-cataloger setup --analyzer local --transcription skip --yes --json` | Non-interactive setup; emits progress + completed; exit 0. |
 | CLI-24 | P3 | `ai-video-cataloger process <video>` on a locked catalog | **CATALOG_LOCKED** exit **43** with holder PID (see LOCK-01). |
+| CLI-25 | P2 | `ai-video-cataloger process-drive <root> --skip-faces --json` | `run-summary` carries `faces.skippedReason: "flag"`, no `faces_scanning` event, exit 0. |
 
 **Negative/boundary CLI extras:** run any command with an unknown flag →
 commander usage error; run `process-drive` on an empty dir → **DRIVE_ROOT_EMPTY**

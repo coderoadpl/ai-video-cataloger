@@ -22,6 +22,7 @@ import type {
   FileSystemPort,
   GlobalCatalogStore,
   JobExecutionContext,
+  JobProgress,
   JobsPort,
   MediaPort,
   ModelDownloadPort,
@@ -38,6 +39,8 @@ export interface FacesDeps {
   jobs: JobsPort;
   media: MediaPort;
 }
+
+export type FacesIndexDeps = Omit<FacesDeps, 'jobs'>;
 
 export interface FacesIndexOutput {
   root: string;
@@ -78,7 +81,7 @@ export const facesIndex = async (
     kind: 'faces_index',
     payload: input,
     resourceKey: `faces-index:${deps.fs.resolve(input.root)}`,
-    run: (context) => runFacesIndex(deps, { root: deps.fs.resolve(input.root) }, context),
+    run: (context) => runFacesIndexPass(deps, { root: deps.fs.resolve(input.root) }, context),
   });
 };
 
@@ -163,22 +166,28 @@ export const facesStatus = async (deps: FacesDeps): Promise<Result<FacesStatusOu
   if (!enabled.ok) return enabled;
   const counts = await deps.globalCatalog.faceStatus();
   if (!counts.ok) return counts;
-  const artifactsReady = await faceArtifactsReady(deps.downloads);
+  const artifactsReady = await faceArtifactsInstalled(deps.downloads);
   if (!artifactsReady.ok) return artifactsReady;
   return ok({ enabled: true, artifactsReady: artifactsReady.value, ...counts.value });
 };
 
-const runFacesIndex = async (
-  deps: FacesDeps,
+const report = (
+  progress: JobExecutionContext | undefined,
+  progressInput: JobProgress,
+): Promise<Result<void, AppError>> =>
+  progress === undefined ? Promise.resolve(ok(undefined)) : progress.reportProgress(progressInput);
+
+export const runFacesIndexPass = async (
+  deps: FacesIndexDeps,
   input: { root: string },
-  progress: JobExecutionContext,
+  progress?: JobExecutionContext,
 ): Promise<Result<FacesIndexOutput, AppError>> => {
-  const artifactsReady = await faceArtifactsReady(deps.downloads);
+  const artifactsReady = await faceArtifactsInstalled(deps.downloads);
   if (!artifactsReady.ok) return artifactsReady;
   if (!artifactsReady.value) return { ok: false, error: appError('model_not_installed', 'Face artifacts are not installed') };
   const candidates = await deps.globalCatalog.listFaceIndexCandidates(input.root);
   if (!candidates.ok) return candidates;
-  const started = await progress.reportProgress({
+  const started = await report(progress, {
     step: 'faces_scanning',
     percentage: 0,
     total: Math.max(candidates.value.length, 1),
@@ -213,7 +222,7 @@ const runFacesIndex = async (
       const existingObsIds = new Set(existing.value.map((observation) => observation.obsId));
       const videoPath = deps.fs.join(candidate.folder.currentPath, candidate.file.fileName);
       const frameDirectory = deps.fs.join(deps.fs.tempDirectory(), 'ai-video-cataloger', 'faces', fingerprint);
-      const extracting = await progress.reportProgress({
+      const extracting = await report(progress, {
         step: 'faces_extracting_frames',
         current: candidateIndex + 1,
         total: candidates.value.length,
@@ -224,7 +233,7 @@ const runFacesIndex = async (
         videoPath,
         outputDirectory: frameDirectory,
         frameCount: FACE_LIMITS.maxFramesPerVideo,
-        signal: progress.signal,
+        signal: progress?.signal,
       });
       if (!frames.ok) return frames;
       const probe = await deps.media.probe({ videoPath });
@@ -238,6 +247,9 @@ const runFacesIndex = async (
       if (!added.ok) return added;
       const completed = await deps.globalCatalog.completeFaceIndex(fingerprint, FACE_ENGINE_VERSION);
       if (!completed.ok) return completed;
+      // best effort: a leftover temp frame directory is a disk-space leak, not a reason to
+      // fail an index that is already stored
+      await deps.fs.deletePath(frameDirectory);
       observationsAdded += added.value.observationsAdded;
       peopleCreated += added.value.peopleCreated;
       filesIndexed += 1;
@@ -250,7 +262,7 @@ const runFacesIndex = async (
   const flushed = await deps.globalCatalog.flush();
   if (!flushed.ok) return flushed;
 
-  const done = await progress.reportProgress({
+  const done = await report(progress, {
     step: 'faces_done',
     percentage: 100,
     data: { filesIndexed, observationsAdded, peopleCreated },
@@ -266,18 +278,18 @@ const runFacesIndex = async (
 };
 
 const indexFramesForFile = async (
-  deps: FacesDeps,
+  deps: FacesIndexDeps,
   input: { fingerprint: string; videoPath: string; durationS: number | null; framePaths: string[] },
   contexts: ObservationContext[],
   existingObsIds: ReadonlySet<string>,
-  progress: JobExecutionContext,
+  progress: JobExecutionContext | undefined,
 ): Promise<Result<{ observationsAdded: number; peopleCreated: number }, AppError>> => {
   let observationsAdded = 0;
   let peopleCreated = 0;
   for (let frameIndex = 0; frameIndex < input.framePaths.length; frameIndex += 1) {
     const framePath = input.framePaths[frameIndex];
     if (framePath === undefined) continue;
-    const detecting = await progress.reportProgress({
+    const detecting = await report(progress, {
       step: 'faces_detecting',
       current: frameIndex + 1,
       total: input.framePaths.length,
@@ -305,7 +317,7 @@ const indexFramesForFile = async (
 };
 
 const indexDetection = async (
-  deps: FacesDeps,
+  deps: FacesIndexDeps,
   input: { fingerprint: string; frameTsS: number },
   framePath: string,
   frameIndex: number,
@@ -355,7 +367,7 @@ const indexDetection = async (
 };
 
 const seedNewPersonIfReady = async (
-  deps: FacesDeps,
+  deps: FacesIndexDeps,
   contexts: ObservationContext[],
 ): Promise<Result<number, AppError>> => {
   const unassigned = contexts.filter((context) => context.observation.personId === null);
@@ -410,7 +422,7 @@ const updatePersonCentroid = async (
 };
 
 const nextCropPath = async (
-  deps: FacesDeps,
+  deps: FacesIndexDeps,
   personId: string,
   alignedCrop: AlignedFaceCrop,
 ): Promise<string | null | Result<never, AppError>> => {
@@ -427,18 +439,27 @@ const nextCropPath = async (
   return cropPath;
 };
 
+export const facesEnabled = async (
+  deps: Pick<FacesDeps, 'config' | 'fs'>,
+  folder?: string | undefined,
+): Promise<Result<boolean, AppError>> => {
+  const resolved = await resolveConfigValues(deps.config, folder === undefined ? undefined : deps.fs.resolve(folder));
+  if (!resolved.ok) return resolved;
+  const enabled = resolved.value.effective.faces_enabled;
+  return ok(enabled === 'true' || enabled === 'yes' || enabled === '1');
+};
+
 const ensureFacesEnabled = async (
   deps: Pick<FacesDeps, 'config' | 'fs'>,
   folder?: string | undefined,
 ): Promise<Result<void, AppError>> => {
-  const resolved = await resolveConfigValues(deps.config, folder === undefined ? undefined : deps.fs.resolve(folder));
-  if (!resolved.ok) return resolved;
-  const enabled = resolved.value.effective.faces_enabled;
-  if (enabled === 'true' || enabled === 'yes' || enabled === '1') return ok(undefined);
+  const enabled = await facesEnabled(deps, folder);
+  if (!enabled.ok) return enabled;
+  if (enabled.value) return ok(undefined);
   return { ok: false, error: appError('faces_disabled', 'Face indexing is disabled. Set faces_enabled=true to enable it.') };
 };
 
-const faceArtifactsReady = async (downloads: ModelDownloadPort): Promise<Result<boolean, AppError>> => {
+export const faceArtifactsInstalled = async (downloads: ModelDownloadPort): Promise<Result<boolean, AppError>> => {
   for (const artifact of Object.values(FILE_ARTIFACTS)) {
     const downloaded = await downloads.isFileArtifactDownloaded(artifact);
     if (!downloaded.ok) return downloaded;

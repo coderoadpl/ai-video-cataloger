@@ -89,7 +89,7 @@ check [folder] [--json]
 scan <folder> [--json]
 search <query> [--json]
 process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper-model model] [--analyzer claude|local|api] [--provider openai|claude-code|codex|cursor-agent|local|gemini] [--local-model tag] [--json]
-process-drive <root> [--gemini-batch] [--json]
+process-drive <root> [--gemini-batch] [--skip-faces] [--json]
 materialize <root> [--dry-run] [--keep-awake] [--json]
 variants list <path> [--json]
 variants select <path> --config <configId> [--json]
@@ -142,6 +142,16 @@ run to the Gemini Batch API at half the interactive token price; results
 usually arrive in minutes but the API allows up to 24 hours, and a run killed
 mid-flight re-attaches to the same job on the next run
 ([ADR-0008](docs/decisions/0008-gemini-batch-drive-runs.md)).
+
+With `faces_enabled=true`, a completed `process-drive` run builds the people index
+itself: after the last folder is analysed it runs one face-indexing pass over the same
+root, emitting `faces_scanning` and `faces_done` NDJSON events and a `faces` block in
+`run-summary` (`ran`, `skippedReason`, `filesIndexed`, `observationsAdded`,
+`peopleCreated`). `--skip-faces` turns that pass off for one run. When the pass cannot
+run — models not installed, engine unavailable, run cancelled, pass failed — the run
+still succeeds and says so through a `faces_pass_skipped` event and the same summary
+block; `ai-video-cataloger faces index <root>` builds the index afterwards
+([ADR-0011](docs/decisions/0011-faces-pass-in-drive-runs.md)).
 
 A completed `process-drive` run exits 0 even when individual files fail. This
 partial-success behavior keeps drive runs resumable — and `materialize`

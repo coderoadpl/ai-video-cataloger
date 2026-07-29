@@ -44,6 +44,7 @@ import {
 } from './output.js';
 import { credentialDeleteHuman } from './credential-delete-human.js';
 import { driveEventLine, isDriveEventStep, type DriveEventStep } from './drive-events.js';
+import { driveFacesSummaryLine } from './drive-faces-summary.js';
 import { doctorHuman } from './doctor-human.js';
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
@@ -81,6 +82,7 @@ interface ProcessOptions extends JsonOption {
 interface ProcessDriveOptions extends ProcessOptions {
   keepAwake?: boolean | undefined;
   geminiBatch?: boolean | undefined;
+  skipFaces?: boolean | undefined;
 }
 
 interface MaterializeOptions extends JsonOption {
@@ -684,6 +686,7 @@ program
     false,
   )
   .option('--keep-awake', 'keep macOS awake while the drive run is active', false)
+  .option('--skip-faces', 'skip the face-indexing pass that runs at the end of the run', false)
   .option('--json', 'machine-readable JSON output', false)
   .action(async (root: string, options: ProcessDriveOptions, command: Command) => {
     const json = isJsonMode(options);
@@ -733,6 +736,7 @@ program
         ...(options.localModel === undefined ? {} : { localModel: options.localModel }),
         ...(options.force === true ? { force: true } : {}),
         ...(optionWasPassed(command, 'geminiBatch') ? { geminiBatch: options.geminiBatch === true } : {}),
+        ...(optionWasPassed(command, 'skipFaces') ? { skipFaces: options.skipFaces === true } : {}),
       });
       if (!result.ok) {
         emitError(json, result.error);
@@ -1455,7 +1459,8 @@ const processDriveHuman = (data: unknown): string => {
   const cost = isRecord(data.costEstimate) && typeof data.costEstimate.estimatedCostUsd === 'number'
     ? ` estimated-cost=$${data.costEstimate.estimatedCostUsd.toFixed(4)} USD`
     : '';
-  return `Drive run complete: done=${done} skipped=${skipped} failed=${failed}${cost}`;
+  const faces = driveFacesSummaryLine(data.faces);
+  return `Drive run complete: done=${done} skipped=${skipped} failed=${failed}${cost}${faces === null ? '' : ` — ${faces}`}`;
 };
 
 const materializeHuman = (data: unknown): string => {

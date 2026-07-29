@@ -248,6 +248,7 @@ export const processDriveInputSchema = z.object({
   skipDuplicates: z.boolean().optional(),
   geminiBatch: z.boolean().optional(),
   geminiBatchExplicit: z.boolean().optional(),
+  skipFaces: z.boolean().optional(),
 }).transform((input) => ({
   root: input.root,
   frames: input.frames ?? CONFIG_DEFAULTS.frames,
@@ -270,6 +271,7 @@ export const processDriveInputSchema = z.object({
   ...(input.skipDuplicates === undefined ? {} : { skipDuplicates: input.skipDuplicates }),
   ...(input.geminiBatch === undefined ? {} : { geminiBatch: input.geminiBatch }),
   geminiBatchExplicit: input.geminiBatchExplicit ?? input.geminiBatch !== undefined,
+  ...(input.skipFaces === undefined ? {} : { skipFaces: input.skipFaces }),
 }));
 
 export const jobAcceptedOutputSchema = z.object({
@@ -292,6 +294,15 @@ export const driveRunFailureSchema = z.object({
   message: z.string(),
 });
 
+export const driveRunFacesSchema = z.object({
+  ran: z.boolean(),
+  skippedReason: z.enum(['flag', 'artifacts_missing', 'unavailable', 'cancelled', 'failed']).nullable(),
+  filesIndexed: z.number().int().nonnegative(),
+  observationsAdded: z.number().int().nonnegative(),
+  peopleCreated: z.number().int().nonnegative(),
+  error: z.object({ code: z.enum(ERROR_CODES), message: z.string() }).nullable(),
+});
+
 export const driveRunSummarySchema = z.object({
   runId: z.string().min(1),
   root: z.string().min(1),
@@ -310,6 +321,7 @@ export const driveRunSummarySchema = z.object({
     files: z.number().int().nonnegative(),
     estimatedCostUsd: z.number().nonnegative(),
   }).optional(),
+  faces: driveRunFacesSchema.optional(),
   elapsedMs: z.number().int().nonnegative(),
   failures: z.array(driveRunFailureSchema),
 });
@@ -796,6 +808,7 @@ export const jobProgressStepSchema = z.enum([
   'faces_detecting',
   'faces_clustering',
   'faces_done',
+  'faces_pass_skipped',
   'artifact_reused',
   'catalog_index_skipped',
   'catalog_snapshot_skipped',

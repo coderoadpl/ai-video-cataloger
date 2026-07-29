@@ -912,7 +912,7 @@ export const en: Dictionary = {
     faces: {
       title: 'Choose face indexing',
       localModels: 'Face detection and recognition run fully locally. YuNet detects faces and SFace creates embeddings; both are small on-device models.',
-      peopleIndex: 'This builds the people index used by the People tab and adds roughly 1–2 seconds of processing time per clip.',
+      peopleIndex: 'This builds the people index used by the People tab. A folder-tree run indexes faces in one extra pass after it finishes analyzing (roughly 1–2 seconds per clip); you can also run it on demand from the People tab.',
       enableLabel: 'Enable face detection and recognition',
     },
     downloads: {
@@ -1131,6 +1131,9 @@ export const en: Dictionary = {
       downloading: 'Downloading',
       runtime_setup: 'Preparing runtime',
       model_download: 'Downloading model',
+      faces_scanning: 'Indexing faces',
+      faces_done: 'Face indexing complete',
+      faces_pass_skipped: 'Faces not indexed',
     },
   },
   people: {
@@ -1621,7 +1624,7 @@ export const pl: Dictionary = {
     faces: {
       title: 'Wybierz indeksowanie twarzy',
       localModels: 'Wykrywanie i rozpoznawanie twarzy działa wyłącznie lokalnie. YuNet wykrywa twarze, a SFace tworzy embeddingi; oba są małymi modelami działającymi na urządzeniu.',
-      peopleIndex: 'Tworzy to indeks osób używany przez kartę Osoby i wydłuża przetwarzanie każdego klipu o około 1–2 sekundy.',
+      peopleIndex: 'Tworzy to indeks osób używany przez kartę Osoby. Analiza drzewa folderów indeksuje twarze w dodatkowym przebiegu po zakończeniu analizy (około 1–2 sekundy na klip); możesz też uruchomić go na żądanie z karty Osoby.',
       enableLabel: 'Włącz wykrywanie i rozpoznawanie twarzy',
     },
     downloads: {
@@ -1841,6 +1844,9 @@ export const pl: Dictionary = {
       downloading: 'Pobieranie',
       runtime_setup: 'Przygotowywanie runtime',
       model_download: 'Pobieranie modelu',
+      faces_scanning: 'Indeksowanie twarzy',
+      faces_done: 'Indeksowanie twarzy zakończone',
+      faces_pass_skipped: 'Twarze nie zostały zindeksowane',
     },
   },
   people: {

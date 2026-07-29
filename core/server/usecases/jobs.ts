@@ -107,6 +107,8 @@ export const enqueueProcessDrive = async (
     ...(deps.analyzerBatch === undefined ? {} : { analyzerBatch: deps.analyzerBatch }),
     globalCatalog: deps.globalCatalog,
     ...(deps.spendLedger === undefined ? {} : { spendLedger: deps.spendLedger }),
+    ...(deps.downloads === undefined ? {} : { downloads: deps.downloads }),
+    ...(deps.faceEngine === undefined ? {} : { faceEngine: deps.faceEngine }),
   };
   return deps.jobs.enqueue({
     kind: 'process_drive',

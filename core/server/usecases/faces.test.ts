@@ -8,6 +8,7 @@ import {
   facesPeople,
   facesPurge,
   facesStatus,
+  runFacesIndexPass,
 } from './faces.js';
 import type { FacesDeps } from './faces.js';
 import {
@@ -389,6 +390,34 @@ describe('facesIndex', () => {
     const record = status.value.at(-1);
     expect(record?.status).toBe('failed');
     expect(record?.error?.code).toBe('model_not_installed');
+  });
+
+  it('runs without a job context and still stores observations', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedCatalog(deps);
+    deps.media.durations.set('/work/videos/clip.mp4', 14);
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' });
+
+    expect(result.ok).toBe(true);
+    const status = await facesStatus(deps);
+    expect(status.ok && status.value.observations).toBe(6);
+  });
+
+  it('deletes the per-file temp frame directory once its observations are stored', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedCatalog(deps);
+    deps.media.durations.set('/work/videos/clip.mp4', 14);
+
+    const result = await facesIndex(deps, { root: '/work/videos' });
+
+    expect(result.ok).toBe(true);
+    const frame = await deps.fs.exists('/tmp/ai-video-cataloger/faces/fp-clip/frame-001.jpg');
+    expect(frame.ok && frame.value).toBe(false);
+    const status = await facesStatus(deps);
+    expect(status.ok && status.value.observations).toBe(6);
   });
 });
 

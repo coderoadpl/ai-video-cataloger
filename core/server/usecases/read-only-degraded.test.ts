@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
+import { appError, normalizeEmbedding, ok, type AppError, type Result } from '@core/domain/index.js';
 
-import type { JobProgress } from '../ports.js';
+import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, JobProgress } from '../ports.js';
 import { readOnlyArtifactRoot } from './artifact-root.js';
 import { isReadOnlyWriteError, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import { processDrive, type ProcessDriveInput } from './process-drive.js';
@@ -12,11 +12,57 @@ import {
   InMemoryAnalyzer,
   InMemoryCatalogs,
   InMemoryConfig,
+  InMemoryDownloads,
   InMemoryFileSystem,
   InMemoryGlobalCatalogStore,
   InMemoryMedia,
   InMemoryTranscriber,
 } from '../../../test/server/usecases/test-fakes.js';
+
+class FixedFaceEngine implements FaceEnginePort {
+  readonly cropWrites: string[] = [];
+  private readonly detection: FaceDetection = {
+    bbox: { x: 0, y: 0, width: 200, height: 200 },
+    landmarks: {
+      leftEye: { x: 70, y: 90 },
+      rightEye: { x: 130, y: 90 },
+      nose: { x: 100, y: 120 },
+      leftMouth: { x: 80, y: 160 },
+      rightMouth: { x: 120, y: 160 },
+    },
+    score: 0.95,
+  };
+  private readonly embedding = normalizeEmbedding(Array.from({ length: 128 }, (_value, index) => (index === 0 ? 1 : 0.001)));
+
+  load(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  detect(): Promise<Result<FaceDetection[], AppError>> {
+    return Promise.resolve(ok([this.detection]));
+  }
+
+  align(frameJpegPath: string, detection: FaceDetection): Promise<Result<AlignedFaceCrop, AppError>> {
+    return Promise.resolve(ok({ frameJpegPath, detection, width: 112, height: 112, data: new Uint8Array(112 * 112 * 3) }));
+  }
+
+  embed(): Promise<Result<Float32Array, AppError>> {
+    return Promise.resolve(ok(new Float32Array(this.embedding)));
+  }
+
+  writeCrop(_alignedCrop: AlignedFaceCrop, outputPath: string): Promise<Result<void, AppError>> {
+    this.cropWrites.push(outputPath);
+    return Promise.resolve(ok(undefined));
+  }
+
+  dispose(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+
+  dependency(): Promise<Result<DependencyStatus, AppError>> {
+    return Promise.resolve(ok({ name: 'faces', available: true, version: null, source: 'managed', path: null, installHint: '' }));
+  }
+}
 
 const eaccesError = (message: string): AppError => {
   const cause = Object.assign(new Error(message), { code: 'EACCES' });
@@ -283,5 +329,35 @@ describe('drive processing over a read-only folder', () => {
     expect(second.ok && second.value.filesDone).toBe(0);
     expect(second.ok && second.value.filesSkipped).toBe(1);
     expect(deps.analyzer.inputs).toHaveLength(analyzerCallsAfterFirst);
+  });
+
+  it('indexes faces of a read-only source without writing into it', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const downloads = new InMemoryDownloads();
+    downloads.downloadedArtifacts.add('face-detector/yunet-2023mar');
+    downloads.downloadedArtifacts.add('face-embedder/sface-2021dec');
+    const engine = new FixedFaceEngine();
+    const deps = { ...makeDeps(fs), downloads, faceEngine: engine };
+    await deps.config.set({ kind: 'home' }, 'faces_enabled', 'true');
+
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro-faces' });
+
+    expect(run.ok).toBe(true);
+    if (!run.ok) throw new Error(run.error.message);
+    expect(run.value.faces).toMatchObject({ ran: true, skippedReason: null, filesIndexed: 1 });
+    const observations = await deps.globalCatalog.listFaceObservations({ fingerprint: 'hash-ro' });
+    expect(observations.ok && observations.value.length).toBeGreaterThan(0);
+
+    const faceFrameInputs = deps.media.frameInputs.filter((input) => input.outputDirectory.includes('/ai-video-cataloger/faces/'));
+    expect(faceFrameInputs.length).toBeGreaterThan(0);
+    for (const input of faceFrameInputs) {
+      expect(input.outputDirectory.startsWith(fs.tempDirectory())).toBe(true);
+    }
+    const folderEntries = await fs.listDirectory('/drive/ro');
+    expect(folderEntries.ok && folderEntries.value.map((entry) => entry.name)).toEqual(['clip.mp4']);
+    for (const cropPath of engine.cropWrites) {
+      expect(cropPath.startsWith('/home/.ai-video-cataloger/faces/')).toBe(true);
+    }
   });
 });

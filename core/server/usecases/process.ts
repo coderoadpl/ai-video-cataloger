@@ -45,11 +45,13 @@ import {
   type CatalogRepository,
   type CatalogRepositoryFactory,
   type ConfigStore,
+  type FaceEnginePort,
   type FileSystemPort,
   type GlobalCatalogStore,
   type JobExecutionContext,
   type JobProgress,
   type MediaPort,
+  type ModelDownloadPort,
   type SpendLedgerPort,
   type TranscriberPort,
 } from '../ports.js';
@@ -88,6 +90,8 @@ export interface ProcessDeps {
   analyzerBatch?: AnalyzerBatchPort | undefined;
   globalCatalog?: GlobalCatalogStore | undefined;
   spendLedger?: SpendLedgerPort | undefined;
+  downloads?: ModelDownloadPort | undefined;
+  faceEngine?: FaceEnginePort | undefined;
 }
 
 export interface ProcessPipelineInput {

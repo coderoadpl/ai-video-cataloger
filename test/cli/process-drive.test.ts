@@ -89,6 +89,43 @@ describe('process-drive command', () => {
     }
   });
 
+  it('reports faces artifacts_missing when faces_enabled is on but the models are never downloaded', async () => {
+    const home = createTestDir();
+    const env = { HOME: home, PATH: '/nonexistent' };
+    createFakeVideoFile(testDir, 'clip.mp4');
+
+    await runCli(['config', 'set', 'faces_enabled', 'true', '--json'], { cwd: home, env });
+    const result = await runCli(['process-drive', testDir, '--whisper', 'skip', '--skip-rename', '--json'], {
+      cwd: testDir,
+      env,
+    });
+    const events = parseJsonEvents(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(findEvent(events, 'faces_pass_skipped')).toMatchObject({ reason: 'artifacts_missing' });
+    expect(findEvent(events, 'run-summary')).toMatchObject({
+      faces: { ran: false, skippedReason: 'artifacts_missing' },
+    });
+    cleanupTestDir(home);
+  });
+
+  it('carries --skip-faces through to the run summary', async () => {
+    const home = createTestDir();
+    const env = { HOME: home, PATH: '/nonexistent' };
+    createFakeVideoFile(testDir, 'clip.mp4');
+
+    await runCli(['config', 'set', 'faces_enabled', 'true', '--json'], { cwd: home, env });
+    const result = await runCli(
+      ['process-drive', testDir, '--whisper', 'skip', '--skip-rename', '--skip-faces', '--json'],
+      { cwd: testDir, env },
+    );
+    const events = parseJsonEvents(result.stdout);
+
+    expect(result.exitCode).toBe(0);
+    expect(findEvent(events, 'run-summary')).toMatchObject({ faces: { ran: false, skippedReason: 'flag' } });
+    cleanupTestDir(home);
+  });
+
   it('defers unpassed --frames to config and lets explicit --frames win', async () => {
     const home = createTestDir();
     const binDir = createFailingClaudeBinary(home);

@@ -297,6 +297,17 @@ The CLI maps job progress to the NDJSON event stream
 (`started`/`progress`/`completed`/`error`) exactly as the old app emitted it
 — that stream is a public, script-consumed contract (parity-inventory §1).
 
+A drive run owns the faces pass. Face identity is catalog-global — every embedding is
+classified against all people in the index — so face indexing cannot be a per-file step
+inside the processing pipeline; it is a root-scoped pass that runs once, at the end of a
+completed `process_drive` job, when `faces_enabled` is on. The pass is the same
+use-case the standalone `faces index` command runs, reported through the same progress
+steps, and it is best effort: a missing model, an unavailable engine, `--skip-faces`, a
+cancelled job or a failing pass produces a `faces_pass_skipped` event and a `faces`
+block in the run summary, never a failed run. Runs that end early (consecutive-failure
+abort, budget cap, failed batch job) skip the pass; the resumed run indexes everything.
+ADR-0011.
+
 ## Delta 6 — observability
 
 OTel facade + wide events per the foundation, but this is a privacy-sensitive
@@ -394,7 +405,9 @@ managed runtimes, and its working-directory fallback.
   the runtime port.
 - `JobsPort` — in-process executor (see Delta 5).
 - `FaceEnginePort` — face detect/align/embed/crop lifecycle behind the faces
-  feature; ONNX Runtime adapter (darwin-only binding).
+  feature; ONNX Runtime adapter (darwin-only binding). The drive job composes it (and
+  `ModelDownloadPort`) optionally, so a composition without a face engine degrades to a
+  reported skip instead of a failure.
 - `ProvidersPort` — analyzer-provider listing and credential/connectivity
   test, routed across the same three analyzer families.
 - `FileSystemPort` — fs primitives incl. `partialContentHash` (ADR-0002(c))
