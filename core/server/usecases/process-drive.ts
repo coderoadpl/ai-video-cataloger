@@ -4,12 +4,10 @@ import {
   appError,
   configDescriptorSchema,
   configId,
-  configValueSchema,
   driveRunBatchDisplayName,
   geminiModelPrice,
   isBatchSubmitRejection,
   ok,
-  spendMonth,
   type AnalyzerProviderConfig,
   type AnalyzerProviderId,
   type AppConfig,
@@ -45,6 +43,7 @@ import {
   expiredBatchFileError,
   reportStep as report,
 } from './process-drive-batch.js';
+import { geminiMonthlyBudget, monthlyBudgetExceeded } from './budget.js';
 import { resolveConfigValues } from './config-resolution.js';
 import { scanFolder, type ScanVideo } from './scan.js';
 import { isSupportedVideoExtension, shouldSkipDirectory } from './shared.js';
@@ -1017,21 +1016,6 @@ const abortedRun = async (
   };
 };
 
-const geminiMonthlyBudget = async (deps: ProcessDeps): Promise<Result<number | null, AppError>> => {
-  const resolved = await resolveConfigValues(deps.config);
-  if (!resolved.ok) return resolved;
-  const parsed = configValueSchema.shape.gemini_monthly_budget_usd.safeParse(
-    resolved.value.effective.gemini_monthly_budget_usd,
-  );
-  if (!parsed.success) {
-    return {
-      ok: false,
-      error: appError('invalid_config_value', 'gemini_monthly_budget_usd does not match the config schema'),
-    };
-  }
-  return ok(parsed.data);
-};
-
 const pauseForBudget = async (
   deps: ProcessDeps,
   state: MutableRunState,
@@ -1039,14 +1023,13 @@ const pauseForBudget = async (
   now: () => Date,
   budgetUsd: number | null,
 ): Promise<Result<void, AppError>> => {
-  if (budgetUsd === null) return ok(undefined);
-  if (deps.spendLedger === undefined || deps.globalCatalog === undefined) {
+  const exceeded = await monthlyBudgetExceeded(deps, budgetUsd, now());
+  if (!exceeded.ok) return exceeded;
+  if (exceeded.value === null) return ok(undefined);
+  if (deps.globalCatalog === undefined) {
     return { ok: false, error: appError('internal', 'Spend ledger dependencies are required for a Gemini budget cap') };
   }
-  const month = spendMonth(now());
-  const spend = await deps.spendLedger.total({ provider: 'gemini', month });
-  if (!spend.ok) return spend;
-  if (spend.value.estimatedCostUsd < budgetUsd) return ok(undefined);
+  const { month, estimatedSpendUsd, budgetUsd: cap } = exceeded.value;
   const persisted = await persistRun(deps, state, now);
   if (!persisted.ok) return persisted;
   const flushed = await deps.globalCatalog.flush();
@@ -1054,8 +1037,8 @@ const pauseForBudget = async (
   const reported = await report(progress, 'budget_cap_reached', {
     provider: 'gemini',
     month,
-    budgetUsd,
-    estimatedSpendUsd: spend.value.estimatedCostUsd,
+    budgetUsd: cap,
+    estimatedSpendUsd,
     estimated: true,
     runId: state.run.runId,
   });
@@ -1066,13 +1049,13 @@ const pauseForBudget = async (
     ok: false,
     error: appError(
       'drive_run_aborted',
-      `Paused drive run because the local Gemini cost estimate for ${month} is $${spend.value.estimatedCostUsd.toFixed(4)} `
-      + `against the $${budgetUsd.toFixed(2)} budget. Raise or unset gemini_monthly_budget_usd and re-run the same root to resume.`,
+      `Paused drive run because the local Gemini cost estimate for ${month} is $${estimatedSpendUsd.toFixed(4)} `
+      + `against the $${cap.toFixed(2)} budget. Raise or unset gemini_monthly_budget_usd and re-run the same root to resume.`,
       {
         runId: state.run.runId,
         month,
-        budgetUsd,
-        estimatedSpendUsd: spend.value.estimatedCostUsd,
+        budgetUsd: cap,
+        estimatedSpendUsd,
       },
     ),
   };
