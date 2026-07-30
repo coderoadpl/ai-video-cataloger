@@ -556,6 +556,7 @@ export interface PhotoMediaPort {
 export interface PhotosStore {
   databasePath(): string;
   flush(): Promise<Result<void, AppError>>;
+  checkpoint(): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
   withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
   upsertFolder(folder: PhotoFolderRecord): Promise<Result<void, AppError>>;

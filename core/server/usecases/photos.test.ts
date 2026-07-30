@@ -523,6 +523,19 @@ describe('runPhotoProxiesPass', () => {
     expect(status.ok && status.value.counts).toMatchObject({ proxied: 1, proxyFailed: 1 });
   });
 
+  it('checkpoints every fifty generated proxies so a crash cannot cost a whole store batch of decodes', async () => {
+    const { deps, photos } = buildDeps();
+    for (let index = 0; index < 120; index += 1) {
+      await seedPhoto(photos, `ph_${String(index).padStart(16, '0')}`, `/work/photos/${String(index)}.jpg`);
+    }
+    photos.checkpointCount = 0;
+
+    const pass = await runPhotoProxiesPass(deps, { root: '/work/photos', force: false });
+
+    expect(pass.ok && pass.value.generated).toBe(120);
+    expect(photos.checkpointCount).toBe(2);
+  });
+
   it('records a thumb-step failure as a completed proxy with a null thumb', async () => {
     const { deps, photos, photoMedia } = buildDeps();
     await seedPhoto(photos, fingerprintOf('a'), '/work/photos/a.jpg');
@@ -822,6 +835,19 @@ describe('runPhotoProcess', () => {
     const rowSizes = [...photos.analyses.values()].map((row) => row.batchSize).sort((left, right) => left - right);
     expect(rowSizes).not.toContain(4);
     expect(rowSizes.filter((size) => size === 1)).toHaveLength(1);
+  });
+
+  it('checkpoints the store after every analyzer batch so a crash loses at most one batch of paid analysis', async () => {
+    const { deps, photos } = buildDeps();
+    for (let index = 1; index <= 5; index += 1) {
+      await seedAnalysisReadyPhoto(photos, `ph_${String(index).padStart(16, '0')}`, `/work/photos/${String(index)}.jpg`);
+    }
+    photos.checkpointCount = 0;
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: 2 });
+
+    expect(result.ok && result.value.analysed).toBe(5);
+    expect(photos.checkpointCount).toBe(3);
   });
 
   it('runs idempotently: a second run of the same config sees zero candidates, force overwrites, a different config adds a variant (P5)', async () => {

@@ -18,6 +18,19 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - `photos gps backfill <timeline.json>` and `POST /api/photos/gps/backfill` match photo capture times against a Google Timeline export using the same matcher and precedence rules as the video backfill, resolve places offline through the shared places dataset, and push resolved place text into the photo search index (a photo's place is now searchable in the Photos tab). Rows whose capture time rests on an assumed timezone (`exif_local_assumed`/`file_mtime`) match with a tolerance widened to at least 180 minutes; the summary reports how many matches relied on that widening.
 - The map now plots photo pins alongside video pins on the same canvas, with an All/Videos/Photos filter and honest per-media coverage captions ("N of M catalogued photos have location"); clicking a photo pin opens it in the Photos tab. `GET /api/catalog/locations` gains `totalPhotos`/`locatedPhotos` and a `media` marker per location; existing video-only consumers are unaffected (the video counts keep their prior meaning, and old envelopes without the new fields still parse).
+- The Photos grid pages beyond its first 200 photos with a "Load more" control,
+  so a large library is fully browsable instead of silently truncated.
+- The photos database gains schema version 2 (indexes on `photos.current_path`
+  and `(proxy_state, current_path)`), migrated in place on open.
+- `pnpm run test:e2e:matrix` gains three photo legs: `photos-real-decode`
+  (scan → real `sips` proxy/thumb decode → status → search), `photos-local-analysis`
+  (a real local analyzer over the generated proxies) and the opt-in
+  `photos-raw-sample` (`E2E_PHOTOS_SAMPLE_RAW`).
+- `pnpm run qa:walkthrough` captures three photo steps — `photos-tab`,
+  `photos-grid`, `photo-detail` — and skips them with a named reason when the
+  QA home has no catalogued photos.
+- [docs/qa/release-readiness.md](docs/qa/release-readiness.md) records the
+  ordered pre-release pass (gates → e2e → packaged app → docs → real-data sanity).
 - `photos status` reports a new `facesIndexed` count (foundational plumbing for photo faces indexing landing in a follow-up wave); the underlying `FaceObservation` record and its storage now carry a `media: 'video' | 'photo'` marker so photo-sourced face observations can share the same people pool as video ones.
 - Photo search: `avc photos search "<query>"`, `/api/photos/search` and a search
   box in the Photos tab query file names, descriptions, tags and places over the
@@ -65,6 +78,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Photo analysis and proxy generation now checkpoint the photos database inside a store batch — after every analyzer batch and every 50 generated proxies — so an interrupted run loses at most one analyzer batch of paid analysis instead of up to 500 photos' worth.
+- `photos scan`'s reconcile pass reads the sightings under a root through the path index instead of loading every path row in the database into memory.
 - All faces-writing jobs (`faces index`, `faces recluster`, `faces exemplars`) and the drive run's inline faces pass now serialize under a single `faces-write` resource; a concurrent request returns `conflict` instead of racing the shared people pool, and the drive run reports a new `faces_waiting` progress step while it waits its turn.
 - Global catalog schema v11: `face_observations` gains a `media` column (default `video`) preparing the shared face-identity pool for photos.
 - Global catalog schema v12: adds `idx_files_captured_at`, `idx_files_folder_id`, `idx_files_place_name`, `idx_file_tags_tag_id`, `idx_face_observations_person`, and `idx_analyses_fingerprint` indexes, so date, folder, tag and person lookups seek an index instead of scanning `files`, `file_tags` and `face_observations`. On the 3752-file reference catalog a person lookup drops from 2297 ms to 3 ms and a folder lookup from 0.28 ms to 0.03 ms.

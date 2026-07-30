@@ -71,8 +71,14 @@ pass is not.
    handoff message.
 
 The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`,
-`open-folder`, `tree-expand`, `select-video`, `analyze`, `search`, `settings`,
-`wizard`.
+`open-folder`, `tree-expand`, `select-video`, `analyze`, `search`, `photos-tab`,
+`photos-grid`, `photo-detail`, `settings`, `wizard`.
+
+The three photo steps need a home whose photos DB already has a scanned root —
+`--home` pointing at a QA home that has run `photos scan`. Without one,
+`photos-grid` and `photo-detail` report `skipped` with "no photos catalogued in
+this home", which is a legitimate outcome for a video-only review pass and a
+missing proof for a release that ships photo changes.
 
 ## Review the screenshots
 
@@ -96,6 +102,13 @@ Read every screenshot against the sensitivities that have burned us before:
   English fallback sentence, no clipped label in a narrower Polish string.
 - **Layout** — the modal set (settings, wizard) is centred and fully inside the
   window at the walkthrough's window size (1920x1200 by default).
+- **Photo grid** — tiles are square and evenly gapped, thumbnails render from
+  `media://local/` (not a broken image), the duplicate/missing/proxy-failed
+  badges read the same as the video badges, and the day headers group in
+  capture order.
+- **Photo detail** — the selected tile's pane shows capture provenance, EXIF
+  and, when analysed, the description/tags with the variant picker; the "also
+  at: N paths" duplicate line is read-only and offers nothing destructive.
 
 The manual suites in [manual-test-checklists.md](manual-test-checklists.md) stay
 the deeper pass; this walkthrough is the always-run floor beneath them.

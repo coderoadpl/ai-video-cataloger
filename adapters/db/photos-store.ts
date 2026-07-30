@@ -59,6 +59,7 @@ import type {
 
 import {
   createPhotosSchemaSqlV1,
+  createPhotosSchemaSqlV2,
   photoAnalyses,
   photoAnalysisConfigs,
   photoFaceIndexState,
@@ -137,6 +138,19 @@ export class SqlJsPhotosStore implements PhotosStore {
       this.lock.takeWriteLock();
       this.persist(this.state);
       this.lock.releaseIfIdle();
+      return ok(undefined);
+    } catch (cause) {
+      this.state = null;
+      this.dirtyCount = 0;
+      return failure(cause);
+    }
+  }
+
+  async checkpoint(): Promise<Result<void, AppError>> {
+    if (this.state === null || this.dirtyCount === 0) return ok(undefined);
+    try {
+      this.lock.takeWriteLock();
+      this.persist(this.state);
       return ok(undefined);
     } catch (cause) {
       this.state = null;
@@ -256,11 +270,22 @@ export class SqlJsPhotosStore implements PhotosStore {
   }
 
   async listSightingsUnderRoot(root: string): Promise<Result<PhotoSightingRecord[], AppError>> {
-    return this.read((db) => {
+    return this.read((_db, client) => {
       const canonicalRoot = canonicalPath(root);
-      return db.select().from(photoPaths).all()
-        .filter((row) => isUnderRoot(row.currentPath, canonicalRoot))
-        .map(rowToSighting);
+      const rows = client.exec(
+        `SELECT fingerprint, current_path, folder_id, size, mtime_ms, last_seen_at
+         FROM photo_paths
+         WHERE current_path = $root OR (current_path >= $scopeLower AND current_path < $scopeUpper)`,
+        { $root: canonicalRoot, $scopeLower: `${canonicalRoot}/`, $scopeUpper: `${canonicalRoot}0` },
+      );
+      return (rows[0]?.values ?? []).map((row): PhotoSightingRecord => ({
+        fingerprint: stringValue(row[0]),
+        currentPath: stringValue(row[1]),
+        folderId: stringValue(row[2]),
+        size: numberValue(row[3]),
+        mtimeMs: numberValue(row[4]),
+        lastSeenAt: stringValue(row[5]),
+      }));
     });
   }
 
@@ -941,6 +966,10 @@ const migrate = (client: Database): boolean => {
       if (statement.startsWith('CREATE TABLE schema_meta')) continue;
       client.run(statement);
     }
+    migrated = true;
+  }
+  if (currentVersion < 2) {
+    for (const statement of createPhotosSchemaSqlV2) client.run(statement);
     migrated = true;
   }
   if (currentVersion < PHOTOS_SCHEMA_VERSION) {

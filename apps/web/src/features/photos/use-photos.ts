@@ -37,6 +37,9 @@ export interface PhotosState {
   selectRoot: (root: string | null) => void;
   items: PhotoListItem[];
   total: number;
+  hasMore: boolean;
+  isLoadingMore: boolean;
+  loadMore: () => void;
   counts: { photos: number; paths: number; proxied: number; proxyFailed: number } | null;
   activeJobLabel: string | null;
   isBusy: boolean;
@@ -75,10 +78,23 @@ export const usePhotos = ({ active, addLine, intervalMs = 1000 }: UsePhotosOptio
 
   const tree = useQuery({ ...actions.photosTree, enabled: active });
   const status = useQuery({ ...actions.photosStatus(selectedRoot === null ? {} : { root: selectedRoot }), enabled: active });
+  const [offset, setOffset] = useState(0);
+  const [loadedItems, setLoadedItems] = useState<PhotoListItem[]>([]);
   const list = useQuery({
-    ...actions.photosList({ ...(selectedRoot === null ? {} : { root: selectedRoot }), offset: 0, limit: PAGE_LIMIT }),
+    ...actions.photosList({ ...(selectedRoot === null ? {} : { root: selectedRoot }), offset, limit: PAGE_LIMIT }),
     enabled: active,
   });
+
+  useEffect(() => {
+    setOffset(0);
+  }, [selectedRoot]);
+
+  useEffect(() => {
+    if (list.data === undefined) return;
+    setLoadedItems((current) => (offset === 0 ? list.data.items : [...current, ...list.data.items]));
+  }, [list.data, offset]);
+
+  const loadMore = useCallback(() => setOffset((current) => current + PAGE_LIMIT), []);
   const detail = useQuery({
     ...actions.photosDetail({ fingerprint: selectedFingerprint ?? '' }),
     enabled: active && selectedFingerprint !== null,
@@ -228,8 +244,11 @@ export const usePhotos = ({ active, addLine, intervalMs = 1000 }: UsePhotosOptio
     roots: tree.data?.roots ?? [],
     selectedRoot,
     selectRoot: setSelectedRoot,
-    items: list.data?.items ?? [],
+    items: loadedItems,
     total: list.data?.total ?? 0,
+    hasMore: loadedItems.length < (list.data?.total ?? 0),
+    isLoadingMore: offset > 0 && list.isFetching,
+    loadMore,
     counts: status.data === undefined
       ? null
       : {

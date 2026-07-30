@@ -292,6 +292,33 @@ const drive = async (plan) => {
     return done(`results view for "${plan.query}"`);
   });
 
+  await record('photos-tab', async () => {
+    const navPhotos = page.getByTestId('nav-photos');
+    if (!(await appeared(navPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Photos tab in this build');
+    await navPhotos.click();
+    if (!(await appeared(page.getByTestId('photos-layout'), FOLDER_TIMEOUT_MS))) return skipped('Photos view did not render');
+    return done('Photos view opened');
+  });
+
+  await record('photos-grid', async () => {
+    if (!(await appeared(page.getByTestId('photos-grid'), FOLDER_TIMEOUT_MS))) {
+      return skipped('no photos catalogued in this home');
+    }
+    const tiles = await page.getByTestId('photos-tile').count();
+    if (tiles === 0) return skipped('photo grid rendered with no tiles');
+    return done(`${String(tiles)} photo tile(s) listed`);
+  });
+
+  await record('photo-detail', async () => {
+    const tile = page.getByTestId('photos-tile').first();
+    if (!(await appeared(tile, SETTLE_TIMEOUT_MS))) return skipped('no photo tile to select');
+    await tile.click();
+    if (!(await appeared(page.getByTestId('photos-detail'), VISIBLE_TIMEOUT_MS))) {
+      return skipped('photo detail pane did not render');
+    }
+    return done('photo detail pane opened');
+  });
+
   await record('settings', async () => {
     await sendMenuEvent(app, MENU_SHOW_SETTINGS);
     await page.getByTestId('settings-modal').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });

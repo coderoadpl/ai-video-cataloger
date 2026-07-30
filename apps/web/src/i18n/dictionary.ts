@@ -732,6 +732,7 @@ export interface Dictionary {
     statusProxied: (count: number) => string;
     statusProxyFailed: (count: number) => string;
     loadingPhotos: string;
+    loadMore: string;
     searchPlaceholder: string;
     searchResultsLabel: (count: number) => string;
     searchNoResults: string;
@@ -1600,6 +1601,7 @@ export const en: Dictionary = {
     statusProxied: (count) => `${count} proxied`,
     statusProxyFailed: (count) => `${count} proxy failed`,
     loadingPhotos: 'Loading photos…',
+    loadMore: 'Load more',
     searchPlaceholder: 'Search file names, descriptions, tags, places…',
     searchResultsLabel: (count) => `${count} result${count === 1 ? '' : 's'}`,
     searchNoResults: 'No photos match this search.',
@@ -2477,6 +2479,7 @@ export const pl: Dictionary = {
     statusProxied: (count) => `${count} z podglądem`,
     statusProxyFailed: (count) => `${count} nieudanych podglądów`,
     loadingPhotos: 'Ładowanie zdjęć…',
+    loadMore: 'Wczytaj więcej',
     searchPlaceholder: 'Szukaj po nazwie pliku, opisie, tagach, miejscu…',
     searchResultsLabel: (count) => `${count} ${plPlural(count, 'wynik', 'wyniki', 'wyników')}`,
     searchNoResults: 'Żadne zdjęcie nie pasuje do tego wyszukiwania.',

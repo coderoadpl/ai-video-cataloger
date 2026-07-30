@@ -84,4 +84,25 @@ describe('visibleRowRange', () => {
     const atBottom = visibleRowRange(10_000, 50, 100, 40, rows, 5);
     expect(atBottom.last).toBe(rows.length - 1);
   });
+
+  it('windows a fifty-thousand-photo library to a bounded row count anywhere in the list', () => {
+    const sections: DaySection[] = Array.from({ length: 500 }, (_, section) => ({
+      day: `d${String(section)}`,
+      label: `d${String(section)}`,
+      items: Array.from({ length: 100 }, (_, item) => stubItem(`s${String(section)}-${String(item)}`)),
+    }));
+    const bigRows = buildRows(sections, 6);
+    expect(bigRows).toHaveLength(500 + 500 * Math.ceil(100 / 6));
+
+    const rowHeight = 180;
+    const headerHeight = 40;
+    const totalHeight = 500 * headerHeight + 500 * Math.ceil(100 / 6) * rowHeight;
+    for (const scrollTop of [0, totalHeight / 2, totalHeight]) {
+      const range = visibleRowRange(scrollTop, 900, rowHeight, headerHeight, bigRows, 3);
+      expect(range.totalHeight).toBe(totalHeight);
+      expect(range.last - range.first).toBeLessThanOrEqual(16);
+      expect(range.first).toBeGreaterThanOrEqual(0);
+      expect(range.last).toBeLessThanOrEqual(bigRows.length - 1);
+    }
+  });
 });

@@ -60,6 +60,7 @@ import { shouldSkipDirectory } from './shared.js';
 
 export const PHOTO_SCAN_BATCH_SIZE = 500;
 export const PHOTO_PROXY_CONCURRENCY = 4;
+export const PHOTO_PROXY_CHECKPOINT_SIZE = 50;
 
 export interface PhotosDeps {
   photos: PhotosStore;
@@ -581,11 +582,16 @@ export const runPhotoProxiesPass = async (
           const outcome = await processProxyCandidate(deps, artifactsRoot, candidate, input.force, counters, progress);
           if (!outcome.ok) return outcome;
           processed += 1;
+          const completed = processed;
           await report(progress, 'photo-proxy', {
             fingerprint: candidate.fingerprint,
-            current: processed,
+            current: completed,
             total: candidates.length,
           });
+          if (completed % PHOTO_PROXY_CHECKPOINT_SIZE === 0) {
+            const checkpointed = await deps.photos.checkpoint();
+            if (!checkpointed.ok) return checkpointed;
+          }
         }
       };
       const workerCount = Math.min(PHOTO_PROXY_CONCURRENCY, Math.max(batch.length, 1));
@@ -1369,6 +1375,8 @@ export const runPhotoProcess = async (
           timeoutSeconds: options.value.timeoutSeconds,
         });
         if (!cascadeResult.ok) return cascadeResult;
+        const checkpointed = await deps.photos.checkpoint();
+        if (!checkpointed.ok) return checkpointed;
       }
       return deps.photos.updatePhotoRun(state.run);
     });
