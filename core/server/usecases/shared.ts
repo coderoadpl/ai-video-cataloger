@@ -44,6 +44,18 @@ export type SummaryData = z.output<typeof summaryDataSchema>;
 export const isSupportedVideoExtension = (extension: string): boolean =>
   VIDEO_EXTENSIONS.some((videoExtension) => videoExtension === extension.toLowerCase());
 
+export const EXCLUDED_DIRECTORY_NAMES = new Set([
+  '.ai-video-cataloger',
+  '.Trashes',
+  '.Spotlight-V100',
+  '.fseventsd',
+  '.TemporaryItems',
+  'System Volume Information',
+]);
+
+export const shouldSkipDirectory = (name: string): boolean =>
+  name.startsWith('.') || EXCLUDED_DIRECTORY_NAMES.has(name);
+
 export const isInProgressStatus = (status: VideoStatus): boolean =>
   IN_PROGRESS_STATUSES.some((candidate) => candidate === status);
 

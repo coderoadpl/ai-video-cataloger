@@ -9,11 +9,10 @@ import {
   readFileSync,
   renameSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
-import { homedir, hostname } from 'node:os';
+import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js';
@@ -54,7 +53,6 @@ import type {
   FaceIndexScope,
   FaceStatusCounts,
   GeoBackfillCandidate,
-  CatalogLockInfo,
   CatalogLockProcessName,
   CatalogLockSnapshot,
   CatalogLocationRow,
@@ -93,16 +91,17 @@ import {
   migrateGlobalCatalogSchemaSqlV8,
   migrateGlobalCatalogSchemaSqlV9,
   migrateGlobalCatalogSchemaSqlV10,
+  migrateGlobalCatalogSchemaSqlV11,
   schemaMeta,
   tagAliases,
   tags,
   people,
 } from './global-catalog-schema.js';
+import { CatalogAppError, HomeLock, type CatalogLockFs } from './home-lock.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'catalog.db';
 const AUTO_FLUSH_MUTATION_COUNT = 25;
-const LOCK_ACQUIRE_ATTEMPTS = 5;
 const analyzedFileLocationSchema = z.object({
   fingerprint: z.string(),
   folderId: z.string(),
@@ -112,35 +111,7 @@ const analyzedFileLocationSchema = z.object({
 });
 const analyzedFileLocationsSchema = z.array(analyzedFileLocationSchema);
 
-export interface CatalogLockFs {
-  mkdirSync: (dir: string, options: { recursive: true }) => void;
-  openSync: (file: string, flags: string) => number;
-  writeFileSync: (fd: number, data: string, encoding: 'utf8') => void;
-  fsyncSync: (fd: number) => void;
-  closeSync: (fd: number) => void;
-  readFileSync: (file: string, encoding: 'utf8') => string;
-  unlinkSync: (file: string) => void;
-}
-
-const defaultLockFs: CatalogLockFs = {
-  mkdirSync: (dir, options) => {
-    mkdirSync(dir, options);
-  },
-  openSync: (file, flags) => openSync(file, flags),
-  writeFileSync: (fd, data, encoding) => {
-    writeFileSync(fd, data, encoding);
-  },
-  fsyncSync: (fd) => {
-    fsyncSync(fd);
-  },
-  closeSync: (fd) => {
-    closeSync(fd);
-  },
-  readFileSync: (file, encoding) => readFileSync(file, encoding),
-  unlinkSync: (file) => {
-    unlinkSync(file);
-  },
-};
+export type { CatalogLockFs };
 
 type GlobalSchema = typeof globalCatalogSchema;
 type GlobalDrizzle = SQLJsDatabase<GlobalSchema>;
@@ -156,22 +127,14 @@ export interface GlobalCatalogAdapterOptions {
   lockMode?: 'none' | 'lazy' | 'eager' | undefined;
   isProcessAlive?: ((pid: number) => boolean) | undefined;
   lockFs?: CatalogLockFs | undefined;
+  lock?: HomeLock | undefined;
 }
 
 export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   private readonly filePath: string;
-  private readonly lockPath: string;
-  private readonly processName: CatalogLockProcessName;
   private readonly lockMode: 'none' | 'lazy' | 'eager';
-  private readonly isProcessAlive: (pid: number) => boolean;
-  private readonly lockFs: CatalogLockFs;
+  private readonly lock: HomeLock;
   private dirtyCount = 0;
-  private leaseCount = 0;
-  private heldLock: CatalogLockInfo | null = null;
-  private exitHandlerRegistered = false;
-  private readonly releaseOnExit = (): void => {
-    this.releaseWriteLock();
-  };
   private state: {
     SQL: SqlJsStatic;
     client: Database;
@@ -180,15 +143,19 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   } | null = null;
 
   constructor(options: GlobalCatalogAdapterOptions = {}) {
-    this.filePath = globalCatalogPath(options.homeDirectory ?? homedir());
-    this.lockPath = globalCatalogLockPath(options.homeDirectory ?? homedir());
-    this.processName = options.processName ?? 'cli';
+    const homeDirectory = options.homeDirectory ?? homedir();
+    this.filePath = globalCatalogPath(homeDirectory);
     this.lockMode = options.lockMode ?? (options.processName === undefined ? 'none' : 'lazy');
-    this.isProcessAlive = options.isProcessAlive ?? defaultIsProcessAlive;
-    this.lockFs = options.lockFs ?? defaultLockFs;
+    this.lock = options.lock ?? new HomeLock({
+      homeDirectory,
+      processName: options.processName ?? 'cli',
+      lockMode: this.lockMode,
+      isProcessAlive: options.isProcessAlive,
+      lockFs: options.lockFs,
+    });
     if (this.lockMode === 'eager') {
       try {
-        this.takeWriteLock();
+        this.lock.takeWriteLock();
       } catch (cause) {
         if (!(cause instanceof CatalogAppError) || cause.appError.code !== 'catalog_locked') throw cause;
       }
@@ -201,13 +168,13 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async flush(): Promise<Result<void, AppError>> {
     if (this.state === null || this.dirtyCount === 0) {
-      if (this.leaseCount === 0) this.releaseWriteLock();
+      this.lock.releaseIfIdle();
       return ok(undefined);
     }
     try {
-      this.takeWriteLock();
+      this.lock.takeWriteLock();
       this.persist(this.state);
-      if (this.leaseCount === 0) this.releaseWriteLock();
+      this.lock.releaseIfIdle();
       return ok(undefined);
     } catch (cause) {
       this.state = null;
@@ -218,8 +185,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async acquireLease(): Promise<Result<void, AppError>> {
     try {
-      this.takeWriteLock();
-      this.leaseCount += 1;
+      this.lock.acquireLease();
       return ok(undefined);
     } catch (cause) {
       return failure(cause);
@@ -227,7 +193,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
   }
 
   async releaseLease(): Promise<Result<void, AppError>> {
-    if (this.leaseCount > 0) this.leaseCount -= 1;
+    this.lock.releaseLease();
     return this.flush();
   }
 
@@ -237,7 +203,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       if (this.state !== null) this.state.client.close();
       this.state = null;
       this.dirtyCount = 0;
-      this.releaseWriteLock();
+      this.lock.releaseIfIdle();
       return flushed;
     } catch (cause) {
       if (!flushed.ok) return flushed;
@@ -247,7 +213,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>> {
     try {
-      return ok(this.snapshot([]));
+      return ok(this.lock.snapshot([]));
     } catch (cause) {
       return failure(cause);
     }
@@ -255,8 +221,8 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   async acquireWriteLock(): Promise<Result<CatalogLockSnapshot, AppError>> {
     try {
-      const warnings = this.takeWriteLock();
-      return ok(this.snapshot(warnings));
+      const warnings = this.lock.takeWriteLock();
+      return ok(this.lock.snapshot(warnings));
     } catch (cause) {
       return failure(cause);
     }
@@ -1244,7 +1210,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   private async write<T>(operation: (db: GlobalDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
-      this.takeWriteLock();
+      this.lock.takeWriteLock();
       const state = await this.ensureOpen(true);
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
@@ -1263,106 +1229,6 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     persistDatabase(this.filePath, state.client);
     state.fileState = fileStateOf(this.filePath);
     this.dirtyCount = 0;
-  }
-
-  private takeWriteLock(): string[] {
-    if (this.lockMode === 'none') return [];
-    if (this.heldLock !== null) return [];
-    const warnings: string[] = [];
-    this.lockFs.mkdirSync(path.dirname(this.lockPath), { recursive: true });
-    const info: CatalogLockInfo = {
-      pid: process.pid,
-      processName: this.processName,
-      startedAt: new Date().toISOString(),
-      hostname: hostname(),
-    };
-    for (let attempt = 0; attempt < LOCK_ACQUIRE_ATTEMPTS; attempt += 1) {
-      try {
-        const descriptor = this.lockFs.openSync(this.lockPath, 'wx');
-        try {
-          this.lockFs.writeFileSync(descriptor, `${JSON.stringify(info)}\n`, 'utf8');
-          this.lockFs.fsyncSync(descriptor);
-        } finally {
-          this.lockFs.closeSync(descriptor);
-        }
-        const confirmed = readLockInfo(this.lockPath, this.lockFs);
-        if (confirmed !== null && confirmed.pid === process.pid && confirmed.startedAt === info.startedAt) {
-          this.heldLock = info;
-          this.registerExitHandler();
-          return warnings;
-        }
-        continue;
-      } catch (cause) {
-        if (!isNodeErrorCode(cause, 'EEXIST')) throw cause;
-        const existing = readLockInfo(this.lockPath, this.lockFs);
-        if (existing !== null && existing.pid === process.pid && existing.hostname === hostname()) {
-          this.heldLock = existing;
-          this.registerExitHandler();
-          return warnings;
-        }
-        if (existing !== null && existing.hostname !== hostname()) throw new CatalogAppError(catalogLockedError(existing));
-        if (existing !== null && this.isProcessAlive(existing.pid)) throw new CatalogAppError(catalogLockedError(existing));
-        if (existing !== null) {
-          const warning = `Taking over stale catalog lock from ${existing.processName} PID ${String(existing.pid)}`;
-          warnings.push(warning);
-          process.emitWarning(warning);
-        }
-        const beforeUnlink = readLockInfo(this.lockPath, this.lockFs);
-        if (!sameLock(beforeUnlink, existing)) continue;
-        try {
-          this.lockFs.unlinkSync(this.lockPath);
-        } catch (unlinkCause) {
-          if (!isNodeErrorCode(unlinkCause, 'ENOENT')) throw unlinkCause;
-        }
-      }
-    }
-    const existing = readLockInfo(this.lockPath, this.lockFs);
-    if (existing !== null) throw new CatalogAppError(catalogLockedError(existing));
-    throw new Error('Could not acquire catalog lock');
-  }
-
-  private snapshot(warnings: string[]): CatalogLockSnapshot {
-    if (this.lockMode === 'none') return { writable: true, owner: null, blockedBy: null, warnings };
-    if (this.heldLock !== null) {
-      return { writable: true, owner: this.heldLock, blockedBy: null, warnings };
-    }
-    const existing = readLockInfo(this.lockPath, this.lockFs);
-    if (existing === null) return { writable: true, owner: null, blockedBy: null, warnings };
-    if (existing.hostname !== hostname()) {
-      return { writable: false, owner: null, blockedBy: existing, warnings };
-    }
-    if (!this.isProcessAlive(existing.pid)) {
-      return { writable: true, owner: null, blockedBy: null, warnings: [...warnings, `Stale catalog lock from ${existing.processName} PID ${String(existing.pid)}`] };
-    }
-    return { writable: false, owner: null, blockedBy: existing, warnings };
-  }
-
-  private releaseWriteLock(): void {
-    if (this.heldLock === null) return;
-    const existing = readLockInfo(this.lockPath, this.lockFs);
-    if (
-      existing !== null
-      && existing.pid === this.heldLock.pid
-      && existing.processName === this.heldLock.processName
-      && existing.startedAt === this.heldLock.startedAt
-    ) {
-      try {
-        this.lockFs.unlinkSync(this.lockPath);
-      } catch (cause) {
-        if (!isNodeErrorCode(cause, 'ENOENT')) throw cause;
-      }
-    }
-    this.heldLock = null;
-    if (this.exitHandlerRegistered) {
-      process.removeListener('exit', this.releaseOnExit);
-      this.exitHandlerRegistered = false;
-    }
-  }
-
-  private registerExitHandler(): void {
-    if (this.exitHandlerRegistered) return;
-    process.once('exit', this.releaseOnExit);
-    this.exitHandlerRegistered = true;
   }
 
   private async ensureOpen(canPersist: boolean): Promise<NonNullable<SqlJsGlobalCatalogStore['state']>> {
@@ -1439,6 +1305,10 @@ const migrate = (client: Database): boolean => {
     rebuildSearchIndex(drizzle(client, { schema: globalCatalogSchema }), client);
     migrated = true;
   }
+  if (currentVersion < 11) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV11) runMigrationStatement(client, statement);
+    migrated = true;
+  }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
     const db = drizzle(client, { schema: globalCatalogSchema });
@@ -1500,60 +1370,6 @@ const sameFileState = (left: FileState, right: FileState): boolean =>
   left.mtimeMs === right.mtimeMs && left.size === right.size;
 
 const globalCatalogPath = (home: string): string => path.join(home, dbDirectoryName, dbFileName);
-
-const globalCatalogLockPath = (home: string): string => path.join(home, dbDirectoryName, 'catalog.lock');
-
-const lockInfoSchema = z.object({
-  pid: z.number().int().positive(),
-  processName: z.enum(['gui', 'cli']),
-  startedAt: z.string().min(1),
-  hostname: z.string().min(1),
-});
-
-const catalogLockedError = (info: CatalogLockInfo): AppError =>
-  appError(
-    'catalog_locked',
-    `Catalog is in use by ${info.processName} (PID ${String(info.pid)} on ${info.hostname}, started ${info.startedAt}). Close it or wait.`,
-    info,
-  );
-
-const readLockInfo = (lockPath: string, fs: CatalogLockFs): CatalogLockInfo | null => {
-  let raw: string;
-  try {
-    raw = fs.readFileSync(lockPath, 'utf8');
-  } catch (cause) {
-    if (isNodeErrorCode(cause, 'ENOENT')) return null;
-    throw cause;
-  }
-  try {
-    const parsed: unknown = JSON.parse(raw);
-    const lockInfo = lockInfoSchema.safeParse(parsed);
-    return lockInfo.success ? lockInfo.data : null;
-  } catch {
-    return null;
-  }
-};
-
-const sameLock = (left: CatalogLockInfo | null, right: CatalogLockInfo | null): boolean => {
-  if (left === null || right === null) return left === right;
-  return left.pid === right.pid
-    && left.processName === right.processName
-    && left.startedAt === right.startedAt
-    && left.hostname === right.hostname;
-};
-
-const defaultIsProcessAlive = (pid: number): boolean => {
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (cause) {
-    if (isNodeErrorCode(cause, 'ESRCH')) return false;
-    return true;
-  }
-};
-
-const isNodeErrorCode = (cause: unknown, code: string): boolean =>
-  cause instanceof Error && 'code' in cause && cause.code === code;
 
 const rowToFolder = (row: typeof folders.$inferSelect): CatalogFolder => ({
   folderId: row.folderId,
@@ -2205,12 +2021,6 @@ const centroidFor = (embeddings: readonly (readonly number[])[]): number[] => {
   if (magnitude === 0) return mean;
   return mean.map((value) => value / magnitude);
 };
-
-class CatalogAppError extends Error {
-  constructor(readonly appError: AppError) {
-    super(appError.message);
-  }
-}
 
 const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined => {
   const wasmPath = findSqlJsWasmPath();

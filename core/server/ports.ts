@@ -11,7 +11,9 @@ import type {
   ConfigKey,
   CredentialDeletion,
   CredentialsBackendStatus,
+  CapturedAtSource,
   DriveRunBatchState,
+  ExifSummary,
   FaceBox,
   FaceLandmarks,
   FaceObservation,
@@ -19,6 +21,7 @@ import type {
   FileArtifactId,
   GeminiUsageAccounting,
   GpsSource,
+  PhotoExtension,
   SpendLedgerEntry,
   MachineProfile,
   Person,
@@ -241,6 +244,112 @@ export interface FaceStatusCounts {
   staleVersionFiles: number;
 }
 
+export interface ExifPort {
+  read(path: string): Promise<Result<ExifSummary | null, AppError>>;
+}
+
+export interface PhotoFolderRecord {
+  folderId: string;
+  currentPath: string;
+  displayName: string;
+  firstSeenAt: string;
+  lastSeenAt: string;
+  defaultConfigId: string | null;
+}
+
+export interface PhotoRecord {
+  fingerprint: string;
+  folderId: string;
+  fileName: string;
+  currentPath: string;
+  ext: PhotoExtension;
+  size: number;
+  width: number | null;
+  height: number | null;
+  orientation: number | null;
+  cameraMake: string | null;
+  cameraModel: string | null;
+  lens: string | null;
+  iso: number | null;
+  fNumber: number | null;
+  exposureTime: number | null;
+  exifRating: number | null;
+  capturedAt: string | null;
+  capturedAtSource: CapturedAtSource | null;
+  gpsLat: number | null;
+  gpsLon: number | null;
+  gpsSource: string | null;
+  gpsAccuracyM: number | null;
+  gpsIntervalKind: string | null;
+  gpsResolvedAt: string | null;
+  placeName: string | null;
+  placeRegion: string | null;
+  placeCountry: string | null;
+  placeCountryCode: string | null;
+  placeDistanceM: number | null;
+  placeDataset: string | null;
+  discoveredAt: string;
+  exifReadAt: string | null;
+  proxyState: 'pending' | 'done' | 'failed' | 'not_needed';
+  proxyWidth: number | null;
+  proxyHeight: number | null;
+  thumbState: 'pending' | 'done' | 'failed';
+  missingAt: number | null;
+  selectedConfigId: string | null;
+}
+
+export interface PhotoSightingRecord {
+  fingerprint: string;
+  currentPath: string;
+  folderId: string;
+  size: number;
+  mtimeMs: number;
+  lastSeenAt: string;
+}
+
+export interface PhotoRunRecord {
+  runId: string;
+  root: string;
+  stage: 'scan';
+  startedAt: string;
+  finishedAt: string | null;
+  filesTotal: number;
+  filesDone: number;
+  filesSkipped: number;
+  filesFailed: number;
+  lastActivityAt: string;
+  batchJson: string | null;
+}
+
+export interface PhotosCounts {
+  photos: number;
+  paths: number;
+  exifRead: number;
+  exifFailed: number;
+  missing: number;
+  duplicates: number;
+}
+
+export interface PhotosStore {
+  databasePath(): string;
+  flush(): Promise<Result<void, AppError>>;
+  dispose(): Promise<Result<void, AppError>>;
+  withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
+  upsertFolder(folder: PhotoFolderRecord): Promise<Result<void, AppError>>;
+  getFolder(folderId: string): Promise<Result<PhotoFolderRecord | null, AppError>>;
+  getPhoto(fingerprint: string): Promise<Result<PhotoRecord | null, AppError>>;
+  upsertPhoto(photo: PhotoRecord): Promise<Result<void, AppError>>;
+  getSightingByPath(path: string): Promise<Result<PhotoSightingRecord | null, AppError>>;
+  upsertSighting(sighting: PhotoSightingRecord): Promise<Result<void, AppError>>;
+  listSightings(fingerprint: string): Promise<Result<PhotoSightingRecord[], AppError>>;
+  listSightingsUnderRoot(root: string): Promise<Result<PhotoSightingRecord[], AppError>>;
+  deleteSighting(fingerprint: string, path: string): Promise<Result<void, AppError>>;
+  deletePhoto(fingerprint: string): Promise<Result<void, AppError>>;
+  counts(root: string | null): Promise<Result<PhotosCounts, AppError>>;
+  startPhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>>;
+  updatePhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>>;
+}
+
 export interface DriveRunRecord {
   runId: string;
   root: string;
@@ -413,6 +522,7 @@ export interface FileSystemPort {
   deleteFile(path: string): Promise<Result<void, AppError>>;
   deletePath(path: string): Promise<Result<void, AppError>>;
   partialContentHash(path: string): Promise<Result<string | null, AppError>>;
+  fullContentHash(path: string): Promise<Result<string | null, AppError>>;
   isWritable(path: string): Promise<Result<boolean, AppError>>;
   tempDirectory(): string;
   homeDirectory(): string;
@@ -814,7 +924,8 @@ export type JobKind =
   | 'faces_exemplars'
   | 'materialize'
   | 'thumbnails'
-  | 'gps_backfill';
+  | 'gps_backfill'
+  | 'photo_scan';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -852,7 +963,11 @@ export type ProcessJobStep =
   | 'thumbnails_done'
   | 'gps_timeline_loaded'
   | 'gps_backfill_file'
-  | 'gps_backfill_done';
+  | 'gps_backfill_done'
+  | 'photo-file'
+  | 'photo-file-skipped'
+  | 'photo-exif-failed'
+  | 'photo-run-summary';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

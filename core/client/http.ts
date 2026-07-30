@@ -38,6 +38,8 @@ import {
   providerTestOutputSchema,
   localAiRmOutputSchema,
   looseEnvelopeSchema,
+  photosForgetOutputSchema,
+  photosStatusOutputSchema,
   resetAllOutputSchema,
   resetSingleOutputSchema,
   scanOutputSchema,
@@ -810,6 +812,42 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.facesRecluster.method,
       API_ROUTES.facesRecluster.path,
       jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  photosScan: (input: z.input<typeof API_ROUTES.photosScan.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosScan.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosScan.method,
+      API_ROUTES.photosScan.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  photosStatus: (input: z.input<typeof API_ROUTES.photosStatus.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosStatus.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosStatus.method,
+      queryPath(API_ROUTES.photosStatus.path, [['root', parsed.value.root]]),
+      photosStatusOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  photosForget: (input: z.input<typeof API_ROUTES.photosForget.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosForget.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosForget.method,
+      API_ROUTES.photosForget.path,
+      photosForgetOutputSchema,
       parsed.value,
       signal,
     );

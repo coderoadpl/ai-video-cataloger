@@ -3,6 +3,7 @@ import { access, constants } from 'node:fs/promises';
 import packageJson from '../../../../package.json' with { type: 'json' };
 
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
+import { FakeExifPort, InMemoryPhotosStore } from '../../../../test/server/usecases/test-fakes.js';
 import {
   FACE_ENGINE_VERSION,
   LEGACY_CONFIG_ID,
@@ -114,6 +115,8 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     cliPath: stubCliPathPort,
     catalogs: new InMemoryCatalogRepositoryFactory(),
     globalCatalog: new InMemoryGlobalCatalogStore(),
+    photos: new InMemoryPhotosStore(),
+    exif: new FakeExifPort(),
     config: configStore,
     credentials,
     fs: new InMemoryFileSystemPort(config.workingDirectory ?? process.cwd(), config.files ?? []),
@@ -1134,6 +1137,10 @@ class InMemoryFileSystemPort implements FileSystemPort {
   }
 
   partialContentHash(): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(null));
+  }
+
+  fullContentHash(): Promise<Result<string | null, AppError>> {
     return Promise.resolve(ok(null));
   }
 

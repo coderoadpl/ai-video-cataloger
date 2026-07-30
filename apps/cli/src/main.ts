@@ -46,6 +46,7 @@ import { credentialDeleteHuman } from './credential-delete-human.js';
 import { driveEventLine, isDriveEventStep, type DriveEventStep } from './drive-events.js';
 import { driveFacesSummaryLine } from './drive-faces-summary.js';
 import { doctorHuman } from './doctor-human.js';
+import { photosForgetHuman, photosStatusHuman } from './photos-human.js';
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 import { runProgram } from './run-program.js';
@@ -1288,6 +1289,56 @@ faces
       return;
     }
     await waitForJobAndEmit(json, result.value.jobId, facesExemplarsHuman, true);
+  });
+
+const photos = program.command('photos').description('Index and manage the photo catalog');
+
+photos
+  .command('scan')
+  .argument('<root>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    const resolvedRoot = path.resolve(cliWorkingDirectory, root);
+    emitStarted(json, 'photos_scan', { root: resolvedRoot });
+    const result = await api.photosScan({ root: resolvedRoot });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, () => 'Photo scan complete', true);
+  });
+
+photos
+  .command('status')
+  .argument('[root]')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string | undefined, options: JsonOption) => {
+    const json = isJsonMode(options);
+    const resolvedRoot = root === undefined ? undefined : path.resolve(cliWorkingDirectory, root);
+    await runSimple(
+      json,
+      'photos_status',
+      () => api.photosStatus({ root: resolvedRoot }),
+      photosStatusHuman,
+      { raw: true },
+    );
+  });
+
+photos
+  .command('forget')
+  .argument('<root>')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    const resolvedRoot = path.resolve(cliWorkingDirectory, root);
+    await runSimple(
+      json,
+      'photos_forget',
+      () => api.photosForget({ root: resolvedRoot }),
+      photosForgetHuman,
+      { raw: true },
+    );
   });
 
 const configKey = (key: string | undefined) => {

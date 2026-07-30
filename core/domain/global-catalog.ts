@@ -4,7 +4,7 @@ import { configDescriptorSchema, configId } from './config-descriptor.js';
 import { appError, type AppError } from './errors.js';
 import { canonicalPath } from './paths.js';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 10;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 11;
 export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 11;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;

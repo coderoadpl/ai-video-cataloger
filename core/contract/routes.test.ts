@@ -742,4 +742,27 @@ describe('route schemas', () => {
     const viaUnion = jobResultSchema.parse(output);
     expect(viaUnion).toMatchObject({ filesFailed: 1, failures: output.failures, aborted: false });
   });
+
+  it('round-trips photoScanSummarySchema through jobResultSchema with the media discriminator, and every other member rejects it', () => {
+    const sample = {
+      media: 'photo' as const,
+      root: '/photos',
+      runId: 'photo-run-1',
+      filesTotal: 10,
+      photosNew: 8,
+      photosUpdated: 2,
+      pathsSeen: 10,
+      skippedUnchanged: 0,
+      readFailed: 0,
+      exifRead: 6,
+      exifFailed: 4,
+      missingMarked: 1,
+    };
+
+    const viaUnion = jobResultSchema.parse(sample);
+    expect(viaUnion).toEqual(sample);
+
+    const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
+    expect(acceptingCount).toBe(1);
+  });
 });

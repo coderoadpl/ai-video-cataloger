@@ -47,16 +47,7 @@ import {
 } from './process-drive-batch.js';
 import { resolveConfigValues } from './config-resolution.js';
 import { scanFolder, type ScanVideo } from './scan.js';
-import { isSupportedVideoExtension } from './shared.js';
-
-const excludedDirectoryNames = new Set([
-  '.ai-video-cataloger',
-  '.Trashes',
-  '.Spotlight-V100',
-  '.fseventsd',
-  '.TemporaryItems',
-  'System Volume Information',
-]);
+import { isSupportedVideoExtension, shouldSkipDirectory } from './shared.js';
 
 const maxRetries = 2;
 const maxConsecutiveFailures = 5;
@@ -1110,9 +1101,6 @@ const walkCatalogTree = async (
     await walkCatalogTree(fs, entry.path, catalogFolders, failures);
   }
 };
-
-const shouldSkipDirectory = (name: string): boolean =>
-  name.startsWith('.') || excludedDirectoryNames.has(name);
 
 const runDriveFile = async (
   deps: ProcessDeps,

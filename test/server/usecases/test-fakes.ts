@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import { sha256Hex } from '@core/domain/sha256.js';
 import {
   FACE_ENGINE_VERSION,
   LEGACY_CONFIG_ID,
@@ -16,6 +17,7 @@ import {
   type CatalogFolder,
   type CatalogVariant,
   type ConfigKey,
+  type ExifSummary,
   type FaceObservation,
   type FileArtifact,
   type GeminiUsageAccounting,
@@ -83,6 +85,13 @@ import type {
   ModelDownloadPort,
   ProvidersPort,
   ProviderTestResult,
+  ExifPort,
+  PhotoFolderRecord,
+  PhotoRecord,
+  PhotoRunRecord,
+  PhotoSightingRecord,
+  PhotosCounts,
+  PhotosStore,
   ThumbnailFromFrameInput,
   ThumbnailGeneration,
   ThumbnailInput,
@@ -345,6 +354,12 @@ export class InMemoryFileSystem implements FileSystemPort {
 
   partialContentHash(value: string): Promise<Result<string | null, AppError>> {
     return Promise.resolve(ok(this.files.get(this.normalize(value))?.hash ?? null));
+  }
+
+  fullContentHash(value: string): Promise<Result<string | null, AppError>> {
+    const file = this.files.get(this.normalize(value));
+    if (file === undefined || file.content === null) return Promise.resolve(ok(null));
+    return Promise.resolve(ok(sha256Hex(file.content)));
   }
 
   isWritable(value: string): Promise<Result<boolean, AppError>> {
@@ -1721,3 +1736,137 @@ export const dependency = (name: string, available: boolean): DependencyStatus =
   path: available ? `/bin/${name}` : null,
   installHint: available ? '' : `Install ${name}`,
 });
+
+export class FakeExifPort implements ExifPort {
+  private readonly results = new Map<string, ExifSummary | null | AppError>();
+
+  setResult(path: string, result: ExifSummary | null | AppError): void {
+    this.results.set(path, result);
+  }
+
+  read(path: string): Promise<Result<ExifSummary | null, AppError>> {
+    const result = this.results.get(path) ?? null;
+    if (result !== null && 'code' in result) return Promise.resolve({ ok: false, error: result });
+    return Promise.resolve(ok(result));
+  }
+}
+
+export class InMemoryPhotosStore implements PhotosStore {
+  readonly folders = new Map<string, PhotoFolderRecord>();
+  readonly photoRows = new Map<string, PhotoRecord>();
+  readonly sightings = new Map<string, PhotoSightingRecord>();
+  readonly runs = new Map<string, PhotoRunRecord>();
+  persistCount = 0;
+
+  databasePath(): string {
+    return '/home/.ai-video-cataloger/photos.db';
+  }
+
+  flush(): Promise<Result<void, AppError>> {
+    this.persistCount += 1;
+    return Promise.resolve(ok(undefined));
+  }
+
+  dispose(): Promise<Result<void, AppError>> {
+    return this.flush();
+  }
+
+  async withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    const result = await operation();
+    await this.flush();
+    return result;
+  }
+
+  upsertFolder(folder: PhotoFolderRecord): Promise<Result<void, AppError>> {
+    this.folders.set(folder.folderId, { ...folder, currentPath: canonicalPath(folder.currentPath) });
+    return Promise.resolve(ok(undefined));
+  }
+
+  getFolder(folderId: string): Promise<Result<PhotoFolderRecord | null, AppError>> {
+    return Promise.resolve(ok(this.folders.get(folderId) ?? null));
+  }
+
+  getPhoto(fingerprint: string): Promise<Result<PhotoRecord | null, AppError>> {
+    return Promise.resolve(ok(this.photoRows.get(fingerprint) ?? null));
+  }
+
+  upsertPhoto(photo: PhotoRecord): Promise<Result<void, AppError>> {
+    this.photoRows.set(photo.fingerprint, { ...photo, currentPath: canonicalPath(photo.currentPath) });
+    return Promise.resolve(ok(undefined));
+  }
+
+  getSightingByPath(pathValue: string): Promise<Result<PhotoSightingRecord | null, AppError>> {
+    const canonical = canonicalPath(pathValue);
+    const match = [...this.sightings.values()].find((sighting) => sighting.currentPath === canonical);
+    return Promise.resolve(ok(match ?? null));
+  }
+
+  upsertSighting(sighting: PhotoSightingRecord): Promise<Result<void, AppError>> {
+    const canonical = canonicalPath(sighting.currentPath);
+    this.sightings.set(sightingKey(sighting.fingerprint, canonical), { ...sighting, currentPath: canonical });
+    return Promise.resolve(ok(undefined));
+  }
+
+  listSightings(fingerprint: string): Promise<Result<PhotoSightingRecord[], AppError>> {
+    return Promise.resolve(ok([...this.sightings.values()].filter((sighting) => sighting.fingerprint === fingerprint)));
+  }
+
+  listSightingsUnderRoot(root: string): Promise<Result<PhotoSightingRecord[], AppError>> {
+    const canonicalRoot = canonicalPath(root);
+    return Promise.resolve(ok([...this.sightings.values()].filter((sighting) => isUnderRoot(sighting.currentPath, canonicalRoot))));
+  }
+
+  deleteSighting(fingerprint: string, pathValue: string): Promise<Result<void, AppError>> {
+    this.sightings.delete(sightingKey(fingerprint, canonicalPath(pathValue)));
+    return Promise.resolve(ok(undefined));
+  }
+
+  deletePhoto(fingerprint: string): Promise<Result<void, AppError>> {
+    this.photoRows.delete(fingerprint);
+    for (const key of [...this.sightings.keys()]) {
+      if (key.startsWith(`${fingerprint} `)) this.sightings.delete(key);
+    }
+    return Promise.resolve(ok(undefined));
+  }
+
+  counts(root: string | null): Promise<Result<PhotosCounts, AppError>> {
+    const canonicalRoot = root === null ? null : canonicalPath(root);
+    const scoped = canonicalRoot === null
+      ? new Set(this.photoRows.keys())
+      : new Set([
+        ...[...this.sightings.values()]
+          .filter((sighting) => isUnderRoot(sighting.currentPath, canonicalRoot))
+          .map((sighting) => sighting.fingerprint),
+        ...[...this.photoRows.values()]
+          .filter((photo) => isUnderRoot(photo.currentPath, canonicalRoot))
+          .map((photo) => photo.fingerprint),
+      ]);
+    const photoRows = [...this.photoRows.values()].filter((photo) => scoped.has(photo.fingerprint));
+    const sightingRows = [...this.sightings.values()].filter((sighting) => scoped.has(sighting.fingerprint));
+    const bySightingCount = new Map<string, number>();
+    for (const sighting of sightingRows) bySightingCount.set(sighting.fingerprint, (bySightingCount.get(sighting.fingerprint) ?? 0) + 1);
+    return Promise.resolve(ok({
+      photos: photoRows.length,
+      paths: sightingRows.length,
+      exifRead: photoRows.filter((photo) => photo.exifReadAt !== null).length,
+      exifFailed: photoRows.filter((photo) => photo.exifReadAt === null).length,
+      missing: photoRows.filter((photo) => photo.missingAt !== null).length,
+      duplicates: [...bySightingCount.values()].filter((count) => count > 1).length,
+    }));
+  }
+
+  startPhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>> {
+    this.runs.set(run.runId, run);
+    return Promise.resolve(ok(undefined));
+  }
+
+  updatePhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>> {
+    this.runs.set(run.runId, run);
+    return Promise.resolve(ok(undefined));
+  }
+}
+
+const sightingKey = (fingerprint: string, currentPath: string): string => `${fingerprint} ${currentPath}`;
+
+const isUnderRoot = (candidate: string, root: string): boolean =>
+  candidate === root || candidate.startsWith(`${root}/`);

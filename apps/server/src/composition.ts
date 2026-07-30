@@ -1,4 +1,5 @@
 import { access, constants } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import packageJson from '../../../package.json' with { type: 'json' };
 import { z } from 'zod';
 
@@ -10,7 +11,14 @@ import {
 import { GeminiNativeAnalyzerAdapter } from '@adapters/gemini/index.js';
 import { JsonCredentialsStore, KeychainCredentialsStore, NdjsonMigrationLog } from '@adapters/credentials/index.js';
 import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
-import { JsonConfigStore, SqlJsCatalogRepositoryFactory, SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
+import {
+  HomeLock,
+  JsonConfigStore,
+  SqlJsCatalogRepositoryFactory,
+  SqlJsGlobalCatalogStore,
+  SqlJsPhotosStore,
+} from '@adapters/db/index.js';
+import { ExifrExifAdapter } from '@adapters/exif/index.js';
 import { NodeCliPathAdapter } from '@adapters/cli-path/index.js';
 import { OnnxFaceEngineAdapter } from '@adapters/faces/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
@@ -44,6 +52,7 @@ import type {
   CredentialsStore,
   CredentialValueConflict,
   DependencyStatus,
+  ExifPort,
   FaceEnginePort,
   CliPathPort,
   FileSystemPort,
@@ -57,6 +66,7 @@ import type {
   LocalAiRuntimePort,
   MediaPort,
   ModelDownloadPort,
+  PhotosStore,
   PlacesPort,
   ProvidersPort,
   ProviderTestResult,
@@ -73,6 +83,8 @@ export interface AppDeps {
   cliPath: CliPathPort;
   catalogs: CatalogRepositoryFactory;
   globalCatalog: GlobalCatalogStore;
+  photos: PhotosStore;
+  exif: ExifPort;
   config: ConfigStore;
   credentials: CredentialsStore;
   fs: FileSystemPort;
@@ -148,15 +160,28 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     },
   });
   const downloads = new HuggingFaceWhisperModelDownloader({ homeDirectory });
+  const catalogLock = new HomeLock({
+    homeDirectory: homeDirectory ?? homedir(),
+    processName: config.processName ?? 'cli',
+    lockMode: config.catalogLockMode ?? 'lazy',
+  });
   return {
     version: config.version ?? packageJson.version,
     cliPath: new NodeCliPathAdapter({ commandName: CLI_COMMAND_NAME, ownedInstallPaths: CLI_OWNED_INSTALL_PATHS }),
     catalogs: new SqlJsCatalogRepositoryFactory(),
     globalCatalog: new SqlJsGlobalCatalogStore({
       homeDirectory,
+      lock: catalogLock,
       processName: config.processName ?? 'cli',
       lockMode: config.catalogLockMode ?? 'lazy',
     }),
+    photos: new SqlJsPhotosStore({
+      homeDirectory,
+      lock: catalogLock,
+      processName: config.processName ?? 'cli',
+      lockMode: config.catalogLockMode ?? 'lazy',
+    }),
+    exif: new ExifrExifAdapter(),
     config: configStore,
     credentials,
     fs: new NodeFileSystemPort({ workingDirectory, homeDirectory }),

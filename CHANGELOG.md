@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Photo cataloging foundations: `avc photos scan|status|forget` and `/api/photos/scan|status|forget` index photos (jpg/jpeg/png/heic/arw/dng) into a new `~/.ai-video-cataloger/photos.db` by full-content `ph_` fingerprint, with EXIF capture time/camera/GPS extraction at scan and a cancellable, batch-resumable `photo_scan` job.
 - A Map view plots every catalogued video that carries GPS coordinates on an offline basemap, clustering nearby pins and opening the video from a pin; it always states its coverage ("110 of 3752 catalogued files have location") and shows an explicit empty state when no file carries GPS. The map downloads nothing: no map tiles are ever requested, and the geographic outline ships with the app.
 - `GET /api/catalog/locations` returns every catalog file that carries GPS coordinates together with the catalog-wide file total, so a client can state its own coverage honestly.
 - The video details panel shows the recorded coordinates of a catalogued file and a jump-to-map action.
@@ -35,6 +36,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Global catalog schema v11: `face_observations` gains a `media` column (default `video`) preparing the shared face-identity pool for photos.
+- The advisory catalog home lock is now a single shared owner across all catalog stores in a process; disposing or flushing one store no longer releases the lock while another still holds a lease.
 - The packaged desktop renderer is served with a Content-Security-Policy that permits no remote origin, so no renderer code path — present or future — can reach the network without an explicit, documented policy change (ADR-0013).
 - Face clustering no longer makes founding an identity harder than joining one: the auto-assign floor rises to 0.50, matching the new-cluster floor, and a new identity needs two mutually similar observations instead of three (ADR-0012).
 - Exemplar crops are sampled across files — at most one per file until a person has five — so a person spanning many folders is verifiable instead of showing five near-duplicates from one day; `faces people` now returns every stored exemplar path.

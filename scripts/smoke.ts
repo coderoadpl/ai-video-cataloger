@@ -2,10 +2,13 @@ import { spawn } from 'node:child_process';
 import {
   accessSync,
   constants,
+  copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
   readdirSync,
+  renameSync,
   rmSync,
   statSync,
   writeFileSync,
@@ -481,6 +484,70 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
   assert(error.type === 'error' && error.code === 'FOLDER_NOT_FOUND', `scan missing: expected FOLDER_NOT_FOUND, got ${JSON.stringify(error)}`);
 };
 
+const minimalJpegBytes = (seed: number): Buffer =>
+  Buffer.from([0xff, 0xd8, seed, 0xff, 0xd9]);
+
+const photosCli = async (home: string, folder: string): Promise<void> => {
+  const env = { HOME: home };
+  const photosDir = join(folder, 'photos');
+  mkdirSync(photosDir, { recursive: true });
+  writeFileSync(join(photosDir, 'a.jpg'), minimalJpegBytes(1));
+  writeFileSync(join(photosDir, 'b.jpg'), minimalJpegBytes(2));
+  writeFileSync(join(photosDir, 'notes.txt'), 'not a photo');
+  writeFileSync(join(photosDir, '._a.jpg'), 'apple double sidecar');
+
+  const scan = await run(['photos', 'scan', photosDir, '--json'], env, folder);
+  assert(scan.code === 0, `photos scan: expected exit 0, got ${scan.code}.\nstdout: ${scan.stdout}\nstderr: ${scan.stderr}`);
+  const scanCompleted = z.object({ media: z.literal('photo'), filesTotal: z.literal(2), photosNew: z.literal(2) })
+    .parse(completedData(scan, 'photos scan'));
+  assert(scanCompleted.photosNew === 2, 'photos scan: expected two new photos');
+
+  renameSync(join(photosDir, 'a.jpg'), join(photosDir, 'renamed.jpg'));
+  const rescan = await run(['photos', 'scan', photosDir, '--json'], env, folder);
+  assert(rescan.code === 0, `photos scan (rename): expected exit 0, got ${rescan.code}.\nstdout: ${rescan.stdout}\nstderr: ${rescan.stderr}`);
+  z.object({ media: z.literal('photo'), photosNew: z.literal(0) }).parse(completedData(rescan, 'photos scan (rename)'));
+
+  const statusAfterRename = await run(['photos', 'status', photosDir, '--json'], env, folder);
+  assert(statusAfterRename.code === 0, `photos status: expected exit 0, got ${statusAfterRename.code}.\nstdout: ${statusAfterRename.stdout}`);
+  z.object({
+    media: z.literal('photo'),
+    counts: z.object({ photos: z.literal(2), paths: z.literal(2) }),
+  }).parse(completedData(statusAfterRename, 'photos status (after rename)'));
+
+  copyFileSync(join(photosDir, 'b.jpg'), join(photosDir, 'copy-of-b.jpg'));
+  const rescanDuplicate = await run(['photos', 'scan', photosDir, '--json'], env, folder);
+  assert(rescanDuplicate.code === 0, `photos scan (duplicate): expected exit 0, got ${rescanDuplicate.code}.`);
+
+  const statusAfterDuplicate = await run(['photos', 'status', photosDir, '--json'], env, folder);
+  assert(statusAfterDuplicate.code === 0, `photos status (duplicate): expected exit 0, got ${statusAfterDuplicate.code}.`);
+  z.object({
+    media: z.literal('photo'),
+    counts: z.object({ photos: z.literal(2), paths: z.literal(3), duplicates: z.literal(1) }),
+  }).parse(completedData(statusAfterDuplicate, 'photos status (after duplicate)'));
+
+  const forget = await run(['photos', 'forget', photosDir, '--json'], env, folder);
+  assert(forget.code === 0, `photos forget: expected exit 0, got ${forget.code}.\nstdout: ${forget.stdout}\nstderr: ${forget.stderr}`);
+  z.object({ media: z.literal('photo'), photosDeleted: z.literal(2) }).parse(completedData(forget, 'photos forget'));
+
+  const statusAfterForget = await run(['photos', 'status', photosDir, '--json'], env, folder);
+  assert(statusAfterForget.code === 0, `photos status (after forget): expected exit 0, got ${statusAfterForget.code}.`);
+  z.object({ media: z.literal('photo'), counts: z.object({ photos: z.literal(0) }) })
+    .parse(completedData(statusAfterForget, 'photos status (after forget)'));
+
+  const missingPhotosDir = join(folder, 'missing-photos');
+  const scanMissing = await run(['photos', 'scan', missingPhotosDir, '--json'], env, folder);
+  const scanMissingExpected = EXIT_CODE_BY_ERROR_CODE.folder_not_found;
+  assert(
+    scanMissing.code === scanMissingExpected,
+    `photos scan missing: expected exit ${scanMissingExpected}, got ${scanMissing.code}.\nstdout: ${scanMissing.stdout}\nstderr: ${scanMissing.stderr}`,
+  );
+  const scanMissingError = errorEvent(scanMissing, 'photos scan missing');
+  assert(
+    scanMissingError.type === 'error' && scanMissingError.code === 'FOLDER_NOT_FOUND',
+    `photos scan missing: expected FOLDER_NOT_FOUND, got ${JSON.stringify(scanMissingError)}`,
+  );
+};
+
 const startedAt = Date.now();
 const tempDirs: string[] = [];
 try {
@@ -495,6 +562,8 @@ try {
   const folder = mkdtempSync(join(tmpdir(), 'avc-smoke-folder-'));
   tempDirs.push(home, folder);
   await driveCli(home, folder);
+  console.log('smoke: driving the photos CLI...');
+  await photosCli(home, folder);
   console.log(`\nsmoke: PASS (${((Date.now() - startedAt) / 1000).toFixed(1)}s)`);
 } catch (error) {
   const message = error instanceof SmokeFailure ? error.message : String(error);

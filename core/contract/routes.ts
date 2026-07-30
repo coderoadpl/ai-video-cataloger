@@ -364,6 +364,54 @@ export const materializeSummarySchema = z.object({
   failures: z.array(driveRunFailureSchema),
 });
 
+export const photosScanInputSchema = z.object({
+  root: canonicalPathString(),
+});
+
+export const photoScanSummarySchema = z.object({
+  media: z.literal('photo'),
+  root: z.string(),
+  runId: z.string(),
+  filesTotal: z.number(),
+  photosNew: z.number(),
+  photosUpdated: z.number(),
+  pathsSeen: z.number(),
+  skippedUnchanged: z.number(),
+  readFailed: z.number(),
+  exifRead: z.number(),
+  exifFailed: z.number(),
+  missingMarked: z.number(),
+});
+
+export const photosStatusInputSchema = z.object({
+  root: canonicalPathString().optional(),
+});
+
+export const photosStatusOutputSchema = z.object({
+  media: z.literal('photo'),
+  root: z.string().nullable(),
+  counts: z.object({
+    photos: z.number(),
+    paths: z.number(),
+    exifRead: z.number(),
+    exifFailed: z.number(),
+    missing: z.number(),
+    duplicates: z.number(),
+  }),
+});
+
+export const photosForgetInputSchema = z.object({
+  root: canonicalPathString(),
+});
+
+export const photosForgetOutputSchema = z.object({
+  media: z.literal('photo'),
+  root: z.string(),
+  pathsRemoved: z.number(),
+  photosDeleted: z.number(),
+  photosRepointed: z.number(),
+});
+
 export const thumbnailInputSchema = videoPathInputSchema.merge(forceInputSchema).extend({
   priority: z.enum(['foreground', 'background']).default('foreground'),
 });
@@ -907,6 +955,7 @@ export const jobKindSchema = z.enum([
   'materialize',
   'thumbnails',
   'gps_backfill',
+  'photo_scan',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -947,6 +996,10 @@ export const jobProgressStepSchema = z.enum([
   'gps_timeline_loaded',
   'gps_backfill_file',
   'gps_backfill_done',
+  'photo-file',
+  'photo-file-skipped',
+  'photo-exif-failed',
+  'photo-run-summary',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -993,6 +1046,7 @@ export const jobResultSchema = z.union([
   faceArtifactsStatusOutputSchema,
   facesIndexOutputSchema,
   materializeSummarySchema,
+  photoScanSummarySchema,
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,
   facesExemplarsOutputSchema,
@@ -1529,6 +1583,24 @@ export const API_ROUTES = {
     input: facesExemplarsInputSchema,
     output: jobAcceptedOutputSchema,
   },
+  photosScan: {
+    method: 'POST',
+    path: '/api/photos/scan',
+    input: photosScanInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
+  photosStatus: {
+    method: 'GET',
+    path: '/api/photos/status',
+    input: photosStatusInputSchema,
+    output: photosStatusOutputSchema,
+  },
+  photosForget: {
+    method: 'POST',
+    path: '/api/photos/forget',
+    input: photosForgetInputSchema,
+    output: photosForgetOutputSchema,
+  },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -1597,4 +1669,7 @@ export const API_PATHS = {
   facesStatus: API_ROUTES.facesStatus.path,
   facesRecluster: API_ROUTES.facesRecluster.path,
   facesExemplars: API_ROUTES.facesExemplars.path,
+  photosScan: API_ROUTES.photosScan.path,
+  photosStatus: API_ROUTES.photosStatus.path,
+  photosForget: API_ROUTES.photosForget.path,
 } as const;

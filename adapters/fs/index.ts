@@ -1,8 +1,9 @@
 import { createHash } from 'node:crypto';
-import { constants } from 'node:fs';
+import { constants, createReadStream } from 'node:fs';
 import { access, copyFile, link, mkdir, open, readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { homedir, tmpdir } from 'node:os';
 import path from 'node:path';
+import { pipeline } from 'node:stream/promises';
 
 import {
   appError,
@@ -216,6 +217,17 @@ export class NodeFileSystemPort implements FileSystemPort {
       return ok(hash.digest('hex').substring(0, 16));
     } catch {
       return ok(null);
+    }
+  }
+
+  async fullContentHash(value: string): Promise<Result<string | null, AppError>> {
+    try {
+      const hash = createHash('sha256');
+      await pipeline(createReadStream(value), hash);
+      return ok(hash.digest('hex'));
+    } catch (cause) {
+      if (isMissing(cause)) return ok(null);
+      return failure('read_error', cause, `Failed to hash file: ${value}`);
     }
   }
 

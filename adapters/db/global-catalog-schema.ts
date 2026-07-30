@@ -115,6 +115,7 @@ export const faceObservations = sqliteTable('face_observations', {
   quality: real('quality'),
   personId: text('person_id'),
   cropPath: text('crop_path'),
+  media: text('media').notNull().default('video'),
 });
 
 export const faceIndexState = sqliteTable('face_index_state', {
@@ -359,4 +360,8 @@ export const migrateGlobalCatalogSchemaSqlV10 = [
       place,
       tokenize=unicode61
     )`,
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV11 = [
+  "ALTER TABLE face_observations ADD COLUMN media TEXT NOT NULL DEFAULT 'video'",
 ] as const;

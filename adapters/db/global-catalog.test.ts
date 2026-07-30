@@ -24,6 +24,10 @@ import {
   migrateGlobalCatalogSchemaSqlV4,
   migrateGlobalCatalogSchemaSqlV5,
   migrateGlobalCatalogSchemaSqlV6,
+  migrateGlobalCatalogSchemaSqlV7,
+  migrateGlobalCatalogSchemaSqlV8,
+  migrateGlobalCatalogSchemaSqlV9,
+  migrateGlobalCatalogSchemaSqlV10,
 } from './global-catalog-schema.js';
 
 const tempRoots: string[] = [];
@@ -1237,7 +1241,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       'docid', 'fingerprint', 'file_name', 'final_name', 'description', 'transcript', 'tags_text', 'place',
     ]);
     expect(after.searchFtsSql).toContain('place');
-    expect(version).toBe(10);
+    expect(version).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
     expect(analysisColumns.filter((column) => column[5] !== 0).map((column) => [column[1], column[5]])).toEqual([
       ['fingerprint', 1],
       ['config_id', 2],
@@ -1260,6 +1264,32 @@ describe('SqlJsGlobalCatalogStore', () => {
       ['fixture-v8-analysis', 'legacy', 1],
       ['fixture-v8-analysis', 'legacy', 2],
     ]);
+  });
+
+  it('migrates a v10 catalog to v11 losslessly, adding media=video to face_observations only', async () => {
+    const home = await tempHome();
+    await writeV10Catalog(home);
+    const tableNames = ['folders', 'files', 'analyses', 'tags', 'file_tags', 'tag_aliases', 'drive_runs', 'people', 'face_index_state'];
+
+    const SQL = await initSqlJs();
+    const before = new SQL.Database(await readFile(path.join(home, '.ai-video-cataloger', 'catalog.db')));
+    const beforeSnapshot = snapshotAllTables(before, tableNames);
+    const beforeObservations = before.exec('SELECT obs_id, fingerprint, kind, frame_ts_s, bbox_json, quality, person_id, crop_path FROM face_observations')[0]?.values ?? [];
+    before.close();
+
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect((await store.counts()).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    const after = new SQL.Database(await readFile(store.databasePath()));
+    const versionResult = after.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
+    const afterSnapshot = snapshotAllTables(after, tableNames);
+    const afterObservations = after.exec('SELECT obs_id, fingerprint, kind, frame_ts_s, bbox_json, quality, person_id, crop_path, media FROM face_observations')[0]?.values ?? [];
+    after.close();
+
+    expect(versionResult[0]?.values[0]?.[0]).toBe(11);
+    expect(afterSnapshot).toEqual(beforeSnapshot);
+    expect(afterObservations).toEqual(beforeObservations.map((row) => [...row, 'video']));
   });
 
   it('fails closed when the catalog schema is newer than the binary', async () => {
@@ -1955,6 +1985,65 @@ const catalogContentsSnapshot = (client: Database): CatalogContentsSnapshot => (
       WHERE type = 'table' AND name = 'search_documents_fts'`,
   )[0]?.values ?? []),
 });
+
+const writeV10Catalog = async (home: string): Promise<{ observation: string[] }> => {
+  const SQL = await initSqlJs();
+  const client = new SQL.Database();
+  for (const statement of createGlobalCatalogSchemaSqlV1) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV2) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV3) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV4) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV5) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV6) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV7) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV8) client.run(statement);
+  client.run('INSERT INTO folders(folder_id, current_path, display_name, first_seen_at, last_seen_at) VALUES (?, ?, ?, ?, ?)', [
+    folder.folderId,
+    folder.currentPath,
+    folder.displayName,
+    folder.firstSeenAt,
+    folder.lastSeenAt,
+  ]);
+  client.run('INSERT INTO files(fingerprint, folder_id, file_name, size, duration_s, processed_at, analyzer, model) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+    file.fingerprint,
+    folder.folderId,
+    file.fileName,
+    file.size,
+    file.durationS,
+    file.processedAt,
+    file.analyzer,
+    file.model,
+  ]);
+  client.run('INSERT INTO analyses(fingerprint, final_name, description, transcript, language) VALUES (?, ?, ?, ?, ?)', [
+    file.fingerprint,
+    'final.mp4',
+    'a description',
+    'a transcript',
+    'en',
+  ]);
+  for (const statement of migrateGlobalCatalogSchemaSqlV9) client.run(statement);
+  for (const statement of migrateGlobalCatalogSchemaSqlV10) client.run(statement);
+  const observation = [`${file.fingerprint}:face:1:1`, file.fingerprint, 'face', '1', '{"x":0,"y":0,"width":50,"height":50}', '0.9', '', ''];
+  client.run('INSERT INTO face_observations(obs_id, fingerprint, kind, frame_ts_s, bbox_json, quality, person_id, crop_path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', [
+    observation[0] ?? '',
+    observation[1] ?? '',
+    observation[2] ?? '',
+    1,
+    observation[4] ?? '',
+    0.9,
+    null,
+    null,
+  ]);
+  client.run('INSERT INTO schema_meta(version) VALUES (10)');
+  const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+  await mkdir(path.dirname(databasePath), { recursive: true });
+  await writeFile(databasePath, Buffer.from(client.export()));
+  client.close();
+  return { observation };
+};
+
+const snapshotAllTables = (client: Database, tableNames: readonly string[]): Record<string, unknown[][]> =>
+  Object.fromEntries(tableNames.map((table) => [table, client.exec(`SELECT * FROM ${table}`)[0]?.values ?? []]));
 
 const writeV8CatalogFixture = async (
   home: string,

@@ -15,6 +15,26 @@ export {
   type GlobalCatalogAdapterOptions,
 } from './global-catalog.js';
 export {
+  CatalogAppError,
+  HomeLock,
+  type CatalogLockFs,
+  type HomeLockOptions,
+} from './home-lock.js';
+export {
+  SqlJsPhotosStore,
+  photosDbPath,
+  type PhotosAdapterOptions,
+} from './photos-store.js';
+export {
+  PHOTOS_SCHEMA_VERSION,
+  createPhotosSchemaSqlV1,
+  photoFolders,
+  photoPaths,
+  photoRuns,
+  photos,
+  photosSchema,
+} from './photos-schema.js';
+export {
   analyses,
   analysisConfigs,
   createGlobalCatalogSchemaSqlV1,

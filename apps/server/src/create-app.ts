@@ -30,6 +30,7 @@ export const createApp = (config: AppConfig = {}, inMemoryDepsFactory?: InMemory
       return folders.ok ? folders.value.map((folder) => folder.currentPath) : [];
     },
     dispose: async () => {
+      await deps.photos.dispose();
       await deps.globalCatalog.dispose();
     },
   };

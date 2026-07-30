@@ -40,6 +40,9 @@ import {
   forgetCatalogEntry,
   installWhisperRuntime,
   aliasTag,
+  enqueuePhotoScan,
+  photosForget,
+  photosStatus,
   listTags,
   suggestTagAliases,
   listJobs,
@@ -572,6 +575,28 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.facesExemplars.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.facesExemplars.output);
     return respond(await withCatalogWriteLockForJob(deps, () => facesExemplars(deps, input.value)), API_ROUTES.facesExemplars.output);
+  });
+
+  app.post(API_ROUTES.photosScan.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosScan.output);
+    const input = parseInput(API_ROUTES.photosScan.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosScan.output);
+    return respond(await withCatalogWriteLockForJob(deps, () => enqueuePhotoScan(deps, input.value)), API_ROUTES.photosScan.output);
+  });
+
+  app.get(API_ROUTES.photosStatus.path, async (context) => {
+    const input = parseInput(API_ROUTES.photosStatus.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.photosStatus.output);
+    return respond(await photosStatus(deps, input.value), API_ROUTES.photosStatus.output);
+  });
+
+  app.post(API_ROUTES.photosForget.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosForget.output);
+    const input = parseInput(API_ROUTES.photosForget.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosForget.output);
+    return respond(await withCatalogWriteLock(deps, () => photosForget(deps, input.value)), API_ROUTES.photosForget.output);
   });
 
   return app;

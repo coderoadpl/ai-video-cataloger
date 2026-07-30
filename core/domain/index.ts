@@ -10,6 +10,7 @@ export * from './video.js';
 export * from './global-catalog.js';
 export * from './faces.js';
 export * from './paths.js';
+export * from './photo.js';
 export * from './stale-cli.js';
 export * from './tag-alias-suggestions.js';
 export * from './timeline.js';
