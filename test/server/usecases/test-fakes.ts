@@ -132,6 +132,7 @@ export class InMemoryFileSystem implements FileSystemPort {
   private readonly symlinks = new Set<string>();
   private readonly readOnlyPaths = new Set<string>();
   private readonly onDiskForms = new Map<string, string>();
+  private readonly unreadableDirectories = new Set<string>();
 
   constructor(private readonly workingDirectory = '/work') {
     this.addDirectory(workingDirectory);
@@ -149,6 +150,10 @@ export class InMemoryFileSystem implements FileSystemPort {
 
   markReadOnly(value: string): void {
     this.readOnlyPaths.add(this.normalize(value));
+  }
+
+  markUnreadable(value: string): void {
+    this.unreadableDirectories.add(this.normalize(value));
   }
 
   snapshot(): { files: [string, FakeFile][]; directories: string[]; symlinks: string[] } {
@@ -226,6 +231,9 @@ export class InMemoryFileSystem implements FileSystemPort {
 
   listDirectory(value: string): Promise<Result<DirectoryEntry[], AppError>> {
     const normalized = this.normalize(value);
+    if (this.unreadableDirectories.has(normalized)) {
+      return Promise.resolve({ ok: false, error: appError('read_error', `Cannot read directory: ${normalized}`) });
+    }
     if (!this.directories.has(normalized)) {
       return Promise.resolve({ ok: false, error: appError('not_a_directory', `Not a directory: ${normalized}`) });
     }

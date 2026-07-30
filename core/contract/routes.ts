@@ -386,6 +386,7 @@ export const photoScanSummarySchema = z.object({
   exifRead: z.number(),
   exifFailed: z.number(),
   missingMarked: z.number(),
+  folderReadErrors: z.number(),
   proxies: z.object({
     ran: z.boolean(),
     generated: z.number(),
@@ -1244,6 +1245,7 @@ export const jobProgressStepSchema = z.enum([
   'gps_backfill_done',
   'photo-file',
   'photo-file-skipped',
+  'photo-folder-skipped',
   'photo-exif-failed',
   'photo-run-summary',
   'photo-proxies-scanning',

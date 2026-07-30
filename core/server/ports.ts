@@ -1205,6 +1205,7 @@ export type ProcessJobStep =
   | 'gps_backfill_done'
   | 'photo-file'
   | 'photo-file-skipped'
+  | 'photo-folder-skipped'
   | 'photo-exif-failed'
   | 'photo-run-summary'
   | 'photo-proxies-scanning'

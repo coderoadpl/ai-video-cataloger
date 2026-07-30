@@ -93,6 +93,7 @@ export interface PhotoScanSummary {
   exifRead: number;
   exifFailed: number;
   missingMarked: number;
+  folderReadErrors: number;
   proxies: PhotoScanProxiesSummary;
 }
 
@@ -162,8 +163,12 @@ export const runPhotoScan = async (
   await report(progress, 'run-started', { root });
 
   const candidatePaths: string[] = [];
-  await walkPhotoTree(deps.fs, root, candidatePaths);
+  const unreadableFolders: string[] = [];
+  await walkPhotoTree(deps.fs, root, candidatePaths, unreadableFolders);
   candidatePaths.sort((left, right) => left.localeCompare(right));
+  for (const folder of unreadableFolders) {
+    await report(progress, 'photo-folder-skipped', { path: folder, reason: 'read_error' });
+  }
 
   const counters = {
     photosNew: 0,
@@ -174,6 +179,7 @@ export const runPhotoScan = async (
     exifRead: 0,
     exifFailed: 0,
     missingMarked: 0,
+    folderReadErrors: unreadableFolders.length,
   };
 
   let run: PhotoRunRecord = {
@@ -218,7 +224,7 @@ export const runPhotoScan = async (
     if (!batchResult.ok) return batchResult;
   }
 
-  const reconciled = await reconcileRoot(deps, root, candidatePaths, supersededFingerprints, counters);
+  const reconciled = await reconcileRoot(deps, root, candidatePaths, supersededFingerprints, unreadableFolders, counters);
   if (!reconciled.ok) return reconciled;
 
   const finishedAt = new Date().toISOString();
@@ -245,6 +251,7 @@ export const runPhotoScan = async (
     exifRead: counters.exifRead,
     exifFailed: counters.exifFailed,
     missingMarked: counters.missingMarked,
+    folderReadErrors: counters.folderReadErrors,
     proxies,
   });
 };
@@ -286,6 +293,7 @@ interface ScanCounters {
   exifRead: number;
   exifFailed: number;
   missingMarked: number;
+  folderReadErrors: number;
 }
 
 const processCandidate = async (
@@ -444,18 +452,24 @@ const processCandidate = async (
   return ok('done');
 };
 
+const isUnderUnreadableFolder = (currentPath: string, unreadableFolders: readonly string[]): boolean =>
+  unreadableFolders.some((folder) => currentPath === folder || currentPath.startsWith(`${folder}/`));
+
 const reconcileRoot = async (
   deps: PhotosDeps,
   root: string,
   seenPaths: readonly string[],
   supersededFingerprints: ReadonlySet<string>,
+  unreadableFolders: readonly string[],
   counters: ScanCounters,
 ): Promise<Result<void, AppError>> => {
   return deps.photos.withBatch(async () => {
     const seen = new Set(seenPaths);
     const existing = await deps.photos.listSightingsUnderRoot(root);
     if (!existing.ok) return existing;
-    const stale = existing.value.filter((sighting) => !seen.has(sighting.currentPath));
+    const stale = existing.value.filter(
+      (sighting) => !seen.has(sighting.currentPath) && !isUnderUnreadableFolder(sighting.currentPath, unreadableFolders),
+    );
     const affectedFingerprints = new Set([...stale.map((sighting) => sighting.fingerprint), ...supersededFingerprints]);
     for (const sighting of stale) {
       const deleted = await deps.photos.deleteSighting(sighting.fingerprint, sighting.currentPath);
@@ -495,9 +509,17 @@ const reconcileRoot = async (
   });
 };
 
-const walkPhotoTree = async (fs: FileSystemPort, folder: string, candidates: string[]): Promise<void> => {
+const walkPhotoTree = async (
+  fs: FileSystemPort,
+  folder: string,
+  candidates: string[],
+  unreadableFolders: string[],
+): Promise<void> => {
   const listed = await fs.listDirectory(folder);
-  if (!listed.ok) return;
+  if (!listed.ok) {
+    unreadableFolders.push(folder);
+    return;
+  }
   const entries = listed.value.sort((left, right) => left.path.localeCompare(right.path));
   for (const entry of entries) {
     if (entry.kind === 'file') {
@@ -506,7 +528,7 @@ const walkPhotoTree = async (fs: FileSystemPort, folder: string, candidates: str
       if (!isSupportedPhotoExtension(name)) continue;
       candidates.push(entry.path);
     } else if (entry.kind === 'directory' && !shouldSkipDirectory(entry.name)) {
-      await walkPhotoTree(fs, entry.path, candidates);
+      await walkPhotoTree(fs, entry.path, candidates, unreadableFolders);
     }
   }
 };

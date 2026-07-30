@@ -859,6 +859,7 @@ describe('route schemas', () => {
       exifRead: 6,
       exifFailed: 4,
       missingMarked: 1,
+      folderReadErrors: 0,
       proxies: {
         ran: true,
         generated: 8,
