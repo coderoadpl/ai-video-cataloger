@@ -415,10 +415,13 @@ pnpm run qa:walkthrough -- --app "release/mac-arm64/AI Video Cataloger.app" --fi
 ```
 
 Every DMG handoff first drives the packaged app through this scripted
-walkthrough — launch, open folder, tree, analysis, search, settings, wizard —
-and the screenshot set it captures is reviewed before the build is offered. The
-run is isolated: a temp user-data directory, a temp home and a disabled
-keychain. See [docs/qa/release-walkthrough.md](docs/qa/release-walkthrough.md).
+walkthrough — launch, open folder, tree, analysis, search, Photos tab, photo
+grid, photo detail, settings, wizard — and the screenshot set it captures is
+reviewed before the build is offered. The run is isolated: a temp user-data
+directory, a temp home and a disabled keychain. See
+[docs/qa/release-walkthrough.md](docs/qa/release-walkthrough.md); the ordered
+pre-release pass around it is
+[docs/qa/release-readiness.md](docs/qa/release-readiness.md).
 
 ## License
 

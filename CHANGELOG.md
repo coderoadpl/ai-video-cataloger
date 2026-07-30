@@ -20,6 +20,15 @@ release history jumps from `0.5.10` to `0.5.12`.
   so a large library is fully browsable instead of silently truncated.
 - The photos database gains schema version 2 (indexes on `photos.current_path`
   and `(proxy_state, current_path)`), migrated in place on open.
+- `pnpm run test:e2e:matrix` gains three photo legs: `photos-real-decode`
+  (scan → real `sips` proxy/thumb decode → status → search), `photos-local-analysis`
+  (a real local analyzer over the generated proxies) and the opt-in
+  `photos-raw-sample` (`E2E_PHOTOS_SAMPLE_RAW`).
+- `pnpm run qa:walkthrough` captures three photo steps — `photos-tab`,
+  `photos-grid`, `photo-detail` — and skips them with a named reason when the
+  QA home has no catalogued photos.
+- [docs/qa/release-readiness.md](docs/qa/release-readiness.md) records the
+  ordered pre-release pass (gates → e2e → packaged app → docs → real-data sanity).
 - `photos status` reports a new `facesIndexed` count (foundational plumbing for photo faces indexing landing in a follow-up wave); the underlying `FaceObservation` record and its storage now carry a `media: 'video' | 'photo'` marker so photo-sourced face observations can share the same people pool as video ones.
 - Photo search: `avc photos search "<query>"`, `/api/photos/search` and a search
   box in the Photos tab query file names, descriptions, tags and places over the
