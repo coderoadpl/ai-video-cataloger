@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- The photos database gains schema version 2 (indexes on `photos.current_path`
+  and `(proxy_state, current_path)`), migrated in place on open.
 - `photos status` reports a new `facesIndexed` count (foundational plumbing for photo faces indexing landing in a follow-up wave); the underlying `FaceObservation` record and its storage now carry a `media: 'video' | 'photo'` marker so photo-sourced face observations can share the same people pool as video ones.
 - Photo search: `avc photos search "<query>"`, `/api/photos/search` and a search
   box in the Photos tab query file names, descriptions, tags and places over the
@@ -63,6 +65,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Photo analysis and proxy generation now checkpoint the photos database inside a store batch — after every analyzer batch and every 50 generated proxies — so an interrupted run loses at most one analyzer batch of paid analysis instead of up to 500 photos' worth.
+- `photos scan`'s reconcile pass reads the sightings under a root through the path index instead of loading every path row in the database into memory.
 - All faces-writing jobs (`faces index`, `faces recluster`, `faces exemplars`) and the drive run's inline faces pass now serialize under a single `faces-write` resource; a concurrent request returns `conflict` instead of racing the shared people pool, and the drive run reports a new `faces_waiting` progress step while it waits its turn.
 - Global catalog schema v11: `face_observations` gains a `media` column (default `video`) preparing the shared face-identity pool for photos.
 - Global catalog schema v12: adds `idx_files_captured_at`, `idx_files_folder_id`, `idx_files_place_name`, `idx_file_tags_tag_id`, `idx_face_observations_person`, and `idx_analyses_fingerprint` indexes, so date, folder, tag and person lookups seek an index instead of scanning `files`, `file_tags` and `face_observations`. On the 3752-file reference catalog a person lookup drops from 2297 ms to 3 ms and a folder lookup from 0.28 ms to 0.03 ms.

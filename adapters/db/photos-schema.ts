@@ -151,7 +151,7 @@ export const photosSchema = {
   photosSchemaMeta,
 };
 
-export const PHOTOS_SCHEMA_VERSION = 1;
+export const PHOTOS_SCHEMA_VERSION = 2;
 
 export const createPhotosSchemaSqlV1 = [
   'CREATE TABLE schema_meta (version INTEGER PRIMARY KEY)',
@@ -241,4 +241,10 @@ export const createPhotosSchemaSqlV1 = [
       completed_at TEXT NOT NULL, engine_version INTEGER NOT NULL
     )`,
   'CREATE INDEX idx_photo_face_index_engine ON photo_face_index_state(engine_version)',
+] as const;
+
+export const createPhotosSchemaSqlV2 = [
+  'CREATE INDEX idx_photos_current_path ON photos(current_path)',
+  'CREATE INDEX idx_photos_proxy_state_path ON photos(proxy_state, current_path)',
+  'DROP INDEX IF EXISTS idx_photos_proxy_state',
 ] as const;

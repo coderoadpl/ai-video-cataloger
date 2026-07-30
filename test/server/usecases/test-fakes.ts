@@ -2002,6 +2002,7 @@ export class InMemoryPhotosStore implements PhotosStore {
   readonly photoTagAliases = new Map<string, string>();
   readonly faceIndexState = new Map<string, number>();
   persistCount = 0;
+  checkpointCount = 0;
 
   databasePath(): string {
     return '/home/.ai-video-cataloger/photos.db';
@@ -2009,6 +2010,11 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   flush(): Promise<Result<void, AppError>> {
     this.persistCount += 1;
+    return Promise.resolve(ok(undefined));
+  }
+
+  checkpoint(): Promise<Result<void, AppError>> {
+    this.checkpointCount += 1;
     return Promise.resolve(ok(undefined));
   }
 

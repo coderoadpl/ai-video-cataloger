@@ -120,9 +120,74 @@ describe('SqlJsPhotosStore', () => {
       'idx_photo_paths_folder',
       'idx_photo_paths_path',
       'idx_photos_captured_at',
+      'idx_photos_current_path',
       'idx_photos_folder',
-      'idx_photos_proxy_state',
+      'idx_photos_proxy_state_path',
     ]);
+  });
+
+  it('migrates a version 1 database to the version 2 indexes without touching its rows', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    expect((await store.upsertFolder(folder)).ok).toBe(true);
+    expect((await store.upsertPhoto(photo())).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    const SQL = await initSqlJs();
+    const downgraded = new SQL.Database(fs.readFileSync(store.databasePath()));
+    downgraded.run('DROP INDEX idx_photos_current_path');
+    downgraded.run('DROP INDEX idx_photos_proxy_state_path');
+    downgraded.run('CREATE INDEX idx_photos_proxy_state ON photos(proxy_state)');
+    downgraded.run('DELETE FROM schema_meta');
+    downgraded.run('INSERT INTO schema_meta (version) VALUES (1)');
+    fs.writeFileSync(store.databasePath(), Buffer.from(downgraded.export()));
+    downgraded.close();
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const migratedPhoto = await reopened.getPhoto(photo().fingerprint);
+    expect(migratedPhoto.ok && migratedPhoto.value?.currentPath).toBe(photo().currentPath);
+    expect((await reopened.upsertSighting(sighting())).ok).toBe(true);
+    expect((await reopened.flush()).ok).toBe(true);
+
+    const client = new SQL.Database(fs.readFileSync(reopened.databasePath()));
+    const indexes = client.exec("SELECT name FROM sqlite_master WHERE type = 'index' AND name LIKE 'idx_photos%' ORDER BY name")[0]?.values ?? [];
+    const version = client.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
+    client.close();
+
+    expect(indexes.map((row) => row[0])).toEqual([
+      'idx_photos_captured_at',
+      'idx_photos_current_path',
+      'idx_photos_folder',
+      'idx_photos_proxy_state_path',
+    ]);
+    expect(version).toBe(2);
+  });
+
+  it('checkpoint persists mid-batch work without ending the batch', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    expect((await store.upsertFolder(folder)).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    const batched = await store.withBatch(async () => {
+      const inserted = await store.upsertPhoto(photo());
+      if (!inserted.ok) return inserted;
+      const checkpointed = await store.checkpoint();
+      if (!checkpointed.ok) return checkpointed;
+
+      const observer = new SqlJsPhotosStore({ homeDirectory: home });
+      const seen = await observer.getPhoto(photo().fingerprint);
+      expect(seen.ok && seen.value?.fingerprint).toBe(photo().fingerprint);
+
+      const second = await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg' }));
+      if (!second.ok) return second;
+      return { ok: true, value: undefined } as const;
+    });
+
+    expect(batched.ok).toBe(true);
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const both = await reopened.listPhotosPage({ root: null, offset: 0, limit: 10 });
+    expect(both.ok && both.value.total).toBe(2);
   });
 
   it('round-trips folders, photos and sightings', async () => {

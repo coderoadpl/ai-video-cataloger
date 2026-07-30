@@ -56,6 +56,36 @@ perform ~2 000 full-file rewrites — unacceptable write amplification
 The PRD's resumability AC (Story 5.1) is rewritten to match: *checkpoint per
 batch of 500, resume repeats at most one batch*.
 
+**Wave 5 amendment — the batch is the unit of *cheap* work only.** Repeating a
+scan batch is nearly free (the size+mtime fast path), but repeating 500 paid
+vision calls or 500 RAW decodes is not. `PhotosStore.checkpoint()` persists
+in place without ending the batch or releasing the write lock, and the
+pipelines call it where the work is irreplaceable: after every analyzer batch
+(≤12 photos) in `runPhotoProcess`, and every 50 generated proxies in
+`runPhotoProxiesPass`. The store batch structure, the NDJSON contract and the
+scan cadence are unchanged.
+
+### 1c. Root-scope query plans at 50k — MEASURED, DECIDED
+
+`scopeForRoot`'s `current_path` range **OR** an `EXISTS` over `photo_paths`
+plans as `SCAN photos`, and that is deliberate. Measured on 50 000 photos in
+sql.js: rewriting the `EXISTS` into a non-correlated `IN (SELECT … FROM
+photo_paths …)` does yield an index-only `MULTI-INDEX OR` plan, and it wins
+hard when the root is a small slice of a big library (1 000 of 50 000: 2 ms vs
+38 ms for `photos status`) — but it loses just as hard in the common
+single-root case where the scope *is* the library (44 ms vs 7 ms for status,
+46 ms vs 1.3 ms for a grid page, because the scan short-circuits on `LIMIT`).
+Both forms sit inside the PRD's 100 ms target, so the common case keeps the
+scan.
+
+What Wave 5 does change: schema V2 adds `idx_photos_current_path` and
+`idx_photos_proxy_state_path` (replacing `idx_photos_proxy_state`, whose key
+is a prefix of it), which removes the 50 000-row temp B-tree sort from both
+candidate listings, and `listSightingsUnderRoot` stops reading every path row
+in the database into JS and uses the `idx_photo_paths_path` range instead.
+`adapters/db/photos-store-scale.test.ts` pins all of it with
+`EXPLAIN QUERY PLAN`, not with a stopwatch.
+
 ### 1b. Locking — shared home-lock owner — DECIDED
 
 The advisory `catalog.lock` currently lives inside
