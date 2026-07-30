@@ -14,3 +14,13 @@ export const adjacentFingerprint = (
   if (nextIndex < 0 || nextIndex >= order.length) return null;
   return order[nextIndex] ?? null;
 };
+
+export interface FocusTarget {
+  select: string;
+  openViewer: boolean;
+}
+
+export const focusTarget = (order: readonly string[], fingerprint: string): FocusTarget => ({
+  select: fingerprint,
+  openViewer: order.includes(fingerprint),
+});

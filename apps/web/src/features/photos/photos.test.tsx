@@ -203,6 +203,28 @@ describe('PhotosView', () => {
     expect(screen.getByText('EXIF (UTC offset)', { exact: false })).toBeDefined();
   });
 
+  it('opens the viewer and consumes the focus request when the focused fingerprint is in the loaded page', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001' }), photoItem({ fingerprint: 'ph_0000000000000002' })];
+    stubPhotos({ roots: [{ root: '/photos', photos: 2, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
+    const onFocusConsumed = vi.fn();
+
+    renderThemed(<PhotosView active addLine={vi.fn()} focusFingerprint="ph_0000000000000002" onFocusConsumed={onFocusConsumed} />);
+
+    expect(await screen.findByTestId('photos-viewer')).toBeDefined();
+    await waitFor(() => expect(onFocusConsumed).toHaveBeenCalledTimes(1));
+  });
+
+  it('selects the detail pane without opening the viewer when the focused fingerprint is not in the loaded page', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001' })];
+    stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
+    const onFocusConsumed = vi.fn();
+
+    renderThemed(<PhotosView active addLine={vi.fn()} focusFingerprint="ph_not_loaded" onFocusConsumed={onFocusConsumed} />);
+
+    await waitFor(() => expect(screen.getAllByTestId('photos-tile')).toHaveLength(1));
+    expect(screen.queryByTestId('photos-viewer')).toBeNull();
+  });
+
   it('reports the honest dual counts in the status strip', async () => {
     const items = [photoItem({ fingerprint: 'ph_0000000000000001', sightings: 3 })];
     stubPhotos({

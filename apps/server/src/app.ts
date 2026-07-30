@@ -46,6 +46,7 @@ import {
   enqueuePhotoProcess,
   photosDetail,
   photosForget,
+  photosGpsBackfill,
   photosList,
   photosSearch,
   photosStatus,
@@ -644,6 +645,24 @@ export const buildApp = (deps: AppDeps): Hono => {
     return respond(
       await withCatalogWriteLockForJob(deps, () => enqueuePhotoProcess(deps, { ...input.value, batchSize: input.value.batchSize ?? null })),
       API_ROUTES.photosProcess.output,
+    );
+  });
+
+  app.post(API_ROUTES.photosGpsBackfill.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosGpsBackfill.output);
+    const input = parseInput(API_ROUTES.photosGpsBackfill.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosGpsBackfill.output);
+    return respond(
+      await withCatalogWriteLockForJob(deps, () => photosGpsBackfill(deps, {
+        timelinePath: input.value.timelinePath,
+        root: input.value.root ?? null,
+        dryRun: input.value.dryRun,
+        toleranceMinutes: input.value.toleranceMinutes,
+        maxVisitHours: input.value.maxVisitHours,
+        reresolvePlaces: input.value.reresolvePlaces,
+      })),
+      API_ROUTES.photosGpsBackfill.output,
     );
   });
 

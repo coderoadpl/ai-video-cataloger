@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- `photos gps backfill <timeline.json>` and `POST /api/photos/gps/backfill` match photo capture times against a Google Timeline export using the same matcher and precedence rules as the video backfill, resolve places offline through the shared places dataset, and push resolved place text into the photo search index (a photo's place is now searchable in the Photos tab). Rows whose capture time rests on an assumed timezone (`exif_local_assumed`/`file_mtime`) match with a tolerance widened to at least 180 minutes; the summary reports how many matches relied on that widening.
+- The map now plots photo pins alongside video pins on the same canvas, with an All/Videos/Photos filter and honest per-media coverage captions ("N of M catalogued photos have location"); clicking a photo pin opens it in the Photos tab. `GET /api/catalog/locations` gains `totalPhotos`/`locatedPhotos` and a `media` marker per location; existing video-only consumers are unaffected (the video counts keep their prior meaning, and old envelopes without the new fields still parse).
 - `photos status` reports a new `facesIndexed` count (foundational plumbing for photo faces indexing landing in a follow-up wave); the underlying `FaceObservation` record and its storage now carry a `media: 'video' | 'photo'` marker so photo-sourced face observations can share the same people pool as video ones.
 - Photo search: `avc photos search "<query>"`, `/api/photos/search` and a search
   box in the Photos tab query file names, descriptions, tags and places over the

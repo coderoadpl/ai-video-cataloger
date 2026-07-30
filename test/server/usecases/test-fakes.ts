@@ -15,17 +15,20 @@ import {
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
+  type CatalogPlace,
   type CatalogVariant,
   type ConfigKey,
   type ExifSummary,
   type FaceObservation,
   type FileArtifact,
   type GeminiUsageAccounting,
+  type GpsSource,
   type MachineProfile,
   type Person,
   type PhotoExtension,
   type Result,
   type SpendLedgerEntry,
+  type TimelineIntervalKind,
   type Video,
   type WhisperModelName,
 } from '@core/domain/index.js';
@@ -34,6 +37,7 @@ import type {
   AnalyzedFileLocation,
   ApplyGeoBackfillInput,
   ApplyGeoBackfillResult,
+  ApplyPhotoGeoBackfillInput,
   CatalogFileRecord,
   CatalogLockSnapshot,
   CatalogLocationRow,
@@ -96,7 +100,9 @@ import type {
   PhotoDetail,
   PhotoFaceIndexCandidate,
   PhotoFolderRecord,
+  PhotoGeoBackfillCandidate,
   PhotoListItem,
+  PhotoLocationRow,
   PhotoMediaPort,
   PhotoProxyCandidate,
   PhotoProxyOutcome,
@@ -2416,7 +2422,154 @@ export class InMemoryPhotosStore implements PhotosStore {
     this.faceIndexState.set(fingerprint, engineVersion);
     return Promise.resolve(ok(undefined));
   }
+
+  private isPhotoScoped(fingerprint: string, currentPath: string, root: string | null): boolean {
+    if (root === null) return true;
+    if (isUnderRoot(currentPath, root)) return true;
+    return [...this.sightings.values()].some((sighting) => sighting.fingerprint === fingerprint && isUnderRoot(sighting.currentPath, root));
+  }
+
+  listPhotoGeoBackfillCandidates(input: { root: string | null }): Promise<Result<PhotoGeoBackfillCandidate[], AppError>> {
+    const root = input.root === null ? null : canonicalPath(input.root);
+    const rows = [...this.photoRows.values()]
+      .filter((photo) => this.isPhotoScoped(photo.fingerprint, photo.currentPath, root))
+      .map((photo): PhotoGeoBackfillCandidate => ({
+        fingerprint: photo.fingerprint,
+        fileName: photo.fileName,
+        currentPath: photo.currentPath,
+        capturedAt: photo.capturedAt,
+        capturedAtSource: photo.capturedAtSource,
+        gpsLat: photo.gpsLat,
+        gpsLon: photo.gpsLon,
+        gpsSource: parsePhotoGpsSourceFake(photo.gpsSource),
+        placeName: photo.placeName,
+      }))
+      .sort((left, right) => `${left.currentPath}/${left.fileName}`.localeCompare(`${right.currentPath}/${right.fileName}`));
+    return Promise.resolve(ok(rows));
+  }
+
+  applyPhotoGeoBackfill(input: ApplyPhotoGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>> {
+    const existing = this.photoRows.get(input.fingerprint);
+    if (existing === undefined) return Promise.resolve(ok('skipped_precedence'));
+
+    let outcome: ApplyGeoBackfillResult = 'unchanged';
+
+    let nextGpsLat = existing.gpsLat;
+    let nextGpsLon = existing.gpsLon;
+    let nextGpsSource = existing.gpsSource;
+    let nextAccuracyM = existing.gpsAccuracyM;
+    let nextIntervalKind = existing.gpsIntervalKind;
+    let nextResolvedAt = existing.gpsResolvedAt;
+    if (input.location !== undefined) {
+      const accepted = acceptsGpsWrite(
+        { lat: existing.gpsLat, lon: existing.gpsLon, source: parsePhotoGpsSourceFake(existing.gpsSource) },
+        { lat: input.location.lat, lon: input.location.lon, source: input.location.source },
+      );
+      if (!accepted) {
+        outcome = 'skipped_precedence';
+      } else {
+        const unchanged = existing.gpsLat === input.location.lat && existing.gpsLon === input.location.lon
+          && existing.gpsIntervalKind === input.location.intervalKind;
+        nextGpsLat = input.location.lat;
+        nextGpsLon = input.location.lon;
+        nextGpsSource = input.location.source;
+        nextAccuracyM = input.location.accuracyM;
+        nextIntervalKind = input.location.intervalKind;
+        nextResolvedAt = input.location.resolvedAt;
+        if (!unchanged) outcome = 'written';
+      }
+    }
+
+    const existingPlace = photoRowToPlaceFake(existing);
+    let nextPlaceName = existing.placeName;
+    let nextPlaceRegion = existing.placeRegion;
+    let nextPlaceCountry = existing.placeCountry;
+    let nextPlaceCountryCode = existing.placeCountryCode;
+    let nextPlaceDistanceM = existing.placeDistanceM;
+    let nextPlaceDataset = existing.placeDataset;
+    if (input.place !== undefined && JSON.stringify(existingPlace) !== JSON.stringify(input.place)) {
+      nextPlaceName = input.place?.name ?? null;
+      nextPlaceRegion = input.place?.region ?? null;
+      nextPlaceCountry = input.place?.country ?? null;
+      nextPlaceCountryCode = input.place?.countryCode ?? null;
+      nextPlaceDistanceM = input.place?.distanceM ?? null;
+      nextPlaceDataset = input.place?.dataset ?? null;
+      if (outcome !== 'skipped_precedence' || input.location === undefined) outcome = 'written';
+    }
+
+    if (outcome === 'written') {
+      this.photoRows.set(input.fingerprint, {
+        ...existing,
+        gpsLat: nextGpsLat,
+        gpsLon: nextGpsLon,
+        gpsSource: nextGpsSource,
+        gpsAccuracyM: nextAccuracyM,
+        gpsIntervalKind: nextIntervalKind,
+        gpsResolvedAt: nextResolvedAt,
+        placeName: nextPlaceName,
+        placeRegion: nextPlaceRegion,
+        placeCountry: nextPlaceCountry,
+        placeCountryCode: nextPlaceCountryCode,
+        placeDistanceM: nextPlaceDistanceM,
+        placeDataset: nextPlaceDataset,
+      });
+    }
+    return Promise.resolve(ok(outcome));
+  }
+
+  listPhotoLocations(): Promise<Result<{ totalPhotos: number; rows: PhotoLocationRow[] }, AppError>> {
+    const rows: PhotoLocationRow[] = [...this.photoRows.values()]
+      .filter((photo) => photo.gpsLat !== null && photo.gpsLon !== null)
+      .map((photo): PhotoLocationRow => {
+        const folder = this.folders.get(photo.folderId);
+        return {
+          fingerprint: photo.fingerprint,
+          fileName: photo.fileName,
+          lat: photo.gpsLat ?? 0,
+          lon: photo.gpsLon ?? 0,
+          missing: photo.missingAt !== null,
+          capturedAt: photo.capturedAt,
+          thumbState: photo.thumbState,
+          folder: {
+            folderId: folder?.folderId ?? photo.folderId,
+            currentPath: folder?.currentPath ?? '',
+            displayName: folder?.displayName ?? '',
+          },
+          source: parsePhotoGpsSourceFake(photo.gpsSource),
+          accuracyM: photo.gpsAccuracyM,
+          intervalKind: parsePhotoIntervalKindFake(photo.gpsIntervalKind),
+          place: photoRowToPlaceFake(photo),
+        };
+      })
+      .sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
+    return Promise.resolve(ok({ totalPhotos: this.photoRows.size, rows }));
+  }
 }
+
+const parsePhotoGpsSourceFake = (value: string | null): GpsSource | null =>
+  value === 'camera' || value === 'timeline' || value === 'manual' ? value : null;
+
+const parsePhotoIntervalKindFake = (value: string | null): TimelineIntervalKind | null =>
+  value === 'visit' || value === 'activity' || value === 'path' ? value : null;
+
+const photoRowToPlaceFake = (row: {
+  placeName: string | null;
+  placeRegion: string | null;
+  placeCountry: string | null;
+  placeCountryCode: string | null;
+  placeDistanceM: number | null;
+  placeDataset: string | null;
+}): CatalogPlace | null => {
+  if (row.placeName === null) return null;
+  return {
+    name: row.placeName,
+    region: row.placeRegion,
+    country: row.placeCountry,
+    countryCode: row.placeCountryCode,
+    distanceM: row.placeDistanceM ?? 0,
+    dataset: row.placeDataset ?? '',
+  };
+};
 
 const analysisKey = (fingerprint: string, configId: string): string => `${fingerprint} ${configId}`;
 

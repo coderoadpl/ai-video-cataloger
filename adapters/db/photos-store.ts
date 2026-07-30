@@ -19,6 +19,7 @@ import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.j
 
 import {
   FACE_ENGINE_VERSION,
+  acceptsGpsWrite,
   appError,
   canonicalPath,
   normalizeTagList,
@@ -26,16 +27,23 @@ import {
   photoExtensionSchema,
   type AppError,
   type CapturedAtSource,
+  type CatalogPlace,
+  type GpsSource,
   type PhotoExtension,
   type Result,
+  type TimelineIntervalKind,
 } from '@core/domain/index.js';
 import type {
+  ApplyGeoBackfillResult,
+  ApplyPhotoGeoBackfillInput,
   PhotoAnalysisCandidate,
   PhotoAnalysisCandidates,
   PhotoDetail,
   PhotoFaceIndexCandidate,
   PhotoFolderRecord,
+  PhotoGeoBackfillCandidate,
   PhotoListItem,
+  PhotoLocationRow,
   PhotoProxyCandidate,
   PhotoRecord,
   PhotoRootSummary,
@@ -365,6 +373,116 @@ export class SqlJsPhotosStore implements PhotosStore {
           set: { completedAt: new Date().toISOString(), engineVersion },
         })
         .run();
+    });
+  }
+
+  async listPhotoGeoBackfillCandidates(input: { root: string | null }): Promise<Result<PhotoGeoBackfillCandidate[], AppError>> {
+    return this.read((_db, client) => {
+      const scope = scopeForRoot(input.root);
+      const result = client.exec(
+        `SELECT
+            fingerprint, file_name, current_path, captured_at, captured_at_source,
+            gps_lat, gps_lon, gps_source, place_name
+          FROM photos
+          WHERE ${scope.where}
+          ORDER BY current_path, file_name`,
+        scope.params,
+      );
+      return (result[0]?.values ?? []).map(photoGeoBackfillCandidateFromValues);
+    });
+  }
+
+  async applyPhotoGeoBackfill(input: ApplyPhotoGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>> {
+    return this.write((db, client) => {
+      const existing = db.select().from(photos).where(eq(photos.fingerprint, input.fingerprint)).get();
+      if (existing === undefined) return 'skipped_precedence' satisfies ApplyGeoBackfillResult;
+
+      let outcome: ApplyGeoBackfillResult = 'unchanged';
+
+      let nextGpsLat = existing.gpsLat;
+      let nextGpsLon = existing.gpsLon;
+      let nextGpsSource = existing.gpsSource;
+      let nextAccuracyM = existing.gpsAccuracyM;
+      let nextIntervalKind = existing.gpsIntervalKind;
+      let nextResolvedAt = existing.gpsResolvedAt;
+      if (input.location !== undefined) {
+        const accepted = acceptsGpsWrite(
+          { lat: existing.gpsLat, lon: existing.gpsLon, source: parsePhotoGpsSource(existing.gpsSource) },
+          { lat: input.location.lat, lon: input.location.lon, source: input.location.source },
+        );
+        if (!accepted) {
+          outcome = 'skipped_precedence';
+        } else {
+          const unchangedCoordinates = existing.gpsLat !== null && existing.gpsLon !== null
+            && roundTo6Photo(existing.gpsLat) === roundTo6Photo(input.location.lat)
+            && roundTo6Photo(existing.gpsLon) === roundTo6Photo(input.location.lon)
+            && existing.gpsIntervalKind === input.location.intervalKind;
+          nextGpsLat = input.location.lat;
+          nextGpsLon = input.location.lon;
+          nextGpsSource = input.location.source;
+          nextAccuracyM = input.location.accuracyM;
+          nextIntervalKind = input.location.intervalKind;
+          nextResolvedAt = input.location.resolvedAt;
+          if (!unchangedCoordinates) outcome = 'written';
+        }
+      }
+
+      let nextPlaceName = existing.placeName;
+      let nextPlaceRegion = existing.placeRegion;
+      let nextPlaceCountry = existing.placeCountry;
+      let nextPlaceCountryCode = existing.placeCountryCode;
+      let nextPlaceDistanceM = existing.placeDistanceM;
+      let nextPlaceDataset = existing.placeDataset;
+      if (input.place !== undefined && !photoPlacesEqual(photoRowToPlace(existing), input.place)) {
+        nextPlaceName = input.place?.name ?? null;
+        nextPlaceRegion = input.place?.region ?? null;
+        nextPlaceCountry = input.place?.country ?? null;
+        nextPlaceCountryCode = input.place?.countryCode ?? null;
+        nextPlaceDistanceM = input.place?.distanceM ?? null;
+        nextPlaceDataset = input.place?.dataset ?? null;
+        if (outcome !== 'skipped_precedence' || input.location === undefined) outcome = 'written';
+      }
+
+      if (outcome === 'written') {
+        db.update(photos).set({
+          gpsLat: nextGpsLat,
+          gpsLon: nextGpsLon,
+          gpsSource: nextGpsSource,
+          gpsAccuracyM: nextAccuracyM,
+          gpsIntervalKind: nextIntervalKind,
+          gpsResolvedAt: nextResolvedAt,
+          placeName: nextPlaceName,
+          placeRegion: nextPlaceRegion,
+          placeCountry: nextPlaceCountry,
+          placeCountryCode: nextPlaceCountryCode,
+          placeDistanceM: nextPlaceDistanceM,
+          placeDataset: nextPlaceDataset,
+        }).where(eq(photos.fingerprint, input.fingerprint)).run();
+        syncPhotoSearchDocument(db, client, input.fingerprint);
+      }
+      return outcome;
+    });
+  }
+
+  async listPhotoLocations(): Promise<Result<{ totalPhotos: number; rows: PhotoLocationRow[] }, AppError>> {
+    return this.read((db, client) => {
+      const totalPhotos = db.select().from(photos).all().length;
+      const result = client.exec(
+        `SELECT
+            p.fingerprint, p.file_name, p.gps_lat, p.gps_lon, p.missing_at, p.captured_at, p.thumb_state,
+            f.folder_id, f.current_path, f.display_name,
+            p.gps_source, p.gps_accuracy_m, p.gps_interval_kind,
+            p.place_name, p.place_region, p.place_country, p.place_country_code, p.place_distance_m, p.place_dataset
+          FROM photos p
+          JOIN photo_folders f ON f.folder_id = p.folder_id
+          WHERE p.gps_lat IS NOT NULL AND p.gps_lon IS NOT NULL
+          ORDER BY p.fingerprint`,
+      );
+      const values = result[0]?.values ?? [];
+      const rows = values
+        .map(photoLocationRowFromValues)
+        .filter((row): row is PhotoLocationRow => row !== null);
+      return { totalPhotos, rows };
     });
   }
 
@@ -970,6 +1088,85 @@ const parseProxyState = (value: string): PhotoRecord['proxyState'] => {
 };
 
 const parseThumbState = (value: string): PhotoRecord['thumbState'] => (value === 'done' || value === 'failed' ? value : 'pending');
+
+const parsePhotoGpsSource = (value: string | null): GpsSource | null =>
+  value === 'camera' || value === 'timeline' || value === 'manual' ? value : null;
+
+const parsePhotoIntervalKind = (value: string | null): TimelineIntervalKind | null =>
+  value === 'visit' || value === 'activity' || value === 'path' ? value : null;
+
+const roundTo6Photo = (value: number): number => Math.round(value * 1_000_000) / 1_000_000;
+
+const photoPlacesEqual = (left: CatalogPlace | null, right: CatalogPlace | null): boolean => {
+  if (left === null || right === null) return left === right;
+  return left.name === right.name && left.region === right.region && left.country === right.country
+    && left.countryCode === right.countryCode && left.dataset === right.dataset
+    && Math.abs(left.distanceM - right.distanceM) < 0.5;
+};
+
+const photoRowToPlace = (row: {
+  placeName: string | null;
+  placeRegion: string | null;
+  placeCountry: string | null;
+  placeCountryCode: string | null;
+  placeDistanceM: number | null;
+  placeDataset: string | null;
+}): CatalogPlace | null => {
+  if (row.placeName === null) return null;
+  return {
+    name: row.placeName,
+    region: row.placeRegion,
+    country: row.placeCountry,
+    countryCode: row.placeCountryCode,
+    distanceM: row.placeDistanceM ?? 0,
+    dataset: row.placeDataset ?? '',
+  };
+};
+
+const photoGeoBackfillCandidateFromValues = (row: SqlValue[]): PhotoGeoBackfillCandidate => ({
+  fingerprint: stringValue(row[0]),
+  fileName: stringValue(row[1]),
+  currentPath: canonicalPath(stringValue(row[2])),
+  capturedAt: nullableStringValue(row[3]),
+  capturedAtSource: parseCapturedAtSource(nullableStringValue(row[4])),
+  gpsLat: nullableNumberValue(row[5]),
+  gpsLon: nullableNumberValue(row[6]),
+  gpsSource: parsePhotoGpsSource(nullableStringValue(row[7])),
+  placeName: nullableStringValue(row[8]),
+});
+
+const photoLocationRowFromValues = (row: SqlValue[]): PhotoLocationRow | null => {
+  const lat = nullableNumberValue(row[2]);
+  const lon = nullableNumberValue(row[3]);
+  if (lat === null || lon === null || !Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  if (lat < -90 || lat > 90 || lon < -180 || lon > 180) return null;
+  const placeName = nullableStringValue(row[13]);
+  return {
+    fingerprint: stringValue(row[0]),
+    fileName: stringValue(row[1]),
+    lat,
+    lon,
+    missing: nullableNumberValue(row[4]) !== null,
+    capturedAt: nullableStringValue(row[5]),
+    thumbState: parseThumbState(stringValue(row[6])),
+    folder: {
+      folderId: stringValue(row[7]),
+      currentPath: canonicalPath(stringValue(row[8])),
+      displayName: stringValue(row[9]),
+    },
+    source: parsePhotoGpsSource(nullableStringValue(row[10])),
+    accuracyM: nullableNumberValue(row[11]),
+    intervalKind: parsePhotoIntervalKind(nullableStringValue(row[12])),
+    place: placeName === null ? null : {
+      name: placeName,
+      region: nullableStringValue(row[14]),
+      country: nullableStringValue(row[15]),
+      countryCode: nullableStringValue(row[16]),
+      distanceM: nullableNumberValue(row[17]) ?? 0,
+      dataset: nullableStringValue(row[18]) ?? '',
+    },
+  };
+};
 
 const rowToPhoto = (row: typeof photos.$inferSelect): PhotoRecord => ({
   fingerprint: row.fingerprint,

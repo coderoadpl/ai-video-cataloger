@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { Alert, Box, Button, CircularProgress, IconButton, MenuItem, Select, TextField, Typography } from '@mui/material';
 
 import { CancelIcon } from '../../components/ui/icons.js';
 import { PhotosLayout } from '../../components/layout/PhotosLayout.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { adjacentFingerprint, flattenOrder, groupByCaptureDay, searchResultsToItems, searchSections } from './core/index.js';
+import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, searchResultsToItems, searchSections } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
 import { PhotoGrid } from './PhotoGrid.js';
 import { PhotoViewer } from './PhotoViewer.js';
@@ -14,14 +14,18 @@ import { usePhotos } from './use-photos.js';
 interface PhotosViewProps {
   active: boolean;
   addLine: AddLogLine;
+  focusFingerprint?: string | null;
+  onFocusConsumed?: () => void;
 }
+
+const noop = (): void => {};
 
 const toLocalDay = (isoUtc: string): string => {
   const date = new Date(isoUtc);
   return `${String(date.getFullYear())}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-export const PhotosView = ({ active, addLine }: PhotosViewProps) => {
+export const PhotosView = ({ active, addLine, focusFingerprint = null, onFocusConsumed = noop }: PhotosViewProps) => {
   const dictionary = useDictionary();
   const photos = usePhotos({ active, addLine });
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -44,6 +48,15 @@ export const PhotosView = ({ active, addLine }: PhotosViewProps) => {
     },
     [photos],
   );
+
+  const { selectFingerprint } = photos;
+  useEffect(() => {
+    if (focusFingerprint === null || order.length === 0) return;
+    const target = focusTarget(order, focusFingerprint);
+    selectFingerprint(target.select);
+    if (target.openViewer) setViewerOpen(true);
+    onFocusConsumed();
+  }, [focusFingerprint, order, selectFingerprint, onFocusConsumed]);
 
   if (!active) return null;
 

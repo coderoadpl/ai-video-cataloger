@@ -30,6 +30,8 @@ export interface MapPalette {
   pinMuted: string;
   pinApproximate: string;
   pinApproximateHalo: string;
+  pinPhoto: string;
+  pinPhotoHalo: string;
   cluster: string;
   clusterText: string;
 }
@@ -75,6 +77,8 @@ const LIGHT = {
     pinMuted: '#a1a1a6',
     pinApproximate: '#f59e0b',
     pinApproximateHalo: 'rgba(245,158,11,0.18)',
+    pinPhoto: '#af52de',
+    pinPhotoHalo: 'rgba(175,82,222,0.18)',
     cluster: '#007AFF',
     clusterText: '#ffffff',
   } satisfies MapPalette,
@@ -104,6 +108,8 @@ const DARK = {
     pinMuted: '#6e6e73',
     pinApproximate: '#fbbf24',
     pinApproximateHalo: 'rgba(251,191,36,0.22)',
+    pinPhoto: '#bf5af2',
+    pinPhotoHalo: 'rgba(191,90,242,0.22)',
     cluster: '#0a84ff',
     clusterText: '#0b0b0c',
   } satisfies MapPalette,

@@ -2,6 +2,7 @@ import { Box, Button, Chip, Popover, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatCoordinates } from '../../lib/format.js';
+import { mediaUrl } from '../../lib/media-url.js';
 import type { CatalogLocation } from './use-catalog-locations.js';
 
 interface MapPinPopoverProps {
@@ -9,9 +10,10 @@ interface MapPinPopoverProps {
   location: CatalogLocation | null;
   onClose: () => void;
   onOpenLocation: (folderPath: string, videoPath: string) => void;
+  onOpenPhoto: (fingerprint: string) => void;
 }
 
-export const MapPinPopover = ({ anchorEl, location, onClose, onOpenLocation }: MapPinPopoverProps) => {
+export const MapPinPopover = ({ anchorEl, location, onClose, onOpenLocation, onOpenPhoto }: MapPinPopoverProps) => {
   const dictionary = useDictionary();
 
   return (
@@ -24,6 +26,15 @@ export const MapPinPopover = ({ anchorEl, location, onClose, onOpenLocation }: M
     >
       {location === null ? null : (
         <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1, minWidth: 220 }}>
+          {location.media === 'photo' && location.thumbPath !== null && (
+            <Box
+              component="img"
+              src={mediaUrl(location.thumbPath, location.fingerprint)}
+              alt=""
+              data-testid="map-pin-photo-thumb"
+              sx={{ width: '100%', maxHeight: 140, objectFit: 'cover', borderRadius: 1 }}
+            />
+          )}
           <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={location.finalName ?? location.fileName}>
             {location.finalName ?? location.fileName}
           </Typography>
@@ -78,15 +89,26 @@ export const MapPinPopover = ({ anchorEl, location, onClose, onOpenLocation }: M
               })}
             />
           ) : null}
-          <Button
-            variant="contained"
-            size="small"
-            disabled={!location.folder.online}
-            onClick={() => onOpenLocation(location.folder.currentPath, `${location.folder.currentPath}/${location.fileName}`)}
-            data-testid="map-open-video"
-          >
-            {dictionary.map.openVideo}
-          </Button>
+          {location.media === 'photo' ? (
+            <Button
+              variant="contained"
+              size="small"
+              onClick={() => onOpenPhoto(location.fingerprint)}
+              data-testid="map-open-photo"
+            >
+              {dictionary.map.openPhoto}
+            </Button>
+          ) : (
+            <Button
+              variant="contained"
+              size="small"
+              disabled={!location.folder.online}
+              onClick={() => onOpenLocation(location.folder.currentPath, `${location.folder.currentPath}/${location.fileName}`)}
+              data-testid="map-open-video"
+            >
+              {dictionary.map.openVideo}
+            </Button>
+          )}
         </Box>
       )}
     </Popover>

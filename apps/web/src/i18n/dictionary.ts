@@ -501,6 +501,7 @@ export interface Dictionary {
     subtitle: string;
     loading: string;
     coverage: (located: number, total: number) => string;
+    coveragePhotos: (located: number, total: number) => string;
     emptyTitle: string;
     emptyBody: string;
     canvasLabel: string;
@@ -509,6 +510,7 @@ export interface Dictionary {
     zoomOut: string;
     resetView: string;
     openVideo: string;
+    openPhoto: string;
     coordinates: string;
     source: {
       camera: string;
@@ -522,6 +524,11 @@ export interface Dictionary {
     };
     accuracy: (meters: number) => string;
     place: string;
+    filter: {
+      all: string;
+      videos: string;
+      photos: string;
+    };
   };
   settingsModal: {
     title: string;
@@ -1358,6 +1365,7 @@ export const en: Dictionary = {
     subtitle: 'Where your catalogued videos were recorded — offline, no map tiles are ever downloaded.',
     loading: 'Reading locations from the catalog…',
     coverage: (located, total) => `${located} of ${total} catalogued files have location`,
+    coveragePhotos: (located, total) => `${located} of ${total} catalogued photos have location`,
     emptyTitle: 'No files with location yet',
     emptyBody: 'Location comes from GPS metadata the camera wrote into the file. Analyse a folder to add its files to the catalog; files without GPS metadata never appear here.',
     canvasLabel: 'Map of catalogued videos',
@@ -1366,6 +1374,7 @@ export const en: Dictionary = {
     zoomOut: 'Zoom out',
     resetView: 'Reset view',
     openVideo: 'Open video',
+    openPhoto: 'Open photo',
     coordinates: 'Coordinates',
     source: {
       camera: 'Measured (camera)',
@@ -1379,6 +1388,11 @@ export const en: Dictionary = {
     },
     accuracy: (meters) => `±${meters} m`,
     place: 'Place',
+    filter: {
+      all: 'All',
+      videos: 'Videos',
+      photos: 'Photos',
+    },
   },
   settingsModal: {
     title: 'Settings',
@@ -2228,6 +2242,7 @@ export const pl: Dictionary = {
     subtitle: 'Gdzie nagrano skatalogowane filmy — offline, kafelki mapy nigdy nie są pobierane.',
     loading: 'Wczytywanie lokalizacji z katalogu…',
     coverage: (located, total) => `${located} z ${total} skatalogowanych plików ma lokalizację`,
+    coveragePhotos: (located, total) => `${located} z ${total} skatalogowanych zdjęć ma lokalizację`,
     emptyTitle: 'Brak plików z lokalizacją',
     emptyBody: 'Lokalizacja pochodzi z metadanych GPS zapisanych przez aparat. Przeanalizuj folder, aby dodać jego pliki do katalogu; pliki bez metadanych GPS nigdy się tu nie pojawią.',
     canvasLabel: 'Mapa skatalogowanych filmów',
@@ -2236,6 +2251,7 @@ export const pl: Dictionary = {
     zoomOut: 'Oddal',
     resetView: 'Zresetuj widok',
     openVideo: 'Otwórz film',
+    openPhoto: 'Otwórz zdjęcie',
     coordinates: 'Współrzędne',
     source: {
       camera: 'Zmierzone (aparat)',
@@ -2249,6 +2265,11 @@ export const pl: Dictionary = {
     },
     accuracy: (meters) => `±${meters} m`,
     place: 'Miejsce',
+    filter: {
+      all: 'Wszystko',
+      videos: 'Filmy',
+      photos: 'Zdjęcia',
+    },
   },
   settingsModal: {
     title: 'Ustawienia',

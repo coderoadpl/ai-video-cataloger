@@ -903,6 +903,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  photosGpsBackfill: (input: z.input<typeof API_ROUTES.photosGpsBackfill.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosGpsBackfill.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosGpsBackfill.method,
+      API_ROUTES.photosGpsBackfill.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   photosTree: (signal?: AbortSignal) =>
     request(
       options,

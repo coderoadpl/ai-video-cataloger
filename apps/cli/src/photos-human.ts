@@ -1,4 +1,4 @@
-import { photoProcessSummarySchema, photoProxiesSummarySchema, type photosVariantRecordSchema } from '@core/contract/index.js';
+import { photoGpsBackfillSummarySchema, photoProcessSummarySchema, photoProxiesSummarySchema, type photosVariantRecordSchema } from '@core/contract/index.js';
 import type { z } from 'zod';
 import type { ApiClient } from '@core/client/index.js';
 import type { AppError, Result } from '@core/domain/index.js';
@@ -36,6 +36,22 @@ export const photosProcessHuman = (data: unknown): string => {
   const summary = photoProcessSummarySchema.parse(data);
   return `Analysed: ${summary.analysed} of ${summary.candidates} candidates, ${summary.failed} failed, `
     + `${summary.skippedExisting} already analysed (${summary.configId}, batch ${summary.batchSize})`;
+};
+
+export const photosGpsBackfillHuman = (data: unknown): string => {
+  const parsed = photoGpsBackfillSummarySchema.safeParse(data);
+  if (!parsed.success) return 'Photo GPS backfill complete';
+  const summary = parsed.data;
+  return [
+    summary.dryRun ? 'Photo GPS backfill (dry run):' : 'Photo GPS backfill:',
+    `Photos considered: ${summary.photosConsidered} of ${summary.photosTotal} (camera-protected: ${summary.skipped.cameraGps}, manual-protected: ${summary.skipped.manualGps})`,
+    `Matched: visit=${summary.matched.visit} activity=${summary.matched.activity} path=${summary.matched.path} unmatched=${summary.unmatched}`,
+    `Assumed-timezone widened matches: ${summary.assumedWidened}`,
+    `Accuracy median=${summary.accuracy.medianM ?? '-'}m p90=${summary.accuracy.p90M ?? '-'}m`,
+    `Written: ${summary.written}, unchanged: ${summary.unchanged}`,
+    `Skipped: noCapturedAt=${summary.skipped.noCapturedAt}`,
+    `Places: resolved=${summary.places.resolved} unresolved=${summary.places.unresolved} skippedNoDataset=${summary.places.skippedNoDataset}`,
+  ].join('\n');
 };
 
 export const photosSearchHuman = (data: PhotosSearchOutput): string => {

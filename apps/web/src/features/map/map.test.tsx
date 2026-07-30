@@ -31,8 +31,10 @@ const offlineFolder = {
 
 interface LocationOverrides {
   fingerprint?: string;
+  media?: 'video' | 'photo';
   fileName?: string;
   finalName?: string | null;
+  thumbPath?: string | null;
   lat?: number;
   lon?: number;
   missing?: boolean;
@@ -45,8 +47,10 @@ interface LocationOverrides {
 
 const location = (overrides: LocationOverrides = {}) => ({
   fingerprint: 'fp-1',
+  media: 'video' as const,
   fileName: 'clip.mp4',
   finalName: null,
+  thumbPath: null,
   lat: 50,
   lon: 10,
   missing: false,
@@ -66,7 +70,7 @@ describe('MapView', () => {
     respondWith({ totalFiles: 3752, locatedFiles: 0, locations: [] });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-empty-state')).toBeDefined());
@@ -85,7 +89,7 @@ describe('MapView', () => {
     });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-coverage')).toBeDefined());
@@ -108,7 +112,7 @@ describe('MapView', () => {
     });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-cluster')).toBeDefined());
@@ -130,7 +134,7 @@ describe('MapView', () => {
     });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={onOpenLocation} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={onOpenLocation} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-pin')).toBeDefined());
@@ -149,7 +153,7 @@ describe('MapView', () => {
     });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-pin')).toBeDefined());
@@ -166,7 +170,7 @@ describe('MapView', () => {
     )));
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-error')).toBeDefined());
@@ -184,14 +188,14 @@ describe('MapView', () => {
     });
 
     const rendered = renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={onFocusConsumed} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={onFocusConsumed} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
     await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(2));
 
     rendered.rerender(
       <QueryClientProvider client={rendered.queryClient}>
         <ThemeProvider theme={theme}>
-          <MapView active focusFingerprint="fp-2" onFocusConsumed={onFocusConsumed} onOpenLocation={vi.fn()} />
+          <MapView active focusFingerprint="fp-2" onFocusConsumed={onFocusConsumed} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />
         </ThemeProvider>
       </QueryClientProvider>,
     );
@@ -211,7 +215,7 @@ describe('MapView', () => {
     });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-canvas')).toBeDefined());
@@ -232,7 +236,7 @@ describe('MapView', () => {
     });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-pin')).toBeDefined());
@@ -256,7 +260,7 @@ describe('MapView', () => {
     }));
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     expect(screen.getByTestId('map-loading')).toBeDefined();
@@ -274,7 +278,7 @@ describe('MapView', () => {
     });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(2));
@@ -299,7 +303,7 @@ describe('MapView', () => {
     });
 
     renderThemed(
-      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} />,
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
     );
 
     await waitFor(() => expect(screen.getByTestId('map-pin')).toBeDefined());
@@ -308,5 +312,76 @@ describe('MapView', () => {
     await waitFor(() => expect(screen.getByTestId('map-pin-source-badge')).toBeDefined());
     expect(screen.getByTestId('map-pin-source-badge').textContent).toContain('±150 m');
     expect(screen.getByTestId('map-pin-place').textContent).toBe('Fjordvik · Norway');
+  });
+
+  it('shows a second coverage line for photos only when the catalog has any, and the media filter toggles pin sets', async () => {
+    respondWith({
+      totalFiles: 1,
+      locatedFiles: 1,
+      totalPhotos: 2,
+      locatedPhotos: 1,
+      locations: [
+        location({ fingerprint: 'fp-video', media: 'video', lat: 10, lon: 10 }),
+        location({ fingerprint: 'fp-photo', media: 'photo', fileName: 'a.jpg', lat: -30, lon: -60 }),
+      ],
+    });
+
+    renderThemed(
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
+    );
+
+    await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(2));
+    expect(screen.getByTestId('map-coverage-photos').textContent).toBe('1 of 2 catalogued photos have location');
+
+    fireEvent.click(screen.getByTestId('map-media-filter-photo'));
+    await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(1));
+    expect(screen.getAllByTestId('map-pin')[0]?.getAttribute('data-media')).toBe('photo');
+
+    fireEvent.click(screen.getByTestId('map-media-filter-video'));
+    await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(1));
+    expect(screen.getAllByTestId('map-pin')[0]?.getAttribute('data-media')).toBe('video');
+
+    fireEvent.click(screen.getByTestId('map-media-filter-all'));
+    await waitFor(() => expect(screen.getAllByTestId('map-pin')).toHaveLength(2));
+  });
+
+  it('does not show the photos coverage line or filter chips when the catalog has no photos', async () => {
+    respondWith({
+      totalFiles: 1,
+      locatedFiles: 1,
+      totalPhotos: 0,
+      locatedPhotos: 0,
+      locations: [location({ fingerprint: 'fp-video' })],
+    });
+
+    renderThemed(
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={vi.fn()} />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('map-pin')).toBeDefined());
+    expect(screen.queryByTestId('map-coverage-photos')).toBeNull();
+  });
+
+  it('shows a photo pin popover with an open-photo action and no open-video button, and routes the click through onOpenPhoto', async () => {
+    const onOpenPhoto = vi.fn();
+    respondWith({
+      totalFiles: 0,
+      locatedFiles: 0,
+      totalPhotos: 1,
+      locatedPhotos: 1,
+      locations: [location({ fingerprint: 'fp-photo', media: 'photo', fileName: 'a.jpg' })],
+    });
+
+    renderThemed(
+      <MapView active focusFingerprint={null} onFocusConsumed={vi.fn()} onOpenLocation={vi.fn()} onOpenPhoto={onOpenPhoto} />,
+    );
+
+    await waitFor(() => expect(screen.getByTestId('map-pin')).toBeDefined());
+    fireEvent.click(screen.getByTestId('map-pin'));
+
+    await waitFor(() => expect(screen.getByTestId('map-open-photo')).toBeDefined());
+    expect(screen.queryByTestId('map-open-video')).toBeNull();
+    fireEvent.click(screen.getByTestId('map-open-photo'));
+    expect(onOpenPhoto).toHaveBeenCalledWith('fp-photo');
   });
 });

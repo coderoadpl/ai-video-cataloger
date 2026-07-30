@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   photosForgetHuman,
+  photosGpsBackfillHuman,
   photosProcessHuman,
   photosProxiesHuman,
   photosSearchHuman,
@@ -83,6 +84,41 @@ describe('photosProcessHuman', () => {
       splitRetries: 2,
     });
     expect(text).toBe('Analysed: 120 of 163 candidates, 3 failed, 40 already analysed (cfg_ab12cd34ef56, batch 12)');
+  });
+});
+
+describe('photosGpsBackfillHuman', () => {
+  it('formats a backfill summary including the assumed-timezone widened count', () => {
+    const text = photosGpsBackfillHuman({
+      media: 'photo',
+      timelinePath: '/timeline.json',
+      dryRun: false,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: '2026-01-01T00:01:00.000Z',
+      timeline: { entries: 1, entriesSkipped: 0, entriesIgnored: 0, intervals: 1, firstStart: null, lastEnd: null },
+      photosTotal: 10,
+      photosConsidered: 8,
+      matched: { visit: 5, activity: 1, path: 0 },
+      matchedWithinTolerance: 1,
+      assumedWidened: 2,
+      written: 6,
+      unchanged: 0,
+      unmatched: 2,
+      skipped: { cameraGps: 1, manualGps: 1, noCapturedAt: 0 },
+      accuracy: { buckets: [], medianM: 50, p90M: 200 },
+      places: { datasetId: 'geonames', resolved: 4, unresolved: 1, skippedNoDataset: 0 },
+      elapsedMs: 100,
+    });
+    expect(text).toBe([
+      'Photo GPS backfill:',
+      'Photos considered: 8 of 10 (camera-protected: 1, manual-protected: 1)',
+      'Matched: visit=5 activity=1 path=0 unmatched=2',
+      'Assumed-timezone widened matches: 2',
+      'Accuracy median=50m p90=200m',
+      'Written: 6, unchanged: 0',
+      'Skipped: noCapturedAt=0',
+      'Places: resolved=4 unresolved=1 skippedNoDataset=0',
+    ].join('\n'));
   });
 });
 
