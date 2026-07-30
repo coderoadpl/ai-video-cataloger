@@ -7,6 +7,7 @@ import {
   doctorOutputSchema,
   driveRunFacesSchema,
   facesIndexOutputSchema,
+  gpsBackfillSummarySchema,
   healthLiveOutputSchema,
   healthReadyOutputSchema,
   jobKindSchema,
@@ -15,6 +16,7 @@ import {
   jobProgressStepSchema,
   jobResultSchema,
   materializeSummarySchema,
+  photoGpsBackfillSummarySchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
@@ -749,6 +751,41 @@ describe('route schemas', () => {
         locations: [validLocation],
       }).success).toBe(true);
     });
+
+    it('parses an old envelope with no media/photo totals, defaulting media to video and totals to 0 (compatibility pin)', () => {
+      const parsed = catalogLocationsOutputSchema.parse({
+        totalFiles: 3752,
+        locatedFiles: 1,
+        locations: [validLocation],
+      });
+      expect(parsed.totalPhotos).toBe(0);
+      expect(parsed.locatedPhotos).toBe(0);
+      expect(parsed.locations[0]?.media).toBe('video');
+    });
+
+    it('round-trips a photo location row alongside a video one', () => {
+      const parsed = catalogLocationsOutputSchema.parse({
+        totalFiles: 1,
+        locatedFiles: 1,
+        totalPhotos: 1,
+        locatedPhotos: 1,
+        locations: [validLocation, {
+          fingerprint: 'ph_0000000000000001',
+          media: 'photo',
+          fileName: 'a.jpg',
+          finalName: null,
+          lat: 1,
+          lon: 1,
+          missing: false,
+          folder: { folderId: 'path-aaaaaaaa', currentPath: '/media/photos', displayName: 'photos', online: true },
+          source: null,
+          accuracyM: null,
+          intervalKind: null,
+          place: null,
+        }],
+      });
+      expect(parsed.locations.map((location) => location.media)).toEqual(['video', 'photo']);
+    });
   });
 
   describe('library facets route', () => {
@@ -913,6 +950,64 @@ describe('route schemas', () => {
 
     const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
     expect(acceptingCount).toBe(1);
+  });
+
+  it('round-trips photoGpsBackfillSummarySchema through jobResultSchema, pins gpsBackfillSummarySchema shape unchanged, and each rejects the other', () => {
+    const photoSample = {
+      media: 'photo' as const,
+      timelinePath: '/timeline.json',
+      dryRun: false,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: '2026-01-01T00:01:00.000Z',
+      timeline: { entries: 1, entriesSkipped: 0, entriesIgnored: 0, intervals: 1, firstStart: null, lastEnd: null },
+      photosTotal: 1,
+      photosConsidered: 1,
+      matched: { visit: 1, activity: 0, path: 0 },
+      matchedWithinTolerance: 0,
+      assumedWidened: 0,
+      written: 1,
+      unchanged: 0,
+      unmatched: 0,
+      skipped: { cameraGps: 0, manualGps: 0, noCapturedAt: 0 },
+      accuracy: { buckets: [{ upToM: 200, files: 1 }], medianM: 50, p90M: 50 },
+      places: { datasetId: null, resolved: 0, unresolved: 0, skippedNoDataset: 1 },
+      elapsedMs: 5,
+    };
+
+    const viaUnion = jobResultSchema.parse(photoSample);
+    expect(viaUnion).toEqual(photoSample);
+    const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(photoSample).success).length;
+    expect(acceptingCount).toBe(1);
+    expect(gpsBackfillSummarySchema.safeParse(photoSample).success).toBe(false);
+
+    const videoSample = {
+      timelinePath: '/timeline.json',
+      dryRun: false,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: '2026-01-01T00:01:00.000Z',
+      timeline: { entries: 1, entriesSkipped: 0, entriesIgnored: 0, intervals: 1, firstStart: null, lastEnd: null },
+      filesTotal: 1,
+      filesConsidered: 1,
+      capturedAtProbed: 0,
+      matched: { visit: 1, activity: 0, path: 0 },
+      matchedWithinTolerance: 0,
+      written: 1,
+      unchanged: 0,
+      unmatched: 0,
+      skipped: { cameraGps: 0, manualGps: 0, noCapturedAt: 0, offline: 0 },
+      skewSuspicious: 0,
+      skewSamples: [],
+      accuracy: { buckets: [{ upToM: 200, files: 1 }], medianM: 50, p90M: 50 },
+      places: { datasetId: null, resolved: 0, unresolved: 0, skippedNoDataset: 1 },
+      failures: [],
+      elapsedMs: 5,
+    };
+
+    const videoViaUnion = jobResultSchema.parse(videoSample);
+    expect(videoViaUnion).toEqual(videoSample);
+    const videoAcceptingCount = jobResultSchema.options.filter((option) => option.safeParse(videoSample).success).length;
+    expect(videoAcceptingCount).toBe(1);
+    expect(photoGpsBackfillSummarySchema.safeParse(videoSample).success).toBe(false);
   });
 
   it('round-trips photosSearch, photosVariants* routes, and photosDetailOutputSchema.analysis both null and non-null (P6)', () => {

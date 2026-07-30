@@ -1,6 +1,5 @@
 import {
   appError,
-  filenameLocalTimestamp,
   matchTimeline,
   ok,
   parseTimeline,
@@ -12,32 +11,26 @@ import {
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
   type FileSystemPort,
-  type GeoBackfillCandidate,
-  type GlobalCatalogStore,
   type JobExecutionContext,
   type JobsPort,
-  type MediaPort,
+  type PhotoGeoBackfillCandidate,
+  type PhotosStore,
   type PlacesPort,
 } from '../ports.js';
-import { type DriveRunFailure } from './process-drive.js';
 import { accuracyBucketsM, percentile } from './gps-shared.js';
 
-const maxSkewSamples = 20;
-const skewToleranceMs = 14 * 60 * 60 * 1000;
-const quarterHourMs = 15 * 60 * 1000;
-const quarterHourSlackMs = 5 * 60 * 1000;
+const assumedWideningFloorMinutes = 180;
 
-export interface GpsBackfillDeps {
+export interface PhotoGpsBackfillDeps {
   fs: FileSystemPort;
-  media: MediaPort;
+  photos: PhotosStore;
   places: PlacesPort;
-  globalCatalog: GlobalCatalogStore;
   jobs: JobsPort;
 }
 
-export type GpsBackfillPassDeps = Omit<GpsBackfillDeps, 'jobs'>;
+export type PhotoGpsBackfillPassDeps = Omit<PhotoGpsBackfillDeps, 'jobs'>;
 
-export interface GpsBackfillInput {
+export interface PhotoGpsBackfillInput {
   timelinePath: string;
   root: string | null;
   dryRun: boolean;
@@ -46,7 +39,8 @@ export interface GpsBackfillInput {
   reresolvePlaces: boolean;
 }
 
-export interface GpsBackfillSummary {
+export interface PhotoGpsBackfillSummary {
+  media: 'photo';
   timelinePath: string;
   dryRun: boolean;
   startedAt: string;
@@ -59,50 +53,42 @@ export interface GpsBackfillSummary {
     firstStart: string | null;
     lastEnd: string | null;
   };
-  filesTotal: number;
-  filesConsidered: number;
-  capturedAtProbed: number;
+  photosTotal: number;
+  photosConsidered: number;
   matched: { visit: number; activity: number; path: number };
   matchedWithinTolerance: number;
+  assumedWidened: number;
   written: number;
   unchanged: number;
   unmatched: number;
-  skipped: {
-    cameraGps: number;
-    manualGps: number;
-    noCapturedAt: number;
-    offline: number;
-  };
-  skewSuspicious: number;
-  skewSamples: string[];
+  skipped: { cameraGps: number; manualGps: number; noCapturedAt: number };
   accuracy: {
     buckets: { upToM: number | null; files: number }[];
     medianM: number | null;
     p90M: number | null;
   };
   places: { datasetId: string | null; resolved: number; unresolved: number; skippedNoDataset: number };
-  failures: DriveRunFailure[];
   elapsedMs: number;
 }
 
-export const gpsBackfill = async (
-  deps: GpsBackfillDeps,
-  input: GpsBackfillInput,
+export const photosGpsBackfill = async (
+  deps: PhotoGpsBackfillDeps,
+  input: PhotoGpsBackfillInput,
 ): Promise<Result<{ jobId: string }, AppError>> => {
-  const resourceKey = input.root === null ? 'gps-backfill' : `gps-backfill:${deps.fs.resolve(input.root)}`;
+  const resourceKey = input.root === null ? 'photo-gps-backfill' : `photo-gps-backfill:${deps.fs.resolve(input.root)}`;
   return deps.jobs.enqueue({
-    kind: 'gps_backfill',
+    kind: 'photo_gps_backfill',
     payload: input,
     resourceKey,
-    run: (context) => runGpsBackfill(deps, input, context),
+    run: (context) => runPhotoGpsBackfill(deps, input, context),
   });
 };
 
-export const runGpsBackfill = async (
-  deps: GpsBackfillPassDeps,
-  input: GpsBackfillInput,
+export const runPhotoGpsBackfill = async (
+  deps: PhotoGpsBackfillPassDeps,
+  input: PhotoGpsBackfillInput,
   progress?: JobExecutionContext,
-): Promise<Result<GpsBackfillSummary, AppError>> => {
+): Promise<Result<PhotoGpsBackfillSummary, AppError>> => {
   const startedAt = new Date().toISOString();
   const startedAtMs = Date.now();
 
@@ -114,7 +100,8 @@ export const runGpsBackfill = async (
   const parsedTimeline = parseTimeline(timelineText.value);
   if (!parsedTimeline.ok) return parsedTimeline;
 
-  const summary: GpsBackfillSummary = {
+  const summary: PhotoGpsBackfillSummary = {
+    media: 'photo',
     timelinePath: input.timelinePath,
     dryRun: input.dryRun,
     startedAt,
@@ -127,20 +114,17 @@ export const runGpsBackfill = async (
       firstStart: parsedTimeline.value.firstStart,
       lastEnd: parsedTimeline.value.lastEnd,
     },
-    filesTotal: 0,
-    filesConsidered: 0,
-    capturedAtProbed: 0,
+    photosTotal: 0,
+    photosConsidered: 0,
     matched: { visit: 0, activity: 0, path: 0 },
     matchedWithinTolerance: 0,
+    assumedWidened: 0,
     written: 0,
     unchanged: 0,
     unmatched: 0,
-    skipped: { cameraGps: 0, manualGps: 0, noCapturedAt: 0, offline: 0 },
-    skewSuspicious: 0,
-    skewSamples: [],
+    skipped: { cameraGps: 0, manualGps: 0, noCapturedAt: 0 },
     accuracy: { buckets: accuracyBucketsM.map((upToM) => ({ upToM, files: 0 })), medianM: null, p90M: null },
     places: { datasetId: null, resolved: 0, unresolved: 0, skippedNoDataset: 0 },
-    failures: [],
     elapsedMs: 0,
   };
 
@@ -152,14 +136,13 @@ export const runGpsBackfill = async (
   });
   if (!started.ok) return started;
 
-  const candidates = await deps.globalCatalog.listGeoBackfillCandidates({ root: input.root });
+  const candidates = await deps.photos.listPhotoGeoBackfillCandidates({ root: input.root });
   if (!candidates.ok) return candidates;
-  summary.filesTotal = candidates.value.length;
+  summary.photosTotal = candidates.value.length;
 
   const placesDependency = await deps.places.dependency();
   const placesInstalled = placesDependency.ok && placesDependency.value.available;
 
-  const onlineFolders = new Map<string, boolean>();
   const accuracySamples: number[] = [];
 
   let current = 0;
@@ -177,8 +160,8 @@ export const runGpsBackfill = async (
     } else if (candidate.gpsSource === 'manual') {
       summary.skipped.manualGps += 1;
     } else {
-      summary.filesConsidered += 1;
-      const matched = await matchCandidate(deps, input, candidate, parsedTimeline.value.intervals, onlineFolders, summary, accuracySamples);
+      summary.photosConsidered += 1;
+      const matched = await matchCandidate(deps, input, candidate, parsedTimeline.value.intervals, summary, accuracySamples);
       if (matched !== null) coordinates = matched;
     }
 
@@ -189,8 +172,8 @@ export const runGpsBackfill = async (
     const reported = await report(progress, {
       step: 'gps_backfill_file',
       current,
-      total: summary.filesTotal,
-      data: { fileName: candidate.fileName, folderPath: candidate.folderPath },
+      total: summary.photosTotal,
+      data: { fileName: candidate.fileName, folderPath: candidate.currentPath },
     });
     if (!reported.ok) return reported;
   }
@@ -214,75 +197,50 @@ export const runGpsBackfill = async (
   return ok(summary);
 };
 
+const toleranceMsFor = (
+  candidate: PhotoGeoBackfillCandidate,
+  input: PhotoGpsBackfillInput,
+): { toleranceMs: number; widened: boolean } => {
+  const flagMs = input.toleranceMinutes * 60_000;
+  const isAssumedSource = candidate.capturedAtSource === 'exif_local_assumed' || candidate.capturedAtSource === 'file_mtime';
+  if (!isAssumedSource) return { toleranceMs: flagMs, widened: false };
+  const widenedMs = Math.max(input.toleranceMinutes, assumedWideningFloorMinutes) * 60_000;
+  return { toleranceMs: widenedMs, widened: widenedMs !== flagMs };
+};
+
 const matchCandidate = async (
-  deps: GpsBackfillPassDeps,
-  input: GpsBackfillInput,
-  candidate: GeoBackfillCandidate,
+  deps: PhotoGpsBackfillPassDeps,
+  input: PhotoGpsBackfillInput,
+  candidate: PhotoGeoBackfillCandidate,
   intervals: Parameters<typeof matchTimeline>[0],
-  onlineFolders: Map<string, boolean>,
-  summary: GpsBackfillSummary,
+  summary: PhotoGpsBackfillSummary,
   accuracySamples: number[],
 ): Promise<{ lat: number; lon: number } | null> => {
-  let capturedAt = candidate.capturedAt;
-
-  if (capturedAt === null) {
-    let online = onlineFolders.get(candidate.folderPath);
-    if (online === undefined) {
-      const exists = await deps.fs.exists(candidate.folderPath);
-      online = exists.ok && exists.value;
-      onlineFolders.set(candidate.folderPath, online);
-    }
-    if (!online) {
-      summary.skipped.offline += 1;
-      return null;
-    }
-    const videoPath = deps.fs.join(candidate.folderPath, candidate.fileName);
-    const isFile = await deps.fs.isFile(videoPath);
-    if (!isFile.ok || !isFile.value) {
-      summary.skipped.offline += 1;
-      return null;
-    }
-    const probe = await deps.media.probe({ videoPath });
-    if (probe.ok && probe.value.createdAtUtc !== null) {
-      capturedAt = probe.value.createdAtUtc;
-      summary.capturedAtProbed += 1;
-    }
-  }
-
-  if (capturedAt === null) {
+  if (candidate.capturedAt === null) {
     summary.skipped.noCapturedAt += 1;
     return null;
   }
 
-  recordSkew(candidate.fileName, capturedAt, summary);
-
-  const capturedAtMs = Date.parse(capturedAt);
-  const match = matchTimeline(intervals, capturedAtMs, {
-    toleranceMs: input.toleranceMinutes * 60_000,
-    maxVisitHours: input.maxVisitHours,
-  });
-
-  const capturedAtWrite = candidate.capturedAt === null ? { at: capturedAt, source: 'container' as const } : undefined;
+  const capturedAtMs = Date.parse(candidate.capturedAt);
+  const { toleranceMs, widened } = toleranceMsFor(candidate, input);
+  const match = matchTimeline(intervals, capturedAtMs, { toleranceMs, maxVisitHours: input.maxVisitHours });
 
   if (match === null) {
     summary.unmatched += 1;
-    if (!input.dryRun && capturedAtWrite !== undefined) {
-      await deps.globalCatalog.applyGeoBackfill({ fingerprint: candidate.fingerprint, capturedAt: capturedAtWrite });
-    }
     return null;
   }
 
   summary.matched[match.kind] += 1;
   if (!match.contained) summary.matchedWithinTolerance += 1;
+  if (widened) summary.assumedWidened += 1;
   accuracySamples.push(match.accuracyM);
   const bucket = summary.accuracy.buckets.find((entry) => entry.upToM === null || match.accuracyM <= entry.upToM);
   if (bucket !== undefined) bucket.files += 1;
 
   if (input.dryRun) return { lat: match.lat, lon: match.lon };
 
-  const result = await deps.globalCatalog.applyGeoBackfill({
+  const result = await deps.photos.applyPhotoGeoBackfill({
     fingerprint: candidate.fingerprint,
-    capturedAt: capturedAtWrite,
     location: {
       lat: match.lat,
       lon: match.lon,
@@ -299,26 +257,13 @@ const matchCandidate = async (
   return { lat: match.lat, lon: match.lon };
 };
 
-const recordSkew = (fileName: string, capturedAt: string, summary: GpsBackfillSummary): void => {
-  const local = filenameLocalTimestamp(fileName);
-  if (local === null) return;
-  const capturedAtMs = Date.parse(capturedAt);
-  const diffMs = Math.abs(local.getTime() - capturedAtMs);
-  const nearestQuarterHourDiff = Math.abs(diffMs % quarterHourMs);
-  const alignedToQuarterHour = Math.min(nearestQuarterHourDiff, quarterHourMs - nearestQuarterHourDiff) <= quarterHourSlackMs;
-  if (diffMs > skewToleranceMs || !alignedToQuarterHour) {
-    summary.skewSuspicious += 1;
-    if (summary.skewSamples.length < maxSkewSamples) summary.skewSamples.push(fileName);
-  }
-};
-
 const resolvePlaceIfNeeded = async (
-  deps: GpsBackfillPassDeps,
-  input: GpsBackfillInput,
-  candidate: GeoBackfillCandidate,
+  deps: PhotoGpsBackfillPassDeps,
+  input: PhotoGpsBackfillInput,
+  candidate: PhotoGeoBackfillCandidate,
   coordinates: { lat: number; lon: number },
   placesInstalled: boolean,
-  summary: GpsBackfillSummary,
+  summary: PhotoGpsBackfillSummary,
 ): Promise<void> => {
   const needsResolve = candidate.placeName === null || input.reresolvePlaces;
   if (!needsResolve) return;
@@ -342,7 +287,7 @@ const resolvePlaceIfNeeded = async (
     dataset: resolved.value.dataset,
   };
   if (!input.dryRun) {
-    await deps.globalCatalog.applyGeoBackfill({ fingerprint: candidate.fingerprint, place });
+    await deps.photos.applyPhotoGeoBackfill({ fingerprint: candidate.fingerprint, place });
   }
 };
 

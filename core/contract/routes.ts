@@ -464,6 +464,60 @@ export const photoProcessSummarySchema = z.object({
   splitRetries: z.number(),
 });
 
+export const photoGpsBackfillInputSchema = z.object({
+  timelinePath: z.string().min(1),
+  root: canonicalPathString().optional(),
+  dryRun: z.boolean().default(false),
+  toleranceMinutes: z.number().int().min(0).max(240).default(30),
+  maxVisitHours: z.number().int().min(1).max(720).default(36),
+  reresolvePlaces: z.boolean().default(false),
+});
+
+export const photoGpsBackfillSummarySchema = z.object({
+  media: z.literal('photo'),
+  timelinePath: z.string().min(1),
+  dryRun: z.boolean(),
+  startedAt: z.iso.datetime(),
+  finishedAt: z.iso.datetime().nullable(),
+  timeline: z.object({
+    entries: z.number().int().nonnegative(),
+    entriesSkipped: z.number().int().nonnegative(),
+    entriesIgnored: z.number().int().nonnegative(),
+    intervals: z.number().int().nonnegative(),
+    firstStart: z.string().nullable(),
+    lastEnd: z.string().nullable(),
+  }),
+  photosTotal: z.number().int().nonnegative(),
+  photosConsidered: z.number().int().nonnegative(),
+  matched: z.object({
+    visit: z.number().int().nonnegative(),
+    activity: z.number().int().nonnegative(),
+    path: z.number().int().nonnegative(),
+  }),
+  matchedWithinTolerance: z.number().int().nonnegative(),
+  assumedWidened: z.number().int().nonnegative(),
+  written: z.number().int().nonnegative(),
+  unchanged: z.number().int().nonnegative(),
+  unmatched: z.number().int().nonnegative(),
+  skipped: z.object({
+    cameraGps: z.number().int().nonnegative(),
+    manualGps: z.number().int().nonnegative(),
+    noCapturedAt: z.number().int().nonnegative(),
+  }),
+  accuracy: z.object({
+    buckets: z.array(z.object({ upToM: z.number().nonnegative().nullable(), files: z.number().int().nonnegative() })),
+    medianM: z.number().nonnegative().nullable(),
+    p90M: z.number().nonnegative().nullable(),
+  }),
+  places: z.object({
+    datasetId: z.string().nullable(),
+    resolved: z.number().int().nonnegative(),
+    unresolved: z.number().int().nonnegative(),
+    skippedNoDataset: z.number().int().nonnegative(),
+  }),
+  elapsedMs: z.number().int().nonnegative(),
+});
+
 export const photoListItemSchema = z.object({
   fingerprint: z.string(),
   fileName: z.string(),
@@ -1201,6 +1255,7 @@ export const jobKindSchema = z.enum([
   'photo_scan',
   'photo_proxies',
   'photo_process',
+  'photo_gps_backfill',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -1315,6 +1370,7 @@ export const jobResultSchema = z.union([
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,
   facesExemplarsOutputSchema,
+  photoGpsBackfillSummarySchema,
   gpsBackfillSummarySchema,
 ]);
 
@@ -1507,8 +1563,10 @@ export const catalogLocationPlaceSchema = z.object({
 
 export const catalogLocationSchema = z.object({
   fingerprint: z.string().min(1),
+  media: z.enum(['video', 'photo']).default('video'),
   fileName: z.string().min(1),
   finalName: z.string().nullable(),
+  thumbPath: z.string().nullable().default(null),
   lat: z.number().min(-90).max(90),
   lon: z.number().min(-180).max(180),
   missing: z.boolean(),
@@ -1527,6 +1585,8 @@ export const catalogLocationSchema = z.object({
 export const catalogLocationsOutputSchema = z.object({
   totalFiles: z.number().int().nonnegative(),
   locatedFiles: z.number().int().nonnegative(),
+  totalPhotos: z.number().int().nonnegative().default(0),
+  locatedPhotos: z.number().int().nonnegative().default(0),
   locations: z.array(catalogLocationSchema),
 }).strict();
 
@@ -1958,6 +2018,12 @@ export const API_ROUTES = {
     input: photosProcessInputSchema,
     output: jobAcceptedOutputSchema,
   },
+  photosGpsBackfill: {
+    method: 'POST',
+    path: '/api/photos/gps/backfill',
+    input: photoGpsBackfillInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
   photosTree: {
     method: 'GET',
     path: '/api/photos/tree',
@@ -2080,6 +2146,7 @@ export const API_PATHS = {
   photosForget: API_ROUTES.photosForget.path,
   photosProxies: API_ROUTES.photosProxies.path,
   photosProcess: API_ROUTES.photosProcess.path,
+  photosGpsBackfill: API_ROUTES.photosGpsBackfill.path,
   photosTree: API_ROUTES.photosTree.path,
   photosList: API_ROUTES.photosList.path,
   photosDetail: API_ROUTES.photosDetail.path,

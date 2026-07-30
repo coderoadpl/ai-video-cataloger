@@ -623,6 +623,29 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
     counts: z.object({ photos: z.literal(2), paths: z.literal(3), duplicates: z.literal(1) }),
   }).parse(completedData(statusAfterDuplicate, 'photos status (after duplicate)'));
 
+  const photoTimelinePath = join(folder, 'photo-timeline.json');
+  writeFileSync(photoTimelinePath, JSON.stringify([{
+    startTime: '2026-01-01T09:00:00Z',
+    endTime: '2026-01-01T11:00:00Z',
+    visit: { topCandidate: { placeLocation: 'geo:10.000000,20.000000' } },
+  }]));
+  const photoGpsBackfill = await run(['photos', 'gps', 'backfill', photoTimelinePath, '--root', photosDir, '--json'], env, folder);
+  assert(
+    photoGpsBackfill.code === 0,
+    `photos gps backfill: expected exit 0, got ${photoGpsBackfill.code}.\nstdout: ${photoGpsBackfill.stdout}\nstderr: ${photoGpsBackfill.stderr}`,
+  );
+  // Fixture photos have no EXIF capture time; deriveCapturedAt falls back to file mtime ("now"),
+  // which never falls inside the fixed 2026-01-01 timeline window, so the honest offline outcome is unmatched, not noCapturedAt.
+  z.object({ media: z.literal('photo'), written: z.literal(0), unmatched: z.number().min(1) })
+    .parse(completedData(photoGpsBackfill, 'photos gps backfill'));
+
+  const photoGpsBackfillMissing = await run(['photos', 'gps', 'backfill', join(folder, 'missing-timeline.json'), '--json'], env, folder);
+  const photoGpsBackfillMissingExpected = EXIT_CODE_BY_ERROR_CODE.file_not_found;
+  assert(
+    photoGpsBackfillMissing.code === photoGpsBackfillMissingExpected,
+    `photos gps backfill missing: expected exit ${photoGpsBackfillMissingExpected}, got ${photoGpsBackfillMissing.code}.\nstdout: ${photoGpsBackfillMissing.stdout}\nstderr: ${photoGpsBackfillMissing.stderr}`,
+  );
+
   const forget = await run(['photos', 'forget', photosDir, '--json'], env, folder);
   assert(forget.code === 0, `photos forget: expected exit 0, got ${forget.code}.\nstdout: ${forget.stdout}\nstderr: ${forget.stderr}`);
   z.object({ media: z.literal('photo'), photosDeleted: z.literal(2) }).parse(completedData(forget, 'photos forget'));

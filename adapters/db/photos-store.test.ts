@@ -861,4 +861,109 @@ describe('SqlJsPhotosStore', () => {
     expect(found.ok).toBe(true);
     if (found.ok) expect(found.value.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
   });
+
+  describe('photo GPS backfill', () => {
+    it('listPhotoGeoBackfillCandidates scopes by canonical root prefix and carries GPS/place columns', async () => {
+      const home = await tempHome();
+      const store = new SqlJsPhotosStore({ homeDirectory: home });
+      await store.upsertFolder(folder);
+      await store.upsertFolder({ ...folder, folderId: 'path-bbbbbbbb', currentPath: '/media/other' });
+      await store.upsertPhoto(photo({ gpsLat: 1, gpsLon: 2, gpsSource: 'camera', placeName: 'Krakow' }));
+      await store.upsertPhoto(photo({
+        fingerprint: 'ph_0000000000000002',
+        folderId: 'path-bbbbbbbb',
+        currentPath: '/media/other/b.jpg',
+        fileName: 'b.jpg',
+      }));
+
+      const scoped = await store.listPhotoGeoBackfillCandidates({ root: '/media/photos' });
+      expect(scoped.ok).toBe(true);
+      if (scoped.ok) {
+        expect(scoped.value.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
+        expect(scoped.value[0]).toMatchObject({ gpsLat: 1, gpsLon: 2, gpsSource: 'camera', placeName: 'Krakow' });
+      }
+
+      const all = await store.listPhotoGeoBackfillCandidates({ root: null });
+      expect(all.ok && all.value.length).toBe(2);
+    });
+
+    it('applyPhotoGeoBackfill: timeline never overwrites camera GPS (skipped_precedence)', async () => {
+      const home = await tempHome();
+      const store = new SqlJsPhotosStore({ homeDirectory: home });
+      await store.upsertFolder(folder);
+      await store.upsertPhoto(photo({ gpsLat: 1, gpsLon: 1, gpsSource: 'camera' }));
+
+      const result = await store.applyPhotoGeoBackfill({
+        fingerprint: photo().fingerprint,
+        location: { lat: 2, lon: 2, source: 'timeline', accuracyM: 100, intervalKind: 'visit', resolvedAt: '2026-01-01T00:00:00.000Z' },
+      });
+
+      expect(result.ok && result.value).toBe('skipped_precedence');
+      const stored = await store.getPhoto(photo().fingerprint);
+      expect(stored.ok && stored.value?.gpsLat).toBe(1);
+    });
+
+    it('applyPhotoGeoBackfill: timeline write onto an empty cell is written, identical re-apply is unchanged', async () => {
+      const home = await tempHome();
+      const store = new SqlJsPhotosStore({ homeDirectory: home });
+      await store.upsertFolder(folder);
+      await store.upsertPhoto(photo());
+
+      const location = { lat: 5, lon: 6, source: 'timeline' as const, accuracyM: 50, intervalKind: 'visit' as const, resolvedAt: '2026-01-01T00:00:00.000Z' };
+      const first = await store.applyPhotoGeoBackfill({ fingerprint: photo().fingerprint, location });
+      expect(first.ok && first.value).toBe('written');
+
+      const second = await store.applyPhotoGeoBackfill({ fingerprint: photo().fingerprint, location });
+      expect(second.ok && second.value).toBe('unchanged');
+    });
+
+    it('applyPhotoGeoBackfill: manual GPS is never overwritten by a timeline write', async () => {
+      const home = await tempHome();
+      const store = new SqlJsPhotosStore({ homeDirectory: home });
+      await store.upsertFolder(folder);
+      await store.upsertPhoto(photo({ gpsLat: 9, gpsLon: 9, gpsSource: 'manual' }));
+
+      const result = await store.applyPhotoGeoBackfill({
+        fingerprint: photo().fingerprint,
+        location: { lat: 2, lon: 2, source: 'timeline', accuracyM: 100, intervalKind: 'path', resolvedAt: '2026-01-01T00:00:00.000Z' },
+      });
+
+      expect(result.ok && result.value).toBe('skipped_precedence');
+      const stored = await store.getPhoto(photo().fingerprint);
+      expect(stored.ok && stored.value?.gpsLat).toBe(9);
+    });
+
+    it('applyPhotoGeoBackfill: a place-only apply on a camera-GPS row is written and lands in FTS (headline probe)', async () => {
+      const home = await tempHome();
+      const store = new SqlJsPhotosStore({ homeDirectory: home });
+      await store.upsertFolder(folder);
+      await store.upsertPhoto(photo({ gpsLat: 1, gpsLon: 1, gpsSource: 'camera' }));
+
+      const result = await store.applyPhotoGeoBackfill({
+        fingerprint: photo().fingerprint,
+        place: { name: 'Krakow', region: 'Malopolska', country: 'Poland', countryCode: 'PL', distanceM: 10, dataset: 'geonames' },
+      });
+      expect(result.ok && result.value).toBe('written');
+
+      const found = await store.searchPhotos({ match: 'krakow*', rankingTerms: ['krakow'], limit: 50, offset: 0 });
+      expect(found.ok).toBe(true);
+      if (found.ok) expect(found.value.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
+    });
+
+    it('listPhotoLocations returns only located rows, owner-folder joined, ordered by fingerprint', async () => {
+      const home = await tempHome();
+      const store = new SqlJsPhotosStore({ homeDirectory: home });
+      await store.upsertFolder(folder);
+      await store.upsertPhoto(photo({ gpsLat: 1, gpsLon: 2 }));
+      await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg', fileName: 'b.jpg' }));
+
+      const result = await store.listPhotoLocations();
+      expect(result.ok).toBe(true);
+      if (result.ok) {
+        expect(result.value.totalPhotos).toBe(2);
+        expect(result.value.rows.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
+        expect(result.value.rows[0]?.folder.currentPath).toBe(folder.currentPath);
+      }
+    });
+  });
 });

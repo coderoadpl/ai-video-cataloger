@@ -1,7 +1,8 @@
-import { Alert, Box, CircularProgress, Typography } from '@mui/material';
+import { Alert, Box, Chip, CircularProgress, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { MapCanvas } from './MapCanvas.js';
+import { MAP_MEDIA_FILTERS, type MapMediaFilter } from './core/index.js';
 import { useCatalogLocations } from './use-catalog-locations.js';
 
 interface MapViewProps {
@@ -9,13 +10,22 @@ interface MapViewProps {
   focusFingerprint: string | null;
   onFocusConsumed: () => void;
   onOpenLocation: (folderPath: string, videoPath: string) => void;
+  onOpenPhoto: (fingerprint: string) => void;
 }
 
-export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenLocation }: MapViewProps) => {
+const filterLabel = (dictionary: ReturnType<typeof useDictionary>, filter: MapMediaFilter): string => {
+  if (filter === 'video') return dictionary.map.filter.videos;
+  if (filter === 'photo') return dictionary.map.filter.photos;
+  return dictionary.map.filter.all;
+};
+
+export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenLocation, onOpenPhoto }: MapViewProps) => {
   const dictionary = useDictionary();
   const locations = useCatalogLocations({ enabled: active });
 
   if (!active) return null;
+
+  const nothingLocated = locations.locatedFiles === 0 && locations.locatedPhotos === 0;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', minHeight: '100%', p: 3, gap: 2, flex: 1 }}>
@@ -25,9 +35,31 @@ export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenLocat
       </Box>
 
       {locations.isLoading || locations.error !== null ? null : (
-        <Typography variant="caption" data-testid="map-coverage">
-          {dictionary.map.coverage(locations.locatedFiles, locations.totalFiles)}
-        </Typography>
+        <Box>
+          <Typography variant="caption" data-testid="map-coverage" component="div">
+            {dictionary.map.coverage(locations.locatedFiles, locations.totalFiles)}
+          </Typography>
+          {locations.totalPhotos > 0 && (
+            <Typography variant="caption" data-testid="map-coverage-photos" component="div">
+              {dictionary.map.coveragePhotos(locations.locatedPhotos, locations.totalPhotos)}
+            </Typography>
+          )}
+        </Box>
+      )}
+
+      {locations.isLoading || locations.error !== null || nothingLocated ? null : (
+        <Box sx={{ display: 'flex', gap: 1 }} data-testid="map-media-filter">
+          {MAP_MEDIA_FILTERS.map((filter) => (
+            <Chip
+              key={filter}
+              size="small"
+              data-testid={`map-media-filter-${filter}`}
+              label={filterLabel(dictionary, filter)}
+              color={locations.mediaFilter === filter ? 'primary' : 'default'}
+              onClick={() => locations.setMediaFilter(filter)}
+            />
+          ))}
+        </Box>
       )}
 
       {locations.isLoading ? (
@@ -40,7 +72,7 @@ export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenLocat
         </Box>
       ) : locations.error !== null ? (
         <Alert severity="error" data-testid="map-error">{locations.error}</Alert>
-      ) : locations.locatedFiles === 0 ? (
+      ) : nothingLocated ? (
         <Box
           sx={{
             flex: 1,
@@ -60,10 +92,11 @@ export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenLocat
         </Box>
       ) : (
         <MapCanvas
-          locations={locations.locations}
+          locations={locations.filteredLocations}
           focusFingerprint={focusFingerprint}
           onFocusConsumed={onFocusConsumed}
           onOpenLocation={onOpenLocation}
+          onOpenPhoto={onOpenPhoto}
         />
       )}
     </Box>

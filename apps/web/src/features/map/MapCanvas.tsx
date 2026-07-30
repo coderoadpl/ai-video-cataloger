@@ -18,6 +18,7 @@ interface MapCanvasProps {
   focusFingerprint: string | null;
   onFocusConsumed: () => void;
   onOpenLocation: (folderPath: string, videoPath: string) => void;
+  onOpenPhoto: (fingerprint: string) => void;
   initialViewport?: Viewport | undefined;
 }
 
@@ -59,6 +60,7 @@ export const MapCanvas = ({
   focusFingerprint,
   onFocusConsumed,
   onOpenLocation,
+  onOpenPhoto,
   initialViewport,
 }: MapCanvasProps) => {
   const theme = useTheme();
@@ -211,6 +213,7 @@ export const MapCanvas = ({
           const location = item === undefined ? null : byFingerprint.get(item.id) ?? null;
           if (location === null) return null;
           const approximate = location.source !== null && location.source !== 'camera';
+          const isPhoto = location.media === 'photo';
           const haloRadiusPx = approximate
             ? Math.min(64, Math.max(6, (location.accuracyM ?? 0) / metersPerPixel(viewport, location.lat)))
             : 0;
@@ -227,7 +230,7 @@ export const MapCanvas = ({
                     width: haloRadiusPx * 2,
                     height: haloRadiusPx * 2,
                     borderRadius: '50%',
-                    bgcolor: theme.palette.map.pinApproximateHalo,
+                    bgcolor: isPhoto ? theme.palette.map.pinPhotoHalo : theme.palette.map.pinApproximateHalo,
                     pointerEvents: 'none',
                   }}
                 />
@@ -239,6 +242,7 @@ export const MapCanvas = ({
                 }}
                 data-testid="map-pin"
                 data-approximate={approximate}
+                data-media={location.media}
                 aria-label={location.finalName ?? location.fileName}
                 onClick={() => setSelectedFingerprint(location.fingerprint)}
                 sx={{
@@ -247,12 +251,16 @@ export const MapCanvas = ({
                   top: -16,
                   width: 16,
                   height: 16,
-                  borderRadius: approximate ? '50%' : '50% 50% 50% 0',
-                  transform: approximate ? undefined : 'rotate(-45deg)',
-                  border: approximate ? `2px solid ${theme.palette.map.pinApproximate}` : undefined,
+                  borderRadius: isPhoto ? '3px' : approximate ? '50%' : '50% 50% 50% 0',
+                  transform: isPhoto || approximate ? undefined : 'rotate(-45deg)',
+                  border: approximate
+                    ? `2px solid ${isPhoto ? theme.palette.map.pinPhoto : theme.palette.map.pinApproximate}`
+                    : undefined,
                   bgcolor: approximate
                     ? 'transparent'
-                    : location.folder.online && !location.missing ? theme.palette.map.pin : theme.palette.map.pinMuted,
+                    : isPhoto
+                      ? theme.palette.map.pinPhoto
+                      : location.folder.online && !location.missing ? theme.palette.map.pin : theme.palette.map.pinMuted,
                 }}
               />
             </Box>
@@ -296,6 +304,7 @@ export const MapCanvas = ({
         location={selectedLocation}
         onClose={() => setSelectedFingerprint(null)}
         onOpenLocation={onOpenLocation}
+        onOpenPhoto={onOpenPhoto}
       />
 
       <Box sx={{ position: 'absolute', bottom: 8, right: 8, display: 'flex', flexDirection: 'column', gap: 0.5 }}>

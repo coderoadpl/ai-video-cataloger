@@ -407,6 +407,43 @@ export interface PhotoFaceIndexCandidate {
   previousEngineVersion: number | null;
 }
 
+export interface PhotoGeoBackfillCandidate {
+  fingerprint: string;
+  fileName: string;
+  currentPath: string;
+  capturedAt: string | null;
+  capturedAtSource: CapturedAtSource | null;
+  gpsLat: number | null;
+  gpsLon: number | null;
+  gpsSource: GpsSource | null;
+  placeName: string | null;
+}
+
+export interface ApplyPhotoGeoBackfillInput {
+  fingerprint: string;
+  location?: GeoBackfillLocation | undefined;
+  place?: CatalogPlace | null | undefined;
+}
+
+export interface PhotoLocationRow {
+  fingerprint: string;
+  fileName: string;
+  lat: number;
+  lon: number;
+  missing: boolean;
+  capturedAt: string | null;
+  thumbState: 'pending' | 'done' | 'failed';
+  folder: {
+    folderId: string;
+    currentPath: string;
+    displayName: string;
+  };
+  source: GpsSource | null;
+  accuracyM: number | null;
+  intervalKind: TimelineIntervalKind | null;
+  place: CatalogPlace | null;
+}
+
 export interface PhotoAnalysisCandidate {
   fingerprint: string;
   fileName: string;
@@ -560,6 +597,9 @@ export interface PhotosStore {
   listPhotoFaceIndexCandidates(root: string):
     Promise<Result<{ inScope: number; candidates: PhotoFaceIndexCandidate[] }, AppError>>;
   completePhotoFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
+  listPhotoGeoBackfillCandidates(input: { root: string | null }): Promise<Result<PhotoGeoBackfillCandidate[], AppError>>;
+  applyPhotoGeoBackfill(input: ApplyPhotoGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
+  listPhotoLocations(): Promise<Result<{ totalPhotos: number; rows: PhotoLocationRow[] }, AppError>>;
 }
 
 export interface DriveRunRecord {
@@ -1163,7 +1203,8 @@ export type JobKind =
   | 'gps_backfill'
   | 'photo_scan'
   | 'photo_proxies'
-  | 'photo_process';
+  | 'photo_process'
+  | 'photo_gps_backfill';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =

@@ -48,6 +48,7 @@ export const IndexRoute = () => {
   const { view: activeView, setView: setActiveView } = useViewPreference(catalogIndex.hasFiles);
   const [librarySeed, setLibrarySeed] = useState<LibraryShowInSeed | null>(null);
   const [mapFocus, setMapFocus] = useState<string | null>(null);
+  const [photoFocus, setPhotoFocus] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const shell = useShell();
   const [scope, setScope] = useScopePreference(shell.currentFolder);
@@ -266,7 +267,12 @@ export const IndexRoute = () => {
             lockReason={catalogLock.disabledReason}
           />
         ) : activeView === 'photos' ? (
-          <PhotosView active={activeView === 'photos'} addLine={terminal.addLine} />
+          <PhotosView
+            active={activeView === 'photos'}
+            addLine={terminal.addLine}
+            focusFingerprint={photoFocus}
+            onFocusConsumed={() => setPhotoFocus(null)}
+          />
         ) : activeView === 'library' ? (
           <LibraryView
             active={activeView === 'library'}
@@ -279,6 +285,10 @@ export const IndexRoute = () => {
           <MapView
             active={activeView === 'map'}
             focusFingerprint={mapFocus}
+            onOpenPhoto={(fingerprint) => {
+              setPhotoFocus(fingerprint);
+              setActiveView('photos');
+            }}
             onFocusConsumed={() => setMapFocus(null)}
             onOpenLocation={openSearchResult}
           />

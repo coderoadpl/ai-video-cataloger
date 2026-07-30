@@ -12,7 +12,7 @@ describe('GET /api/catalog/locations', () => {
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({
       ok: true,
-      data: { totalFiles: 0, locatedFiles: 0, locations: [] },
+      data: { totalFiles: 0, locatedFiles: 0, totalPhotos: 0, locatedPhotos: 0, locations: [] },
     });
   });
 });

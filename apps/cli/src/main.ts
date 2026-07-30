@@ -48,6 +48,7 @@ import { driveFacesSummaryLine } from './drive-faces-summary.js';
 import { doctorHuman } from './doctor-human.js';
 import {
   photosForgetHuman,
+  photosGpsBackfillHuman,
   photosProcessHuman,
   photosProxiesHuman,
   photosSearchHuman,
@@ -1459,6 +1460,41 @@ photos
       return;
     }
     await waitForJobAndEmit(json, result.value.jobId, photosProcessHuman, true);
+  });
+
+const photosGps = photos.command('gps').description('Fill photo GPS and place data from a Google Timeline export');
+
+photosGps
+  .command('backfill')
+  .argument('<timeline-path>')
+  .description('Fill empty photo coordinates from a Google Timeline export')
+  .option('--root <path>', 'restrict the backfill to photos under this folder')
+  .option('--dry-run', 'report matches without writing', false)
+  .option('--tolerance-minutes <minutes>', 'match tolerance in minutes', '30')
+  .option('--max-visit-hours <hours>', 'visits longer than this are treated as low-accuracy', '36')
+  .option('--reresolve-places', 're-resolve place names even where one is already stored', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (
+    timelinePath: string,
+    options: { root?: string; dryRun?: boolean; toleranceMinutes: string; maxVisitHours: string; reresolvePlaces?: boolean; json?: boolean },
+  ) => {
+    const json = isJsonMode(options);
+    const resolvedTimelinePath = path.resolve(cliWorkingDirectory, timelinePath);
+    const input = {
+      timelinePath: resolvedTimelinePath,
+      root: options.root === undefined ? undefined : path.resolve(cliWorkingDirectory, options.root),
+      dryRun: options.dryRun === true,
+      toleranceMinutes: Number.parseInt(options.toleranceMinutes, 10),
+      maxVisitHours: Number.parseInt(options.maxVisitHours, 10),
+      reresolvePlaces: options.reresolvePlaces === true,
+    };
+    emitStarted(json, 'photos_gps_backfill', input);
+    const result = await api.photosGpsBackfill(input);
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, photosGpsBackfillHuman, true);
   });
 
 photos
