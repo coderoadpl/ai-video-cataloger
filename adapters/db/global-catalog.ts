@@ -92,6 +92,7 @@ import {
   migrateGlobalCatalogSchemaSqlV9,
   migrateGlobalCatalogSchemaSqlV10,
   migrateGlobalCatalogSchemaSqlV11,
+  migrateGlobalCatalogSchemaSqlV12,
   schemaMeta,
   tagAliases,
   tags,
@@ -1307,6 +1308,10 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 11) {
     for (const statement of migrateGlobalCatalogSchemaSqlV11) runMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 12) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV12) runMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {

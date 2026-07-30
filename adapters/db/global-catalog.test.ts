@@ -28,6 +28,7 @@ import {
   migrateGlobalCatalogSchemaSqlV8,
   migrateGlobalCatalogSchemaSqlV9,
   migrateGlobalCatalogSchemaSqlV10,
+  migrateGlobalCatalogSchemaSqlV11,
 } from './global-catalog-schema.js';
 
 const tempRoots: string[] = [];
@@ -1266,7 +1267,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     ]);
   });
 
-  it('migrates a v10 catalog to v11 losslessly, adding media=video to face_observations only', async () => {
+  it('migrates a v10 catalog to the current version losslessly, adding media=video to face_observations only', async () => {
     const home = await tempHome();
     await writeV10Catalog(home);
     const tableNames = ['folders', 'files', 'analyses', 'tags', 'file_tags', 'tag_aliases', 'drive_runs', 'people', 'face_index_state'];
@@ -1287,9 +1288,57 @@ describe('SqlJsGlobalCatalogStore', () => {
     const afterObservations = after.exec('SELECT obs_id, fingerprint, kind, frame_ts_s, bbox_json, quality, person_id, crop_path, media FROM face_observations')[0]?.values ?? [];
     after.close();
 
-    expect(versionResult[0]?.values[0]?.[0]).toBe(11);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
     expect(afterSnapshot).toEqual(beforeSnapshot);
     expect(afterObservations).toEqual(beforeObservations.map((row) => [...row, 'video']));
+  });
+
+  it('migrates a v11 catalog to v12, adding the read-path indexes', async () => {
+    const home = await tempHome();
+    const SQL = await initSqlJs();
+    const client = new SQL.Database(await (async () => {
+      const seeded = await tempHome();
+      await writeV10Catalog(seeded);
+      return readFile(path.join(seeded, '.ai-video-cataloger', 'catalog.db'));
+    })());
+    for (const statement of migrateGlobalCatalogSchemaSqlV11) client.run(statement);
+    client.run('UPDATE schema_meta SET version = 11');
+    const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+    await mkdir(path.dirname(databasePath), { recursive: true });
+    await writeFile(databasePath, Buffer.from(client.export()));
+    client.close();
+
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect((await store.counts()).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    const after = new SQL.Database(await readFile(store.databasePath()));
+    const versionResult = after.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
+    expect(versionResult[0]?.values[0]?.[0]).toBe(12);
+    const indexNames = (table: string): string[] =>
+      (after.exec(`PRAGMA index_list('${table}')`)[0]?.values ?? []).map((row) => String(row[1]));
+    expect(indexNames('files')).toEqual(expect.arrayContaining(['idx_files_captured_at', 'idx_files_folder_id', 'idx_files_place_name']));
+    expect(indexNames('file_tags')).toEqual(expect.arrayContaining(['idx_file_tags_tag_id']));
+    expect(indexNames('face_observations')).toEqual(expect.arrayContaining(['idx_face_observations_person']));
+    expect(indexNames('analyses')).toEqual(expect.arrayContaining(['idx_analyses_fingerprint']));
+    after.close();
+  });
+
+  it('creates the read-path indexes on a fresh database', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect((await store.counts()).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    const SQL = await initSqlJs();
+    const after = new SQL.Database(await readFile(store.databasePath()));
+    const indexNames = (table: string): string[] =>
+      (after.exec(`PRAGMA index_list('${table}')`)[0]?.values ?? []).map((row) => String(row[1]));
+    expect(indexNames('files')).toEqual(expect.arrayContaining(['idx_files_captured_at', 'idx_files_folder_id', 'idx_files_place_name']));
+    expect(indexNames('file_tags')).toEqual(expect.arrayContaining(['idx_file_tags_tag_id']));
+    expect(indexNames('face_observations')).toEqual(expect.arrayContaining(['idx_face_observations_person']));
+    expect(indexNames('analyses')).toEqual(expect.arrayContaining(['idx_analyses_fingerprint']));
+    after.close();
   });
 
   it('fails closed when the catalog schema is newer than the binary', async () => {

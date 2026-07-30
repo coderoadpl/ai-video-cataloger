@@ -365,3 +365,12 @@ export const migrateGlobalCatalogSchemaSqlV10 = [
 export const migrateGlobalCatalogSchemaSqlV11 = [
   "ALTER TABLE face_observations ADD COLUMN media TEXT NOT NULL DEFAULT 'video'",
 ] as const;
+
+export const migrateGlobalCatalogSchemaSqlV12 = [
+  'CREATE INDEX idx_files_captured_at ON files(captured_at)',
+  'CREATE INDEX idx_files_folder_id ON files(folder_id)',
+  'CREATE INDEX idx_files_place_name ON files(place_name)',
+  'CREATE INDEX idx_file_tags_tag_id ON file_tags(tag_id)',
+  'CREATE INDEX idx_face_observations_person ON face_observations(person_id)',
+  'CREATE INDEX idx_analyses_fingerprint ON analyses(fingerprint)',
+] as const;
