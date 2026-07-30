@@ -100,9 +100,11 @@ import type {
   PhotoRecord,
   PhotoRootSummary,
   PhotoRunRecord,
+  PhotoSearchRow,
   PhotoSightingRecord,
   PhotosCounts,
   PhotosStore,
+  PhotoVariantRecord,
   RecordPhotoAnalysisInput,
   ThumbnailFromFrameInput,
   ThumbnailGeneration,
@@ -1803,6 +1805,7 @@ export class InMemoryPhotosStore implements PhotosStore {
   readonly runs = new Map<string, PhotoRunRecord>();
   readonly analysisConfigs = new Map<string, InMemoryAnalysisConfig>();
   readonly analyses = new Map<string, InMemoryAnalysisRow>();
+  readonly photoTagAliases = new Map<string, string>();
   persistCount = 0;
 
   databasePath(): string {
@@ -2078,6 +2081,119 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>> {
     this.analyses.set(analysisKey(input.fingerprint, input.configId), { ...input, tags: [...input.tags] });
+    return Promise.resolve(ok(undefined));
+  }
+
+  private analysesFor(fingerprint: string): InMemoryAnalysisRow[] {
+    return [...this.analyses.values()].filter((row) => row.fingerprint === fingerprint);
+  }
+
+  private resolvePhotoAnalysis(fingerprint: string): InMemoryAnalysisRow | undefined {
+    const photo = this.photoRows.get(fingerprint);
+    if (photo === undefined) return undefined;
+    const rows = this.analysesFor(fingerprint);
+    const explicit = rows.find((row) => row.configId === photo.selectedConfigId);
+    if (explicit !== undefined) return explicit;
+    const folder = this.folders.get(photo.folderId);
+    const folderDefault = rows.find((row) => row.configId === folder?.defaultConfigId);
+    if (folderDefault !== undefined) return folderDefault;
+    return [...rows].sort((left, right) =>
+      right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+  }
+
+  lastSearchInput: { match: string; rankingTerms: readonly string[]; limit: number; offset: number } | null = null;
+
+  searchPhotos(input: { match: string; rankingTerms: readonly string[]; limit: number; offset: number }):
+  Promise<Result<PhotoSearchRow[], AppError>> {
+    this.lastSearchInput = input;
+    const rows = [...this.photoRows.values()]
+      .map((photo): PhotoSearchRow | null => {
+        const selected = this.resolvePhotoAnalysis(photo.fingerprint);
+        const searchable = [photo.fileName, selected?.description ?? '', ...(selected?.tags ?? []), photo.placeName ?? '']
+          .join(' ')
+          .toLocaleLowerCase();
+        const matches = input.rankingTerms.every((term) => searchable.includes(term.toLocaleLowerCase()));
+        if (!matches) return null;
+        return {
+          fingerprint: photo.fingerprint,
+          fileName: photo.fileName,
+          currentPath: photo.currentPath,
+          ext: photo.ext,
+          capturedAt: photo.capturedAt,
+          description: selected?.description ?? null,
+          snippet: selected?.description ?? photo.fileName,
+          tags: selected?.tags === undefined ? [] : [...selected.tags],
+          variantCount: this.analysesFor(photo.fingerprint).length,
+          thumbState: photo.thumbState,
+          proxyState: photo.proxyState,
+          missingAt: photo.missingAt,
+        };
+      })
+      .filter((row): row is PhotoSearchRow => row !== null)
+      .sort((left, right) => left.fingerprint.localeCompare(right.fingerprint))
+      .slice(input.offset, input.offset + input.limit);
+    return Promise.resolve(ok(rows));
+  }
+
+  expandPhotoTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>> {
+    const expansions = terms.flatMap((term) => {
+      const canonical = this.photoTagAliases.get(term) ?? term;
+      const group = new Set<string>([canonical]);
+      for (const [alias, target] of this.photoTagAliases.entries()) {
+        if (target === canonical) group.add(alias);
+      }
+      group.delete(term);
+      return group.size === 0 ? [] : [{ term, equivalents: [...group].sort((left, right) => left.localeCompare(right)) }];
+    });
+    return Promise.resolve(ok(expansions));
+  }
+
+  listPhotoVariants(fingerprint: string): Promise<Result<PhotoVariantRecord[], AppError>> {
+    const photo = this.photoRows.get(fingerprint);
+    const selected = this.resolvePhotoAnalysis(fingerprint);
+    const variants = this.analysesFor(fingerprint)
+      .map((row): PhotoVariantRecord => ({
+        configId: row.configId,
+        label: this.analysisConfigs.get(row.configId)?.label ?? row.configId,
+        description: row.description,
+        scene: row.scene,
+        quality: row.quality,
+        language: row.language,
+        analyzer: row.analyzer,
+        model: row.model,
+        batchSize: row.batchSize,
+        createdAt: row.createdAt,
+        tags: [...row.tags],
+        selected: selected?.configId === row.configId,
+        explicit: photo?.selectedConfigId === row.configId,
+      }))
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId));
+    return Promise.resolve(ok(variants));
+  }
+
+  resolveSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.resolvePhotoAnalysis(fingerprint)?.configId ?? null));
+  }
+
+  setSelectedPhotoVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>> {
+    if (configId !== null && !this.analyses.has(analysisKey(fingerprint, configId))) {
+      return Promise.resolve({ ok: false, error: appError('variant_not_found', `Analysis variant not found: ${fingerprint}/${configId}`) });
+    }
+    const photo = this.photoRows.get(fingerprint);
+    if (photo !== undefined) this.photoRows.set(fingerprint, { ...photo, selectedConfigId: configId });
+    return Promise.resolve(ok(undefined));
+  }
+
+  deletePhotoVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
+    this.analyses.delete(analysisKey(fingerprint, configId));
+    const photo = this.photoRows.get(fingerprint);
+    if (photo?.selectedConfigId === configId) this.photoRows.set(fingerprint, { ...photo, selectedConfigId: null });
+    return Promise.resolve(ok(undefined));
+  }
+
+  setPhotoFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>> {
+    const folder = this.folders.get(folderId);
+    if (folder !== undefined) this.folders.set(folderId, { ...folder, defaultConfigId: configId });
     return Promise.resolve(ok(undefined));
   }
 }

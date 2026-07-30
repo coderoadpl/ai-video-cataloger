@@ -41,8 +41,13 @@ import {
   photosDetailOutputSchema,
   photosForgetOutputSchema,
   photosListOutputSchema,
+  photosSearchOutputSchema,
   photosStatusOutputSchema,
   photosTreeOutputSchema,
+  photosVariantsDeleteOutputSchema,
+  photosVariantsFolderDefaultOutputSchema,
+  photosVariantsListOutputSchema,
+  photosVariantsSelectOutputSchema,
   resetAllOutputSchema,
   resetSingleOutputSchema,
   scanOutputSchema,
@@ -913,6 +918,73 @@ export const createApiClient = (options: ApiClientOptions) => ({
       queryPath(API_ROUTES.photosDetail.path, [['fingerprint', parsed.value.fingerprint]]),
       photosDetailOutputSchema,
       undefined,
+      signal,
+    );
+  },
+  photosSearch: (input: z.input<typeof API_ROUTES.photosSearch.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosSearch.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosSearch.method,
+      queryPath(API_ROUTES.photosSearch.path, [
+        ['query', parsed.value.query],
+        ['limit', String(parsed.value.limit)],
+        ['offset', String(parsed.value.offset)],
+      ]),
+      photosSearchOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  photosVariantsList: (input: z.input<typeof API_ROUTES.photosVariantsList.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosVariantsList.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosVariantsList.method,
+      queryPath(API_ROUTES.photosVariantsList.path, [['fingerprint', parsed.value.fingerprint]]),
+      photosVariantsListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  photosVariantsSelect: (input: z.input<typeof API_ROUTES.photosVariantsSelect.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosVariantsSelect.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosVariantsSelect.method,
+      API_ROUTES.photosVariantsSelect.path,
+      photosVariantsSelectOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  photosVariantsDelete: (input: z.input<typeof API_ROUTES.photosVariantsDelete.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosVariantsDelete.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosVariantsDelete.method,
+      API_ROUTES.photosVariantsDelete.path,
+      photosVariantsDeleteOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  photosVariantsFolderDefault: (
+    input: z.input<typeof API_ROUTES.photosVariantsFolderDefault.input>,
+    signal?: AbortSignal,
+  ) => {
+    const parsed = parseInput(API_ROUTES.photosVariantsFolderDefault.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosVariantsFolderDefault.method,
+      API_ROUTES.photosVariantsFolderDefault.path,
+      photosVariantsFolderDefaultOutputSchema,
+      parsed.value,
       signal,
     );
   },

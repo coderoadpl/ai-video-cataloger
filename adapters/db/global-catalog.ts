@@ -99,6 +99,7 @@ import {
   people,
 } from './global-catalog-schema.js';
 import { CatalogAppError, HomeLock, type CatalogLockFs } from './home-lock.js';
+import { countTerm } from './search-score.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'catalog.db';
@@ -1961,21 +1962,6 @@ const weightedSearchScore = (
     score += countTerm(columns.transcript, term) * 5;
   }
   return score;
-};
-
-const countTerm = (value: string, term: string): number => {
-  const haystack = value.toLocaleLowerCase();
-  const needle = term.toLocaleLowerCase();
-  if (needle.length === 0) return 0;
-  let count = 0;
-  let offset = 0;
-  while (offset < haystack.length) {
-    const index = haystack.indexOf(needle, offset);
-    if (index === -1) return count;
-    count += 1;
-    offset = index + needle.length;
-  }
-  return count;
 };
 
 const stringValue = (value: SqlValue | undefined): string => typeof value === 'string' ? value : '';

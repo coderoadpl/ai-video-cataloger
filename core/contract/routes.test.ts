@@ -18,6 +18,10 @@ import {
   scanOutputSchema,
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
+  photosSearchOutputSchema,
+  photosVariantsDeleteOutputSchema,
+  photosVariantsFolderDefaultOutputSchema,
+  photosVariantsListOutputSchema,
   searchOutputSchema,
   tagsSuggestAliasesOutputSchema,
   variantsListOutputSchema,
@@ -811,5 +815,133 @@ describe('route schemas', () => {
 
     const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
     expect(acceptingCount).toBe(1);
+  });
+
+  it('round-trips photosSearch, photosVariants* routes, and photosDetailOutputSchema.analysis both null and non-null (P6)', () => {
+    expect(API_ROUTES.photosSearch.input.safeParse({ query: '', limit: 50, offset: 0 }).success).toBe(false);
+    expect(API_ROUTES.photosSearch.input.parse({ query: 'bicycle' })).toEqual({ query: 'bicycle', limit: 50, offset: 0 });
+
+    const searched = photosSearchOutputSchema.parse({
+      media: 'photo',
+      query: 'bicycle',
+      limit: 50,
+      offset: 0,
+      count: 1,
+      results: [{
+        fingerprint: 'ph_0000000000000001',
+        fileName: 'a.jpg',
+        currentPath: '/photos/a.jpg',
+        ext: 'jpg',
+        capturedAt: '2026-01-01T00:00:00.000Z',
+        description: 'a red bicycle',
+        snippet: 'a red <mark>bicycle</mark>',
+        tags: ['bicycle'],
+        variantCount: 1,
+        thumbState: 'done',
+        proxyState: 'done',
+        missingAt: null,
+        thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
+        proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
+      }],
+    });
+    expect(searched.results[0]?.fingerprint).toBe('ph_0000000000000001');
+
+    expect(API_ROUTES.photosVariantsSelect.input.parse({
+      fingerprint: 'ph_0000000000000001',
+      configId: null,
+    })).toEqual({ fingerprint: 'ph_0000000000000001', configId: null });
+    expect(API_ROUTES.photosVariantsFolderDefault.input.safeParse({ folderId: 'path-aaaaaaaa', configId: 'not-a-config-id' }).success)
+      .toBe(false);
+
+    const variantRecord = {
+      configId: 'cfg_ab12cd34ef56',
+      label: 'harness · claude-code · en',
+      description: 'a red bicycle',
+      scene: 'urban',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      tags: ['bicycle'],
+      selected: true,
+      explicit: false,
+    };
+    const listedVariants = photosVariantsListOutputSchema.parse({
+      media: 'photo',
+      fingerprint: 'ph_0000000000000001',
+      selectedConfigId: 'cfg_ab12cd34ef56',
+      variants: [variantRecord],
+    });
+    expect(listedVariants.variants[0]).toEqual(variantRecord);
+
+    const deleted = photosVariantsDeleteOutputSchema.parse({
+      media: 'photo',
+      fingerprint: 'ph_0000000000000001',
+      configId: 'cfg_ab12cd34ef56',
+      selectedConfigId: null,
+    });
+    expect(deleted.selectedConfigId).toBeNull();
+
+    const folderDefaulted = photosVariantsFolderDefaultOutputSchema.parse({
+      media: 'photo',
+      folderId: 'path-aaaaaaaa',
+      defaultConfigId: null,
+    });
+    expect(folderDefaulted.defaultConfigId).toBeNull();
+
+    const detailBase = {
+      media: 'photo' as const,
+      photo: {
+        fingerprint: 'ph_0000000000000001',
+        folderId: 'path-aaaaaaaa',
+        fileName: 'a.jpg',
+        currentPath: '/photos/a.jpg',
+        ext: 'jpg' as const,
+        size: 1024,
+        width: 100,
+        height: 100,
+        orientation: 1,
+        cameraMake: null,
+        cameraModel: null,
+        lens: null,
+        iso: null,
+        fNumber: null,
+        exposureTime: null,
+        exifRating: null,
+        capturedAt: '2026-01-01T00:00:00.000Z',
+        capturedAtSource: 'file_mtime' as const,
+        discoveredAt: '2026-01-01T00:00:00.000Z',
+        exifReadAt: null,
+        proxyState: 'done' as const,
+        proxyWidth: 1280,
+        proxyHeight: 960,
+        thumbState: 'done' as const,
+        missingAt: null,
+      },
+      sightings: [],
+      ownerPath: '/photos/a.jpg',
+      proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
+      thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
+    };
+
+    const detailWithoutAnalysis = API_ROUTES.photosDetail.output.parse({ ...detailBase, analysis: null });
+    expect(detailWithoutAnalysis.analysis).toBeNull();
+
+    const analysisSample = {
+      configId: 'cfg_ab12cd34ef56',
+      label: 'harness · claude-code · en',
+      description: 'a red bicycle',
+      scene: 'urban',
+      quality: 'good',
+      tags: ['bicycle'],
+      batchSize: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      variantCount: 1,
+      explicit: false,
+    };
+    const detailWithAnalysis = API_ROUTES.photosDetail.output.parse({ ...detailBase, analysis: analysisSample });
+    expect(detailWithAnalysis.analysis).toMatchObject({ configId: 'cfg_ab12cd34ef56', explicit: false });
   });
 });

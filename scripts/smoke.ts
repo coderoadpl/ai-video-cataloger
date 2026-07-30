@@ -519,6 +519,49 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
   }).parse(completedData(scan, 'photos scan'));
   assert(scanCompleted.photosNew === 2, 'photos scan: expected two new photos');
 
+  const searchByFileName = await run(['photos', 'search', 'a', '--json'], env, folder);
+  assert(searchByFileName.code === 0, `photos search a: expected exit 0, got ${searchByFileName.code}.\nstdout: ${searchByFileName.stdout}`);
+  const searchedByFileName = z.object({
+    media: z.literal('photo'),
+    count: z.number(),
+    results: z.array(z.object({ fingerprint: z.string() })),
+  }).parse(completedData(searchByFileName, 'photos search a'));
+  assert(searchedByFileName.count >= 1, 'photos search a: expected at least one result before any analysis');
+  const scannedFingerprint = searchedByFileName.results[0]?.fingerprint;
+  assert(scannedFingerprint !== undefined, 'photos search a: expected a fingerprint on the first result');
+
+  const searchEmpty = await run(['photos', 'search', '', '--json'], env, folder);
+  const searchEmptyExpected = EXIT_CODE_BY_ERROR_CODE.validation;
+  assert(
+    searchEmpty.code === searchEmptyExpected,
+    `photos search "": expected exit ${searchEmptyExpected}, got ${searchEmpty.code}.\nstdout: ${searchEmpty.stdout}\nstderr: ${searchEmpty.stderr}`,
+  );
+  const searchEmptyError = errorEvent(searchEmpty, 'photos search ""');
+  assert(
+    searchEmptyError.type === 'error' && searchEmptyError.code === 'VALIDATION',
+    `photos search "": expected VALIDATION, got ${JSON.stringify(searchEmptyError)}`,
+  );
+
+  const variantsListEmpty = await run(['photos', 'variants', 'list', scannedFingerprint, '--json'], env, folder);
+  assert(variantsListEmpty.code === 0, `photos variants list: expected exit 0, got ${variantsListEmpty.code}.\nstdout: ${variantsListEmpty.stdout}`);
+  z.object({ selectedConfigId: z.null(), count: z.literal(0) }).parse(completedData(variantsListEmpty, 'photos variants list'));
+
+  const variantsSelectUnknown = await run(
+    ['photos', 'variants', 'select', scannedFingerprint, 'cfg_000000000000', '--json'],
+    env,
+    folder,
+  );
+  const variantsSelectUnknownExpected = EXIT_CODE_BY_ERROR_CODE.variant_not_found;
+  assert(
+    variantsSelectUnknown.code === variantsSelectUnknownExpected,
+    `photos variants select (unknown): expected exit ${variantsSelectUnknownExpected}, got ${variantsSelectUnknown.code}.\nstdout: ${variantsSelectUnknown.stdout}\nstderr: ${variantsSelectUnknown.stderr}`,
+  );
+  const variantsSelectUnknownError = errorEvent(variantsSelectUnknown, 'photos variants select (unknown)');
+  assert(
+    variantsSelectUnknownError.type === 'error' && variantsSelectUnknownError.code === 'VARIANT_NOT_FOUND',
+    `photos variants select (unknown): expected VARIANT_NOT_FOUND, got ${JSON.stringify(variantsSelectUnknownError)}`,
+  );
+
   const statusAfterScan = await run(['photos', 'status', photosDir, '--json'], env, folder);
   assert(statusAfterScan.code === 0, `photos status: expected exit 0, got ${statusAfterScan.code}.\nstdout: ${statusAfterScan.stdout}`);
   z.object({
@@ -553,6 +596,14 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
   const rescan = await run(['photos', 'scan', photosDir, '--json'], env, folder);
   assert(rescan.code === 0, `photos scan (rename): expected exit 0, got ${rescan.code}.\nstdout: ${rescan.stdout}\nstderr: ${rescan.stderr}`);
   z.object({ media: z.literal('photo'), photosNew: z.literal(0) }).parse(completedData(rescan, 'photos scan (rename)'));
+
+  const searchRenamed = await run(['photos', 'search', 'renamed', '--json'], env, folder);
+  assert(searchRenamed.code === 0, `photos search renamed: expected exit 0, got ${searchRenamed.code}.\nstdout: ${searchRenamed.stdout}`);
+  z.object({ count: z.number().min(1) }).parse(completedData(searchRenamed, 'photos search renamed'));
+
+  const searchOldName = await run(['photos', 'search', 'a', '--json'], env, folder);
+  assert(searchOldName.code === 0, `photos search a (after rename): expected exit 0, got ${searchOldName.code}.\nstdout: ${searchOldName.stdout}`);
+  z.object({ count: z.literal(0) }).parse(completedData(searchOldName, 'photos search a (after rename)'));
 
   const statusAfterRename = await run(['photos', 'status', photosDir, '--json'], env, folder);
   assert(statusAfterRename.code === 0, `photos status: expected exit 0, got ${statusAfterRename.code}.\nstdout: ${statusAfterRename.stdout}`);

@@ -44,15 +44,18 @@ import {
   type PhotoRecord,
   type PhotoRootSummary,
   type PhotoRunRecord,
+  type PhotoSearchRow,
   type PhotoSightingRecord,
   type PhotosCounts,
   type PhotosStore,
+  type PhotoVariantRecord,
   type SpendLedgerPort,
 } from '../ports.js';
 import { geminiMonthlyBudget, monthlyBudgetExceeded, type BudgetExceeded } from './budget.js';
 import { resolveConfigValues } from './config-resolution.js';
 import { photoArtifactsRoot, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
 import { reportStep as report } from './process-drive-batch.js';
+import { buildSearchMatch, sanitizeSearchQuery } from './search.js';
 import { shouldSkipDirectory } from './shared.js';
 
 export const PHOTO_SCAN_BATCH_SIZE = 500;
@@ -717,6 +720,19 @@ export const photosList = async (
   });
 };
 
+export interface PhotosDetailAnalysis {
+  configId: string;
+  label: string;
+  description: string;
+  scene: string;
+  quality: string;
+  tags: string[];
+  batchSize: number | null;
+  createdAt: string;
+  variantCount: number;
+  explicit: boolean;
+}
+
 export interface PhotosDetailOutput {
   media: 'photo';
   photo: PhotoRecord;
@@ -724,6 +740,7 @@ export interface PhotosDetailOutput {
   ownerPath: string;
   proxyPath: string | null;
   thumbPath: string | null;
+  analysis: PhotosDetailAnalysis | null;
 }
 
 export const photosDetail = async (
@@ -734,6 +751,8 @@ export const photosDetail = async (
   if (!detail.ok) return detail;
   if (detail.value === null) return ok(null);
   const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  const analysis = await resolvedPhotoAnalysis(deps, input.fingerprint);
+  if (!analysis.ok) return analysis;
   return ok({
     media: 'photo',
     photo: detail.value.photo,
@@ -741,8 +760,174 @@ export const photosDetail = async (
     ownerPath: detail.value.photo.currentPath,
     proxyPath: detail.value.photo.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
     thumbPath: detail.value.photo.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
+    analysis: analysis.value,
   });
 };
+
+const resolvedPhotoAnalysis = async (
+  deps: PhotosDeps,
+  fingerprint: string,
+): Promise<Result<PhotosDetailAnalysis | null, AppError>> => {
+  const resolvedConfigId = await deps.photos.resolveSelectedConfigId(fingerprint);
+  if (!resolvedConfigId.ok) return resolvedConfigId;
+  if (resolvedConfigId.value === null) return ok(null);
+  const variants = await deps.photos.listPhotoVariants(fingerprint);
+  if (!variants.ok) return variants;
+  const selected = variants.value.find((variant) => variant.configId === resolvedConfigId.value);
+  if (selected === undefined) return ok(null);
+  return ok({
+    configId: selected.configId,
+    label: selected.label,
+    description: selected.description,
+    scene: selected.scene,
+    quality: selected.quality,
+    tags: selected.tags,
+    batchSize: selected.batchSize,
+    createdAt: selected.createdAt,
+    variantCount: variants.value.length,
+    explicit: selected.explicit,
+  });
+};
+
+export interface PhotosSearchOutput {
+  media: 'photo';
+  query: string;
+  limit: number;
+  offset: number;
+  count: number;
+  results: (PhotoSearchRow & { thumbPath: string | null; proxyPath: string | null })[];
+}
+
+export const photosSearch = async (
+  deps: PhotosDeps,
+  input: { query: string; limit: number; offset: number },
+): Promise<Result<PhotosSearchOutput, AppError>> => {
+  const sanitized = sanitizeSearchQuery(input.query);
+  if (!sanitized.ok) return sanitized;
+  const expansions = await deps.photos.expandPhotoTagTerms(sanitized.value.rankingTerms);
+  if (!expansions.ok) return expansions;
+  const equivalents = new Map(expansions.value.map((entry) => [entry.term, entry.equivalents]));
+  const rows = await deps.photos.searchPhotos({
+    match: buildSearchMatch(sanitized.value.parts, equivalents),
+    rankingTerms: sanitized.value.rankingTerms,
+    limit: input.limit,
+    offset: input.offset,
+  });
+  if (!rows.ok) return rows;
+  const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  const results = rows.value.map((row) => ({
+    ...row,
+    proxyPath: row.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, row.fingerprint) : null,
+    thumbPath: row.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, row.fingerprint) : null,
+  }));
+  return ok({
+    media: 'photo',
+    query: input.query,
+    limit: input.limit,
+    offset: input.offset,
+    count: results.length,
+    results,
+  });
+};
+
+export interface PhotosVariantsListOutput {
+  media: 'photo';
+  fingerprint: string;
+  selectedConfigId: string | null;
+  variants: PhotoVariantRecord[];
+}
+
+export const photosVariantsList = async (
+  deps: PhotosDeps,
+  input: { fingerprint: string },
+): Promise<Result<PhotosVariantsListOutput, AppError>> => {
+  const photo = await deps.photos.getPhoto(input.fingerprint);
+  if (!photo.ok) return photo;
+  if (photo.value === null) return photoNotFound(input.fingerprint);
+  const variants = await deps.photos.listPhotoVariants(input.fingerprint);
+  if (!variants.ok) return variants;
+  const selected = await deps.photos.resolveSelectedConfigId(input.fingerprint);
+  if (!selected.ok) return selected;
+  return ok({ media: 'photo', fingerprint: input.fingerprint, selectedConfigId: selected.value, variants: variants.value });
+};
+
+export interface PhotosVariantsSelectOutput {
+  media: 'photo';
+  fingerprint: string;
+  configId: string | null;
+}
+
+export const photosVariantsSelect = async (
+  deps: PhotosDeps,
+  input: { fingerprint: string; configId: string | null },
+): Promise<Result<PhotosVariantsSelectOutput, AppError>> => {
+  const photo = await deps.photos.getPhoto(input.fingerprint);
+  if (!photo.ok) return photo;
+  if (photo.value === null) return photoNotFound(input.fingerprint);
+  const selected = await deps.photos.setSelectedPhotoVariant(input.fingerprint, input.configId);
+  if (!selected.ok) return selected;
+  return ok({ media: 'photo', fingerprint: input.fingerprint, configId: input.configId });
+};
+
+export interface PhotosVariantsDeleteOutput {
+  media: 'photo';
+  fingerprint: string;
+  configId: string;
+  selectedConfigId: string | null;
+}
+
+export const photosVariantsDelete = async (
+  deps: PhotosDeps,
+  input: { fingerprint: string; configId: string },
+): Promise<Result<PhotosVariantsDeleteOutput, AppError>> => {
+  const photo = await deps.photos.getPhoto(input.fingerprint);
+  if (!photo.ok) return photo;
+  if (photo.value === null) return photoNotFound(input.fingerprint);
+  const variants = await deps.photos.listPhotoVariants(input.fingerprint);
+  if (!variants.ok) return variants;
+  const exists = variants.value.some((variant) => variant.configId === input.configId);
+  if (!exists) return photoVariantNotFound(input.fingerprint, input.configId);
+  const deleted = await deps.photos.deletePhotoVariant(input.fingerprint, input.configId);
+  if (!deleted.ok) return deleted;
+  const selectedConfigId = await deps.photos.resolveSelectedConfigId(input.fingerprint);
+  if (!selectedConfigId.ok) return selectedConfigId;
+  return ok({
+    media: 'photo',
+    fingerprint: input.fingerprint,
+    configId: input.configId,
+    selectedConfigId: selectedConfigId.value,
+  });
+};
+
+export interface PhotosVariantsFolderDefaultOutput {
+  media: 'photo';
+  folderId: string;
+  defaultConfigId: string | null;
+}
+
+export const photosVariantsFolderDefault = async (
+  deps: PhotosDeps,
+  input: { folderId: string; configId: string | null },
+): Promise<Result<PhotosVariantsFolderDefaultOutput, AppError>> => {
+  const folder = await deps.photos.getFolder(input.folderId);
+  if (!folder.ok) return folder;
+  if (folder.value === null) {
+    return { ok: false, error: appError('folder_not_found', `Photo folder not found: ${input.folderId}`) };
+  }
+  const stored = await deps.photos.setPhotoFolderDefaultVariant(input.folderId, input.configId);
+  if (!stored.ok) return stored;
+  return ok({ media: 'photo', folderId: input.folderId, defaultConfigId: input.configId });
+};
+
+const photoNotFound = <T>(fingerprint: string): Result<T, AppError> => ({
+  ok: false,
+  error: appError('file_not_found', `Photo not found: ${fingerprint}`),
+});
+
+const photoVariantNotFound = <T>(fingerprint: string, configId: string): Result<T, AppError> => ({
+  ok: false,
+  error: appError('variant_not_found', `Analysis variant not found: ${fingerprint}/${configId}`),
+});
 
 export const photosStatus = async (
   deps: PhotosDeps,

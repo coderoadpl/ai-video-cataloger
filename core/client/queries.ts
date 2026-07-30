@@ -103,6 +103,9 @@ export type PhotosDetailInput = z.input<typeof API_ROUTES.photosDetail.input>;
 export type SelectVariantInput = z.input<typeof API_ROUTES.variantsSelect.input>;
 export type DeleteVariantInput = z.input<typeof API_ROUTES.variantsDelete.input>;
 export type SetFolderDefaultVariantInput = z.input<typeof API_ROUTES.variantsFolderDefault.input>;
+export type PhotosSearchInput = z.input<typeof API_ROUTES.photosSearch.input>;
+export type PhotosVariantsListInput = z.input<typeof API_ROUTES.photosVariantsList.input>;
+export type PhotosVariantsSelectInput = z.input<typeof API_ROUTES.photosVariantsSelect.input>;
 export type IndexStatusOutput = z.output<typeof API_ROUTES.indexStatus.output>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
@@ -239,6 +242,8 @@ export const photosScopes = {
   tree: () => ['photos', 'tree'] as const,
   list: (root: string | undefined, offset: number) => ['photos', 'list', root ?? null, offset] as const,
   detail: (fingerprint: string) => ['photos', 'detail', fingerprint] as const,
+  search: (query: string, offset: number) => ['photos', 'search', query, offset] as const,
+  variants: (fingerprint: string) => ['photos', 'variants', fingerprint] as const,
 };
 
 export const mutationScopes = {
@@ -274,6 +279,7 @@ export const mutationScopes = {
   selectVariant: () => ['variants', 'select'] as const,
   deleteVariant: () => ['variants', 'delete'] as const,
   setFolderDefaultVariant: () => ['variants', 'folder-default'] as const,
+  photosVariantsSelect: () => ['photos', 'variants', 'select'] as const,
 };
 
 const invalidateVariantConsumers = async (
@@ -576,6 +582,22 @@ export const photosDetailQuery = (api: ApiClient, input: PhotosDetailInput) =>
     call: ({ signal }) => api.photosDetail(input, signal),
   });
 
+export const photosSearchQuery = (api: ApiClient, input: PhotosSearchInput) => {
+  const parsed = API_ROUTES.photosSearch.input.parse(input);
+  return defineQuery({
+    queryKey: photosScopes.search(parsed.query, parsed.offset),
+    staleTime: 0,
+    call: ({ signal }) => api.photosSearch(parsed, signal),
+  });
+};
+
+export const photosVariantsQuery = (api: ApiClient, input: PhotosVariantsListInput) =>
+  defineQuery({
+    queryKey: photosScopes.variants(input.fingerprint),
+    staleTime: 0,
+    call: ({ signal }) => api.photosVariantsList(input, signal),
+  });
+
 export const facesPeopleQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: facesScopes.people(),
@@ -750,6 +772,15 @@ export const photosProcessMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.photosProcess(),
     call: (variables: PhotosProcessInput) => api.photosProcess(variables),
+    onSettled: (_data, _error, _variables, _onMutateResult, context) => {
+      void context.client.invalidateQueries({ queryKey: photosScopes.all() });
+    },
+  });
+
+export const photosVariantsSelectMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.photosVariantsSelect(),
+    call: (variables: PhotosVariantsSelectInput) => api.photosVariantsSelect(variables),
     onSettled: (_data, _error, _variables, _onMutateResult, context) => {
       void context.client.invalidateQueries({ queryKey: photosScopes.all() });
     },

@@ -723,6 +723,38 @@ export interface Dictionary {
     statusProxied: (count: number) => string;
     statusProxyFailed: (count: number) => string;
     loadingPhotos: string;
+    searchPlaceholder: string;
+    searchResultsLabel: (count: number) => string;
+    searchNoResults: string;
+    searchClear: string;
+    analyzeAction: string;
+    analyzeProgress: (current: number, total: number) => string;
+    analysisNone: string;
+    detailDescription: string;
+    detailScene: string;
+    detailQuality: string;
+    detailTags: string;
+    detailVariant: string;
+    detailVariantCount: (count: number) => string;
+    variantPickerLabel: string;
+    variantAutomatic: string;
+    scenePeople: string;
+    sceneLandscape: string;
+    sceneUrban: string;
+    sceneIndoor: string;
+    sceneFood: string;
+    sceneDocument: string;
+    sceneScreenshot: string;
+    sceneAnimal: string;
+    sceneVehicle: string;
+    sceneEvent: string;
+    sceneObject: string;
+    sceneOther: string;
+    qualityGood: string;
+    qualityBlurry: string;
+    qualityDark: string;
+    qualityOverexposed: string;
+    qualityOther: string;
   };
 }
 
@@ -1503,6 +1535,38 @@ export const en: Dictionary = {
     statusProxied: (count) => `${count} proxied`,
     statusProxyFailed: (count) => `${count} proxy failed`,
     loadingPhotos: 'Loading photos…',
+    searchPlaceholder: 'Search file names, descriptions, tags, places…',
+    searchResultsLabel: (count) => `${count} result${count === 1 ? '' : 's'}`,
+    searchNoResults: 'No photos match this search.',
+    searchClear: 'Clear search',
+    analyzeAction: 'Analyze',
+    analyzeProgress: (current, total) => `Analyzing ${current} of ${total}…`,
+    analysisNone: 'Not analysed yet.',
+    detailDescription: 'Description',
+    detailScene: 'Scene',
+    detailQuality: 'Quality',
+    detailTags: 'Tags',
+    detailVariant: 'Analysis',
+    detailVariantCount: (count) => `${count} variant${count === 1 ? '' : 's'}`,
+    variantPickerLabel: 'Analysis variant',
+    variantAutomatic: 'Automatic',
+    scenePeople: 'People',
+    sceneLandscape: 'Landscape',
+    sceneUrban: 'Urban',
+    sceneIndoor: 'Indoor',
+    sceneFood: 'Food',
+    sceneDocument: 'Document',
+    sceneScreenshot: 'Screenshot',
+    sceneAnimal: 'Animal',
+    sceneVehicle: 'Vehicle',
+    sceneEvent: 'Event',
+    sceneObject: 'Object',
+    sceneOther: 'Other',
+    qualityGood: 'Good',
+    qualityBlurry: 'Blurry',
+    qualityDark: 'Dark',
+    qualityOverexposed: 'Overexposed',
+    qualityOther: 'Other',
   },
 };
 
@@ -2292,6 +2356,38 @@ export const pl: Dictionary = {
     statusProxied: (count) => `${count} z podglądem`,
     statusProxyFailed: (count) => `${count} nieudanych podglądów`,
     loadingPhotos: 'Ładowanie zdjęć…',
+    searchPlaceholder: 'Szukaj po nazwie pliku, opisie, tagach, miejscu…',
+    searchResultsLabel: (count) => `${count} ${plPlural(count, 'wynik', 'wyniki', 'wyników')}`,
+    searchNoResults: 'Żadne zdjęcie nie pasuje do tego wyszukiwania.',
+    searchClear: 'Wyczyść wyszukiwanie',
+    analyzeAction: 'Analizuj',
+    analyzeProgress: (current, total) => `Analizowanie ${current} z ${total}…`,
+    analysisNone: 'Jeszcze nie przeanalizowano.',
+    detailDescription: 'Opis',
+    detailScene: 'Scena',
+    detailQuality: 'Jakość',
+    detailTags: 'Tagi',
+    detailVariant: 'Analiza',
+    detailVariantCount: (count) => `${count} ${plPlural(count, 'wariant', 'warianty', 'wariantów')}`,
+    variantPickerLabel: 'Wariant analizy',
+    variantAutomatic: 'Automatycznie',
+    scenePeople: 'Ludzie',
+    sceneLandscape: 'Krajobraz',
+    sceneUrban: 'Miasto',
+    sceneIndoor: 'Wnętrze',
+    sceneFood: 'Jedzenie',
+    sceneDocument: 'Dokument',
+    sceneScreenshot: 'Zrzut ekranu',
+    sceneAnimal: 'Zwierzę',
+    sceneVehicle: 'Pojazd',
+    sceneEvent: 'Wydarzenie',
+    sceneObject: 'Przedmiot',
+    sceneOther: 'Inne',
+    qualityGood: 'Dobra',
+    qualityBlurry: 'Rozmazana',
+    qualityDark: 'Ciemna',
+    qualityOverexposed: 'Prześwietlona',
+    qualityOther: 'Inna',
   },
 };
 

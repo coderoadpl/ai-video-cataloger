@@ -339,6 +339,37 @@ export interface PhotoAnalysisCandidate {
   currentPath: string;
 }
 
+export interface PhotoSearchRow {
+  fingerprint: string;
+  fileName: string;
+  currentPath: string;
+  ext: PhotoExtension;
+  capturedAt: string | null;
+  description: string | null;
+  snippet: string;
+  tags: string[];
+  variantCount: number;
+  thumbState: 'pending' | 'done' | 'failed';
+  proxyState: 'pending' | 'done' | 'failed' | 'not_needed';
+  missingAt: number | null;
+}
+
+export interface PhotoVariantRecord {
+  configId: string;
+  label: string;
+  description: string;
+  scene: string;
+  quality: string;
+  language: string | null;
+  analyzer: string | null;
+  model: string | null;
+  batchSize: number | null;
+  createdAt: string;
+  tags: string[];
+  selected: boolean;
+  explicit: boolean;
+}
+
 export interface PhotoAnalysisCandidates {
   candidates: PhotoAnalysisCandidate[];
   alreadyAnalysed: number;
@@ -444,6 +475,14 @@ export interface PhotosStore {
   listAnalysisCandidates(root: string, configId: string, force: boolean): Promise<Result<PhotoAnalysisCandidates, AppError>>;
   upsertAnalysisConfig(input: { configId: string; descriptorJson: string; label: string; now: string }): Promise<Result<void, AppError>>;
   recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>>;
+  searchPhotos(input: { match: string; rankingTerms: readonly string[]; limit: number; offset: number }):
+    Promise<Result<PhotoSearchRow[], AppError>>;
+  expandPhotoTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
+  listPhotoVariants(fingerprint: string): Promise<Result<PhotoVariantRecord[], AppError>>;
+  resolveSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>>;
+  setSelectedPhotoVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>>;
+  deletePhotoVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>>;
+  setPhotoFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>>;
 }
 
 export interface DriveRunRecord {

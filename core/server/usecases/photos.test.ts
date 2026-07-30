@@ -28,8 +28,13 @@ import {
   photosDetail,
   photosForget,
   photosList,
+  photosSearch,
   photosStatus,
   photosTree,
+  photosVariantsDelete,
+  photosVariantsFolderDefault,
+  photosVariantsList,
+  photosVariantsSelect,
   resolvePhotoAnalyzerOptions,
   runPhotoProcess,
   runPhotoProxiesPass,
@@ -602,6 +607,178 @@ describe('photosTree, photosList, photosDetail', () => {
 
     const missing = await photosDetail(deps, { fingerprint: 'ph_ffffffffffffffff' });
     expect(missing.ok && missing.value).toBeNull();
+  });
+
+  it('detail composes the resolved analysis when a variant exists (P4)', async () => {
+    const { deps, fs, photos } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    const fingerprint = fingerprintOf('a');
+    await photos.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'harness · claude-code · en', now: '2026-01-01T00:00:00.000Z' });
+    await photos.recordPhotoAnalysis({
+      fingerprint,
+      configId: 'cfg_aaaaaaaaaaaa',
+      description: 'a red bicycle',
+      scene: 'urban',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      usageJson: null,
+      tags: ['bicycle'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const detail = await photosDetail(deps, { fingerprint });
+    expect(detail.ok && detail.value?.analysis).toEqual({
+      configId: 'cfg_aaaaaaaaaaaa',
+      label: 'harness · claude-code · en',
+      description: 'a red bicycle',
+      scene: 'urban',
+      quality: 'good',
+      tags: ['bicycle'],
+      batchSize: 1,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      variantCount: 1,
+      explicit: false,
+    });
+  });
+});
+
+describe('photosSearch (P4)', () => {
+  it('reuses the video sanitizer (validation on empty query, quoted phrase intact), expands tag terms and composes thumb/proxy paths only when done', async () => {
+    const { deps, fs, photos } = buildDeps();
+    fs.addFile('/work/photos/vacation.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    const fingerprint = fingerprintOf('a');
+
+    const empty = await photosSearch(deps, { query: '', limit: 50, offset: 0 });
+    expect(empty.ok).toBe(false);
+    if (!empty.ok) expect(empty.error.code).toBe('validation');
+
+    const byFileName = await photosSearch(deps, { query: 'vacation', limit: 50, offset: 0 });
+    expect(byFileName.ok).toBe(true);
+    if (byFileName.ok) {
+      expect(byFileName.value.results.map((row) => row.fingerprint)).toEqual([fingerprint]);
+      expect(byFileName.value.results[0]?.thumbPath).toContain(fingerprint);
+      expect(byFileName.value.results[0]?.proxyPath).toContain(fingerprint);
+    }
+
+    await photos.setProxyOutcome({ fingerprint, proxyState: 'failed', proxyWidth: null, proxyHeight: null, thumbState: 'failed' });
+    const afterFailure = await photosSearch(deps, { query: 'vacation', limit: 50, offset: 0 });
+    expect(afterFailure.ok && afterFailure.value.results[0]?.thumbPath).toBeNull();
+    expect(afterFailure.ok && afterFailure.value.results[0]?.proxyPath).toBeNull();
+
+    photos.photoTagAliases.set('bike', 'bicycle');
+    await photos.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await photos.recordPhotoAnalysis({
+      fingerprint,
+      configId: 'cfg_aaaaaaaaaaaa',
+      description: 'a red bicycle',
+      scene: 'urban',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      usageJson: null,
+      tags: ['bicycle'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    await photosSearch(deps, { query: 'bike', limit: 50, offset: 0 });
+    expect(photos.lastSearchInput?.match).toContain('bicycle');
+
+    const phrase = await photosSearch(deps, { query: '"red bicycle"', limit: 50, offset: 0 });
+    expect(phrase.ok).toBe(true);
+    expect(photos.lastSearchInput?.match).toBe('"red bicycle"');
+  });
+});
+
+describe('photos variants use cases (P5)', () => {
+  const seedTwoVariants = async (deps: PhotosDeps, photos: InMemoryPhotosStore, fs: InMemoryFileSystem): Promise<string> => {
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    const fingerprint = fingerprintOf('a');
+    await photos.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await photos.recordPhotoAnalysis({
+      fingerprint, configId: 'cfg_aaaaaaaaaaaa', description: 'alpha', scene: 'urban', quality: 'good',
+      language: 'en', analyzer: 'harness', model: 'claude-code', batchSize: 1, usageJson: null, tags: [], createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    await photos.upsertAnalysisConfig({ configId: 'cfg_bbbbbbbbbbbb', descriptorJson: '{}', label: 'B', now: '2026-01-02T00:00:00.000Z' });
+    await photos.recordPhotoAnalysis({
+      fingerprint, configId: 'cfg_bbbbbbbbbbbb', description: 'beta', scene: 'urban', quality: 'good',
+      language: 'en', analyzer: 'harness', model: 'claude-code', batchSize: 1, usageJson: null, tags: [], createdAt: '2026-01-02T00:00:00.000Z',
+    });
+    return fingerprint;
+  };
+
+  it('lists variants ordered newest-first with selected/explicit flags, and 404s an unknown fingerprint', async () => {
+    const { deps, fs, photos } = buildDeps();
+    const fingerprint = await seedTwoVariants(deps, photos, fs);
+
+    const listed = await photosVariantsList(deps, { fingerprint });
+    expect(listed.ok).toBe(true);
+    if (listed.ok) {
+      expect(listed.value.variants.map((variant) => variant.configId)).toEqual(['cfg_bbbbbbbbbbbb', 'cfg_aaaaaaaaaaaa']);
+      expect(listed.value.selectedConfigId).toBe('cfg_bbbbbbbbbbbb');
+    }
+
+    const missing = await photosVariantsList(deps, { fingerprint: 'ph_ffffffffffffffff' });
+    expect(missing.ok).toBe(false);
+    if (!missing.ok) expect(missing.error.code).toBe('file_not_found');
+  });
+
+  it('select rejects an unknown variant with variant_not_found, accepts null to clear', async () => {
+    const { deps, fs, photos } = buildDeps();
+    const fingerprint = await seedTwoVariants(deps, photos, fs);
+
+    const unknown = await photosVariantsSelect(deps, { fingerprint, configId: 'cfg_ffffffffffff' });
+    expect(unknown.ok).toBe(false);
+    if (!unknown.ok) expect(unknown.error.code).toBe('variant_not_found');
+
+    const selected = await photosVariantsSelect(deps, { fingerprint, configId: 'cfg_aaaaaaaaaaaa' });
+    expect(selected.ok).toBe(true);
+    const afterSelect = await photosVariantsList(deps, { fingerprint });
+    expect(afterSelect.ok && afterSelect.value.selectedConfigId).toBe('cfg_aaaaaaaaaaaa');
+
+    const cleared = await photosVariantsSelect(deps, { fingerprint, configId: null });
+    expect(cleared.ok).toBe(true);
+    const afterClear = await photosVariantsList(deps, { fingerprint });
+    expect(afterClear.ok && afterClear.value.selectedConfigId).toBe('cfg_bbbbbbbbbbbb');
+  });
+
+  it('delete of the last variant leaves detail.analysis null, and 404s an unknown variant', async () => {
+    const { deps, fs, photos } = buildDeps();
+    const fingerprint = await seedTwoVariants(deps, photos, fs);
+
+    const unknownVariant = await photosVariantsDelete(deps, { fingerprint, configId: 'cfg_ffffffffffff' });
+    expect(unknownVariant.ok).toBe(false);
+    if (!unknownVariant.ok) expect(unknownVariant.error.code).toBe('variant_not_found');
+
+    const firstDelete = await photosVariantsDelete(deps, { fingerprint, configId: 'cfg_bbbbbbbbbbbb' });
+    expect(firstDelete.ok && firstDelete.value.selectedConfigId).toBe('cfg_aaaaaaaaaaaa');
+
+    const lastDelete = await photosVariantsDelete(deps, { fingerprint, configId: 'cfg_aaaaaaaaaaaa' });
+    expect(lastDelete.ok && lastDelete.value.selectedConfigId).toBeNull();
+
+    const detail = await photosDetail(deps, { fingerprint });
+    expect(detail.ok && detail.value?.analysis).toBeNull();
+  });
+
+  it('folder-default re-materializes non-explicit photos in that folder', async () => {
+    const { deps, fs, photos } = buildDeps();
+    const fingerprint = await seedTwoVariants(deps, photos, fs);
+    const folderDefaulted = await photosVariantsFolderDefault(deps, { folderId: `${fingerprint.length > 0 ? 'path-work-photos' : ''}`, configId: 'cfg_aaaaaaaaaaaa' });
+    expect(folderDefaulted.ok).toBe(false);
+    if (!folderDefaulted.ok) expect(folderDefaulted.error.code).toBe('folder_not_found');
+
+    const photoRecord = await photos.getPhoto(fingerprint);
+    const realFolderId = photoRecord.ok ? photoRecord.value?.folderId ?? '' : '';
+    const applied = await photosVariantsFolderDefault(deps, { folderId: realFolderId, configId: 'cfg_aaaaaaaaaaaa' });
+    expect(applied.ok).toBe(true);
+    const listed = await photosVariantsList(deps, { fingerprint });
+    expect(listed.ok && listed.value.selectedConfigId).toBe('cfg_aaaaaaaaaaaa');
   });
 });
 

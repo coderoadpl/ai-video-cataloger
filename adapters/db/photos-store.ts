@@ -1,4 +1,4 @@
-import { and, eq } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { drizzle, type SQLJsDatabase } from 'drizzle-orm/sql-js';
 import {
   closeSync,
@@ -38,10 +38,13 @@ import type {
   PhotoRecord,
   PhotoRootSummary,
   PhotoRunRecord,
+  PhotoSearchRow,
   PhotoSightingRecord,
   PhotosCounts,
   PhotosStore,
+  PhotoVariantRecord,
   RecordPhotoAnalysisInput,
+  TagTermExpansion,
 } from '@core/server/index.js';
 
 import {
@@ -60,6 +63,7 @@ import {
   PHOTOS_SCHEMA_VERSION,
 } from './photos-schema.js';
 import { CatalogAppError, HomeLock, type CatalogLockFs } from './home-lock.js';
+import { countTerm } from './search-score.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'photos.db';
@@ -208,9 +212,7 @@ export class SqlJsPhotosStore implements PhotosStore {
           set: row,
         })
         .run();
-      if (photoSearchDocumentId(client, photo.fingerprint) !== null) {
-        syncPhotoSearchDocument(db, client, photo.fingerprint);
-      }
+      syncPhotoSearchDocument(db, client, photo.fingerprint);
     });
   }
 
@@ -543,6 +545,162 @@ export class SqlJsPhotosStore implements PhotosStore {
     });
   }
 
+  async searchPhotos(input: {
+    match: string;
+    rankingTerms: readonly string[];
+    limit: number;
+    offset: number;
+  }): Promise<Result<PhotoSearchRow[], AppError>> {
+    return this.read((_db, client) => {
+      const result = client.exec(
+        `SELECT
+            p.fingerprint,
+            p.file_name,
+            p.current_path,
+            p.ext,
+            p.captured_at,
+            NULLIF(sd.description, ''),
+            snippet(photo_search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12),
+            sd.tags_text,
+            sd.place,
+            (SELECT COUNT(*) FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) AS variant_count,
+            p.thumb_state,
+            p.proxy_state,
+            p.missing_at
+          FROM photo_search_documents_fts
+          JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
+          JOIN photos p ON p.fingerprint = sd.fingerprint
+          WHERE photo_search_documents_fts MATCH $match`,
+        { $match: input.match },
+      );
+      return (result[0]?.values ?? [])
+        .map((row) => photoSearchRowFromValues(row, input.rankingTerms))
+        .sort((left, right) =>
+          right.score - left.score
+          || left.row.fileName.localeCompare(right.row.fileName)
+          || left.row.fingerprint.localeCompare(right.row.fingerprint))
+        .slice(input.offset, input.offset + input.limit)
+        .map((scored) => scored.row);
+    });
+  }
+
+  async expandPhotoTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>> {
+    const unique = [...new Set(terms)].filter((term) => term.length > 0);
+    if (unique.length === 0) return ok([]);
+    return this.read((_db, client) => {
+      const placeholders = unique.map((_, index) => `$t${String(index)}`);
+      const params = Object.fromEntries(unique.map((term, index) => [`$t${String(index)}`, term]));
+      const list = placeholders.join(', ');
+      const result = client.exec(
+        `SELECT t.name AS canonical, a.alias AS alias
+          FROM photo_tags t
+          LEFT JOIN photo_tag_aliases a ON a.tag_id = t.tag_id
+          WHERE t.tag_id IN (
+            SELECT tag_id FROM photo_tags WHERE name IN (${list})
+            UNION
+            SELECT tag_id FROM photo_tag_aliases WHERE alias IN (${list})
+          )`,
+        params,
+      );
+      const rows = result[0]?.values ?? [];
+      const groups = new Map<string, Set<string>>();
+      for (const row of rows) {
+        const canonical = stringValue(row[0]);
+        const alias = nullableStringValue(row[1]);
+        const group = groups.get(canonical) ?? new Set<string>();
+        group.add(canonical);
+        if (alias !== null) group.add(alias);
+        groups.set(canonical, group);
+      }
+      const members = new Map<string, Set<string>>();
+      for (const group of groups.values()) {
+        for (const member of group) members.set(member, group);
+      }
+      return unique.flatMap((term) => {
+        const group = members.get(term);
+        if (group === undefined) return [];
+        const equivalents = [...group].filter((member) => member !== term).sort((left, right) => left.localeCompare(right));
+        return equivalents.length === 0 ? [] : [{ term, equivalents }];
+      });
+    });
+  }
+
+  async listPhotoVariants(fingerprint: string): Promise<Result<PhotoVariantRecord[], AppError>> {
+    return this.read((db) => {
+      const rows = db.select().from(photoAnalyses).where(eq(photoAnalyses.fingerprint, fingerprint)).all();
+      const photoRow = db.select().from(photos).where(eq(photos.fingerprint, fingerprint)).get();
+      const selected = resolveSelectedPhotoAnalysis(db, fingerprint);
+      return rows
+        .map((row): PhotoVariantRecord => ({
+          configId: row.configId,
+          label: db.select().from(photoAnalysisConfigs).where(eq(photoAnalysisConfigs.configId, row.configId)).get()?.label ?? row.configId,
+          description: row.description ?? '',
+          scene: row.scene ?? '',
+          quality: row.quality ?? '',
+          language: row.language,
+          analyzer: row.analyzer,
+          model: row.model,
+          batchSize: row.batchSize,
+          createdAt: row.createdAt,
+          tags: tagsForPhotoVariant(db, fingerprint, row.configId),
+          selected: selected?.configId === row.configId,
+          explicit: photoRow?.selectedConfigId === row.configId,
+        }))
+        .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId));
+    });
+  }
+
+  async resolveSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>> {
+    return this.read((db) => resolveSelectedPhotoAnalysis(db, fingerprint)?.configId ?? null);
+  }
+
+  async setSelectedPhotoVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      if (configId !== null) {
+        const variant = db.select().from(photoAnalyses)
+          .where(and(eq(photoAnalyses.fingerprint, fingerprint), eq(photoAnalyses.configId, configId)))
+          .get();
+        if (variant === undefined) {
+          throw new CatalogAppError(appError('variant_not_found', `Analysis variant not found: ${fingerprint}/${configId}`));
+        }
+      }
+      runPhotosTransaction(client, () => {
+        db.update(photos).set({ selectedConfigId: configId }).where(eq(photos.fingerprint, fingerprint)).run();
+        syncPhotoSearchDocument(db, client, fingerprint);
+      });
+    });
+  }
+
+  async deletePhotoVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      runPhotosTransaction(client, () => {
+        const photoRow = db.select().from(photos).where(eq(photos.fingerprint, fingerprint)).get();
+        db.delete(photoFileTags)
+          .where(and(eq(photoFileTags.fingerprint, fingerprint), eq(photoFileTags.configId, configId)))
+          .run();
+        db.delete(photoAnalyses)
+          .where(and(eq(photoAnalyses.fingerprint, fingerprint), eq(photoAnalyses.configId, configId)))
+          .run();
+        if (photoRow?.selectedConfigId === configId) {
+          db.update(photos).set({ selectedConfigId: null }).where(eq(photos.fingerprint, fingerprint)).run();
+        }
+        syncPhotoSearchDocument(db, client, fingerprint);
+      });
+    });
+  }
+
+  async setPhotoFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      runPhotosTransaction(client, () => {
+        db.update(photoFolders).set({ defaultConfigId: configId }).where(eq(photoFolders.folderId, folderId)).run();
+        const ownedNonExplicit = db.select().from(photos)
+          .where(and(eq(photos.folderId, folderId), isNull(photos.selectedConfigId)))
+          .all();
+        for (const row of ownedNonExplicit) syncPhotoSearchDocument(db, client, row.fingerprint);
+      });
+    });
+  }
+
   private async read<T>(operation: (db: PhotosDrizzle, client: Database) => T): Promise<Result<T, AppError>> {
     try {
       const state = await this.ensureOpen(false);
@@ -584,14 +742,16 @@ export class SqlJsPhotosStore implements PhotosStore {
     const client = existsSync(this.filePath) ? new SQL.Database(readFileSync(this.filePath)) : new SQL.Database();
     const created = !existsSync(this.filePath);
     const migrated = migrate(client);
-    if (canPersist && (created || migrated)) {
+    const db = drizzle(client, { schema: photosSchema });
+    const backfilled = ensurePhotoSearchDocuments(db, client);
+    if (canPersist && (created || migrated || backfilled)) {
       persistDatabase(this.filePath, client);
     }
     this.state?.client.close();
     this.state = {
       SQL,
       client,
-      db: drizzle(client, { schema: photosSchema }),
+      db,
       fileState: fileStateOf(this.filePath),
     };
     return this.state;
@@ -981,6 +1141,57 @@ const syncPhotoSearchDocument = (db: PhotosDrizzle, client: Database, fingerprin
       $place: document.place,
     },
   );
+};
+
+const ensurePhotoSearchDocuments = (db: PhotosDrizzle, client: Database): boolean => {
+  const missing = client.exec(
+    'SELECT fingerprint FROM photos WHERE fingerprint NOT IN (SELECT fingerprint FROM photo_search_documents)',
+  );
+  const fingerprints = (missing[0]?.values ?? []).map((row) => stringValue(row[0]));
+  for (const fingerprint of fingerprints) syncPhotoSearchDocument(db, client, fingerprint);
+  return fingerprints.length > 0;
+};
+
+const photoSearchRowFromValues = (
+  row: SqlValue[],
+  rankingTerms: readonly string[],
+): { row: PhotoSearchRow; score: number } => {
+  const description = nullableStringValue(row[5]);
+  const snippet = stringValue(row[6]);
+  const tagsText = stringValue(row[7]);
+  const place = stringValue(row[8]);
+  const fileName = stringValue(row[1]);
+  return {
+    row: {
+      fingerprint: stringValue(row[0]),
+      fileName,
+      currentPath: canonicalPath(stringValue(row[2])),
+      ext: parseExtension(stringValue(row[3])),
+      capturedAt: nullableStringValue(row[4]),
+      description,
+      snippet: snippet.length > 0 ? snippet : description ?? fileName,
+      tags: tagsText.split('\n').filter((tag) => tag.length > 0),
+      variantCount: numberValue(row[9]),
+      thumbState: parseThumbState(stringValue(row[10])),
+      proxyState: parseProxyState(stringValue(row[11])),
+      missingAt: nullableNumberValue(row[12]),
+    },
+    score: photoSearchScore({ fileName, place, tagsText, description: description ?? '' }, rankingTerms),
+  };
+};
+
+const photoSearchScore = (
+  columns: { fileName: string; place: string; tagsText: string; description: string },
+  rankingTerms: readonly string[],
+): number => {
+  let score = 0;
+  for (const term of rankingTerms) {
+    score += countTerm(columns.fileName, term) * 80;
+    score += countTerm(columns.place, term) * 55;
+    score += countTerm(columns.tagsText, term) * 45;
+    score += countTerm(columns.description, term) * 30;
+  }
+  return score;
 };
 
 const runToRow = (run: PhotoRunRecord): typeof photoRuns.$inferInsert => ({

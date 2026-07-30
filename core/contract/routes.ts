@@ -60,7 +60,8 @@ const optionalFolderInputSchema = z.object({ folder: canonicalPathString().optio
 const videoPathInputSchema = z.object({ videoPath: canonicalPathString() });
 const forceInputSchema = z.object({ force: z.boolean().default(false) });
 const jobIdInputSchema = z.object({ jobId: z.string().min(1) });
-const configIdSchema = z.union([z.literal('legacy'), z.string().regex(/^cfg_[0-9a-f]{12}$/)]);
+const configIdString = () => z.string().regex(/^cfg_[0-9a-f]{12}$/);
+const configIdSchema = z.union([z.literal('legacy'), configIdString()]);
 const queryInteger = (fallback: number, min: number, max: number) =>
   z.preprocess(
     (value) => typeof value === 'string' && value.length > 0 ? Number.parseInt(value, 10) : value,
@@ -289,7 +290,7 @@ export const processCompletedOutputSchema = z.object({
   video: z.string(),
   path: z.string(),
   status: z.literal('completed'),
-  configId: z.string().regex(/^cfg_[0-9a-f]{12}$/),
+  configId: configIdString(),
   selectedConfigId: z.string().min(1),
   costEstimate: geminiCostEstimateSchema.optional(),
 });
@@ -545,6 +546,111 @@ export const photosDetailOutputSchema = z.object({
   ownerPath: z.string(),
   proxyPath: z.string().nullable(),
   thumbPath: z.string().nullable(),
+  analysis: z.object({
+    configId: configIdString(),
+    label: z.string().min(1),
+    description: z.string(),
+    scene: z.string(),
+    quality: z.string(),
+    tags: z.array(z.string()),
+    batchSize: z.number().int().nullable(),
+    createdAt: z.string(),
+    variantCount: z.number().int().nonnegative(),
+    explicit: z.boolean(),
+  }).nullable(),
+});
+
+export const photosSearchResultSchema = z.object({
+  fingerprint: photoFingerprintSchema,
+  fileName: z.string().min(1),
+  currentPath: z.string().min(1),
+  ext: photoExtensionSchema,
+  capturedAt: z.string().nullable(),
+  description: z.string().nullable(),
+  snippet: z.string(),
+  tags: z.array(z.string()),
+  variantCount: z.number().int().nonnegative(),
+  thumbState: z.enum(['pending', 'done', 'failed']),
+  proxyState: z.enum(['pending', 'done', 'failed', 'not_needed']),
+  missingAt: z.number().nullable(),
+  thumbPath: z.string().nullable(),
+  proxyPath: z.string().nullable(),
+});
+
+export const photosSearchInputSchema = z.object({
+  query: z.string().min(1),
+  limit: queryInteger(50, 1, 200),
+  offset: queryInteger(0, 0, 100_000),
+});
+
+export const photosSearchOutputSchema = z.object({
+  media: z.literal('photo'),
+  query: z.string(),
+  limit: z.number().int().positive(),
+  offset: z.number().int().nonnegative(),
+  count: z.number().int().nonnegative(),
+  results: z.array(photosSearchResultSchema),
+});
+
+export const photosVariantRecordSchema = z.object({
+  configId: configIdString(),
+  label: z.string().min(1),
+  description: z.string(),
+  scene: z.string(),
+  quality: z.string(),
+  language: z.string().nullable(),
+  analyzer: z.string().nullable(),
+  model: z.string().nullable(),
+  batchSize: z.number().int().nullable(),
+  createdAt: z.string(),
+  tags: z.array(z.string()),
+  selected: z.boolean(),
+  explicit: z.boolean(),
+});
+
+export const photosVariantsListInputSchema = z.object({
+  fingerprint: photoFingerprintSchema,
+});
+
+export const photosVariantsListOutputSchema = z.object({
+  media: z.literal('photo'),
+  fingerprint: photoFingerprintSchema,
+  selectedConfigId: configIdString().nullable(),
+  variants: z.array(photosVariantRecordSchema),
+});
+
+export const photosVariantsSelectInputSchema = z.object({
+  fingerprint: photoFingerprintSchema,
+  configId: configIdString().nullable(),
+});
+
+export const photosVariantsSelectOutputSchema = z.object({
+  media: z.literal('photo'),
+  fingerprint: photoFingerprintSchema,
+  configId: configIdString().nullable(),
+});
+
+export const photosVariantsDeleteInputSchema = z.object({
+  fingerprint: photoFingerprintSchema,
+  configId: configIdString(),
+});
+
+export const photosVariantsDeleteOutputSchema = z.object({
+  media: z.literal('photo'),
+  fingerprint: photoFingerprintSchema,
+  configId: configIdString(),
+  selectedConfigId: configIdString().nullable(),
+});
+
+export const photosVariantsFolderDefaultInputSchema = z.object({
+  folderId: z.string().min(1),
+  configId: configIdString().nullable(),
+});
+
+export const photosVariantsFolderDefaultOutputSchema = z.object({
+  media: z.literal('photo'),
+  folderId: z.string().min(1),
+  defaultConfigId: configIdString().nullable(),
 });
 
 export const thumbnailInputSchema = videoPathInputSchema.merge(forceInputSchema).extend({
@@ -1780,6 +1886,36 @@ export const API_ROUTES = {
     input: photosDetailInputSchema,
     output: photosDetailOutputSchema,
   },
+  photosSearch: {
+    method: 'GET',
+    path: '/api/photos/search',
+    input: photosSearchInputSchema,
+    output: photosSearchOutputSchema,
+  },
+  photosVariantsList: {
+    method: 'GET',
+    path: '/api/photos/variants',
+    input: photosVariantsListInputSchema,
+    output: photosVariantsListOutputSchema,
+  },
+  photosVariantsSelect: {
+    method: 'POST',
+    path: '/api/photos/variants/select',
+    input: photosVariantsSelectInputSchema,
+    output: photosVariantsSelectOutputSchema,
+  },
+  photosVariantsDelete: {
+    method: 'POST',
+    path: '/api/photos/variants/delete',
+    input: photosVariantsDeleteInputSchema,
+    output: photosVariantsDeleteOutputSchema,
+  },
+  photosVariantsFolderDefault: {
+    method: 'POST',
+    path: '/api/photos/variants/folder-default',
+    input: photosVariantsFolderDefaultInputSchema,
+    output: photosVariantsFolderDefaultOutputSchema,
+  },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -1856,4 +1992,9 @@ export const API_PATHS = {
   photosTree: API_ROUTES.photosTree.path,
   photosList: API_ROUTES.photosList.path,
   photosDetail: API_ROUTES.photosDetail.path,
+  photosSearch: API_ROUTES.photosSearch.path,
+  photosVariantsList: API_ROUTES.photosVariantsList.path,
+  photosVariantsSelect: API_ROUTES.photosVariantsSelect.path,
+  photosVariantsDelete: API_ROUTES.photosVariantsDelete.path,
+  photosVariantsFolderDefault: API_ROUTES.photosVariantsFolderDefault.path,
 } as const;

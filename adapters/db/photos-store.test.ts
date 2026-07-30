@@ -521,4 +521,239 @@ describe('SqlJsPhotosStore', () => {
     expect(ftsRows[0]?.values.length).toBeGreaterThan(0);
     client.close();
   });
+
+  const analysisInput = (overrides: Partial<Parameters<SqlJsPhotosStore['recordPhotoAnalysis']>[0]> = {}) => ({
+    fingerprint: photo().fingerprint,
+    configId: 'cfg_aaaaaaaaaaaa',
+    description: 'a red bicycle leaning against a brick wall',
+    scene: 'urban',
+    quality: 'good',
+    language: 'en',
+    analyzer: 'harness',
+    model: 'claude-code',
+    batchSize: 1,
+    usageJson: null,
+    tags: ['bicycle', 'brick-wall'],
+    createdAt: '2026-01-01T00:00:00.000Z',
+    ...overrides,
+  });
+
+  it('searchPhotos finds an un-analysed photo by file name only, and matches an analysed photo by description and tag terms, with a mark-carrying snippet and place matches (P1)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/vacation-shot.jpg', fileName: 'vacation-shot.jpg' }));
+    await store.upsertPhoto(photo({ placeName: 'Krakow', placeRegion: 'Malopolska', placeCountry: 'Poland' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'harness · claude-code · en', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput());
+
+    const byFileName = await store.searchPhotos({ match: 'vacation*', rankingTerms: ['vacation'], limit: 50, offset: 0 });
+    expect(byFileName.ok).toBe(true);
+    if (byFileName.ok) expect(byFileName.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+
+    const byDescription = await store.searchPhotos({ match: 'bicycle*', rankingTerms: ['bicycle'], limit: 50, offset: 0 });
+    expect(byDescription.ok).toBe(true);
+    if (byDescription.ok) {
+      expect(byDescription.value.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
+      expect(byDescription.value[0]?.snippet).toContain('<mark>');
+      expect(byDescription.value[0]?.tags).toEqual(['bicycle', 'brick-wall']);
+    }
+
+    const byPlace = await store.searchPhotos({ match: 'krakow*', rankingTerms: ['krakow'], limit: 50, offset: 0 });
+    expect(byPlace.ok).toBe(true);
+    if (byPlace.ok) expect(byPlace.value.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
+  });
+
+  it('expandPhotoTagTerms resolves a tag term through photo_tag_aliases (P1)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'harness · claude-code · en', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput());
+    await store.flush();
+
+    const SQL = await initSqlJs();
+    const dbPath = path.join(home, '.ai-video-cataloger', 'photos.db');
+    const client = new SQL.Database(fs.readFileSync(dbPath));
+    const tagId = client.exec('SELECT tag_id FROM photo_tags WHERE name = ?', ['bicycle'])[0]?.values[0]?.[0] ?? null;
+    client.run('INSERT INTO photo_tag_aliases (alias, tag_id) VALUES (?, ?)', ['bike', tagId]);
+    fs.writeFileSync(dbPath, Buffer.from(client.export()));
+    client.close();
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const expanded = await reopened.expandPhotoTagTerms(['bike']);
+    expect(expanded.ok).toBe(true);
+    if (expanded.ok) expect(expanded.value).toEqual([{ term: 'bike', equivalents: ['bicycle'] }]);
+  });
+
+  it('offset/limit apply after ordering with a fingerprint tiebreak (P1)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    for (const suffix of ['1', '2', '3']) {
+      await store.upsertPhoto(photo({
+        fingerprint: `ph_000000000000000${suffix}`,
+        currentPath: `/media/photos/tag-${suffix}.jpg`,
+        fileName: `tag-${suffix}.jpg`,
+      }));
+    }
+    const page1 = await store.searchPhotos({ match: 'tag*', rankingTerms: ['tag'], limit: 2, offset: 0 });
+    const page2 = await store.searchPhotos({ match: 'tag*', rankingTerms: ['tag'], limit: 2, offset: 2 });
+    expect(page1.ok && page1.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000001', 'ph_0000000000000002']);
+    expect(page2.ok && page2.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000003']);
+  });
+
+  it('ranks a file-name hit above a description-only hit before the limit is applied (P1)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', currentPath: '/media/photos/notes.jpg', fileName: 'notes.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/harbour.jpg', fileName: 'harbour.jpg' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001', description: 'a harbour at dusk', tags: [] }));
+
+    const ranked = await store.searchPhotos({ match: 'harbour*', rankingTerms: ['harbour'], limit: 50, offset: 0 });
+    expect(ranked.ok && ranked.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002', 'ph_0000000000000001']);
+
+    const firstPage = await store.searchPhotos({ match: 'harbour*', rankingTerms: ['harbour'], limit: 1, offset: 0 });
+    expect(firstPage.ok && firstPage.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+  });
+
+  it('search re-materializes on selection changes: resolved variant wins, select/delete/folder-default keep the index following the resolved analysis (P2)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ configId: 'cfg_aaaaaaaaaaaa', description: 'alpha description', tags: ['alpha-tag'], createdAt: '2026-01-01T00:00:00.000Z' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_bbbbbbbbbbbb', descriptorJson: '{}', label: 'B', now: '2026-01-02T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ configId: 'cfg_bbbbbbbbbbbb', description: 'beta description', tags: ['beta-tag'], createdAt: '2026-01-02T00:00:00.000Z' }));
+
+    const initiallySelectsB = await store.searchPhotos({ match: 'beta*', rankingTerms: ['beta'], limit: 50, offset: 0 });
+    expect(initiallySelectsB.ok && initiallySelectsB.value.length).toBe(1);
+    const initiallyExcludesA = await store.searchPhotos({ match: 'alpha*', rankingTerms: ['alpha'], limit: 50, offset: 0 });
+    expect(initiallyExcludesA.ok && initiallyExcludesA.value.length).toBe(0);
+
+    const selected = await store.setSelectedPhotoVariant(photo().fingerprint, 'cfg_aaaaaaaaaaaa');
+    expect(selected.ok).toBe(true);
+    const afterSelectA = await store.searchPhotos({ match: 'alpha*', rankingTerms: ['alpha'], limit: 50, offset: 0 });
+    expect(afterSelectA.ok && afterSelectA.value.length).toBe(1);
+    const afterSelectExcludesB = await store.searchPhotos({ match: 'beta*', rankingTerms: ['beta'], limit: 50, offset: 0 });
+    expect(afterSelectExcludesB.ok && afterSelectExcludesB.value.length).toBe(0);
+
+    const deleted = await store.deletePhotoVariant(photo().fingerprint, 'cfg_aaaaaaaaaaaa');
+    expect(deleted.ok).toBe(true);
+    const afterDeleteFallsBackToB = await store.searchPhotos({ match: 'beta*', rankingTerms: ['beta'], limit: 50, offset: 0 });
+    expect(afterDeleteFallsBackToB.ok && afterDeleteFallsBackToB.value.length).toBe(1);
+  });
+
+  it('setPhotoFolderDefaultVariant re-materializes only the non-explicit owned photos (P2)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/explicit.jpg', fileName: 'explicit.jpg' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001', configId: 'cfg_aaaaaaaaaaaa', description: 'alpha description', tags: [] }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002', configId: 'cfg_aaaaaaaaaaaa', description: 'alpha description', tags: [] }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_bbbbbbbbbbbb', descriptorJson: '{}', label: 'B', now: '2026-01-02T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001', configId: 'cfg_bbbbbbbbbbbb', description: 'beta description', tags: [] }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002', configId: 'cfg_bbbbbbbbbbbb', description: 'beta description', tags: [] }));
+    const explicitSelection = await store.setSelectedPhotoVariant('ph_0000000000000002', 'cfg_aaaaaaaaaaaa');
+    expect(explicitSelection.ok).toBe(true);
+
+    const folderDefaulted = await store.setPhotoFolderDefaultVariant(folder.folderId, 'cfg_bbbbbbbbbbbb');
+    expect(folderDefaulted.ok).toBe(true);
+
+    const nonExplicitFollowsDefault = await store.searchPhotos({ match: 'beta*', rankingTerms: ['beta'], limit: 50, offset: 0 });
+    expect(nonExplicitFollowsDefault.ok && nonExplicitFollowsDefault.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000001']);
+    const explicitStaysOnItsSelection = await store.searchPhotos({ match: 'alpha*', rankingTerms: ['alpha'], limit: 50, offset: 0 });
+    expect(explicitStaysOnItsSelection.ok && explicitStaysOnItsSelection.value.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+  });
+
+  it('listPhotoVariants orders newest-first with a configId tiebreak, and flags selected/explicit (P5)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ configId: 'cfg_aaaaaaaaaaaa', createdAt: '2026-01-01T00:00:00.000Z' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_bbbbbbbbbbbb', descriptorJson: '{}', label: 'B', now: '2026-01-02T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ configId: 'cfg_bbbbbbbbbbbb', createdAt: '2026-01-02T00:00:00.000Z' }));
+
+    const variants = await store.listPhotoVariants(photo().fingerprint);
+    expect(variants.ok).toBe(true);
+    if (!variants.ok) return;
+    expect(variants.value.map((variant) => variant.configId)).toEqual(['cfg_bbbbbbbbbbbb', 'cfg_aaaaaaaaaaaa']);
+    expect(variants.value.find((variant) => variant.configId === 'cfg_bbbbbbbbbbbb')?.selected).toBe(true);
+    expect(variants.value.find((variant) => variant.configId === 'cfg_bbbbbbbbbbbb')?.explicit).toBe(false);
+
+    const resolved = await store.resolveSelectedConfigId(photo().fingerprint);
+    expect(resolved.ok && resolved.value).toBe('cfg_bbbbbbbbbbbb');
+  });
+
+  it('setSelectedPhotoVariant rejects an unknown variant and null clears the explicit choice (P5)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput());
+
+    const unknown = await store.setSelectedPhotoVariant(photo().fingerprint, 'cfg_ffffffffffff');
+    expect(unknown.ok).toBe(false);
+    if (!unknown.ok) expect(unknown.error.code).toBe('variant_not_found');
+
+    const selected = await store.setSelectedPhotoVariant(photo().fingerprint, 'cfg_aaaaaaaaaaaa');
+    expect(selected.ok).toBe(true);
+    const explicit = await store.listPhotoVariants(photo().fingerprint);
+    expect(explicit.ok && explicit.value[0]?.explicit).toBe(true);
+
+    const cleared = await store.setSelectedPhotoVariant(photo().fingerprint, null);
+    expect(cleared.ok).toBe(true);
+    const afterClear = await store.listPhotoVariants(photo().fingerprint);
+    expect(afterClear.ok && afterClear.value[0]?.explicit).toBe(false);
+  });
+
+  it('deletePhotoVariant of the last variant leaves the photo row with no selection (P5)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput());
+    await store.setSelectedPhotoVariant(photo().fingerprint, 'cfg_aaaaaaaaaaaa');
+
+    const deleted = await store.deletePhotoVariant(photo().fingerprint, 'cfg_aaaaaaaaaaaa');
+    expect(deleted.ok).toBe(true);
+
+    const stillThere = await store.getPhoto(photo().fingerprint);
+    expect(stillThere.ok && stillThere.value !== null).toBe(true);
+    const resolved = await store.resolveSelectedConfigId(photo().fingerprint);
+    expect(resolved.ok && resolved.value).toBe(null);
+    const variants = await store.listPhotoVariants(photo().fingerprint);
+    expect(variants.ok && variants.value).toEqual([]);
+  });
+
+  it('ensurePhotoSearchDocuments backfills missing search documents for a pre-3b database on open (P3)', async () => {
+    const home = await tempHome();
+    const firstOpen = new SqlJsPhotosStore({ homeDirectory: home });
+    await firstOpen.upsertFolder(folder);
+    await firstOpen.upsertPhoto(photo());
+    await firstOpen.flush();
+
+    const dbPath = path.join(home, '.ai-video-cataloger', 'photos.db');
+    const SQL = await initSqlJs();
+    const client = new SQL.Database(fs.readFileSync(dbPath));
+    client.run('DELETE FROM photo_search_documents_fts');
+    client.run('DELETE FROM photo_search_documents');
+    fs.writeFileSync(dbPath, Buffer.from(client.export()));
+    client.close();
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const found = await reopened.searchPhotos({ match: 'a*', rankingTerms: ['a'], limit: 50, offset: 0 });
+    expect(found.ok).toBe(true);
+    if (found.ok) expect(found.value.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
+  });
 });

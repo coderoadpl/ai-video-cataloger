@@ -108,6 +108,11 @@ index status|rebuild|forget
 tags list|alias|suggest-aliases
 faces index|people|name|merge|forget|purge|status|recluster|exemplars
 photos scan|status|forget|proxies|process
+photos search <query> [--limit <n>] [--json]
+photos variants list <fingerprint> [--json]
+photos variants select <fingerprint> <configId|none> [--json]
+photos variants delete <fingerprint> <configId> [--json]
+photos variants folder-default <folderId> <configId|none> [--json]
 models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|faces install
 models whisper-runtime status|install
 ```

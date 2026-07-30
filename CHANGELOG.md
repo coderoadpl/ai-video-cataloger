@@ -16,6 +16,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Photo search: `avc photos search "<query>"`, `/api/photos/search` and a search
+  box in the Photos tab query file names, descriptions, tags and places over the
+  photos index; file-name search works before any analysis has run.
+- Photo analysis variants are inspectable and selectable: `avc photos variants
+  list|select|delete|folder-default`, `/api/photos/variants*`, and a variant
+  picker with description, scene/quality and tag chips in the Photos detail pane;
+  the search index always follows the resolved selection.
 - Photo cataloging foundations: `avc photos scan|status|forget` and `/api/photos/scan|status|forget` index photos (jpg/jpeg/png/heic/arw/dng) into a new `~/.ai-video-cataloger/photos.db` by full-content `ph_` fingerprint, with EXIF capture time/camera/GPS extraction at scan and a cancellable, batch-resumable `photo_scan` job.
 - A Map view plots every catalogued video that carries GPS coordinates on an offline basemap, clustering nearby pins and opening the video from a pin; it always states its coverage ("110 of 3752 catalogued files have location") and shows an explicit empty state when no file carries GPS. The map downloads nothing: no map tiles are ever requested, and the geographic outline ships with the app.
 - `GET /api/catalog/locations` returns every catalog file that carries GPS coordinates together with the catalog-wide file total, so a client can state its own coverage honestly.

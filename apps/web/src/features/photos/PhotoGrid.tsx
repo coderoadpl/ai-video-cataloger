@@ -64,7 +64,7 @@ export const PhotoGrid = ({ sections, selectedFingerprint, onSelect, onOpenViewe
                   variant="subtitle2"
                   sx={{ height: HEADER_HEIGHT, display: 'flex', alignItems: 'center' }}
                 >
-                  {section.day === null ? dictionary.photos.unknownDate : section.label}
+                  {section.day === null && section.label === '' ? dictionary.photos.unknownDate : section.label}
                 </Typography>
               );
             }

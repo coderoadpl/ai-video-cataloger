@@ -46,7 +46,15 @@ import { credentialDeleteHuman } from './credential-delete-human.js';
 import { driveEventLine, isDriveEventStep, type DriveEventStep } from './drive-events.js';
 import { driveFacesSummaryLine } from './drive-faces-summary.js';
 import { doctorHuman } from './doctor-human.js';
-import { photosForgetHuman, photosProcessHuman, photosProxiesHuman, photosStatusHuman } from './photos-human.js';
+import {
+  photosForgetHuman,
+  photosProcessHuman,
+  photosProxiesHuman,
+  photosSearchHuman,
+  photosStatusHuman,
+  photosVariantNdjsonRow,
+  photosVariantsListHuman,
+} from './photos-human.js';
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 import { runProgram } from './run-program.js';
@@ -1380,6 +1388,108 @@ photos
       () => api.photosForget({ root: resolvedRoot }),
       photosForgetHuman,
       { raw: true },
+    );
+  });
+
+interface PhotosSearchOptions extends JsonOption {
+  limit: number;
+}
+
+photos
+  .command('search')
+  .argument('<query>')
+  .option('--limit <number>', 'maximum result count', numberOption, 50)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (query: string, options: PhotosSearchOptions) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'photos_search',
+      () => api.photosSearch({ query, limit: options.limit, offset: 0 }),
+      photosSearchHuman,
+      { raw: true },
+    );
+  });
+
+const photosVariants = photos.command('variants').description('Inspect and manage photo analysis variants');
+
+const parsePhotoConfigId = (value: string): string | null => (value === 'none' ? null : value);
+
+photosVariants
+  .command('list')
+  .description('List every analysis variant for a photo')
+  .argument('<fingerprint>')
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (fingerprint: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'photos_variants_list', { fingerprint });
+    const result = await api.photosVariantsList({ fingerprint });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    if (json) {
+      for (const variant of result.value.variants) emitRaw(true, photosVariantNdjsonRow(variant), '');
+      emitCompleted(true, {
+        fingerprint: result.value.fingerprint,
+        selectedConfigId: result.value.selectedConfigId,
+        count: result.value.variants.length,
+      });
+      return;
+    }
+    emitCompleted(false, result.value, photosVariantsListHuman(result.value));
+  });
+
+photosVariants
+  .command('select')
+  .description('Select the analysis variant used by search and the detail pane')
+  .argument('<fingerprint>')
+  .argument('<configId>', 'configuration id to select, or "none" to clear')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (fingerprint: string, configIdArgument: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    const configId = parsePhotoConfigId(configIdArgument);
+    await runSimple(
+      json,
+      'photos_variants_select',
+      () => api.photosVariantsSelect({ fingerprint, configId }),
+      (data) => data.configId === null ? 'Cleared the explicit selection' : `Selected ${data.configId}`,
+      { startData: { fingerprint, configId } },
+    );
+  });
+
+photosVariants
+  .command('delete')
+  .description('Delete one analysis variant')
+  .argument('<fingerprint>')
+  .argument('<configId>', 'configuration id to delete')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (fingerprint: string, configId: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    await runSimple(
+      json,
+      'photos_variants_delete',
+      () => api.photosVariantsDelete({ fingerprint, configId }),
+      (data) => `Deleted ${data.configId}; selected variant is ${data.selectedConfigId ?? 'none'}`,
+      { startData: { fingerprint, configId } },
+    );
+  });
+
+photosVariants
+  .command('folder-default')
+  .description('Set or clear the default analysis configuration for a photo folder')
+  .argument('<folderId>')
+  .argument('<configId>', 'configuration id to use by default, or "none" to clear')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (folderId: string, configIdArgument: string, options: JsonOption) => {
+    const json = isJsonMode(options);
+    const configId = parsePhotoConfigId(configIdArgument);
+    await runSimple(
+      json,
+      'photos_variants_folder_default',
+      () => api.photosVariantsFolderDefault({ folderId, configId }),
+      (data) => data.defaultConfigId === null ? 'Cleared the folder default' : `Set the folder default to ${data.defaultConfigId}`,
+      { startData: { folderId, configId } },
     );
   });
 

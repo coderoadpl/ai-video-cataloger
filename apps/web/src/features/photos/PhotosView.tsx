@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
-import { Alert, Box, Button, CircularProgress, MenuItem, Select, Typography } from '@mui/material';
+import { Alert, Box, Button, CircularProgress, IconButton, MenuItem, Select, TextField, Typography } from '@mui/material';
 
+import { CancelIcon } from '../../components/ui/icons.js';
 import { PhotosLayout } from '../../components/layout/PhotosLayout.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { groupByCaptureDay, flattenOrder, adjacentFingerprint } from './core/index.js';
+import { adjacentFingerprint, flattenOrder, groupByCaptureDay, searchResultsToItems, searchSections } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
 import { PhotoGrid } from './PhotoGrid.js';
 import { PhotoViewer } from './PhotoViewer.js';
@@ -25,9 +26,16 @@ export const PhotosView = ({ active, addLine }: PhotosViewProps) => {
   const photos = usePhotos({ active, addLine });
   const [viewerOpen, setViewerOpen] = useState(false);
 
-  const sections = useMemo(() => groupByCaptureDay(photos.items, toLocalDay), [photos.items]);
+  const browseSections = useMemo(() => groupByCaptureDay(photos.items, toLocalDay), [photos.items]);
+  const searchItems = useMemo(() => searchResultsToItems(photos.searchResults), [photos.searchResults]);
+  const searchResultSections = useMemo(
+    () => searchSections(searchItems, dictionary.photos.searchResultsLabel(photos.searchCount)),
+    [dictionary, photos.searchCount, searchItems],
+  );
+  const sections = photos.viewMode.kind === 'search' ? searchResultSections : browseSections;
+  const currentItems = photos.viewMode.kind === 'search' ? searchItems : photos.items;
   const order = useMemo(() => flattenOrder(sections), [sections]);
-  const selectedItem = photos.items.find((item) => item.fingerprint === photos.selectedFingerprint) ?? null;
+  const selectedItem = currentItems.find((item) => item.fingerprint === photos.selectedFingerprint) ?? null;
 
   const openViewer = useCallback(
     (fingerprint: string) => {
@@ -81,6 +89,30 @@ export const PhotosView = ({ active, addLine }: PhotosViewProps) => {
       >
         {dictionary.photos.scanFolderAction}
       </Button>
+      <TextField
+        size="small"
+        value={photos.searchInputValue}
+        placeholder={dictionary.photos.searchPlaceholder}
+        onChange={(event) => photos.setSearchInputValue(event.target.value)}
+        onKeyDown={(event) => {
+          if (event.key === 'Escape') photos.clearSearch();
+        }}
+        slotProps={{
+          htmlInput: { 'data-testid': 'photos-search-input' },
+          input: {
+            endAdornment: photos.searchInputValue.length === 0 ? undefined : (
+              <IconButton
+                aria-label={dictionary.photos.searchClear}
+                size="small"
+                data-testid="photos-search-clear"
+                onClick={photos.clearSearch}
+              >
+                <CancelIcon fontSize="small" />
+              </IconButton>
+            ),
+          },
+        }}
+      />
     </Box>
   );
 
@@ -88,7 +120,23 @@ export const PhotosView = ({ active, addLine }: PhotosViewProps) => {
 
   const proxiesPending = photos.selectedRoot !== null && counts !== null && counts.proxied === 0 && counts.photos > 0;
 
-  const grid = photos.isLoading ? (
+  const grid = photos.viewMode.kind === 'search' ? (
+    photos.isSearchLoading ? (
+      <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }} data-testid="photos-loading">
+        <CircularProgress size={24} />
+        <Typography sx={{ ml: 1 }}>{dictionary.photos.loadingPhotos}</Typography>
+      </Box>
+    ) : photos.searchResults.length === 0 ? (
+      <EmptyState title={dictionary.photos.searchNoResults} body="" action={null} testId="photos-search-empty" />
+    ) : (
+      <PhotoGrid
+        sections={sections}
+        selectedFingerprint={photos.selectedFingerprint}
+        onSelect={photos.selectFingerprint}
+        onOpenViewer={openViewer}
+      />
+    )
+  ) : photos.isLoading ? (
     <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }} data-testid="photos-loading">
       <CircularProgress size={24} />
       <Typography sx={{ ml: 1 }}>{dictionary.photos.loadingPhotos}</Typography>
@@ -130,7 +178,18 @@ export const PhotosView = ({ active, addLine }: PhotosViewProps) => {
     </>
   );
 
-  const detail = <PhotoDetailPane detail={photos.detail} isLoading={photos.isDetailLoading} />;
+  const detail = (
+    <PhotoDetailPane
+      detail={photos.detail}
+      isLoading={photos.isDetailLoading}
+      variants={photos.variants}
+      onSelectVariant={photos.selectVariant}
+      onSearchTag={photos.searchTag}
+      onAnalyze={photos.analyzePhotos}
+      isBusy={photos.isBusy}
+      analyzeProgress={photos.analyzeProgress}
+    />
+  );
 
   return (
     <>

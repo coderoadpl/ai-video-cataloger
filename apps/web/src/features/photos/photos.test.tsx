@@ -3,10 +3,9 @@ import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
-import type { z } from 'zod';
-
-import type { photoListItemSchema, photosDetailOutputSchema } from '@core/contract/index.js';
+import type { photoListItemSchema, photosDetailOutputSchema, photosSearchResultSchema, photosVariantRecordSchema } from '@core/contract/index.js';
 
 import { bridge } from '../../api.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -38,7 +37,9 @@ const photoItem = (overrides: Partial<PhotoListItem> & { fingerprint: string }):
   ...overrides,
 });
 
-const detailFor = (item: PhotoListItem): PhotoDetail => ({
+type PhotosDetailAnalysis = PhotoDetail['analysis'];
+
+const detailFor = (item: PhotoListItem, analysis: PhotosDetailAnalysis = null): PhotoDetail => ({
   media: 'photo',
   photo: {
     fingerprint: item.fingerprint,
@@ -71,12 +72,29 @@ const detailFor = (item: PhotoListItem): PhotoDetail => ({
   ownerPath: item.currentPath,
   proxyPath: item.proxyPath,
   thumbPath: item.thumbPath,
+  analysis,
 });
+
+type PhotosSearchResult = z.output<typeof photosSearchResultSchema>;
+type PhotoVariantRecord = z.output<typeof photosVariantRecordSchema>;
+
+const variantsSelectBody = z.object({ fingerprint: z.string(), configId: z.string().nullable() });
+const processBody = z.object({ root: z.string() });
+
+const searchInput = (): HTMLInputElement => {
+  const element = screen.getByTestId('photos-search-input');
+  if (!(element instanceof HTMLInputElement)) throw new Error('missing search input');
+  return element;
+};
 
 const stubPhotos = (input: {
   roots?: { root: string; photos: number; missing: number; lastScanAt: string }[];
   items?: PhotoListItem[];
   counts?: { photos: number; paths: number; proxied: number; proxyFailed: number; analysed?: number };
+  analysisByFingerprint?: Record<string, PhotosDetailAnalysis>;
+  searchResults?: PhotosSearchResult[];
+  variants?: PhotoVariantRecord[];
+  selectedConfigId?: string | null;
 }) => {
   const items = input.items ?? [];
   server.use(
@@ -108,7 +126,28 @@ const stubPhotos = (input: {
       const fingerprint = new URL(request.url).searchParams.get('fingerprint') ?? '';
       const item = items.find((candidate) => candidate.fingerprint === fingerprint);
       if (item === undefined) return HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'missing' } }, { status: 404 });
-      return HttpResponse.json({ ok: true, data: detailFor(item) });
+      return HttpResponse.json({ ok: true, data: detailFor(item, input.analysisByFingerprint?.[fingerprint] ?? null) });
+    }),
+    http.get('/api/photos/search', ({ request }) => {
+      const query = new URL(request.url).searchParams.get('query') ?? '';
+      const results = input.searchResults ?? [];
+      return HttpResponse.json({
+        ok: true,
+        data: { media: 'photo', query, limit: 50, offset: 0, count: results.length, results },
+      });
+    }),
+    http.get('/api/photos/variants', () => HttpResponse.json({
+      ok: true,
+      data: {
+        media: 'photo',
+        fingerprint: items[0]?.fingerprint ?? '',
+        selectedConfigId: input.selectedConfigId ?? null,
+        variants: input.variants ?? [],
+      },
+    })),
+    http.post('/api/photos/variants/select', async ({ request }) => {
+      const body = variantsSelectBody.parse(await request.json());
+      return HttpResponse.json({ ok: true, data: { media: 'photo', fingerprint: body.fingerprint, configId: body.configId } });
     }),
   );
 };
@@ -206,5 +245,179 @@ describe('PhotosView', () => {
     fireEvent.click(screen.getByTestId('photos-viewer-next'));
 
     await waitFor(() => expect(screen.getByTestId('photos-viewer-previous')).toBeDefined());
+  });
+
+  const searchResult = (overrides: Partial<PhotosSearchResult> & { fingerprint: string }): PhotosSearchResult => ({
+    fileName: `${overrides.fingerprint}.jpg`,
+    currentPath: `/photos/${overrides.fingerprint}.jpg`,
+    ext: 'jpg',
+    capturedAt: '2024-03-02T10:00:00.000Z',
+    description: 'a red bicycle',
+    snippet: 'a red <mark>bicycle</mark>',
+    tags: ['bicycle'],
+    variantCount: 1,
+    thumbState: 'done',
+    proxyState: 'done',
+    missingAt: null,
+    thumbPath: `/artifacts/thumbs/${overrides.fingerprint}.jpg`,
+    proxyPath: `/artifacts/proxies/${overrides.fingerprint}.jpg`,
+    ...overrides,
+  });
+
+  it('typing a query renders result tiles from the search fake and the results label, and clearing returns to browse', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001' })];
+    stubPhotos({
+      roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }],
+      items,
+      searchResults: [searchResult({ fingerprint: 'ph_0000000000000002' })],
+    });
+
+    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    await screen.findAllByTestId('photos-tile');
+
+    fireEvent.change(searchInput(), {
+      target: { value: 'bicycle' },
+    });
+
+    await waitFor(() => expect(screen.getByText('1 result')).toBeDefined(), { timeout: 2000 });
+    const tiles = await screen.findAllByTestId('photos-tile');
+    expect(tiles.map((tile) => tile.getAttribute('data-fingerprint'))).toEqual(['ph_0000000000000002']);
+
+    fireEvent.click(screen.getByTestId('photos-search-clear'));
+    await waitFor(() => {
+      const browseTiles = screen.getAllByTestId('photos-tile');
+      expect(browseTiles.map((tile) => tile.getAttribute('data-fingerprint'))).toEqual(['ph_0000000000000001']);
+    });
+  });
+
+  it('detail pane renders description/scene/quality/tag chips, and a chip click enters search mode with that tag', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001' })];
+    stubPhotos({
+      roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }],
+      items,
+      analysisByFingerprint: {
+        ph_0000000000000001: {
+          configId: 'cfg_ab12cd34ef56',
+          label: 'harness · claude-code · en',
+          description: 'a red bicycle',
+          scene: 'urban',
+          quality: 'good',
+          tags: ['bicycle', 'brick-wall'],
+          batchSize: 1,
+          createdAt: '2024-03-02T10:00:00.000Z',
+          variantCount: 1,
+          explicit: false,
+        },
+      },
+      searchResults: [searchResult({ fingerprint: 'ph_0000000000000001', tags: ['bicycle'] })],
+    });
+
+    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    const tiles = await screen.findAllByTestId('photos-tile');
+    const firstTile = tiles[0];
+    if (firstTile === undefined) throw new Error('missing tile');
+    fireEvent.click(firstTile);
+
+    await screen.findByTestId('photos-detail');
+    expect(screen.getByText('a red bicycle')).toBeDefined();
+    expect(screen.getByText('Urban')).toBeDefined();
+    expect(screen.getByText('Good')).toBeDefined();
+    const chips = screen.getAllByTestId('photo-tag-chip');
+    expect(chips.map((chip) => chip.textContent)).toEqual(['bicycle', 'brick-wall']);
+
+    const firstChip = chips[0];
+    if (firstChip === undefined) throw new Error('missing tag chip');
+    fireEvent.click(firstChip);
+    await waitFor(() => expect(searchInput().value).toBe('bicycle'));
+  });
+
+  it('the variant picker fires the select mutation', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001' })];
+    stubPhotos({
+      roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }],
+      items,
+      analysisByFingerprint: {
+        ph_0000000000000001: {
+          configId: 'cfg_ab12cd34ef56',
+          label: 'harness · claude-code · en',
+          description: 'a red bicycle',
+          scene: 'urban',
+          quality: 'good',
+          tags: [],
+          batchSize: 1,
+          createdAt: '2024-03-02T10:00:00.000Z',
+          variantCount: 2,
+          explicit: false,
+        },
+      },
+      variants: [
+        { configId: 'cfg_ab12cd34ef56', label: 'harness · claude-code · en', description: 'a red bicycle', scene: 'urban', quality: 'good', language: 'en', analyzer: 'harness', model: 'claude-code', batchSize: 1, createdAt: '2024-03-02T10:00:00.000Z', tags: [], selected: true, explicit: false },
+        { configId: 'cfg_ba21dc43fe65', label: 'harness · claude-code · pl', description: 'rower', scene: 'urban', quality: 'good', language: 'pl', analyzer: 'harness', model: 'claude-code', batchSize: 1, createdAt: '2024-03-01T10:00:00.000Z', tags: [], selected: false, explicit: false },
+      ],
+    });
+    let selectedBody: unknown = null;
+    server.use(
+      http.post('/api/photos/variants/select', async ({ request }) => {
+        selectedBody = await request.json();
+        return HttpResponse.json({ ok: true, data: { media: 'photo', fingerprint: 'ph_0000000000000001', configId: 'cfg_ba21dc43fe65' } });
+      }),
+    );
+
+    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    const tiles = await screen.findAllByTestId('photos-tile');
+    const firstTile = tiles[0];
+    if (firstTile === undefined) throw new Error('missing tile');
+    fireEvent.click(firstTile);
+    await screen.findByTestId('photos-detail');
+
+    const picker = await screen.findByTestId('photo-variant-picker');
+    const combobox = picker.querySelector('[role="combobox"]');
+    if (combobox === null) throw new Error('missing combobox element');
+    fireEvent.mouseDown(combobox);
+    const option = await screen.findByText('harness · claude-code · pl');
+    fireEvent.click(option);
+
+    await waitFor(() => expect(selectedBody).toEqual({ fingerprint: 'ph_0000000000000001', configId: 'cfg_ba21dc43fe65' }));
+  });
+
+  it('the Analyze action fires the process mutation', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001' })];
+    stubPhotos({
+      roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }],
+      items,
+    });
+    let processedRoot: string | null = null;
+    server.use(
+      http.post('/api/photos/process', async ({ request }) => {
+        const body = processBody.parse(await request.json());
+        processedRoot = body.root;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
+      }),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: null,
+          progressEvents: [],
+          error: null,
+          createdAt: '2024-03-02T10:00:00.000Z',
+          updatedAt: '2024-03-02T10:00:00.000Z',
+          result: { media: 'photo', root: '/photos', force: false, configId: 'cfg_ab12cd34ef56', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0 },
+        },
+      })),
+    );
+
+    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    const tiles = await screen.findAllByTestId('photos-tile');
+    const firstTile = tiles[0];
+    if (firstTile === undefined) throw new Error('missing tile');
+    fireEvent.click(firstTile);
+    await screen.findByTestId('photos-detail');
+
+    fireEvent.click(await screen.findByTestId('photos-analyze-action'));
+
+    await waitFor(() => expect(processedRoot).toBe('/photos'));
   });
 });

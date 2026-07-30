@@ -46,8 +46,13 @@ import {
   photosDetail,
   photosForget,
   photosList,
+  photosSearch,
   photosStatus,
   photosTree,
+  photosVariantsDelete,
+  photosVariantsFolderDefault,
+  photosVariantsList,
+  photosVariantsSelect,
   listTags,
   suggestTagAliases,
   listJobs,
@@ -642,6 +647,51 @@ export const buildApp = (deps: AppDeps): Hono => {
       return respond(err(appError('not_found', `Photo not found: ${input.value.fingerprint}`)), API_ROUTES.photosDetail.output);
     }
     return respond(ok(detail.value), API_ROUTES.photosDetail.output);
+  });
+
+  app.get(API_ROUTES.photosSearch.path, async (context) => {
+    const input = parseInput(API_ROUTES.photosSearch.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.photosSearch.output);
+    return respond(await photosSearch(deps, input.value), API_ROUTES.photosSearch.output);
+  });
+
+  app.get(API_ROUTES.photosVariantsList.path, async (context) => {
+    const input = parseInput(API_ROUTES.photosVariantsList.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.photosVariantsList.output);
+    return respond(await photosVariantsList(deps, input.value), API_ROUTES.photosVariantsList.output);
+  });
+
+  app.post(API_ROUTES.photosVariantsSelect.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosVariantsSelect.output);
+    const input = parseInput(API_ROUTES.photosVariantsSelect.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosVariantsSelect.output);
+    return respond(
+      await withCatalogWriteLock(deps, () => photosVariantsSelect(deps, input.value)),
+      API_ROUTES.photosVariantsSelect.output,
+    );
+  });
+
+  app.post(API_ROUTES.photosVariantsDelete.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosVariantsDelete.output);
+    const input = parseInput(API_ROUTES.photosVariantsDelete.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosVariantsDelete.output);
+    return respond(
+      await withCatalogWriteLock(deps, () => photosVariantsDelete(deps, input.value)),
+      API_ROUTES.photosVariantsDelete.output,
+    );
+  });
+
+  app.post(API_ROUTES.photosVariantsFolderDefault.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosVariantsFolderDefault.output);
+    const input = parseInput(API_ROUTES.photosVariantsFolderDefault.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosVariantsFolderDefault.output);
+    return respond(
+      await withCatalogWriteLock(deps, () => photosVariantsFolderDefault(deps, input.value)),
+      API_ROUTES.photosVariantsFolderDefault.output,
+    );
   });
 
   return app;

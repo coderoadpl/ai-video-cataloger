@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 
-import { photosForgetHuman, photosProcessHuman, photosProxiesHuman, photosStatusHuman } from './photos-human.js';
+import {
+  photosForgetHuman,
+  photosProcessHuman,
+  photosProxiesHuman,
+  photosSearchHuman,
+  photosStatusHuman,
+  photosVariantNdjsonRow,
+  photosVariantsListHuman,
+} from './photos-human.js';
 
 describe('photosStatusHuman', () => {
   it('formats an overall status', () => {
@@ -74,5 +82,87 @@ describe('photosProcessHuman', () => {
       splitRetries: 2,
     });
     expect(text).toBe('Analysed: 120 of 163 candidates, 3 failed, 40 already analysed (cfg_ab12cd34ef56, batch 12)');
+  });
+});
+
+describe('photosSearchHuman', () => {
+  it('renders fileName — snippet (tags) lines and a count', () => {
+    const text = photosSearchHuman({
+      media: 'photo',
+      query: 'bicycle',
+      limit: 50,
+      offset: 0,
+      count: 1,
+      results: [{
+        fingerprint: 'ph_0000000000000001',
+        fileName: 'a.jpg',
+        currentPath: '/photos/a.jpg',
+        ext: 'jpg',
+        capturedAt: '2026-01-01T00:00:00.000Z',
+        description: 'a red bicycle',
+        snippet: 'a red <mark>bicycle</mark>',
+        tags: ['bicycle', 'brick-wall'],
+        variantCount: 1,
+        thumbState: 'done',
+        proxyState: 'done',
+        missingAt: null,
+        thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
+        proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
+      }],
+    });
+    expect(text).toBe('a.jpg — a red bicycle (bicycle, brick-wall)\n1 result(s)');
+  });
+
+  it('reports no results', () => {
+    const text = photosSearchHuman({ media: 'photo', query: 'nope', limit: 50, offset: 0, count: 0, results: [] });
+    expect(text).toBe('No results found');
+  });
+});
+
+describe('photosVariantsListHuman and photosVariantNdjsonRow', () => {
+  const variant = {
+    configId: 'cfg_ab12cd34ef56',
+    label: 'harness · claude-code · en',
+    description: 'a red bicycle',
+    scene: 'urban',
+    quality: 'good',
+    language: 'en',
+    analyzer: 'harness',
+    model: 'claude-code',
+    batchSize: 1,
+    createdAt: '2026-01-01T00:00:00.000Z',
+    tags: ['bicycle'],
+    selected: true,
+    explicit: false,
+  };
+
+  it('formats a variants table with a selected marker and an explicit/resolved column', () => {
+    const text = photosVariantsListHuman({
+      media: 'photo',
+      fingerprint: 'ph_0000000000000001',
+      selectedConfigId: 'cfg_ab12cd34ef56',
+      variants: [variant],
+    });
+    expect(text).toBe(
+      'SELECTED\tCONFIG\tLABEL\tEXPLICIT\tCREATED\n'
+      + '*\tcfg_ab12cd34ef56\tharness · claude-code · en\tresolved\t2026-01-01T00:00:00.000Z',
+    );
+  });
+
+  it('reports no variants', () => {
+    const text = photosVariantsListHuman({ media: 'photo', fingerprint: 'ph_1', selectedConfigId: null, variants: [] });
+    expect(text).toBe('No analysis variants found');
+  });
+
+  it('projects the NDJSON row fields', () => {
+    expect(photosVariantNdjsonRow(variant)).toEqual({
+      configId: 'cfg_ab12cd34ef56',
+      label: 'harness · claude-code · en',
+      selected: true,
+      explicit: false,
+      createdAt: '2026-01-01T00:00:00.000Z',
+      analyzer: 'harness',
+      model: 'claude-code',
+    });
   });
 });
