@@ -469,7 +469,22 @@ export const buildApp = (deps: AppDeps): Hono => {
   app.get(API_ROUTES.searchQuery.path, async (context) => {
     const input = parseInput(API_ROUTES.searchQuery.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.searchQuery.output);
-    return respond(await search(deps, input.value), API_ROUTES.searchQuery.output);
+    return respond(await search(deps, {
+      query: input.value.query ?? null,
+      filters: {
+        tags: input.value.tags,
+        people: input.value.people,
+        place: input.value.place ?? null,
+        from: input.value.from ?? null,
+        to: input.value.to ?? null,
+        hasGps: input.value.hasGps ?? null,
+        folderId: input.value.folderId ?? null,
+      },
+      sort: input.value.sort,
+      thumbnails: input.value.thumbnails,
+      limit: input.value.limit,
+      offset: input.value.offset,
+    }), API_ROUTES.searchQuery.output);
   });
 
   app.get(API_ROUTES.variantsList.path, async (context) => {

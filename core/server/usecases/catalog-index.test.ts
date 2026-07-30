@@ -13,7 +13,18 @@ import {
 } from './catalog-index.js';
 import { folderSnapshotPath } from './catalog-snapshot.js';
 import { aliasTag, listTags } from './tags.js';
+import type { CatalogSearchFilters } from '../ports.js';
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
+
+const EMPTY_SEARCH_FILTERS: CatalogSearchFilters = {
+  tagTermSets: [],
+  personIds: [],
+  place: null,
+  capturedFrom: null,
+  capturedTo: null,
+  hasGps: null,
+  folderId: null,
+};
 
 const processedInput = (folderPath: string) => ({
   folderPath,
@@ -117,10 +128,12 @@ describe('index status and rebuild', () => {
     const importedSearch = await recoveredStore.search({
       match: 'clip*',
       rankingTerms: ['clip'],
+      filters: EMPTY_SEARCH_FILTERS,
+      sort: 'relevance',
       limit: 10,
       offset: 0,
     });
-    expect(importedSearch.ok && importedSearch.value[0]?.fingerprint).toBe('fp-1');
+    expect(importedSearch.ok && importedSearch.value.rows[0]?.fingerprint).toBe('fp-1');
   });
 });
 

@@ -19,6 +19,7 @@ import {
   configDescriptorSchema,
   configKeySchema,
   canonicalPath,
+  catalogPlaceSchema,
   credentialDeletionSchema,
   credentialsBackendStatusSchema,
   folderIdSchema,
@@ -1417,8 +1418,38 @@ export const tagsSuggestAliasesOutputSchema = z.object({
   })),
 });
 
+const csvList = z.preprocess(
+  (value) => {
+    if (Array.isArray(value)) return value;
+    if (typeof value !== 'string' || value.length === 0) return [];
+    return value.split(',').map((entry) => entry.trim()).filter((entry) => entry.length > 0);
+  },
+  z.array(z.string().min(1)),
+);
+
+const queryBooleanTriState = z.preprocess(
+  (value) => {
+    if (typeof value === 'boolean') return value;
+    if (value === 'true') return true;
+    if (value === 'false') return false;
+    return undefined;
+  },
+  z.boolean().optional(),
+);
+
+export const SEARCH_SORTS = ['relevance', 'captured_desc', 'captured_asc', 'name_asc'] as const;
+
 export const searchInputSchema = z.object({
-  query: z.string().min(1),
+  query: z.string().min(1).optional(),
+  tags: csvList.default([]),
+  people: csvList.default([]),
+  place: z.string().min(1).optional(),
+  from: z.iso.date().or(z.iso.datetime()).optional(),
+  to: z.iso.date().or(z.iso.datetime()).optional(),
+  hasGps: queryBooleanTriState,
+  folderId: folderIdSchema.optional(),
+  sort: z.enum(SEARCH_SORTS).optional(),
+  thumbnails: z.enum(['ensure', 'existing']).default('ensure'),
   limit: queryInteger(50, 1, 200),
   offset: queryInteger(0, 0, 100_000),
 });
@@ -1443,13 +1474,16 @@ export const searchResultSchema = z.object({
     lon: z.number().min(-180).max(180),
   }).nullable(),
   missing: z.boolean(),
+  capturedAt: z.iso.datetime().nullable(),
+  place: catalogPlaceSchema.nullable(),
 });
 
 export const searchOutputSchema = z.object({
-  query: z.string(),
+  query: z.string().nullable(),
   limit: z.number().int().positive(),
   offset: z.number().int().nonnegative(),
   count: z.number().int().nonnegative(),
+  total: z.number().int().nonnegative(),
   results: z.array(searchResultSchema),
 });
 

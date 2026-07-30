@@ -14,9 +14,14 @@ export interface MediaRoot {
 // video, so scoping media to the opened folder alone leaves every read-only folder blank — search
 // renders those thumbnails for folders that are not the current one. The mirror is admitted one
 // folder id at a time instead of wholesale: only the folders the catalog knows can be read.
+// A writable catalog folder keeps its thumbnails/frames beside the video, in its own
+// `.ai-video-cataloger` sidecar — not the home mirror above. Without an explicit root per known
+// folder, only the currently-open folder's sidecar was reachable, so search/Library thumbnails from
+// any other writable catalog folder rendered blank (Library spec 1, media-scope fix).
 export const catalogMediaRoots = (
   homeDirectory: string,
   mirrorFolderIds: Iterable<string>,
+  catalogFolderPaths: readonly string[] = [],
 ): readonly MediaRoot[] => [
   { path: path.join(homeDirectory, '.ai-video-cataloger', 'faces') },
   {
@@ -24,6 +29,7 @@ export const catalogMediaRoots = (
     allowedChildren: new Set(mirrorFolderIds),
   },
   { path: path.join(homeDirectory, '.ai-video-cataloger', 'photo-artifacts') },
+  ...catalogFolderPaths.map((folderPath) => ({ path: path.join(folderPath, '.ai-video-cataloger') })),
 ];
 
 export const parseMediaUrl = (urlValue: string): string | null => {

@@ -17,6 +17,7 @@ import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
+import { LibraryView } from '../features/library/LibraryView.js';
 import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations } from '../features/map/use-catalog-locations.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
@@ -169,7 +170,7 @@ export const IndexRoute = () => {
     />
   );
 
-  const detailContent = activeView === 'people' || activeView === 'photos' ? null : globalSearch.active ? (
+  const detailContent = activeView === 'people' || activeView === 'photos' || activeView === 'library' ? null : globalSearch.active ? (
     <SearchResults search={globalSearch} onBack={clearSearch} onOpenFolder={shell.selectRecentFolder} onOpenResult={openSearchResult} />
   ) : (
     <DetailsPanel
@@ -250,6 +251,12 @@ export const IndexRoute = () => {
           />
         ) : activeView === 'photos' ? (
           <PhotosView active={activeView === 'photos'} addLine={terminal.addLine} />
+        ) : activeView === 'library' ? (
+          <LibraryView
+            active={activeView === 'library'}
+            onOpenResult={openSearchResult}
+            onGoToVideos={() => setActiveView('videos')}
+          />
         ) : activeView === 'map' ? (
           <MapView
             active={activeView === 'map'}

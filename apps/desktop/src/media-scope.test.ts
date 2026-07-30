@@ -197,6 +197,50 @@ describe('catalogMediaRoots', () => {
       { path: path.join('/home/u', '.ai-video-cataloger', 'photo-artifacts') },
     ]);
   });
+
+  it('also admits the sidecar dir of every writable catalog folder it is given', () => {
+    expect(catalogMediaRoots('/home/u', [], ['/drives/a', '/drives/b'])).toEqual([
+      { path: path.join('/home/u', '.ai-video-cataloger', 'faces') },
+      { path: path.join('/home/u', '.ai-video-cataloger', 'read-only-folders'), allowedChildren: new Set() },
+      { path: path.join('/home/u', '.ai-video-cataloger', 'photo-artifacts') },
+      { path: path.join('/drives/a', '.ai-video-cataloger') },
+      { path: path.join('/drives/b', '.ai-video-cataloger') },
+    ]);
+  });
+});
+
+describe('a non-current writable catalog folder sidecar (Library spec 1, media-scope fix)', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('resolves a thumbnail under a known, non-current writable folder sidecar, but never the video beside it', async () => {
+    const home = await tempRoot();
+    const currentFolder = await tempRoot();
+    const otherCatalogFolder = await tempRoot();
+    const thumbnailPath = path.join(otherCatalogFolder, '.ai-video-cataloger', 'artifacts', 'thumb.jpg');
+    const videoPath = path.join(otherCatalogFolder, 'clip.mp4');
+    await mkdir(path.dirname(thumbnailPath), { recursive: true });
+    await writeFile(thumbnailPath, 'image', 'utf8');
+    await writeFile(videoPath, 'video', 'utf8');
+    const roots = catalogMediaRoots(home, [], [otherCatalogFolder]);
+
+    expect(await resolveScopedMedia(thumbnailPath, currentFolder, roots)).toBe(await realpath(thumbnailPath));
+    expect(await resolveScopedMedia(videoPath, currentFolder, roots)).toBeNull();
+  });
+
+  it('refuses a sidecar of a folder the catalog does not know about', async () => {
+    const home = await tempRoot();
+    const currentFolder = await tempRoot();
+    const strangerFolder = await tempRoot();
+    const thumbnailPath = path.join(strangerFolder, '.ai-video-cataloger', 'artifacts', 'thumb.jpg');
+    await mkdir(path.dirname(thumbnailPath), { recursive: true });
+    await writeFile(thumbnailPath, 'image', 'utf8');
+    const roots = catalogMediaRoots(home, [], []);
+
+    expect(await resolveScopedMedia(thumbnailPath, currentFolder, roots)).toBeNull();
+  });
 });
 
 describe('photo-artifacts media scope (P1)', () => {

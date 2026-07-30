@@ -3,7 +3,17 @@ import { describe, expect, it } from 'vitest';
 import type { CatalogAnalysis, CatalogFile, CatalogFolder } from '@core/domain/index.js';
 
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
-import { buildSearchMatch, sanitizeSearchQuery, search } from './search.js';
+import { buildSearchMatch, sanitizeSearchQuery, search, type SearchFiltersInput } from './search.js';
+
+const EMPTY_FILTERS: SearchFiltersInput = {
+  tags: [],
+  people: [],
+  place: null,
+  from: null,
+  to: null,
+  hasGps: null,
+  folderId: null,
+};
 
 const folderA: CatalogFolder = {
   folderId: '11111111-1111-4111-8111-111111111111',
@@ -122,7 +132,7 @@ describe('search', () => {
     await store.upsertFile(file('fp-transcript', folderB.folderId, 'clip.mp4'));
     await store.upsertAnalysis(analysis('fp-transcript', { transcript: 'a long drone transcript', tags: ['field'] }));
 
-    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'dron', limit: 10, offset: 0 });
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'dron', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -146,7 +156,7 @@ describe('search', () => {
     await store.upsertFile(file('fp-nothumb', folderB.folderId, 'drone-b.mp4'));
     await store.upsertAnalysis(analysis('fp-nothumb', { transcript: 'drone', tags: [] }));
 
-    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'drone', limit: 10, offset: 0 });
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'drone', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
@@ -165,7 +175,7 @@ describe('search', () => {
     await store.upsertFile(file('fp-lazy-thumb', folderA.folderId, 'drone.mp4'));
     await store.upsertAnalysis(analysis('fp-lazy-thumb', { description: 'drone flight' }));
 
-    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', limit: 10, offset: 0 });
+    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
 
     expect(result.ok && result.value.results[0]?.thumbnailPath)
       .toBe('/media/online/.ai-video-cataloger/thumbnails/drone.jpg');
@@ -188,7 +198,7 @@ describe('search', () => {
     await store.upsertFolder(folderA);
     await store.upsertFile(file('fp-pending', folderA.folderId, 'drone.mp4'));
 
-    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', limit: 10, offset: 0 });
+    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
 
     expect(result.ok && result.value.results[0]?.thumbnailPath).toBeNull();
     expect(media.thumbnailInputs).toEqual([]);
@@ -200,10 +210,10 @@ describe('search', () => {
     await store.upsertFolder(folderA);
     await store.aliasTag({ from: 'dogs', to: 'psy' });
 
-    await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'dogs', limit: 10, offset: 0 });
+    await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'dogs', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
     expect(store.lastSearchInput?.match).toBe('(dogs* OR psy)');
 
-    await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'psy', limit: 10, offset: 0 });
+    await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'psy', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
     expect(store.lastSearchInput?.match).toBe('(psy* OR dogs)');
   });
 
@@ -213,8 +223,149 @@ describe('search', () => {
     await store.upsertFolder(folderA);
     store.expandTagTerms = () => Promise.resolve({ ok: false, error: { code: 'read_error', message: 'boom' } });
 
-    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'drone', limit: 10, offset: 0 });
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'drone', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
 
     expect(result).toEqual({ ok: false, error: { code: 'read_error', message: 'boom' } });
+  });
+
+  it('passes structured filters through to the store, expanding tags with their aliases', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.aliasTag({ from: 'psy', to: 'dogs' });
+
+    await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, tags: ['dogs'], people: ['person-1'], place: 'wroc', from: '2026-01-01', to: '2026-01-31', hasGps: true, folderId: folderA.folderId },
+      sort: 'captured_desc',
+      thumbnails: 'ensure',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(store.lastSearchInput?.filters).toEqual({
+      tagTermSets: [['dogs', 'psy']],
+      personIds: ['person-1'],
+      place: 'wroc',
+      capturedFrom: '2026-01-01',
+      capturedTo: '2026-01-31',
+      hasGps: true,
+      folderId: folderA.folderId,
+    });
+    expect(store.lastSearchInput?.sort).toBe('captured_desc');
+    expect(store.lastSearchInput?.match).toBeNull();
+  });
+
+  it('rejects a request with neither a query nor any filter', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, {
+      query: null,
+      filters: EMPTY_FILTERS,
+      sort: undefined,
+      thumbnails: 'ensure',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('rejects an explicit relevance sort without a query', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, tags: ['dogs'] },
+      sort: 'relevance',
+      thumbnails: 'ensure',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('allows a Library-style browse-everything request when a sort is stated explicitly', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-browse', folderA.folderId, 'clip.mp4'));
+
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, {
+      query: null,
+      filters: EMPTY_FILTERS,
+      sort: 'captured_desc',
+      thumbnails: 'existing',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.results.map((row) => row.fingerprint)).toEqual(['fp-browse']);
+  });
+
+  it('defaults to captured_desc when no query and no explicit sort are given', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+
+    await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, tags: ['dogs'] },
+      sort: undefined,
+      thumbnails: 'ensure',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(store.lastSearchInput?.sort).toBe('captured_desc');
+  });
+
+  it('an "existing" thumbnails mode never falls through to generation, even with completed analysis', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone.mp4');
+    const media = new InMemoryMedia();
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-existing-only', folderA.folderId, 'drone.mp4'));
+    await store.upsertAnalysis(analysis('fp-existing-only', { description: 'drone flight' }));
+
+    const result = await search({ globalCatalog: store, fs, media }, {
+      query: 'drone',
+      filters: EMPTY_FILTERS,
+      sort: undefined,
+      thumbnails: 'existing',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result.ok && result.value.results[0]?.thumbnailPath).toBeNull();
+    expect(media.thumbnailInputs).toEqual([]);
+  });
+
+  it('an "existing" thumbnails mode still returns an on-disk thumbnail without regenerating it', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addDirectory('/media/online');
+    fs.addFile('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
+    const media = new InMemoryMedia();
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-existing-hit', folderA.folderId, 'drone-a.mp4'));
+    await store.upsertAnalysis(analysis('fp-existing-hit', { finalName: 'renamed.mp4', transcript: 'drone' }));
+
+    const result = await search({ globalCatalog: store, fs, media }, {
+      query: 'drone',
+      filters: EMPTY_FILTERS,
+      sort: undefined,
+      thumbnails: 'existing',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result.ok && result.value.results[0]?.thumbnailPath).toBe('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
+    expect(media.thumbnailInputs).toEqual([]);
   });
 });

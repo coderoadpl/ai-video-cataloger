@@ -7,7 +7,7 @@ import { createInterface } from 'node:readline/promises';
 import { Command, InvalidArgumentError } from 'commander';
 
 import { createApiClient, type ApiClient } from '@core/client/index.js';
-import { EXIT_CODE_BY_ERROR_CODE, gpsBackfillSummarySchema, thumbnailsSummarySchema } from '@core/contract/index.js';
+import { EXIT_CODE_BY_ERROR_CODE, SEARCH_SORTS, gpsBackfillSummarySchema, thumbnailsSummarySchema } from '@core/contract/index.js';
 import {
   ANALYZER_PROVIDER_IDS,
   CONFIG_KEYS,
@@ -118,6 +118,15 @@ interface CredentialOptions extends JsonOption {
 
 interface SearchOptions extends JsonOption {
   limit: number;
+  offset: number;
+  tag: string[];
+  person: string[];
+  place?: string | undefined;
+  from?: string | undefined;
+  to?: string | undefined;
+  hasGps?: boolean | undefined;
+  folder?: string | undefined;
+  sort?: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc' | undefined;
 }
 
 interface VariantConfigOptions extends JsonOption {
@@ -980,14 +989,91 @@ program
     await runSimple(json, 'scan', () => api.scan({ folder }), scanHuman, { raw: true });
   });
 
+const collectRepeatable = (value: string, previous: string[]): string[] => [...previous, value];
+
+const searchSortOption = (value: string): NonNullable<SearchOptions['sort']> => {
+  for (const sort of SEARCH_SORTS) if (value === sort) return sort;
+  throw new InvalidArgumentError(`Invalid sort: ${value}. Valid values: ${SEARCH_SORTS.join(', ')}`);
+};
+
+const resolveSearchPersonIds = async (people: readonly string[]): Promise<Result<string[], AppError>> => {
+  if (people.length === 0) return { ok: true, value: [] };
+  const listed = await api.facesPeople();
+  if (!listed.ok) return { ok: false, error: appError('validation', `Could not resolve --person filters: ${listed.error.message}`) };
+  const ids: string[] = [];
+  for (const entry of people) {
+    if (entry.startsWith('person-')) {
+      ids.push(entry);
+      continue;
+    }
+    const matches = listed.value.people.filter(
+      (person) => person.displayName !== null && person.displayName.toLocaleLowerCase() === entry.toLocaleLowerCase(),
+    );
+    const [onlyMatch] = matches;
+    if (matches.length === 0) return { ok: false, error: appError('validation', `No person found matching "${entry}"`) };
+    if (matches.length > 1 || onlyMatch === undefined) {
+      return {
+        ok: false,
+        error: appError('validation', `Multiple people match "${entry}": ${matches.map((match) => match.personId).join(', ')}`),
+      };
+    }
+    ids.push(onlyMatch.personId);
+  }
+  return { ok: true, value: ids };
+};
+
+const resolveSearchFolderId = async (folder: string | undefined): Promise<Result<string | undefined, AppError>> => {
+  if (folder === undefined) return { ok: true, value: undefined };
+  const resolvedPath = path.resolve(cliWorkingDirectory, folder);
+  const status = await api.indexStatus();
+  if (!status.ok) return status;
+  const match = status.value.folders.find((entry) => entry.currentPath === resolvedPath);
+  if (match === undefined) return { ok: false, error: appError('validation', `Unknown catalog folder: ${resolvedPath}`) };
+  return { ok: true, value: match.folderId };
+};
+
 program
   .command('search')
-  .argument('<query>')
+  .argument('[query]')
+  .option('--tag <name>', 'filter by tag (repeatable, AND semantics, aliases auto-expand)', collectRepeatable, [])
+  .option('--person <nameOrId>', 'filter by person name or id (repeatable, OR semantics)', collectRepeatable, [])
+  .option('--place <text>', 'case-insensitive substring match over place name/region/country')
+  .option('--from <iso>', 'captured-at lower bound (ISO date or datetime)')
+  .option('--to <iso>', 'captured-at upper bound (ISO date or datetime)')
+  .option('--has-gps', 'only items with GPS coordinates')
+  .option('--no-has-gps', 'only items without GPS coordinates')
+  .option('--folder <path>', 'restrict results to a known catalog folder')
+  .option('--sort <sort>', `${SEARCH_SORTS.join('|')}`, searchSortOption)
   .option('--limit <number>', 'maximum result count', numberOption, 50)
+  .option('--offset <number>', 'result offset', numberOption, 0)
   .option('--json', 'machine-readable JSON output', false)
-  .action(async (query: string, options: SearchOptions) => {
+  .action(async (query: string | undefined, options: SearchOptions) => {
     const json = isJsonMode(options);
-    await runSimple(json, 'search', () => api.search({ query, limit: options.limit, offset: 0 }), searchHuman, { raw: true });
+    await runSimple(
+      json,
+      'search',
+      async () => {
+        const personIds = await resolveSearchPersonIds(options.person);
+        if (!personIds.ok) return personIds;
+        const folderId = await resolveSearchFolderId(options.folder);
+        if (!folderId.ok) return folderId;
+        return api.search({
+          query,
+          tags: options.tag,
+          people: personIds.value,
+          place: options.place,
+          from: options.from,
+          to: options.to,
+          hasGps: options.hasGps,
+          folderId: folderId.value,
+          sort: options.sort,
+          limit: options.limit,
+          offset: options.offset,
+        });
+      },
+      searchHuman,
+      { raw: true },
+    );
   });
 
 const variants = program.command('variants').description('Inspect and manage analysis variants');
@@ -1750,10 +1836,12 @@ const searchHuman = (data: Awaited<ReturnType<ApiClient['search']>> extends Resu
     return [
       `${result.folder.currentPath}/${result.fileName}${offline}`,
       result.finalName ?? result.fileName,
+      result.capturedAt ?? '',
+      result.place?.name ?? '',
       result.snippet.replace(/<\/?mark>/g, ''),
     ].join('\t');
   });
-  return [...rows, `${data.count} result(s)`].join('\n');
+  return [...rows, `${data.count} of ${data.total} result(s)`].join('\n');
 };
 
 const variantNdjsonRow = (variant: VariantListItem) => ({

@@ -52,6 +52,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Photo analysis runs honour the monthly `gemini_monthly_budget_usd` cap with
   the same pause-and-resume semantics as drive runs; `photos status` counts
   analysed photos.
+- `GET /api/search` and `search` (client/CLI) accept an optional `query` alongside structured filters — `tags` (AND, alias-expanded), `people` (OR, by id), `place` (substring), `from`/`to` (captured-at range), `hasGps`, `folderId` — plus `sort` (`relevance`/`captured_desc`/`captured_asc`/`name_asc`) and `thumbnails` (`ensure`/`existing`); the response gains a `total` reflecting the full filtered match count, independent of the returned page. The CLI gains repeatable `--tag`/`--person` and the matching `--place`/`--from`/`--to`/`--has-gps`/`--no-has-gps`/`--folder`/`--sort` flags, with person names resolved against `faces people` and unknown folders/names reported as validation errors.
+- `media://` now also admits the `.ai-video-cataloger` sidecar directory of every catalogued folder (not only the currently open one and its read-only mirror), so a Library or search thumbnail generated for a folder that isn't the open one resolves instead of rendering blank; the sidecar's video-extension files stay unreachable through this root.
+- A Library tab browses every catalogued video regardless of folder: a debounced search box over a virtualized, date-grouped grid (existing thumbnails only, never generated on demand), with an honest empty-catalog state distinct from a no-match state and a "Load more" page sentinel; opening a tile reuses the existing search-result folder-open path.
 
 ### Changed
 

@@ -224,6 +224,17 @@ standard, stream-enabled scheme (not a bare privileged scheme) and serves
 `206` partial responses for `Range` requests so video seeking works; the 20MB
 size cap applies to images only, not the supported video extensions.
 
+`catalogMediaRoots` also admits, per catalogued folder path, that folder's own
+`.ai-video-cataloger` sidecar directory as an image root (§media, Library
+spec). A writable, non-current catalog folder keeps its thumbnails beside the
+video rather than in the home mirror (that mirror exists only for read-only
+sources); without this root, a Library or search thumbnail from any catalog
+folder other than the one currently open rendered blank. This is a deliberate,
+bounded widening of renderer-readable disk — from "current folder + read-only
+mirror" to "every catalogued folder's sidecar" — because the sidecar holds
+only app-generated artifacts (thumbnails/frames/notes); the video files
+themselves stay unreachable through this root (extension allowlist unchanged).
+
 The old GUI shelled out to a staged CLI and parsed NDJSON; that machinery is
 deleted. Renderer and CLI are peers on the same contract.
 
@@ -323,6 +334,39 @@ never through a cross-feature import — the route (`routes/index.tsx`) owns the
 `catalogLocations` query and passes the derived slice down. See
 [ADR-0013](decisions/0013-map-view-and-tile-privacy.md) for why the map ships
 zero map-tile networking.
+
+### Library — one query surface, not two
+
+The `library` main view (`features/library/`) browses the whole video catalog
+instead of the currently-open folder. It is additive on the existing
+`searchQuery` route/use-case rather than a parallel endpoint: `query` becomes
+optional, and structured filters (`tags`, `people`, `place`, `from`/`to`,
+`hasGps`, `folderId`) plus `sort` and a `thumbnails: 'ensure' | 'existing'`
+mode arrive alongside it — the CLI's `search`, the global search box and
+Library all speak the same contract, so there is no drift between "search
+results" and "library items". `thumbnails: 'existing'` short-circuits the
+use-case before the `generateThumbnail` fallback: a Library page must never
+fan out ffmpeg runs for a couple hundred tiles.
+
+**With a text query, relevance ranking is the same bounded exception the old
+search always was**: the FTS match set (typically small) loads into JS,
+scores and sorts there, then slices. **Without a query, ordering and paging
+are 100% SQL** (`captured_desc` default; `total` from a same-`WHERE`
+`COUNT(*)`) — the load-all-and-filter pattern the house rules ban on hot read
+paths never runs for a filterless or query-less browse. The tag filter reuses
+the `listLocations` variant-selection COALESCE precedent (selected config →
+folder default → newest), so a filter honors the same variant a user actually
+sees, not whichever one is newest. Migration V12 adds the indexes
+(`files.captured_at`, `files.folder_id`, `files.place_name`,
+`file_tags.tag_id`, `face_observations.person_id`, `analyses.fingerprint`)
+this depends on.
+
+The grid island (`features/library/core/**`) is its own DOM-free core — not an
+import of, and not a copy-paste of, the `photos` feature's day-grouping/
+windowing types, per the cross-feature-import ban; it follows the same
+algorithm class (group by local capture day, window visible rows) over its
+own `LibraryItem` contract type. Grouping, folder toggles, facets and a
+Library-as-home default are out of scope for the first Library wave.
 
 ### The layout layer (page skeletons)
 

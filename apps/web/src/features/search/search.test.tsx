@@ -59,6 +59,8 @@ const searchState: GlobalSearchState = {
         },
         gps: null,
         missing: false,
+        capturedAt: null,
+        place: null,
       }],
     },
     {
@@ -85,6 +87,8 @@ const searchState: GlobalSearchState = {
         },
         gps: null,
         missing: false,
+        capturedAt: null,
+        place: null,
       }],
     },
   ],

@@ -1,6 +1,6 @@
-import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
+import { appError, ok, type AppError, type CatalogPlace, type Result } from '@core/domain/index.js';
 
-import type { CatalogSearchRow, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
+import type { CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
 import { artifactPaths } from './shared.js';
 import { discoverArtifactRoot } from './artifact-root.js';
 import { generateThumbnail } from './thumbnail.js';
@@ -11,8 +11,23 @@ export interface SearchDeps {
   media: MediaPort;
 }
 
+export interface SearchFiltersInput {
+  tags: string[];
+  people: string[];
+  place: string | null;
+  from: string | null;
+  to: string | null;
+  hasGps: boolean | null;
+  folderId: string | null;
+}
+
+export type ThumbnailsMode = 'ensure' | 'existing';
+
 export interface SearchInput {
-  query: string;
+  query: string | null;
+  filters: SearchFiltersInput;
+  sort: CatalogSearchSort | undefined;
+  thumbnails: ThumbnailsMode;
   limit: number;
   offset: number;
 }
@@ -34,13 +49,16 @@ export interface SearchResult {
   };
   gps: { lat: number; lon: number } | null;
   missing: boolean;
+  capturedAt: string | null;
+  place: CatalogPlace | null;
 }
 
 export interface SearchOutput {
-  query: string;
+  query: string | null;
   limit: number;
   offset: number;
   count: number;
+  total: number;
   results: SearchResult[];
 }
 
@@ -53,27 +71,74 @@ export interface SanitizedSearchQuery {
   rankingTerms: string[];
 }
 
+const filtersAreEmpty = (filters: SearchFiltersInput): boolean =>
+  filters.tags.length === 0
+  && filters.people.length === 0
+  && filters.place === null
+  && filters.from === null
+  && filters.to === null
+  && filters.hasGps === null
+  && filters.folderId === null;
+
+const resolveSort = (requested: CatalogSearchSort | undefined, hasQuery: boolean): CatalogSearchSort =>
+  requested ?? (hasQuery ? 'relevance' : 'captured_desc');
+
 export const search = async (
   deps: SearchDeps,
   input: SearchInput,
 ): Promise<Result<SearchOutput, AppError>> => {
-  const sanitized = sanitizeSearchQuery(input.query);
-  if (!sanitized.ok) return sanitized;
-  const expansions = await deps.globalCatalog.expandTagTerms(sanitized.value.rankingTerms);
+  // Library browses the whole catalog with neither a query nor a filter, but an accidental bare
+  // CLI/API invocation looks identical apart from one thing: Library always states its sort
+  // explicitly (see use-library.ts), so an unset sort is the signal that nothing was intended here.
+  if (input.query === null && input.sort === undefined && filtersAreEmpty(input.filters)) {
+    return { ok: false, error: appError('validation', 'Provide a query or at least one filter') };
+  }
+
+  const sort = resolveSort(input.sort, input.query !== null);
+  if (sort === 'relevance' && input.query === null) {
+    return { ok: false, error: appError('validation', "Sort 'relevance' requires a query") };
+  }
+
+  let parts: SearchMatchPart[] = [];
+  let rankingTerms: string[] = [];
+  if (input.query !== null) {
+    const sanitized = sanitizeSearchQuery(input.query);
+    if (!sanitized.ok) return sanitized;
+    parts = sanitized.value.parts;
+    rankingTerms = sanitized.value.rankingTerms;
+  }
+
+  const expansions = await deps.globalCatalog.expandTagTerms([...rankingTerms, ...input.filters.tags]);
   if (!expansions.ok) return expansions;
   const equivalents = new Map(expansions.value.map((entry) => [entry.term, entry.equivalents]));
-  const rows = await deps.globalCatalog.search({
-    match: buildSearchMatch(sanitized.value.parts, equivalents),
-    rankingTerms: sanitized.value.rankingTerms,
+
+  const match = input.query === null ? null : buildSearchMatch(parts, equivalents);
+  const tagTermSets = input.filters.tags.map((tag) => [tag, ...(equivalents.get(tag) ?? [])]);
+
+  const searched: CatalogSearchInput = {
+    match,
+    rankingTerms,
+    filters: {
+      tagTermSets,
+      personIds: input.filters.people,
+      place: input.filters.place,
+      capturedFrom: input.filters.from,
+      capturedTo: input.filters.to,
+      hasGps: input.filters.hasGps,
+      folderId: input.filters.folderId,
+    },
+    sort,
     limit: input.limit,
     offset: input.offset,
-  });
-  if (!rows.ok) return rows;
+  };
+  const searchResult = await deps.globalCatalog.search(searched);
+  if (!searchResult.ok) return searchResult;
+
   const results: SearchResult[] = [];
-  for (const row of rows.value) {
+  for (const row of searchResult.value.rows) {
     const online = await deps.fs.exists(row.folder.currentPath);
     if (!online.ok) return online;
-    const thumbnailPath = await resolveThumbnailPath(deps, row, online.value);
+    const thumbnailPath = await resolveThumbnailPath(deps, row, online.value, input.thumbnails);
     if (!thumbnailPath.ok) return thumbnailPath;
     results.push({
       fingerprint: row.fingerprint,
@@ -92,6 +157,8 @@ export const search = async (
       },
       gps: row.gps,
       missing: row.missing,
+      capturedAt: row.capturedAt,
+      place: row.place,
     });
   }
   return ok({
@@ -99,6 +166,7 @@ export const search = async (
     limit: input.limit,
     offset: input.offset,
     count: results.length,
+    total: searchResult.value.total,
     results,
   });
 };
@@ -107,6 +175,7 @@ const resolveThumbnailPath = async (
   deps: SearchDeps,
   row: CatalogSearchRow,
   online: boolean,
+  thumbnails: ThumbnailsMode,
 ): Promise<Result<string | null, AppError>> => {
   if (!online) return ok(null);
   const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
@@ -116,6 +185,7 @@ const resolveThumbnailPath = async (
   const exists = await deps.fs.exists(thumbnailPath);
   if (!exists.ok) return exists;
   if (exists.value) return ok(thumbnailPath);
+  if (thumbnails === 'existing') return ok(null);
   if (row.missing) return ok(null);
   const analysis = await deps.globalCatalog.getAnalysis(row.fingerprint);
   if (!analysis.ok) return analysis;

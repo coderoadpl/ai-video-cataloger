@@ -2,7 +2,7 @@ import { Button, ButtonGroup } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 
-export type MainView = 'videos' | 'photos' | 'people' | 'map';
+export type MainView = 'videos' | 'photos' | 'library' | 'people' | 'map';
 
 interface ViewNavProps {
   activeView: MainView;
@@ -26,6 +26,13 @@ export const ViewNav = ({ activeView, onSelectView }: ViewNavProps) => {
         data-testid="nav-photos"
       >
         {dictionary.appFrame.navPhotos}
+      </Button>
+      <Button
+        variant={activeView === 'library' ? 'contained' : 'outlined'}
+        onClick={() => onSelectView('library')}
+        data-testid="nav-library"
+      >
+        {dictionary.appFrame.navLibrary}
       </Button>
       <Button
         variant={activeView === 'people' ? 'contained' : 'outlined'}

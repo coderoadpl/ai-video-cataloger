@@ -85,9 +85,23 @@ export interface CatalogTagAliasResult {
   remappedFiles: number;
 }
 
+export interface CatalogSearchFilters {
+  tagTermSets: string[][];
+  personIds: string[];
+  place: string | null;
+  capturedFrom: string | null;
+  capturedTo: string | null;
+  hasGps: boolean | null;
+  folderId: string | null;
+}
+
+export type CatalogSearchSort = 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
+
 export interface CatalogSearchInput {
-  match: string;
+  match: string | null;
   rankingTerms: string[];
+  filters: CatalogSearchFilters;
+  sort: CatalogSearchSort;
   limit: number;
   offset: number;
 }
@@ -114,6 +128,13 @@ export interface CatalogSearchRow {
   gps: { lat: number; lon: number } | null;
   missing: boolean;
   score: number;
+  capturedAt: string | null;
+  place: CatalogPlace | null;
+}
+
+export interface CatalogSearchResults {
+  total: number;
+  rows: CatalogSearchRow[];
 }
 
 export interface CatalogLocationRow {
@@ -530,7 +551,7 @@ export interface GlobalCatalogStore {
   aliasTag(input: { from: string; to: string }): Promise<Result<CatalogTagAliasResult, AppError>>;
   listTagAliases(): Promise<Result<CatalogTagAlias[], AppError>>;
   expandTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
-  search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>>;
+  search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>>;
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>>;
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>>;
   applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;

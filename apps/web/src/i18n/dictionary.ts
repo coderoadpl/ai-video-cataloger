@@ -39,6 +39,7 @@ export interface Dictionary {
     navPeople: string;
     navMap: string;
     navPhotos: string;
+    navLibrary: string;
     terminalTitle: string;
     terminalRaw: string;
     terminalCopy: string;
@@ -756,6 +757,23 @@ export interface Dictionary {
     qualityOverexposed: string;
     qualityOther: string;
   };
+  library: {
+    title: string;
+    subtitle: string;
+    countHeader: (count: number) => string;
+    searchPlaceholder: string;
+    loadingLibrary: string;
+    loadMore: string;
+    unknownDate: string;
+    emptyCatalogTitle: string;
+    emptyCatalogBody: string;
+    emptyCatalogAction: string;
+    noMatchTitle: (query: string) => string;
+    noMatchBody: string;
+    noMatchClearAction: string;
+    offlineFolderBadge: string;
+    missingBadge: string;
+  };
 }
 
 export const en: Dictionary = {
@@ -797,6 +815,7 @@ export const en: Dictionary = {
     navPeople: 'People',
     navMap: 'Map',
     navPhotos: 'Photos',
+    navLibrary: 'Library',
     terminalTitle: 'Terminal',
     terminalRaw: 'Raw',
     terminalCopy: 'Copy',
@@ -1568,6 +1587,23 @@ export const en: Dictionary = {
     qualityOverexposed: 'Overexposed',
     qualityOther: 'Other',
   },
+  library: {
+    title: 'Library',
+    subtitle: 'Browse everything ever processed, across every catalogued folder.',
+    countHeader: (count) => `${count} files`,
+    searchPlaceholder: 'Search the library…',
+    loadingLibrary: 'Loading library…',
+    loadMore: 'Load more',
+    unknownDate: 'No date',
+    emptyCatalogTitle: 'Nothing processed yet',
+    emptyCatalogBody: 'Process a folder in Videos to start building your library.',
+    emptyCatalogAction: 'Go to Videos',
+    noMatchTitle: (query) => query.length === 0 ? 'No results' : `No results for "${query}"`,
+    noMatchBody: 'Try a different search or clear the filters.',
+    noMatchClearAction: 'Clear search',
+    offlineFolderBadge: 'Drive not connected',
+    missingBadge: 'Missing',
+  },
 };
 
 const plPlural = (count: number, one: string, few: string, many: string): string => {
@@ -1617,6 +1653,7 @@ export const pl: Dictionary = {
     navPeople: 'Osoby',
     navMap: 'Mapa',
     navPhotos: 'Zdjęcia',
+    navLibrary: 'Biblioteka',
     terminalTitle: 'Terminal',
     terminalRaw: 'Surowe',
     terminalCopy: 'Kopiuj',
@@ -2388,6 +2425,23 @@ export const pl: Dictionary = {
     qualityDark: 'Ciemna',
     qualityOverexposed: 'Prześwietlona',
     qualityOther: 'Inna',
+  },
+  library: {
+    title: 'Biblioteka',
+    subtitle: 'Przeglądaj wszystko, co kiedykolwiek przetworzono, ze wszystkich skatalogowanych folderów.',
+    countHeader: (count) => `${count} ${plPlural(count, 'plik', 'pliki', 'plików')}`,
+    searchPlaceholder: 'Szukaj w bibliotece…',
+    loadingLibrary: 'Ładowanie biblioteki…',
+    loadMore: 'Wczytaj więcej',
+    unknownDate: 'Brak daty',
+    emptyCatalogTitle: 'Jeszcze nic nie przetworzono',
+    emptyCatalogBody: 'Przetwórz folder w zakładce Filmy, aby zacząć budować bibliotekę.',
+    emptyCatalogAction: 'Przejdź do Filmów',
+    noMatchTitle: (query) => query.length === 0 ? 'Brak wyników' : `Brak wyników dla „${query}”`,
+    noMatchBody: 'Spróbuj innego wyszukiwania lub wyczyść filtry.',
+    noMatchClearAction: 'Wyczyść wyszukiwanie',
+    offlineFolderBadge: 'Dysk niepodłączony',
+    missingBadge: 'Brak pliku',
   },
 };
 

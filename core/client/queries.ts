@@ -202,8 +202,21 @@ export const jobScopes = {
 
 export const searchScopes = {
   all: () => ['search'] as const,
-  query: (input: z.output<typeof API_ROUTES.searchQuery.input>) =>
-    ['search', input.query, input.limit, input.offset] as const,
+  query: (input: z.output<typeof API_ROUTES.searchQuery.input>) => [
+    'search',
+    input.query ?? null,
+    input.tags,
+    input.people,
+    input.place ?? null,
+    input.from ?? null,
+    input.to ?? null,
+    input.hasGps ?? null,
+    input.folderId ?? null,
+    input.sort ?? null,
+    input.thumbnails,
+    input.limit,
+    input.offset,
+  ] as const,
 };
 
 export const tagsScopes = {

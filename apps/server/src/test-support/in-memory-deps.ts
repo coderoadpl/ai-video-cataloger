@@ -43,6 +43,7 @@ import type {
   CatalogLocationRow,
   CatalogLocationsSnapshot,
   CatalogSearchInput,
+  CatalogSearchResults,
   CatalogSearchRow,
   CatalogTagAlias,
   CatalogTagAliasResult,
@@ -578,12 +579,29 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok([]));
   }
 
-  search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>> {
-    const rows = [...this.files.values()]
+  search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>> {
+    const matched = [...this.files.values()]
       .map((file) => {
         const analysis = this.analyses.get(file.fingerprint) ?? null;
         const folder = this.folders.get(file.folderId);
         if (folder === undefined) return null;
+        if (input.match === null) {
+          return {
+            fingerprint: file.fingerprint,
+            variantCount: [...this.variants.values()].filter((variant) => variant.fingerprint === file.fingerprint).length,
+            fileName: file.fileName,
+            finalName: analysis?.finalName ?? null,
+            description: analysis?.description ?? null,
+            snippet: analysis?.description ?? file.fileName,
+            tags: analysis?.tags ?? [],
+            folder,
+            gps: file.gpsLat === null || file.gpsLon === null ? null : { lat: file.gpsLat, lon: file.gpsLon },
+            missing: file.missingAt !== null,
+            score: 1,
+            capturedAt: file.capturedAt,
+            place: file.place,
+          };
+        }
         const searchable = [
           file.fileName,
           analysis?.finalName ?? '',
@@ -605,11 +623,13 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
           gps: file.gpsLat === null || file.gpsLon === null ? null : { lat: file.gpsLat, lon: file.gpsLon },
           missing: file.missingAt !== null,
           score: 1,
+          capturedAt: file.capturedAt,
+          place: file.place,
         };
       })
-      .filter((row): row is CatalogSearchRow => row !== null)
-      .slice(input.offset, input.offset + input.limit);
-    return Promise.resolve(ok(rows));
+      .filter((row): row is CatalogSearchRow => row !== null);
+    const rows = matched.slice(input.offset, input.offset + input.limit);
+    return Promise.resolve(ok({ total: matched.length, rows }));
   }
 
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>> {

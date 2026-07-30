@@ -39,6 +39,7 @@ import type {
   CatalogLocationRow,
   CatalogLocationsSnapshot,
   CatalogSearchInput,
+  CatalogSearchResults,
   CatalogSearchRow,
   CatalogRepository,
   CatalogRepositoryFactory,
@@ -1319,13 +1320,17 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   lastSearchInput: CatalogSearchInput | null = null;
 
-  search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>> {
+  search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>> {
     this.lastSearchInput = input;
-    const rows = [...this.files.values()]
+    const matched = [...this.files.values()]
       .map((file) => {
         const analysis = this.analyses.get(file.fingerprint) ?? null;
         const folder = this.folders.get(file.folderId);
         if (folder === undefined) return null;
+        if (!this.searchRowPassesFilters(file, analysis, input.filters, folder.folderId)) return null;
+        if (input.match === null) {
+          return this.searchRowFor(file, analysis, folder, 0);
+        }
         const searchable = [
           file.fileName,
           analysis?.finalName ?? '',
@@ -1335,24 +1340,70 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
         ].join(' ').toLocaleLowerCase();
         const matches = input.rankingTerms.every((term) => searchable.includes(term.toLocaleLowerCase()));
         if (!matches) return null;
-        return {
-          fingerprint: file.fingerprint,
-          variantCount: [...this.variants.values()].filter((variant) => variant.fingerprint === file.fingerprint).length,
-          fileName: file.fileName,
-          finalName: analysis?.finalName ?? null,
-          description: analysis?.description ?? null,
-          snippet: analysis?.description ?? file.fileName,
-          tags: analysis?.tags ?? [],
-          folder,
-          gps: file.gpsLat === null || file.gpsLon === null ? null : { lat: file.gpsLat, lon: file.gpsLon },
-          missing: file.missingAt !== null,
-          score: scoreFor(file, analysis, input.rankingTerms),
-        };
+        return this.searchRowFor(file, analysis, folder, scoreFor(file, analysis, input.rankingTerms));
       })
-      .filter((row): row is CatalogSearchRow => row !== null)
-      .sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
-      .slice(input.offset, input.offset + input.limit);
-    return Promise.resolve(ok(rows));
+      .filter((row): row is CatalogSearchRow => row !== null);
+
+    const sorted = input.sort === 'relevance'
+      ? [...matched].sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
+      : sortFakeSearchRows(matched, input.sort);
+    const rows = sorted.slice(input.offset, input.offset + input.limit);
+    return Promise.resolve(ok({ total: sorted.length, rows }));
+  }
+
+  private searchRowFor(
+    file: CatalogFile,
+    analysis: CatalogAnalysis | null,
+    folder: CatalogFolder,
+    score: number,
+  ): CatalogSearchRow {
+    return {
+      fingerprint: file.fingerprint,
+      variantCount: [...this.variants.values()].filter((variant) => variant.fingerprint === file.fingerprint).length,
+      fileName: file.fileName,
+      finalName: analysis?.finalName ?? null,
+      description: analysis?.description ?? null,
+      snippet: analysis?.description ?? file.fileName,
+      tags: analysis?.tags ?? [],
+      folder,
+      gps: file.gpsLat === null || file.gpsLon === null ? null : { lat: file.gpsLat, lon: file.gpsLon },
+      missing: file.missingAt !== null,
+      score,
+      capturedAt: file.capturedAt,
+      place: file.place,
+    };
+  }
+
+  private searchRowPassesFilters(
+    file: CatalogFile,
+    analysis: CatalogAnalysis | null,
+    filters: CatalogSearchInput['filters'],
+    folderId: string,
+  ): boolean {
+    const tags = (analysis?.tags ?? []).map((tag) => tag.toLocaleLowerCase());
+    for (const termSet of filters.tagTermSets) {
+      if (!termSet.some((term) => tags.includes(term.toLocaleLowerCase()))) return false;
+    }
+    if (filters.personIds.length > 0) {
+      const owners = [...this.faceObservations.values()]
+        .filter((observation) => observation.fingerprint === file.fingerprint)
+        .map((observation) => observation.personId);
+      if (!filters.personIds.some((personId) => owners.includes(personId))) return false;
+    }
+    if (filters.place !== null) {
+      const needle = filters.place.toLocaleLowerCase();
+      const haystack = [file.place?.name, file.place?.region, file.place?.country]
+        .filter((value): value is string => value !== null && value !== undefined)
+        .join(' ')
+        .toLocaleLowerCase();
+      if (!haystack.includes(needle)) return false;
+    }
+    if (filters.capturedFrom !== null && (file.capturedAt === null || file.capturedAt < filters.capturedFrom)) return false;
+    if (filters.capturedTo !== null && (file.capturedAt === null || file.capturedAt > filters.capturedTo)) return false;
+    if (filters.hasGps === true && (file.gpsLat === null || file.gpsLon === null)) return false;
+    if (filters.hasGps === false && file.gpsLat !== null) return false;
+    if (filters.folderId !== null && filters.folderId !== folderId) return false;
+    return true;
   }
 
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>> {
@@ -1749,6 +1800,30 @@ const scoreFor = (
 
 const includesScore = (value: string, term: string, weight: number): number =>
   value.toLocaleLowerCase().includes(term.toLocaleLowerCase()) ? weight : 0;
+
+const sortFakeSearchRows = (
+  rows: readonly CatalogSearchRow[],
+  sort: Exclude<CatalogSearchInput['sort'], 'relevance'>,
+): CatalogSearchRow[] => {
+  const sorted = [...rows];
+  const displayName = (row: CatalogSearchRow): string => row.finalName !== null && row.finalName.length > 0 ? row.finalName : row.fileName;
+  switch (sort) {
+    case 'captured_desc':
+      return sorted.sort((left, right) => fakeCapturedAtCompare(left, right, -1));
+    case 'captured_asc':
+      return sorted.sort((left, right) => fakeCapturedAtCompare(left, right, 1));
+    case 'name_asc':
+      return sorted.sort((left, right) => displayName(left).localeCompare(displayName(right)));
+  }
+};
+
+const fakeCapturedAtCompare = (left: CatalogSearchRow, right: CatalogSearchRow, direction: 1 | -1): number => {
+  if (left.capturedAt === null && right.capturedAt === null) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === null) return 1;
+  if (right.capturedAt === null) return -1;
+  if (left.capturedAt === right.capturedAt) return left.fileName.localeCompare(right.fileName);
+  return left.capturedAt < right.capturedAt ? direction : -direction;
+};
 
 const uniqueFingerprints = (rows: readonly FaceObservation[]): string[] =>
   [...new Set(rows.map((row) => row.fingerprint))];

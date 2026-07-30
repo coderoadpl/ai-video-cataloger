@@ -19,8 +19,19 @@ import {
   type JobProgress,
   type ProcessDeps,
   type ProcessDriveInput,
+  type SearchFiltersInput,
   type TranscriberPort,
 } from '@core/server/index.js';
+
+const SEARCH_EMPTY_FILTERS: SearchFiltersInput = {
+  tags: [],
+  people: [],
+  place: null,
+  from: null,
+  to: null,
+  hasGps: null,
+  folderId: null,
+};
 import { SqlJsCatalogRepositoryFactory, JsonConfigStore } from '@adapters/db/sql-js.js';
 import { SqlJsGlobalCatalogStore } from '@adapters/db/global-catalog.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
@@ -199,7 +210,7 @@ describe('drive run over a write-protected folder with the real adapter stack', 
 
     const globalCatalog = deps.globalCatalog;
     if (globalCatalog === undefined) throw new Error('missing global catalog');
-    const found = await search({ globalCatalog, fs: deps.fs, media: deps.media }, { query: 'rabbit', limit: 50, offset: 0 });
+    const found = await search({ globalCatalog, fs: deps.fs, media: deps.media }, { query: 'rabbit', filters: SEARCH_EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 50, offset: 0 });
     if (!found.ok) throw new Error(found.error.message);
 
     const parsed = searchOutputSchema.safeParse(found.value);
@@ -227,7 +238,7 @@ describe('drive run over a write-protected folder with the real adapter stack', 
     if (globalCatalog === undefined) throw new Error('missing global catalog');
     const files = await globalCatalog.counts();
     expect(files.ok === true && files.value.files).toBe(1);
-    const found = await search({ globalCatalog, fs: deps.fs, media: deps.media }, { query: 'rabbit', limit: 50, offset: 0 });
+    const found = await search({ globalCatalog, fs: deps.fs, media: deps.media }, { query: 'rabbit', filters: SEARCH_EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 50, offset: 0 });
     if (!found.ok) throw new Error(found.error.message);
     const fingerprint = found.value.results[0]?.fingerprint ?? '';
 

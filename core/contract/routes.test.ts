@@ -22,6 +22,7 @@ import {
   photosVariantsDeleteOutputSchema,
   photosVariantsFolderDefaultOutputSchema,
   photosVariantsListOutputSchema,
+  searchInputSchema,
   searchOutputSchema,
   tagsSuggestAliasesOutputSchema,
   variantsListOutputSchema,
@@ -184,6 +185,7 @@ describe('route schemas', () => {
       limit: 50,
       offset: 0,
       count: 1,
+      total: 1,
       results: [{
         fingerprint: 'fp-1',
         variantCount: 2,
@@ -201,6 +203,8 @@ describe('route schemas', () => {
         },
         gps: { lat: 51, lon: 17 },
         missing: false,
+        capturedAt: '2026-01-01T00:00:00.000Z',
+        place: null,
       }],
     });
     expect(parsed.results[0]?.folder.online).toBe(true);
@@ -273,6 +277,7 @@ describe('route schemas', () => {
       limit: 50,
       offset: 0,
       count: 1,
+      total: 1,
       results: [{
         fingerprint: 'fp-ro',
         variantCount: 1,
@@ -290,9 +295,60 @@ describe('route schemas', () => {
         },
         gps: null,
         missing: false,
+        capturedAt: null,
+        place: null,
       }],
     });
     expect(parsed.results[0]?.folder.folderId).toBe('path-1a2b3c4d');
+  });
+
+  it('still parses the pre-Library search input shape (query, limit, offset only)', () => {
+    const parsed = searchInputSchema.parse({ query: 'drone', limit: 50, offset: 0 });
+    expect(parsed).toMatchObject({
+      query: 'drone',
+      tags: [],
+      people: [],
+      thumbnails: 'ensure',
+      limit: 50,
+      offset: 0,
+    });
+    expect(parsed.sort).toBeUndefined();
+    expect(parsed.hasGps).toBeUndefined();
+  });
+
+  it('round-trips a Library filter request with a comma-separated query-string shape', () => {
+    const parsed = searchInputSchema.parse({
+      tags: 'beach,sunset',
+      people: 'p1,p2',
+      place: 'wroc',
+      from: '2026-01-01',
+      to: '2026-01-31T00:00:00.000Z',
+      hasGps: 'true',
+      folderId: '11111111-1111-4111-8111-111111111111',
+      sort: 'captured_desc',
+      thumbnails: 'existing',
+      limit: '25',
+      offset: '10',
+    });
+    expect(parsed).toEqual({
+      query: undefined,
+      tags: ['beach', 'sunset'],
+      people: ['p1', 'p2'],
+      place: 'wroc',
+      from: '2026-01-01',
+      to: '2026-01-31T00:00:00.000Z',
+      hasGps: true,
+      folderId: '11111111-1111-4111-8111-111111111111',
+      sort: 'captured_desc',
+      thumbnails: 'existing',
+      limit: 25,
+      offset: 10,
+    });
+  });
+
+  it('treats hasGps=false as a distinct explicit filter from an absent hasGps', () => {
+    expect(searchInputSchema.parse({ tags: 'beach', hasGps: 'false' }).hasGps).toBe(false);
+    expect(searchInputSchema.parse({ tags: 'beach' }).hasGps).toBeUndefined();
   });
 
   it('defines family-specific cheap provider check results', () => {

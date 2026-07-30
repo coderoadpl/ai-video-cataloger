@@ -165,7 +165,11 @@ const bootstrap = async (): Promise<void> => {
   registerMediaProtocolHandler({
     getCurrentFolder: currentFolder,
     getCatalogMediaRoots: async () =>
-      catalogMediaRoots(homedir(), await mirrorFolderIds(desktopAppReady, await currentFolder())),
+      catalogMediaRoots(
+        homedir(),
+        await mirrorFolderIds(desktopAppReady, await currentFolder()),
+        await desktopAppReady.then((ready) => ready.catalogFolderPaths()).catch(() => []),
+      ),
   });
 
   folderWatch = new FolderWatchController({

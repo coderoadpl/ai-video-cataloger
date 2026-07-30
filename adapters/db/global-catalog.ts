@@ -57,7 +57,9 @@ import type {
   CatalogLockSnapshot,
   CatalogLocationRow,
   CatalogLocationsSnapshot,
+  CatalogSearchFilters,
   CatalogSearchInput,
+  CatalogSearchResults,
   CatalogSearchRow,
   CatalogTagAlias,
   CatalogTagAliasResult,
@@ -667,39 +669,47 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
-  async search(input: CatalogSearchInput): Promise<Result<CatalogSearchRow[], AppError>> {
+  async search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>> {
     return this.read((db, client) => {
+      const clauses = buildSearchFilterClauses(input.filters);
+
+      if (input.match !== null) {
+        const where = combineSearchWhere('search_documents_fts MATCH $match', clauses);
+        const result = client.exec(
+          `SELECT ${SEARCH_COLUMNS_MATCHED}
+            FROM search_documents_fts
+            JOIN search_documents sd ON sd.docid = search_documents_fts.docid
+            JOIN files f ON f.fingerprint = sd.fingerprint
+            JOIN folders fo ON fo.folder_id = f.folder_id
+            WHERE ${where.sql}`,
+          { $match: input.match, ...where.params },
+        );
+        const values = result[0]?.values ?? [];
+        const rows = values.map((row) => searchRowFromValues(row, input.rankingTerms));
+        const sorted = input.sort === 'relevance'
+          ? rows.sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
+          : sortSearchRows(rows, input.sort);
+        return { total: sorted.length, rows: sorted.slice(input.offset, input.offset + input.limit) };
+      }
+
+      const where = combineSearchWhere(null, clauses);
+      const baseFrom = `FROM files f
+          JOIN folders fo ON fo.folder_id = f.folder_id
+          LEFT JOIN search_documents sd ON sd.fingerprint = f.fingerprint`;
+      const countResult = client.exec(`SELECT COUNT(*) ${baseFrom} WHERE ${where.sql}`, where.params);
+      const total = numberValue(countResult[0]?.values[0]?.[0]);
+      const sort = input.sort === 'relevance' ? 'captured_desc' : input.sort;
       const result = client.exec(
-        `SELECT
-          f.fingerprint,
-          (SELECT COUNT(*) FROM analyses av WHERE av.fingerprint = f.fingerprint),
-          f.file_name,
-          NULLIF(sd.final_name, ''),
-          NULLIF(sd.description, ''),
-          snippet(search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12),
-          f.gps_lat,
-          f.gps_lon,
-          fo.folder_id,
-          fo.current_path,
-          fo.display_name,
-          fo.first_seen_at,
-          fo.last_seen_at,
-          sd.tags_text,
-          sd.transcript,
-          f.missing_at,
-          sd.place
-        FROM search_documents_fts
-        JOIN search_documents sd ON sd.docid = search_documents_fts.docid
-        JOIN files f ON f.fingerprint = sd.fingerprint
-        JOIN folders fo ON fo.folder_id = f.folder_id
-        WHERE search_documents_fts MATCH $match`,
-        { $match: input.match },
+        `SELECT ${SEARCH_COLUMNS_UNMATCHED}
+          ${baseFrom}
+          WHERE ${where.sql}
+          ORDER BY ${searchOrderBySql(sort)}
+          LIMIT $limit OFFSET $offset`,
+        { ...where.params, $limit: input.limit, $offset: input.offset },
       );
       const values = result[0]?.values ?? [];
-      return values
-        .map((row) => searchRowFromValues(row, input.rankingTerms))
-        .sort((left, right) => right.score - left.score || left.fileName.localeCompare(right.fileName))
-        .slice(input.offset, input.offset + input.limit);
+      const rows = values.map((row) => searchRowFromValues(row, input.rankingTerms));
+      return { total, rows };
     });
   }
 
@@ -1857,7 +1867,7 @@ const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): 
   const gpsLon = nullableNumberValue(row[7]);
   const tagsText = stringValue(row[13]);
   const transcript = stringValue(row[14]);
-  const place = stringValue(row[16]);
+  const flatPlace = stringValue(row[16]);
   return {
     fingerprint: stringValue(row[0]),
     variantCount: numberValue(row[1]),
@@ -1881,9 +1891,176 @@ const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): 
       description: description ?? '',
       tagsText,
       transcript,
-      place,
+      place: flatPlace,
     }, rankingTerms),
+    capturedAt: nullableStringValue(row[17]),
+    place: searchPlaceFromValues(row),
   };
+};
+
+const searchPlaceFromValues = (row: SqlValue[]): CatalogPlace | null => {
+  const name = nullableStringValue(row[18]);
+  if (name === null) return null;
+  return {
+    name,
+    region: nullableStringValue(row[19]),
+    country: nullableStringValue(row[20]),
+    countryCode: nullableStringValue(row[21]),
+    distanceM: nullableNumberValue(row[22]) ?? 0,
+    dataset: nullableStringValue(row[23]) ?? '',
+  };
+};
+
+const SEARCH_ROW_COLUMNS = `
+  f.fingerprint,
+  (SELECT COUNT(*) FROM analyses av WHERE av.fingerprint = f.fingerprint),
+  f.file_name,
+  NULLIF(sd.final_name, ''),
+  NULLIF(sd.description, ''),
+  __SNIPPET__,
+  f.gps_lat,
+  f.gps_lon,
+  fo.folder_id,
+  fo.current_path,
+  fo.display_name,
+  fo.first_seen_at,
+  fo.last_seen_at,
+  sd.tags_text,
+  sd.transcript,
+  f.missing_at,
+  sd.place,
+  f.captured_at,
+  f.place_name,
+  f.place_region,
+  f.place_country,
+  f.place_country_code,
+  f.place_distance_m,
+  f.place_dataset
+`;
+
+const SEARCH_COLUMNS_MATCHED = SEARCH_ROW_COLUMNS.replace(
+  '__SNIPPET__',
+  `snippet(search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12)`,
+);
+
+const SEARCH_COLUMNS_UNMATCHED = SEARCH_ROW_COLUMNS.replace('__SNIPPET__', `''`);
+
+interface SearchWhereClause {
+  sql: string;
+  params: Record<string, SqlValue>;
+}
+
+const buildSearchFilterClauses = (filters: CatalogSearchFilters): SearchWhereClause[] => {
+  const clauses: SearchWhereClause[] = [];
+
+  filters.tagTermSets.forEach((termSet, setIndex) => {
+    if (termSet.length === 0) return;
+    const placeholders = termSet.map((_, termIndex) => `$tagSet${String(setIndex)}_${String(termIndex)}`);
+    const params: Record<string, SqlValue> = {};
+    termSet.forEach((term, termIndex) => {
+      params[`$tagSet${String(setIndex)}_${String(termIndex)}`] = term;
+    });
+    const list = placeholders.join(', ');
+    clauses.push({
+      sql: `EXISTS (
+          SELECT 1 FROM file_tags ft
+          WHERE ft.fingerprint = f.fingerprint
+            AND ft.config_id = COALESCE(
+              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint AND config_id = f.selected_config_id),
+              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint AND config_id = fo.default_config_id),
+              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint ORDER BY created_at DESC, config_id ASC LIMIT 1))
+            AND ft.tag_id IN (
+              SELECT tag_id FROM tags WHERE name IN (${list})
+              UNION SELECT tag_id FROM tag_aliases WHERE alias IN (${list})))`,
+      params,
+    });
+  });
+
+  if (filters.personIds.length > 0) {
+    const placeholders = filters.personIds.map((_, index) => `$person${String(index)}`);
+    const params: Record<string, SqlValue> = {};
+    filters.personIds.forEach((personId, index) => {
+      params[`$person${String(index)}`] = personId;
+    });
+    clauses.push({
+      sql: `EXISTS (SELECT 1 FROM face_observations o WHERE o.fingerprint = f.fingerprint AND o.person_id IN (${placeholders.join(', ')}))`,
+      params,
+    });
+  }
+
+  if (filters.place !== null) {
+    clauses.push({
+      sql: `(f.place_name LIKE $place COLLATE NOCASE OR f.place_region LIKE $place COLLATE NOCASE OR f.place_country LIKE $place COLLATE NOCASE)`,
+      params: { $place: `%${filters.place}%` },
+    });
+  }
+
+  if (filters.capturedFrom !== null) {
+    clauses.push({
+      sql: `f.captured_at IS NOT NULL AND f.captured_at >= $capturedFrom`,
+      params: { $capturedFrom: filters.capturedFrom },
+    });
+  }
+
+  if (filters.capturedTo !== null) {
+    clauses.push({
+      sql: `f.captured_at IS NOT NULL AND f.captured_at <= $capturedTo`,
+      params: { $capturedTo: filters.capturedTo },
+    });
+  }
+
+  if (filters.hasGps === true) {
+    clauses.push({ sql: `f.gps_lat IS NOT NULL AND f.gps_lon IS NOT NULL`, params: {} });
+  } else if (filters.hasGps === false) {
+    clauses.push({ sql: `f.gps_lat IS NULL`, params: {} });
+  }
+
+  if (filters.folderId !== null) {
+    clauses.push({ sql: `fo.folder_id = $folderId`, params: { $folderId: filters.folderId } });
+  }
+
+  return clauses;
+};
+
+const combineSearchWhere = (base: string | null, clauses: readonly SearchWhereClause[]): SearchWhereClause => {
+  const conditions = [...(base === null ? [] : [base]), ...clauses.map((clause) => `(${clause.sql})`)];
+  const params = clauses.reduce<Record<string, SqlValue>>((accumulated, clause) => ({ ...accumulated, ...clause.params }), {});
+  return { sql: conditions.length === 0 ? '1=1' : conditions.join(' AND '), params };
+};
+
+const searchOrderBySql = (sort: Exclude<CatalogSearchInput['sort'], 'relevance'>): string => {
+  switch (sort) {
+    case 'captured_desc':
+      return `f.captured_at IS NULL, f.captured_at DESC, f.file_name ASC`;
+    case 'captured_asc':
+      return `f.captured_at IS NULL, f.captured_at ASC, f.file_name ASC`;
+    case 'name_asc':
+      return `COALESCE(NULLIF(sd.final_name, ''), f.file_name) ASC`;
+  }
+};
+
+const sortSearchRows = (
+  rows: readonly CatalogSearchRow[],
+  sort: Exclude<CatalogSearchInput['sort'], 'relevance'>,
+): CatalogSearchRow[] => {
+  const displayName = (row: CatalogSearchRow): string => row.finalName !== null && row.finalName.length > 0 ? row.finalName : row.fileName;
+  const sorted = [...rows];
+  switch (sort) {
+    case 'captured_desc':
+      return sorted.sort((left, right) => capturedAtCompare(left, right, -1));
+    case 'captured_asc':
+      return sorted.sort((left, right) => capturedAtCompare(left, right, 1));
+    case 'name_asc':
+      return sorted.sort((left, right) => displayName(left).localeCompare(displayName(right)));
+  }
+};
+
+const capturedAtCompare = (left: CatalogSearchRow, right: CatalogSearchRow, direction: 1 | -1): number => {
+  if (left.capturedAt === null && right.capturedAt === null) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === null) return 1;
+  if (right.capturedAt === null) return -1;
+  if (left.capturedAt === right.capturedAt) return left.fileName.localeCompare(right.fileName);
+  return left.capturedAt < right.capturedAt ? -direction : direction;
 };
 
 const locationRowFromValues = (row: SqlValue[]): CatalogLocationRow | null => {

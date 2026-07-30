@@ -87,7 +87,7 @@ health
 doctor [--json]
 check [folder] [--json]
 scan <folder> [--json]
-search <query> [--json]
+search [query] [--tag <name>...] [--person <nameOrId>...] [--place <text>] [--from <iso>] [--to <iso>] [--has-gps|--no-has-gps] [--folder <path>] [--sort relevance|captured_desc|captured_asc|name_asc] [--limit <n>] [--offset <n>] [--json]
 process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper-model model] [--analyzer claude|local|api] [--provider openai|claude-code|codex|cursor-agent|local|gemini] [--local-model tag] [--json]
 process-drive <root> [--gemini-batch] [--skip-faces] [--json]
 materialize <root> [--dry-run] [--keep-awake] [--json]
@@ -139,6 +139,22 @@ plurals, spelling variants) with file counts and never writes anything; apply
 one with `tags alias <from> <to>`. Search follows aliases in both directions,
 so after merging `dogs` into `psy` a search for either term finds the same
 files. Quoted phrases are matched literally and are not expanded.
+
+`search` accepts an agent-grade filter set without a text query — a bare
+`search --tag beach --json` browses the catalog by filter alone. `--tag` and
+`--person` are repeatable (AND across tags, OR across people); `--tag` follows
+aliases the same way a text query does. `--person` accepts a display name
+(resolved case-insensitively against `faces people`, erroring on zero or
+multiple matches) or a raw `person-…` id. `--place` matches a case-insensitive
+substring over the place name/region/country; `--from`/`to` bound `captured_at`
+(ISO date or datetime). `--has-gps`/`--no-has-gps` filter on GPS presence;
+`--folder <path>` restricts results to a folder the catalog already knows
+(an unrecognised path is a validation error, same taxonomy as every other
+`search` failure — no new error or exit codes). `--sort` defaults to
+`relevance` when a text query is present and to `captured_desc` otherwise; the
+`--json` envelope's `completed` payload always carries `total` (the full
+filtered match count, independent of `--limit`/`--offset`) alongside
+`results[].capturedAt`/`results[].place`.
 
 In `--json` mode, a successful `process` completion adds `configId` and
 `selectedConfigId` to its `completed.data`. A `catalog_index_skipped` progress

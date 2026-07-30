@@ -16,6 +16,8 @@ import {
   type Person,
 } from '@core/domain/index.js';
 
+import type { CatalogSearchFilters } from '@core/server/ports.js';
+
 import { SqlJsGlobalCatalogStore } from './global-catalog.js';
 import {
   createGlobalCatalogSchemaSqlV1,
@@ -32,6 +34,16 @@ import {
 } from './global-catalog-schema.js';
 
 const tempRoots: string[] = [];
+
+const NO_SEARCH_FILTERS: CatalogSearchFilters = {
+  tagTermSets: [],
+  personIds: [],
+  place: null,
+  capturedFrom: null,
+  capturedTo: null,
+  hasGps: null,
+  folderId: null,
+};
 
 const tempHome = async (): Promise<string> => {
   const root = await mkdtemp(path.join(tmpdir(), 'avc-global-'));
@@ -102,9 +114,9 @@ describe('SqlJsGlobalCatalogStore', () => {
       expect(records.value[0]?.analysis?.language).toBe('en');
     }
 
-    const search = await reopened.search({ match: 'clip*', rankingTerms: ['clip'], limit: 10, offset: 0 });
-    expect(search.ok && search.value[0]?.fingerprint).toBe(file.fingerprint);
-    expect(search.ok && search.value[0]?.tags).toEqual(['a-clip']);
+    const search = await reopened.search({ match: 'clip*', rankingTerms: ['clip'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(search.ok && search.value.rows[0]?.fingerprint).toBe(file.fingerprint);
+    expect(search.ok && search.value.rows[0]?.tags).toEqual(['a-clip']);
   });
 
   it('stores variants independently and resolves explicit, folder-default, and newest selection', async () => {
@@ -161,10 +173,10 @@ describe('SqlJsGlobalCatalogStore', () => {
     const explicit = await store.getAnalysis(file.fingerprint);
     expect(explicit.ok && explicit.value?.description).toBe(first.description);
     expect(explicit.ok && explicit.value?.tags).toEqual(['alpha-tag']);
-    const oldSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
-    expect(oldSearch.ok && oldSearch.value).toEqual([]);
-    const selectedSearch = await store.search({ match: 'alphaonly*', rankingTerms: ['alphaonly'], limit: 10, offset: 0 });
-    expect(selectedSearch.ok && selectedSearch.value[0]).toMatchObject({
+    const oldSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(oldSearch.ok && oldSearch.value.rows).toEqual([]);
+    const selectedSearch = await store.search({ match: 'alphaonly*', rankingTerms: ['alphaonly'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(selectedSearch.ok && selectedSearch.value.rows[0]).toMatchObject({
       description: first.description,
       variantCount: 2,
     });
@@ -199,14 +211,14 @@ describe('SqlJsGlobalCatalogStore', () => {
     const survivor = await store.getAnalysis(file.fingerprint);
     expect(survivor.ok && survivor.value?.description).toBe(second.description);
     expect(survivor.ok && survivor.value?.tags).toEqual(['beta-tag']);
-    const promotedSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
-    expect(promotedSearch.ok && promotedSearch.value[0]).toMatchObject({
+    const promotedSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(promotedSearch.ok && promotedSearch.value.rows[0]).toMatchObject({
       description: second.description,
       variantCount: 1,
     });
     expect((await store.rebuildSearchIndex()).ok).toBe(true);
-    const rebuiltSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], limit: 10, offset: 0 });
-    expect(rebuiltSearch.ok && rebuiltSearch.value[0]?.description).toBe(second.description);
+    const rebuiltSearch = await store.search({ match: 'betaonly*', rankingTerms: ['betaonly'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(rebuiltSearch.ok && rebuiltSearch.value.rows[0]?.description).toBe(second.description);
     expect(await store.deleteVariant(file.fingerprint, second.configId))
       .toMatchObject({ ok: false, error: { code: 'conflict' } });
     expect((await store.clearAnalysisVariants(file.fingerprint)).ok).toBe(true);
@@ -489,8 +501,8 @@ describe('SqlJsGlobalCatalogStore', () => {
     const counts = await store.counts();
     expect(counts.ok && counts.value.files).toBe(1);
 
-    const search = await store.search({ match: 'renamed*', rankingTerms: ['renamed'], limit: 10, offset: 0 });
-    expect(search.ok && search.value.map((row) => row.fileName)).toEqual(['renamed.mp4']);
+    const search = await store.search({ match: 'renamed*', rankingTerms: ['renamed'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(search.ok && search.value.rows.map((row) => row.fileName)).toEqual(['renamed.mp4']);
   });
 
   it('P1: a re-probe that finds no GPS no longer erases a stored coordinate', async () => {
@@ -534,8 +546,8 @@ describe('SqlJsGlobalCatalogStore', () => {
       place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 120, dataset: 'test-dataset' },
     });
 
-    const search = await store.search({ match: 'fjordvik*', rankingTerms: ['fjordvik'], limit: 10, offset: 0 });
-    expect(search.ok && search.value.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
+    const search = await store.search({ match: 'fjordvik*', rankingTerms: ['fjordvik'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(search.ok && search.value.rows.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
   });
 
   it('batches writes: a crash before flush loses only un-flushed rows and a re-run heals', async () => {
@@ -712,9 +724,9 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(moved.ok && moved.value?.folderId).toBe(folderB.folderId);
     expect(moved.ok && moved.value?.fileName).toBe('renamed.mp4');
 
-    const results = await store.search({ match: 'renamed*', rankingTerms: ['renamed'], limit: 10, offset: 0 });
-    expect(results.ok && results.value[0]?.fingerprint).toBe(file.fingerprint);
-    expect(results.ok && results.value[0]?.folder.currentPath).toBe('/media/drive-b');
+    const results = await store.search({ match: 'renamed*', rankingTerms: ['renamed'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(results.ok && results.value.rows[0]?.fingerprint).toBe(file.fingerprint);
+    expect(results.ok && results.value.rows[0]?.folder.currentPath).toBe('/media/drive-b');
   });
 
   it('forgetEntry recomputes affected person centroids and removes people with no remaining observations', async () => {
@@ -904,12 +916,12 @@ describe('SqlJsGlobalCatalogStore', () => {
       tags: ['a-clip'],
     });
 
-    const before = await store.search({ match: 'clip*', rankingTerms: ['clip'], limit: 10, offset: 0 });
-    expect(before.ok && before.value[0]?.missing).toBe(false);
+    const before = await store.search({ match: 'clip*', rankingTerms: ['clip'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(before.ok && before.value.rows[0]?.missing).toBe(false);
 
     await store.reconcileFolder({ folderId: folder.folderId, presentFingerprints: [], now: 5000 });
-    const after = await store.search({ match: 'clip*', rankingTerms: ['clip'], limit: 10, offset: 0 });
-    expect(after.ok && after.value[0]?.missing).toBe(true);
+    const after = await store.search({ match: 'clip*', rankingTerms: ['clip'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(after.ok && after.value.rows[0]?.missing).toBe(true);
   });
 
   it('listLocations returns only the file that carries GPS, keyed to its folder', async () => {
@@ -1084,8 +1096,8 @@ describe('SqlJsGlobalCatalogStore', () => {
     const second = await store.applyGeoBackfill({ fingerprint: 'fp-empty', location, place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 30, dataset: 'test-dataset' } });
     expect(second.ok && second.value).toBe('unchanged');
 
-    const found = await store.search({ match: 'fjordvik*', rankingTerms: ['fjordvik'], limit: 10, offset: 0 });
-    expect(found.ok && found.value[0]?.fingerprint).toBe('fp-empty');
+    const found = await store.search({ match: 'fjordvik*', rankingTerms: ['fjordvik'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(found.ok && found.value.rows[0]?.fingerprint).toBe('fp-empty');
   });
 
   it('listLocations skips a row whose stored latitude is out of range', async () => {
@@ -1137,8 +1149,8 @@ describe('SqlJsGlobalCatalogStore', () => {
     const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
     const counts = await reopened.counts();
     expect(counts.ok && counts.value).toEqual({ folders: 1, files: 0, analyses: 0 });
-    const search = await reopened.search({ match: 'clip*', rankingTerms: ['clip'], limit: 10, offset: 0 });
-    expect(search.ok && search.value.length).toBe(0);
+    const search = await reopened.search({ match: 'clip*', rankingTerms: ['clip'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(search.ok && search.value.rows.length).toBe(0);
 
     const SQL = await initSqlJs();
     const raw = new SQL.Database(await readFile(reopened.databasePath()));
@@ -1187,7 +1199,7 @@ describe('SqlJsGlobalCatalogStore', () => {
 
     const analysis = await store.getAnalysis('fixture-v8-analysis');
     const variant = await store.getVariant('fixture-v8-analysis', 'legacy');
-    const search = await store.search({ match: 'skyline*', rankingTerms: ['skyline'], limit: 10, offset: 0 });
+    const search = await store.search({ match: 'skyline*', rankingTerms: ['skyline'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
 
     expect(analysis.ok && analysis.value).toEqual({
       fingerprint: 'fixture-v8-analysis',
@@ -1205,7 +1217,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       createdAt: '2026-01-02T03:04:05.678Z',
       usage: null,
     });
-    expect(search.ok && search.value.map((row) => row.fingerprint)).toEqual(['fixture-v8-analysis']);
+    expect(search.ok && search.value.rows.map((row) => row.fingerprint)).toEqual(['fixture-v8-analysis']);
 
     const SQL = await initSqlJs();
     const migrated = new SQL.Database(await readFile(store.databasePath()));
@@ -1521,12 +1533,12 @@ describe('SqlJsGlobalCatalogStore', () => {
     await writeV3Catalog(home);
 
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
-    const search = await store.search({ match: 'coast*', rankingTerms: ['coast'], limit: 10, offset: 0 });
-    expect(search.ok && search.value[0]?.fingerprint).toBe('fp-v3');
+    const search = await store.search({ match: 'coast*', rankingTerms: ['coast'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(search.ok && search.value.rows[0]?.fingerprint).toBe('fp-v3');
 
     const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
-    const persisted = await reopened.search({ match: 'coast*', rankingTerms: ['coast'], limit: 10, offset: 0 });
-    expect(persisted.ok && persisted.value[0]?.fileName).toBe('coast.mp4');
+    const persisted = await reopened.search({ match: 'coast*', rankingTerms: ['coast'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(persisted.ok && persisted.value.rows[0]?.fileName).toBe('coast.mp4');
   });
 
   it('keeps FTS current across alias remap and explicit rebuild', async () => {
@@ -1544,14 +1556,14 @@ describe('SqlJsGlobalCatalogStore', () => {
     });
 
     const aliased = await store.aliasTag({ from: 'automobile', to: 'car' });
-    const byAlias = await store.search({ match: 'car*', rankingTerms: ['car'], limit: 10, offset: 0 });
+    const byAlias = await store.search({ match: 'car*', rankingTerms: ['car'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
     const rebuilt = await store.rebuildSearchIndex();
-    const afterRebuild = await store.search({ match: 'car*', rankingTerms: ['car'], limit: 10, offset: 0 });
+    const afterRebuild = await store.search({ match: 'car*', rankingTerms: ['car'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
 
     expect(aliased.ok && aliased.value.remappedFiles).toBe(1);
-    expect(byAlias.ok && byAlias.value[0]?.tags).toEqual(['car']);
+    expect(byAlias.ok && byAlias.value.rows[0]?.tags).toEqual(['car']);
     expect(rebuilt.ok && rebuilt.value.indexed).toBe(1);
-    expect(afterRebuild.ok && afterRebuild.value[0]?.fingerprint).toBe(file.fingerprint);
+    expect(afterRebuild.ok && afterRebuild.value.rows[0]?.fingerprint).toBe(file.fingerprint);
   });
 
   it('resolves a new analysis tag through an existing alias, never writing the aliased name', async () => {
@@ -1586,11 +1598,11 @@ describe('SqlJsGlobalCatalogStore', () => {
       usage: null,
     });
 
-    const found = await store.search({ match: 'psy*', rankingTerms: ['psy'], limit: 10, offset: 0 });
-    expect(found.ok && found.value[0]?.tags).toEqual(['psy']);
+    const found = await store.search({ match: 'psy*', rankingTerms: ['psy'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(found.ok && found.value.rows[0]?.tags).toEqual(['psy']);
 
-    const notFound = await store.search({ match: 'dogs*', rankingTerms: ['dogs'], limit: 10, offset: 0 });
-    expect(notFound.ok && notFound.value).toEqual([]);
+    const notFound = await store.search({ match: 'dogs*', rankingTerms: ['dogs'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(notFound.ok && notFound.value.rows).toEqual([]);
 
     const reAliased = await store.aliasTag({ from: 'dogs', to: 'psy' });
     expect(reAliased.ok && reAliased.value.remappedFiles).toBe(0);
@@ -1692,9 +1704,9 @@ describe('SqlJsGlobalCatalogStore', () => {
     });
     await store.aliasTag({ from: 'dogs', to: 'psy' });
 
-    const search = await store.search({ match: '(dogs* OR psy)', rankingTerms: ['dogs'], limit: 10, offset: 0 });
+    const search = await store.search({ match: '(dogs* OR psy)', rankingTerms: ['dogs'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
 
-    expect(search.ok && search.value.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
+    expect(search.ok && search.value.rows.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
   });
 
   it('does not resurrect a merged-away tag when ingesting through a chained alias', async () => {
@@ -1749,15 +1761,15 @@ describe('SqlJsGlobalCatalogStore', () => {
       tags: ['dusk'],
     });
 
-    const stale = await store.search({ match: 'sunrise*', rankingTerms: ['sunrise'], limit: 10, offset: 0 });
-    const staleTag = await store.search({ match: 'dawn*', rankingTerms: ['dawn'], limit: 10, offset: 0 });
-    const staleTranscript = await store.search({ match: 'zeppelin*', rankingTerms: ['zeppelin'], limit: 10, offset: 0 });
-    const current = await store.search({ match: 'twilight*', rankingTerms: ['twilight'], limit: 10, offset: 0 });
+    const stale = await store.search({ match: 'sunrise*', rankingTerms: ['sunrise'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    const staleTag = await store.search({ match: 'dawn*', rankingTerms: ['dawn'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    const staleTranscript = await store.search({ match: 'zeppelin*', rankingTerms: ['zeppelin'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    const current = await store.search({ match: 'twilight*', rankingTerms: ['twilight'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
 
-    expect(stale.ok && stale.value).toEqual([]);
-    expect(staleTag.ok && staleTag.value).toEqual([]);
-    expect(staleTranscript.ok && staleTranscript.value).toEqual([]);
-    expect(current.ok && current.value[0]?.fingerprint).toBe(file.fingerprint);
+    expect(stale.ok && stale.value.rows).toEqual([]);
+    expect(staleTag.ok && staleTag.value.rows).toEqual([]);
+    expect(staleTranscript.ok && staleTranscript.value.rows).toEqual([]);
+    expect(current.ok && current.value.rows[0]?.fingerprint).toBe(file.fingerprint);
   });
 
   it('matches an NFC-stored folder from an NFD root query', async () => {
@@ -1808,6 +1820,199 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(scope.value.foldersMatched).toBe(1);
     expect(scope.value.filesInScope).toBe(1);
     expect(scope.value.candidates).toHaveLength(1);
+  });
+});
+
+describe('SqlJsGlobalCatalogStore search filters (Library spec 1)', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('honors the selected variant, not just the newest one, when filtering by tag', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    const firstDescriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'en',
+      promptVersion: 1,
+    });
+    const secondDescriptor = configDescriptorSchema.parse({ ...firstDescriptor, promptVersion: 2 });
+    const selected: CatalogVariant = {
+      fingerprint: file.fingerprint,
+      configId: configId(firstDescriptor),
+      descriptor: firstDescriptor,
+      finalName: 'skyline.mp4',
+      description: 'selected variant',
+      transcript: null,
+      language: 'en',
+      tags: ['skyline'],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    };
+    const newer: CatalogVariant = {
+      ...selected,
+      configId: configId(secondDescriptor),
+      descriptor: secondDescriptor,
+      tags: ['no-skyline'],
+      createdAt: '2026-01-05T00:00:00.000Z',
+    };
+    await store.upsertVariant(selected);
+    await store.upsertVariant(newer);
+    await store.setSelectedVariant(file.fingerprint, selected.configId);
+
+    const found = await store.search({
+      match: null,
+      rankingTerms: [],
+      filters: { ...NO_SEARCH_FILTERS, tagTermSets: [['skyline']] },
+      sort: 'captured_desc',
+      limit: 10,
+      offset: 0,
+    });
+    const notFound = await store.search({
+      match: null,
+      rankingTerms: [],
+      filters: { ...NO_SEARCH_FILTERS, tagTermSets: [['no-skyline']] },
+      sort: 'captured_desc',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(found.ok && found.value.rows.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
+    expect(notFound.ok && notFound.value.total).toBe(0);
+  });
+
+  it('orders a text-query search by capture date in the direction the sort names', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    const capturedAts = ['2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z', '2026-01-03T00:00:00.000Z'];
+    for (const [index, capturedAt] of capturedAts.entries()) {
+      const fingerprint = `fp-sorted-${String(index)}`;
+      await store.upsertFile({ ...file, fingerprint, fileName: `clip-${String(index)}.mp4`, capturedAt });
+      await store.upsertAnalysis({
+        fingerprint,
+        finalName: null,
+        description: 'skyline over the bay',
+        transcript: null,
+        language: 'en',
+        tags: [],
+      });
+    }
+
+    const newestFirst = await store.search({
+      match: 'skyline*',
+      rankingTerms: ['skyline'],
+      filters: NO_SEARCH_FILTERS,
+      sort: 'captured_desc',
+      limit: 10,
+      offset: 0,
+    });
+    const oldestFirst = await store.search({
+      match: 'skyline*',
+      rankingTerms: ['skyline'],
+      filters: NO_SEARCH_FILTERS,
+      sort: 'captured_asc',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(newestFirst.ok && newestFirst.value.rows.map((row) => row.capturedAt)).toEqual([...capturedAts].reverse());
+    expect(oldestFirst.ok && oldestFirst.value.rows.map((row) => row.capturedAt)).toEqual(capturedAts);
+  });
+
+  it('paginates a date-range no-query search with an accurate total', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    const capturedAts = ['2026-01-01T00:00:00.000Z', '2026-01-02T00:00:00.000Z', '2026-01-03T00:00:00.000Z', '2026-01-04T00:00:00.000Z'];
+    for (const [index, capturedAt] of capturedAts.entries()) {
+      await store.upsertFile({ ...file, fingerprint: `fp-range-${String(index)}`, fileName: `clip-${String(index)}.mp4`, capturedAt });
+    }
+
+    const page = await store.search({
+      match: null,
+      rankingTerms: [],
+      filters: { ...NO_SEARCH_FILTERS, capturedFrom: '2026-01-01T00:00:00.000Z', capturedTo: '2026-01-04T00:00:00.000Z' },
+      sort: 'captured_asc',
+      limit: 2,
+      offset: 2,
+    });
+
+    expect(page.ok && page.value.total).toBe(4);
+    expect(page.ok && page.value.rows.map((row) => row.fingerprint)).toEqual(['fp-range-2', 'fp-range-3']);
+  });
+
+  it('combines hasGps, person and place filters over a no-query search', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({
+      ...file,
+      fingerprint: 'fp-gps-match',
+      fileName: 'match.mp4',
+      gpsLat: 51.1,
+      gpsLon: 17.0,
+      place: { name: 'Wrocław', region: 'Lower Silesia', country: 'Poland', countryCode: 'PL', distanceM: 0, dataset: 'test' },
+    });
+    await store.upsertFile({ ...file, fingerprint: 'fp-gps-nogps', fileName: 'nogps.mp4' });
+    await store.upsertFile({
+      ...file,
+      fingerprint: 'fp-gps-otherplace',
+      fileName: 'otherplace.mp4',
+      gpsLat: 1,
+      gpsLon: 2,
+      place: { name: 'Berlin', region: null, country: 'Germany', countryCode: 'DE', distanceM: 0, dataset: 'test' },
+    });
+    await store.upsertPerson(personFor('person-range', 1));
+    await store.upsertFaceObservation(observationFor('obs-range-1', 'fp-gps-match', 'person-range'));
+    await store.upsertFaceObservation(observationFor('obs-range-2', 'fp-gps-otherplace', 'person-range'));
+
+    const found = await store.search({
+      match: null,
+      rankingTerms: [],
+      filters: { ...NO_SEARCH_FILTERS, hasGps: true, personIds: ['person-range'], place: 'wroc' },
+      sort: 'name_asc',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(found.ok && found.value.rows.map((row) => row.fingerprint)).toEqual(['fp-gps-match']);
+  });
+
+  it('matches a tag filter through an alias-expanded term set', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: null,
+      description: null,
+      transcript: null,
+      language: null,
+      tags: ['dogs'],
+    });
+    await store.aliasTag({ from: 'psy', to: 'dogs' });
+
+    const found = await store.search({
+      match: null,
+      rankingTerms: [],
+      filters: { ...NO_SEARCH_FILTERS, tagTermSets: [['psy']] },
+      sort: 'captured_desc',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(found.ok && found.value.rows.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
   });
 });
 
