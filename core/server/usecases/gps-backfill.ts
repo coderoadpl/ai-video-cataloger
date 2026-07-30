@@ -20,9 +20,9 @@ import {
   type PlacesPort,
 } from '../ports.js';
 import { type DriveRunFailure } from './process-drive.js';
+import { accuracyBucketsM, percentile } from './gps-shared.js';
 
 const maxSkewSamples = 20;
-const accuracyBucketsM = [200, 500, 1000, 5000, 20_000, null] as const;
 const skewToleranceMs = 14 * 60 * 60 * 1000;
 const quarterHourMs = 15 * 60 * 1000;
 const quarterHourSlackMs = 5 * 60 * 1000;
@@ -344,11 +344,6 @@ const resolvePlaceIfNeeded = async (
   if (!input.dryRun) {
     await deps.globalCatalog.applyGeoBackfill({ fingerprint: candidate.fingerprint, place });
   }
-};
-
-const percentile = (sorted: readonly number[], fraction: number): number => {
-  const index = Math.min(sorted.length - 1, Math.floor(sorted.length * fraction));
-  return sorted[index] ?? 0;
 };
 
 const report = (
