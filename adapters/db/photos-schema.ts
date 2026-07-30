@@ -130,6 +130,12 @@ export const photoSearchDocuments = sqliteTable('photo_search_documents', {
   place: text('place').notNull().default(''),
 });
 
+export const photoFaceIndexState = sqliteTable('photo_face_index_state', {
+  fingerprint: text('fingerprint').primaryKey(),
+  completedAt: text('completed_at').notNull(),
+  engineVersion: integer('engine_version').notNull(),
+});
+
 export const photosSchema = {
   photoFolders,
   photos,
@@ -141,6 +147,7 @@ export const photosSchema = {
   photoTagAliases,
   photoFileTags,
   photoSearchDocuments,
+  photoFaceIndexState,
   photosSchemaMeta,
 };
 

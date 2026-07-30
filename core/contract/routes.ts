@@ -412,6 +412,7 @@ export const photosStatusOutputSchema = z.object({
     proxied: z.number(),
     proxyFailed: z.number(),
     analysed: z.number(),
+    facesIndexed: z.number(),
   }),
 });
 
@@ -1223,6 +1224,7 @@ export const jobProgressStepSchema = z.enum([
   'faces_clustering',
   'faces_done',
   'faces_pass_skipped',
+  'faces_waiting',
   'artifact_reused',
   'catalog_index_skipped',
   'catalog_snapshot_skipped',
@@ -1289,6 +1291,13 @@ export const facesIndexOutputSchema = z.object({
   filesFailed: z.number().int().nonnegative().default(0),
   failures: z.array(facesIndexFailureSchema).default([]),
   aborted: z.boolean().default(false),
+  photo: z.object({
+    inScope: z.number().int().nonnegative(),
+    scanned: z.number().int().nonnegative(),
+    indexed: z.number().int().nonnegative(),
+    observationsAdded: z.number().int().nonnegative(),
+    failed: z.number().int().nonnegative(),
+  }).default({ inScope: 0, scanned: 0, indexed: 0, observationsAdded: 0, failed: 0 }),
 });
 
 export const jobResultSchema = z.union([

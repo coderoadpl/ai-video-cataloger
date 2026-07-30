@@ -94,6 +94,7 @@ import type {
   PhotoAnalysisCandidate,
   PhotoAnalysisCandidates,
   PhotoDetail,
+  PhotoFaceIndexCandidate,
   PhotoFolderRecord,
   PhotoListItem,
   PhotoMediaPort,
@@ -115,6 +116,7 @@ import type {
   TranscriptionOutput,
   TranscriberPort,
 } from '../../../core/server/ports.js';
+import { JOB_CANCELLED_ERROR_MESSAGE } from '../../../core/server/ports.js';
 import { isReadOnlyWriteError } from '../../../core/server/usecases/folder-identity.js';
 
 export interface FakeFile {
@@ -956,6 +958,8 @@ export class InMemoryDownloads implements ModelDownloadPort {
 export class InMemoryJobs implements JobsPort {
   private readonly records = new Map<string, JobRecord>();
   private nextId = 1;
+  private readonly heldClaims = new Set<string>();
+  private readonly waiters = new Map<string, Array<() => void>>();
   readonly progressEvents: JobProgress[] = [];
 
   addJob(record: JobRecord): void {
@@ -968,9 +972,7 @@ export class InMemoryJobs implements JobsPort {
     resourceKey?: string | undefined;
     run?: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>;
   }): Promise<Result<{ jobId: string }, AppError>> {
-    if (input.resourceKey !== undefined && [...this.records.values()].some((record) =>
-      record.resourceKey === input.resourceKey
-      && (record.status === 'queued' || record.status === 'running'))) {
+    if (input.resourceKey !== undefined && this.isResourceBusy(input.resourceKey)) {
       return {
         ok: false,
         error: appError('conflict', `A ${input.kind} job is already running for ${input.resourceKey}`),
@@ -1028,6 +1030,7 @@ export class InMemoryJobs implements JobsPort {
           error: result.ok ? null : result.error,
           updatedAt: '2026-01-01T00:00:00.000Z',
         });
+        if (record.resourceKey !== undefined) this.wakeNextWaiter(record.resourceKey);
       }
     }
     return ok({ jobId });
@@ -1045,6 +1048,7 @@ export class InMemoryJobs implements JobsPort {
     const record = this.records.get(jobId);
     if (record === undefined) return Promise.resolve(ok({ jobId, cancelled: false }));
     this.records.set(jobId, { ...record, status: 'cancelled', updatedAt: '2026-01-01T00:00:01.000Z' });
+    if (record.resourceKey !== undefined) this.wakeNextWaiter(record.resourceKey);
     return Promise.resolve(ok({ jobId, cancelled: true }));
   }
 
@@ -1053,6 +1057,59 @@ export class InMemoryJobs implements JobsPort {
     const terminal = record !== undefined
       && (record.status === 'completed' || record.status === 'failed' || record.status === 'cancelled');
     if (terminal) void callback();
+  }
+
+  acquireResource(key: string, signal?: AbortSignal | undefined): Promise<Result<() => void, AppError>> {
+    if (signal?.aborted === true) {
+      return Promise.resolve({ ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) });
+    }
+    if (!this.isResourceBusy(key)) {
+      this.heldClaims.add(key);
+      return Promise.resolve(ok(this.claimRelease(key)));
+    }
+    return new Promise((resolve) => {
+      const waiter = (): void => {
+        this.heldClaims.add(key);
+        resolve(ok(this.claimRelease(key)));
+      };
+      const queue = this.waiters.get(key) ?? [];
+      queue.push(waiter);
+      this.waiters.set(key, queue);
+      if (signal !== undefined) {
+        signal.addEventListener('abort', () => {
+          const pending = this.waiters.get(key);
+          if (pending === undefined) return;
+          const index = pending.indexOf(waiter);
+          if (index === -1) return;
+          pending.splice(index, 1);
+          resolve({ ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) });
+        }, { once: true });
+      }
+    });
+  }
+
+  private isResourceBusy(key: string): boolean {
+    if (this.heldClaims.has(key)) return true;
+    return [...this.records.values()].some((record) =>
+      record.resourceKey === key && (record.status === 'queued' || record.status === 'running'));
+  }
+
+  private claimRelease(key: string): () => void {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.heldClaims.delete(key);
+      this.wakeNextWaiter(key);
+    };
+  }
+
+  private wakeNextWaiter(key: string): void {
+    const queue = this.waiters.get(key);
+    if (queue === undefined || queue.length === 0) return;
+    const next = queue.shift();
+    if (queue.length === 0) this.waiters.delete(key);
+    next?.();
   }
 }
 
@@ -1943,6 +2000,7 @@ export class InMemoryPhotosStore implements PhotosStore {
   readonly analysisConfigs = new Map<string, InMemoryAnalysisConfig>();
   readonly analyses = new Map<string, InMemoryAnalysisRow>();
   readonly photoTagAliases = new Map<string, string>();
+  readonly faceIndexState = new Map<string, number>();
   persistCount = 0;
 
   databasePath(): string {
@@ -2010,6 +2068,7 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   deletePhoto(fingerprint: string): Promise<Result<void, AppError>> {
     this.photoRows.delete(fingerprint);
+    this.faceIndexState.delete(fingerprint);
     for (const key of [...this.sightings.keys()]) {
       if (key.startsWith(`${fingerprint} `)) this.sightings.delete(key);
     }
@@ -2042,6 +2101,7 @@ export class InMemoryPhotosStore implements PhotosStore {
       proxied: photoRows.filter((photo) => photo.proxyState === 'done').length,
       proxyFailed: photoRows.filter((photo) => photo.proxyState === 'failed').length,
       analysed: photoRows.filter((photo) => this.hasAnyAnalysis(photo.fingerprint)).length,
+      facesIndexed: photoRows.filter((photo) => (this.faceIndexState.get(photo.fingerprint) ?? -1) >= FACE_ENGINE_VERSION).length,
     }));
   }
 
@@ -2331,6 +2391,29 @@ export class InMemoryPhotosStore implements PhotosStore {
   setPhotoFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>> {
     const folder = this.folders.get(folderId);
     if (folder !== undefined) this.folders.set(folderId, { ...folder, defaultConfigId: configId });
+    return Promise.resolve(ok(undefined));
+  }
+
+  listPhotoFaceIndexCandidates(root: string):
+  Promise<Result<{ inScope: number; candidates: PhotoFaceIndexCandidate[] }, AppError>> {
+    const canonicalRoot = canonicalPath(root);
+    const inScope = [...this.photoRows.values()]
+      .filter((photo) => photo.proxyState === 'done' && photo.missingAt === null)
+      .filter((photo) => [...this.sightings.values()]
+        .some((sighting) => sighting.fingerprint === photo.fingerprint && isUnderRoot(sighting.currentPath, canonicalRoot)));
+    const candidates: PhotoFaceIndexCandidate[] = inScope
+      .map((photo) => ({
+        fingerprint: photo.fingerprint,
+        currentPath: photo.currentPath,
+        previousEngineVersion: this.faceIndexState.get(photo.fingerprint) ?? null,
+      }))
+      .filter((candidate) => candidate.previousEngineVersion === null || candidate.previousEngineVersion < FACE_ENGINE_VERSION)
+      .sort((left, right) => left.fingerprint.localeCompare(right.fingerprint));
+    return Promise.resolve(ok({ inScope: inScope.length, candidates }));
+  }
+
+  completePhotoFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>> {
+    this.faceIndexState.set(fingerprint, engineVersion);
     return Promise.resolve(ok(undefined));
   }
 }

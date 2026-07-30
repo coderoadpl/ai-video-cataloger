@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { appError, ok } from '@core/domain/index.js';
-import type { JobRecord } from '@core/server/index.js';
+import { JOB_CANCELLED_ERROR_MESSAGE, type JobRecord } from '@core/server/index.js';
 
 import { InProcessJobsPort } from './index.js';
 import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
@@ -286,6 +286,144 @@ describe('InProcessJobsPort', () => {
     expect(oldest).toEqual(ok(null));
     expect(newest).toMatchObject({ ok: true, value: { status: 'completed' } });
   }, scaledTimeout(30_000));
+
+  describe('acquireResource', () => {
+    it('resolves immediately when no job holds the resource key and enqueue then rejects', async () => {
+      const jobs = new InProcessJobsPort();
+      const claim = await jobs.acquireResource('faces-write');
+      expect(claim.ok).toBe(true);
+
+      const enqueued = await jobs.enqueue({
+        kind: 'faces_index',
+        payload: {},
+        resourceKey: 'faces-write',
+        run: () => Promise.resolve(ok({})),
+      });
+      expect(enqueued).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+      if (claim.ok) claim.value();
+    });
+
+    it('does not resolve until the non-terminal job holding the resource settles', async () => {
+      const jobs = new InProcessJobsPort();
+      let release: (() => void) | undefined;
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      const enqueued = await jobs.enqueue({
+        kind: 'faces_index',
+        payload: {},
+        resourceKey: 'faces-write',
+        run: async () => {
+          await waiting;
+          return ok({});
+        },
+      });
+      expect(enqueued.ok).toBe(true);
+
+      let resolved = false;
+      const claimPromise = jobs.acquireResource('faces-write').then((result) => {
+        resolved = true;
+        return result;
+      });
+      await sleep(20);
+      expect(resolved).toBe(false);
+
+      release?.();
+      const claim = await claimPromise;
+      expect(resolved).toBe(true);
+      expect(claim.ok).toBe(true);
+      if (claim.ok) claim.value();
+    }, scaledTimeout(30_000));
+
+    it('resolves with processing_error when the signal aborts while waiting', async () => {
+      const jobs = new InProcessJobsPort();
+      let release: (() => void) | undefined;
+      const waiting = new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      await jobs.enqueue({
+        kind: 'faces_index',
+        payload: {},
+        resourceKey: 'faces-write',
+        run: async () => {
+          await waiting;
+          return ok({});
+        },
+      });
+
+      const controller = new AbortController();
+      const claimPromise = jobs.acquireResource('faces-write', controller.signal);
+      controller.abort();
+      const claim = await claimPromise;
+      expect(claim).toEqual({ ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) });
+
+      release?.();
+    }, scaledTimeout(30_000));
+
+    it('wakes exactly one FIFO waiter per release', async () => {
+      const jobs = new InProcessJobsPort();
+      const first = await jobs.acquireResource('faces-write');
+      expect(first.ok).toBe(true);
+
+      const order: number[] = [];
+      const second = jobs.acquireResource('faces-write').then((result) => {
+        order.push(2);
+        return result;
+      });
+      const third = jobs.acquireResource('faces-write').then((result) => {
+        order.push(3);
+        return result;
+      });
+      await sleep(20);
+      expect(order).toEqual([]);
+
+      if (first.ok) first.value();
+      const secondClaim = await second;
+      expect(order).toEqual([2]);
+      expect(secondClaim.ok).toBe(true);
+
+      if (secondClaim.ok) secondClaim.value();
+      const thirdClaim = await third;
+      expect(order).toEqual([2, 3]);
+      if (thirdClaim.ok) thirdClaim.value();
+    }, scaledTimeout(30_000));
+
+    it('releasing a claim twice never hands the resource to a second waiter', async () => {
+      const jobs = new InProcessJobsPort();
+      const first = await jobs.acquireResource('faces-write');
+      expect(first.ok).toBe(true);
+
+      const second = jobs.acquireResource('faces-write');
+      const third = jobs.acquireResource('faces-write');
+
+      if (first.ok) {
+        first.value();
+        first.value();
+      }
+      const secondClaim = await second;
+      expect(secondClaim.ok).toBe(true);
+
+      let thirdResolved = false;
+      void third.then(() => {
+        thirdResolved = true;
+      });
+      await sleep(20);
+      expect(thirdResolved).toBe(false);
+
+      const enqueued = await jobs.enqueue({
+        kind: 'faces_index',
+        payload: {},
+        resourceKey: 'faces-write',
+        run: () => Promise.resolve(ok({})),
+      });
+      expect(enqueued).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+      if (secondClaim.ok) secondClaim.value();
+      const thirdClaim = await third;
+      if (thirdClaim.ok) thirdClaim.value();
+    }, scaledTimeout(30_000));
+  });
 });
 
 interface Deferred {

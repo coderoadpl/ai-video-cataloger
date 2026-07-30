@@ -215,6 +215,10 @@ class InvalidatingJobsPort implements JobsPort {
   onSettled(jobId: string, callback: () => void | Promise<void>): void {
     this.jobs.onSettled(jobId, callback);
   }
+
+  acquireResource(key: string, signal?: AbortSignal | undefined): Promise<Result<() => void, AppError>> {
+    return this.jobs.acquireResource(key, signal);
+  }
 }
 
 class InvalidatingCredentialsStore implements Required<CredentialsStore> {

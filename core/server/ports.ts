@@ -398,6 +398,13 @@ export interface PhotosCounts {
   proxied: number;
   proxyFailed: number;
   analysed: number;
+  facesIndexed: number;
+}
+
+export interface PhotoFaceIndexCandidate {
+  fingerprint: string;
+  currentPath: string;
+  previousEngineVersion: number | null;
 }
 
 export interface PhotoAnalysisCandidate {
@@ -550,6 +557,9 @@ export interface PhotosStore {
   setSelectedPhotoVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>>;
   deletePhotoVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>>;
   setPhotoFolderDefaultVariant(folderId: string, configId: string | null): Promise<Result<void, AppError>>;
+  listPhotoFaceIndexCandidates(root: string):
+    Promise<Result<{ inScope: number; candidates: PhotoFaceIndexCandidate[] }, AppError>>;
+  completePhotoFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>>;
 }
 
 export interface DriveRunRecord {
@@ -1176,6 +1186,7 @@ export type ProcessJobStep =
   | 'faces_clustering'
   | 'faces_done'
   | 'faces_pass_skipped'
+  | 'faces_waiting'
   | 'artifact_reused'
   | 'catalog_index_skipped'
   | 'catalog_snapshot_skipped'
@@ -1251,4 +1262,5 @@ export interface JobsPort {
   list(): Promise<Result<JobRecord[], AppError>>;
   cancel(jobId: string): Promise<Result<{ jobId: string; cancelled: boolean }, AppError>>;
   onSettled(jobId: string, callback: () => void | Promise<void>): void;
+  acquireResource(key: string, signal?: AbortSignal | undefined): Promise<Result<() => void, AppError>>;
 }

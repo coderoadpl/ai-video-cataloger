@@ -1645,18 +1645,20 @@ const rowToFaceObservation = (row: typeof faceObservations.$inferSelect): FaceOb
   quality: row.quality ?? 0,
   personId: row.personId,
   cropPath: row.cropPath,
+  media: row.media === 'photo' ? 'photo' : 'video',
 });
 
 const faceObservationToRow = (observation: FaceObservation): typeof faceObservations.$inferInsert => ({
   obsId: observation.obsId,
   fingerprint: observation.fingerprint,
   kind: observation.kind,
-  frameTsS: observation.frameTsS,
+  frameTsS: observation.media === 'photo' ? null : observation.frameTsS,
   bboxJson: JSON.stringify(observation.bbox),
   embedding: embeddingToBlob(observation.embedding),
   quality: observation.quality,
   personId: observation.personId,
   cropPath: observation.cropPath,
+  media: observation.media,
 });
 
 const parseBbox = (value: string | null): FaceObservation['bbox'] => {

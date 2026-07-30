@@ -25,7 +25,14 @@ const recordingApp = (
   let stopped = 0;
   const app: App = {
     honoApp: new Hono(),
-    jobs: { enqueue: unusedJob, get: unusedJob, list: unusedJob, cancel: unusedJob, onSettled: () => undefined },
+    jobs: {
+      enqueue: unusedJob,
+      get: unusedJob,
+      list: unusedJob,
+      cancel: unusedJob,
+      onSettled: () => undefined,
+      acquireResource: unusedJob,
+    },
     catalogFolderPaths: async () => [],
     watchFolder: (root, onChange) => {
       roots.push(root);

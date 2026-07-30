@@ -169,6 +169,7 @@ const observationFixture = (overrides: Partial<FaceObservation> = {}): FaceObser
   quality: overrides.quality ?? 0.95,
   personId: overrides.personId ?? null,
   cropPath: overrides.cropPath ?? null,
+  media: overrides.media ?? 'video',
 });
 
 const buildDeps = (): FacesDeps & {
@@ -1408,5 +1409,55 @@ describe('facesExemplars', () => {
     expect(jobs.ok).toBe(true);
     if (!jobs.ok) throw new Error('expected jobs');
     expect(jobs.value.at(-1)?.status).toBe('completed');
+  });
+});
+
+describe('faces jobs share a single faces-write resource', () => {
+  const blockedJob = (): { run: () => Promise<Result<unknown, AppError>>; release: () => void } => {
+    let release: () => void = () => {};
+    const blocking = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    return { run: async () => { await blocking; return ok({}); }, release };
+  };
+
+  it('rejects a concurrent facesRecluster while a faces-write job is running', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    const blocked = blockedJob();
+    const holder = deps.jobs.enqueue({ kind: 'faces_index', payload: {}, resourceKey: 'faces-write', run: blocked.run });
+
+    const recluster = await facesRecluster(deps, { dryRun: false });
+    expect(recluster).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+    blocked.release();
+    await holder;
+  });
+
+  it('rejects a concurrent facesExemplars while a faces-write job is running', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    const blocked = blockedJob();
+    const holder = deps.jobs.enqueue({ kind: 'faces_index', payload: {}, resourceKey: 'faces-write', run: blocked.run });
+
+    const exemplars = await facesExemplars(deps, { dryRun: false, limit: null });
+    expect(exemplars).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+    blocked.release();
+    await holder;
+  });
+
+  it('rejects a concurrent facesIndex while facesRecluster holds faces-write', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    deps.fs.addDirectory('/work/videos');
+    const blocked = blockedJob();
+    const holder = deps.jobs.enqueue({ kind: 'faces_recluster', payload: {}, resourceKey: 'faces-write', run: blocked.run });
+
+    const index = await facesIndex(deps, { root: '/work/videos' });
+    expect(index).toMatchObject({ ok: false, error: { code: 'conflict' } });
+
+    blocked.release();
+    await holder;
   });
 });

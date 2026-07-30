@@ -282,6 +282,10 @@ class InvalidatingJobsPort implements JobsPort {
   onSettled(jobId: string, callback: () => void | Promise<void>): void {
     this.jobs.onSettled(jobId, callback);
   }
+
+  acquireResource(key: string, signal?: AbortSignal | undefined): Promise<Result<() => void, AppError>> {
+    return this.jobs.acquireResource(key, signal);
+  }
 }
 
 // Required<> is the guard: an optional port method the wrapper forgets to forward is a

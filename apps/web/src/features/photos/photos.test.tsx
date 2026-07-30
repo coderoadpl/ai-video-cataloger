@@ -115,6 +115,7 @@ const stubPhotos = (input: {
           proxied: input.counts?.proxied ?? items.length,
           proxyFailed: input.counts?.proxyFailed ?? 0,
           analysed: input.counts?.analysed ?? 0,
+          facesIndexed: 0,
         },
       },
     })),

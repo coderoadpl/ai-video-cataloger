@@ -50,6 +50,7 @@ import {
   type GlobalCatalogStore,
   type JobExecutionContext,
   type JobProgress,
+  type JobsPort,
   type MediaPort,
   type ModelDownloadPort,
   type SpendLedgerPort,
@@ -94,6 +95,7 @@ export interface ProcessDeps {
   spendLedger?: SpendLedgerPort | undefined;
   downloads?: ModelDownloadPort | undefined;
   faceEngine?: FaceEnginePort | undefined;
+  jobs?: JobsPort | undefined;
 }
 
 export interface ProcessPipelineInput {

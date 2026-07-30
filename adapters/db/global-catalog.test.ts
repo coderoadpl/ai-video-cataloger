@@ -600,6 +600,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       obsId: 'obs-1',
       fingerprint: file.fingerprint,
       kind: 'face',
+      media: 'video',
       frameTsS: 1,
       bbox: { x: 0, y: 0, width: 1, height: 1 },
       embedding: Array.from({ length: 128 }, () => 0.2),
@@ -621,6 +622,66 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(status.ok && status.value.observations).toBe(0);
   });
 
+  it('stores a photo observation with a null frame timestamp and pools it with a video observation under one person', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertPerson({
+      personId: 'person-1',
+      displayName: 'Person 1',
+      kind: 'face',
+      createdAt: '2026-01-04T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.2),
+      exemplarCount: 2,
+    });
+    await store.upsertFaceObservation({
+      obsId: `${file.fingerprint}:face:2:1`,
+      fingerprint: file.fingerprint,
+      kind: 'face',
+      media: 'video',
+      frameTsS: 4.5,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-1',
+      cropPath: null,
+    });
+    await store.upsertFaceObservation({
+      obsId: 'ph_0123456789abcdef:face:1:1',
+      fingerprint: 'ph_0123456789abcdef',
+      kind: 'face',
+      media: 'photo',
+      frameTsS: 0,
+      bbox: { x: 1, y: 2, width: 3, height: 4 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.8,
+      personId: 'person-1',
+      cropPath: '/home/faces/obs/ph_0123456789abcdef/1-1.jpg',
+    });
+    expect((await store.flush()).ok).toBe(true);
+
+    const SQL = await initSqlJs();
+    const raw: Database = new SQL.Database(await readFile(store.databasePath()));
+    const stored = raw.exec('SELECT obs_id, frame_ts_s, media FROM face_observations ORDER BY obs_id')[0]?.values ?? [];
+    raw.close();
+    expect(stored).toEqual([
+      ['fp-abc:face:2:1', 4.5, 'video'],
+      ['ph_0123456789abcdef:face:1:1', null, 'photo'],
+    ]);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const pooled = await reopened.listFaceObservations({ personId: 'person-1' });
+    expect(pooled.ok && pooled.value.map((observation) => ({
+      obsId: observation.obsId,
+      media: observation.media,
+      frameTsS: observation.frameTsS,
+    }))).toEqual([
+      { obsId: 'fp-abc:face:2:1', media: 'video', frameTsS: 4.5 },
+      { obsId: 'ph_0123456789abcdef:face:1:1', media: 'photo', frameTsS: 0 },
+    ]);
+  });
+
   it('replaceFaceClustering rebuilds people and reassigns observations in one write', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -638,6 +699,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       obsId: 'obs-1',
       fingerprint: file.fingerprint,
       kind: 'face',
+      media: 'video',
       frameTsS: 1,
       bbox: { x: 0, y: 0, width: 1, height: 1 },
       embedding: Array.from({ length: 128 }, () => 0.2),
@@ -684,6 +746,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       obsId: 'obs-1',
       fingerprint: file.fingerprint,
       kind: 'face',
+      media: 'video',
       frameTsS: 1,
       bbox: { x: 0, y: 0, width: 1, height: 1 },
       embedding: Array.from({ length: 128 }, () => 0.2),
@@ -756,6 +819,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       obsId: 'obs-shared-a',
       fingerprint: file.fingerprint,
       kind: 'face',
+      media: 'video',
       frameTsS: 1,
       bbox: { x: 0, y: 0, width: 1, height: 1 },
       embedding: Array.from({ length: 128 }, () => 0.2),
@@ -767,6 +831,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       obsId: 'obs-shared-b',
       fingerprint: other.fingerprint,
       kind: 'face',
+      media: 'video',
       frameTsS: 1,
       bbox: { x: 0, y: 0, width: 1, height: 1 },
       embedding: Array.from({ length: 128 }, () => 0.5),
@@ -778,6 +843,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       obsId: 'obs-only',
       fingerprint: file.fingerprint,
       kind: 'face',
+      media: 'video',
       frameTsS: 2,
       bbox: { x: 0, y: 0, width: 1, height: 1 },
       embedding: Array.from({ length: 128 }, () => 0.3),
@@ -805,6 +871,7 @@ describe('SqlJsGlobalCatalogStore', () => {
       obsId: 'obs-1',
       fingerprint: file.fingerprint,
       kind: 'face',
+      media: 'video',
       frameTsS: 1,
       bbox: { x: 0, y: 0, width: 1, height: 1 },
       embedding: Array.from({ length: 128 }, () => 0.2),
@@ -2163,6 +2230,7 @@ const observationFor = (obsId: string, fingerprint: string, personId: string | n
   obsId,
   fingerprint,
   kind: 'face',
+  media: 'video',
   frameTsS: 1,
   bbox: { x: 0, y: 0, width: 10, height: 10 },
   embedding: Array.from({ length: 128 }, () => 0.2),

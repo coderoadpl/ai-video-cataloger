@@ -109,6 +109,7 @@ export const enqueueProcessDrive = async (
     ...(deps.spendLedger === undefined ? {} : { spendLedger: deps.spendLedger }),
     ...(deps.downloads === undefined ? {} : { downloads: deps.downloads }),
     ...(deps.faceEngine === undefined ? {} : { faceEngine: deps.faceEngine }),
+    jobs: deps.jobs,
   };
   return deps.jobs.enqueue({
     kind: 'process_drive',

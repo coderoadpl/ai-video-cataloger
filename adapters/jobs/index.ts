@@ -28,6 +28,8 @@ export class InProcessJobsPort implements JobsPort {
   private readonly controllers = new Map<string, AbortController>();
   private readonly cancellationRequests = new Set<string>();
   private readonly settleCallbacks = new Map<string, Array<() => void | Promise<void>>>();
+  private readonly heldClaims = new Set<string>();
+  private readonly waiters = new Map<string, Array<() => void>>();
   private nextNumber = 1;
 
   constructor(options: InProcessJobsPortOptions = {}) {
@@ -45,8 +47,7 @@ export class InProcessJobsPort implements JobsPort {
     resourceKey?: string | undefined;
     run?: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>;
   }): Promise<Result<{ jobId: string }, AppError>> {
-    if (input.resourceKey !== undefined && [...this.records.values()].some((record) =>
-      record.resourceKey === input.resourceKey && !isTerminal(record))) {
+    if (input.resourceKey !== undefined && this.isResourceBusy(input.resourceKey)) {
       return Promise.resolve({
         ok: false,
         error: appError('conflict', `A ${input.kind} job is already running for ${input.resourceKey}`),
@@ -102,6 +103,56 @@ export class InProcessJobsPort implements JobsPort {
     this.settleCallbacks.set(jobId, existing);
   }
 
+  acquireResource(key: string, signal?: AbortSignal | undefined): Promise<Result<() => void, AppError>> {
+    if (signal?.aborted === true) return Promise.resolve({ ok: false, error: cancellationError() });
+    if (!this.isResourceBusy(key)) {
+      this.heldClaims.add(key);
+      return Promise.resolve(ok(this.claimRelease(key)));
+    }
+    return new Promise((resolve) => {
+      const waiter = (): void => {
+        this.heldClaims.add(key);
+        resolve(ok(this.claimRelease(key)));
+      };
+      const queue = this.waiters.get(key) ?? [];
+      queue.push(waiter);
+      this.waiters.set(key, queue);
+      if (signal !== undefined) {
+        signal.addEventListener('abort', () => {
+          const pending = this.waiters.get(key);
+          if (pending === undefined) return;
+          const index = pending.indexOf(waiter);
+          if (index === -1) return;
+          pending.splice(index, 1);
+          resolve({ ok: false, error: cancellationError() });
+        }, { once: true });
+      }
+    });
+  }
+
+  private isResourceBusy(key: string): boolean {
+    if (this.heldClaims.has(key)) return true;
+    return [...this.records.values()].some((record) => record.resourceKey === key && !isTerminal(record));
+  }
+
+  private claimRelease(key: string): () => void {
+    let released = false;
+    return () => {
+      if (released) return;
+      released = true;
+      this.heldClaims.delete(key);
+      this.wakeNextWaiter(key);
+    };
+  }
+
+  private wakeNextWaiter(key: string): void {
+    const queue = this.waiters.get(key);
+    if (queue === undefined || queue.length === 0) return;
+    const next = queue.shift();
+    if (queue.length === 0) this.waiters.delete(key);
+    next?.();
+  }
+
   private async runJob(
     jobId: string,
     run: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>,
@@ -138,6 +189,7 @@ export class InProcessJobsPort implements JobsPort {
     });
     this.fireSettleCallbacks(jobId);
     this.evictOldTerminalRecords();
+    if (current.resourceKey !== undefined) this.wakeNextWaiter(current.resourceKey);
   }
 
   private fireSettleCallbacks(jobId: string): void {

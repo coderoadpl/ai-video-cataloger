@@ -906,32 +906,49 @@ const runDriveFacesPass = async (
   if (!artifactsReady.ok) return skipFacesPass(state, progress, root, 'failed', artifactsReady.error);
   if (!artifactsReady.value) return skipFacesPass(state, progress, root, 'artifacts_missing', null);
 
-  const facesDeps: FacesIndexDeps = {
-    config: deps.config,
-    downloads: deps.downloads,
-    faceEngine: deps.faceEngine,
-    fs: deps.fs,
-    globalCatalog,
-    media: deps.media,
-  };
-  const pass = await runFacesIndexPass(facesDeps, { root }, progress);
-  if (!pass.ok) {
-    const reason = isProgressAborted(progress) ? 'cancelled' : 'failed';
-    return skipFacesPass(state, progress, root, reason, pass.error);
-  }
+  const release = await claimFacesWrite(deps, progress);
+  if (!release.ok) return skipFacesPass(state, progress, root, 'cancelled', null);
 
-  state.faces = {
-    ran: true,
-    skippedReason: null,
-    filesIndexed: pass.value.filesIndexed,
-    observationsAdded: pass.value.observationsAdded,
-    peopleCreated: pass.value.peopleCreated,
-    filesFailed: pass.value.filesFailed,
-    failureCodes: aggregateFailureCodes(pass.value.failures),
-    aborted: pass.value.aborted,
-    error: null,
-  };
-  return ok(undefined);
+  try {
+    const facesDeps: FacesIndexDeps = {
+      config: deps.config,
+      downloads: deps.downloads,
+      faceEngine: deps.faceEngine,
+      fs: deps.fs,
+      globalCatalog,
+      media: deps.media,
+    };
+    const pass = await runFacesIndexPass(facesDeps, { root }, progress);
+    if (!pass.ok) {
+      const reason = isProgressAborted(progress) ? 'cancelled' : 'failed';
+      return skipFacesPass(state, progress, root, reason, pass.error);
+    }
+
+    state.faces = {
+      ran: true,
+      skippedReason: null,
+      filesIndexed: pass.value.filesIndexed,
+      observationsAdded: pass.value.observationsAdded,
+      peopleCreated: pass.value.peopleCreated,
+      filesFailed: pass.value.filesFailed,
+      failureCodes: aggregateFailureCodes(pass.value.failures),
+      aborted: pass.value.aborted,
+      error: null,
+    };
+    return ok(undefined);
+  } finally {
+    release.value();
+  }
+};
+
+const claimFacesWrite = async (
+  deps: ProcessDeps,
+  progress: JobExecutionContext | undefined,
+): Promise<Result<() => void, AppError>> => {
+  if (deps.jobs === undefined) return ok(() => undefined);
+  const waiting = await report(progress, 'faces_waiting', { resource: 'faces-write' });
+  if (!waiting.ok) return waiting;
+  return deps.jobs.acquireResource('faces-write', progress?.signal);
 };
 
 const aggregateFailureCodes = (failures: readonly { code: AppError['code'] }[]): { code: AppError['code']; count: number }[] => {

@@ -11,6 +11,7 @@ import {
   InMemoryDownloads,
   InMemoryFileSystem,
   InMemoryGlobalCatalogStore,
+  InMemoryJobs,
   InMemoryMedia,
   InMemorySpendLedger,
   InMemoryTranscriber,
@@ -104,6 +105,7 @@ const makeDeps = (fs = new InMemoryFileSystem('/drive')) => {
     spendLedger: new InMemorySpendLedger(),
     downloads,
     faceEngine: new StubFaceEngine(),
+    jobs: new InMemoryJobs(),
   };
 };
 
@@ -137,6 +139,40 @@ describe('process-drive faces pass', () => {
       step: 'run-summary',
       data: expect.objectContaining({ faces: expect.objectContaining({ ran: true }) }),
     }));
+  });
+
+  it('waits for the faces-write resource before running the inline faces leg', async () => {
+    const deps = makeDeps();
+    await enableFaces(deps);
+    addVideo(deps.fs, '/drive/clip.mp4', 'hash-clip');
+    const events: JobProgress[] = [];
+
+    let release: (() => void) | undefined;
+    const blocking = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const holder = deps.jobs.enqueue({
+      kind: 'faces_recluster',
+      payload: {},
+      resourceKey: 'faces-write',
+      run: async () => {
+        await blocking;
+        return ok({});
+      },
+    });
+
+    const runPromise = processDrive(deps, baseInput, recordingProgress(events), { runId: 'run-waits' });
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(deps.faceEngine.loadCalls).toBe(0);
+    expect(events).toContainEqual(expect.objectContaining({ step: 'faces_waiting' }));
+
+    release?.();
+    const run = await runPromise;
+    await holder;
+
+    expect(run.ok).toBe(true);
+    if (!run.ok) throw new Error(run.error.message);
+    expect(run.value.faces).toMatchObject({ ran: true, skippedReason: null, filesIndexed: 1 });
   });
 
   it('leaves faces out of the summary and never loads the engine when faces are off', async () => {

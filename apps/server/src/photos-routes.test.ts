@@ -114,7 +114,7 @@ describe('photos routes', () => {
       data: {
         media: 'photo',
         root: null,
-        counts: { photos: 0, paths: 0, exifRead: 0, exifFailed: 0, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0, analysed: 0 },
+        counts: { photos: 0, paths: 0, exifRead: 0, exifFailed: 0, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0, analysed: 0, facesIndexed: 0 },
       },
     });
   });

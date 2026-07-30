@@ -135,7 +135,7 @@ export const facesIndex = async (
   return deps.jobs.enqueue({
     kind: 'faces_index',
     payload: input,
-    resourceKey: `faces-index:${deps.fs.resolve(input.root)}`,
+    resourceKey: 'faces-write',
     run: (context) => runFacesIndexJob(deps, { root: deps.fs.resolve(input.root) }, context),
   });
 };
@@ -167,7 +167,7 @@ export const facesRecluster = async (
   return deps.jobs.enqueue({
     kind: 'faces_recluster',
     payload: input,
-    resourceKey: 'faces-recluster',
+    resourceKey: 'faces-write',
     run: (context) => runFacesReclusterPass(deps, input, context),
   });
 };
@@ -181,7 +181,7 @@ export const facesExemplars = async (
   return deps.jobs.enqueue({
     kind: 'faces_exemplars',
     payload: input,
-    resourceKey: 'faces-exemplars',
+    resourceKey: 'faces-write',
     run: (context) => runFacesExemplarsPass(deps, input, context),
   });
 };
@@ -831,7 +831,7 @@ const indexFramesForFile = async (
     if (!detections.ok) return detections;
     let detectionIndex = 0;
     for (const detection of detections.value) {
-      const indexed = await indexDetection(deps, { fingerprint: input.fingerprint, frameTsS: timestampS }, framePath, frameIndex, detectionIndex, detection, pool, existingObsIds);
+      const indexed = await indexDetection(deps, { fingerprint: input.fingerprint, frameTsS: timestampS }, framePath, frameIndex, detectionIndex, detection, pool, existingObsIds, 'video');
       if (!indexed.ok) return indexed;
       observationsAdded += indexed.value.observationsAdded;
       peopleCreated += indexed.value.peopleCreated;
@@ -850,6 +850,7 @@ const indexDetection = async (
   detection: FaceDetection,
   pool: FaceObservation[],
   existingObsIds: ReadonlySet<string>,
+  media: FaceObservation['media'] = 'video',
 ): Promise<Result<{ observationsAdded: number; peopleCreated: number }, AppError>> => {
   const obsId = `${input.fingerprint}:face:${frameIndex + 1}:${detectionIndex + 1}`;
   if (existingObsIds.has(obsId)) return ok({ observationsAdded: 0, peopleCreated: 0 });
@@ -876,6 +877,7 @@ const indexDetection = async (
     quality: detection.score,
     personId: assignedPersonId,
     cropPath,
+    media,
   };
   const stored = await deps.globalCatalog.upsertFaceObservation(observation);
   if (!stored.ok) return stored;
@@ -998,7 +1000,7 @@ const personView = (person: Person, observations: readonly FaceObservation[]): F
   };
 };
 
-const deleteCropPaths = async (fs: FileSystemPort, cropPaths: readonly string[]): Promise<Result<number, AppError>> => {
+export const deleteCropPaths = async (fs: FileSystemPort, cropPaths: readonly string[]): Promise<Result<number, AppError>> => {
   let deleted = 0;
   for (const cropPath of cropPaths) {
     const result = await fs.deleteFile(cropPath);

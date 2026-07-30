@@ -20,6 +20,7 @@ const buildDesktopApp = (): App => {
       list: unusedJob,
       cancel: unusedJob,
       onSettled: () => undefined,
+      acquireResource: unusedJob,
     },
     catalogFolderPaths: async () => [],
     watchFolder: async () => ({ ok: true, value: { stop: () => undefined } }),

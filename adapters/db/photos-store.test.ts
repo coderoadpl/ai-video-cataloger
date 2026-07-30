@@ -5,6 +5,7 @@ import path from 'node:path';
 import initSqlJs from 'sql.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
+import { FACE_ENGINE_VERSION } from '@core/domain/index.js';
 import type { PhotoFolderRecord, PhotoRecord, PhotoRunRecord, PhotoSightingRecord } from '@core/server/index.js';
 
 import { SqlJsPhotosStore } from './photos-store.js';
@@ -233,6 +234,7 @@ describe('SqlJsPhotosStore', () => {
       proxied: 0,
       proxyFailed: 0,
       analysed: 0,
+      facesIndexed: 0,
     });
     expect(scoped.ok && scoped.value).toEqual({
       photos: 1,
@@ -244,6 +246,7 @@ describe('SqlJsPhotosStore', () => {
       proxied: 0,
       proxyFailed: 0,
       analysed: 0,
+      facesIndexed: 0,
     });
   });
 
@@ -256,6 +259,108 @@ describe('SqlJsPhotosStore', () => {
 
     const counts = await store.counts(null);
     expect(counts.ok && counts.value).toMatchObject({ proxied: 1, proxyFailed: 1 });
+  });
+
+  describe('photo face index state', () => {
+    const seedProxied = async (store: SqlJsPhotosStore): Promise<void> => {
+      await store.upsertFolder(folder);
+      await store.upsertPhoto(photo({ proxyState: 'done' }));
+      await store.upsertSighting(sighting());
+      await store.upsertPhoto(photo({
+        fingerprint: 'ph_0000000000000002',
+        currentPath: '/media/photos/b.jpg',
+        proxyState: 'done',
+      }));
+      await store.upsertSighting(sighting({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg' }));
+    };
+
+    it('lists every proxied photo under the root as a candidate and counts it in scope', async () => {
+      const store = new SqlJsPhotosStore({ homeDirectory: await tempHome() });
+      await seedProxied(store);
+      await store.upsertPhoto(photo({
+        fingerprint: 'ph_0000000000000003',
+        currentPath: '/media/photos/c.jpg',
+        proxyState: 'pending',
+      }));
+      await store.upsertSighting(sighting({ fingerprint: 'ph_0000000000000003', currentPath: '/media/photos/c.jpg' }));
+      await store.upsertPhoto(photo({
+        fingerprint: 'ph_0000000000000004',
+        currentPath: '/media/photos/d.jpg',
+        proxyState: 'done',
+        missingAt: 1767225600000,
+      }));
+      await store.upsertSighting(sighting({ fingerprint: 'ph_0000000000000004', currentPath: '/media/photos/d.jpg' }));
+
+      const listed = await store.listPhotoFaceIndexCandidates('/media/photos');
+      expect(listed.ok && listed.value).toEqual({
+        inScope: 2,
+        candidates: [
+          { fingerprint: 'ph_0000000000000001', currentPath: '/media/photos/a.jpg', previousEngineVersion: null },
+          { fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg', previousEngineVersion: null },
+        ],
+      });
+    });
+
+    it('scopes candidates to the root without matching a sibling prefix', async () => {
+      const store = new SqlJsPhotosStore({ homeDirectory: await tempHome() });
+      await seedProxied(store);
+      await store.upsertPhoto(photo({
+        fingerprint: 'ph_0000000000000009',
+        currentPath: '/media/photoscope/e.jpg',
+        proxyState: 'done',
+      }));
+      await store.upsertSighting(sighting({ fingerprint: 'ph_0000000000000009', currentPath: '/media/photoscope/e.jpg' }));
+
+      const listed = await store.listPhotoFaceIndexCandidates('/media/photos');
+      expect(listed.ok && listed.value.candidates.map((candidate) => candidate.fingerprint))
+        .toEqual(['ph_0000000000000001', 'ph_0000000000000002']);
+    });
+
+    it('drops a photo completed at the current engine version and keeps a stale one', async () => {
+      const store = new SqlJsPhotosStore({ homeDirectory: await tempHome() });
+      await seedProxied(store);
+      expect((await store.completePhotoFaceIndex('ph_0000000000000001', FACE_ENGINE_VERSION)).ok).toBe(true);
+      expect((await store.completePhotoFaceIndex('ph_0000000000000002', FACE_ENGINE_VERSION - 1)).ok).toBe(true);
+
+      const listed = await store.listPhotoFaceIndexCandidates('/media/photos');
+      expect(listed.ok && listed.value).toEqual({
+        inScope: 2,
+        candidates: [
+          {
+            fingerprint: 'ph_0000000000000002',
+            currentPath: '/media/photos/b.jpg',
+            previousEngineVersion: FACE_ENGINE_VERSION - 1,
+          },
+        ],
+      });
+
+      const counts = await store.counts('/media/photos');
+      expect(counts.ok && counts.value).toMatchObject({ facesIndexed: 1 });
+    });
+
+    it('re-completing a photo overwrites its engine version instead of inserting a second row', async () => {
+      const store = new SqlJsPhotosStore({ homeDirectory: await tempHome() });
+      await seedProxied(store);
+      await store.completePhotoFaceIndex('ph_0000000000000001', FACE_ENGINE_VERSION - 1);
+      await store.completePhotoFaceIndex('ph_0000000000000001', FACE_ENGINE_VERSION);
+      expect((await store.flush()).ok).toBe(true);
+
+      const SQL = await initSqlJs();
+      const client = new SQL.Database(fs.readFileSync(store.databasePath()));
+      const rows = client.exec('SELECT fingerprint, engine_version FROM photo_face_index_state')[0]?.values ?? [];
+      client.close();
+      expect(rows).toEqual([['ph_0000000000000001', FACE_ENGINE_VERSION]]);
+    });
+
+    it('forgets the face index state when the photo row is deleted', async () => {
+      const store = new SqlJsPhotosStore({ homeDirectory: await tempHome() });
+      await seedProxied(store);
+      await store.completePhotoFaceIndex('ph_0000000000000001', FACE_ENGINE_VERSION);
+      expect((await store.deletePhoto('ph_0000000000000001')).ok).toBe(true);
+
+      const counts = await store.counts(null);
+      expect(counts.ok && counts.value).toMatchObject({ facesIndexed: 0 });
+    });
   });
 
   it('listProxyCandidates reports every present photo with its artifact state, and excludes missing photos', async () => {

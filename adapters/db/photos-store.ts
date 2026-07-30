@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js';
 
 import {
+  FACE_ENGINE_VERSION,
   appError,
   canonicalPath,
   normalizeTagList,
@@ -32,6 +33,7 @@ import type {
   PhotoAnalysisCandidate,
   PhotoAnalysisCandidates,
   PhotoDetail,
+  PhotoFaceIndexCandidate,
   PhotoFolderRecord,
   PhotoListItem,
   PhotoProxyCandidate,
@@ -51,6 +53,7 @@ import {
   createPhotosSchemaSqlV1,
   photoAnalyses,
   photoAnalysisConfigs,
+  photoFaceIndexState,
   photoFileTags,
   photoFolders,
   photoPaths,
@@ -299,7 +302,11 @@ export class SqlJsPhotosStore implements PhotosStore {
             )) AS duplicates,
             (SELECT COUNT(*) FROM photos WHERE (${scope.where}) AND EXISTS (
               SELECT 1 FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint
-            )) AS analysed
+            )) AS analysed,
+            (SELECT COUNT(*) FROM photos WHERE (${scope.where}) AND EXISTS (
+              SELECT 1 FROM photo_face_index_state s
+              WHERE s.fingerprint = photos.fingerprint AND s.engine_version >= ${FACE_ENGINE_VERSION}
+            )) AS faces_indexed
           FROM photos WHERE ${scope.where}`,
         scope.params,
       );
@@ -314,7 +321,50 @@ export class SqlJsPhotosStore implements PhotosStore {
         proxied: numberValue(row[4]),
         proxyFailed: numberValue(row[5]),
         analysed: numberValue(row[8]),
+        facesIndexed: numberValue(row[9]),
       };
+    });
+  }
+
+  async listPhotoFaceIndexCandidates(root: string):
+  Promise<Result<{ inScope: number; candidates: PhotoFaceIndexCandidate[] }, AppError>> {
+    return this.read((_db, client) => {
+      const canonicalRoot = canonicalPath(root);
+      const rows = client.exec(
+        `SELECT p.fingerprint AS fingerprint, p.current_path AS current_path,
+            (SELECT s.engine_version FROM photo_face_index_state s WHERE s.fingerprint = p.fingerprint) AS engine_version
+         FROM photos p
+         WHERE p.proxy_state = 'done' AND p.missing_at IS NULL
+           AND EXISTS (
+             SELECT 1 FROM photo_paths pp WHERE pp.fingerprint = p.fingerprint
+               AND pp.current_path >= $scopeLower AND pp.current_path < $scopeUpper
+           )
+         GROUP BY p.fingerprint
+         ORDER BY p.fingerprint ASC`,
+        { $scopeLower: `${canonicalRoot}/`, $scopeUpper: `${canonicalRoot}0` },
+      );
+      const inScope = rows[0]?.values.length ?? 0;
+      const candidates: PhotoFaceIndexCandidate[] = [];
+      for (const value of rows[0]?.values ?? []) {
+        const fingerprint = stringValue(value[0]);
+        const currentPath = stringValue(value[1]);
+        const previousEngineVersion = nullableNumberValue(value[2]);
+        if (previousEngineVersion !== null && previousEngineVersion >= FACE_ENGINE_VERSION) continue;
+        candidates.push({ fingerprint, currentPath, previousEngineVersion });
+      }
+      return { inScope, candidates };
+    });
+  }
+
+  async completePhotoFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      db.insert(photoFaceIndexState)
+        .values({ fingerprint, completedAt: new Date().toISOString(), engineVersion })
+        .onConflictDoUpdate({
+          target: photoFaceIndexState.fingerprint,
+          set: { completedAt: new Date().toISOString(), engineVersion },
+        })
+        .run();
     });
   }
 

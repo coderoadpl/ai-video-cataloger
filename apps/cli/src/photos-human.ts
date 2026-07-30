@@ -17,6 +17,7 @@ export const photosStatusHuman = (data: PhotosStatusOutput): string => {
     `EXIF read: ${data.counts.exifRead} / failed: ${data.counts.exifFailed}`,
     `Proxies: ${data.counts.proxied} generated, ${data.counts.proxyFailed} failed`,
     `Analysed: ${data.counts.analysed}`,
+    `Faces indexed: ${data.counts.facesIndexed}`,
     `Missing: ${data.counts.missing}`,
   ].join('\n');
 };

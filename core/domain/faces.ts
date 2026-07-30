@@ -203,6 +203,7 @@ export const faceObservationSchema = z.object({
   quality: z.number(),
   personId: z.string().min(1).nullable(),
   cropPath: z.string().min(1).nullable(),
+  media: z.enum(['video', 'photo']).default('video'),
 });
 export type FaceObservation = z.output<typeof faceObservationSchema>;
 

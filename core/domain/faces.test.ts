@@ -9,6 +9,7 @@ import {
   classifyFace,
   clusterFaceObservations,
   cosineSimilarity,
+  faceCropFileName,
   faceObservationSchema,
   findNewClusterSeed,
   normalizeEmbedding,
@@ -215,6 +216,36 @@ describe('parseFaceObsId', () => {
     expect(parseFaceObsId('abc')).toBeNull();
     expect(parseFaceObsId('abc:face:x:1')).toBeNull();
     expect(parseFaceObsId('abc:face:1')).toBeNull();
+  });
+
+  it('parses photo obsIds the same way as video ones (pin)', () => {
+    expect(parseFaceObsId('ph_0123456789abcdef:face:1:2')).toEqual({
+      fingerprint: 'ph_0123456789abcdef',
+      frameIndex: 1,
+      detectionIndex: 2,
+    });
+    expect(faceCropFileName({ fingerprint: 'ph_0123456789abcdef', frameIndex: 1, detectionIndex: 2 })).toBe('1-2.jpg');
+  });
+
+  it('rejects a photo obsId with frame index 0', () => {
+    expect(parseFaceObsId('ph_0123456789abcdef:face:0:1')).toBeNull();
+  });
+});
+
+describe('faceObservationSchema media', () => {
+  it('defaults media to video when omitted', () => {
+    const parsed = faceObservationSchema.parse({
+      obsId: 'abc:face:1:1',
+      fingerprint: 'abc',
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 10, height: 10 },
+      embedding: Array.from({ length: FACE_EMBEDDING_DIM }, () => 0.1),
+      quality: 0.9,
+      personId: null,
+      cropPath: null,
+    });
+    expect(parsed.media).toBe('video');
   });
 });
 

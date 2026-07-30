@@ -200,6 +200,7 @@ describe('missing-file reconciliation', () => {
       quality: 0.9,
       personId: 'person-1',
       cropPath,
+      media: 'video',
     });
 
     const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs }, { fingerprint: 'fp-1' });

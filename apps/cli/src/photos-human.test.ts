@@ -15,7 +15,7 @@ describe('photosStatusHuman', () => {
     const text = photosStatusHuman({
       media: 'photo',
       root: null,
-      counts: { photos: 10, paths: 12, exifRead: 8, exifFailed: 2, missing: 1, duplicates: 2, proxied: 7, proxyFailed: 1, analysed: 5 },
+      counts: { photos: 10, paths: 12, exifRead: 8, exifFailed: 2, missing: 1, duplicates: 2, proxied: 7, proxyFailed: 1, analysed: 5, facesIndexed: 0 },
     });
     expect(text).toBe(
       'Scope: all photos\n'
@@ -23,6 +23,7 @@ describe('photosStatusHuman', () => {
       + 'EXIF read: 8 / failed: 2\n'
       + 'Proxies: 7 generated, 1 failed\n'
       + 'Analysed: 5\n'
+      + 'Faces indexed: 0\n'
       + 'Missing: 1',
     );
   });
@@ -31,7 +32,7 @@ describe('photosStatusHuman', () => {
     const text = photosStatusHuman({
       media: 'photo',
       root: '/media/photos',
-      counts: { photos: 1, paths: 1, exifRead: 0, exifFailed: 1, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0, analysed: 0 },
+      counts: { photos: 1, paths: 1, exifRead: 0, exifFailed: 1, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0, analysed: 0, facesIndexed: 0 },
     });
     expect(text).toContain('Scope: /media/photos');
   });
