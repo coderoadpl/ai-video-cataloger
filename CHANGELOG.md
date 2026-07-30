@@ -96,6 +96,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `listLocations` resolves the selected variant (explicit selection, then folder default, then newest) instead of joining every stored variant, so a file with more than one analysis variant no longer produces a duplicate map pin, an inflated "located files" count, and a nondeterministic final name.
 - The API-log terminal seam no longer records the plaintext body of a `POST /api/credentials` request, so an entered provider API key never lands in the debug terminal's Raw view or on the clipboard via Copy.
 - `photos scan` no longer treats an unreadable subtree (permission change, flaky mount) as "gone": a folder that fails to list is reported via a new `photo-folder-skipped` event, counted in the summary's new `folderReadErrors`, and excluded from the reconcile pass, so its photos keep their sightings instead of being wrongly marked missing.
+- `photosVariantsSelect`, `photosVariantsDelete` and `photosVariantsFolderDefault` now flush `photos.db` under the same write-lock wrapper that already flushes the global catalog, so a variant selection survives an app quit instead of depending on the un-awaited `dispose()` at shutdown.
 
 ## [0.6.3] - 2026-07-29
 
