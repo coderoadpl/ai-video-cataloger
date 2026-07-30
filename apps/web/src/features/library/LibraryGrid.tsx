@@ -1,25 +1,37 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Box, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
-import { buildRows, columnsForWidth, visibleRowRange, type LibraryDaySection, type LibraryItem } from './core/index.js';
+import { buildRows, columnsForWidth, rowIndexOfFingerprint, visibleRowRange, type LibraryItem } from './core/index.js';
+import { TileMenu, useTileMenu } from './TileMenu.js';
 
 const TILE_SIZE = 168;
 const GAP = 8;
 const HEADER_HEIGHT = 36;
 
-interface LibraryGridProps {
-  sections: LibraryDaySection[];
-  onOpen: (item: LibraryItem) => void;
+export interface LibraryGridSection {
+  key: string;
+  label: string;
+  offline: boolean;
+  items: LibraryItem[];
 }
 
-export const LibraryGrid = ({ sections, onOpen }: LibraryGridProps) => {
+interface LibraryGridProps {
+  sections: LibraryGridSection[];
+  onOpen: (item: LibraryItem) => void;
+  onOpenInFolder: (item: LibraryItem) => void;
+  scrollToFingerprint?: string | null;
+  onScrolledToFingerprint?: () => void;
+}
+
+export const LibraryGrid = ({ sections, onOpen, onOpenInFolder, scrollToFingerprint = null, onScrolledToFingerprint }: LibraryGridProps) => {
   const dictionary = useDictionary();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
   const [viewportHeight, setViewportHeight] = useState(0);
   const [scrollTop, setScrollTop] = useState(0);
+  const tileMenu = useTileMenu();
 
   useEffect(() => {
     const element = containerRef.current;
@@ -42,6 +54,19 @@ export const LibraryGrid = ({ sections, onOpen }: LibraryGridProps) => {
     [rowHeight, rows, scrollTop, viewportHeight],
   );
 
+  useLayoutEffect(() => {
+    if (scrollToFingerprint === null || containerRef.current === null) return;
+    const targetRow = rowIndexOfFingerprint(sections, columns, scrollToFingerprint);
+    if (targetRow === null) return;
+    let offset = 0;
+    for (let index = 0; index < targetRow; index += 1) {
+      offset += rows[index]?.kind === 'header' ? HEADER_HEIGHT : rowHeight;
+    }
+    containerRef.current.scrollTop = offset;
+    setScrollTop(offset);
+    onScrolledToFingerprint?.();
+  }, [scrollToFingerprint, sections, columns, rows, rowHeight, onScrolledToFingerprint]);
+
   return (
     <Box
       ref={containerRef}
@@ -56,13 +81,19 @@ export const LibraryGrid = ({ sections, onOpen }: LibraryGridProps) => {
             if (section === undefined) return null;
             if (row.kind === 'header') {
               return (
-                <Typography
+                <Box
                   key={`header-${String(row.section)}`}
-                  variant="subtitle2"
-                  sx={{ height: HEADER_HEIGHT, display: 'flex', alignItems: 'center' }}
+                  sx={{ height: HEADER_HEIGHT, display: 'flex', alignItems: 'center', gap: 1 }}
                 >
-                  {section.day === null ? dictionary.library.unknownDate : section.day}
-                </Typography>
+                  <Typography variant="subtitle2" data-testid="library-section-header">
+                    {section.label}
+                  </Typography>
+                  {section.offline ? (
+                    <Typography variant="caption" data-testid="library-section-offline-badge" color="text.secondary">
+                      {dictionary.library.offlineFolderBadge}
+                    </Typography>
+                  ) : null}
+                </Box>
               );
             }
             const tiles = section.items.slice(row.start, row.start + row.count);
@@ -72,13 +103,19 @@ export const LibraryGrid = ({ sections, onOpen }: LibraryGridProps) => {
                 sx={{ display: 'flex', gap: `${String(GAP)}px`, height: rowHeight }}
               >
                 {tiles.map((item) => (
-                  <LibraryTile key={item.fingerprint} item={item} onOpen={() => onOpen(item)} />
+                  <LibraryTile
+                    key={item.fingerprint}
+                    item={item}
+                    onOpen={() => onOpen(item)}
+                    onContextMenu={(event: MouseEvent) => tileMenu.open(event, item)}
+                  />
                 ))}
               </Box>
             );
           })}
         </Box>
       </Box>
+      <TileMenu controller={tileMenu} onOpenInFolder={onOpenInFolder} />
     </Box>
   );
 };
@@ -86,9 +123,10 @@ export const LibraryGrid = ({ sections, onOpen }: LibraryGridProps) => {
 interface LibraryTileProps {
   item: LibraryItem;
   onOpen: () => void;
+  onContextMenu: (event: MouseEvent) => void;
 }
 
-const LibraryTile = ({ item, onOpen }: LibraryTileProps) => {
+const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
   const dictionary = useDictionary();
 
   return (
@@ -96,6 +134,7 @@ const LibraryTile = ({ item, onOpen }: LibraryTileProps) => {
       data-testid="library-tile"
       data-fingerprint={item.fingerprint}
       onClick={onOpen}
+      onContextMenu={onContextMenu}
       sx={{
         position: 'relative',
         width: TILE_SIZE,

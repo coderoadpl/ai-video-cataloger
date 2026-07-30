@@ -365,8 +365,78 @@ The grid island (`features/library/core/**`) is its own DOM-free core — not an
 import of, and not a copy-paste of, the `photos` feature's day-grouping/
 windowing types, per the cross-feature-import ban; it follows the same
 algorithm class (group by local capture day, window visible rows) over its
-own `LibraryItem` contract type. Grouping, folder toggles, facets and a
-Library-as-home default are out of scope for the first Library wave.
+own `LibraryItem` contract type.
+
+**Facets are computed server-side, whole-catalog, never from a loaded page.**
+`GET /api/library/facets` runs five `GROUP BY` queries (tags, people, places,
+capture years, folders) plus one counts query directly against the store — the tag
+facet joins `file_tags` through the same selected-variant COALESCE resolution
+as `listLocations` and `search`, now extracted into one shared SQL-string
+constant (`SELECTED_ANALYSIS_CONFIG_ID_SQL` in
+`adapters/db/global-catalog.ts`) so the three call sites cannot drift. The
+folder facet carries each catalogued folder's persisted id, current path and
+file count; `online` is the one field the store cannot answer — online/offline
+is a filesystem fact, not a catalog fact — so the `library-facets` use-case
+stats every folder's path and derives `counts.offlineFolders` from the result,
+the same pattern `catalogLocations` and `search` already use for a row's
+`online` flag. Facets describe the whole catalog, not the currently active filter set
+— recomputing per-filter-set is out of scope (recorded as a known
+simplification: it sidesteps a combinatorial recompute and keeps the facets
+query cacheable behind a fixed, argument-less query key).
+
+**Filtering is a pure reducer, not ad hoc component state.**
+`features/library/core/filter-state.ts` owns the filter shape (`tags`,
+`personIds`, `place`, `from`/`to`, `hasGps`, `folderId`), its add/remove/clear
+actions, the chip-list projection the filter bar renders, the mapping to the
+`searchQuery` contract fields, and the localized empty-state sentence naming
+the active chips — all arithmetic here is unit-tested, none of it lives in
+JSX. `FilterBar.tsx` is controls only: MUI `Autocomplete` fed by the facets
+query for tags/people (options carry counts), a free-text place `Autocomplete`
+(substring semantics, debounced), a date range with quick presets sourced from
+the year facet, and a three-state has-GPS toggle. Every chip label — including
+the has-GPS, date-range and folder chips — is built in `core/` from dictionary
+parts passed in, so no English string can leak out of the pure layer. The count header always
+states `{shown} of {total}` from the same `searchQuery` response — a filtered
+view can never pretend to be the whole catalog.
+
+**Grouping is date or folder, decided in `core/`, not in the toggle handler.**
+`features/library/core/folder-groups.ts` emits the same `Section` shape
+`grid-rows.ts` already accepts from day-grouping, keyed by `folder.folderId`,
+labeled by `displayName`, ordered by `displayName`; an offline folder's badge
+applies to the whole section. Sort-within-section (captured newest/oldest,
+name; relevance only while a text query is active) is a tested matrix, not an
+improvised JSX branch — grouping and sort are independent axes (e.g.
+group-by-date with `sort=name` is legal).
+
+**Both tile↔folder connections are first-class.** A tile's primary click and
+its context menu (open in folder view, reveal in Finder, copy path) are the
+tile→folder direction; a folder header's "Show in Library" action and a
+file-level "Show in Library" context-menu/details-pane action are the
+folder→tile direction, seeding `filters.folderId` (rendered as a removable
+chip) and, for the file-level action, scrolling the grid to that file's row —
+`grid-rows.ts` answers "row index of this fingerprint" as a pure, tested
+function, never a pixel measurement. Per the cross-feature-import ban, the
+catalog and details features never import from `features/library`: they
+receive plain `onShowInLibrary(folderPath, fingerprint | null)` callbacks
+wired in `routes/index.tsx`, exactly like `openSearchResult` today.
+
+The folder→tile direction resolves `filters.folderId` against the folder facet
+the shell already loads, matching on the canonicalized path — a catalogued
+folder's persisted id is the `randomUUID` written into its marker file, so a
+path hash is never a substitute for it. `derivedFolderId(folderPath)` stays
+only as the fallback for a folder the catalog has never seen (and for the
+read-only folders whose id genuinely is that hash), where any id would match
+nothing anyway. Per the cross-feature-import ban, `VideoList`/`CatalogSidebar`/`DetailsPanel` never
+import from `features/library`: they take a plain
+`onShowInLibrary(folderPath, fingerprint | null)` callback, wired once in
+`routes/index.tsx`, which derives the seed and flips `activeView`.
+
+**Library is the default view once the catalog is non-empty.** Initial view
+resolution is persisted preference (localStorage, the `useScopePreference`
+pattern) → `'library'` if the catalog already has ≥1 file → `'videos'`; an
+empty catalog always opens on Videos, since the folder-open CTA there is the
+honest first-run surface. Photos in Library, saved searches, multi-select,
+keyboard grid navigation and an in-Library details pane remain out of scope.
 
 ### The layout layer (page skeletons)
 

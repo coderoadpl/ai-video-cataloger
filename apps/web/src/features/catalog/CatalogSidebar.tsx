@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Box, Typography } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 
 import { FolderIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -24,6 +24,7 @@ interface CatalogSidebarProps {
   registerVideos: (videos: readonly CatalogVideo[]) => void;
   subfolderVideoCount?: number;
   onSwitchToWholeTree?: (() => void) | undefined;
+  onShowInLibrary?: ((folderPath: string, fingerprint: string | null) => void) | undefined;
 }
 
 export const CatalogSidebar = ({
@@ -37,6 +38,7 @@ export const CatalogSidebar = ({
   registerVideos,
   subfolderVideoCount = 0,
   onSwitchToWholeTree,
+  onShowInLibrary,
 }: CatalogSidebarProps) => {
   const dictionary = useDictionary();
 
@@ -73,9 +75,18 @@ export const CatalogSidebar = ({
       >
         <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
           <FolderIcon fontSize="small" sx={{ color: 'primary.main' }} />
-          <Typography variant="h2" noWrap title={folder}>
+          <Typography variant="h2" noWrap title={folder} sx={{ flex: 1, minWidth: 0 }}>
             {folderName(folder)}
           </Typography>
+          {onShowInLibrary === undefined ? null : (
+            <Button
+              size="small"
+              onClick={() => onShowInLibrary(folder, null)}
+              data-testid="folder-show-in-library"
+            >
+              {dictionary.common.showInLibrary}
+            </Button>
+          )}
         </Box>
         <Typography variant="caption" noWrap title={folder}>
           {folder}
@@ -94,6 +105,7 @@ export const CatalogSidebar = ({
         ) : !useTree || treeRoot === null ? (
           <>
             <VideoList
+              folder={folder}
               videos={catalog.videos}
               selectedKey={catalog.selectedKey}
               analyzingPath={analyzingPath}
@@ -104,6 +116,7 @@ export const CatalogSidebar = ({
               thumbnailFailedPaths={catalog.thumbnailFailedPaths}
               subfolderVideoCount={subfolderVideoCount}
               onSwitchToWholeTree={onSwitchToWholeTree}
+              onShowInLibrary={onShowInLibrary}
             />
             <AbsentFilesSection folder={folder} />
           </>

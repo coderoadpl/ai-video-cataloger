@@ -18,6 +18,7 @@ import {
   downloadWhisperModel,
   enqueueProcess,
   enqueueProcessDrive,
+  libraryFacets,
   faceArtifactsStatus,
   facesForget,
   facesIndex,
@@ -211,6 +212,9 @@ export const buildApp = (deps: AppDeps): Hono => {
 
   app.get(API_ROUTES.catalogLocations.path, async () =>
     respond(await catalogLocations(deps), API_ROUTES.catalogLocations.output));
+
+  app.get(API_ROUTES.libraryFacets.path, async () =>
+    respond(await libraryFacets(deps), API_ROUTES.libraryFacets.output));
 
   app.get(API_ROUTES.catalogTreeAbsent.path, async (context) => {
     const input = parseInput(API_ROUTES.catalogTreeAbsent.input, queryInput(context));

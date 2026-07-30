@@ -5,12 +5,15 @@ import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
 import type { LibraryItem } from './core/index.js';
+import { toSearchParams, type LibraryFilterState, type LibrarySearchParams } from './core/filter-state.js';
+import type { LibrarySort } from './core/folder-groups.js';
 
 const PAGE_SIZE = 200;
 const SEARCH_DEBOUNCE_MS = 220;
 
 export interface LibraryState {
   query: string;
+  effectiveSort: LibrarySort;
   setQuery: (query: string) => void;
   debouncedQuery: string;
   items: LibraryItem[];
@@ -29,11 +32,19 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-export const useLibrary = (input: { active: boolean }): LibraryState => {
+const searchParamsKey = (params: LibrarySearchParams): string => JSON.stringify(params);
+
+export const useLibrary = (input: {
+  active: boolean;
+  filters: LibraryFilterState;
+  sort: LibrarySort;
+}): LibraryState => {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
   const [offset, setOffset] = useState(0);
+  const searchParams = toSearchParams(input.filters);
+  const filtersKey = searchParamsKey(searchParams);
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
@@ -42,12 +53,21 @@ export const useLibrary = (input: { active: boolean }): LibraryState => {
 
   useEffect(() => {
     setOffset(0);
-  }, [debouncedQuery]);
+  }, [debouncedQuery, filtersKey, input.sort]);
+
+  const effectiveSort: LibrarySort = input.sort === 'relevance' && debouncedQuery.length === 0 ? 'captured_desc' : input.sort;
 
   const page = useQuery({
     ...actions.search({
       ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
-      sort: 'captured_desc',
+      tags: searchParams.tags,
+      people: searchParams.people,
+      ...(searchParams.place === null ? {} : { place: searchParams.place }),
+      ...(searchParams.from === null ? {} : { from: searchParams.from }),
+      ...(searchParams.to === null ? {} : { to: searchParams.to }),
+      ...(searchParams.hasGps === null ? {} : { hasGps: searchParams.hasGps }),
+      ...(searchParams.folderId === null ? {} : { folderId: searchParams.folderId }),
+      sort: effectiveSort,
       thumbnails: 'existing',
       limit: PAGE_SIZE,
       offset,
@@ -64,6 +84,7 @@ export const useLibrary = (input: { active: boolean }): LibraryState => {
 
   return {
     query,
+    effectiveSort,
     setQuery,
     debouncedQuery,
     items,

@@ -13,6 +13,7 @@ export interface Dictionary {
     ok: string;
     revealInFinder: string;
     revealFailed: string;
+    showInLibrary: string;
   };
   language: {
     stepTitle: string;
@@ -760,7 +761,7 @@ export interface Dictionary {
   library: {
     title: string;
     subtitle: string;
-    countHeader: (count: number) => string;
+    countHeader: (shown: number, total: number) => string;
     searchPlaceholder: string;
     loadingLibrary: string;
     loadMore: string;
@@ -770,9 +771,39 @@ export interface Dictionary {
     emptyCatalogAction: string;
     noMatchTitle: (query: string) => string;
     noMatchBody: string;
+    noMatchNamed: (parts: string) => string;
     noMatchClearAction: string;
     offlineFolderBadge: string;
     missingBadge: string;
+    openInFolderView: string;
+    copyPath: string;
+    groupByDate: string;
+    groupByFolder: string;
+    filterTags: string;
+    filterPeople: string;
+    filterPlace: string;
+    filterFrom: string;
+    filterTo: string;
+    filterHasGps: string;
+    filterHasGpsAny: string;
+    filterHasGpsWith: string;
+    filterHasGpsWithout: string;
+    filterClearAll: string;
+    filterDatePreset: string;
+    filterDatePresetAny: string;
+    filterDatePresetThisYear: string;
+    filterDatePresetLastYear: string;
+    chipHasGps: string;
+    chipNoGps: string;
+    chipFolder: (displayName: string) => string;
+    chipDateRange: (from: string, to: string) => string;
+    chipDateFrom: (from: string) => string;
+    chipDateTo: (to: string) => string;
+    sortLabel: string;
+    sortCapturedDesc: string;
+    sortCapturedAsc: string;
+    sortNameAsc: string;
+    sortRelevance: string;
   };
 }
 
@@ -789,6 +820,7 @@ export const en: Dictionary = {
     ok: 'OK',
     revealInFinder: 'Reveal in Finder',
     revealFailed: 'Could not reveal this file: it is outside every known catalog folder.',
+    showInLibrary: 'Show in Library',
   },
   language: {
     stepTitle: 'Language',
@@ -1590,7 +1622,7 @@ export const en: Dictionary = {
   library: {
     title: 'Library',
     subtitle: 'Browse everything ever processed, across every catalogued folder.',
-    countHeader: (count) => `${count} files`,
+    countHeader: (shown, total) => shown === total ? `${total} files` : `${shown} of ${total} files`,
     searchPlaceholder: 'Search the library…',
     loadingLibrary: 'Loading library…',
     loadMore: 'Load more',
@@ -1600,9 +1632,39 @@ export const en: Dictionary = {
     emptyCatalogAction: 'Go to Videos',
     noMatchTitle: (query) => query.length === 0 ? 'No results' : `No results for "${query}"`,
     noMatchBody: 'Try a different search or clear the filters.',
+    noMatchNamed: (parts) => `No files match ${parts}`,
     noMatchClearAction: 'Clear search',
     offlineFolderBadge: 'Drive not connected',
     missingBadge: 'Missing',
+    openInFolderView: 'Open in folder view',
+    copyPath: 'Copy path',
+    groupByDate: 'Date',
+    groupByFolder: 'Folder',
+    filterTags: 'Tags',
+    filterPeople: 'People',
+    filterPlace: 'Place',
+    filterFrom: 'From',
+    filterTo: 'To',
+    filterHasGps: 'GPS',
+    filterHasGpsAny: 'Any',
+    filterHasGpsWith: 'With GPS',
+    filterHasGpsWithout: 'Without GPS',
+    filterClearAll: 'Clear filters',
+    filterDatePreset: 'Quick range',
+    filterDatePresetAny: 'Any',
+    filterDatePresetThisYear: 'This year',
+    filterDatePresetLastYear: 'Last year',
+    chipHasGps: 'With GPS',
+    chipNoGps: 'Without GPS',
+    chipFolder: (displayName) => `Folder: ${displayName}`,
+    chipDateRange: (from, to) => `${from} – ${to}`,
+    chipDateFrom: (from) => `From ${from}`,
+    chipDateTo: (to) => `Until ${to}`,
+    sortLabel: 'Sort',
+    sortCapturedDesc: 'Newest first',
+    sortCapturedAsc: 'Oldest first',
+    sortNameAsc: 'Name',
+    sortRelevance: 'Relevance',
   },
 };
 
@@ -1627,6 +1689,7 @@ export const pl: Dictionary = {
     ok: 'OK',
     revealInFinder: 'Pokaż w Finderze',
     revealFailed: 'Nie można pokazać tego pliku: jest poza wszystkimi znanymi folderami katalogu.',
+    showInLibrary: 'Pokaż w Bibliotece',
   },
   language: {
     stepTitle: 'Język',
@@ -2429,7 +2492,9 @@ export const pl: Dictionary = {
   library: {
     title: 'Biblioteka',
     subtitle: 'Przeglądaj wszystko, co kiedykolwiek przetworzono, ze wszystkich skatalogowanych folderów.',
-    countHeader: (count) => `${count} ${plPlural(count, 'plik', 'pliki', 'plików')}`,
+    countHeader: (shown, total) => shown === total
+      ? `${total} ${plPlural(total, 'plik', 'pliki', 'plików')}`
+      : `${shown} z ${total} ${plPlural(total, 'pliku', 'plików', 'plików')}`,
     searchPlaceholder: 'Szukaj w bibliotece…',
     loadingLibrary: 'Ładowanie biblioteki…',
     loadMore: 'Wczytaj więcej',
@@ -2439,9 +2504,39 @@ export const pl: Dictionary = {
     emptyCatalogAction: 'Przejdź do Filmów',
     noMatchTitle: (query) => query.length === 0 ? 'Brak wyników' : `Brak wyników dla „${query}”`,
     noMatchBody: 'Spróbuj innego wyszukiwania lub wyczyść filtry.',
+    noMatchNamed: (parts) => `Żaden plik nie pasuje do ${parts}`,
     noMatchClearAction: 'Wyczyść wyszukiwanie',
     offlineFolderBadge: 'Dysk niepodłączony',
     missingBadge: 'Brak pliku',
+    openInFolderView: 'Otwórz w widoku folderu',
+    copyPath: 'Kopiuj ścieżkę',
+    groupByDate: 'Data',
+    groupByFolder: 'Folder',
+    filterTags: 'Tagi',
+    filterPeople: 'Osoby',
+    filterPlace: 'Miejsce',
+    filterFrom: 'Od',
+    filterTo: 'Do',
+    filterHasGps: 'GPS',
+    filterHasGpsAny: 'Dowolne',
+    filterHasGpsWith: 'Z GPS',
+    filterHasGpsWithout: 'Bez GPS',
+    filterClearAll: 'Wyczyść filtry',
+    filterDatePreset: 'Szybki zakres',
+    filterDatePresetAny: 'Dowolny',
+    filterDatePresetThisYear: 'Ten rok',
+    filterDatePresetLastYear: 'Poprzedni rok',
+    chipHasGps: 'Z GPS',
+    chipNoGps: 'Bez GPS',
+    chipFolder: (displayName) => `Folder: ${displayName}`,
+    chipDateRange: (from, to) => `${from} – ${to}`,
+    chipDateFrom: (from) => `Od ${from}`,
+    chipDateTo: (to) => `Do ${to}`,
+    sortLabel: 'Sortuj',
+    sortCapturedDesc: 'Od najnowszych',
+    sortCapturedAsc: 'Od najstarszych',
+    sortNameAsc: 'Nazwa',
+    sortRelevance: 'Trafność',
   },
 };
 

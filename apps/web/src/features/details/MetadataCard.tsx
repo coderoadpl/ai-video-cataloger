@@ -44,9 +44,10 @@ interface MetadataCardProps {
   video: DetailsVideo;
   location?: DetailsLocation | null | undefined;
   onShowOnMap?: (() => void) | undefined;
+  onShowInLibrary?: (() => void) | undefined;
 }
 
-export const MetadataCard = ({ video, location, onShowOnMap }: MetadataCardProps) => {
+export const MetadataCard = ({ video, location, onShowOnMap, onShowInLibrary }: MetadataCardProps) => {
   const dictionary = useDictionary();
   const approximate = location?.source !== null && location?.source !== undefined && location.source !== 'camera';
 
@@ -59,7 +60,16 @@ export const MetadataCard = ({ video, location, onShowOnMap }: MetadataCardProps
         value={video.durationFormatted ?? dictionary.details.unknown}
       />
       <Row icon={<StorageIcon fontSize="small" />} label={dictionary.details.size} value={video.sizeFormatted} />
-      <Row icon={<FolderIcon fontSize="small" />} label={dictionary.details.location} value={parentDir(video.path)} />
+      <Row
+        icon={<FolderIcon fontSize="small" />}
+        label={dictionary.details.location}
+        value={parentDir(video.path)}
+        action={onShowInLibrary === undefined ? undefined : (
+          <Button size="small" onClick={onShowInLibrary} data-testid="details-show-in-library">
+            {dictionary.common.showInLibrary}
+          </Button>
+        )}
+      />
       {location == null ? null : (
         <>
           <Row

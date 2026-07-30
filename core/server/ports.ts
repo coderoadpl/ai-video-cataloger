@@ -201,6 +201,52 @@ export interface CatalogLocationsSnapshot {
   rows: CatalogLocationRow[];
 }
 
+export interface LibraryFacetTag {
+  name: string;
+  count: number;
+}
+
+export interface LibraryFacetPerson {
+  personId: string;
+  displayName: string | null;
+  count: number;
+}
+
+export interface LibraryFacetPlace {
+  name: string;
+  country: string | null;
+  countryCode: string | null;
+  count: number;
+}
+
+export interface LibraryFacetYear {
+  year: string;
+  count: number;
+}
+
+export interface LibraryFacetFolder {
+  folderId: string;
+  displayName: string;
+  currentPath: string;
+  count: number;
+}
+
+export interface LibraryFacetCounts {
+  total: number;
+  withGps: number;
+  withoutCaptureDate: number;
+  missing: number;
+}
+
+export interface LibraryFacets {
+  tags: LibraryFacetTag[];
+  people: LibraryFacetPerson[];
+  places: LibraryFacetPlace[];
+  years: LibraryFacetYear[];
+  folders: LibraryFacetFolder[];
+  counts: LibraryFacetCounts;
+}
+
 export interface ReconcileFolderInput {
   folderId: string;
   presentFingerprints: readonly string[];
@@ -553,6 +599,7 @@ export interface GlobalCatalogStore {
   expandTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>>;
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>>;
+  listLibraryFacets(): Promise<Result<LibraryFacets, AppError>>;
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>>;
   applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;

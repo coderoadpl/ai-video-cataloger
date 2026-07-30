@@ -31,6 +31,7 @@ import {
   jobCancelOutputSchema,
   jobOutputSchema,
   jobsListOutputSchema,
+  libraryFacetsOutputSchema,
   localAiDaemonStopOutputSchema,
   localAiRequirementsOutputSchema,
   providersListOutputSchema,
@@ -619,6 +620,15 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.catalogLocations.method,
       API_ROUTES.catalogLocations.path,
       catalogLocationsOutputSchema,
+      undefined,
+      signal,
+    ),
+  libraryFacets: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.libraryFacets.method,
+      API_ROUTES.libraryFacets.path,
+      libraryFacetsOutputSchema,
       undefined,
       signal,
     ),

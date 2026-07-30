@@ -68,6 +68,7 @@ import type {
   ForgetEntryResult,
   GlobalCatalogCounts,
   GlobalCatalogStore,
+  LibraryFacets,
   ReconcileFolderInput,
   ReconcileFolderResult,
   TagTermExpansion,
@@ -741,15 +742,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         FROM files f
         JOIN folders fo ON fo.folder_id = f.folder_id
         LEFT JOIN analyses a ON a.fingerprint = f.fingerprint
-          AND a.config_id = COALESCE(
-            (SELECT config_id FROM analyses
-              WHERE fingerprint = f.fingerprint AND config_id = f.selected_config_id),
-            (SELECT config_id FROM analyses
-              WHERE fingerprint = f.fingerprint AND config_id = fo.default_config_id),
-            (SELECT config_id FROM analyses
-              WHERE fingerprint = f.fingerprint
-              ORDER BY created_at DESC, config_id ASC LIMIT 1)
-          )
+          AND a.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
         WHERE f.gps_lat IS NOT NULL AND f.gps_lon IS NOT NULL
         ORDER BY f.file_name`,
       );
@@ -758,6 +751,90 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
         .map(locationRowFromValues)
         .filter((row): row is CatalogLocationRow => row !== null);
       return { totalFiles, rows };
+    });
+  }
+
+  async listLibraryFacets(): Promise<Result<LibraryFacets, AppError>> {
+    return this.read((_db, client) => {
+      const tagRows = client.exec(
+        `SELECT t.name, COUNT(DISTINCT f.fingerprint)
+          FROM tags t
+          JOIN file_tags ft ON ft.tag_id = t.tag_id
+          JOIN files f ON f.fingerprint = ft.fingerprint
+          JOIN folders fo ON fo.folder_id = f.folder_id
+          WHERE ft.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
+          GROUP BY t.name
+          ORDER BY t.name`,
+      )[0]?.values ?? [];
+      const facetTags: LibraryFacets['tags'] = tagRows.map((row) => ({ name: stringValue(row[0]), count: numberValue(row[1]) }));
+
+      const peopleRows = client.exec(
+        `SELECT p.person_id, p.display_name, COUNT(DISTINCT o.fingerprint)
+          FROM face_observations o
+          JOIN people p ON p.person_id = o.person_id
+          WHERE o.person_id IS NOT NULL
+          GROUP BY p.person_id, p.display_name
+          ORDER BY p.display_name IS NULL, p.display_name, p.person_id`,
+      )[0]?.values ?? [];
+      const facetPeople: LibraryFacets['people'] = peopleRows.map((row) => ({
+        personId: stringValue(row[0]),
+        displayName: nullableStringValue(row[1]),
+        count: numberValue(row[2]),
+      }));
+
+      const placeRows = client.exec(
+        `SELECT f.place_name, f.place_country, f.place_country_code, COUNT(*)
+          FROM files f
+          WHERE f.place_name IS NOT NULL
+          GROUP BY f.place_name, f.place_country, f.place_country_code
+          ORDER BY f.place_name`,
+      )[0]?.values ?? [];
+      const places: LibraryFacets['places'] = placeRows.map((row) => ({
+        name: stringValue(row[0]),
+        country: nullableStringValue(row[1]),
+        countryCode: nullableStringValue(row[2]),
+        count: numberValue(row[3]),
+      }));
+
+      const yearRows = client.exec(
+        `SELECT strftime('%Y', f.captured_at) AS year, COUNT(*)
+          FROM files f
+          WHERE f.captured_at IS NOT NULL
+          GROUP BY year
+          ORDER BY year DESC`,
+      )[0]?.values ?? [];
+      const years: LibraryFacets['years'] = yearRows.map((row) => ({ year: stringValue(row[0]), count: numberValue(row[1]) }));
+
+      const folderRows = client.exec(
+        `SELECT fo.folder_id, fo.display_name, fo.current_path, COUNT(f.fingerprint)
+          FROM folders fo
+          LEFT JOIN files f ON f.folder_id = fo.folder_id
+          GROUP BY fo.folder_id, fo.display_name, fo.current_path
+          ORDER BY fo.display_name`,
+      )[0]?.values ?? [];
+      const facetFolders: LibraryFacets['folders'] = folderRows.map((row) => ({
+        folderId: stringValue(row[0]),
+        displayName: stringValue(row[1]),
+        currentPath: stringValue(row[2]),
+        count: numberValue(row[3]),
+      }));
+
+      const countsRow = client.exec(
+        `SELECT
+          COUNT(*),
+          SUM(CASE WHEN f.gps_lat IS NOT NULL AND f.gps_lon IS NOT NULL THEN 1 ELSE 0 END),
+          SUM(CASE WHEN f.captured_at IS NULL THEN 1 ELSE 0 END),
+          SUM(CASE WHEN f.missing_at IS NOT NULL THEN 1 ELSE 0 END)
+        FROM files f`,
+      )[0]?.values[0] ?? [0, 0, 0, 0];
+      const counts: LibraryFacets['counts'] = {
+        total: numberValue(countsRow[0]),
+        withGps: numberValue(countsRow[1] ?? 0),
+        withoutCaptureDate: numberValue(countsRow[2] ?? 0),
+        missing: numberValue(countsRow[3] ?? 0),
+      };
+
+      return { tags: facetTags, people: facetPeople, places, years, folders: facetFolders, counts };
     });
   }
 
@@ -1911,6 +1988,11 @@ const searchPlaceFromValues = (row: SqlValue[]): CatalogPlace | null => {
   };
 };
 
+const SELECTED_ANALYSIS_CONFIG_ID_SQL = `COALESCE(
+              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint AND config_id = f.selected_config_id),
+              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint AND config_id = fo.default_config_id),
+              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint ORDER BY created_at DESC, config_id ASC LIMIT 1))`;
+
 const SEARCH_ROW_COLUMNS = `
   f.fingerprint,
   (SELECT COUNT(*) FROM analyses av WHERE av.fingerprint = f.fingerprint),
@@ -1965,10 +2047,7 @@ const buildSearchFilterClauses = (filters: CatalogSearchFilters): SearchWhereCla
       sql: `EXISTS (
           SELECT 1 FROM file_tags ft
           WHERE ft.fingerprint = f.fingerprint
-            AND ft.config_id = COALESCE(
-              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint AND config_id = f.selected_config_id),
-              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint AND config_id = fo.default_config_id),
-              (SELECT config_id FROM analyses WHERE fingerprint = f.fingerprint ORDER BY created_at DESC, config_id ASC LIMIT 1))
+            AND ft.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
             AND ft.tag_id IN (
               SELECT tag_id FROM tags WHERE name IN (${list})
               UNION SELECT tag_id FROM tag_aliases WHERE alias IN (${list})))`,

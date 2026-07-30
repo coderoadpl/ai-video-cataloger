@@ -1,13 +1,17 @@
-import type { LibraryDaySection } from './day-groups.js';
+import type { LibraryItem } from './day-groups.js';
 
 export const columnsForWidth = (containerWidth: number, minTile = 168, gap = 8): number =>
   Math.max(1, Math.floor((containerWidth + gap) / (minTile + gap)));
+
+export interface LibrarySectionLike {
+  items: readonly LibraryItem[];
+}
 
 export type LibraryGridRow =
   | { kind: 'header'; section: number }
   | { kind: 'tiles'; section: number; start: number; count: number };
 
-export const buildRows = (sections: readonly LibraryDaySection[], columns: number): LibraryGridRow[] => {
+export const buildRows = (sections: readonly LibrarySectionLike[], columns: number): LibraryGridRow[] => {
   const rows: LibraryGridRow[] = [];
   sections.forEach((section, sectionIndex) => {
     rows.push({ kind: 'header', section: sectionIndex });
@@ -64,4 +68,21 @@ export const visibleRowRange = (
   const last = Math.min(lastIndex, lastVisible + overscan);
 
   return { first, last, topOffset: bounds[first]?.offset ?? 0, totalHeight };
+};
+
+export const rowIndexOfFingerprint = (
+  sections: readonly LibrarySectionLike[],
+  columns: number,
+  fingerprint: string,
+): number | null => {
+  const rows = buildRows(sections, columns);
+  for (let index = 0; index < rows.length; index += 1) {
+    const row = rows[index];
+    if (row === undefined || row.kind !== 'tiles') continue;
+    const section = sections[row.section];
+    if (section === undefined) continue;
+    const tiles = section.items.slice(row.start, row.start + row.count);
+    if (tiles.some((item) => item.fingerprint === fingerprint)) return index;
+  }
+  return null;
 };

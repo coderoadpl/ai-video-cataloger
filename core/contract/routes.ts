@@ -1521,6 +1521,52 @@ export const catalogLocationsOutputSchema = z.object({
   locations: z.array(catalogLocationSchema),
 }).strict();
 
+export const libraryFacetTagSchema = z.object({
+  name: z.string().min(1),
+  count: z.number().int().nonnegative(),
+}).strict();
+
+export const libraryFacetPersonSchema = z.object({
+  personId: z.string().min(1),
+  displayName: z.string().nullable(),
+  count: z.number().int().nonnegative(),
+}).strict();
+
+export const libraryFacetPlaceSchema = z.object({
+  name: z.string().min(1),
+  country: z.string().nullable(),
+  countryCode: z.string().nullable(),
+  count: z.number().int().nonnegative(),
+}).strict();
+
+export const libraryFacetYearSchema = z.object({
+  year: z.string().min(4),
+  count: z.number().int().nonnegative(),
+}).strict();
+
+export const libraryFacetFolderSchema = z.object({
+  folderId: folderIdSchema,
+  displayName: z.string(),
+  currentPath: z.string().min(1),
+  online: z.boolean(),
+  count: z.number().int().nonnegative(),
+}).strict();
+
+export const libraryFacetsOutputSchema = z.object({
+  tags: z.array(libraryFacetTagSchema),
+  people: z.array(libraryFacetPersonSchema),
+  places: z.array(libraryFacetPlaceSchema),
+  years: z.array(libraryFacetYearSchema),
+  folders: z.array(libraryFacetFolderSchema),
+  counts: z.object({
+    total: z.number().int().nonnegative(),
+    withGps: z.number().int().nonnegative(),
+    withoutCaptureDate: z.number().int().nonnegative(),
+    missing: z.number().int().nonnegative(),
+    offlineFolders: z.number().int().nonnegative(),
+  }).strict(),
+}).strict();
+
 const variantLocatorSchema = z.object({
   videoPath: canonicalPathString().optional(),
   fingerprint: z.string().min(1).optional(),
@@ -1703,6 +1749,7 @@ export const API_ROUTES = {
     input: emptyInputSchema,
     output: catalogLocationsOutputSchema,
   },
+  libraryFacets: { method: 'GET', path: '/api/library/facets', input: emptyInputSchema, output: libraryFacetsOutputSchema },
   catalogTreeAbsent: { method: 'GET', path: '/api/catalog-tree/absent', input: folderInputSchema, output: catalogTreeAbsentOutputSchema },
   process: { method: 'POST', path: '/api/process', input: processInputSchema, output: jobAcceptedOutputSchema },
   processDrive: { method: 'POST', path: '/api/process-drive', input: processDriveInputSchema, output: jobAcceptedOutputSchema },
@@ -1967,6 +2014,7 @@ export const API_PATHS = {
   catalogTreeFolder: API_ROUTES.catalogTreeFolder.path,
   catalogFolder: API_ROUTES.catalogFolder.path,
   catalogLocations: API_ROUTES.catalogLocations.path,
+  libraryFacets: API_ROUTES.libraryFacets.path,
   process: API_ROUTES.process.path,
   processDrive: API_ROUTES.processDrive.path,
   materialize: API_ROUTES.materialize.path,

@@ -15,6 +15,7 @@ export * from './usecases/final-name.js';
 export * from './usecases/doctor.js';
 export * from './usecases/health.js';
 export * from './usecases/jobs.js';
+export * from './usecases/library-facets.js';
 export * from './usecases/materialize.js';
 export * from './usecases/models.js';
 export * from './usecases/photo-artifacts.js';

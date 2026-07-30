@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 
+import { folderName } from '../lib/format.js';
+import { parentDir } from '../lib/media-url.js';
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
 import { DriveSummaryDialog } from '../components/ui/dialogs/DriveSummaryDialog.js';
@@ -17,7 +19,10 @@ import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
-import { LibraryView } from '../features/library/LibraryView.js';
+import { LibraryView, type LibraryShowInSeed } from '../features/library/LibraryView.js';
+import { deriveLibrarySeed } from '../features/library/show-in-library.js';
+import { useCatalogIndex } from '../features/library/use-catalog-index.js';
+import { useViewPreference } from '../features/library/use-view-preference.js';
 import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations } from '../features/map/use-catalog-locations.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
@@ -36,10 +41,12 @@ import { SettingsModal } from '../features/settings/SettingsModal.js';
 import { AppLayout } from '../AppLayout.js';
 import { useShell } from '../features/shell/use-shell.js';
 import { useAnalysisDisabledReason } from '../features/readiness/use-disabled-reason.js';
-import { ViewNav, type MainView } from '../components/ui/ViewNav.js';
+import { ViewNav } from '../components/ui/ViewNav.js';
 
 export const IndexRoute = () => {
-  const [activeView, setActiveView] = useState<MainView>('videos');
+  const catalogIndex = useCatalogIndex();
+  const { view: activeView, setView: setActiveView } = useViewPreference(catalogIndex.hasFiles);
+  const [librarySeed, setLibrarySeed] = useState<LibraryShowInSeed | null>(null);
   const [mapFocus, setMapFocus] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const shell = useShell();
@@ -116,13 +123,20 @@ export const IndexRoute = () => {
       setPendingSelection({ folderPath, videoPath });
       selectRecentFolder(folderPath);
     },
-    [clearSearch, currentFolder, selectKey, selectRecentFolder],
+    [clearSearch, currentFolder, selectKey, selectRecentFolder, setActiveView],
   );
   useEffect(() => {
     if (pendingSelection === null || currentFolder !== pendingSelection.folderPath) return;
     selectKey(pendingSelection.videoPath);
     setPendingSelection(null);
   }, [pendingSelection, currentFolder, selectKey]);
+  const onShowInLibrary = useCallback(
+    (folderPath: string, fingerprint: string | null) => {
+      setLibrarySeed(deriveLibrarySeed(folderPath, folderName(folderPath), fingerprint, catalogIndex.folders));
+      setActiveView('library');
+    },
+    [catalogIndex.folders, setActiveView],
+  );
   const sidebarCatalog = useMemo(
     () => ({
       ...catalog,
@@ -145,6 +159,7 @@ export const IndexRoute = () => {
       registerVideos={videoRegistry.register}
       subfolderVideoCount={subfolderVideoCount}
       onSwitchToWholeTree={() => setScope('tree')}
+      onShowInLibrary={onShowInLibrary}
       toolbar={
         <ScopeAnalyzeToolbar
           scope={effectiveScope}
@@ -192,6 +207,7 @@ export const IndexRoute = () => {
         setMapFocus(selectedFingerprint);
         setActiveView('map');
       }}
+      onShowInLibrary={selected === null ? undefined : () => onShowInLibrary(parentDir(selected.path), selectedFingerprint)}
     />
   );
 
@@ -256,6 +272,8 @@ export const IndexRoute = () => {
             active={activeView === 'library'}
             onOpenResult={openSearchResult}
             onGoToVideos={() => setActiveView('videos')}
+            seed={librarySeed}
+            onSeedConsumed={() => setLibrarySeed(null)}
           />
         ) : activeView === 'map' ? (
           <MapView

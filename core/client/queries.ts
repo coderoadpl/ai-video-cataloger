@@ -109,6 +109,7 @@ export type PhotosVariantsSelectInput = z.input<typeof API_ROUTES.photosVariants
 export type IndexStatusOutput = z.output<typeof API_ROUTES.indexStatus.output>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
+export type LibraryFacetsOutput = z.output<typeof API_ROUTES.libraryFacets.output>;
 export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
 export type CatalogLocationsOutput = z.output<typeof API_ROUTES.catalogLocations.output>;
 
@@ -225,6 +226,10 @@ export const tagsScopes = {
 
 export const catalogLocationsScopes = {
   all: () => ['catalog', 'locations'] as const,
+};
+
+export const libraryFacetsScopes = {
+  all: () => ['library', 'facets'] as const,
 };
 
 export const variantsScopes = {
@@ -543,6 +548,12 @@ export const catalogLocationsQuery = (api: ApiClient) =>
   defineQuery({
     queryKey: catalogLocationsScopes.all(),
     call: ({ signal }) => api.catalogLocations(signal),
+  });
+
+export const libraryFacetsQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: libraryFacetsScopes.all(),
+    call: ({ signal }) => api.libraryFacets(signal),
   });
 
 export const variantsQuery = (api: ApiClient, input: VariantsInput) => {

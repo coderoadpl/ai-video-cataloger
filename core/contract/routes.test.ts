@@ -27,6 +27,7 @@ import {
   tagsSuggestAliasesOutputSchema,
   variantsListOutputSchema,
   catalogLocationsOutputSchema,
+  libraryFacetsOutputSchema,
 } from './routes.js';
 
 describe('route schemas', () => {
@@ -747,6 +748,47 @@ describe('route schemas', () => {
         locatedFiles: 5,
         locations: [validLocation],
       }).success).toBe(true);
+    });
+  });
+
+  describe('library facets route', () => {
+    it('exposes a library facets route', () => {
+      expect(API_ROUTES.libraryFacets.path).toBe('/api/library/facets');
+      expect(API_ROUTES.libraryFacets.method).toBe('GET');
+    });
+
+    it('round-trips a populated facets response', () => {
+      const parsed = libraryFacetsOutputSchema.parse({
+        tags: [{ name: 'beach', count: 4 }],
+        people: [{ personId: 'person-1', displayName: 'Ada', count: 2 }],
+        places: [{ name: 'Wrocław', country: 'Poland', countryCode: 'PL', count: 1 }],
+        years: [{ year: '2026', count: 3 }],
+        folders: [{ folderId: 'path-deadbeef', displayName: 'Kamper', currentPath: '/media/kamper', online: false, count: 3 }],
+        counts: { total: 10, withGps: 3, withoutCaptureDate: 2, missing: 1, offlineFolders: 1 },
+      });
+      expect(parsed.tags[0]?.name).toBe('beach');
+    });
+
+    it('accepts an empty facets response for an empty catalog', () => {
+      expect(libraryFacetsOutputSchema.safeParse({
+        tags: [],
+        people: [],
+        places: [],
+        years: [],
+        folders: [],
+        counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, offlineFolders: 0 },
+      }).success).toBe(true);
+    });
+
+    it('rejects an unknown key on the counts object', () => {
+      expect(libraryFacetsOutputSchema.safeParse({
+        tags: [],
+        people: [],
+        places: [],
+        years: [],
+        folders: [],
+        counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, offlineFolders: 0, unexpected: true },
+      }).success).toBe(false);
     });
   });
 

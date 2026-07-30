@@ -2016,6 +2016,125 @@ describe('SqlJsGlobalCatalogStore search filters (Library spec 1)', () => {
   });
 });
 
+describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('returns empty facets and zero counts for an empty catalog', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+
+    const result = await store.listLibraryFacets();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toEqual({
+      tags: [],
+      people: [],
+      places: [],
+      years: [],
+      folders: [],
+      counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0 },
+    });
+  });
+
+  it('reports the tag facet through the selected variant only, never a non-selected variant tag', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    const firstDescriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'en',
+      promptVersion: 1,
+    });
+    const secondDescriptor = configDescriptorSchema.parse({ ...firstDescriptor, promptVersion: 2 });
+    const selected: CatalogVariant = {
+      fingerprint: file.fingerprint,
+      configId: configId(firstDescriptor),
+      descriptor: firstDescriptor,
+      finalName: 'skyline.mp4',
+      description: 'selected variant',
+      transcript: null,
+      language: 'en',
+      tags: ['skyline'],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    };
+    const nonSelected: CatalogVariant = {
+      ...selected,
+      configId: configId(secondDescriptor),
+      descriptor: secondDescriptor,
+      tags: ['hidden-tag'],
+      createdAt: '2026-01-05T00:00:00.000Z',
+    };
+    await store.upsertVariant(selected);
+    await store.upsertVariant(nonSelected);
+    await store.setSelectedVariant(file.fingerprint, selected.configId);
+
+    const result = await store.listLibraryFacets();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.tags).toEqual([{ name: 'skyline', count: 1 }]);
+  });
+
+  it('aggregates people, places, years and counts across the whole catalog', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({
+      ...file,
+      fingerprint: 'fp-facet-a',
+      fileName: 'a.mp4',
+      gpsLat: 51.1,
+      gpsLon: 17.0,
+      capturedAt: '2026-03-01T00:00:00.000Z',
+      place: { name: 'Wrocław', region: null, country: 'Poland', countryCode: 'PL', distanceM: 0, dataset: 'test' },
+    });
+    await store.upsertFile({
+      ...file,
+      fingerprint: 'fp-facet-b',
+      fileName: 'b.mp4',
+      capturedAt: null,
+    });
+    await store.upsertFile({
+      ...file,
+      fingerprint: 'fp-facet-missing',
+      fileName: 'c.mp4',
+      missingAt: 1_700_000_000,
+    });
+    await store.upsertPerson(personFor('person-facet', 1));
+    await store.upsertFaceObservation(observationFor('obs-facet-1', 'fp-facet-a', 'person-facet'));
+
+    const result = await store.listLibraryFacets();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.people).toEqual([{ personId: 'person-facet', displayName: 'person-facet', count: 1 }]);
+    expect(result.value.places).toEqual([{ name: 'Wrocław', country: 'Poland', countryCode: 'PL', count: 1 }]);
+    expect(result.value.years).toEqual([{ year: '2026', count: 1 }]);
+    expect(result.value.counts).toEqual({ total: 3, withGps: 1, withoutCaptureDate: 2, missing: 1 });
+    expect(result.value.folders).toEqual([
+      { folderId: folder.folderId, displayName: folder.displayName, currentPath: folder.currentPath, count: 3 },
+    ]);
+  });
+
+  it('shares the selected-variant COALESCE resolution SQL constant across listLocations, search and facets', async () => {
+    const source = await readFile(new URL('./global-catalog.ts', import.meta.url), 'utf8');
+    const occurrences = source.match(/SELECTED_ANALYSIS_CONFIG_ID_SQL/g) ?? [];
+    expect(occurrences.length).toBe(4);
+  });
+});
+
 const lockPath = (home: string): string => path.join(home, '.ai-video-cataloger', 'catalog.lock');
 
 const writeLock = async (

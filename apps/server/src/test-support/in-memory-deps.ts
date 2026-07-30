@@ -75,6 +75,7 @@ import type {
   JobKind,
   JobRecord,
   JobsPort,
+  LibraryFacets,
   LocalAiRuntimePort,
   MediaPort,
   MediaProbe,
@@ -656,6 +657,67 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .filter((row): row is CatalogLocationRow => row !== null)
       .sort((left, right) => left.fileName.localeCompare(right.fileName));
     return Promise.resolve(ok({ totalFiles: this.files.size, rows }));
+  }
+
+  listLibraryFacets(): Promise<Result<LibraryFacets, AppError>> {
+    const tagCounts = new Map<string, number>();
+    for (const analysis of this.analyses.values()) {
+      for (const tag of analysis.tags) tagCounts.set(tag, (tagCounts.get(tag) ?? 0) + 1);
+    }
+    const tags = [...tagCounts.entries()]
+      .map(([name, count]) => ({ name, count }))
+      .sort((left, right) => left.name.localeCompare(right.name));
+
+    const peopleCounts = new Map<string, number>();
+    for (const observation of this.faceObservations.values()) {
+      if (observation.personId === null) continue;
+      peopleCounts.set(observation.personId, (peopleCounts.get(observation.personId) ?? 0) + 1);
+    }
+    const people = [...peopleCounts.entries()]
+      .map(([personId, count]) => ({ personId, displayName: this.people.get(personId)?.displayName ?? null, count }))
+      .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.personId.localeCompare(right.personId));
+
+    const placeCounts = new Map<string, { name: string; country: string | null; countryCode: string | null; count: number }>();
+    for (const file of this.files.values()) {
+      if (file.place === null) continue;
+      const key = `${file.place.name} ${file.place.country ?? ''} ${file.place.countryCode ?? ''}`;
+      const existing = placeCounts.get(key);
+      if (existing === undefined) {
+        placeCounts.set(key, { name: file.place.name, country: file.place.country, countryCode: file.place.countryCode, count: 1 });
+      } else {
+        existing.count += 1;
+      }
+    }
+    const places = [...placeCounts.values()].sort((left, right) => left.name.localeCompare(right.name));
+
+    const yearCounts = new Map<string, number>();
+    for (const file of this.files.values()) {
+      if (file.capturedAt === null) continue;
+      const year = file.capturedAt.slice(0, 4);
+      yearCounts.set(year, (yearCounts.get(year) ?? 0) + 1);
+    }
+    const years = [...yearCounts.entries()]
+      .map(([year, count]) => ({ year, count }))
+      .sort((left, right) => right.year.localeCompare(left.year));
+
+    const files = [...this.files.values()];
+    const counts = {
+      total: files.length,
+      withGps: files.filter((file) => file.gpsLat !== null && file.gpsLon !== null).length,
+      withoutCaptureDate: files.filter((file) => file.capturedAt === null).length,
+      missing: files.filter((file) => file.missingAt !== null).length,
+    };
+
+    const facetFolders = [...this.folders.values()]
+      .map((folder) => ({
+        folderId: folder.folderId,
+        displayName: folder.displayName,
+        currentPath: folder.currentPath,
+        count: files.filter((file) => file.folderId === folder.folderId).length,
+      }))
+      .sort((left, right) => left.displayName.localeCompare(right.displayName));
+
+    return Promise.resolve(ok({ tags, people, places, years, folders: facetFolders, counts }));
   }
 
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>> {

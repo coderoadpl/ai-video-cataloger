@@ -17,6 +17,7 @@ interface DetailsPanelProps {
   onTagSearch?: ((tag: string) => void) | undefined;
   location?: DetailsLocation | null | undefined;
   onShowOnMap?: (() => void) | undefined;
+  onShowInLibrary?: (() => void) | undefined;
 }
 
 const Welcome = ({ dictionary }: { dictionary: Dictionary }) => (
@@ -54,6 +55,7 @@ export const DetailsPanel = ({
   onTagSearch,
   location,
   onShowOnMap,
+  onShowInLibrary,
 }: DetailsPanelProps) => {
   const dictionary = useDictionary();
 
@@ -72,6 +74,7 @@ export const DetailsPanel = ({
       onTagSearch={onTagSearch}
       location={location}
       onShowOnMap={onShowOnMap}
+      onShowInLibrary={onShowInLibrary}
     />
   );
 };

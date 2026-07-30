@@ -2,11 +2,11 @@ import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { z } from 'zod';
 
-import type { searchResultSchema } from '@core/contract/index.js';
+import type { libraryFacetsOutputSchema, searchResultSchema } from '@core/contract/index.js';
 
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -40,12 +40,20 @@ const libraryItem = (overrides: Partial<LibraryItem> & { fingerprint: string }):
   ...overrides,
 });
 
+const searchRequests: URLSearchParams[] = [];
+
 const stubSearch = (items: LibraryItem[]) => {
   server.use(
     http.get('/api/search', ({ request }) => {
       const url = new URL(request.url);
+      searchRequests.push(url.searchParams);
       const query = url.searchParams.get('query');
-      const matched = query === null || query.length === 0 ? items : items.filter((item) => item.fileName.includes(query));
+      const hasGps = url.searchParams.get('hasGps');
+      const folderId = url.searchParams.get('folderId');
+      let matched = query === null || query.length === 0 ? items : items.filter((item) => item.fileName.includes(query));
+      if (hasGps === 'true') matched = matched.filter((item) => item.gps !== null);
+      if (hasGps === 'false') matched = matched.filter((item) => item.gps === null);
+      if (folderId !== null && folderId.length > 0) matched = matched.filter((item) => item.folder.folderId === folderId);
       return HttpResponse.json({
         ok: true,
         data: {
@@ -61,7 +69,29 @@ const stubSearch = (items: LibraryItem[]) => {
   );
 };
 
+const stubFacets = (overrides: Partial<z.infer<typeof libraryFacetsOutputSchema>> = {}) => {
+  server.use(
+    http.get('/api/library/facets', () => HttpResponse.json({
+      ok: true,
+      data: {
+        tags: [],
+        people: [],
+        places: [],
+        years: [],
+        folders: [],
+        counts: { total: 0, withGps: 0, withoutCaptureDate: 0, missing: 0, offlineFolders: 0 },
+        ...overrides,
+      },
+    })),
+  );
+};
+
 describe('LibraryView', () => {
+  beforeEach(() => {
+    searchRequests.length = 0;
+    stubFacets();
+  });
+
   it('renders the honest empty-catalog state, not a generic no-results message', async () => {
     stubSearch([]);
 
@@ -139,5 +169,122 @@ describe('LibraryView', () => {
 
     await waitFor(() => expect(screen.getByTestId('library-no-match')).toBeDefined());
     expect(screen.queryByTestId('library-empty-catalog')).toBeNull();
+  });
+
+  it('names the active chip in the no-match copy', async () => {
+    stubSearch([libraryItem({ fingerprint: 'fp-1', gps: { lat: 1, lon: 2 } })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const gpsSelect = screen.getByTestId('library-filter-has-gps').querySelector('input');
+    fireEvent.change(gpsSelect ?? screen.getByTestId('library-filter-has-gps'), { target: { value: 'without' } });
+
+    await waitFor(() => expect(screen.getByTestId('library-no-match')).toBeDefined());
+    expect(screen.getByTestId('library-no-match-body').textContent).toContain('Without GPS');
+  });
+
+  it('a hasGps chip narrows the search request', async () => {
+    stubSearch([
+      libraryItem({ fingerprint: 'fp-gps', gps: { lat: 1, lon: 2 } }),
+      libraryItem({ fingerprint: 'fp-no-gps' }),
+    ]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    expect(await screen.findAllByTestId('library-tile')).toHaveLength(2);
+
+    const gpsSelect = screen.getByTestId('library-filter-has-gps').querySelector('input');
+    fireEvent.change(gpsSelect ?? screen.getByTestId('library-filter-has-gps'), { target: { value: 'with' } });
+
+    await waitFor(async () => expect(await screen.findAllByTestId('library-tile')).toHaveLength(1));
+    expect(screen.getByTestId('library-chip-hasGps')).toBeDefined();
+  });
+
+  it('seeding a folder shows a removable folder chip and scrolls to the seeded fingerprint', async () => {
+    const items = [
+      libraryItem({ fingerprint: 'fp-1' }),
+      libraryItem({
+        fingerprint: 'fp-target',
+        folder: { folderId: '99999999-9999-4999-8999-999999999999', currentPath: '/other', displayName: 'Other Folder', online: true },
+      }),
+    ];
+    stubSearch(items);
+
+    renderThemed(
+      <LibraryView
+        active
+        onOpenResult={vi.fn()}
+        onGoToVideos={vi.fn()}
+        seed={{ folderId: '99999999-9999-4999-8999-999999999999', folderLabel: 'Other Folder', fingerprint: 'fp-target' }}
+        onSeedConsumed={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('Folder: Other Folder')).toBeDefined();
+    expect(await screen.findAllByTestId('library-tile')).toHaveLength(1);
+  });
+
+  it('keeps the chosen sort while a text query is active instead of silently falling back to relevance', async () => {
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const sortSelect = screen.getByTestId('library-sort').querySelector('input');
+    fireEvent.change(sortSelect ?? screen.getByTestId('library-sort'), { target: { value: 'name_asc' } });
+    fireEvent.change(screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input'), { target: { value: 'fp' } });
+
+    await waitFor(() => {
+      const latest = searchRequests[searchRequests.length - 1];
+      expect(latest?.get('query')).toBe('fp');
+      expect(latest?.get('sort')).toBe('name_asc');
+    });
+  });
+
+  it('offers facet options with their whole-catalog counts', async () => {
+    stubFacets({ tags: [{ name: 'beach', count: 4 }, { name: 'sunset', count: 2 }] });
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const tagInput = screen.getByTestId('library-filter-tags').querySelector('input');
+    fireEvent.change(tagInput ?? screen.getByTestId('library-filter-tags'), { target: { value: 'bea' } });
+
+    expect(await screen.findByText('beach (4)')).toBeDefined();
+  });
+
+  it('debounces the free-text place filter into a single search request', async () => {
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const placeInput = screen.getByTestId('library-filter-place').querySelector('input');
+    const target = placeInput ?? screen.getByTestId('library-filter-place');
+    fireEvent.change(target, { target: { value: 'W' } });
+    fireEvent.change(target, { target: { value: 'Wr' } });
+    fireEvent.change(target, { target: { value: 'Wro' } });
+
+    await waitFor(() => expect(searchRequests.filter((params) => params.get('place') !== null)).toHaveLength(1));
+    expect(searchRequests[searchRequests.length - 1]?.get('place')).toBe('Wro');
+  });
+
+  it('toggles grouping by folder', async () => {
+    const items = [
+      libraryItem({ fingerprint: 'fp-1', folder: { folderId: '11111111-1111-4111-8111-000000000001', currentPath: '/a', displayName: 'Alpha', online: true } }),
+      libraryItem({ fingerprint: 'fp-2', folder: { folderId: '22222222-2222-4222-8222-000000000002', currentPath: '/b', displayName: 'Beta', online: true } }),
+    ];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    fireEvent.click(screen.getByTestId('library-group-by-folder'));
+
+    await waitFor(() => {
+      const headers = screen.getAllByTestId('library-section-header').map((node) => node.textContent);
+      expect(headers).toEqual(['Alpha', 'Beta']);
+    });
   });
 });

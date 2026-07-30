@@ -25,6 +25,7 @@ const rowHeightOf = (video: CatalogVideo): number =>
   hasErrorLine(video) ? ERROR_VIDEO_ROW_HEIGHT : VIDEO_ROW_HEIGHT;
 
 interface VideoListProps {
+  folder?: string | null;
   videos: readonly CatalogVideo[];
   selectedKey: string | null;
   analyzingPath: string | null;
@@ -36,6 +37,7 @@ interface VideoListProps {
   maxHeight?: number | undefined;
   subfolderVideoCount?: number;
   onSwitchToWholeTree?: (() => void) | undefined;
+  onShowInLibrary?: ((folderPath: string, fingerprint: string | null) => void) | undefined;
 }
 
 export const thumbnailLoading = (
@@ -77,12 +79,12 @@ const VideoRow = ({
   analyzing: boolean;
   thumbnailLoadingState: boolean;
   onSelect: (video: CatalogVideo) => void;
-  onContextMenu: (event: MouseEvent, path: string) => void;
+  onContextMenu: (event: MouseEvent, path: string, fingerprint: string | null) => void;
 }) => (
   <ListItemButton
     selected={selected}
     onClick={() => onSelect(video)}
-    onContextMenu={(event) => onContextMenu(event, video.path)}
+    onContextMenu={(event) => onContextMenu(event, video.path, video.contentHash)}
     title={video.path}
     data-testid="video-item"
     data-video-filename={video.filename}
@@ -130,6 +132,7 @@ const VideoRow = ({
 );
 
 export const VideoList = ({
+  folder = null,
   videos,
   selectedKey,
   analyzingPath,
@@ -141,6 +144,7 @@ export const VideoList = ({
   maxHeight,
   subfolderVideoCount = 0,
   onSwitchToWholeTree,
+  onShowInLibrary,
 }: VideoListProps) => {
   const dictionary = useDictionary();
   const revealMenu = useRevealContextMenu();
@@ -218,7 +222,13 @@ export const VideoList = ({
           ))}
         </Box>
       </Box>
-      <RevealContextMenu controller={revealMenu} onReveal={(path) => bridge.revealInFinder(path)} />
+      <RevealContextMenu
+        controller={revealMenu}
+        onReveal={(path) => bridge.revealInFinder(path)}
+        onShowInLibrary={onShowInLibrary === undefined || folder === null
+          ? undefined
+          : (_path, fingerprint) => onShowInLibrary(folder, fingerprint)}
+      />
     </List>
   );
 };
