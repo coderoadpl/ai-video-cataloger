@@ -486,6 +486,28 @@ Map: `listLocations()` grows a photos counterpart in the photos store; the
 route merges both with a `media` discriminator; the map island core is
 geometry-only and needs no change beyond a marker kind.
 
+**Wave 4b implementation notes (as shipped):**
+
+- Tolerance widening is exact: `toleranceMs = max(input.toleranceMinutes, 180)
+  * 60_000` applies only to `capturedAtSource` in
+  `{'exif_local_assumed', 'file_mtime'}`; precise sources
+  (`exif_offset`, `exif_gps_time`) always use the flag value unmodified. The
+  pass summary's `assumedWidened` counter increments only for a photo whose
+  widened tolerance differed from the flag value *and* which matched — it is
+  not a count of every assumed-timezone photo considered.
+- No GUI flow for the photo backfill either — CLI (`avc photos gps backfill
+  <timeline.json>`) and route (`POST /api/photos/gps/backfill`) only, mirroring
+  the video backfill's own GUI-less precedent (§7).
+- `GET /api/catalog/locations` merge shape: `totalFiles`/`locatedFiles` keep
+  their video-only meaning; `totalPhotos`/`locatedPhotos` are new,
+  independent counters (photo-only); `locations` interleaves both media
+  (video rows first, each list internally ordered by fingerprint), each
+  entry carrying `media: 'video' | 'photo'` (defaulted `'video'` so a
+  pre-4b envelope still parses) and — for photo rows only — a nullable
+  `thumbPath` resolved through the same `photoThumbPath` convention the
+  Photos tab already uses, so the map's photo pin popover can show a
+  thumbnail without a cross-feature import into `features/photos/`.
+
 ## 7. Contract, CLI, jobs
 
 - **Routes** (all zod, all in `core/contract/routes.ts`):
@@ -512,6 +534,10 @@ geometry-only and needs no change beyond a marker kind.
   `avc photos gps backfill <timeline.json>` — commander sub-tree in
   `apps/cli/src/main.ts`, NDJSON events named `photos_*`, same taxonomy exit
   codes. `faces index` silently gains photo coverage (CHANGELOG line).
+  `--tolerance-minutes`/`--max-visit-hours` default to **30/36**, mirroring
+  the video `gps backfill` command's actual flag defaults byte-for-byte
+  (the wave 4b spec's draft default of 90 minutes was never the video CLI's
+  real default and was not carried over).
 - **Jobs**: `photo_scan`, `photo_proxies`, `photo_process` on the existing
   in-process `JobsPort`, with **resource keys** per the established
   convention (`faces-index:${root}`, `thumbnails:${root}`):
