@@ -113,8 +113,10 @@ const withCatalogWriteLock = async <T>(
   const lock = await requireCatalogWriteLock(deps);
   if (!lock.ok) return lock;
   const result = await run();
-  const released = await deps.globalCatalog.flush();
-  if (result.ok && !released.ok) return released;
+  const releasedCatalog = await deps.globalCatalog.flush();
+  const releasedPhotos = await deps.photos.flush();
+  if (result.ok && !releasedCatalog.ok) return releasedCatalog;
+  if (result.ok && !releasedPhotos.ok) return releasedPhotos;
   return result;
 };
 

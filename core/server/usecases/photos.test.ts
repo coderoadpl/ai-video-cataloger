@@ -379,6 +379,29 @@ describe('runPhotoScan', () => {
     expect(superseded.ok && superseded.value?.missingAt).not.toBeNull();
   });
 
+  it('does not delete sightings under a subtree that fails to list', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    fs.addFile('/work/photos/locked/b.jpg', { content: 'b' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+
+    fs.markUnreadable('/work/photos/locked');
+    const events: JobProgress[] = [];
+    const result = await runPhotoScan(deps, { root: '/work/photos' }, recordingProgress(events));
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.missingMarked).toBe(0);
+    expect(result.ok && result.value.folderReadErrors).toBe(1);
+
+    const fingerprintB = fingerprintOf('b');
+    const photoB = await deps.photos.getPhoto(fingerprintB);
+    expect(photoB.ok && photoB.value?.missingAt).toBeNull();
+    const sightings = await deps.photos.listSightings(fingerprintB);
+    expect(sightings.ok && sightings.value).toHaveLength(1);
+
+    expect(events.some((event) => event.step === 'photo-folder-skipped' && event.data?.path === '/work/photos/locked')).toBe(true);
+  });
+
   it('aborts between batches and reports the cancellation as processing_error', async () => {
     const { deps, fs } = buildDeps();
     fs.addFile('/work/photos/a.jpg', { content: 'a' });

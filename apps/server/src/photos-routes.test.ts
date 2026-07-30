@@ -1,6 +1,12 @@
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
+import { SqlJsPhotosStore } from '@adapters/db/index.js';
+
 import { buildApp } from './app.js';
+import type { AppDeps } from './composition.js';
 import { createInMemoryDeps } from './test-support/in-memory-deps.js';
 
 const seedPhoto = async (deps: ReturnType<typeof createInMemoryDeps>): Promise<string> => {
@@ -300,5 +306,76 @@ describe('photos routes', () => {
     expect(response.status).toBe(404);
     const body = await response.json();
     expect(body.error.code).toBe('file_not_found');
+  });
+
+  it('flushes a variant select to photos.db without an explicit dispose', async () => {
+    const home = await mkdtemp(path.join(tmpdir(), 'avc-photos-durability-'));
+    const realPhotos = new SqlJsPhotosStore({ homeDirectory: home });
+    const fingerprint = 'ph_0000000000000002';
+    const now = '2026-01-01T00:00:00.000Z';
+    await realPhotos.upsertFolder({
+      folderId: 'path-bbbbbbbb',
+      currentPath: '/media/photos-2',
+      displayName: 'photos-2',
+      firstSeenAt: now,
+      lastSeenAt: now,
+      defaultConfigId: null,
+    });
+    await realPhotos.upsertPhoto({
+      fingerprint,
+      folderId: 'path-bbbbbbbb',
+      fileName: 'beach.jpg',
+      currentPath: '/media/photos-2/beach.jpg',
+      ext: 'jpg',
+      size: 1024,
+      width: 100,
+      height: 100,
+      orientation: 1,
+      cameraMake: null,
+      cameraModel: null,
+      lens: null,
+      iso: null,
+      fNumber: null,
+      exposureTime: null,
+      exifRating: null,
+      capturedAt: now,
+      capturedAtSource: 'file_mtime',
+      gpsLat: null,
+      gpsLon: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      placeName: null,
+      placeRegion: null,
+      placeCountry: null,
+      placeCountryCode: null,
+      placeDistanceM: null,
+      placeDataset: null,
+      discoveredAt: now,
+      exifReadAt: null,
+      proxyState: 'pending',
+      proxyWidth: null,
+      proxyHeight: null,
+      thumbState: 'pending',
+      missingAt: null,
+      selectedConfigId: 'cfg_000000000001',
+    });
+    await realPhotos.flush();
+
+    const deps: AppDeps = createInMemoryDeps();
+    deps.photos = realPhotos;
+    const app = buildApp(deps);
+
+    const selected = await app.request('/api/photos/variants/select', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ fingerprint, configId: null }),
+    });
+    expect(selected.status).toBe(200);
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const persisted = await reopened.getPhoto(fingerprint);
+    expect(persisted.ok && persisted.value?.selectedConfigId).toBeNull();
   });
 });
