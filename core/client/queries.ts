@@ -97,6 +97,7 @@ export type PhotosScanInput = z.input<typeof API_ROUTES.photosScan.input>;
 export type PhotosStatusInput = z.input<typeof API_ROUTES.photosStatus.input>;
 export type PhotosForgetInput = z.input<typeof API_ROUTES.photosForget.input>;
 export type PhotosProxiesInput = z.input<typeof API_ROUTES.photosProxies.input>;
+export type PhotosProcessInput = z.input<typeof API_ROUTES.photosProcess.input>;
 export type PhotosListInput = z.input<typeof API_ROUTES.photosList.input>;
 export type PhotosDetailInput = z.input<typeof API_ROUTES.photosDetail.input>;
 export type SelectVariantInput = z.input<typeof API_ROUTES.variantsSelect.input>;
@@ -269,6 +270,7 @@ export const mutationScopes = {
   photosScan: () => ['photosScan'] as const,
   photosForget: () => ['photosForget'] as const,
   photosProxies: () => ['photosProxies'] as const,
+  photosProcess: () => ['photosProcess'] as const,
   selectVariant: () => ['variants', 'select'] as const,
   deleteVariant: () => ['variants', 'delete'] as const,
   setFolderDefaultVariant: () => ['variants', 'folder-default'] as const,
@@ -739,6 +741,15 @@ export const photosProxiesMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.photosProxies(),
     call: (variables: PhotosProxiesInput) => api.photosProxies(variables),
+    onSettled: (_data, _error, _variables, _onMutateResult, context) => {
+      void context.client.invalidateQueries({ queryKey: photosScopes.all() });
+    },
+  });
+
+export const photosProcessMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.photosProcess(),
+    call: (variables: PhotosProcessInput) => api.photosProcess(variables),
     onSettled: (_data, _error, _variables, _onMutateResult, context) => {
       void context.client.invalidateQueries({ queryKey: photosScopes.all() });
     },

@@ -65,6 +65,8 @@ import type {
   TagTermExpansion,
   AnalyzerPort,
   AnalysisOutput,
+  AnalyzePhotosInput,
+  AnalyzePhotosOutput,
   AnalyzerTranscript,
   ConfigScope,
   ConfigStore,
@@ -87,6 +89,8 @@ import type {
   ProvidersPort,
   ProviderTestResult,
   ExifPort,
+  PhotoAnalysisCandidate,
+  PhotoAnalysisCandidates,
   PhotoDetail,
   PhotoFolderRecord,
   PhotoListItem,
@@ -99,6 +103,7 @@ import type {
   PhotoSightingRecord,
   PhotosCounts,
   PhotosStore,
+  RecordPhotoAnalysisInput,
   ThumbnailFromFrameInput,
   ThumbnailGeneration,
   ThumbnailInput,
@@ -782,6 +787,29 @@ export class InMemoryAnalyzer implements AnalyzerPort {
     this.inputs.push(input);
     if (this.analyzeError !== null) return Promise.resolve({ ok: false, error: this.analyzeError });
     return Promise.resolve(ok({ rawResponse: this.rawResponse, usage: this.usage, transcript: this.transcript }));
+  }
+
+  readonly analyzePhotosCalls: AnalyzePhotosInput[] = [];
+  photoCallScripts: readonly (
+    | { kind: 'ok'; rawResponse: string; usage?: GeminiUsageAccounting | undefined }
+    | { kind: 'error'; error: AppError }
+    | undefined
+  )[] = [];
+
+  analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>> {
+    const callNumber = this.analyzePhotosCalls.length;
+    this.analyzePhotosCalls.push(input);
+    const script = this.photoCallScripts[callNumber];
+    if (script?.kind === 'error') return Promise.resolve({ ok: false, error: script.error });
+    if (script?.kind === 'ok') return Promise.resolve(ok({ rawResponse: script.rawResponse, usage: script.usage }));
+    const elements = input.items.map((item, index) => ({
+      index: index + 1,
+      description: `photo:${item.fingerprint}`,
+      tags: ['tag'],
+      scene: 'other',
+      quality: 'good',
+    }));
+    return Promise.resolve(ok({ rawResponse: JSON.stringify(elements) }));
   }
 
   dependency(input?: {
@@ -1758,11 +1786,23 @@ export class FakeExifPort implements ExifPort {
   }
 }
 
+interface InMemoryAnalysisConfig {
+  configId: string;
+  descriptorJson: string;
+  label: string;
+  firstSeenAt: string;
+  lastUsedAt: string;
+}
+
+type InMemoryAnalysisRow = RecordPhotoAnalysisInput;
+
 export class InMemoryPhotosStore implements PhotosStore {
   readonly folders = new Map<string, PhotoFolderRecord>();
   readonly photoRows = new Map<string, PhotoRecord>();
   readonly sightings = new Map<string, PhotoSightingRecord>();
   readonly runs = new Map<string, PhotoRunRecord>();
+  readonly analysisConfigs = new Map<string, InMemoryAnalysisConfig>();
+  readonly analyses = new Map<string, InMemoryAnalysisRow>();
   persistCount = 0;
 
   databasePath(): string {
@@ -1861,7 +1901,12 @@ export class InMemoryPhotosStore implements PhotosStore {
       duplicates: [...bySightingCount.values()].filter((count) => count > 1).length,
       proxied: photoRows.filter((photo) => photo.proxyState === 'done').length,
       proxyFailed: photoRows.filter((photo) => photo.proxyState === 'failed').length,
+      analysed: photoRows.filter((photo) => this.hasAnyAnalysis(photo.fingerprint)).length,
     }));
+  }
+
+  private hasAnyAnalysis(fingerprint: string): boolean {
+    return [...this.analyses.values()].some((row) => row.fingerprint === fingerprint);
   }
 
   startPhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>> {
@@ -1995,7 +2040,49 @@ export class InMemoryPhotosStore implements PhotosStore {
       .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt) || left.currentPath.localeCompare(right.currentPath));
     return Promise.resolve(ok({ photo, sightings }));
   }
+
+  listAnalysisCandidates(root: string, configId: string, force: boolean): Promise<Result<PhotoAnalysisCandidates, AppError>> {
+    const canonicalRoot = canonicalPath(root);
+    const scopedFingerprints = new Set([
+      ...[...this.sightings.values()].filter((sighting) => isUnderRoot(sighting.currentPath, canonicalRoot)).map((sighting) => sighting.fingerprint),
+      ...[...this.photoRows.values()].filter((photo) => isUnderRoot(photo.currentPath, canonicalRoot)).map((photo) => photo.fingerprint),
+    ]);
+    const eligible = [...this.photoRows.values()]
+      .filter((photo) => scopedFingerprints.has(photo.fingerprint))
+      .filter((photo) => photo.missingAt === null && photo.proxyState === 'done')
+      .sort((left, right) => left.currentPath.localeCompare(right.currentPath));
+    let alreadyAnalysed = 0;
+    const candidates: PhotoAnalysisCandidate[] = [];
+    for (const photo of eligible) {
+      const analysed = this.analyses.has(analysisKey(photo.fingerprint, configId));
+      if (analysed && !force) {
+        alreadyAnalysed += 1;
+        continue;
+      }
+      candidates.push({ fingerprint: photo.fingerprint, fileName: photo.fileName, currentPath: photo.currentPath });
+    }
+    return Promise.resolve(ok({ candidates, alreadyAnalysed }));
+  }
+
+  upsertAnalysisConfig(input: { configId: string; descriptorJson: string; label: string; now: string }): Promise<Result<void, AppError>> {
+    const existing = this.analysisConfigs.get(input.configId);
+    this.analysisConfigs.set(input.configId, {
+      configId: input.configId,
+      descriptorJson: input.descriptorJson,
+      label: input.label,
+      firstSeenAt: existing?.firstSeenAt ?? input.now,
+      lastUsedAt: input.now,
+    });
+    return Promise.resolve(ok(undefined));
+  }
+
+  recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>> {
+    this.analyses.set(analysisKey(input.fingerprint, input.configId), { ...input, tags: [...input.tags] });
+    return Promise.resolve(ok(undefined));
+  }
 }
+
+const analysisKey = (fingerprint: string, configId: string): string => `${fingerprint} ${configId}`;
 
 interface FakePhotoMediaCall {
   sourcePath: string;

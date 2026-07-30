@@ -46,7 +46,7 @@ import { credentialDeleteHuman } from './credential-delete-human.js';
 import { driveEventLine, isDriveEventStep, type DriveEventStep } from './drive-events.js';
 import { driveFacesSummaryLine } from './drive-faces-summary.js';
 import { doctorHuman } from './doctor-human.js';
-import { photosForgetHuman, photosProxiesHuman, photosStatusHuman } from './photos-human.js';
+import { photosForgetHuman, photosProcessHuman, photosProxiesHuman, photosStatusHuman } from './photos-human.js';
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 import { runProgram } from './run-program.js';
@@ -1341,6 +1341,30 @@ photos
       return;
     }
     await waitForJobAndEmit(json, result.value.jobId, photosProxiesHuman, true);
+  });
+
+interface PhotosProcessOptions extends ForceJsonOption {
+  batchSize?: string | undefined;
+}
+
+photos
+  .command('process')
+  .argument('<root>')
+  .option('--force', 'reanalyse photos already analysed under the current config', false)
+  .option('--batch-size <n>', 'photos per analyzer call (1-12)')
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string, options: PhotosProcessOptions) => {
+    const json = isJsonMode(options);
+    const resolvedRoot = path.resolve(cliWorkingDirectory, root);
+    const force = options.force === true;
+    const batchSize = options.batchSize === undefined ? undefined : Number.parseInt(options.batchSize, 10);
+    emitStarted(json, 'photos_process', { root: resolvedRoot, force, batchSize: batchSize ?? null });
+    const result = await api.photosProcess({ root: resolvedRoot, force, batchSize });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, photosProcessHuman, true);
   });
 
 photos

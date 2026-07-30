@@ -867,6 +867,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  photosProcess: (input: z.input<typeof API_ROUTES.photosProcess.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosProcess.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosProcess.method,
+      API_ROUTES.photosProcess.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   photosTree: (signal?: AbortSignal) =>
     request(
       options,

@@ -79,11 +79,68 @@ export const photosSchemaMeta = sqliteTable('schema_meta', {
   version: integer('version').primaryKey(),
 });
 
+export const photoAnalysisConfigs = sqliteTable('photo_analysis_configs', {
+  configId: text('config_id').primaryKey(),
+  descriptorJson: text('descriptor_json'),
+  label: text('label').notNull(),
+  firstSeenAt: text('first_seen_at').notNull(),
+  lastUsedAt: text('last_used_at').notNull(),
+});
+
+export const photoAnalyses = sqliteTable('photo_analyses', {
+  fingerprint: text('fingerprint').notNull(),
+  configId: text('config_id').notNull(),
+  description: text('description'),
+  scene: text('scene'),
+  quality: text('quality'),
+  language: text('language'),
+  analyzer: text('analyzer'),
+  model: text('model'),
+  batchSize: integer('batch_size'),
+  createdAt: text('created_at').notNull(),
+  usageJson: text('usage_json'),
+}, (table) => [
+  primaryKey({ columns: [table.fingerprint, table.configId] }),
+]);
+
+export const photoTags = sqliteTable('photo_tags', {
+  tagId: integer('tag_id').primaryKey({ autoIncrement: true }),
+  name: text('name').notNull().unique(),
+});
+
+export const photoTagAliases = sqliteTable('photo_tag_aliases', {
+  alias: text('alias').primaryKey(),
+  tagId: integer('tag_id').notNull(),
+});
+
+export const photoFileTags = sqliteTable('photo_file_tags', {
+  fingerprint: text('fingerprint').notNull(),
+  configId: text('config_id').notNull(),
+  tagId: integer('tag_id').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.fingerprint, table.configId, table.tagId] }),
+]);
+
+export const photoSearchDocuments = sqliteTable('photo_search_documents', {
+  docid: integer('docid').primaryKey({ autoIncrement: true }),
+  fingerprint: text('fingerprint').notNull().unique(),
+  fileName: text('file_name').notNull(),
+  description: text('description').notNull(),
+  tagsText: text('tags_text').notNull(),
+  place: text('place').notNull().default(''),
+});
+
 export const photosSchema = {
   photoFolders,
   photos,
   photoPaths,
   photoRuns,
+  photoAnalysisConfigs,
+  photoAnalyses,
+  photoTags,
+  photoTagAliases,
+  photoFileTags,
+  photoSearchDocuments,
   photosSchemaMeta,
 };
 

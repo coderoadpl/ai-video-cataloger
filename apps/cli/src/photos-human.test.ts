@@ -1,19 +1,20 @@
 import { describe, expect, it } from 'vitest';
 
-import { photosForgetHuman, photosProxiesHuman, photosStatusHuman } from './photos-human.js';
+import { photosForgetHuman, photosProcessHuman, photosProxiesHuman, photosStatusHuman } from './photos-human.js';
 
 describe('photosStatusHuman', () => {
   it('formats an overall status', () => {
     const text = photosStatusHuman({
       media: 'photo',
       root: null,
-      counts: { photos: 10, paths: 12, exifRead: 8, exifFailed: 2, missing: 1, duplicates: 2, proxied: 7, proxyFailed: 1 },
+      counts: { photos: 10, paths: 12, exifRead: 8, exifFailed: 2, missing: 1, duplicates: 2, proxied: 7, proxyFailed: 1, analysed: 5 },
     });
     expect(text).toBe(
       'Scope: all photos\n'
       + 'Photos: 10 (12 paths, 2 duplicated)\n'
       + 'EXIF read: 8 / failed: 2\n'
       + 'Proxies: 7 generated, 1 failed\n'
+      + 'Analysed: 5\n'
       + 'Missing: 1',
     );
   });
@@ -22,7 +23,7 @@ describe('photosStatusHuman', () => {
     const text = photosStatusHuman({
       media: 'photo',
       root: '/media/photos',
-      counts: { photos: 1, paths: 1, exifRead: 0, exifFailed: 1, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0 },
+      counts: { photos: 1, paths: 1, exifRead: 0, exifFailed: 1, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0, analysed: 0 },
     });
     expect(text).toContain('Scope: /media/photos');
   });
@@ -55,5 +56,23 @@ describe('photosProxiesHuman', () => {
       thumbFailed: 0,
     });
     expect(text).toBe('Proxies: 120 generated, 3 failed, 40 already present (163 candidates)');
+  });
+});
+
+describe('photosProcessHuman', () => {
+  it('formats a process summary', () => {
+    const text = photosProcessHuman({
+      media: 'photo',
+      root: '/media/photos',
+      force: false,
+      configId: 'cfg_ab12cd34ef56',
+      batchSize: 12,
+      candidates: 163,
+      analysed: 120,
+      failed: 3,
+      skippedExisting: 40,
+      splitRetries: 2,
+    });
+    expect(text).toBe('Analysed: 120 of 163 candidates, 3 failed, 40 already analysed (cfg_ab12cd34ef56, batch 12)');
   });
 });

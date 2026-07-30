@@ -1,18 +1,38 @@
 import {
   appError,
+  analyzerProviderConfigSchema,
+  buildPhotoConfigDescriptor,
+  canonicalJson,
+  clampPhotoBatchSize,
+  configValueSchema,
   derivedFolderId,
   deriveCapturedAt,
+  geminiCostEstimateFromUsage,
   isSupportedPhotoExtension,
   ok,
+  outputLanguageSchema,
+  parsePhotoBatchResponse,
+  photoConfigId,
+  type PhotoConfigDescriptor,
   photoExtensionSchema,
   photoFingerprintFromSha256,
+  spendLedgerEntrySchema,
+  spendMonth,
+  splitPhotoBatch,
+  PHOTO_ANALYSIS_PROMPT_VERSION,
+  type AnalyzerProviderConfig,
+  type AppConfig,
   type AppError,
+  type GeminiCostEstimate,
   type PhotoExtension,
   type Result,
 } from '@core/domain/index.js';
 
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
+  type AnalyzePhotoItem,
+  type AnalyzerPort,
+  type ConfigStore,
   type ExifPort,
   type FileSystemPort,
   type JobExecutionContext,
@@ -27,7 +47,10 @@ import {
   type PhotoSightingRecord,
   type PhotosCounts,
   type PhotosStore,
+  type SpendLedgerPort,
 } from '../ports.js';
+import { geminiMonthlyBudget, monthlyBudgetExceeded, type BudgetExceeded } from './budget.js';
+import { resolveConfigValues } from './config-resolution.js';
 import { photoArtifactsRoot, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
 import { reportStep as report } from './process-drive-batch.js';
 import { shouldSkipDirectory } from './shared.js';
@@ -41,6 +64,9 @@ export interface PhotosDeps {
   exif: ExifPort;
   jobs: JobsPort;
   photoMedia: PhotoMediaPort;
+  config: ConfigStore;
+  analyzer: AnalyzerPort;
+  spendLedger?: SpendLedgerPort | undefined;
 }
 
 export interface PhotoScanProxiesSummary {
@@ -798,4 +824,391 @@ export const photosForget = async (
   }
 
   return ok({ ...batched.value, artifactPaths });
+};
+
+export interface PhotoProcessSummary {
+  media: 'photo';
+  root: string;
+  force: boolean;
+  configId: string;
+  batchSize: number;
+  candidates: number;
+  analysed: number;
+  failed: number;
+  skippedExisting: number;
+  splitRetries: number;
+}
+
+interface PhotoAnalysisItem {
+  fingerprint: string;
+  fileName: string;
+  currentPath: string;
+  proxyPath: string;
+}
+
+export const resolvePhotoAnalyzerOptions = async (
+  deps: PhotosDeps,
+  root: string,
+): Promise<Result<{
+  provider: AnalyzerProviderConfig;
+  outputLanguage: AppConfig['output_language'];
+  tagLanguage: AppConfig['tag_language'];
+  timeoutSeconds: number;
+}, AppError>> => {
+  const stored = await resolveConfigValues(deps.config, root);
+  if (!stored.ok) return stored;
+  const effective = stored.value.effective;
+  let provider: AnalyzerProviderConfig;
+  try {
+    provider = analyzerProviderConfigSchema.parse(JSON.parse(effective.analyzer_provider));
+  } catch {
+    return { ok: false, error: appError('invalid_config_value', 'analyzer_provider does not match the config schema') };
+  }
+  return ok({
+    provider,
+    outputLanguage: outputLanguageSchema.parse(effective.output_language),
+    tagLanguage: outputLanguageSchema.parse(effective.tag_language),
+    timeoutSeconds: configValueSchema.shape.timeout.parse(effective.timeout),
+  });
+};
+
+export const enqueuePhotoProcess = async (
+  deps: PhotosDeps,
+  input: { root: string; force: boolean; batchSize: number | null },
+): Promise<Result<{ jobId: string }, AppError>> => {
+  const root = deps.fs.resolve(input.root);
+  const exists = await deps.fs.exists(root);
+  if (!exists.ok) return exists;
+  if (!exists.value) return { ok: false, error: appError('folder_not_found', `Root not found: ${root}`) };
+  const directory = await deps.fs.isDirectory(root);
+  if (!directory.ok) return directory;
+  if (!directory.value) return { ok: false, error: appError('not_a_directory', `Root is not a directory: ${root}`) };
+
+  return deps.jobs.enqueue({
+    kind: 'photo_process',
+    payload: { root, force: input.force, batchSize: input.batchSize },
+    resourceKey: `photo-process:${root}`,
+    run: (context) => runPhotoProcess(deps, { root, force: input.force, batchSize: input.batchSize }, context),
+  });
+};
+
+const photoLabelFor = (descriptor: PhotoConfigDescriptor): string =>
+  `${descriptor.providerId} · ${descriptor.model ?? descriptor.modelTag ?? descriptor.promptStyle ?? 'unknown'} · ${descriptor.output_language}`;
+
+const modelLabelFor = (provider: AnalyzerProviderConfig): string | null => {
+  switch (provider.family) {
+    case 'api':
+      return provider.model;
+    case 'harness':
+      return provider.model ?? provider.promptStyle;
+    case 'local':
+      return provider.modelTag;
+    case 'gemini-native':
+      return provider.model;
+  }
+};
+
+const recordPhotoSpendEstimate = async (
+  ledger: SpendLedgerPort | undefined,
+  providerId: string,
+  photoPath: string,
+  runId: string,
+  recordedAt: Date,
+  estimate: GeminiCostEstimate,
+): Promise<Result<void, AppError>> => {
+  if (ledger === undefined) return ok(undefined);
+  const entry = spendLedgerEntrySchema.safeParse({
+    ...estimate,
+    schemaVersion: 1,
+    recordedAt: recordedAt.toISOString(),
+    month: spendMonth(recordedAt),
+    providerId,
+    videoPath: photoPath,
+    runId,
+  });
+  if (!entry.success) {
+    return { ok: false, error: appError('internal', 'Gemini spend estimate does not match the ledger schema') };
+  }
+  return ledger.append(entry.data);
+};
+
+interface CascadeCounters {
+  analysed: number;
+  failed: number;
+  calls: number;
+  topLevelCalls: number;
+}
+
+interface CascadeContext {
+  configId: string;
+  budgetUsd: number | null;
+  totalCandidates: number;
+  state: { run: PhotoRunRecord };
+  counters: CascadeCounters;
+  progress: JobExecutionContext | undefined;
+  provider: AnalyzerProviderConfig;
+  outputLanguage: AppConfig['output_language'];
+  tagLanguage: AppConfig['tag_language'];
+  timeoutSeconds: number;
+}
+
+const pauseForPhotoBudget = async (
+  deps: PhotosDeps,
+  ctx: CascadeContext,
+  exceeded: BudgetExceeded,
+): Promise<Result<never, AppError>> => {
+  const persisted = await deps.photos.updatePhotoRun(ctx.state.run);
+  if (!persisted.ok) return persisted;
+  const flushed = await deps.photos.flush();
+  if (!flushed.ok) return flushed;
+  const reported = await report(ctx.progress, 'budget_cap_reached', {
+    provider: 'gemini',
+    month: exceeded.month,
+    budgetUsd: exceeded.budgetUsd,
+    estimatedSpendUsd: exceeded.estimatedSpendUsd,
+    estimated: true,
+    runId: ctx.state.run.runId,
+  });
+  if (!reported.ok) return reported;
+  return {
+    ok: false,
+    error: appError(
+      'drive_run_aborted',
+      `Paused photos process because the local Gemini cost estimate for ${exceeded.month} is $${exceeded.estimatedSpendUsd.toFixed(4)} `
+      + `against the $${exceeded.budgetUsd.toFixed(2)} budget. Raise or unset gemini_monthly_budget_usd and re-run the same root to resume.`,
+      { runId: ctx.state.run.runId, month: exceeded.month, budgetUsd: exceeded.budgetUsd, estimatedSpendUsd: exceeded.estimatedSpendUsd },
+    ),
+  };
+};
+
+const failPhotoBatch = async (
+  deps: PhotosDeps,
+  items: readonly PhotoAnalysisItem[],
+  ctx: CascadeContext,
+  code: AppError['code'],
+): Promise<Result<void, AppError>> => {
+  const split = splitPhotoBatch(items);
+  if (split === null) {
+    const item = items[0];
+    ctx.counters.failed += 1;
+    ctx.state.run = { ...ctx.state.run, filesFailed: ctx.state.run.filesFailed + 1, lastActivityAt: new Date().toISOString() };
+    if (item !== undefined) {
+      const reported = await report(ctx.progress, 'photo-analysis-failed', { path: item.currentPath, fingerprint: item.fingerprint, code });
+      if (!reported.ok) return reported;
+    }
+    return ok(undefined);
+  }
+  const [first, second] = split;
+  const firstResult = await runPhotoAnalysisCascade(deps, first, ctx, false);
+  if (!firstResult.ok) return firstResult;
+  return runPhotoAnalysisCascade(deps, second, ctx, false);
+};
+
+export const runPhotoAnalysisCascade = async (
+  deps: PhotosDeps,
+  items: readonly PhotoAnalysisItem[],
+  ctx: CascadeContext,
+  isTopLevel = true,
+): Promise<Result<void, AppError>> => {
+  const exceeded = await monthlyBudgetExceeded(deps, ctx.budgetUsd, new Date());
+  if (!exceeded.ok) return exceeded;
+  if (exceeded.value !== null) return pauseForPhotoBudget(deps, ctx, exceeded.value);
+
+  if (isTopLevel) ctx.counters.topLevelCalls += 1;
+  ctx.counters.calls += 1;
+  const analyzeInput: { items: AnalyzePhotoItem[] } = {
+    items: items.map((item) => ({ fingerprint: item.fingerprint, fileName: item.fileName, proxyPath: item.proxyPath })),
+  };
+  const analyzeResult = await deps.analyzer.analyzePhotos({
+    ...analyzeInput,
+    provider: ctx.provider,
+    outputLanguage: ctx.outputLanguage,
+    tagLanguage: ctx.tagLanguage,
+    timeoutSeconds: ctx.timeoutSeconds,
+    verbose: false,
+    signal: ctx.progress?.signal,
+  });
+
+  if (!analyzeResult.ok) {
+    if (ctx.progress?.signal.aborted === true) return analyzeResult;
+    return failPhotoBatch(deps, items, ctx, analyzeResult.error.code);
+  }
+
+  const parsed = parsePhotoBatchResponse(analyzeResult.value.rawResponse, items.length);
+  if (!parsed.ok) return failPhotoBatch(deps, items, ctx, parsed.error.code);
+
+  for (const element of parsed.value) {
+    const item = items[element.index - 1];
+    if (item === undefined) continue;
+    const recorded = await deps.photos.recordPhotoAnalysis({
+      fingerprint: item.fingerprint,
+      configId: ctx.configId,
+      description: element.description,
+      scene: element.scene,
+      quality: element.quality,
+      language: ctx.outputLanguage,
+      analyzer: ctx.provider.family,
+      model: modelLabelFor(ctx.provider),
+      batchSize: items.length,
+      usageJson: analyzeResult.value.usage === undefined ? null : JSON.stringify(analyzeResult.value.usage),
+      tags: element.tags,
+      createdAt: new Date().toISOString(),
+    });
+    if (!recorded.ok) return recorded;
+    ctx.counters.analysed += 1;
+    ctx.state.run = { ...ctx.state.run, filesDone: ctx.state.run.filesDone + 1, lastActivityAt: new Date().toISOString() };
+    const reportedFile = await report(ctx.progress, 'photo-analysed', {
+      fingerprint: item.fingerprint,
+      path: item.currentPath,
+      current: ctx.counters.analysed,
+      total: ctx.totalCandidates,
+    });
+    if (!reportedFile.ok) return reportedFile;
+  }
+
+  if (analyzeResult.value.usage !== undefined) {
+    const usage = analyzeResult.value.usage;
+    const reportedUsage = await report(ctx.progress, 'photo-analysis-usage', {
+      fingerprints: items.map((item) => item.fingerprint),
+      model: usage.model,
+      usage: {
+        promptTokens: usage.promptTokens,
+        billedOutputTokens: usage.billedOutputTokens,
+        totalTokens: usage.totalTokens,
+        estimatedCostUsd: usage.estimatedCostUsd,
+      },
+    });
+    if (!reportedUsage.ok) return reportedUsage;
+    const estimate = geminiCostEstimateFromUsage(usage);
+    if (estimate !== null) {
+      const spendRecorded = await recordPhotoSpendEstimate(
+        deps.spendLedger,
+        ctx.provider.providerId,
+        items[0]?.proxyPath ?? '',
+        ctx.state.run.runId,
+        new Date(),
+        estimate,
+      );
+      if (!spendRecorded.ok) return spendRecorded;
+    }
+  }
+  return ok(undefined);
+};
+
+export const runPhotoProcess = async (
+  deps: PhotosDeps,
+  input: { root: string; force: boolean; batchSize: number | null },
+  progress?: JobExecutionContext,
+): Promise<Result<PhotoProcessSummary, AppError>> => {
+  const root = deps.fs.resolve(input.root);
+  const options = await resolvePhotoAnalyzerOptions(deps, root);
+  if (!options.ok) return options;
+  const descriptor = buildPhotoConfigDescriptor({
+    analyzer_provider: options.value.provider,
+    output_language: options.value.outputLanguage,
+    tag_language: options.value.tagLanguage,
+  }, PHOTO_ANALYSIS_PROMPT_VERSION);
+  const configId = photoConfigId(descriptor);
+  const batchSize = clampPhotoBatchSize(descriptor.family, input.batchSize);
+  const now = new Date().toISOString();
+
+  const upserted = await deps.photos.upsertAnalysisConfig({
+    configId,
+    descriptorJson: canonicalJson(descriptor),
+    label: photoLabelFor(descriptor),
+    now,
+  });
+  if (!upserted.ok) return upserted;
+
+  const candidatesResult = await deps.photos.listAnalysisCandidates(root, configId, input.force);
+  if (!candidatesResult.ok) return candidatesResult;
+  const { candidates, alreadyAnalysed } = candidatesResult.value;
+  const scanReported = await report(progress, 'photo-analysis-scanning', {
+    root,
+    configId,
+    candidates: candidates.length,
+    skippedExisting: alreadyAnalysed,
+  });
+  if (!scanReported.ok) return scanReported;
+
+  const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  const items: PhotoAnalysisItem[] = candidates.map((candidate) => ({
+    fingerprint: candidate.fingerprint,
+    fileName: candidate.fileName,
+    currentPath: candidate.currentPath,
+    proxyPath: photoProxyPath(deps.fs, artifactsRoot, candidate.fingerprint),
+  }));
+
+  const runId = `photo-run-${String(Date.now())}-${Math.random().toString(36).slice(2, 10)}`;
+  const state: { run: PhotoRunRecord } = {
+    run: {
+      runId,
+      root,
+      stage: 'process',
+      startedAt: now,
+      finishedAt: null,
+      filesTotal: items.length,
+      filesDone: 0,
+      filesSkipped: 0,
+      filesFailed: 0,
+      lastActivityAt: now,
+      batchJson: null,
+    },
+  };
+  const started = await deps.photos.startPhotoRun(state.run);
+  if (!started.ok) return started;
+
+  const budgetUsd = await geminiMonthlyBudget(deps);
+  if (!budgetUsd.ok) return budgetUsd;
+
+  const counters: CascadeCounters = { analysed: 0, failed: 0, calls: 0, topLevelCalls: 0 };
+  const storeBatches = chunk(items, PHOTO_SCAN_BATCH_SIZE);
+
+  for (const storeBatch of storeBatches) {
+    if (progress?.signal.aborted === true) {
+      return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
+    }
+    const batchResult = await deps.photos.withBatch(async (): Promise<Result<void, AppError>> => {
+      const analyzerBatches = chunk(storeBatch, batchSize);
+      for (const analyzerBatch of analyzerBatches) {
+        const cascadeResult = await runPhotoAnalysisCascade(deps, analyzerBatch, {
+          configId,
+          budgetUsd: budgetUsd.value,
+          totalCandidates: items.length,
+          state,
+          counters,
+          progress,
+          provider: options.value.provider,
+          outputLanguage: options.value.outputLanguage,
+          tagLanguage: options.value.tagLanguage,
+          timeoutSeconds: options.value.timeoutSeconds,
+        });
+        if (!cascadeResult.ok) return cascadeResult;
+      }
+      return deps.photos.updatePhotoRun(state.run);
+    });
+    if (!batchResult.ok) return batchResult;
+  }
+
+  const finishedAt = new Date().toISOString();
+  state.run = { ...state.run, finishedAt, lastActivityAt: finishedAt };
+  const finalUpdate = await deps.photos.updatePhotoRun(state.run);
+  if (!finalUpdate.ok) return finalUpdate;
+  const flushed = await deps.photos.flush();
+  if (!flushed.ok) return flushed;
+  const summaryReported = await report(progress, 'photo-process-summary', { root, configId });
+  if (!summaryReported.ok) return summaryReported;
+
+  return ok({
+    media: 'photo',
+    root,
+    force: input.force,
+    configId,
+    batchSize,
+    candidates: candidates.length,
+    analysed: counters.analysed,
+    failed: counters.failed,
+    skippedExisting: alreadyAnalysed,
+    splitRetries: counters.calls - counters.topLevelCalls,
+  });
 };

@@ -20,6 +20,7 @@ import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.j
 import {
   appError,
   canonicalPath,
+  normalizeTagList,
   ok,
   photoExtensionSchema,
   type AppError,
@@ -28,6 +29,8 @@ import {
   type Result,
 } from '@core/domain/index.js';
 import type {
+  PhotoAnalysisCandidate,
+  PhotoAnalysisCandidates,
   PhotoDetail,
   PhotoFolderRecord,
   PhotoListItem,
@@ -38,13 +41,19 @@ import type {
   PhotoSightingRecord,
   PhotosCounts,
   PhotosStore,
+  RecordPhotoAnalysisInput,
 } from '@core/server/index.js';
 
 import {
   createPhotosSchemaSqlV1,
+  photoAnalyses,
+  photoAnalysisConfigs,
+  photoFileTags,
   photoFolders,
   photoPaths,
   photoRuns,
+  photoTagAliases,
+  photoTags,
   photos,
   photosSchema,
   photosSchemaMeta,
@@ -190,7 +199,7 @@ export class SqlJsPhotosStore implements PhotosStore {
   }
 
   async upsertPhoto(photo: PhotoRecord): Promise<Result<void, AppError>> {
-    return this.write((db) => {
+    return this.write((db, client) => {
       const row = photoToRow(photo);
       db.insert(photos)
         .values(row)
@@ -199,6 +208,9 @@ export class SqlJsPhotosStore implements PhotosStore {
           set: row,
         })
         .run();
+      if (photoSearchDocumentId(client, photo.fingerprint) !== null) {
+        syncPhotoSearchDocument(db, client, photo.fingerprint);
+      }
     });
   }
 
@@ -282,7 +294,10 @@ export class SqlJsPhotosStore implements PhotosStore {
               SELECT fingerprint FROM photo_paths
               WHERE fingerprint IN (SELECT fingerprint FROM photos WHERE ${scope.where})
               GROUP BY fingerprint HAVING COUNT(*) > 1
-            )) AS duplicates
+            )) AS duplicates,
+            (SELECT COUNT(*) FROM photos WHERE (${scope.where}) AND EXISTS (
+              SELECT 1 FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint
+            )) AS analysed
           FROM photos WHERE ${scope.where}`,
         scope.params,
       );
@@ -296,6 +311,7 @@ export class SqlJsPhotosStore implements PhotosStore {
         duplicates: numberValue(row[7]),
         proxied: numberValue(row[4]),
         proxyFailed: numberValue(row[5]),
+        analysed: numberValue(row[8]),
       };
     });
   }
@@ -437,6 +453,93 @@ export class SqlJsPhotosStore implements PhotosStore {
       const sightings = sightingRows.map(rowToSighting).sort((left, right) =>
         right.lastSeenAt.localeCompare(left.lastSeenAt) || left.currentPath.localeCompare(right.currentPath));
       return { photo: rowToPhoto(row), sightings };
+    });
+  }
+
+  async listAnalysisCandidates(root: string, configId: string, force: boolean): Promise<Result<PhotoAnalysisCandidates, AppError>> {
+    return this.read((_db, client) => {
+      const canonicalRoot = canonicalPath(root);
+      const scope = scopeForRoot(canonicalRoot);
+      const rows = client.exec(
+        `SELECT fingerprint, file_name, current_path,
+                EXISTS (SELECT 1 FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId) AS analysed
+         FROM photos
+         WHERE missing_at IS NULL AND proxy_state = 'done' AND (${scope.where})
+         ORDER BY current_path ASC`,
+        { ...scope.params, $configId: configId },
+      );
+      const candidates: PhotoAnalysisCandidate[] = [];
+      let alreadyAnalysed = 0;
+      for (const row of rows[0]?.values ?? []) {
+        const analysed = numberValue(row[3]) === 1;
+        if (analysed && !force) {
+          alreadyAnalysed += 1;
+          continue;
+        }
+        candidates.push({
+          fingerprint: stringValue(row[0]),
+          fileName: stringValue(row[1]),
+          currentPath: canonicalPath(stringValue(row[2])),
+        });
+      }
+      return { candidates, alreadyAnalysed };
+    });
+  }
+
+  async upsertAnalysisConfig(input: { configId: string; descriptorJson: string; label: string; now: string }): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      const existing = db.select().from(photoAnalysisConfigs).where(eq(photoAnalysisConfigs.configId, input.configId)).get();
+      db.insert(photoAnalysisConfigs)
+        .values({
+          configId: input.configId,
+          descriptorJson: input.descriptorJson,
+          label: input.label,
+          firstSeenAt: existing?.firstSeenAt ?? input.now,
+          lastUsedAt: input.now,
+        })
+        .onConflictDoUpdate({
+          target: photoAnalysisConfigs.configId,
+          set: { descriptorJson: input.descriptorJson, label: input.label, lastUsedAt: input.now },
+        })
+        .run();
+    });
+  }
+
+  async recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>> {
+    return this.write((db, client) => {
+      runPhotosTransaction(client, () => {
+        db.insert(photoAnalyses)
+          .values({
+            fingerprint: input.fingerprint,
+            configId: input.configId,
+            description: input.description,
+            scene: input.scene,
+            quality: input.quality,
+            language: input.language,
+            analyzer: input.analyzer,
+            model: input.model,
+            batchSize: input.batchSize,
+            createdAt: input.createdAt,
+            usageJson: input.usageJson,
+          })
+          .onConflictDoUpdate({
+            target: [photoAnalyses.fingerprint, photoAnalyses.configId],
+            set: {
+              description: input.description,
+              scene: input.scene,
+              quality: input.quality,
+              language: input.language,
+              analyzer: input.analyzer,
+              model: input.model,
+              batchSize: input.batchSize,
+              createdAt: input.createdAt,
+              usageJson: input.usageJson,
+            },
+          })
+          .run();
+        setPhotoVariantTags(db, input.fingerprint, input.configId, input.tags);
+        syncPhotoSearchDocument(db, client, input.fingerprint);
+      });
     });
   }
 
@@ -757,6 +860,128 @@ const sightingToRow = (sighting: PhotoSightingRecord): typeof photoPaths.$inferI
   mtimeMs: sighting.mtimeMs,
   lastSeenAt: sighting.lastSeenAt,
 });
+
+const resolveSelectedPhotoAnalysis = (
+  db: PhotosDrizzle,
+  fingerprint: string,
+): (typeof photoAnalyses.$inferSelect) | undefined => {
+  const photoRow = db.select().from(photos).where(eq(photos.fingerprint, fingerprint)).get();
+  if (photoRow === undefined) return undefined;
+  const folderRow = db.select().from(photoFolders).where(eq(photoFolders.folderId, photoRow.folderId)).get();
+  const rows = db.select().from(photoAnalyses).where(eq(photoAnalyses.fingerprint, fingerprint)).all();
+  const explicit = rows.find((row) => row.configId === photoRow.selectedConfigId);
+  if (explicit !== undefined) return explicit;
+  const folderDefault = rows.find((row) => row.configId === folderRow?.defaultConfigId);
+  if (folderDefault !== undefined) return folderDefault;
+  return [...rows].sort((left, right) =>
+    right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+};
+
+const tagsForPhotoVariant = (db: PhotosDrizzle, fingerprint: string, configIdValue: string): string[] => {
+  const rows = db.select().from(photoFileTags)
+    .where(and(eq(photoFileTags.fingerprint, fingerprint), eq(photoFileTags.configId, configIdValue)))
+    .all();
+  const names: string[] = [];
+  for (const row of rows) {
+    const tag = db.select().from(photoTags).where(eq(photoTags.tagId, row.tagId)).get();
+    if (tag !== undefined) names.push(tag.name);
+  }
+  return names.sort((left, right) => left.localeCompare(right));
+};
+
+const resolveCanonicalPhotoTag = (db: PhotosDrizzle, name: string): typeof photoTags.$inferSelect => {
+  const alias = db.select().from(photoTagAliases).where(eq(photoTagAliases.alias, name)).get();
+  if (alias !== undefined) {
+    const canonical = db.select().from(photoTags).where(eq(photoTags.tagId, alias.tagId)).get();
+    if (canonical !== undefined) return canonical;
+  }
+  db.insert(photoTags).values({ name }).onConflictDoNothing().run();
+  const row = db.select().from(photoTags).where(eq(photoTags.name, name)).get();
+  if (row === undefined) throw new Error(`Could not create photo tag: ${name}`);
+  return row;
+};
+
+const setPhotoVariantTags = (
+  db: PhotosDrizzle,
+  fingerprint: string,
+  configIdValue: string,
+  values: readonly string[],
+): void => {
+  db.delete(photoFileTags)
+    .where(and(eq(photoFileTags.fingerprint, fingerprint), eq(photoFileTags.configId, configIdValue)))
+    .run();
+  for (const name of normalizeTagList(values)) {
+    const tag = resolveCanonicalPhotoTag(db, name);
+    db.insert(photoFileTags)
+      .values({ fingerprint, configId: configIdValue, tagId: tag.tagId })
+      .onConflictDoNothing()
+      .run();
+  }
+};
+
+const photoSearchDocumentId = (client: Database, fingerprint: string): number | null => {
+  const result = client.exec('SELECT docid FROM photo_search_documents WHERE fingerprint = ?', [fingerprint]);
+  const value = result[0]?.values[0]?.[0];
+  return typeof value === 'number' ? value : null;
+};
+
+const deletePhotoSearchDocument = (client: Database, fingerprint: string): void => {
+  const docid = photoSearchDocumentId(client, fingerprint);
+  if (docid === null) return;
+  client.run('DELETE FROM photo_search_documents_fts WHERE docid = $docid', { $docid: docid });
+  client.run('DELETE FROM photo_search_documents WHERE docid = $docid', { $docid: docid });
+};
+
+const syncPhotoSearchDocument = (db: PhotosDrizzle, client: Database, fingerprint: string): void => {
+  const photoRow = db.select().from(photos).where(eq(photos.fingerprint, fingerprint)).get();
+  if (photoRow === undefined) {
+    deletePhotoSearchDocument(client, fingerprint);
+    return;
+  }
+  const selected = resolveSelectedPhotoAnalysis(db, fingerprint);
+  const document = {
+    fingerprint,
+    fileName: photoRow.fileName,
+    description: selected?.description ?? '',
+    tagsText: selected === undefined ? '' : tagsForPhotoVariant(db, fingerprint, selected.configId).join('\n'),
+    place: [photoRow.placeName, photoRow.placeRegion, photoRow.placeCountry]
+      .filter((value): value is string => value !== null)
+      .join('\n'),
+  };
+  const existingDocid = photoSearchDocumentId(client, fingerprint);
+  if (existingDocid !== null) {
+    client.run('DELETE FROM photo_search_documents_fts WHERE docid = $docid', { $docid: existingDocid });
+  }
+  client.run(
+    `INSERT INTO photo_search_documents (fingerprint, file_name, description, tags_text, place)
+      VALUES ($fingerprint, $fileName, $description, $tagsText, $place)
+      ON CONFLICT(fingerprint) DO UPDATE SET
+        file_name = excluded.file_name,
+        description = excluded.description,
+        tags_text = excluded.tags_text,
+        place = excluded.place`,
+    {
+      $fingerprint: document.fingerprint,
+      $fileName: document.fileName,
+      $description: document.description,
+      $tagsText: document.tagsText,
+      $place: document.place,
+    },
+  );
+  const docid = photoSearchDocumentId(client, fingerprint);
+  if (docid === null) throw new Error(`Could not create photo search document: ${fingerprint}`);
+  client.run(
+    `INSERT INTO photo_search_documents_fts (docid, file_name, description, tags_text, place)
+      VALUES ($docid, $fileName, $description, $tagsText, $place)`,
+    {
+      $docid: docid,
+      $fileName: document.fileName,
+      $description: document.description,
+      $tagsText: document.tagsText,
+      $place: document.place,
+    },
+  );
+};
 
 const runToRow = (run: PhotoRunRecord): typeof photoRuns.$inferInsert => ({
   runId: run.runId,

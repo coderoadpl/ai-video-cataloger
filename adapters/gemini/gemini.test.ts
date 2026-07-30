@@ -1,7 +1,8 @@
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterAll, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 
 import {
   analyzerProviderConfigSchema,
@@ -322,6 +323,123 @@ describe('analyze — inline path', () => {
     const result = await adapter.analyze(analyzeInput());
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('provider_error');
+  });
+});
+
+const generateContentBodySchema = z.object({
+  contents: z.array(z.object({
+    parts: z.array(z.union([
+      z.object({ inline_data: z.object({ mime_type: z.string(), data: z.string() }) }),
+      z.object({ text: z.string() }),
+    ])),
+  })),
+});
+
+describe('analyzePhotos', () => {
+  const photoTempRoots: string[] = [];
+
+  afterAll(async () => {
+    await Promise.all(photoTempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    photoTempRoots.length = 0;
+  });
+
+  const photoTempRoot = async (): Promise<string> => {
+    const root = await mkdtemp(path.join(tmpdir(), 'gemini-photos-'));
+    photoTempRoots.push(root);
+    return root;
+  };
+
+  const bodyRecordingFetch = (
+    handler: (body: unknown, index: number) => Response,
+  ): { fetchImpl: typeof fetch; bodies: unknown[] } => {
+    const bodies: unknown[] = [];
+    const fetchImpl: typeof fetch = (_input, init) => {
+      const parsed: unknown = typeof init?.body === 'string' ? JSON.parse(init.body) : null;
+      const index = bodies.length;
+      bodies.push(parsed);
+      return Promise.resolve(handler(parsed, index));
+    };
+    return { fetchImpl, bodies };
+  };
+
+  it('sends one inline_data part per photo plus one text part and propagates usage', async () => {
+    const root = await photoTempRoot();
+    const photoOne = path.join(root, 'a.jpg');
+    const photoTwo = path.join(root, 'b.jpg');
+    await writeFile(photoOne, Buffer.from('photo-one'));
+    await writeFile(photoTwo, Buffer.from('photo-two'));
+    const { fetchImpl, bodies } = bodyRecordingFetch(() =>
+      jsonResponse({
+        candidates: [{ content: { parts: [{ text: '[]' }] } }],
+        usageMetadata: { promptTokenCount: 100, candidatesTokenCount: 20, thoughtsTokenCount: 0 },
+      }));
+    const adapter = new GeminiNativeAnalyzerAdapter({ credentials: fakeCredentials('key'), fetchImpl });
+
+    const result = await adapter.analyzePhotos({
+      items: [
+        { fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: photoOne },
+        { fingerprint: 'fp2', fileName: 'b.jpg', proxyPath: photoTwo },
+      ],
+      provider: geminiProvider(),
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.usage?.billedOutputTokens).toBe(20);
+    const body = generateContentBodySchema.parse(bodies[0]);
+    const parts = body.contents[0]?.parts ?? [];
+    const inlineParts = parts.filter((part) => 'inline_data' in part);
+    const textParts = parts.filter((part) => 'text' in part);
+    expect(inlineParts).toHaveLength(2);
+    expect(textParts).toHaveLength(1);
+  });
+
+  it('rejects an oversize payload with provider_error', async () => {
+    const root = await photoTempRoot();
+    const bigPhoto = path.join(root, 'big.jpg');
+    await writeFile(bigPhoto, Buffer.alloc(21 * 1024 * 1024));
+    const { fetchImpl } = bodyRecordingFetch(() => jsonResponse({}));
+    const adapter = new GeminiNativeAnalyzerAdapter({ credentials: fakeCredentials('key'), fetchImpl });
+
+    const result = await adapter.analyzePhotos({
+      items: [{ fingerprint: 'fp1', fileName: 'big.jpg', proxyPath: bigPhoto }],
+      provider: geminiProvider(),
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'provider_error' } });
+  });
+
+  it('rejects a non-gemini-native provider and a missing credential', async () => {
+    const adapter = new GeminiNativeAnalyzerAdapter({ credentials: fakeCredentials(null) });
+    const localProvider = { family: 'local', providerId: 'local', modelTag: 'gemma3:12b' } as const;
+
+    const wrongFamily = await adapter.analyzePhotos({
+      items: [{ fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: '/work/a.jpg' }],
+      provider: localProvider,
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+    expect(wrongFamily).toMatchObject({ ok: false, error: { code: 'invalid_config_value' } });
+
+    const missingCredential = await adapter.analyzePhotos({
+      items: [{ fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: '/work/a.jpg' }],
+      provider: geminiProvider(),
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+    expect(missingCredential).toMatchObject({ ok: false, error: { code: 'missing_api_key' } });
   });
 });
 

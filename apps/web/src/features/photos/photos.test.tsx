@@ -76,7 +76,7 @@ const detailFor = (item: PhotoListItem): PhotoDetail => ({
 const stubPhotos = (input: {
   roots?: { root: string; photos: number; missing: number; lastScanAt: string }[];
   items?: PhotoListItem[];
-  counts?: { photos: number; paths: number; proxied: number; proxyFailed: number };
+  counts?: { photos: number; paths: number; proxied: number; proxyFailed: number; analysed?: number };
 }) => {
   const items = input.items ?? [];
   server.use(
@@ -96,6 +96,7 @@ const stubPhotos = (input: {
           duplicates: 0,
           proxied: input.counts?.proxied ?? items.length,
           proxyFailed: input.counts?.proxyFailed ?? 0,
+          analysed: input.counts?.analysed ?? 0,
         },
       },
     })),

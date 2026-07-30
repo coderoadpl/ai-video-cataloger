@@ -42,6 +42,7 @@ import {
   aliasTag,
   enqueuePhotoScan,
   enqueuePhotoProxies,
+  enqueuePhotoProcess,
   photosDetail,
   photosForget,
   photosList,
@@ -609,6 +610,17 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.photosProxies.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.photosProxies.output);
     return respond(await withCatalogWriteLockForJob(deps, () => enqueuePhotoProxies(deps, input.value)), API_ROUTES.photosProxies.output);
+  });
+
+  app.post(API_ROUTES.photosProcess.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosProcess.output);
+    const input = parseInput(API_ROUTES.photosProcess.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosProcess.output);
+    return respond(
+      await withCatalogWriteLockForJob(deps, () => enqueuePhotoProcess(deps, { ...input.value, batchSize: input.value.batchSize ?? null })),
+      API_ROUTES.photosProcess.output,
+    );
   });
 
   app.get(API_ROUTES.photosTree.path, async () => {

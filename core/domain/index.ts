@@ -1,5 +1,7 @@
 export * from './config.js';
 export * from './config-descriptor.js';
+export * from './photo-config-descriptor.js';
+export * from './photo-analysis.js';
 export * from './api-cost.js';
 export * from './gemini-cost.js';
 export * from './models.js';

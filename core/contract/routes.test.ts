@@ -791,4 +791,25 @@ describe('route schemas', () => {
     const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
     expect(acceptingCount).toBe(1);
   });
+
+  it('round-trips photoProcessSummarySchema through jobResultSchema with the media discriminator, and every other member rejects it (P2)', () => {
+    const sample = {
+      media: 'photo' as const,
+      root: '/photos',
+      force: false,
+      configId: 'cfg_ab12cd34ef56',
+      batchSize: 12,
+      candidates: 10,
+      analysed: 8,
+      failed: 1,
+      skippedExisting: 1,
+      splitRetries: 2,
+    };
+
+    const viaUnion = jobResultSchema.parse(sample);
+    expect(viaUnion).toEqual(sample);
+
+    const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
+    expect(acceptingCount).toBe(1);
+  });
 });

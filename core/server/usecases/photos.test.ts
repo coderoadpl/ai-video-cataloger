@@ -1,16 +1,28 @@
 import { describe, expect, it } from 'vitest';
 
 import { sha256Hex } from '@core/domain/sha256.js';
-import { appError, photoFingerprintFromSha256 } from '@core/domain/index.js';
+import {
+  appError,
+  defaultGeminiNativeProvider,
+  ok,
+  photoFingerprintFromSha256,
+  type AppError,
+  type Result,
+} from '@core/domain/index.js';
+import type { JobExecutionContext, JobProgress } from '../ports.js';
 
 import {
   FakeExifPort,
   FakePhotoMediaPort,
+  InMemoryAnalyzer,
+  InMemoryConfig,
   InMemoryFileSystem,
   InMemoryJobs,
   InMemoryPhotosStore,
+  InMemorySpendLedger,
 } from '../../../test/server/usecases/test-fakes.js';
 import {
+  enqueuePhotoProcess,
   enqueuePhotoProxies,
   enqueuePhotoScan,
   photosDetail,
@@ -18,6 +30,8 @@ import {
   photosList,
   photosStatus,
   photosTree,
+  resolvePhotoAnalyzerOptions,
+  runPhotoProcess,
   runPhotoProxiesPass,
   runPhotoScan,
   type PhotosDeps,
@@ -30,13 +44,29 @@ const buildDeps = (): {
   exif: FakeExifPort;
   jobs: InMemoryJobs;
   photoMedia: FakePhotoMediaPort;
+  config: InMemoryConfig;
+  analyzer: InMemoryAnalyzer;
+  spendLedger: InMemorySpendLedger;
 } => {
   const fs = new InMemoryFileSystem('/work');
   const photos = new InMemoryPhotosStore();
   const exif = new FakeExifPort();
   const jobs = new InMemoryJobs();
   const photoMedia = new FakePhotoMediaPort(fs);
-  return { deps: { photos, fs, exif, jobs, photoMedia }, fs, photos, exif, jobs, photoMedia };
+  const config = new InMemoryConfig();
+  const analyzer = new InMemoryAnalyzer();
+  const spendLedger = new InMemorySpendLedger();
+  return {
+    deps: { photos, fs, exif, jobs, photoMedia, config, analyzer, spendLedger },
+    fs,
+    photos,
+    exif,
+    jobs,
+    photoMedia,
+    config,
+    analyzer,
+    spendLedger,
+  };
 };
 
 const fingerprintOf = (content: string): string => photoFingerprintFromSha256(sha256Hex(content));
@@ -100,6 +130,74 @@ const seedPhoto = async (photos: InMemoryPhotosStore, fingerprint: string, curre
     lastSeenAt: now,
   });
 };
+
+const seedAnalysisReadyPhoto = async (photos: InMemoryPhotosStore, fingerprint: string, currentPath: string): Promise<void> => {
+  const now = '2026-01-01T00:00:00.000Z';
+  await photos.upsertFolder({
+    folderId: 'folder-1',
+    currentPath: '/work/photos',
+    displayName: 'photos',
+    firstSeenAt: now,
+    lastSeenAt: now,
+    defaultConfigId: null,
+  });
+  await photos.upsertPhoto({
+    fingerprint,
+    folderId: 'folder-1',
+    fileName: currentPath.split('/').pop() ?? currentPath,
+    currentPath,
+    ext: 'jpg',
+    size: 1,
+    width: null,
+    height: null,
+    orientation: null,
+    cameraMake: null,
+    cameraModel: null,
+    lens: null,
+    iso: null,
+    fNumber: null,
+    exposureTime: null,
+    exifRating: null,
+    capturedAt: now,
+    capturedAtSource: 'file_mtime',
+    gpsLat: null,
+    gpsLon: null,
+    gpsSource: null,
+    gpsAccuracyM: null,
+    gpsIntervalKind: null,
+    gpsResolvedAt: null,
+    placeName: null,
+    placeRegion: null,
+    placeCountry: null,
+    placeCountryCode: null,
+    placeDistanceM: null,
+    placeDataset: null,
+    discoveredAt: now,
+    exifReadAt: now,
+    proxyState: 'done',
+    proxyWidth: 100,
+    proxyHeight: 100,
+    thumbState: 'done',
+    missingAt: null,
+    selectedConfigId: null,
+  });
+  await photos.upsertSighting({
+    fingerprint,
+    currentPath,
+    folderId: 'folder-1',
+    size: 1,
+    mtimeMs: 1,
+    lastSeenAt: now,
+  });
+};
+
+const recordingProgress = (events: JobProgress[]): JobExecutionContext => ({
+  signal: new AbortController().signal,
+  reportProgress: (progress: JobProgress): Promise<Result<void, AppError>> => {
+    events.push(progress);
+    return Promise.resolve(ok(undefined));
+  },
+});
 
 describe('runPhotoScan', () => {
   it('indexes new photos, deriving captured-at from file mtime when there is no EXIF', async () => {
@@ -504,5 +602,162 @@ describe('photosTree, photosList, photosDetail', () => {
 
     const missing = await photosDetail(deps, { fingerprint: 'ph_ffffffffffffffff' });
     expect(missing.ok && missing.value).toBeNull();
+  });
+});
+
+describe('resolvePhotoAnalyzerOptions', () => {
+  it('defaults to the legacy claude harness provider and resolves an explicit provider from config', async () => {
+    const { deps, config } = buildDeps();
+
+    const defaulted = await resolvePhotoAnalyzerOptions(deps, '/work/photos');
+    expect(defaulted.ok && defaulted.value.provider.family).toBe('harness');
+
+    await config.set({ kind: 'folder', folder: '/work/photos' }, 'analyzer_provider', JSON.stringify({
+      family: 'api', providerId: 'openai', baseUrl: 'https://api.openai.com/v1', apiKeyRef: 'openai', model: 'gpt-5.5', maxImageDetail: 'high',
+    }));
+    const resolved = await resolvePhotoAnalyzerOptions(deps, '/work/photos');
+    expect(resolved.ok && resolved.value.provider).toMatchObject({ family: 'api', providerId: 'openai' });
+  });
+});
+
+describe('runPhotoProcess', () => {
+  it('splits a malformed batch, records actual batch_size provenance, and completes ok (P4)', async () => {
+    const { deps, photos, analyzer } = buildDeps();
+    for (let index = 1; index <= 4; index += 1) {
+      await seedAnalysisReadyPhoto(photos, `ph_${String(index).padStart(16, '0')}`, `/work/photos/${String(index)}.jpg`);
+    }
+    analyzer.photoCallScripts = [
+      { kind: 'ok', rawResponse: 'not an array' },
+      { kind: 'ok', rawResponse: 'not an array' },
+      undefined,
+      { kind: 'ok', rawResponse: 'not an array' },
+      undefined,
+    ];
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: 4 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.candidates).toBe(4);
+    expect(result.value.analysed).toBe(3);
+    expect(result.value.failed).toBe(1);
+    expect(result.value.splitRetries).toBe(4);
+    const rowSizes = [...photos.analyses.values()].map((row) => row.batchSize).sort((left, right) => left - right);
+    expect(rowSizes).not.toContain(4);
+    expect(rowSizes.filter((size) => size === 1)).toHaveLength(1);
+  });
+
+  it('runs idempotently: a second run of the same config sees zero candidates, force overwrites, a different config adds a variant (P5)', async () => {
+    const { deps, photos, config } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+
+    const first = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+    expect(first.value.candidates).toBe(1);
+    expect(first.value.analysed).toBe(1);
+    const firstConfigId = first.value.configId;
+
+    const second = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.value.candidates).toBe(0);
+    expect(second.value.skippedExisting).toBe(1);
+    expect(second.value.configId).toBe(firstConfigId);
+
+    const forced = await runPhotoProcess(deps, { root: '/work/photos', force: true, batchSize: null });
+    expect(forced.ok).toBe(true);
+    if (!forced.ok) return;
+    expect(forced.value.candidates).toBe(1);
+    expect(forced.value.analysed).toBe(1);
+    expect([...photos.analyses.values()].filter((row) => row.configId === firstConfigId)).toHaveLength(1);
+
+    await config.set({ kind: 'folder', folder: '/work/photos' }, 'analyzer_provider', JSON.stringify({
+      family: 'api', providerId: 'openai', baseUrl: 'https://api.openai.com/v1', apiKeyRef: 'openai', model: 'gpt-5.5', maxImageDetail: 'high',
+    }));
+    const differentProvider = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    expect(differentProvider.ok).toBe(true);
+    if (!differentProvider.ok) return;
+    expect(differentProvider.value.configId).not.toBe(firstConfigId);
+    expect(differentProvider.value.candidates).toBe(1);
+    expect([...photos.analyses.values()].filter((row) => row.configId === firstConfigId)).toHaveLength(1);
+    expect([...photos.analyses.values()].filter((row) => row.configId === differentProvider.value.configId)).toHaveLength(1);
+  });
+
+  it('pauses when the monthly Gemini budget is exceeded, keeping already recorded rows and reporting budget_cap_reached (P6)', async () => {
+    const { deps, photos, config, analyzer, spendLedger } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000002', '/work/photos/b.jpg');
+    await config.set({ kind: 'folder', folder: '/work/photos' }, 'analyzer_provider', JSON.stringify(defaultGeminiNativeProvider()));
+    await config.set({ kind: 'home' }, 'gemini_monthly_budget_usd', '1');
+    const currentMonth = new Date().toISOString().slice(0, 7);
+    spendLedger.entries.push({
+      kind: 'estimate',
+      provider: 'gemini',
+      model: 'gemini-3.6-flash',
+      pricingMode: 'interactive',
+      promptTokens: 1_000_000,
+      candidatesTokens: 0,
+      thoughtsTokens: 0,
+      billedOutputTokens: 0,
+      totalTokens: 1_000_000,
+      inputPerMillionUsd: 10,
+      outputPerMillionUsd: 0,
+      estimatedCostUsd: 10,
+      schemaVersion: 1,
+      recordedAt: new Date().toISOString(),
+      month: currentMonth,
+      providerId: 'gemini',
+      videoPath: '/work/photos/prior.jpg',
+      runId: 'prior-run',
+    });
+    const events: JobProgress[] = [];
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null }, recordingProgress(events));
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('drive_run_aborted');
+    expect(events.some((event) => event.step === 'budget_cap_reached')).toBe(true);
+    expect(analyzer.analyzePhotosCalls).toHaveLength(0);
+    expect(photos.analyses.size).toBe(0);
+  });
+
+  it('does not pause under the budget cap or when unset', async () => {
+    const { deps, photos, config } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    await config.set({ kind: 'home' }, 'gemini_monthly_budget_usd', '1000');
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+
+    expect(result.ok).toBe(true);
+  });
+
+  it('fails with internal when a budget is set but no spend ledger dependency is available', async () => {
+    const { fs, photos, jobs, photoMedia, exif, config, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    await config.set({ kind: 'home' }, 'gemini_monthly_budget_usd', '1');
+    const deps = { fs, photos, jobs, photoMedia, exif, config, analyzer };
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+  });
+});
+
+describe('enqueuePhotoProcess', () => {
+  it('rejects a missing or non-directory root and enqueues a photo_process job otherwise', async () => {
+    const { deps, fs } = buildDeps();
+
+    const missing = await enqueuePhotoProcess(deps, { root: '/nope', force: false, batchSize: null });
+    expect(missing).toMatchObject({ ok: false, error: { code: 'folder_not_found' } });
+
+    fs.addFile('/work/file.jpg', { content: 'x' });
+    const notADirectory = await enqueuePhotoProcess(deps, { root: '/work/file.jpg', force: false, batchSize: null });
+    expect(notADirectory).toMatchObject({ ok: false, error: { code: 'not_a_directory' } });
+
+    fs.addDirectory('/work/photos');
+    const enqueued = await enqueuePhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    expect(enqueued.ok).toBe(true);
   });
 });

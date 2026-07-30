@@ -395,7 +395,8 @@ per-file calls):
   batching.
 - `AnalyzerBatchPort` (Gemini Batch API, half price) applies to photo runs
   exactly as to drive runs: `photo_runs.batch_json` holds the job mapping for
-  re-attach.
+  re-attach. Batch-API delivery for photo runs is deferred past Wave 3;
+  `photo_runs.batch_json` stays null until then.
 
 **Budget (challenge B8).** The monthly budget guard is currently private to
 `core/server/usecases/process-drive.ts` (`geminiMonthlyBudget`,

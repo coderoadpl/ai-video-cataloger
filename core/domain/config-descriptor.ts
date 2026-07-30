@@ -64,7 +64,7 @@ const configDescriptorShape = z.object({
 const analyzerFieldNames = ['model', 'modelTag', 'maxImageDetail', 'promptStyle', 'reasoningEffort'] as const;
 type AnalyzerFieldName = (typeof analyzerFieldNames)[number];
 
-const requiredAnalyzerFields = (
+export const requiredAnalyzerFields = (
   family: ConfigDescriptor['family'],
 ): readonly AnalyzerFieldName[] => {
   switch (family) {
@@ -214,7 +214,7 @@ export const buildConfigDescriptor = (input: ConfigInput, promptVersion: number)
   }
 };
 
-const canonicalJson = (value: unknown): string => {
+export const canonicalJson = (value: unknown): string => {
   if (value === null || typeof value === 'boolean' || typeof value === 'number' || typeof value === 'string') {
     return JSON.stringify(value);
   }

@@ -30,6 +30,8 @@ import { ReadinessCache } from '@core/server/index.js';
 import type {
   AlignedFaceCrop,
   AnalyzedFileLocation,
+  AnalyzePhotosInput,
+  AnalyzePhotosOutput,
   AnalyzerPort,
   ApplyGeoBackfillInput,
   ApplyGeoBackfillResult,
@@ -1263,6 +1265,17 @@ class InMemoryAnalyzerPort implements AnalyzerPort {
 
   analyze(): Promise<Result<{ rawResponse: string }, AppError>> {
     return Promise.resolve(ok({ rawResponse: 'DESCRIPTION: Placeholder analysis\nFILENAME: placeholder-video' }));
+  }
+
+  analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>> {
+    const elements = input.items.map((item, index) => ({
+      index: index + 1,
+      description: `photo:${item.fingerprint}`,
+      tags: ['placeholder'],
+      scene: 'other',
+      quality: 'good',
+    }));
+    return Promise.resolve(ok({ rawResponse: JSON.stringify(elements) }));
   }
 
   dependency(): Promise<Result<DependencyStatus, AppError>> {

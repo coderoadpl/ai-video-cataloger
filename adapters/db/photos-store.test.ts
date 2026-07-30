@@ -232,6 +232,7 @@ describe('SqlJsPhotosStore', () => {
       duplicates: 1,
       proxied: 0,
       proxyFailed: 0,
+      analysed: 0,
     });
     expect(scoped.ok && scoped.value).toEqual({
       photos: 1,
@@ -242,6 +243,7 @@ describe('SqlJsPhotosStore', () => {
       duplicates: 1,
       proxied: 0,
       proxyFailed: 0,
+      analysed: 0,
     });
   });
 
@@ -413,5 +415,110 @@ describe('SqlJsPhotosStore', () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe('snapshot_incompatible');
+  });
+
+  it('listAnalysisCandidates excludes proxy-pending and missing photos, includes a sighting owned elsewhere, and honours force (P7)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ proxyState: 'done' }));
+    await store.upsertSighting(sighting());
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg', proxyState: 'pending' }));
+    await store.upsertSighting(sighting({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000003', currentPath: '/media/photoscope/c.jpg', proxyState: 'done' }));
+    await store.upsertSighting(sighting({ fingerprint: 'ph_0000000000000003', currentPath: '/media/photos/copy-of-c.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000004', currentPath: '/media/photos/d.jpg', proxyState: 'done', missingAt: 1 }));
+
+    const initial = await store.listAnalysisCandidates('/media/photos', 'cfg_test', false);
+    expect(initial.ok).toBe(true);
+    if (!initial.ok) return;
+    expect(initial.value.candidates.map((candidate) => candidate.fingerprint).sort()).toEqual([
+      'ph_0000000000000001',
+      'ph_0000000000000003',
+    ]);
+    expect(initial.value.alreadyAnalysed).toBe(0);
+
+    const recorded = await store.recordPhotoAnalysis({
+      fingerprint: 'ph_0000000000000001',
+      configId: 'cfg_test',
+      description: 'a red bicycle leaning against a brick wall',
+      scene: 'urban',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      usageJson: null,
+      tags: ['bicycle', 'brick-wall'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(recorded.ok).toBe(true);
+
+    const afterAnalysis = await store.listAnalysisCandidates('/media/photos', 'cfg_test', false);
+    expect(afterAnalysis.ok).toBe(true);
+    if (!afterAnalysis.ok) return;
+    expect(afterAnalysis.value.candidates.map((candidate) => candidate.fingerprint)).toEqual(['ph_0000000000000003']);
+    expect(afterAnalysis.value.alreadyAnalysed).toBe(1);
+
+    const forced = await store.listAnalysisCandidates('/media/photos', 'cfg_test', true);
+    expect(forced.ok).toBe(true);
+    if (!forced.ok) return;
+    expect(forced.value.candidates.map((candidate) => candidate.fingerprint).sort()).toEqual([
+      'ph_0000000000000001',
+      'ph_0000000000000003',
+    ]);
+    expect(forced.value.alreadyAnalysed).toBe(0);
+  });
+
+  it('recordPhotoAnalysis writes the row, resolves tags, syncs the fts search document, and counts.analysed reflects it (P7)', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ proxyState: 'done' }));
+    await store.upsertSighting(sighting());
+
+    const upsertedConfig = await store.upsertAnalysisConfig({
+      configId: 'cfg_test',
+      descriptorJson: '{"kind":"photo"}',
+      label: 'harness · claude-code · en',
+      now: '2026-01-01T00:00:00.000Z',
+    });
+    expect(upsertedConfig.ok).toBe(true);
+
+    const recorded = await store.recordPhotoAnalysis({
+      fingerprint: photo().fingerprint,
+      configId: 'cfg_test',
+      description: 'a red bicycle leaning against a brick wall',
+      scene: 'urban',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      usageJson: null,
+      tags: ['bicycle', 'brick-wall'],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(recorded.ok).toBe(true);
+    await store.flush();
+
+    const counts = await store.counts(null);
+    expect(counts.ok && counts.value.analysed).toBe(1);
+
+    const SQL = await initSqlJs();
+    const client = new SQL.Database(fs.readFileSync(path.join(home, '.ai-video-cataloger', 'photos.db')));
+    const analysisRow = client.exec('SELECT description, scene, quality, batch_size FROM photo_analyses WHERE fingerprint = ? AND config_id = ?', [photo().fingerprint, 'cfg_test']);
+    expect(analysisRow[0]?.values[0]).toEqual(['a red bicycle leaning against a brick wall', 'urban', 'good', 1]);
+    const tagRows = client.exec(
+      `SELECT t.name FROM photo_file_tags ft JOIN photo_tags t ON t.tag_id = ft.tag_id
+       WHERE ft.fingerprint = ? AND ft.config_id = ? ORDER BY t.name`,
+      [photo().fingerprint, 'cfg_test'],
+    );
+    expect((tagRows[0]?.values ?? []).map((row) => row[0])).toEqual(['bicycle', 'brick-wall']);
+    const ftsRows = client.exec(
+      "SELECT file_name FROM photo_search_documents_fts WHERE photo_search_documents_fts MATCH 'bicycle'",
+    );
+    expect(ftsRows[0]?.values.length).toBeGreaterThan(0);
+    client.close();
   });
 });

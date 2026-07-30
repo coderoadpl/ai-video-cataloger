@@ -45,6 +45,8 @@ import { ReadinessCache } from '@core/server/index.js';
 import type {
   AnalysisOutput,
   AnalyzeInput,
+  AnalyzePhotosInput,
+  AnalyzePhotosOutput,
   AnalyzerBatchPort,
   AnalyzerPort,
   CatalogRepositoryFactory,
@@ -362,6 +364,12 @@ class ProviderRoutingAnalyzerAdapter implements AnalyzerPort {
     if (input.provider?.family === 'gemini-native') return this.gemini.analyze(input);
     if (input.provider?.family === 'api') return this.api.analyze(input);
     return input.backend === 'local' ? this.local.analyze(input) : this.harness.analyze(input);
+  }
+
+  analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>> {
+    if (input.provider.family === 'gemini-native') return this.gemini.analyzePhotos(input);
+    if (input.provider.family === 'api') return this.api.analyzePhotos(input);
+    return input.provider.family === 'local' ? this.local.analyzePhotos(input) : this.harness.analyzePhotos(input);
   }
 
   dependency(input?: { backend: AnalyzeInput['backend']; provider?: AnalyzeInput['provider'] }): Promise<Result<DependencyStatus, AppError>> {

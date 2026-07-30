@@ -870,6 +870,143 @@ describe('OpenAiCompatibleAnalyzerAdapter', () => {
   });
 });
 
+describe('analyzePhotos', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('OpenAiCompatibleAnalyzerAdapter sends one data-URL image part per photo item', async () => {
+    const root = await tempRoot();
+    const photoOne = path.join(root, 'a.jpg');
+    const photoTwo = path.join(root, 'b.jpg');
+    await writeFile(photoOne, Buffer.from('photo-one'));
+    await writeFile(photoTwo, Buffer.from('photo-two'));
+    const server = await startFakeApiServer(200, { choices: [{ message: { content: '[]' } }] });
+    const adapter = new OpenAiCompatibleAnalyzerAdapter({
+      credentials: new FakeCredentialsStore('top-secret'),
+      fetchImpl: server.fetchImpl,
+    });
+
+    try {
+      const result = await adapter.analyzePhotos({
+        items: [
+          { fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: photoOne },
+          { fingerprint: 'fp2', fileName: 'b.jpg', proxyPath: photoTwo },
+        ],
+        provider: apiProvider(server.origin),
+        outputLanguage: 'auto',
+        tagLanguage: 'auto',
+        timeoutSeconds: 30,
+        verbose: false,
+      });
+
+      expect(result).toEqual(ok({ rawResponse: '[]' }));
+      const request = server.requests[0];
+      if (request === undefined) throw new Error('Expected API request');
+      const parsed = apiChatRequestSchema.parse(request.body);
+      const imageParts = parsed.messages[0]?.content.filter((part) => part.type === 'image_url') ?? [];
+      expect(imageParts).toHaveLength(2);
+    } finally {
+      await server.close();
+    }
+  });
+
+  it('OpenAiCompatibleAnalyzerAdapter rejects a non-api provider and a missing credential', async () => {
+    const adapter = new OpenAiCompatibleAnalyzerAdapter({ credentials: new FakeCredentialsStore(null) });
+    const localProvider = { family: 'local', providerId: 'local', modelTag: 'gemma3:12b' } as const;
+
+    const wrongFamily = await adapter.analyzePhotos({
+      items: [{ fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: '/work/a.jpg' }],
+      provider: localProvider,
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+    expect(wrongFamily).toMatchObject({ ok: false, error: { code: 'invalid_config_value' } });
+
+    const missingCredential = await adapter.analyzePhotos({
+      items: [{ fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: '/work/a.jpg' }],
+      provider: apiProvider('https://provider.example'),
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+    expect(missingCredential).toMatchObject({ ok: false, error: { code: 'missing_api_key' } });
+  });
+
+  it('OllamaAnalyzerAdapter guards the modelTag and reports the not-installed error', async () => {
+    const runtime = new FakeLocalAiRuntime();
+    runtime.statusValue = { runtimeUp: true, runtimeVersion: '1.0.0', installedModels: [] };
+    const adapter = new OllamaAnalyzerAdapter({
+      runtime,
+      fetchImpl: () => Promise.reject(new Error('fetch should not be called')),
+    });
+    const localProvider = { family: 'local', providerId: 'local', modelTag: 'gemma3:12b' } as const;
+
+    const result = await adapter.analyzePhotos({
+      items: [{ fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: '/work/a.jpg' }],
+      provider: localProvider,
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'model_not_installed' } });
+
+    const apiFamily = await adapter.analyzePhotos({
+      items: [{ fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: '/work/a.jpg' }],
+      provider: apiProvider('https://provider.example'),
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+    expect(apiFamily).toMatchObject({ ok: false, error: { code: 'invalid_config_value' } });
+  });
+
+  it.each([
+    { promptStyle: 'file-urls' as const },
+    { promptStyle: 'dir-access' as const },
+  ])('HarnessAnalyzerAdapter uses the proxies directory as {videoDir} and maps promptStyle $promptStyle', async ({ promptStyle }) => {
+    const runner = new FakeAnalyzerCommandRunner('[]');
+    const adapter = new HarnessAnalyzerAdapter({ commandRunner: runner, resolveCommand: (command) => command });
+    const provider: Extract<AnalyzerProviderConfig, { family: 'harness' }> = {
+      family: 'harness',
+      providerId: 'codex',
+      command: 'codex',
+      argsTemplate: ['exec', '--cd', '{videoDir}', '{prompt}'],
+      promptStyle,
+    };
+
+    const result = await adapter.analyzePhotos({
+      items: [
+        { fingerprint: 'fp1', fileName: 'a.jpg', proxyPath: '/work/photo-artifacts/proxies/a.jpg' },
+        { fingerprint: 'fp2', fileName: 'b.jpg', proxyPath: '/work/photo-artifacts/proxies/b.jpg' },
+      ],
+      provider,
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      timeoutSeconds: 30,
+      verbose: false,
+    });
+
+    expect(result).toEqual(ok({ rawResponse: '[]' }));
+    const call = runner.calls[0];
+    if (call === undefined) throw new Error('Expected harness command call');
+    expect(call.args).toContain('/work/photo-artifacts/proxies');
+    const prompt = call.args[call.args.length - 1] ?? '';
+    if (promptStyle === 'file-urls') {
+      expect(prompt).toContain('file:///work/photo-artifacts/proxies/a.jpg');
+    } else {
+      expect(prompt).toContain('/work/photo-artifacts/proxies/a.jpg');
+    }
+  });
+});
+
 describe('analyzer helpers', () => {
   it('filters subprocess env with parity semantics', () => {
     expect(filteredAnalyzerEnv({

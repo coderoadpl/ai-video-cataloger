@@ -7,6 +7,7 @@ import { z } from 'zod';
 
 import {
   appError,
+  buildPhotoAnalyzerPrompt,
   isModelValidForHarness,
   legacyAnalyzerProvider,
   ok,
@@ -17,6 +18,8 @@ import {
 import type {
   AnalysisOutput,
   AnalyzeInput,
+  AnalyzePhotosInput,
+  AnalyzePhotosOutput,
   AnalyzerPort,
   CredentialsStore,
   DependencyStatus,
@@ -209,6 +212,41 @@ export class OpenAiCompatibleAnalyzerAdapter implements AnalyzerPort, ProvidersP
     return ok({ rawResponse: result.value });
   }
 
+  async analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>> {
+    if (input.provider.family !== 'api') {
+      return { ok: false, error: appError('invalid_config_value', 'API analyzer provider configuration is required') };
+    }
+    const provider = input.provider;
+    const credential = await this.credentials.get(provider.apiKeyRef);
+    if (!credential.ok) return credential;
+    if (credential.value === null) {
+      return { ok: false, error: appError('missing_api_key', `No credential stored for provider ${provider.providerId}`) };
+    }
+    let images: Uint8Array[];
+    try {
+      images = await Promise.all(input.items.map((item) => this.readFrame(item.proxyPath)));
+    } catch {
+      return { ok: false, error: appError('read_error', 'Could not read photos for API analysis') };
+    }
+    const prompt = buildPhotoAnalyzerPrompt({
+      items: input.items.map((item, index) => ({ index: index + 1, fileName: item.fileName, proxyPath: item.proxyPath })),
+      frameMode: 'attached-images',
+      outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
+    });
+    const result = await postOpenAiCompatibleChat(this.fetchImpl, {
+      provider,
+      apiKey: credential.value,
+      prompt,
+      framePaths: input.items.map((item) => item.proxyPath),
+      images,
+      timeoutMs: input.timeoutSeconds * 1000,
+      signal: input.signal,
+    });
+    if (!result.ok) return result;
+    return ok({ rawResponse: result.value });
+  }
+
   async dependency(input?: {
     backend: AnalyzeInput['backend'];
     provider?: AnalyzeInput['provider'];
@@ -299,6 +337,55 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     const verbosePrefix = verbose
       ? [
         `[verbose] Frame paths being analyzed:\n${input.framePaths.map((framePath) => `  ${framePath}`).join('\n')}\n`,
+        `[verbose] Full prompt being sent to ${provider.providerId}:\n${prompt}\n`,
+        `[verbose] Running: ${invocation}\n`,
+      ].join('\n')
+      : '';
+    if (verbosePrefix.length > 0) this.writeStdout(verbosePrefix);
+    const run = await this.commandRunner.run(command, args, {
+      env: filteredAnalyzerEnv(this.env),
+      timeoutMs: input.timeoutSeconds * 1000,
+      signal: input.signal,
+      onStdout: verbose ? this.writeStdout : undefined,
+      onStderr: verbose ? this.writeStderr : undefined,
+    });
+    if (!run.ok) return run;
+    return ok({ rawResponse: run.value.stdout });
+  }
+
+  async analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>> {
+    if (input.provider.family !== 'harness') {
+      return { ok: false, error: appError('invalid_config_value', 'Harness analyzer provider configuration is required') };
+    }
+    const safe = harnessProviderWithSafeModel(input.provider);
+    const provider = safe.provider;
+    if (safe.warning !== null) input.onWarning?.(safe.warning);
+    const verbose = this.verbose || input.verbose;
+    const firstItem = input.items[0];
+    if (firstItem === undefined) {
+      return { ok: false, error: appError('processing_error', 'No photos were provided for harness analysis') };
+    }
+    const proxiesDir = path.dirname(firstItem.proxyPath);
+    const prompt = buildPhotoAnalyzerPrompt({
+      items: input.items.map((item, index) => ({ index: index + 1, fileName: item.fileName, proxyPath: item.proxyPath })),
+      frameMode: provider.promptStyle === 'file-urls' ? 'file-url' : 'dir-access',
+      outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
+    });
+    const runtime = harnessRuntimeDefinition(provider.providerId);
+    try {
+      await this.prepare(runtime, this.homeDirectory, proxiesDir);
+    } catch {
+      return { ok: false, error: appError('read_error', 'Could not prepare harness analysis') };
+    }
+    const args = buildHarnessArgs(provider, { prompt, videoDir: proxiesDir });
+    const command = this.resolveCommand(provider.command);
+    const invocation = runtime.verboseInvocation === null
+      ? `${command} ${buildHarnessArgs(provider, { prompt: '<prompt>', videoDir: proxiesDir }).map((argument) => JSON.stringify(argument)).join(' ')}`
+      : runtime.verboseInvocation.replaceAll('{videoDir}', proxiesDir);
+    const verbosePrefix = verbose
+      ? [
+        `[verbose] Photo paths being analyzed:\n${input.items.map((item) => `  ${item.proxyPath}`).join('\n')}\n`,
         `[verbose] Full prompt being sent to ${provider.providerId}:\n${prompt}\n`,
         `[verbose] Running: ${invocation}\n`,
       ].join('\n')
@@ -465,6 +552,57 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
     }
     const response = await postOllamaChat(this.fetchImpl, baseUrl, {
       model: input.localModel,
+      prompt,
+      images,
+      timeoutMs: input.timeoutSeconds * 1000,
+      signal: input.signal,
+    });
+    if (!response.ok) return response;
+    if (verbose) this.writeStdout(`[verbose] Local model response:\n${response.value}\n`);
+    return ok({ rawResponse: response.value });
+  }
+
+  async analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>> {
+    if (input.provider.family !== 'local') {
+      return { ok: false, error: appError('invalid_config_value', 'Local analyzer provider configuration is required') };
+    }
+    const modelTag = input.provider.modelTag;
+    const verbose = this.verbose || input.verbose;
+    const ensured = await this.runtime.ensure(input.signal);
+    if (!ensured.ok) return ensured;
+    const baseUrl = normalizeOllamaBaseUrl(ensured.value.baseUrl);
+    const status = await this.runtime.status();
+    if (!status.ok) return status;
+    if (!status.value.runtimeUp) {
+      return { ok: false, error: appError('ollama_unavailable', 'Local AI runtime is not available') };
+    }
+    if (!isModelInstalled(status.value.installedModels, modelTag)) {
+      return {
+        ok: false,
+        error: appError(
+          'model_not_installed',
+          `Local AI model "${modelTag}" is not installed. Run: ai-video-cataloger models pull ${modelTag}`,
+        ),
+      };
+    }
+    let images: string[];
+    try {
+      images = await Promise.all(input.items.map(async (item) => bytesToBase64(await this.readFrame(item.proxyPath))));
+    } catch {
+      return { ok: false, error: appError('read_error', 'Could not read photos for local analysis') };
+    }
+    const prompt = buildPhotoAnalyzerPrompt({
+      items: input.items.map((item, index) => ({ index: index + 1, fileName: item.fileName, proxyPath: item.proxyPath })),
+      frameMode: 'attached-images',
+      outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
+    });
+    if (verbose) {
+      this.writeStdout(`[verbose] Local analysis via ${baseUrl} model ${modelTag}\n`);
+      this.writeStdout(`[verbose] ${String(input.items.length)} photo(s), prompt below:\n${prompt}\n`);
+    }
+    const response = await postOllamaChat(this.fetchImpl, baseUrl, {
+      model: modelTag,
       prompt,
       images,
       timeoutMs: input.timeoutSeconds * 1000,

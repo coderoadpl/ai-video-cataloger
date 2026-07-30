@@ -60,7 +60,7 @@ describe('photos routes', () => {
       data: {
         media: 'photo',
         root: null,
-        counts: { photos: 0, paths: 0, exifRead: 0, exifFailed: 0, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0 },
+        counts: { photos: 0, paths: 0, exifRead: 0, exifFailed: 0, missing: 0, duplicates: 0, proxied: 0, proxyFailed: 0, analysed: 0 },
       },
     });
   });
@@ -112,6 +112,52 @@ describe('photos routes', () => {
     const body = await response.json();
     expect(body.ok).toBe(false);
     expect(body.error.code).toBe('not_a_directory');
+  });
+
+  it('accepts a valid photos process request and completes the job', async () => {
+    const deps = createInMemoryDeps();
+    const app = buildApp(deps);
+
+    const response = await app.request('/api/photos/process', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: deps.fs.cwd() }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(typeof body.data.jobId).toBe('string');
+  });
+
+  it('reports not_a_directory when the process root is a file', async () => {
+    const deps = createInMemoryDeps({ files: ['a.jpg'] });
+    const app = buildApp(deps);
+
+    const response = await app.request('/api/photos/process', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: deps.fs.resolve('a.jpg') }),
+    });
+
+    const body = await response.json();
+    expect(body.ok).toBe(false);
+    expect(body.error.code).toBe('not_a_directory');
+  });
+
+  it('rejects a photos process batchSize above the closed 1-12 range', async () => {
+    const deps = createInMemoryDeps();
+    const app = buildApp(deps);
+
+    const response = await app.request('/api/photos/process', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ root: deps.fs.cwd(), batchSize: 13 }),
+    });
+
+    expect(response.status).toBe(400);
+    const body = await response.json();
+    expect(body.ok).toBe(false);
   });
 
   it('returns an empty photos tree for a fresh catalog', async () => {

@@ -523,7 +523,7 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
   assert(statusAfterScan.code === 0, `photos status: expected exit 0, got ${statusAfterScan.code}.\nstdout: ${statusAfterScan.stdout}`);
   z.object({
     media: z.literal('photo'),
-    counts: z.object({ proxied: z.literal(2), proxyFailed: z.literal(0) }),
+    counts: z.object({ proxied: z.literal(2), proxyFailed: z.literal(0), analysed: z.literal(0) }),
   }).parse(completedData(statusAfterScan, 'photos status (after scan)'));
   const artifactsAfterScan = proxyArtifactCounts(home);
   assert(artifactsAfterScan.proxies === 2, `expected 2 proxy artifacts, found ${artifactsAfterScan.proxies}`);
@@ -606,6 +606,17 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
   assert(
     proxiesMissingError.type === 'error' && proxiesMissingError.code === 'FOLDER_NOT_FOUND',
     `photos proxies missing: expected FOLDER_NOT_FOUND, got ${JSON.stringify(proxiesMissingError)}`,
+  );
+
+  const processMissing = await run(['photos', 'process', missingPhotosDir, '--json'], env, folder);
+  assert(
+    processMissing.code === scanMissingExpected,
+    `photos process missing: expected exit ${scanMissingExpected}, got ${processMissing.code}.\nstdout: ${processMissing.stdout}\nstderr: ${processMissing.stderr}`,
+  );
+  const processMissingError = errorEvent(processMissing, 'photos process missing');
+  assert(
+    processMissingError.type === 'error' && processMissingError.code === 'FOLDER_NOT_FOUND',
+    `photos process missing: expected FOLDER_NOT_FOUND, got ${JSON.stringify(processMissingError)}`,
   );
 };
 

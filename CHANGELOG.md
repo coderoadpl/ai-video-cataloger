@@ -36,6 +36,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Photo proxies and thumbnails: `avc photos proxies <root> [--force]` and `/api/photos/proxies` generate a ≤1280px JPEG proxy and ≤320px thumbnail per photo fingerprint under `~/.ai-video-cataloger/photo-artifacts/` — RAW (ARW/DNG) via embedded-preview extraction with a full-decode sips fallback, never writing inside the photo folder; `photos scan` chains the pass automatically, an artifact that has gone missing from disk is regenerated on the next pass without `--force`, and per-file failures are reported, never fatal.
 - `/api/photos/tree|list|detail` expose scanned roots, paged photo listings and per-photo detail to clients.
 - A Photos tab browses the photo catalog: a root picker over scanned folders, a windowed thumbnail grid grouped by capture day with duplicate and missing badges, a proxy-based viewer with keyboard arrow navigation, and a detail pane showing EXIF basics, capture provenance and every path a photo was sighted at.
+- Photo vision analysis: `avc photos process <root> [--force] [--batch-size N]`
+  and `/api/photos/process` run description, tags, scene and quality over photo
+  proxies through the configured analyzer (api / harness / local / gemini-native),
+  batching ~12 photos per call with an automatic 12→6→1 split on malformed
+  responses; results are variants keyed by a photo `cfg_` config id, and each
+  row records the actual batch size that produced it.
+- Photo analysis runs honour the monthly `gemini_monthly_budget_usd` cap with
+  the same pause-and-resume semantics as drive runs; `photos status` counts
+  analysed photos.
 
 ### Changed
 

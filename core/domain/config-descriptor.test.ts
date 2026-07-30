@@ -288,6 +288,15 @@ describe('config descriptor identity', () => {
     expect(configId(stored)).not.toBe(configId({ ...stored, whisper_language: 'auto' }));
   });
 
+  it('pins the video descriptor id against origin/main before the photo-descriptor split (P1)', () => {
+    expect(configId(buildConfigDescriptor(CONFIG_DEFAULTS, 4))).toBe('cfg_b445a6abf87f');
+    expect(configId(buildConfigDescriptor({
+      analyzer_provider: { family: 'gemini-native', providerId: 'gemini', apiKeyRef: 'ref', model: 'gemini-3.6-flash' },
+      output_language: 'pl',
+    }, 4))).toBe('cfg_8e038c12e087');
+    expect(Object.keys(buildConfigDescriptor(CONFIG_DEFAULTS, 4))).not.toContain('kind');
+  });
+
   it('classifies every config key as identity-bearing or excluded', () => {
     expect(Object.keys(CONFIG_IDENTITY_CLASSIFICATION).sort()).toEqual([...CONFIG_KEYS].sort());
     expect(Object.values(CONFIG_IDENTITY_CLASSIFICATION).every((value) => (

@@ -4,6 +4,7 @@ import { z } from 'zod';
 import {
   appError,
   batchSubmitRejection,
+  buildPhotoAnalyzerPrompt,
   geminiNativeModelPricing,
   ok,
   GEMINI_NATIVE_API_BASE_URL,
@@ -17,6 +18,8 @@ import {
 import type {
   AnalysisOutput,
   AnalyzeInput,
+  AnalyzePhotosInput,
+  AnalyzePhotosOutput,
   AnalyzerBatchPort,
   AnalyzerBatchRequest,
   AnalyzerBatchStatus,
@@ -312,6 +315,43 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     }, signal, input.signal);
     await this.deleteFile(apiKey, uploaded.value.name);
     return generated;
+  }
+
+  async analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>> {
+    const provider = input.provider;
+    if (provider.family !== 'gemini-native') {
+      return { ok: false, error: appError('invalid_config_value', 'Gemini native analyzer provider configuration is required') };
+    }
+    const credential = await this.credentials.get(provider.apiKeyRef);
+    if (!credential.ok) return credential;
+    if (credential.value === null) {
+      return { ok: false, error: appError('missing_api_key', `No Gemini API key stored for provider ${provider.providerId}`) };
+    }
+    const apiKey = credential.value;
+    let images: Uint8Array[];
+    try {
+      images = await Promise.all(input.items.map((item) => readFile(item.proxyPath)));
+    } catch {
+      return { ok: false, error: appError('read_error', 'Could not read photos for Gemini analysis') };
+    }
+    const totalBytes = images.reduce((sum, image) => sum + image.byteLength, 0);
+    if (!shouldUploadInline(totalBytes)) {
+      return { ok: false, error: appError('provider_error', `Photo batch is ${gigabytes(totalBytes)} GB; too large for a single inline Gemini request`) };
+    }
+    const prompt = buildPhotoAnalyzerPrompt({
+      items: input.items.map((item, index) => ({ index: index + 1, fileName: item.fileName, proxyPath: item.proxyPath })),
+      frameMode: 'attached-images',
+      outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
+    });
+    const timeoutMs = input.timeoutSeconds * 1000;
+    const signal = combinedSignal(input.signal, timeoutMs);
+    return this.generate(apiKey, provider, {
+      parts: [
+        ...images.map((image) => ({ inline_data: { mime_type: 'image/jpeg', data: bytesToBase64(image) } })),
+        { text: prompt },
+      ],
+    }, signal, input.signal);
   }
 
   async uploadForBatch(input: AnalyzerBatchUploadInput): Promise<Result<AnalyzerBatchRequest, AppError>> {

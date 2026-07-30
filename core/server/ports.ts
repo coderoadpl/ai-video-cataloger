@@ -310,7 +310,7 @@ export interface PhotoSightingRecord {
 export interface PhotoRunRecord {
   runId: string;
   root: string;
-  stage: 'scan';
+  stage: 'scan' | 'process';
   startedAt: string;
   finishedAt: string | null;
   filesTotal: number;
@@ -330,6 +330,33 @@ export interface PhotosCounts {
   duplicates: number;
   proxied: number;
   proxyFailed: number;
+  analysed: number;
+}
+
+export interface PhotoAnalysisCandidate {
+  fingerprint: string;
+  fileName: string;
+  currentPath: string;
+}
+
+export interface PhotoAnalysisCandidates {
+  candidates: PhotoAnalysisCandidate[];
+  alreadyAnalysed: number;
+}
+
+export interface RecordPhotoAnalysisInput {
+  fingerprint: string;
+  configId: string;
+  description: string;
+  scene: string;
+  quality: string;
+  language: string;
+  analyzer: string;
+  model: string | null;
+  batchSize: number;
+  usageJson: string | null;
+  tags: readonly string[];
+  createdAt: string;
 }
 
 export interface PhotoProxyCandidate {
@@ -414,6 +441,9 @@ export interface PhotosStore {
   listPhotosPage(input: { root: string | null; offset: number; limit: number }):
     Promise<Result<{ total: number; items: PhotoListItem[] }, AppError>>;
   getPhotoDetail(fingerprint: string): Promise<Result<PhotoDetail | null, AppError>>;
+  listAnalysisCandidates(root: string, configId: string, force: boolean): Promise<Result<PhotoAnalysisCandidates, AppError>>;
+  upsertAnalysisConfig(input: { configId: string; descriptorJson: string; label: string; now: string }): Promise<Result<void, AppError>>;
+  recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>>;
 }
 
 export interface DriveRunRecord {
@@ -808,6 +838,28 @@ export interface AnalysisOutput {
   transcript?: AnalyzerTranscript | null | undefined;
 }
 
+export interface AnalyzePhotoItem {
+  fingerprint: string;
+  fileName: string;
+  proxyPath: string;
+}
+
+export interface AnalyzePhotosInput {
+  items: AnalyzePhotoItem[];
+  provider: AnalyzerProviderConfig;
+  outputLanguage: AppConfig['output_language'];
+  tagLanguage: AppConfig['tag_language'];
+  timeoutSeconds: number;
+  verbose: boolean;
+  signal?: AbortSignal | undefined;
+  onWarning?: ((warning: string) => void) | undefined;
+}
+
+export interface AnalyzePhotosOutput {
+  rawResponse: string;
+  usage?: GeminiUsageAccounting | undefined;
+}
+
 export type AnalyzerBatchJobState = 'pending' | 'running' | 'succeeded' | 'failed' | 'cancelled' | 'expired';
 
 export interface AnalyzerBatchUploadInput {
@@ -874,6 +926,7 @@ export interface AnalyzerBatchPort {
 export interface AnalyzerPort {
   promptVersion(provider: AnalyzerProviderConfig): number;
   analyze(input: AnalyzeInput): Promise<Result<AnalysisOutput, AppError>>;
+  analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>>;
   dependency(input?: {
     backend: AppConfig['analyzer_backend'];
     provider?: AnalyzerProviderConfig | undefined;
@@ -992,7 +1045,8 @@ export type JobKind =
   | 'thumbnails'
   | 'gps_backfill'
   | 'photo_scan'
-  | 'photo_proxies';
+  | 'photo_proxies'
+  | 'photo_process';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -1039,7 +1093,12 @@ export type ProcessJobStep =
   | 'photo-proxy'
   | 'photo-proxy-failed'
   | 'photo-proxies-skipped'
-  | 'photo-proxies-summary';
+  | 'photo-proxies-summary'
+  | 'photo-analysis-scanning'
+  | 'photo-analysed'
+  | 'photo-analysis-failed'
+  | 'photo-analysis-usage'
+  | 'photo-process-summary';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

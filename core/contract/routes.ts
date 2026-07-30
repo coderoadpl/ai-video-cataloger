@@ -409,6 +409,7 @@ export const photosStatusOutputSchema = z.object({
     duplicates: z.number(),
     proxied: z.number(),
     proxyFailed: z.number(),
+    analysed: z.number(),
   }),
 });
 
@@ -439,6 +440,25 @@ export const photoProxiesSummarySchema = z.object({
   skippedExisting: z.number(),
   failed: z.number(),
   thumbFailed: z.number(),
+});
+
+export const photosProcessInputSchema = z.object({
+  root: canonicalPathString(),
+  force: z.boolean().optional().default(false),
+  batchSize: z.number().int().min(1).max(12).optional(),
+});
+
+export const photoProcessSummarySchema = z.object({
+  media: z.literal('photo'),
+  root: z.string(),
+  force: z.boolean(),
+  configId: z.string(),
+  batchSize: z.number(),
+  candidates: z.number(),
+  analysed: z.number(),
+  failed: z.number(),
+  skippedExisting: z.number(),
+  splitRetries: z.number(),
 });
 
 export const photoListItemSchema = z.object({
@@ -1072,6 +1092,7 @@ export const jobKindSchema = z.enum([
   'gps_backfill',
   'photo_scan',
   'photo_proxies',
+  'photo_process',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -1121,6 +1142,11 @@ export const jobProgressStepSchema = z.enum([
   'photo-proxy-failed',
   'photo-proxies-skipped',
   'photo-proxies-summary',
+  'photo-analysis-scanning',
+  'photo-analysed',
+  'photo-analysis-failed',
+  'photo-analysis-usage',
+  'photo-process-summary',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -1169,6 +1195,7 @@ export const jobResultSchema = z.union([
   materializeSummarySchema,
   photoScanSummarySchema,
   photoProxiesSummarySchema,
+  photoProcessSummarySchema,
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,
   facesExemplarsOutputSchema,
@@ -1729,6 +1756,12 @@ export const API_ROUTES = {
     input: photoProxiesInputSchema,
     output: jobAcceptedOutputSchema,
   },
+  photosProcess: {
+    method: 'POST',
+    path: '/api/photos/process',
+    input: photosProcessInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
   photosTree: {
     method: 'GET',
     path: '/api/photos/tree',
@@ -1819,6 +1852,7 @@ export const API_PATHS = {
   photosStatus: API_ROUTES.photosStatus.path,
   photosForget: API_ROUTES.photosForget.path,
   photosProxies: API_ROUTES.photosProxies.path,
+  photosProcess: API_ROUTES.photosProcess.path,
   photosTree: API_ROUTES.photosTree.path,
   photosList: API_ROUTES.photosList.path,
   photosDetail: API_ROUTES.photosDetail.path,

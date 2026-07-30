@@ -8,6 +8,7 @@ import { ok, type AppError, type Result } from '@core/domain/index.js';
 import type {
   AnalysisOutput,
   AnalyzeInput,
+  AnalyzePhotosOutput,
   AnalyzerPort,
   DependencyStatus,
   TranscribeInput,
@@ -27,6 +28,10 @@ class ToggleAnalyzer implements AnalyzerPort {
   }
 
   analyze(): Promise<Result<AnalysisOutput, AppError>> {
+    return Promise.resolve(ok({ rawResponse: '' }));
+  }
+
+  analyzePhotos(): Promise<Result<AnalyzePhotosOutput, AppError>> {
     return Promise.resolve(ok({ rawResponse: '' }));
   }
 

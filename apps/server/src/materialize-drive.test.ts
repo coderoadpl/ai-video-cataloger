@@ -10,6 +10,8 @@ import {
   processDrive,
   scanFolder,
   type AnalysisOutput,
+  type AnalyzePhotosInput,
+  type AnalyzePhotosOutput,
   type AnalyzerPort,
   type DependencyStatus,
   type JobProgress,
@@ -40,6 +42,11 @@ class StubAnalyzer implements AnalyzerPort {
   analyze(): Promise<Result<AnalysisOutput, AppError>> {
     this.calls += 1;
     return Promise.resolve(ok({ rawResponse: analyzerResponse }));
+  }
+
+  analyzePhotos(input: AnalyzePhotosInput): Promise<Result<AnalyzePhotosOutput, AppError>> {
+    this.calls += 1;
+    return Promise.resolve(ok({ rawResponse: JSON.stringify(input.items.map((item, index) => ({ index: index + 1, description: `photo:${item.fingerprint}`, tags: ['tag'], scene: 'other', quality: 'good' }))) }));
   }
 
   dependency(): Promise<Result<DependencyStatus, AppError>> {
