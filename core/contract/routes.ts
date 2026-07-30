@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import {
   ANALYZER_BACKENDS,
+  CAPTURED_AT_SOURCES,
   CONFIG_DEFAULTS,
   ERROR_CODES,
   FILE_ARTIFACT_IDS,
@@ -22,6 +23,8 @@ import {
   credentialsBackendStatusSchema,
   folderIdSchema,
   geminiCostEstimateSchema,
+  photoExtensionSchema,
+  photoFingerprintSchema,
   videoStatusSchema,
   whisperLanguageSchema,
   whisperEngineSchema,
@@ -381,6 +384,13 @@ export const photoScanSummarySchema = z.object({
   exifRead: z.number(),
   exifFailed: z.number(),
   missingMarked: z.number(),
+  proxies: z.object({
+    ran: z.boolean(),
+    generated: z.number(),
+    skippedExisting: z.number(),
+    failed: z.number(),
+    skippedReason: z.string().nullable(),
+  }),
 });
 
 export const photosStatusInputSchema = z.object({
@@ -397,6 +407,8 @@ export const photosStatusOutputSchema = z.object({
     exifFailed: z.number(),
     missing: z.number(),
     duplicates: z.number(),
+    proxied: z.number(),
+    proxyFailed: z.number(),
   }),
 });
 
@@ -410,6 +422,109 @@ export const photosForgetOutputSchema = z.object({
   pathsRemoved: z.number(),
   photosDeleted: z.number(),
   photosRepointed: z.number(),
+  artifactPaths: z.array(z.string()),
+});
+
+export const photoProxiesInputSchema = z.object({
+  root: canonicalPathString(),
+  force: z.boolean().optional().default(false),
+});
+
+export const photoProxiesSummarySchema = z.object({
+  media: z.literal('photo'),
+  root: z.string(),
+  force: z.boolean(),
+  candidates: z.number(),
+  generated: z.number(),
+  skippedExisting: z.number(),
+  failed: z.number(),
+  thumbFailed: z.number(),
+});
+
+export const photoListItemSchema = z.object({
+  fingerprint: z.string(),
+  fileName: z.string(),
+  currentPath: z.string(),
+  ext: photoExtensionSchema,
+  capturedAt: z.string().nullable(),
+  capturedAtSource: z.enum(CAPTURED_AT_SOURCES).nullable(),
+  width: z.number().nullable(),
+  height: z.number().nullable(),
+  proxyState: z.enum(['pending', 'done', 'failed', 'not_needed']),
+  thumbState: z.enum(['pending', 'done', 'failed']),
+  missingAt: z.number().nullable(),
+  sightings: z.number(),
+  thumbPath: z.string().nullable(),
+  proxyPath: z.string().nullable(),
+});
+
+export const photosTreeInputSchema = z.object({});
+
+export const photosTreeOutputSchema = z.object({
+  media: z.literal('photo'),
+  roots: z.array(z.object({
+    root: z.string(),
+    photos: z.number(),
+    missing: z.number(),
+    lastScanAt: z.string(),
+  })),
+});
+
+export const photosListInputSchema = z.object({
+  root: canonicalPathString().optional(),
+  offset: queryInteger(0, 0, 1_000_000),
+  limit: queryInteger(200, 1, 500),
+});
+
+export const photosListOutputSchema = z.object({
+  media: z.literal('photo'),
+  root: z.string().nullable(),
+  total: z.number(),
+  offset: z.number(),
+  items: z.array(photoListItemSchema),
+});
+
+export const photosDetailInputSchema = z.object({
+  fingerprint: photoFingerprintSchema,
+});
+
+export const photosDetailOutputSchema = z.object({
+  media: z.literal('photo'),
+  photo: z.object({
+    fingerprint: z.string(),
+    folderId: z.string(),
+    fileName: z.string(),
+    currentPath: z.string(),
+    ext: photoExtensionSchema,
+    size: z.number(),
+    width: z.number().nullable(),
+    height: z.number().nullable(),
+    orientation: z.number().nullable(),
+    cameraMake: z.string().nullable(),
+    cameraModel: z.string().nullable(),
+    lens: z.string().nullable(),
+    iso: z.number().nullable(),
+    fNumber: z.number().nullable(),
+    exposureTime: z.number().nullable(),
+    exifRating: z.number().nullable(),
+    capturedAt: z.string().nullable(),
+    capturedAtSource: z.enum(CAPTURED_AT_SOURCES).nullable(),
+    discoveredAt: z.string(),
+    exifReadAt: z.string().nullable(),
+    proxyState: z.enum(['pending', 'done', 'failed', 'not_needed']),
+    proxyWidth: z.number().nullable(),
+    proxyHeight: z.number().nullable(),
+    thumbState: z.enum(['pending', 'done', 'failed']),
+    missingAt: z.number().nullable(),
+  }),
+  sightings: z.array(z.object({
+    currentPath: z.string(),
+    folderId: z.string(),
+    lastSeenAt: z.string(),
+  })),
+  ownerPath: z.string(),
+  proxyPath: z.string().nullable(),
+  thumbPath: z.string().nullable(),
 });
 
 export const thumbnailInputSchema = videoPathInputSchema.merge(forceInputSchema).extend({
@@ -956,6 +1071,7 @@ export const jobKindSchema = z.enum([
   'thumbnails',
   'gps_backfill',
   'photo_scan',
+  'photo_proxies',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -1000,6 +1116,11 @@ export const jobProgressStepSchema = z.enum([
   'photo-file-skipped',
   'photo-exif-failed',
   'photo-run-summary',
+  'photo-proxies-scanning',
+  'photo-proxy',
+  'photo-proxy-failed',
+  'photo-proxies-skipped',
+  'photo-proxies-summary',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -1047,6 +1168,7 @@ export const jobResultSchema = z.union([
   facesIndexOutputSchema,
   materializeSummarySchema,
   photoScanSummarySchema,
+  photoProxiesSummarySchema,
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,
   facesExemplarsOutputSchema,
@@ -1601,6 +1723,30 @@ export const API_ROUTES = {
     input: photosForgetInputSchema,
     output: photosForgetOutputSchema,
   },
+  photosProxies: {
+    method: 'POST',
+    path: '/api/photos/proxies',
+    input: photoProxiesInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
+  photosTree: {
+    method: 'GET',
+    path: '/api/photos/tree',
+    input: photosTreeInputSchema,
+    output: photosTreeOutputSchema,
+  },
+  photosList: {
+    method: 'GET',
+    path: '/api/photos/list',
+    input: photosListInputSchema,
+    output: photosListOutputSchema,
+  },
+  photosDetail: {
+    method: 'GET',
+    path: '/api/photos/detail',
+    input: photosDetailInputSchema,
+    output: photosDetailOutputSchema,
+  },
 } as const satisfies Record<string, RouteDescriptor<z.ZodTypeAny, z.ZodTypeAny>>;
 
 export type HttpMethod = (typeof API_ROUTES)[keyof typeof API_ROUTES]['method'];
@@ -1672,4 +1818,8 @@ export const API_PATHS = {
   photosScan: API_ROUTES.photosScan.path,
   photosStatus: API_ROUTES.photosStatus.path,
   photosForget: API_ROUTES.photosForget.path,
+  photosProxies: API_ROUTES.photosProxies.path,
+  photosTree: API_ROUTES.photosTree.path,
+  photosList: API_ROUTES.photosList.path,
+  photosDetail: API_ROUTES.photosDetail.path,
 } as const;

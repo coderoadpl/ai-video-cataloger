@@ -21,6 +21,7 @@ import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations } from '../features/map/use-catalog-locations.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { PeopleView } from '../features/people/PeopleView.js';
+import { PhotosView } from '../features/photos/PhotosView.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
 import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
 import { useReadiness } from '../features/readiness/use-readiness.js';
@@ -168,7 +169,7 @@ export const IndexRoute = () => {
     />
   );
 
-  const detailContent = activeView === 'people' ? null : globalSearch.active ? (
+  const detailContent = activeView === 'people' || activeView === 'photos' ? null : globalSearch.active ? (
     <SearchResults search={globalSearch} onBack={clearSearch} onOpenFolder={shell.selectRecentFolder} onOpenResult={openSearchResult} />
   ) : (
     <DetailsPanel
@@ -247,6 +248,8 @@ export const IndexRoute = () => {
             onOpenSettings={() => setModalRequest('settings')}
             lockReason={catalogLock.disabledReason}
           />
+        ) : activeView === 'photos' ? (
+          <PhotosView active={activeView === 'photos'} addLine={terminal.addLine} />
         ) : activeView === 'map' ? (
           <MapView
             active={activeView === 'map'}

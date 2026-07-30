@@ -328,6 +328,60 @@ export interface PhotosCounts {
   exifFailed: number;
   missing: number;
   duplicates: number;
+  proxied: number;
+  proxyFailed: number;
+}
+
+export interface PhotoProxyCandidate {
+  fingerprint: string;
+  sourcePath: string;
+  ext: PhotoExtension;
+  proxyState: 'pending' | 'done' | 'failed' | 'not_needed';
+  thumbState: 'pending' | 'done' | 'failed';
+}
+
+export interface PhotoRootSummary {
+  root: string;
+  photos: number;
+  missing: number;
+  lastScanAt: string;
+}
+
+export interface PhotoListItem {
+  fingerprint: string;
+  fileName: string;
+  currentPath: string;
+  ext: PhotoExtension;
+  capturedAt: string | null;
+  capturedAtSource: CapturedAtSource | null;
+  width: number | null;
+  height: number | null;
+  proxyState: 'pending' | 'done' | 'failed' | 'not_needed';
+  thumbState: 'pending' | 'done' | 'failed';
+  missingAt: number | null;
+  sightings: number;
+}
+
+export interface PhotoDetail {
+  photo: PhotoRecord;
+  sightings: PhotoSightingRecord[];
+}
+
+export interface PhotoProxyOutcome {
+  proxyWidth: number;
+  proxyHeight: number;
+  thumbWidth: number | null;
+  thumbHeight: number | null;
+  source: 'embedded_preview' | 'full_decode' | 'downscale';
+}
+
+export interface PhotoMediaPort {
+  createProxy(input: {
+    sourcePath: string;
+    ext: PhotoExtension;
+    proxyPath: string;
+    thumbPath: string;
+  }): Promise<Result<PhotoProxyOutcome, AppError>>;
 }
 
 export interface PhotosStore {
@@ -348,6 +402,18 @@ export interface PhotosStore {
   counts(root: string | null): Promise<Result<PhotosCounts, AppError>>;
   startPhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>>;
   updatePhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>>;
+  listProxyCandidates(root: string): Promise<Result<PhotoProxyCandidate[], AppError>>;
+  setProxyOutcome(input: {
+    fingerprint: string;
+    proxyState: 'done' | 'failed';
+    proxyWidth: number | null;
+    proxyHeight: number | null;
+    thumbState: 'done' | 'failed';
+  }): Promise<Result<void, AppError>>;
+  listRoots(): Promise<Result<PhotoRootSummary[], AppError>>;
+  listPhotosPage(input: { root: string | null; offset: number; limit: number }):
+    Promise<Result<{ total: number; items: PhotoListItem[] }, AppError>>;
+  getPhotoDetail(fingerprint: string): Promise<Result<PhotoDetail | null, AppError>>;
 }
 
 export interface DriveRunRecord {
@@ -925,7 +991,8 @@ export type JobKind =
   | 'materialize'
   | 'thumbnails'
   | 'gps_backfill'
-  | 'photo_scan';
+  | 'photo_scan'
+  | 'photo_proxies';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -967,7 +1034,12 @@ export type ProcessJobStep =
   | 'photo-file'
   | 'photo-file-skipped'
   | 'photo-exif-failed'
-  | 'photo-run-summary';
+  | 'photo-run-summary'
+  | 'photo-proxies-scanning'
+  | 'photo-proxy'
+  | 'photo-proxy-failed'
+  | 'photo-proxies-skipped'
+  | 'photo-proxies-summary';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

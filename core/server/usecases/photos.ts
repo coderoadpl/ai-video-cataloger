@@ -18,22 +18,37 @@ import {
   type JobExecutionContext,
   type JobsPort,
   type PhotoFolderRecord,
+  type PhotoListItem,
+  type PhotoMediaPort,
+  type PhotoProxyCandidate,
   type PhotoRecord,
+  type PhotoRootSummary,
   type PhotoRunRecord,
   type PhotoSightingRecord,
   type PhotosCounts,
   type PhotosStore,
 } from '../ports.js';
+import { photoArtifactsRoot, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
 import { reportStep as report } from './process-drive-batch.js';
 import { shouldSkipDirectory } from './shared.js';
 
 export const PHOTO_SCAN_BATCH_SIZE = 500;
+export const PHOTO_PROXY_CONCURRENCY = 4;
 
 export interface PhotosDeps {
   photos: PhotosStore;
   fs: FileSystemPort;
   exif: ExifPort;
   jobs: JobsPort;
+  photoMedia: PhotoMediaPort;
+}
+
+export interface PhotoScanProxiesSummary {
+  ran: boolean;
+  generated: number;
+  skippedExisting: number;
+  failed: number;
+  skippedReason: string | null;
 }
 
 export interface PhotoScanSummary {
@@ -49,6 +64,18 @@ export interface PhotoScanSummary {
   exifRead: number;
   exifFailed: number;
   missingMarked: number;
+  proxies: PhotoScanProxiesSummary;
+}
+
+export interface PhotoProxiesSummary {
+  media: 'photo';
+  root: string;
+  force: boolean;
+  candidates: number;
+  generated: number;
+  skippedExisting: number;
+  failed: number;
+  thumbFailed: number;
 }
 
 export interface PhotosStatusOutput {
@@ -63,6 +90,7 @@ export interface PhotosForgetOutput {
   pathsRemoved: number;
   photosDeleted: number;
   photosRepointed: number;
+  artifactPaths: string[];
 }
 
 const hostUtcOffsetMinutes = (atLocalWallClock: string): number => {
@@ -173,6 +201,8 @@ export const runPhotoScan = async (
 
   await report(progress, 'photo-run-summary', { root, runId });
 
+  const proxies = await runChainedProxiesPass(deps, root, progress);
+
   return ok({
     media: 'photo',
     root,
@@ -186,7 +216,34 @@ export const runPhotoScan = async (
     exifRead: counters.exifRead,
     exifFailed: counters.exifFailed,
     missingMarked: counters.missingMarked,
+    proxies,
   });
+};
+
+const isAborted = (progress: JobExecutionContext | undefined): boolean => progress?.signal.aborted === true;
+
+const runChainedProxiesPass = async (
+  deps: PhotosDeps,
+  root: string,
+  progress: JobExecutionContext | undefined,
+): Promise<PhotoScanProxiesSummary> => {
+  if (isAborted(progress)) {
+    await report(progress, 'photo-proxies-skipped', { root, reason: 'cancelled' });
+    return { ran: false, generated: 0, skippedExisting: 0, failed: 0, skippedReason: 'cancelled' };
+  }
+  const pass = await runPhotoProxiesPass(deps, { root, force: false }, progress);
+  if (!pass.ok) {
+    const reason = isAborted(progress) ? 'cancelled' : 'failed';
+    await report(progress, 'photo-proxies-skipped', { root, reason });
+    return { ran: false, generated: 0, skippedExisting: 0, failed: 0, skippedReason: reason };
+  }
+  return {
+    ran: true,
+    generated: pass.value.generated,
+    skippedExisting: pass.value.skippedExisting,
+    failed: pass.value.failed,
+    skippedReason: null,
+  };
 };
 
 type CandidateOutcome = 'done' | 'skipped' | 'failed';
@@ -436,6 +493,231 @@ const chunk = <T,>(items: readonly T[], size: number): T[][] => {
   return chunks;
 };
 
+export const enqueuePhotoProxies = async (
+  deps: PhotosDeps,
+  input: { root: string; force: boolean },
+): Promise<Result<{ jobId: string }, AppError>> => {
+  const root = deps.fs.resolve(input.root);
+  const exists = await deps.fs.exists(root);
+  if (!exists.ok) return exists;
+  if (!exists.value) return { ok: false, error: appError('folder_not_found', `Root not found: ${root}`) };
+  const directory = await deps.fs.isDirectory(root);
+  if (!directory.ok) return directory;
+  if (!directory.value) return { ok: false, error: appError('not_a_directory', `Root is not a directory: ${root}`) };
+
+  return deps.jobs.enqueue({
+    kind: 'photo_proxies',
+    payload: { root, force: input.force },
+    resourceKey: `photo-proxies:${root}`,
+    run: (context) => runPhotoProxiesPass(deps, { root, force: input.force }, context),
+  });
+};
+
+interface ProxyCounters {
+  generated: number;
+  skippedExisting: number;
+  failed: number;
+  thumbFailed: number;
+}
+
+export const runPhotoProxiesPass = async (
+  deps: PhotosDeps,
+  input: { root: string; force: boolean },
+  progress?: JobExecutionContext,
+): Promise<Result<PhotoProxiesSummary, AppError>> => {
+  const root = deps.fs.resolve(input.root);
+  const candidatesResult = await deps.photos.listProxyCandidates(root);
+  if (!candidatesResult.ok) return candidatesResult;
+  const candidates = candidatesResult.value;
+  await report(progress, 'photo-proxies-scanning', { root, candidates: candidates.length });
+
+  const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  const counters: ProxyCounters = { generated: 0, skippedExisting: 0, failed: 0, thumbFailed: 0 };
+  const batches = chunk(candidates, PHOTO_SCAN_BATCH_SIZE);
+  let processed = 0;
+
+  for (const batch of batches) {
+    if (progress?.signal.aborted === true) {
+      return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
+    }
+    const batchResult = await deps.photos.withBatch(async (): Promise<Result<void, AppError>> => {
+      let cursor = 0;
+      const runWorker = async (): Promise<Result<void, AppError>> => {
+        for (;;) {
+          const index = cursor;
+          cursor += 1;
+          if (index >= batch.length) return ok(undefined);
+          const candidate = batch[index];
+          if (candidate === undefined) continue;
+          const outcome = await processProxyCandidate(deps, artifactsRoot, candidate, input.force, counters, progress);
+          if (!outcome.ok) return outcome;
+          processed += 1;
+          await report(progress, 'photo-proxy', {
+            fingerprint: candidate.fingerprint,
+            current: processed,
+            total: candidates.length,
+          });
+        }
+      };
+      const workerCount = Math.min(PHOTO_PROXY_CONCURRENCY, Math.max(batch.length, 1));
+      const results = await Promise.all(Array.from({ length: workerCount }, () => runWorker()));
+      return results.find((result) => !result.ok) ?? ok(undefined);
+    });
+    if (!batchResult.ok) return batchResult;
+  }
+
+  const flushed = await deps.photos.flush();
+  if (!flushed.ok) return flushed;
+  await report(progress, 'photo-proxies-summary', { root });
+
+  return ok({
+    media: 'photo',
+    root,
+    force: input.force,
+    candidates: candidates.length,
+    generated: counters.generated,
+    skippedExisting: counters.skippedExisting,
+    failed: counters.failed,
+    thumbFailed: counters.thumbFailed,
+  });
+};
+
+const hasArtifact = async (deps: PhotosDeps, artifactPath: string): Promise<boolean> => {
+  const stat = await deps.fs.stat(artifactPath);
+  return stat.ok && stat.value.size > 0;
+};
+
+const artifactsAreComplete = async (
+  deps: PhotosDeps,
+  candidate: PhotoProxyCandidate,
+  proxyPath: string,
+  thumbPath: string,
+): Promise<boolean> => {
+  if (candidate.proxyState !== 'done' || candidate.thumbState !== 'done') return false;
+  if (!(await hasArtifact(deps, proxyPath))) return false;
+  return hasArtifact(deps, thumbPath);
+};
+
+const processProxyCandidate = async (
+  deps: PhotosDeps,
+  artifactsRoot: string,
+  candidate: PhotoProxyCandidate,
+  force: boolean,
+  counters: ProxyCounters,
+  progress: JobExecutionContext | undefined,
+): Promise<Result<void, AppError>> => {
+  const proxyPath = photoProxyPath(deps.fs, artifactsRoot, candidate.fingerprint);
+  const thumbPath = photoThumbPath(deps.fs, artifactsRoot, candidate.fingerprint);
+
+  if (!force && await artifactsAreComplete(deps, candidate, proxyPath, thumbPath)) {
+    counters.skippedExisting += 1;
+    await report(progress, 'photo-file-skipped', { path: candidate.sourcePath, reason: 'proxy_exists' });
+    return ok(undefined);
+  }
+
+  const created = await deps.photoMedia.createProxy({
+    sourcePath: candidate.sourcePath,
+    ext: candidate.ext,
+    proxyPath,
+    thumbPath,
+  });
+
+  if (created.ok) {
+    const thumbState = created.value.thumbWidth === null ? 'failed' : 'done';
+    const set = await deps.photos.setProxyOutcome({
+      fingerprint: candidate.fingerprint,
+      proxyState: 'done',
+      proxyWidth: created.value.proxyWidth,
+      proxyHeight: created.value.proxyHeight,
+      thumbState,
+    });
+    if (!set.ok) return set;
+    counters.generated += 1;
+    if (thumbState === 'failed') counters.thumbFailed += 1;
+    return ok(undefined);
+  }
+
+  const set = await deps.photos.setProxyOutcome({
+    fingerprint: candidate.fingerprint,
+    proxyState: 'failed',
+    proxyWidth: null,
+    proxyHeight: null,
+    thumbState: 'failed',
+  });
+  if (!set.ok) return set;
+  counters.failed += 1;
+  await report(progress, 'photo-proxy-failed', {
+    path: candidate.sourcePath,
+    fingerprint: candidate.fingerprint,
+    code: created.error.code,
+  });
+  return ok(undefined);
+};
+
+export const photosTree = async (
+  deps: PhotosDeps,
+): Promise<Result<{ media: 'photo'; roots: PhotoRootSummary[] }, AppError>> => {
+  const roots = await deps.photos.listRoots();
+  if (!roots.ok) return roots;
+  return ok({ media: 'photo', roots: roots.value });
+};
+
+export interface PhotosListOutput {
+  media: 'photo';
+  root: string | null;
+  total: number;
+  offset: number;
+  items: (PhotoListItem & { thumbPath: string | null; proxyPath: string | null })[];
+}
+
+export const photosList = async (
+  deps: PhotosDeps,
+  input: { root?: string | undefined; offset: number; limit: number },
+): Promise<Result<PhotosListOutput, AppError>> => {
+  const root = input.root === undefined ? null : deps.fs.resolve(input.root);
+  const page = await deps.photos.listPhotosPage({ root, offset: input.offset, limit: input.limit });
+  if (!page.ok) return page;
+  const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  return ok({
+    media: 'photo',
+    root,
+    total: page.value.total,
+    offset: input.offset,
+    items: page.value.items.map((item) => ({
+      ...item,
+      proxyPath: item.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, item.fingerprint) : null,
+      thumbPath: item.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, item.fingerprint) : null,
+    })),
+  });
+};
+
+export interface PhotosDetailOutput {
+  media: 'photo';
+  photo: PhotoRecord;
+  sightings: PhotoSightingRecord[];
+  ownerPath: string;
+  proxyPath: string | null;
+  thumbPath: string | null;
+}
+
+export const photosDetail = async (
+  deps: PhotosDeps,
+  input: { fingerprint: string },
+): Promise<Result<PhotosDetailOutput | null, AppError>> => {
+  const detail = await deps.photos.getPhotoDetail(input.fingerprint);
+  if (!detail.ok) return detail;
+  if (detail.value === null) return ok(null);
+  const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  return ok({
+    media: 'photo',
+    photo: detail.value.photo,
+    sightings: detail.value.sightings,
+    ownerPath: detail.value.photo.currentPath,
+    proxyPath: detail.value.photo.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
+    thumbPath: detail.value.photo.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
+  });
+};
+
 export const photosStatus = async (
   deps: PhotosDeps,
   input: { root?: string | undefined },
@@ -451,7 +733,8 @@ export const photosForget = async (
   input: { root: string },
 ): Promise<Result<PhotosForgetOutput, AppError>> => {
   const root = deps.fs.resolve(input.root);
-  return deps.photos.withBatch(async (): Promise<Result<PhotosForgetOutput, AppError>> => {
+  const deletedFingerprints: string[] = [];
+  const batched = await deps.photos.withBatch(async (): Promise<Result<Omit<PhotosForgetOutput, 'artifactPaths'>, AppError>> => {
     const sightings = await deps.photos.listSightingsUnderRoot(root);
     if (!sightings.ok) return sightings;
     const byFingerprint = new Map<string, PhotoSightingRecord[]>();
@@ -475,6 +758,7 @@ export const photosForget = async (
         const deletedPhoto = await deps.photos.deletePhoto(fingerprint);
         if (!deletedPhoto.ok) return deletedPhoto;
         photosDeleted += 1;
+        deletedFingerprints.push(fingerprint);
         continue;
       }
       const photoRecord = await deps.photos.getPhoto(fingerprint);
@@ -498,4 +782,20 @@ export const photosForget = async (
     }
     return ok({ media: 'photo', root, pathsRemoved, photosDeleted, photosRepointed });
   });
+  if (!batched.ok) return batched;
+
+  const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  const artifactPaths: string[] = [];
+  for (const fingerprint of deletedFingerprints) {
+    for (const candidatePath of [photoProxyPath(deps.fs, artifactsRoot, fingerprint), photoThumbPath(deps.fs, artifactsRoot, fingerprint)]) {
+      const exists = await deps.fs.exists(candidatePath);
+      if (!exists.ok) return exists;
+      if (!exists.value) continue;
+      const deleted = await deps.fs.deleteFile(candidatePath);
+      if (!deleted.ok) return deleted;
+      artifactPaths.push(candidatePath);
+    }
+  }
+
+  return ok({ ...batched.value, artifactPaths });
 };

@@ -1,0 +1,54 @@
+import { describe, expect, it } from 'vitest';
+
+import type { DaySection, PhotoListItem } from './day-groups.js';
+import { adjacentFingerprint, flattenOrder } from './viewer-nav.js';
+
+const stubItem = (fingerprint: string): PhotoListItem => ({
+  fingerprint,
+  fileName: `${fingerprint}.jpg`,
+  currentPath: `/photos/${fingerprint}.jpg`,
+  ext: 'jpg',
+  capturedAt: null,
+  capturedAtSource: null,
+  width: 100,
+  height: 100,
+  proxyState: 'done',
+  thumbState: 'done',
+  missingAt: null,
+  sightings: 1,
+  thumbPath: null,
+  proxyPath: null,
+});
+
+const sections: DaySection[] = [
+  { day: 'd1', label: 'd1', items: [stubItem('a'), stubItem('b')] },
+  { day: 'd2', label: 'd2', items: [stubItem('c')] },
+];
+
+describe('flattenOrder', () => {
+  it('flattens sections into fingerprints in display order', () => {
+    expect(flattenOrder(sections)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('returns an empty array for no sections', () => {
+    expect(flattenOrder([])).toEqual([]);
+  });
+});
+
+describe('adjacentFingerprint', () => {
+  const order = flattenOrder(sections);
+
+  it('moves forward and backward across section boundaries', () => {
+    expect(adjacentFingerprint(order, 'b', 1)).toBe('c');
+    expect(adjacentFingerprint(order, 'c', -1)).toBe('b');
+  });
+
+  it('returns null at either edge of the order', () => {
+    expect(adjacentFingerprint(order, 'a', -1)).toBeNull();
+    expect(adjacentFingerprint(order, 'c', 1)).toBeNull();
+  });
+
+  it('returns null when the current fingerprint is not in the order', () => {
+    expect(adjacentFingerprint(order, 'missing', 1)).toBeNull();
+  });
+});

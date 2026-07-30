@@ -23,6 +23,7 @@ import {
   type GeminiUsageAccounting,
   type MachineProfile,
   type Person,
+  type PhotoExtension,
   type Result,
   type SpendLedgerEntry,
   type Video,
@@ -86,8 +87,14 @@ import type {
   ProvidersPort,
   ProviderTestResult,
   ExifPort,
+  PhotoDetail,
   PhotoFolderRecord,
+  PhotoListItem,
+  PhotoMediaPort,
+  PhotoProxyCandidate,
+  PhotoProxyOutcome,
   PhotoRecord,
+  PhotoRootSummary,
   PhotoRunRecord,
   PhotoSightingRecord,
   PhotosCounts,
@@ -1852,6 +1859,8 @@ export class InMemoryPhotosStore implements PhotosStore {
       exifFailed: photoRows.filter((photo) => photo.exifReadAt === null).length,
       missing: photoRows.filter((photo) => photo.missingAt !== null).length,
       duplicates: [...bySightingCount.values()].filter((count) => count > 1).length,
+      proxied: photoRows.filter((photo) => photo.proxyState === 'done').length,
+      proxyFailed: photoRows.filter((photo) => photo.proxyState === 'failed').length,
     }));
   }
 
@@ -1863,6 +1872,169 @@ export class InMemoryPhotosStore implements PhotosStore {
   updatePhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>> {
     this.runs.set(run.runId, run);
     return Promise.resolve(ok(undefined));
+  }
+
+  listProxyCandidates(root: string): Promise<Result<PhotoProxyCandidate[], AppError>> {
+    const canonicalRoot = canonicalPath(root);
+    const sightingsUnderRoot = [...this.sightings.values()].filter((sighting) => isUnderRoot(sighting.currentPath, canonicalRoot));
+    const newestByFingerprint = new Map<string, PhotoSightingRecord>();
+    for (const sighting of sightingsUnderRoot) {
+      const current = newestByFingerprint.get(sighting.fingerprint);
+      if (current === undefined
+        || sighting.lastSeenAt > current.lastSeenAt
+        || (sighting.lastSeenAt === current.lastSeenAt && sighting.currentPath < current.currentPath)) {
+        newestByFingerprint.set(sighting.fingerprint, sighting);
+      }
+    }
+    const scopedFingerprints = new Set([
+      ...sightingsUnderRoot.map((sighting) => sighting.fingerprint),
+      ...[...this.photoRows.values()].filter((photo) => isUnderRoot(photo.currentPath, canonicalRoot)).map((photo) => photo.fingerprint),
+    ]);
+    const candidates = [...this.photoRows.values()]
+      .filter((photo) => scopedFingerprints.has(photo.fingerprint))
+      .filter((photo) => photo.missingAt === null)
+      .sort((left, right) => left.currentPath.localeCompare(right.currentPath))
+      .map((photo): PhotoProxyCandidate => {
+        const ownerUnderRoot = isUnderRoot(photo.currentPath, canonicalRoot);
+        const sourcePath = ownerUnderRoot ? photo.currentPath : (newestByFingerprint.get(photo.fingerprint)?.currentPath ?? photo.currentPath);
+        return {
+          fingerprint: photo.fingerprint,
+          sourcePath,
+          ext: photo.ext,
+          proxyState: photo.proxyState,
+          thumbState: photo.thumbState,
+        };
+      });
+    return Promise.resolve(ok(candidates));
+  }
+
+  setProxyOutcome(input: {
+    fingerprint: string;
+    proxyState: 'done' | 'failed';
+    proxyWidth: number | null;
+    proxyHeight: number | null;
+    thumbState: 'done' | 'failed';
+  }): Promise<Result<void, AppError>> {
+    const existing = this.photoRows.get(input.fingerprint);
+    if (existing === undefined) return Promise.resolve(ok(undefined));
+    this.photoRows.set(input.fingerprint, {
+      ...existing,
+      proxyState: input.proxyState,
+      proxyWidth: input.proxyWidth,
+      proxyHeight: input.proxyHeight,
+      thumbState: input.thumbState,
+    });
+    return Promise.resolve(ok(undefined));
+  }
+
+  listRoots(): Promise<Result<PhotoRootSummary[], AppError>> {
+    const byRoot = new Map<string, string>();
+    for (const run of this.runs.values()) {
+      const current = byRoot.get(run.root);
+      if (current === undefined || run.startedAt > current) byRoot.set(run.root, run.startedAt);
+    }
+    const summaries = [...byRoot.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([root, lastScanAt]): PhotoRootSummary => {
+        const scoped = new Set([
+          ...[...this.sightings.values()].filter((sighting) => isUnderRoot(sighting.currentPath, root)).map((sighting) => sighting.fingerprint),
+          ...[...this.photoRows.values()].filter((photo) => isUnderRoot(photo.currentPath, root)).map((photo) => photo.fingerprint),
+        ]);
+        const photoRows = [...this.photoRows.values()].filter((photo) => scoped.has(photo.fingerprint));
+        return {
+          root,
+          photos: photoRows.length,
+          missing: photoRows.filter((photo) => photo.missingAt !== null).length,
+          lastScanAt,
+        };
+      });
+    return Promise.resolve(ok(summaries));
+  }
+
+  listPhotosPage(input: { root: string | null; offset: number; limit: number }):
+  Promise<Result<{ total: number; items: PhotoListItem[] }, AppError>> {
+    const canonicalRoot = input.root === null ? null : canonicalPath(input.root);
+    const scoped = canonicalRoot === null
+      ? new Set(this.photoRows.keys())
+      : new Set([
+        ...[...this.sightings.values()].filter((sighting) => isUnderRoot(sighting.currentPath, canonicalRoot)).map((sighting) => sighting.fingerprint),
+        ...[...this.photoRows.values()].filter((photo) => isUnderRoot(photo.currentPath, canonicalRoot)).map((photo) => photo.fingerprint),
+      ]);
+    const sightingCounts = new Map<string, number>();
+    for (const sighting of this.sightings.values()) sightingCounts.set(sighting.fingerprint, (sightingCounts.get(sighting.fingerprint) ?? 0) + 1);
+    const all = [...this.photoRows.values()]
+      .filter((photo) => scoped.has(photo.fingerprint))
+      .sort((left, right) => {
+        const leftCaptured = left.capturedAt ?? '';
+        const rightCaptured = right.capturedAt ?? '';
+        if (leftCaptured !== rightCaptured) return rightCaptured.localeCompare(leftCaptured);
+        return left.fingerprint.localeCompare(right.fingerprint);
+      });
+    const page = all.slice(input.offset, input.offset + input.limit).map((photo): PhotoListItem => ({
+      fingerprint: photo.fingerprint,
+      fileName: photo.fileName,
+      currentPath: photo.currentPath,
+      ext: photo.ext,
+      capturedAt: photo.capturedAt,
+      capturedAtSource: photo.capturedAtSource,
+      width: photo.width,
+      height: photo.height,
+      proxyState: photo.proxyState,
+      thumbState: photo.thumbState,
+      missingAt: photo.missingAt,
+      sightings: sightingCounts.get(photo.fingerprint) ?? 0,
+    }));
+    return Promise.resolve(ok({ total: all.length, items: page }));
+  }
+
+  getPhotoDetail(fingerprint: string): Promise<Result<PhotoDetail | null, AppError>> {
+    const photo = this.photoRows.get(fingerprint);
+    if (photo === undefined) return Promise.resolve(ok(null));
+    const sightings = [...this.sightings.values()]
+      .filter((sighting) => sighting.fingerprint === fingerprint)
+      .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt) || left.currentPath.localeCompare(right.currentPath));
+    return Promise.resolve(ok({ photo, sightings }));
+  }
+}
+
+interface FakePhotoMediaCall {
+  sourcePath: string;
+  ext: PhotoExtension;
+  proxyPath: string;
+  thumbPath: string;
+}
+
+export class FakePhotoMediaPort implements PhotoMediaPort {
+  readonly calls: FakePhotoMediaCall[] = [];
+  private readonly failurePaths = new Set<string>();
+  private readonly outcomeOverrides = new Map<string, Partial<PhotoProxyOutcome>>();
+
+  constructor(private readonly artifacts?: InMemoryFileSystem) {}
+
+  failFor(sourcePath: string): void {
+    this.failurePaths.add(sourcePath);
+  }
+
+  outcomeFor(sourcePath: string, outcome: Partial<PhotoProxyOutcome>): void {
+    this.outcomeOverrides.set(sourcePath, outcome);
+  }
+
+  createProxy(input: FakePhotoMediaCall): Promise<Result<PhotoProxyOutcome, AppError>> {
+    this.calls.push(input);
+    if (this.failurePaths.has(input.sourcePath)) {
+      return Promise.resolve({ ok: false, error: appError('thumbnail_error', `Fake proxy failure for ${input.sourcePath}`) });
+    }
+    const override = this.outcomeOverrides.get(input.sourcePath) ?? {};
+    const outcome: PhotoProxyOutcome = {
+      proxyWidth: override.proxyWidth ?? 1280,
+      proxyHeight: override.proxyHeight ?? 720,
+      thumbWidth: override.thumbWidth === undefined ? 320 : override.thumbWidth,
+      thumbHeight: override.thumbHeight === undefined ? 180 : override.thumbHeight,
+      source: override.source ?? 'downscale',
+    };
+    this.artifacts?.addFile(input.proxyPath, { content: `proxy:${input.sourcePath}` });
+    if (outcome.thumbWidth !== null) this.artifacts?.addFile(input.thumbPath, { content: `thumb:${input.sourcePath}` });
+    return Promise.resolve(ok(outcome));
   }
 }
 

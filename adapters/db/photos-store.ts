@@ -15,7 +15,7 @@ import { createRequire } from 'node:module';
 import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import initSqlJs, { type Database, type SqlJsStatic } from 'sql.js';
+import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js';
 
 import {
   appError,
@@ -28,8 +28,12 @@ import {
   type Result,
 } from '@core/domain/index.js';
 import type {
+  PhotoDetail,
   PhotoFolderRecord,
+  PhotoListItem,
+  PhotoProxyCandidate,
   PhotoRecord,
+  PhotoRootSummary,
   PhotoRunRecord,
   PhotoSightingRecord,
   PhotosCounts,
@@ -263,32 +267,35 @@ export class SqlJsPhotosStore implements PhotosStore {
   }
 
   async counts(root: string | null): Promise<Result<PhotosCounts, AppError>> {
-    return this.read((db) => {
-      const canonicalRoot = root === null ? null : canonicalPath(root);
-      const allPhotoRows = db.select().from(photos).all();
-      const scopedFingerprints = canonicalRoot === null
-        ? null
-        : new Set([
-          ...db.select({ fingerprint: photoPaths.fingerprint, currentPath: photoPaths.currentPath }).from(photoPaths).all()
-            .filter((row) => isUnderRoot(row.currentPath, canonicalRoot))
-            .map((row) => row.fingerprint),
-          ...allPhotoRows
-            .filter((row) => isUnderRoot(canonicalPath(row.currentPath), canonicalRoot))
-            .map((row) => row.fingerprint),
-        ]);
-      const photoRows = allPhotoRows
-        .filter((row) => scopedFingerprints === null || scopedFingerprints.has(row.fingerprint));
-      const pathRows = db.select().from(photoPaths).all()
-        .filter((row) => scopedFingerprints === null || scopedFingerprints.has(row.fingerprint));
-      const bySightingCount = new Map<string, number>();
-      for (const row of pathRows) bySightingCount.set(row.fingerprint, (bySightingCount.get(row.fingerprint) ?? 0) + 1);
+    return this.read((_db, client) => {
+      const scope = scopeForRoot(root);
+      const result = client.exec(
+        `SELECT
+            COUNT(*) AS photos,
+            SUM(CASE WHEN exif_read_at IS NOT NULL THEN 1 ELSE 0 END) AS exif_read,
+            SUM(CASE WHEN exif_read_at IS NULL THEN 1 ELSE 0 END) AS exif_failed,
+            SUM(CASE WHEN missing_at IS NOT NULL THEN 1 ELSE 0 END) AS missing,
+            SUM(CASE WHEN proxy_state = 'done' THEN 1 ELSE 0 END) AS proxied,
+            SUM(CASE WHEN proxy_state = 'failed' THEN 1 ELSE 0 END) AS proxy_failed,
+            (SELECT COUNT(*) FROM photo_paths WHERE fingerprint IN (SELECT fingerprint FROM photos WHERE ${scope.where})) AS paths,
+            (SELECT COUNT(*) FROM (
+              SELECT fingerprint FROM photo_paths
+              WHERE fingerprint IN (SELECT fingerprint FROM photos WHERE ${scope.where})
+              GROUP BY fingerprint HAVING COUNT(*) > 1
+            )) AS duplicates
+          FROM photos WHERE ${scope.where}`,
+        scope.params,
+      );
+      const row = result[0]?.values[0] ?? [];
       return {
-        photos: photoRows.length,
-        paths: pathRows.length,
-        exifRead: photoRows.filter((row) => row.exifReadAt !== null).length,
-        exifFailed: photoRows.filter((row) => row.exifReadAt === null).length,
-        missing: photoRows.filter((row) => row.missingAt !== null).length,
-        duplicates: [...bySightingCount.values()].filter((count) => count > 1).length,
+        photos: numberValue(row[0]),
+        paths: numberValue(row[6]),
+        exifRead: numberValue(row[1]),
+        exifFailed: numberValue(row[2]),
+        missing: numberValue(row[3]),
+        duplicates: numberValue(row[7]),
+        proxied: numberValue(row[4]),
+        proxyFailed: numberValue(row[5]),
       };
     });
   }
@@ -306,6 +313,130 @@ export class SqlJsPhotosStore implements PhotosStore {
         .values(row)
         .onConflictDoUpdate({ target: photoRuns.runId, set: row })
         .run();
+    });
+  }
+
+  async listProxyCandidates(root: string): Promise<Result<PhotoProxyCandidate[], AppError>> {
+    return this.read((_db, client) => {
+      const canonicalRoot = canonicalPath(root);
+      const scope = scopeForRoot(canonicalRoot);
+      const photoRows = client.exec(
+        `SELECT fingerprint, current_path, ext, proxy_state, thumb_state FROM photos
+         WHERE missing_at IS NULL AND (${scope.where})
+         ORDER BY current_path ASC`,
+        scope.params,
+      );
+      const sightingRows = client.exec(
+        `SELECT fingerprint, current_path FROM photo_paths
+         WHERE current_path >= $scopeLower AND current_path < $scopeUpper
+         ORDER BY last_seen_at DESC, current_path ASC`,
+        { $scopeLower: `${canonicalRoot}/`, $scopeUpper: `${canonicalRoot}0` },
+      );
+      const newestUnderRoot = new Map<string, string>();
+      for (const row of sightingRows[0]?.values ?? []) {
+        const fingerprint = stringValue(row[0]);
+        if (!newestUnderRoot.has(fingerprint)) newestUnderRoot.set(fingerprint, canonicalPath(stringValue(row[1])));
+      }
+      return (photoRows[0]?.values ?? []).map((row): PhotoProxyCandidate => {
+        const fingerprint = stringValue(row[0]);
+        const ownerPath = canonicalPath(stringValue(row[1]));
+        const sourcePath = isUnderRoot(ownerPath, canonicalRoot) ? ownerPath : (newestUnderRoot.get(fingerprint) ?? ownerPath);
+        return {
+          fingerprint,
+          sourcePath,
+          ext: parseExtension(stringValue(row[2])),
+          proxyState: parseProxyState(stringValue(row[3])),
+          thumbState: parseThumbState(stringValue(row[4])),
+        };
+      });
+    });
+  }
+
+  async setProxyOutcome(input: {
+    fingerprint: string;
+    proxyState: 'done' | 'failed';
+    proxyWidth: number | null;
+    proxyHeight: number | null;
+    thumbState: 'done' | 'failed';
+  }): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      db.update(photos)
+        .set({
+          proxyState: input.proxyState,
+          proxyWidth: input.proxyWidth,
+          proxyHeight: input.proxyHeight,
+          thumbState: input.thumbState,
+        })
+        .where(eq(photos.fingerprint, input.fingerprint))
+        .run();
+    });
+  }
+
+  async listRoots(): Promise<Result<PhotoRootSummary[], AppError>> {
+    return this.read((_db, client) => {
+      const runsResult = client.exec(
+        'SELECT root, MAX(started_at) AS last_scan_at FROM photo_runs GROUP BY root ORDER BY root ASC',
+      );
+      return (runsResult[0]?.values ?? []).map((runRow): PhotoRootSummary => {
+        const root = stringValue(runRow[0]);
+        const scope = scopeForRoot(root);
+        const countResult = client.exec(
+          `SELECT COUNT(*) AS photos, SUM(CASE WHEN missing_at IS NOT NULL THEN 1 ELSE 0 END) AS missing
+           FROM photos WHERE ${scope.where}`,
+          scope.params,
+        );
+        const countRow = countResult[0]?.values[0] ?? [];
+        return {
+          root,
+          photos: numberValue(countRow[0]),
+          missing: numberValue(countRow[1]),
+          lastScanAt: stringValue(runRow[1]),
+        };
+      });
+    });
+  }
+
+  async listPhotosPage(input: { root: string | null; offset: number; limit: number }):
+  Promise<Result<{ total: number; items: PhotoListItem[] }, AppError>> {
+    return this.read((_db, client) => {
+      const scope = scopeForRoot(input.root);
+      const totalResult = client.exec(`SELECT COUNT(*) FROM photos WHERE ${scope.where}`, scope.params);
+      const total = numberValue(totalResult[0]?.values[0]?.[0]);
+      const rowsResult = client.exec(
+        `SELECT fingerprint, file_name, current_path, ext, captured_at, captured_at_source, width, height,
+                proxy_state, thumb_state, missing_at,
+                (SELECT COUNT(*) FROM photo_paths WHERE fingerprint = photos.fingerprint) AS sightings
+         FROM photos WHERE ${scope.where}
+         ORDER BY captured_at DESC, fingerprint ASC
+         LIMIT $scopeLimit OFFSET $scopeOffset`,
+        { ...scope.params, $scopeLimit: input.limit, $scopeOffset: input.offset },
+      );
+      const items = (rowsResult[0]?.values ?? []).map((row): PhotoListItem => ({
+        fingerprint: stringValue(row[0]),
+        fileName: stringValue(row[1]),
+        currentPath: canonicalPath(stringValue(row[2])),
+        ext: parseExtension(stringValue(row[3])),
+        capturedAt: nullableStringValue(row[4]),
+        capturedAtSource: parseCapturedAtSource(nullableStringValue(row[5])),
+        width: nullableNumberValue(row[6]),
+        height: nullableNumberValue(row[7]),
+        proxyState: parseProxyState(stringValue(row[8])),
+        thumbState: parseThumbState(stringValue(row[9])),
+        missingAt: nullableNumberValue(row[10]),
+        sightings: numberValue(row[11]),
+      }));
+      return { total, items };
+    });
+  }
+
+  async getPhotoDetail(fingerprint: string): Promise<Result<PhotoDetail | null, AppError>> {
+    return this.read((db): PhotoDetail | null => {
+      const row = db.select().from(photos).where(eq(photos.fingerprint, fingerprint)).get();
+      if (row === undefined) return null;
+      const sightingRows = db.select().from(photoPaths).where(eq(photoPaths.fingerprint, fingerprint)).all();
+      const sightings = sightingRows.map(rowToSighting).sort((left, right) =>
+        right.lastSeenAt.localeCompare(left.lastSeenAt) || left.currentPath.localeCompare(right.currentPath));
+      return { photo: rowToPhoto(row), sightings };
     });
   }
 
@@ -468,6 +599,32 @@ const failure = <T>(cause: unknown): Result<T, AppError> => {
 
 const isUnderRoot = (candidate: string, root: string): boolean =>
   candidate === root || candidate.startsWith(`${root}/`);
+
+interface RootScope {
+  where: string;
+  params: Record<string, SqlValue>;
+}
+
+const scopeForRoot = (root: string | null): RootScope => {
+  if (root === null) return { where: '1=1', params: {} };
+  const canonicalRoot = canonicalPath(root);
+  return {
+    where: `(photos.current_path >= $scopeLower AND photos.current_path < $scopeUpper)
+      OR EXISTS (SELECT 1 FROM photo_paths sp WHERE sp.fingerprint = photos.fingerprint
+        AND sp.current_path >= $scopeLower AND sp.current_path < $scopeUpper)`,
+    params: { $scopeLower: `${canonicalRoot}/`, $scopeUpper: `${canonicalRoot}0` },
+  };
+};
+
+const stringValue = (value: SqlValue | undefined): string => (typeof value === 'string' ? value : '');
+
+const nullableStringValue = (value: SqlValue | undefined): string | null =>
+  typeof value === 'string' ? value : null;
+
+const nullableNumberValue = (value: SqlValue | undefined): number | null =>
+  typeof value === 'number' ? value : null;
+
+const numberValue = (value: SqlValue | undefined): number => (typeof value === 'number' ? value : 0);
 
 const rowToFolder = (row: typeof photoFolders.$inferSelect): PhotoFolderRecord => ({
   folderId: row.folderId,

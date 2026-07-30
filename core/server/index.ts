@@ -17,6 +17,7 @@ export * from './usecases/health.js';
 export * from './usecases/jobs.js';
 export * from './usecases/materialize.js';
 export * from './usecases/models.js';
+export * from './usecases/photo-artifacts.js';
 export * from './usecases/photos.js';
 export * from './usecases/process.js';
 export * from './usecases/process-drive.js';

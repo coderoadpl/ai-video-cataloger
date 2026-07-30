@@ -107,7 +107,8 @@ const desktopBridge: DesktopBridge = {
       desktopFetchResponseSchema.parse(await invokeUnknown(CHANNELS.apiRequest, input)) satisfies DesktopFetchResponse,
   },
   folder: {
-    showPicker: async () => z.string().nullable().parse(await invokeUnknown(CHANNELS.folderShowPicker)),
+    showPicker: async (purpose) =>
+      z.string().nullable().parse(await invokeUnknown(CHANNELS.folderShowPicker, purpose)),
     getCurrent: async () => z.string().nullable().parse(await invokeUnknown(CHANNELS.folderGetCurrent)),
     setCurrent: async (folderPath) => {
       await invokeUnknown(CHANNELS.folderSetCurrent, folderPath);

@@ -3,7 +3,7 @@ import { access, constants } from 'node:fs/promises';
 import packageJson from '../../../../package.json' with { type: 'json' };
 
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
-import { FakeExifPort, InMemoryPhotosStore } from '../../../../test/server/usecases/test-fakes.js';
+import { FakeExifPort, FakePhotoMediaPort, InMemoryPhotosStore } from '../../../../test/server/usecases/test-fakes.js';
 import {
   FACE_ENGINE_VERSION,
   LEGACY_CONFIG_ID,
@@ -116,6 +116,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     catalogs: new InMemoryCatalogRepositoryFactory(),
     globalCatalog: new InMemoryGlobalCatalogStore(),
     photos: new InMemoryPhotosStore(),
+    photoMedia: new FakePhotoMediaPort(),
     exif: new FakeExifPort(),
     config: configStore,
     credentials,

@@ -38,8 +38,11 @@ import {
   providerTestOutputSchema,
   localAiRmOutputSchema,
   looseEnvelopeSchema,
+  photosDetailOutputSchema,
   photosForgetOutputSchema,
+  photosListOutputSchema,
   photosStatusOutputSchema,
+  photosTreeOutputSchema,
   resetAllOutputSchema,
   resetSingleOutputSchema,
   scanOutputSchema,
@@ -849,6 +852,55 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.photosForget.path,
       photosForgetOutputSchema,
       parsed.value,
+      signal,
+    );
+  },
+  photosProxies: (input: z.input<typeof API_ROUTES.photosProxies.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosProxies.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosProxies.method,
+      API_ROUTES.photosProxies.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  photosTree: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.photosTree.method,
+      API_ROUTES.photosTree.path,
+      photosTreeOutputSchema,
+      undefined,
+      signal,
+    ),
+  photosList: (input: z.input<typeof API_ROUTES.photosList.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosList.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosList.method,
+      queryPath(API_ROUTES.photosList.path, [
+        ['root', parsed.value.root ?? null],
+        ['offset', String(parsed.value.offset)],
+        ['limit', String(parsed.value.limit)],
+      ]),
+      photosListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  photosDetail: (input: z.input<typeof API_ROUTES.photosDetail.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosDetail.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosDetail.method,
+      queryPath(API_ROUTES.photosDetail.path, [['fingerprint', parsed.value.fingerprint]]),
+      photosDetailOutputSchema,
+      undefined,
       signal,
     );
   },

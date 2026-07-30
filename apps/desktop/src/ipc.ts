@@ -35,6 +35,7 @@ export interface IpcDeps {
 
 const stringSchema = z.string();
 const stringArraySchema = z.array(z.string());
+const folderPickerPurposeSchema = z.enum(['video', 'photos']).catch('video');
 
 export const registerIpcHandlers = (deps: IpcDeps): void => {
   const isTrustedSender = (event: IpcMainEvent | IpcMainInvokeEvent): boolean => {
@@ -72,13 +73,14 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
     window?.maximize();
   });
 
-  ipcMain.handle(CHANNELS.folderShowPicker, async (event): Promise<string | null> => {
+  ipcMain.handle(CHANNELS.folderShowPicker, async (event, purposeInput: unknown): Promise<string | null> => {
     if (!isTrustedSender(event)) return null;
     const window = BrowserWindow.fromWebContents(event.sender);
     if (window === null) return null;
+    const purpose = folderPickerPurposeSchema.parse(purposeInput);
     const result = await dialog.showOpenDialog(window, {
       properties: ['openDirectory', 'createDirectory'],
-      title: 'Select Video Folder',
+      title: purpose === 'photos' ? 'Select Photo Folder' : 'Select Video Folder',
       buttonLabel: 'Select Folder',
     });
     return result.canceled ? null : (result.filePaths[0] ?? null);

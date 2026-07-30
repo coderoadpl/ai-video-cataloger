@@ -24,6 +24,7 @@ import { OnnxFaceEngineAdapter } from '@adapters/faces/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
 import { GeoNamesPlacesAdapter } from '@adapters/places/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
+import { SipsPhotoMediaAdapter } from '@adapters/photo-media/index.js';
 import { NodeFolderWatcherPort } from '@adapters/fs/folder-watcher.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { ManagedOllamaRuntimeAdapter } from '@adapters/ollama-runtime/index.js';
@@ -66,6 +67,7 @@ import type {
   LocalAiRuntimePort,
   MediaPort,
   ModelDownloadPort,
+  PhotoMediaPort,
   PhotosStore,
   PlacesPort,
   ProvidersPort,
@@ -84,6 +86,7 @@ export interface AppDeps {
   catalogs: CatalogRepositoryFactory;
   globalCatalog: GlobalCatalogStore;
   photos: PhotosStore;
+  photoMedia: PhotoMediaPort;
   exif: ExifPort;
   config: ConfigStore;
   credentials: CredentialsStore;
@@ -181,6 +184,7 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
       processName: config.processName ?? 'cli',
       lockMode: config.catalogLockMode ?? 'lazy',
     }),
+    photoMedia: new SipsPhotoMediaAdapter(),
     exif: new ExifrExifAdapter(),
     config: configStore,
     credentials,

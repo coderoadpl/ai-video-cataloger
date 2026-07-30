@@ -484,23 +484,70 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
   assert(error.type === 'error' && error.code === 'FOLDER_NOT_FOUND', `scan missing: expected FOLDER_NOT_FOUND, got ${JSON.stringify(error)}`);
 };
 
-const minimalJpegBytes = (seed: number): Buffer =>
-  Buffer.from([0xff, 0xd8, seed, 0xff, 0xd9]);
+// Two distinct, real, decodable, EXIF-date-less 1x1 JPEGs (sips-encoded), so the RAW/full-decode
+// path can run for real and the `file_mtime` provenance assertions stand.
+const REAL_JPEG_RED = Buffer.from(
+  '/9j/4AAQSkZJRgABAQAASABIAAD/4QCARXhpZgAATU0AKgAAAAgABAEaAAUAAAABAAAAPgEbAAUAAAABAAAARgEoAAMAAAABAAIAAIdpAAQAAAABAAAATgAAAAAAAABIAAAAAQAAAEgAAAABAAOgAQADAAAAAQABAACgAgAEAAAAAQAAAAGgAwAEAAAAAQAAAAEAAAAA/+0AOFBob3Rvc2hvcCAzLjAAOEJJTQQEAAAAAAAAOEJJTQQlAAAAAAAQ1B2M2Y8AsgTpgAmY7PhCfv/AABEIAAEAAQMBIgACEQEDEQH/xAAfAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/xAC1EAACAQMDAgQDBQUEBAAAAX0BAgMABBEFEiExQQYTUWEHInEUMoGRoQgjQrHBFVLR8CQzYnKCCQoWFxgZGiUmJygpKjQ1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4eLj5OXm5+jp6vHy8/T19vf4+fr/xAAfAQADAQEBAQEBAQEBAAAAAAAAAQIDBAUGBwgJCgv/xAC1EQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2wBDAAICAgICAgMCAgMFAwMDBQYFBQUFBggGBgYGBggKCAgICAgICgoKCgoKCgoMDAwMDAwODg4ODg8PDw8PDw8PDw//2wBDAQICAgQEBAcEBAcQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/3QAEAAH/2gAMAwEAAhEDEQA/APi+iiiv5TP9/D//2Q==',
+  'base64',
+);
+const REAL_JPEG_BLUE = Buffer.from(
+  '/9j/4AAQSkZJRgABAQAASABIAAD/4QCARXhpZgAATU0AKgAAAAgABAEaAAUAAAABAAAAPgEbAAUAAAABAAAARgEoAAMAAAABAAIAAIdpAAQAAAABAAAATgAAAAAAAABIAAAAAQAAAEgAAAABAAOgAQADAAAAAQABAACgAgAEAAAAAQAAAAGgAwAEAAAAAQAAAAEAAAAA/+0AOFBob3Rvc2hvcCAzLjAAOEJJTQQEAAAAAAAAOEJJTQQlAAAAAAAQ1B2M2Y8AsgTpgAmY7PhCfv/AABEIAAEAAQMBIgACEQEDEQH/xAAfAAABBQEBAQEBAQAAAAAAAAAAAQIDBAUGBwgJCgv/xAC1EAACAQMDAgQDBQUEBAAAAX0BAgMABBEFEiExQQYTUWEHInEUMoGRoQgjQrHBFVLR8CQzYnKCCQoWFxgZGiUmJygpKjQ1Njc4OTpDREVGR0hJSlNUVVZXWFlaY2RlZmdoaWpzdHV2d3h5eoOEhYaHiImKkpOUlZaXmJmaoqOkpaanqKmqsrO0tba3uLm6wsPExcbHyMnK0tPU1dbX2Nna4eLj5OXm5+jp6vHy8/T19vf4+fr/xAAfAQADAQEBAQEBAQEBAAAAAAAAAQIDBAUGBwgJCgv/xAC1EQACAQIEBAMEBwUEBAABAncAAQIDEQQFITEGEkFRB2FxEyIygQgUQpGhscEJIzNS8BVictEKFiQ04SXxFxgZGiYnKCkqNTY3ODk6Q0RFRkdISUpTVFVWV1hZWmNkZWZnaGlqc3R1dnd4eXqCg4SFhoeIiYqSk5SVlpeYmZqio6Slpqeoqaqys7S1tre4ubrCw8TFxsfIycrS09TV1tfY2dri4+Tl5ufo6ery8/T19vf4+fr/2wBDAAICAgICAgMCAgMFAwMDBQYFBQUFBggGBgYGBggKCAgICAgICgoKCgoKCgoMDAwMDAwODg4ODg8PDw8PDw8PDw//2wBDAQICAgQEBAcEBAcQCwkLEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBD/3QAEAAH/2gAMAwEAAhEDEQA/APxzooor/fw/Kz//2Q==',
+  'base64',
+);
+
+const proxyArtifactCounts = (home: string): { proxies: number; thumbs: number } => ({
+  proxies: readdirSync(join(home, '.ai-video-cataloger', 'photo-artifacts', 'proxies')).length,
+  thumbs: readdirSync(join(home, '.ai-video-cataloger', 'photo-artifacts', 'thumbs')).length,
+});
 
 const photosCli = async (home: string, folder: string): Promise<void> => {
   const env = { HOME: home };
   const photosDir = join(folder, 'photos');
   mkdirSync(photosDir, { recursive: true });
-  writeFileSync(join(photosDir, 'a.jpg'), minimalJpegBytes(1));
-  writeFileSync(join(photosDir, 'b.jpg'), minimalJpegBytes(2));
+  writeFileSync(join(photosDir, 'a.jpg'), REAL_JPEG_RED);
+  writeFileSync(join(photosDir, 'b.jpg'), REAL_JPEG_BLUE);
   writeFileSync(join(photosDir, 'notes.txt'), 'not a photo');
   writeFileSync(join(photosDir, '._a.jpg'), 'apple double sidecar');
 
   const scan = await run(['photos', 'scan', photosDir, '--json'], env, folder);
   assert(scan.code === 0, `photos scan: expected exit 0, got ${scan.code}.\nstdout: ${scan.stdout}\nstderr: ${scan.stderr}`);
-  const scanCompleted = z.object({ media: z.literal('photo'), filesTotal: z.literal(2), photosNew: z.literal(2) })
-    .parse(completedData(scan, 'photos scan'));
+  const scanCompleted = z.object({
+    media: z.literal('photo'),
+    filesTotal: z.literal(2),
+    photosNew: z.literal(2),
+    proxies: z.object({ ran: z.literal(true), generated: z.literal(2), failed: z.literal(0) }),
+  }).parse(completedData(scan, 'photos scan'));
   assert(scanCompleted.photosNew === 2, 'photos scan: expected two new photos');
+
+  const statusAfterScan = await run(['photos', 'status', photosDir, '--json'], env, folder);
+  assert(statusAfterScan.code === 0, `photos status: expected exit 0, got ${statusAfterScan.code}.\nstdout: ${statusAfterScan.stdout}`);
+  z.object({
+    media: z.literal('photo'),
+    counts: z.object({ proxied: z.literal(2), proxyFailed: z.literal(0) }),
+  }).parse(completedData(statusAfterScan, 'photos status (after scan)'));
+  const artifactsAfterScan = proxyArtifactCounts(home);
+  assert(artifactsAfterScan.proxies === 2, `expected 2 proxy artifacts, found ${artifactsAfterScan.proxies}`);
+  assert(artifactsAfterScan.thumbs === 2, `expected 2 thumb artifacts, found ${artifactsAfterScan.thumbs}`);
+
+  const proxiesNoForce = await run(['photos', 'proxies', photosDir, '--json'], env, folder);
+  assert(proxiesNoForce.code === 0, `photos proxies: expected exit 0, got ${proxiesNoForce.code}.\nstdout: ${proxiesNoForce.stdout}\nstderr: ${proxiesNoForce.stderr}`);
+  z.object({ media: z.literal('photo'), candidates: z.literal(2), generated: z.literal(0), skippedExisting: z.literal(2) })
+    .parse(completedData(proxiesNoForce, 'photos proxies (no force)'));
+
+  const proxyArtifacts = readdirSync(join(home, '.ai-video-cataloger', 'photo-artifacts', 'proxies'));
+  const lostProxy = proxyArtifacts[0];
+  assert(lostProxy !== undefined, 'expected a proxy artifact to delete');
+  rmSync(join(home, '.ai-video-cataloger', 'photo-artifacts', 'proxies', lostProxy));
+  const proxiesAfterLoss = await run(['photos', 'proxies', photosDir, '--json'], env, folder);
+  assert(proxiesAfterLoss.code === 0, `photos proxies (after artifact loss): expected exit 0, got ${proxiesAfterLoss.code}.\nstdout: ${proxiesAfterLoss.stdout}`);
+  z.object({ media: z.literal('photo'), generated: z.literal(1), skippedExisting: z.literal(1) })
+    .parse(completedData(proxiesAfterLoss, 'photos proxies (after artifact loss)'));
+  assert(proxyArtifactCounts(home).proxies === 2, 'expected the deleted proxy artifact to be regenerated');
+
+  const proxiesForced = await run(['photos', 'proxies', photosDir, '--force', '--json'], env, folder);
+  assert(proxiesForced.code === 0, `photos proxies --force: expected exit 0, got ${proxiesForced.code}.\nstdout: ${proxiesForced.stdout}\nstderr: ${proxiesForced.stderr}`);
+  z.object({ media: z.literal('photo'), candidates: z.literal(2), generated: z.literal(2), skippedExisting: z.literal(0) })
+    .parse(completedData(proxiesForced, 'photos proxies (forced)'));
 
   renameSync(join(photosDir, 'a.jpg'), join(photosDir, 'renamed.jpg'));
   const rescan = await run(['photos', 'scan', photosDir, '--json'], env, folder);
@@ -533,6 +580,9 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
   assert(statusAfterForget.code === 0, `photos status (after forget): expected exit 0, got ${statusAfterForget.code}.`);
   z.object({ media: z.literal('photo'), counts: z.object({ photos: z.literal(0) }) })
     .parse(completedData(statusAfterForget, 'photos status (after forget)'));
+  const artifactsAfterForget = proxyArtifactCounts(home);
+  assert(artifactsAfterForget.proxies === 0, `expected 0 proxy artifacts after forget, found ${artifactsAfterForget.proxies}`);
+  assert(artifactsAfterForget.thumbs === 0, `expected 0 thumb artifacts after forget, found ${artifactsAfterForget.thumbs}`);
 
   const missingPhotosDir = join(folder, 'missing-photos');
   const scanMissing = await run(['photos', 'scan', missingPhotosDir, '--json'], env, folder);
@@ -545,6 +595,17 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
   assert(
     scanMissingError.type === 'error' && scanMissingError.code === 'FOLDER_NOT_FOUND',
     `photos scan missing: expected FOLDER_NOT_FOUND, got ${JSON.stringify(scanMissingError)}`,
+  );
+
+  const proxiesMissing = await run(['photos', 'proxies', missingPhotosDir, '--json'], env, folder);
+  assert(
+    proxiesMissing.code === scanMissingExpected,
+    `photos proxies missing: expected exit ${scanMissingExpected}, got ${proxiesMissing.code}.\nstdout: ${proxiesMissing.stdout}\nstderr: ${proxiesMissing.stderr}`,
+  );
+  const proxiesMissingError = errorEvent(proxiesMissing, 'photos proxies missing');
+  assert(
+    proxiesMissingError.type === 'error' && proxiesMissingError.code === 'FOLDER_NOT_FOUND',
+    `photos proxies missing: expected FOLDER_NOT_FOUND, got ${JSON.stringify(proxiesMissingError)}`,
   );
 };
 

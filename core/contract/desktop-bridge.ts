@@ -32,7 +32,7 @@ export type Unsubscribe = () => void;
 export type FolderChangedHandler = (payload: { folderPath: string }) => void;
 
 export interface FolderStoreBridge {
-  showPicker(): Promise<string | null>;
+  showPicker(purpose?: 'video' | 'photos'): Promise<string | null>;
   getCurrent(): Promise<string | null>;
   setCurrent(folderPath: string): Promise<void>;
   getRecent(): Promise<string[]>;

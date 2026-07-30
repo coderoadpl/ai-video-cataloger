@@ -38,6 +38,7 @@ export interface Dictionary {
     navVideos: string;
     navPeople: string;
     navMap: string;
+    navPhotos: string;
     terminalTitle: string;
     terminalRaw: string;
     terminalCopy: string;
@@ -683,6 +684,46 @@ export interface Dictionary {
     stopBatch: string;
     cancelAnalysis: string;
   };
+  photos: {
+    title: string;
+    subtitle: string;
+    rootPickerLabel: string;
+    rootPickerAll: string;
+    emptyNoRootsTitle: string;
+    emptyNoRootsBody: string;
+    scanFolderAction: string;
+    emptyNoPhotos: string;
+    generateProxiesAction: string;
+    proxiesPendingStrip: string;
+    scanProgress: (current: number, total: number) => string;
+    unknownDate: string;
+    duplicatesBadge: (count: number) => string;
+    missingBadge: string;
+    proxyFailedTooltip: string;
+    noProxyYet: string;
+    viewerClose: string;
+    viewerPrevious: string;
+    viewerNext: string;
+    detailCamera: string;
+    detailLens: string;
+    detailDimensions: string;
+    detailExposure: string;
+    detailIso: string;
+    detailAperture: string;
+    detailRating: string;
+    detailCaptured: string;
+    capturedSourceExifOffset: string;
+    capturedSourceExifGpsTime: string;
+    capturedSourceExifLocalAssumed: string;
+    capturedSourceFileMtime: string;
+    detailOwnerPath: string;
+    detailAlsoAt: (count: number) => string;
+    statusPhotos: (count: number) => string;
+    statusPaths: (count: number) => string;
+    statusProxied: (count: number) => string;
+    statusProxyFailed: (count: number) => string;
+    loadingPhotos: string;
+  };
 }
 
 export const en: Dictionary = {
@@ -723,6 +764,7 @@ export const en: Dictionary = {
     navVideos: 'Videos',
     navPeople: 'People',
     navMap: 'Map',
+    navPhotos: 'Photos',
     terminalTitle: 'Terminal',
     terminalRaw: 'Raw',
     terminalCopy: 'Copy',
@@ -1422,6 +1464,46 @@ export const en: Dictionary = {
     stopBatch: 'Stop Batch',
     cancelAnalysis: 'Cancel Analysis',
   },
+  photos: {
+    title: 'Photos',
+    subtitle: 'Browse scanned photo roots by capture day.',
+    rootPickerLabel: 'Photo root',
+    rootPickerAll: 'All photos',
+    emptyNoRootsTitle: 'No photo folders scanned yet',
+    emptyNoRootsBody: 'Scan a folder to index its photos and generate browsable proxies.',
+    scanFolderAction: 'Scan a folder…',
+    emptyNoPhotos: 'No photos found under this root.',
+    generateProxiesAction: 'Generate proxies',
+    proxiesPendingStrip: 'Proxies are still pending for this root.',
+    scanProgress: (current, total) => `Scanning ${current} of ${total}…`,
+    unknownDate: 'Unknown date',
+    duplicatesBadge: (count) => `${count} copies`,
+    missingBadge: 'Missing',
+    proxyFailedTooltip: 'Proxy generation failed for this photo',
+    noProxyYet: 'No proxy yet',
+    viewerClose: 'Close viewer',
+    viewerPrevious: 'Previous photo',
+    viewerNext: 'Next photo',
+    detailCamera: 'Camera',
+    detailLens: 'Lens',
+    detailDimensions: 'Dimensions',
+    detailExposure: 'Exposure',
+    detailIso: 'ISO',
+    detailAperture: 'Aperture',
+    detailRating: 'Rating',
+    detailCaptured: 'Captured',
+    capturedSourceExifOffset: 'EXIF (UTC offset)',
+    capturedSourceExifGpsTime: 'EXIF (GPS time)',
+    capturedSourceExifLocalAssumed: 'EXIF (local time assumed)',
+    capturedSourceFileMtime: 'File modified time',
+    detailOwnerPath: 'Owner path',
+    detailAlsoAt: (count) => `Also at: ${count} path${count === 1 ? '' : 's'}`,
+    statusPhotos: (count) => `${count} photos`,
+    statusPaths: (count) => `${count} paths`,
+    statusProxied: (count) => `${count} proxied`,
+    statusProxyFailed: (count) => `${count} proxy failed`,
+    loadingPhotos: 'Loading photos…',
+  },
 };
 
 const plPlural = (count: number, one: string, few: string, many: string): string => {
@@ -1470,6 +1552,7 @@ export const pl: Dictionary = {
     navVideos: 'Filmy',
     navPeople: 'Osoby',
     navMap: 'Mapa',
+    navPhotos: 'Zdjęcia',
     terminalTitle: 'Terminal',
     terminalRaw: 'Surowe',
     terminalCopy: 'Kopiuj',
@@ -2169,6 +2252,46 @@ export const pl: Dictionary = {
     continueProcessing: 'Kontynuuj przetwarzanie',
     stopBatch: 'Zatrzymaj wsad',
     cancelAnalysis: 'Anuluj analizę',
+  },
+  photos: {
+    title: 'Zdjęcia',
+    subtitle: 'Przeglądaj zeskanowane foldery zdjęć według dnia wykonania.',
+    rootPickerLabel: 'Folder zdjęć',
+    rootPickerAll: 'Wszystkie zdjęcia',
+    emptyNoRootsTitle: 'Nie zeskanowano jeszcze żadnego folderu zdjęć',
+    emptyNoRootsBody: 'Zeskanuj folder, aby zindeksować zdjęcia i wygenerować podglądy.',
+    scanFolderAction: 'Zeskanuj folder…',
+    emptyNoPhotos: 'Nie znaleziono zdjęć w tym folderze.',
+    generateProxiesAction: 'Wygeneruj podglądy',
+    proxiesPendingStrip: 'Podglądy dla tego folderu wciąż oczekują na wygenerowanie.',
+    scanProgress: (current, total) => `Skanowanie ${current} z ${total}…`,
+    unknownDate: 'Nieznana data',
+    duplicatesBadge: (count) => `${count} kopii`,
+    missingBadge: 'Brak pliku',
+    proxyFailedTooltip: 'Nie udało się wygenerować podglądu dla tego zdjęcia',
+    noProxyYet: 'Podgląd jeszcze niedostępny',
+    viewerClose: 'Zamknij podgląd',
+    viewerPrevious: 'Poprzednie zdjęcie',
+    viewerNext: 'Następne zdjęcie',
+    detailCamera: 'Aparat',
+    detailLens: 'Obiektyw',
+    detailDimensions: 'Wymiary',
+    detailExposure: 'Czas naświetlania',
+    detailIso: 'ISO',
+    detailAperture: 'Przysłona',
+    detailRating: 'Ocena',
+    detailCaptured: 'Data wykonania',
+    capturedSourceExifOffset: 'EXIF (przesunięcie UTC)',
+    capturedSourceExifGpsTime: 'EXIF (czas GPS)',
+    capturedSourceExifLocalAssumed: 'EXIF (założony czas lokalny)',
+    capturedSourceFileMtime: 'Czas modyfikacji pliku',
+    detailOwnerPath: 'Ścieżka właściciela',
+    detailAlsoAt: (count) => `Także w: ${count} ${plPlural(count, 'ścieżce', 'ścieżkach', 'ścieżkach')}`,
+    statusPhotos: (count) => `${count} ${plPlural(count, 'zdjęcie', 'zdjęcia', 'zdjęć')}`,
+    statusPaths: (count) => `${count} ${plPlural(count, 'ścieżka', 'ścieżki', 'ścieżek')}`,
+    statusProxied: (count) => `${count} z podglądem`,
+    statusProxyFailed: (count) => `${count} nieudanych podglądów`,
+    loadingPhotos: 'Ładowanie zdjęć…',
   },
 };
 

@@ -107,7 +107,7 @@ config delete-credential <providerId> [--json]
 index status|rebuild|forget
 tags list|alias|suggest-aliases
 faces index|people|name|merge|forget|purge|status|recluster|exemplars
-photos scan|status|forget
+photos scan|status|forget|proxies
 models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|faces install
 models whisper-runtime status|install
 ```

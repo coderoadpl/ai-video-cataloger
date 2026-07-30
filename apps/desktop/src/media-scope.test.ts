@@ -187,14 +187,52 @@ describe('resolveScopedMedia', () => {
 });
 
 describe('catalogMediaRoots', () => {
-  it('scopes media to the faces root and the mirrors of the folders it is given', () => {
+  it('scopes media to the faces root, the mirrors of the folders it is given, and the static photo-artifacts root', () => {
     expect(catalogMediaRoots('/home/u', ['folder-a', 'folder-b'])).toEqual([
       { path: path.join('/home/u', '.ai-video-cataloger', 'faces') },
       {
         path: path.join('/home/u', '.ai-video-cataloger', 'read-only-folders'),
         allowedChildren: new Set(['folder-a', 'folder-b']),
       },
+      { path: path.join('/home/u', '.ai-video-cataloger', 'photo-artifacts') },
     ]);
+  });
+});
+
+describe('photo-artifacts media scope (P1)', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('serves a proxy jpg under the static photo-artifacts root with a null current folder', async () => {
+    const home = await tempRoot();
+    const proxyPath = path.join(home, '.ai-video-cataloger', 'photo-artifacts', 'proxies', 'abc123.jpg');
+    await mkdir(path.dirname(proxyPath), { recursive: true });
+    await writeFile(proxyPath, 'image', 'utf8');
+    const roots = catalogMediaRoots(home, []);
+
+    expect(await resolveScopedImage(proxyPath, null, undefined, roots)).toBe(await realpath(proxyPath));
+  });
+
+  it('refuses a jpg inside an arbitrary photo folder outside every scope', async () => {
+    const home = await tempRoot();
+    const photoFolder = await tempRoot();
+    const originalPath = path.join(photoFolder, 'IMG_0001.jpg');
+    await writeFile(originalPath, 'image', 'utf8');
+    const roots = catalogMediaRoots(home, []);
+
+    expect(await resolveScopedImage(originalPath, null, undefined, roots)).toBeNull();
+  });
+
+  it('refuses an .arw placed under the photo-artifacts root (allowlist unchanged)', async () => {
+    const home = await tempRoot();
+    const arwPath = path.join(home, '.ai-video-cataloger', 'photo-artifacts', 'proxies', 'abc123.arw');
+    await mkdir(path.dirname(arwPath), { recursive: true });
+    await writeFile(arwPath, 'raw-bytes', 'utf8');
+    const roots = catalogMediaRoots(home, []);
+
+    expect(await resolveScopedImage(arwPath, null, undefined, roots)).toBeNull();
   });
 });
 

@@ -23,6 +23,7 @@ export const catalogMediaRoots = (
     path: path.join(homeDirectory, '.ai-video-cataloger', 'read-only-folders'),
     allowedChildren: new Set(mirrorFolderIds),
   },
+  { path: path.join(homeDirectory, '.ai-video-cataloger', 'photo-artifacts') },
 ];
 
 export const parseMediaUrl = (urlValue: string): string | null => {

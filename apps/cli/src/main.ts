@@ -46,7 +46,7 @@ import { credentialDeleteHuman } from './credential-delete-human.js';
 import { driveEventLine, isDriveEventStep, type DriveEventStep } from './drive-events.js';
 import { driveFacesSummaryLine } from './drive-faces-summary.js';
 import { doctorHuman } from './doctor-human.js';
-import { photosForgetHuman, photosStatusHuman } from './photos-human.js';
+import { photosForgetHuman, photosProxiesHuman, photosStatusHuman } from './photos-human.js';
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
 import { runProgram } from './run-program.js';
@@ -1323,6 +1323,24 @@ photos
       photosStatusHuman,
       { raw: true },
     );
+  });
+
+photos
+  .command('proxies')
+  .argument('<root>')
+  .option('--force', 'regenerate proxies even when already present', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (root: string, options: ForceJsonOption) => {
+    const json = isJsonMode(options);
+    const resolvedRoot = path.resolve(cliWorkingDirectory, root);
+    const force = options.force === true;
+    emitStarted(json, 'photos_proxies', { root: resolvedRoot, force });
+    const result = await api.photosProxies({ root: resolvedRoot, force });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, photosProxiesHuman, true);
   });
 
 photos

@@ -230,6 +230,8 @@ describe('SqlJsPhotosStore', () => {
       exifFailed: 2,
       missing: 0,
       duplicates: 1,
+      proxied: 0,
+      proxyFailed: 0,
     });
     expect(scoped.ok && scoped.value).toEqual({
       photos: 1,
@@ -238,7 +240,143 @@ describe('SqlJsPhotosStore', () => {
       exifFailed: 1,
       missing: 0,
       duplicates: 1,
+      proxied: 0,
+      proxyFailed: 0,
     });
+  });
+
+  it('counts proxied and proxy-failed photos', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo({ proxyState: 'done' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg', proxyState: 'failed' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000003', currentPath: '/media/photos/c.jpg', proxyState: 'pending' }));
+
+    const counts = await store.counts(null);
+    expect(counts.ok && counts.value).toMatchObject({ proxied: 1, proxyFailed: 1 });
+  });
+
+  it('listProxyCandidates reports every present photo with its artifact state, and excludes missing photos', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo({ proxyState: 'done', thumbState: 'done' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg', proxyState: 'pending' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000003', currentPath: '/media/photos/c.jpg', proxyState: 'pending', missingAt: 999 }));
+
+    const candidates = await store.listProxyCandidates('/media/photos');
+
+    expect(candidates.ok && candidates.value.map((candidate) => ({
+      fingerprint: candidate.fingerprint,
+      proxyState: candidate.proxyState,
+      thumbState: candidate.thumbState,
+    }))).toEqual([
+      { fingerprint: 'ph_0000000000000001', proxyState: 'done', thumbState: 'done' },
+      { fingerprint: 'ph_0000000000000002', proxyState: 'pending', thumbState: 'pending' },
+    ]);
+  });
+
+  it('listProxyCandidates picks the newest sighting under the root when the owner path lies elsewhere', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo({ currentPath: '/elsewhere/a.jpg' }));
+    await store.upsertSighting(sighting({ currentPath: '/media/photos/a.jpg', lastSeenAt: '2026-01-02T00:00:00.000Z' }));
+
+    const candidates = await store.listProxyCandidates('/media/photos');
+    expect(candidates.ok && candidates.value).toEqual([
+      {
+        fingerprint: 'ph_0000000000000001',
+        sourcePath: '/media/photos/a.jpg',
+        ext: 'jpg',
+        proxyState: 'pending',
+        thumbState: 'pending',
+      },
+    ]);
+  });
+
+  it('setProxyOutcome round-trips proxy and thumb state', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo());
+
+    const updated = await store.setProxyOutcome({
+      fingerprint: photo().fingerprint,
+      proxyState: 'done',
+      proxyWidth: 1280,
+      proxyHeight: 720,
+      thumbState: 'done',
+    });
+    expect(updated.ok).toBe(true);
+
+    const got = await store.getPhoto(photo().fingerprint);
+    expect(got.ok && got.value).toMatchObject({ proxyState: 'done', proxyWidth: 1280, proxyHeight: 720, thumbState: 'done' });
+  });
+
+  it('listRoots reports the most recent run per root with scoped counts', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo({ currentPath: '/media/photos/a.jpg' }));
+    await store.startPhotoRun(run({ root: '/media/photos', startedAt: '2026-01-01T00:00:00.000Z' }));
+    await store.startPhotoRun(run({ runId: 'photo-run-2', root: '/media/photos', startedAt: '2026-01-02T00:00:00.000Z' }));
+
+    const roots = await store.listRoots();
+    expect(roots.ok && roots.value).toEqual([
+      { root: '/media/photos', photos: 1, missing: 0, lastScanAt: '2026-01-02T00:00:00.000Z' },
+    ]);
+  });
+
+  it('listPhotosPage orders by captured_at DESC with a fingerprint tiebreak and applies stable offsets', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', currentPath: '/media/photos/a.jpg', capturedAt: '2026-01-01T00:00:00.000Z' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/media/photos/b.jpg', capturedAt: '2026-01-02T00:00:00.000Z' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000003', currentPath: '/media/photos/c.jpg', capturedAt: '2026-01-02T00:00:00.000Z' }));
+
+    const page1 = await store.listPhotosPage({ root: null, offset: 0, limit: 2 });
+    expect(page1.ok && page1.value.total).toBe(3);
+    expect(page1.ok && page1.value.items.map((item) => item.fingerprint)).toEqual(['ph_0000000000000002', 'ph_0000000000000003']);
+
+    const page2 = await store.listPhotosPage({ root: null, offset: 2, limit: 2 });
+    expect(page2.ok && page2.value.items.map((item) => item.fingerprint)).toEqual(['ph_0000000000000001']);
+  });
+
+  it('listPhotosPage root scoping admits /a/b/x.jpg and excludes the sibling-prefix folder /a/bc/x.jpg', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', currentPath: '/a/b/x.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', currentPath: '/a/bc/x.jpg' }));
+
+    const page = await store.listPhotosPage({ root: '/a/b', offset: 0, limit: 10 });
+    expect(page.ok && page.value.items.map((item) => item.fingerprint)).toEqual(['ph_0000000000000001']);
+  });
+
+  it('listPhotosPage includes a duplicate sighted under the root but owned elsewhere, with the sightings count', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo({ currentPath: '/elsewhere/a.jpg' }));
+    await store.upsertSighting(sighting({ currentPath: '/elsewhere/a.jpg' }));
+    await store.upsertSighting(sighting({ currentPath: '/media/photos/a.jpg' }));
+
+    const page = await store.listPhotosPage({ root: '/media/photos', offset: 0, limit: 10 });
+    expect(page.ok && page.value.items).toEqual([
+      expect.objectContaining({ fingerprint: 'ph_0000000000000001', sightings: 2 }),
+    ]);
+  });
+
+  it('getPhotoDetail returns the photo and its sightings ordered by last-seen then path', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo());
+    await store.upsertSighting(sighting({ currentPath: '/media/photos/a.jpg', lastSeenAt: '2026-01-01T00:00:00.000Z' }));
+    await store.upsertSighting(sighting({ currentPath: '/media/photos/newer.jpg', lastSeenAt: '2026-01-02T00:00:00.000Z' }));
+
+    const detail = await store.getPhotoDetail(photo().fingerprint);
+    expect(detail.ok && detail.value?.sightings.map((item) => item.currentPath)).toEqual([
+      '/media/photos/newer.jpg',
+      '/media/photos/a.jpg',
+    ]);
+
+    const missing = await store.getPhotoDetail('ph_ffffffffffffffff');
+    expect(missing.ok && missing.value).toBeNull();
   });
 
   it('keeps a missing photo visible in its owner root scope after its last sighting is gone', async () => {

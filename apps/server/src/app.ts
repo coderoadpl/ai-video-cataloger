@@ -41,8 +41,12 @@ import {
   installWhisperRuntime,
   aliasTag,
   enqueuePhotoScan,
+  enqueuePhotoProxies,
+  photosDetail,
   photosForget,
+  photosList,
   photosStatus,
+  photosTree,
   listTags,
   suggestTagAliases,
   listJobs,
@@ -597,6 +601,35 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.photosForget.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.photosForget.output);
     return respond(await withCatalogWriteLock(deps, () => photosForget(deps, input.value)), API_ROUTES.photosForget.output);
+  });
+
+  app.post(API_ROUTES.photosProxies.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosProxies.output);
+    const input = parseInput(API_ROUTES.photosProxies.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosProxies.output);
+    return respond(await withCatalogWriteLockForJob(deps, () => enqueuePhotoProxies(deps, input.value)), API_ROUTES.photosProxies.output);
+  });
+
+  app.get(API_ROUTES.photosTree.path, async () => {
+    return respond(await photosTree(deps), API_ROUTES.photosTree.output);
+  });
+
+  app.get(API_ROUTES.photosList.path, async (context) => {
+    const input = parseInput(API_ROUTES.photosList.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.photosList.output);
+    return respond(await photosList(deps, input.value), API_ROUTES.photosList.output);
+  });
+
+  app.get(API_ROUTES.photosDetail.path, async (context) => {
+    const input = parseInput(API_ROUTES.photosDetail.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.photosDetail.output);
+    const detail = await photosDetail(deps, input.value);
+    if (!detail.ok) return respond(detail, API_ROUTES.photosDetail.output);
+    if (detail.value === null) {
+      return respond(err(appError('not_found', `Photo not found: ${input.value.fingerprint}`)), API_ROUTES.photosDetail.output);
+    }
+    return respond(ok(detail.value), API_ROUTES.photosDetail.output);
   });
 
   return app;

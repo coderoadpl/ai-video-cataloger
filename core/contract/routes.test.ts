@@ -757,6 +757,32 @@ describe('route schemas', () => {
       exifRead: 6,
       exifFailed: 4,
       missingMarked: 1,
+      proxies: {
+        ran: true,
+        generated: 8,
+        skippedExisting: 2,
+        failed: 0,
+        skippedReason: null,
+      },
+    };
+
+    const viaUnion = jobResultSchema.parse(sample);
+    expect(viaUnion).toEqual(sample);
+
+    const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
+    expect(acceptingCount).toBe(1);
+  });
+
+  it('round-trips photoProxiesSummarySchema through jobResultSchema with the media discriminator, and every other member rejects it', () => {
+    const sample = {
+      media: 'photo' as const,
+      root: '/photos',
+      force: false,
+      candidates: 10,
+      generated: 8,
+      skippedExisting: 2,
+      failed: 0,
+      thumbFailed: 0,
     };
 
     const viaUnion = jobResultSchema.parse(sample);
