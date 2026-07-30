@@ -40,28 +40,33 @@ export const visibleRowRange = (
 ): VisibleRowRange => {
   if (rows.length === 0) return { first: 0, last: 0, topOffset: 0, totalHeight: 0 };
 
-  const heightOf = (row: GridRow): number => (row.kind === 'header' ? headerHeight : rowHeight);
-  let cursor = 0;
-  const bounds: { offset: number; bottom: number }[] = rows.map((row) => {
-    const offset = cursor;
-    cursor += heightOf(row);
-    return { offset, bottom: cursor };
-  });
-  const totalHeight = cursor;
+  const heightOf = (row: GridRow | undefined): number => (row?.kind === 'header' ? headerHeight : rowHeight);
+  const offsetOf = (index: number): number => {
+    let offset = 0;
+    for (let cursor = 0; cursor < index; cursor += 1) offset += heightOf(rows[cursor]);
+    return offset;
+  };
 
   const lastIndex = rows.length - 1;
-  const firstVisibleIndex = bounds.findIndex((bound) => bound.bottom > scrollTop);
-  const firstVisible = firstVisibleIndex === -1 ? lastIndex : firstVisibleIndex;
-
   const viewportBottom = scrollTop + viewportHeight;
-  let lastVisible = firstVisible;
-  for (let index = firstVisible; index <= lastIndex; index += 1) {
-    lastVisible = index;
-    if ((bounds[index]?.bottom ?? totalHeight) >= viewportBottom) break;
+
+  let bottom = 0;
+  let firstVisible = -1;
+  let lastVisible = -1;
+  for (let index = 0; index <= lastIndex; index += 1) {
+    bottom += heightOf(rows[index]);
+    if (firstVisible === -1 && bottom > scrollTop) firstVisible = index;
+    if (firstVisible !== -1 && lastVisible === -1 && bottom >= viewportBottom) lastVisible = index;
   }
 
-  const first = Math.max(0, firstVisible - overscan);
-  const last = Math.min(lastIndex, lastVisible + overscan);
+  const firstRow = firstVisible === -1 ? lastIndex : firstVisible;
+  const lastRow = lastVisible === -1 ? lastIndex : lastVisible;
+  const first = Math.max(0, firstRow - overscan);
 
-  return { first, last, topOffset: bounds[first]?.offset ?? 0, totalHeight };
+  return {
+    first,
+    last: Math.min(lastIndex, lastRow + overscan),
+    topOffset: offsetOf(first),
+    totalHeight: bottom,
+  };
 };

@@ -187,6 +187,28 @@ describe('PhotosView', () => {
     expect(screen.getByTestId('photos-duplicate-badge')).toBeDefined();
   });
 
+  it('pages the grid past the first page instead of stopping at the first request', async () => {
+    const all = Array.from({ length: 250 }, (_, index) =>
+      photoItem({ fingerprint: `ph_${String(index).padStart(16, '0')}` }));
+    stubPhotos({ roots: [{ root: '/photos', photos: all.length, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items: all });
+    server.use(http.get('/api/photos/list', ({ request }) => {
+      const params = new URL(request.url).searchParams;
+      const offset = Number(params.get('offset') ?? '0');
+      const limit = Number(params.get('limit') ?? '200');
+      return HttpResponse.json({
+        ok: true,
+        data: { media: 'photo', root: null, total: all.length, offset, items: all.slice(offset, offset + limit) },
+      });
+    }));
+
+    renderThemed(<PhotosView active addLine={vi.fn()} />);
+
+    const loadMore = await screen.findByTestId('photos-load-more');
+    fireEvent.click(loadMore);
+
+    await waitFor(() => expect(screen.queryByTestId('photos-load-more')).toBeNull());
+  });
+
   it('opens the viewer on tile double-click and the detail pane shows the capture provenance', async () => {
     const items = [photoItem({ fingerprint: 'ph_0000000000000001' }), photoItem({ fingerprint: 'ph_0000000000000002' })];
     stubPhotos({ roots: [{ root: '/photos', photos: 2, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });

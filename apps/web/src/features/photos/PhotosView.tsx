@@ -175,6 +175,19 @@ export const PhotosView = ({ active, addLine }: PhotosViewProps) => {
         onSelect={photos.selectFingerprint}
         onOpenViewer={openViewer}
       />
+      {photos.hasMore ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>
+          <Button
+            variant="outlined"
+            size="small"
+            onClick={photos.loadMore}
+            disabled={photos.isLoadingMore}
+            data-testid="photos-load-more"
+          >
+            {photos.isLoadingMore ? <CircularProgress size={16} /> : dictionary.photos.loadMore}
+          </Button>
+        </Box>
+      ) : null}
     </>
   );
 

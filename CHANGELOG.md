@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- The Photos grid pages beyond its first 200 photos with a "Load more" control,
+  so a large library is fully browsable instead of silently truncated.
 - The photos database gains schema version 2 (indexes on `photos.current_path`
   and `(proxy_state, current_path)`), migrated in place on open.
 - `photos status` reports a new `facesIndexed` count (foundational plumbing for photo faces indexing landing in a follow-up wave); the underlying `FaceObservation` record and its storage now carry a `media: 'video' | 'photo'` marker so photo-sourced face observations can share the same people pool as video ones.
