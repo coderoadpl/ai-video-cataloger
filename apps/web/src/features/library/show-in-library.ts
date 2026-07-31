@@ -1,6 +1,6 @@
 import { canonicalPath, derivedFolderId } from '@core/domain/index.js';
 
-import type { LibraryShowInSeed } from './LibraryView.js';
+import type { LibrarySeed } from './LibraryView.js';
 
 export interface CataloguedFolder {
   folderId: string;
@@ -12,10 +12,11 @@ export const deriveLibrarySeed = (
   folderLabel: string,
   fingerprint: string | null,
   folders: readonly CataloguedFolder[],
-): LibraryShowInSeed => {
+): Extract<LibrarySeed, { kind: 'folder' }> => {
   const canonical = canonicalPath(folderPath);
   const catalogued = folders.find((folder) => canonicalPath(folder.currentPath) === canonical);
   return {
+    kind: 'folder',
     folderId: catalogued?.folderId ?? derivedFolderId(folderPath),
     folderLabel,
     fingerprint,

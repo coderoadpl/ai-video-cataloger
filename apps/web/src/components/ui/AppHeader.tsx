@@ -1,15 +1,9 @@
-import { useMemo, useState } from 'react';
-import { Autocomplete, Box, Button, IconButton, InputAdornment, TextField, Typography } from '@mui/material';
+import { Box, Button, Typography } from '@mui/material';
 
 import { versionLabel } from '../../lib/format.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { FolderBar } from './FolderBar.js';
-import { CancelIcon, SearchIcon } from './icons.js';
-
-export interface AppHeaderTag {
-  name: string;
-  count: number;
-}
+import { ModeSwitcher, type AppMode } from './ModeSwitcher.js';
 
 interface AppHeaderProps {
   appVersion: string;
@@ -20,18 +14,9 @@ interface AppHeaderProps {
   onShowSettings: () => void;
   onShowModelManager: () => void;
   onShowPrerequisites: () => void;
-  searchQuery: string;
-  onSearchQueryChange: (query: string) => void;
-  onSearchSubmit: (query: string) => void;
-  recentSearches: readonly string[];
-  onRemoveRecentSearch: (query: string) => void;
-  topTags: readonly AppHeaderTag[];
-  onSearchFocus: () => void;
+  mode: AppMode;
+  onModeChange: (mode: AppMode) => void;
 }
-
-type SearchOption =
-  | { kind: 'recent'; label: string }
-  | { kind: 'tag'; label: string; count: number };
 
 export const AppHeader = ({
   appVersion,
@@ -42,21 +27,10 @@ export const AppHeader = ({
   onShowSettings,
   onShowModelManager,
   onShowPrerequisites,
-  searchQuery,
-  onSearchQueryChange,
-  onSearchSubmit,
-  recentSearches,
-  onRemoveRecentSearch,
-  topTags,
-  onSearchFocus,
+  mode,
+  onModeChange,
 }: AppHeaderProps) => {
   const dictionary = useDictionary();
-  const [focused, setFocused] = useState(false);
-  const options = useMemo<SearchOption[]>(() => [
-    ...recentSearches.slice(0, 10).map((label) => ({ kind: 'recent' as const, label })),
-    ...topTags.slice(0, 15).map((tag) => ({ kind: 'tag' as const, label: tag.name, count: tag.count })),
-  ], [recentSearches, topTags]);
-  const open = focused && searchQuery.trim().length === 0 && options.length > 0;
 
   return (
     <Box
@@ -76,83 +50,8 @@ export const AppHeader = ({
       {appVersion.length === 0 ? null : (
         <Typography variant="caption">{versionLabel(appVersion)}</Typography>
       )}
-      <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center', minWidth: 180 }}>
-        <Autocomplete
-          freeSolo
-          clearOnBlur={false}
-          value={null}
-          inputValue={searchQuery}
-          open={open}
-          options={options}
-          groupBy={(option) => option.kind === 'recent' ? dictionary.appHeader.recentSearches : dictionary.appHeader.topTags}
-          getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
-          onInputChange={(_, value, reason) => {
-            if (reason === 'input' || reason === 'clear') onSearchQueryChange(value);
-          }}
-          onChange={(_, value) => {
-            if (value === null) return;
-            onSearchSubmit(typeof value === 'string' ? value : value.label);
-          }}
-          onFocus={() => {
-            setFocused(true);
-            onSearchFocus();
-          }}
-          onBlur={() => setFocused(false)}
-          renderOption={(props, option) => {
-            const { key, ...optionProps } = props;
-            return (
-              <Box key={key} component="li" {...optionProps}>
-                <Box component="span" sx={{ flex: 1, minWidth: 0 }}>
-                  {option.label}
-                </Box>
-                {option.kind === 'tag' ? (
-                  <Typography variant="caption">{option.count}</Typography>
-                ) : (
-                  <IconButton
-                    aria-label={dictionary.appHeader.removeRecentSearch(option.label)}
-                    size="small"
-                    onMouseDown={(event) => {
-                      event.preventDefault();
-                      event.stopPropagation();
-                    }}
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      onRemoveRecentSearch(option.label);
-                    }}
-                  >
-                    <CancelIcon fontSize="small" />
-                  </IconButton>
-                )}
-              </Box>
-            );
-          }}
-          renderInput={(params) => (
-            <TextField
-              {...params}
-              placeholder={dictionary.appHeader.searchPlaceholder}
-              size="small"
-              onKeyDown={(event) => {
-                if (event.key === 'Enter') onSearchSubmit(searchQuery);
-              }}
-              slotProps={{
-                ...params.slotProps,
-                input: {
-                  ...params.slotProps.input,
-                  startAdornment: (
-                    <>
-                      <InputAdornment position="start">
-                        <SearchIcon fontSize="small" />
-                      </InputAdornment>
-                      {params.slotProps.input.startAdornment}
-                    </>
-                  ),
-                },
-              }}
-            />
-          )}
-          sx={{ width: { xs: 220, md: 360 }, maxWidth: '100%' }}
-        />
-      </Box>
+      <ModeSwitcher mode={mode} onModeChange={onModeChange} />
+      <Box sx={{ flex: 1 }} />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <FolderBar
           recentFolders={recentFolders}

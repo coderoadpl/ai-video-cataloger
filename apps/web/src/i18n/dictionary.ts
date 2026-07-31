@@ -36,11 +36,17 @@ export interface Dictionary {
     sidebarHeading: string;
     hideSidebar: string;
     showSidebar: string;
-    navVideos: string;
-    navPeople: string;
-    navMap: string;
-    navPhotos: string;
-    navLibrary: string;
+    modeLibrary: string;
+    modeAnalysis: string;
+    subnavCollection: string;
+    subnavPhotos: string;
+    subnavPeople: string;
+    subnavMap: string;
+    mediaVideos: string;
+    mediaPhotos: string;
+    modeSwitcherLabel: string;
+    subnavLabel: string;
+    mediaToggleLabel: string;
     terminalTitle: string;
     terminalRaw: string;
     terminalCopy: string;
@@ -52,10 +58,6 @@ export interface Dictionary {
     terminalScrollToBottom: string;
   };
   appHeader: {
-    searchPlaceholder: string;
-    recentSearches: string;
-    topTags: string;
-    removeRecentSearch: (label: string) => string;
     settings: string;
     models: string;
     prerequisites: string;
@@ -771,6 +773,9 @@ export interface Dictionary {
     subtitle: string;
     countHeader: (shown: number, total: number) => string;
     searchPlaceholder: string;
+    recentSearches: string;
+    topTags: string;
+    removeRecentSearch: (label: string) => string;
     loadingLibrary: string;
     loadMore: string;
     unknownDate: string;
@@ -851,11 +856,17 @@ export const en: Dictionary = {
     sidebarHeading: 'Videos',
     hideSidebar: 'Hide',
     showSidebar: 'Show',
-    navVideos: 'Videos',
-    navPeople: 'People',
-    navMap: 'Map',
-    navPhotos: 'Photos',
-    navLibrary: 'Library',
+    modeLibrary: 'Library',
+    modeAnalysis: 'Analysis',
+    subnavCollection: 'Collection',
+    subnavPhotos: 'Photos',
+    subnavPeople: 'People',
+    subnavMap: 'Map',
+    mediaVideos: 'Videos',
+    mediaPhotos: 'Photos',
+    modeSwitcherLabel: 'App mode',
+    subnavLabel: 'Library surface',
+    mediaToggleLabel: 'Analysis media',
     terminalTitle: 'Terminal',
     terminalRaw: 'Raw',
     terminalCopy: 'Copy',
@@ -867,10 +878,6 @@ export const en: Dictionary = {
     terminalScrollToBottom: 'Scroll to bottom',
   },
   appHeader: {
-    searchPlaceholder: 'Search catalog',
-    recentSearches: 'Recent searches',
-    topTags: 'Top tags',
-    removeRecentSearch: (label: string) => `Remove ${label}`,
     settings: 'Settings',
     models: 'Models',
     prerequisites: 'Prerequisites',
@@ -1640,6 +1647,9 @@ export const en: Dictionary = {
     subtitle: 'Browse everything ever processed, across every catalogued folder.',
     countHeader: (shown, total) => shown === total ? `${total} files` : `${shown} of ${total} files`,
     searchPlaceholder: 'Search the library…',
+    recentSearches: 'Recent searches',
+    topTags: 'Top tags',
+    removeRecentSearch: (label: string) => `Remove ${label}`,
     loadingLibrary: 'Loading library…',
     loadMore: 'Load more',
     unknownDate: 'No date',
@@ -1728,11 +1738,17 @@ export const pl: Dictionary = {
     sidebarHeading: 'Filmy',
     hideSidebar: 'Ukryj',
     showSidebar: 'Pokaż',
-    navVideos: 'Filmy',
-    navPeople: 'Osoby',
-    navMap: 'Mapa',
-    navPhotos: 'Zdjęcia',
-    navLibrary: 'Biblioteka',
+    modeLibrary: 'Biblioteka',
+    modeAnalysis: 'Analiza',
+    subnavCollection: 'Kolekcja',
+    subnavPhotos: 'Zdjęcia',
+    subnavPeople: 'Osoby',
+    subnavMap: 'Mapa',
+    mediaVideos: 'Filmy',
+    mediaPhotos: 'Zdjęcia',
+    modeSwitcherLabel: 'Tryb aplikacji',
+    subnavLabel: 'Sekcja biblioteki',
+    mediaToggleLabel: 'Rodzaj mediów w analizie',
     terminalTitle: 'Terminal',
     terminalRaw: 'Surowe',
     terminalCopy: 'Kopiuj',
@@ -1744,10 +1760,6 @@ export const pl: Dictionary = {
     terminalScrollToBottom: 'Przewiń na dół',
   },
   appHeader: {
-    searchPlaceholder: 'Szukaj w katalogu',
-    recentSearches: 'Ostatnie wyszukiwania',
-    topTags: 'Najczęstsze tagi',
-    removeRecentSearch: (label: string) => `Usuń ${label}`,
     settings: 'Ustawienia',
     models: 'Modele',
     prerequisites: 'Wymagania',
@@ -2520,6 +2532,9 @@ export const pl: Dictionary = {
       ? `${total} ${plPlural(total, 'plik', 'pliki', 'plików')}`
       : `${shown} z ${total} ${plPlural(total, 'pliku', 'plików', 'plików')}`,
     searchPlaceholder: 'Szukaj w bibliotece…',
+    recentSearches: 'Ostatnie wyszukiwania',
+    topTags: 'Najczęstsze tagi',
+    removeRecentSearch: (label: string) => `Usuń ${label}`,
     loadingLibrary: 'Ładowanie biblioteki…',
     loadMore: 'Wczytaj więcej',
     unknownDate: 'Brak daty',

@@ -95,6 +95,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The `media://` protocol serves the static photo-artifacts root; photo source folders are never exposed to the renderer.
 - `pnpm run check` fails on a direct `.normalize('NFC')` call outside `core/domain/paths.ts` and test files, so path canonicalization stays at the three boundaries that own it.
 - Search now follows `tag_aliases` in both directions: a merged-away term still finds the files that carry its canonical tag, and the canonical term also matches text occurrences of its aliases. Quoted phrases stay literal and literal hits still outrank alias hits.
+- Two-mode UI: a Library/Analysis switcher in the top bar replaces the five-tab view navigation; Library groups Collection/Photos/People/Map behind a subnav, Analysis groups the folder workspace behind a Videos/Photos toggle, and each mode remembers its own state.
+
+### Removed
+
+- The global top-bar search and its full-screen results view; search now lives in the Library's Collection toolbar with the same recent-searches and top-tags suggestions.
 
 ### Fixed
 

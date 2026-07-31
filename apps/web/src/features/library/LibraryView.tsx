@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useReducer, useState } from 'react';
-import { Alert, Box, Button, CircularProgress, TextField, Typography } from '@mui/material';
+import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, TextField, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
 import { FilterBar, type LibraryGroupBy } from './FilterBar.js';
 import { groupByCaptureDay, groupByFolder, type LibraryItem } from './core/index.js';
 import {
@@ -15,20 +16,23 @@ import type { LibrarySort } from './core/folder-groups.js';
 import { LibraryGrid, type LibraryGridSection } from './LibraryGrid.js';
 import { useLibrary } from './use-library.js';
 import { useLibraryFacets } from './use-library-facets.js';
+import { useSearchSuggestions } from './use-search-suggestions.js';
 
-export interface LibraryShowInSeed {
-  folderId: string;
-  folderLabel: string;
-  fingerprint: string | null;
-}
+export type LibrarySeed =
+  | { kind: 'folder'; folderId: string; folderLabel: string; fingerprint: string | null }
+  | { kind: 'tag'; tag: string };
 
 interface LibraryViewProps {
   active: boolean;
   onOpenResult: (folderPath: string, videoPath: string) => void;
   onGoToVideos: () => void;
-  seed?: LibraryShowInSeed | null;
+  seed?: LibrarySeed | null;
   onSeedConsumed?: () => void;
 }
+
+type SearchOption =
+  | { kind: 'recent'; label: string }
+  | { kind: 'tag'; label: string; count: number };
 
 const toLocalDay = (isoUtc: string): string => {
   const date = new Date(isoUtc);
@@ -48,6 +52,8 @@ export const LibraryView = ({ active, onOpenResult, onGoToVideos, seed = null, o
   const [groupBy, setGroupByState] = useState<LibraryGroupBy>(() => readGroupBy());
   const [sort, setSort] = useState<LibrarySort>('captured_desc');
   const [scrollTarget, setScrollTarget] = useState<string | null>(null);
+  const [searchFocused, setSearchFocused] = useState(false);
+  const suggestions = useSearchSuggestions();
 
   const setGroupBy = (next: LibraryGroupBy) => {
     setGroupByState(next);
@@ -56,8 +62,12 @@ export const LibraryView = ({ active, onOpenResult, onGoToVideos, seed = null, o
 
   useEffect(() => {
     if (seed === null) return;
-    dispatch({ type: 'setFolder', folderId: seed.folderId, displayName: seed.folderLabel });
-    setScrollTarget(seed.fingerprint);
+    if (seed.kind === 'folder') {
+      dispatch({ type: 'setFolder', folderId: seed.folderId, displayName: seed.folderLabel });
+      setScrollTarget(seed.fingerprint);
+    } else {
+      dispatch({ type: 'addTag', tag: seed.tag });
+    }
     onSeedConsumed?.();
   }, [seed, onSeedConsumed]);
 
@@ -72,6 +82,11 @@ export const LibraryView = ({ active, onOpenResult, onGoToVideos, seed = null, o
 
   const library = useLibrary({ active, filters, sort });
   const facetsState = useLibraryFacets({ active });
+  const searchOptions = useMemo<SearchOption[]>(() => [
+    ...suggestions.recentSearches.slice(0, 10).map((label) => ({ kind: 'recent' as const, label })),
+    ...suggestions.topTags.slice(0, 15).map((tag) => ({ kind: 'tag' as const, label: tag.name, count: tag.count })),
+  ], [suggestions.recentSearches, suggestions.topTags]);
+  const searchDropdownOpen = searchFocused && library.query.trim().length === 0 && searchOptions.length > 0;
 
   const sections: LibraryGridSection[] = useMemo(() => {
     if (groupBy === 'folder') {
@@ -201,13 +216,83 @@ export const LibraryView = ({ active, onOpenResult, onGoToVideos, seed = null, o
         <Typography variant="caption" sx={{ display: 'block', mb: 1 }}>
           {library.isLoading ? dictionary.library.subtitle : dictionary.library.countHeader(library.items.length, library.total)}
         </Typography>
-        <TextField
-          size="small"
-          fullWidth
-          value={library.query}
-          onChange={(event) => library.setQuery(event.target.value)}
-          placeholder={dictionary.library.searchPlaceholder}
-          data-testid="library-search-input"
+        <Autocomplete
+          freeSolo
+          clearOnBlur={false}
+          value={null}
+          inputValue={library.query}
+          open={searchDropdownOpen}
+          options={searchOptions}
+          groupBy={(option) => option.kind === 'recent' ? dictionary.library.recentSearches : dictionary.library.topTags}
+          getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
+          onInputChange={(_, value, reason) => {
+            if (reason === 'input' || reason === 'clear') library.setQuery(value);
+          }}
+          onChange={(_, value) => {
+            if (value === null) return;
+            const label = typeof value === 'string' ? value : value.label;
+            library.setQuery(label);
+            suggestions.recordSearch(label);
+          }}
+          onFocus={() => {
+            setSearchFocused(true);
+            suggestions.onSearchFocus();
+          }}
+          onBlur={() => setSearchFocused(false)}
+          renderOption={(props, option) => {
+            const { key, ...optionProps } = props;
+            return (
+              <Box key={key} component="li" {...optionProps}>
+                <Box component="span" sx={{ flex: 1, minWidth: 0 }}>
+                  {option.label}
+                </Box>
+                {option.kind === 'tag' ? (
+                  <Typography variant="caption">{option.count}</Typography>
+                ) : (
+                  <IconButton
+                    aria-label={dictionary.library.removeRecentSearch(option.label)}
+                    size="small"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                    }}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      suggestions.removeRecentSearch(option.label);
+                    }}
+                  >
+                    <CancelIcon fontSize="small" />
+                  </IconButton>
+                )}
+              </Box>
+            );
+          }}
+          renderInput={(params) => (
+            <TextField
+              {...params}
+              size="small"
+              fullWidth
+              placeholder={dictionary.library.searchPlaceholder}
+              data-testid="library-search-input"
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') suggestions.recordSearch(library.query);
+              }}
+              slotProps={{
+                ...params.slotProps,
+                input: {
+                  ...params.slotProps.input,
+                  startAdornment: (
+                    <>
+                      <InputAdornment position="start">
+                        <SearchIcon fontSize="small" />
+                      </InputAdornment>
+                      {params.slotProps.input.startAdornment}
+                    </>
+                  ),
+                },
+              }}
+            />
+          )}
           sx={{ mb: 1 }}
         />
         <FilterBar

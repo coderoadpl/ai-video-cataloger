@@ -588,8 +588,10 @@ geometry-only and needs no change beyond a marker kind.
 
 ## 8. Renderer
 
-`features/photos/` is an independent island: `MainView` gains `'photos'`
-(`components/ui/ViewNav.tsx`), the route wires it like `people`/`map`. Island
+`features/photos/` is an independent island: it is mounted twice — as the
+Library subnav's Zdjęcia surface and as the Analysis media toggle's Zdjęcia
+face (`docs/architecture.md`'s two-mode IA delta) — each instance controlled
+by its own `active` flag, the route wiring it like `people`/`map`. Island
 core (`features/photos/core/`) owns grid grouping (capture-day sections),
 windowed-list selection and typed dictionary keys; the web binding injects
 bound descriptors from `api.ts`. No cross-feature imports: the map interop

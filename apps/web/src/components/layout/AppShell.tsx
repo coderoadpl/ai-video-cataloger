@@ -15,8 +15,7 @@ interface AppShellProps {
   sidebarHeading: ReactNode;
   sidebarAction: ReactNode;
   sidebarExpandAction: ReactNode;
-  navigation?: ReactNode;
-  sidebar: ReactNode;
+  sidebar: ReactNode | null;
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   onSidebarResize: (size: number) => void;
@@ -35,7 +34,6 @@ export const AppShell = ({
   sidebarHeading,
   sidebarAction,
   sidebarExpandAction,
-  navigation,
   sidebar,
   sidebarCollapsed,
   sidebarWidth,
@@ -52,52 +50,47 @@ export const AppShell = ({
   <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
     {header}
     <Box sx={{ display: 'flex', flex: 1, minHeight: 0 }}>
-      <ResizablePanel
-        direction="horizontal"
-        size={sidebarWidth}
-        minSize={SIDEBAR_MIN_SIZE}
-        maxSize={SIDEBAR_MAX_SIZE}
-        collapsed={sidebarCollapsed}
-        onResize={onSidebarResize}
-      >
-        <Box
-          sx={{
-            display: 'flex',
-            flexDirection: 'column',
-            height: '100%',
-            bgcolor: 'background.paper',
-            borderRight: 1,
-            borderColor: 'divider',
-          }}
-        >
-          <Box
-            sx={{
-              display: 'flex',
-              flexDirection: 'column',
-              gap: 1,
-              px: 2,
-              py: 1.25,
-              borderBottom: 1,
-              borderColor: 'divider',
-            }}
+      {sidebar === null ? null : (
+        <>
+          <ResizablePanel
+            direction="horizontal"
+            size={sidebarWidth}
+            minSize={SIDEBAR_MIN_SIZE}
+            maxSize={SIDEBAR_MAX_SIZE}
+            collapsed={sidebarCollapsed}
+            onResize={onSidebarResize}
           >
             <Box
               sx={{
                 display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
+                flexDirection: 'column',
+                height: '100%',
+                bgcolor: 'background.paper',
+                borderRight: 1,
+                borderColor: 'divider',
               }}
             >
-              {sidebarHeading}
-              {sidebarAction}
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  px: 2,
+                  py: 1.25,
+                  borderBottom: 1,
+                  borderColor: 'divider',
+                }}
+              >
+                {sidebarHeading}
+                {sidebarAction}
+              </Box>
+              <Box sx={{ flex: 1, overflow: 'auto' }}>{sidebar}</Box>
             </Box>
-            {navigation}
-          </Box>
-          <Box sx={{ flex: 1, overflow: 'auto' }}>{sidebar}</Box>
-        </Box>
-      </ResizablePanel>
+          </ResizablePanel>
 
-      {sidebarCollapsed ? <Box sx={{ pt: 1.5, pl: 1 }}>{sidebarExpandAction}</Box> : null}
+          {sidebarCollapsed ? <Box sx={{ pt: 1.5, pl: 1 }}>{sidebarExpandAction}</Box> : null}
+        </>
+      )}
 
       <Box sx={{ flex: 1, minWidth: 0, overflow: 'auto' }}>
         {banner}

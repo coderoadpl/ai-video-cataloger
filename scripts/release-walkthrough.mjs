@@ -17,7 +17,7 @@ Options:
   --out <path>                 Root for the screenshot set (default: release/walkthrough).
   --home <path>                Prepared QA home; the default throwaway temp home has no analyzer
                                configured, so the analysis step reports itself skipped.
-  --query <text>               Query typed into the header search (default: "video").
+  --query <text>               Query typed into the Library search (default: "video").
   --analyze-timeout <seconds>  Wait for one analysis run to finish (default: 300).
   --window-size <WxH>          Window size for the driven app, e.g. 1920x1200 (default: 1920x1200).
   --dry-run                    Validate the inputs, write plan.json, stop before launching the app.
@@ -29,7 +29,7 @@ the real settings or the login keychain.
 `;
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
-const SEARCH_INPUT = 'header input';
+const SEARCH_INPUT = 'library-search-input';
 const MENU_SHOW_SETTINGS = 'menu:showSettings';
 const MENU_SHOW_SETUP_WIZARD = 'menu:showSetupWizard';
 const VISIBLE_TIMEOUT_MS = 15_000;
@@ -243,6 +243,13 @@ const drive = async (plan) => {
     return done('dismissed with "configure later"');
   });
 
+  await record('mode-analysis', async () => {
+    const modeAnalysis = page.getByTestId('mode-analysis');
+    if (!(await appeared(modeAnalysis, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
+    await modeAnalysis.click();
+    return done('switched to Analysis mode');
+  });
+
   await record('open-folder', async () => {
     if (!(await appeared(page.getByTestId('video-item'), FOLDER_TIMEOUT_MS))) {
       return skipped(`no videos listed for ${plan.fixturesDir}`);
@@ -283,19 +290,25 @@ const drive = async (plan) => {
   });
 
   await record('search', async () => {
-    const input = page.locator(SEARCH_INPUT).first();
-    if (!(await appeared(input))) return skipped('no header search input');
+    const modeLibrary = page.getByTestId('mode-library');
+    if (!(await appeared(modeLibrary, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
+    await modeLibrary.click();
+    const input = page.getByTestId(SEARCH_INPUT).locator('input').first();
+    if (!(await appeared(input))) return skipped('no library search input');
     await input.click();
     await input.fill(plan.query);
     await input.press('Enter');
-    if (!(await appeared(page.getByTestId('search-back')))) return skipped(`no results view for "${plan.query}"`);
-    return done(`results view for "${plan.query}"`);
+    const filtered = page.getByTestId('library-no-match').or(page.getByTestId('library-tile'));
+    if (!(await appeared(filtered))) return skipped(`no filtered library view for "${plan.query}"`);
+    return done(`library filtered for "${plan.query}"`);
   });
 
   await record('photos-tab', async () => {
-    const navPhotos = page.getByTestId('nav-photos');
-    if (!(await appeared(navPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Photos tab in this build');
-    await navPhotos.click();
+    const modeLibrary = page.getByTestId('mode-library');
+    if (await appeared(modeLibrary, SETTLE_TIMEOUT_MS)) await modeLibrary.click();
+    const subnavPhotos = page.getByTestId('subnav-photos');
+    if (!(await appeared(subnavPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Photos subnav in this build');
+    await subnavPhotos.click();
     if (!(await appeared(page.getByTestId('photos-layout'), FOLDER_TIMEOUT_MS))) return skipped('Photos view did not render');
     return done('Photos view opened');
   });

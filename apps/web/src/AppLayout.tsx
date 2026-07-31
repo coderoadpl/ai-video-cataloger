@@ -8,7 +8,8 @@ import {
   SIDEBAR_MIN_SIZE,
   TERMINAL_DEFAULT_SIZE,
 } from './components/layout/AppShell.js';
-import { AppHeader, type AppHeaderTag } from './components/ui/AppHeader.js';
+import { AppHeader } from './components/ui/AppHeader.js';
+import { type AppMode } from './components/ui/ModeSwitcher.js';
 import { NestedDbDialog } from './components/ui/dialogs/NestedDbDialog.js';
 import { TerminalLog } from './components/ui/TerminalLog.js';
 import { mergeLogLines, renderLine, type LogLine, type TerminalViewMode } from './components/ui/use-terminal-log.js';
@@ -66,9 +67,10 @@ const writeTerminalRawMode = (mode: TerminalViewMode): void => {
 
 interface AppLayoutProps {
   shell: ShellState;
-  sidebar: ReactNode;
+  sidebar: ReactNode | null;
   content: ReactNode;
-  navigation?: ReactNode;
+  mode: AppMode;
+  onModeChange: (mode: AppMode) => void;
   terminal?: TerminalPanelState;
   overlays?: ReactNode;
   renderModals?: (state: ShellModalState) => ReactNode;
@@ -77,20 +79,14 @@ interface AppLayoutProps {
   onModalRequestConsumed?: () => void;
   autoOpenSetup?: boolean;
   onAutoOpenSetupConsumed?: () => void;
-  searchQuery?: string;
-  onSearchQueryChange?: (query: string) => void;
-  onSearchSubmit?: (query: string) => void;
-  recentSearches?: readonly string[];
-  onRemoveRecentSearch?: (query: string) => void;
-  topTags?: readonly AppHeaderTag[];
-  onSearchFocus?: () => void;
 }
 
 export const AppLayout = ({
   shell,
   sidebar,
   content,
-  navigation,
+  mode,
+  onModeChange,
   terminal,
   overlays,
   renderModals,
@@ -99,17 +95,10 @@ export const AppLayout = ({
   onModalRequestConsumed,
   autoOpenSetup = false,
   onAutoOpenSetupConsumed,
-  searchQuery = '',
-  onSearchQueryChange = () => undefined,
-  onSearchSubmit = () => undefined,
-  recentSearches = [],
-  onRemoveRecentSearch = () => undefined,
-  topTags = [],
-  onSearchFocus = () => undefined,
 }: AppLayoutProps) => {
   const dictionary = useDictionary();
   const [modal, setModal] = useState<ShellModal | null>(null);
-  const [mode, setMode] = useState<TerminalViewMode>(readTerminalRawMode);
+  const [rawMode, setRawMode] = useState<TerminalViewMode>(readTerminalRawMode);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [terminalCollapsed, setTerminalCollapsed] = useState(true);
   const [sidebarWidth, setSidebarWidth] = useState(readSidebarWidth);
@@ -120,7 +109,7 @@ export const AppLayout = ({
   }, []);
 
   const toggleRawMode = useCallback(() => {
-    setMode((value) => {
+    setRawMode((value) => {
       const next: TerminalViewMode = value === 'raw' ? 'friendly' : 'raw';
       writeTerminalRawMode(next);
       return next;
@@ -131,10 +120,10 @@ export const AppLayout = ({
   const terminalApiLines = useMemo(() => terminal?.apiLines ?? [], [terminal?.apiLines]);
   const visibleText = useMemo(
     () =>
-      (mode === 'raw' ? mergeLogLines(terminalLines, terminalApiLines) : terminalLines)
-        .map((line) => renderLine(line, mode))
+      (rawMode === 'raw' ? mergeLogLines(terminalLines, terminalApiLines) : terminalLines)
+        .map((line) => renderLine(line, rawMode))
         .join('\n'),
-    [terminalLines, terminalApiLines, mode],
+    [terminalLines, terminalApiLines, rawMode],
   );
 
   useMenuEvents({
@@ -182,13 +171,8 @@ export const AppLayout = ({
             onShowSettings={() => setModal('settings')}
             onShowModelManager={() => setModal('models')}
             onShowPrerequisites={() => setModal('prerequisites')}
-            searchQuery={searchQuery}
-            onSearchQueryChange={onSearchQueryChange}
-            onSearchSubmit={onSearchSubmit}
-            recentSearches={recentSearches}
-            onRemoveRecentSearch={onRemoveRecentSearch}
-            topTags={topTags}
-            onSearchFocus={onSearchFocus}
+            mode={mode}
+            onModeChange={onModeChange}
           />
         }
         sidebarHeading={<Typography variant="h2">{dictionary.appFrame.sidebarHeading}</Typography>}
@@ -202,7 +186,6 @@ export const AppLayout = ({
             {dictionary.appFrame.showSidebar}
           </Button>
         }
-        navigation={navigation}
         sidebar={sidebar}
         sidebarCollapsed={sidebarCollapsed}
         sidebarWidth={sidebarWidth}
@@ -219,7 +202,7 @@ export const AppLayout = ({
             {terminalCollapsed ? null : (
               <Button
                 size="small"
-                sx={{ color: mode === 'raw' ? 'primary.light' : 'grey.400', minWidth: 0 }}
+                sx={{ color: rawMode === 'raw' ? 'primary.light' : 'grey.400', minWidth: 0 }}
                 onClick={toggleRawMode}
               >
                 {dictionary.appFrame.terminalRaw}
@@ -249,7 +232,7 @@ export const AppLayout = ({
             lines={terminalLines}
             apiLines={terminalApiLines}
             droppedCount={terminal?.droppedCount ?? 0}
-            mode={mode}
+            mode={rawMode}
           />
         }
         terminalCollapsed={terminalCollapsed}

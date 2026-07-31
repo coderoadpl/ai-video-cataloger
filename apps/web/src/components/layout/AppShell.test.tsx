@@ -11,7 +11,6 @@ const renderShell = (overrides: Partial<AppShellProps> = {}) => {
     sidebarHeading: <h2>heading-slot</h2>,
     sidebarAction: <button type="button">hide-slot</button>,
     sidebarExpandAction: <button type="button">show-slot</button>,
-    navigation: <nav>navigation-slot</nav>,
     sidebar: <div>sidebar-slot</div>,
     sidebarCollapsed: false,
     sidebarWidth: SIDEBAR_DEFAULT_SIZE,
@@ -41,7 +40,6 @@ describe('AppShell skeleton', () => {
       'header-slot',
       'heading-slot',
       'hide-slot',
-      'navigation-slot',
       'sidebar-slot',
       'banner-slot',
       'content-slot',
@@ -51,6 +49,16 @@ describe('AppShell skeleton', () => {
     ]) {
       expect(screen.getByText(text)).toBeDefined();
     }
+  });
+
+  it('renders no sidebar panel and no expand affordance when sidebar is null', () => {
+    renderShell({ sidebar: null });
+
+    expect(screen.queryByText('sidebar-slot')).toBeNull();
+    expect(screen.queryByText('heading-slot')).toBeNull();
+    expect(screen.queryByText('show-slot')).toBeNull();
+    expect(separators('vertical')).toHaveLength(0);
+    expect(screen.getByText('content-slot')).toBeDefined();
   });
 
   it('renders the content region without a banner when none is passed', () => {

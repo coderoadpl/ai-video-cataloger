@@ -11,7 +11,7 @@ describe('deriveLibrarySeed', () => {
   it('uses the catalogued folder id, not a path hash, for a folder whose id was persisted as a uuid', () => {
     const seed = deriveLibrarySeed('/Volumes/lib/Kamper', 'Kamper', 'fp-1', folders);
 
-    expect(seed).toEqual({ folderId: '9f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d', folderLabel: 'Kamper', fingerprint: 'fp-1' });
+    expect(seed).toEqual({ kind: 'folder', folderId: '9f1b2c3d-4e5f-4a6b-8c9d-0e1f2a3b4c5d', folderLabel: 'Kamper', fingerprint: 'fp-1' });
   });
 
   it('matches the catalogued folder across unicode normalization forms of the same path', () => {

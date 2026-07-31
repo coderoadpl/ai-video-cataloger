@@ -177,13 +177,8 @@ const Header = () => (
     onShowSettings={noop}
     onShowModelManager={noop}
     onShowPrerequisites={noop}
-    searchQuery=""
-    onSearchQueryChange={noop}
-    onSearchSubmit={noop}
-    recentSearches={[]}
-    onRemoveRecentSearch={noop}
-    topTags={[]}
-    onSearchFocus={noop}
+    mode="analysis"
+    onModeChange={noop}
   />
 );
 

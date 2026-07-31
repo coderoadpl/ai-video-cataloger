@@ -267,6 +267,21 @@ lint boundary `web-i18n`): `en`/`pl` dictionaries with structural parity, and a
 config change re-renders every consumer without a restart. `web-i18n` may import
 `web-api` and `core-*`; `web-features` and `web-main` may consume it.
 
+### Two-mode information architecture
+
+The app has exactly two persisted top-bar modes, switched by a segmented
+control: **Biblioteka** (cross-folder browse over the catalog index) and
+**Analiza** (folder-centric work surface). `ViewNav`'s five tabs are retired
+and redistributed: Kolekcja, Zdjęcia, Osoby and Mapa become a horizontal
+subnav inside Library (no catalog sidebar there); the folder workspace and its
+Zdjęcia face become a Filmy/Zdjęcia toggle inside Analysis (sidebar +
+`DetailsPanel` + terminal, unchanged). Search exists only inside the Library's
+Kolekcja surface — it reuses the single `searchQuery` contract that already
+powers the library grid, no new endpoint or search-specific query shape. The
+Analysis details pane keeps its video player and variant tools exactly as
+before; this rewrite touches only how a user reaches that pane, not what it
+renders.
+
 ### Island cores (ADR-0005 rung 1) and i18n
 
 A feature's decision/selector logic lives in a portable, DOM-free, React-free
@@ -429,12 +444,13 @@ read-only folders whose id genuinely is that hash), where any id would match
 nothing anyway. Per the cross-feature-import ban, `VideoList`/`CatalogSidebar`/`DetailsPanel` never
 import from `features/library`: they take a plain
 `onShowInLibrary(folderPath, fingerprint | null)` callback, wired once in
-`routes/index.tsx`, which derives the seed and flips `activeView`.
+`routes/index.tsx`, which derives the seed and switches to the Library mode's
+Kolekcja surface.
 
-**Library is the default view once the catalog is non-empty.** Initial view
+**Library is the default mode once the catalog is non-empty.** Initial mode
 resolution is persisted preference (localStorage, the `useScopePreference`
-pattern) → `'library'` if the catalog already has ≥1 file → `'videos'`; an
-empty catalog always opens on Videos, since the folder-open CTA there is the
+pattern) → `'library'` if the catalog already has ≥1 file → `'analysis'`; an
+empty catalog always opens on Analysis, since the folder-open CTA there is the
 honest first-run surface. Photos in Library, saved searches, multi-select,
 keyboard grid navigation and an in-Library details pane remain out of scope.
 

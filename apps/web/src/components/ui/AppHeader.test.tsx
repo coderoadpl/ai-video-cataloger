@@ -1,9 +1,8 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
-import { en } from '../../i18n/dictionary.js';
 import { createAppTheme } from '../../theme.js';
 import { renderWithProviders } from '../../test/render.js';
 import { AppHeader } from './AppHeader.js';
@@ -21,53 +20,27 @@ const renderHeader = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) 
     onShowSettings: () => undefined,
     onShowModelManager: () => undefined,
     onShowPrerequisites: () => undefined,
-    searchQuery: '',
-    onSearchQueryChange: () => undefined,
-    onSearchSubmit: () => undefined,
-    recentSearches: [],
-    onRemoveRecentSearch: () => undefined,
-    topTags: [],
-    onSearchFocus: () => undefined,
+    mode: 'analysis',
+    onModeChange: () => undefined,
     ...overrides,
   };
   renderThemed(<AppHeader {...props} />);
 };
 
-describe('AppHeader search dropdown', () => {
-  it('renders top tags and recent searches on empty focus, removes recents, and submits selections', async () => {
-    const submit = vi.fn();
-    const removeRecent = vi.fn();
-    const searchFocus = vi.fn();
+describe('AppHeader mode switcher', () => {
+  it('renders the mode switcher and fires onModeChange when a mode is clicked', () => {
+    const onModeChange = vi.fn();
+    renderHeader({ onModeChange });
 
-    renderHeader({
-      recentSearches: ['drone'],
-      topTags: [{ name: 'cooking', count: 3 }, { name: 'travel', count: 2 }],
-      onSearchSubmit: submit,
-      onRemoveRecentSearch: removeRecent,
-      onSearchFocus: searchFocus,
-    });
+    expect(screen.getByTestId('mode-switcher')).toBeDefined();
 
-    fireEvent.focus(screen.getByPlaceholderText(en.appHeader.searchPlaceholder));
-    expect(searchFocus).toHaveBeenCalled();
-
-    expect(await screen.findByText(en.appHeader.topTags)).toBeDefined();
-    expect(screen.getByText('drone')).toBeDefined();
-    fireEvent.click(screen.getByLabelText(en.appHeader.removeRecentSearch('drone')));
-    expect(removeRecent).toHaveBeenCalledWith('drone');
-
-    fireEvent.click(screen.getByText('cooking'));
-    expect(submit).toHaveBeenCalledWith('cooking');
+    fireEvent.click(screen.getByTestId('mode-library'));
+    expect(onModeChange).toHaveBeenCalledWith('library');
   });
 
-  it('submits typed searches with Enter', async () => {
-    const submit = vi.fn();
-    const change = vi.fn();
-    renderHeader({ searchQuery: 'drone', onSearchSubmit: submit, onSearchQueryChange: change });
+  it('renders no search input', () => {
+    renderHeader();
 
-    const input = screen.getByPlaceholderText(en.appHeader.searchPlaceholder);
-    fireEvent.change(input, { target: { value: 'drone' } });
-    fireEvent.keyDown(input, { key: 'Enter' });
-
-    await waitFor(() => expect(submit).toHaveBeenCalledWith('drone'));
+    expect(screen.queryByRole('combobox')).toBeNull();
   });
 });

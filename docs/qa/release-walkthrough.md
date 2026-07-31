@@ -71,8 +71,10 @@ pass is not.
    handoff message.
 
 The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`,
-`open-folder`, `tree-expand`, `select-video`, `analyze`, `search`, `photos-tab`,
-`photos-grid`, `photo-detail`, `settings`, `wizard`.
+`mode-analysis`, `open-folder`, `tree-expand`, `select-video`, `analyze`,
+`search`, `photos-tab`, `photos-grid`, `photo-detail`, `settings`, `wizard`.
+`mode-analysis` and `search` drive the two-mode switcher: the workspace steps
+run in Analysis mode, `search` and `photos-tab` switch to Library first.
 
 The three photo steps need a home whose photos DB already has a scanned root —
 `--home` pointing at a QA home that has run `photos scan`. Without one,

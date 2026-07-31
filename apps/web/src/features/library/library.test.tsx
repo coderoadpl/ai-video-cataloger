@@ -69,6 +69,12 @@ const stubSearch = (items: LibraryItem[]) => {
   );
 };
 
+const RECENT_SEARCHES_KEY = 'ai-video-cataloger.recent-searches';
+
+const stubTags = (tags: { name: string; count: number }[]) => {
+  server.use(http.get('/api/tags', () => HttpResponse.json({ ok: true, data: { tags } })));
+};
+
 const stubFacets = (overrides: Partial<z.infer<typeof libraryFacetsOutputSchema>> = {}) => {
   server.use(
     http.get('/api/library/facets', () => HttpResponse.json({
@@ -89,6 +95,7 @@ const stubFacets = (overrides: Partial<z.infer<typeof libraryFacetsOutputSchema>
 describe('LibraryView', () => {
   beforeEach(() => {
     searchRequests.length = 0;
+    window.localStorage.removeItem(RECENT_SEARCHES_KEY);
     stubFacets();
   });
 
@@ -215,7 +222,7 @@ describe('LibraryView', () => {
         active
         onOpenResult={vi.fn()}
         onGoToVideos={vi.fn()}
-        seed={{ folderId: '99999999-9999-4999-8999-999999999999', folderLabel: 'Other Folder', fingerprint: 'fp-target' }}
+        seed={{ kind: 'folder', folderId: '99999999-9999-4999-8999-999999999999', folderLabel: 'Other Folder', fingerprint: 'fp-target' }}
         onSeedConsumed={vi.fn()}
       />,
     );
@@ -286,5 +293,86 @@ describe('LibraryView', () => {
       const headers = screen.getAllByTestId('library-section-header').map((node) => node.textContent);
       expect(headers).toEqual(['Alpha', 'Beta']);
     });
+  });
+
+  it('shows recent searches and top tags when the empty search field is focused', async () => {
+    window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
+    stubTags([{ name: 'beach', count: 4 }]);
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
+    fireEvent.focus(input);
+
+    expect(await screen.findByText('drone')).toBeDefined();
+    expect(await screen.findByText('beach')).toBeDefined();
+  });
+
+  it('picking a suggestion sets the query and the grid request carries it', async () => {
+    window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
+    stubTags([]);
+    stubSearch([libraryItem({ fingerprint: 'fp-1', fileName: 'drone-clip.mp4' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
+    fireEvent.focus(input);
+    fireEvent.click(await screen.findByText('drone'));
+
+    await waitFor(() => {
+      const latest = searchRequests[searchRequests.length - 1];
+      expect(latest?.get('query')).toBe('drone');
+    });
+  });
+
+  it('deleting a recent entry removes it from storage', async () => {
+    window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
+    stubTags([]);
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
+    fireEvent.focus(input);
+    await screen.findByText('drone');
+    fireEvent.click(screen.getByLabelText('Remove drone'));
+
+    expect(JSON.parse(window.localStorage.getItem(RECENT_SEARCHES_KEY) ?? '[]')).toEqual([]);
+  });
+
+  it('records an Enter submit into recent searches', async () => {
+    stubTags([]);
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
+    fireEvent.change(input, { target: { value: 'drone' } });
+    fireEvent.keyDown(input, { key: 'Enter' });
+
+    await waitFor(() => {
+      expect(JSON.parse(window.localStorage.getItem(RECENT_SEARCHES_KEY) ?? '[]')).toEqual(['drone']);
+    });
+  });
+
+  it('a tag seed adds a removable tag chip', async () => {
+    stubSearch([libraryItem({ fingerprint: 'fp-1', tags: ['aerial'] })]);
+
+    renderThemed(
+      <LibraryView
+        active
+        onOpenResult={vi.fn()}
+        onGoToVideos={vi.fn()}
+        seed={{ kind: 'tag', tag: 'aerial' }}
+        onSeedConsumed={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('#aerial')).toBeDefined();
   });
 });

@@ -4,13 +4,15 @@ import { Box } from '@mui/material';
 import { folderName } from '../lib/format.js';
 import { parentDir } from '../lib/media-url.js';
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
+import { AnalysisMediaToggle } from '../components/ui/AnalysisMediaToggle.js';
+import { LibrarySubnav } from '../components/ui/LibrarySubnav.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
 import { DriveSummaryDialog } from '../components/ui/dialogs/DriveSummaryDialog.js';
 import { CancelConfirmationDialog } from '../components/ui/dialogs/CancelConfirmationDialog.js';
 import { ProcessingOverlay } from '../components/ui/ProcessingOverlay.js';
 import { useTerminalLog } from '../components/ui/use-terminal-log.js';
 import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
-import { flattenTreeVideos, keyOf, type CatalogVideo } from '../features/catalog/index.web.js';
+import { flattenTreeVideos, keyOf } from '../features/catalog/index.web.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
 import { useScopePreference } from '../features/catalog/use-scope-preference.js';
 import { useCatalogVideoRegistry } from '../features/catalog/use-catalog-video-registry.js';
@@ -19,10 +21,9 @@ import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
-import { LibraryView, type LibraryShowInSeed } from '../features/library/LibraryView.js';
+import { LibraryView, type LibrarySeed } from '../features/library/LibraryView.js';
 import { deriveLibrarySeed } from '../features/library/show-in-library.js';
 import { useCatalogIndex } from '../features/library/use-catalog-index.js';
-import { useViewPreference } from '../features/library/use-view-preference.js';
 import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations } from '../features/map/use-catalog-locations.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
@@ -31,28 +32,32 @@ import { PhotosView } from '../features/photos/PhotosView.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
 import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
 import { useReadiness } from '../features/readiness/use-readiness.js';
-import { SearchResults } from '../features/search/SearchResults.js';
-import { useGlobalSearch } from '../features/search/use-global-search.js';
 import { SetupWizard } from '../features/wizard/SetupWizard.js';
 import { useFirstLaunch } from '../features/wizard/use-first-launch.js';
 import { useProcessing } from '../features/processing/use-processing.js';
 import { useApiLog } from '../features/shell/use-api-log.js';
+import { useModePreference } from '../features/shell/use-mode-preference.js';
 import { SettingsModal } from '../features/settings/SettingsModal.js';
 import { AppLayout } from '../AppLayout.js';
 import { useShell } from '../features/shell/use-shell.js';
 import { useAnalysisDisabledReason } from '../features/readiness/use-disabled-reason.js';
-import { ViewNav } from '../components/ui/ViewNav.js';
 
 export const IndexRoute = () => {
   const catalogIndex = useCatalogIndex();
-  const { view: activeView, setView: setActiveView } = useViewPreference(catalogIndex.hasFiles);
-  const [librarySeed, setLibrarySeed] = useState<LibraryShowInSeed | null>(null);
+  const {
+    mode,
+    setMode,
+    librarySurface,
+    setLibrarySurface,
+    analysisMedia,
+    setAnalysisMedia,
+  } = useModePreference(catalogIndex.hasFiles);
+  const [librarySeed, setLibrarySeed] = useState<LibrarySeed | null>(null);
   const [mapFocus, setMapFocus] = useState<string | null>(null);
   const [photoFocus, setPhotoFocus] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const shell = useShell();
   const [scope, setScope] = useScopePreference(shell.currentFolder);
-  const globalSearch = useGlobalSearch();
   const terminal = useTerminalLog();
   const apiLog = useApiLog();
   const catalog = useCatalog(shell.currentFolder);
@@ -90,7 +95,9 @@ export const IndexRoute = () => {
     return fromTree ?? videoRegistry.lookup(catalog.selectedKey);
   }, [catalog.selectedVideo, catalog.selectedKey, tree.root, videoRegistry]);
   const selectedFingerprint = selected?.contentHash ?? null;
-  const locations = useCatalogLocations({ enabled: activeView === 'map' || selectedFingerprint !== null });
+  const locations = useCatalogLocations({
+    enabled: (mode === 'library' && librarySurface === 'map') || selectedFingerprint !== null,
+  });
   const selectedLocation = selectedFingerprint === null ? null : locations.byFingerprint(selectedFingerprint);
   const analyzing = selected !== null && selected.path === processing.analyzingPath;
   const overlay = analyzing ? processing.progress : null;
@@ -109,14 +116,13 @@ export const IndexRoute = () => {
   const scopedPendingCount = effectiveScope === 'tree' ? treePendingCount : processing.pendingCount;
   const treeCanAnalyze = tree.videoTotal > tree.processedTotal || tree.hasUnknownPending;
 
-  const clearSearch = globalSearch.clearSearch;
   const [pendingSelection, setPendingSelection] = useState<{ folderPath: string; videoPath: string } | null>(null);
   const currentFolder = shell.currentFolder;
   const selectRecentFolder = shell.selectRecentFolder;
-  const openSearchResult = useCallback(
+  const openInAnalysis = useCallback(
     (folderPath: string, videoPath: string) => {
-      clearSearch();
-      setActiveView('videos');
+      setMode('analysis');
+      setAnalysisMedia('videos');
       if (currentFolder === folderPath) {
         selectKey(videoPath);
         return;
@@ -124,7 +130,7 @@ export const IndexRoute = () => {
       setPendingSelection({ folderPath, videoPath });
       selectRecentFolder(folderPath);
     },
-    [clearSearch, currentFolder, selectKey, selectRecentFolder, setActiveView],
+    [currentFolder, selectKey, selectRecentFolder, setAnalysisMedia, setMode],
   );
   useEffect(() => {
     if (pendingSelection === null || currentFolder !== pendingSelection.folderPath) return;
@@ -134,25 +140,15 @@ export const IndexRoute = () => {
   const onShowInLibrary = useCallback(
     (folderPath: string, fingerprint: string | null) => {
       setLibrarySeed(deriveLibrarySeed(folderPath, folderName(folderPath), fingerprint, catalogIndex.folders));
-      setActiveView('library');
+      setMode('library');
+      setLibrarySurface('collection');
     },
-    [catalogIndex.folders, setActiveView],
+    [catalogIndex.folders, setLibrarySurface, setMode],
   );
-  const sidebarCatalog = useMemo(
-    () => ({
-      ...catalog,
-      select: (video: CatalogVideo) => {
-        clearSearch();
-        catalog.select(video);
-      },
-    }),
-    [catalog, clearSearch],
-  );
-
   const sidebar = (
     <CatalogSidebar
       folder={shell.currentFolder}
-      catalog={sidebarCatalog}
+      catalog={catalog}
       tree={tree}
       showTree={showTree}
       analyzingPath={processing.analyzingPath}
@@ -186,9 +182,7 @@ export const IndexRoute = () => {
     />
   );
 
-  const detailContent = activeView === 'people' || activeView === 'photos' || activeView === 'library' ? null : globalSearch.active ? (
-    <SearchResults search={globalSearch} onBack={clearSearch} onOpenFolder={shell.selectRecentFolder} onOpenResult={openSearchResult} />
-  ) : (
+  const detailContent = (
     <DetailsPanel
       video={selected}
       analyzing={analyzing}
@@ -196,7 +190,11 @@ export const IndexRoute = () => {
       onAnalyze={processing.analyze}
       onNavigateToCanonical={catalog.selectKey}
       disabledReason={disabledReason}
-      onTagSearch={globalSearch.submitSearch}
+      onTagSearch={(tag) => {
+        setLibrarySeed({ kind: 'tag', tag });
+        setMode('library');
+        setLibrarySurface('collection');
+      }}
       location={selectedLocation === null ? null : {
         lat: selectedLocation.lat,
         lon: selectedLocation.lon,
@@ -206,29 +204,76 @@ export const IndexRoute = () => {
       }}
       onShowOnMap={selectedFingerprint === null ? undefined : () => {
         setMapFocus(selectedFingerprint);
-        setActiveView('map');
+        setMode('library');
+        setLibrarySurface('map');
       }}
       onShowInLibrary={selected === null ? undefined : () => onShowInLibrary(parentDir(selected.path), selectedFingerprint)}
     />
   );
 
-  const content = (
-    <Box sx={{ display: activeView === 'videos' ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+  const libraryContent = (
+    <Box sx={{ height: '100%', display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+      <LibrarySubnav surface={librarySurface} onSelect={setLibrarySurface} />
+      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+        <LibraryView
+          active={mode === 'library' && librarySurface === 'collection'}
+          onOpenResult={openInAnalysis}
+          onGoToVideos={() => {
+            setMode('analysis');
+            setAnalysisMedia('videos');
+          }}
+          seed={librarySeed}
+          onSeedConsumed={() => setLibrarySeed(null)}
+        />
+        <PhotosView
+          active={mode === 'library' && librarySurface === 'photos'}
+          addLine={terminal.addLine}
+          focusFingerprint={photoFocus}
+          onFocusConsumed={() => setPhotoFocus(null)}
+        />
+        <PeopleView
+          active={mode === 'library' && librarySurface === 'people'}
+          folder={shell.currentFolder}
+          addLine={terminal.addLine}
+          onOpenSettings={() => setModalRequest('settings')}
+          lockReason={catalogLock.disabledReason}
+        />
+        <MapView
+          active={mode === 'library' && librarySurface === 'map'}
+          focusFingerprint={mapFocus}
+          onOpenPhoto={(fingerprint) => {
+            setPhotoFocus(fingerprint);
+            setLibrarySurface('photos');
+          }}
+          onFocusConsumed={() => setMapFocus(null)}
+          onOpenLocation={openInAnalysis}
+        />
+      </Box>
+    </Box>
+  );
+
+  const analysisContent = (
+    <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <Box
         data-testid="analysis-state"
         data-analyzing={processing.isBusy ? 'true' : 'false'}
         sx={{ display: 'none' }}
       />
-      {overlay === null ? null : (
-        <ProcessingOverlay progress={overlay} onCancel={processing.requestCancel} />
-      )}
-      <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
-        {detailContent}
+      <AnalysisMediaToggle media={analysisMedia} onSelect={setAnalysisMedia} />
+      <Box sx={{ display: analysisMedia === 'videos' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        {overlay === null ? null : (
+          <ProcessingOverlay progress={overlay} onCancel={processing.requestCancel} />
+        )}
+        <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
+          {detailContent}
+        </Box>
       </Box>
+      <PhotosView
+        active={mode === 'analysis' && analysisMedia === 'photos'}
+        addLine={terminal.addLine}
+      />
     </Box>
   );
-
-  const navigation = <ViewNav activeView={activeView} onSelectView={setActiveView} />;
 
   const overlays = (
     <>
@@ -253,54 +298,12 @@ export const IndexRoute = () => {
   return (
     <AppLayout
       shell={shell}
-      sidebar={sidebar}
-      navigation={navigation}
+      sidebar={mode === 'library' ? null : sidebar}
+      mode={mode}
+      onModeChange={setMode}
       modalRequest={modalRequest}
       onModalRequestConsumed={() => setModalRequest(null)}
-      content={
-        activeView === 'people' ? (
-          <PeopleView
-            active={activeView === 'people'}
-            folder={shell.currentFolder}
-            addLine={terminal.addLine}
-            onOpenSettings={() => setModalRequest('settings')}
-            lockReason={catalogLock.disabledReason}
-          />
-        ) : activeView === 'photos' ? (
-          <PhotosView
-            active={activeView === 'photos'}
-            addLine={terminal.addLine}
-            focusFingerprint={photoFocus}
-            onFocusConsumed={() => setPhotoFocus(null)}
-          />
-        ) : activeView === 'library' ? (
-          <LibraryView
-            active={activeView === 'library'}
-            onOpenResult={openSearchResult}
-            onGoToVideos={() => setActiveView('videos')}
-            seed={librarySeed}
-            onSeedConsumed={() => setLibrarySeed(null)}
-          />
-        ) : activeView === 'map' ? (
-          <MapView
-            active={activeView === 'map'}
-            focusFingerprint={mapFocus}
-            onOpenPhoto={(fingerprint) => {
-              setPhotoFocus(fingerprint);
-              setActiveView('photos');
-            }}
-            onFocusConsumed={() => setMapFocus(null)}
-            onOpenLocation={openSearchResult}
-          />
-        ) : content
-      }
-      searchQuery={globalSearch.query}
-      onSearchQueryChange={globalSearch.setQuery}
-      onSearchSubmit={globalSearch.submitSearch}
-      recentSearches={globalSearch.recentSearches}
-      onRemoveRecentSearch={globalSearch.removeRecentSearch}
-      topTags={globalSearch.topTags}
-      onSearchFocus={globalSearch.onSearchFocus}
+      content={mode === 'library' ? libraryContent : analysisContent}
       autoOpenSetup={firstLaunch.shouldAutoOpen}
       onAutoOpenSetupConsumed={firstLaunch.markSeen}
       terminal={{

@@ -66,6 +66,8 @@ const TerminalHarness = ({ initialLines = [], apiLines = [], onCopy }: TerminalH
         shell={stubShell}
         sidebar={<div />}
         content={<div />}
+        mode="analysis"
+        onModeChange={() => undefined}
         terminal={{ ...terminalPanel, lines, apiLines, onCopy: onCopy ?? terminalPanel.onCopy }}
       />
     </ThemeProvider>
@@ -87,6 +89,8 @@ describe('AppLayout composition', () => {
         shell={stubShell}
         sidebar={<div>sidebar-slot</div>}
         content={<div>content-slot</div>}
+        mode="analysis"
+        onModeChange={() => undefined}
       />,
     );
 
@@ -103,6 +107,8 @@ describe('AppLayout composition', () => {
         shell={{ ...stubShell, folderError: 'Folder no longer exists' }}
         sidebar={<div />}
         content={<div />}
+        mode="analysis"
+        onModeChange={() => undefined}
       />,
     );
 
@@ -115,6 +121,8 @@ describe('AppLayout composition', () => {
         shell={stubShell}
         sidebar={<div />}
         content={<div>content-slot</div>}
+        mode="analysis"
+        onModeChange={() => undefined}
         renderBanner={() => <div>banner-slot</div>}
       />,
     );
@@ -125,7 +133,7 @@ describe('AppLayout composition', () => {
 
   it('translates the sidebar collapse affordances and reveals the rail on toggle', () => {
     renderWithProviders(
-      <AppLayout shell={stubShell} sidebar={<div />} content={<div />} />,
+      <AppLayout shell={stubShell} sidebar={<div />} content={<div />} mode="analysis" onModeChange={() => undefined} />,
     );
     expect(screen.queryByRole('button', { name: en.appFrame.showSidebar })).toBeNull();
 
@@ -136,7 +144,7 @@ describe('AppLayout composition', () => {
 
   it('offers copy and clear only when a terminal panel is wired', () => {
     const { unmount } = renderWithProviders(
-      <AppLayout shell={stubShell} sidebar={<div />} content={<div />} />,
+      <AppLayout shell={stubShell} sidebar={<div />} content={<div />} mode="analysis" onModeChange={() => undefined} />,
     );
     expect(screen.queryByRole('button', { name: en.appFrame.terminalCopy })).toBeNull();
     unmount();
