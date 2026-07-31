@@ -20,12 +20,12 @@ export interface LibraryGridSection {
 interface LibraryGridProps {
   sections: LibraryGridSection[];
   onOpen: (item: LibraryItem) => void;
-  onOpenInFolder: (item: LibraryItem) => void;
+  onOpenInAnalysis: (item: LibraryItem) => void;
   scrollToFingerprint?: string | null;
   onScrolledToFingerprint?: () => void;
 }
 
-export const LibraryGrid = ({ sections, onOpen, onOpenInFolder, scrollToFingerprint = null, onScrolledToFingerprint }: LibraryGridProps) => {
+export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis, scrollToFingerprint = null, onScrolledToFingerprint }: LibraryGridProps) => {
   const dictionary = useDictionary();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -115,7 +115,7 @@ export const LibraryGrid = ({ sections, onOpen, onOpenInFolder, scrollToFingerpr
           })}
         </Box>
       </Box>
-      <TileMenu controller={tileMenu} onOpenInFolder={onOpenInFolder} />
+      <TileMenu controller={tileMenu} onOpenInAnalysis={onOpenInAnalysis} />
     </Box>
   );
 };

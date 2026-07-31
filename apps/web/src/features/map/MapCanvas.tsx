@@ -17,7 +17,7 @@ interface MapCanvasProps {
   locations: CatalogLocation[];
   focusFingerprint: string | null;
   onFocusConsumed: () => void;
-  onOpenLocation: (folderPath: string, videoPath: string) => void;
+  onOpenPreview: (location: CatalogLocation) => void;
   onOpenPhoto: (fingerprint: string) => void;
   initialViewport?: Viewport | undefined;
 }
@@ -59,7 +59,7 @@ export const MapCanvas = ({
   locations,
   focusFingerprint,
   onFocusConsumed,
-  onOpenLocation,
+  onOpenPreview,
   onOpenPhoto,
   initialViewport,
 }: MapCanvasProps) => {
@@ -303,7 +303,7 @@ export const MapCanvas = ({
         anchorEl={selectedFingerprint === null ? null : pinRefs.current.get(selectedFingerprint) ?? null}
         location={selectedLocation}
         onClose={() => setSelectedFingerprint(null)}
-        onOpenLocation={onOpenLocation}
+        onOpenPreview={onOpenPreview}
         onOpenPhoto={onOpenPhoto}
       />
 

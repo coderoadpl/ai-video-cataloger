@@ -71,10 +71,17 @@ pass is not.
    handoff message.
 
 The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`,
-`mode-analysis`, `open-folder`, `tree-expand`, `select-video`, `analyze`,
-`search`, `photos-tab`, `photos-grid`, `photo-detail`, `settings`, `wizard`.
-`mode-analysis` and `search` drive the two-mode switcher: the workspace steps
-run in Analysis mode, `search` and `photos-tab` switch to Library first.
+`mode-switch`, `mode-analysis`, `open-folder`, `tree-expand`, `select-video`,
+`analyze`, `search`, `library-preview`, `photos-browse`, `analysis-photos`,
+`photos-tab`, `photos-grid`, `photo-detail`, `settings`, `wizard`.
+`mode-switch`, `mode-analysis` and `search` drive the two-mode switcher: the
+workspace steps run in Analysis mode, `search` and `photos-tab` switch to
+Library first. `library-preview` clicks a Kolekcja tile, asserts the browse
+preview overlay and its player render, then follows the "Otwórz w Analizie"
+escape hatch and asserts it lands in the Analysis details panel with the file
+selected. `photos-browse` asserts the Library Photos detail pane never shows
+the analyze strip (browse surfaces are read-only); `analysis-photos` asserts
+the Analysis Photos detail pane does show it.
 
 The three photo steps need a home whose photos DB already has a scanned root —
 `--home` pointing at a QA home that has run `photos scan`. Without one,

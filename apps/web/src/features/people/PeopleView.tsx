@@ -89,16 +89,6 @@ export const PeopleView = ({
           >
             {dictionary.people.mergeSelected}
           </Button>
-          <Button
-            variant="contained"
-            size="small"
-            disabled={folder === null || people.isBusy || people.facesEnabled !== true || people.artifactsReady !== true || mutationsBlocked}
-            title={lockReason}
-            onClick={people.indexFaces}
-            data-testid="people-index"
-          >
-            {dictionary.people.indexFaces}
-          </Button>
         </Box>
       </Box>
 
@@ -138,14 +128,8 @@ export const PeopleView = ({
       ) : people.observations === 0 && people.people.length === 0 ? (
         <EmptyState
           title={dictionary.people.noFaceGroupingsTitle}
-          body={folder === null
-            ? dictionary.people.noFolderBody
-            : dictionary.people.runIndexingBody}
-          action={folder === null ? null : (
-            <Button variant="contained" onClick={people.indexFaces} disabled={people.isBusy}>
-              {dictionary.people.indexFaces}
-            </Button>
-          )}
+          body={dictionary.people.runIndexingInAnalysis}
+          action={null}
           testId="people-empty-state"
         />
       ) : (

@@ -90,6 +90,15 @@ describe('AppShell skeleton', () => {
     expect(screen.getByText('terminal-action-slot')).toBeDefined();
   });
 
+  it('renders no terminal strip at all when terminalHidden is set', () => {
+    renderShell({ terminalHidden: true });
+
+    expect(screen.queryByText('terminal-title-slot')).toBeNull();
+    expect(screen.queryByText('terminal-action-slot')).toBeNull();
+    expect(screen.queryByText('terminal-slot')).toBeNull();
+    expect(separators('horizontal')).toHaveLength(0);
+  });
+
   it('sizes the sidebar rail from the width prop', () => {
     renderShell({ sidebarWidth: 512 });
 

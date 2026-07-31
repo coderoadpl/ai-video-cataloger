@@ -603,6 +603,20 @@ features — no new lint rules needed, the existing ones already fence it
 (verified: wildcard feature rules in `eslint.config.js`,
 `tsconfig.islands.json` glob).
 
+`PhotosView` takes an explicit `variant: 'browse' | 'analysis'` prop — both
+mounts pass it, there is no default. In `browse` (Library's Zdjęcia surface)
+the toolbar drops "Skanuj folder" and the proxies-pending action (scanning is
+work, not browsing), and `PhotoDetailPane` renders only the descriptive block
+(EXIF rows, captured, sightings, description/scene/quality/tags); the analyze
+strip, analyze progress and the variant picker render only for
+`variant === 'analysis'`. The browse pane appends a discreet
+"Otwórz w Analizie" link when an owner path is known, routing through the
+same `openInAnalysis` callback the Library↔Analysis bridge uses elsewhere;
+tag chips in browse keep their local-search behavior (photos keeps local
+search regardless of mode). The faces-index build lives only in the
+`analysis` mount, above it, as a separate `FacesIndexAction` component — see
+`docs/architecture.md`'s two-mode IA delta.
+
 ## 9. Shared vs duplicated — the ledger
 
 | Machinery | Verdict |

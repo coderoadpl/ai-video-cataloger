@@ -21,14 +21,16 @@ import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
-import { LibraryView, type LibrarySeed } from '../features/library/LibraryView.js';
+import { LibraryView, type LibraryItem, type LibrarySeed } from '../features/library/LibraryView.js';
 import { deriveLibrarySeed } from '../features/library/show-in-library.js';
 import { useCatalogIndex } from '../features/library/use-catalog-index.js';
 import { MapView } from '../features/map/MapView.js';
-import { useCatalogLocations } from '../features/map/use-catalog-locations.js';
+import { useCatalogLocations, type CatalogLocation } from '../features/map/use-catalog-locations.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
+import { FacesIndexAction } from '../features/people/FacesIndexAction.js';
 import { PeopleView } from '../features/people/PeopleView.js';
 import { PhotosView } from '../features/photos/PhotosView.js';
+import { BrowsePreview, previewFromLocation, previewFromSearchResult, type PreviewMedia } from '../features/preview/index.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
 import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
 import { useReadiness } from '../features/readiness/use-readiness.js';
@@ -56,6 +58,7 @@ export const IndexRoute = () => {
   const [mapFocus, setMapFocus] = useState<string | null>(null);
   const [photoFocus, setPhotoFocus] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
+  const [preview, setPreview] = useState<PreviewMedia | null>(null);
   const shell = useShell();
   const [scope, setScope] = useScopePreference(shell.currentFolder);
   const terminal = useTerminalLog();
@@ -137,6 +140,18 @@ export const IndexRoute = () => {
     selectKey(pendingSelection.videoPath);
     setPendingSelection(null);
   }, [pendingSelection, currentFolder, selectKey]);
+  const previousFolderRef = useRef(currentFolder);
+  useEffect(() => {
+    const previousFolder = previousFolderRef.current;
+    previousFolderRef.current = currentFolder;
+    if (currentFolder === null || currentFolder === previousFolder) return;
+    if (mode === 'library') setMode('analysis');
+  }, [currentFolder, mode, setMode]);
+  const onPreview = useCallback((item: LibraryItem) => setPreview(previewFromSearchResult(item)), []);
+  const onOpenMapPreview = useCallback((location: CatalogLocation) => {
+    const media = previewFromLocation(location);
+    if (media !== null) setPreview(media);
+  }, []);
   const onShowInLibrary = useCallback(
     (folderPath: string, fingerprint: string | null) => {
       setLibrarySeed(deriveLibrarySeed(folderPath, folderName(folderPath), fingerprint, catalogIndex.folders));
@@ -218,6 +233,7 @@ export const IndexRoute = () => {
         <LibraryView
           active={mode === 'library' && librarySurface === 'collection'}
           onOpenResult={openInAnalysis}
+          onPreview={onPreview}
           onGoToVideos={() => {
             setMode('analysis');
             setAnalysisMedia('videos');
@@ -227,9 +243,11 @@ export const IndexRoute = () => {
         />
         <PhotosView
           active={mode === 'library' && librarySurface === 'photos'}
+          variant="browse"
           addLine={terminal.addLine}
           focusFingerprint={photoFocus}
           onFocusConsumed={() => setPhotoFocus(null)}
+          onOpenInAnalysis={openInAnalysis}
         />
         <PeopleView
           active={mode === 'library' && librarySurface === 'people'}
@@ -246,7 +264,7 @@ export const IndexRoute = () => {
             setLibrarySurface('photos');
           }}
           onFocusConsumed={() => setMapFocus(null)}
-          onOpenLocation={openInAnalysis}
+          onOpenPreview={onOpenMapPreview}
         />
       </Box>
     </Box>
@@ -268,8 +286,17 @@ export const IndexRoute = () => {
           {detailContent}
         </Box>
       </Box>
+      <Box sx={{ display: mode === 'analysis' && analysisMedia === 'photos' ? 'block' : 'none', px: 2, pt: 1 }}>
+        <FacesIndexAction
+          active={mode === 'analysis' && analysisMedia === 'photos'}
+          folder={shell.currentFolder}
+          addLine={terminal.addLine}
+          lockReason={catalogLock.disabledReason}
+        />
+      </Box>
       <PhotosView
         active={mode === 'analysis' && analysisMedia === 'photos'}
+        variant="analysis"
         addLine={terminal.addLine}
       />
     </Box>
@@ -292,6 +319,7 @@ export const IndexRoute = () => {
         counts={processing.driveSummary.counts}
         onClose={processing.closeDriveSummary}
       />
+      <BrowsePreview item={preview} onClose={() => setPreview(null)} onOpenInAnalysis={openInAnalysis} />
     </>
   );
 

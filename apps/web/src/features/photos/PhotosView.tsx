@@ -5,17 +5,21 @@ import { CancelIcon } from '../../components/ui/icons.js';
 import { PhotosLayout } from '../../components/layout/PhotosLayout.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, searchResultsToItems, searchSections } from './core/index.js';
+import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, searchResultsToItems, searchSections, type PhotosViewVariant } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
 import { PhotoGrid } from './PhotoGrid.js';
 import { PhotoViewer } from './PhotoViewer.js';
 import { usePhotos } from './use-photos.js';
 
+export type { PhotosViewVariant } from './core/index.js';
+
 interface PhotosViewProps {
   active: boolean;
+  variant: PhotosViewVariant;
   addLine: AddLogLine;
   focusFingerprint?: string | null;
   onFocusConsumed?: () => void;
+  onOpenInAnalysis?: (folderPath: string, videoPath: string) => void;
 }
 
 const noop = (): void => {};
@@ -25,7 +29,15 @@ const toLocalDay = (isoUtc: string): string => {
   return `${String(date.getFullYear())}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 };
 
-export const PhotosView = ({ active, addLine, focusFingerprint = null, onFocusConsumed = noop }: PhotosViewProps) => {
+export const PhotosView = ({
+  active,
+  variant,
+  addLine,
+  focusFingerprint = null,
+  onFocusConsumed = noop,
+  onOpenInAnalysis,
+}: PhotosViewProps) => {
+  const isBrowse = variant === 'browse';
   const dictionary = useDictionary();
   const photos = usePhotos({ active, addLine });
   const [viewerOpen, setViewerOpen] = useState(false);
@@ -93,15 +105,17 @@ export const PhotosView = ({ active, addLine, focusFingerprint = null, onFocusCo
           <MenuItem key={root.root} value={root.root}>{root.root}</MenuItem>
         ))}
       </Select>
-      <Button
-        variant="outlined"
-        size="small"
-        onClick={photos.scanFolder}
-        disabled={photos.isBusy}
-        data-testid="photos-scan-action"
-      >
-        {dictionary.photos.scanFolderAction}
-      </Button>
+      {isBrowse ? null : (
+        <Button
+          variant="outlined"
+          size="small"
+          onClick={photos.scanFolder}
+          disabled={photos.isBusy}
+          data-testid="photos-scan-action"
+        >
+          {dictionary.photos.scanFolderAction}
+        </Button>
+      )}
       <TextField
         size="small"
         value={photos.searchInputValue}
@@ -131,7 +145,7 @@ export const PhotosView = ({ active, addLine, focusFingerprint = null, onFocusCo
 
   const notice = photos.error === null ? undefined : <Alert severity="error">{photos.error}</Alert>;
 
-  const proxiesPending = photos.selectedRoot !== null && counts !== null && counts.proxied === 0 && counts.photos > 0;
+  const proxiesPending = !isBrowse && photos.selectedRoot !== null && counts !== null && counts.proxied === 0 && counts.photos > 0;
 
   const grid = photos.viewMode.kind === 'search' ? (
     photos.isSearchLoading ? (
@@ -158,11 +172,11 @@ export const PhotosView = ({ active, addLine, focusFingerprint = null, onFocusCo
     <EmptyState
       title={dictionary.photos.emptyNoRootsTitle}
       body={dictionary.photos.emptyNoRootsBody}
-      action={
+      action={isBrowse ? null : (
         <Button variant="contained" onClick={photos.scanFolder} disabled={photos.isBusy} data-testid="photos-empty-scan">
           {dictionary.photos.scanFolderAction}
         </Button>
-      }
+      )}
       testId="photos-empty-no-roots"
     />
   ) : photos.items.length === 0 ? (
@@ -206,6 +220,7 @@ export const PhotosView = ({ active, addLine, focusFingerprint = null, onFocusCo
 
   const detail = (
     <PhotoDetailPane
+      variant={variant}
       detail={photos.detail}
       isLoading={photos.isDetailLoading}
       variants={photos.variants}
@@ -214,6 +229,7 @@ export const PhotosView = ({ active, addLine, focusFingerprint = null, onFocusCo
       onAnalyze={photos.analyzePhotos}
       isBusy={photos.isBusy}
       analyzeProgress={photos.analyzeProgress}
+      onOpenInAnalysis={onOpenInAnalysis}
     />
   );
 

@@ -9,11 +9,11 @@ interface MapPinPopoverProps {
   anchorEl: HTMLElement | null;
   location: CatalogLocation | null;
   onClose: () => void;
-  onOpenLocation: (folderPath: string, videoPath: string) => void;
+  onOpenPreview: (location: CatalogLocation) => void;
   onOpenPhoto: (fingerprint: string) => void;
 }
 
-export const MapPinPopover = ({ anchorEl, location, onClose, onOpenLocation, onOpenPhoto }: MapPinPopoverProps) => {
+export const MapPinPopover = ({ anchorEl, location, onClose, onOpenPreview, onOpenPhoto }: MapPinPopoverProps) => {
   const dictionary = useDictionary();
 
   return (
@@ -103,10 +103,10 @@ export const MapPinPopover = ({ anchorEl, location, onClose, onOpenLocation, onO
               variant="contained"
               size="small"
               disabled={!location.folder.online}
-              onClick={() => onOpenLocation(location.folder.currentPath, `${location.folder.currentPath}/${location.fileName}`)}
+              onClick={() => onOpenPreview(location)}
               data-testid="map-open-video"
             >
-              {dictionary.map.openVideo}
+              {dictionary.map.openPreview}
             </Button>
           )}
         </Box>

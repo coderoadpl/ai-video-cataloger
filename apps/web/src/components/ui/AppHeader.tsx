@@ -51,14 +51,17 @@ export const AppHeader = ({
         <Typography variant="caption">{versionLabel(appVersion)}</Typography>
       )}
       <ModeSwitcher mode={mode} onModeChange={onModeChange} />
-      <Box sx={{ flex: 1 }} />
+      <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
+        {mode === 'analysis' ? (
+          <FolderBar
+            recentFolders={recentFolders}
+            isCheckingFolder={isCheckingFolder}
+            onOpenFolder={onOpenFolder}
+            onSelectRecentFolder={onSelectRecentFolder}
+          />
+        ) : null}
+      </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <FolderBar
-          recentFolders={recentFolders}
-          isCheckingFolder={isCheckingFolder}
-          onOpenFolder={onOpenFolder}
-          onSelectRecentFolder={onSelectRecentFolder}
-        />
         <Button variant="outlined" size="small" color="inherit" onClick={onShowSettings}>
           {dictionary.appHeader.settings}
         </Button>

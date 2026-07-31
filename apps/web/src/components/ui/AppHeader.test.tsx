@@ -4,6 +4,7 @@ import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { createAppTheme } from '../../theme.js';
+import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { AppHeader } from './AppHeader.js';
 
@@ -24,7 +25,7 @@ const renderHeader = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) 
     onModeChange: () => undefined,
     ...overrides,
   };
-  renderThemed(<AppHeader {...props} />);
+  return renderThemed(<AppHeader {...props} />);
 };
 
 describe('AppHeader mode switcher', () => {
@@ -42,5 +43,17 @@ describe('AppHeader mode switcher', () => {
     renderHeader();
 
     expect(screen.queryByRole('combobox')).toBeNull();
+  });
+
+  it('renders the FolderBar in analysis mode', () => {
+    renderHeader({ mode: 'analysis' });
+
+    expect(screen.getByRole('button', { name: en.folderBar.openFolder })).toBeDefined();
+  });
+
+  it('renders no FolderBar in library mode', () => {
+    renderHeader({ mode: 'library' });
+
+    expect(screen.queryByRole('button', { name: en.folderBar.openFolder })).toBeNull();
   });
 });

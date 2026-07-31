@@ -64,7 +64,7 @@ Blocking gate: any FAIL here stops the release. Run on the packaged build.
 | SMK-04 | P1 | Folder open, analyzer configured | 1. Select one Pending video. 2. Click **Analyze Video (Analizuj film)**. | Terminal streams per-step progress; on completion status flips to **Completed (Ukończony)**; Summary, Transcript, frames appear. |
 | SMK-05 | P1 | ≥1 analyzed video | 1. Click a video row. | Detail view opens with tags, **Video Information (Informacje o filmie)**, and inline player. |
 | SMK-06 | P1 | ≥1 analyzed video with audio | 1. In detail, press play. | Video plays inline (frame advances); if segments exist a subtitle track is present. |
-| SMK-07 | P1 | ≥1 analyzed video | 1. Click the search box **Search catalog (Szukaj w katalogu)**. 2. Type a term from a known summary. 3. Enter. | Results list shows the match; clicking a result opens its detail. |
+| SMK-07 | P1 | ≥1 analyzed video | 1. Switch to **Library (Biblioteka)** mode. 2. Click the **Search the library… (Szukaj w bibliotece…)** field (`library-search-input`). 3. Type a term from a known summary. 4. Enter. | The filtered grid shows the match as a tile; clicking the tile opens the browse preview with the file's description/tags. |
 | SMK-08 | P2 | App open | 1. Open **Settings (Ustawienia)**. 2. Toggle **App language (Język aplikacji)** EN↔PL. 3. Save. | UI switches language **live** without restart. |
 | SMK-09 | P2 | Terminal available | 1. Run `ai-video-cataloger health --json` in the folder. | One `started` + one `completed` NDJSON line; exit code 0. |
 | SMK-10 | P2 | App open, a folder with a **Whole tree** scope chosen | 1. Cmd+Q / quit. 2. Relaunch. | App reopens to the last folder; no crash; sidebar width preserved; the **This folder / Whole tree** scope is restored per folder (not reset to This folder). |
@@ -112,18 +112,23 @@ Blocking gate: any FAIL here stops the release. Run on the packaged build.
 | ANL-13 | P3 | Failed run (e.g. bad API key) | 1. Analyze. | Status **Error (Błąd)**; **Retry Analysis (Ponów analizę)** offered; terminal shows `Error: <message>`. |
 | ANL-14 | P3 | Batch running | 1. Confirm both Analyze buttons. | Both Analyze buttons disabled while any run is active. |
 
-### 3.3 SEARCH — dropdown, results, cross-folder
+### 3.3 SEARCH — the Library search field, dropdown, filtered grid
+
+The search field lives only in **Library (Biblioteka)** mode, in the
+Kolekcja subnav (`library-search-input`); there is no top-bar search and no
+per-fingerprint search results view — a match is a tile in the same grid,
+opened through the browse preview.
 
 | ID | Pri | Preconditions | Steps | Expected |
 |---|---|---|---|---|
-| SRCH-01 | P2 | ≥1 recent search + tags exist | 1. Focus the search box. | Dropdown shows **Top tags (Najczęstsze tagi)** and **Recent searches (Ostatnie wyszukiwania)** with per-item delete (**Remove <label> / Usuń <label>**). |
+| SRCH-01 | P2 | ≥1 recent search + tags exist | 1. Focus the Library search field. | Dropdown shows **Top tags (Najczęstsze tagi)** and **Recent searches (Ostatnie wyszukiwania)** with per-item delete (**Remove <label> / Usuń <label>**). |
 | SRCH-02 | P2 | Recent searches present | 1. Click a recent-search delete (×). | That entry is removed from the list. |
-| SRCH-03 | P1 | Analyzed videos across ≥2 folders | 1. Search a common term. | Results span folders; count shown as **N result(s) (N wyniki/wyników)**. |
-| SRCH-04 | P1 | Search results shown | 1. Click a result from a different folder. | Opens that video's **detail** view (not just highlights the folder). |
-| SRCH-05 | P1 | Search active with results | 1. Click a video in the sidebar. | Search is **cleared** and the detail view renders for the selected sidebar video. |
-| SRCH-06 | P2 | Search a term with no matches | 1. Search gibberish. | **No results found (Brak wyników)**; no crash. |
-| SRCH-07 | P3 | Search result whose drive is unplugged | 1. Search; inspect row. | Row annotated **drive not connected (dysk niepodłączony)** / **file missing (brak pliku)** as applicable. |
-| SRCH-08 | P3 | Search result row | 1. Right-click a result row. | Context menu **Reveal in Finder (Pokaż w Finderze)**; reveals across folders. |
+| SRCH-03 | P1 | Analyzed videos across ≥2 folders | 1. Search a common term. | The filtered grid shows tiles from every matching folder; the header count reads **N of M files (N z M plików)**. |
+| SRCH-04 | P1 | Filtered grid shown | 1. Click a tile from a different folder. | Opens the browse preview for that tile (not the Analysis workspace). |
+| SRCH-05 | P1 | — | 1. Clear the search field. | The grid returns to the unfiltered catalog; no other view state (mode, subnav) is disturbed. |
+| SRCH-06 | P2 | Search a term with no matches | 1. Search gibberish. | Honest **no-match** empty state (`library-no-match`), distinct from the empty-catalog state; **Clear search (Wyczyść wyszukiwanie)** resets it. |
+| SRCH-07 | P3 | A matching tile's drive is unplugged | 1. Search; inspect the tile. | Tile annotated **drive not connected (dysk niepodłączony)**; clicking it does not open a preview. |
+| SRCH-08 | P3 | Filtered grid shown | 1. Right-click a tile. | Context menu offers **Open in Analysis (Otwórz w Analizie)**, **Reveal in Finder (Pokaż w Finderze)** and **Copy path (Kopiuj ścieżkę)**; no folder-view item. |
 
 ### 3.4 MEDIA — player, subtitles, thumbnails
 
@@ -257,9 +262,9 @@ from the owner findings ledger and fix commits since `d83f1724`.
 | REG-07 | P2 | Scope toggle didn't drive the view; disabled state had no tooltip. | Toggle This folder / Whole tree; open a subfolder-less folder. | This folder = flat root list w/ own count; Whole tree = tree; disabled + tooltip when no subfolders. |
 | REG-08 | P1 | Whole-tree analyze unavailable on unindexed/markerless trees. | Open a never-analyzed tree. | Analyze All offered as **up to N**. |
 | REG-09 | P2 | Subfolder video click didn't open detail; no single global selection. | Click a subfolder video. | Opens its detail; one global selection across the tree. |
-| REG-10 | P2 | Search box had no focus dropdown; recent searches not deletable. | Focus search box. | Dropdown with Top tags + Recent searches (each deletable). |
-| REG-11 | P1 | Clicking a search result didn't open detail; reveal failed across folders. | Click a cross-folder result; reveal it. | Result opens detail; reveal works across folders. |
-| REG-12 | P1 | Selecting a sidebar video while searching left the main area on results. | With search active, click a sidebar video. | Search cleared; detail renders. |
+| REG-10 | P2 | Search box had no focus dropdown; recent searches not deletable. | Switch to Library mode; focus the `library-search-input` field. | Dropdown with Top tags + Recent searches (each deletable), now on the Library search field. |
+| REG-11 | P1 | Clicking a search result didn't open detail; reveal failed across folders. | Click a cross-folder tile in the filtered grid; reveal it via the tile menu. | Tile opens the browse preview; reveal works across folders. |
+| REG-12 | P1 | Sidebar-click-clears-search no longer applies: Library search is a separate mode with no current-folder sidebar. | In Analysis mode, select a video in the sidebar. | Detail renders for the selected video; Library's search state (query, filters) is untouched, since the two modes keep independent state. |
 | REG-13 | P2 | Sidebar width fixed at ~280px, not resizable/persistent. | Drag the sidebar handle; restart. | Default ~**440px**, drag-resizable (280–640), width persists across restart. |
 | REG-14 | P1 | Startup showed a white flash before paint. | Cold-launch the packaged app (warm cache). | Window visible **immediately** with branded splash + skeletons, no white flash. Measure ms-to-window. |
 | REG-15 | P1 | UI-language switch wrote folder-scoped, so it never applied/persisted. | Settings EN→PL, Save, restart. | Applies **live** and survives restart (home-scoped write). |
@@ -283,8 +288,13 @@ from the owner findings ledger and fix commits since `d83f1724`.
 | REG-33 | P3 | The **This folder / Whole tree** scope reset to This folder on relaunch. | Choose Whole tree for a folder; quit and relaunch. | Scope is restored per folder from localStorage. |
 | REG-34 | P2 | Forcing **Analyze anyway** on a duplicate kept the Duplicate badge, and the tree-scope detail needed a Cmd+R to show the finished result. | Open a subfolder duplicate in **Whole tree**; click **Analyze anyway**; let it finish without reloading. | Detail + row show **Processing** during the run; on completion the detail auto-refreshes in place to the completed video (Duplicate block gone) — **no** Cmd+R. |
 | REG-35 | P2 | Player forced 16:9 (portrait letterboxed), subtitles were off by default, and the detail wasted width on wide screens. | Open a portrait clip with a transcript; widen the window past the breakpoint. | Player uses the **true aspect** in a bounded box; subtitle track is **default-on** and toggleable via native controls; at wide viewports info cards and player sit in **two columns**, single column below the breakpoint. |
-| REG-36 | P2 | Search results had no way back to the catalog and rows showed no thumbnail. | Click a tag chip to open results; use the back affordance; inspect result rows. | One click into results (tag chip) and **one click back** (back affordance clears the query and returns to the prior view); each row shows a **56px** thumbnail box (image when indexed, placeholder otherwise). |
+| REG-36 | P2 | Search results had no way back to the catalog and rows showed no thumbnail. | In Analysis, click a tag chip on a video's detail. | One click seeds the Library search with that tag (mode switches to Library, filtered grid shows the tag chip); **one click back** (clear filters / clear search) returns to the unfiltered catalog. |
 | REG-37 | P2 | A stale `ai-video-cataloger` earlier on PATH shadowed the app silently, and the Install Command Line Tool flow didn't warn about shadowing binaries. | With an older copy earlier on PATH, open **Prerequisites**; then run **Install Command Line Tool**. | Doctor lists a **stale_cli** warning naming the exact shadowing path(s) and versions; the install dialog names the shadowing binaries with guidance (safe-to-remove only for an owned symlink, otherwise manual). |
+| REG-38 | P2 | Two-mode IA (w22): mode, subnav and media-toggle choices were not verified to survive a switch away and back. | Set Library's subnav to Zdjęcia and Analysis's media toggle to Photos; switch modes back and forth a few times; restart the app. | Each mode remembers its own subnav/toggle choice across switches and across restart. |
+| REG-39 | P1 | Two-mode IA (w22): browse surfaces (Library Photos, Library People) must never expose analyze/maintenance actions. | Open Library → Zdjęcia and Library → Osoby. | Zdjęcia detail pane shows no analyze strip, no variant picker, no scan action; Osoby shows no **Index faces** button — its empty state points at Analysis → Zdjęcia instead. |
+| REG-40 | P1 | Two-mode IA (w22): the browse preview escape hatch and the Library↔Analysis bridge must both work. | Click a Library tile or a map video pin to open the preview; click **Open in Analysis (Otwórz w Analizie)**. In Analysis, click a tag chip or **Show in Library**. | The preview's escape hatch lands in Analysis with the file selected; the Analysis-side actions land in Library with the seed applied — both directions of the bridge work. |
+| REG-41 | P1 | Two-mode IA (w22): opening a folder from the menu/dock while in Library mode left the user stranded in Library. | While in Library mode, open a folder via the **File → Open Folder** menu or a dock recent-folder entry. | The app switches to Analysis mode and shows that folder's workspace. |
+| REG-42 | P2 | Two-mode IA (w22): the terminal strip and FolderBar must be Analysis-only. | Switch to Library mode. | No terminal strip at the bottom and no FolderBar in the header; both reappear in Analysis mode. |
 
 ---
 

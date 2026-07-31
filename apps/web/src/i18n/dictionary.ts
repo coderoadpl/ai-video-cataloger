@@ -465,6 +465,7 @@ export interface Dictionary {
     noFaceGroupingsTitle: string;
     noFolderBody: string;
     runIndexingBody: string;
+    runIndexingInAnalysis: string;
     dangerArea: string;
     dangerBody: string;
     deleteAllFaceData: string;
@@ -511,8 +512,8 @@ export interface Dictionary {
     zoomIn: string;
     zoomOut: string;
     resetView: string;
-    openVideo: string;
     openPhoto: string;
+    openPreview: string;
     coordinates: string;
     source: {
       camera: string;
@@ -767,6 +768,7 @@ export interface Dictionary {
     qualityDark: string;
     qualityOverexposed: string;
     qualityOther: string;
+    openInAnalysis: string;
   };
   library: {
     title: string;
@@ -788,7 +790,7 @@ export interface Dictionary {
     noMatchClearAction: string;
     offlineFolderBadge: string;
     missingBadge: string;
-    openInFolderView: string;
+    openInAnalysis: string;
     copyPath: string;
     groupByDate: string;
     groupByFolder: string;
@@ -817,6 +819,11 @@ export interface Dictionary {
     sortCapturedAsc: string;
     sortNameAsc: string;
     sortRelevance: string;
+  };
+  preview: {
+    offline: string;
+    missing: string;
+    openInAnalysis: string;
   };
 }
 
@@ -1335,6 +1342,7 @@ export const en: Dictionary = {
     noFaceGroupingsTitle: 'No face groupings yet',
     noFolderBody: 'Select a folder, then run ai-video-cataloger faces index <folder>.',
     runIndexingBody: 'Run indexing to create local face groupings for this folder.',
+    runIndexingInAnalysis: 'Open a folder in Analysis > Photos to index faces.',
     dangerArea: 'Danger area',
     dangerBody: 'Delete all local face data if you want to remove every grouping and exemplar crop.',
     deleteAllFaceData: 'Delete all face data',
@@ -1381,8 +1389,8 @@ export const en: Dictionary = {
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     resetView: 'Reset view',
-    openVideo: 'Open video',
     openPhoto: 'Open photo',
+    openPreview: 'Preview',
     coordinates: 'Coordinates',
     source: {
       camera: 'Measured (camera)',
@@ -1641,6 +1649,7 @@ export const en: Dictionary = {
     qualityDark: 'Dark',
     qualityOverexposed: 'Overexposed',
     qualityOther: 'Other',
+    openInAnalysis: 'Open in Analysis',
   },
   library: {
     title: 'Library',
@@ -1662,7 +1671,7 @@ export const en: Dictionary = {
     noMatchClearAction: 'Clear search',
     offlineFolderBadge: 'Drive not connected',
     missingBadge: 'Missing',
-    openInFolderView: 'Open in folder view',
+    openInAnalysis: 'Open in Analysis',
     copyPath: 'Copy path',
     groupByDate: 'Date',
     groupByFolder: 'Folder',
@@ -1691,6 +1700,11 @@ export const en: Dictionary = {
     sortCapturedAsc: 'Oldest first',
     sortNameAsc: 'Name',
     sortRelevance: 'Relevance',
+  },
+  preview: {
+    offline: 'This file is on a drive that is not connected.',
+    missing: 'This file is no longer at its catalogued path.',
+    openInAnalysis: 'Open in Analysis',
   },
 };
 
@@ -2218,6 +2232,7 @@ export const pl: Dictionary = {
     noFaceGroupingsTitle: 'Brak grup twarzy',
     noFolderBody: 'Wybierz folder, a potem uruchom ai-video-cataloger faces index <folder>.',
     runIndexingBody: 'Uruchom indeksowanie, aby utworzyć lokalne grupy twarzy dla tego folderu.',
+    runIndexingInAnalysis: 'Otwórz folder w Analiza > Zdjęcia, aby zindeksować twarze.',
     dangerArea: 'Strefa ryzyka',
     dangerBody: 'Usuń wszystkie lokalne dane twarzy, jeśli chcesz usunąć każdą grupę i przykładowe wycinki.',
     deleteAllFaceData: 'Usuń wszystkie dane twarzy',
@@ -2264,8 +2279,8 @@ export const pl: Dictionary = {
     zoomIn: 'Przybliż',
     zoomOut: 'Oddal',
     resetView: 'Zresetuj widok',
-    openVideo: 'Otwórz film',
     openPhoto: 'Otwórz zdjęcie',
+    openPreview: 'Podgląd',
     coordinates: 'Współrzędne',
     source: {
       camera: 'Zmierzone (aparat)',
@@ -2524,6 +2539,7 @@ export const pl: Dictionary = {
     qualityDark: 'Ciemna',
     qualityOverexposed: 'Prześwietlona',
     qualityOther: 'Inna',
+    openInAnalysis: 'Otwórz w Analizie',
   },
   library: {
     title: 'Biblioteka',
@@ -2547,7 +2563,7 @@ export const pl: Dictionary = {
     noMatchClearAction: 'Wyczyść wyszukiwanie',
     offlineFolderBadge: 'Dysk niepodłączony',
     missingBadge: 'Brak pliku',
-    openInFolderView: 'Otwórz w widoku folderu',
+    openInAnalysis: 'Otwórz w Analizie',
     copyPath: 'Kopiuj ścieżkę',
     groupByDate: 'Data',
     groupByFolder: 'Folder',
@@ -2576,6 +2592,11 @@ export const pl: Dictionary = {
     sortCapturedAsc: 'Od najstarszych',
     sortNameAsc: 'Nazwa',
     sortRelevance: 'Trafność',
+  },
+  preview: {
+    offline: 'Ten plik znajduje się na dysku, który nie jest podłączony.',
+    missing: 'Tego pliku nie ma już w skatalogowanej lokalizacji.',
+    openInAnalysis: 'Otwórz w Analizie',
   },
 };
 

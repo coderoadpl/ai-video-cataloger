@@ -101,6 +101,36 @@ describe('AppLayout composition', () => {
     expect(screen.getByText(en.appFrame.terminalTitle)).toBeDefined();
   });
 
+  it('renders no terminal strip and no FolderBar in library mode', () => {
+    renderWithProviders(
+      <AppLayout
+        shell={stubShell}
+        sidebar={null}
+        content={<div>content-slot</div>}
+        mode="library"
+        onModeChange={() => undefined}
+      />,
+    );
+
+    expect(screen.queryByText(en.appFrame.terminalTitle)).toBeNull();
+    expect(screen.queryByRole('button', { name: en.folderBar.openFolder })).toBeNull();
+  });
+
+  it('renders the terminal strip and the FolderBar in analysis mode', () => {
+    renderWithProviders(
+      <AppLayout
+        shell={stubShell}
+        sidebar={null}
+        content={<div>content-slot</div>}
+        mode="analysis"
+        onModeChange={() => undefined}
+      />,
+    );
+
+    expect(screen.getByText(en.appFrame.terminalTitle)).toBeDefined();
+    expect(screen.getByRole('button', { name: en.folderBar.openFolder })).toBeDefined();
+  });
+
   it('renders folder-open failures as an alert', () => {
     renderWithProviders(
       <AppLayout

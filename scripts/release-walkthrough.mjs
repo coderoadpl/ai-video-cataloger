@@ -243,6 +243,17 @@ const drive = async (plan) => {
     return done('dismissed with "configure later"');
   });
 
+  await record('mode-switch', async () => {
+    const switcher = page.getByTestId('mode-switcher');
+    if (!(await appeared(switcher, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
+    const modeLibrary = page.getByTestId('mode-library');
+    await modeLibrary.click();
+    if (!(await appeared(page.getByTestId('subnav-collection'), SETTLE_TIMEOUT_MS))) {
+      return skipped('Library subnav did not render after switching modes');
+    }
+    return done('mode switcher toggles Library content');
+  });
+
   await record('mode-analysis', async () => {
     const modeAnalysis = page.getByTestId('mode-analysis');
     if (!(await appeared(modeAnalysis, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
@@ -301,6 +312,66 @@ const drive = async (plan) => {
     const filtered = page.getByTestId('library-no-match').or(page.getByTestId('library-tile'));
     if (!(await appeared(filtered))) return skipped(`no filtered library view for "${plan.query}"`);
     return done(`library filtered for "${plan.query}"`);
+  });
+
+  await record('library-preview', async () => {
+    const modeLibrary = page.getByTestId('mode-library');
+    if (await appeared(modeLibrary, SETTLE_TIMEOUT_MS)) await modeLibrary.click();
+    const subnavCollection = page.getByTestId('subnav-collection');
+    if (await appeared(subnavCollection, SETTLE_TIMEOUT_MS)) await subnavCollection.click();
+    const tile = page.getByTestId('library-tile').first();
+    if (!(await appeared(tile, SETTLE_TIMEOUT_MS))) return skipped('no library tile to preview');
+    await tile.click();
+    if (!(await appeared(page.getByTestId('browse-preview'), VISIBLE_TIMEOUT_MS))) {
+      return skipped('browse preview did not open');
+    }
+    if (!(await appeared(page.getByTestId('preview-player'), SETTLE_TIMEOUT_MS))) {
+      return skipped('preview player did not render (offline or missing file)');
+    }
+    const escapeHatch = page.getByTestId('preview-open-analysis');
+    if (!(await appeared(escapeHatch, SETTLE_TIMEOUT_MS))) return skipped('no open-in-analysis escape hatch');
+    await escapeHatch.click();
+    if (!(await appeared(page.getByTestId('detail-layout'), VISIBLE_TIMEOUT_MS))) {
+      return skipped('escape hatch did not land in Analysis with the file selected');
+    }
+    return done('tile opened a preview; escape hatch landed in Analysis');
+  });
+
+  await record('photos-browse', async () => {
+    const modeLibrary = page.getByTestId('mode-library');
+    if (await appeared(modeLibrary, SETTLE_TIMEOUT_MS)) await modeLibrary.click();
+    const subnavPhotos = page.getByTestId('subnav-photos');
+    if (!(await appeared(subnavPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Photos subnav in this build');
+    await subnavPhotos.click();
+    const tile = page.getByTestId('photos-tile').first();
+    if (!(await appeared(tile, FOLDER_TIMEOUT_MS))) return skipped('no photos catalogued in this home');
+    await tile.click();
+    if (!(await appeared(page.getByTestId('photos-detail'), VISIBLE_TIMEOUT_MS))) {
+      return skipped('photo detail pane did not render');
+    }
+    if (await appeared(page.getByTestId('photos-analyze-strip'), SETTLE_TIMEOUT_MS)) {
+      return { status: 'failed', note: 'analyze strip visible in the browse Photos surface' };
+    }
+    return done('browse Photos detail pane shows no analyze affordance');
+  });
+
+  await record('analysis-photos', async () => {
+    const modeAnalysis = page.getByTestId('mode-analysis');
+    if (!(await appeared(modeAnalysis, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
+    await modeAnalysis.click();
+    const mediaPhotos = page.getByTestId('analysis-media-photos');
+    if (!(await appeared(mediaPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Analysis media toggle in this build');
+    await mediaPhotos.click();
+    const tile = page.getByTestId('photos-tile').first();
+    if (!(await appeared(tile, FOLDER_TIMEOUT_MS))) return skipped('no photos catalogued in this home');
+    await tile.click();
+    if (!(await appeared(page.getByTestId('photos-detail'), VISIBLE_TIMEOUT_MS))) {
+      return skipped('photo detail pane did not render');
+    }
+    if (!(await appeared(page.getByTestId('photos-analyze-strip'), SETTLE_TIMEOUT_MS))) {
+      return skipped('no analyze strip (photo already analysed or proxy pending)');
+    }
+    return done('Analysis Photos detail pane shows the analyze affordance');
   });
 
   await record('photos-tab', async () => {

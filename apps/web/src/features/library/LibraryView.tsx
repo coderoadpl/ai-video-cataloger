@@ -5,6 +5,8 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
 import { FilterBar, type LibraryGroupBy } from './FilterBar.js';
 import { groupByCaptureDay, groupByFolder, type LibraryItem } from './core/index.js';
+
+export type { LibraryItem } from './core/index.js';
 import {
   EMPTY_LIBRARY_FILTERS,
   libraryFilterIsEmpty,
@@ -25,6 +27,7 @@ export type LibrarySeed =
 interface LibraryViewProps {
   active: boolean;
   onOpenResult: (folderPath: string, videoPath: string) => void;
+  onPreview: (item: LibraryItem) => void;
   onGoToVideos: () => void;
   seed?: LibrarySeed | null;
   onSeedConsumed?: () => void;
@@ -46,7 +49,7 @@ const readGroupBy = (): LibraryGroupBy => {
   return raw === 'folder' ? 'folder' : 'date';
 };
 
-export const LibraryView = ({ active, onOpenResult, onGoToVideos, seed = null, onSeedConsumed }: LibraryViewProps) => {
+export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, seed = null, onSeedConsumed }: LibraryViewProps) => {
   const dictionary = useDictionary();
   const [filters, dispatch] = useReducer(libraryFilterReducer, EMPTY_LIBRARY_FILTERS);
   const [groupBy, setGroupByState] = useState<LibraryGroupBy>(() => readGroupBy());
@@ -107,7 +110,12 @@ export const LibraryView = ({ active, onOpenResult, onGoToVideos, seed = null, o
 
   if (!active) return null;
 
-  const openItem = (item: LibraryItem): void => {
+  const previewItem = (item: LibraryItem): void => {
+    if (!item.folder.online) return;
+    onPreview(item);
+  };
+
+  const openInAnalysis = (item: LibraryItem): void => {
     if (!item.folder.online) return;
     onOpenResult(item.folder.currentPath, `${item.folder.currentPath}/${item.fileName}`);
   };
@@ -187,8 +195,8 @@ export const LibraryView = ({ active, onOpenResult, onGoToVideos, seed = null, o
       <>
         <LibraryGrid
           sections={sections}
-          onOpen={openItem}
-          onOpenInFolder={openItem}
+          onOpen={previewItem}
+          onOpenInAnalysis={openInAnalysis}
           scrollToFingerprint={scrollTarget}
           onScrolledToFingerprint={() => setScrollTarget(null)}
         />

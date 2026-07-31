@@ -9,6 +9,7 @@ import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { useFacesIndex } from './use-faces-index.js';
 
 export type FacePerson = z.output<typeof facesPeopleOutputSchema>['people'][number];
 
@@ -39,12 +40,6 @@ interface UsePeopleOptions {
   intervalMs?: number;
 }
 
-const enabledValue = (value: string | undefined): boolean | null => {
-  if (value === undefined) return null;
-  const normalized = value.toLowerCase();
-  return normalized === 'true' || normalized === 'yes' || normalized === '1';
-};
-
 const messageOf = (error: unknown): string => {
   if (error instanceof ApiError) return error.appError.message;
   if (error instanceof Error) return error.message;
@@ -59,19 +54,16 @@ export const usePeople = ({
 }: UsePeopleOptions): PeopleState => {
   const queryClient = useQueryClient();
   const dictionary = useDictionary();
-  const config = useQuery({ ...actions.config({}), enabled: active });
-  const facesEnabled = enabledValue(config.data !== undefined && 'effective' in config.data
-    ? config.data.effective.faces_enabled
-    : undefined);
-  const artifacts = useQuery({ ...actions.faceArtifacts, enabled: active && facesEnabled === true });
+  const facesIndex = useFacesIndex({ active, folder, addLine, intervalMs });
+  const facesEnabled = facesIndex.facesEnabled;
+  const artifactsReady = facesIndex.artifactsReady;
   const status = useQuery({ ...actions.facesStatus, enabled: active && facesEnabled === true });
   const people = useQuery({
     ...actions.facesPeople,
-    enabled: active && facesEnabled === true && artifacts.data?.ready === true,
+    enabled: active && facesEnabled === true && artifactsReady === true,
   });
 
   const installMutation = useMutation(actions.installFaceArtifacts);
-  const indexMutation = useMutation(actions.facesIndex);
   const renameMutation = useMutation(actions.facesName);
   const mergeMutation = useMutation(actions.facesMerge);
   const forgetMutation = useMutation(actions.facesForget);
@@ -80,6 +72,7 @@ export const usePeople = ({
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
   const isBusy = activeJobLabel !== null
+    || facesIndex.isBusy
     || renameMutation.isPending
     || mergeMutation.isPending
     || forgetMutation.isPending
@@ -128,16 +121,6 @@ export const usePeople = ({
       dictionary.people.installModelsFailedLog,
     );
   }, [dictionary, installMutation, runJob]);
-
-  const indexFaces = useCallback(() => {
-    if (folder === null) return;
-    runJob(
-      indexMutation.mutateAsync({ root: folder }),
-      dictionary.people.indexingFacesLog,
-      dictionary.people.indexUpdatedLog,
-      dictionary.people.indexFacesFailedLog,
-    );
-  }, [dictionary, folder, indexMutation, runJob]);
 
   const mutateAndRefresh = useCallback(
     (operation: Promise<unknown>, success: string, failure: string) => {
@@ -204,19 +187,19 @@ export const usePeople = ({
   }, []);
 
   const error = useMemo(() => {
-    for (const query of [config, artifacts, status, people]) {
+    if (facesIndex.error !== null) return facesIndex.error;
+    for (const query of [status, people]) {
       if (query.error !== null) return messageOf(query.error);
     }
     return null;
-  }, [artifacts, config, people, status]);
+  }, [facesIndex.error, people, status]);
 
   return {
     facesEnabled,
-    artifactsReady: artifacts.data?.ready ?? null,
+    artifactsReady,
     isLoading: active && (
-      config.isLoading
-      || (facesEnabled === true && artifacts.isLoading)
-      || (facesEnabled === true && artifacts.data?.ready === true && (status.isLoading || people.isLoading))
+      facesIndex.isLoading
+      || (facesEnabled === true && artifactsReady === true && (status.isLoading || people.isLoading))
     ),
     isBusy,
     error,
@@ -227,7 +210,7 @@ export const usePeople = ({
     toggleSelected,
     clearSelected: () => setSelectedPersonIds([]),
     installArtifacts,
-    indexFaces,
+    indexFaces: facesIndex.indexFaces,
     rename,
     merge,
     forget,

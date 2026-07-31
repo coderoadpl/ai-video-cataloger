@@ -189,26 +189,16 @@ describe('PeopleView', () => {
     expect(installBody).toEqual({ force: false });
   });
 
-  it('shows the empty state and indexes the current folder', async () => {
-    let indexBody: unknown = null;
-    const addLine = vi.fn();
+  it('shows the empty state pointing at Analysis, with no index button in the browse view', async () => {
     stubPeople({ facesEnabled: true, artifactsReady: true, observations: 0, people: [] });
-    server.use(
-      http.post('/api/faces/index', async ({ request }) => {
-        indexBody = await request.json();
-        return HttpResponse.json({ ok: true, data: { jobId: 'faces-index-1' } });
-      }),
-    );
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={addLine} onOpenSettings={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
     );
 
     expect(await screen.findByTestId('people-empty-state')).toBeDefined();
-    fireEvent.click(screen.getAllByText('Index faces')[0] ?? screen.getByTestId('people-index'));
-
-    await waitFor(() => expect(addLine).toHaveBeenCalledWith('Face grouping index is updated', 'success'));
-    expect(indexBody).toEqual({ root: FOLDER });
+    expect(screen.getByText('Open a folder in Analysis > Photos to index faces.')).toBeDefined();
+    expect(screen.queryByTestId('people-index')).toBeNull();
   });
 
   it('renders populated people with exemplar crops and observation counts', async () => {

@@ -282,6 +282,26 @@ Analysis details pane keeps its video player and variant tools exactly as
 before; this rewrite touches only how a user reaches that pane, not what it
 renders.
 
+**Browse purification and the preview overlay.** Library and Map are
+strictly read-only: Library's Zdjęcia surface hides the analyze/re-run/
+variant-picker actions and folder scanning, Library's Osoby surface hides the
+faces-index build (moved to Analysis → Zdjęcia, see below), and a Map video
+pin opens a preview instead of jumping into the Analysis workspace. The
+preview is a new island, `features/preview/`, rendering a selected-variant-
+only overlay (player, description, tags, place, capture date) fed exclusively
+by the existing `searchQuery` and `catalogLocations` contracts — no new
+endpoint, no per-item detail route, video-only in this wave (a `kind:'photo'`
+union member is a later extension). It carries a discreet "Otwórz w Analizie"
+escape hatch that calls the same `openInAnalysis` routing `routes/index.tsx`
+already uses for the Library↔Analysis bridge, completing both directions of
+that bridge. The FolderBar and the terminal strip render only in Analysis
+mode — Library browses the cross-folder catalog without a current folder, so
+neither affordance applies there. The faces-index maintenance action lives
+exclusively in Analysis → Zdjęcia (`FacesIndexAction`, backed by the
+extracted `use-faces-index` hook that `usePeople` also consumes, so the
+indexing behavior stays single-sourced); Library's Osoby view keeps only
+curation (rename/merge/forget).
+
 ### Island cores (ADR-0005 rung 1) and i18n
 
 A feature's decision/selector logic lives in a portable, DOM-free, React-free

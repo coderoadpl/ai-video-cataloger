@@ -1,11 +1,15 @@
-import { Alert, Box, Button, Chip, CircularProgress, Divider, MenuItem, Select, Typography } from '@mui/material';
+import { Alert, Box, Button, Chip, CircularProgress, Divider, Link, MenuItem, Select, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { OpenInNewIcon } from '../../components/ui/icons.js';
+import { parentDir } from '../../lib/media-url.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import type { CapturedAtSource, PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
+import type { PhotosViewVariant } from './core/index.js';
 import type { PhotoDetail, PhotoVariantRecord } from './use-photos.js';
 
 interface PhotoDetailPaneProps {
+  variant: PhotosViewVariant;
   detail: PhotoDetail | null;
   isLoading: boolean;
   variants: PhotoVariantRecord[];
@@ -14,6 +18,7 @@ interface PhotoDetailPaneProps {
   onAnalyze: () => void;
   isBusy: boolean;
   analyzeProgress: { current: number; total: number } | null;
+  onOpenInAnalysis?: ((folderPath: string, videoPath: string) => void) | undefined;
 }
 
 type PhotosDictStringKey = { [K in keyof Dictionary['photos']]: Dictionary['photos'][K] extends string ? K : never }[keyof Dictionary['photos']];
@@ -67,6 +72,7 @@ const capturedAtSourceLabel = (dictionary: Dictionary, source: CapturedAtSource)
 };
 
 export const PhotoDetailPane = ({
+  variant,
   detail,
   isLoading,
   variants,
@@ -75,8 +81,10 @@ export const PhotoDetailPane = ({
   onAnalyze,
   isBusy,
   analyzeProgress,
+  onOpenInAnalysis,
 }: PhotoDetailPaneProps) => {
   const dictionary = useDictionary();
+  const isBrowse = variant === 'browse';
 
   if (isLoading) {
     return (
@@ -117,7 +125,7 @@ export const PhotoDetailPane = ({
       ))}
       <Divider />
       {analysis === null ? (
-        photo.proxyState === 'done' ? (
+        !isBrowse && photo.proxyState === 'done' ? (
           <Alert
             severity="info"
             data-testid="photos-analyze-strip"
@@ -159,23 +167,40 @@ export const PhotoDetailPane = ({
               ))}
             </Box>
           </Box>
-          <Row label={dictionary.photos.detailVariant} value={`${analysis.label} · ${analysis.createdAt}`} />
-          <Typography variant="caption" color="text.secondary">{dictionary.photos.detailVariantCount(analysis.variantCount)}</Typography>
-          <Select
-            size="small"
-            value={analysis.explicit ? analysis.configId : ''}
-            displayEmpty
-            aria-label={dictionary.photos.variantPickerLabel}
-            data-testid="photo-variant-picker"
-            onChange={(event) => onSelectVariant(event.target.value === '' ? null : event.target.value)}
-          >
-            <MenuItem value="">{dictionary.photos.variantAutomatic}</MenuItem>
-            {variants.map((variant) => (
-              <MenuItem key={variant.configId} value={variant.configId}>{variant.label}</MenuItem>
-            ))}
-          </Select>
+          {isBrowse ? null : (
+            <>
+              <Row label={dictionary.photos.detailVariant} value={`${analysis.label} · ${analysis.createdAt}`} />
+              <Typography variant="caption" color="text.secondary">{dictionary.photos.detailVariantCount(analysis.variantCount)}</Typography>
+              <Select
+                size="small"
+                value={analysis.explicit ? analysis.configId : ''}
+                displayEmpty
+                aria-label={dictionary.photos.variantPickerLabel}
+                data-testid="photo-variant-picker"
+                onChange={(event) => onSelectVariant(event.target.value === '' ? null : event.target.value)}
+              >
+                <MenuItem value="">{dictionary.photos.variantAutomatic}</MenuItem>
+                {variants.map((variantOption) => (
+                  <MenuItem key={variantOption.configId} value={variantOption.configId}>{variantOption.label}</MenuItem>
+                ))}
+              </Select>
+            </>
+          )}
         </Box>
       )}
+      {isBrowse && ownerPath !== null && onOpenInAnalysis !== undefined ? (
+        <Link
+          component="button"
+          variant="body2"
+          underline="hover"
+          data-testid="photos-open-analysis"
+          onClick={() => onOpenInAnalysis(parentDir(ownerPath), ownerPath)}
+          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, alignSelf: 'flex-start' }}
+        >
+          <OpenInNewIcon fontSize="small" />
+          {dictionary.photos.openInAnalysis}
+        </Link>
+      ) : null}
     </Box>
   );
 };

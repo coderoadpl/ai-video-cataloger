@@ -157,7 +157,7 @@ describe('PhotosView', () => {
   it('renders the no-roots empty state with a scan action', async () => {
     stubPhotos({ roots: [], items: [] });
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
 
     expect(await screen.findByTestId('photos-empty-no-roots')).toBeDefined();
     expect(screen.getByTestId('photos-empty-scan')).toBeDefined();
@@ -167,7 +167,7 @@ describe('PhotosView', () => {
     stubPhotos({ roots: [], items: [] });
     const showPicker = vi.spyOn(bridge.folder, 'showPicker').mockResolvedValue(null);
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
     fireEvent.click(await screen.findByTestId('photos-empty-scan'));
 
     await waitFor(() => expect(showPicker).toHaveBeenCalledWith('photos'));
@@ -178,7 +178,7 @@ describe('PhotosView', () => {
     const items = [photoItem({ fingerprint: 'ph_0000000000000001', sightings: 3 }), photoItem({ fingerprint: 'ph_0000000000000002' })];
     stubPhotos({ roots: [{ root: '/photos', photos: 2, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
 
     const tiles = await screen.findAllByTestId('photos-tile');
     expect(tiles).toHaveLength(2);
@@ -201,7 +201,7 @@ describe('PhotosView', () => {
       });
     }));
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
 
     const loadMore = await screen.findByTestId('photos-load-more');
     fireEvent.click(loadMore);
@@ -213,7 +213,7 @@ describe('PhotosView', () => {
     const items = [photoItem({ fingerprint: 'ph_0000000000000001' }), photoItem({ fingerprint: 'ph_0000000000000002' })];
     stubPhotos({ roots: [{ root: '/photos', photos: 2, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
 
     const tiles = await screen.findAllByTestId('photos-tile');
     const firstTile = tiles[0];
@@ -230,7 +230,7 @@ describe('PhotosView', () => {
     stubPhotos({ roots: [{ root: '/photos', photos: 2, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
     const onFocusConsumed = vi.fn();
 
-    renderThemed(<PhotosView active addLine={vi.fn()} focusFingerprint="ph_0000000000000002" onFocusConsumed={onFocusConsumed} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} focusFingerprint="ph_0000000000000002" onFocusConsumed={onFocusConsumed} />);
 
     expect(await screen.findByTestId('photos-viewer')).toBeDefined();
     await waitFor(() => expect(onFocusConsumed).toHaveBeenCalledTimes(1));
@@ -241,7 +241,7 @@ describe('PhotosView', () => {
     stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
     const onFocusConsumed = vi.fn();
 
-    renderThemed(<PhotosView active addLine={vi.fn()} focusFingerprint="ph_not_loaded" onFocusConsumed={onFocusConsumed} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} focusFingerprint="ph_not_loaded" onFocusConsumed={onFocusConsumed} />);
 
     await waitFor(() => expect(screen.getAllByTestId('photos-tile')).toHaveLength(1));
     expect(screen.queryByTestId('photos-viewer')).toBeNull();
@@ -255,7 +255,7 @@ describe('PhotosView', () => {
       counts: { photos: 1, paths: 3, proxied: 1, proxyFailed: 0 },
     });
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
 
     const strip = await screen.findByTestId('photos-status-strip');
     expect(strip.textContent).toBe('1 photos · 3 paths · 1 proxied · 0 proxy failed');
@@ -269,7 +269,7 @@ describe('PhotosView', () => {
       counts: { photos: 1, paths: 1, proxied: 0, proxyFailed: 0 },
     });
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
 
     await screen.findAllByTestId('photos-tile');
     expect(screen.queryByTestId('photos-proxies-pending')).toBeNull();
@@ -279,7 +279,7 @@ describe('PhotosView', () => {
     const items = [photoItem({ fingerprint: 'ph_0000000000000001' }), photoItem({ fingerprint: 'ph_0000000000000002' })];
     stubPhotos({ roots: [{ root: '/photos', photos: 2, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
 
     const tiles = await screen.findAllByTestId('photos-tile');
     const firstTile = tiles[0];
@@ -317,7 +317,7 @@ describe('PhotosView', () => {
       searchResults: [searchResult({ fingerprint: 'ph_0000000000000002' })],
     });
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
     await screen.findAllByTestId('photos-tile');
 
     fireEvent.change(searchInput(), {
@@ -357,7 +357,7 @@ describe('PhotosView', () => {
       searchResults: [searchResult({ fingerprint: 'ph_0000000000000001', tags: ['bicycle'] })],
     });
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
     const tiles = await screen.findAllByTestId('photos-tile');
     const firstTile = tiles[0];
     if (firstTile === undefined) throw new Error('missing tile');
@@ -408,7 +408,7 @@ describe('PhotosView', () => {
       }),
     );
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
     const tiles = await screen.findAllByTestId('photos-tile');
     const firstTile = tiles[0];
     if (firstTile === undefined) throw new Error('missing tile');
@@ -454,7 +454,7 @@ describe('PhotosView', () => {
       })),
     );
 
-    renderThemed(<PhotosView active addLine={vi.fn()} />);
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
     const tiles = await screen.findAllByTestId('photos-tile');
     const firstTile = tiles[0];
     if (firstTile === undefined) throw new Error('missing tile');
@@ -464,5 +464,70 @@ describe('PhotosView', () => {
     fireEvent.click(await screen.findByTestId('photos-analyze-action'));
 
     await waitFor(() => expect(processedRoot).toBe('/photos'));
+  });
+
+  describe('browse variant', () => {
+    it('hides scan, proxies and analyze affordances, and the variant picker', async () => {
+      const items = [photoItem({ fingerprint: 'ph_0000000000000001' })];
+      stubPhotos({
+        roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }],
+        items,
+        analysisByFingerprint: {
+          ph_0000000000000001: {
+            configId: 'cfg_ab12cd34ef56',
+            label: 'harness · claude-code · en',
+            description: 'a red bicycle',
+            scene: 'urban',
+            quality: 'good',
+            tags: ['bicycle'],
+            batchSize: 1,
+            createdAt: '2024-03-02T10:00:00.000Z',
+            variantCount: 2,
+            explicit: false,
+          },
+        },
+      });
+
+      renderThemed(<PhotosView active variant="browse" addLine={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+      const tiles = await screen.findAllByTestId('photos-tile');
+      const firstTile = tiles[0];
+      if (firstTile === undefined) throw new Error('missing tile');
+      fireEvent.click(firstTile);
+      await screen.findByTestId('photos-detail');
+
+      expect(screen.queryByTestId('photos-scan-action')).toBeNull();
+      expect(screen.queryByTestId('photos-proxies-pending')).toBeNull();
+      expect(screen.queryByTestId('photos-analyze-strip')).toBeNull();
+      expect(screen.queryByTestId('photo-variant-picker')).toBeNull();
+      expect(screen.getByText('a red bicycle')).toBeDefined();
+    });
+
+    it('shows the open-in-analysis escape hatch with an owner path, and hides it without one', async () => {
+      const items = [photoItem({ fingerprint: 'ph_0000000000000001' })];
+      stubPhotos({
+        roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }],
+        items,
+      });
+      const onOpenInAnalysis = vi.fn();
+
+      renderThemed(<PhotosView active variant="browse" addLine={vi.fn()} onOpenInAnalysis={onOpenInAnalysis} />);
+      const tiles = await screen.findAllByTestId('photos-tile');
+      const firstTile = tiles[0];
+      if (firstTile === undefined) throw new Error('missing tile');
+      fireEvent.click(firstTile);
+
+      const link = await screen.findByTestId('photos-open-analysis');
+      fireEvent.click(link);
+      expect(onOpenInAnalysis).toHaveBeenCalledWith('/photos', items[0]?.currentPath);
+    });
+
+    it('never shows the empty-no-roots scan action', async () => {
+      stubPhotos({ roots: [], items: [] });
+
+      renderThemed(<PhotosView active variant="browse" addLine={vi.fn()} />);
+
+      expect(await screen.findByTestId('photos-empty-no-roots')).toBeDefined();
+      expect(screen.queryByTestId('photos-empty-scan')).toBeNull();
+    });
   });
 });

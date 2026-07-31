@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Browse preview: clicking a Library tile or a map video pin opens a selected-variant preview (player, description, tags, place, capture date) with a discreet "Open in Analysis" escape hatch.
 - `photos gps backfill <timeline.json>` and `POST /api/photos/gps/backfill` match photo capture times against a Google Timeline export using the same matcher and precedence rules as the video backfill, resolve places offline through the shared places dataset, and push resolved place text into the photo search index (a photo's place is now searchable in the Photos tab). Rows whose capture time rests on an assumed timezone (`exif_local_assumed`/`file_mtime`) match with a tolerance widened to at least 180 minutes; the summary reports how many matches relied on that widening.
 - The map now plots photo pins alongside video pins on the same canvas, with an All/Videos/Photos filter and honest per-media coverage captions ("N of M catalogued photos have location"); clicking a photo pin opens it in the Photos tab. `GET /api/catalog/locations` gains `totalPhotos`/`locatedPhotos` and a `media` marker per location; existing video-only consumers are unaffected (the video counts keep their prior meaning, and old envelopes without the new fields still parse).
 - The Photos grid pages beyond its first 200 photos with a "Load more" control,
@@ -96,6 +97,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 - `pnpm run check` fails on a direct `.normalize('NFC')` call outside `core/domain/paths.ts` and test files, so path canonicalization stays at the three boundaries that own it.
 - Search now follows `tag_aliases` in both directions: a merged-away term still finds the files that carry its canonical tag, and the canonical term also matches text occurrences of its aliases. Quoted phrases stay literal and literal hits still outrank alias hits.
 - Two-mode UI: a Library/Analysis switcher in the top bar replaces the five-tab view navigation; Library groups Collection/Photos/People/Map behind a subnav, Analysis groups the folder workspace behind a Videos/Photos toggle, and each mode remembers its own state.
+- Browse surfaces are strictly read-only: Library Photos hides analyze/variant actions and folder scanning, Library People hides the faces-index build (now in Analysis > Photos), and map video pins open the preview instead of the folder workspace.
+- The folder bar and the terminal strip render only in Analysis mode; the Library browses the cross-folder catalog without a current folder.
 
 ### Removed
 

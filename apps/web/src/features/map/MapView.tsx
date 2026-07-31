@@ -3,13 +3,13 @@ import { Alert, Box, Chip, CircularProgress, Typography } from '@mui/material';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { MapCanvas } from './MapCanvas.js';
 import { MAP_MEDIA_FILTERS, type MapMediaFilter } from './core/index.js';
-import { useCatalogLocations } from './use-catalog-locations.js';
+import { useCatalogLocations, type CatalogLocation } from './use-catalog-locations.js';
 
 interface MapViewProps {
   active: boolean;
   focusFingerprint: string | null;
   onFocusConsumed: () => void;
-  onOpenLocation: (folderPath: string, videoPath: string) => void;
+  onOpenPreview: (location: CatalogLocation) => void;
   onOpenPhoto: (fingerprint: string) => void;
 }
 
@@ -19,7 +19,7 @@ const filterLabel = (dictionary: ReturnType<typeof useDictionary>, filter: MapMe
   return dictionary.map.filter.all;
 };
 
-export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenLocation, onOpenPhoto }: MapViewProps) => {
+export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenPreview, onOpenPhoto }: MapViewProps) => {
   const dictionary = useDictionary();
   const locations = useCatalogLocations({ enabled: active });
 
@@ -95,7 +95,7 @@ export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenLocat
           locations={locations.filteredLocations}
           focusFingerprint={focusFingerprint}
           onFocusConsumed={onFocusConsumed}
-          onOpenLocation={onOpenLocation}
+          onOpenPreview={onOpenPreview}
           onOpenPhoto={onOpenPhoto}
         />
       )}

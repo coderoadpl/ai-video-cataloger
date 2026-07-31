@@ -238,6 +238,7 @@ export const AppLayout = ({
         terminalCollapsed={terminalCollapsed}
         terminalHeight={terminalHeight}
         onTerminalResize={setTerminalHeight}
+        terminalHidden={mode === 'library'}
       />
       <NestedDbDialog
         open={shell.nestedDb.open}

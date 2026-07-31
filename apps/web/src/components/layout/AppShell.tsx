@@ -27,6 +27,7 @@ interface AppShellProps {
   terminalCollapsed: boolean;
   terminalHeight: number;
   onTerminalResize: (size: number) => void;
+  terminalHidden?: boolean;
 }
 
 export const AppShell = ({
@@ -46,6 +47,7 @@ export const AppShell = ({
   terminalCollapsed,
   terminalHeight,
   onTerminalResize,
+  terminalHidden = false,
 }: AppShellProps) => (
   <Box sx={{ display: 'flex', flexDirection: 'column', height: '100vh', overflow: 'hidden' }}>
     {header}
@@ -98,30 +100,32 @@ export const AppShell = ({
       </Box>
     </Box>
 
-    <Box sx={{ display: 'flex', flexDirection: 'column', borderTop: 1, borderColor: 'divider' }}>
-      <Box
-        sx={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-          px: 2,
-          py: 0.75,
-          bgcolor: 'grey.900',
-        }}
-      >
-        {terminalTitle}
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>{terminalActions}</Box>
+    {terminalHidden ? null : (
+      <Box sx={{ display: 'flex', flexDirection: 'column', borderTop: 1, borderColor: 'divider' }}>
+        <Box
+          sx={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            px: 2,
+            py: 0.75,
+            bgcolor: 'grey.900',
+          }}
+        >
+          {terminalTitle}
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>{terminalActions}</Box>
+        </Box>
+        <ResizablePanel
+          direction="vertical"
+          size={terminalHeight}
+          minSize={TERMINAL_MIN_SIZE}
+          maxSize={TERMINAL_MAX_SIZE}
+          collapsed={terminalCollapsed}
+          onResize={onTerminalResize}
+        >
+          <Box sx={{ height: '100%', bgcolor: 'grey.900', overflow: 'auto' }}>{terminal}</Box>
+        </ResizablePanel>
       </Box>
-      <ResizablePanel
-        direction="vertical"
-        size={terminalHeight}
-        minSize={TERMINAL_MIN_SIZE}
-        maxSize={TERMINAL_MAX_SIZE}
-        collapsed={terminalCollapsed}
-        onResize={onTerminalResize}
-      >
-        <Box sx={{ height: '100%', bgcolor: 'grey.900', overflow: 'auto' }}>{terminal}</Box>
-      </ResizablePanel>
-    </Box>
+    )}
   </Box>
 );

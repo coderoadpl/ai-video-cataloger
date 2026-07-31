@@ -29,10 +29,10 @@ export const useTileMenu = (): TileMenuController => {
 
 interface TileMenuProps {
   controller: TileMenuController;
-  onOpenInFolder: (item: LibraryItem) => void;
+  onOpenInAnalysis: (item: LibraryItem) => void;
 }
 
-export const TileMenu = ({ controller, onOpenInFolder }: TileMenuProps) => {
+export const TileMenu = ({ controller, onOpenInAnalysis }: TileMenuProps) => {
   const dictionary = useDictionary();
   const { anchor, close } = controller;
   const item = anchor?.item ?? null;
@@ -46,13 +46,13 @@ export const TileMenu = ({ controller, onOpenInFolder }: TileMenuProps) => {
       data-testid="library-tile-menu"
     >
       <MenuItem
-        data-testid="library-tile-menu-open-folder"
+        data-testid="library-tile-menu-open-analysis"
         onClick={() => {
           close();
-          if (item !== null) onOpenInFolder(item);
+          if (item !== null) onOpenInAnalysis(item);
         }}
       >
-        {dictionary.library.openInFolderView}
+        {dictionary.library.openInAnalysis}
       </MenuItem>
       <MenuItem
         data-testid="library-tile-menu-reveal"
