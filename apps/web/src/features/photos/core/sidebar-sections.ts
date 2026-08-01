@@ -15,6 +15,9 @@ export interface SidebarSection {
 const isUnderRoot = (currentPath: string, root: string): boolean =>
   currentPath === root || currentPath.startsWith(`${root}/`);
 
+export const ownerRootFor = (currentPath: string, roots: readonly PhotoRoot[]): string | null =>
+  roots.find((root) => isUnderRoot(currentPath, root.root))?.root ?? null;
+
 export const sidebarSections = (
   items: readonly PhotoListItem[],
   roots: readonly PhotoRoot[],

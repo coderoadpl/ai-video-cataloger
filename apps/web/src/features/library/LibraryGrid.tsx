@@ -3,8 +3,7 @@ import { Box, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
-import { gradientIndexFor, middleEllipsis } from '../../lib/placeholder-gradient.js';
-import { placeholderGradients } from '../../theme.js';
+import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
 import { buildRows, columnsForWidth, rowIndexOfFingerprint, visibleRowRange, type LibraryItem } from './core/index.js';
 import { TileMenu, useTileMenu } from './TileMenu.js';
 
@@ -161,28 +160,14 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
           sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (
-        <Box
-          data-testid="library-tile-placeholder"
-          style={{ background: placeholderGradients[gradientIndexFor(name)] }}
-          sx={{
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            p: 1.5,
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', color: 'common.white' }}
-          >
-            {middleEllipsis(name, 40)}
-          </Typography>
-        </Box>
+        <PlaceholderTile
+          testId="library-tile-placeholder"
+          name={name}
+          caption={item.folder.online ? undefined : dictionary.library.offlineFolderBadge}
+          captionTestId="library-offline-badge"
+        />
       )}
-      {item.folder.online ? null : (
+      {item.folder.online || imagePath === null ? null : (
         <Box
           data-testid="library-offline-badge"
           sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper', px: 0.5, borderRadius: 1 }}

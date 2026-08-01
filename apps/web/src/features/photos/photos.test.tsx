@@ -1,5 +1,5 @@
 import { type ReactElement } from 'react';
-import { ThemeProvider } from '@mui/material/styles';
+import { hexToRgb, ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
@@ -198,7 +198,7 @@ describe('PhotosView', () => {
     expect(placeholder.getAttribute('style')).toContain('linear-gradient');
     const label = screen.getByText('ph_0000000000000003.jpg');
     expect(label).toBeDefined();
-    expect(getComputedStyle(label).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(label).color).toBe(hexToRgb(theme.palette.text.primary));
   });
 
   it('pages the grid past the first page instead of stopping at the first request', async () => {

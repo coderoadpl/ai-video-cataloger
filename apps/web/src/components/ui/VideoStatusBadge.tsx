@@ -1,9 +1,10 @@
-import { Chip, CircularProgress, type SvgIconProps } from '@mui/material';
+import { CircularProgress, type SvgIconProps } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import type { StatusToken } from '../../theme.js';
 import { CheckCircleIcon, ClockIcon, ErrorIcon, FilmIcon, WarningIcon } from './icons.js';
+import { StatusBadge } from './StatusBadge.js';
 
 export type VideoStatusValue =
   | 'pending'
@@ -78,35 +79,23 @@ export const VideoStatusBadge = ({
   const dictionary = useDictionary();
   if (analyzing) {
     return (
-      <Chip
-        size="small"
+      <StatusBadge
         icon={<CircularProgress size={12} thickness={6} color="inherit" />}
         label={dictionary.videoStatus.processing}
-        data-testid="video-status-badge"
-        sx={(theme) => ({
-          bgcolor: theme.palette.status.pending.soft,
-          color: theme.palette.status.pending.main,
-          '& .MuiChip-icon': { color: 'inherit', marginLeft: '8px', marginRight: '3px' },
-        })}
+        token="pending"
+        testId="video-status-badge"
       />
     );
   }
 
   if (status === 'not_tracked' && variant === 'list') return null;
 
-  const token = TOKEN_FOR[status];
-
   return (
-    <Chip
-      size="small"
+    <StatusBadge
       icon={<StatusGlyph status={status} />}
       label={labelFor(status, dictionary)}
-      data-testid="video-status-badge"
-      sx={(theme) => ({
-        bgcolor: theme.palette.status[token].soft,
-        color: theme.palette.status[token].main,
-        '& .MuiChip-icon': { color: 'inherit', fontSize: '0.9rem', marginLeft: '8px', marginRight: '3px' },
-      })}
+      token={TOKEN_FOR[status]}
+      testId="video-status-badge"
     />
   );
 };

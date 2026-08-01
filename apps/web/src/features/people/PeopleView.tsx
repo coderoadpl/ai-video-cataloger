@@ -364,7 +364,7 @@ const PersonCard = ({
       {cropPath === null ? (
         <Box
           data-testid="people-card-fallback"
-          style={{ background: placeholderGradients[gradientIndexFor(person.personId)] }}
+          style={{ background: placeholderGradients.dark[gradientIndexFor(person.personId)] }}
           sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
         >
           <Typography variant="h4" sx={{ color: 'common.white' }}>{fallbackGlyph}</Typography>

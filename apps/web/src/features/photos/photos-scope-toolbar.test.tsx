@@ -35,6 +35,7 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   variants: [],
   selectVariant: vi.fn(),
   analyzePhotos: vi.fn(),
+  canAnalyze: true,
   analyzeProgress: null,
   generateProxies: vi.fn(),
   ...overrides,
@@ -65,6 +66,12 @@ describe('PhotosScopeToolbar', () => {
     renderThemed(<PhotosScopeToolbar state={baseState({ isBusy: true, activeJobLabel: 'Working…' })} />);
 
     expect(screen.getByTestId('photos-scan-action').getAttribute('disabled')).not.toBeNull();
+    expect(screen.getByTestId('photos-analyze-action').getAttribute('disabled')).not.toBeNull();
+  });
+
+  it('disables analyze when no target folder resolves, even though a root is selected', () => {
+    renderThemed(<PhotosScopeToolbar state={baseState({ scope: 'all', canAnalyze: false })} />);
+
     expect(screen.getByTestId('photos-analyze-action').getAttribute('disabled')).not.toBeNull();
   });
 

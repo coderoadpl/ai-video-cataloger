@@ -60,6 +60,7 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   variants: [],
   selectVariant: vi.fn(),
   analyzePhotos: vi.fn(),
+  canAnalyze: true,
   analyzeProgress: null,
   generateProxies: vi.fn(),
   ...overrides,
@@ -102,6 +103,45 @@ describe('PhotosSidebar', () => {
     if (firstRow === undefined) throw new Error('missing row');
     fireEvent.click(firstRow);
     expect(selectFingerprint).toHaveBeenCalledWith('a');
+  });
+
+  it('renders the capture date localized instead of a raw ISO timestamp', () => {
+    renderThemed(<PhotosSidebar
+      state={baseState({ items: [item({ fingerprint: 'a', capturedAt: '2026-08-10T17:46:06.740Z' })] })}
+      onShowInLibrary={vi.fn()}
+    />);
+
+    const row = screen.getAllByTestId('photos-sidebar-row')[0];
+    if (row === undefined) throw new Error('missing row');
+    expect(row.textContent).not.toContain('2026-08-10T17:46:06.740Z');
+    expect(row.textContent).toContain(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-08-10T17:46:06.740Z')));
+  });
+
+  it('renders every sidebar badge through the shared status-badge component, with an icon and the video-parity label for analysed', () => {
+    const items = [
+      item({ fingerprint: 'a', analysed: true }),
+      item({ fingerprint: 'b', sightings: 2 }),
+      item({ fingerprint: 'c', proxyState: 'failed' }),
+      item({ fingerprint: 'd', exifReadAt: null }),
+      item({ fingerprint: 'e', missingAt: 123 }),
+    ];
+    renderThemed(<PhotosSidebar state={baseState({ items })} onShowInLibrary={vi.fn()} />);
+
+    const analysedBadge = screen.getByTestId('photos-sidebar-badge-analysed');
+    expect(analysedBadge.hasAttribute('data-status-badge')).toBe(true);
+    expect(analysedBadge.querySelector('svg')).not.toBeNull();
+    expect(analysedBadge.textContent).toBe('Completed');
+
+    for (const badge of ['duplicate', 'proxyFailed', 'exifMissing', 'missing']) {
+      const chip = screen.getByTestId(`photos-sidebar-badge-${badge}`);
+      expect(chip.hasAttribute('data-status-badge')).toBe(true);
+      expect(chip.querySelector('svg')).not.toBeNull();
+    }
+
+    for (const badge of ['analysed', 'duplicate', 'proxyFailed', 'exifMissing', 'missing']) {
+      const icon = screen.getByTestId(`photos-sidebar-badge-${badge}`).querySelector('svg');
+      expect(icon?.classList.contains('MuiChip-icon')).toBe(true);
+    }
   });
 
   it('shows a load-more button when hasMore is true and calls through', () => {

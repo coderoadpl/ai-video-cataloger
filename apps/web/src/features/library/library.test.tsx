@@ -1,5 +1,5 @@
 import { type ReactElement } from 'react';
-import { ThemeProvider } from '@mui/material/styles';
+import { hexToRgb, ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -198,7 +198,7 @@ describe('LibraryView', () => {
     expect(tile.getBoundingClientRect).toBeDefined();
     const label = screen.getByText('clip.mp4');
     expect(label).toBeDefined();
-    expect(getComputedStyle(label).color).toBe('rgb(255, 255, 255)');
+    expect(getComputedStyle(label).color).toBe(hexToRgb(theme.palette.text.primary));
   });
 
   it('the tile menu opens the video in Analysis, with no folder-view item', async () => {

@@ -9,7 +9,7 @@ import { actions, bridge } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
-import type { PhotoListItem, PhotoRoot } from './core/index.js';
+import { ownerRootFor, type PhotoListItem, type PhotoRoot } from './core/index.js';
 
 const PAGE_LIMIT = 200;
 const SCOPE_KEY = 'avc.photosScope';
@@ -79,6 +79,7 @@ export interface PhotosAnalysisState {
   variants: PhotoVariantRecord[];
   selectVariant: (configId: string | null) => void;
   analyzePhotos: () => void;
+  canAnalyze: boolean;
   analyzeProgress: { current: number; total: number } | null;
   generateProxies: () => void;
 }
@@ -95,7 +96,8 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
   const [loadedItems, setLoadedItems] = useState<PhotoListItem[]>([]);
 
   const tree = useQuery({ ...actions.photosTree, enabled: active });
-  const roots = tree.data?.roots ?? [];
+  const treeRoots = tree.data?.roots;
+  const roots = useMemo(() => treeRoots ?? [], [treeRoots]);
 
   useEffect(() => {
     if (tree.data === undefined) return;
@@ -220,11 +222,17 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
     );
   }, [dictionary, proxiesMutation, runJob, selectedRoot]);
 
+  const analyzeTargetRoot = useMemo(() => {
+    if (scope === 'folder') return selectedRoot;
+    const selectedItem = loadedItems.find((item) => item.fingerprint === selectedFingerprint) ?? null;
+    return selectedItem === null ? null : ownerRootFor(selectedItem.currentPath, roots);
+  }, [loadedItems, roots, scope, selectedFingerprint, selectedRoot]);
+
   const analyzePhotos = useCallback(() => {
-    if (selectedRoot === null) return;
+    if (analyzeTargetRoot === null) return;
     setAnalyzeProgress(null);
     runJob(
-      processMutation.mutateAsync({ root: selectedRoot, force: false }),
+      processMutation.mutateAsync({ root: analyzeTargetRoot, force: false }),
       dictionary.photos.analyzeProgress(0, 0),
       dictionary.photos.analyzeAction,
       dictionary.photos.analyzeAction,
@@ -235,7 +243,7 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
         if (typeof current === 'number' && typeof total === 'number') setAnalyzeProgress({ current, total });
       },
     );
-  }, [dictionary, processMutation, runJob, selectedRoot]);
+  }, [analyzeTargetRoot, dictionary, processMutation, runJob]);
 
   const selectVariant = useCallback((configId: string | null) => {
     if (selectedFingerprint === null) return;
@@ -280,6 +288,7 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
     variants: variants.data?.variants ?? [],
     selectVariant,
     analyzePhotos,
+    canAnalyze: analyzeTargetRoot !== null,
     analyzeProgress,
     generateProxies,
   };

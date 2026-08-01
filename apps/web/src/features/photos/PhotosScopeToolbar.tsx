@@ -46,7 +46,7 @@ export const PhotosScopeToolbar = ({ state }: PhotosScopeToolbarProps) => {
           size="small"
           fullWidth
           onClick={state.analyzePhotos}
-          disabled={state.isBusy || state.selectedRoot === null}
+          disabled={state.isBusy || !state.canAnalyze}
           data-testid="photos-analyze-action"
         >
           {dictionary.photosSidebar.analyzeFolderAction}

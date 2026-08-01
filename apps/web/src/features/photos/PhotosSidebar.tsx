@@ -1,11 +1,13 @@
 import { type ReactNode } from 'react';
-import { Box, Button, Chip, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, List, ListItemButton, Typography, type SvgIconProps } from '@mui/material';
 
-import { FolderIcon } from '../../components/ui/icons.js';
+import { CheckCircleIcon, ContentCopyIcon, ErrorIcon, FolderIcon, ImageNotSupportedIcon, WarningIcon } from '../../components/ui/icons.js';
+import { StatusBadge } from '../../components/ui/StatusBadge.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
-import { folderName } from '../../lib/format.js';
+import { folderName, formatCapturedAt } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import type { StatusToken } from '../../theme.js';
 import { photoBadges, sidebarSections, type PhotoBadge, type PhotoListItem } from './core/index.js';
 import type { PhotosAnalysisState } from './use-photos-analysis.js';
 
@@ -26,7 +28,7 @@ const Centered = ({ children }: { children: ReactNode }) => (
 const badgeLabel = (badge: PhotoBadge, dictionary: Dictionary): string => {
   switch (badge) {
     case 'analysed':
-      return dictionary.photosSidebar.badgeAnalysed;
+      return dictionary.videoStatus.completed;
     case 'duplicate':
       return dictionary.catalog.duplicateBadge;
     case 'proxyFailed':
@@ -38,22 +40,38 @@ const badgeLabel = (badge: PhotoBadge, dictionary: Dictionary): string => {
   }
 };
 
-const BadgeChip = ({ badge, dictionary }: { badge: PhotoBadge; dictionary: Dictionary }) => {
-  if (badge === 'duplicate') return <Chip key={badge} size="small" label={badgeLabel(badge, dictionary)} data-testid="photos-sidebar-badge-duplicate" />;
-  const token = badge === 'analysed' ? 'completed' : badge === 'missing' ? 'error' : 'pending';
-  return (
-    <Chip
-      key={badge}
-      size="small"
-      label={badgeLabel(badge, dictionary)}
-      data-testid={`photos-sidebar-badge-${badge}`}
-      sx={(theme) => ({
-        bgcolor: theme.palette.status[token].soft,
-        color: theme.palette.status[token].main,
-      })}
-    />
-  );
+const TOKEN_FOR_BADGE: Record<PhotoBadge, StatusToken> = {
+  analysed: 'completed',
+  duplicate: 'notTracked',
+  proxyFailed: 'pending',
+  exifMissing: 'notTracked',
+  missing: 'error',
 };
+
+const BadgeIcon = ({ badge, ...props }: { badge: PhotoBadge } & SvgIconProps) => {
+  switch (badge) {
+    case 'analysed':
+      return <CheckCircleIcon fontSize="inherit" {...props} />;
+    case 'duplicate':
+      return <ContentCopyIcon fontSize="inherit" {...props} />;
+    case 'proxyFailed':
+      return <WarningIcon fontSize="inherit" {...props} />;
+    case 'exifMissing':
+      return <ImageNotSupportedIcon fontSize="inherit" {...props} />;
+    case 'missing':
+      return <ErrorIcon fontSize="inherit" {...props} />;
+  }
+};
+
+const BadgeChip = ({ badge, dictionary }: { badge: PhotoBadge; dictionary: Dictionary }) => (
+  <StatusBadge
+    key={badge}
+    icon={<BadgeIcon badge={badge} />}
+    label={badgeLabel(badge, dictionary)}
+    token={TOKEN_FOR_BADGE[badge]}
+    testId={`photos-sidebar-badge-${badge}`}
+  />
+);
 
 const PhotoSidebarRow = ({
   item,
@@ -85,7 +103,7 @@ const PhotoSidebarRow = ({
           {item.fileName}
         </Typography>
         <Typography variant="caption" noWrap>
-          {item.capturedAt ?? dictionary.photos.unknownDate}
+          {formatCapturedAt(item.capturedAt) ?? dictionary.photos.unknownDate}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
           {photoBadges(item).map((badge) => <BadgeChip key={badge} badge={badge} dictionary={dictionary} />)}

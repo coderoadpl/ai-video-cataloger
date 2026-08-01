@@ -141,6 +141,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 - People filter options show display names ("Person N" for unnamed) instead of raw ids; tag filter options are ordered by count.
 - Preview overlay shows a localized capture date and uses the thumbnail as the video poster.
 - Analysis detail pane shows a "Select a video from the list" prompt instead of the full onboarding welcome screen once a folder with videos is open.
+- The Photos sidebar's badges (Ukończony/Completed, Duplikat, Brak EXIF, Podgląd nieudany, Brak pliku) now render through the same `StatusBadge` component as the video status badge, each with a fitting icon, matching the video list's exact "Completed"/"Ukończony" wording instead of a separate "Analysed" label.
+- Library and Photos placeholder tiles (no thumbnail) render a vertically centered composition — disk icon, middle-ellipsized filename, and an offline caption when the owning folder is offline — over a low-saturation duotone gradient from a single cool hue family with a subtle 1px border, replacing the corner "offline" pill for that case; the light theme tints the tiles pale with dark text and the dark theme keeps deep tiles with white text (`apps/web/src/components/ui/PlaceholderTile.tsx`, shared by `LibraryGrid` and `PhotoGrid`).
+- The photo detail pane's Analyze action targets the owning folder of the currently selected photo instead of the sidebar's (possibly unrelated) `selectedRoot` when the "Wszystkie foldery" (all folders) scope is active, so it no longer silently analyzes the wrong — or a stale — folder; the sidebar's Analyze button is disabled whenever no target folder resolves instead of being clickable with no effect.
+- Photos sidebar rows show the capture date localized (medium date, short time) instead of the raw ISO timestamp.
 
 ## [0.6.3] - 2026-07-29
 

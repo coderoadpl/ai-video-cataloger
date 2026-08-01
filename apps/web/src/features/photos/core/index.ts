@@ -4,4 +4,4 @@ export { flattenOrder, adjacentFingerprint, focusTarget, type FocusTarget, type 
 export { viewerSourceCandidates } from './sources.js';
 export { searchResultsToItems, searchSections, type PhotosSearchResult, type PhotosViewMode } from './search-mode.js';
 export { photoBadges, type PhotoBadge, type PhotoBadgeInput } from './sidebar-badges.js';
-export { sidebarSections, type PhotoRoot, type SidebarSection } from './sidebar-sections.js';
+export { ownerRootFor, sidebarSections, type PhotoRoot, type SidebarSection } from './sidebar-sections.js';

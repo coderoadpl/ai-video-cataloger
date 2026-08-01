@@ -139,6 +139,12 @@ export const MoreVertIcon = (props: SvgIconProps) => (
   </SvgIcon>
 );
 
+export const ImageNotSupportedIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M21 5v9.17l-2-2V5H8.83l-2-2H19c1.1 0 2 .9 2 2zM3.41 1.86 2 3.27l1.5 1.5C3.19 5.16 3 5.56 3 6v13c0 1.1.9 2 2 2h13c.44 0 .84-.19 1.23-.5l1.5 1.5 1.41-1.41L3.41 1.86zM5 19l3.5-4.5 2.5 3.01L12.5 15l1.96 2.5H5.83L5 19z" />
+  </SvgIcon>
+);
+
 export const OpenInNewIcon = (props: SvgIconProps) => (
   <SvgIcon {...props}>
     <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />

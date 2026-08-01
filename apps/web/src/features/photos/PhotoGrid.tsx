@@ -4,8 +4,7 @@ import { Box, Tooltip, Typography } from '@mui/material';
 import { WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
-import { gradientIndexFor, middleEllipsis } from '../../lib/placeholder-gradient.js';
-import { placeholderGradients } from '../../theme.js';
+import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
 import { buildRows, columnsForWidth, visibleRowRange, type DaySection, type PhotoListItem } from './core/index.js';
 
 const TILE_SIZE = 168;
@@ -132,26 +131,7 @@ const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) =
           sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (
-        <Box
-          data-testid="photos-tile-placeholder"
-          style={{ background: placeholderGradients[gradientIndexFor(item.fileName)] }}
-          sx={{
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            textAlign: 'center',
-            p: 1.5,
-          }}
-        >
-          <Typography
-            variant="caption"
-            sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', color: 'common.white' }}
-          >
-            {middleEllipsis(item.fileName, 40)}
-          </Typography>
-        </Box>
+        <PlaceholderTile testId="photos-tile-placeholder" name={item.fileName} />
       )}
       {item.sightings > 1 ? (
         <Box

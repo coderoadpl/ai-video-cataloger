@@ -126,6 +126,7 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   variants: [],
   selectVariant: vi.fn(),
   analyzePhotos: vi.fn(),
+  canAnalyze: true,
   analyzeProgress: null,
   generateProxies: vi.fn(),
   ...overrides,

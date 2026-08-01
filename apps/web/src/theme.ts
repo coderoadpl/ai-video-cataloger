@@ -115,14 +115,16 @@ const DARK = {
   } satisfies MapPalette,
 };
 
-export const placeholderGradients = [
-  'linear-gradient(135deg,#31435a,#1f2c3c)',
-  'linear-gradient(135deg,#4a3a55,#2a2233)',
-  'linear-gradient(135deg,#3a5548,#22332b)',
-  'linear-gradient(135deg,#5a4a31,#3c311f)',
-  'linear-gradient(135deg,#554444,#332222)',
-  'linear-gradient(135deg,#334455,#112233)',
-] as const;
+const PLACEHOLDER_HUE_BASE = 210;
+const PLACEHOLDER_HUE_STEP = 12;
+const placeholderHue = (index: number): number => PLACEHOLDER_HUE_BASE + index * PLACEHOLDER_HUE_STEP;
+const placeholderDuotone = (hue: number, from: [number, number], to: [number, number]): string =>
+  `linear-gradient(135deg, hsl(${String(hue)} ${String(from[0])}% ${String(from[1])}%), hsl(${String(hue)} ${String(to[0])}% ${String(to[1])}%))`;
+
+export const placeholderGradients = {
+  light: Array.from({ length: 6 }, (_, index) => placeholderDuotone(placeholderHue(index), [24, 93], [20, 85])),
+  dark: Array.from({ length: 6 }, (_, index) => placeholderDuotone(placeholderHue(index), [18, 32], [13, 21])),
+} as const;
 
 const RADIUS = 8;
 const CHIP_ICON_INSET = 8;

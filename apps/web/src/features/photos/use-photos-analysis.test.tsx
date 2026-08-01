@@ -187,4 +187,49 @@ describe('usePhotosAnalysis', () => {
 
     await waitFor(() => expect(processedRoot).toBe('/media'));
   });
+
+  it('under the "all folders" scope, analyzePhotos targets the selected photo\'s owner folder, not the stale selectedRoot', async () => {
+    window.localStorage.setItem('avc.photosScope', 'all');
+    stubTree([
+      { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
+      { root: '/other', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    stubList([
+      photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/other/b.jpg' }),
+    ]);
+    stubStatus();
+    server.use(http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })));
+    server.use(http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })));
+    let processedRoot: string | null = null;
+    server.use(
+      http.post('/api/photos/process', async ({ request }) => {
+        const body = z.object({ root: z.string() }).parse(await request.json());
+        processedRoot = body.root;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
+      }),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: null,
+          progressEvents: [],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          result: { media: 'photo', root: '/other', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0 },
+        },
+      })),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.selectFingerprint('b'));
+    await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === 'b')).toBe(true));
+    act(() => result.current.analyzePhotos());
+
+    await waitFor(() => expect(processedRoot).toBe('/other'));
+  });
 });

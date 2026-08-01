@@ -779,7 +779,6 @@ export interface Dictionary {
     scopeThisFolder: string;
     scopeAllFolders: string;
     showInLibrary: string;
-    badgeAnalysed: string;
     badgeProxyFailed: string;
     badgeExifMissing: string;
     badgeMissing: string;
@@ -1679,7 +1678,6 @@ export const en: Dictionary = {
     scopeThisFolder: 'This folder',
     scopeAllFolders: 'All scanned folders',
     showInLibrary: 'Show in Library',
-    badgeAnalysed: 'Analysed',
     badgeProxyFailed: 'Preview failed',
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
@@ -2588,7 +2586,6 @@ export const pl: Dictionary = {
     scopeThisFolder: 'Ten folder',
     scopeAllFolders: 'Wszystkie foldery',
     showInLibrary: 'Pokaż w Bibliotece',
-    badgeAnalysed: 'Ukończony',
     badgeProxyFailed: 'Podgląd nieudany',
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',
