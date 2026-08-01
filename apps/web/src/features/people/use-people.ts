@@ -19,6 +19,8 @@ export interface PeopleState {
   isLoading: boolean;
   isBusy: boolean;
   error: string | null;
+  mutationError: string | null;
+  dismissMutationError: () => void;
   people: FacePerson[];
   observations: number;
   selectedPersonIds: string[];
@@ -71,6 +73,7 @@ export const usePeople = ({
 
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
+  const [mutationError, setMutationError] = useState<string | null>(null);
   const isBusy = activeJobLabel !== null
     || facesIndex.isBusy
     || renameMutation.isPending
@@ -129,9 +132,12 @@ export const usePeople = ({
           await operation;
           addLine(success, 'success');
           setSelectedPersonIds([]);
+          setMutationError(null);
           await invalidate();
         } catch (error) {
-          addLine(`${failure}: ${messageOf(error)}`, 'error');
+          const message = messageOf(error);
+          addLine(`${failure}: ${message}`, 'error');
+          setMutationError(`${failure}: ${message}`);
         }
       })();
     },
@@ -203,6 +209,8 @@ export const usePeople = ({
     ),
     isBusy,
     error,
+    mutationError,
+    dismissMutationError: () => setMutationError(null),
     people: people.data?.people ?? [],
     observations: status.data?.observations ?? 0,
     selectedPersonIds,

@@ -813,13 +813,17 @@ export class SqlJsPhotosStore implements PhotosStore {
           { $match: input.match, ...params },
         );
         const scored = (result[0]?.values ?? []).map((row) => photoSearchRowFromValues(row, input.rankingTerms));
-        const sorted = scored.sort((left, right) =>
-          right.score - left.score
-          || left.row.fileName.localeCompare(right.row.fileName)
-          || left.row.fingerprint.localeCompare(right.row.fingerprint));
+        const sorted = input.sort === 'relevance'
+          ? scored
+            .sort((left, right) =>
+              right.score - left.score
+              || left.row.fileName.localeCompare(right.row.fileName)
+              || left.row.fingerprint.localeCompare(right.row.fingerprint))
+            .map((entry) => entry.row)
+          : sortPhotoSearchRows(scored.map((entry) => entry.row), input.sort);
         return {
           total: sorted.length,
-          rows: sorted.slice(input.offset, input.offset + input.limit).map((entry) => entry.row),
+          rows: sorted.slice(input.offset, input.offset + input.limit),
         };
       }
 
@@ -1568,6 +1572,29 @@ const photoCollectionOrderBySql = (sort: 'captured_desc' | 'captured_asc' | 'nam
       return 'p.captured_at IS NULL, p.captured_at ASC, p.file_name ASC';
     case 'name_asc':
       return 'p.file_name ASC';
+  }
+};
+
+const photoCapturedAtCompare = (left: PhotoSearchRow, right: PhotoSearchRow, direction: 1 | -1): number => {
+  if (left.capturedAt === null && right.capturedAt === null) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === null) return 1;
+  if (right.capturedAt === null) return -1;
+  if (left.capturedAt === right.capturedAt) return left.fileName.localeCompare(right.fileName);
+  return left.capturedAt < right.capturedAt ? -direction : direction;
+};
+
+const sortPhotoSearchRows = (
+  rows: readonly PhotoSearchRow[],
+  sort: 'captured_desc' | 'captured_asc' | 'name_asc',
+): PhotoSearchRow[] => {
+  const sorted = [...rows];
+  switch (sort) {
+    case 'captured_desc':
+      return sorted.sort((left, right) => photoCapturedAtCompare(left, right, -1));
+    case 'captured_asc':
+      return sorted.sort((left, right) => photoCapturedAtCompare(left, right, 1));
+    case 'name_asc':
+      return sorted.sort((left, right) => left.fileName.localeCompare(right.fileName));
   }
 };
 

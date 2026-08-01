@@ -116,12 +116,32 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Library → Zdjęcia grid tiles now render the 512px grid thumbnail
+  (falling back to the small thumbnail) instead of the small thumbnail, and
+  the Analysis → Zdjęcia sidebar rows now render the small thumbnail instead
+  of the 512px grid thumbnail: the two surfaces had the consumption inverted.
+- Library → Osoby mutation failures (rename, merge, forget, delete all face
+  data) now surface via a dismissible alert on the People surface itself,
+  instead of only a terminal line that Library mode keeps hidden.
+- `GET /api/library/collection` in match (query) mode now honors an explicit
+  non-relevance `sort` for the photo side instead of always ranking photos by
+  FTS score, so a query with `sort=captured_asc|captured_desc|name_asc`
+  merges videos and photos in one consistent order instead of merging a
+  score-ordered photo stream against a date-ordered video stream.
+- A nested photo root (e.g. scanning both `~/Pictures` and `~/Pictures/2024`)
+  no longer duplicates the child photos in the "all folders" sidebar sections,
+  and the owning root used for Analyze in the "all folders" scope now resolves
+  to the deepest matching root instead of the first (typically parent) one.
 - Load-more pagination in Photos, the Photos analysis sidebar, and the Library
   no longer re-appends the same page when a completed job or focus refetch
   refreshes the currently loaded offset: each offset is now merged into the
   loaded list at most once, so rows can no longer be duplicated and "has more"
   can no longer flip false while later pages remain unloaded.
 - Analysis with Zdjęcia active now shows the photos sidebar (folder header, scope toggle, badge rows, honest empty state) instead of the video list.
+- The Library → Zdjęcia detail pane's "Otwórz w Analizie" escape hatch now
+  switches to Analysis → Zdjęcia with the photo's root and the photo itself
+  selected, instead of switching to Analysis → Filmy with the photo's folder
+  opened as a video folder and nothing selected.
 - Folders whose names carry diacritics are no longer silently skipped: every path entering the catalog is canonicalized to NFC at the contract, filesystem and store boundaries, so a path handed in as NFD (the on-disk form on macOS) matches the NFC rows the catalog stores. In a real-world catalog this recovered affected analyzed files that `faces index` had reported as a successful zero-file run.
 - `faces index <root>` no longer reports success over an empty set: a root that does not exist fails with `folder_not_found`, and an existing root with no catalog folders under it fails with `drive_root_empty` (exit 39), matching `materialize` and `process-drive`; a root whose files are all already indexed still succeeds and now reports the folders and analyzed files it saw.
 - A read-only mirror created before path canonicalization keeps its frames and thumbnails: the mirror id derived from the old decomposed folder name is rebuilt and used when no canonical mirror exists, so a diacritic folder is not silently re-mirrored from scratch.

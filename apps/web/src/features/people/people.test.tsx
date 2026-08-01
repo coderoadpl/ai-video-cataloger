@@ -376,4 +376,31 @@ describe('PeopleView', () => {
     expect(bodies).toContainEqual({ personId: 'p1', force: true });
     expect(bodies).toContainEqual({ force: true });
   }, scaledTimeout(30_000));
+
+  it('surfaces a purge mutation failure via a visible alert instead of only the terminal', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 1,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 1 })],
+    });
+    server.use(
+      http.post('/api/faces/purge', () => HttpResponse.json(
+        { ok: false, error: { code: 'conflict', message: 'Faces write lock held by a drive run' } },
+        { status: 409 },
+      )),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-purge'));
+    fireEvent.click(await screen.findByTestId('people-purge-confirm'));
+
+    const alert = await screen.findByTestId('people-mutation-error');
+    expect(alert.textContent).toContain('Faces write lock held by a drive run');
+    expect(screen.getByTestId('people-grid')).toBeDefined();
+  });
 });

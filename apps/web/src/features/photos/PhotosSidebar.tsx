@@ -84,7 +84,7 @@ const PhotoSidebarRow = ({
   onSelect: () => void;
   dictionary: Dictionary;
 }) => {
-  const thumbPath = item.gridThumbPath ?? item.thumbPath;
+  const thumbPath = item.thumbPath;
   return (
     <ListItemButton
       selected={selected}

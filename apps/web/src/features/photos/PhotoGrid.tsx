@@ -102,6 +102,7 @@ interface PhotoTileProps {
 
 const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) => {
   const dictionary = useDictionary();
+  const imagePath = item.gridThumbPath ?? item.thumbPath;
 
   return (
     <Box
@@ -122,12 +123,12 @@ const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) =
         bgcolor: 'background.default',
       }}
     >
-      {item.thumbState === 'done' && item.thumbPath !== null ? (
+      {item.thumbState === 'done' && imagePath !== null ? (
         <Box
           component="img"
           loading="lazy"
           alt={item.fileName}
-          src={mediaUrl(item.thumbPath, item.fingerprint)}
+          src={mediaUrl(imagePath, item.fingerprint)}
           sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (

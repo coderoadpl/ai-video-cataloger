@@ -585,7 +585,11 @@ const indexCandidate = async (
   if (stale) {
     const purged = await deps.globalCatalog.deleteFaceObservationsForFile(fingerprint);
     if (!purged.ok) return { result: purged, pool };
-    const removedCrops = await deleteCropPaths(deps.fs, purged.value.cropPaths);
+    const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
+    const removedCrops = await deleteCropPaths(
+      deps.fs,
+      purged.value.cropPaths.map((path) => reanchorFaceCropPath(currentCatalogDir, path)),
+    );
     if (!removedCrops.ok) return { result: removedCrops, pool };
     pool = pool.filter((observation) => observation.fingerprint !== fingerprint);
   }

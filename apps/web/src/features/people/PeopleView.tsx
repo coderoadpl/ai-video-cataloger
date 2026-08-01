@@ -16,6 +16,7 @@ import {
   IconButton,
   Menu,
   MenuItem,
+  Snackbar,
   TextField,
   Typography,
 } from '@mui/material';
@@ -264,6 +265,16 @@ export const PeopleView = ({
           setPurgeOpen(false);
         }}
       />
+
+      <Snackbar
+        open={people.mutationError !== null}
+        onClose={people.dismissMutationError}
+        autoHideDuration={8000}
+      >
+        <Alert severity="error" onClose={people.dismissMutationError} data-testid="people-mutation-error">
+          {people.mutationError}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 };

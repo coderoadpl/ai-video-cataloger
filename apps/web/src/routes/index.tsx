@@ -148,6 +148,17 @@ export const IndexRoute = () => {
     selectKey(pendingSelection.videoPath);
     setPendingSelection(null);
   }, [pendingSelection, currentFolder, selectKey]);
+  const photosSelectRoot = photosAnalysis.selectRoot;
+  const photosSelectFingerprint = photosAnalysis.selectFingerprint;
+  const openPhotoInAnalysis = useCallback(
+    (root: string, fingerprint: string) => {
+      setMode('analysis');
+      setAnalysisMedia('photos');
+      photosSelectRoot(root);
+      photosSelectFingerprint(fingerprint);
+    },
+    [photosSelectRoot, photosSelectFingerprint, setAnalysisMedia, setMode],
+  );
   const previousFolderRef = useRef(currentFolder);
   useEffect(() => {
     const previousFolder = previousFolderRef.current;
@@ -272,7 +283,7 @@ export const IndexRoute = () => {
           onFocusConsumed={() => setPhotoFocus(null)}
           rootSeed={photosRootSeed}
           onRootSeedConsumed={() => setPhotosRootSeed(null)}
-          onOpenInAnalysis={openInAnalysis}
+          onOpenInAnalysis={openPhotoInAnalysis}
         />
         <PeopleView
           active={mode === 'library' && librarySurface === 'people'}

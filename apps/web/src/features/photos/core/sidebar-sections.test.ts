@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { PhotoListItem } from './day-groups.js';
-import { sidebarSections, type PhotoRoot } from './sidebar-sections.js';
+import { ownerRootFor, sidebarSections, type PhotoRoot } from './sidebar-sections.js';
 
 const item = (fingerprint: string, currentPath: string): PhotoListItem => ({
   fingerprint,
@@ -63,5 +63,40 @@ describe('sidebarSections', () => {
 
   it('folder scope with no selected root returns no sections', () => {
     expect(sidebarSections([item('a', '/media/a.jpg')], [root({ root: '/media' })], 'folder', null)).toEqual([]);
+  });
+
+  it('all scope with a nested root does not duplicate a child photo across the parent and child sections', () => {
+    const items = [
+      item('a', '/Pictures/vacation.jpg'),
+      item('b', '/Pictures/2024/beach.jpg'),
+      item('c', '/Pictures/2024/park.jpg'),
+    ];
+    const roots = [root({ root: '/Pictures' }), root({ root: '/Pictures/2024' })];
+
+    const sections = sidebarSections(items, roots, 'all', null);
+
+    expect(sections).toEqual([
+      { root: '/Pictures', items: [items[0]] },
+      { root: '/Pictures/2024', items: [items[1], items[2]] },
+    ]);
+  });
+});
+
+describe('ownerRootFor', () => {
+  it('picks the deepest matching root, not the first one returned', () => {
+    const roots = [root({ root: '/Pictures' }), root({ root: '/Pictures/2024' })];
+
+    expect(ownerRootFor('/Pictures/2024/beach.jpg', roots)).toBe('/Pictures/2024');
+    expect(ownerRootFor('/Pictures/vacation.jpg', roots)).toBe('/Pictures');
+  });
+
+  it('picks the deepest matching root regardless of the roots array order', () => {
+    const roots = [root({ root: '/Pictures/2024' }), root({ root: '/Pictures' })];
+
+    expect(ownerRootFor('/Pictures/2024/beach.jpg', roots)).toBe('/Pictures/2024');
+  });
+
+  it('returns null when no root matches', () => {
+    expect(ownerRootFor('/Elsewhere/photo.jpg', [root({ root: '/Pictures' })])).toBeNull();
   });
 });

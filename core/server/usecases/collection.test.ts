@@ -259,6 +259,39 @@ describe('libraryCollection', () => {
     expect(result.value.items[0]?.media).toBe('video');
   });
 
+  it('honors an explicit non-relevance sort in match mode, merging both media in capture-date order', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    await globalCatalog.upsertFolder(folderA);
+    await globalCatalog.upsertFile(video('v1', '2022-06-01T00:00:00.000Z', 'drone-shot.mp4'));
+    await globalCatalog.upsertAnalysis(videoAnalysis('v1'));
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertPhoto(photo('p-old', '2020-01-01T00:00:00.000Z', 'drone-photo-old.jpg'));
+    await photos.upsertPhoto(photo('p-new', '2024-01-01T00:00:00.000Z', 'drone-photo-new.jpg'));
+
+    const result = await libraryCollection(deps, {
+      query: 'drone', filters: EMPTY_FILTERS, sort: 'captured_asc', media: 'all', limit: 50, cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.fingerprint)).toEqual(['p-old', 'v1', 'p-new']);
+  });
+
+  it('ranks photos in match mode by relevance score, not by capture date, when sort is relevance', async () => {
+    const { deps, photos } = buildDeps();
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertPhoto(photo('p-newer-weaker', '2024-01-01T00:00:00.000Z', 'drone.jpg'));
+    await photos.upsertPhoto(photo('p-older-stronger', '2020-01-01T00:00:00.000Z', 'drone-drone.jpg'));
+
+    const result = await libraryCollection(deps, {
+      query: 'drone', filters: EMPTY_FILTERS, sort: 'relevance', media: 'photo', limit: 50, cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.fingerprint)).toEqual(['p-older-stronger', 'p-newer-weaker']);
+  });
+
   it('rejects an explicit relevance sort without a query', async () => {
     const { deps } = buildDeps();
 

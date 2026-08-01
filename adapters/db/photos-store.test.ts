@@ -834,6 +834,34 @@ describe('SqlJsPhotosStore', () => {
     expect(page.ok && page.value.rows).toHaveLength(1);
   });
 
+  it('collectionPage in match mode honors an explicit non-relevance sort instead of always ranking by FTS score', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({
+      fingerprint: 'ph_0000000000000001',
+      capturedAt: '2026-01-05T00:00:00.000Z',
+      fileName: 'vacation-vacation.jpg',
+      currentPath: '/media/photos/vacation-vacation.jpg',
+    }));
+    await store.upsertPhoto(photo({
+      fingerprint: 'ph_0000000000000002',
+      capturedAt: '2026-01-01T00:00:00.000Z',
+      fileName: 'vacation.jpg',
+      currentPath: '/media/photos/vacation.jpg',
+    }));
+
+    const byScore = await store.collectionPage({
+      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'relevance', limit: 50, offset: 0,
+    });
+    expect(byScore.ok && byScore.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000001', 'ph_0000000000000002']);
+
+    const byCapturedAsc = await store.collectionPage({
+      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'captured_asc', limit: 50, offset: 0,
+    });
+    expect(byCapturedAsc.ok && byCapturedAsc.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002', 'ph_0000000000000001']);
+  });
+
   it('expandPhotoTagTerms resolves a tag term through photo_tag_aliases (P1)', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });

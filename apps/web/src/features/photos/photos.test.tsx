@@ -188,6 +188,23 @@ describe('PhotosView', () => {
     expect(screen.getByTestId('photos-duplicate-badge')).toBeDefined();
   });
 
+  it('prefers the 512px grid thumbnail over the small thumbnail for a grid tile', async () => {
+    const items = [
+      photoItem({
+        fingerprint: 'ph_0000000000000001',
+        thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
+        gridThumbPath: '/artifacts/thumbs/ph_0000000000000001.grid.jpg',
+      }),
+    ];
+    stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
+
+    renderThemed(<PhotosView active />);
+
+    const tiles = await screen.findAllByTestId('photos-tile');
+    const image = tiles[0]?.querySelector('img');
+    expect(image?.getAttribute('src')).toContain(encodeURIComponent('/artifacts/thumbs/ph_0000000000000001.grid.jpg'));
+  });
+
   it('renders a square gradient placeholder for a photo tile with no thumbnail', async () => {
     const items = [photoItem({ fingerprint: 'ph_0000000000000003', thumbState: 'pending', thumbPath: null })];
     stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
@@ -442,6 +459,6 @@ describe('PhotosView', () => {
 
     const link = await screen.findByTestId('photos-open-analysis');
     fireEvent.click(link);
-    expect(onOpenInAnalysis).toHaveBeenCalledWith('/photos', items[0]?.currentPath);
+    expect(onOpenInAnalysis).toHaveBeenCalledWith('/photos', items[0]?.fingerprint);
   });
 });

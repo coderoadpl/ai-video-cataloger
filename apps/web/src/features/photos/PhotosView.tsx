@@ -4,7 +4,7 @@ import { Alert, Box, Button, CircularProgress, IconButton, MenuItem, Select, Tex
 import { CancelIcon } from '../../components/ui/icons.js';
 import { PhotosLayout } from '../../components/layout/PhotosLayout.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, searchResultsToItems, searchSections } from './core/index.js';
+import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, ownerRootFor, searchResultsToItems, searchSections } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
 import { PhotoGrid } from './PhotoGrid.js';
 import { PhotoViewer } from './PhotoViewer.js';
@@ -16,7 +16,7 @@ interface PhotosViewProps {
   onFocusConsumed?: () => void;
   rootSeed?: string | null;
   onRootSeedConsumed?: () => void;
-  onOpenInAnalysis?: (folderPath: string, videoPath: string) => void;
+  onOpenInAnalysis?: (root: string, fingerprint: string) => void;
 }
 
 const noop = (): void => {};
@@ -201,7 +201,17 @@ export const PhotosView = ({
       onAnalyze={() => undefined}
       isBusy={false}
       analyzeProgress={null}
-      onOpenInAnalysis={onOpenInAnalysis}
+      onOpenInAnalysis={
+        onOpenInAnalysis === undefined || photos.detail === null
+          ? undefined
+          : () => {
+              const detail = photos.detail;
+              if (detail === null) return;
+              const root = ownerRootFor(detail.ownerPath, photos.roots);
+              if (root === null) return;
+              onOpenInAnalysis(root, detail.photo.fingerprint);
+            }
+      }
     />
   );
 

@@ -105,6 +105,29 @@ describe('PhotosSidebar', () => {
     expect(selectFingerprint).toHaveBeenCalledWith('a');
   });
 
+  it('renders the small thumbnail, not the 512px grid thumbnail, for a sidebar row', () => {
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({
+          items: [
+            item({
+              fingerprint: 'a',
+              thumbPath: '/artifacts/thumbs/a.jpg',
+              gridThumbPath: '/artifacts/thumbs/a.grid.jpg',
+            }),
+          ],
+        })}
+        onShowInLibrary={vi.fn()}
+      />,
+    );
+
+    const row = screen.getAllByTestId('photos-sidebar-row')[0];
+    if (row === undefined) throw new Error('missing row');
+    const image = row.querySelector('img');
+    expect(image?.getAttribute('src')).toContain(encodeURIComponent('/artifacts/thumbs/a.jpg'));
+    expect(image?.getAttribute('src')).not.toContain('grid.jpg');
+  });
+
   it('renders the capture date localized instead of a raw ISO timestamp', () => {
     renderThemed(<PhotosSidebar
       state={baseState({ items: [item({ fingerprint: 'a', capturedAt: '2026-08-10T17:46:06.740Z' })] })}

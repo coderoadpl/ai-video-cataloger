@@ -2,7 +2,6 @@ import { Alert, Box, Button, Chip, CircularProgress, Divider, Link, MenuItem, Se
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { OpenInNewIcon } from '../../components/ui/icons.js';
-import { parentDir } from '../../lib/media-url.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import type { CapturedAtSource, PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
 import type { PhotoDetail, PhotoVariantRecord } from './use-photos.js';
@@ -17,7 +16,7 @@ interface PhotoDetailPaneProps {
   onAnalyze: () => void;
   isBusy: boolean;
   analyzeProgress: { current: number; total: number } | null;
-  onOpenInAnalysis?: ((folderPath: string, videoPath: string) => void) | undefined;
+  onOpenInAnalysis?: (() => void) | undefined;
 }
 
 type PhotosDictStringKey = { [K in keyof Dictionary['photos']]: Dictionary['photos'][K] extends string ? K : never }[keyof Dictionary['photos']];
@@ -192,7 +191,7 @@ export const PhotoDetailPane = ({
           variant="body2"
           underline="hover"
           data-testid="photos-open-analysis"
-          onClick={() => onOpenInAnalysis(parentDir(ownerPath), ownerPath)}
+          onClick={onOpenInAnalysis}
           sx={{ display: 'flex', alignItems: 'center', gap: 0.5, alignSelf: 'flex-start' }}
         >
           <OpenInNewIcon fontSize="small" />

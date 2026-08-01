@@ -708,6 +708,31 @@ describe('facesIndex stale-version re-indexing', () => {
     expect(afterStatus.value.staleVersionFiles).toBe(0);
     expect(afterStatus.value.people).toBe(1);
   });
+
+  it('re-anchors a stale-home crop path before deleting it during the stale-engine purge', async () => {
+    const deps = buildScriptableDeps();
+    await enableFaces(deps);
+    await seedFolder(deps);
+    await seedFile(deps, 'fp-clip', 'clip.mp4');
+    const currentCropPath = '/home/.ai-video-cataloger/faces/obs/fp-clip/9-9.jpg';
+    deps.fs.addFile(currentCropPath, { content: 'jpg' });
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'fp-clip:face:9:9',
+      fingerprint: 'fp-clip',
+      embedding: unit128(5),
+      cropPath: '/old-home/.ai-video-cataloger/faces/obs/fp-clip/9-9.jpg',
+    }));
+    await deps.globalCatalog.completeFaceIndex('fp-clip', 1);
+
+    const engine = new ScriptedFaceEngine();
+    engine.maxDetections = 0;
+    deps.faceEngine = engine;
+    const run = await facesIndex(deps, { root: '/work/videos' });
+    expect(run.ok).toBe(true);
+
+    const exists = await deps.fs.exists(currentCropPath);
+    expect(exists.ok && exists.value).toBe(false);
+  });
 });
 
 const events = (progress: JobProgress[], signal = new AbortController().signal): JobExecutionContext => ({

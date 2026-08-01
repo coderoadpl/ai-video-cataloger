@@ -2395,7 +2395,9 @@ export class InMemoryPhotosStore implements PhotosStore {
         };
       })
       .filter((row): row is PhotoSearchRow => row !== null);
-    const sorted = sortPhotoCollectionRows(rows, input.sort);
+    const sorted = input.match !== null && input.sort === 'relevance'
+      ? scorePhotoCollectionRows(rows, input.rankingTerms)
+      : sortPhotoCollectionRows(rows, input.sort);
     return Promise.resolve(ok({
       total: sorted.length,
       rows: sorted.slice(input.offset, input.offset + input.limit),
@@ -2701,6 +2703,43 @@ const capturedAtCompare = (left: string | null, right: string | null, direction:
   if (left === null) return 1;
   if (right === null) return -1;
   return direction * left.localeCompare(right);
+};
+
+const countTermOccurrences = (value: string, term: string): number => {
+  const haystack = value.toLocaleLowerCase();
+  const needle = term.toLocaleLowerCase();
+  if (needle.length === 0) return 0;
+  let count = 0;
+  let offset = 0;
+  while (offset < haystack.length) {
+    const index = haystack.indexOf(needle, offset);
+    if (index === -1) return count;
+    count += 1;
+    offset = index + needle.length;
+  }
+  return count;
+};
+
+const scorePhotoCollectionRows = (
+  rows: readonly PhotoSearchRow[],
+  rankingTerms: readonly string[],
+): PhotoSearchRow[] => {
+  const scored = rows.map((row) => {
+    const tagsText = row.tags.join(' ');
+    let score = 0;
+    for (const term of rankingTerms) {
+      score += countTermOccurrences(row.fileName, term) * 80;
+      score += countTermOccurrences(tagsText, term) * 45;
+      score += countTermOccurrences(row.description ?? '', term) * 30;
+    }
+    return { row, score };
+  });
+  return scored
+    .sort((left, right) =>
+      right.score - left.score
+      || left.row.fileName.localeCompare(right.row.fileName)
+      || left.row.fingerprint.localeCompare(right.row.fingerprint))
+    .map((entry) => entry.row);
 };
 
 const sightingKey = (fingerprint: string, currentPath: string): string => `${fingerprint} ${currentPath}`;
