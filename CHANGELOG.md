@@ -116,6 +116,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Load-more pagination in Photos, the Photos analysis sidebar, and the Library
+  no longer re-appends the same page when a completed job or focus refetch
+  refreshes the currently loaded offset: each offset is now merged into the
+  loaded list at most once, so rows can no longer be duplicated and "has more"
+  can no longer flip false while later pages remain unloaded.
 - Analysis with Zdjęcia active now shows the photos sidebar (folder header, scope toggle, badge rows, honest empty state) instead of the video list.
 - Folders whose names carry diacritics are no longer silently skipped: every path entering the catalog is canonicalized to NFC at the contract, filesystem and store boundaries, so a path handed in as NFD (the on-disk form on macOS) matches the NFC rows the catalog stores. In a real-world catalog this recovered affected analyzed files that `faces index` had reported as a successful zero-file run.
 - `faces index <root>` no longer reports success over an empty set: a root that does not exist fails with `folder_not_found`, and an existing root with no catalog folders under it fails with `drive_root_empty` (exit 39), matching `materialize` and `process-drive`; a root whose files are all already indexed still succeeds and now reports the folders and analyzed files it saw.

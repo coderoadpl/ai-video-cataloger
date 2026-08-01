@@ -46,6 +46,18 @@ const stubList = (items: PhotoListItem[]) => {
   }));
 };
 
+const stubPagedList = (allItems: PhotoListItem[], analysedFlag: { current: boolean }) => {
+  server.use(http.get('/api/photos/list', ({ request }) => {
+    const url = new URL(request.url);
+    const root = url.searchParams.get('root');
+    const offset = Number(url.searchParams.get('offset') ?? '0');
+    const limit = Number(url.searchParams.get('limit') ?? '200');
+    const scoped = root === null ? allItems : allItems.filter((item) => item.currentPath.startsWith(`${root}/`));
+    const page = scoped.slice(offset, offset + limit).map((item) => ({ ...item, analysed: analysedFlag.current }));
+    return HttpResponse.json({ ok: true, data: { media: 'photo', root, total: scoped.length, offset, items: page } });
+  }));
+};
+
 const stubStatus = () => {
   server.use(http.get('/api/photos/status', ({ request }) => {
     const root = new URL(request.url).searchParams.get('root');
@@ -231,5 +243,51 @@ describe('usePhotosAnalysis', () => {
     act(() => result.current.analyzePhotos());
 
     await waitFor(() => expect(processedRoot).toBe('/other'));
+  });
+
+  it('does not duplicate already-loaded pages when a completed job invalidates and refetches the current offset', async () => {
+    window.localStorage.setItem('avc.photosRoot', '/media');
+    stubTree([{ root: '/media', photos: 300, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    const allItems = Array.from({ length: 300 }, (_, index) =>
+      photoItem({ fingerprint: `p${index}`, currentPath: `/media/p${index}.jpg` }));
+    const analysedFlag = { current: false };
+    stubPagedList(allItems, analysedFlag);
+    stubStatus();
+    server.use(
+      http.post('/api/photos/process', () => {
+        analysedFlag.current = true;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
+      }),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: null,
+          progressEvents: [],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0 },
+        },
+      })),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    await waitFor(() => expect(result.current.items.length).toBe(200));
+
+    act(() => result.current.loadMore());
+    await waitFor(() => expect(result.current.items.length).toBe(300));
+    expect(result.current.hasMore).toBe(false);
+
+    act(() => result.current.analyzePhotos());
+    await waitFor(() => expect(result.current.activeJobLabel).toBe(null));
+
+    expect(result.current.items.length).toBe(300);
+    const fingerprints = result.current.items.map((item) => item.fingerprint);
+    expect(new Set(fingerprints).size).toBe(fingerprints.length);
   });
 });

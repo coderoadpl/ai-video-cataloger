@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
@@ -76,9 +76,17 @@ export const useLibrary = (input: {
     placeholderData: keepPreviousData,
   });
 
+  const mergedOffsetRef = useRef(-1);
   useEffect(() => {
     if (page.data === undefined || page.isPlaceholderData) return;
-    setItems((current) => (offset === 0 ? page.data.results : [...current, ...page.data.results]));
+    if (offset === 0) {
+      setItems(page.data.results);
+      mergedOffsetRef.current = 0;
+      return;
+    }
+    if (mergedOffsetRef.current === offset) return;
+    setItems((current) => [...current, ...page.data.results]);
+    mergedOffsetRef.current = offset;
   }, [page.data, page.isPlaceholderData, offset]);
 
   const loadMore = useCallback(() => setOffset((current) => current + PAGE_SIZE), []);

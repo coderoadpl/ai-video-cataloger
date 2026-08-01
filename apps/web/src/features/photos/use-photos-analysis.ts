@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
@@ -129,9 +129,17 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
     enabled: active,
   });
 
+  const mergedOffsetRef = useRef(-1);
   useEffect(() => {
     if (list.data === undefined) return;
-    setLoadedItems((current) => (offset === 0 ? list.data.items : [...current, ...list.data.items]));
+    if (offset === 0) {
+      setLoadedItems(list.data.items);
+      mergedOffsetRef.current = 0;
+      return;
+    }
+    if (mergedOffsetRef.current === offset) return;
+    setLoadedItems((current) => [...current, ...list.data.items]);
+    mergedOffsetRef.current = offset;
   }, [list.data, offset]);
 
   const loadMore = useCallback(() => setOffset((current) => current + PAGE_LIMIT), []);
