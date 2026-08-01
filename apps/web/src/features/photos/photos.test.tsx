@@ -33,6 +33,7 @@ const photoItem = (overrides: Partial<PhotoListItem> & { fingerprint: string }):
   missingAt: null,
   sightings: 1,
   thumbPath: `/artifacts/thumbs/${overrides.fingerprint}.jpg`,
+  gridThumbPath: null,
   proxyPath: `/artifacts/proxies/${overrides.fingerprint}.jpg`,
   ...overrides,
 });
@@ -72,6 +73,7 @@ const detailFor = (item: PhotoListItem, analysis: PhotosDetailAnalysis = null): 
   ownerPath: item.currentPath,
   proxyPath: item.proxyPath,
   thumbPath: item.thumbPath,
+  gridThumbPath: item.gridThumbPath,
   analysis,
 });
 
@@ -305,6 +307,7 @@ describe('PhotosView', () => {
     proxyState: 'done',
     missingAt: null,
     thumbPath: `/artifacts/thumbs/${overrides.fingerprint}.jpg`,
+    gridThumbPath: null,
     proxyPath: `/artifacts/proxies/${overrides.fingerprint}.jpg`,
     ...overrides,
   });

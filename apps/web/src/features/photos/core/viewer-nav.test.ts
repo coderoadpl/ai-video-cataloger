@@ -17,6 +17,7 @@ const stubItem = (fingerprint: string): PhotoListItem => ({
   missingAt: null,
   sightings: 1,
   thumbPath: null,
+  gridThumbPath: null,
   proxyPath: null,
 });
 

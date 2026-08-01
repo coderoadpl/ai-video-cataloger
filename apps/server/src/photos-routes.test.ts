@@ -174,6 +174,24 @@ describe('photos routes', () => {
     expect(body.error.code).toBe('not_a_directory');
   });
 
+  it('accepts a valid photos grid-thumbs request and completes the job', async () => {
+    const deps = createInMemoryDeps();
+    const app = buildApp(deps);
+
+    const response = await app.request('/api/photos/grid-thumbs', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ force: false }),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    expect(typeof body.data.jobId).toBe('string');
+    const job = await deps.jobs.get(body.data.jobId);
+    expect(job).toMatchObject({ ok: true, value: { status: 'completed', kind: 'photo_grid_thumbs' } });
+  });
+
   it('accepts a valid photos process request and completes the job', async () => {
     const deps = createInMemoryDeps();
     const app = buildApp(deps);

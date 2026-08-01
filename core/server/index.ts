@@ -5,6 +5,7 @@ export * from './usecases/catalog-locations.js';
 export * from './usecases/catalog-snapshot.js';
 export * from './usecases/catalog-tree.js';
 export * from './usecases/artifact-store.js';
+export * from './usecases/collection.js';
 export * from './usecases/folder-identity.js';
 export * from './usecases/folder-watch.js';
 export * from './usecases/check.js';

@@ -11,6 +11,7 @@ import {
   InMemoryAnalyzer,
   InMemoryConfig,
   InMemoryJobs,
+  InMemoryMedia,
   InMemoryPhotosStore,
 } from '../test/server/usecases/test-fakes.js';
 
@@ -39,6 +40,7 @@ describe('runPhotoScan read-only root invariant', () => {
       fs: new NodeFileSystemPort(),
       exif: new ExifrExifAdapter(),
       photoMedia: new FakePhotoMediaPort(),
+      media: new InMemoryMedia(),
       jobs: new InMemoryJobs(),
       config: new InMemoryConfig(),
       analyzer: new InMemoryAnalyzer(),

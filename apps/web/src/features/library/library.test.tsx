@@ -26,6 +26,7 @@ const libraryItem = (overrides: Partial<LibraryItem> & { fingerprint: string }):
   description: null,
   snippet: '',
   thumbnailPath: `/videos/.ai-video-cataloger/thumbnails/${overrides.fingerprint}.jpg`,
+  gridThumbnailPath: null,
   tags: [],
   folder: {
     folderId: '11111111-1111-4111-8111-111111111111',

@@ -50,6 +50,7 @@ import {
   photosForgetHuman,
   photosGpsBackfillHuman,
   photosProcessHuman,
+  photosGridThumbsHuman,
   photosProxiesHuman,
   photosSearchHuman,
   photosStatusHuman,
@@ -1438,6 +1439,22 @@ photos
     await waitForJobAndEmit(json, result.value.jobId, photosProxiesHuman, true);
   });
 
+photos
+  .command('grid-thumbs')
+  .option('--force', 'regenerate grid thumbnails even when already present', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (options: ForceJsonOption) => {
+    const json = isJsonMode(options);
+    const force = options.force === true;
+    emitStarted(json, 'photos_grid_thumbs', { force });
+    const result = await api.photosGridThumbs({ force });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, photosGridThumbsHuman, true);
+  });
+
 interface PhotosProcessOptions extends ForceJsonOption {
   batchSize?: string | undefined;
 }
@@ -1962,8 +1979,9 @@ const materializeHuman = (data: unknown): string => {
 const thumbnailsHuman = (data: unknown): string => {
   const parsed = thumbnailsSummarySchema.safeParse(data);
   if (!parsed.success) return 'Thumbnail generation complete';
-  const { generated, fromFrame, fromSource, skipped, failed, filesScanned } = parsed.data;
-  return `Thumbnails: generated=${generated} (frame=${fromFrame}, video=${fromSource}) skipped=${skipped} failed=${failed} over ${filesScanned} files`;
+  const { generated, fromFrame, fromSource, skipped, failed, filesScanned, gridGenerated, gridSkipped, gridFailed } = parsed.data;
+  return `Thumbnails: generated=${generated} (frame=${fromFrame}, video=${fromSource}) skipped=${skipped} failed=${failed} over ${filesScanned} files`
+    + ` | grid: generated=${gridGenerated} skipped=${gridSkipped} failed=${gridFailed}`;
 };
 
 const gpsBackfillHuman = (data: unknown): string => {

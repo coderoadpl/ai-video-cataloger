@@ -78,7 +78,7 @@ import { filterTranscript, parseRichSegments } from './transcript-hallucinations
 import { resolveConfigValues } from './config-resolution.js';
 import { resolveFolderIntoIndex, upsertProcessedVariant } from './catalog-index.js';
 import { finalVideoName, normalizeKebabSlug, uniqueFilename } from './final-name.js';
-import { generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
+import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
@@ -1362,6 +1362,11 @@ const renameVideoAndArtifacts = async (
       to: fs.join(folder, '.ai-video-cataloger', 'thumbnails', `${newBase}.jpg`),
       required: false,
     },
+    {
+      from: oldArtifacts.gridThumbnailPath,
+      to: fs.join(folder, '.ai-video-cataloger', 'thumbnails', `${newBase}.grid.jpg`),
+      required: false,
+    },
   ] as const;
   const renamed = await renamePathsWithRollback(fs, steps, signal);
   if (!renamed.ok) return renamed;
@@ -1548,6 +1553,12 @@ const ensureCompletedThumbnail = async (
       thumbnailPath: paths.thumbnailPath,
       width: 128,
       height: 72,
+      force: false,
+      priority: 'background',
+    });
+    await generateGridThumbnail(deps, {
+      framePath: framePath.value,
+      gridThumbnailPath: paths.gridThumbnailPath,
       force: false,
       priority: 'background',
     });

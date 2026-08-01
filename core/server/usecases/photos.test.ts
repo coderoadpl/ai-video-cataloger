@@ -18,10 +18,12 @@ import {
   InMemoryConfig,
   InMemoryFileSystem,
   InMemoryJobs,
+  InMemoryMedia,
   InMemoryPhotosStore,
   InMemorySpendLedger,
 } from '../../../test/server/usecases/test-fakes.js';
 import {
+  enqueuePhotoGridThumbs,
   enqueuePhotoProcess,
   enqueuePhotoProxies,
   enqueuePhotoScan,
@@ -36,6 +38,7 @@ import {
   photosVariantsList,
   photosVariantsSelect,
   resolvePhotoAnalyzerOptions,
+  runPhotoGridThumbsPass,
   runPhotoProcess,
   runPhotoProxiesPass,
   runPhotoScan,
@@ -49,6 +52,7 @@ const buildDeps = (): {
   exif: FakeExifPort;
   jobs: InMemoryJobs;
   photoMedia: FakePhotoMediaPort;
+  media: InMemoryMedia;
   config: InMemoryConfig;
   analyzer: InMemoryAnalyzer;
   spendLedger: InMemorySpendLedger;
@@ -58,16 +62,18 @@ const buildDeps = (): {
   const exif = new FakeExifPort();
   const jobs = new InMemoryJobs();
   const photoMedia = new FakePhotoMediaPort(fs);
+  const media = new InMemoryMedia(fs);
   const config = new InMemoryConfig();
   const analyzer = new InMemoryAnalyzer();
   const spendLedger = new InMemorySpendLedger();
   return {
-    deps: { photos, fs, exif, jobs, photoMedia, config, analyzer, spendLedger },
+    deps: { photos, fs, exif, jobs, photoMedia, media, config, analyzer, spendLedger },
     fs,
     photos,
     exif,
     jobs,
     photoMedia,
+    media,
     config,
     analyzer,
     spendLedger,
@@ -572,6 +578,70 @@ describe('runPhotoProxiesPass', () => {
   });
 });
 
+describe('runPhotoGridThumbsPass', () => {
+  it('walks the proxies directory and ensures a grid sibling for every fingerprint found', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    fs.addFile('/work/photos/b.jpg', { content: 'b' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+
+    const pass = await runPhotoGridThumbsPass(deps, { force: true });
+
+    expect(pass.ok && pass.value).toMatchObject({ media: 'photo', candidates: 2, generated: 2, skipped: 0, failed: 0 });
+    await expect(fs.exists(`/home/.ai-video-cataloger/photo-artifacts/thumbs/${fingerprintOf('a')}.grid.jpg`)).resolves.toEqual({
+      ok: true,
+      value: true,
+    });
+  });
+
+  it('is a no-op without force once the grid sibling already exists, and regenerates with force', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+
+    const noop = await runPhotoGridThumbsPass(deps, { force: false });
+    expect(noop.ok && noop.value).toMatchObject({ generated: 0, skipped: 1 });
+
+    const forced = await runPhotoGridThumbsPass(deps, { force: true });
+    expect(forced.ok && forced.value.generated).toBe(1);
+  });
+
+  it('reports zero candidates when no proxies exist yet, instead of an error', async () => {
+    const { deps } = buildDeps();
+
+    const pass = await runPhotoGridThumbsPass(deps, { force: false });
+
+    expect(pass).toMatchObject({ ok: true, value: { candidates: 0, generated: 0, skipped: 0, failed: 0 } });
+  });
+
+  it('records a per-fingerprint media failure without failing the whole pass', async () => {
+    const { deps, fs, media } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    await runPhotoProxiesPass(deps, { root: '/work/photos', force: false });
+    media.failFromFrame = true;
+
+    const pass = await runPhotoGridThumbsPass(deps, { force: false });
+
+    expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 0, failed: 1 });
+  });
+});
+
+describe('enqueuePhotoGridThumbs', () => {
+  it('enqueues and completes a photo_grid_thumbs job', async () => {
+    const { deps, jobs, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    await runPhotoProxiesPass(deps, { root: '/work/photos', force: false });
+
+    const enqueued = await enqueuePhotoGridThumbs(deps, { force: false });
+    expect(enqueued.ok).toBe(true);
+    if (!enqueued.ok) return;
+    const record = await jobs.get(enqueued.value.jobId);
+    expect(record).toMatchObject({ ok: true, value: { status: 'completed', kind: 'photo_grid_thumbs' } });
+  });
+});
+
 describe('photos scan auto-chains proxies', () => {
   it('folds a successful chained proxies pass into the scan summary', async () => {
     const { deps, fs } = buildDeps();
@@ -636,10 +706,12 @@ describe('photosTree, photosList, photosDetail', () => {
     const listedItem = list.ok ? list.value.items[0] : undefined;
     expect(listedItem?.fingerprint).toBe(fingerprint);
     expect(listedItem?.proxyPath).toContain(fingerprint);
+    expect(listedItem?.gridThumbPath).toContain(fingerprint);
 
     const detail = await photosDetail(deps, { fingerprint });
     expect(detail.ok && detail.value?.proxyPath).toContain(fingerprint);
     expect(detail.ok && detail.value?.ownerPath).toBe('/work/photos/a.jpg');
+    expect(detail.ok && detail.value?.gridThumbPath).toContain(fingerprint);
 
     const missing = await photosDetail(deps, { fingerprint: 'ph_ffffffffffffffff' });
     expect(missing.ok && missing.value).toBeNull();
@@ -960,10 +1032,10 @@ describe('runPhotoProcess', () => {
   });
 
   it('fails with internal when a budget is set but no spend ledger dependency is available', async () => {
-    const { fs, photos, jobs, photoMedia, exif, config, analyzer } = buildDeps();
+    const { fs, photos, jobs, photoMedia, media, exif, config, analyzer } = buildDeps();
     await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
     await config.set({ kind: 'home' }, 'gemini_monthly_budget_usd', '1');
-    const deps = { fs, photos, jobs, photoMedia, exif, config, analyzer };
+    const deps = { fs, photos, jobs, photoMedia, media, exif, config, analyzer };
 
     const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
 

@@ -16,12 +16,13 @@ const result = (overrides: Partial<PhotosSearchResult> = {}): PhotosSearchResult
   proxyState: 'done',
   missingAt: null,
   thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
+  gridThumbPath: '/artifacts/thumbs/ph_0000000000000001.grid.jpg',
   proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
   ...overrides,
 });
 
 describe('searchResultsToItems', () => {
-  it('maps every rendered field, passing thumbPath/proxyPath through and forcing sightings to 1', () => {
+  it('maps every rendered field, passing thumbPath/gridThumbPath/proxyPath through and forcing sightings to 1', () => {
     const items = searchResultsToItems([result()]);
     expect(items).toEqual([{
       fingerprint: 'ph_0000000000000001',
@@ -37,6 +38,7 @@ describe('searchResultsToItems', () => {
       missingAt: null,
       sightings: 1,
       thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
+      gridThumbPath: '/artifacts/thumbs/ph_0000000000000001.grid.jpg',
       proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
     }]);
   });

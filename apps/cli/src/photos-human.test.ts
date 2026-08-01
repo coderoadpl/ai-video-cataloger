@@ -4,6 +4,7 @@ import {
   photosForgetHuman,
   photosGpsBackfillHuman,
   photosProcessHuman,
+  photosGridThumbsHuman,
   photosProxiesHuman,
   photosSearchHuman,
   photosStatusHuman,
@@ -64,8 +65,23 @@ describe('photosProxiesHuman', () => {
       skippedExisting: 40,
       failed: 3,
       thumbFailed: 0,
+      gridFailed: 1,
     });
-    expect(text).toBe('Proxies: 120 generated, 3 failed, 40 already present (163 candidates)');
+    expect(text).toBe('Proxies: 120 generated, 3 failed, 40 already present (163 candidates), grid: 1 failed');
+  });
+});
+
+describe('photosGridThumbsHuman', () => {
+  it('formats a grid thumbnails summary', () => {
+    const text = photosGridThumbsHuman({
+      media: 'photo',
+      force: false,
+      candidates: 163,
+      generated: 120,
+      skipped: 40,
+      failed: 3,
+    });
+    expect(text).toBe('Grid thumbnails: 120 generated, 3 failed, 40 already present (163 candidates)');
   });
 });
 
@@ -144,6 +160,7 @@ describe('photosSearchHuman', () => {
         proxyState: 'done',
         missingAt: null,
         thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
+        gridThumbPath: '/artifacts/thumbs/ph_0000000000000001.grid.jpg',
         proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
       }],
     });

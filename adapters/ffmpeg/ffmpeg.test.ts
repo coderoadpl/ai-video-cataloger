@@ -20,6 +20,7 @@ import {
   THUMBNAIL_CONCURRENCY,
   thumbnailPathForVideo,
   thumbnailScaleFilter,
+  thumbnailCoverFilter,
   type BinaryResolver,
   type CommandProbe,
   type FfmpegCommand,
@@ -358,6 +359,37 @@ describe('FfmpegMediaAdapter', () => {
     ]);
     expect(runtime.commands).toHaveLength(1);
     expect(runtime.commands[0]?.videoPath).toBe(framePath);
+  });
+
+  it('generates a cover-fit thumbnail from a stored frame with a center crop', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    const adapter = adapterWithFakeRuntime(runtime);
+    const framePath = path.join(root, 'frames', 'clip', 'frame-001.jpg');
+    const thumbnailPath = path.join(root, '.ai-video-cataloger', 'thumbnails', 'clip.grid.jpg');
+
+    const generated = await adapter.thumbnailFromFrame({
+      framePath,
+      thumbnailPath,
+      width: 512,
+      height: 512,
+      force: false,
+      fit: 'cover',
+    });
+
+    expect(generated).toEqual(ok({ path: thumbnailPath, generated: true, skipped: false }));
+    expect(runtime.commands[0]?.operations).toEqual([
+      { name: 'frames', value: 1 },
+      { name: 'videoFilters', value: thumbnailCoverFilter(512, 512) },
+      { name: 'output', value: thumbnailPath },
+      { name: 'run' },
+    ]);
+  });
+
+  it('reproduces the current inside-fit filtergraph byte-for-byte when fit is omitted', () => {
+    expect(thumbnailScaleFilter(128, 72)).toBe(
+      "scale=w='trunc(min(128/iw\\,72/ih)*iw/2)*2':h='trunc(min(128/iw\\,72/ih)*ih/2)*2'",
+    );
   });
 
   it('bounds concurrent thumbnail generation to the worker-pool size', async () => {

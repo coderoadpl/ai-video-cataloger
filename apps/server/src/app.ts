@@ -41,7 +41,9 @@ import {
   forgetCatalogEntry,
   installWhisperRuntime,
   aliasTag,
+  libraryCollection,
   enqueuePhotoScan,
+  enqueuePhotoGridThumbs,
   enqueuePhotoProxies,
   enqueuePhotoProcess,
   photosDetail,
@@ -494,6 +496,27 @@ export const buildApp = (deps: AppDeps): Hono => {
     }), API_ROUTES.searchQuery.output);
   });
 
+  app.get(API_ROUTES.libraryCollection.path, async (context) => {
+    const input = parseInput(API_ROUTES.libraryCollection.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.libraryCollection.output);
+    return respond(await libraryCollection(deps, {
+      query: input.value.query ?? null,
+      filters: {
+        tags: input.value.tags,
+        people: input.value.people,
+        place: input.value.place ?? null,
+        from: input.value.from ?? null,
+        to: input.value.to ?? null,
+        hasGps: input.value.hasGps ?? null,
+        folderId: input.value.folderId ?? null,
+      },
+      sort: input.value.sort,
+      media: input.value.media,
+      limit: input.value.limit,
+      cursor: input.value.cursor ?? null,
+    }), API_ROUTES.libraryCollection.output);
+  });
+
   app.get(API_ROUTES.variantsList.path, async (context) => {
     const input = parseInput(API_ROUTES.variantsList.input, queryInput(context));
     if (!input.ok) return respond(input, API_ROUTES.variantsList.output);
@@ -637,6 +660,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.photosProxies.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.photosProxies.output);
     return respond(await withCatalogWriteLockForJob(deps, () => enqueuePhotoProxies(deps, input.value)), API_ROUTES.photosProxies.output);
+  });
+
+  app.post(API_ROUTES.photosGridThumbs.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosGridThumbs.output);
+    const input = parseInput(API_ROUTES.photosGridThumbs.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosGridThumbs.output);
+    return respond(await withCatalogWriteLockForJob(deps, () => enqueuePhotoGridThumbs(deps, input.value)), API_ROUTES.photosGridThumbs.output);
   });
 
   app.post(API_ROUTES.photosProcess.path, async (context) => {

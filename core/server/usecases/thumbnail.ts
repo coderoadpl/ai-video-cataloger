@@ -1,8 +1,8 @@
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
 
-import type { FileSystemPort, MediaPort } from '../ports.js';
+import type { FileSystemPort, MediaPort, ThumbnailGeneration } from '../ports.js';
 import { FRAME_FILE_NAME_PATTERN } from './artifact-store.js';
-import { isSupportedVideoExtension, artifactPaths, thumbnailArtifactPath } from './shared.js';
+import { isSupportedVideoExtension, artifactPaths, thumbnailArtifactPath, GRID_THUMBNAIL_EDGE } from './shared.js';
 import { discoverArtifactRoot } from './artifact-root.js';
 
 export interface ThumbnailDeps {
@@ -111,4 +111,26 @@ export const generateThumbnail = async (
     generated: thumbnail.value.generated,
     skipped: thumbnail.value.skipped,
   });
+};
+
+export const generateGridThumbnail = async (
+  deps: { fs: FileSystemPort; media: MediaPort },
+  input: {
+    framePath: string;
+    gridThumbnailPath: string;
+    force: boolean;
+    priority?: 'foreground' | 'background' | undefined;
+  },
+): Promise<Result<ThumbnailGeneration, AppError>> => {
+  const thumbnail = await deps.media.thumbnailFromFrame({
+    framePath: input.framePath,
+    thumbnailPath: input.gridThumbnailPath,
+    width: GRID_THUMBNAIL_EDGE,
+    height: GRID_THUMBNAIL_EDGE,
+    force: input.force,
+    fit: 'cover',
+    priority: input.priority,
+  });
+  if (!thumbnail.ok) return { ok: false, error: appError('thumbnail_error', thumbnail.error.message, thumbnail.error) };
+  return ok(thumbnail.value);
 };

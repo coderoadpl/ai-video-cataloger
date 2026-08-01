@@ -9,8 +9,8 @@ import {
 } from '../ports.js';
 import { discoverArtifactRoot } from './artifact-root.js';
 import { discoverCatalogFolders, type DriveRunFailure } from './process-drive.js';
-import { generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
-import { artifactPaths, thumbnailArtifactPath } from './shared.js';
+import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
+import { artifactPaths, gridThumbnailArtifactPath, thumbnailArtifactPath } from './shared.js';
 
 const maxFailures = 200;
 
@@ -32,6 +32,9 @@ export interface ThumbnailsPassOutput {
   fromFrame: number;
   fromSource: number;
   failed: number;
+  gridGenerated: number;
+  gridSkipped: number;
+  gridFailed: number;
   failures: DriveRunFailure[];
 }
 
@@ -78,6 +81,9 @@ export const runThumbnailsPass = async (
     fromFrame: 0,
     fromSource: 0,
     failed: 0,
+    gridGenerated: 0,
+    gridSkipped: 0,
+    gridFailed: 0,
     failures: [...discovery.value.failures],
   };
 
@@ -113,6 +119,24 @@ export const runThumbnailsPass = async (
             failed: output.failed,
           },
         });
+      const framePath = await storedAnalysisFramePath(deps.fs, paths.framesDir);
+      if (!framePath.ok) return framePath;
+      if (framePath.value !== null) {
+        const gridThumbnailPath = gridThumbnailArtifactPath(deps.fs, root.value, videoPath);
+        const grid = await generateGridThumbnail(deps, {
+          framePath: framePath.value,
+          gridThumbnailPath,
+          force: input.force,
+          priority: 'background',
+        });
+        if (!grid.ok) {
+          output.gridFailed += 1;
+        } else if (grid.value.skipped) {
+          output.gridSkipped += 1;
+        } else {
+          output.gridGenerated += 1;
+        }
+      }
       if (!input.force) {
         const exists = await deps.fs.isFile(thumbnailPath);
         if (!exists.ok) return exists;
@@ -123,8 +147,6 @@ export const runThumbnailsPass = async (
           continue;
         }
       }
-      const framePath = await storedAnalysisFramePath(deps.fs, paths.framesDir);
-      if (!framePath.ok) return framePath;
       const source: 'frame' | 'video' = framePath.value === null ? 'video' : 'frame';
       const generated = framePath.value === null
         ? await generateThumbnail(deps, { videoPath, force: input.force, priority: 'background' })
@@ -164,6 +186,9 @@ export const runThumbnailsPass = async (
       fromFrame: output.fromFrame,
       fromSource: output.fromSource,
       failed: output.failed,
+      gridGenerated: output.gridGenerated,
+      gridSkipped: output.gridSkipped,
+      gridFailed: output.gridFailed,
     },
   });
   if (!done.ok) return done;

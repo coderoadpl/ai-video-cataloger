@@ -1955,7 +1955,7 @@ const fakeCapturedAtCompare = (left: CatalogSearchRow, right: CatalogSearchRow, 
   if (left.capturedAt === null) return 1;
   if (right.capturedAt === null) return -1;
   if (left.capturedAt === right.capturedAt) return left.fileName.localeCompare(right.fileName);
-  return left.capturedAt < right.capturedAt ? direction : -direction;
+  return left.capturedAt < right.capturedAt ? -direction : direction;
 };
 
 const uniqueFingerprints = (rows: readonly FaceObservation[]): string[] =>
@@ -2352,6 +2352,54 @@ export class InMemoryPhotosStore implements PhotosStore {
     return Promise.resolve(ok(rows));
   }
 
+  collectionPage(input: {
+    match: string | null;
+    rankingTerms: readonly string[];
+    from: string | null;
+    to: string | null;
+    tagTermSets: readonly (readonly string[])[];
+    sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
+    limit: number;
+    offset: number;
+  }): Promise<Result<{ total: number; rows: PhotoSearchRow[] }, AppError>> {
+    const rows = [...this.photoRows.values()]
+      .map((photo): PhotoSearchRow | null => {
+        const selected = this.resolvePhotoAnalysis(photo.fingerprint);
+        const tags = selected?.tags === undefined ? [] : [...selected.tags];
+        const searchable = [photo.fileName, selected?.description ?? '', ...tags, photo.placeName ?? '']
+          .join(' ')
+          .toLocaleLowerCase();
+        if (input.match !== null && !input.rankingTerms.every((term) => searchable.includes(term.toLocaleLowerCase()))) {
+          return null;
+        }
+        if (input.tagTermSets.length > 0 && !input.tagTermSets.every((termSet) => termSet.some((term) => tags.includes(term)))) {
+          return null;
+        }
+        if (input.from !== null && (photo.capturedAt === null || photo.capturedAt < input.from)) return null;
+        if (input.to !== null && (photo.capturedAt === null || photo.capturedAt > input.to)) return null;
+        return {
+          fingerprint: photo.fingerprint,
+          fileName: photo.fileName,
+          currentPath: photo.currentPath,
+          ext: photo.ext,
+          capturedAt: photo.capturedAt,
+          description: selected?.description ?? null,
+          snippet: selected?.description ?? photo.fileName,
+          tags,
+          variantCount: this.analysesFor(photo.fingerprint).length,
+          thumbState: photo.thumbState,
+          proxyState: photo.proxyState,
+          missingAt: photo.missingAt,
+        };
+      })
+      .filter((row): row is PhotoSearchRow => row !== null);
+    const sorted = sortPhotoCollectionRows(rows, input.sort);
+    return Promise.resolve(ok({
+      total: sorted.length,
+      rows: sorted.slice(input.offset, input.offset + input.limit),
+    }));
+  }
+
   expandPhotoTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>> {
     const expansions = terms.flatMap((term) => {
       const canonical = this.photoTagAliases.get(term) ?? term;
@@ -2627,6 +2675,31 @@ export class FakePhotoMediaPort implements PhotoMediaPort {
     return Promise.resolve(ok(outcome));
   }
 }
+
+const sortPhotoCollectionRows = (
+  rows: readonly PhotoSearchRow[],
+  sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc',
+): PhotoSearchRow[] => {
+  const sorted = [...rows];
+  switch (sort) {
+    case 'relevance':
+    case 'captured_desc':
+      return sorted.sort((left, right) =>
+        capturedAtCompare(left.capturedAt, right.capturedAt, -1) || left.fileName.localeCompare(right.fileName));
+    case 'captured_asc':
+      return sorted.sort((left, right) =>
+        capturedAtCompare(left.capturedAt, right.capturedAt, 1) || left.fileName.localeCompare(right.fileName));
+    case 'name_asc':
+      return sorted.sort((left, right) => left.fileName.localeCompare(right.fileName));
+  }
+};
+
+const capturedAtCompare = (left: string | null, right: string | null, direction: 1 | -1): number => {
+  if (left === null && right === null) return 0;
+  if (left === null) return 1;
+  if (right === null) return -1;
+  return direction * left.localeCompare(right);
+};
 
 const sightingKey = (fingerprint: string, currentPath: string): string => `${fingerprint} ${currentPath}`;
 

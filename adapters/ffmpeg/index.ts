@@ -295,11 +295,14 @@ export class FfmpegMediaAdapter implements MediaPort {
 
     try {
       mkdirSync(path.dirname(input.thumbnailPath), { recursive: true });
+      const filter = input.fit === 'cover'
+        ? thumbnailCoverFilter(input.width, input.height)
+        : thumbnailScaleFilter(input.width, input.height);
       const generated = await runCommand(
         this.runtime
           .command(input.framePath)
           .frames(1)
-          .videoFilters(thumbnailScaleFilter(input.width, input.height))
+          .videoFilters(filter)
           .output(input.thumbnailPath),
       );
       if (!generated.ok) return generated;
@@ -397,6 +400,9 @@ export const thumbnailPathForVideo = (videoPath: string): string =>
 
 export const thumbnailScaleFilter = (width: number, height: number): string =>
   `scale=w='trunc(min(${width}/iw\\,${height}/ih)*iw/2)*2':h='trunc(min(${width}/iw\\,${height}/ih)*ih/2)*2'`;
+
+export const thumbnailCoverFilter = (width: number, height: number): string =>
+  `scale=w=${width}:h=${height}:force_original_aspect_ratio=increase,crop=${width}:${height}`;
 
 export const parseIso6709Location = (value: string): { lat: number; lon: number } | null => {
   const trimmed = value.trim();

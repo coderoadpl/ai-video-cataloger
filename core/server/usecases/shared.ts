@@ -21,6 +21,7 @@ import type { FileSystemPort } from '../ports.js';
 import type { ArtifactRoot } from './artifact-root.js';
 
 export const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'] as const;
+export const GRID_THUMBNAIL_EDGE = 512;
 export const IN_PROGRESS_STATUSES: readonly VideoStatus[] = [
   'frames_extracted',
   'audio_extracted',
@@ -112,6 +113,7 @@ export const artifactPaths = (
   summaryJsonPath: string;
   debugLogPath: string;
   thumbnailPath: string;
+  gridThumbnailPath: string;
 } => {
   const baseName = artifactBaseName(fs, videoPath, newName);
   return {
@@ -122,11 +124,15 @@ export const artifactPaths = (
     summaryJsonPath: fs.join(root.path, 'summaries', `${baseName}.json`),
     debugLogPath: fs.join(root.path, 'summaries', `${baseName}-debug.log`),
     thumbnailPath: fs.join(root.catalogDirectory, 'thumbnails', `${baseName}.jpg`),
+    gridThumbnailPath: fs.join(root.catalogDirectory, 'thumbnails', `${baseName}.grid.jpg`),
   };
 };
 
 export const thumbnailArtifactPath = (fs: FileSystemPort, root: ArtifactRoot, videoPath: string): string =>
   fs.join(root.catalogDirectory, 'thumbnails', `${fs.basenameWithoutExtension(videoPath)}.jpg`);
+
+export const gridThumbnailArtifactPath = (fs: FileSystemPort, root: ArtifactRoot, videoPath: string): string =>
+  fs.join(root.catalogDirectory, 'thumbnails', `${fs.basenameWithoutExtension(videoPath)}.grid.jpg`);
 
 export const parseSummary = (content: string | null): SummaryData | null => {
   if (content === null) return null;

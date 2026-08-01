@@ -435,6 +435,19 @@ export const photoProxiesInputSchema = z.object({
   force: z.boolean().optional().default(false),
 });
 
+export const photoGridThumbsInputSchema = z.object({
+  force: z.boolean().optional().default(false),
+});
+
+export const photoGridThumbsSummarySchema = z.object({
+  media: z.literal('photo'),
+  force: z.boolean(),
+  candidates: z.number().int().nonnegative(),
+  generated: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  failed: z.number().int().nonnegative(),
+});
+
 export const photoProxiesSummarySchema = z.object({
   media: z.literal('photo'),
   root: z.string(),
@@ -444,6 +457,7 @@ export const photoProxiesSummarySchema = z.object({
   skippedExisting: z.number(),
   failed: z.number(),
   thumbFailed: z.number(),
+  gridFailed: z.number().int().nonnegative().default(0),
 });
 
 export const photosProcessInputSchema = z.object({
@@ -533,6 +547,7 @@ export const photoListItemSchema = z.object({
   missingAt: z.number().nullable(),
   sightings: z.number(),
   thumbPath: z.string().nullable(),
+  gridThumbPath: z.string().nullable().default(null),
   proxyPath: z.string().nullable(),
 });
 
@@ -603,6 +618,7 @@ export const photosDetailOutputSchema = z.object({
   ownerPath: z.string(),
   proxyPath: z.string().nullable(),
   thumbPath: z.string().nullable(),
+  gridThumbPath: z.string().nullable().default(null),
   analysis: z.object({
     configId: configIdString(),
     label: z.string().min(1),
@@ -631,6 +647,7 @@ export const photosSearchResultSchema = z.object({
   proxyState: z.enum(['pending', 'done', 'failed', 'not_needed']),
   missingAt: z.number().nullable(),
   thumbPath: z.string().nullable(),
+  gridThumbPath: z.string().nullable().default(null),
   proxyPath: z.string().nullable(),
 });
 
@@ -737,6 +754,9 @@ export const thumbnailsSummarySchema = z.object({
   fromFrame: z.number().int().nonnegative(),
   fromSource: z.number().int().nonnegative(),
   failed: z.number().int().nonnegative(),
+  gridGenerated: z.number().int().nonnegative().default(0),
+  gridSkipped: z.number().int().nonnegative().default(0),
+  gridFailed: z.number().int().nonnegative().default(0),
   failures: z.array(driveRunFailureSchema),
 });
 
@@ -1255,6 +1275,7 @@ export const jobKindSchema = z.enum([
   'gps_backfill',
   'photo_scan',
   'photo_proxies',
+  'photo_grid_thumbs',
   'photo_process',
   'photo_gps_backfill',
 ]);
@@ -1308,6 +1329,10 @@ export const jobProgressStepSchema = z.enum([
   'photo-proxy-failed',
   'photo-proxies-skipped',
   'photo-proxies-summary',
+  'photo-grid-thumbs-scanning',
+  'photo-grid-thumb',
+  'photo-grid-thumb-failed',
+  'photo-grid-thumbs-summary',
   'photo-analysis-scanning',
   'photo-analysed',
   'photo-analysis-failed',
@@ -1368,6 +1393,7 @@ export const jobResultSchema = z.union([
   materializeSummarySchema,
   photoScanSummarySchema,
   photoProxiesSummarySchema,
+  photoGridThumbsSummarySchema,
   photoProcessSummarySchema,
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,
@@ -1529,6 +1555,7 @@ export const searchResultSchema = z.object({
   description: z.string().nullable(),
   snippet: z.string(),
   thumbnailPath: z.string().nullable(),
+  gridThumbnailPath: z.string().nullable().default(null),
   tags: z.array(z.string()),
   folder: z.object({
     folderId: folderIdSchema,
@@ -1552,6 +1579,61 @@ export const searchOutputSchema = z.object({
   count: z.number().int().nonnegative(),
   total: z.number().int().nonnegative(),
   results: z.array(searchResultSchema),
+});
+
+export const collectionMediaSchema = z.enum(['all', 'video', 'photo']);
+
+export const collectionVideoItemSchema = searchResultSchema.extend({
+  media: z.literal('video'),
+});
+
+export const collectionPhotoItemSchema = z.object({
+  media: z.literal('photo'),
+  fingerprint: photoFingerprintSchema,
+  fileName: z.string().min(1),
+  currentPath: z.string().min(1),
+  ext: photoExtensionSchema,
+  capturedAt: z.string().nullable(),
+  description: z.string().nullable(),
+  snippet: z.string(),
+  tags: z.array(z.string()),
+  variantCount: z.number().int().nonnegative(),
+  missingAt: z.number().nullable(),
+  thumbPath: z.string().nullable(),
+  gridThumbPath: z.string().nullable(),
+  proxyPath: z.string().nullable(),
+});
+
+export const collectionItemSchema = z.discriminatedUnion('media', [
+  collectionVideoItemSchema,
+  collectionPhotoItemSchema,
+]);
+
+export const collectionInputSchema = z.object({
+  query: z.string().min(1).optional(),
+  tags: csvList.default([]),
+  people: csvList.default([]),
+  place: z.string().min(1).optional(),
+  from: z.iso.date().or(z.iso.datetime()).optional(),
+  to: z.iso.date().or(z.iso.datetime()).optional(),
+  hasGps: queryBooleanTriState,
+  folderId: folderIdSchema.optional(),
+  sort: z.enum(SEARCH_SORTS).optional(),
+  media: collectionMediaSchema.default('all'),
+  limit: queryInteger(50, 1, 200),
+  cursor: z.string().optional(),
+});
+
+export const collectionOutputSchema = z.object({
+  query: z.string().nullable(),
+  media: collectionMediaSchema,
+  limit: z.number().int().positive(),
+  total: z.number().int().nonnegative(),
+  videoTotal: z.number().int().nonnegative(),
+  photoTotal: z.number().int().nonnegative(),
+  count: z.number().int().nonnegative(),
+  items: z.array(collectionItemSchema),
+  nextCursor: z.string().nullable(),
 });
 
 export const catalogLocationPlaceSchema = z.object({
@@ -1947,6 +2029,12 @@ export const API_ROUTES = {
   tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
   tagsSuggestAliases: { method: 'GET', path: '/api/tags/suggest-aliases', input: emptyInputSchema, output: tagsSuggestAliasesOutputSchema },
   searchQuery: { method: 'GET', path: '/api/search', input: searchInputSchema, output: searchOutputSchema },
+  libraryCollection: {
+    method: 'GET',
+    path: '/api/library/collection',
+    input: collectionInputSchema,
+    output: collectionOutputSchema,
+  },
   variantsList: {
     method: 'GET',
     path: '/api/variants',
@@ -2012,6 +2100,12 @@ export const API_ROUTES = {
     method: 'POST',
     path: '/api/photos/proxies',
     input: photoProxiesInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
+  photosGridThumbs: {
+    method: 'POST',
+    path: '/api/photos/grid-thumbs',
+    input: photoGridThumbsInputSchema,
     output: jobAcceptedOutputSchema,
   },
   photosProcess: {
@@ -2130,6 +2224,7 @@ export const API_PATHS = {
   tagsAlias: API_ROUTES.tagsAlias.path,
   tagsSuggestAliases: API_ROUTES.tagsSuggestAliases.path,
   searchQuery: API_ROUTES.searchQuery.path,
+  libraryCollection: API_ROUTES.libraryCollection.path,
   variantsList: API_ROUTES.variantsList.path,
   variantsSelect: API_ROUTES.variantsSelect.path,
   variantsDelete: API_ROUTES.variantsDelete.path,
@@ -2147,6 +2242,7 @@ export const API_PATHS = {
   photosStatus: API_ROUTES.photosStatus.path,
   photosForget: API_ROUTES.photosForget.path,
   photosProxies: API_ROUTES.photosProxies.path,
+  photosGridThumbs: API_ROUTES.photosGridThumbs.path,
   photosProcess: API_ROUTES.photosProcess.path,
   photosGpsBackfill: API_ROUTES.photosGpsBackfill.path,
   photosTree: API_ROUTES.photosTree.path,

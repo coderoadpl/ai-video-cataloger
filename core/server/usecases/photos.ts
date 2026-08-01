@@ -37,6 +37,7 @@ import {
   type FileSystemPort,
   type JobExecutionContext,
   type JobsPort,
+  type MediaPort,
   type PhotoFolderRecord,
   type PhotoListItem,
   type PhotoMediaPort,
@@ -53,10 +54,11 @@ import {
 } from '../ports.js';
 import { geminiMonthlyBudget, monthlyBudgetExceeded, type BudgetExceeded } from './budget.js';
 import { resolveConfigValues } from './config-resolution.js';
-import { photoArtifactsRoot, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
+import { photoArtifactsRoot, photoGridThumbPath, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
 import { reportStep as report } from './process-drive-batch.js';
 import { buildSearchMatch, sanitizeSearchQuery } from './search.js';
 import { shouldSkipDirectory } from './shared.js';
+import { generateGridThumbnail } from './thumbnail.js';
 
 export const PHOTO_SCAN_BATCH_SIZE = 500;
 export const PHOTO_PROXY_CONCURRENCY = 4;
@@ -68,6 +70,7 @@ export interface PhotosDeps {
   exif: ExifPort;
   jobs: JobsPort;
   photoMedia: PhotoMediaPort;
+  media: MediaPort;
   config: ConfigStore;
   analyzer: AnalyzerPort;
   spendLedger?: SpendLedgerPort | undefined;
@@ -107,6 +110,7 @@ export interface PhotoProxiesSummary {
   skippedExisting: number;
   failed: number;
   thumbFailed: number;
+  gridFailed: number;
 }
 
 export interface PhotosStatusOutput {
@@ -570,6 +574,7 @@ interface ProxyCounters {
   skippedExisting: number;
   failed: number;
   thumbFailed: number;
+  gridFailed: number;
 }
 
 export const runPhotoProxiesPass = async (
@@ -584,7 +589,7 @@ export const runPhotoProxiesPass = async (
   await report(progress, 'photo-proxies-scanning', { root, candidates: candidates.length });
 
   const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
-  const counters: ProxyCounters = { generated: 0, skippedExisting: 0, failed: 0, thumbFailed: 0 };
+  const counters: ProxyCounters = { generated: 0, skippedExisting: 0, failed: 0, thumbFailed: 0, gridFailed: 0 };
   const batches = chunk(candidates, PHOTO_SCAN_BATCH_SIZE);
   let processed = 0;
 
@@ -636,6 +641,7 @@ export const runPhotoProxiesPass = async (
     skippedExisting: counters.skippedExisting,
     failed: counters.failed,
     thumbFailed: counters.thumbFailed,
+    gridFailed: counters.gridFailed,
   });
 };
 
@@ -665,6 +671,7 @@ const processProxyCandidate = async (
 ): Promise<Result<void, AppError>> => {
   const proxyPath = photoProxyPath(deps.fs, artifactsRoot, candidate.fingerprint);
   const thumbPath = photoThumbPath(deps.fs, artifactsRoot, candidate.fingerprint);
+  const gridThumbPath = photoGridThumbPath(deps.fs, artifactsRoot, candidate.fingerprint);
 
   if (!force && await artifactsAreComplete(deps, candidate, proxyPath, thumbPath)) {
     counters.skippedExisting += 1;
@@ -691,6 +698,13 @@ const processProxyCandidate = async (
     if (!set.ok) return set;
     counters.generated += 1;
     if (thumbState === 'failed') counters.thumbFailed += 1;
+    const grid = await generateGridThumbnail(deps, {
+      framePath: proxyPath,
+      gridThumbnailPath: gridThumbPath,
+      force,
+      priority: 'background',
+    });
+    if (!grid.ok) counters.gridFailed += 1;
     return ok(undefined);
   }
 
@@ -711,6 +725,84 @@ const processProxyCandidate = async (
   return ok(undefined);
 };
 
+export interface PhotoGridThumbsSummary {
+  media: 'photo';
+  force: boolean;
+  candidates: number;
+  generated: number;
+  skipped: number;
+  failed: number;
+}
+
+export const enqueuePhotoGridThumbs = async (
+  deps: PhotosDeps,
+  input: { force: boolean },
+): Promise<Result<{ jobId: string }, AppError>> =>
+  deps.jobs.enqueue({
+    kind: 'photo_grid_thumbs',
+    payload: { force: input.force },
+    resourceKey: 'photo-grid-thumbs',
+    run: (context) => runPhotoGridThumbsPass(deps, input, context),
+  });
+
+export const runPhotoGridThumbsPass = async (
+  deps: PhotosDeps,
+  input: { force: boolean },
+  progress?: JobExecutionContext,
+): Promise<Result<PhotoGridThumbsSummary, AppError>> => {
+  const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  const proxiesDir = deps.fs.join(artifactsRoot, 'proxies');
+  const isDirectory = await deps.fs.isDirectory(proxiesDir);
+  if (!isDirectory.ok) return isDirectory;
+  const fingerprints: string[] = [];
+  if (isDirectory.value) {
+    const entries = await deps.fs.listDirectory(proxiesDir);
+    if (!entries.ok) return entries;
+    for (const entry of entries.value) {
+      if (entry.kind !== 'file' || !entry.name.endsWith('.jpg')) continue;
+      fingerprints.push(deps.fs.basenameWithoutExtension(entry.name));
+    }
+    fingerprints.sort();
+  }
+  await report(progress, 'photo-grid-thumbs-scanning', { candidates: fingerprints.length });
+
+  let generated = 0;
+  let skipped = 0;
+  let failed = 0;
+  for (const fingerprint of fingerprints) {
+    if (progress?.signal.aborted === true) {
+      return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
+    }
+    const proxyPath = photoProxyPath(deps.fs, artifactsRoot, fingerprint);
+    const gridThumbnailPath = photoGridThumbPath(deps.fs, artifactsRoot, fingerprint);
+    const grid = await generateGridThumbnail(deps, {
+      framePath: proxyPath,
+      gridThumbnailPath,
+      force: input.force,
+      priority: 'background',
+    });
+    if (!grid.ok) {
+      failed += 1;
+      await report(progress, 'photo-grid-thumb-failed', { fingerprint, code: grid.error.code });
+      continue;
+    }
+    if (grid.value.skipped) skipped += 1;
+    else generated += 1;
+    await report(progress, 'photo-grid-thumb', { fingerprint, generated, skipped, failed });
+  }
+
+  await report(progress, 'photo-grid-thumbs-summary', { candidates: fingerprints.length, generated, skipped, failed });
+
+  return ok({
+    media: 'photo',
+    force: input.force,
+    candidates: fingerprints.length,
+    generated,
+    skipped,
+    failed,
+  });
+};
+
 export const photosTree = async (
   deps: PhotosDeps,
 ): Promise<Result<{ media: 'photo'; roots: PhotoRootSummary[] }, AppError>> => {
@@ -719,12 +811,23 @@ export const photosTree = async (
   return ok({ media: 'photo', roots: roots.value });
 };
 
+const resolveGridThumbPath = async (
+  deps: PhotosDeps,
+  artifactsRoot: string,
+  fingerprint: string,
+): Promise<Result<string | null, AppError>> => {
+  const gridThumbPath = photoGridThumbPath(deps.fs, artifactsRoot, fingerprint);
+  const exists = await deps.fs.exists(gridThumbPath);
+  if (!exists.ok) return exists;
+  return ok(exists.value ? gridThumbPath : null);
+};
+
 export interface PhotosListOutput {
   media: 'photo';
   root: string | null;
   total: number;
   offset: number;
-  items: (PhotoListItem & { thumbPath: string | null; proxyPath: string | null })[];
+  items: (PhotoListItem & { thumbPath: string | null; gridThumbPath: string | null; proxyPath: string | null })[];
 }
 
 export const photosList = async (
@@ -735,16 +838,23 @@ export const photosList = async (
   const page = await deps.photos.listPhotosPage({ root, offset: input.offset, limit: input.limit });
   if (!page.ok) return page;
   const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  const items: PhotosListOutput['items'] = [];
+  for (const item of page.value.items) {
+    const gridThumbPath = await resolveGridThumbPath(deps, artifactsRoot, item.fingerprint);
+    if (!gridThumbPath.ok) return gridThumbPath;
+    items.push({
+      ...item,
+      proxyPath: item.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, item.fingerprint) : null,
+      thumbPath: item.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, item.fingerprint) : null,
+      gridThumbPath: gridThumbPath.value,
+    });
+  }
   return ok({
     media: 'photo',
     root,
     total: page.value.total,
     offset: input.offset,
-    items: page.value.items.map((item) => ({
-      ...item,
-      proxyPath: item.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, item.fingerprint) : null,
-      thumbPath: item.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, item.fingerprint) : null,
-    })),
+    items,
   });
 };
 
@@ -768,6 +878,7 @@ export interface PhotosDetailOutput {
   ownerPath: string;
   proxyPath: string | null;
   thumbPath: string | null;
+  gridThumbPath: string | null;
   analysis: PhotosDetailAnalysis | null;
 }
 
@@ -781,6 +892,8 @@ export const photosDetail = async (
   const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
   const analysis = await resolvedPhotoAnalysis(deps, input.fingerprint);
   if (!analysis.ok) return analysis;
+  const gridThumbPath = await resolveGridThumbPath(deps, artifactsRoot, detail.value.photo.fingerprint);
+  if (!gridThumbPath.ok) return gridThumbPath;
   return ok({
     media: 'photo',
     photo: detail.value.photo,
@@ -788,6 +901,7 @@ export const photosDetail = async (
     ownerPath: detail.value.photo.currentPath,
     proxyPath: detail.value.photo.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
     thumbPath: detail.value.photo.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
+    gridThumbPath: gridThumbPath.value,
     analysis: analysis.value,
   });
 };
@@ -823,7 +937,7 @@ export interface PhotosSearchOutput {
   limit: number;
   offset: number;
   count: number;
-  results: (PhotoSearchRow & { thumbPath: string | null; proxyPath: string | null })[];
+  results: (PhotoSearchRow & { thumbPath: string | null; gridThumbPath: string | null; proxyPath: string | null })[];
 }
 
 export const photosSearch = async (
@@ -843,11 +957,17 @@ export const photosSearch = async (
   });
   if (!rows.ok) return rows;
   const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
-  const results = rows.value.map((row) => ({
-    ...row,
-    proxyPath: row.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, row.fingerprint) : null,
-    thumbPath: row.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, row.fingerprint) : null,
-  }));
+  const results: PhotosSearchOutput['results'] = [];
+  for (const row of rows.value) {
+    const gridThumbPath = await resolveGridThumbPath(deps, artifactsRoot, row.fingerprint);
+    if (!gridThumbPath.ok) return gridThumbPath;
+    results.push({
+      ...row,
+      proxyPath: row.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, row.fingerprint) : null,
+      thumbPath: row.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, row.fingerprint) : null,
+      gridThumbPath: gridThumbPath.value,
+    });
+  }
   return ok({
     media: 'photo',
     query: input.query,

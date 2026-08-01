@@ -487,7 +487,8 @@ const driveCli = async (home: string, folder: string): Promise<void> => {
 
 const proxyArtifactCounts = (home: string): { proxies: number; thumbs: number } => ({
   proxies: readdirSync(join(home, '.ai-video-cataloger', 'photo-artifacts', 'proxies')).length,
-  thumbs: readdirSync(join(home, '.ai-video-cataloger', 'photo-artifacts', 'thumbs')).length,
+  thumbs: readdirSync(join(home, '.ai-video-cataloger', 'photo-artifacts', 'thumbs'))
+    .filter((name) => !name.endsWith('.grid.jpg')).length,
 });
 
 const photosCli = async (home: string, folder: string): Promise<void> => {

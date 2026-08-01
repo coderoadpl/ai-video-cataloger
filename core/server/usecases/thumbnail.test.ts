@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { generateThumbnail } from './thumbnail.js';
+import { generateGridThumbnail, generateThumbnail } from './thumbnail.js';
 import { InMemoryFileSystem, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
 
 describe('generateThumbnail', () => {
@@ -139,5 +139,57 @@ describe('generateThumbnail', () => {
       },
     ]);
     expect(media.thumbnailFromFrameInputs).toEqual([]);
+  });
+});
+
+describe('generateGridThumbnail', () => {
+  it('delegates a 512 cover-fit crop from the given frame to media', async () => {
+    const media = new InMemoryMedia();
+
+    const result = await generateGridThumbnail(
+      { fs: new InMemoryFileSystem('/work'), media },
+      {
+        framePath: '/work/frames/clip/frame-001.jpg',
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        force: false,
+        priority: 'background',
+      },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        path: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        generated: true,
+        skipped: false,
+      },
+    });
+    expect(media.thumbnailFromFrameInputs).toEqual([
+      {
+        framePath: '/work/frames/clip/frame-001.jpg',
+        thumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        width: 512,
+        height: 512,
+        force: false,
+        fit: 'cover',
+        priority: 'background',
+      },
+    ]);
+  });
+
+  it('maps media errors to thumbnail_error', async () => {
+    const media = new InMemoryMedia();
+    media.failFromFrame = true;
+
+    const result = await generateGridThumbnail(
+      { fs: new InMemoryFileSystem('/work'), media },
+      {
+        framePath: '/work/frames/clip/frame-001.jpg',
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        force: false,
+      },
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'thumbnail_error' } });
   });
 });

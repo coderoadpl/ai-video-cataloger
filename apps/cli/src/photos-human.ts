@@ -1,4 +1,4 @@
-import { photoGpsBackfillSummarySchema, photoProcessSummarySchema, photoProxiesSummarySchema, type photosVariantRecordSchema } from '@core/contract/index.js';
+import { photoGpsBackfillSummarySchema, photoGridThumbsSummarySchema, photoProcessSummarySchema, photoProxiesSummarySchema, type photosVariantRecordSchema } from '@core/contract/index.js';
 import type { z } from 'zod';
 import type { ApiClient } from '@core/client/index.js';
 import type { AppError, Result } from '@core/domain/index.js';
@@ -29,7 +29,14 @@ export const photosForgetHuman = (data: PhotosForgetOutput): string =>
 export const photosProxiesHuman = (data: unknown): string => {
   const summary = photoProxiesSummarySchema.parse(data);
   return `Proxies: ${summary.generated} generated, ${summary.failed} failed, `
-    + `${summary.skippedExisting} already present (${summary.candidates} candidates)`;
+    + `${summary.skippedExisting} already present (${summary.candidates} candidates), `
+    + `grid: ${summary.gridFailed} failed`;
+};
+
+export const photosGridThumbsHuman = (data: unknown): string => {
+  const summary = photoGridThumbsSummarySchema.parse(data);
+  return `Grid thumbnails: ${summary.generated} generated, ${summary.failed} failed, `
+    + `${summary.skipped} already present (${summary.candidates} candidates)`;
 };
 
 export const photosProcessHuman = (data: unknown): string => {

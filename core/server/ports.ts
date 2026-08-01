@@ -589,6 +589,16 @@ export interface PhotosStore {
   recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>>;
   searchPhotos(input: { match: string; rankingTerms: readonly string[]; limit: number; offset: number }):
     Promise<Result<PhotoSearchRow[], AppError>>;
+  collectionPage(input: {
+    match: string | null;
+    rankingTerms: readonly string[];
+    from: string | null;
+    to: string | null;
+    tagTermSets: readonly (readonly string[])[];
+    sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
+    limit: number;
+    offset: number;
+  }): Promise<Result<{ total: number; rows: PhotoSearchRow[] }, AppError>>;
   expandPhotoTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>>;
   listPhotoVariants(fingerprint: string): Promise<Result<PhotoVariantRecord[], AppError>>;
   resolveSelectedConfigId(fingerprint: string): Promise<Result<string | null, AppError>>;
@@ -855,6 +865,7 @@ export interface ThumbnailFromFrameInput {
   width: number;
   height: number;
   force: boolean;
+  fit?: 'inside' | 'cover' | undefined;
   priority?: 'foreground' | 'background' | undefined;
 }
 
@@ -1204,6 +1215,7 @@ export type JobKind =
   | 'gps_backfill'
   | 'photo_scan'
   | 'photo_proxies'
+  | 'photo_grid_thumbs'
   | 'photo_process'
   | 'photo_gps_backfill';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
@@ -1255,6 +1267,10 @@ export type ProcessJobStep =
   | 'photo-proxy-failed'
   | 'photo-proxies-skipped'
   | 'photo-proxies-summary'
+  | 'photo-grid-thumbs-scanning'
+  | 'photo-grid-thumb'
+  | 'photo-grid-thumb-failed'
+  | 'photo-grid-thumbs-summary'
   | 'photo-analysis-scanning'
   | 'photo-analysed'
   | 'photo-analysis-failed'

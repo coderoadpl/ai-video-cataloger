@@ -9,6 +9,7 @@ import {
   catalogTreeFolderOutputSchema,
   catalogTreeOutputSchema,
   checkOutputSchema,
+  collectionOutputSchema,
   configGetOutputSchema,
   configSetOutputSchema,
   credentialDeleteOutputSchema,
@@ -657,6 +658,31 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  libraryCollection: (input: z.input<typeof API_ROUTES.libraryCollection.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.libraryCollection.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.libraryCollection.method,
+      queryPath(API_ROUTES.libraryCollection.path, [
+        ['query', parsed.value.query ?? null],
+        ['tags', parsed.value.tags.length > 0 ? parsed.value.tags.join(',') : null],
+        ['people', parsed.value.people.length > 0 ? parsed.value.people.join(',') : null],
+        ['place', parsed.value.place ?? null],
+        ['from', parsed.value.from ?? null],
+        ['to', parsed.value.to ?? null],
+        ['hasGps', parsed.value.hasGps === undefined ? null : String(parsed.value.hasGps)],
+        ['folderId', parsed.value.folderId ?? null],
+        ['sort', parsed.value.sort ?? null],
+        ['media', parsed.value.media],
+        ['limit', String(parsed.value.limit)],
+        ['cursor', parsed.value.cursor ?? null],
+      ]),
+      collectionOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   listVariants: (input: z.input<typeof API_ROUTES.variantsList.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.variantsList.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));
@@ -886,6 +912,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       options,
       API_ROUTES.photosProxies.method,
       API_ROUTES.photosProxies.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  photosGridThumbs: (input: z.input<typeof API_ROUTES.photosGridThumbs.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosGridThumbs.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosGridThumbs.method,
+      API_ROUTES.photosGridThumbs.path,
       jobAcceptedOutputSchema,
       parsed.value,
       signal,

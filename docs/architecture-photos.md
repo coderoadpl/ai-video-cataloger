@@ -315,8 +315,24 @@ sidecar tree inside the photo folder. All of them live under one home root:
 ~/.ai-video-cataloger/photo-artifacts/
   proxies/{fingerprint}.jpg            # long edge ≤1280, quality ~82
   thumbs/{fingerprint}.jpg             # long edge ≤320
+  thumbs/{fingerprint}.grid.jpg        # 512 square, center-cropped, frame-first (proxy-derived)
   variants/{fingerprint}/{configId}/analysis.json
 ```
+
+`thumbs/{fingerprint}.grid.jpg` is the photo half of the video/photo-shared
+grid-thumbnail feature (`docs/architecture.md`, "Grid thumbnails"): the same
+`GRID_THUMBNAIL_EDGE` (512) square cover generated via
+`MediaPort.thumbnailFromFrame({ fit: 'cover' })` reading the already-written
+proxy — one implementation of "square center-crop" shared with videos, zero
+changes to `PhotoMediaPort`/sips. `runPhotoProxiesPass` generates it
+best-effort right after a proxy lands `done` (a grid failure is counted in
+the pass summary's `gridFailed` and never flips `proxyState`/`thumbState`);
+a new `photos grid-thumbs` job/route (`POST /api/photos/grid-thumbs`, job
+kind `photo_grid_thumbs`) walks `photo-artifacts/proxies/*.jpg` and
+backfills the grid sibling for every fingerprint found, independent of any
+particular root. `photosList`/`photosDetail`/`photosSearch` resolve
+`gridThumbPath` the same way they resolve `thumbPath` — an `fs.exists`
+check, no new state column.
 
 Three reasons, in order of force (challenge B3 + C1):
 
@@ -541,11 +557,15 @@ geometry-only and needs no change beyond a marker kind.
 ## 7. Contract, CLI, jobs
 
 - **Routes** (all zod, all in `core/contract/routes.ts`):
-  `POST /api/photos/scan|proxies|process|gps/backfill` → job envelope;
+  `POST /api/photos/scan|proxies|grid-thumbs|process|gps/backfill` → job envelope;
   `GET /api/photos/status|search|tree|detail|locations`;
   `POST /api/photos/forget`; variants:
   `GET /api/photos/variants`, `POST /api/photos/variants/select|delete|folder-default`.
   Faces routes stay `/api/faces/*` (shared identity, shared surface).
+  `GET /api/library/collection` (`docs/architecture.md`, "Library collection
+  feed") is the one video+photo merge route; it reads photos through a new
+  `PhotosStore.collectionPage` port method, not through `photosSearch` or a
+  new photo-only route.
 - **Job results are discriminated (challenge B5).** `jobResultSchema` is an
   untagged `z.union` of stripping object schemas — first-success wins, so a
   photo summary sharing keys with `gpsBackfillSummarySchema` or
@@ -568,10 +588,12 @@ geometry-only and needs no change beyond a marker kind.
   the video `gps backfill` command's actual flag defaults byte-for-byte
   (the wave 4b spec's draft default of 90 minutes was never the video CLI's
   real default and was not carried over).
-- **Jobs**: `photo_scan`, `photo_proxies`, `photo_process` on the existing
-  in-process `JobsPort`, with **resource keys** per the established
-  convention (`faces-index:${root}`, `thumbnails:${root}`):
-  `photo-scan:${root}`, `photo-proxies:${root}`, `photo-process:${root}` —
+- **Jobs**: `photo_scan`, `photo_proxies`, `photo_grid_thumbs`, `photo_process`
+  on the existing in-process `JobsPort`, with **resource keys** per the
+  established convention (`faces-index:${root}`, `thumbnails:${root}`):
+  `photo-scan:${root}`, `photo-proxies:${root}`, `photo-process:${root}`,
+  and the root-independent `photo-grid-thumbs` (the backfill walks
+  `photo-artifacts/proxies/*.jpg` directly, not a scanned root) —
   plus `'faces-write'` on every faces-writing leg (§5). `photo_runs`
   provides drive-run-style resumability at **batch granularity** (§1a);
   progress polled via the existing job routes. Long photo jobs are

@@ -3,7 +3,7 @@ import { appError, ok, type AppError, type CatalogPlace, type Result } from '@co
 import type { CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
 import { artifactPaths } from './shared.js';
 import { discoverArtifactRoot } from './artifact-root.js';
-import { generateThumbnail } from './thumbnail.js';
+import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 
 export interface SearchDeps {
   globalCatalog: GlobalCatalogStore;
@@ -40,6 +40,7 @@ export interface SearchResult {
   description: string | null;
   snippet: string;
   thumbnailPath: string | null;
+  gridThumbnailPath: string | null;
   tags: string[];
   folder: {
     folderId: string;
@@ -140,6 +141,8 @@ export const search = async (
     if (!online.ok) return online;
     const thumbnailPath = await resolveThumbnailPath(deps, row, online.value, input.thumbnails);
     if (!thumbnailPath.ok) return thumbnailPath;
+    const gridThumbnailPath = await resolveGridThumbnailPath(deps, row, online.value, input.thumbnails);
+    if (!gridThumbnailPath.ok) return gridThumbnailPath;
     results.push({
       fingerprint: row.fingerprint,
       variantCount: row.variantCount,
@@ -148,6 +151,7 @@ export const search = async (
       description: row.description,
       snippet: row.snippet,
       thumbnailPath: thumbnailPath.value,
+      gridThumbnailPath: gridThumbnailPath.value,
       tags: row.tags,
       folder: {
         folderId: row.folder.folderId,
@@ -171,7 +175,7 @@ export const search = async (
   });
 };
 
-const resolveThumbnailPath = async (
+export const resolveThumbnailPath = async (
   deps: SearchDeps,
   row: CatalogSearchRow,
   online: boolean,
@@ -192,6 +196,32 @@ const resolveThumbnailPath = async (
   if (analysis.value === null) return ok(null);
   const generated = await generateThumbnail(deps, { videoPath, force: false });
   return ok(generated.ok ? generated.value.thumbnailPath : null);
+};
+
+export const resolveGridThumbnailPath = async (
+  deps: SearchDeps,
+  row: CatalogSearchRow,
+  online: boolean,
+  thumbnails: ThumbnailsMode,
+): Promise<Result<string | null, AppError>> => {
+  if (!online) return ok(null);
+  const videoPath = deps.fs.join(row.folder.currentPath, row.finalName ?? row.fileName);
+  const root = await discoverArtifactRoot(deps.fs, row.folder.currentPath);
+  if (!root.ok) return root;
+  const { gridThumbnailPath, framesDir } = artifactPaths(deps.fs, root.value, videoPath, row.finalName);
+  const exists = await deps.fs.exists(gridThumbnailPath);
+  if (!exists.ok) return exists;
+  if (exists.value) return ok(gridThumbnailPath);
+  if (thumbnails === 'existing') return ok(null);
+  const framePath = await storedAnalysisFramePath(deps.fs, framesDir);
+  if (!framePath.ok) return framePath;
+  if (framePath.value === null) return ok(null);
+  const generated = await generateGridThumbnail(deps, {
+    framePath: framePath.value,
+    gridThumbnailPath,
+    force: false,
+  });
+  return ok(generated.ok ? generated.value.path : null);
 };
 
 export const sanitizeSearchQuery = (query: string): Result<SanitizedSearchQuery, AppError> => {

@@ -1080,6 +1080,13 @@ describe('process pipeline thumbnail generation', () => {
         framePath: `/work/frames/${finalBase}/frame-001.jpg`,
         thumbnailPath: `/work/.ai-video-cataloger/thumbnails/${finalBase}.jpg`,
       }),
+      expect.objectContaining({
+        framePath: `/work/frames/${finalBase}/frame-001.jpg`,
+        thumbnailPath: `/work/.ai-video-cataloger/thumbnails/${finalBase}.grid.jpg`,
+        width: 512,
+        height: 512,
+        fit: 'cover',
+      }),
     ]);
   });
 
@@ -1209,6 +1216,7 @@ describe('process pipeline rename and jobs', () => {
     deps.fs.addFile('/work/summaries/Clip One.txt', { content: 'summary txt' });
     deps.fs.addFile('/work/summaries/Clip One-debug.log', { content: 'debug' });
     deps.fs.addFile('/work/.ai-video-cataloger/thumbnails/Clip One.jpg');
+    deps.fs.addFile('/work/.ai-video-cataloger/thumbnails/Clip One.grid.jpg');
     deps.fs.addFile('/work/.ai-video-cataloger/artifacts/frames/hash-clip/frm_key/frame-001.jpg');
     deps.fs.addFile('/work/.ai-video-cataloger/variants/hash-clip/cfg_0123456789ab/summary.json', { content: '{}' });
 
@@ -1249,6 +1257,10 @@ describe('process pipeline rename and jobs', () => {
     await expect(deps.fs.exists('/work/summaries/2024-05-06_existing-summary-2.json')).resolves.toEqual({ ok: true, value: true });
     await expect(deps.fs.exists('/work/summaries/2024-05-06_existing-summary-2-debug.log')).resolves.toEqual({ ok: true, value: true });
     await expect(deps.fs.exists('/work/.ai-video-cataloger/thumbnails/2024-05-06_existing-summary-2.jpg')).resolves.toEqual({
+      ok: true,
+      value: true,
+    });
+    await expect(deps.fs.exists('/work/.ai-video-cataloger/thumbnails/2024-05-06_existing-summary-2.grid.jpg')).resolves.toEqual({
       ok: true,
       value: true,
     });

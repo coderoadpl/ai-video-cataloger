@@ -204,6 +204,82 @@ describe('search', () => {
     expect(media.thumbnailInputs).toEqual([]);
   });
 
+  it('resolves an existing grid thumbnail path and null when absent', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addDirectory('/media/online');
+    fs.addFile('/media/online/.ai-video-cataloger/thumbnails/renamed.grid.jpg');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFolder(folderB);
+    await store.upsertFile(file('fp-grid', folderA.folderId, 'drone-a.mp4'));
+    await store.upsertAnalysis(analysis('fp-grid', { finalName: 'renamed.mp4', transcript: 'drone', tags: [] }));
+    await store.upsertFile(file('fp-nogrid', folderB.folderId, 'drone-b.mp4'));
+    await store.upsertAnalysis(analysis('fp-nogrid', { transcript: 'drone', tags: [] }));
+
+    const result = await search({ globalCatalog: store, fs, media: new InMemoryMedia() }, { query: 'drone', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const withGrid = result.value.results.find((row) => row.fingerprint === 'fp-grid');
+    const withoutGrid = result.value.results.find((row) => row.fingerprint === 'fp-nogrid');
+    expect(withGrid?.gridThumbnailPath).toBe('/media/online/.ai-video-cataloger/thumbnails/renamed.grid.jpg');
+    expect(withoutGrid?.gridThumbnailPath).toBeNull();
+  });
+
+  it('generates a missing grid thumbnail only when a stored analysis frame exists, in ensure mode', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone.mp4');
+    fs.addFile('/media/online/frames/drone/frame-001.jpg');
+    const media = new InMemoryMedia();
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-lazy-grid', folderA.folderId, 'drone.mp4'));
+    await store.upsertAnalysis(analysis('fp-lazy-grid', { description: 'drone flight' }));
+
+    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
+
+    expect(result.ok && result.value.results[0]?.gridThumbnailPath)
+      .toBe('/media/online/.ai-video-cataloger/thumbnails/drone.grid.jpg');
+    expect(media.thumbnailFromFrameInputs).toContainEqual(expect.objectContaining({
+      framePath: '/media/online/frames/drone/frame-001.jpg',
+      thumbnailPath: '/media/online/.ai-video-cataloger/thumbnails/drone.grid.jpg',
+      width: 512,
+      height: 512,
+      fit: 'cover',
+    }));
+  });
+
+  it('never generates a grid thumbnail in existing mode', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone.mp4');
+    fs.addFile('/media/online/frames/drone/frame-001.jpg');
+    const media = new InMemoryMedia();
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-existing-mode', folderA.folderId, 'drone.mp4'));
+    await store.upsertAnalysis(analysis('fp-existing-mode', { description: 'drone flight' }));
+
+    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'existing' as const, limit: 10, offset: 0 });
+
+    expect(result.ok && result.value.results[0]?.gridThumbnailPath).toBeNull();
+    expect(media.thumbnailFromFrameInputs).toEqual([]);
+  });
+
+  it('does not invent a grid thumbnail from source when no frame is stored', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone.mp4');
+    const media = new InMemoryMedia();
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-no-frame', folderA.folderId, 'drone.mp4'));
+    await store.upsertAnalysis(analysis('fp-no-frame', { description: 'drone flight' }));
+
+    const result = await search({ globalCatalog: store, fs, media }, { query: 'drone', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'ensure' as const, limit: 10, offset: 0 });
+
+    expect(result.ok && result.value.results[0]?.gridThumbnailPath).toBeNull();
+    expect(media.thumbnailFromFrameInputs).toEqual([]);
+  });
+
   it('expands the match handed to the store through a tag alias in both directions', async () => {
     const fs = new InMemoryFileSystem('/media');
     const store = new InMemoryGlobalCatalogStore();

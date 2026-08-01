@@ -777,6 +777,74 @@ export class SqlJsPhotosStore implements PhotosStore {
     });
   }
 
+  async collectionPage(input: {
+    match: string | null;
+    rankingTerms: readonly string[];
+    from: string | null;
+    to: string | null;
+    tagTermSets: readonly (readonly string[])[];
+    sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
+    limit: number;
+    offset: number;
+  }): Promise<Result<{ total: number; rows: PhotoSearchRow[] }, AppError>> {
+    return this.read((_db, client) => {
+      const tagWhere = photoTagWhereClauses(input.tagTermSets);
+      const dateWhere = photoDateWhereClauses(input.from, input.to);
+      const clauses = [...tagWhere.clauses, ...dateWhere.clauses];
+      const params = { ...tagWhere.params, ...dateWhere.params };
+
+      if (input.match !== null) {
+        const extraWhere = clauses.length === 0 ? '' : ` AND ${clauses.join(' AND ')}`;
+        const result = client.exec(
+          `SELECT
+              p.fingerprint, p.file_name, p.current_path, p.ext, p.captured_at,
+              NULLIF(sd.description, ''),
+              snippet(photo_search_documents_fts, '<mark>', '</mark>', ' ... ', -1, 12),
+              sd.tags_text, sd.place,
+              (SELECT COUNT(*) FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) AS variant_count,
+              p.thumb_state, p.proxy_state, p.missing_at
+            FROM photo_search_documents_fts
+            JOIN photo_search_documents sd ON sd.docid = photo_search_documents_fts.docid
+            JOIN photos p ON p.fingerprint = sd.fingerprint
+            WHERE photo_search_documents_fts MATCH $match${extraWhere}`,
+          { $match: input.match, ...params },
+        );
+        const scored = (result[0]?.values ?? []).map((row) => photoSearchRowFromValues(row, input.rankingTerms));
+        const sorted = scored.sort((left, right) =>
+          right.score - left.score
+          || left.row.fileName.localeCompare(right.row.fileName)
+          || left.row.fingerprint.localeCompare(right.row.fingerprint));
+        return {
+          total: sorted.length,
+          rows: sorted.slice(input.offset, input.offset + input.limit).map((entry) => entry.row),
+        };
+      }
+
+      const baseFrom = `FROM photos p
+          LEFT JOIN photo_search_documents sd ON sd.fingerprint = p.fingerprint`;
+      const where = clauses.length === 0 ? '1=1' : clauses.join(' AND ');
+      const countResult = client.exec(`SELECT COUNT(*) ${baseFrom} WHERE ${where}`, params);
+      const total = numberValue(countResult[0]?.values[0]?.[0]);
+      const sort = input.sort === 'relevance' ? 'captured_desc' : input.sort;
+      const result = client.exec(
+        `SELECT
+            p.fingerprint, p.file_name, p.current_path, p.ext, p.captured_at,
+            NULLIF(sd.description, ''),
+            '' AS snippet,
+            COALESCE(sd.tags_text, ''), COALESCE(sd.place, ''),
+            (SELECT COUNT(*) FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) AS variant_count,
+            p.thumb_state, p.proxy_state, p.missing_at
+          ${baseFrom}
+          WHERE ${where}
+          ORDER BY ${photoCollectionOrderBySql(sort)}
+          LIMIT $limit OFFSET $offset`,
+        { ...params, $limit: input.limit, $offset: input.offset },
+      );
+      const rows = (result[0]?.values ?? []).map((row) => photoSearchRowFromValues(row, input.rankingTerms).row);
+      return { total, rows };
+    });
+  }
+
   async expandPhotoTagTerms(terms: readonly string[]): Promise<Result<TagTermExpansion[], AppError>> {
     const unique = [...new Set(terms)].filter((term) => term.length > 0);
     if (unique.length === 0) return ok([]);
@@ -1454,6 +1522,50 @@ const photoSearchRowFromValues = (
     },
     score: photoSearchScore({ fileName, place, tagsText, description: description ?? '' }, rankingTerms),
   };
+};
+
+const photoTagWhereClauses = (
+  tagTermSets: readonly (readonly string[])[],
+): { clauses: string[]; params: Record<string, string> } => {
+  const clauses: string[] = [];
+  const params: Record<string, string> = {};
+  tagTermSets.forEach((termSet, setIndex) => {
+    const alternatives = termSet.map((term, termIndex) => {
+      const key = `$tag${String(setIndex)}_${String(termIndex)}`;
+      params[key] = `%\n${term}\n%`;
+      return `('\n' || COALESCE(sd.tags_text, '') || '\n') LIKE ${key}`;
+    });
+    if (alternatives.length > 0) clauses.push(`(${alternatives.join(' OR ')})`);
+  });
+  return { clauses, params };
+};
+
+const photoDateWhereClauses = (
+  from: string | null,
+  to: string | null,
+): { clauses: string[]; params: Record<string, string> } => {
+  const clauses: string[] = [];
+  const params: Record<string, string> = {};
+  if (from !== null) {
+    clauses.push('p.captured_at >= $capturedFrom');
+    params.$capturedFrom = from;
+  }
+  if (to !== null) {
+    clauses.push('p.captured_at <= $capturedTo');
+    params.$capturedTo = to;
+  }
+  return { clauses, params };
+};
+
+const photoCollectionOrderBySql = (sort: 'captured_desc' | 'captured_asc' | 'name_asc'): string => {
+  switch (sort) {
+    case 'captured_desc':
+      return 'p.captured_at IS NULL, p.captured_at DESC, p.file_name ASC';
+    case 'captured_asc':
+      return 'p.captured_at IS NULL, p.captured_at ASC, p.file_name ASC';
+    case 'name_asc':
+      return 'p.file_name ASC';
+  }
 };
 
 const photoSearchScore = (

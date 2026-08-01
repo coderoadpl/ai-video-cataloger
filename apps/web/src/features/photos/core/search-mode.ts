@@ -25,6 +25,7 @@ export const searchResultsToItems = (results: readonly PhotosSearchResult[]): Ph
     missingAt: result.missingAt,
     sightings: 1,
     thumbPath: result.thumbPath,
+    gridThumbPath: result.gridThumbPath,
     proxyPath: result.proxyPath,
   }));
 

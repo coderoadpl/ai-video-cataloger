@@ -85,6 +85,7 @@ export type CancelJobInput = z.input<typeof API_ROUTES.jobCancel.input>;
 export type TestProviderInput = z.input<typeof API_ROUTES.providerTest.input>;
 export type ReadinessInput = z.input<typeof API_ROUTES.readiness.input>;
 export type SearchInput = z.input<typeof API_ROUTES.searchQuery.input>;
+export type CollectionInput = z.input<typeof API_ROUTES.libraryCollection.input>;
 export type InstallFaceArtifactsInput = z.input<typeof API_ROUTES.faceArtifactsInstall.input>;
 export type FacesIndexInput = z.input<typeof API_ROUTES.facesIndex.input>;
 export type FacesNameInput = z.input<typeof API_ROUTES.facesName.input>;
@@ -97,6 +98,7 @@ export type PhotosScanInput = z.input<typeof API_ROUTES.photosScan.input>;
 export type PhotosStatusInput = z.input<typeof API_ROUTES.photosStatus.input>;
 export type PhotosForgetInput = z.input<typeof API_ROUTES.photosForget.input>;
 export type PhotosProxiesInput = z.input<typeof API_ROUTES.photosProxies.input>;
+export type PhotosGridThumbsInput = z.input<typeof API_ROUTES.photosGridThumbs.input>;
 export type PhotosProcessInput = z.input<typeof API_ROUTES.photosProcess.input>;
 export type PhotosListInput = z.input<typeof API_ROUTES.photosList.input>;
 export type PhotosDetailInput = z.input<typeof API_ROUTES.photosDetail.input>;
@@ -109,6 +111,7 @@ export type PhotosVariantsSelectInput = z.input<typeof API_ROUTES.photosVariants
 export type IndexStatusOutput = z.output<typeof API_ROUTES.indexStatus.output>;
 export type JobOutput = z.output<typeof API_ROUTES.jobStatus.output>;
 export type SearchOutput = z.output<typeof API_ROUTES.searchQuery.output>;
+export type CollectionOutput = z.output<typeof API_ROUTES.libraryCollection.output>;
 export type LibraryFacetsOutput = z.output<typeof API_ROUTES.libraryFacets.output>;
 export type TagsListOutput = z.output<typeof API_ROUTES.tagsList.output>;
 export type CatalogLocationsOutput = z.output<typeof API_ROUTES.catalogLocations.output>;
@@ -220,6 +223,25 @@ export const searchScopes = {
   ] as const,
 };
 
+export const collectionScopes = {
+  all: () => ['libraryCollection'] as const,
+  query: (input: z.output<typeof API_ROUTES.libraryCollection.input>) => [
+    'libraryCollection',
+    input.query ?? null,
+    input.tags,
+    input.people,
+    input.place ?? null,
+    input.from ?? null,
+    input.to ?? null,
+    input.hasGps ?? null,
+    input.folderId ?? null,
+    input.sort ?? null,
+    input.media,
+    input.limit,
+    input.cursor ?? null,
+  ] as const,
+};
+
 export const tagsScopes = {
   all: () => ['tags'] as const,
 };
@@ -293,6 +315,7 @@ export const mutationScopes = {
   photosScan: () => ['photosScan'] as const,
   photosForget: () => ['photosForget'] as const,
   photosProxies: () => ['photosProxies'] as const,
+  photosGridThumbs: () => ['photosGridThumbs'] as const,
   photosProcess: () => ['photosProcess'] as const,
   selectVariant: () => ['variants', 'select'] as const,
   deleteVariant: () => ['variants', 'delete'] as const,
@@ -535,6 +558,15 @@ export const searchQuery = (api: ApiClient, input: SearchInput) => {
     queryKey: searchScopes.query(parsed),
     staleTime: 0,
     call: ({ signal }) => api.search(parsed, signal),
+  });
+};
+
+export const libraryCollectionQuery = (api: ApiClient, input: CollectionInput) => {
+  const parsed = API_ROUTES.libraryCollection.input.parse(input);
+  return defineQuery({
+    queryKey: collectionScopes.query(parsed),
+    staleTime: 0,
+    call: ({ signal }) => api.libraryCollection(parsed, signal),
   });
 };
 
@@ -787,6 +819,15 @@ export const photosProxiesMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.photosProxies(),
     call: (variables: PhotosProxiesInput) => api.photosProxies(variables),
+    onSettled: (_data, _error, _variables, _onMutateResult, context) => {
+      void context.client.invalidateQueries({ queryKey: photosScopes.all() });
+    },
+  });
+
+export const photosGridThumbsMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.photosGridThumbs(),
+    call: (variables: PhotosGridThumbsInput) => api.photosGridThumbs(variables),
     onSettled: (_data, _error, _variables, _onMutateResult, context) => {
       void context.client.invalidateQueries({ queryKey: photosScopes.all() });
     },

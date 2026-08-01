@@ -17,6 +17,7 @@ import {
   jobResultSchema,
   materializeSummarySchema,
   photoGpsBackfillSummarySchema,
+  photoProxiesSummarySchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
@@ -24,6 +25,9 @@ import {
   photosVariantsDeleteOutputSchema,
   photosVariantsFolderDefaultOutputSchema,
   photosVariantsListOutputSchema,
+  collectionInputSchema,
+  collectionItemSchema,
+  collectionOutputSchema,
   searchInputSchema,
   searchOutputSchema,
   tagsSuggestAliasesOutputSchema,
@@ -352,6 +356,76 @@ describe('route schemas', () => {
   it('treats hasGps=false as a distinct explicit filter from an absent hasGps', () => {
     expect(searchInputSchema.parse({ tags: 'beach', hasGps: 'false' }).hasGps).toBe(false);
     expect(searchInputSchema.parse({ tags: 'beach' }).hasGps).toBeUndefined();
+  });
+
+  it('parses a bare browse-everything collection input with defaults, cursor optional', () => {
+    const parsed = collectionInputSchema.parse({});
+    expect(parsed).toMatchObject({ tags: [], people: [], media: 'all', limit: 50 });
+    expect(parsed.cursor).toBeUndefined();
+    expect(parsed.sort).toBeUndefined();
+  });
+
+  it('round-trips a media-scoped collection request with a cursor', () => {
+    const parsed = collectionInputSchema.parse({
+      query: 'drone',
+      media: 'photo',
+      limit: '25',
+      cursor: 'eyJ2IjoxfQ',
+    });
+    expect(parsed).toMatchObject({ query: 'drone', media: 'photo', limit: 25, cursor: 'eyJ2IjoxfQ' });
+  });
+
+  it('discriminates video and photo collection items by the media literal', () => {
+    const video = collectionItemSchema.parse({
+      media: 'video',
+      fingerprint: 'fp-1',
+      variantCount: 0,
+      fileName: 'clip.mp4',
+      finalName: null,
+      description: null,
+      snippet: '',
+      thumbnailPath: null,
+      tags: [],
+      folder: { folderId: '11111111-1111-4111-8111-111111111111', currentPath: '/videos', displayName: 'videos', online: true },
+      gps: null,
+      missing: false,
+      capturedAt: null,
+      place: null,
+    });
+    expect(video.media).toBe('video');
+
+    const photo = collectionItemSchema.parse({
+      media: 'photo',
+      fingerprint: 'ph_0000000000000001',
+      fileName: 'a.jpg',
+      currentPath: '/photos/a.jpg',
+      ext: 'jpg',
+      capturedAt: null,
+      description: null,
+      snippet: '',
+      tags: [],
+      variantCount: 0,
+      missingAt: null,
+      thumbPath: null,
+      gridThumbPath: null,
+      proxyPath: null,
+    });
+    expect(photo.media).toBe('photo');
+  });
+
+  it('parses a collection output envelope with per-media totals and a nullable next cursor', () => {
+    const parsed = collectionOutputSchema.parse({
+      query: null,
+      media: 'all',
+      limit: 50,
+      total: 3,
+      videoTotal: 2,
+      photoTotal: 1,
+      count: 3,
+      items: [],
+      nextCursor: null,
+    });
+    expect(parsed.nextCursor).toBeNull();
   });
 
   it('defines family-specific cheap provider check results', () => {
@@ -923,6 +997,7 @@ describe('route schemas', () => {
       skippedExisting: 2,
       failed: 0,
       thumbFailed: 0,
+      gridFailed: 0,
     };
 
     const viaUnion = jobResultSchema.parse(sample);
@@ -930,6 +1005,23 @@ describe('route schemas', () => {
 
     const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
     expect(acceptingCount).toBe(1);
+  });
+
+  it('defaults photoProxiesSummarySchema.gridFailed for old NDJSON payloads without the field', () => {
+    const legacy = {
+      media: 'photo' as const,
+      root: '/photos',
+      force: false,
+      candidates: 10,
+      generated: 8,
+      skippedExisting: 2,
+      failed: 0,
+      thumbFailed: 0,
+    };
+
+    const parsed = photoProxiesSummarySchema.parse(legacy);
+
+    expect(parsed.gridFailed).toBe(0);
   });
 
   it('round-trips photoProcessSummarySchema through jobResultSchema with the media discriminator, and every other member rejects it (P2)', () => {

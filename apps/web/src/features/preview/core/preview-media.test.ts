@@ -16,6 +16,7 @@ const searchResult = (overrides: Partial<SearchResult> = {}): SearchResult => ({
   description: 'a description',
   snippet: '',
   thumbnailPath: null,
+  gridThumbnailPath: null,
   tags: ['beach'],
   folder: {
     folderId: '11111111-1111-4111-8111-111111111111',

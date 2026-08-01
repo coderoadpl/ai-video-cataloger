@@ -46,6 +46,54 @@ describe('runThumbnailsPass', () => {
     expect(result.value.fromFrame).toBe(2);
     expect(result.value.fromSource).toBe(0);
     expect(result.value.failed).toBe(0);
+    expect(result.value.gridGenerated).toBe(2);
+    expect(result.value.gridSkipped).toBe(0);
+    expect(result.value.gridFailed).toBe(0);
+    expect(media.thumbnailFromFrameInputs).toContainEqual(expect.objectContaining({
+      thumbnailPath: '/root/.ai-video-cataloger/thumbnails/a.grid.jpg',
+      width: 512,
+      height: 512,
+      fit: 'cover',
+    }));
+  });
+
+  it('skips generating the .grid.jpg on a second pass without force, and regenerates with force', async () => {
+    const fs = new InMemoryFileSystem('/root');
+    const media = new InMemoryMedia(fs);
+    seedCompletedFile(fs, '/root/a.mp4', 'a');
+
+    const first = await runThumbnailsPass({ fs, media }, { root: '/root', force: false });
+    expect(first.ok && first.value.gridGenerated).toBe(1);
+
+    const second = await runThumbnailsPass({ fs, media }, { root: '/root', force: false });
+    expect(second.ok && second.value.gridSkipped).toBe(1);
+    expect(second.ok && second.value.gridGenerated).toBe(0);
+
+    const forced = await runThumbnailsPass({ fs, media }, { root: '/root', force: true });
+    expect(forced.ok && forced.value.gridGenerated).toBe(1);
+  });
+
+  it('does not generate a .grid.jpg when the candidate has no stored analysis frame', async () => {
+    const fs = new InMemoryFileSystem('/root');
+    const media = new InMemoryMedia(fs);
+    fs.addFile('/root/a.mp4', { size: 100 });
+    fs.addFile('/root/summaries/a.json', {
+      content: JSON.stringify({
+        schemaVersion: 1,
+        description: 'd',
+        suggestedFilename: 'a',
+        fullAnalysis: 'DESCRIPTION: d\nFILENAME: x',
+        analyzedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    });
+
+    const result = await runThumbnailsPass({ fs, media }, { root: '/root', force: false });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.gridGenerated).toBe(0);
+    expect(result.value.gridSkipped).toBe(0);
+    expect(result.value.gridFailed).toBe(0);
   });
 
   it('emits scanning, one file event per candidate, and a done event', async () => {

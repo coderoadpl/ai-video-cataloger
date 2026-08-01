@@ -734,6 +734,71 @@ describe('SqlJsPhotosStore', () => {
     if (byPlace.ok) expect(byPlace.value.map((row) => row.fingerprint)).toEqual([photo().fingerprint]);
   });
 
+  it('collectionPage browses newest-first with nulls-last, pushes total via COUNT(*), and applies limit/offset', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-01-03T00:00:00.000Z', fileName: 'c.jpg', currentPath: '/media/photos/c.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', capturedAt: null, fileName: 'a.jpg', currentPath: '/media/photos/a.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000003', capturedAt: '2026-01-05T00:00:00.000Z', fileName: 'b.jpg', currentPath: '/media/photos/b.jpg' }));
+
+    const page = await store.collectionPage({
+      match: null, rankingTerms: [], from: null, to: null, tagTermSets: [], sort: 'captured_desc', limit: 2, offset: 0,
+    });
+    expect(page.ok && page.value.total).toBe(3);
+    expect(page.ok && page.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000003', 'ph_0000000000000001']);
+
+    const nextPage = await store.collectionPage({
+      match: null, rankingTerms: [], from: null, to: null, tagTermSets: [], sort: 'captured_desc', limit: 2, offset: 2,
+    });
+    expect(nextPage.ok && nextPage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+  });
+
+  it('collectionPage filters browse rows by an AND of tag OR-groups', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', fileName: 'a.jpg', currentPath: '/media/photos/a.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', fileName: 'b.jpg', currentPath: '/media/photos/b.jpg' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001', tags: ['bicycle', 'brick-wall'] }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002', tags: ['harbour'] }));
+
+    const filtered = await store.collectionPage({
+      match: null, rankingTerms: [], from: null, to: null,
+      tagTermSets: [['bicycle', 'boat']],
+      sort: 'name_asc', limit: 50, offset: 0,
+    });
+    expect(filtered.ok && filtered.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000001']);
+  });
+
+  it('collectionPage filters browse rows by capturedAt from/to bounds', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-01-01T00:00:00.000Z', fileName: 'a.jpg', currentPath: '/media/photos/a.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', capturedAt: '2026-06-01T00:00:00.000Z', fileName: 'b.jpg', currentPath: '/media/photos/b.jpg' }));
+
+    const filtered = await store.collectionPage({
+      match: null, rankingTerms: [], from: '2026-03-01', to: '2026-12-31', tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
+    });
+    expect(filtered.ok && filtered.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+  });
+
+  it('collectionPage in match mode reuses the FTS search and pushes total/limit/offset over the matched set', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', fileName: 'vacation-a.jpg', currentPath: '/media/photos/vacation-a.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', fileName: 'vacation-b.jpg', currentPath: '/media/photos/vacation-b.jpg' }));
+
+    const page = await store.collectionPage({
+      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'relevance', limit: 1, offset: 0,
+    });
+    expect(page.ok && page.value.total).toBe(2);
+    expect(page.ok && page.value.rows).toHaveLength(1);
+  });
+
   it('expandPhotoTagTerms resolves a tag term through photo_tag_aliases (P1)', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });

@@ -8,3 +8,6 @@ export const photoProxyPath = (fs: FileSystemPort, root: string, fingerprint: st
 
 export const photoThumbPath = (fs: FileSystemPort, root: string, fingerprint: string): string =>
   fs.join(root, 'thumbs', `${fingerprint}.jpg`);
+
+export const photoGridThumbPath = (fs: FileSystemPort, root: string, fingerprint: string): string =>
+  fs.join(root, 'thumbs', `${fingerprint}.grid.jpg`);
