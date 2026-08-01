@@ -332,10 +332,10 @@ already uses for the Library↔Analysis bridge, completing both directions of
 that bridge. The FolderBar and the terminal strip render only in Analysis
 mode — Library browses the cross-folder catalog without a current folder, so
 neither affordance applies there. The faces-index maintenance action lives
-exclusively in Analysis → Zdjęcia (`FacesIndexAction`, backed by the
-extracted `use-faces-index` hook that `usePeople` also consumes, so the
-indexing behavior stays single-sourced); Library's Osoby view keeps only
-curation (rename/merge/forget).
+exclusively in Analysis → Zdjęcia, at the `PhotosWorkspace` top strip
+(`FacesIndexAction`, backed by the extracted `use-faces-index` hook that
+`usePeople` also consumes, so the indexing behavior stays single-sourced);
+Library's Osoby view keeps only curation (rename/merge/forget).
 
 ### Island cores (ADR-0005 rung 1) and i18n
 

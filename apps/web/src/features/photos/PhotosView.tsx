@@ -3,23 +3,17 @@ import { Alert, Box, Button, CircularProgress, IconButton, MenuItem, Select, Tex
 
 import { CancelIcon } from '../../components/ui/icons.js';
 import { PhotosLayout } from '../../components/layout/PhotosLayout.js';
-import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, searchResultsToItems, searchSections, type PhotosViewVariant } from './core/index.js';
+import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, searchResultsToItems, searchSections } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
 import { PhotoGrid } from './PhotoGrid.js';
 import { PhotoViewer } from './PhotoViewer.js';
 import { usePhotos } from './use-photos.js';
 
-export type { PhotosViewVariant } from './core/index.js';
-
 interface PhotosViewProps {
   active: boolean;
-  variant: PhotosViewVariant;
-  addLine: AddLogLine;
   focusFingerprint?: string | null;
   onFocusConsumed?: () => void;
-  selectedFingerprint?: string | null;
   rootSeed?: string | null;
   onRootSeedConsumed?: () => void;
   onOpenInAnalysis?: (folderPath: string, videoPath: string) => void;
@@ -34,18 +28,14 @@ const toLocalDay = (isoUtc: string): string => {
 
 export const PhotosView = ({
   active,
-  variant,
-  addLine,
   focusFingerprint = null,
   onFocusConsumed = noop,
-  selectedFingerprint = null,
   rootSeed = null,
   onRootSeedConsumed = noop,
   onOpenInAnalysis,
 }: PhotosViewProps) => {
-  const isBrowse = variant === 'browse';
   const dictionary = useDictionary();
-  const photos = usePhotos({ active, addLine });
+  const photos = usePhotos({ active });
   const [viewerOpen, setViewerOpen] = useState(false);
 
   const browseSections = useMemo(() => groupByCaptureDay(photos.items, toLocalDay), [photos.items]);
@@ -75,11 +65,6 @@ export const PhotosView = ({
     if (target.openViewer) setViewerOpen(true);
     onFocusConsumed();
   }, [focusFingerprint, order, selectFingerprint, onFocusConsumed]);
-
-  useEffect(() => {
-    if (selectedFingerprint === null) return;
-    selectFingerprint(selectedFingerprint);
-  }, [selectedFingerprint, selectFingerprint]);
 
   useEffect(() => {
     if (rootSeed === null) return;
@@ -122,17 +107,6 @@ export const PhotosView = ({
           <MenuItem key={root.root} value={root.root}>{root.root}</MenuItem>
         ))}
       </Select>
-      {isBrowse ? null : (
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={photos.scanFolder}
-          disabled={photos.isBusy}
-          data-testid="photos-scan-action"
-        >
-          {dictionary.photos.scanFolderAction}
-        </Button>
-      )}
       <TextField
         size="small"
         value={photos.searchInputValue}
@@ -162,8 +136,6 @@ export const PhotosView = ({
 
   const notice = photos.error === null ? undefined : <Alert severity="error">{photos.error}</Alert>;
 
-  const proxiesPending = !isBrowse && photos.selectedRoot !== null && counts !== null && counts.proxied === 0 && counts.photos > 0;
-
   const grid = photos.viewMode.kind === 'search' ? (
     photos.isSearchLoading ? (
       <Box sx={{ display: 'flex', justifyContent: 'center', p: 4 }} data-testid="photos-loading">
@@ -188,31 +160,14 @@ export const PhotosView = ({
   ) : photos.roots.length === 0 ? (
     <EmptyState
       title={dictionary.photos.emptyNoRootsTitle}
-      body={dictionary.photos.emptyNoRootsBody}
-      action={isBrowse ? null : (
-        <Button variant="contained" onClick={photos.scanFolder} disabled={photos.isBusy} data-testid="photos-empty-scan">
-          {dictionary.photos.scanFolderAction}
-        </Button>
-      )}
+      body={dictionary.photos.emptyNoRootsBodyBrowse}
+      action={null}
       testId="photos-empty-no-roots"
     />
   ) : photos.items.length === 0 ? (
     <EmptyState title={dictionary.photos.emptyNoPhotos} body="" action={null} testId="photos-empty-no-photos" />
   ) : (
     <>
-      {proxiesPending ? (
-        <Alert
-          severity="info"
-          data-testid="photos-proxies-pending"
-          action={
-            <Button color="inherit" size="small" onClick={photos.generateProxies} disabled={photos.isBusy}>
-              {dictionary.photos.generateProxiesAction}
-            </Button>
-          }
-        >
-          {dictionary.photos.proxiesPendingStrip}
-        </Alert>
-      ) : null}
       <PhotoGrid
         sections={sections}
         selectedFingerprint={photos.selectedFingerprint}
@@ -237,15 +192,15 @@ export const PhotosView = ({
 
   const detail = (
     <PhotoDetailPane
-      variant={variant}
+      showAnalysisTools={false}
       detail={photos.detail}
       isLoading={photos.isDetailLoading}
-      variants={photos.variants}
-      onSelectVariant={photos.selectVariant}
+      variants={[]}
+      onSelectVariant={() => undefined}
       onSearchTag={photos.searchTag}
-      onAnalyze={photos.analyzePhotos}
-      isBusy={photos.isBusy}
-      analyzeProgress={photos.analyzeProgress}
+      onAnalyze={() => undefined}
+      isBusy={false}
+      analyzeProgress={null}
       onOpenInAnalysis={onOpenInAnalysis}
     />
   );

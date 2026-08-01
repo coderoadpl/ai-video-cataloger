@@ -1,18 +1,15 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import type { z } from 'zod';
 
-import { ApiError, isTerminalJobStatus, type JobOutput } from '@core/client/index.js';
+import { ApiError } from '@core/client/index.js';
 import type {
   photosDetailOutputSchema,
   photosTreeOutputSchema,
   photosVariantRecordSchema,
 } from '@core/contract/index.js';
 
-import { actions, bridge } from '../../api.js';
-import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
-import { useDictionary } from '../../i18n/use-dictionary.js';
-import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
+import { actions } from '../../api.js';
 import type { PhotosSearchResult, PhotosViewMode } from './core/index.js';
 import type { PhotoListItem } from './core/index.js';
 
@@ -25,8 +22,6 @@ const SEARCH_DEBOUNCE_MS = 300;
 
 interface UsePhotosOptions {
   active: boolean;
-  addLine: AddLogLine;
-  intervalMs?: number;
 }
 
 export interface PhotosState {
@@ -41,10 +36,6 @@ export interface PhotosState {
   isLoadingMore: boolean;
   loadMore: () => void;
   counts: { photos: number; paths: number; proxied: number; proxyFailed: number } | null;
-  activeJobLabel: string | null;
-  isBusy: boolean;
-  scanFolder: () => void;
-  generateProxies: () => void;
   selectedFingerprint: string | null;
   selectFingerprint: (fingerprint: string | null) => void;
   detail: PhotoDetail | null;
@@ -57,10 +48,6 @@ export interface PhotosState {
   searchResults: PhotosSearchResult[];
   searchCount: number;
   isSearchLoading: boolean;
-  variants: PhotoVariantRecord[];
-  selectVariant: (configId: string | null) => void;
-  analyzePhotos: () => void;
-  analyzeProgress: { current: number; total: number } | null;
 }
 
 const messageOf = (error: unknown): string => {
@@ -69,12 +56,9 @@ const messageOf = (error: unknown): string => {
   return String(error);
 };
 
-export const usePhotos = ({ active, addLine, intervalMs = 1000 }: UsePhotosOptions): PhotosState => {
-  const queryClient = useQueryClient();
-  const dictionary = useDictionary();
+export const usePhotos = ({ active }: UsePhotosOptions): PhotosState => {
   const [selectedRoot, setSelectedRoot] = useState<string | null>(null);
   const [selectedFingerprint, setSelectedFingerprint] = useState<string | null>(null);
-  const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
 
   const tree = useQuery({ ...actions.photosTree, enabled: active });
   const status = useQuery({ ...actions.photosStatus(selectedRoot === null ? {} : { root: selectedRoot }), enabled: active });
@@ -100,15 +84,9 @@ export const usePhotos = ({ active, addLine, intervalMs = 1000 }: UsePhotosOptio
     enabled: active && selectedFingerprint !== null,
   });
 
-  const scanMutation = useMutation(actions.photosScan);
-  const proxiesMutation = useMutation(actions.photosProxies);
-  const processMutation = useMutation(actions.photosProcess);
-  const selectVariantMutation = useMutation(actions.photosVariantsSelect);
-
   const [viewMode, setViewMode] = useState<PhotosViewMode>({ kind: 'browse' });
   const [searchInputValue, setSearchInputValueState] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
-  const [analyzeProgress, setAnalyzeProgress] = useState<{ current: number; total: number } | null>(null);
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedQuery(searchInputValue.trim()), SEARCH_DEBOUNCE_MS);
@@ -118,11 +96,6 @@ export const usePhotos = ({ active, addLine, intervalMs = 1000 }: UsePhotosOptio
   const search = useQuery({
     ...actions.photosSearch({ query: debouncedQuery.length > 0 ? debouncedQuery : '\0', limit: 50, offset: 0 }),
     enabled: active && viewMode.kind === 'search' && debouncedQuery.length > 0,
-  });
-
-  const variants = useQuery({
-    ...actions.photosVariants({ fingerprint: selectedFingerprint ?? '' }),
-    enabled: active && selectedFingerprint !== null,
   });
 
   const setSearchInputValue = useCallback((value: string) => {
@@ -141,95 +114,6 @@ export const usePhotos = ({ active, addLine, intervalMs = 1000 }: UsePhotosOptio
     setDebouncedQuery('');
     setViewMode({ kind: 'browse' });
   }, []);
-
-  const invalidate = useCallback(async () => {
-    await queryClient.invalidateQueries();
-  }, [queryClient]);
-
-  const runJob = useCallback(
-    (
-      accepted: Promise<{ jobId: string }>,
-      label: string,
-      success: string,
-      failure: string,
-      onSnapshot?: (snapshot: JobOutput) => void,
-    ) => {
-      if (activeJobLabel !== null) return;
-      setActiveJobLabel(label);
-      addLine(label, 'info');
-      void (async () => {
-        try {
-          const job = await accepted;
-          const final = await pollJobUntilTerminal(job.jobId, {
-            intervalMs,
-            delay: sleep,
-            fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
-            isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-            onSnapshot: onSnapshot ?? (() => undefined),
-          });
-          if (final.status === 'completed') {
-            addLine(success, 'success');
-            await invalidate();
-          } else {
-            addLine(`${failure}: ${final.error?.message ?? 'unknown error'}`, 'error');
-          }
-        } catch (error) {
-          addLine(`${failure}: ${messageOf(error)}`, 'error');
-        } finally {
-          setActiveJobLabel(null);
-        }
-      })();
-    },
-    [activeJobLabel, addLine, intervalMs, invalidate, queryClient],
-  );
-
-  const scanFolder = useCallback(() => {
-    void (async () => {
-      const picked = await bridge.folder.showPicker('photos');
-      if (picked === null) return;
-      runJob(
-        scanMutation.mutateAsync({ root: picked }),
-        dictionary.photos.scanProgress(0, 0),
-        dictionary.photos.title,
-        dictionary.photos.title,
-      );
-      setSelectedRoot(picked);
-    })();
-  }, [dictionary, runJob, scanMutation]);
-
-  const generateProxies = useCallback(() => {
-    if (selectedRoot === null) return;
-    runJob(
-      proxiesMutation.mutateAsync({ root: selectedRoot, force: false }),
-      dictionary.photos.generateProxiesAction,
-      dictionary.photos.generateProxiesAction,
-      dictionary.photos.generateProxiesAction,
-    );
-  }, [dictionary, proxiesMutation, runJob, selectedRoot]);
-
-  const analyzePhotos = useCallback(() => {
-    const detailOwnerPath = detail.data?.ownerPath;
-    const target = selectedRoot ?? (detailOwnerPath === undefined ? null : detailOwnerPath.split('/').slice(0, -1).join('/'));
-    if (target === null || target.length === 0) return;
-    setAnalyzeProgress(null);
-    runJob(
-      processMutation.mutateAsync({ root: target, force: false }),
-      dictionary.photos.analyzeProgress(0, 0),
-      dictionary.photos.analyzeAction,
-      dictionary.photos.analyzeAction,
-      (snapshot) => {
-        if (snapshot.progress?.step !== 'photo-analysed') return;
-        const current = snapshot.progress.data?.['current'];
-        const total = snapshot.progress.data?.['total'];
-        if (typeof current === 'number' && typeof total === 'number') setAnalyzeProgress({ current, total });
-      },
-    );
-  }, [detail.data?.ownerPath, dictionary, processMutation, runJob, selectedRoot]);
-
-  const selectVariant = useCallback((configId: string | null) => {
-    if (selectedFingerprint === null) return;
-    selectVariantMutation.mutate({ fingerprint: selectedFingerprint, configId });
-  }, [selectedFingerprint, selectVariantMutation]);
 
   const error = useMemo(() => {
     for (const query of [tree, status, list]) {
@@ -257,10 +141,6 @@ export const usePhotos = ({ active, addLine, intervalMs = 1000 }: UsePhotosOptio
         proxied: status.data.counts.proxied,
         proxyFailed: status.data.counts.proxyFailed,
       },
-    activeJobLabel,
-    isBusy: activeJobLabel !== null,
-    scanFolder,
-    generateProxies,
     selectedFingerprint,
     selectFingerprint: setSelectedFingerprint,
     detail: detail.data ?? null,
@@ -273,10 +153,6 @@ export const usePhotos = ({ active, addLine, intervalMs = 1000 }: UsePhotosOptio
     searchResults: search.data?.results ?? [],
     searchCount: search.data?.count ?? 0,
     isSearchLoading: viewMode.kind === 'search' && (debouncedQuery.length === 0 || search.isLoading),
-    variants: variants.data?.variants ?? [],
-    selectVariant,
-    analyzePhotos,
-    analyzeProgress,
   };
 };
 

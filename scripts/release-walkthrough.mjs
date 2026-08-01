@@ -355,23 +355,33 @@ const drive = async (plan) => {
     return done('browse Photos detail pane shows no analyze affordance');
   });
 
-  await record('analysis-photos', async () => {
+  await record('photos-sidebar', async () => {
     const modeAnalysis = page.getByTestId('mode-analysis');
     if (!(await appeared(modeAnalysis, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
     await modeAnalysis.click();
     const mediaPhotos = page.getByTestId('analysis-media-photos');
     if (!(await appeared(mediaPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Analysis media toggle in this build');
     await mediaPhotos.click();
-    const tile = page.getByTestId('photos-tile').first();
-    if (!(await appeared(tile, FOLDER_TIMEOUT_MS))) return skipped('no photos catalogued in this home');
-    await tile.click();
-    if (!(await appeared(page.getByTestId('photos-detail'), VISIBLE_TIMEOUT_MS))) {
-      return skipped('photo detail pane did not render');
+    if (!(await appeared(page.getByTestId('photos-sidebar-row'), FOLDER_TIMEOUT_MS))) {
+      return skipped('no photos catalogued in this home');
+    }
+    return done('Analysis Photos sidebar rendered');
+  });
+
+  await record('analysis-photos', async () => {
+    const row = page.getByTestId('photos-sidebar-row').first();
+    if (!(await appeared(row, SETTLE_TIMEOUT_MS))) return skipped('no photos catalogued in this home');
+    await row.click();
+    if (!(await appeared(page.getByTestId('photos-analysis-detail'), VISIBLE_TIMEOUT_MS))) {
+      return skipped('photo detail workspace did not render');
     }
     if (!(await appeared(page.getByTestId('photos-analyze-strip'), SETTLE_TIMEOUT_MS))) {
       return skipped('no analyze strip (photo already analysed or proxy pending)');
     }
-    return done('Analysis Photos detail pane shows the analyze affordance');
+    if (await appeared(page.getByTestId('video-item'), SETTLE_TIMEOUT_MS)) {
+      return { status: 'failed', note: 'video list visible in the photos sidebar' };
+    }
+    return done('Analysis Photos workspace shows the detail and analyze affordance');
   });
 
   await record('photos-tab', async () => {

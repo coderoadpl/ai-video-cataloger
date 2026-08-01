@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { z } from 'zod';
 
-import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
+import { ApiError, isTerminalJobStatus, type JobOutput } from '@core/client/index.js';
+import type { photosDetailOutputSchema, photosVariantRecordSchema } from '@core/contract/index.js';
 
 import { actions, bridge } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
@@ -14,6 +16,8 @@ const SCOPE_KEY = 'avc.photosScope';
 const ROOT_KEY = 'avc.photosRoot';
 
 export type PhotosAnalysisScope = 'folder' | 'all';
+export type PhotoDetail = z.output<typeof photosDetailOutputSchema>;
+export type PhotoVariantRecord = z.output<typeof photosVariantRecordSchema>;
 
 const canUseStorage = (): boolean =>
   typeof window !== 'undefined'
@@ -64,11 +68,19 @@ export interface PhotosAnalysisState {
   hasMore: boolean;
   isLoadingMore: boolean;
   loadMore: () => void;
+  counts: { photos: number; paths: number; proxied: number; proxyFailed: number } | null;
   selectedFingerprint: string | null;
   selectFingerprint: (fingerprint: string | null) => void;
   activeJobLabel: string | null;
   isBusy: boolean;
   scanFolder: () => void;
+  detail: PhotoDetail | null;
+  isDetailLoading: boolean;
+  variants: PhotoVariantRecord[];
+  selectVariant: (configId: string | null) => void;
+  analyzePhotos: () => void;
+  analyzeProgress: { current: number; total: number } | null;
+  generateProxies: () => void;
 }
 
 export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePhotosAnalysisOptions): PhotosAnalysisState => {
@@ -78,6 +90,7 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
   const [selectedRoot, setSelectedRootState] = useState<string | null>(() => readRoot());
   const [selectedFingerprint, setSelectedFingerprint] = useState<string | null>(null);
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
+  const [analyzeProgress, setAnalyzeProgress] = useState<{ current: number; total: number } | null>(null);
   const [offset, setOffset] = useState(0);
   const [loadedItems, setLoadedItems] = useState<PhotoListItem[]>([]);
 
@@ -121,41 +134,113 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
 
   const loadMore = useCallback(() => setOffset((current) => current + PAGE_LIMIT), []);
 
+  const status = useQuery({
+    ...actions.photosStatus(selectedRoot === null ? {} : { root: selectedRoot }),
+    enabled: active && selectedRoot !== null,
+  });
+
+  const detail = useQuery({
+    ...actions.photosDetail({ fingerprint: selectedFingerprint ?? '' }),
+    enabled: active && selectedFingerprint !== null,
+  });
+
+  const variants = useQuery({
+    ...actions.photosVariants({ fingerprint: selectedFingerprint ?? '' }),
+    enabled: active && selectedFingerprint !== null,
+  });
+
   const scanMutation = useMutation(actions.photosScan);
+  const proxiesMutation = useMutation(actions.photosProxies);
+  const processMutation = useMutation(actions.photosProcess);
+  const selectVariantMutation = useMutation(actions.photosVariantsSelect);
 
   const invalidate = useCallback(async () => {
     await queryClient.invalidateQueries();
   }, [queryClient]);
+
+  const runJob = useCallback(
+    (
+      accepted: Promise<{ jobId: string }>,
+      label: string,
+      success: string,
+      failure: string,
+      onSnapshot?: (snapshot: JobOutput) => void,
+    ) => {
+      if (activeJobLabel !== null) return;
+      setActiveJobLabel(label);
+      addLine(label, 'info');
+      void (async () => {
+        try {
+          const job = await accepted;
+          const final = await pollJobUntilTerminal(job.jobId, {
+            intervalMs,
+            delay: sleep,
+            fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
+            isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+            onSnapshot: onSnapshot ?? (() => undefined),
+          });
+          if (final.status === 'completed') {
+            addLine(success, 'success');
+            await invalidate();
+          } else {
+            addLine(`${failure}: ${final.error?.message ?? 'unknown error'}`, 'error');
+          }
+        } catch (error) {
+          addLine(`${failure}: ${messageOf(error)}`, 'error');
+        } finally {
+          setActiveJobLabel(null);
+        }
+      })();
+    },
+    [activeJobLabel, addLine, intervalMs, invalidate, queryClient],
+  );
 
   const scanFolder = useCallback(() => {
     if (activeJobLabel !== null) return;
     void (async () => {
       const picked = await bridge.folder.showPicker('photos');
       if (picked === null) return;
-      setActiveJobLabel(dictionary.photos.title);
-      addLine(dictionary.photos.title, 'info');
-      try {
-        const job = await scanMutation.mutateAsync({ root: picked });
-        const final = await pollJobUntilTerminal(job.jobId, {
-          intervalMs,
-          delay: sleep,
-          fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
-          isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-        });
-        if (final.status === 'completed') {
-          addLine(dictionary.photos.title, 'success');
-          await invalidate();
-          selectRoot(picked);
-        } else {
-          addLine(`${dictionary.photos.title}: ${final.error?.message ?? 'unknown error'}`, 'error');
-        }
-      } catch (error) {
-        addLine(`${dictionary.photos.title}: ${messageOf(error)}`, 'error');
-      } finally {
-        setActiveJobLabel(null);
-      }
+      runJob(
+        scanMutation.mutateAsync({ root: picked }),
+        dictionary.photos.title,
+        dictionary.photos.title,
+        dictionary.photos.title,
+      );
+      selectRoot(picked);
     })();
-  }, [activeJobLabel, addLine, dictionary, intervalMs, invalidate, queryClient, scanMutation, selectRoot]);
+  }, [activeJobLabel, dictionary, runJob, scanMutation, selectRoot]);
+
+  const generateProxies = useCallback(() => {
+    if (selectedRoot === null) return;
+    runJob(
+      proxiesMutation.mutateAsync({ root: selectedRoot, force: false }),
+      dictionary.photos.generateProxiesAction,
+      dictionary.photos.generateProxiesAction,
+      dictionary.photos.generateProxiesAction,
+    );
+  }, [dictionary, proxiesMutation, runJob, selectedRoot]);
+
+  const analyzePhotos = useCallback(() => {
+    if (selectedRoot === null) return;
+    setAnalyzeProgress(null);
+    runJob(
+      processMutation.mutateAsync({ root: selectedRoot, force: false }),
+      dictionary.photos.analyzeProgress(0, 0),
+      dictionary.photos.analyzeAction,
+      dictionary.photos.analyzeAction,
+      (snapshot) => {
+        if (snapshot.progress?.step !== 'photo-analysed') return;
+        const current = snapshot.progress.data?.['current'];
+        const total = snapshot.progress.data?.['total'];
+        if (typeof current === 'number' && typeof total === 'number') setAnalyzeProgress({ current, total });
+      },
+    );
+  }, [dictionary, processMutation, runJob, selectedRoot]);
+
+  const selectVariant = useCallback((configId: string | null) => {
+    if (selectedFingerprint === null) return;
+    selectVariantMutation.mutate({ fingerprint: selectedFingerprint, configId });
+  }, [selectedFingerprint, selectVariantMutation]);
 
   const error = useMemo(() => {
     for (const query of [tree, list]) {
@@ -177,10 +262,25 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
     hasMore: loadedItems.length < (list.data?.total ?? 0),
     isLoadingMore: offset > 0 && list.isFetching,
     loadMore,
+    counts: status.data === undefined
+      ? null
+      : {
+        photos: status.data.counts.photos,
+        paths: status.data.counts.paths,
+        proxied: status.data.counts.proxied,
+        proxyFailed: status.data.counts.proxyFailed,
+      },
     selectedFingerprint,
     selectFingerprint: setSelectedFingerprint,
     activeJobLabel,
     isBusy: activeJobLabel !== null,
     scanFolder,
+    detail: detail.data ?? null,
+    isDetailLoading: detail.isLoading,
+    variants: variants.data?.variants ?? [],
+    selectVariant,
+    analyzePhotos,
+    analyzeProgress,
+    generateProxies,
   };
 };

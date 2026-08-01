@@ -610,10 +610,11 @@ geometry-only and needs no change beyond a marker kind.
 
 ## 8. Renderer
 
-`features/photos/` is an independent island: it is mounted twice — as the
-Library subnav's Zdjęcia surface and as the Analysis media toggle's Zdjęcia
-face (`docs/architecture.md`'s two-mode IA delta) — each instance controlled
-by its own `active` flag, the route wiring it like `people`/`map`. Island
+`features/photos/` is an independent island: `PhotosView` mounts once as the
+Library subnav's Zdjęcia surface, and `PhotosSidebar`/`PhotosWorkspace` mount
+as the Analysis media toggle's Zdjęcia face (`docs/architecture.md`'s
+two-mode IA delta), each controlled by its own `active` flag, the route
+wiring it like `people`/`map`. Island
 core (`features/photos/core/`) owns grid grouping (capture-day sections),
 windowed-list selection and typed dictionary keys; the web binding injects
 bound descriptors from `api.ts`. No cross-feature imports: the map interop
@@ -625,34 +626,42 @@ features — no new lint rules needed, the existing ones already fence it
 (verified: wildcard feature rules in `eslint.config.js`,
 `tsconfig.islands.json` glob).
 
-`PhotosView` takes an explicit `variant: 'browse' | 'analysis'` prop — both
-mounts pass it, there is no default. In `browse` (Library's Zdjęcia surface)
-the toolbar drops "Skanuj folder" and the proxies-pending action (scanning is
-work, not browsing), and `PhotoDetailPane` renders only the descriptive block
-(EXIF rows, captured, sightings, description/scene/quality/tags); the analyze
-strip, analyze progress and the variant picker render only for
-`variant === 'analysis'`. The browse pane appends a discreet
-"Otwórz w Analizie" link when an owner path is known, routing through the
-same `openInAnalysis` callback the Library↔Analysis bridge uses elsewhere;
-tag chips in browse keep their local-search behavior (photos keeps local
-search regardless of mode). The faces-index build lives only in the
-`analysis` mount, above it, as a separate `FacesIndexAction` component — see
-`docs/architecture.md`'s two-mode IA delta.
+`PhotosView` is mounted **once**, as the Library subnav's Zdjęcia surface —
+browse and search over photos live only there. It always renders the
+descriptive block of `PhotoDetailPane` (EXIF rows, captured, sightings,
+description/scene/quality/tags) via a narrower `showAnalysisTools: boolean`
+prop pinned to `false`; the analyze strip, analyze progress and the variant
+picker are unreachable from browse. The toolbar carries only the root filter
+and the search field — no scan action, no proxies-pending strip (scanning is
+Analysis work); the empty state, when no root has been scanned, points at
+Analysis → Zdjęcia instead of offering a scan CTA. The browse pane appends a
+discreet "Otwórz w Analizie" link when an owner path is known, routing
+through the same `openInAnalysis` callback the Library↔Analysis bridge uses
+elsewhere; tag chips in browse keep their local-search behavior.
 
-`PhotosSidebar` (`features/photos/PhotosSidebar.tsx`) is the Analysis
-sidebar's Zdjęcia face, mounted once from `routes/index.tsx` alongside the
-lifted `use-photos-analysis.ts` hook (a slimmed sibling of `usePhotos`, not a
-shared instance — root/scope/selection state lives at the route so it can
-feed both the sidebar and the still-standalone `PhotosView variant="analysis"`
-mount). It shows a folder header (root name, path, "Pokaż w Bibliotece"), a
-`'folder' | 'all'` scope toggle, and thumbnail rows carrying badges derived
-from `photoBadges` (`analysed`, `duplicate`, `proxyFailed`, `exifMissing`,
-`missing`) — parity with `CatalogSidebar`/`VideoList`. With zero scanned
-roots it renders an honest empty state with a scan CTA, never falling back to
-the video list. The analysis mount of `PhotosView` still owns folder actions
-(scan/proxies/analyze) and the photo detail surface in this wave; retiring
-its dropdown/scan/search in favor of the sidebar's toolbar is scheduled for a
-follow-up wave, not done here.
+The Analysis media toggle's Zdjęcia face is `PhotosSidebar` (navigation,
+scope, badges, folder actions) + `PhotosWorkspace` (photo detail: proxy
+preview, EXIF, provenance, description/tags, variant picker, analyze strip),
+both consuming one lifted `use-photos-analysis.ts` hook instance
+(`usePhotosAnalysis`, a slimmed sibling of `usePhotos`; root/scope/selection
+state and the analysis-only queries — `photosDetail`, `photosVariants`,
+`photosStatus` — live at the route). `PhotosSidebar` shows a folder header
+(root name, path, "Pokaż w Bibliotece"), a `'folder' | 'all'` scope toggle now
+owned by `PhotosScopeToolbar` (folder-level actions: Zeskanuj, Przetwórz, the
+proxies-pending affordance) filling the sidebar's `toolbar` slot, and
+thumbnail rows carrying badges derived from `photoBadges` (`analysed`,
+`duplicate`, `proxyFailed`, `exifMissing`, `missing`) — parity with
+`CatalogSidebar`/`VideoList`. With zero scanned roots it renders an honest
+empty state with a scan CTA, never falling back to the video list.
+`PhotosWorkspace` mounts `FacesIndexAction` at its top (unchanged
+active/folder/addLine/lockReason semantics, supplied by the route via a
+`topStrip` slot to keep the cross-feature import at the route composition
+root, not inside `features/photos/`), shows a placeholder
+(`photos-workspace-empty`) when nothing is selected, and otherwise the
+selected photo's proxy preview (click reopens the existing `PhotoViewer`
+overlay, prev/next following the sidebar's current item order via
+`flattenOrder`/`adjacentFingerprint` over `sidebarSections`) plus
+`PhotoDetailPane` with `showAnalysisTools` pinned to `true`.
 
 ## 9. Shared vs duplicated — the ledger
 

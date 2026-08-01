@@ -705,12 +705,11 @@ export interface Dictionary {
     rootPickerLabel: string;
     rootPickerAll: string;
     emptyNoRootsTitle: string;
-    emptyNoRootsBody: string;
+    emptyNoRootsBodyBrowse: string;
     scanFolderAction: string;
     emptyNoPhotos: string;
     generateProxiesAction: string;
     proxiesPendingStrip: string;
-    scanProgress: (current: number, total: number) => string;
     unknownDate: string;
     duplicatesBadge: (count: number) => string;
     missingBadge: string;
@@ -785,6 +784,10 @@ export interface Dictionary {
     badgeExifMissing: string;
     badgeMissing: string;
     loadMore: string;
+    analyzeFolderAction: string;
+  };
+  photosWorkspace: {
+    emptyTitle: string;
   };
   library: {
     title: string;
@@ -1602,12 +1605,11 @@ export const en: Dictionary = {
     rootPickerLabel: 'Photo root',
     rootPickerAll: 'All photos',
     emptyNoRootsTitle: 'No photo folders scanned yet',
-    emptyNoRootsBody: 'Scan a folder to index its photos and generate browsable proxies.',
+    emptyNoRootsBodyBrowse: 'Scan a folder from Analysis → Photos to start browsing here.',
     scanFolderAction: 'Scan a folder…',
     emptyNoPhotos: 'No photos found under this root.',
     generateProxiesAction: 'Generate proxies',
     proxiesPendingStrip: 'Proxies are still pending for this root.',
-    scanProgress: (current, total) => `Scanning ${current} of ${total}…`,
     unknownDate: 'Unknown date',
     duplicatesBadge: (count) => `${count} copies`,
     missingBadge: 'Missing',
@@ -1682,6 +1684,10 @@ export const en: Dictionary = {
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
     loadMore: 'Load more',
+    analyzeFolderAction: 'Process',
+  },
+  photosWorkspace: {
+    emptyTitle: 'Select a photo from the list',
   },
   library: {
     title: 'Library',
@@ -2508,12 +2514,11 @@ export const pl: Dictionary = {
     rootPickerLabel: 'Folder zdjęć',
     rootPickerAll: 'Wszystkie zdjęcia',
     emptyNoRootsTitle: 'Nie zeskanowano jeszcze żadnego folderu zdjęć',
-    emptyNoRootsBody: 'Zeskanuj folder, aby zindeksować zdjęcia i wygenerować podglądy.',
+    emptyNoRootsBodyBrowse: 'Zeskanuj folder w Analizie → Zdjęcia, aby zacząć tu przeglądać.',
     scanFolderAction: 'Zeskanuj folder…',
     emptyNoPhotos: 'Nie znaleziono zdjęć w tym folderze.',
     generateProxiesAction: 'Wygeneruj podglądy',
     proxiesPendingStrip: 'Podglądy dla tego folderu wciąż oczekują na wygenerowanie.',
-    scanProgress: (current, total) => `Skanowanie ${current} z ${total}…`,
     unknownDate: 'Nieznana data',
     duplicatesBadge: (count) => `${count} kopii`,
     missingBadge: 'Brak pliku',
@@ -2588,6 +2593,10 @@ export const pl: Dictionary = {
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',
     loadMore: 'Wczytaj więcej',
+    analyzeFolderAction: 'Przetwórz',
+  },
+  photosWorkspace: {
+    emptyTitle: 'Wybierz zdjęcie z listy po lewej',
   },
   library: {
     title: 'Biblioteka',

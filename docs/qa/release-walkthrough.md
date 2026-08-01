@@ -72,22 +72,28 @@ pass is not.
 
 The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`,
 `mode-switch`, `mode-analysis`, `open-folder`, `tree-expand`, `select-video`,
-`analyze`, `search`, `library-preview`, `photos-browse`, `analysis-photos`,
-`photos-tab`, `photos-grid`, `photo-detail`, `settings`, `wizard`.
+`analyze`, `search`, `library-preview`, `photos-browse`, `photos-sidebar`,
+`analysis-photos`, `photos-tab`, `photos-grid`, `photo-detail`, `settings`,
+`wizard`.
 `mode-switch`, `mode-analysis` and `search` drive the two-mode switcher: the
 workspace steps run in Analysis mode, `search` and `photos-tab` switch to
 Library first. `library-preview` clicks a Kolekcja tile, asserts the browse
 preview overlay and its player render, then follows the "Otwórz w Analizie"
 escape hatch and asserts it lands in the Analysis details panel with the file
 selected. `photos-browse` asserts the Library Photos detail pane never shows
-the analyze strip (browse surfaces are read-only); `analysis-photos` asserts
-the Analysis Photos detail pane does show it.
+the analyze strip (browse surfaces are read-only). `photos-sidebar` switches
+Analysis to Zdjęcia and captures the sidebar state (folder header, scope
+toggle, badge rows) before any row is clicked. `analysis-photos` then clicks
+the first sidebar row and asserts the workspace detail (`photos-analysis-detail`)
+and the analyze strip render, and that the video list is never visible in the
+photos sidebar.
 
-The three photo steps need a home whose photos DB already has a scanned root —
+The photo steps need a home whose photos DB already has a scanned root —
 `--home` pointing at a QA home that has run `photos scan`. Without one,
-`photos-grid` and `photo-detail` report `skipped` with "no photos catalogued in
-this home", which is a legitimate outcome for a video-only review pass and a
-missing proof for a release that ships photo changes.
+`photos-sidebar`, `analysis-photos`, `photos-grid` and `photo-detail` report
+`skipped` with "no photos catalogued in this home", which is a legitimate
+outcome for a video-only review pass and a missing proof for a release that
+ships photo changes.
 
 ## Review the screenshots
 
@@ -118,6 +124,12 @@ Read every screenshot against the sensitivities that have burned us before:
 - **Photo detail** — the selected tile's pane shows capture provenance, EXIF
   and, when analysed, the description/tags with the variant picker; the "also
   at: N paths" duplicate line is read-only and offers nothing destructive.
+- **Zdjęcia sidebar** — does the Zdjęcia sidebar show the folder header
+  ("Ten folder"/"Wszystkie foldery" scope toggle), photo count badges
+  (Ukończony / Duplikat / Podgląd nieudany / Brak EXIF / Brak pliku) and a
+  selection highlight?
+- **Zdjęcia sidebar empty state** — with a fresh home, does the Zdjęcia
+  sidebar show its own empty scan CTA, and never fall back to the video list?
 
 The manual suites in [manual-test-checklists.md](manual-test-checklists.md) stay
 the deeper pass; this walkthrough is the always-run floor beneath them.

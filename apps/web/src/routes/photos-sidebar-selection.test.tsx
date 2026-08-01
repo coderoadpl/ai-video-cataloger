@@ -70,6 +70,56 @@ const stubBaseline = () => {
       ok: true,
       data: { media: 'photo', root: '/pictures', total: 2, offset: 0, items: [photo('ph_0000000000000001'), photo('ph_0000000000000002')] },
     })),
+    http.get('/api/photos/detail', ({ request }) => {
+      const fingerprint = new URL(request.url).searchParams.get('fingerprint') ?? '';
+      const item = photo(fingerprint);
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          media: 'photo',
+          photo: {
+            fingerprint: item.fingerprint,
+            folderId: 'folder-1',
+            fileName: item.fileName,
+            currentPath: item.currentPath,
+            ext: item.ext,
+            size: 1024,
+            width: item.width,
+            height: item.height,
+            orientation: null,
+            cameraMake: null,
+            cameraModel: null,
+            lens: null,
+            iso: null,
+            fNumber: null,
+            exposureTime: null,
+            exifRating: null,
+            capturedAt: item.capturedAt,
+            capturedAtSource: item.capturedAtSource,
+            discoveredAt: '2026-01-01T00:00:00.000Z',
+            exifReadAt: item.exifReadAt,
+            proxyState: item.proxyState,
+            proxyWidth: null,
+            proxyHeight: null,
+            thumbState: item.thumbState,
+            missingAt: item.missingAt,
+          },
+          sightings: [{ currentPath: item.currentPath, folderId: 'folder-1', lastSeenAt: '2026-01-01T00:00:00.000Z' }],
+          ownerPath: item.currentPath,
+          proxyPath: item.proxyPath,
+          thumbPath: item.thumbPath,
+          gridThumbPath: item.gridThumbPath,
+          analysis: null,
+        },
+      });
+    }),
+    http.get('/api/photos/variants', ({ request }) => {
+      const fingerprint = new URL(request.url).searchParams.get('fingerprint') ?? '';
+      return HttpResponse.json({
+        ok: true,
+        data: { media: 'photo', fingerprint, selectedConfigId: null, variants: [] },
+      });
+    }),
   );
 };
 
@@ -91,7 +141,7 @@ describe('selecting a photo from the Analysis photos sidebar', () => {
     if (firstRow === undefined) throw new Error('missing sidebar row');
     fireEvent.click(firstRow);
 
-    await waitFor(() => expect(screen.getAllByTestId('photos-tile').length).toBe(2));
+    await waitFor(() => expect(screen.getByTestId('photos-analysis-detail')).toBeDefined());
     expect(screen.queryByTestId('photos-viewer')).toBeNull();
   });
 

@@ -1,6 +1,10 @@
-import type { DaySection } from './day-groups.js';
+import type { PhotoListItem } from './day-groups.js';
 
-export const flattenOrder = (sections: readonly DaySection[]): string[] =>
+export interface OrderSection {
+  items: readonly PhotoListItem[];
+}
+
+export const flattenOrder = (sections: readonly OrderSection[]): string[] =>
   sections.flatMap((section) => section.items.map((item) => item.fingerprint));
 
 export const adjacentFingerprint = (

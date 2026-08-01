@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DaySection, PhotoListItem } from './day-groups.js';
+import type { SidebarSection } from './sidebar-sections.js';
 import { adjacentFingerprint, flattenOrder, focusTarget } from './viewer-nav.js';
 
 const stubItem = (fingerprint: string): PhotoListItem => ({
@@ -35,6 +36,14 @@ describe('flattenOrder', () => {
 
   it('returns an empty array for no sections', () => {
     expect(flattenOrder([])).toEqual([]);
+  });
+
+  it('also flattens sidebar sections, which share the items shape but not the day/label fields', () => {
+    const sidebarOrder: SidebarSection[] = [
+      { root: '/a', items: [stubItem('x'), stubItem('y')] },
+      { root: '/b', items: [stubItem('z')] },
+    ];
+    expect(flattenOrder(sidebarOrder)).toEqual(['x', 'y', 'z']);
   });
 });
 

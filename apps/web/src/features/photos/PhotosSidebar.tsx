@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Box, Button, Chip, CircularProgress, List, ListItemButton, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 
 import { FolderIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -7,7 +7,7 @@ import type { Dictionary } from '../../i18n/dictionary.js';
 import { folderName } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { photoBadges, sidebarSections, type PhotoBadge, type PhotoListItem } from './core/index.js';
-import type { PhotosAnalysisState, PhotosAnalysisScope } from './use-photos-analysis.js';
+import type { PhotosAnalysisState } from './use-photos-analysis.js';
 
 const THUMB_BOX = 56;
 
@@ -148,23 +148,6 @@ export const PhotosSidebar = ({ state, onShowInLibrary, toolbar }: PhotosSidebar
             {state.selectedRoot}
           </Typography>
         )}
-        <Box sx={{ mt: 1 }}>
-          <ToggleButtonGroup
-            size="small"
-            exclusive
-            value={state.scope}
-            onChange={(_event, next: PhotosAnalysisScope | null) => {
-              if (next !== null) state.setScope(next);
-            }}
-          >
-            <ToggleButton value="folder" data-testid="photos-scope-folder">
-              {dictionary.photosSidebar.scopeThisFolder}
-            </ToggleButton>
-            <ToggleButton value="all" data-testid="photos-scope-all">
-              {dictionary.photosSidebar.scopeAllFolders}
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </Box>
         {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>

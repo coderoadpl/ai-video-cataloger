@@ -28,8 +28,10 @@ import { useCatalogLocations, type CatalogLocation } from '../features/map/use-c
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { FacesIndexAction } from '../features/people/FacesIndexAction.js';
 import { PeopleView } from '../features/people/PeopleView.js';
+import { PhotosScopeToolbar } from '../features/photos/PhotosScopeToolbar.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { PhotosView } from '../features/photos/PhotosView.js';
+import { PhotosWorkspace } from '../features/photos/PhotosWorkspace.js';
 import { usePhotosAnalysis } from '../features/photos/use-photos-analysis.js';
 import { BrowsePreview, previewFromLocation, previewFromSearchResult, type PreviewMedia } from '../features/preview/index.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
@@ -212,7 +214,11 @@ export const IndexRoute = () => {
   );
 
   const photosSidebar = (
-    <PhotosSidebar state={photosAnalysis} onShowInLibrary={onShowPhotosRootInLibrary} />
+    <PhotosSidebar
+      state={photosAnalysis}
+      onShowInLibrary={onShowPhotosRootInLibrary}
+      toolbar={<PhotosScopeToolbar state={photosAnalysis} />}
+    />
   );
 
   const detailContent = (
@@ -262,8 +268,6 @@ export const IndexRoute = () => {
         />
         <PhotosView
           active={mode === 'library' && librarySurface === 'photos'}
-          variant="browse"
-          addLine={terminal.addLine}
           focusFingerprint={photoFocus}
           onFocusConsumed={() => setPhotoFocus(null)}
           rootSeed={photosRootSeed}
@@ -306,20 +310,20 @@ export const IndexRoute = () => {
           {detailContent}
         </Box>
       </Box>
-      <Box sx={{ display: mode === 'analysis' && analysisMedia === 'photos' ? 'block' : 'none', px: 2, pt: 1 }}>
-        <FacesIndexAction
+      <Box sx={{ display: analysisMedia === 'photos' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <PhotosWorkspace
           active={mode === 'analysis' && analysisMedia === 'photos'}
-          folder={shell.currentFolder}
-          addLine={terminal.addLine}
-          lockReason={catalogLock.disabledReason}
+          state={photosAnalysis}
+          topStrip={(
+            <FacesIndexAction
+              active={mode === 'analysis' && analysisMedia === 'photos'}
+              folder={shell.currentFolder}
+              addLine={terminal.addLine}
+              lockReason={catalogLock.disabledReason}
+            />
+          )}
         />
       </Box>
-      <PhotosView
-        active={mode === 'analysis' && analysisMedia === 'photos'}
-        variant="analysis"
-        addLine={terminal.addLine}
-        selectedFingerprint={photosAnalysis.selectedFingerprint}
-      />
     </Box>
   );
 

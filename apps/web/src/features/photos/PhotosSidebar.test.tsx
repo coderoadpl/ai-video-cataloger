@@ -49,11 +49,19 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   hasMore: false,
   isLoadingMore: false,
   loadMore: vi.fn(),
+  counts: null,
   selectedFingerprint: null,
   selectFingerprint: vi.fn(),
   activeJobLabel: null,
   isBusy: false,
   scanFolder: vi.fn(),
+  detail: null,
+  isDetailLoading: false,
+  variants: [],
+  selectVariant: vi.fn(),
+  analyzePhotos: vi.fn(),
+  analyzeProgress: null,
+  generateProxies: vi.fn(),
   ...overrides,
 });
 
@@ -74,14 +82,6 @@ describe('PhotosSidebar', () => {
     expect(screen.getAllByText('media').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByTestId('photos-folder-show-in-library'));
     expect(onShowInLibrary).toHaveBeenCalledWith('/media');
-  });
-
-  it('scope toggle switches between folder and all scope', () => {
-    const setScope = vi.fn();
-    renderThemed(<PhotosSidebar state={baseState({ setScope })} onShowInLibrary={vi.fn()} />);
-
-    fireEvent.click(screen.getByTestId('photos-scope-all'));
-    expect(setScope).toHaveBeenCalledWith('all');
   });
 
   it('row click selects the fingerprint and badges render per item state', () => {

@@ -83,6 +83,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Analysis → Zdjęcia workspace now opens the selected photo's detail (preview, EXIF, provenance, tags, variant picker, analyze) driven by the photos sidebar; folder actions (Zeskanuj, Przetwórz, podglądy) moved to the sidebar toolbar.
+- `qa:walkthrough`'s `analysis-photos` step verifies the photos sidebar and detail workspace.
 - Photo analysis and proxy generation now checkpoint the photos database inside a store batch — after every analyzer batch and every 50 generated proxies — so an interrupted run loses at most one analyzer batch of paid analysis instead of up to 500 photos' worth.
 - `photos scan`'s reconcile pass reads the sightings under a root through the path index instead of loading every path row in the database into memory.
 - All faces-writing jobs (`faces index`, `faces recluster`, `faces exemplars`) and the drive run's inline faces pass now serialize under a single `faces-write` resource; a concurrent request returns `conflict` instead of racing the shared people pool, and the drive run reports a new `faces_waiting` progress step while it waits its turn.
@@ -109,6 +111,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Removed
 
+- The standalone photos dashboard in Analysis (root dropdown, scan button and filename search there); browsing and search over photos live in the Library's Zdjęcia surface.
 - The global top-bar search and its full-screen results view; search now lives in the Library's Collection toolbar with the same recent-searches and top-tags suggestions.
 
 ### Fixed

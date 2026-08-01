@@ -244,6 +244,23 @@ Every `--json` run emits newline-delimited JSON: a `started` object, zero+
 commander usage error; run `process-drive` on an empty dir → **DRIVE_ROOT_EMPTY**
 exit **39**; a fatal uncaught error → `Fatal error: …` on stderr, exit **1**.
 
+### 3.10 PHOTOS — Analysis sidebar + workspace, folder actions, Library browse
+
+| ID | Pri | Preconditions | Steps | Expected |
+|---|---|---|---|---|
+| PHT-01 | P1 | Fresh home, no photo root scanned | 1. Switch to Analysis → Zdjęcia (**analysis-media-photos**). | Sidebar shows the honest empty state with a scan CTA (**photos-sidebar-empty-scan**); never falls back to the video list. |
+| PHT-02 | P1 | ≥1 scanned photo root | 1. Read the sidebar folder header. | Folder name, full path and **Pokaż w Bibliotece** button render; **Ten folder / Wszystkie foldery** scope toggle present. |
+| PHT-03 | P1 | ≥1 scanned photo root with mixed states | 1. Inspect sidebar rows. | Badges render per item: Ukończony (analysed), Duplikat (sightings > 1), Podgląd nieudany (proxy failed), Brak EXIF (no EXIF read), Brak pliku (missing). |
+| PHT-04 | P1 | Sidebar populated | 1. Click a sidebar row. | The workspace to the right shows `photos-analysis-detail`: proxy preview, EXIF rows, captured/provenance, owner path + sightings, description/tags when analysed, variant picker, and the analyze strip when unanalysed. |
+| PHT-05 | P2 | A row is selected | 1. Click the proxy preview image. | The full-screen `PhotoViewer` overlay opens; prev/next navigate in the sidebar's current item order (folder or all-folders scope). |
+| PHT-06 | P1 | No row selected | 1. Open Analysis → Zdjęcia with nothing selected. | Workspace shows the placeholder `photos-workspace-empty` ("Wybierz zdjęcie z listy po lewej"). |
+| PHT-07 | P1 | Sidebar toolbar visible | 1. Click **Zeskanuj folder**. | The photos folder picker opens (not the video folder picker); a `photos_scan` job runs and the scanned root becomes selected. |
+| PHT-08 | P1 | A root selected, photos pending analysis | 1. Click **Przetwórz**. | A `photo_process` job runs over the selected root; progress renders in the toolbar; the workspace detail updates once complete. |
+| PHT-09 | P2 | Selected root has photos but zero proxies | 1. Read the toolbar. | A proxies-pending info line with **Generuj podglądy** appears; clicking it runs the proxies job; the line disappears once proxies exist. |
+| PHT-10 | P1 | Analysis → Zdjęcia open | 1. Read the workspace top strip. | **Index faces** (`FacesIndexAction`) renders above the detail, same active/lock semantics as before. |
+| PHT-11 | P1 | ≥1 photo catalogued | 1. Switch to Library → Zdjęcia. | Browse-only grid + detail: root filter and search field present; no scan action, no proxies-pending strip, no analyze strip, no variant picker anywhere. |
+| PHT-12 | P2 | Library → Zdjęcia, no photo root scanned | 1. Read the empty state. | Honest empty text with a hint pointing at Analysis → Zdjęcia; no scan CTA in Library. |
+
 ---
 
 ## 4. Regression pack (REG) — one case per bug fixed this session

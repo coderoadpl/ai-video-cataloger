@@ -3,7 +3,7 @@ import { QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { z } from 'zod';
+import { z } from 'zod';
 
 import type { photoListItemSchema } from '@core/contract/index.js';
 
@@ -46,6 +46,31 @@ const stubList = (items: PhotoListItem[]) => {
   }));
 };
 
+const stubStatus = () => {
+  server.use(http.get('/api/photos/status', ({ request }) => {
+    const root = new URL(request.url).searchParams.get('root');
+    return HttpResponse.json({
+      ok: true,
+      data: {
+        media: 'photo',
+        root,
+        counts: {
+          photos: 0,
+          paths: 0,
+          exifRead: 0,
+          exifFailed: 0,
+          missing: 0,
+          duplicates: 0,
+          proxied: 0,
+          proxyFailed: 0,
+          analysed: 0,
+          facesIndexed: 0,
+        },
+      },
+    });
+  }));
+};
+
 const Wrapper = ({ children }: { children: ReactNode }): ReactElement => {
   const [client] = useState(createTestQueryClient);
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
@@ -60,6 +85,7 @@ describe('usePhotosAnalysis', () => {
     window.localStorage.setItem('avc.photosRoot', '/gone');
     stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
 
     const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
 
@@ -73,6 +99,7 @@ describe('usePhotosAnalysis', () => {
       { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
     ]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
 
     const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
 
@@ -94,6 +121,7 @@ describe('usePhotosAnalysis', () => {
 
   it('scanFolder opens the photos picker, runs the scan job, and selects the scanned root', async () => {
     stubList([]);
+    stubStatus();
     const showPicker = vi.spyOn(bridge.folder, 'showPicker').mockResolvedValue('/new-root');
     server.use(
       http.get('/api/photos/tree', () => HttpResponse.json({
@@ -123,5 +151,40 @@ describe('usePhotosAnalysis', () => {
     await waitFor(() => expect(showPicker).toHaveBeenCalledWith('photos'));
     await waitFor(() => expect(result.current.selectedRoot).toBe('/new-root'));
     showPicker.mockRestore();
+  });
+
+  it('analyzePhotos runs the process job over the selected root', async () => {
+    window.localStorage.setItem('avc.photosRoot', '/media');
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+    let processedRoot: string | null = null;
+    server.use(
+      http.post('/api/photos/process', async ({ request }) => {
+        const body = z.object({ root: z.string() }).parse(await request.json());
+        processedRoot = body.root;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
+      }),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: null,
+          progressEvents: [],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0 },
+        },
+      })),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.analyzePhotos());
+
+    await waitFor(() => expect(processedRoot).toBe('/media'));
   });
 });

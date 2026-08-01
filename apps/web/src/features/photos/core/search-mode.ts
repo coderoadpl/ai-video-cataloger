@@ -8,8 +8,6 @@ export type PhotosSearchResult = z.output<typeof photosSearchResultSchema>;
 
 export type PhotosViewMode = { kind: 'browse' } | { kind: 'search'; query: string };
 
-export type PhotosViewVariant = 'browse' | 'analysis';
-
 export const searchResultsToItems = (results: readonly PhotosSearchResult[]): PhotoListItem[] =>
   results.map((result) => ({
     fingerprint: result.fingerprint,

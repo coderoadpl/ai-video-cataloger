@@ -5,16 +5,15 @@ import { OpenInNewIcon } from '../../components/ui/icons.js';
 import { parentDir } from '../../lib/media-url.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import type { CapturedAtSource, PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
-import type { PhotosViewVariant } from './core/index.js';
 import type { PhotoDetail, PhotoVariantRecord } from './use-photos.js';
 
 interface PhotoDetailPaneProps {
-  variant: PhotosViewVariant;
+  showAnalysisTools: boolean;
   detail: PhotoDetail | null;
   isLoading: boolean;
   variants: PhotoVariantRecord[];
   onSelectVariant: (configId: string | null) => void;
-  onSearchTag: (tag: string) => void;
+  onSearchTag?: ((tag: string) => void) | undefined;
   onAnalyze: () => void;
   isBusy: boolean;
   analyzeProgress: { current: number; total: number } | null;
@@ -72,7 +71,7 @@ const capturedAtSourceLabel = (dictionary: Dictionary, source: CapturedAtSource)
 };
 
 export const PhotoDetailPane = ({
-  variant,
+  showAnalysisTools,
   detail,
   isLoading,
   variants,
@@ -84,7 +83,6 @@ export const PhotoDetailPane = ({
   onOpenInAnalysis,
 }: PhotoDetailPaneProps) => {
   const dictionary = useDictionary();
-  const isBrowse = variant === 'browse';
 
   if (isLoading) {
     return (
@@ -125,7 +123,7 @@ export const PhotoDetailPane = ({
       ))}
       <Divider />
       {analysis === null ? (
-        !isBrowse && photo.proxyState === 'done' ? (
+        showAnalysisTools && photo.proxyState === 'done' ? (
           <Alert
             severity="info"
             data-testid="photos-analyze-strip"
@@ -162,12 +160,12 @@ export const PhotoDetailPane = ({
                   label={tag}
                   size="small"
                   data-testid="photo-tag-chip"
-                  onClick={() => onSearchTag(tag)}
+                  onClick={onSearchTag === undefined ? undefined : () => onSearchTag(tag)}
                 />
               ))}
             </Box>
           </Box>
-          {isBrowse ? null : (
+          {showAnalysisTools ? (
             <>
               <Row label={dictionary.photos.detailVariant} value={`${analysis.label} · ${analysis.createdAt}`} />
               <Typography variant="caption" color="text.secondary">{dictionary.photos.detailVariantCount(analysis.variantCount)}</Typography>
@@ -185,10 +183,10 @@ export const PhotoDetailPane = ({
                 ))}
               </Select>
             </>
-          )}
+          ) : null}
         </Box>
       )}
-      {isBrowse && ownerPath !== null && onOpenInAnalysis !== undefined ? (
+      {!showAnalysisTools && ownerPath !== null && onOpenInAnalysis !== undefined ? (
         <Link
           component="button"
           variant="body2"
