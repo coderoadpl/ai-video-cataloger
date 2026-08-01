@@ -241,6 +241,7 @@ export default tseslint.config(
         { type: 'web-gallery', pattern: 'apps/web/src/gallery/**', mode: 'full' },
         { type: 'web-visual', pattern: 'apps/web/src/visual/**', mode: 'full' },
         { type: 'web-api', pattern: 'apps/web/src/api*.ts', mode: 'full' },
+        { type: 'web-routes-test', pattern: 'apps/web/src/routes/**/*.test.{ts,tsx}', mode: 'full' },
         { type: 'web-routes', pattern: 'apps/web/src/routes/**', mode: 'full' },
         {
           type: 'web-island-core',
@@ -382,6 +383,24 @@ export default tseslint.config(
             {
               from: ['web-routes'],
               allow: ['web-routes', 'web-shell', 'web-features', 'web-layout', 'web-ui', 'web-lib'],
+            },
+            {
+              from: ['web-routes-test'],
+              allow: [
+                'web-routes',
+                'web-shell',
+                'web-features',
+                'web-layout',
+                'web-ui',
+                'web-lib',
+                'web-api',
+                'web-test',
+                'web-theme',
+                'web-i18n',
+                'core-domain',
+                'core-contract',
+                'core-client',
+              ],
             },
             {
               from: ['web-features'],

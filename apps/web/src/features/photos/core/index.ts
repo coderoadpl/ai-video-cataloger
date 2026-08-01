@@ -3,3 +3,5 @@ export { columnsForWidth, buildRows, visibleRowRange, type GridRow, type Visible
 export { flattenOrder, adjacentFingerprint, focusTarget, type FocusTarget } from './viewer-nav.js';
 export { viewerSourceCandidates } from './sources.js';
 export { searchResultsToItems, searchSections, type PhotosSearchResult, type PhotosViewMode, type PhotosViewVariant } from './search-mode.js';
+export { photoBadges, type PhotoBadge, type PhotoBadgeInput } from './sidebar-badges.js';
+export { sidebarSections, type PhotoRoot, type SidebarSection } from './sidebar-sections.js';

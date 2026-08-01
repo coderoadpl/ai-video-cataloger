@@ -17,6 +17,8 @@ const item = (overrides: Partial<PhotoListItem> & { fingerprint: string }): Phot
   thumbPath: `/artifacts/thumbs/${overrides.fingerprint}.jpg`,
   gridThumbPath: null,
   proxyPath: `/artifacts/proxies/${overrides.fingerprint}.jpg`,
+  analysed: false,
+  exifReadAt: null,
   ...overrides,
 });
 

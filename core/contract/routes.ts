@@ -549,6 +549,8 @@ export const photoListItemSchema = z.object({
   thumbPath: z.string().nullable(),
   gridThumbPath: z.string().nullable().default(null),
   proxyPath: z.string().nullable(),
+  analysed: z.boolean(),
+  exifReadAt: z.string().nullable(),
 });
 
 export const photosTreeInputSchema = z.object({});

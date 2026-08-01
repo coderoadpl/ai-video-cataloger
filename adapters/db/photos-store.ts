@@ -615,8 +615,9 @@ export class SqlJsPhotosStore implements PhotosStore {
       const total = numberValue(totalResult[0]?.values[0]?.[0]);
       const rowsResult = client.exec(
         `SELECT fingerprint, file_name, current_path, ext, captured_at, captured_at_source, width, height,
-                proxy_state, thumb_state, missing_at,
-                (SELECT COUNT(*) FROM photo_paths WHERE fingerprint = photos.fingerprint) AS sightings
+                proxy_state, thumb_state, missing_at, exif_read_at,
+                (SELECT COUNT(*) FROM photo_paths WHERE fingerprint = photos.fingerprint) AS sightings,
+                EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = photos.fingerprint) AS analysed
          FROM photos WHERE ${scope.where}
          ORDER BY captured_at DESC, fingerprint ASC
          LIMIT $scopeLimit OFFSET $scopeOffset`,
@@ -634,7 +635,9 @@ export class SqlJsPhotosStore implements PhotosStore {
         proxyState: parseProxyState(stringValue(row[8])),
         thumbState: parseThumbState(stringValue(row[9])),
         missingAt: nullableNumberValue(row[10]),
-        sightings: numberValue(row[11]),
+        exifReadAt: nullableStringValue(row[11]),
+        sightings: numberValue(row[12]),
+        analysed: numberValue(row[13]) === 1,
       }));
       return { total, items };
     });

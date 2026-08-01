@@ -534,6 +534,41 @@ describe('SqlJsPhotosStore', () => {
     ]);
   });
 
+  it('listPhotosPage reports analysed and exifReadAt per item', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertPhoto(photo({
+      fingerprint: 'ph_0000000000000001',
+      currentPath: '/media/photos/a.jpg',
+      exifReadAt: '2026-01-01T00:00:00.000Z',
+    }));
+    await store.upsertPhoto(photo({
+      fingerprint: 'ph_0000000000000002',
+      currentPath: '/media/photos/b.jpg',
+      exifReadAt: null,
+    }));
+    await store.recordPhotoAnalysis({
+      fingerprint: 'ph_0000000000000001',
+      configId: 'cfg_test',
+      description: 'desc',
+      scene: 'scene',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'test',
+      model: null,
+      batchSize: 1,
+      usageJson: null,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const page = await store.listPhotosPage({ root: null, offset: 0, limit: 10 });
+    expect(page.ok && page.value.items).toEqual([
+      expect.objectContaining({ fingerprint: 'ph_0000000000000001', analysed: true, exifReadAt: '2026-01-01T00:00:00.000Z' }),
+      expect.objectContaining({ fingerprint: 'ph_0000000000000002', analysed: false, exifReadAt: null }),
+    ]);
+  });
+
   it('getPhotoDetail returns the photo and its sightings ordered by last-seen then path', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });

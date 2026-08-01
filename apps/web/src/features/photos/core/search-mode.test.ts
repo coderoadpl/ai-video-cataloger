@@ -40,6 +40,8 @@ describe('searchResultsToItems', () => {
       thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
       gridThumbPath: '/artifacts/thumbs/ph_0000000000000001.grid.jpg',
       proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
+      analysed: false,
+      exifReadAt: null,
     }]);
   });
 

@@ -95,8 +95,8 @@ module.exports = {
     {
       name: 'web-routes-are-thin',
       severity: 'error',
-      comment: 'Routes wire features/ui/lib only: no core, api or bound clients.',
-      from: { path: '^apps/web/src/routes/' },
+      comment: 'Routes wire features/ui/lib only: no core, api or bound clients (route tests may reach api/test/theme to render the composition root).',
+      from: { path: '^apps/web/src/routes/', pathNot: '\\.test\\.tsx?$' },
       to: { path: '^(core/|apps/web/src/api)' },
     },
     {

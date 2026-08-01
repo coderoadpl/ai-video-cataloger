@@ -529,6 +529,8 @@ export interface PhotoListItem {
   thumbState: 'pending' | 'done' | 'failed';
   missingAt: number | null;
   sightings: number;
+  analysed: boolean;
+  exifReadAt: string | null;
 }
 
 export interface PhotoDetail {

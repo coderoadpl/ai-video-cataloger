@@ -20,6 +20,8 @@ const stubItem = (fingerprint: string): PhotoListItem => ({
   thumbPath: null,
   gridThumbPath: null,
   proxyPath: null,
+  analysed: false,
+  exifReadAt: null,
 });
 
 describe('columnsForWidth', () => {

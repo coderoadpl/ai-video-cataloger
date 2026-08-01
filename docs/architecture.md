@@ -302,8 +302,12 @@ control: **Biblioteka** (cross-folder browse over the catalog index) and
 **Analiza** (folder-centric work surface). `ViewNav`'s five tabs are retired
 and redistributed: Kolekcja, Zdjęcia, Osoby and Mapa become a horizontal
 subnav inside Library (no catalog sidebar there); the folder workspace and its
-Zdjęcia face become a Filmy/Zdjęcia toggle inside Analysis (sidebar +
-`DetailsPanel` + terminal, unchanged). The toggle itself lives in the top bar,
+Zdjęcia face become a Filmy/Zdjęcia toggle inside Analysis. The sidebar is
+**medium-aware**: it follows `analysisMedia`, rendering `CatalogSidebar` for
+Filmy and `PhotosSidebar` for Zdjęcia, and the rail heading follows it too
+(Filmy/Zdjęcia) — `DetailsPanel` and the terminal are unchanged. The Zdjęcia
+sidebar with zero scanned roots shows an honest empty state with a scan CTA,
+never the video list. The toggle itself lives in the top bar,
 next to the Biblioteka/Analiza switcher, so it stays visible regardless of
 scroll position inside the Analysis workspace; it renders only while
 `mode === 'analysis'`. Search exists only inside the Library's

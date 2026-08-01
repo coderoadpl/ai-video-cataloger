@@ -28,7 +28,9 @@ import { useCatalogLocations, type CatalogLocation } from '../features/map/use-c
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { FacesIndexAction } from '../features/people/FacesIndexAction.js';
 import { PeopleView } from '../features/people/PeopleView.js';
+import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { PhotosView } from '../features/photos/PhotosView.js';
+import { usePhotosAnalysis } from '../features/photos/use-photos-analysis.js';
 import { BrowsePreview, previewFromLocation, previewFromSearchResult, type PreviewMedia } from '../features/preview/index.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
 import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
@@ -56,12 +58,17 @@ export const IndexRoute = () => {
   const [librarySeed, setLibrarySeed] = useState<LibrarySeed | null>(null);
   const [mapFocus, setMapFocus] = useState<string | null>(null);
   const [photoFocus, setPhotoFocus] = useState<string | null>(null);
+  const [photosRootSeed, setPhotosRootSeed] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const [preview, setPreview] = useState<PreviewMedia | null>(null);
   const shell = useShell();
   const [scope, setScope] = useScopePreference(shell.currentFolder);
   const terminal = useTerminalLog();
   const apiLog = useApiLog();
+  const photosAnalysis = usePhotosAnalysis({
+    active: mode === 'analysis' && analysisMedia === 'photos',
+    addLine: terminal.addLine,
+  });
   const catalog = useCatalog(shell.currentFolder);
   const videoRegistry = useCatalogVideoRegistry();
   const tree = useCatalogTree(shell.currentFolder);
@@ -159,7 +166,15 @@ export const IndexRoute = () => {
     },
     [catalogIndex.folders, setLibrarySurface, setMode],
   );
-  const sidebar = (
+  const onShowPhotosRootInLibrary = useCallback(
+    (root: string) => {
+      setMode('library');
+      setLibrarySurface('photos');
+      setPhotosRootSeed(root);
+    },
+    [setLibrarySurface, setMode],
+  );
+  const videoSidebar = (
     <CatalogSidebar
       folder={shell.currentFolder}
       catalog={catalog}
@@ -194,6 +209,10 @@ export const IndexRoute = () => {
         />
       }
     />
+  );
+
+  const photosSidebar = (
+    <PhotosSidebar state={photosAnalysis} onShowInLibrary={onShowPhotosRootInLibrary} />
   );
 
   const detailContent = (
@@ -246,6 +265,8 @@ export const IndexRoute = () => {
           addLine={terminal.addLine}
           focusFingerprint={photoFocus}
           onFocusConsumed={() => setPhotoFocus(null)}
+          rootSeed={photosRootSeed}
+          onRootSeedConsumed={() => setPhotosRootSeed(null)}
           onOpenInAnalysis={openInAnalysis}
         />
         <PeopleView
@@ -296,6 +317,7 @@ export const IndexRoute = () => {
         active={mode === 'analysis' && analysisMedia === 'photos'}
         variant="analysis"
         addLine={terminal.addLine}
+        selectedFingerprint={photosAnalysis.selectedFingerprint}
       />
     </Box>
   );
@@ -324,7 +346,7 @@ export const IndexRoute = () => {
   return (
     <AppLayout
       shell={shell}
-      sidebar={mode === 'library' ? null : sidebar}
+      sidebar={mode === 'library' ? null : analysisMedia === 'photos' ? photosSidebar : videoSidebar}
       mode={mode}
       onModeChange={setMode}
       analysisMedia={analysisMedia}

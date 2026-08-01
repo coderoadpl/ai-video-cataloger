@@ -639,6 +639,21 @@ search regardless of mode). The faces-index build lives only in the
 `analysis` mount, above it, as a separate `FacesIndexAction` component — see
 `docs/architecture.md`'s two-mode IA delta.
 
+`PhotosSidebar` (`features/photos/PhotosSidebar.tsx`) is the Analysis
+sidebar's Zdjęcia face, mounted once from `routes/index.tsx` alongside the
+lifted `use-photos-analysis.ts` hook (a slimmed sibling of `usePhotos`, not a
+shared instance — root/scope/selection state lives at the route so it can
+feed both the sidebar and the still-standalone `PhotosView variant="analysis"`
+mount). It shows a folder header (root name, path, "Pokaż w Bibliotece"), a
+`'folder' | 'all'` scope toggle, and thumbnail rows carrying badges derived
+from `photoBadges` (`analysed`, `duplicate`, `proxyFailed`, `exifMissing`,
+`missing`) — parity with `CatalogSidebar`/`VideoList`. With zero scanned
+roots it renders an honest empty state with a scan CTA, never falling back to
+the video list. The analysis mount of `PhotosView` still owns folder actions
+(scan/proxies/analyze) and the photo detail surface in this wave; retiring
+its dropdown/scan/search in favor of the sidebar's toolbar is scheduled for a
+follow-up wave, not done here.
+
 ## 9. Shared vs duplicated — the ledger
 
 | Machinery | Verdict |

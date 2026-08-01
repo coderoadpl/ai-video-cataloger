@@ -34,6 +34,7 @@ export interface Dictionary {
   };
   appFrame: {
     sidebarHeading: string;
+    sidebarHeadingPhotos: string;
     hideSidebar: string;
     showSidebar: string;
     modeLibrary: string;
@@ -770,6 +771,19 @@ export interface Dictionary {
     qualityOther: string;
     openInAnalysis: string;
   };
+  photosSidebar: {
+    emptyTitle: string;
+    emptyBody: string;
+    emptyScanCta: string;
+    scopeThisFolder: string;
+    scopeAllFolders: string;
+    showInLibrary: string;
+    badgeAnalysed: string;
+    badgeProxyFailed: string;
+    badgeExifMissing: string;
+    badgeMissing: string;
+    loadMore: string;
+  };
   library: {
     title: string;
     subtitle: string;
@@ -861,6 +875,7 @@ export const en: Dictionary = {
   },
   appFrame: {
     sidebarHeading: 'Videos',
+    sidebarHeadingPhotos: 'Photos',
     hideSidebar: 'Hide',
     showSidebar: 'Show',
     modeLibrary: 'Library',
@@ -1651,6 +1666,19 @@ export const en: Dictionary = {
     qualityOther: 'Other',
     openInAnalysis: 'Open in Analysis',
   },
+  photosSidebar: {
+    emptyTitle: 'No photo folders scanned yet',
+    emptyBody: 'Scan a folder to index its photos and browse them here.',
+    emptyScanCta: 'Scan a photo folder',
+    scopeThisFolder: 'This folder',
+    scopeAllFolders: 'All scanned folders',
+    showInLibrary: 'Show in Library',
+    badgeAnalysed: 'Analysed',
+    badgeProxyFailed: 'Preview failed',
+    badgeExifMissing: 'No EXIF',
+    badgeMissing: 'File missing',
+    loadMore: 'Load more',
+  },
   library: {
     title: 'Library',
     subtitle: 'Browse everything ever processed, across every catalogued folder.',
@@ -1750,6 +1778,7 @@ export const pl: Dictionary = {
   },
   appFrame: {
     sidebarHeading: 'Filmy',
+    sidebarHeadingPhotos: 'Zdjęcia',
     hideSidebar: 'Ukryj',
     showSidebar: 'Pokaż',
     modeLibrary: 'Biblioteka',
@@ -2540,6 +2569,19 @@ export const pl: Dictionary = {
     qualityOverexposed: 'Prześwietlona',
     qualityOther: 'Inna',
     openInAnalysis: 'Otwórz w Analizie',
+  },
+  photosSidebar: {
+    emptyTitle: 'Nie zeskanowano jeszcze żadnych folderów ze zdjęciami',
+    emptyBody: 'Zeskanuj folder, aby zindeksować zdjęcia i przeglądać je tutaj.',
+    emptyScanCta: 'Zeskanuj folder ze zdjęciami',
+    scopeThisFolder: 'Ten folder',
+    scopeAllFolders: 'Wszystkie foldery',
+    showInLibrary: 'Pokaż w Bibliotece',
+    badgeAnalysed: 'Ukończony',
+    badgeProxyFailed: 'Podgląd nieudany',
+    badgeExifMissing: 'Brak EXIF',
+    badgeMissing: 'Brak pliku',
+    loadMore: 'Wczytaj więcej',
   },
   library: {
     title: 'Biblioteka',

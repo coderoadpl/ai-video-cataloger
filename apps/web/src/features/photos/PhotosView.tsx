@@ -19,6 +19,9 @@ interface PhotosViewProps {
   addLine: AddLogLine;
   focusFingerprint?: string | null;
   onFocusConsumed?: () => void;
+  selectedFingerprint?: string | null;
+  rootSeed?: string | null;
+  onRootSeedConsumed?: () => void;
   onOpenInAnalysis?: (folderPath: string, videoPath: string) => void;
 }
 
@@ -35,6 +38,9 @@ export const PhotosView = ({
   addLine,
   focusFingerprint = null,
   onFocusConsumed = noop,
+  selectedFingerprint = null,
+  rootSeed = null,
+  onRootSeedConsumed = noop,
   onOpenInAnalysis,
 }: PhotosViewProps) => {
   const isBrowse = variant === 'browse';
@@ -61,7 +67,7 @@ export const PhotosView = ({
     [photos],
   );
 
-  const { selectFingerprint } = photos;
+  const { selectFingerprint, selectRoot } = photos;
   useEffect(() => {
     if (focusFingerprint === null || order.length === 0) return;
     const target = focusTarget(order, focusFingerprint);
@@ -69,6 +75,17 @@ export const PhotosView = ({
     if (target.openViewer) setViewerOpen(true);
     onFocusConsumed();
   }, [focusFingerprint, order, selectFingerprint, onFocusConsumed]);
+
+  useEffect(() => {
+    if (selectedFingerprint === null) return;
+    selectFingerprint(selectedFingerprint);
+  }, [selectedFingerprint, selectFingerprint]);
+
+  useEffect(() => {
+    if (rootSeed === null) return;
+    selectRoot(rootSeed);
+    onRootSeedConsumed();
+  }, [rootSeed, selectRoot, onRootSeedConsumed]);
 
   if (!active) return null;
 

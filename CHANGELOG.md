@@ -79,6 +79,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The Library tab gains an always-visible filter bar (tag/person/place/date-range/has-GPS chips, an honest `{shown} of {total}` count, and a no-match message that names every active filter) plus a date/folder grouping toggle with a sort control, so a browse can be scoped without leaving Library.
 - "Show in Library" now works in both directions: a Library tile's context menu opens its folder/processing context (open in folder view, reveal in Finder, copy path), and the current folder header, a Videos-list row, and the details panel's location row each gain a "Show in Library" action that scopes Library to that folder (removable chip) and, for a specific file, scrolls the grid to it.
 - Library becomes the default view on launch once the catalog holds at least one file (an empty catalog still opens on Videos); the last active view is persisted and always wins over that default. `ViewNav` now orders Library directly after Videos.
+- "Pokaż w Bibliotece" from the photos sidebar preselects the root in the Library Zdjęcia surface.
 
 ### Changed
 
@@ -104,6 +105,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The folder bar and the terminal strip render only in Analysis mode; the Library browses the cross-folder catalog without a current folder.
 - The Analysis Videos/Photos media toggle moves from the workspace content into the top bar, next to the Library/Analysis switcher, so it is always visible while in Analysis mode.
 - The Library search box's bottom margin doubles (8px → 16px) so it no longer crowds the filter bar beneath it.
+- `photosList` items now carry `analysed` and `exifReadAt`.
 
 ### Removed
 
@@ -111,6 +113,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Analysis with Zdjęcia active now shows the photos sidebar (folder header, scope toggle, badge rows, honest empty state) instead of the video list.
 - Folders whose names carry diacritics are no longer silently skipped: every path entering the catalog is canonicalized to NFC at the contract, filesystem and store boundaries, so a path handed in as NFD (the on-disk form on macOS) matches the NFC rows the catalog stores. In a real-world catalog this recovered affected analyzed files that `faces index` had reported as a successful zero-file run.
 - `faces index <root>` no longer reports success over an empty set: a root that does not exist fails with `folder_not_found`, and an existing root with no catalog folders under it fails with `drive_root_empty` (exit 39), matching `materialize` and `process-drive`; a root whose files are all already indexed still succeeds and now reports the folders and analyzed files it saw.
 - A read-only mirror created before path canonicalization keeps its frames and thumbnails: the mirror id derived from the old decomposed folder name is rebuilt and used when no canonical mirror exists, so a diacritic folder is not silently re-mirrored from scratch.

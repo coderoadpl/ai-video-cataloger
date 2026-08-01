@@ -27,6 +27,8 @@ export const searchResultsToItems = (results: readonly PhotosSearchResult[]): Ph
     thumbPath: result.thumbPath,
     gridThumbPath: result.gridThumbPath,
     proxyPath: result.proxyPath,
+    analysed: false,
+    exifReadAt: null,
   }));
 
 export const searchSections = (items: readonly PhotoListItem[], label: string): DaySection[] =>

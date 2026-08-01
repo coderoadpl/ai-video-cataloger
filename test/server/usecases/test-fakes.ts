@@ -2248,6 +2248,8 @@ export class InMemoryPhotosStore implements PhotosStore {
       thumbState: photo.thumbState,
       missingAt: photo.missingAt,
       sightings: sightingCounts.get(photo.fingerprint) ?? 0,
+      analysed: this.analysesFor(photo.fingerprint).length > 0,
+      exifReadAt: photo.exifReadAt,
     }));
     return Promise.resolve(ok({ total: all.length, items: page }));
   }

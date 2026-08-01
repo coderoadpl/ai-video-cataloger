@@ -182,7 +182,13 @@ export const AppLayout = ({
             onAnalysisMediaChange={onAnalysisMediaChange}
           />
         }
-        sidebarHeading={<Typography variant="h2">{dictionary.appFrame.sidebarHeading}</Typography>}
+        sidebarHeading={
+          <Typography variant="h2">
+            {mode === 'analysis' && analysisMedia === 'photos'
+              ? dictionary.appFrame.sidebarHeadingPhotos
+              : dictionary.appFrame.sidebarHeading}
+          </Typography>
+        }
         sidebarAction={
           <Button size="small" color="inherit" onClick={toggleSidebar}>
             {dictionary.appFrame.hideSidebar}
