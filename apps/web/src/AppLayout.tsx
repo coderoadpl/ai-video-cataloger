@@ -9,6 +9,7 @@ import {
   TERMINAL_DEFAULT_SIZE,
 } from './components/layout/AppShell.js';
 import { AppHeader } from './components/ui/AppHeader.js';
+import { type AnalysisMedia } from './components/ui/AnalysisMediaToggle.js';
 import { type AppMode } from './components/ui/ModeSwitcher.js';
 import { NestedDbDialog } from './components/ui/dialogs/NestedDbDialog.js';
 import { TerminalLog } from './components/ui/TerminalLog.js';
@@ -71,6 +72,8 @@ interface AppLayoutProps {
   content: ReactNode;
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
+  analysisMedia: AnalysisMedia;
+  onAnalysisMediaChange: (media: AnalysisMedia) => void;
   terminal?: TerminalPanelState;
   overlays?: ReactNode;
   renderModals?: (state: ShellModalState) => ReactNode;
@@ -87,6 +90,8 @@ export const AppLayout = ({
   content,
   mode,
   onModeChange,
+  analysisMedia,
+  onAnalysisMediaChange,
   terminal,
   overlays,
   renderModals,
@@ -173,6 +178,8 @@ export const AppLayout = ({
             onShowPrerequisites={() => setModal('prerequisites')}
             mode={mode}
             onModeChange={onModeChange}
+            analysisMedia={analysisMedia}
+            onAnalysisMediaChange={onAnalysisMediaChange}
           />
         }
         sidebarHeading={<Typography variant="h2">{dictionary.appFrame.sidebarHeading}</Typography>}

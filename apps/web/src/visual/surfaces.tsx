@@ -179,6 +179,8 @@ const Header = () => (
     onShowPrerequisites={noop}
     mode="analysis"
     onModeChange={noop}
+    analysisMedia="videos"
+    onAnalysisMediaChange={noop}
   />
 );
 

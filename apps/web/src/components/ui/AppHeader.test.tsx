@@ -23,6 +23,8 @@ const renderHeader = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) 
     onShowPrerequisites: () => undefined,
     mode: 'analysis',
     onModeChange: () => undefined,
+    analysisMedia: 'videos',
+    onAnalysisMediaChange: () => undefined,
     ...overrides,
   };
   return renderThemed(<AppHeader {...props} />);
@@ -55,5 +57,22 @@ describe('AppHeader mode switcher', () => {
     renderHeader({ mode: 'library' });
 
     expect(screen.queryByRole('button', { name: en.folderBar.openFolder })).toBeNull();
+  });
+});
+
+describe('AppHeader analysis media toggle', () => {
+  it('renders the toggle next to the mode switcher in analysis mode and fires the callback', () => {
+    const onAnalysisMediaChange = vi.fn();
+    renderHeader({ mode: 'analysis', analysisMedia: 'videos', onAnalysisMediaChange });
+
+    expect(screen.getByTestId('analysis-media-videos')).toBeDefined();
+    fireEvent.click(screen.getByTestId('analysis-media-photos'));
+    expect(onAnalysisMediaChange).toHaveBeenCalledWith('photos');
+  });
+
+  it('renders no toggle in library mode', () => {
+    renderHeader({ mode: 'library' });
+
+    expect(screen.queryByTestId('analysis-media-videos')).toBeNull();
   });
 });

@@ -102,6 +102,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Two-mode UI: a Library/Analysis switcher in the top bar replaces the five-tab view navigation; Library groups Collection/Photos/People/Map behind a subnav, Analysis groups the folder workspace behind a Videos/Photos toggle, and each mode remembers its own state.
 - Browse surfaces are strictly read-only: Library Photos hides analyze/variant actions and folder scanning, Library People hides the faces-index build (now in Analysis > Photos), and map video pins open the preview instead of the folder workspace.
 - The folder bar and the terminal strip render only in Analysis mode; the Library browses the cross-folder catalog without a current folder.
+- The Analysis Videos/Photos media toggle moves from the workspace content into the top bar, next to the Library/Analysis switcher, so it is always visible while in Analysis mode.
+- The Library search box's bottom margin doubles (8px → 16px) so it no longer crowds the filter bar beneath it.
 
 ### Removed
 

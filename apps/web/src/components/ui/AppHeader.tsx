@@ -4,6 +4,7 @@ import { versionLabel } from '../../lib/format.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { FolderBar } from './FolderBar.js';
 import { ModeSwitcher, type AppMode } from './ModeSwitcher.js';
+import { AnalysisMediaToggle, type AnalysisMedia } from './AnalysisMediaToggle.js';
 
 interface AppHeaderProps {
   appVersion: string;
@@ -16,6 +17,8 @@ interface AppHeaderProps {
   onShowPrerequisites: () => void;
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
+  analysisMedia: AnalysisMedia;
+  onAnalysisMediaChange: (media: AnalysisMedia) => void;
 }
 
 export const AppHeader = ({
@@ -29,6 +32,8 @@ export const AppHeader = ({
   onShowPrerequisites,
   mode,
   onModeChange,
+  analysisMedia,
+  onAnalysisMediaChange,
 }: AppHeaderProps) => {
   const dictionary = useDictionary();
 
@@ -51,6 +56,9 @@ export const AppHeader = ({
         <Typography variant="caption">{versionLabel(appVersion)}</Typography>
       )}
       <ModeSwitcher mode={mode} onModeChange={onModeChange} />
+      {mode === 'analysis' ? (
+        <AnalysisMediaToggle media={analysisMedia} onSelect={onAnalysisMediaChange} />
+      ) : null}
       <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
         {mode === 'analysis' ? (
           <FolderBar

@@ -301,7 +301,7 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
               }}
             />
           )}
-          sx={{ mb: 1 }}
+          sx={{ mb: 2 }}
         />
         <FilterBar
           state={filters}

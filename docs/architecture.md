@@ -303,7 +303,10 @@ control: **Biblioteka** (cross-folder browse over the catalog index) and
 and redistributed: Kolekcja, Zdjęcia, Osoby and Mapa become a horizontal
 subnav inside Library (no catalog sidebar there); the folder workspace and its
 Zdjęcia face become a Filmy/Zdjęcia toggle inside Analysis (sidebar +
-`DetailsPanel` + terminal, unchanged). Search exists only inside the Library's
+`DetailsPanel` + terminal, unchanged). The toggle itself lives in the top bar,
+next to the Biblioteka/Analiza switcher, so it stays visible regardless of
+scroll position inside the Analysis workspace; it renders only while
+`mode === 'analysis'`. Search exists only inside the Library's
 Kolekcja surface — it reuses the single `searchQuery` contract that already
 powers the library grid, no new endpoint or search-specific query shape. The
 Analysis details pane keeps its video player and variant tools exactly as

@@ -4,7 +4,6 @@ import { Box } from '@mui/material';
 import { folderName } from '../lib/format.js';
 import { parentDir } from '../lib/media-url.js';
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
-import { AnalysisMediaToggle } from '../components/ui/AnalysisMediaToggle.js';
 import { LibrarySubnav } from '../components/ui/LibrarySubnav.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
 import { DriveSummaryDialog } from '../components/ui/dialogs/DriveSummaryDialog.js';
@@ -277,7 +276,6 @@ export const IndexRoute = () => {
         data-analyzing={processing.isBusy ? 'true' : 'false'}
         sx={{ display: 'none' }}
       />
-      <AnalysisMediaToggle media={analysisMedia} onSelect={setAnalysisMedia} />
       <Box sx={{ display: analysisMedia === 'videos' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
         {overlay === null ? null : (
           <ProcessingOverlay progress={overlay} onCancel={processing.requestCancel} />
@@ -329,6 +327,8 @@ export const IndexRoute = () => {
       sidebar={mode === 'library' ? null : sidebar}
       mode={mode}
       onModeChange={setMode}
+      analysisMedia={analysisMedia}
+      onAnalysisMediaChange={setAnalysisMedia}
       modalRequest={modalRequest}
       onModalRequestConsumed={() => setModalRequest(null)}
       content={mode === 'library' ? libraryContent : analysisContent}
