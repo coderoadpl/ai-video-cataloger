@@ -220,6 +220,7 @@ export const IndexRoute = () => {
       video={selected}
       analyzing={analyzing}
       loading={shell.currentFolder !== null && selected === null && (catalog.isLoading || tree.isLoading)}
+      hasVideos={shell.currentFolder !== null && catalog.videos.length > 0}
       onAnalyze={processing.analyze}
       onNavigateToCanonical={catalog.selectKey}
       disabledReason={disabledReason}

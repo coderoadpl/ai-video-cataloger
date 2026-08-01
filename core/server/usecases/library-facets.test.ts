@@ -42,6 +42,48 @@ const file = (fingerprint: string, folderId: string): CatalogFile => ({
   place: null,
 });
 
+const personRecord = (personId: string, displayName: string | null) => ({
+  personId,
+  displayName,
+  kind: 'face' as const,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  centroid: [],
+  exemplarCount: 0,
+});
+
+describe('libraryFacets people ordering', () => {
+  it('attaches the People-surface index to unnamed people and sorts named first, then unnamed by that index', async () => {
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const fs = new InMemoryFileSystem();
+    await globalCatalog.upsertPerson(personRecord('p-unnamed-a', null));
+    await globalCatalog.upsertPerson(personRecord('p-named', 'Alex'));
+    await globalCatalog.upsertPerson(personRecord('p-unnamed-b', null));
+    await globalCatalog.upsertFaceObservation({
+      obsId: 'o1', fingerprint: 'fp-1', kind: 'face', frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 }, embedding: [], quality: 0.9,
+      personId: 'p-unnamed-a', cropPath: null, media: 'video',
+    });
+    await globalCatalog.upsertFaceObservation({
+      obsId: 'o2', fingerprint: 'fp-2', kind: 'face', frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 }, embedding: [], quality: 0.9,
+      personId: 'p-named', cropPath: null, media: 'video',
+    });
+    await globalCatalog.upsertFaceObservation({
+      obsId: 'o3', fingerprint: 'fp-3', kind: 'face', frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 }, embedding: [], quality: 0.9,
+      personId: 'p-unnamed-b', cropPath: null, media: 'video',
+    });
+
+    const result = await libraryFacets({ globalCatalog, fs });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.people.map((person) => person.personId)).toEqual(['p-named', 'p-unnamed-a', 'p-unnamed-b']);
+    expect(result.value.people.find((person) => person.personId === 'p-unnamed-a')?.fallbackIndex).toBe(0);
+    expect(result.value.people.find((person) => person.personId === 'p-unnamed-b')?.fallbackIndex).toBe(2);
+  });
+});
+
 describe('libraryFacets', () => {
   it('returns empty facets and zero counts for an empty catalog', async () => {
     const globalCatalog = new InMemoryGlobalCatalogStore();

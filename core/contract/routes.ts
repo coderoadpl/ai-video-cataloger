@@ -1685,6 +1685,7 @@ export const libraryFacetPersonSchema = z.object({
   personId: z.string().min(1),
   displayName: z.string().nullable(),
   count: z.number().int().nonnegative(),
+  fallbackIndex: z.number().int().nonnegative().default(0),
 }).strict();
 
 export const libraryFacetPlaceSchema = z.object({

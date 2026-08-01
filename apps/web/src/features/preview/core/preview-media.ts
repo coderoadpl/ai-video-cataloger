@@ -14,6 +14,7 @@ export interface PreviewMedia {
   tags: readonly string[];
   placeName: string | null;
   capturedAt: string | null;
+  posterPath: string | null;
 }
 
 export const previewFromSearchResult = (item: z.output<typeof searchResultSchema>): PreviewMedia => ({
@@ -28,6 +29,7 @@ export const previewFromSearchResult = (item: z.output<typeof searchResultSchema
   tags: item.tags,
   placeName: item.place?.name ?? null,
   capturedAt: item.capturedAt,
+  posterPath: item.gridThumbnailPath ?? item.thumbnailPath,
 });
 
 export const previewFromLocation = (location: z.output<typeof catalogLocationSchema>): PreviewMedia | null => {
@@ -44,5 +46,6 @@ export const previewFromLocation = (location: z.output<typeof catalogLocationSch
     tags: [],
     placeName: location.place?.name ?? null,
     capturedAt: null,
+    posterPath: location.thumbPath,
   };
 };

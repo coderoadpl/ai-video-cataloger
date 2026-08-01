@@ -11,6 +11,7 @@ interface DetailsPanelProps {
   video: DetailsVideo | null;
   analyzing: boolean;
   loading?: boolean;
+  hasVideos?: boolean;
   onAnalyze?: ((video: DetailsVideo, options?: { force?: boolean }) => void) | undefined;
   onNavigateToCanonical?: ((canonicalPath: string) => void) | undefined;
   disabledReason?: string | undefined;
@@ -45,10 +46,17 @@ const Welcome = ({ dictionary }: { dictionary: Dictionary }) => (
   </Box>
 );
 
+const SelectVideoPrompt = ({ dictionary }: { dictionary: Dictionary }) => (
+  <Box sx={{ p: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100%' }}>
+    <Typography variant="body1" color="text.secondary">{dictionary.details.selectVideoPrompt}</Typography>
+  </Box>
+);
+
 export const DetailsPanel = ({
   video,
   analyzing,
   loading = false,
+  hasVideos = false,
   onAnalyze,
   onNavigateToCanonical,
   disabledReason,
@@ -62,7 +70,7 @@ export const DetailsPanel = ({
   if (video === null && loading) return <DetailsSkeleton />;
 
   return video === null ? (
-    <Welcome dictionary={dictionary} />
+    hasVideos ? <SelectVideoPrompt dictionary={dictionary} /> : <Welcome dictionary={dictionary} />
   ) : (
     <VideoDetails
       key={video.path}

@@ -4,7 +4,6 @@ import {
   Box,
   Button,
   Card,
-  CardActions,
   CardContent,
   Checkbox,
   CircularProgress,
@@ -14,15 +13,20 @@ import {
   DialogContentText,
   DialogTitle,
   Divider,
+  IconButton,
+  Menu,
+  MenuItem,
   TextField,
   Typography,
 } from '@mui/material';
 
-import { ImageIcon } from '../../components/ui/icons.js';
+import { MoreVertIcon } from '../../components/ui/icons.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
+import { placeholderGradients } from '../../theme.js';
 import { type FacePerson, usePeople } from './use-people.js';
 
 interface PeopleViewProps {
@@ -147,6 +151,7 @@ export const PeopleView = ({
                 key={person.personId}
                 person={person}
                 name={displayName(dictionary, person, index)}
+                fallbackGlyph={person.displayName === null ? String(index + 1) : displayName(dictionary, person, index).charAt(0)}
                 selected={people.selectedPersonIds.includes(person.personId)}
                 disabled={people.isBusy}
                 mutationsDisabled={mutationsBlocked}
@@ -305,6 +310,7 @@ const EmptyState = ({ title, body, action, testId }: EmptyStateProps) => (
 interface PersonCardProps {
   person: FacePerson;
   name: string;
+  fallbackGlyph: string;
   selected: boolean;
   disabled: boolean;
   mutationsDisabled: boolean;
@@ -317,6 +323,7 @@ interface PersonCardProps {
 const PersonCard = ({
   person,
   name,
+  fallbackGlyph,
   selected,
   disabled,
   mutationsDisabled,
@@ -326,6 +333,9 @@ const PersonCard = ({
   onForget,
 }: PersonCardProps) => {
   const dictionary = useDictionary();
+  const [imageFailed, setImageFailed] = useState(false);
+  const [menuAnchor, setMenuAnchor] = useState<HTMLElement | null>(null);
+  const cropPath = imageFailed ? null : person.exemplarCropPath;
 
   return (
   <Card
@@ -351,29 +361,55 @@ const PersonCard = ({
         slotProps={{ input: { 'aria-label': dictionary.people.selectPerson(name) } }}
         sx={{ position: 'absolute', top: 4, left: 4, bgcolor: 'background.paper', borderRadius: 1 }}
       />
-      {person.exemplarCropPath === null ? (
-        <ImageIcon sx={{ color: 'text.secondary' }} />
+      {cropPath === null ? (
+        <Box
+          data-testid="people-card-fallback"
+          style={{ background: placeholderGradients[gradientIndexFor(person.personId)] }}
+          sx={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <Typography variant="h4" sx={{ color: 'common.white' }}>{fallbackGlyph}</Typography>
+        </Box>
       ) : (
         <Box
           component="img"
           alt={name}
-          src={mediaUrl(person.exemplarCropPath, person.exemplarCount)}
+          src={mediaUrl(cropPath, person.exemplarCount)}
+          onError={() => setImageFailed(true)}
           sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       )}
+      <IconButton
+        size="small"
+        aria-label={dictionary.people.moreActions(name)}
+        onClick={(event) => setMenuAnchor(event.currentTarget)}
+        sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper', '&:hover': { bgcolor: 'background.paper' } }}
+      >
+        <MoreVertIcon fontSize="small" />
+      </IconButton>
+      <Menu anchorEl={menuAnchor} open={menuAnchor !== null} onClose={() => setMenuAnchor(null)}>
+        <MenuItem
+          onClick={() => { setMenuAnchor(null); onRename(); }}
+          disabled={disabled || mutationsDisabled}
+          title={lockReason}
+          data-testid="people-rename"
+        >
+          {dictionary.people.rename}
+        </MenuItem>
+        <MenuItem
+          onClick={() => { setMenuAnchor(null); onForget(); }}
+          disabled={disabled || mutationsDisabled}
+          title={lockReason}
+          data-testid="people-forget"
+          sx={{ color: 'error.main' }}
+        >
+          {dictionary.people.delete}
+        </MenuItem>
+      </Menu>
     </Box>
     <CardContent sx={{ p: 1.25, flex: 1 }}>
       <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={name}>{name}</Typography>
       <Typography variant="caption">{dictionary.people.observationCount(person.observationCount)}</Typography>
     </CardContent>
-    <CardActions sx={{ px: 1, py: 0.75 }}>
-      <Button size="small" onClick={onRename} disabled={disabled || mutationsDisabled} title={lockReason} data-testid="people-rename">
-        {dictionary.people.rename}
-      </Button>
-      <Button size="small" color="error" onClick={onForget} disabled={disabled || mutationsDisabled} title={lockReason} data-testid="people-forget">
-        {dictionary.people.delete}
-      </Button>
-    </CardActions>
   </Card>
   );
 };

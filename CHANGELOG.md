@@ -130,6 +130,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The API-log terminal seam no longer records the plaintext body of a `POST /api/credentials` request, so an entered provider API key never lands in the debug terminal's Raw view or on the clipboard via Copy.
 - `photos scan` no longer treats an unreadable subtree (permission change, flaky mount) as "gone": a folder that fails to list is reported via a new `photo-folder-skipped` event, counted in the summary's new `folderReadErrors`, and excluded from the reconcile pass, so its photos keep their sightings instead of being wrongly marked missing.
 - `photosVariantsSelect`, `photosVariantsDelete` and `photosVariantsFolderDefault` now flush `photos.db` under the same write-lock wrapper that already flushes the global catalog, so a variant selection survives an app quit instead of depending on the un-awaited `dispose()` at shutdown.
+- Library tiles now load the 512px grid thumbnail when it exists, falling back to the small thumbnail.
+- Offline/no-thumbnail Library and Photos tiles render as full square tiles with a deterministic gradient and centered name.
+- "Load more" in the Library keeps the scroll position and no longer flashes the no-results state.
+- People exemplar crops recorded under a previous home directory resolve against the current home (fixes 403 avatars).
+- People cards without an exemplar show an initials avatar; Delete moved into a per-card overflow menu behind the existing confirmation.
+- People filter options show display names ("Person N" for unnamed) instead of raw ids; tag filter options are ordered by count.
+- Preview overlay shows a localized capture date and uses the thumbnail as the video poster.
+- Analysis detail pane shows a "Select a video from the list" prompt instead of the full onboarding welcome screen once a folder with videos is open.
 
 ## [0.6.3] - 2026-07-29
 

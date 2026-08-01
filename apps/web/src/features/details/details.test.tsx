@@ -125,6 +125,12 @@ describe('details panel', () => {
     expect(screen.getByText('Welcome to AI Video Cataloger')).toBeDefined();
   });
 
+  it('shows a pick-a-video prompt instead of the full welcome screen once the folder has files', () => {
+    renderThemed(<DetailsPanel video={null} analyzing={false} hasVideos />);
+    expect(screen.queryByText('Welcome to AI Video Cataloger')).toBeNull();
+    expect(screen.getByText('Select a video from the list')).toBeDefined();
+  });
+
   it('renders metadata, summary, frames, transcript and full analysis for a completed video', () => {
     const video = makeVideo({
       artifacts: {

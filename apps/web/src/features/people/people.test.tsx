@@ -229,6 +229,49 @@ describe('PeopleView', () => {
     expect(crop.getAttribute('src')).toContain('media://local/');
   });
 
+  it('shows a fallback avatar instead of a bare gray box when a person has no exemplar crop', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 2,
+      people: [
+        person({ personId: 'p1', displayName: 'Alex', observationCount: 2, exemplarCropPath: null }),
+        person({ personId: 'p2', observationCount: 1, exemplarCropPath: null }),
+      ],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    const fallbacks = screen.getAllByTestId('people-card-fallback');
+    expect(fallbacks).toHaveLength(2);
+    expect(fallbacks[0]?.textContent).toBe('A');
+    expect(fallbacks[1]?.textContent).toBe('2');
+    expect(getComputedStyle(screen.getByText('A')).color).toBe('rgb(255, 255, 255)');
+    expect(screen.queryByAltText('Alex')).toBeNull();
+  });
+
+  it('keeps the destructive delete action off the card face, behind an overflow menu', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 1,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 1 })],
+    });
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    expect(screen.queryByTestId('people-forget')).toBeNull();
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+    expect(await screen.findByTestId('people-forget')).toBeDefined();
+    expect(screen.getByTestId('people-rename')).toBeDefined();
+  });
+
   it('disables face mutations and shows a read-only notice when the catalog is locked', async () => {
     stubPeople({
       facesEnabled: true,
@@ -253,8 +296,9 @@ describe('PeopleView', () => {
 
     expect(await screen.findByTestId('people-read-only')).toBeDefined();
     await waitFor(() => expect(screen.getByTestId('people-purge').getAttribute('disabled')).not.toBeNull());
-    expect(screen.getAllByTestId('people-rename')[0]?.getAttribute('disabled')).not.toBeNull();
-    expect(screen.getAllByTestId('people-forget')[0]?.getAttribute('disabled')).not.toBeNull();
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+    expect((await screen.findByTestId('people-rename')).getAttribute('aria-disabled')).toBe('true');
+    expect(screen.getByTestId('people-forget').getAttribute('aria-disabled')).toBe('true');
   });
 
   it('wires rename, merge, forget, and purge actions', async () => {
@@ -305,7 +349,8 @@ describe('PeopleView', () => {
     const user = userEvent.setup();
 
     await screen.findByTestId('people-grid');
-    fireEvent.click(screen.getAllByTestId('people-rename')[0] ?? screen.getByText('Rename'));
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+    fireEvent.click(await screen.findByTestId('people-rename'));
     fireEvent.change(await screen.findByTestId('people-rename-input'), { target: { value: 'Taylor' } });
     fireEvent.click(screen.getByTestId('people-rename-save'));
 
@@ -317,7 +362,8 @@ describe('PeopleView', () => {
     fireEvent.click(await screen.findByTestId('people-merge-confirm'));
     await waitFor(() => expect(bodies).toContainEqual({ fromPersonId: 'p2', toPersonId: 'p1' }));
 
-    fireEvent.click(screen.getAllByTestId('people-forget')[0] ?? screen.getByText('Delete'));
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+    fireEvent.click(await screen.findByTestId('people-forget'));
     fireEvent.click(await screen.findByTestId('people-forget-confirm'));
     await waitFor(() => expect(bodies).toContainEqual({ personId: 'p1', force: true }));
 

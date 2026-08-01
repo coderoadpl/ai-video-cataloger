@@ -356,7 +356,8 @@ export const facesPeople = async (deps: FacesDeps): Promise<Result<{ people: Fac
   if (!people.ok) return people;
   const observations = await deps.globalCatalog.listFaceObservations();
   if (!observations.ok) return observations;
-  return ok({ people: people.value.map((person) => personView(person, observations.value)) });
+  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
+  return ok({ people: people.value.map((person) => personView(person, observations.value, currentCatalogDir)) });
 };
 
 export const facesName = async (
@@ -395,7 +396,8 @@ export const facesForget = async (
   if (!forgotten.ok) return forgotten;
   const flushed = await deps.globalCatalog.flush();
   if (!flushed.ok) return flushed;
-  const deleted = await deleteCropPaths(deps.fs, forgotten.value.cropPaths);
+  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
+  const deleted = await deleteCropPaths(deps.fs, forgotten.value.cropPaths.map((path) => reanchorFaceCropPath(currentCatalogDir, path)));
   if (!deleted.ok) return deleted;
   return ok({
     personId: forgotten.value.personId,
@@ -416,7 +418,8 @@ export const facesPurge = async (
   if (!purged.ok) return purged;
   const flushed = await deps.globalCatalog.flush();
   if (!flushed.ok) return flushed;
-  const deleted = await deleteCropPaths(deps.fs, purged.value.cropPaths);
+  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
+  const deleted = await deleteCropPaths(deps.fs, purged.value.cropPaths.map((path) => reanchorFaceCropPath(currentCatalogDir, path)));
   if (!deleted.ok) return deleted;
   return ok({
     peopleDeleted: purged.value.peopleDeleted,
@@ -649,10 +652,11 @@ export const runFacesExemplarsPass = async (
   const observations = await deps.globalCatalog.listFaceObservations();
   if (!observations.ok) return observations;
 
+  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
   const planObservations: ExemplarPlanObservation[] = [];
   for (const observation of observations.value) {
     if (observation.personId === null) continue;
-    let cropPath = observation.cropPath;
+    let cropPath = observation.cropPath === null ? null : reanchorFaceCropPath(currentCatalogDir, observation.cropPath);
     if (cropPath !== null) {
       const exists = await deps.fs.exists(cropPath);
       if (!exists.ok) return exists;
@@ -986,12 +990,21 @@ export const faceArtifactsInstalled = async (downloads: ModelDownloadPort): Prom
   return ok(true);
 };
 
-const personView = (person: Person, observations: readonly FaceObservation[]): FacePersonView => {
+export const reanchorFaceCropPath = (currentCatalogDir: string, stored: string): string => {
+  if (stored.startsWith(currentCatalogDir)) return stored;
+  const marker = '/.ai-video-cataloger/';
+  const markerIndex = stored.indexOf(marker);
+  if (markerIndex === -1) return stored;
+  const suffix = stored.slice(markerIndex + marker.length);
+  return `${currentCatalogDir}/${suffix}`;
+};
+
+const personView = (person: Person, observations: readonly FaceObservation[], currentCatalogDir: string): FacePersonView => {
   const matching = observations.filter((observation) => observation.personId === person.personId);
   const selected = selectExemplars(matching);
   const exemplarCropPaths = selected
     .filter((observation): observation is FaceObservation & { cropPath: string } => observation.cropPath !== null)
-    .map((observation) => observation.cropPath);
+    .map((observation) => reanchorFaceCropPath(currentCatalogDir, observation.cropPath));
   return {
     ...person,
     observationCount: matching.length,

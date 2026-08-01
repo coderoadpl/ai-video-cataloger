@@ -1,6 +1,7 @@
 import { Box, Chip, Dialog, DialogContent, DialogTitle, Link, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatCapturedAt } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { OpenInNewIcon } from '../../components/ui/icons.js';
 import type { PreviewMedia } from './core/index.js';
@@ -61,6 +62,7 @@ export const BrowsePreview = ({ item, onClose, onOpenInAnalysis }: BrowsePreview
                 controls
                 preload="metadata"
                 src={mediaUrl(item.path)}
+                {...(item.posterPath === null ? {} : { poster: mediaUrl(item.posterPath, item.fingerprint) })}
                 data-testid="preview-player"
                 sx={{ width: '100%', maxHeight: 420, objectFit: 'contain', bgcolor: 'common.black' }}
               />
@@ -81,7 +83,7 @@ export const BrowsePreview = ({ item, onClose, onOpenInAnalysis }: BrowsePreview
               </Box>
             )}
             <Row label={dictionary.map.place} value={item.placeName} />
-            <Row label={dictionary.photos.detailCaptured} value={item.capturedAt} />
+            <Row label={dictionary.photos.detailCaptured} value={formatCapturedAt(item.capturedAt)} />
           </DialogContent>
         </>
       )}

@@ -4,6 +4,8 @@ import { Box, Tooltip, Typography } from '@mui/material';
 import { WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import { gradientIndexFor, middleEllipsis } from '../../lib/placeholder-gradient.js';
+import { placeholderGradients } from '../../theme.js';
 import { buildRows, columnsForWidth, visibleRowRange, type DaySection, type PhotoListItem } from './core/index.js';
 
 const TILE_SIZE = 168;
@@ -37,7 +39,7 @@ export const PhotoGrid = ({ sections, selectedFingerprint, onSelect, onOpenViewe
     return () => observer.disconnect();
   }, []);
 
-  const columns = columnsForWidth(containerWidth, TILE_SIZE, GAP);
+  const columns = columnsForWidth(containerWidth - 32, TILE_SIZE, GAP);
   const rows = useMemo(() => buildRows(sections, columns), [sections, columns]);
   const rowHeight = TILE_SIZE + GAP;
   const range = useMemo(
@@ -50,7 +52,7 @@ export const PhotoGrid = ({ sections, selectedFingerprint, onSelect, onOpenViewe
       ref={containerRef}
       data-testid="photos-grid"
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-      sx={{ height: '100%', overflow: 'auto', position: 'relative' }}
+      sx={{ height: '100%', overflow: 'auto', position: 'relative', px: 2, pt: 1, scrollbarGutter: 'stable' }}
     >
       <Box sx={{ position: 'relative', height: range.totalHeight }}>
         <Box sx={{ position: 'absolute', top: range.topOffset, left: 0, right: 0 }}>
@@ -131,16 +133,24 @@ const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) =
         />
       ) : (
         <Box
+          data-testid="photos-tile-placeholder"
+          style={{ background: placeholderGradients[gradientIndexFor(item.fileName)] }}
           sx={{
             width: '100%',
             height: '100%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            p: 1,
+            textAlign: 'center',
+            p: 1.5,
           }}
         >
-          <Typography variant="caption" noWrap>{item.fileName}</Typography>
+          <Typography
+            variant="caption"
+            sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', color: 'common.white' }}
+          >
+            {middleEllipsis(item.fileName, 40)}
+          </Typography>
         </Box>
       )}
       {item.sightings > 1 ? (

@@ -191,6 +191,19 @@ describe('PhotosView', () => {
     expect(screen.getByTestId('photos-duplicate-badge')).toBeDefined();
   });
 
+  it('renders a square gradient placeholder for a photo tile with no thumbnail', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000003', thumbState: 'pending', thumbPath: null })];
+    stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
+
+    renderThemed(<PhotosView active variant="analysis" addLine={vi.fn()} />);
+
+    const placeholder = await screen.findByTestId('photos-tile-placeholder');
+    expect(placeholder.getAttribute('style')).toContain('linear-gradient');
+    const label = screen.getByText('ph_0000000000000003.jpg');
+    expect(label).toBeDefined();
+    expect(getComputedStyle(label).color).toBe('rgb(255, 255, 255)');
+  });
+
   it('pages the grid past the first page instead of stopping at the first request', async () => {
     const all = Array.from({ length: 250 }, (_, index) =>
       photoItem({ fingerprint: `ph_${String(index).padStart(16, '0')}` }));

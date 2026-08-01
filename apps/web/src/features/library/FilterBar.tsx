@@ -108,17 +108,22 @@ export const FilterBar = ({
           size="small"
           sx={{ minWidth: 200 }}
           options={facets.people.map((person) => person.personId)}
-          getOptionLabel={(personId) => facets.people.find((person) => person.personId === personId)?.displayName ?? personId}
+          getOptionLabel={(personId) => {
+            const person = facets.people.find((candidate) => candidate.personId === personId);
+            return person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
+          }}
           renderOption={(props, personId) => {
             const { key, ...optionProps } = props;
             const person = facets.people.find((candidate) => candidate.personId === personId);
-            return <li key={key} {...optionProps}>{withCount(person?.displayName ?? personId, person?.count ?? 0)}</li>;
+            const label = person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
+            return <li key={key} {...optionProps}>{withCount(label, person?.count ?? 0)}</li>;
           }}
           value={state.personIds}
           onChange={(_event, next) => {
             for (const personId of next) {
               if (!state.personIds.includes(personId)) {
-                const displayName = facets.people.find((person) => person.personId === personId)?.displayName ?? personId;
+                const person = facets.people.find((candidate) => candidate.personId === personId);
+                const displayName = person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
                 dispatch({ type: 'addPerson', personId, displayName });
               }
             }

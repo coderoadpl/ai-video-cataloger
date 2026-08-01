@@ -107,6 +107,7 @@ export interface Dictionary {
     welcomeBody: string;
     gettingStarted: string;
     gettingStartedSteps: readonly string[];
+    selectVideoPrompt: string;
     videoTags: string;
     videoInformation: string;
     duration: string;
@@ -485,6 +486,7 @@ export interface Dictionary {
     observationCount: (count: number) => string;
     rename: string;
     delete: string;
+    moreActions: (name: string) => string;
     installingModelsLog: string;
     modelsInstalledLog: string;
     installModelsFailedLog: string;
@@ -955,6 +957,7 @@ export const en: Dictionary = {
       'Click "Analyze" to process individual videos',
       'Terminal output shows real-time progress',
     ],
+    selectVideoPrompt: 'Select a video from the list',
     videoTags: 'Video tags',
     videoInformation: 'Video Information',
     duration: 'Duration',
@@ -1376,6 +1379,7 @@ export const en: Dictionary = {
     observationCount: (count) => `${count} ${count === 1 ? 'observation' : 'observations'}`,
     rename: 'Rename',
     delete: 'Delete',
+    moreActions: (name) => `More actions for ${name}`,
     installingModelsLog: 'Installing face grouping models...',
     modelsInstalledLog: 'Face grouping models are installed',
     installModelsFailedLog: 'Failed to install face grouping models',
@@ -1858,6 +1862,7 @@ export const pl: Dictionary = {
       'Kliknij „Analizuj”, aby przetworzyć pojedyncze filmy',
       'Terminal pokazuje postęp w czasie rzeczywistym',
     ],
+    selectVideoPrompt: 'Wybierz film z listy',
     videoTags: 'Tagi filmu',
     videoInformation: 'Informacje o filmie',
     duration: 'Czas trwania',
@@ -2280,6 +2285,7 @@ export const pl: Dictionary = {
     observationCount: (count) => `${count} ${plPlural(count, 'obserwacja', 'obserwacje', 'obserwacji')}`,
     rename: 'Zmień nazwę',
     delete: 'Usuń',
+    moreActions: (name) => `Więcej działań dla ${name}`,
     installingModelsLog: 'Instalowanie modeli grupowania twarzy...',
     modelsInstalledLog: 'Modele grupowania twarzy zostały zainstalowane',
     installModelsFailedLog: 'Nie udało się zainstalować modeli grupowania twarzy',

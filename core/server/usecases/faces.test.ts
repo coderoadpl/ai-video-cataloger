@@ -882,6 +882,28 @@ describe('facesPeople exemplar diversity', () => {
   });
 });
 
+describe('facesPeople re-anchors stale-home crop paths', () => {
+  it('resolves exemplar crops recorded under a previous home against the current home', async () => {
+    const deps = buildDeps();
+    deps.globalCatalog = new InMemoryGlobalCatalogStore('/new-home/.ai-video-cataloger/catalog.db');
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'fp-a:face:1:1',
+      fingerprint: 'fp-a',
+      personId: 'p1',
+      cropPath: '/old-home/.ai-video-cataloger/faces/obs/fp-a/1-1.jpg',
+    }));
+
+    const result = await facesPeople(deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    const person = result.value.people.find((candidate) => candidate.personId === 'p1');
+    expect(person?.exemplarCropPath).toBe('/new-home/.ai-video-cataloger/faces/obs/fp-a/1-1.jpg');
+  });
+});
+
 describe('facesRecluster', () => {
   const buildReclusterDeps = (): FacesDeps & {
     config: InMemoryConfig;

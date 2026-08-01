@@ -3,6 +3,8 @@ import { Box, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import { gradientIndexFor, middleEllipsis } from '../../lib/placeholder-gradient.js';
+import { placeholderGradients } from '../../theme.js';
 import { buildRows, columnsForWidth, rowIndexOfFingerprint, visibleRowRange, type LibraryItem } from './core/index.js';
 import { TileMenu, useTileMenu } from './TileMenu.js';
 
@@ -46,7 +48,7 @@ export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis, scrollToFinger
     return () => observer.disconnect();
   }, []);
 
-  const columns = columnsForWidth(containerWidth, TILE_SIZE, GAP);
+  const columns = columnsForWidth(containerWidth - 32, TILE_SIZE, GAP);
   const rows = useMemo(() => buildRows(sections, columns), [sections, columns]);
   const rowHeight = TILE_SIZE + GAP;
   const range = useMemo(
@@ -72,7 +74,7 @@ export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis, scrollToFinger
       ref={containerRef}
       data-testid="library-grid"
       onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
-      sx={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative' }}
+      sx={{ flex: 1, minHeight: 0, overflow: 'auto', position: 'relative', px: 2, pt: 1, scrollbarGutter: 'stable' }}
     >
       <Box sx={{ position: 'relative', height: range.totalHeight }}>
         <Box sx={{ position: 'absolute', top: range.topOffset, left: 0, right: 0 }}>
@@ -128,6 +130,8 @@ interface LibraryTileProps {
 
 const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
   const dictionary = useDictionary();
+  const imagePath = item.gridThumbnailPath ?? item.thumbnailPath;
+  const name = item.finalName ?? item.fileName;
 
   return (
     <Box
@@ -145,29 +149,37 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
         cursor: item.folder.online ? 'pointer' : 'not-allowed',
         opacity: item.missing ? 0.5 : 1,
         bgcolor: 'background.default',
+        '&:hover': { outline: '2px solid', outlineColor: 'primary.main' },
       }}
     >
-      {item.thumbnailPath !== null ? (
+      {imagePath !== null ? (
         <Box
           component="img"
           loading="lazy"
-          alt={item.finalName ?? item.fileName}
-          src={mediaUrl(item.thumbnailPath, item.fingerprint)}
+          alt={name}
+          src={mediaUrl(imagePath, item.fingerprint)}
           sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (
         <Box
           data-testid="library-tile-placeholder"
+          style={{ background: placeholderGradients[gradientIndexFor(name)] }}
           sx={{
             width: '100%',
             height: '100%',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            p: 1,
+            textAlign: 'center',
+            p: 1.5,
           }}
         >
-          <Typography variant="caption" noWrap>{item.finalName ?? item.fileName}</Typography>
+          <Typography
+            variant="caption"
+            sx={{ display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden', color: 'common.white' }}
+          >
+            {middleEllipsis(name, 40)}
+          </Typography>
         </Box>
       )}
       {item.folder.online ? null : (

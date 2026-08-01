@@ -2195,6 +2195,54 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
     ]);
   });
 
+  it('orders the tag facet by descending count, then alphabetically for ties', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    const descriptorFor = (fingerprint: string, tags: string[]): CatalogVariant => ({
+      fingerprint,
+      configId: configId(configDescriptorSchema.parse({
+        family: 'local', providerId: 'local', modelTag: 'gemma3:12b',
+        whisper_mode: 'skip', frames: 3, output_language: 'en', promptVersion: 1,
+      })),
+      descriptor: configDescriptorSchema.parse({
+        family: 'local', providerId: 'local', modelTag: 'gemma3:12b',
+        whisper_mode: 'skip', frames: 3, output_language: 'en', promptVersion: 1,
+      }),
+      finalName: `${fingerprint}.mp4`,
+      description: null,
+      transcript: null,
+      language: 'en',
+      tags,
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    });
+    for (const fingerprint of ['fp-tag-1', 'fp-tag-2', 'fp-tag-3']) {
+      await store.upsertFile({ ...file, fingerprint, fileName: `${fingerprint}.mp4` });
+    }
+    const variantA = descriptorFor('fp-tag-1', ['apple']);
+    const variantB1 = descriptorFor('fp-tag-2', ['zebra', 'mid']);
+    const variantB2 = descriptorFor('fp-tag-3', ['zebra']);
+    await store.upsertVariant(variantA);
+    await store.setSelectedVariant('fp-tag-1', variantA.configId);
+    await store.upsertVariant(variantB1);
+    await store.setSelectedVariant('fp-tag-2', variantB1.configId);
+    await store.upsertVariant(variantB2);
+    await store.setSelectedVariant('fp-tag-3', variantB2.configId);
+
+    const result = await store.listLibraryFacets();
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.tags).toEqual([
+      { name: 'zebra', count: 2 },
+      { name: 'apple', count: 1 },
+      { name: 'mid', count: 1 },
+    ]);
+  });
+
   it('shares the selected-variant COALESCE resolution SQL constant across listLocations, search and facets', async () => {
     const source = await readFile(new URL('./global-catalog.ts', import.meta.url), 'utf8');
     const occurrences = source.match(/SELECTED_ANALYSIS_CONFIG_ID_SQL/g) ?? [];

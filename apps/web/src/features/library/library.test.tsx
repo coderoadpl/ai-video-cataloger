@@ -158,6 +158,49 @@ describe('LibraryView', () => {
     expect(onPreview).not.toHaveBeenCalled();
   });
 
+  it('tiles request the 512px grid thumbnail when it exists, small thumb only as fallback', async () => {
+    const items = [
+      libraryItem({
+        fingerprint: 'fp-grid',
+        thumbnailPath: '/videos/.ai-video-cataloger/thumbnails/a.jpg',
+        gridThumbnailPath: '/videos/.ai-video-cataloger/thumbnails/a.grid.jpg',
+      }),
+      libraryItem({
+        fingerprint: 'fp-small',
+        thumbnailPath: '/videos/.ai-video-cataloger/thumbnails/b.jpg',
+        gridThumbnailPath: null,
+      }),
+    ];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    const tiles = await screen.findAllByTestId('library-tile');
+    expect(tiles).toHaveLength(2);
+    const gridTile = tiles.find((tile) => tile.getAttribute('data-fingerprint') === 'fp-grid');
+    const smallTile = tiles.find((tile) => tile.getAttribute('data-fingerprint') === 'fp-small');
+    const gridImg = gridTile?.querySelector('img');
+    const smallImg = smallTile?.querySelector('img');
+    expect(gridImg?.getAttribute('src')).toContain('a.grid.jpg');
+    expect(gridImg?.getAttribute('src')).not.toContain('a.jpg?');
+    expect(smallImg?.getAttribute('src')).toContain('b.jpg');
+  });
+
+  it('renders a square gradient placeholder tile with the file name when no thumbnail exists', async () => {
+    const items = [libraryItem({ fingerprint: 'fp-none', thumbnailPath: null, gridThumbnailPath: null, fileName: 'clip.mp4' })];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    const placeholder = await screen.findByTestId('library-tile-placeholder');
+    expect(placeholder.getAttribute('style')).toContain('linear-gradient');
+    const tile = await screen.findByTestId('library-tile');
+    expect(tile.getBoundingClientRect).toBeDefined();
+    const label = screen.getByText('clip.mp4');
+    expect(label).toBeDefined();
+    expect(getComputedStyle(label).color).toBe('rgb(255, 255, 255)');
+  });
+
   it('the tile menu opens the video in Analysis, with no folder-view item', async () => {
     const items = [libraryItem({ fingerprint: 'fp-menu' })];
     stubSearch(items);
@@ -279,6 +322,20 @@ describe('LibraryView', () => {
     expect(await screen.findByText('beach (4)')).toBeDefined();
   });
 
+  it('reads unnamed people by their People-surface number, never a raw person id', async () => {
+    stubFacets({ people: [{ personId: 'person-abc123', displayName: null, count: 3, fallbackIndex: 6 }] });
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const peopleInput = screen.getByTestId('library-filter-people').querySelector('input');
+    fireEvent.change(peopleInput ?? screen.getByTestId('library-filter-people'), { target: { value: 'Person' } });
+
+    expect(await screen.findByText('Person 7 (3)')).toBeDefined();
+    expect(screen.queryByText(/person-abc123/)).toBeNull();
+  });
+
   it('debounces the free-text place filter into a single search request', async () => {
     stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
 
@@ -393,5 +450,46 @@ describe('LibraryView', () => {
     );
 
     expect(await screen.findByText('#aerial')).toBeDefined();
+  });
+
+  it('load more keeps the grid mounted and does not flash the no-match state while the next page is in flight', async () => {
+    const page1 = [libraryItem({ fingerprint: 'fp-1' })];
+    const page2 = [libraryItem({ fingerprint: 'fp-2' })];
+    const total = 201;
+    const release: { current: (() => void) | null } = { current: null };
+    const page2Gate = new Promise<void>((resolve) => { release.current = resolve; });
+
+    server.use(
+      http.get('/api/search', async ({ request }) => {
+        const offset = Number(new URL(request.url).searchParams.get('offset') ?? '0');
+        if (offset > 0) await page2Gate;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            query: null,
+            limit: 200,
+            offset,
+            count: offset === 0 ? page1.length : page2.length,
+            total,
+            results: offset === 0 ? page1 : page2,
+          },
+        });
+      }),
+    );
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    fireEvent.click(await screen.findByTestId('library-load-more'));
+
+    expect(screen.queryByTestId('library-no-match')).toBeNull();
+    expect(screen.getByTestId('library-grid')).toBeDefined();
+    expect(screen.getByTestId('library-section-header')).toBeDefined();
+
+    release.current?.();
+
+    await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
+    const fingerprints = screen.getAllByTestId('library-tile').map((tile) => tile.getAttribute('data-fingerprint'));
+    expect(fingerprints).toEqual(['fp-1', 'fp-2']);
   });
 });

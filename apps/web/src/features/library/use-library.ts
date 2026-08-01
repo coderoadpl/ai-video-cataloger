@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { keepPreviousData, useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
 
@@ -73,12 +73,13 @@ export const useLibrary = (input: {
       offset,
     }),
     enabled: input.active,
+    placeholderData: keepPreviousData,
   });
 
   useEffect(() => {
-    if (page.data === undefined) return;
+    if (page.data === undefined || page.isPlaceholderData) return;
     setItems((current) => (offset === 0 ? page.data.results : [...current, ...page.data.results]));
-  }, [page.data, offset]);
+  }, [page.data, page.isPlaceholderData, offset]);
 
   const loadMore = useCallback(() => setOffset((current) => current + PAGE_SIZE), []);
 

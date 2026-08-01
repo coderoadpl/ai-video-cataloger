@@ -24,6 +24,7 @@ const previewItem = (overrides: Partial<PreviewMedia> = {}): PreviewMedia => ({
   tags: ['beach'],
   placeName: 'Fjordvik',
   capturedAt: '2026-01-02T10:00:00.000Z',
+  posterPath: null,
   ...overrides,
 });
 
@@ -40,6 +41,26 @@ describe('BrowsePreview', () => {
     expect(screen.getByText('a description')).toBeDefined();
     expect(screen.getByText('beach')).toBeDefined();
     expect(screen.getByText('Fjordvik')).toBeDefined();
+  });
+
+  it('uses the poster path as the video overlay so it never opens as a black rectangle', () => {
+    renderThemed(<BrowsePreview item={previewItem({ posterPath: '/videos/.ai-video-cataloger/thumbnails/clip.grid.jpg' })} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    const player = screen.getByTestId('preview-player');
+    expect(player.getAttribute('poster')).toContain('clip.grid.jpg');
+  });
+
+  it('omits the poster attribute when there is no thumbnail', () => {
+    renderThemed(<BrowsePreview item={previewItem({ posterPath: null })} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    expect(screen.getByTestId('preview-player').hasAttribute('poster')).toBe(false);
+  });
+
+  it('shows a human-readable capture date instead of a raw ISO timestamp', () => {
+    renderThemed(<BrowsePreview item={previewItem({ capturedAt: '2026-06-19T10:03:37.000Z' })} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    expect(screen.queryByText('2026-06-19T10:03:37.000Z')).toBeNull();
+    expect(screen.getByText(en.photos.detailCaptured).nextSibling?.textContent).not.toContain('T');
   });
 
   it('never renders analysis affordances', () => {

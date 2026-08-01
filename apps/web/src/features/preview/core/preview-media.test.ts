@@ -72,6 +72,14 @@ describe('previewFromSearchResult', () => {
     expect(preview.placeName).toBe('Fjordvik');
     expect(preview.capturedAt).toBe('2026-01-02T10:00:00.000Z');
   });
+
+  it('prefers the grid thumbnail for the poster, falling back to the small thumbnail', () => {
+    expect(previewFromSearchResult(searchResult({ gridThumbnailPath: '/thumbs/clip.grid.jpg', thumbnailPath: '/thumbs/clip.jpg' })).posterPath)
+      .toBe('/thumbs/clip.grid.jpg');
+    expect(previewFromSearchResult(searchResult({ gridThumbnailPath: null, thumbnailPath: '/thumbs/clip.jpg' })).posterPath)
+      .toBe('/thumbs/clip.jpg');
+    expect(previewFromSearchResult(searchResult({ gridThumbnailPath: null, thumbnailPath: null })).posterPath).toBeNull();
+  });
 });
 
 describe('previewFromLocation', () => {
@@ -86,5 +94,9 @@ describe('previewFromLocation', () => {
     expect(preview?.tags).toEqual([]);
     expect(preview?.capturedAt).toBeNull();
     expect(preview?.path).toBe('/videos/clip.mp4');
+  });
+
+  it('uses the location thumbPath as the poster', () => {
+    expect(previewFromLocation(location({ thumbPath: '/thumbs/clip.jpg' }))?.posterPath).toBe('/thumbs/clip.jpg');
   });
 });

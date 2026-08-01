@@ -764,7 +764,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
           JOIN folders fo ON fo.folder_id = f.folder_id
           WHERE ft.config_id = ${SELECTED_ANALYSIS_CONFIG_ID_SQL}
           GROUP BY t.name
-          ORDER BY t.name`,
+          ORDER BY COUNT(DISTINCT f.fingerprint) DESC, t.name`,
       )[0]?.values ?? [];
       const facetTags: LibraryFacets['tags'] = tagRows.map((row) => ({ name: stringValue(row[0]), count: numberValue(row[1]) }));
 

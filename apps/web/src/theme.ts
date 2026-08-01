@@ -115,6 +115,15 @@ const DARK = {
   } satisfies MapPalette,
 };
 
+export const placeholderGradients = [
+  'linear-gradient(135deg,#31435a,#1f2c3c)',
+  'linear-gradient(135deg,#4a3a55,#2a2233)',
+  'linear-gradient(135deg,#3a5548,#22332b)',
+  'linear-gradient(135deg,#5a4a31,#3c311f)',
+  'linear-gradient(135deg,#554444,#332222)',
+  'linear-gradient(135deg,#334455,#112233)',
+] as const;
+
 const RADIUS = 8;
 const CHIP_ICON_INSET = 8;
 const CHIP_ICON_GAP = -4;

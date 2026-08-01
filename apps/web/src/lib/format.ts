@@ -9,3 +9,6 @@ export const versionLabel = (version: string): string =>
 
 export const formatCoordinates = (lat: number, lon: number): string =>
   `${Math.abs(lat).toFixed(4)}° ${lat >= 0 ? 'N' : 'S'}, ${Math.abs(lon).toFixed(4)}° ${lon >= 0 ? 'E' : 'W'}`;
+
+export const formatCapturedAt = (iso: string | null): string | null =>
+  iso === null ? null : new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(iso));

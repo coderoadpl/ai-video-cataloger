@@ -21,6 +21,7 @@ import type {
 } from '../ports.js';
 import { isReadOnlyWriteError, readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
+import { reanchorFaceCropPath } from './faces.js';
 import { isSupportedVideoExtension } from './shared.js';
 
 export interface CatalogIndexDeps {
@@ -324,8 +325,9 @@ export const forgetCatalogEntry = async (
   if (!forgotten.ok) return forgotten;
   const flushed = await deps.globalCatalog.flush();
   if (!flushed.ok) return flushed;
+  const currentCatalogDir = deps.fs.dirname(deps.globalCatalog.databasePath());
   for (const cropPath of forgotten.value.cropPaths) {
-    const deleted = await deps.fs.deleteFile(cropPath);
+    const deleted = await deps.fs.deleteFile(reanchorFaceCropPath(currentCatalogDir, cropPath));
     if (!deleted.ok) return deleted;
   }
   if (forgotten.value.folderId === null) return ok({ ...forgotten.value, snapshotSkipped: false });

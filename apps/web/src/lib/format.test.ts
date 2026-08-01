@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCoordinates } from './format.js';
+import { formatCapturedAt, formatCoordinates } from './format.js';
 
 describe('formatCoordinates', () => {
   it('renders northern and eastern hemispheres', () => {
@@ -17,5 +17,18 @@ describe('formatCoordinates', () => {
 
   it('treats zero as northern and eastern', () => {
     expect(formatCoordinates(0, 0)).toBe('0.0000° N, 0.0000° E');
+  });
+});
+
+describe('formatCapturedAt', () => {
+  it('renders a human-readable date and time instead of a raw ISO string', () => {
+    const result = formatCapturedAt('2026-06-19T10:03:37.000Z');
+    expect(result).not.toBeNull();
+    expect(result).not.toContain('T');
+    expect(result).not.toContain('Z');
+  });
+
+  it('passes null through unchanged', () => {
+    expect(formatCapturedAt(null)).toBeNull();
   });
 });
