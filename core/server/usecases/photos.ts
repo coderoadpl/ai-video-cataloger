@@ -1146,7 +1146,11 @@ export const photosForget = async (
   const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
   const artifactPaths: string[] = [];
   for (const fingerprint of deletedFingerprints) {
-    for (const candidatePath of [photoProxyPath(deps.fs, artifactsRoot, fingerprint), photoThumbPath(deps.fs, artifactsRoot, fingerprint)]) {
+    for (const candidatePath of [
+      photoProxyPath(deps.fs, artifactsRoot, fingerprint),
+      photoThumbPath(deps.fs, artifactsRoot, fingerprint),
+      photoGridThumbPath(deps.fs, artifactsRoot, fingerprint),
+    ]) {
       const exists = await deps.fs.exists(candidatePath);
       if (!exists.ok) return exists;
       if (!exists.value) continue;

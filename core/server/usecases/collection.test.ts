@@ -121,8 +121,8 @@ const buildDeps = () => {
 };
 
 describe('compareCollectionItems', () => {
-  const video = (capturedAt: string | null, fingerprint = 'v') => ({ media: 'video' as const, capturedAt, displayName: 'v.mp4', fingerprint });
-  const photo = (capturedAt: string | null, fingerprint = 'p') => ({ media: 'photo' as const, capturedAt, displayName: 'p.jpg', fingerprint });
+  const video = (capturedAt: string | null, fingerprint = 'v') => ({ media: 'video' as const, capturedAt, displayName: 'v.mp4', fileName: 'v.mp4', fingerprint });
+  const photo = (capturedAt: string | null, fingerprint = 'p') => ({ media: 'photo' as const, capturedAt, displayName: 'p.jpg', fileName: 'p.jpg', fingerprint });
 
   it('sorts captured_desc newest first, nulls last', () => {
     expect(compareCollectionItems('captured_desc', video('2026-01-02T00:00:00.000Z'), photo('2026-01-01T00:00:00.000Z'))).toBeLessThan(0);
@@ -134,13 +134,26 @@ describe('compareCollectionItems', () => {
     expect(compareCollectionItems('captured_asc', video(null), photo('2026-01-01T00:00:00.000Z'))).toBeGreaterThan(0);
   });
 
-  it('breaks a captured_at tie video-before-photo, then by fingerprint', () => {
-    expect(compareCollectionItems('captured_desc', video('2026-01-01T00:00:00.000Z', 'z'), photo('2026-01-01T00:00:00.000Z', 'a'))).toBeLessThan(0);
-    expect(compareCollectionItems('captured_desc', video('2026-01-01T00:00:00.000Z', 'a'), video('2026-01-01T00:00:00.000Z', 'b'))).toBeLessThan(0);
+  it('breaks a captured_at tie by file name first, the way both stores order their own leg', () => {
+    const early = { ...video('2026-01-01T00:00:00.000Z', 'z'), fileName: 'a.mp4' };
+    const late = { ...photo('2026-01-01T00:00:00.000Z', 'a'), fileName: 'b.jpg' };
+    expect(compareCollectionItems('captured_desc', early, late)).toBeLessThan(0);
+    expect(compareCollectionItems('captured_desc', late, early)).toBeGreaterThan(0);
   });
 
-  it('sorts name_asc by displayName', () => {
+  it('breaks a captured_at and file-name tie video-before-photo, then by fingerprint', () => {
+    const sameName = (fingerprint: string, media: 'video' | 'photo') => ({
+      ...(media === 'video' ? video('2026-01-01T00:00:00.000Z', fingerprint) : photo('2026-01-01T00:00:00.000Z', fingerprint)),
+      fileName: 'same.bin',
+      displayName: 'same.bin',
+    });
+    expect(compareCollectionItems('captured_desc', sameName('z', 'video'), sameName('a', 'photo'))).toBeLessThan(0);
+    expect(compareCollectionItems('captured_desc', sameName('a', 'video'), sameName('b', 'video'))).toBeLessThan(0);
+  });
+
+  it('sorts name_asc by displayName in the stores\' binary collation, uppercase before lowercase', () => {
     expect(compareCollectionItems('name_asc', { ...video(null), displayName: 'a' }, { ...photo(null), displayName: 'b' })).toBeLessThan(0);
+    expect(compareCollectionItems('name_asc', { ...video(null), displayName: 'Gamma.mp4' }, { ...photo(null), displayName: 'alpha.jpg' })).toBeLessThan(0);
   });
 });
 

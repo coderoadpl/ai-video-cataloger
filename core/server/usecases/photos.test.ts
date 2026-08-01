@@ -499,6 +499,8 @@ describe('photosForget', () => {
       `/home/.ai-video-cataloger/photo-artifacts/proxies/${fingerprintA}.jpg`,
       `/home/.ai-video-cataloger/photo-artifacts/proxies/${fingerprintB}.jpg`,
       `/home/.ai-video-cataloger/photo-artifacts/thumbs/${fingerprintA}.jpg`,
+      `/home/.ai-video-cataloger/photo-artifacts/thumbs/${fingerprintA}.grid.jpg`,
+      `/home/.ai-video-cataloger/photo-artifacts/thumbs/${fingerprintB}.grid.jpg`,
     ].sort());
   });
 });

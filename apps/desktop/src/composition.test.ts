@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs';
 import { mkdir, mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -66,6 +67,26 @@ describe('desktop composition', () => {
       missingPieces: [],
       suggestedAction: null,
     });
+    await desktopApp.dispose();
+  }, scaledTimeout(30_000));
+
+  it('prefers AVC_HOME_DIRECTORY over the OS home directory, leaving HOME untouched for child processes', async () => {
+    const root = await mkdtemp(path.join(tmpdir(), 'avc-desktop-composition-home-override-'));
+    roots.push(root);
+    const isolatedHome = path.join(root, 'isolated-home');
+    await mkdir(isolatedHome, { recursive: true });
+    const realHomeBefore = process.env.HOME;
+    vi.stubEnv('AVC_HOME_DIRECTORY', isolatedHome);
+
+    const desktopApp = await createDesktopApp({ version: 'test', isPackaged: false });
+    const api = createApiClient({
+      baseUrl: '',
+      fetchImpl: async (input, init) => desktopApp.honoApp.request(input, init),
+    });
+    unwrap(await api.setConfig({ key: 'frames', value: '3' }));
+
+    expect(existsSync(path.join(isolatedHome, '.ai-video-cataloger', 'config.json'))).toBe(true);
+    expect(process.env.HOME).toBe(realHomeBefore);
     await desktopApp.dispose();
   }, scaledTimeout(30_000));
 

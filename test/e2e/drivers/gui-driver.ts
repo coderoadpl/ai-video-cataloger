@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from '../analyzer-mode.js';
-import { ELECTRON_MAIN, readCatalog, RENDERER_HTML, REPO_ROOT, runCli } from '../helpers.js';
+import { ELECTRON_MAIN, isolatedHome, readCatalog, RENDERER_HTML, REPO_ROOT, runCli } from '../helpers.js';
 import type { AnalyzeOptions, AnalyzeOutcome, BatchOutcome, PipelineDriver } from './types.js';
 
 const PIPELINE_TIMEOUT_MS = 420_000;
@@ -37,6 +37,7 @@ export class GuiDriver implements PipelineDriver {
         ...process.env,
         NODE_ENV: 'production',
         AVC_RENDERER_HTML: RENDERER_HTML,
+        AVC_HOME_DIRECTORY: isolatedHome(workdir),
       },
     });
     this.page = await this.app.firstWindow();
@@ -44,6 +45,15 @@ export class GuiDriver implements PipelineDriver {
     await this.page.waitForFunction(() => window.desktopBridge !== undefined);
     await this.page.evaluate((folderPath) => window.desktopBridge.folder.setCurrent(folderPath), workdir);
     await this.page.reload({ waitUntil: 'domcontentloaded' });
+    await this.enterAnalysisMode();
+  }
+
+  private async enterAnalysisMode(): Promise<void> {
+    const page = this.mustPage();
+    const analysisTab = page.getByTestId('mode-analysis');
+    await expect(analysisTab).toBeVisible({ timeout: 15_000 });
+    await analysisTab.click();
+    await expect(analysisTab).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
   }
 
   private mustPage(): Page {

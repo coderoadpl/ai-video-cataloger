@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { appError, ok, type AppError, type CatalogPlace, type PhotoExtension, type Result } from '@core/domain/index.js';
+import { appError, compareUtf8Bytes, ok, type AppError, type CatalogPlace, type PhotoExtension, type Result } from '@core/domain/index.js';
 
 import type {
   CatalogSearchInput,
@@ -121,6 +121,7 @@ interface ComparableItem {
   media: 'video' | 'photo';
   capturedAt: string | null;
   displayName: string;
+  fileName: string;
   fingerprint: string;
 }
 
@@ -131,15 +132,16 @@ export const compareCollectionItems = (
 ): number => {
   const tieBreak = (): number => {
     if (left.media !== right.media) return left.media === 'video' ? -1 : 1;
-    return left.fingerprint.localeCompare(right.fingerprint);
+    return compareUtf8Bytes(left.fingerprint, right.fingerprint);
   };
+  const nameTieBreak = (): number => compareUtf8Bytes(left.fileName, right.fileName) || tieBreak();
   switch (sort) {
     case 'captured_desc':
-      return capturedAtCompare(left.capturedAt, right.capturedAt, -1) || tieBreak();
+      return capturedAtCompare(left.capturedAt, right.capturedAt, -1) || nameTieBreak();
     case 'captured_asc':
-      return capturedAtCompare(left.capturedAt, right.capturedAt, 1) || tieBreak();
+      return capturedAtCompare(left.capturedAt, right.capturedAt, 1) || nameTieBreak();
     case 'name_asc':
-      return left.displayName.localeCompare(right.displayName) || tieBreak();
+      return compareUtf8Bytes(left.displayName, right.displayName) || nameTieBreak();
   }
 };
 
@@ -147,7 +149,7 @@ const capturedAtCompare = (left: string | null, right: string | null, direction:
   if (left === null && right === null) return 0;
   if (left === null) return 1;
   if (right === null) return -1;
-  return direction * left.localeCompare(right);
+  return direction * compareUtf8Bytes(left, right);
 };
 
 const resolveSort = (requested: CatalogSearchSort | undefined, hasQuery: boolean): CatalogSearchSort =>
@@ -333,8 +335,8 @@ const mergePage = async (
         ? (input.videoOffset + videoIndex) <= (input.photoOffset + photoIndex)
         : compareCollectionItems(
           input.sort,
-          { media: 'video', capturedAt: videoRow.capturedAt, displayName: videoRow.finalName ?? videoRow.fileName, fingerprint: videoRow.fingerprint },
-          { media: 'photo', capturedAt: photoRow.capturedAt, displayName: photoRow.fileName, fingerprint: photoRow.fingerprint },
+          { media: 'video', capturedAt: videoRow.capturedAt, displayName: videoRow.finalName ?? videoRow.fileName, fileName: videoRow.fileName, fingerprint: videoRow.fingerprint },
+          { media: 'photo', capturedAt: photoRow.capturedAt, displayName: photoRow.fileName, fileName: photoRow.fileName, fingerprint: photoRow.fingerprint },
         ) <= 0)
     );
     if (pickVideo && videoRow !== undefined) {

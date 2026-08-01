@@ -380,7 +380,7 @@ describe('FfmpegMediaAdapter', () => {
     expect(generated).toEqual(ok({ path: thumbnailPath, generated: true, skipped: false }));
     expect(runtime.commands[0]?.operations).toEqual([
       { name: 'frames', value: 1 },
-      { name: 'videoFilters', value: thumbnailCoverFilter(512, 512) },
+      { name: 'videoFilters', value: "scale=w=512:h=512:force_original_aspect_ratio=increase,crop=512:512" },
       { name: 'output', value: thumbnailPath },
       { name: 'run' },
     ]);
@@ -389,6 +389,12 @@ describe('FfmpegMediaAdapter', () => {
   it('reproduces the current inside-fit filtergraph byte-for-byte when fit is omitted', () => {
     expect(thumbnailScaleFilter(128, 72)).toBe(
       "scale=w='trunc(min(128/iw\\,72/ih)*iw/2)*2':h='trunc(min(128/iw\\,72/ih)*ih/2)*2'",
+    );
+  });
+
+  it('reproduces the current cover-fit filtergraph byte-for-byte', () => {
+    expect(thumbnailCoverFilter(512, 512)).toBe(
+      'scale=w=512:h=512:force_original_aspect_ratio=increase,crop=512:512',
     );
   });
 

@@ -116,6 +116,17 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- The unified library collection feed now orders and merges both media legs in
+  the catalog stores' binary collation and breaks capture-date ties by file
+  name, so a `name_asc` or `captured_*` feed is no longer interleaved in an
+  order neither leg produced (uppercase names previously sank below lowercase
+  ones).
+- The Electron desktop app now honors `AVC_HOME_DIRECTORY` when set (matching
+  the CLI's existing override), instead of always resolving its home
+  directory from the OS user profile.
+- `photos forget` now also deletes a forgotten fingerprint's grid thumbnail
+  artifact; it previously deleted only the proxy and small thumbnail, leaking
+  the `.grid.jpg` sibling on disk.
 - Library → Zdjęcia grid tiles now render the 512px grid thumbnail
   (falling back to the small thumbnail) instead of the small thumbnail, and
   the Analysis → Zdjęcia sidebar rows now render the small thumbnail instead

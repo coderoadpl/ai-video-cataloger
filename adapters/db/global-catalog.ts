@@ -28,6 +28,7 @@ import {
   parseDriveRunBatchState,
   appError,
   canonicalPath,
+  compareUtf8Bytes,
   normalizeTagList,
   normalizeTagName,
   ok,
@@ -2132,15 +2133,15 @@ const sortSearchRows = (
     case 'captured_asc':
       return sorted.sort((left, right) => capturedAtCompare(left, right, 1));
     case 'name_asc':
-      return sorted.sort((left, right) => displayName(left).localeCompare(displayName(right)));
+      return sorted.sort((left, right) => compareUtf8Bytes(displayName(left), displayName(right)));
   }
 };
 
 const capturedAtCompare = (left: CatalogSearchRow, right: CatalogSearchRow, direction: 1 | -1): number => {
-  if (left.capturedAt === null && right.capturedAt === null) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === null && right.capturedAt === null) return compareUtf8Bytes(left.fileName, right.fileName);
   if (left.capturedAt === null) return 1;
   if (right.capturedAt === null) return -1;
-  if (left.capturedAt === right.capturedAt) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === right.capturedAt) return compareUtf8Bytes(left.fileName, right.fileName);
   return left.capturedAt < right.capturedAt ? -direction : direction;
 };
 

@@ -209,6 +209,32 @@ describe('missing-file reconciliation', () => {
     expect(cropExists.ok && cropExists.value).toBe(false);
   });
 
+  it('re-anchors a stale-home face crop path before deleting it when forgetting a catalog entry', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const store = new InMemoryGlobalCatalogStore('/new-home/.ai-video-cataloger/catalog.db');
+    const currentCropPath = '/new-home/.ai-video-cataloger/faces/person-1/exemplar-001.jpg';
+    fs.addFile(currentCropPath, { content: 'jpeg' });
+    await upsertProcessedVideo({ globalCatalog: store, fs }, processedInput('/work'));
+    await store.upsertFaceObservation({
+      obsId: 'obs-1',
+      fingerprint: 'fp-1',
+      kind: 'face',
+      frameTsS: 1,
+      bbox: { x: 0, y: 0, width: 1, height: 1 },
+      embedding: Array.from({ length: 128 }, () => 0.2),
+      quality: 0.9,
+      personId: 'person-1',
+      cropPath: '/old-home/.ai-video-cataloger/faces/person-1/exemplar-001.jpg',
+      media: 'video',
+    });
+
+    const forgotten = await forgetCatalogEntry({ globalCatalog: store, fs }, { fingerprint: 'fp-1' });
+    expect(forgotten.ok && forgotten.value.deleted).toBe(true);
+    const cropExists = await fs.exists(currentCropPath);
+    expect(cropExists.ok && cropExists.value).toBe(false);
+  });
+
   it('lists a folder catalog records with the missing flag and last-seen timestamp', async () => {
     const fs = new InMemoryFileSystem('/work');
     fs.addDirectory('/work');

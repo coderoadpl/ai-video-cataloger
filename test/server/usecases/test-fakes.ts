@@ -7,6 +7,7 @@ import {
   acceptsGpsWrite,
   appError,
   canonicalPath,
+  compareUtf8Bytes,
   normalizeEmbedding,
   ok,
   type AppConfig,
@@ -1946,15 +1947,15 @@ const sortFakeSearchRows = (
     case 'captured_asc':
       return sorted.sort((left, right) => fakeCapturedAtCompare(left, right, 1));
     case 'name_asc':
-      return sorted.sort((left, right) => displayName(left).localeCompare(displayName(right)));
+      return sorted.sort((left, right) => compareUtf8Bytes(displayName(left), displayName(right)));
   }
 };
 
 const fakeCapturedAtCompare = (left: CatalogSearchRow, right: CatalogSearchRow, direction: 1 | -1): number => {
-  if (left.capturedAt === null && right.capturedAt === null) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === null && right.capturedAt === null) return compareUtf8Bytes(left.fileName, right.fileName);
   if (left.capturedAt === null) return 1;
   if (right.capturedAt === null) return -1;
-  if (left.capturedAt === right.capturedAt) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === right.capturedAt) return compareUtf8Bytes(left.fileName, right.fileName);
   return left.capturedAt < right.capturedAt ? -direction : direction;
 };
 
@@ -2689,12 +2690,12 @@ const sortPhotoCollectionRows = (
     case 'relevance':
     case 'captured_desc':
       return sorted.sort((left, right) =>
-        capturedAtCompare(left.capturedAt, right.capturedAt, -1) || left.fileName.localeCompare(right.fileName));
+        capturedAtCompare(left.capturedAt, right.capturedAt, -1) || compareUtf8Bytes(left.fileName, right.fileName));
     case 'captured_asc':
       return sorted.sort((left, right) =>
-        capturedAtCompare(left.capturedAt, right.capturedAt, 1) || left.fileName.localeCompare(right.fileName));
+        capturedAtCompare(left.capturedAt, right.capturedAt, 1) || compareUtf8Bytes(left.fileName, right.fileName));
     case 'name_asc':
-      return sorted.sort((left, right) => left.fileName.localeCompare(right.fileName));
+      return sorted.sort((left, right) => compareUtf8Bytes(left.fileName, right.fileName));
   }
 };
 
@@ -2702,7 +2703,7 @@ const capturedAtCompare = (left: string | null, right: string | null, direction:
   if (left === null && right === null) return 0;
   if (left === null) return 1;
   if (right === null) return -1;
-  return direction * left.localeCompare(right);
+  return direction * compareUtf8Bytes(left, right);
 };
 
 const countTermOccurrences = (value: string, term: string): number => {
@@ -2737,8 +2738,8 @@ const scorePhotoCollectionRows = (
   return scored
     .sort((left, right) =>
       right.score - left.score
-      || left.row.fileName.localeCompare(right.row.fileName)
-      || left.row.fingerprint.localeCompare(right.row.fingerprint))
+      || compareUtf8Bytes(left.row.fileName, right.row.fileName)
+      || compareUtf8Bytes(left.row.fingerprint, right.row.fingerprint))
     .map((entry) => entry.row);
 };
 

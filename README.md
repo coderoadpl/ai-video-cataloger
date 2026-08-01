@@ -108,6 +108,8 @@ index status|rebuild|forget
 tags list|alias|suggest-aliases
 faces index|people|name|merge|forget|purge|status|recluster|exemplars
 photos scan|status|forget|proxies|process
+photos grid-thumbs [--force] [--json]
+photos gps backfill <timeline.json> [--root <path>] [--dry-run] [--tolerance-minutes 30] [--max-visit-hours 36] [--reresolve-places] [--json]
 photos search <query> [--limit <n>] [--json]
 photos variants list <fingerprint> [--json]
 photos variants select <fingerprint> <configId|none> [--json]

@@ -303,6 +303,52 @@ describe('faces forget and purge delete crop files', () => {
     const status = await facesStatus(deps);
     expect(status.ok && status.value.observations).toBe(0);
   });
+
+  it('forget re-anchors a stale-home crop path before deleting it', async () => {
+    const deps = buildDeps();
+    deps.globalCatalog = new InMemoryGlobalCatalogStore('/new-home/.ai-video-cataloger/catalog.db');
+    await enableFaces(deps);
+    const currentCropPath = '/new-home/.ai-video-cataloger/faces/p1/exemplar-001.jpg';
+    deps.fs.addFile(currentCropPath, { content: 'jpg' });
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'o1',
+      fingerprint: 'fp-a',
+      personId: 'p1',
+      cropPath: '/old-home/.ai-video-cataloger/faces/p1/exemplar-001.jpg',
+    }));
+
+    const result = await facesForget(deps, { personId: 'p1', force: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.cropPathsDeleted).toBe(1);
+    const exists = await deps.fs.exists(currentCropPath);
+    expect(exists.ok && exists.value).toBe(false);
+  });
+
+  it('purge re-anchors a stale-home crop path before deleting it', async () => {
+    const deps = buildDeps();
+    deps.globalCatalog = new InMemoryGlobalCatalogStore('/new-home/.ai-video-cataloger/catalog.db');
+    await enableFaces(deps);
+    const currentCropPath = '/new-home/.ai-video-cataloger/faces/p1/exemplar-001.jpg';
+    deps.fs.addFile(currentCropPath, { content: 'jpg' });
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'o1',
+      fingerprint: 'fp-a',
+      personId: 'p1',
+      cropPath: '/old-home/.ai-video-cataloger/faces/p1/exemplar-001.jpg',
+    }));
+
+    const result = await facesPurge(deps, { force: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.cropPathsDeleted).toBe(1);
+    const exists = await deps.fs.exists(currentCropPath);
+    expect(exists.ok && exists.value).toBe(false);
+  });
 });
 
 describe('facesIndex', () => {
@@ -1275,6 +1321,31 @@ describe('facesExemplars', () => {
     expect(observations.ok).toBe(true);
     if (!observations.ok) throw new Error('expected observations');
     expect(observations.value.every((observation) => observation.cropPath !== null)).toBe(true);
+  });
+
+  it('re-anchors a stale-home crop path before checking whether it still exists', async () => {
+    const deps = buildDeps();
+    deps.globalCatalog = new InMemoryGlobalCatalogStore('/new-home/.ai-video-cataloger/catalog.db');
+    await enableFaces(deps);
+    await seedVideo(deps, 'fp-a', 'a.mp4');
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    const currentCropPath = '/new-home/.ai-video-cataloger/faces/obs/fp-a/1-1.jpg';
+    deps.fs.addFile(currentCropPath, { content: 'jpg' });
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'fp-a:face:1:1',
+      fingerprint: 'fp-a',
+      personId: 'p1',
+      bbox: boxFixture,
+      cropPath: '/old-home/.ai-video-cataloger/faces/obs/fp-a/1-1.jpg',
+    }));
+
+    const result = await runFacesExemplarsPass(deps, { dryRun: false, limit: null });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.cropsWritten).toBe(0);
+    expect(result.value.peopleWithoutExemplarBefore).toBe(0);
+    expect(result.value.peopleWithoutExemplarAfter).toBe(0);
   });
 
   it('never re-embeds and never re-indexes while filling crops', async () => {

@@ -22,6 +22,7 @@ import {
   acceptsGpsWrite,
   appError,
   canonicalPath,
+  compareUtf8Bytes,
   normalizeTagList,
   ok,
   photoExtensionSchema,
@@ -773,8 +774,8 @@ export class SqlJsPhotosStore implements PhotosStore {
         .map((row) => photoSearchRowFromValues(row, input.rankingTerms))
         .sort((left, right) =>
           right.score - left.score
-          || left.row.fileName.localeCompare(right.row.fileName)
-          || left.row.fingerprint.localeCompare(right.row.fingerprint))
+          || compareUtf8Bytes(left.row.fileName, right.row.fileName)
+          || compareUtf8Bytes(left.row.fingerprint, right.row.fingerprint))
         .slice(input.offset, input.offset + input.limit)
         .map((scored) => scored.row);
     });
@@ -817,8 +818,8 @@ export class SqlJsPhotosStore implements PhotosStore {
           ? scored
             .sort((left, right) =>
               right.score - left.score
-              || left.row.fileName.localeCompare(right.row.fileName)
-              || left.row.fingerprint.localeCompare(right.row.fingerprint))
+              || compareUtf8Bytes(left.row.fileName, right.row.fileName)
+              || compareUtf8Bytes(left.row.fingerprint, right.row.fingerprint))
             .map((entry) => entry.row)
           : sortPhotoSearchRows(scored.map((entry) => entry.row), input.sort);
         return {
@@ -1576,10 +1577,10 @@ const photoCollectionOrderBySql = (sort: 'captured_desc' | 'captured_asc' | 'nam
 };
 
 const photoCapturedAtCompare = (left: PhotoSearchRow, right: PhotoSearchRow, direction: 1 | -1): number => {
-  if (left.capturedAt === null && right.capturedAt === null) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === null && right.capturedAt === null) return compareUtf8Bytes(left.fileName, right.fileName);
   if (left.capturedAt === null) return 1;
   if (right.capturedAt === null) return -1;
-  if (left.capturedAt === right.capturedAt) return left.fileName.localeCompare(right.fileName);
+  if (left.capturedAt === right.capturedAt) return compareUtf8Bytes(left.fileName, right.fileName);
   return left.capturedAt < right.capturedAt ? -direction : direction;
 };
 
@@ -1594,7 +1595,7 @@ const sortPhotoSearchRows = (
     case 'captured_asc':
       return sorted.sort((left, right) => photoCapturedAtCompare(left, right, 1));
     case 'name_asc':
-      return sorted.sort((left, right) => left.fileName.localeCompare(right.fileName));
+      return sorted.sort((left, right) => compareUtf8Bytes(left.fileName, right.fileName));
   }
 };
 

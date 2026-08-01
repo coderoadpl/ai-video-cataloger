@@ -9,7 +9,7 @@ export interface DesktopCompositionOptions {
 }
 
 export const createDesktopApp = async (options: DesktopCompositionOptions): Promise<App> => {
-  const homeDirectory = homedir();
+  const homeDirectory = process.env.AVC_HOME_DIRECTORY ?? homedir();
   const config = {
     version: options.version,
     workingDirectory: homeDirectory,
