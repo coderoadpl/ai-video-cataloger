@@ -41,10 +41,8 @@ const root: CatalogTreeNode = {
   children: [leaf('/drive/sub')],
 };
 
-const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
-
 describe('tree absent files section', () => {
-  it('fetches a single grouped query lazily on first expand and none while collapsed', async () => {
+  it('fetches the count eagerly and renders entries once expanded', async () => {
     let requestCount = 0;
     server.use(
       http.get('/api/catalog-tree/absent', ({ request }) => {
@@ -69,9 +67,6 @@ describe('tree absent files section', () => {
     renderThemed(<TreeAbsentFilesSection root={root} />);
 
     const toggle = await screen.findByTestId('tree-absent-files-toggle');
-    await sleep(20);
-    expect(requestCount).toBe(0);
-
     fireEvent.click(toggle);
     await waitFor(() => expect(screen.getByTestId('tree-absent-file-item')).toBeDefined());
     expect(screen.getByText('gone.mp4')).toBeDefined();
@@ -79,14 +74,13 @@ describe('tree absent files section', () => {
     expect(requestCount).toBe(1);
   }, scaledTimeout(30_000));
 
-  it('shows an empty note when the tree has no absent files', async () => {
+  it('is absent from the DOM when the tree has no absent files', async () => {
     server.use(
       http.get('/api/catalog-tree/absent', () => HttpResponse.json({ ok: true, data: { groups: [] } })),
     );
 
     renderThemed(<TreeAbsentFilesSection root={root} />);
 
-    fireEvent.click(await screen.findByTestId('tree-absent-files-toggle'));
-    await waitFor(() => expect(screen.getByText('No absent files in this tree.')).toBeDefined());
+    await waitFor(() => expect(screen.queryByTestId('tree-absent-files-section')).toBeNull());
   });
 });

@@ -277,9 +277,8 @@ describe('SetupWizard', () => {
 
     expect(screen.getByTestId('wizard-step-welcome')).toBeDefined();
     await passLanguageStep();
-    await waitFor(() =>
-      expect(screen.getByTestId('analyzer-family-local').textContent).toContain('recommended'),
-    );
+    expect(screen.getByTestId('analyzer-family-local').textContent).toBe('Local');
+    fireEvent.click(screen.getByTestId('analyzer-family-local'));
     fireEvent.mouseDown(screen.getByRole('combobox'));
     fireEvent.click(await screen.findByRole('option', { name: /Gemma 3 4B/ }));
     clickNext();
@@ -307,10 +306,43 @@ describe('SetupWizard', () => {
     expect(recorders.configWrites.every((write) => write.folder === undefined)).toBe(true);
   }, scaledTimeout(10_000));
 
+  it('re-running the wizard preselects the currently configured harness, model and effort', async () => {
+    installHandlers();
+    server.use(
+      http.get('/api/config', () => ok({
+        config: Object.fromEntries(Object.keys(configDefaults).map((key) => [key, null])),
+        defaults: configDefaults,
+        effective: {
+          ...configDefaults,
+          analyzer_provider: JSON.stringify({
+            family: 'harness',
+            providerId: 'claude-code',
+            command: 'claude',
+            argsTemplate: ['--add-dir', '{videoDir}', '-p', '{prompt}'],
+            promptStyle: 'file-urls',
+            model: 'claude-opus-4-8',
+            reasoningEffort: 'high',
+          }),
+        },
+        sources: Object.fromEntries(Object.keys(configDefaults).map((key) => [key, 'default'])),
+      })),
+    );
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await passLanguageStep();
+
+    await screen.findByTestId('harness-claude-code');
+    expect(screen.queryByTestId('analyzer-local')).toBeNull();
+    const modelSelect = within(screen.getByTestId('harness-model-select')).getByRole('combobox');
+    await waitFor(() => expect(modelSelect.textContent).toBe('claude-opus-4-8'));
+    const effortSelect = within(screen.getByTestId('harness-effort-select')).getByRole('combobox');
+    expect(effortSelect.textContent).toBe('high');
+  });
+
   it('shows a missing local model as a download and offers to install it', async () => {
     installHandlers();
     renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
     await passLanguageStep();
+    fireEvent.click(screen.getByTestId('analyzer-family-local'));
     await waitFor(() =>
       expect(screen.getByTestId('wizard-local-model-select').textContent).toContain('8 GB download'),
     );
@@ -441,6 +473,7 @@ describe('SetupWizard', () => {
     const recorders = installHandlers({ rejectConfigKey: 'local_model' });
     renderWithProviders(<SetupWizard open folder={null} onClose={vi.fn()} />);
     await passLanguageStep();
+    fireEvent.click(screen.getByTestId('analyzer-family-local'));
     fireEvent.mouseDown(screen.getByRole('combobox'));
     fireEvent.click(await screen.findByRole('option', { name: /Gemma 3 4B/ }));
 

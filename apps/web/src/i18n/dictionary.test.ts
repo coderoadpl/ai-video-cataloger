@@ -57,9 +57,9 @@ describe('dictionary', () => {
   });
 
   it('keeps the Polish settings polish copy idiomatic', () => {
-    expect(pl.settingsModal.inheritedTitle).toBe('Wartości dziedziczone');
-    expect(pl.settingsModal.inheritedHint)
-      .toBe('Najczęściej zmieniane wartości tworzą nadpisanie w folderze.');
+    expect(pl.settingsModal.otherSettingsTitle).toBe('Pozostałe ustawienia');
+    expect(pl.settingsModal.otherSettingsHint)
+      .toBe('To wartości efektywne; nie ma tu jeszcze dla nich edytora.');
     expect(pl.credentials.savedKeychain).toBe('Klucz API zapisano w pęku kluczy macOS.');
     expect(pl.details.variants.configuredLabel(
       'gemini-3.6-flash',

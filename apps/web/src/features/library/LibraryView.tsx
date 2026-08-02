@@ -22,7 +22,8 @@ import { useSearchSuggestions } from './use-search-suggestions.js';
 
 export type LibrarySeed =
   | { kind: 'folder'; folderId: string; folderLabel: string; fingerprint: string | null }
-  | { kind: 'tag'; tag: string };
+  | { kind: 'tag'; tag: string }
+  | { kind: 'person'; personId: string; label: string };
 
 interface LibraryViewProps {
   active: boolean;
@@ -68,6 +69,8 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
     if (seed.kind === 'folder') {
       dispatch({ type: 'setFolder', folderId: seed.folderId, displayName: seed.folderLabel });
       setScrollTarget(seed.fingerprint);
+    } else if (seed.kind === 'person') {
+      dispatch({ type: 'addPerson', personId: seed.personId, displayName: seed.label });
     } else {
       dispatch({ type: 'addTag', tag: seed.tag });
     }
@@ -111,7 +114,6 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
   if (!active) return null;
 
   const previewItem = (item: LibraryItem): void => {
-    if (!item.folder.online) return;
     onPreview(item);
   };
 

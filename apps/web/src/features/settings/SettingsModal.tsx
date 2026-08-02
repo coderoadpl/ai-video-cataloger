@@ -1,11 +1,7 @@
 import {
-  Accordion,
-  AccordionDetails,
-  AccordionSummary,
   Alert,
   Box,
   Button,
-  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -75,55 +71,39 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, py: 1 }}>
             {settings.error === null ? null : <Alert severity="error">{settings.error}</Alert>}
-            {settings.inherited.length === 0 ? null : (
-              <Accordion
-                disableGutters
-                data-testid="settings-inherited-panel"
-                slotProps={{ transition: { unmountOnExit: true } }}
-              >
-                <AccordionSummary>
-                  <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                    {dictionary.settingsModal.inheritedTitle}
-                  </Typography>
-                </AccordionSummary>
-                <AccordionDetails sx={{ pt: 0 }}>
-                  <Box sx={{ display: 'flex', flexDirection: 'column' }}>
-                    {settings.inherited.map((setting) => (
-                      <Box
-                        key={setting.key}
-                        data-testid={`settings-inherited-${setting.key}`}
-                        sx={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: 2,
-                          py: 0.75,
-                          borderBottom: 1,
-                          borderColor: 'divider',
-                        }}
-                      >
-                        <Box sx={{ minWidth: 0 }}>
-                          <Typography variant="caption" component="div">
-                            {setting.label}
-                          </Typography>
-                          <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
-                            {setting.value}
-                          </Typography>
-                        </Box>
-                        <Chip size="small" variant="outlined" label={setting.sourceLabel} />
-                      </Box>
-                    ))}
-                  </Box>
-                  <Typography
-                    variant="caption"
-                    color="text.secondary"
-                    data-testid="settings-inherited-hint"
-                    sx={{ display: 'block', mt: 1 }}
+            {settings.otherSettings.length === 0 ? null : (
+              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }} data-testid="settings-other-values">
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {dictionary.settingsModal.otherSettingsTitle}
+                </Typography>
+                {settings.otherSettings.map((setting) => (
+                  <Box
+                    key={setting.key}
+                    data-testid={`settings-other-${setting.key}`}
+                    sx={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: 2,
+                      py: 0.75,
+                      borderBottom: 1,
+                      borderColor: 'divider',
+                    }}
                   >
-                    {dictionary.settingsModal.inheritedHint}
-                  </Typography>
-                </AccordionDetails>
-              </Accordion>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="caption" component="div">
+                        {setting.label}
+                      </Typography>
+                      <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
+                        {setting.value}
+                      </Typography>
+                    </Box>
+                  </Box>
+                ))}
+                <Typography variant="caption" color="text.secondary">
+                  {dictionary.settingsModal.otherSettingsHint}
+                </Typography>
+              </Box>
             )}
 
             <SettingsAnalyzerSection

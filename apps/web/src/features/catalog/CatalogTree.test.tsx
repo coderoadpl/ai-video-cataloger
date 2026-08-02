@@ -1,13 +1,13 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { screen } from '@testing-library/react';
+import { screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
 import type { z } from 'zod';
 
-import type { scanVideoSchema } from '@core/contract/index.js';
+import { thumbnailInputSchema, type scanVideoSchema } from '@core/contract/index.js';
 
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
@@ -226,6 +226,67 @@ describe('CatalogTree', () => {
     expect(registerVideos).toHaveBeenCalledWith(
       expect.arrayContaining([expect.objectContaining({ path: '/drive/lazy/lazy.mp4' })]),
     );
+  });
+
+  it('gives visible expanded sub-folder rows the same foreground thumbnail treatment as root rows', async () => {
+    const thumbnailRequests: { videoPath: string; priority: string }[] = [];
+    server.use(
+      http.get('/api/catalog-tree/folder', () =>
+        HttpResponse.json({
+          ok: true,
+          data: { videos: [makeVideo('/drive/sub/a.mp4'), makeVideo('/drive/sub/b.mp4')] },
+        }),
+      ),
+      http.post('/api/thumbnail', async ({ request }) => {
+        const body = thumbnailInputSchema.parse(await request.json());
+        thumbnailRequests.push({ videoPath: body.videoPath, priority: body.priority });
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            video: body.videoPath.split('/').pop() ?? '',
+            path: body.videoPath,
+            thumbnailPath: null,
+            generated: false,
+            skipped: false,
+          },
+        });
+      }),
+    );
+    const lazyRoot = makeNode({
+      path: '/drive',
+      name: 'drive',
+      relativePath: '',
+      depth: 0,
+      videos: [],
+      videoCount: 2,
+      pendingCount: null,
+      processedCount: null,
+      children: [
+        makeNode({
+          path: '/drive/sub',
+          name: 'sub',
+          relativePath: 'sub',
+          depth: 1,
+          videos: [],
+          directVideoCount: 2,
+          videoCount: 2,
+          pendingCount: null,
+          processedCount: null,
+          children: [],
+        }),
+      ],
+    });
+
+    renderTree({ root: lazyRoot, rootVideos: [] });
+    await userEvent.click(screen.getByTestId('folder-row'));
+    await screen.findByText('a.mp4');
+
+    await waitFor(() =>
+      expect(thumbnailRequests.filter((request) => request.videoPath.startsWith('/drive/sub/'))).toHaveLength(2),
+    );
+    for (const request of thumbnailRequests) {
+      if (request.videoPath.startsWith('/drive/sub/')) expect(request.priority).toBe('foreground');
+    }
   });
 
   it('reuses the eager scan for the root row instead of a second folder fetch', async () => {

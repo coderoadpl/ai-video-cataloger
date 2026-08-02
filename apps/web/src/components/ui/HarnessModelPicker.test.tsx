@@ -1,6 +1,6 @@
 import { type ReactElement } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders as renderWithClient } from '../../test/render.js';
@@ -46,5 +46,44 @@ describe('HarnessModelPicker', () => {
     fireEvent.mouseDown(screen.getByRole('combobox'));
     fireEvent.click(screen.getByRole('option', { name: 'claude-opus-4-8' }));
     expect(onModelChange).toHaveBeenCalledWith('claude-opus-4-8');
+  });
+
+  it('shows the default option label instead of a blank select when model and effort are unset', () => {
+    renderWithProviders(
+      <HarnessModelPicker
+        harnessId="claude-code"
+        curatedModels={CLAUDE_MODELS}
+        model=""
+        onModelChange={vi.fn()}
+        effort=""
+        onEffortChange={vi.fn()}
+      />,
+    );
+    expect(within(screen.getByTestId('harness-model-select')).getByRole('combobox').textContent).toBe(
+      'Default (CLI-configured)',
+    );
+    expect(within(screen.getByTestId('harness-effort-select')).getByRole('combobox').textContent).toBe('Default');
+  });
+
+  it('re-selecting the default option still reports an unset model and effort', () => {
+    const onModelChange = vi.fn();
+    const onEffortChange = vi.fn();
+    renderWithProviders(
+      <HarnessModelPicker
+        harnessId="claude-code"
+        curatedModels={CLAUDE_MODELS}
+        model="claude-opus-4-8"
+        onModelChange={onModelChange}
+        effort="high"
+        onEffortChange={onEffortChange}
+      />,
+    );
+    fireEvent.mouseDown(within(screen.getByTestId('harness-model-select')).getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: 'Default (CLI-configured)' }));
+    expect(onModelChange).toHaveBeenCalledWith('');
+
+    fireEvent.mouseDown(within(screen.getByTestId('harness-effort-select')).getByRole('combobox'));
+    fireEvent.click(screen.getByRole('option', { name: 'Default' }));
+    expect(onEffortChange).toHaveBeenCalledWith('');
   });
 });

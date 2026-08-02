@@ -146,7 +146,7 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
         flexShrink: 0,
         borderRadius: 1,
         overflow: 'hidden',
-        cursor: item.folder.online ? 'pointer' : 'not-allowed',
+        cursor: 'pointer',
         opacity: item.missing ? 0.5 : 1,
         bgcolor: 'background.default',
         '&:hover': { outline: '2px solid', outlineColor: 'primary.main' },

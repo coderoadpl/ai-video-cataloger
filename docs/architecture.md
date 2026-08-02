@@ -215,7 +215,24 @@ gets regenerated even without `--force`; a fallback (non-primary) source
 always regenerates, bypassing the normal exists-skip.
 
 Existing databases and on-disk artifacts written by the old implementation
-must remain readable with no migration.
+must remain readable with no migration. The Library's Kolekcja surface
+triggers this same backfill pass (`force: false`) once per catalog folder
+per app session, the moment it becomes active
+(`features/library/use-thumbnails-backfill.ts`) — it is a trigger, not a new
+algorithm: the existing non-forced pass already regenerates any grid thumb
+whose winning source is a fallback (see above), this just makes sure the
+pass actually runs so pre-existing blurry tiles get swept without the owner
+running `thumbnails` by hand.
+
+Expanded sub-folder rows in the catalog tree get the same foreground
+thumbnail priority as the root list, scoped to the windowed-visible range
+(`CatalogTree.tsx`): every expanded folder's videos used to land in one
+`'background'` burst regardless of scroll position, so a visible row could
+queue for minutes behind an off-screen folder's whole video list on the
+shared 4-way ffmpeg thumbnail queue (`adapters/ffmpeg/index.ts`, strict
+two-tier foreground-then-background FIFO). The videos inside the current
+windowed range now go through a second `useThumbnailGeneration` call with
+`'viewport-first'`, off-screen rows stay `'background'`.
 
 Processing-config resolution (owner decision 2026-07-17): **explicit CLI
 flag > folder config > home config > built-in default**, per key. The home
@@ -546,6 +563,25 @@ pattern) → `'library'` if the catalog already has ≥1 file → `'analysis'`; 
 empty catalog always opens on Analysis, since the folder-open CTA there is the
 honest first-run surface. Photos in Library, saved searches, multi-select,
 keyboard grid navigation and an in-Library details pane remain out of scope.
+
+A person→tile direction reuses the same seed mechanism: `LibrarySeed` gains a
+`{ kind: 'person', personId, label }` variant that dispatches the existing
+`addPerson` filter action (the chip already carries its own `displayName`, so
+no new facet lookup is needed), wired from a `PeopleView` person card's body
+click and its "Search in Library" menu item, through `routes/index.tsx`, to
+Library's Kolekcja surface — there is no photos-only person view; a person's
+photos and videos share the one Library query surface like everything else
+here.
+
+An offline or missing tile now always opens the preview instead of doing
+nothing on click — `libraryPreviewDetail` never stats the file, so every field
+it renders (path, size, duration, transcript, people) comes straight from the
+catalog row and needs no live filesystem access. Distinguishing *why* a tile
+is unreachable (the volume it lives on is unmounted vs. the file itself is
+gone from a mounted volume) is DEFER-NEXT-WAVE: it needs a new
+`offlineReason` field threaded through the search/collection contract and a
+small pure classifier in `core/server`, tracked for the next wave rather than
+this one.
 
 ### Library collection feed — unified video+photo browse
 

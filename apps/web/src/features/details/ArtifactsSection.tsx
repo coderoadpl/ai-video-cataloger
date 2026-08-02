@@ -1,7 +1,7 @@
 import { type ReactNode } from 'react';
 import { Accordion, AccordionDetails, AccordionSummary, Box, Paper, Typography } from '@mui/material';
 
-import { DescriptionIcon, ImageIcon } from '../../components/ui/icons.js';
+import { DescriptionIcon, ExpandMoreIcon, ImageIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type DetailsVideo } from './details-video.js';
 import { FrameGallery } from './FrameGallery.js';
@@ -80,8 +80,8 @@ export const ArtifactsSection = ({ video }: { video: DetailsVideo }) => {
       ) : null}
 
       {summary !== null && summary.fullAnalysis.length > 0 ? (
-        <Accordion variant="outlined" disableGutters>
-          <AccordionSummary>
+        <Accordion variant="outlined" disableGutters defaultExpanded>
+          <AccordionSummary expandIcon={<ExpandMoreIcon data-testid="full-analysis-expand-icon" />}>
             <Typography variant="h2">{dictionary.details.fullAiAnalysis}</Typography>
           </AccordionSummary>
           <AccordionDetails>

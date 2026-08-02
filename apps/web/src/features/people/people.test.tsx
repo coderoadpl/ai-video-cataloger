@@ -160,7 +160,14 @@ describe('PeopleView', () => {
     stubPeople({ facesEnabled: false });
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={onOpenSettings} intervalMs={0} />,
+      <PeopleView
+        active
+        folder={FOLDER}
+        addLine={vi.fn()}
+        onOpenSettings={onOpenSettings}
+        onSearchInLibrary={vi.fn()}
+        intervalMs={0}
+      />,
     );
 
     expect(await screen.findByTestId('people-disabled-state')).toBeDefined();
@@ -180,7 +187,7 @@ describe('PeopleView', () => {
     );
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={addLine} onOpenSettings={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={addLine} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
     );
 
     fireEvent.click(await screen.findByTestId('people-install-models'));
@@ -193,7 +200,7 @@ describe('PeopleView', () => {
     stubPeople({ facesEnabled: true, artifactsReady: true, observations: 0, people: [] });
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
     );
 
     expect(await screen.findByTestId('people-empty-state')).toBeDefined();
@@ -218,7 +225,7 @@ describe('PeopleView', () => {
     });
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
     );
 
     expect(await screen.findByTestId('people-grid')).toBeDefined();
@@ -241,7 +248,7 @@ describe('PeopleView', () => {
     });
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
     );
 
     await screen.findByTestId('people-grid');
@@ -253,6 +260,37 @@ describe('PeopleView', () => {
     expect(screen.queryByAltText('Alex')).toBeNull();
   });
 
+  it('opens the person in the Library from the card menu and the card body', async () => {
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 1,
+      people: [person({ personId: 'p1', displayName: 'Alex', observationCount: 1 })],
+    });
+    const onSearchInLibrary = vi.fn();
+
+    renderThemed(
+      <PeopleView
+        active
+        folder={FOLDER}
+        addLine={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onSearchInLibrary={onSearchInLibrary}
+        intervalMs={0}
+      />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByLabelText('More actions for Alex'));
+    const menuItem = await screen.findByTestId('people-search-library');
+    fireEvent.click(menuItem);
+    expect(onSearchInLibrary).toHaveBeenCalledWith('p1', 'Alex');
+
+    onSearchInLibrary.mockClear();
+    fireEvent.click(screen.getByTestId('people-card-body'));
+    expect(onSearchInLibrary).toHaveBeenCalledWith('p1', 'Alex');
+  });
+
   it('keeps the destructive delete action off the card face, behind an overflow menu', async () => {
     stubPeople({
       facesEnabled: true,
@@ -262,7 +300,7 @@ describe('PeopleView', () => {
     });
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
     );
 
     await screen.findByTestId('people-grid');
@@ -289,6 +327,7 @@ describe('PeopleView', () => {
         folder={FOLDER}
         addLine={vi.fn()}
         onOpenSettings={vi.fn()}
+        onSearchInLibrary={vi.fn()}
         lockReason="Catalog locked by gui PID 4321"
         intervalMs={0}
       />,
@@ -344,7 +383,7 @@ describe('PeopleView', () => {
     );
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
     );
     const user = userEvent.setup();
 
@@ -392,7 +431,7 @@ describe('PeopleView', () => {
     );
 
     renderThemed(
-      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} intervalMs={0} />,
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
     );
 
     await screen.findByTestId('people-grid');

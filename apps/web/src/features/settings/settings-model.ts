@@ -22,14 +22,20 @@ import { type Dictionary } from '../../i18n/dictionary.js';
 export type SettingsDraft = AppConfig;
 export type LocalAiTier = z.output<typeof localAiTierSchema>;
 export type Machine = z.output<typeof machineSchema>;
-export type SettingSource = 'folder' | 'home' | 'default';
 
-export interface ResolvedSetting {
-  key: ConfigKey;
+export const KEYS_WITHOUT_EDITOR = [
+  'whisper_language',
+  'whisper_api_base_url',
+  'whisper_api_model',
+  'timeout',
+] as const satisfies readonly ConfigKey[];
+
+export type OtherSettingsKey = (typeof KEYS_WITHOUT_EDITOR)[number];
+
+export interface EffectiveSetting {
+  key: OtherSettingsKey;
   label: string;
   value: string;
-  source: SettingSource;
-  sourceLabel: string;
 }
 
 type StoredConfig = z.output<typeof storedConfigSchema>;
@@ -196,16 +202,13 @@ const resolvedSettingValue = (
   }
 };
 
-export const resolvedSettings = (
+export const otherSettings = (
   dictionary: Dictionary,
   config: AppConfig,
-  sources: Record<ConfigKey, SettingSource>,
-): ResolvedSetting[] => CONFIG_KEYS.map((key) => ({
+): EffectiveSetting[] => KEYS_WITHOUT_EDITOR.map((key) => ({
   key,
-  label: dictionary.settingsModal.inheritedKeys[key],
+  label: dictionary.settingsModal.otherSettingsKeys[key],
   value: resolvedSettingValue(dictionary, config, key),
-  source: sources[key],
-  sourceLabel: dictionary.settingsModal.inheritedSources[sources[key]],
 }));
 
 export type BudgetInput =

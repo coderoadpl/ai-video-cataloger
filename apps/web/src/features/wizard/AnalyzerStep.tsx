@@ -68,7 +68,6 @@ export const AnalyzerStep = ({ controller }: { controller: WizardController }) =
       >
         <ToggleButton value="local" data-testid="analyzer-family-local">
           {dictionary.wizard.analyzer.local}
-          {machine?.appleSilicon === true ? dictionary.wizard.analyzer.recommendedSuffix : ''}
         </ToggleButton>
         <ToggleButton value="api" data-testid="analyzer-family-api">
           {dictionary.wizard.analyzer.api}

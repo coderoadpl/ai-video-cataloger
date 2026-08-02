@@ -209,17 +209,17 @@ describe('settings modal', () => {
     expect(screen.queryByTestId('settings-run-wizard')).toBeNull();
   });
 
-  it('shows effective inherited values without creating folder overrides', async () => {
-    const effective = { ...defaults, frames: '7', whisper_model: 'small' };
+  it('shows one flat set of effective values with no inheritance vocabulary', async () => {
+    const effective = { ...defaults, frames: '7', whisper_model: 'small', whisper_language: 'pl', timeout: '90' };
     const sources = {
       whisper_binary_path: 'default',
       whisper_model: 'home',
-      whisper_language: 'default',
+      whisper_language: 'home',
       whisper_mode: 'default',
       whisper_api_base_url: 'default',
       whisper_api_model: 'default',
       frames: 'home',
-      timeout: 'default',
+      timeout: 'home',
       skip_rename: 'default',
       analyzer_backend: 'default',
       local_model: 'default',
@@ -235,20 +235,17 @@ describe('settings modal', () => {
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
 
     expect(await screen.findByText('7 frames')).toBeDefined();
-    const panel = screen.getByTestId('settings-inherited-panel');
-    const summary = within(panel).getByRole('button');
-    expect(summary.getAttribute('aria-expanded')).toBe('false');
-    fireEvent.click(summary);
+    expect(screen.queryByTestId('settings-inherited-panel')).toBeNull();
 
-    const frames = screen.getByTestId('settings-inherited-frames');
-    expect(frames.textContent).toContain('Frame count');
-    expect(frames.textContent).toContain('7 frames');
-    expect(frames.textContent).toContain('home');
-    const provider = screen.getByTestId('settings-inherited-analyzer_provider');
-    expect(provider.textContent).toContain('claude-code');
+    const otherValues = screen.getByTestId('settings-other-values');
+    expect(within(otherValues).getByText(en.settingsModal.otherSettingsKeys.whisper_language)).toBeDefined();
+    const whisperLanguage = within(otherValues).getByTestId('settings-other-whisper_language');
+    expect(whisperLanguage.textContent).toContain(en.language.optionPolish);
+    const timeout = within(otherValues).getByTestId('settings-other-timeout');
+    expect(timeout.textContent).toContain('90 s');
+
+    const provider = screen.getByTestId('settings-harness-model');
     expect(provider.textContent).not.toContain('{');
-    expect(screen.getByTestId('settings-inherited-hint').textContent)
-      .toBe(en.settingsModal.inheritedHint);
     expect(screen.getByTestId('settings-save').getAttribute('disabled')).not.toBeNull();
   });
 

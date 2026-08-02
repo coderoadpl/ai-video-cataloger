@@ -146,7 +146,7 @@ describe('LibraryView', () => {
     expect(onOpenResult).not.toHaveBeenCalled();
   });
 
-  it('does not open an offline-folder tile', async () => {
+  it('opens the preview for an offline-folder tile instead of doing nothing', async () => {
     const items = [libraryItem({ fingerprint: 'fp-offline', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/offline', displayName: 'offline', online: false } })];
     stubSearch(items);
     const onPreview = vi.fn();
@@ -155,7 +155,7 @@ describe('LibraryView', () => {
     fireEvent.click(await screen.findByTestId('library-tile'));
 
     expect(screen.getByTestId('library-offline-badge')).toBeDefined();
-    expect(onPreview).not.toHaveBeenCalled();
+    expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ fingerprint: 'fp-offline' }));
   });
 
   it('tiles request the 512px grid thumbnail when it exists, small thumb only as fallback', async () => {
@@ -452,6 +452,26 @@ describe('LibraryView', () => {
     );
 
     expect(await screen.findByText('#aerial')).toBeDefined();
+  });
+
+  it('a person seed filters by that person and shows a removable chip built from the seed label', async () => {
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(
+      <LibraryView
+        active
+        onOpenResult={vi.fn()}
+        onPreview={vi.fn()}
+        onGoToVideos={vi.fn()}
+        seed={{ kind: 'person', personId: 'person-abc123', label: 'Alex' }}
+        onSeedConsumed={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('Alex')).toBeDefined();
+    await waitFor(() =>
+      expect(searchRequests[searchRequests.length - 1]?.get('people')).toBe('person-abc123'),
+    );
   });
 
   it('load more keeps the grid mounted and does not flash the no-match state while the next page is in flight', async () => {

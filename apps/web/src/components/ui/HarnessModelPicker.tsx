@@ -3,7 +3,7 @@ import { Box, FormControl, InputLabel, MenuItem, Select, TextField, Typography }
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 
-const DEFAULT_VALUE = '';
+const DEFAULT_VALUE = '__default__';
 const CUSTOM_VALUE = '__custom__';
 
 const EFFORT_OPTIONS = ['low', 'medium', 'high'];

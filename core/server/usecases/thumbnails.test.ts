@@ -96,6 +96,36 @@ describe('runThumbnailsPass', () => {
     expect(result.value.gridFailed).toBe(0);
   });
 
+  it('regenerates an existing grid thumbnail without --force when the stored frame is below the grid floor', async () => {
+    const fs = new InMemoryFileSystem('/root');
+    const media = new InMemoryMedia(fs);
+    seedCompletedFile(fs, '/root/a.mp4', 'a');
+    media.dimensions.set('/root/frames/a/frame-001.jpg', { width: 128, height: 72 });
+    fs.addFile('/root/.ai-video-cataloger/thumbnails/a.grid.jpg', { content: 'stale-blurry' });
+
+    const result = await runThumbnailsPass({ fs, media }, { root: '/root', force: false });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.gridGenerated).toBe(1);
+    expect(result.value.gridSkipped).toBe(0);
+  });
+
+  it('leaves an existing grid thumbnail alone without --force when the stored frame already meets the grid floor', async () => {
+    const fs = new InMemoryFileSystem('/root');
+    const media = new InMemoryMedia(fs);
+    seedCompletedFile(fs, '/root/a.mp4', 'a');
+    media.dimensions.set('/root/frames/a/frame-001.jpg', { width: 1024, height: 1024 });
+    fs.addFile('/root/.ai-video-cataloger/thumbnails/a.grid.jpg', { content: 'already-sharp' });
+
+    const result = await runThumbnailsPass({ fs, media }, { root: '/root', force: false });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.gridGenerated).toBe(0);
+    expect(result.value.gridSkipped).toBe(1);
+  });
+
   it('emits scanning, one file event per candidate, and a done event', async () => {
     const fs = new InMemoryFileSystem('/root');
     const media = new InMemoryMedia(fs);

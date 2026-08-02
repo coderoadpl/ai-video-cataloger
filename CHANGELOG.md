@@ -14,6 +14,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- A person card opens the Library filtered to that person, from the card
+  itself and from its actions menu.
+
 ### Fixed
 
 - Opening or scanning a folder no longer reports the app's own nested catalog
@@ -47,6 +52,20 @@ release history jumps from `0.5.10` to `0.5.12`.
   likewise pick folders via a stubbed native dialog and a real Open Folder
   click, and configure the whisper mode through the real Settings modal
   instead of shelling `avc config set`.
+- The tree "previously catalogued, now absent" section is hidden when empty;
+  the full AI analysis panel opens by default and shows an expand
+  affordance.
+- Library tiles for offline or missing files now open the preview instead of
+  doing nothing on click.
+- Sub-folder sidebar thumbnails visible in the current scroll window are now
+  generated as promptly as root-level ones, and existing low-resolution
+  Library grid thumbnails are regenerated once per folder per session instead
+  of staying blurry forever.
+- Settings shows one flat set of effective values with no inheritance
+  vocabulary, and the analyzer model / reasoning-effort selects show their
+  default instead of rendering blank.
+- Re-running the setup wizard starts from the current settings instead of
+  defaults, and the local analyzer is no longer labelled recommended.
 
 ## [0.6.7] - 2026-08-02
 

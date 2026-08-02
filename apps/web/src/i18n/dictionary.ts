@@ -95,7 +95,6 @@ export interface Dictionary {
     noVideosInFolder: (subfolderCount: number) => string;
     switchToWholeTree: string;
     absentSectionTitle: string;
-    absentNone: string;
     absentLastSeen: (date: string) => string;
     forgetEntry: string;
     forgetEntryConfirmTitle: string;
@@ -226,7 +225,6 @@ export interface Dictionary {
       title: string;
       familyLabel: string;
       local: string;
-      recommendedSuffix: string;
       api: string;
       harness: string;
       gemini: string;
@@ -486,6 +484,7 @@ export interface Dictionary {
     observationCount: (count: number) => string;
     rename: string;
     delete: string;
+    searchInLibrary: string;
     moreActions: (name: string) => string;
     installingModelsLog: string;
     modelsInstalledLog: string;
@@ -540,32 +539,13 @@ export interface Dictionary {
     title: string;
     selectFolderFirst: string;
     loading: string;
-    inheritedTitle: string;
-    inheritedHint: string;
-    inheritedSources: {
-      folder: string;
-      home: string;
-      default: string;
-    };
-    inheritedKeys: {
-      whisper_binary_path: string;
-      whisper_model: string;
+    otherSettingsTitle: string;
+    otherSettingsHint: string;
+    otherSettingsKeys: {
       whisper_language: string;
-      whisper_mode: string;
       whisper_api_base_url: string;
       whisper_api_model: string;
-      frames: string;
       timeout: string;
-      skip_rename: string;
-      analyzer_backend: string;
-      local_model: string;
-      analyzer_provider: string;
-      faces_enabled: string;
-      gemini_batch_mode: string;
-      gemini_monthly_budget_usd: string;
-      output_language: string;
-      tag_language: string;
-      ui_language: string;
     };
     valueNotSet: string;
     valueEnabled: string;
@@ -946,7 +926,6 @@ export const en: Dictionary = {
     noVideosInFolder: (subfolderCount) => `No videos in this folder — ${String(subfolderCount)} in subfolders.`,
     switchToWholeTree: 'Switch to Whole tree',
     absentSectionTitle: 'Previously cataloged, now absent',
-    absentNone: 'No absent files in this tree.',
     absentLastSeen: (date) => `Last seen ${date}`,
     forgetEntry: 'Forget',
     forgetEntryConfirmTitle: 'Forget catalog entry',
@@ -1084,7 +1063,6 @@ export const en: Dictionary = {
       title: 'Choose an analyzer',
       familyLabel: 'analyzer family',
       local: 'Local',
-      recommendedSuffix: ' (recommended)',
       api: 'API',
       harness: 'Agent harness',
       gemini: 'Gemini (native video)',
@@ -1386,6 +1364,7 @@ export const en: Dictionary = {
     observationCount: (count) => `${count} ${count === 1 ? 'observation' : 'observations'}`,
     rename: 'Rename',
     delete: 'Delete',
+    searchInLibrary: 'Search in Library',
     moreActions: (name) => `More actions for ${name}`,
     installingModelsLog: 'Installing face grouping models...',
     modelsInstalledLog: 'Face grouping models are installed',
@@ -1440,32 +1419,13 @@ export const en: Dictionary = {
     title: 'Settings',
     selectFolderFirst: 'Please select a folder first to configure settings.',
     loading: 'Loading settings…',
-    inheritedTitle: 'Inherited values',
-    inheritedHint: 'Most changed values create a folder override.',
-    inheritedSources: {
-      folder: 'folder',
-      home: 'home',
-      default: 'default',
-    },
-    inheritedKeys: {
-      whisper_binary_path: 'Custom whisper.cpp path',
-      whisper_model: 'Whisper model',
+    otherSettingsTitle: 'Other settings',
+    otherSettingsHint: 'These use the effective value; there is no editor for them here yet.',
+    otherSettingsKeys: {
       whisper_language: 'Transcription language',
-      whisper_mode: 'Transcription mode',
       whisper_api_base_url: 'Whisper API base URL',
       whisper_api_model: 'Whisper API model',
-      frames: 'Frame count',
       timeout: 'Analyzer timeout',
-      skip_rename: 'Skip automatic renaming',
-      analyzer_backend: 'Analyzer backend',
-      local_model: 'Local model',
-      analyzer_provider: 'Analyzer',
-      faces_enabled: 'Local face grouping',
-      gemini_batch_mode: 'Gemini batch mode',
-      gemini_monthly_budget_usd: 'Gemini monthly budget',
-      output_language: 'Output language',
-      tag_language: 'Tag language',
-      ui_language: 'Interface language',
     },
     valueNotSet: 'Not set',
     valueEnabled: 'Enabled',
@@ -1858,7 +1818,6 @@ export const pl: Dictionary = {
     noVideosInFolder: (subfolderCount) => `Brak filmów w tym folderze — ${String(subfolderCount)} w podfolderach.`,
     switchToWholeTree: 'Przełącz na całe drzewo',
     absentSectionTitle: 'Wcześniej skatalogowane, obecnie nieobecne',
-    absentNone: 'Brak nieobecnych plików w tym drzewie.',
     absentLastSeen: (date) => `Ostatnio widziano ${date}`,
     forgetEntry: 'Zapomnij',
     forgetEntryConfirmTitle: 'Zapomnij wpis katalogu',
@@ -1996,7 +1955,6 @@ export const pl: Dictionary = {
       title: 'Wybierz analizator',
       familyLabel: 'rodzaj analizatora',
       local: 'Lokalny',
-      recommendedSuffix: ' (zalecane)',
       api: 'API',
       harness: 'Agent harness',
       gemini: 'Gemini (natywne wideo)',
@@ -2299,6 +2257,7 @@ export const pl: Dictionary = {
     observationCount: (count) => `${count} ${plPlural(count, 'obserwacja', 'obserwacje', 'obserwacji')}`,
     rename: 'Zmień nazwę',
     delete: 'Usuń',
+    searchInLibrary: 'Szukaj w Bibliotece',
     moreActions: (name) => `Więcej działań dla ${name}`,
     installingModelsLog: 'Instalowanie modeli grupowania twarzy...',
     modelsInstalledLog: 'Modele grupowania twarzy zostały zainstalowane',
@@ -2353,32 +2312,13 @@ export const pl: Dictionary = {
     title: 'Ustawienia',
     selectFolderFirst: 'Najpierw wybierz folder, aby skonfigurować ustawienia.',
     loading: 'Ładowanie ustawień…',
-    inheritedTitle: 'Wartości dziedziczone',
-    inheritedHint: 'Najczęściej zmieniane wartości tworzą nadpisanie w folderze.',
-    inheritedSources: {
-      folder: 'folder',
-      home: 'dom',
-      default: 'domyślne',
-    },
-    inheritedKeys: {
-      whisper_binary_path: 'Własna ścieżka whisper.cpp',
-      whisper_model: 'Model Whisper',
+    otherSettingsTitle: 'Pozostałe ustawienia',
+    otherSettingsHint: 'To wartości efektywne; nie ma tu jeszcze dla nich edytora.',
+    otherSettingsKeys: {
       whisper_language: 'Język transkrypcji',
-      whisper_mode: 'Tryb transkrypcji',
       whisper_api_base_url: 'Bazowy URL API Whisper',
       whisper_api_model: 'Model API Whisper',
-      frames: 'Liczba klatek',
       timeout: 'Limit czasu analizatora',
-      skip_rename: 'Pomiń automatyczną zmianę nazw',
-      analyzer_backend: 'Backend analizatora',
-      local_model: 'Model lokalny',
-      analyzer_provider: 'Analizator',
-      faces_enabled: 'Lokalne grupowanie twarzy',
-      gemini_batch_mode: 'Tryb wsadowy Gemini',
-      gemini_monthly_budget_usd: 'Miesięczny budżet Gemini',
-      output_language: 'Język wyniku',
-      tag_language: 'Język tagów',
-      ui_language: 'Język interfejsu',
     },
     valueNotSet: 'Nie ustawiono',
     valueEnabled: 'Włączone',

@@ -1,9 +1,10 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
 import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import {
+  configSchema,
   configValueSchema,
   type AnalyzerProviderConfig,
   type ConfigKey,
@@ -32,6 +33,8 @@ import {
   harnessDescriptors,
   recommendedTier,
   transcriptionLockedToSkip,
+  wizardAnalyzerSeed,
+  wizardTranscriptionModeFromConfig,
   type AnalyzerFamily,
   type ApiDraft,
   type GeminiDraft,
@@ -173,6 +176,58 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const [readiness, setReadiness] = useState<Readiness | null>(null);
   const [doctor, setDoctor] = useState<Doctor | null>(null);
   const [isCheckingReadiness, setIsCheckingReadiness] = useState(false);
+
+  const detectHarness = useCallback(
+    (descriptor: HarnessDescriptor): void => {
+      setHarnessAvailability((current) => ({ ...current, [descriptor.providerId]: { status: 'unknown', version: null } }));
+      void (async () => {
+        try {
+          const result = await testProvider.mutateAsync(buildHarnessProvider(descriptor));
+          if (result.family !== 'harness') return;
+          setHarnessAvailability((current) => ({
+            ...current,
+            [descriptor.providerId]: {
+              status: result.available ? 'available' : 'unavailable',
+              version: result.version,
+            },
+          }));
+        } catch {
+          setHarnessAvailability((current) => ({
+            ...current,
+            [descriptor.providerId]: { status: 'unavailable', version: null },
+          }));
+        }
+      })();
+    },
+    [testProvider],
+  );
+
+  const seededRef = useRef(false);
+  useEffect(() => {
+    if (!open) {
+      seededRef.current = false;
+      return;
+    }
+    if (seededRef.current) return;
+    const data = configQuery.data;
+    if (data === undefined || !('effective' in data)) return;
+    const parsedEffective = configSchema.safeParse(data.effective);
+    if (!parsedEffective.success) return;
+    seededRef.current = true;
+    const effective = parsedEffective.data;
+    const seed = wizardAnalyzerSeed(effective.analyzer_provider);
+    setAnalyzerFamilyState(seed.family);
+    setLocalModelTag(seed.localModelTag);
+    setHarnessId(seed.harnessId);
+    setHarnessModelState(seed.harnessModel);
+    setHarnessEffortState(seed.harnessEffort);
+    setApiDraftState(seed.apiDraft);
+    setGeminiDraftState(seed.geminiDraft);
+    setTranscriptionMode(wizardTranscriptionModeFromConfig(effective.whisper_mode, effective.whisper_binary_path));
+    if (seed.family === 'harness') {
+      for (const descriptor of harnesses) detectHarness(descriptor);
+    }
+  }, [open, configQuery.data, harnesses, detectHarness]);
 
   const effectiveLocalTag = localModelTag.length > 0 ? localModelTag : recommendedTier(tiers)?.tag ?? 'gemma3:12b';
 
@@ -598,31 +653,6 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const finish = useCallback(() => {
     onFinish();
   }, [onFinish]);
-
-  const detectHarness = useCallback(
-    (descriptor: HarnessDescriptor): void => {
-      setHarnessAvailability((current) => ({ ...current, [descriptor.providerId]: { status: 'unknown', version: null } }));
-      void (async () => {
-        try {
-          const result = await testProvider.mutateAsync(buildHarnessProvider(descriptor));
-          if (result.family !== 'harness') return;
-          setHarnessAvailability((current) => ({
-            ...current,
-            [descriptor.providerId]: {
-              status: result.available ? 'available' : 'unavailable',
-              version: result.version,
-            },
-          }));
-        } catch {
-          setHarnessAvailability((current) => ({
-            ...current,
-            [descriptor.providerId]: { status: 'unavailable', version: null },
-          }));
-        }
-      })();
-    },
-    [testProvider],
-  );
 
   const setAnalyzerFamilyWithDetection = useCallback(
     (family: AnalyzerFamily) => {

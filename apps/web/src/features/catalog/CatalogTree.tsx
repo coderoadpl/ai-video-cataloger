@@ -314,19 +314,41 @@ export const CatalogTree = ({ root, rootVideos, selectedKey, analyzingPath, thum
     return collected.length === 0 ? EMPTY_SUBFOLDER_VIDEOS : collected;
   }, [fetchTargets, loaded]);
 
-  const subfolderThumbnails = useThumbnailGeneration(root.path, subfolderVideos, 'background');
-  const isThumbnailLoading = useCallback(
-    (video: CatalogVideo): boolean =>
-      thumbnailLoading(video, thumbnailFailedPaths) && thumbnailLoading(video, subfolderThumbnails.failedPaths),
-    [thumbnailFailedPaths, subfolderThumbnails.failedPaths],
-  );
-
   const rows = useMemo(
     () => buildTreeRows({ root, rootVideos, isExpanded, loadedFolder }),
     [root, rootVideos, isExpanded, loadedFolder],
   );
   const rowHeights = useMemo(() => rows.map(rowHeightOf), [rows]);
   const { range, onScroll, containerRef } = useWindowedList(rowHeights);
+
+  // The ffmpeg thumbnail queue drains every foreground request before any background one, so an
+  // off-screen folder's burst would otherwise starve a visible row for minutes.
+  const visibleVideoPaths = useMemo(() => {
+    const paths = new Set<string>();
+    for (const row of rows.slice(range.start, range.end)) {
+      if (row.kind === 'video') paths.add(row.video.path);
+    }
+    return paths;
+  }, [rows, range.start, range.end]);
+
+  const visibleSubfolderVideos = useMemo(
+    () => subfolderVideos.filter((video) => visibleVideoPaths.has(video.path)),
+    [subfolderVideos, visibleVideoPaths],
+  );
+  const restSubfolderVideos = useMemo(
+    () => subfolderVideos.filter((video) => !visibleVideoPaths.has(video.path)),
+    [subfolderVideos, visibleVideoPaths],
+  );
+
+  const visibleSubfolderThumbnails = useThumbnailGeneration(root.path, visibleSubfolderVideos, 'viewport-first');
+  const restSubfolderThumbnails = useThumbnailGeneration(root.path, restSubfolderVideos, 'background');
+  const isThumbnailLoading = useCallback(
+    (video: CatalogVideo): boolean =>
+      thumbnailLoading(video, thumbnailFailedPaths)
+      && thumbnailLoading(video, visibleSubfolderThumbnails.failedPaths)
+      && thumbnailLoading(video, restSubfolderThumbnails.failedPaths),
+    [thumbnailFailedPaths, visibleSubfolderThumbnails.failedPaths, restSubfolderThumbnails.failedPaths],
+  );
 
   const rootVideoCount = root.videoCount ?? root.videos.length;
   const command = processDriveCommand(root.path);

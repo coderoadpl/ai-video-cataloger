@@ -23,6 +23,7 @@ import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { LibraryView, type LibraryItem, type LibrarySeed } from '../features/library/LibraryView.js';
 import { deriveLibrarySeed } from '../features/library/show-in-library.js';
 import { useCatalogIndex } from '../features/library/use-catalog-index.js';
+import { useThumbnailsBackfillTrigger } from '../features/library/use-thumbnails-backfill.js';
 import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations, type CatalogLocation } from '../features/map/use-catalog-locations.js';
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
@@ -79,6 +80,10 @@ export const IndexRoute = () => {
   const readiness = useReadiness(shell.currentFolder);
   const catalogLock = useCatalogLock();
   const firstLaunch = useFirstLaunch();
+  useThumbnailsBackfillTrigger({
+    active: mode === 'library' && librarySurface === 'collection',
+    folder: shell.currentFolder,
+  });
   const selectKey = catalog.selectKey;
   const selectedKeyRef = useRef(catalog.selectedKey);
   useEffect(() => {
@@ -305,6 +310,11 @@ export const IndexRoute = () => {
           folder={shell.currentFolder}
           addLine={terminal.addLine}
           onOpenSettings={() => setModalRequest('settings')}
+          onSearchInLibrary={(personId, label) => {
+            setLibrarySeed({ kind: 'person', personId, label });
+            setMode('library');
+            setLibrarySurface('collection');
+          }}
           lockReason={catalogLock.disabledReason}
         />
         <MapView

@@ -27,12 +27,12 @@ const lastSeenLabel = (missingAt: number): string => new Date(missingAt).toLocal
 export const TreeAbsentFilesSection = ({ root }: { root: CatalogTreeNode | null }) => {
   const dictionary = useDictionary();
   const [open, setOpen] = useState(false);
-  const { groups, total, forget, isForgetting } = useTreeAbsentFiles(root?.path ?? null, open);
+  const { groups, total, forget, isForgetting } = useTreeAbsentFiles(root?.path ?? null, root !== null);
   const { disabledReason: lockReason } = useCatalogLock();
   const mutationsBlocked = lockReason !== undefined;
   const [pending, setPending] = useState<{ fingerprint: string; name: string } | null>(null);
 
-  if (root === null) return null;
+  if (root === null || total === 0) return null;
 
   return (
     <Box sx={{ borderTop: 1, borderColor: 'divider' }} data-testid="tree-absent-files-section">
@@ -64,11 +64,6 @@ export const TreeAbsentFilesSection = ({ root }: { root: CatalogTreeNode | null 
       </Box>
       <Collapse in={open} unmountOnExit>
         <Box sx={{ px: 1, pb: 1 }}>
-          {total === 0 ? (
-            <Typography variant="caption" color="text.secondary" sx={{ px: 1 }}>
-              {dictionary.catalog.absentNone}
-            </Typography>
-          ) : null}
           {groups.map((group) => (
             <Box key={group.folder} sx={{ mt: 0.5 }}>
               <Typography variant="caption" color="text.secondary" sx={{ px: 1, fontWeight: 600 }} title={group.folder}>

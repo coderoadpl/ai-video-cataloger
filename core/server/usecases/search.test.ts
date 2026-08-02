@@ -144,6 +144,31 @@ describe('search', () => {
     expect(result.value.results[1]?.tags).toEqual(['field']);
   });
 
+  it('matches on fileName and finalName alone, with no tag/description/transcript overlap', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addDirectory('/media/online');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-original-name', folderA.folderId, 'amber-jellyfish.mp4'));
+    await store.upsertAnalysis(analysis('fp-original-name', {}));
+    await store.upsertFile(file('fp-final-name', folderA.folderId, 'raw.mp4'));
+    await store.upsertAnalysis(analysis('fp-final-name', { finalName: 'crimson-octopus.mp4' }));
+    await store.upsertFile(file('fp-unrelated', folderA.folderId, 'other.mp4'));
+    await store.upsertAnalysis(analysis('fp-unrelated', { description: 'unrelated clip' }));
+
+    const byFileName = await search(
+      { globalCatalog: store, fs, media: new InMemoryMedia() },
+      { query: 'jellyfish', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'existing' as const, limit: 10, offset: 0 },
+    );
+    expect(byFileName.ok && byFileName.value.results.map((row) => row.fingerprint)).toEqual(['fp-original-name']);
+
+    const byFinalName = await search(
+      { globalCatalog: store, fs, media: new InMemoryMedia() },
+      { query: 'octopus', filters: EMPTY_FILTERS, sort: undefined, thumbnails: 'existing' as const, limit: 10, offset: 0 },
+    );
+    expect(byFinalName.ok && byFinalName.value.results.map((row) => row.fingerprint)).toEqual(['fp-final-name']);
+  });
+
   it('resolves an existing thumbnail path for an online result and null when absent', async () => {
     const fs = new InMemoryFileSystem('/media');
     fs.addDirectory('/media/online');

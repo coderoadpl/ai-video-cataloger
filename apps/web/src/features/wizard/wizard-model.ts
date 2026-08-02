@@ -6,6 +6,7 @@ import {
   defaultGeminiNativeProvider,
   geminiNativeModelIds,
   type AnalyzerProviderConfig,
+  type AppConfig,
   type WhisperModelName,
 } from '@core/domain/index.js';
 import type { localAiTierSchema, machineSchema } from '@core/contract/index.js';
@@ -180,3 +181,62 @@ export const buildApiProvider = (draft: ApiDraft): ApiProviderConfig => {
 
 export const analyzerBackendFor = (provider: AnalyzerProviderConfig): 'claude' | 'local' =>
   provider.family === 'local' ? 'local' : 'claude';
+
+export interface WizardAnalyzerSeed {
+  family: AnalyzerFamily;
+  localModelTag: string;
+  harnessId: string;
+  harnessModel: string;
+  harnessEffort: string;
+  apiDraft: ApiDraft;
+  geminiDraft: GeminiDraft;
+}
+
+export const wizardAnalyzerSeed = (provider: AnalyzerProviderConfig): WizardAnalyzerSeed => {
+  const base: WizardAnalyzerSeed = {
+    family: 'local',
+    localModelTag: '',
+    harnessId: 'claude-code',
+    harnessModel: '',
+    harnessEffort: '',
+    apiDraft: emptyApiDraft(),
+    geminiDraft: emptyGeminiDraft(),
+  };
+  switch (provider.family) {
+    case 'local':
+      return { ...base, family: 'local', localModelTag: provider.modelTag };
+    case 'harness':
+      return {
+        ...base,
+        family: 'harness',
+        harnessId: provider.providerId,
+        harnessModel: provider.model ?? '',
+        harnessEffort: provider.reasoningEffort ?? '',
+      };
+    case 'api':
+      return {
+        ...base,
+        family: 'api',
+        apiDraft: {
+          baseUrl: provider.baseUrl,
+          model: provider.model,
+          credential: '',
+          pricePerMTokensInput:
+            provider.pricePerMTokensInput === undefined ? '' : String(provider.pricePerMTokensInput),
+          pricePerMTokensOutput:
+            provider.pricePerMTokensOutput === undefined ? '' : String(provider.pricePerMTokensOutput),
+        },
+      };
+    case 'gemini-native':
+      return { ...base, family: 'gemini-native', geminiDraft: { model: provider.model, credential: '' } };
+  }
+};
+
+export const wizardTranscriptionModeFromConfig = (
+  whisperMode: AppConfig['whisper_mode'],
+  whisperBinaryPath: string,
+): TranscriptionMode => {
+  if (whisperMode === 'api') return 'api';
+  if (whisperMode === 'skip') return 'skip';
+  return whisperBinaryPath.trim().length === 0 ? 'managed' : 'own';
+};

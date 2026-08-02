@@ -71,6 +71,7 @@ export type JobInput = z.input<typeof API_ROUTES.jobStatus.input>;
 export type ProcessVideoInput = z.input<typeof API_ROUTES.process.input>;
 export type ProcessDriveInput = z.input<typeof API_ROUTES.processDrive.input>;
 export type GenerateThumbnailInput = z.input<typeof API_ROUTES.thumbnail.input>;
+export type ThumbnailsBackfillInput = z.input<typeof API_ROUTES.thumbnails.input>;
 export type ResetAllInput = z.input<typeof API_ROUTES.resetAll.input>;
 export type ResetSingleInput = z.input<typeof API_ROUTES.resetSingle.input>;
 export type SetConfigInput = z.input<typeof API_ROUTES.configSet.input>;
@@ -294,6 +295,7 @@ export const mutationScopes = {
   processVideo: () => ['processVideo'] as const,
   processDrive: () => ['processDrive'] as const,
   generateThumbnail: () => ['generateThumbnail'] as const,
+  thumbnailsBackfill: () => ['thumbnailsBackfill'] as const,
   resetAll: () => ['resetAll'] as const,
   resetSingle: () => ['resetSingle'] as const,
   setConfig: () => ['setConfig'] as const,
@@ -694,6 +696,12 @@ export const generateThumbnailMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.generateThumbnail(),
     call: (variables: GenerateThumbnailInput) => api.generateThumbnail(variables),
+  });
+
+export const thumbnailsBackfillMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.thumbnailsBackfill(),
+    call: (variables: ThumbnailsBackfillInput) => api.thumbnails(variables),
   });
 
 export const resetAllMutation = (api: ApiClient) =>

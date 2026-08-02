@@ -166,6 +166,29 @@ describe('details panel', () => {
     expect(screen.getByText('Full AI Analysis')).toBeDefined();
   });
 
+  it('shows the full AI analysis expanded by default with an expand affordance', () => {
+    const video = makeVideo({
+      artifacts: {
+        ...makeVideo().artifacts,
+        summary: {
+          schemaVersion: 1,
+          description: 'A cooking tutorial about pasta.',
+          suggestedFilename: 'cooking-tutorial-pasta',
+          fullAnalysis: 'The full analysis text.',
+          tags: [],
+          analyzedAt: '2026-01-01T00:00:00.000Z',
+        },
+      },
+    });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} />);
+
+    expect(screen.getByText('The full analysis text.')).toBeDefined();
+    const summary = screen.getByRole('button', { name: 'Full AI Analysis' });
+    expect(summary.getAttribute('aria-expanded')).toBe('true');
+    expect(within(summary).getByTestId('full-analysis-expand-icon')).toBeDefined();
+  });
+
   it('renders tag chips and routes chip clicks to search', () => {
     const onTagSearch = vi.fn();
     const video = makeVideo({

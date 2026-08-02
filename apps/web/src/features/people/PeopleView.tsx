@@ -35,6 +35,7 @@ interface PeopleViewProps {
   folder: string | null;
   addLine: AddLogLine;
   onOpenSettings: () => void;
+  onSearchInLibrary: (personId: string, label: string) => void;
   lockReason?: string | undefined;
   intervalMs?: number;
 }
@@ -52,6 +53,7 @@ export const PeopleView = ({
   folder,
   addLine,
   onOpenSettings,
+  onSearchInLibrary,
   lockReason,
   intervalMs,
 }: PeopleViewProps) => {
@@ -160,6 +162,7 @@ export const PeopleView = ({
                 onToggle={() => people.toggleSelected(person.personId)}
                 onRename={() => setRename({ person, value: displayName(dictionary, person, index) })}
                 onForget={() => setForgetTarget(person)}
+                onSearchInLibrary={() => onSearchInLibrary(person.personId, displayName(dictionary, person, index))}
               />
             ))}
           </Box>
@@ -329,6 +332,7 @@ interface PersonCardProps {
   onToggle: () => void;
   onRename: () => void;
   onForget: () => void;
+  onSearchInLibrary: () => void;
 }
 
 const PersonCard = ({
@@ -342,6 +346,7 @@ const PersonCard = ({
   onToggle,
   onRename,
   onForget,
+  onSearchInLibrary,
 }: PersonCardProps) => {
   const dictionary = useDictionary();
   const [imageFailed, setImageFailed] = useState(false);
@@ -415,9 +420,19 @@ const PersonCard = ({
         >
           {dictionary.people.delete}
         </MenuItem>
+        <MenuItem
+          onClick={() => { setMenuAnchor(null); onSearchInLibrary(); }}
+          data-testid="people-search-library"
+        >
+          {dictionary.people.searchInLibrary}
+        </MenuItem>
       </Menu>
     </Box>
-    <CardContent sx={{ p: 1.25, flex: 1 }}>
+    <CardContent
+      sx={{ p: 1.25, flex: 1, cursor: 'pointer' }}
+      onClick={onSearchInLibrary}
+      data-testid="people-card-body"
+    >
       <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={name}>{name}</Typography>
       <Typography variant="caption">{dictionary.people.observationCount(person.observationCount)}</Typography>
     </CardContent>
