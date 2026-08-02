@@ -159,13 +159,14 @@ export const IndexRoute = () => {
     },
     [photosSelectRoot, photosSelectFingerprint, setAnalysisMedia, setMode],
   );
-  const previousFolderRef = useRef(currentFolder);
+  const folderAcceptedToken = shell.folderAcceptedToken;
+  const previousFolderAcceptedTokenRef = useRef(folderAcceptedToken);
   useEffect(() => {
-    const previousFolder = previousFolderRef.current;
-    previousFolderRef.current = currentFolder;
-    if (currentFolder === null || currentFolder === previousFolder) return;
+    if (folderAcceptedToken === previousFolderAcceptedTokenRef.current) return;
+    previousFolderAcceptedTokenRef.current = folderAcceptedToken;
     if (mode === 'library') setMode('analysis');
-  }, [currentFolder, mode, setMode]);
+    setAnalysisMedia('videos');
+  }, [folderAcceptedToken, mode, setAnalysisMedia, setMode]);
   const onPreview = useCallback((item: LibraryItem) => setPreview(previewFromSearchResult(item)), []);
   const onOpenMapPreview = useCallback((location: CatalogLocation) => {
     const media = previewFromLocation(location);

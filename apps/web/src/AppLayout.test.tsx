@@ -21,6 +21,7 @@ const stubShell: ShellState = {
   nestedDb: { open: false, paths: [] },
   closeNestedDb: () => undefined,
   closeFolderError: () => undefined,
+  folderAcceptedToken: 0,
 };
 
 const terminalPanel: TerminalPanelState = {

@@ -97,6 +97,12 @@ re-run.
   before any DMG handoff, together with the screenshot review listed in
   [docs/qa/release-walkthrough.md](docs/qa/release-walkthrough.md); never part
   of `check` or `smoke`.
+- `pnpm run test:e2e:open-folder` = builds Electron and drives the real header
+  "Open Folder" button through Playwright `_electron` (dialog stubbed in the
+  main process, not the `desktopBridge.folder.setCurrent` shortcut the other
+  GUI drivers use) to prove the picked folder lands in the video analysis view
+  from both a fresh install and a photos-analysis session; outside `check` and
+  `smoke`.
 
 ## House rules
 

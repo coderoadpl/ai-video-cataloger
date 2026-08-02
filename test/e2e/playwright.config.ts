@@ -12,5 +12,6 @@ export default defineConfig({
     { name: 'cli', testMatch: /scenarios\.spec\.ts/ },
     { name: 'gui', testMatch: /scenarios\.spec\.ts/ },
     { name: 'matrix', testMatch: /(matrix|faces-matrix)\.spec\.ts/ },
+    { name: 'open-folder', testMatch: /open-folder\.spec\.ts/ },
   ],
 });

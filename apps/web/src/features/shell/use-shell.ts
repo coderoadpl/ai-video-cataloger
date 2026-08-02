@@ -19,6 +19,7 @@ export interface ShellState {
   nestedDb: NestedDbState;
   closeNestedDb: () => void;
   closeFolderError: () => void;
+  folderAcceptedToken: number;
 }
 
 export const useShell = (): ShellState => {
@@ -29,6 +30,7 @@ export const useShell = (): ShellState => {
   const [isCheckingFolder, setIsCheckingFolder] = useState(false);
   const [nestedDb, setNestedDb] = useState<NestedDbState>({ open: false, paths: [] });
   const [folderError, setFolderError] = useState<string | null>(null);
+  const [folderAcceptedToken, setFolderAcceptedToken] = useState(0);
 
   const refreshFolders = useCallback(async () => {
     const [current, recent] = await Promise.all([
@@ -68,6 +70,7 @@ export const useShell = (): ShellState => {
         }
         await bridge.folder.setCurrent(folderPath);
         await refreshFolders();
+        setFolderAcceptedToken((token) => token + 1);
       } finally {
         setIsCheckingFolder(false);
       }
@@ -124,5 +127,6 @@ export const useShell = (): ShellState => {
     nestedDb,
     closeNestedDb,
     closeFolderError,
+    folderAcceptedToken,
   };
 };
