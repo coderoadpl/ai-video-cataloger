@@ -70,7 +70,13 @@ export const AppHeader = ({
         ) : null}
       </Box>
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-        <Button variant="outlined" size="small" color="inherit" onClick={onShowSettings}>
+        <Button
+          variant="outlined"
+          size="small"
+          color="inherit"
+          onClick={onShowSettings}
+          data-testid="open-settings-button"
+        >
           {dictionary.appHeader.settings}
         </Button>
         <Button variant="outlined" size="small" color="inherit" onClick={onShowModelManager}>

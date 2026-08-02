@@ -25,6 +25,7 @@ import {
   makeEmptyWorkdir,
   readCatalog,
   runCli,
+  stubOpenDialog,
   type CliResult,
 } from './helpers.js';
 import { matrixAllowsSkip, matrixHome, missingLegMessage, systemOllamaModelMissingReason } from './matrix-support.js';
@@ -530,8 +531,10 @@ test('wizard-folder-gui × local-managed × managed-whisper', { tag: '@gui' }, a
     await page.getByTestId('wizard-next').click();
     await expect(page.getByTestId('setup-wizard')).toBeHidden();
 
-    await page.evaluate(async (folder) => window.desktopBridge.folder.setCurrent(folder), workdir);
-    await page.reload({ waitUntil: 'domcontentloaded' });
+    await stubOpenDialog(app, workdir);
+    const openFolderButton = page.getByRole('button', { name: /open folder|otwórz folder/i }).first();
+    await expect(openFolderButton).toBeVisible({ timeout: 15_000 });
+    await openFolderButton.click();
 
     const row = page.locator(`[data-testid="video-item"][data-video-filename="${sample.file}"]`);
     await expect(row).toBeVisible({ timeout: 60_000 });

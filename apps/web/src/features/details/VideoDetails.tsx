@@ -125,6 +125,7 @@ export const VideoDetails = ({
     <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: { xs: 780, lg: 1180 } }}>
       <Box
         data-testid="detail-layout"
+        data-video-status={video.status}
         sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 3, alignItems: 'flex-start' }}
       >
         <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>

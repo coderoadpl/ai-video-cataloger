@@ -68,6 +68,19 @@ Playwright runs with exactly one retry (`retries: 1`) and
 green is flaky-flagged and requires a filed P1 before merging, never a silent
 re-run.
 
+**e2e drives the real UI (owner's binding rule, 2026-08-02).** Every in-app
+interaction in an e2e spec/script is a real click/keystroke. Native macOS
+surfaces (dialogs, menu bar) are the only sanctioned stub point, patched in
+the Electron main process via `app.evaluate` while the in-app control that
+triggers them is still clicked for real. Environment setup (temp
+HOME/userData, fixtures, onboarding flag, window-state) stays allowed;
+pre-seeding app-owned state that stands in for a user flow (`folder-store.json`
+faking a pick, `desktopBridge.folder.setCurrent`+`reload()`, shelling a CLI
+config command mid-GUI-test) is forbidden. Assert outcomes on the UI first; a
+direct data read (catalog.db via sql.js) is only a secondary invariant. CLI
+specs testing the CLI surface itself are exempt. Reference:
+`test/e2e/open-folder.spec.ts`.
+
 ## On-demand real-provider suite
 
 - `pnpm run test:e2e:matrix` = batch-end/pre-release real-provider suite. It

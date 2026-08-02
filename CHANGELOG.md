@@ -14,6 +14,18 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- `pnpm run qa:walkthrough` gained `--strict`, which exits 1 on any `skipped`
+  step (release runs now use it); the walkthrough's `open-folder`, `settings`
+  and `wizard` steps now drive the real Open Folder button and header Settings
+  control instead of seeding `folder-store.json` or sending synthetic
+  `menu:showSettings`/`menu:showSetupWizard` events, and the GUI e2e drivers
+  (`test/e2e/drivers/gui-driver.ts`, `drive-matrix.spec.ts`, `matrix.spec.ts`)
+  likewise pick folders via a stubbed native dialog and a real Open Folder
+  click, and configure the whisper mode through the real Settings modal
+  instead of shelling `avc config set`.
+
 ## [0.6.7] - 2026-08-02
 
 ### Fixed

@@ -10,6 +10,7 @@ import {
   addSampleTo,
   readCatalog,
   runCli,
+  stubOpenDialog,
 } from './helpers.js';
 import { matrixAllowsSkip, missingLegMessage, systemOllamaModelMissingReason } from './matrix-support.js';
 import { SAMPLES, type VideoSample } from './samples.js';
@@ -83,10 +84,6 @@ test(CELL, { tag: '@gui' }, async () => {
   const environment = homeScopeEnvironment(home, baseUrl);
   const root = await buildDriveTree();
   await configureHomeScope(home, environment);
-  writeFileSync(
-    join(userData, 'folder-store.json'),
-    JSON.stringify({ currentFolder: root, recentFolders: [root] }, null, 2),
-  );
   mkdirSync(join(home, '.ai-video-cataloger'), { recursive: true });
   writeFileSync(join(home, '.ai-video-cataloger', 'onboarding.json'), JSON.stringify({ completed: true }));
 
@@ -99,12 +96,20 @@ test(CELL, { tag: '@gui' }, async () => {
     const page = await app.firstWindow();
     await page.waitForLoadState('domcontentloaded');
     await page.waitForFunction(() => window.desktopBridge !== undefined);
-    await page.evaluate((folder) => window.desktopBridge.folder.setCurrent(folder), root);
-    await page.reload({ waitUntil: 'domcontentloaded' });
+
+    await stubOpenDialog(app, root);
+    const openFolderButton = page.getByRole('button', { name: /open folder|otwórz folder/i }).first();
+    await expect(openFolderButton).toBeVisible({ timeout: 15_000 });
+    await openFolderButton.click();
+    await expect(page.getByText(root).first()).toBeVisible({ timeout: 60_000 });
 
     const treeScope = page.getByTestId('scope-tree');
     await expect(treeScope).toBeEnabled({ timeout: 120_000 });
     await treeScope.click();
+    const subfolderRow = page.getByTestId('folder-row').first();
+    await expect(subfolderRow).toBeVisible({ timeout: 60_000 });
+    await subfolderRow.click();
+    await expect(page.getByTestId('video-item').first()).toBeVisible({ timeout: 60_000 });
 
     const analyzeAll = page.getByTestId('analyze-all-button');
     await expect(analyzeAll).toBeEnabled({ timeout: 60_000 });

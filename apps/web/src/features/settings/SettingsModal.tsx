@@ -215,7 +215,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                 }}
               >
                 {whisperModes.map((option) => (
-                  <MenuItem key={option.value} value={option.value}>
+                  <MenuItem key={option.value} value={option.value} data-testid={`whisper-mode-option-${option.value}`}>
                     {option.label}
                   </MenuItem>
                 ))}

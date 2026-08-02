@@ -1,3 +1,4 @@
+import type { ElectronApplication } from '@playwright/test';
 import { spawn, spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import {
@@ -346,6 +347,12 @@ export function listVideos(dir: string): string[] {
 export function findKeyword(haystack: string, keywords: string[]): string | null {
   const lower = haystack.toLowerCase();
   return keywords.find((keyword) => lower.includes(keyword.toLowerCase())) ?? null;
+}
+
+export async function stubOpenDialog(app: ElectronApplication, folderPath: string): Promise<void> {
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, folderPath);
 }
 
 export function makeEmptyWorkdir(tag: string): string {

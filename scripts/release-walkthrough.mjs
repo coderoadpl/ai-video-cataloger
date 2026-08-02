@@ -21,6 +21,7 @@ Options:
   --analyze-timeout <seconds>  Wait for one analysis run to finish (default: 300).
   --window-size <WxH>          Window size for the driven app, e.g. 1920x1200 (default: 1920x1200).
   --dry-run                    Validate the inputs, write plan.json, stop before launching the app.
+  --strict                     Exit 1 if any step reports 'skipped' (release runs use this).
   --help                       Print this help.
 
 Every run launches with an isolated user-data directory, an isolated home and
@@ -30,8 +31,6 @@ the real settings or the login keychain.
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
 const SEARCH_INPUT = 'library-search-input';
-const MENU_SHOW_SETTINGS = 'menu:showSettings';
-const MENU_SHOW_SETUP_WIZARD = 'menu:showSetupWizard';
 const VISIBLE_TIMEOUT_MS = 15_000;
 const SETTLE_TIMEOUT_MS = 5_000;
 const FOLDER_TIMEOUT_MS = 60_000;
@@ -49,6 +48,7 @@ const optionsSchema = z.object({
   analyzeTimeout: z.coerce.number().int().positive().default(300),
   windowSize: z.string().regex(WINDOW_SIZE_PATTERN, 'expected WxH, e.g. 1920x1200').default(DEFAULT_WINDOW_SIZE),
   dryRun: z.boolean().default(false),
+  strict: z.boolean().default(false),
 });
 
 const parseWindowSize = (windowSize) => {
@@ -71,6 +71,7 @@ const readOptions = (argv) => {
       'analyze-timeout': { type: 'string' },
       'window-size': { type: 'string' },
       'dry-run': { type: 'boolean' },
+      strict: { type: 'boolean' },
       help: { type: 'boolean' },
     },
   });
@@ -85,6 +86,7 @@ const readOptions = (argv) => {
       analyzeTimeout: values['analyze-timeout'],
       windowSize: values['window-size'],
       dryRun: values['dry-run'] ?? false,
+      strict: values.strict ?? false,
     }),
   };
 };
@@ -128,6 +130,7 @@ const buildPlan = (options) => {
     windowWidth: windowSize.width,
     windowHeight: windowSize.height,
     dryRun: options.dryRun,
+    strict: options.strict,
   };
 };
 
@@ -138,13 +141,6 @@ const isolatedEnvironment = (plan) => ({
   AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN: '1',
   AI_VIDEO_CATALOGER_USER_DATA_DIR: plan.userDataDir,
 });
-
-const seedOpenFolder = (plan) => {
-  writeFileSync(
-    path.join(plan.userDataDir, 'folder-store.json'),
-    JSON.stringify({ currentFolder: plan.fixturesDir, recentFolders: [plan.fixturesDir] }, null, 2),
-  );
-};
 
 const seedWindowState = (plan) => {
   writeFileSync(
@@ -208,15 +204,13 @@ const dismissWizard = async (page) => {
   await page.getByTestId('setup-wizard').waitFor({ state: 'hidden', timeout: VISIBLE_TIMEOUT_MS });
 };
 
-const sendMenuEvent = async (app, channel) =>
-  app.evaluate(({ BrowserWindow }, name) => {
-    const [target] = BrowserWindow.getAllWindows();
-    if (target === undefined) throw new Error('no window to receive the menu event');
-    target.webContents.send(name);
-  }, channel);
+const stubOpenDialog = async (app, folderPath) => {
+  await app.evaluate(({ dialog }, folder) => {
+    dialog.showOpenDialog = () => Promise.resolve({ canceled: false, filePaths: [folder] });
+  }, folderPath);
+};
 
 const drive = async (plan) => {
-  seedOpenFolder(plan);
   seedWindowState(plan);
   const launchedAt = Date.now();
   const app = await electron.launch({
@@ -262,6 +256,10 @@ const drive = async (plan) => {
   });
 
   await record('open-folder', async () => {
+    await stubOpenDialog(app, plan.fixturesDir);
+    const openFolderButton = page.getByRole('button', { name: /open folder|otwórz folder/i }).first();
+    if (!(await appeared(openFolderButton, SETTLE_TIMEOUT_MS))) return skipped('no Open Folder control in this build');
+    await openFolderButton.click();
     if (!(await appeared(page.getByTestId('video-item'), FOLDER_TIMEOUT_MS))) {
       return skipped(`no videos listed for ${plan.fixturesDir}`);
     }
@@ -414,18 +412,17 @@ const drive = async (plan) => {
   });
 
   await record('settings', async () => {
-    await sendMenuEvent(app, MENU_SHOW_SETTINGS);
+    const settingsButton = page.getByTestId('open-settings-button');
+    if (!(await appeared(settingsButton, SETTLE_TIMEOUT_MS))) return skipped('no Settings control in this build');
+    await settingsButton.click();
     await page.getByTestId('settings-modal').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
     return done('settings modal opened');
   });
 
   await record('wizard', async () => {
     const runWizard = page.getByTestId('settings-run-wizard');
-    if (await appeared(runWizard, SETTLE_TIMEOUT_MS)) {
-      await runWizard.click();
-    } else {
-      await sendMenuEvent(app, MENU_SHOW_SETUP_WIZARD);
-    }
+    if (!(await appeared(runWizard, SETTLE_TIMEOUT_MS))) return skipped('no Run Setup Wizard control in this build');
+    await runWizard.click();
     await page.getByTestId('setup-wizard').waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
     return done('setup wizard opened');
   });
@@ -465,8 +462,16 @@ const main = async () => {
     JSON.stringify({ plan, timeToWindowMs, steps: results }, null, 2),
   );
   const failed = results.filter((result) => result.status === 'failed');
-  console.log(`release-walkthrough: ${String(results.length)} step(s), ${String(failed.length)} failed`);
+  const skippedSteps = results.filter((result) => result.status === 'skipped');
+  console.log(
+    `release-walkthrough: ${String(results.length)} step(s), ${String(failed.length)} failed, ` +
+      `${String(skippedSteps.length)} skipped`,
+  );
   console.log(`release-walkthrough: review the screenshots in ${plan.outDir}`);
+  if (plan.strict && skippedSteps.length > 0) {
+    console.error(`release-walkthrough: --strict forbids skipped steps: ${skippedSteps.map((step) => step.name).join(', ')}`);
+    return 1;
+  }
   return failed.length === 0 ? 0 : 1;
 };
 

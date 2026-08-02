@@ -42,12 +42,14 @@ skipped legs are named in the release notes to the owner.
 |---|---|---|
 | Build | `pnpm run electron:package` | the bundle builds |
 | Bundle shape | `pnpm run verify:package` | a single darwin onnxruntime binding, no non-darwin artifacts |
-| Self-QA walkthrough | `pnpm run qa:walkthrough` | no `failed` step, and every `skipped` step's note explains a deliberate absence |
+| Self-QA walkthrough | `pnpm run qa:walkthrough -- --strict ...` | no `failed` step and no `skipped` step |
 | Screenshot review | — | the full checklist in [release-walkthrough.md](release-walkthrough.md), including the photo grid and photo detail shots |
 
 A release that ships photo changes runs the walkthrough against a `--home`
 whose photos DB has a scanned root, so `photos-grid` and `photo-detail` produce
-real screenshots instead of honest skips.
+real screenshots instead of honest skips. Release runs use `--strict`: a `skipped`
+step means the `--home` is not fully provisioned for this release's scope, and
+`--strict` turns that into a non-zero exit instead of a note a reviewer could miss.
 
 ## 4. Docs and changelog
 

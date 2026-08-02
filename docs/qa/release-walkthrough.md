@@ -65,10 +65,24 @@ pass is not.
 
    `pnpm run qa:walkthrough -- --help` lists every option;
    `--dry-run` validates the inputs and writes `plan.json` without launching
-   the app.
+   the app. Release runs add `--strict`: any step that reports `skipped`
+   turns the exit code non-zero instead of leaving it to a reviewer to
+   notice in the manifest.
 
 4. Review the screenshot set (see below) before writing a single word of the
    handoff message.
+
+## Real UI, not synthetic events
+
+Every step drives the real UI: `open-folder` stubs the native folder-picker
+dialog at the Electron main-process boundary (the one sanctioned stub point)
+and then clicks the real Open Folder button, so its screenshots show the
+actual empty→populated transition. `settings` clicks the header's Settings
+button and `wizard` clicks "Run Setup Wizard" inside the opened Settings
+modal — both are real in-app controls, so this run has no menu-event
+shortcuts (`webContents.send('menu:...')`) left to document as an exception.
+If a future step needs a macOS menu-bar-only action with no in-app
+equivalent, add it back deliberately and record the WHY here.
 
 The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`,
 `mode-switch`, `mode-analysis`, `open-folder`, `tree-expand`, `select-video`,

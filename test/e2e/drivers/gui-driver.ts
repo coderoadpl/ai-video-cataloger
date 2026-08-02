@@ -1,14 +1,23 @@
 import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from '../analyzer-mode.js';
-import { ELECTRON_MAIN, isolatedHome, readCatalog, RENDERER_HTML, REPO_ROOT, runCli } from '../helpers.js';
+import {
+  ELECTRON_MAIN,
+  isolatedHome,
+  readCatalog,
+  RENDERER_HTML,
+  REPO_ROOT,
+  runCli,
+  stubOpenDialog,
+} from '../helpers.js';
 import type { AnalyzeOptions, AnalyzeOutcome, BatchOutcome, PipelineDriver } from './types.js';
 
 const PIPELINE_TIMEOUT_MS = 420_000;
 const BATCH_TIMEOUT_MS = 880_000;
+const TERMINAL_STATUS = /^(completed|error)$/;
 
 export class GuiDriver implements PipelineDriver {
   readonly kind = 'gui' as const;
@@ -22,10 +31,6 @@ export class GuiDriver implements PipelineDriver {
 
     const userDataDir = mkdtempSync(join(tmpdir(), 'avc-userdata-'));
     mkdirSync(userDataDir, { recursive: true });
-    writeFileSync(
-      join(userDataDir, 'folder-store.json'),
-      JSON.stringify({ currentFolder: workdir, recentFolders: [workdir] }, null, 2),
-    );
 
     const slowMo = Number(process.env.E2E_SLOWMO ?? (process.env.E2E_HEADED ? '600' : '0')) || 0;
 
@@ -43,9 +48,8 @@ export class GuiDriver implements PipelineDriver {
     this.page = await this.app.firstWindow();
     await this.page.waitForLoadState('domcontentloaded');
     await this.page.waitForFunction(() => window.desktopBridge !== undefined);
-    await this.page.evaluate((folderPath) => window.desktopBridge.folder.setCurrent(folderPath), workdir);
-    await this.page.reload({ waitUntil: 'domcontentloaded' });
     await this.enterAnalysisMode();
+    await this.openFolder(workdir);
   }
 
   private async enterAnalysisMode(): Promise<void> {
@@ -56,9 +60,23 @@ export class GuiDriver implements PipelineDriver {
     await expect(analysisTab).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
   }
 
+  private async openFolder(workdir: string): Promise<void> {
+    const page = this.mustPage();
+    await stubOpenDialog(this.mustApp(), workdir);
+    const openFolderButton = page.getByRole('button', { name: /open folder|otwórz folder/i }).first();
+    await expect(openFolderButton).toBeVisible({ timeout: 15_000 });
+    await openFolderButton.click();
+    await expect(page.getByTestId('video-item').first()).toBeVisible({ timeout: 60_000 });
+  }
+
   private mustPage(): Page {
     if (this.page === undefined) throw new Error('GuiDriver.open() must be called first');
     return this.page;
+  }
+
+  private mustApp(): ElectronApplication {
+    if (this.app === undefined) throw new Error('GuiDriver.open() must be called first');
+    return this.app;
   }
 
   private row(filename: string) {
@@ -75,8 +93,27 @@ export class GuiDriver implements PipelineDriver {
   }
 
   private async configureWhisper(options: AnalyzeOptions): Promise<void> {
-    const result = await runCli(['config', 'set', 'whisper_mode', options.whisper, '--json'], this.workdir);
-    if (result.code !== 0) throw new Error(`Failed to preset whisper mode: ${options.whisper}`);
+    const page = this.mustPage();
+    await page.getByTestId('open-settings-button').click();
+    const modal = page.getByTestId('settings-modal');
+    await expect(modal).toBeVisible({ timeout: 15_000 });
+    const whisperSelect = page.getByTestId('whisper-mode-select');
+    await expect(whisperSelect).toBeVisible({ timeout: 15_000 });
+    await whisperSelect.click();
+    const option = page.getByTestId(`whisper-mode-option-${options.whisper}`);
+    const optionLabel = (await option.textContent())?.trim() ?? '';
+    expect(optionLabel.length, `whisper mode option ${options.whisper} has no label`).toBeGreaterThan(0);
+    await option.click();
+    await expect(whisperSelect).toContainText(optionLabel, { timeout: 15_000 });
+
+    const saveButton = page.getByTestId('settings-save');
+    if (await saveButton.isEnabled()) {
+      await saveButton.click();
+      await expect(page.getByTestId('saved-snackbar')).toBeVisible({ timeout: 15_000 });
+    } else {
+      await page.getByTestId('settings-cancel').click();
+    }
+    await expect(modal).toBeHidden({ timeout: 15_000 });
   }
 
   private async startAnalyze(filename: string, options: AnalyzeOptions): Promise<void> {
@@ -99,10 +136,22 @@ export class GuiDriver implements PipelineDriver {
   async analyze(filename: string, options: AnalyzeOptions): Promise<AnalyzeOutcome> {
     await this.startAnalyze(filename, options);
     await this.waitUntilIdle();
+    const details = this.mustPage().getByTestId('detail-layout');
+    await expect(details).toBeVisible({ timeout: 15_000 });
+    await expect(details.getByTestId('video-status-badge')).toBeVisible({ timeout: 15_000 });
+    await expect(details).toHaveAttribute('data-video-status', TERMINAL_STATUS, { timeout: 15_000 });
+    const uiStatus = await details.getAttribute('data-video-status');
+    const ok = uiStatus === 'completed';
+
     const rows = await readCatalog(this.workdir);
-    const record = rows.find((row) => row.original_name === filename);
-    const ok = record?.status === 'completed';
-    return { ok, errors: ok ? [] : [`catalog status: ${record?.status ?? 'no record'}`] };
+    const record = rows.find((catalogRow) => catalogRow.original_name === filename);
+    const catalogOk = record?.status === 'completed';
+    if (ok !== catalogOk) {
+      throw new Error(
+        `UI/catalog status mismatch for ${filename}: UI=${uiStatus ?? 'unknown'} catalog=${record?.status ?? 'no record'}`,
+      );
+    }
+    return { ok, errors: ok ? [] : [`row status: ${uiStatus ?? 'unknown'}`] };
   }
 
   async analyzeAndCancel(filename: string, afterMs: number, options: AnalyzeOptions): Promise<void> {
