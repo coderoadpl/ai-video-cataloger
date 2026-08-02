@@ -1380,6 +1380,7 @@ export const jobProgressStepSchema = z.enum([
   'photo-grid-thumb-failed',
   'photo-grid-thumbs-summary',
   'photo-analysis-scanning',
+  'photo-analysis-batch-started',
   'photo-analysed',
   'photo-analysis-failed',
   'photo-analysis-usage',

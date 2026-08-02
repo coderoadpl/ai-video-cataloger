@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Box, Button, CircularProgress, List, ListItemButton, Typography, type SvgIconProps } from '@mui/material';
+import { alpha, Box, Button, CircularProgress, List, ListItemButton, Tooltip, Typography, type SvgIconProps } from '@mui/material';
 
 import { CheckCircleIcon, ContentCopyIcon, ErrorIcon, FolderIcon, ImageNotSupportedIcon, WarningIcon } from '../../components/ui/icons.js';
 import { StatusBadge } from '../../components/ui/StatusBadge.js';
@@ -76,11 +76,13 @@ const BadgeChip = ({ badge, dictionary }: { badge: PhotoBadge; dictionary: Dicti
 const PhotoSidebarRow = ({
   item,
   selected,
+  isProcessing,
   onSelect,
   dictionary,
 }: {
   item: PhotoListItem;
   selected: boolean;
+  isProcessing: boolean;
   onSelect: () => void;
   dictionary: Dictionary;
 }) => {
@@ -91,12 +93,30 @@ const PhotoSidebarRow = ({
       onClick={onSelect}
       title={item.currentPath}
       data-testid="photos-sidebar-row"
+      data-processing={isProcessing ? 'true' : 'false'}
       sx={{ alignItems: 'center', gap: 1.25, borderRadius: 1, py: 1 }}
     >
-      <Box sx={{ width: THUMB_BOX, height: THUMB_BOX, flexShrink: 0, borderRadius: 1, overflow: 'hidden', bgcolor: 'action.hover' }}>
+      <Box sx={{ position: 'relative', width: THUMB_BOX, height: THUMB_BOX, flexShrink: 0, borderRadius: 1, overflow: 'hidden', bgcolor: 'action.hover' }}>
         {thumbPath === null ? null : (
           <Box component="img" loading="lazy" alt={item.fileName} src={mediaUrl(thumbPath, item.fingerprint)} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         )}
+        {isProcessing ? (
+          <Tooltip title={dictionary.photosSidebar.badgeAnalyzing}>
+            <Box
+              data-testid="photos-sidebar-row-inflight"
+              sx={{
+                position: 'absolute',
+                inset: 0,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                bgcolor: (theme) => alpha(theme.palette.common.black, 0.35),
+              }}
+            >
+              <CircularProgress size={20} sx={{ color: 'common.white' }} />
+            </Box>
+          </Tooltip>
+        ) : null}
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
@@ -191,6 +211,7 @@ export const PhotosSidebar = ({ state, onShowInLibrary, toolbar }: PhotosSidebar
                     key={item.fingerprint}
                     item={item}
                     selected={item.fingerprint === state.selectedFingerprint}
+                    isProcessing={state.processingFingerprints.has(item.fingerprint)}
                     onSelect={() => state.selectFingerprint(item.fingerprint)}
                     dictionary={dictionary}
                   />

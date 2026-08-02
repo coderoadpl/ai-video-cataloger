@@ -53,6 +53,7 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   selectedFingerprint: null,
   selectFingerprint: vi.fn(),
   activeJobLabel: null,
+  analyzeStatusLabel: null,
   isBusy: false,
   scanFolder: vi.fn(),
   detail: null,
@@ -62,7 +63,13 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   analyzePhotos: vi.fn(),
   canAnalyze: true,
   analyzeProgress: null,
+  processingFingerprints: new Set(),
   generateProxies: vi.fn(),
+  isCancellable: false,
+  cancelConfirmation: { open: false, isBatch: false },
+  requestCancelAnalysis: vi.fn(),
+  confirmCancelAnalysis: vi.fn(),
+  closeCancelConfirmation: vi.fn(),
   ...overrides,
 });
 
@@ -165,6 +172,28 @@ describe('PhotosSidebar', () => {
       const icon = screen.getByTestId(`photos-sidebar-badge-${badge}`).querySelector('svg');
       expect(icon?.classList.contains('MuiChip-icon')).toBe(true);
     }
+  });
+
+  it('marks only the in-flight rows whose fingerprint is currently being analyzed', () => {
+    const items = [
+      item({ fingerprint: 'a' }),
+      item({ fingerprint: 'b' }),
+      item({ fingerprint: 'c' }),
+    ];
+    renderThemed(
+      <PhotosSidebar state={baseState({ items, processingFingerprints: new Set(['b']) })} onShowInLibrary={vi.fn()} />,
+    );
+
+    const rows = screen.getAllByTestId('photos-sidebar-row');
+    expect(rows.map((row) => row.getAttribute('data-processing'))).toEqual(['false', 'true', 'false']);
+    expect(screen.getAllByTestId('photos-sidebar-row-inflight')).toHaveLength(1);
+  });
+
+  it('shows no in-flight rows when no analyze job is running', () => {
+    const items = [item({ fingerprint: 'a' }), item({ fingerprint: 'b' })];
+    renderThemed(<PhotosSidebar state={baseState({ items })} onShowInLibrary={vi.fn()} />);
+
+    expect(screen.queryByTestId('photos-sidebar-row-inflight')).toBeNull();
   });
 
   it('shows a load-more button when hasMore is true and calls through', () => {

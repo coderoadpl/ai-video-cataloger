@@ -1353,6 +1353,12 @@ export const runPhotoAnalysisCascade = async (
 
   if (isTopLevel) ctx.counters.topLevelCalls += 1;
   ctx.counters.calls += 1;
+  if (isTopLevel) {
+    const reportedBatch = await report(ctx.progress, 'photo-analysis-batch-started', {
+      fingerprints: items.map((item) => item.fingerprint),
+    });
+    if (!reportedBatch.ok) return reportedBatch;
+  }
   const analyzeInput: { items: AnalyzePhotoItem[] } = {
     items: items.map((item) => ({ fingerprint: item.fingerprint, fileName: item.fileName, proxyPath: item.proxyPath })),
   };

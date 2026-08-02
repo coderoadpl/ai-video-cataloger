@@ -290,4 +290,237 @@ describe('usePhotosAnalysis', () => {
     const fingerprints = result.current.items.map((item) => item.fingerprint);
     expect(new Set(fingerprints).size).toBe(fingerprints.length);
   });
+
+  it('drives analyzeStatusLabel and per-photo in-flight tracking from the real photo_process event stream, not a frozen 0-of-0 label', async () => {
+    window.localStorage.setItem('avc.photosRoot', '/media');
+    stubTree([{ root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([
+      photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/media/b.jpg' }),
+    ]);
+    stubStatus();
+
+    const running = (progressEvents: { sequence: number; progress: { step: string; data: Record<string, unknown> } }[]) => HttpResponse.json({
+      ok: true,
+      data: {
+        jobId: 'job-1',
+        kind: 'photo_process',
+        status: 'running',
+        progress: progressEvents.at(-1)?.progress ?? null,
+        progressEvents,
+        error: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    });
+
+    let statusCall = 0;
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => {
+        statusCall += 1;
+        if (statusCall === 1) {
+          return running([
+            { sequence: 1, progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a', 'b'] } } },
+          ]);
+        }
+        if (statusCall === 2) {
+          return running([
+            { sequence: 1, progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a', 'b'] } } },
+            { sequence: 2, progress: { step: 'photo-analysed', data: { fingerprint: 'a', current: 1, total: 2 } } },
+          ]);
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            jobId: 'job-1',
+            kind: 'photo_process',
+            status: 'completed',
+            progress: { step: 'photo-analysed', data: { fingerprint: 'b', current: 2, total: 2 } },
+            progressEvents: [
+              { sequence: 1, progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a', 'b'] } } },
+              { sequence: 2, progress: { step: 'photo-analysed', data: { fingerprint: 'a', current: 1, total: 2 } } },
+              { sequence: 3, progress: { step: 'photo-analysed', data: { fingerprint: 'b', current: 2, total: 2 } } },
+            ],
+            error: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 2, candidates: 2, analysed: 2, failed: 0, skippedExisting: 0, splitRetries: 0 },
+          },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), intervalMs: 250 }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+
+    act(() => result.current.analyzePhotos());
+
+    await waitFor(() => expect(result.current.processingFingerprints.has('a')).toBe(true));
+    expect(result.current.processingFingerprints.has('b')).toBe(true);
+
+    await waitFor(() => expect(result.current.analyzeProgress).toEqual({ current: 1, total: 2 }));
+    expect(result.current.analyzeStatusLabel).toBe('Analyzing 1 of 2…');
+    expect(result.current.analyzeStatusLabel).not.toBe('Analyzing 0 of 0…');
+    expect(result.current.processingFingerprints.has('a')).toBe(false);
+    expect(result.current.processingFingerprints.has('b')).toBe(true);
+
+    await waitFor(() => expect(result.current.activeJobLabel).toBe(null));
+    expect(result.current.analyzeProgress).toBe(null);
+    expect(result.current.processingFingerprints.size).toBe(0);
+  });
+
+  it('seeds the total from the scanning candidate count so the label never sits at 0 of 0 while the first batch runs', async () => {
+    window.localStorage.setItem('avc.photosRoot', '/media');
+    stubTree([{ root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([
+      photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/media/b.jpg' }),
+    ]);
+    stubStatus();
+
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'running',
+          progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a', 'b'] } },
+          progressEvents: [
+            { sequence: 1, progress: { step: 'photo-analysis-scanning', data: { root: '/media', configId: 'cfg_1', candidates: 9, skippedExisting: 0 } } },
+            { sequence: 2, progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a', 'b'] } } },
+          ],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      })),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), intervalMs: 250 }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+
+    act(() => result.current.analyzePhotos());
+
+    await waitFor(() => expect(result.current.analyzeProgress).toEqual({ current: 0, total: 9 }));
+    expect(result.current.analyzeStatusLabel).toBe('Analyzing 0 of 9…');
+  });
+
+  it('clears the analyze progress once the job settles so a later scan job does not inherit the analyze caption', async () => {
+    window.localStorage.setItem('avc.photosRoot', '/media');
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: { step: 'photo-analysed', data: { fingerprint: 'a', current: 1, total: 1 } },
+          progressEvents: [
+            { sequence: 1, progress: { step: 'photo-analysis-scanning', data: { root: '/media', configId: 'cfg_1', candidates: 1, skippedExisting: 0 } } },
+            { sequence: 2, progress: { step: 'photo-analysed', data: { fingerprint: 'a', current: 1, total: 1 } } },
+          ],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0, splitRetries: 0 },
+        },
+      })),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), intervalMs: 250 }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+
+    act(() => result.current.analyzePhotos());
+
+    await waitFor(() => expect(result.current.activeJobLabel).toBe(null));
+    expect(result.current.analyzeProgress).toBe(null);
+    expect(result.current.analyzeStatusLabel).toBe(null);
+  });
+
+  it('logs a cancelled analyze job as a user cancellation instead of an unknown error', async () => {
+    window.localStorage.setItem('avc.photosRoot', '/media');
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'cancelled',
+          progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a'] } },
+          progressEvents: [
+            { sequence: 1, progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a'] } } },
+          ],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      })),
+    );
+
+    const addLine = vi.fn();
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine, intervalMs: 250 }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+
+    act(() => result.current.analyzePhotos());
+    await waitFor(() => expect(result.current.activeJobLabel).toBe(null));
+
+    expect(addLine).toHaveBeenCalledWith('Analysis cancelled by user', 'info');
+    expect(addLine.mock.calls.some(([, level]) => level === 'error')).toBe(false);
+  });
+
+  it('confirmCancelAnalysis calls the job-cancel mutation with the running photo_process job id', async () => {
+    window.localStorage.setItem('avc.photosRoot', '/media');
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+
+    let cancelledJobId: string | null = null;
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'running',
+          progress: null,
+          progressEvents: [],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      })),
+      http.post('/api/jobs/cancel', async ({ request }) => {
+        const body = z.object({ jobId: z.string() }).parse(await request.json());
+        cancelledJobId = body.jobId;
+        return HttpResponse.json({ ok: true, data: { jobId: body.jobId, cancelled: true } });
+      }),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), intervalMs: 10_000 }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+
+    act(() => result.current.analyzePhotos());
+    await waitFor(() => expect(result.current.isCancellable).toBe(true));
+
+    act(() => result.current.requestCancelAnalysis());
+    expect(result.current.cancelConfirmation).toEqual({ open: true, isBatch: false });
+
+    act(() => result.current.confirmCancelAnalysis());
+    expect(result.current.cancelConfirmation.open).toBe(false);
+    await waitFor(() => expect(cancelledJobId).toBe('job-1'));
+  });
 });

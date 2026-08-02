@@ -744,6 +744,8 @@ export interface Dictionary {
     searchClear: string;
     analyzeAction: string;
     analyzeProgress: (current: number, total: number) => string;
+    cancelAnalysisAction: string;
+    analysisCancelled: string;
     analysisNone: string;
     detailDescription: string;
     detailScene: string;
@@ -782,6 +784,7 @@ export interface Dictionary {
     badgeProxyFailed: string;
     badgeExifMissing: string;
     badgeMissing: string;
+    badgeAnalyzing: string;
     loadMore: string;
     analyzeFolderAction: string;
   };
@@ -1643,6 +1646,8 @@ export const en: Dictionary = {
     searchClear: 'Clear search',
     analyzeAction: 'Analyze',
     analyzeProgress: (current, total) => `Analyzing ${current} of ${total}…`,
+    cancelAnalysisAction: 'Cancel analysis',
+    analysisCancelled: 'Analysis cancelled by user',
     analysisNone: 'Not analysed yet.',
     detailDescription: 'Description',
     detailScene: 'Scene',
@@ -1681,6 +1686,7 @@ export const en: Dictionary = {
     badgeProxyFailed: 'Preview failed',
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
+    badgeAnalyzing: 'Analyzing…',
     loadMore: 'Load more',
     analyzeFolderAction: 'Process',
   },
@@ -2551,6 +2557,8 @@ export const pl: Dictionary = {
     searchClear: 'Wyczyść wyszukiwanie',
     analyzeAction: 'Analizuj',
     analyzeProgress: (current, total) => `Analizowanie ${current} z ${total}…`,
+    cancelAnalysisAction: 'Anuluj analizę',
+    analysisCancelled: 'Analiza anulowana przez użytkownika',
     analysisNone: 'Jeszcze nie przeanalizowano.',
     detailDescription: 'Opis',
     detailScene: 'Scena',
@@ -2589,6 +2597,7 @@ export const pl: Dictionary = {
     badgeProxyFailed: 'Podgląd nieudany',
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',
+    badgeAnalyzing: 'Analizowanie…',
     loadMore: 'Wczytaj więcej',
     analyzeFolderAction: 'Przetwórz',
   },

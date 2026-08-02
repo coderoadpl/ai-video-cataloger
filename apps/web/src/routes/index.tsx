@@ -345,6 +345,11 @@ export const IndexRoute = () => {
         onClose={processing.closeCancelDialog}
         onConfirm={processing.confirmCancel}
       />
+      <CancelConfirmationDialog
+        confirmation={photosAnalysis.cancelConfirmation}
+        onClose={photosAnalysis.closeCancelConfirmation}
+        onConfirm={photosAnalysis.confirmCancelAnalysis}
+      />
       <BatchSummaryDialog
         open={processing.batchSummary.open}
         results={processing.batchSummary.results}

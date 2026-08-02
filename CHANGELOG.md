@@ -24,6 +24,12 @@ release history jumps from `0.5.10` to `0.5.12`.
   'imported'` photo config descriptor (`providerId: 'photo-libra'`) that can never collide with
   or outrank a live analyzer variant.
 
+### Fixed
+
+- Photo analysis toolbar progress no longer freezes at "Analizowanie 0 z 0…": the caption is now derived from the same `photo_process` job event stream as the detail-pane banner, instead of a static label captured once when the job started. The total is seeded from the `photo-analysis-scanning` candidate count, so the caption reads the real candidate total while the first analyzer batch is still running, and it is cleared when the job settles so a later scan or proxy job no longer inherits the finished analyze count.
+- Photo analysis sidebar rows now show a per-photo in-flight spinner while their fingerprint is part of the batch currently being sent to the analyzer (new `photo-analysis-batch-started` job progress step), and the photo list/status refresh incrementally as each photo completes or fails, instead of only once when the whole job finishes.
+- Photo analysis gains a cancel action (mirroring video processing's cancel-with-confirmation flow) wired to the same `POST /api/jobs/cancel` job-cancel path. A cancelled photo job is logged as a user cancellation instead of "unknown error".
+
 ## [0.6.4] - 2026-08-02
 
 ### Added

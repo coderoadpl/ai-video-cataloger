@@ -119,6 +119,7 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   selectedFingerprint: null,
   selectFingerprint: vi.fn(),
   activeJobLabel: null,
+  analyzeStatusLabel: null,
   isBusy: false,
   scanFolder: vi.fn(),
   detail: null,
@@ -128,7 +129,13 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   analyzePhotos: vi.fn(),
   canAnalyze: true,
   analyzeProgress: null,
+  processingFingerprints: new Set(),
   generateProxies: vi.fn(),
+  isCancellable: false,
+  cancelConfirmation: { open: false, isBatch: false },
+  requestCancelAnalysis: vi.fn(),
+  confirmCancelAnalysis: vi.fn(),
+  closeCancelConfirmation: vi.fn(),
   ...overrides,
 });
 

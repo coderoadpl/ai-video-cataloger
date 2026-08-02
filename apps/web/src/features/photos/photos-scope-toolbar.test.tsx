@@ -28,6 +28,7 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   selectedFingerprint: null,
   selectFingerprint: vi.fn(),
   activeJobLabel: null,
+  analyzeStatusLabel: null,
   isBusy: false,
   scanFolder: vi.fn(),
   detail: null,
@@ -37,7 +38,13 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   analyzePhotos: vi.fn(),
   canAnalyze: true,
   analyzeProgress: null,
+  processingFingerprints: new Set(),
   generateProxies: vi.fn(),
+  isCancellable: false,
+  cancelConfirmation: { open: false, isBatch: false },
+  requestCancelAnalysis: vi.fn(),
+  confirmCancelAnalysis: vi.fn(),
+  closeCancelConfirmation: vi.fn(),
   ...overrides,
 });
 
@@ -92,5 +99,42 @@ describe('PhotosScopeToolbar', () => {
     })} />);
 
     expect(screen.queryByTestId('photos-proxies-pending')).toBeNull();
+  });
+
+  it('renders the dynamic per-photo progress count from the real job event stream, not a frozen 0-of-0 label', () => {
+    renderThemed(<PhotosScopeToolbar state={baseState({
+      isBusy: true,
+      activeJobLabel: 'Analyzing 0 of 0…',
+      analyzeStatusLabel: 'Analyzing 12 of 13…',
+      analyzeProgress: { current: 12, total: 13 },
+    })} />);
+
+    expect(screen.getByTestId('photos-analyze-status-label').textContent).toBe('Analyzing 12 of 13…');
+  });
+
+  it('shows a cancel action for the running analyze job and fires requestCancelAnalysis on click', () => {
+    const requestCancelAnalysis = vi.fn();
+    renderThemed(<PhotosScopeToolbar state={baseState({
+      isBusy: true,
+      activeJobLabel: 'Analyzing 1 of 2…',
+      analyzeStatusLabel: 'Analyzing 1 of 2…',
+      analyzeProgress: { current: 1, total: 2 },
+      isCancellable: true,
+      requestCancelAnalysis,
+    })} />);
+
+    fireEvent.click(screen.getByTestId('photos-cancel-analysis-action'));
+    expect(requestCancelAnalysis).toHaveBeenCalled();
+  });
+
+  it('hides the cancel action when the running job is not cancellable (e.g. scan or proxies)', () => {
+    renderThemed(<PhotosScopeToolbar state={baseState({
+      isBusy: true,
+      activeJobLabel: 'Scanning…',
+      analyzeStatusLabel: 'Scanning…',
+      isCancellable: false,
+    })} />);
+
+    expect(screen.queryByTestId('photos-cancel-analysis-action')).toBeNull();
   });
 });

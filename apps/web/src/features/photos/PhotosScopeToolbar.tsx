@@ -54,7 +54,21 @@ export const PhotosScopeToolbar = ({ state }: PhotosScopeToolbarProps) => {
       </Box>
       {state.activeJobLabel !== null ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-          <Typography variant="caption" noWrap>{state.activeJobLabel}</Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>
+            <Typography variant="caption" noWrap data-testid="photos-analyze-status-label">
+              {state.analyzeStatusLabel}
+            </Typography>
+            {state.isCancellable ? (
+              <Button
+                color="error"
+                size="small"
+                onClick={state.requestCancelAnalysis}
+                data-testid="photos-cancel-analysis-action"
+              >
+                {dictionary.photos.cancelAnalysisAction}
+              </Button>
+            ) : null}
+          </Box>
           <LinearProgress
             variant={state.analyzeProgress === null ? 'indeterminate' : 'determinate'}
             value={state.analyzeProgress === null || state.analyzeProgress.total === 0

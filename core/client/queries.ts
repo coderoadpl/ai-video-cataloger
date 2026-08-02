@@ -286,6 +286,9 @@ export const photosScopes = {
   variants: (fingerprint: string) => ['photos', 'variants', fingerprint] as const,
 };
 
+export const invalidatePhotosQueries = (client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> }): Promise<void> =>
+  client.invalidateQueries({ queryKey: photosScopes.all() });
+
 export const mutationScopes = {
   processVideo: () => ['processVideo'] as const,
   processDrive: () => ['processDrive'] as const,
