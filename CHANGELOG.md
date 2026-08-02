@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.9] - 2026-08-03
+
 ### Added
 
 - Five new clicked-GUI end-to-end legs (`test:e2e:settings`, `test:e2e:photos`,
@@ -23,31 +25,37 @@ release history jumps from `0.5.10` to `0.5.12`.
   surface (real folder open, scan, grid thumbnails, analyze affordance),
   People (real face-model artifacts, real indexing, rename via the card
   menu), Library (real analyze, same-session search, subtitled preview), and
-  Map (honest empty state on a no-GPS home).
+  Map (honest empty state on a no-GPS home)
+  ([`e1e841f`](https://github.com/coderoadpl/ai-video-cataloger/commit/e1e841f3e4ea50ea438ea7cf6e7094811aeff60b)).
 - The Library search filters gain a Folder facet, alongside Tagi/Osoby/
   Miejsce/daty/GPS: a folder autocomplete with per-folder match counts from
   the same facets endpoint the other filters use, a removable "Folder: …"
   chip, and combinable with the text query and every other filter
   (`FilterBar`, `library/core/filter-state.ts`'s pre-existing `folderId`
   filter and chip plumbing). No contract change: `searchInputSchema` already
-  accepted `folderId`.
+  accepted `folderId`
+  ([`e1ec765`](https://github.com/coderoadpl/ai-video-cataloger/commit/e1ec765b00eb50aef37547d27977dd63e6264b41)).
 - The server composition edge (`apps/server/src/app.ts`) now registers a
   Hono `onError` handler: a route handler that throws an unmodelled error
   returns the standard `{ ok: false, error }` contract envelope (`internal`,
-  HTTP 500) instead of Hono's bare-text default response.
+  HTTP 500) instead of Hono's bare-text default response
+  ([`7b41ab1`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b41ab112ca2f00497695d5cd112aa294fd020bf)).
 - `scripts/doc-lint.ts` fails `check` if any new list-route input schema in
   `core/contract/routes.ts` adds an `offset` field without being named in a
   reviewed ADR-0003 deviation list; `searchInputSchema`,
   `photosListInputSchema` and `photosSearchInputSchema` are the three named,
-  documented exceptions (see the ADR-0003 addendum).
+  documented exceptions (see the ADR-0003 addendum)
+  ([`7b41ab1`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b41ab112ca2f00497695d5cd112aa294fd020bf)).
 - New renderer lint rules: `window.localStorage`/`window.sessionStorage`
   member access is banned outside `apps/web/src/lib/persistent-storage.ts`
   (the designated persistence helper) and a dated list of pre-existing call
   sites; bare `process`/`ipcRenderer` globals are banned across the renderer.
   `test/**` is now linted (`any` banned everywhere; `as`-casts on parsed CLI
-  NDJSON payloads allowed under a dated exception scoped to `test/cli`).
+  NDJSON payloads allowed under a dated exception scoped to `test/cli`)
+  ([`7b41ab1`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b41ab112ca2f00497695d5cd112aa294fd020bf)).
 - `FOUNDATION.md` records the upstream agentproofarch fork point and points
-  to `docs/architecture.md` for the delta.
+  to `docs/architecture.md` for the delta
+  ([`7b41ab1`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b41ab112ca2f00497695d5cd112aa294fd020bf)).
 
 ### Removed
 
@@ -57,13 +65,15 @@ release history jumps from `0.5.10` to `0.5.12`.
   metadata card no longer offer it; folder-scoped Library navigation is now
   done through the new Folder search facet instead. `deriveLibrarySeed` and
   its `LibrarySeed` `'folder'` seed kind, the only remaining callers of that
-  removed affordance, are deleted as dead plumbing.
+  removed affordance, are deleted as dead plumbing
+  ([`e1ec765`](https://github.com/coderoadpl/ai-video-cataloger/commit/e1ec765b00eb50aef37547d27977dd63e6264b41)).
 
 ### Changed
 
 - `vitest.config.ts` coverage thresholds (the `check` ratchet floor) raised
   to the currently measured levels: statements/lines 86%, branches 83%,
-  functions 81%.
+  functions 81%
+  ([`7b41ab1`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b41ab112ca2f00497695d5cd112aa294fd020bf)).
 - The Analysis sidebar now reflects the real hierarchy top to bottom: the
   folder identity block (name, path and Open Folder with its recent-folders
   menu) sits at the top of the sidebar, above the
@@ -71,10 +81,12 @@ release history jumps from `0.5.10` to `0.5.12`.
   scope toggle and its content. Both moved out of the top bar, which now only
   carries app identity, the Biblioteka/Analiza switcher and Settings/Models/
   Prerequisites. The two media sidebars share one folder-identity component
-  (`SidebarFolderPanel`) instead of duplicating that markup.
+  (`SidebarFolderPanel`) instead of duplicating that markup
+  ([`92cbbf0`](https://github.com/coderoadpl/ai-video-cataloger/commit/92cbbf04caea968503304cbacad569b4e1cfaeb9)).
 - Every accordion/chevron in the details and analysis panes is gone —
   including "Pełna analiza AI" — in favor of plain, always-expanded sections;
-  the pane scrolls instead.
+  the pane scrolls instead
+  ([`92cbbf0`](https://github.com/coderoadpl/ai-video-cataloger/commit/92cbbf04caea968503304cbacad569b4e1cfaeb9)).
 
 ### Fixed
 
@@ -82,7 +94,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   for a folder it only reads: the read path now opens the legacy per-folder
   catalog only if it already exists (`CatalogRepositoryFactory.openIfExists`),
   while the write flows (process/process-drive/status/reset) still create it
-  as before. The folder-identity marker write on a first scan is unchanged.
+  as before. The folder-identity marker write on a first scan is unchanged
+  ([`7b41ab1`](https://github.com/coderoadpl/ai-video-cataloger/commit/7b41ab112ca2f00497695d5cd112aa294fd020bf)).
 - Silent-failure fixes across desktop and web: `folder:setCurrent` now returns
   an explicit ok/error result instead of resolving silently on an invalid path
   (surfaced via the folder-error snackbar); the wizard's language step, the
@@ -95,24 +108,28 @@ release history jumps from `0.5.10` to `0.5.12`.
   a reason instead of no-op when the target folder hasn't been scanned; the
   folder-error snackbar no longer dismisses on an outside click (autoHides
   after 8s or an explicit dismiss); and "Clear Recent" in the folder menu no
-  longer wipes the currently open folder, only the recent-folders list.
+  longer wipes the currently open folder, only the recent-folders list
+  ([`6a916e1`](https://github.com/coderoadpl/ai-video-cataloger/commit/6a916e1cd12f5effa031f5c5f3deb84e0911c754)).
 - Library tiles, the folder-group header and the browse preview now say
   "file missing"/"brak pliku" instead of "drive not connected"/"dysk
   niepodłączony" when a catalogued folder was deleted while its drive stayed
   mounted (the "avc-bench ghosts" case) — a new `offlineReason` field on the
   `search`/`collection` contract's folder shape, backed by a pure classifier
   that checks whether the folder's `/Volumes/<name>` root still exists,
-  distinguishes it from an actually-unmounted drive.
+  distinguishes it from an actually-unmounted drive
+  ([`8dfadb2`](https://github.com/coderoadpl/ai-video-cataloger/commit/8dfadb2c87930e177e1a89e29b93858d64582841)).
 - Settings gives real editors back to transcription language, the Whisper
   API base URL and model, and the analyzer timeout instead of the flat
   read-only list the settings-flatten pass left them in; the read-only list
   itself is gone since every effective value now has an editor. A language
   set to a BCP-47 code outside `auto`/`en`/`pl` stays visible and selected in
-  the language selects instead of rendering blank.
+  the language selects instead of rendering blank
+  ([`9b41138`](https://github.com/coderoadpl/ai-video-cataloger/commit/9b411383b5498df022a6e47388707e18435efb17)).
 - Frame extraction now clears stale `frame-NNN.jpg` files left by a previous,
   larger extraction before writing new ones, and the frames gallery only
   lists canonical, non-empty frame files, so a video re-analyzed with fewer
-  frames no longer shows leftover or broken thumbnails from an earlier run.
+  frames no longer shows leftover or broken thumbnails from an earlier run
+  ([`9b41138`](https://github.com/coderoadpl/ai-video-cataloger/commit/9b411383b5498df022a6e47388707e18435efb17)).
 
 ## [0.6.8] - 2026-08-02
 
