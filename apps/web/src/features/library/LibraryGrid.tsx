@@ -4,8 +4,9 @@ import { Box, Typography } from '@mui/material';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
-import { buildRows, columnsForWidth, rowIndexOfFingerprint, visibleRowRange, type LibraryItem } from './core/index.js';
+import { buildRows, columnsForWidth, rowIndexOfFingerprint, visibleRowRange, type LibraryItem, type LibraryOfflineReason } from './core/index.js';
 import { TileMenu, useTileMenu } from './TileMenu.js';
+import type { Dictionary } from '../../i18n/dictionary.js';
 
 const TILE_SIZE = 168;
 const GAP = 8;
@@ -15,8 +16,12 @@ export interface LibraryGridSection {
   key: string;
   label: string;
   offline: boolean;
+  offlineReason: LibraryOfflineReason;
   items: LibraryItem[];
 }
+
+const offlineLabel = (dictionary: Dictionary, offlineReason: LibraryOfflineReason): string =>
+  offlineReason === 'file-missing' ? dictionary.library.missingBadge : dictionary.library.offlineFolderBadge;
 
 interface LibraryGridProps {
   sections: LibraryGridSection[];
@@ -91,7 +96,7 @@ export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis, scrollToFinger
                   </Typography>
                   {section.offline ? (
                     <Typography variant="caption" data-testid="library-section-offline-badge" color="text.secondary">
-                      {dictionary.library.offlineFolderBadge}
+                      {offlineLabel(dictionary, section.offlineReason)}
                     </Typography>
                   ) : null}
                 </Box>
@@ -164,7 +169,7 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
         <PlaceholderTile
           testId="library-tile-placeholder"
           name={name}
-          caption={item.folder.online ? undefined : dictionary.library.offlineFolderBadge}
+          caption={item.folder.online ? undefined : offlineLabel(dictionary, item.folder.offlineReason)}
           captionTestId="library-offline-badge"
         />
       )}
@@ -173,7 +178,7 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
           data-testid="library-offline-badge"
           sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper', px: 0.5, borderRadius: 1 }}
         >
-          <Typography variant="caption">{dictionary.library.offlineFolderBadge}</Typography>
+          <Typography variant="caption">{offlineLabel(dictionary, item.folder.offlineReason)}</Typography>
         </Box>
       )}
       {item.missing ? (

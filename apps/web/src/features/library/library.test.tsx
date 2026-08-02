@@ -8,6 +8,7 @@ import type { z } from 'zod';
 
 import type { libraryFacetsOutputSchema, searchResultSchema } from '@core/contract/index.js';
 
+import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
@@ -33,6 +34,7 @@ const libraryItem = (overrides: Partial<LibraryItem> & { fingerprint: string }):
     currentPath: '/videos',
     displayName: 'videos',
     online: true,
+    offlineReason: null,
   },
   gps: null,
   missing: false,
@@ -147,7 +149,7 @@ describe('LibraryView', () => {
   });
 
   it('opens the preview for an offline-folder tile instead of doing nothing', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-offline', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/offline', displayName: 'offline', online: false } })];
+    const items = [libraryItem({ fingerprint: 'fp-offline', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/Volumes/Ghost', displayName: 'offline', online: false, offlineReason: 'drive-disconnected' } })];
     stubSearch(items);
     const onPreview = vi.fn();
 
@@ -155,7 +157,18 @@ describe('LibraryView', () => {
     fireEvent.click(await screen.findByTestId('library-tile'));
 
     expect(screen.getByTestId('library-offline-badge')).toBeDefined();
+    expect(screen.getByTestId('library-offline-badge').textContent).toBe(en.library.offlineFolderBadge);
     expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ fingerprint: 'fp-offline' }));
+  });
+
+  it('shows the file-missing badge for a folder deleted on a still-mounted volume, not a drive-disconnected badge', async () => {
+    const items = [libraryItem({ fingerprint: 'fp-deleted-folder', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' } })];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+
+    expect(screen.getByTestId('library-offline-badge').textContent).toBe(en.library.missingBadge);
   });
 
   it('tiles request the 512px grid thumbnail when it exists, small thumb only as fallback', async () => {
@@ -274,7 +287,7 @@ describe('LibraryView', () => {
       libraryItem({ fingerprint: 'fp-1' }),
       libraryItem({
         fingerprint: 'fp-target',
-        folder: { folderId: '99999999-9999-4999-8999-999999999999', currentPath: '/other', displayName: 'Other Folder', online: true },
+        folder: { folderId: '99999999-9999-4999-8999-999999999999', currentPath: '/other', displayName: 'Other Folder', online: true, offlineReason: null },
       }),
     ];
     stubSearch(items);
@@ -356,8 +369,8 @@ describe('LibraryView', () => {
 
   it('toggles grouping by folder', async () => {
     const items = [
-      libraryItem({ fingerprint: 'fp-1', folder: { folderId: '11111111-1111-4111-8111-000000000001', currentPath: '/a', displayName: 'Alpha', online: true } }),
-      libraryItem({ fingerprint: 'fp-2', folder: { folderId: '22222222-2222-4222-8222-000000000002', currentPath: '/b', displayName: 'Beta', online: true } }),
+      libraryItem({ fingerprint: 'fp-1', folder: { folderId: '11111111-1111-4111-8111-000000000001', currentPath: '/a', displayName: 'Alpha', online: true, offlineReason: null } }),
+      libraryItem({ fingerprint: 'fp-2', folder: { folderId: '22222222-2222-4222-8222-000000000002', currentPath: '/b', displayName: 'Beta', online: true, offlineReason: null } }),
     ];
     stubSearch(items);
 

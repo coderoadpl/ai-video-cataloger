@@ -13,7 +13,8 @@ import type {
   PhotosStore,
 } from '../ports.js';
 import { photoArtifactsRoot, photoGridThumbPath, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
-import { buildSearchMatch, resolveGridThumbnailPath, resolveThumbnailPath, sanitizeSearchQuery, type SearchDeps } from './search.js';
+import { buildSearchMatch, resolveGridThumbnailPath, resolveOfflineReason, resolveThumbnailPath, sanitizeSearchQuery, type SearchDeps } from './search.js';
+import type { OfflineReason } from './shared.js';
 
 export interface CollectionDeps {
   globalCatalog: GlobalCatalogStore;
@@ -54,7 +55,7 @@ export interface CollectionVideoItem {
   thumbnailPath: string | null;
   gridThumbnailPath: string | null;
   tags: string[];
-  folder: { folderId: string; currentPath: string; displayName: string; online: boolean };
+  folder: { folderId: string; currentPath: string; displayName: string; online: boolean; offlineReason: OfflineReason | null };
   gps: { lat: number; lon: number } | null;
   missing: boolean;
   capturedAt: string | null;
@@ -363,6 +364,8 @@ const videoItemFrom = async (deps: CollectionDeps, row: CatalogSearchRow): Promi
   const searchDeps = searchDepsFrom(deps);
   const online = await deps.fs.exists(row.folder.currentPath);
   if (!online.ok) return online;
+  const offlineReason = await resolveOfflineReason(deps.fs, row.folder.currentPath, online.value);
+  if (!offlineReason.ok) return offlineReason;
   const thumbnailPath = await resolveThumbnailPath(searchDeps, row, online.value, 'existing');
   if (!thumbnailPath.ok) return thumbnailPath;
   const gridThumbnailPath = await resolveGridThumbnailPath(searchDeps, row, online.value, 'existing');
@@ -383,6 +386,7 @@ const videoItemFrom = async (deps: CollectionDeps, row: CatalogSearchRow): Promi
       currentPath: row.folder.currentPath,
       displayName: row.folder.displayName,
       online: online.value,
+      offlineReason: offlineReason.value,
     },
     gps: row.gps,
     missing: row.missing,

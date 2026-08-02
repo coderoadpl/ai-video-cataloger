@@ -110,6 +110,7 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
         key: section.folderId,
         label: section.displayName,
         offline: section.offline,
+        offlineReason: section.offlineReason,
         items: section.items,
       }));
     }
@@ -117,6 +118,7 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
       key: section.day ?? 'undated',
       label: section.day ?? dictionary.library.unknownDate,
       offline: false,
+      offlineReason: null,
       items: section.items,
     }));
   }, [groupBy, library.items, library.effectiveSort, dictionary.library.unknownDate]);

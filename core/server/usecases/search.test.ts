@@ -138,10 +138,50 @@ describe('search', () => {
     if (!result.ok) return;
     expect(result.value.results.map((row) => row.fingerprint)).toEqual(['fp-name', 'fp-transcript']);
     expect(result.value.results[0]?.folder.online).toBe(true);
+    expect(result.value.results[0]?.folder.offlineReason).toBeNull();
     expect(result.value.results[0]?.variantCount).toBe(1);
     expect(result.value.results[0]?.gps).toEqual({ lat: 51.1, lon: 17.2 });
     expect(result.value.results[1]?.folder.online).toBe(false);
+    expect(result.value.results[1]?.folder.offlineReason).toBe('file-missing');
     expect(result.value.results[1]?.tags).toEqual(['field']);
+  });
+
+  it('distinguishes a disconnected drive from a folder deleted on a still-mounted volume', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addDirectory('/Volumes/AvcBench');
+    const disconnectedFolder: CatalogFolder = {
+      folderId: '33333333-3333-4333-8333-333333333333',
+      currentPath: '/Volumes/UnmountedDrive/clips',
+      displayName: 'clips',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    };
+    const deletedFolder: CatalogFolder = {
+      folderId: '44444444-4444-4444-8444-444444444444',
+      currentPath: '/Volumes/AvcBench/deleted-clips',
+      displayName: 'deleted-clips',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-01T00:00:00.000Z',
+    };
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(disconnectedFolder);
+    await store.upsertFolder(deletedFolder);
+    await store.upsertFile(file('fp-disconnected', disconnectedFolder.folderId, 'ghost.mp4'));
+    await store.upsertFile(file('fp-deleted', deletedFolder.folderId, 'ghost2.mp4'));
+
+    const result = await search(
+      { globalCatalog: store, fs, media: new InMemoryMedia() },
+      { query: null, filters: EMPTY_FILTERS, sort: 'captured_desc', thumbnails: 'existing' as const, limit: 10, offset: 0 },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const disconnected = result.value.results.find((row) => row.fingerprint === 'fp-disconnected');
+    const deleted = result.value.results.find((row) => row.fingerprint === 'fp-deleted');
+    expect(disconnected?.folder.online).toBe(false);
+    expect(disconnected?.folder.offlineReason).toBe('drive-disconnected');
+    expect(deleted?.folder.online).toBe(false);
+    expect(deleted?.folder.offlineReason).toBe('file-missing');
   });
 
   it('matches on fileName and finalName alone, with no tag/description/transcript overlap', async () => {

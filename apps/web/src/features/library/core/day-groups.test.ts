@@ -16,6 +16,7 @@ const item = (overrides: Partial<LibraryItem> & { fingerprint: string }): Librar
     currentPath: '/videos',
     displayName: 'videos',
     online: true,
+    offlineReason: null,
   },
   gps: null,
   missing: false,

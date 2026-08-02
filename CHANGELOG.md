@@ -14,6 +14,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Library tiles, the folder-group header and the browse preview now say
+  "file missing"/"brak pliku" instead of "drive not connected"/"dysk
+  niepodłączony" when a catalogued folder was deleted while its drive stayed
+  mounted (the "avc-bench ghosts" case) — a new `offlineReason` field on the
+  `search`/`collection` contract's folder shape, backed by a pure classifier
+  that checks whether the folder's `/Volumes/<name>` root still exists,
+  distinguishes it from an actually-unmounted drive.
+
 ## [0.6.8] - 2026-08-02
 
 ### Added

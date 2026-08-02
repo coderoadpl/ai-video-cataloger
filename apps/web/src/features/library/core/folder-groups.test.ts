@@ -18,6 +18,7 @@ const item = (fingerprint: string, overrides: Partial<LibraryItem> = {}): Librar
     currentPath: '/videos',
     displayName: 'videos',
     online: true,
+    offlineReason: null,
   },
   gps: null,
   missing: false,
@@ -29,8 +30,8 @@ const item = (fingerprint: string, overrides: Partial<LibraryItem> = {}): Librar
 describe('groupByFolder', () => {
   it('keys sections by folderId and orders sections by display name', () => {
     const items = [
-      item('a', { folder: { folderId: 'f2', currentPath: '/b', displayName: 'Beta', online: true } }),
-      item('b', { folder: { folderId: 'f1', currentPath: '/a', displayName: 'Alpha', online: true } }),
+      item('a', { folder: { folderId: 'f2', currentPath: '/b', displayName: 'Beta', online: true, offlineReason: null } }),
+      item('b', { folder: { folderId: 'f1', currentPath: '/a', displayName: 'Alpha', online: true, offlineReason: null } }),
     ];
 
     const sections = groupByFolder(items, 'captured_desc');
@@ -40,11 +41,19 @@ describe('groupByFolder', () => {
   });
 
   it('propagates the offline flag from the folder to the whole section', () => {
-    const items = [item('a', { folder: { folderId: 'f1', currentPath: '/a', displayName: 'Alpha', online: false } })];
+    const items = [item('a', { folder: { folderId: 'f1', currentPath: '/a', displayName: 'Alpha', online: false, offlineReason: 'drive-disconnected' } })];
 
     const sections = groupByFolder(items, 'captured_desc');
 
     expect(sections[0]?.offline).toBe(true);
+  });
+
+  it('propagates offlineReason from the folder to the whole section', () => {
+    const items = [item('a', { folder: { folderId: 'f1', currentPath: '/a', displayName: 'Alpha', online: false, offlineReason: 'file-missing' } })];
+
+    const sections = groupByFolder(items, 'captured_desc');
+
+    expect(sections[0]?.offlineReason).toBe('file-missing');
   });
 
   it('sorts items within a section by the active sort', () => {

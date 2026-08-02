@@ -18,6 +18,7 @@ const stubItem = (fingerprint: string): LibraryItem => ({
     currentPath: '/videos',
     displayName: 'videos',
     online: true,
+    offlineReason: null,
   },
   gps: null,
   missing: false,

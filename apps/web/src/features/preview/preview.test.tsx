@@ -21,6 +21,7 @@ const previewItem = (overrides: Partial<PreviewMedia> = {}): PreviewMedia => ({
   path: '/videos/clip.mp4',
   folderPath: '/videos',
   online: true,
+  offlineReason: null,
   missing: false,
   description: 'a description',
   tags: ['beach'],
@@ -158,13 +159,21 @@ describe('BrowsePreview', () => {
     expect(screen.getByTestId('preview-unavailable').textContent).toBe(en.preview.missing);
   });
 
-  it('renders no player and no active escape hatch link for an offline item', () => {
+  it('renders no player and no active escape hatch link for a drive-disconnected item', () => {
     stubPreviewDetail();
-    renderThemed(<BrowsePreview item={previewItem({ online: false })} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+    renderThemed(<BrowsePreview item={previewItem({ online: false, offlineReason: 'drive-disconnected' })} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
 
     expect(screen.queryByTestId('preview-player')).toBeNull();
     expect(screen.getByTestId('preview-unavailable').textContent).toBe(en.preview.offline);
     expect(screen.queryByTestId('preview-open-analysis')).toBeNull();
+  });
+
+  it('names the missing file instead of blaming a disconnected drive when the folder was deleted on a still-mounted volume', () => {
+    stubPreviewDetail();
+    renderThemed(<BrowsePreview item={previewItem({ online: false, offlineReason: 'file-missing' })} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    expect(screen.queryByTestId('preview-player')).toBeNull();
+    expect(screen.getByTestId('preview-unavailable').textContent).toBe(en.preview.missing);
   });
 
   it('renders no subtitles track when the preview detail carries no timestamped segments', async () => {

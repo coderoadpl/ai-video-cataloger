@@ -2,8 +2,11 @@ import {
   CONFIG_DEFAULTS,
   CONFIG_KEYS,
   geminiCostEstimateSchema,
+  ok,
   type AppConfig,
+  type AppError,
   type ConfigKey,
+  type Result,
   type VideoStatus,
 } from '@core/domain/index.js';
 import {
@@ -259,3 +262,18 @@ export const storedDefaults = (): Record<ConfigKey, string> => ({
 });
 
 export const configKeys = (): readonly ConfigKey[] => CONFIG_KEYS;
+
+export type OfflineReason = 'drive-disconnected' | 'file-missing';
+
+const VOLUME_ROOT_PATTERN = /^(\/Volumes\/[^/]+)(?:\/|$)/;
+
+export const classifyOfflineFolder = async (
+  fs: FileSystemPort,
+  folderPath: string,
+): Promise<Result<OfflineReason, AppError>> => {
+  const volumeRoot = VOLUME_ROOT_PATTERN.exec(folderPath)?.[1];
+  if (volumeRoot === undefined) return ok('file-missing');
+  const rootExists = await fs.exists(volumeRoot);
+  if (!rootExists.ok) return rootExists;
+  return ok(rootExists.value ? 'file-missing' : 'drive-disconnected');
+};

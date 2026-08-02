@@ -1,9 +1,12 @@
 import type { LibraryItem } from './day-groups.js';
 
+export type LibraryOfflineReason = LibraryItem['folder']['offlineReason'];
+
 export interface LibraryFolderSection {
   folderId: string;
   displayName: string;
   offline: boolean;
+  offlineReason: LibraryOfflineReason;
   items: LibraryItem[];
 }
 
@@ -39,6 +42,7 @@ export const groupByFolder = (items: readonly LibraryItem[], sort: LibrarySort):
       folderId: item.folder.folderId,
       displayName: item.folder.displayName,
       offline: !item.folder.online,
+      offlineReason: item.folder.offlineReason,
       items: [item],
     });
     order.push(item.folder.folderId);

@@ -105,7 +105,7 @@ export const BrowsePreview = ({ item, onClose, onOpenInAnalysis }: BrowsePreview
               </Box>
             ) : (
               <Typography variant="body2" color="text.secondary" data-testid="preview-unavailable">
-                {item.online ? dictionary.preview.missing : dictionary.preview.offline}
+                {item.offlineReason === 'drive-disconnected' ? dictionary.preview.offline : dictionary.preview.missing}
               </Typography>
             )}
             <Row label={dictionary.details.location} value={item.path} testId="preview-path" />

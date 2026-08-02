@@ -4,7 +4,14 @@ import { describe, expect, it } from 'vitest';
 
 import { InMemoryFileSystem } from '../../../test/server/usecases/test-fakes.js';
 
-import { artifactPaths, gridThumbnailArtifactPath, parseSummary, summaryDataSchema, thumbnailArtifactPath } from './shared.js';
+import {
+  artifactPaths,
+  classifyOfflineFolder,
+  gridThumbnailArtifactPath,
+  parseSummary,
+  summaryDataSchema,
+  thumbnailArtifactPath,
+} from './shared.js';
 import { folderArtifactRoot } from './artifact-root.js';
 
 const summary = {
@@ -45,5 +52,32 @@ describe('grid thumbnail artifact path', () => {
   it('is included alongside thumbnailPath in artifactPaths', () => {
     const paths = artifactPaths(fs, root, '/videos/folder/clip.mp4', null);
     expect(paths.gridThumbnailPath).toBe(path.join(root.catalogDirectory, 'thumbnails', 'clip.grid.jpg'));
+  });
+});
+
+describe('classifyOfflineFolder', () => {
+  it('is drive-disconnected when a /Volumes/<name> root is missing entirely', async () => {
+    const fs = new InMemoryFileSystem('/work');
+
+    const result = await classifyOfflineFolder(fs, '/Volumes/AvcBench/clips');
+
+    expect(result).toEqual({ ok: true, value: 'drive-disconnected' });
+  });
+
+  it('is file-missing when the /Volumes/<name> root is mounted but the folder itself is gone', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/Volumes/AvcBench');
+
+    const result = await classifyOfflineFolder(fs, '/Volumes/AvcBench/clips');
+
+    expect(result).toEqual({ ok: true, value: 'file-missing' });
+  });
+
+  it('is file-missing for a deleted folder on the system volume, which this darwin-only product treats as always mounted', async () => {
+    const fs = new InMemoryFileSystem('/work');
+
+    const result = await classifyOfflineFolder(fs, '/Users/owner/videos');
+
+    expect(result).toEqual({ ok: true, value: 'file-missing' });
   });
 });

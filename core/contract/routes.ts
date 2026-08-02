@@ -1597,6 +1597,9 @@ export const searchInputSchema = z.object({
   offset: queryInteger(0, 0, 100_000),
 });
 
+export const OFFLINE_REASONS = ['drive-disconnected', 'file-missing'] as const;
+export const offlineReasonSchema = z.enum(OFFLINE_REASONS);
+
 export const searchResultSchema = z.object({
   fingerprint: z.string().min(1),
   variantCount: z.number().int().nonnegative(),
@@ -1612,6 +1615,7 @@ export const searchResultSchema = z.object({
     currentPath: z.string().min(1),
     displayName: z.string(),
     online: z.boolean(),
+    offlineReason: offlineReasonSchema.nullable().default(null),
   }),
   gps: z.object({
     lat: z.number().min(-90).max(90),

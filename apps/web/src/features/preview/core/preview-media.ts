@@ -2,6 +2,8 @@ import type { z } from 'zod';
 
 import type { catalogLocationSchema, searchResultSchema } from '@core/contract/index.js';
 
+export type PreviewOfflineReason = 'drive-disconnected' | 'file-missing';
+
 export interface PreviewMedia {
   kind: 'video';
   fingerprint: string;
@@ -9,6 +11,7 @@ export interface PreviewMedia {
   path: string;
   folderPath: string;
   online: boolean;
+  offlineReason: PreviewOfflineReason | null;
   missing: boolean;
   description: string | null;
   tags: readonly string[];
@@ -25,6 +28,7 @@ export const previewFromSearchResult = (item: z.output<typeof searchResultSchema
   path: `${item.folder.currentPath}/${item.fileName}`,
   folderPath: item.folder.currentPath,
   online: item.folder.online,
+  offlineReason: item.folder.offlineReason,
   missing: item.missing,
   description: item.description,
   tags: item.tags,
@@ -43,6 +47,7 @@ export const previewFromLocation = (location: z.output<typeof catalogLocationSch
     path: `${location.folder.currentPath}/${location.fileName}`,
     folderPath: location.folder.currentPath,
     online: location.folder.online,
+    offlineReason: location.folder.online ? null : 'drive-disconnected',
     missing: location.missing,
     description: null,
     tags: [],

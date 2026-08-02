@@ -23,6 +23,7 @@ const searchResult = (overrides: Partial<SearchResult> = {}): SearchResult => ({
     currentPath: '/videos',
     displayName: 'videos',
     online: true,
+    offlineReason: null,
   },
   gps: null,
   missing: false,
@@ -78,6 +79,13 @@ describe('previewFromSearchResult', () => {
     expect(previewFromSearchResult(searchResult({ gps: null })).gps).toBeNull();
   });
 
+  it('keeps the folder offlineReason', () => {
+    expect(previewFromSearchResult(searchResult({
+      folder: { folderId: '11111111-1111-4111-8111-111111111111', currentPath: '/videos', displayName: 'videos', online: false, offlineReason: 'file-missing' },
+    })).offlineReason).toBe('file-missing');
+    expect(previewFromSearchResult(searchResult()).offlineReason).toBeNull();
+  });
+
   it('prefers the grid thumbnail for the poster, falling back to the small thumbnail', () => {
     expect(previewFromSearchResult(searchResult({ gridThumbnailPath: '/thumbs/clip.grid.jpg', thumbnailPath: '/thumbs/clip.jpg' })).posterPath)
       .toBe('/thumbs/clip.grid.jpg');
@@ -107,5 +115,16 @@ describe('previewFromLocation', () => {
 
   it('maps the location lat/lon into gps', () => {
     expect(previewFromLocation(location({ lat: 51.1, lon: 17.2 }))?.gps).toEqual({ lat: 51.1, lon: 17.2 });
+  });
+
+  it('reports drive-disconnected for an offline location, which carries no finer offlineReason', () => {
+    const preview = previewFromLocation(location({
+      folder: { folderId: '11111111-1111-4111-8111-111111111111', currentPath: '/videos', displayName: 'videos', online: false },
+    }));
+    expect(preview?.offlineReason).toBe('drive-disconnected');
+  });
+
+  it('reports no offlineReason for an online location', () => {
+    expect(previewFromLocation(location())?.offlineReason).toBeNull();
   });
 });

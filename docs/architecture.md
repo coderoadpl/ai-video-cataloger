@@ -577,11 +577,26 @@ An offline or missing tile now always opens the preview instead of doing
 nothing on click — `libraryPreviewDetail` never stats the file for an offline
 or missing tile, so every field it renders in that case (path, size,
 duration, transcript, people) comes straight from the catalog row and needs
-no live filesystem access. Distinguishing *why* a tile is unreachable (the
-volume it lives on is unmounted vs. the file itself is gone from a mounted
-volume) is DEFER-NEXT-WAVE: it needs a new `offlineReason` field threaded
-through the search/collection contract and a small pure classifier in
-`core/server`, tracked for the next wave rather than this one.
+no live filesystem access.
+
+**Distinguishing *why* a tile is unreachable.** A `folder.online === false` row
+now carries `offlineReason: 'drive-disconnected' | 'file-missing'` alongside
+it (`search`/`collection`'s shared `SearchResult.folder` shape), computed by
+a pure classifier in `core/server/usecases/shared.ts`
+(`classifyOfflineFolder`): a `currentPath` under `/Volumes/<name>` is
+`'drive-disconnected'` iff that volume root does not exist on disk; every
+other path (the boot volume, which this darwin-only product always treats as
+mounted) is `'file-missing'` — the folder itself was deleted while its drive
+stayed connected, the "avc-bench ghosts" case. The classifier only runs when
+`online` is already `false`, so it costs nothing on the hot path. `LibraryGrid`
+(both the per-tile badge and the folder-section header) and `BrowsePreview`
+switch their existing offline/missing copy — `library.offlineFolderBadge` /
+`library.missingBadge`, `preview.offline` / `preview.missing` — on this
+discriminant instead of hard-coding the drive-disconnected wording for every
+offline row; no new dictionary strings were added. `MapPinPopover` and
+`catalogLocations`/`libraryFacets` keep their coarser online/offline-only
+signal for this wave — only the Library and browse-preview surfaces the bug
+report named carry the distinction.
 
 **Player fields for an online tile.** For a tile whose folder is online,
 `libraryPreviewDetail` also returns `transcriptSegments` (`{ start, end,

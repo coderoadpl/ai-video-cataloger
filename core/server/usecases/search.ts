@@ -1,7 +1,7 @@
 import { appError, ok, type AppError, type CatalogPlace, type Result } from '@core/domain/index.js';
 
 import type { CatalogFilePerson, CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
-import { artifactPaths, formatDuration, formatSize, readRichSegments } from './shared.js';
+import { artifactPaths, classifyOfflineFolder, formatDuration, formatSize, readRichSegments, type OfflineReason } from './shared.js';
 import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
 import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 import { filterTranscript } from './transcript-hallucinations.js';
@@ -48,6 +48,7 @@ export interface SearchResult {
     currentPath: string;
     displayName: string;
     online: boolean;
+    offlineReason: OfflineReason | null;
   };
   gps: { lat: number; lon: number } | null;
   missing: boolean;
@@ -140,6 +141,8 @@ export const search = async (
   for (const row of searchResult.value.rows) {
     const online = await deps.fs.exists(row.folder.currentPath);
     if (!online.ok) return online;
+    const offlineReason = await resolveOfflineReason(deps.fs, row.folder.currentPath, online.value);
+    if (!offlineReason.ok) return offlineReason;
     const thumbnailPath = await resolveThumbnailPath(deps, row, online.value, input.thumbnails);
     if (!thumbnailPath.ok) return thumbnailPath;
     const gridThumbnailPath = await resolveGridThumbnailPath(deps, row, online.value, input.thumbnails);
@@ -159,6 +162,7 @@ export const search = async (
         currentPath: row.folder.currentPath,
         displayName: row.folder.displayName,
         online: online.value,
+        offlineReason: offlineReason.value,
       },
       gps: row.gps,
       missing: row.missing,
@@ -174,6 +178,15 @@ export const search = async (
     total: searchResult.value.total,
     results,
   });
+};
+
+export const resolveOfflineReason = async (
+  fs: FileSystemPort,
+  currentPath: string,
+  online: boolean,
+): Promise<Result<OfflineReason | null, AppError>> => {
+  if (online) return ok(null);
+  return classifyOfflineFolder(fs, currentPath);
 };
 
 export const resolveThumbnailPath = async (
