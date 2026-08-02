@@ -116,7 +116,7 @@ const captureOpenFolderMenuHandler = (): (() => void) => {
   };
 };
 
-describe('picking a folder switches the analysis view to the picked folder', () => {
+describe('opening a folder keeps the medium already selected in Analysis', () => {
   beforeEach(() => {
     window.localStorage.clear();
     stubBaseline();
@@ -126,7 +126,7 @@ describe('picking a folder switches the analysis view to the picked folder', () 
     bridge.menu.on = originalMenuOn;
   });
 
-  it('switches analysisMedia from photos to videos after a successful folder pick', async () => {
+  it('stays on Zdjęcia and re-scopes to the newly picked folder', async () => {
     window.localStorage.setItem('avc.mode', 'analysis');
     window.localStorage.setItem('avc.analysisMedia', 'photos');
     mockFolderBridge('/old-movies');
@@ -135,12 +135,14 @@ describe('picking a folder switches the analysis view to the picked folder', () 
 
     renderRoute();
 
-    await screen.findByTestId('photos-sidebar-empty');
+    await screen.findByTestId('photos-sidebar-unscanned');
 
     fireEvent.click(screen.getByRole('button', { name: en.folderBar.openFolder }));
 
     await waitFor(() => expect(screen.getByText(NEW_FOLDER)).toBeDefined());
-    expect(screen.queryByTestId('photos-sidebar-empty')).toBeNull();
+    expect(window.localStorage.getItem('avc.analysisMedia')).toBe('photos');
+    await screen.findByTestId('photos-sidebar-unscanned');
+    expect(screen.getByText(NEW_FOLDER)).toBeDefined();
   });
 
   it('switches mode from library to analysis and analysisMedia to videos after a successful folder pick', async () => {
@@ -155,7 +157,7 @@ describe('picking a folder switches the analysis view to the picked folder', () 
 
     await waitFor(() => expect(screen.getByText(NEW_FOLDER)).toBeDefined());
     expect(window.localStorage.getItem('avc.mode')).toBe('analysis');
-    expect(window.localStorage.getItem('avc.analysisMedia')).toBe('videos');
+    expect(screen.queryByTestId('photos-sidebar-unscanned')).toBeNull();
   });
 
   it('does not change mode or media when the folder picker is cancelled', async () => {
@@ -167,12 +169,12 @@ describe('picking a folder switches the analysis view to the picked folder', () 
 
     renderRoute();
 
-    await screen.findByTestId('photos-sidebar-empty');
+    await screen.findByTestId('photos-sidebar-unscanned');
 
     fireEvent.click(screen.getByRole('button', { name: en.folderBar.openFolder }));
 
     await new Promise((resolve) => setTimeout(resolve, 0));
-    expect(screen.queryByTestId('photos-sidebar-empty')).not.toBeNull();
+    expect(screen.queryByTestId('photos-sidebar-unscanned')).not.toBeNull();
     expect(window.localStorage.getItem('avc.analysisMedia')).toBe('photos');
     expect(screen.queryByRole('alert')).toBeNull();
   });
@@ -186,12 +188,12 @@ describe('picking a folder switches the analysis view to the picked folder', () 
 
     renderRoute();
 
-    await screen.findByTestId('photos-sidebar-empty');
+    await screen.findByTestId('photos-sidebar-unscanned');
 
     fireEvent.click(screen.getByRole('button', { name: en.folderBar.openFolder }));
 
     await waitFor(() => expect(screen.getByRole('alert').textContent).toContain('Folder no longer exists'));
-    expect(screen.queryByTestId('photos-sidebar-empty')).not.toBeNull();
+    expect(screen.queryByTestId('photos-sidebar-unscanned')).not.toBeNull();
     expect(window.localStorage.getItem('avc.analysisMedia')).toBe('photos');
   });
 });

@@ -42,8 +42,9 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   roots: [{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }],
   scope: 'folder',
   setScope: vi.fn(),
+  folder: '/media',
+  folderState: 'scanned',
   selectedRoot: '/media',
-  selectRoot: vi.fn(),
   items: [],
   total: 0,
   hasMore: false,
@@ -74,18 +75,40 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
 });
 
 describe('PhotosSidebar', () => {
-  it('renders the empty state with a scan CTA when no roots are scanned', () => {
-    const scanFolder = vi.fn();
-    renderThemed(<PhotosSidebar state={baseState({ roots: [], selectedRoot: null, scanFolder })} onShowInLibrary={vi.fn()} />);
+  it('renders a prompt to open a folder when there is no current folder', () => {
+    const onOpenFolder = vi.fn();
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({ roots: [], folder: null, folderState: 'no-folder', selectedRoot: null })}
+        onShowInLibrary={vi.fn()}
+        onOpenFolder={onOpenFolder}
+      />,
+    );
 
-    expect(screen.getByTestId('photos-sidebar-empty')).toBeDefined();
-    fireEvent.click(screen.getByTestId('photos-sidebar-empty-scan'));
+    expect(screen.getByTestId('photos-sidebar-no-folder')).toBeDefined();
+    fireEvent.click(screen.getByTestId('photos-open-folder-action'));
+    expect(onOpenFolder).toHaveBeenCalled();
+  });
+
+  it('renders a scan-this-folder CTA when the current folder has not been scanned yet', () => {
+    const scanFolder = vi.fn();
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({ roots: [], folder: '/a/b', folderState: 'unscanned', selectedRoot: null, scanFolder })}
+        onShowInLibrary={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('photos-sidebar-unscanned')).toBeDefined();
+    expect(screen.getAllByText('b').length).toBeGreaterThan(0);
+    fireEvent.click(screen.getByTestId('photos-scan-action'));
     expect(scanFolder).toHaveBeenCalled();
   });
 
   it('shows the folder header with root name and path, and calls onShowInLibrary', () => {
     const onShowInLibrary = vi.fn();
-    renderThemed(<PhotosSidebar state={baseState()} onShowInLibrary={onShowInLibrary} />);
+    renderThemed(<PhotosSidebar state={baseState()} onShowInLibrary={onShowInLibrary} onOpenFolder={vi.fn()} />);
 
     expect(screen.getAllByText('media').length).toBeGreaterThan(0);
     fireEvent.click(screen.getByTestId('photos-folder-show-in-library'));
@@ -102,7 +125,7 @@ describe('PhotosSidebar', () => {
       item({ fingerprint: 'e', missingAt: 123 }),
       item({ fingerprint: 'f' }),
     ];
-    renderThemed(<PhotosSidebar state={baseState({ items, selectFingerprint })} onShowInLibrary={vi.fn()} />);
+    renderThemed(<PhotosSidebar state={baseState({ items, selectFingerprint })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />);
 
     const rows = screen.getAllByTestId('photos-sidebar-row');
     expect(rows).toHaveLength(6);
@@ -125,6 +148,7 @@ describe('PhotosSidebar', () => {
           ],
         })}
         onShowInLibrary={vi.fn()}
+        onOpenFolder={vi.fn()}
       />,
     );
 
@@ -139,6 +163,7 @@ describe('PhotosSidebar', () => {
     renderThemed(<PhotosSidebar
       state={baseState({ items: [item({ fingerprint: 'a', capturedAt: '2026-08-10T17:46:06.740Z' })] })}
       onShowInLibrary={vi.fn()}
+      onOpenFolder={vi.fn()}
     />);
 
     const row = screen.getAllByTestId('photos-sidebar-row')[0];
@@ -155,7 +180,7 @@ describe('PhotosSidebar', () => {
       item({ fingerprint: 'd', exifReadAt: null }),
       item({ fingerprint: 'e', missingAt: 123 }),
     ];
-    renderThemed(<PhotosSidebar state={baseState({ items })} onShowInLibrary={vi.fn()} />);
+    renderThemed(<PhotosSidebar state={baseState({ items })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />);
 
     const analysedBadge = screen.getByTestId('photos-sidebar-badge-analysed');
     expect(analysedBadge.hasAttribute('data-status-badge')).toBe(true);
@@ -181,7 +206,7 @@ describe('PhotosSidebar', () => {
       item({ fingerprint: 'c' }),
     ];
     renderThemed(
-      <PhotosSidebar state={baseState({ items, processingFingerprints: new Set(['b']) })} onShowInLibrary={vi.fn()} />,
+      <PhotosSidebar state={baseState({ items, processingFingerprints: new Set(['b']) })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />,
     );
 
     const rows = screen.getAllByTestId('photos-sidebar-row');
@@ -191,14 +216,14 @@ describe('PhotosSidebar', () => {
 
   it('shows no in-flight rows when no analyze job is running', () => {
     const items = [item({ fingerprint: 'a' }), item({ fingerprint: 'b' })];
-    renderThemed(<PhotosSidebar state={baseState({ items })} onShowInLibrary={vi.fn()} />);
+    renderThemed(<PhotosSidebar state={baseState({ items })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />);
 
     expect(screen.queryByTestId('photos-sidebar-row-inflight')).toBeNull();
   });
 
   it('shows a load-more button when hasMore is true and calls through', () => {
     const loadMore = vi.fn();
-    renderThemed(<PhotosSidebar state={baseState({ items: [item({ fingerprint: 'a' })], hasMore: true, loadMore })} onShowInLibrary={vi.fn()} />);
+    renderThemed(<PhotosSidebar state={baseState({ items: [item({ fingerprint: 'a' })], hasMore: true, loadMore })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('photos-sidebar-load-more'));
     expect(loadMore).toHaveBeenCalled();

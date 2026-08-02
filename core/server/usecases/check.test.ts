@@ -61,6 +61,54 @@ describe('checkNestedDatabases', () => {
     });
   });
 
+  it('recognizes a nested catalog directory holding only catalog.db as our own', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/project/.ai-video-cataloger/catalog.db', { content: 'sqlite' });
+
+    const result = await checkNestedDatabases({ fs }, { folder: '/videos' });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        hasNestedDatabases: false,
+        nestedPaths: [],
+        ownNestedPaths: ['/videos/project/.ai-video-cataloger'],
+        basePath: '/videos',
+        scannedDirectories: 1,
+      },
+    });
+  });
+
+  it('recognizes a nested catalog directory holding only catalog.ndjson as our own', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/project/.ai-video-cataloger/catalog.ndjson', { content: '{}' });
+
+    const result = await checkNestedDatabases({ fs }, { folder: '/videos' });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        hasNestedDatabases: false,
+        nestedPaths: [],
+        ownNestedPaths: ['/videos/project/.ai-video-cataloger'],
+        basePath: '/videos',
+        scannedDirectories: 1,
+      },
+    });
+  });
+
+  it('still reports a nested catalog directory holding an unrelated file as foreign', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/foreign/.ai-video-cataloger/notes.txt', { content: 'hello' });
+
+    const result = await checkNestedDatabases({ fs }, { folder: '/videos' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { hasNestedDatabases: true, nestedPaths: ['/videos/foreign/.ai-video-cataloger'], ownNestedPaths: [] },
+    });
+  });
+
   it('rejects missing folders', async () => {
     const fs = new InMemoryFileSystem('/work');
 

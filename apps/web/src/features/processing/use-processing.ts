@@ -183,6 +183,7 @@ export const useProcessing = ({
   const activeJobIdRef = useRef<string | null>(null);
   const pendingCancelIsBatchRef = useRef(false);
   const lastProgressKeyRef = useRef('');
+  const lastInvalidatedFileIndexRef = useRef(0);
 
   const runVideo = useCallback(
     async (video: ProcessVideo, force = false): Promise<RunOutcome> => {
@@ -344,6 +345,7 @@ export const useProcessing = ({
       setDriveProgress(null);
       setDriveFileProgress(null);
       setDriveBatchWait(null);
+      lastInvalidatedFileIndexRef.current = 0;
 
       let jobId: string;
       try {
@@ -387,6 +389,14 @@ export const useProcessing = ({
               if (outcome.folderProgress !== null) setDriveProgress(outcome.folderProgress);
               if (outcome.fileProgress !== null) setDriveFileProgress(outcome.fileProgress);
               if (outcome.batchWait !== undefined) setDriveBatchWait(outcome.batchWait);
+              if (
+                outcome.fileProgress !== null
+                && outcome.fileProgress.currentIndex > lastInvalidatedFileIndexRef.current
+              ) {
+                lastInvalidatedFileIndexRef.current = outcome.fileProgress.currentIndex;
+                void queryClient.invalidateQueries();
+              }
+              if (outcome.skippedPath !== null) void queryClient.invalidateQueries();
               if (outcome.folderComplete) void queryClient.invalidateQueries();
             }
           },

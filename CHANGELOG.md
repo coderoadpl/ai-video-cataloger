@@ -14,8 +14,30 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Opening or scanning a folder no longer reports the app's own nested catalog
+  databases as foreign; scanning now writes the folder identity marker that
+  only analysis wrote before.
+- Whole-tree analysis now refreshes the sidebar tree and the details pane
+  after every finished file, and the selected file follows its analysis
+  rename instead of showing a stale "not tracked" state.
+- Transcript subtitles render again in the analysis player (the packaged
+  content-security policy blocked the `data:` track); the player now builds
+  the subtitle track as a `blob:` object URL instead.
+- Library preview now plays catalogued videos that live outside the currently
+  open folder; `media://` video resolution previously ignored the extra
+  catalog-folder roots that image resolution already honored.
+
 ### Changed
 
+- The Filmy/Zdjęcia toggle keeps the current folder — the photos surface now
+  scopes to the open folder and offers to scan it, instead of keeping its own
+  list of photo roots. Refines the `[0.6.7]` Open Folder behaviour: opening a
+  folder while Zdjęcia is active now stays on Zdjęcia and re-scopes to the new
+  folder, instead of forcing Filmy. The "Wszystkie foldery" scope still browses
+  every scanned photo root, including from a folder that was never scanned for
+  photos.
 - `pnpm run qa:walkthrough` gained `--strict`, which exits 1 on any `skipped`
   step (release runs now use it); the walkthrough's `open-folder`, `settings`
   and `wizard` steps now drive the real Open Folder button and header Settings

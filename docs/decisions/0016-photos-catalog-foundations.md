@@ -65,5 +65,12 @@ before any of that code could be written.
   test — rather than migrating the whole union to a `z.discriminatedUnion`
   and touching every existing job's public envelope shape.
 
+**Clarification (2026-08-02, W35a):** the photo roots summary (`photosTree`,
+computed from `photos.db`) remains a storage concept, not a navigation
+concept — it answers "is this folder a known photo root" and feeds the
+"Wszystkie foldery" cross-root browse. The renderer never lets a user pick a
+photo root from a list; it always derives the active root from whichever
+folder is currently open (`currentFolder`). No storage model changes.
+
 See [docs/architecture-photos.md](../architecture-photos.md) for the full
 schema, the duplicate-ownership rules, and the wave plan.

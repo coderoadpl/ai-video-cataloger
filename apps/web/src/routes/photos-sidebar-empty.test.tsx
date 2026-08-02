@@ -56,32 +56,27 @@ describe('Analysis sidebar with Zdjęcia active and no scanned photo roots', () 
     stubBaseline();
   });
 
-  it('shows the honest empty photos sidebar, never the video list, with the Zdjęcia heading', async () => {
+  it('shows the honest unscanned-folder photos sidebar, never the video list', async () => {
     renderRoute();
 
-    expect(await screen.findByTestId('photos-sidebar-empty')).toBeDefined();
-    expect(screen.getByTestId('photos-sidebar-empty-scan')).toBeDefined();
+    expect(await screen.findByTestId('photos-sidebar-unscanned')).toBeDefined();
+    expect(screen.getByTestId('photos-scan-action')).toBeDefined();
     expect(screen.queryByTestId('video-item')).toBeNull();
     expect(screen.queryByTestId('folder-show-in-library')).toBeNull();
-    await waitFor(() => {
-      const heading = screen.getByText((_content, element) => element?.tagName.toLowerCase() === 'h2' && (element.textContent === 'Photos' || element.textContent === 'Zdjęcia'));
-      expect(heading).toBeDefined();
-    });
-    expect(screen.queryByText((_content, element) => element?.tagName.toLowerCase() === 'h2' && (element.textContent === 'Videos' || element.textContent === 'Filmy'))).toBeNull();
   });
 
   it('swaps the sidebar between videos and photos content on the media toggle', async () => {
     renderRoute();
-    await screen.findByTestId('photos-sidebar-empty');
+    await screen.findByTestId('photos-sidebar-unscanned');
 
     (await screen.findByTestId('analysis-media-videos')).click();
 
     await waitFor(() => expect(screen.getAllByTestId('video-item').length).toBeGreaterThan(0));
-    expect(screen.queryByTestId('photos-sidebar-empty')).toBeNull();
+    expect(screen.queryByTestId('photos-sidebar-unscanned')).toBeNull();
 
     (await screen.findByTestId('analysis-media-photos')).click();
 
-    await waitFor(() => expect(screen.getByTestId('photos-sidebar-empty')).toBeDefined());
+    await waitFor(() => expect(screen.getByTestId('photos-sidebar-unscanned')).toBeDefined());
     expect(screen.queryByTestId('video-item')).toBeNull();
   });
 });

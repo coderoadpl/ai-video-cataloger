@@ -3,7 +3,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { z } from 'zod';
 
@@ -117,6 +117,10 @@ beforeEach(() => {
   server.use(
     http.get('/api/variants', () => HttpResponse.json(variantsResponse([]))),
   );
+});
+
+afterEach(() => {
+  vi.unstubAllGlobals();
 });
 
 describe('details panel', () => {
@@ -251,7 +255,16 @@ describe('details panel', () => {
     expect(screen.queryByTestId('detail-subtitles-track')).toBeNull();
   });
 
-  it('renders a subtitles track defaulted on when timestamped transcript segments exist', () => {
+  it('renders a subtitles track defaulted on when timestamped transcript segments exist, using a blob: URL never a data: URL', () => {
+    const objectUrl = 'blob:http://localhost/subtitles-fixture';
+    const createObjectURL = vi.fn().mockReturnValue(objectUrl);
+    const revokeObjectURL = vi.fn();
+    class ObjectUrlStub extends URL {
+      static override createObjectURL = createObjectURL;
+      static override revokeObjectURL = revokeObjectURL;
+    }
+    vi.stubGlobal('URL', ObjectUrlStub);
+
     const video = makeVideo({
       artifacts: {
         ...makeVideo().artifacts,
@@ -259,12 +272,17 @@ describe('details panel', () => {
       },
     });
 
-    renderThemed(<DetailsPanel video={video} analyzing={false} />);
+    const rendered = renderThemed(<DetailsPanel video={video} analyzing={false} />);
 
     const track = screen.getByTestId('detail-subtitles-track');
-    expect(track.getAttribute('src')).toContain('WEBVTT');
+    expect(track.getAttribute('src')).toBe(objectUrl);
+    expect(track.getAttribute('src')).not.toContain('data:');
     if (!(track instanceof HTMLTrackElement)) throw new Error('expected a track element');
     expect(track.default).toBe(true);
+    expect(createObjectURL).toHaveBeenCalledOnce();
+
+    rendered.unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith(objectUrl);
   });
 
   it('bounds the player to the true aspect for portrait sources', () => {

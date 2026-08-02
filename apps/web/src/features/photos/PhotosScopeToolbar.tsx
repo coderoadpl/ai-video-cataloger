@@ -36,7 +36,7 @@ export const PhotosScopeToolbar = ({ state }: PhotosScopeToolbarProps) => {
           size="small"
           fullWidth
           onClick={state.scanFolder}
-          disabled={state.isBusy}
+          disabled={state.isBusy || state.folder === null}
           data-testid="photos-scan-action"
         >
           {dictionary.photos.scanFolderAction}

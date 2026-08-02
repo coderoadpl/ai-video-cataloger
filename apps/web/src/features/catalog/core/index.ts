@@ -14,6 +14,7 @@ export type {
 } from './catalog-tree-rows.js';
 export { keyOf } from './catalog-video.js';
 export type { CatalogVideo } from './catalog-video.js';
+export { followRenamedKey } from './rename-follow.js';
 
 export interface CatalogCoreDeps<TTree> {
   readonly descriptors: { readonly tree: TTree };

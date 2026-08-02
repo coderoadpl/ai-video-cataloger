@@ -11,7 +11,7 @@ import { CancelConfirmationDialog } from '../components/ui/dialogs/CancelConfirm
 import { ProcessingOverlay } from '../components/ui/ProcessingOverlay.js';
 import { useTerminalLog } from '../components/ui/use-terminal-log.js';
 import { CatalogSidebar } from '../features/catalog/CatalogSidebar.js';
-import { flattenTreeVideos, keyOf } from '../features/catalog/index.web.js';
+import { flattenTreeVideos, followRenamedKey, keyOf } from '../features/catalog/index.web.js';
 import { useCatalog } from '../features/catalog/use-catalog.js';
 import { useScopePreference } from '../features/catalog/use-scope-preference.js';
 import { useCatalogVideoRegistry } from '../features/catalog/use-catalog-video-registry.js';
@@ -70,6 +70,7 @@ export const IndexRoute = () => {
   const photosAnalysis = usePhotosAnalysis({
     active: mode === 'analysis' && analysisMedia === 'photos',
     addLine: terminal.addLine,
+    folder: shell.currentFolder,
   });
   const catalog = useCatalog(shell.currentFolder);
   const videoRegistry = useCatalogVideoRegistry();
@@ -105,6 +106,20 @@ export const IndexRoute = () => {
       : flattenTreeVideos(tree.root).find((video) => keyOf(video) === catalog.selectedKey) ?? null;
     return fromTree ?? videoRegistry.lookup(catalog.selectedKey);
   }, [catalog.selectedVideo, catalog.selectedKey, tree.root, videoRegistry]);
+
+  const selectedSnapshotRef = useRef<{ path: string; contentHash: string | null } | null>(null);
+  useEffect(() => {
+    if (selected !== null) selectedSnapshotRef.current = { path: selected.path, contentHash: selected.contentHash };
+  }, [selected]);
+  useEffect(() => {
+    const currentKey = catalog.selectedKey;
+    if (currentKey === null) return;
+    const freshVideos = tree.root === null ? catalog.videos : [...catalog.videos, ...flattenTreeVideos(tree.root)];
+    if (freshVideos.some((video) => video.path === currentKey)) return;
+    const followed = followRenamedKey(selectedSnapshotRef.current, freshVideos);
+    if (followed !== null && followed !== currentKey) selectKey(followed);
+  }, [catalog.videos, tree.root, catalog.selectedKey, selectKey]);
+
   const selectedFingerprint = selected?.contentHash ?? null;
   const locations = useCatalogLocations({
     enabled: (mode === 'library' && librarySurface === 'map') || selectedFingerprint !== null,
@@ -148,16 +163,15 @@ export const IndexRoute = () => {
     selectKey(pendingSelection.videoPath);
     setPendingSelection(null);
   }, [pendingSelection, currentFolder, selectKey]);
-  const photosSelectRoot = photosAnalysis.selectRoot;
   const photosSelectFingerprint = photosAnalysis.selectFingerprint;
   const openPhotoInAnalysis = useCallback(
     (root: string, fingerprint: string) => {
       setMode('analysis');
       setAnalysisMedia('photos');
-      photosSelectRoot(root);
+      selectRecentFolder(root);
       photosSelectFingerprint(fingerprint);
     },
-    [photosSelectRoot, photosSelectFingerprint, setAnalysisMedia, setMode],
+    [photosSelectFingerprint, selectRecentFolder, setAnalysisMedia, setMode],
   );
   const folderAcceptedToken = shell.folderAcceptedToken;
   const previousFolderAcceptedTokenRef = useRef(folderAcceptedToken);
@@ -165,8 +179,7 @@ export const IndexRoute = () => {
     if (folderAcceptedToken === previousFolderAcceptedTokenRef.current) return;
     previousFolderAcceptedTokenRef.current = folderAcceptedToken;
     if (mode === 'library') setMode('analysis');
-    setAnalysisMedia('videos');
-  }, [folderAcceptedToken, mode, setAnalysisMedia, setMode]);
+  }, [folderAcceptedToken, mode, setMode]);
   const onPreview = useCallback((item: LibraryItem) => setPreview(previewFromSearchResult(item)), []);
   const onOpenMapPreview = useCallback((location: CatalogLocation) => {
     const media = previewFromLocation(location);
@@ -229,6 +242,7 @@ export const IndexRoute = () => {
     <PhotosSidebar
       state={photosAnalysis}
       onShowInLibrary={onShowPhotosRootInLibrary}
+      onOpenFolder={shell.openFolder}
       toolbar={<PhotosScopeToolbar state={photosAnalysis} />}
     />
   );

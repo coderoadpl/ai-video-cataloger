@@ -1,10 +1,9 @@
-import { useMemo } from 'react';
 import { Box } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { playerBoxForSource } from '../../lib/player-box.js';
-import { buildWebVtt } from './subtitles.js';
+import { useSubtitlesTrackUrl } from './use-subtitles-track-url.js';
 import { type DetailsVideo } from './details-video.js';
 
 interface VideoPlayerProps {
@@ -15,8 +14,7 @@ const PLAYER_MAX_HEIGHT = 520;
 
 export const VideoPlayer = ({ video }: VideoPlayerProps) => {
   const dictionary = useDictionary();
-  const vtt = useMemo(() => buildWebVtt(video.artifacts.transcriptSegments ?? []), [video.artifacts.transcriptSegments]);
-  const trackUrl = vtt === null ? null : `data:text/vtt;charset=utf-8,${encodeURIComponent(vtt)}`;
+  const trackUrl = useSubtitlesTrackUrl(video.artifacts.transcriptSegments);
   const box = playerBoxForSource(video.source, PLAYER_MAX_HEIGHT);
 
   return (

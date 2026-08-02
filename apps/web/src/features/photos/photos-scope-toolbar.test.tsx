@@ -17,8 +17,9 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   roots: [{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }],
   scope: 'folder',
   setScope: vi.fn(),
+  folder: '/media',
+  folderState: 'scanned',
   selectedRoot: '/media',
-  selectRoot: vi.fn(),
   items: [],
   total: 0,
   hasMore: false,
@@ -74,6 +75,12 @@ describe('PhotosScopeToolbar', () => {
 
     expect(screen.getByTestId('photos-scan-action').getAttribute('disabled')).not.toBeNull();
     expect(screen.getByTestId('photos-analyze-action').getAttribute('disabled')).not.toBeNull();
+  });
+
+  it('disables scan while no folder is open', () => {
+    renderThemed(<PhotosScopeToolbar state={baseState({ scope: 'all', folder: null, folderState: 'no-folder', selectedRoot: null })} />);
+
+    expect(screen.getByTestId('photos-scan-action').getAttribute('disabled')).not.toBeNull();
   });
 
   it('disables analyze when no target folder resolves, even though a root is selected', () => {

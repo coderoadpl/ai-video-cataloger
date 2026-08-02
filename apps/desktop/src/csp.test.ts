@@ -24,6 +24,12 @@ describe('cspHeaders', () => {
     expect(connectSrc).toBe("connect-src 'self'");
   });
 
+  it('allows blob: media (for subtitle tracks) but never a data: media source', () => {
+    const mediaSrc = RENDERER_CSP.split('; ').find((directive) => directive.startsWith('media-src'));
+    expect(mediaSrc).toContain('blob:');
+    expect(mediaSrc).not.toContain('data:');
+  });
+
   it('allows the app-owned media: scheme for images and media', () => {
     const imgSrc = RENDERER_CSP.split('; ').find((directive) => directive.startsWith('img-src'));
     const mediaSrc = RENDERER_CSP.split('; ').find((directive) => directive.startsWith('media-src'));

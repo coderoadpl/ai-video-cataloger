@@ -5,7 +5,7 @@ import type { z } from 'zod';
 import { ApiError, invalidatePhotosQueries, isTerminalJobStatus, type JobOutput } from '@core/client/index.js';
 import type { photosDetailOutputSchema, photosVariantRecordSchema } from '@core/contract/index.js';
 
-import { actions, bridge } from '../../api.js';
+import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -14,9 +14,9 @@ import { ownerRootFor, type PhotoListItem, type PhotoRoot } from './core/index.j
 
 const PAGE_LIMIT = 200;
 const SCOPE_KEY = 'avc.photosScope';
-const ROOT_KEY = 'avc.photosRoot';
 
 export type PhotosAnalysisScope = 'folder' | 'all';
+export type PhotosFolderState = 'no-folder' | 'unscanned' | 'scanned';
 export type PhotoDetail = z.output<typeof photosDetailOutputSchema>;
 export type PhotoVariantRecord = z.output<typeof photosVariantRecordSchema>;
 
@@ -33,15 +33,9 @@ const readScope = (): PhotosAnalysisScope => {
   return isScope(raw) ? raw : 'folder';
 };
 
-const readRoot = (): string | null => {
-  if (!canUseStorage()) return null;
-  return window.localStorage.getItem(ROOT_KEY);
-};
-
-const resolveSelectedRoot = (persisted: string | null, roots: readonly PhotoRoot[]): string | null => {
-  if (roots.length === 0) return null;
-  if (persisted !== null && roots.some((root) => root.root === persisted)) return persisted;
-  return roots[0]?.root ?? null;
+const deriveSelectedRoot = (folder: string | null, roots: readonly PhotoRoot[]): string | null => {
+  if (folder === null) return null;
+  return roots.find((root) => root.root === folder)?.root ?? null;
 };
 
 const messageOf = (error: unknown): string => {
@@ -53,6 +47,7 @@ const messageOf = (error: unknown): string => {
 interface UsePhotosAnalysisOptions {
   active: boolean;
   addLine: AddLogLine;
+  folder: string | null;
   intervalMs?: number;
 }
 
@@ -62,8 +57,9 @@ export interface PhotosAnalysisState {
   roots: PhotoRoot[];
   scope: PhotosAnalysisScope;
   setScope: (scope: PhotosAnalysisScope) => void;
+  folder: string | null;
+  folderState: PhotosFolderState;
   selectedRoot: string | null;
-  selectRoot: (root: string | null) => void;
   items: PhotoListItem[];
   total: number;
   hasMore: boolean;
@@ -92,11 +88,10 @@ export interface PhotosAnalysisState {
   closeCancelConfirmation: () => void;
 }
 
-export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePhotosAnalysisOptions): PhotosAnalysisState => {
+export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }: UsePhotosAnalysisOptions): PhotosAnalysisState => {
   const queryClient = useQueryClient();
   const dictionary = useDictionary();
   const [scope, setScopeState] = useState<PhotosAnalysisScope>(() => readScope());
-  const [selectedRoot, setSelectedRootState] = useState<string | null>(() => readRoot());
   const [selectedFingerprint, setSelectedFingerprint] = useState<string | null>(null);
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
   const [activeAnalyzeJobId, setActiveAnalyzeJobId] = useState<string | null>(null);
@@ -113,23 +108,15 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
   const treeRoots = tree.data?.roots;
   const roots = useMemo(() => treeRoots ?? [], [treeRoots]);
 
-  useEffect(() => {
-    if (tree.data === undefined) return;
-    const resolved = resolveSelectedRoot(selectedRoot, tree.data.roots);
-    if (resolved !== selectedRoot) setSelectedRootState(resolved);
-  }, [tree.data, selectedRoot]);
+  const selectedRoot = useMemo(() => deriveSelectedRoot(folder, roots), [folder, roots]);
+  const folderState = useMemo<PhotosFolderState>(() => {
+    if (folder === null) return 'no-folder';
+    return selectedRoot === null ? 'unscanned' : 'scanned';
+  }, [folder, selectedRoot]);
 
   const setScope = useCallback((next: PhotosAnalysisScope) => {
     setScopeState(next);
     if (canUseStorage()) window.localStorage.setItem(SCOPE_KEY, next);
-  }, []);
-
-  const selectRoot = useCallback((next: string | null) => {
-    setSelectedRootState(next);
-    if (canUseStorage()) {
-      if (next === null) window.localStorage.removeItem(ROOT_KEY);
-      else window.localStorage.setItem(ROOT_KEY, next);
-    }
   }, []);
 
   const listRoot = scope === 'folder' ? selectedRoot : null;
@@ -227,19 +214,14 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
   );
 
   const scanFolder = useCallback(() => {
-    if (activeJobLabel !== null) return;
-    void (async () => {
-      const picked = await bridge.folder.showPicker('photos');
-      if (picked === null) return;
-      runJob(
-        scanMutation.mutateAsync({ root: picked }),
-        dictionary.photos.title,
-        dictionary.photos.title,
-        dictionary.photos.title,
-      );
-      selectRoot(picked);
-    })();
-  }, [activeJobLabel, dictionary, runJob, scanMutation, selectRoot]);
+    if (activeJobLabel !== null || folder === null) return;
+    runJob(
+      scanMutation.mutateAsync({ root: folder }),
+      dictionary.photos.title,
+      dictionary.photos.title,
+      dictionary.photos.title,
+    );
+  }, [activeJobLabel, dictionary, folder, runJob, scanMutation]);
 
   const generateProxies = useCallback(() => {
     if (selectedRoot === null) return;
@@ -365,8 +347,9 @@ export const usePhotosAnalysis = ({ active, addLine, intervalMs = 1000 }: UsePho
     roots,
     scope,
     setScope,
+    folder,
+    folderState,
     selectedRoot,
-    selectRoot,
     items: loadedItems,
     total: list.data?.total ?? 0,
     hasMore: loadedItems.length < (list.data?.total ?? 0),

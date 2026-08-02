@@ -120,7 +120,22 @@ const stubBaseline = () => {
         data: { media: 'photo', fingerprint, selectedConfigId: null, variants: [] },
       });
     }),
+    http.get('/api/check', () => HttpResponse.json({
+      ok: true,
+      data: { hasNestedDatabases: false, nestedPaths: [], ownNestedPaths: [], basePath: '/pictures', scannedDirectories: 0 },
+    })),
   );
+};
+
+const mockFolderBridge = (initialFolder: string | null) => {
+  let currentFolder = initialFolder;
+  vi.spyOn(bridge.folder, 'getCurrent').mockImplementation(() => Promise.resolve(currentFolder));
+  vi.spyOn(bridge.folder, 'getRecent')
+    .mockImplementation(() => Promise.resolve(currentFolder === null ? [] : [currentFolder]));
+  vi.spyOn(bridge.folder, 'setCurrent').mockImplementation((folderPath: string) => {
+    currentFolder = folderPath;
+    return Promise.resolve();
+  });
 };
 
 describe('Library > Zdjęcia "Otwórz w Analizie" escape hatch', () => {
@@ -128,8 +143,7 @@ describe('Library > Zdjęcia "Otwórz w Analizie" escape hatch', () => {
     window.localStorage.clear();
     window.localStorage.setItem('avc.mode', 'library');
     window.localStorage.setItem('avc.librarySurface', 'photos');
-    vi.spyOn(bridge.folder, 'getCurrent').mockResolvedValue(null);
-    vi.spyOn(bridge.folder, 'getRecent').mockResolvedValue([]);
+    mockFolderBridge(null);
     stubBaseline();
   });
 

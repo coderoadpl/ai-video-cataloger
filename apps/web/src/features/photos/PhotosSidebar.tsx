@@ -16,6 +16,7 @@ const THUMB_BOX = 56;
 interface PhotosSidebarProps {
   state: PhotosAnalysisState;
   onShowInLibrary: (root: string) => void;
+  onOpenFolder: () => void;
   toolbar?: ReactNode;
 }
 
@@ -133,30 +134,55 @@ const PhotoSidebarRow = ({
   );
 };
 
-export const PhotosSidebar = ({ state, onShowInLibrary, toolbar }: PhotosSidebarProps) => {
+export const PhotosSidebar = ({ state, onShowInLibrary, onOpenFolder, toolbar }: PhotosSidebarProps) => {
   const dictionary = useDictionary();
 
-  if (state.roots.length === 0 && !state.isLoading) {
+  const folderPanel = state.scope === 'folder' && state.folderState !== 'scanned' ? state.folderState : null;
+
+  if (state.isLoading && folderPanel !== 'no-folder') {
     return (
-      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="photos-sidebar-empty">
-        <Typography variant="body2" sx={{ fontWeight: 500 }}>{dictionary.photosSidebar.emptyTitle}</Typography>
-        <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.emptyBody}</Typography>
+      <Box data-testid="photos-sidebar-loading" sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+        <CircularProgress size={22} />
+      </Box>
+    );
+  }
+
+  if (folderPanel === 'no-folder') {
+    return (
+      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="photos-sidebar-no-folder">
+        <Typography variant="body2" sx={{ fontWeight: 500 }}>{dictionary.photosSidebar.noFolderTitle}</Typography>
+        <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.noFolderBody}</Typography>
         <Button
           variant="contained"
           size="small"
-          onClick={state.scanFolder}
-          data-testid="photos-sidebar-empty-scan"
+          onClick={onOpenFolder}
+          data-testid="photos-open-folder-action"
         >
-          {dictionary.photosSidebar.emptyScanCta}
+          {dictionary.folderBar.openFolder}
         </Button>
       </Box>
     );
   }
 
-  if (state.isLoading && state.roots.length === 0) {
+  if (folderPanel === 'unscanned') {
     return (
-      <Box data-testid="photos-sidebar-loading" sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-        <CircularProgress size={22} />
+      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="photos-sidebar-unscanned">
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
+          <FolderIcon fontSize="small" sx={{ color: 'primary.main' }} />
+          <Typography variant="h2" noWrap title={state.folder ?? ''} sx={{ flex: 1, minWidth: 0 }}>
+            {folderName(state.folder ?? '')}
+          </Typography>
+        </Box>
+        <Typography variant="caption" noWrap title={state.folder ?? ''}>{state.folder}</Typography>
+        <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.unscannedBody}</Typography>
+        <Button
+          variant="contained"
+          size="small"
+          onClick={state.scanFolder}
+          data-testid="photos-scan-action"
+        >
+          {dictionary.photosSidebar.scanThisFolderCta}
+        </Button>
       </Box>
     );
   }
@@ -197,15 +223,11 @@ export const PhotosSidebar = ({ state, onShowInLibrary, toolbar }: PhotosSidebar
           <List dense disablePadding sx={{ p: 1 }}>
             {sections.map((section) => (
               <Box key={section.root}>
-                <ListItemButton
-                  onClick={() => state.selectRoot(section.root)}
-                  data-testid="photos-sidebar-section-header"
-                  sx={{ borderRadius: 1 }}
-                >
+                <Box data-testid="photos-sidebar-section-header" sx={{ px: 2, py: 0.75 }}>
                   <Typography variant="caption" noWrap sx={{ fontWeight: 500 }}>
                     {folderName(section.root)}
                   </Typography>
-                </ListItemButton>
+                </Box>
                 {section.items.map((item) => (
                   <PhotoSidebarRow
                     key={item.fingerprint}

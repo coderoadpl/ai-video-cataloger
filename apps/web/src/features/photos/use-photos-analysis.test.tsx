@@ -93,54 +93,97 @@ describe('usePhotosAnalysis', () => {
     window.localStorage.clear();
   });
 
-  it('falls back to the first root when the persisted root has vanished', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/gone');
+  it('derives the selected root from the current folder when it matches a known root', async () => {
     stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
     stubStatus();
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }),
+      { wrapper: Wrapper },
+    );
 
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    expect(result.current.folderState).toBe('scanned');
   });
 
-  it('keeps the persisted root when it is still present', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/media');
-    stubTree([
-      { root: '/other', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
-      { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
-    ]);
+  it('never falls back to another known root when the current folder is not one of them', async () => {
+    stubTree([{ root: '/old/pictures', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/old/pictures/a.jpg' })]);
+    stubStatus();
+
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/a/b' }),
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => expect(result.current.roots.length).toBe(1));
+    expect(result.current.selectedRoot).toBe(null);
+    expect(result.current.folderState).toBe('unscanned');
+  });
+
+  it('reports no-folder state and a null selected root when there is no current folder', async () => {
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
     stubStatus();
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: null }),
+      { wrapper: Wrapper },
+    );
 
-    await waitFor(() => expect(result.current.roots.length).toBe(2));
-    expect(result.current.selectedRoot).toBe('/media');
+    await waitFor(() => expect(result.current.roots.length).toBe(1));
+    expect(result.current.selectedRoot).toBe(null);
+    expect(result.current.folderState).toBe('no-folder');
+  });
+
+  it('a stale persisted photos root in localStorage has no effect on the derived selection', async () => {
+    window.localStorage.setItem('avc.photosRoot', '/old/pictures');
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }),
+      { wrapper: Wrapper },
+    );
+
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
   });
 
   it('persists the scope choice across a fresh mount', async () => {
     stubTree([]);
     stubList([]);
 
-    const first = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    const first = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: null }),
+      { wrapper: Wrapper },
+    );
     act(() => first.result.current.setScope('all'));
     expect(first.result.current.scope).toBe('all');
 
-    const second = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    const second = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: null }),
+      { wrapper: Wrapper },
+    );
     expect(second.result.current.scope).toBe('all');
   });
 
-  it('scanFolder opens the photos picker, runs the scan job, and selects the scanned root', async () => {
+  it('scanFolder never opens a folder picker and scans the current folder directly', async () => {
     stubList([]);
     stubStatus();
-    const showPicker = vi.spyOn(bridge.folder, 'showPicker').mockResolvedValue('/new-root');
+    const showPicker = vi.spyOn(bridge.folder, 'showPicker');
+    let scannedRoot: string | null = null;
     server.use(
       http.get('/api/photos/tree', () => HttpResponse.json({
         ok: true,
         data: { media: 'photo', roots: [{ root: '/new-root', photos: 0, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }] },
       })),
-      http.post('/api/photos/scan', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.post('/api/photos/scan', async ({ request }) => {
+        const body = z.object({ root: z.string() }).parse(await request.json());
+        scannedRoot = body.root;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
+      }),
       http.get('/api/jobs/status', () => HttpResponse.json({
         ok: true,
         data: {
@@ -157,16 +200,39 @@ describe('usePhotosAnalysis', () => {
       })),
     );
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/new-root' }),
+      { wrapper: Wrapper },
+    );
     act(() => result.current.scanFolder());
 
-    await waitFor(() => expect(showPicker).toHaveBeenCalledWith('photos'));
+    await waitFor(() => expect(scannedRoot).toBe('/new-root'));
+    expect(showPicker).not.toHaveBeenCalled();
     await waitFor(() => expect(result.current.selectedRoot).toBe('/new-root'));
     showPicker.mockRestore();
   });
 
+  it('scanFolder does nothing when there is no current folder', async () => {
+    stubTree([]);
+    stubList([]);
+    stubStatus();
+    const scanSpy = vi.fn();
+    server.use(http.post('/api/photos/scan', () => {
+      scanSpy();
+      return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
+    }));
+
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: null }),
+      { wrapper: Wrapper },
+    );
+    act(() => result.current.scanFolder());
+
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(scanSpy).not.toHaveBeenCalled();
+  });
+
   it('analyzePhotos runs the process job over the selected root', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/media');
     stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
     stubStatus();
@@ -193,7 +259,7 @@ describe('usePhotosAnalysis', () => {
       })),
     );
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
     act(() => result.current.analyzePhotos());
 
@@ -236,7 +302,7 @@ describe('usePhotosAnalysis', () => {
       })),
     );
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
     act(() => result.current.selectFingerprint('b'));
     await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === 'b')).toBe(true));
@@ -246,7 +312,6 @@ describe('usePhotosAnalysis', () => {
   });
 
   it('does not duplicate already-loaded pages when a completed job invalidates and refetches the current offset', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/media');
     stubTree([{ root: '/media', photos: 300, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     const allItems = Array.from({ length: 300 }, (_, index) =>
       photoItem({ fingerprint: `p${index}`, currentPath: `/media/p${index}.jpg` }));
@@ -274,7 +339,7 @@ describe('usePhotosAnalysis', () => {
       })),
     );
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn() }), { wrapper: Wrapper });
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
     await waitFor(() => expect(result.current.items.length).toBe(200));
@@ -292,7 +357,6 @@ describe('usePhotosAnalysis', () => {
   });
 
   it('drives analyzeStatusLabel and per-photo in-flight tracking from the real photo_process event stream, not a frozen 0-of-0 label', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/media');
     stubTree([{ root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([
       photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
@@ -351,7 +415,7 @@ describe('usePhotosAnalysis', () => {
       }),
     );
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), intervalMs: 250 }), { wrapper: Wrapper });
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media', intervalMs: 250 }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
 
     act(() => result.current.analyzePhotos());
@@ -371,7 +435,6 @@ describe('usePhotosAnalysis', () => {
   });
 
   it('seeds the total from the scanning candidate count so the label never sits at 0 of 0 while the first batch runs', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/media');
     stubTree([{ root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([
       photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
@@ -399,7 +462,7 @@ describe('usePhotosAnalysis', () => {
       })),
     );
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), intervalMs: 250 }), { wrapper: Wrapper });
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media', intervalMs: 250 }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
 
     act(() => result.current.analyzePhotos());
@@ -409,7 +472,6 @@ describe('usePhotosAnalysis', () => {
   });
 
   it('clears the analyze progress once the job settles so a later scan job does not inherit the analyze caption', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/media');
     stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
     stubStatus();
@@ -435,7 +497,7 @@ describe('usePhotosAnalysis', () => {
       })),
     );
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), intervalMs: 250 }), { wrapper: Wrapper });
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media', intervalMs: 250 }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
 
     act(() => result.current.analyzePhotos());
@@ -446,7 +508,6 @@ describe('usePhotosAnalysis', () => {
   });
 
   it('logs a cancelled analyze job as a user cancellation instead of an unknown error', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/media');
     stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
     stubStatus();
@@ -471,7 +532,7 @@ describe('usePhotosAnalysis', () => {
     );
 
     const addLine = vi.fn();
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine, intervalMs: 250 }), { wrapper: Wrapper });
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine, folder: '/media', intervalMs: 250 }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
 
     act(() => result.current.analyzePhotos());
@@ -482,7 +543,6 @@ describe('usePhotosAnalysis', () => {
   });
 
   it('confirmCancelAnalysis calls the job-cancel mutation with the running photo_process job id', async () => {
-    window.localStorage.setItem('avc.photosRoot', '/media');
     stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
     stubStatus();
@@ -510,7 +570,7 @@ describe('usePhotosAnalysis', () => {
       }),
     );
 
-    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), intervalMs: 10_000 }), { wrapper: Wrapper });
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media', intervalMs: 10_000 }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
 
     act(() => result.current.analyzePhotos());

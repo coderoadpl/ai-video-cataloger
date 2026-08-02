@@ -41,6 +41,24 @@ export const checkNestedDatabases = async (
   return ok(accumulator);
 };
 
+const OWN_CATALOG_ARTIFACT_NAMES: ReadonlySet<string> = new Set([
+  'catalog.db',
+  'catalog.ndjson',
+  'config.json',
+  'artifacts',
+  'variants',
+  'thumbnails',
+]);
+
+const hasOwnCatalogArtifact = async (
+  fs: FileSystemPort,
+  catalogDirectoryPath: string,
+): Promise<Result<boolean, AppError>> => {
+  const entries = await fs.listDirectory(catalogDirectoryPath);
+  if (!entries.ok) return ok(false);
+  return ok(entries.value.some((entry) => OWN_CATALOG_ARTIFACT_NAMES.has(entry.name)));
+};
+
 const scanDirectory = async (
   fs: FileSystemPort,
   currentPath: string,
@@ -56,8 +74,14 @@ const scanDirectory = async (
       if (isRoot) continue;
       const marker = await readFolderMarker(fs, currentPath);
       if (!marker.ok) return marker;
-      if (marker.value === null) accumulator.nestedPaths.push(entry.path);
-      else accumulator.ownNestedPaths.push(entry.path);
+      if (marker.value !== null) {
+        accumulator.ownNestedPaths.push(entry.path);
+        continue;
+      }
+      const ownArtifact = await hasOwnCatalogArtifact(fs, entry.path);
+      if (!ownArtifact.ok) return ownArtifact;
+      if (ownArtifact.value) accumulator.ownNestedPaths.push(entry.path);
+      else accumulator.nestedPaths.push(entry.path);
       continue;
     }
     if (entry.name.startsWith('.')) continue;

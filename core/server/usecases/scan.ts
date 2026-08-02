@@ -21,7 +21,7 @@ import {
 import { artifactRootFor, type ArtifactRoot } from './artifact-root.js';
 import { reachableAnalyzedFileLocations } from './canonical-reachability.js';
 import { healRestoredRecords } from './catalog-index.js';
-import { readFolderMarker } from './folder-identity.js';
+import { readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
 import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
 
 export interface TranscriptSegment {
@@ -109,6 +109,8 @@ export const cachedScanFolder = async (
 
   const repository = await deps.catalogs.open(folder);
   if (!repository.ok) return repository;
+  const identity = await ensureFolderIdentity(deps.fs, folder);
+  if (!identity.ok) return identity;
   const stored = await repository.value.listVideos();
   if (!stored.ok) return stored;
   const videos = stored.value
@@ -137,6 +139,8 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
 
   const repository = await deps.catalogs.open(folder);
   if (!repository.ok) return repository;
+  const identity = await ensureFolderIdentity(deps.fs, folder);
+  if (!identity.ok) return identity;
 
   const videoEntries = entries.value
     .filter((entry) => entry.kind === 'file' && isSupportedVideoExtension(deps.fs.extname(entry.name)))
@@ -161,6 +165,15 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
     videos: enriched.value,
     summary: summarize(enriched.value),
   });
+};
+
+const ensureFolderIdentity = async (
+  fs: FileSystemPort,
+  folder: string,
+): Promise<Result<undefined, AppError>> => {
+  const identity = await resolveFolderIdentity(fs, folder);
+  if (!identity.ok) return identity;
+  return ok(undefined);
 };
 
 const enrichWithDuplicates = async (

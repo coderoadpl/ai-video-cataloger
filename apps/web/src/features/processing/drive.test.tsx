@@ -160,6 +160,62 @@ describe('useProcessing drive', () => {
     expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(2);
   });
 
+  it('invalidates on per-file progress before any folder-done event arrives', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    let cancelled = false;
+    server.use(
+      http.post('/api/process-drive', () => HttpResponse.json({ ok: true, data: { jobId: 'job:drive' } })),
+      http.post('/api/jobs/cancel', () => {
+        cancelled = true;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job:drive', cancelled: true } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            jobId,
+            kind: 'process_drive',
+            status: cancelled ? 'cancelled' : 'running',
+            progress: null,
+            progressEvents: [
+              { sequence: 1, progress: { step: 'run-started', data: { runId: 'r1', root: '/videos', foldersTotal: 1, filesTotal: 2 } } },
+              { sequence: 2, progress: { step: 'folder-started', data: { path: '/videos/a', filesTotal: 2 } } },
+              {
+                sequence: 3,
+                progress: { step: 'extracting_frames', percentage: 20, current: 1, total: 2, data: { video: '/videos/a/one.mp4' } },
+              },
+              {
+                sequence: 4,
+                progress: { step: 'extracting_frames', percentage: 20, current: 2, total: 2, data: { video: '/videos/a/two.mp4' } },
+              },
+            ],
+            error: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        });
+      }),
+    );
+    const invalidate = vi.spyOn(queryClient, 'invalidateQueries');
+
+    const { result } = renderHook(() => useProcessing({ videos: [], addLine: vi.fn(), intervalMs: 0 }), { wrapper });
+
+    act(() => {
+      result.current.driveAnalyze('/videos');
+    });
+
+    await waitFor(() => expect(invalidate.mock.calls.length).toBeGreaterThanOrEqual(2));
+
+    act(() => {
+      result.current.driveCancel();
+    });
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+  });
+
   const batchJob = (jobId: string) => ({
     jobId,
     kind: 'process_drive',

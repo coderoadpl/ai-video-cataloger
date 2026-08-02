@@ -8,6 +8,7 @@ const MAX_MEDIA_BYTES = 20 * 1024 * 1024;
 export interface MediaRoot {
   path: string;
   allowedChildren?: ReadonlySet<string> | undefined;
+  grants?: 'images' | 'media' | undefined;
 }
 
 // A folder the app cannot write keeps its thumbnails and frames in the home mirror, not beside the
@@ -30,6 +31,9 @@ export const catalogMediaRoots = (
   },
   { path: path.join(homeDirectory, '.ai-video-cataloger', 'photo-artifacts') },
   ...catalogFolderPaths.map((folderPath) => ({ path: path.join(folderPath, '.ai-video-cataloger') })),
+  // The catalogued folder itself, distinct from its images-only sidecar above: this is what lets
+  // Library preview play a catalogued video that lives outside the currently open folder.
+  ...catalogFolderPaths.map((folderPath): MediaRoot => ({ path: folderPath, grants: 'media' })),
 ];
 
 export const parseMediaUrl = (urlValue: string): string | null => {
@@ -78,9 +82,10 @@ export const resolveScopedMedia = async (
   if (ALLOWED_EXTENSIONS.has(extension)) return resolveScopedImage(requestedPath, rootFolder, MAX_MEDIA_BYTES, extraRoots);
   if (!ALLOWED_VIDEO_EXTENSIONS.has(extension)) return null;
 
+  const videoExtraRoots = extraRoots.filter((root) => root.grants === 'media');
   const realRequested = await resolveAnyScopedPath(
     requestedPath,
-    rootFolder === null ? [] : [{ path: rootFolder }],
+    rootFolder === null ? videoExtraRoots : [{ path: rootFolder }, ...videoExtraRoots],
   );
   if (realRequested === null) return null;
 

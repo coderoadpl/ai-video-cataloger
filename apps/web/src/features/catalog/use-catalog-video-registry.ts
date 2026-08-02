@@ -20,7 +20,15 @@ export const useCatalogVideoRegistry = (): CatalogVideoRegistry => {
         next ??= new Map(current);
         next.set(key, video);
       }
-      return next ?? current;
+      if (next === null) return current;
+      for (const video of videos) {
+        if (video.contentHash === null) continue;
+        for (const [existingKey, existingVideo] of next) {
+          if (existingKey === keyOf(video)) continue;
+          if (existingVideo.contentHash === video.contentHash) next.delete(existingKey);
+        }
+      }
+      return next;
     });
   }, []);
   const lookup = useCallback((key: string) => videosByKey.get(key) ?? null, [videosByKey]);

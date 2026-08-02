@@ -278,6 +278,16 @@ mirror" to "every catalogued folder's sidecar" — because the sidecar holds
 only app-generated artifacts (thumbnails/frames/notes); the video files
 themselves stay unreachable through this root (extension allowlist unchanged).
 
+`MediaRoot` carries an explicit `grants: 'images' | 'media'` (default
+`'images'` when unset): the sidecar/mirror/photo-artifacts roots above stay
+`'images'`, but `catalogMediaRoots` also adds the catalogued folder path
+itself, tagged `grants: 'media'` — the one root video resolution honors from
+`extraRoots`. A catalogued folder's own videos are exactly what Library
+preview plays, whether or not that folder is the one currently open; every
+other rule is unchanged (extension allowlist, the 20MB image cap, realpath
+escape rejection) and non-catalogued disk stays unreachable through
+`media://` regardless of scope.
+
 The old GUI shelled out to a staged CLI and parsed NDJSON; that machinery is
 deleted. Renderer and CLI are peers on the same contract.
 
@@ -320,9 +330,22 @@ subnav inside Library (no catalog sidebar there); the folder workspace and its
 Zdjęcia face become a Filmy/Zdjęcia toggle inside Analysis. The sidebar is
 **medium-aware**: it follows `analysisMedia`, rendering `CatalogSidebar` for
 Filmy and `PhotosSidebar` for Zdjęcia, and the rail heading follows it too
-(Filmy/Zdjęcia) — `DetailsPanel` and the terminal are unchanged. The Zdjęcia
-sidebar with zero scanned roots shows an honest empty state with a scan CTA,
-never the video list. The toggle itself lives in the top bar,
+(Filmy/Zdjęcia) — `DetailsPanel` and the terminal are unchanged.
+
+**The Filmy/Zdjęcia toggle is a processing-mode switch over the same current
+folder — it never changes which folder is open.** The photos surface scopes
+to `currentFolder`: the "Ten folder" scope lists the photos of the current
+folder, and a current folder that is not yet a scanned photo root shows an
+honest scan CTA for *that* folder — no second, independent folder picker for
+photos. The photo-roots table (ADR-0016) remains an internal storage detail
+used to answer "is the current folder a known photo root"; it is never
+surfaced as a user-facing root list or picker. The "Wszystkie foldery" scope
+is unchanged and still browses across every scanned photo root. Opening a
+folder keeps whichever medium (Filmy/Zdjęcia) was already selected in
+Analysis — it no longer forces Filmy, refining the folder-open behaviour
+recorded in the `[0.6.7]` changelog entry, which forced the Filmy view on
+every folder open regardless of the medium already active. The toggle itself
+lives in the top bar,
 next to the Biblioteka/Analiza switcher, so it stays visible regardless of
 scroll position inside the Analysis workspace; it renders only while
 `mode === 'analysis'`. Search exists only inside the Library's

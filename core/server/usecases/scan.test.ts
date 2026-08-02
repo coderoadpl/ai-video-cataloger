@@ -183,6 +183,31 @@ describe('scanFolder', () => {
     });
   });
 
+  it('writes the folder identity marker when scanning a writable folder', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/clip.mp4', { size: 2048, hash: 'hash-1' });
+    const catalogs = new InMemoryCatalogs([], fs);
+
+    const result = await scanFolder({ catalogs, fs, media: new InMemoryMedia() }, { folder: '/videos' });
+
+    expect(result.ok).toBe(true);
+    const marker = await fs.readTextFile('/videos/.ai-video-cataloger/folder-id');
+    expect(marker).toMatchObject({ ok: true, value: expect.stringContaining('folderId') });
+  });
+
+  it('leaves no folder identity marker when scanning a read-only folder', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/clip.mp4', { size: 2048, hash: 'hash-1' });
+    fs.markReadOnly('/videos');
+    const catalogs = new InMemoryCatalogs([], fs);
+
+    const result = await scanFolder({ catalogs, fs, media: new InMemoryMedia() }, { folder: '/videos' });
+
+    expect(result.ok).toBe(true);
+    const marker = await fs.readTextFile('/videos/.ai-video-cataloger/folder-id');
+    expect(marker).toEqual({ ok: true, value: null });
+  });
+
   it('marks same-folder and cross-folder copies through one batched global-index lookup', async () => {
     const fs = new InMemoryFileSystem('/videos');
     fs.addFile('/videos/original.mp4', { size: 1024, hash: 'same-folder-hash' });

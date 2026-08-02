@@ -775,9 +775,11 @@ export interface Dictionary {
     openInAnalysis: string;
   };
   photosSidebar: {
-    emptyTitle: string;
-    emptyBody: string;
-    emptyScanCta: string;
+    noFolderTitle: string;
+    noFolderBody: string;
+    unscannedTitle: string;
+    unscannedBody: string;
+    scanThisFolderCta: string;
     scopeThisFolder: string;
     scopeAllFolders: string;
     showInLibrary: string;
@@ -1677,9 +1679,11 @@ export const en: Dictionary = {
     openInAnalysis: 'Open in Analysis',
   },
   photosSidebar: {
-    emptyTitle: 'No photo folders scanned yet',
-    emptyBody: 'Scan a folder to index its photos and browse them here.',
-    emptyScanCta: 'Scan a photo folder',
+    noFolderTitle: 'No folder open',
+    noFolderBody: 'Open a folder to see its photos.',
+    unscannedTitle: 'Not scanned for photos yet',
+    unscannedBody: 'Scan this folder to index its photos and browse them here.',
+    scanThisFolderCta: 'Scan this folder',
     scopeThisFolder: 'This folder',
     scopeAllFolders: 'All scanned folders',
     showInLibrary: 'Show in Library',
@@ -2588,9 +2592,11 @@ export const pl: Dictionary = {
     openInAnalysis: 'Otwórz w Analizie',
   },
   photosSidebar: {
-    emptyTitle: 'Nie zeskanowano jeszcze żadnych folderów ze zdjęciami',
-    emptyBody: 'Zeskanuj folder, aby zindeksować zdjęcia i przeglądać je tutaj.',
-    emptyScanCta: 'Zeskanuj folder ze zdjęciami',
+    noFolderTitle: 'Brak otwartego folderu',
+    noFolderBody: 'Otwórz folder, aby zobaczyć jego zdjęcia.',
+    unscannedTitle: 'Ten folder nie był jeszcze skanowany',
+    unscannedBody: 'Skanuj ten folder, aby zindeksować zdjęcia i przeglądać je tutaj.',
+    scanThisFolderCta: 'Skanuj ten folder',
     scopeThisFolder: 'Ten folder',
     scopeAllFolders: 'Wszystkie foldery',
     showInLibrary: 'Pokaż w Bibliotece',

@@ -128,8 +128,8 @@ describe('selecting a photo from the Analysis photos sidebar', () => {
     window.localStorage.clear();
     window.localStorage.setItem('avc.mode', 'analysis');
     window.localStorage.setItem('avc.analysisMedia', 'photos');
-    vi.spyOn(bridge.folder, 'getCurrent').mockResolvedValue('/movies');
-    vi.spyOn(bridge.folder, 'getRecent').mockResolvedValue(['/movies']);
+    vi.spyOn(bridge.folder, 'getCurrent').mockResolvedValue('/pictures');
+    vi.spyOn(bridge.folder, 'getRecent').mockResolvedValue(['/pictures']);
     stubBaseline();
   });
 

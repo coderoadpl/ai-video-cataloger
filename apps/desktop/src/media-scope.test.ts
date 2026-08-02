@@ -205,6 +205,8 @@ describe('catalogMediaRoots', () => {
       { path: path.join('/home/u', '.ai-video-cataloger', 'photo-artifacts') },
       { path: path.join('/drives/a', '.ai-video-cataloger') },
       { path: path.join('/drives/b', '.ai-video-cataloger') },
+      { path: '/drives/a', grants: 'media' },
+      { path: '/drives/b', grants: 'media' },
     ]);
   });
 });
@@ -215,7 +217,7 @@ describe('a non-current writable catalog folder sidecar (Library spec 1, media-s
     tempRoots.length = 0;
   });
 
-  it('resolves a thumbnail under a known, non-current writable folder sidecar, but never the video beside it', async () => {
+  it('resolves both a thumbnail and the video beside it under a known, non-current writable catalog folder', async () => {
     const home = await tempRoot();
     const currentFolder = await tempRoot();
     const otherCatalogFolder = await tempRoot();
@@ -227,7 +229,7 @@ describe('a non-current writable catalog folder sidecar (Library spec 1, media-s
     const roots = catalogMediaRoots(home, [], [otherCatalogFolder]);
 
     expect(await resolveScopedMedia(thumbnailPath, currentFolder, roots)).toBe(await realpath(thumbnailPath));
-    expect(await resolveScopedMedia(videoPath, currentFolder, roots)).toBeNull();
+    expect(await resolveScopedMedia(videoPath, currentFolder, roots)).toBe(await realpath(videoPath));
   });
 
   it('refuses a sidecar of a folder the catalog does not know about', async () => {
@@ -235,11 +237,39 @@ describe('a non-current writable catalog folder sidecar (Library spec 1, media-s
     const currentFolder = await tempRoot();
     const strangerFolder = await tempRoot();
     const thumbnailPath = path.join(strangerFolder, '.ai-video-cataloger', 'artifacts', 'thumb.jpg');
+    const strangerVideoPath = path.join(strangerFolder, 'clip.mp4');
     await mkdir(path.dirname(thumbnailPath), { recursive: true });
     await writeFile(thumbnailPath, 'image', 'utf8');
+    await writeFile(strangerVideoPath, 'video', 'utf8');
     const roots = catalogMediaRoots(home, [], []);
 
     expect(await resolveScopedMedia(thumbnailPath, currentFolder, roots)).toBeNull();
+    expect(await resolveScopedMedia(strangerVideoPath, currentFolder, roots)).toBeNull();
+  });
+
+  it('never grants video access through an images-only mirror root alone', async () => {
+    const home = await tempRoot();
+    const currentFolder = await tempRoot();
+    const mirrorVideoPath = path.join(home, '.ai-video-cataloger', 'read-only-folders', 'known-id', 'clip.mp4');
+    await mkdir(path.dirname(mirrorVideoPath), { recursive: true });
+    await writeFile(mirrorVideoPath, 'video', 'utf8');
+    const roots = catalogMediaRoots(home, ['known-id']);
+
+    expect(await resolveScopedMedia(mirrorVideoPath, currentFolder, roots)).toBeNull();
+  });
+
+  it('rejects a symlink inside a non-current catalog folder that escapes to a file outside every scope', async () => {
+    const home = await tempRoot();
+    const currentFolder = await tempRoot();
+    const otherCatalogFolder = await tempRoot();
+    const outside = await tempRoot();
+    const outsideVideoPath = path.join(outside, 'secret.mp4');
+    const linkPath = path.join(otherCatalogFolder, 'linked.mp4');
+    await writeFile(outsideVideoPath, 'video', 'utf8');
+    await symlink(outsideVideoPath, linkPath);
+    const roots = catalogMediaRoots(home, [], [otherCatalogFolder]);
+
+    expect(await resolveScopedMedia(linkPath, currentFolder, roots)).toBeNull();
   });
 });
 
