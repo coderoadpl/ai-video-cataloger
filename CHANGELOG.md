@@ -14,36 +14,45 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.8] - 2026-08-02
+
 ### Added
 
 - A person card opens the Library filtered to that person, from the card
   itself and from its actions menu.
+  ([`878585f`](https://github.com/coderoadpl/ai-video-cataloger/commit/878585f55a66991cc456e7042d6d39a6109153bc)).
 
 ### Fixed
 
 - Opening or scanning a folder no longer reports the app's own nested catalog
   databases as foreign; scanning now writes the folder identity marker that
   only analysis wrote before.
+  ([`c3bc987`](https://github.com/coderoadpl/ai-video-cataloger/commit/c3bc98778610d456dfb8d4c92b9523151fd99d54)).
 - Whole-tree analysis now refreshes the sidebar tree and the details pane
   after every finished file, and the selected file follows its analysis
   rename instead of showing a stale "not tracked" state.
+  ([`c3bc987`](https://github.com/coderoadpl/ai-video-cataloger/commit/c3bc98778610d456dfb8d4c92b9523151fd99d54)).
 - Transcript subtitles render again in the analysis player (the packaged
   content-security policy blocked the `data:` track); the player now builds
   the subtitle track as a `blob:` object URL instead.
+  ([`c3bc987`](https://github.com/coderoadpl/ai-video-cataloger/commit/c3bc98778610d456dfb8d4c92b9523151fd99d54)).
 - Library preview now plays catalogued videos that live outside the currently
   open folder; `media://` video resolution previously ignored the extra
   catalog-folder roots that image resolution already honored.
+  ([`c3bc987`](https://github.com/coderoadpl/ai-video-cataloger/commit/c3bc98778610d456dfb8d4c92b9523151fd99d54)).
 - Library preview now renders subtitles (the player had no text track at
   all) and letterboxes a portrait 9:16 source correctly instead of showing a
   square-cropped poster; `GET /api/library/preview` gains
   `transcriptSegments`/`width`/`height`/`rotation` for the currently online
   tile.
+  ([`1b736e8`](https://github.com/coderoadpl/ai-video-cataloger/commit/1b736e8802bfb01e0edfd2fa547576c302ed8eb8)).
 - The existing-thumbnails backfill that regenerates blurry old Library grid
   tiles now runs once per session for every distinct folder that actually
   contributed a visible tile to the Kolekcja grid, not only for whichever
   folder happened to be open in Analysis; a Library session with tiles from
   several catalogued folders previously left every folder but the open one
   blurry.
+  ([`1b736e8`](https://github.com/coderoadpl/ai-video-cataloger/commit/1b736e8802bfb01e0edfd2fa547576c302ed8eb8)).
 
 ### Changed
 
@@ -54,6 +63,7 @@ release history jumps from `0.5.10` to `0.5.12`.
   folder, instead of forcing Filmy. The "Wszystkie foldery" scope still browses
   every scanned photo root, including from a folder that was never scanned for
   photos.
+  ([`c3bc987`](https://github.com/coderoadpl/ai-video-cataloger/commit/c3bc98778610d456dfb8d4c92b9523151fd99d54)).
 - `pnpm run qa:walkthrough` gained `--strict`, which exits 1 on any `skipped`
   step (release runs now use it); the walkthrough's `open-folder`, `settings`
   and `wizard` steps now drive the real Open Folder button and header Settings
@@ -63,20 +73,26 @@ release history jumps from `0.5.10` to `0.5.12`.
   likewise pick folders via a stubbed native dialog and a real Open Folder
   click, and configure the whisper mode through the real Settings modal
   instead of shelling `avc config set`.
+  ([`44ac9bc`](https://github.com/coderoadpl/ai-video-cataloger/commit/44ac9bc97e62e2149659f289abd57e607756c30c)).
 - The tree "previously catalogued, now absent" section is hidden when empty;
   the full AI analysis panel opens by default and shows an expand
   affordance.
+  ([`878585f`](https://github.com/coderoadpl/ai-video-cataloger/commit/878585f55a66991cc456e7042d6d39a6109153bc)).
 - Library tiles for offline or missing files now open the preview instead of
   doing nothing on click.
+  ([`878585f`](https://github.com/coderoadpl/ai-video-cataloger/commit/878585f55a66991cc456e7042d6d39a6109153bc)).
 - Sub-folder sidebar thumbnails visible in the current scroll window are now
   generated as promptly as root-level ones, and existing low-resolution
   Library grid thumbnails are regenerated once per folder per session instead
   of staying blurry forever.
+  ([`878585f`](https://github.com/coderoadpl/ai-video-cataloger/commit/878585f55a66991cc456e7042d6d39a6109153bc)).
 - Settings shows one flat set of effective values with no inheritance
   vocabulary, and the analyzer model / reasoning-effort selects show their
   default instead of rendering blank.
+  ([`878585f`](https://github.com/coderoadpl/ai-video-cataloger/commit/878585f55a66991cc456e7042d6d39a6109153bc)).
 - Re-running the setup wizard starts from the current settings instead of
   defaults, and the local analyzer is no longer labelled recommended.
+  ([`878585f`](https://github.com/coderoadpl/ai-video-cataloger/commit/878585f55a66991cc456e7042d6d39a6109153bc)).
 
 ## [0.6.7] - 2026-08-02
 

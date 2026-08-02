@@ -268,11 +268,14 @@ const drive = async (plan) => {
   });
 
   await record('tree-expand', async () => {
-    const switchToTree = page.getByTestId('switch-to-tree');
-    if (await appeared(switchToTree, SETTLE_TIMEOUT_MS)) await switchToTree.click();
-    const folderRow = page.getByRole('treeitem');
+    const scopeTree = page.getByTestId('scope-tree');
+    if (!(await appeared(scopeTree, SETTLE_TIMEOUT_MS))) return skipped('fixture folder has no subfolders');
+    await scopeTree.click();
+    const folderRow = page.getByTestId('folder-row').first();
     if (!(await appeared(folderRow, SETTLE_TIMEOUT_MS))) return skipped('fixture folder has no subfolders');
-    await folderRow.first().click();
+    await folderRow.click();
+    const scopeFolder = page.getByTestId('scope-folder');
+    if (await appeared(scopeFolder, SETTLE_TIMEOUT_MS)) await scopeFolder.click();
     return done('first subfolder toggled');
   });
 
