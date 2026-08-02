@@ -123,6 +123,10 @@ export default defineConfig({
         extends: true,
         test: { name: 'e2e-support', environment: 'node', include: ['test/e2e/**/*.test.ts'] },
       },
+      {
+        extends: true,
+        test: { name: 'scripts', environment: 'node', include: ['scripts/**/*.test.ts'] },
+      },
     ],
   },
 });

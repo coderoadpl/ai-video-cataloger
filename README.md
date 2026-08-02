@@ -352,6 +352,22 @@ The canonical catalog now lives home-scoped at `~/.ai-video-cataloger/catalog.db
 files stay readable for migration. Home-scope runtime and model files also
 live under `~/.ai-video-cataloger/`.
 
+## Promoting a Catalog Home
+
+Moving a catalog built up elsewhere (a batch run, a review copy) into the real
+app home:
+
+```bash
+pnpm run promote-home -- --source /path/to/run-home --dry-run
+pnpm run promote-home -- --source /path/to/run-home --yes
+```
+
+It backs up the existing home first (never deletes it), carries over the
+existing home's `photos.db` verbatim when the source has none, refuses to
+guess when both have one, and keeps every entry the source does not provide
+(credentials, photo artifacts, downloaded models). See
+[docs/qa/consolidation-runbook.md](docs/qa/consolidation-runbook.md).
+
 ## Development
 
 The rewrite follows the agentproofarch layout:

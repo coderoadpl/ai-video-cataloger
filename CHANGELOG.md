@@ -18,6 +18,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- `pnpm run promote-home -- --source <homeDirectory> [--target <homeDirectory>]
+  [--dry-run] [--yes]` promotes a catalog home (e.g. a batch run's
+  `.ai-video-cataloger/`) into the real app home: backs up the existing home to
+  a timestamped sibling first (never deletes it), carries over the existing
+  home's `photos.db` verbatim when the source has none, refuses when both have
+  one, refuses to re-promote an already-promoted identical source, and keeps
+  every target entry the source does not provide (`credentials.json`,
+  `photo-artifacts/`, `models/`, …) while naming in the plan what the source
+  overwrites. See
+  [docs/qa/consolidation-runbook.md](docs/qa/consolidation-runbook.md).
 - `photos import-libra <artifacts-dir> --manifest <path> [--dry-run]` CLI command and `POST
   /api/photos/import-libra` route one-shot import descriptions, faces (shared `catalog.db`
   pool, unassigned) and timeline-sourced GPS from a PHOTO LIBRA session into the photos
