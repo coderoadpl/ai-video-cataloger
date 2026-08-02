@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.5] - 2026-08-02
+
 ### Added
 
 - `photos import-libra <artifacts-dir> --manifest <path> [--dry-run]` CLI command and `POST
@@ -22,13 +24,15 @@ release history jumps from `0.5.10` to `0.5.12`.
   catalog without re-paying analysis, joining artifacts to already-scanned photos by manifest
   path/md5 and never guessing an unmatched entry. Imported descriptions land as a new `family:
   'imported'` photo config descriptor (`providerId: 'photo-libra'`) that can never collide with
-  or outrank a live analyzer variant.
+  or outrank a live analyzer variant
+  ([`0184dcb`](https://github.com/coderoadpl/ai-video-cataloger/commit/0184dcb229c852339d87c870ba9ba76fcdcef737)).
 
 ### Fixed
 
 - Photo analysis toolbar progress no longer freezes at "Analizowanie 0 z 0…": the caption is now derived from the same `photo_process` job event stream as the detail-pane banner, instead of a static label captured once when the job started. The total is seeded from the `photo-analysis-scanning` candidate count, so the caption reads the real candidate total while the first analyzer batch is still running, and it is cleared when the job settles so a later scan or proxy job no longer inherits the finished analyze count.
 - Photo analysis sidebar rows now show a per-photo in-flight spinner while their fingerprint is part of the batch currently being sent to the analyzer (new `photo-analysis-batch-started` job progress step), and the photo list/status refresh incrementally as each photo completes or fails, instead of only once when the whole job finishes.
-- Photo analysis gains a cancel action (mirroring video processing's cancel-with-confirmation flow) wired to the same `POST /api/jobs/cancel` job-cancel path. A cancelled photo job is logged as a user cancellation instead of "unknown error".
+- Photo analysis gains a cancel action (mirroring video processing's cancel-with-confirmation flow) wired to the same `POST /api/jobs/cancel` job-cancel path. A cancelled photo job is logged as a user cancellation instead of "unknown error"
+  ([`2cbd0e1`](https://github.com/coderoadpl/ai-video-cataloger/commit/2cbd0e17f9e3cf9bbfa181a78de365297f4c78e5)).
 
 ## [0.6.4] - 2026-08-02
 
