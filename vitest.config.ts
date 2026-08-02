@@ -43,12 +43,13 @@ export default defineConfig({
       // `vitest run --coverage` rounded DOWN to the whole percent. A regression
       // below the floor fails `pnpm run check`; raise the floor whenever coverage
       // climbs. First measured 2026-07-25 (Phase 3): stmts 79.33 / branches 80.57
-      // / funcs 73.68 / lines 79.33.
+      // / funcs 73.68 / lines 79.33. Raised 2026-08-03 (W34a): stmts 86.65 /
+      // branches 83.43 / funcs 81.32 / lines 86.65.
       thresholds: {
-        statements: 79,
-        branches: 80,
-        functions: 73,
-        lines: 79,
+        statements: 86,
+        branches: 83,
+        functions: 81,
+        lines: 86,
       },
     },
     projects: [

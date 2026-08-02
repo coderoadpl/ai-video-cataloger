@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { appError, normalizeEmbedding, ok, type AppError, type Result } from '@core/domain/index.js';
+import { appError, derivedFolderId, normalizeEmbedding, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput, JobProgress } from '../ports.js';
 import { readOnlyArtifactRoot } from './artifact-root.js';
@@ -319,6 +319,28 @@ describe('drive processing over a read-only folder', () => {
     expect(mirroredThumbnail.ok && mirroredThumbnail.value).toBe(true);
     const folderEntries = await fs.listDirectory('/drive/ro');
     expect(folderEntries.ok && folderEntries.value.map((entry) => entry.name)).toEqual(['clip.mp4']);
+  });
+
+  it('keeps index-only mode for a read-only folder that still carries an identity marker from a writable era', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const deps = makeDeps(fs);
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro' });
+    expect(run.ok && run.value.filesDone).toBe(1);
+
+    fs.addFile('/drive/ro/.ai-video-cataloger/folder-id', {
+      content: JSON.stringify({
+        folderId: derivedFolderId(fs.resolve('/drive/ro')),
+        schemaVersion: 1,
+        createdAt: '2026-01-01T00:00:00.000Z',
+      }),
+    });
+    const restarted = { ...deps, catalogs: new InMemoryCatalogs([{ folder: '/drive/ro', videos: [] }], fs) };
+    const scanned = await scanFolder(restarted, { folder: '/drive/ro' });
+
+    expect(scanned.ok && scanned.value.videos.map((video) => video.status)).toEqual(['completed']);
+    expect(scanned.ok && scanned.value.videos[0]?.artifacts.thumbnailPath)
+      .toBe(`${mirrorRoot(fs, '/drive/ro')}/thumbnails/clip.jpg`);
   });
 
   it('leaves a read-only folder nothing analysed reported as untracked', async () => {

@@ -88,6 +88,19 @@ export class SqlJsCatalogRepositoryFactory implements CatalogRepositoryFactory {
       return repositoryFailure(cause);
     }
   }
+
+  async openIfExists(folder: string): Promise<Result<CatalogRepository | null, AppError>> {
+    try {
+      const normalizedFolder = path.resolve(folder);
+      const canonicalFolder = realpathSync.native(normalizedFolder);
+      const existing = this.opened.get(canonicalFolder);
+      if (existing !== undefined) return ok(existing);
+      if (!existsSync(catalogDatabasePath(normalizedFolder))) return ok(null);
+      return this.open(folder);
+    } catch (cause) {
+      return repositoryFailure(cause);
+    }
+  }
 }
 
 export class JsonConfigStore implements ConfigStore {

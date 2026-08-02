@@ -272,7 +272,7 @@ describe('scanTree', () => {
     expect(result.value.videos.map((video) => video.path)).toEqual(['/drive/sub/clip.mp4']);
     expect(fs.hashInputs).toEqual(['/drive/sub/clip.mp4']);
     expect(media.probeInputs).toEqual(['/drive/sub/clip.mp4']);
-    expect(deps.catalogs.openInputs).toEqual(['/drive/sub']);
+    expect(deps.catalogs.openInputs).toEqual([]);
   });
 
   it('marks a folder video as a duplicate of a global analysis recorded under another folder', async () => {

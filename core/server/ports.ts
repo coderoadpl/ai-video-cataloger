@@ -59,6 +59,8 @@ export interface CatalogRepository {
 
 export interface CatalogRepositoryFactory {
   open(folder: string): Promise<Result<CatalogRepository, AppError>>;
+  /** Never creates {folder}/.ai-video-cataloger/catalog.db: `null` when the folder has no catalog yet. */
+  openIfExists(folder: string): Promise<Result<CatalogRepository | null, AppError>>;
 }
 
 export interface CatalogFileRecord {

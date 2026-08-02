@@ -27,8 +27,8 @@ describe('models requirements', () => {
     const started = events.find((event) => event.type === 'started');
     const completed = events.find((event) => event.type === 'completed');
     expect(started?.data).toEqual({});
-    expect(completed).toBeDefined();
-    const data = completed!.data as {
+    if (completed === undefined) throw new Error('CLI did not emit a completed event');
+    const data = completed.data as {
       machine: { totalMemGB: number; appleSilicon: boolean };
       tiers: TierView[];
     };
@@ -70,7 +70,8 @@ describe('models pull validation', () => {
     // so only assert the blocking path when the machine cannot run it.
     const req = await runCli(['models', 'requirements', '--json']);
     const completed = parseJsonEvents(req.stdout).find((event) => event.type === 'completed');
-    const data = completed!.data as { tiers: TierView[] };
+    if (completed === undefined) throw new Error('CLI did not emit a completed event');
+    const data = completed.data as { tiers: TierView[] };
     const big = data.tiers.find((tier) => tier.tag === 'gemma3:27b');
 
     if (big && big.supportLevel !== 'ok') {

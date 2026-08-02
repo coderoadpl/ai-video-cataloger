@@ -562,6 +562,11 @@ export class InMemoryCatalogs implements CatalogRepositoryFactory {
     repository.markReadOnly();
     return ok(repository);
   }
+
+  async openIfExists(folder: string): Promise<Result<CatalogRepository | null, AppError>> {
+    if (!this.repositories.has(path.normalize(folder))) return ok(null);
+    return this.open(folder);
+  }
 }
 
 export class InMemorySpendLedger implements SpendLedgerPort {

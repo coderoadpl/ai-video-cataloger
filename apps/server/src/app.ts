@@ -1,6 +1,6 @@
-import { Hono } from 'hono';
+import { Hono, type ErrorHandler } from 'hono';
 import { trace } from '@opentelemetry/api';
-import { type z } from 'zod';
+import { z } from 'zod';
 
 import { API_ROUTES, looseEnvelopeSchema } from '@core/contract/index.js';
 import { appError, err, ok, type AppError, type Result } from '@core/domain/index.js';
@@ -143,9 +143,18 @@ const withCatalogWriteLockForJob = async (
 
 const queryInput = (context: BodyReader): Record<string, string> => context.req.query();
 
+// Hono's default handler returns bare text on a thrown error, breaking every client's envelope contract.
+export const handleUnhandledError: ErrorHandler = (error) =>
+  respond(
+    err(appError('internal', error instanceof Error ? error.message : 'Unhandled server error')),
+    z.unknown(),
+  );
+
 export const buildApp = (deps: AppDeps): Hono => {
   const app = new Hono();
   const tracer = trace.getTracer('ai-video-cataloger');
+
+  app.onError(handleUnhandledError);
 
   app.use('*', async (context, next) =>
     tracer.startActiveSpan('http.request', async (span) => {

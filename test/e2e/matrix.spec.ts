@@ -11,7 +11,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, extname, join } from 'node:path';
+import { basename, extname, join } from 'node:path';
 import { z } from 'zod';
 
 import { managedWhisperBinaryPath } from '../../adapters/whisper-runtime/index.js';

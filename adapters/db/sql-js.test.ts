@@ -17,6 +17,31 @@ describe('SqlJsCatalogRepositoryFactory', () => {
     tempRoots.length = 0;
   });
 
+  it('openIfExists never creates a catalog database for an uncataloged folder', async () => {
+    const folder = await tempRoot();
+    const factory = new SqlJsCatalogRepositoryFactory();
+    const opened = await factory.openIfExists(folder);
+    if (!opened.ok) throw new Error(opened.error.message);
+
+    expect(opened.value).toBeNull();
+    expect(existsSync(path.join(folder, '.ai-video-cataloger', 'catalog.db'))).toBe(false);
+  });
+
+  it('openIfExists returns the repository once a catalog database already exists', async () => {
+    const folder = await tempRoot();
+    const opened = await new SqlJsCatalogRepositoryFactory().open(folder);
+    if (!opened.ok) throw new Error(opened.error.message);
+    const created = await opened.value.createVideo(videoInput(folder));
+    if (!created.ok) throw new Error(created.error.message);
+
+    const reopened = await new SqlJsCatalogRepositoryFactory().openIfExists(folder);
+    if (!reopened.ok) throw new Error(reopened.error.message);
+    if (reopened.value === null) throw new Error('expected an existing repository');
+    const videos = await reopened.value.listVideos();
+    if (!videos.ok) throw new Error(videos.error.message);
+    expect(videos.value).toHaveLength(1);
+  });
+
   it('creates a fresh catalog database and persists writes to disk', async () => {
     const folder = await tempRoot();
     const factory = new SqlJsCatalogRepositoryFactory();

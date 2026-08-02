@@ -108,10 +108,13 @@ export const cachedScanFolder = async (
     });
   }
 
-  const repository = await deps.catalogs.open(folder);
-  if (!repository.ok) return repository;
   const identity = await ensureFolderIdentity(deps.fs, folder);
   if (!identity.ok) return identity;
+  const repository = await deps.catalogs.openIfExists(folder);
+  if (!repository.ok) return repository;
+  if (repository.value === null) {
+    return ok({ folder, databasePath: null, videos: [], summary: summarize([]) });
+  }
   const stored = await repository.value.listVideos();
   if (!stored.ok) return stored;
   const videos = stored.value
@@ -138,17 +141,20 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
   const entries = await deps.fs.listDirectory(folder);
   if (!entries.ok) return { ok: false, error: appError('read_error', `Error reading directory: ${folder}`, entries.error) };
 
-  const repository = await deps.catalogs.open(folder);
-  if (!repository.ok) return repository;
   const identity = await ensureFolderIdentity(deps.fs, folder);
   if (!identity.ok) return identity;
+  const repository = await deps.catalogs.openIfExists(folder);
+  if (!repository.ok) return repository;
 
   const videoEntries = entries.value
     .filter((entry) => entry.kind === 'file' && isSupportedVideoExtension(deps.fs.extname(entry.name)))
     .sort((left, right) => left.path.localeCompare(right.path));
 
-  const artifactRoot = artifactRootFor(deps.fs, folder, repository.value.writable());
-  const indexed = await indexedAnalyses(deps, folder, repository.value.writable());
+  // An existing catalog answers "can we write here" by having just tried, exactly as `process` does;
+  // a folder with no catalog has only the marker write to go on.
+  const writable = repository.value?.writable() ?? identity.value.persistent;
+  const artifactRoot = artifactRootFor(deps.fs, folder, writable);
+  const indexed = await indexedAnalyses(deps, folder, writable);
   if (!indexed.ok) return indexed;
   const videos: ScanVideo[] = [];
   for (const entry of videoEntries) {
@@ -162,7 +168,7 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
 
   return ok({
     folder,
-    databasePath: repository.value.databasePath(),
+    databasePath: repository.value?.databasePath() ?? null,
     videos: enriched.value,
     summary: summarize(enriched.value),
   });
@@ -171,10 +177,10 @@ export const scanFolder = async (deps: ScanDeps, input: { folder: string }): Pro
 const ensureFolderIdentity = async (
   fs: FileSystemPort,
   folder: string,
-): Promise<Result<undefined, AppError>> => {
+): Promise<Result<{ persistent: boolean }, AppError>> => {
   const identity = await resolveFolderIdentity(fs, folder);
   if (!identity.ok) return identity;
-  return ok(undefined);
+  return ok({ persistent: identity.value.persistent });
 };
 
 const enrichWithDuplicates = async (
@@ -323,7 +329,7 @@ const indexedAnalyses = async (
 
 const scanVideo = async (
   deps: ScanDeps,
-  repository: CatalogRepository,
+  repository: CatalogRepository | null,
   artifactRoot: ArtifactRoot,
   videoPath: string,
   indexed: ReadonlyMap<string, CatalogFileRecord>,
@@ -336,11 +342,11 @@ const scanVideo = async (
 
   const hash = await deps.fs.partialContentHash(videoPath);
   const initialHash = hash.ok ? hash.value : null;
-  const pathMatch = await repository.findVideoByPath(videoPath);
+  const pathMatch = repository === null ? ok(null) : await repository.findVideoByPath(videoPath);
   if (!pathMatch.ok) return pathMatch;
 
   let matched: CatalogVideo | null = pathMatch.value;
-  if (matched === null && initialHash !== null) {
+  if (matched === null && initialHash !== null && repository !== null) {
     const hashMatch = await repository.findVideoByHash(initialHash);
     if (!hashMatch.ok) return hashMatch;
     matched = hashMatch.value;

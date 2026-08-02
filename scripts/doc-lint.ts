@@ -154,7 +154,68 @@ const ADR_CLAIMS: readonly AdrClaim[] = [
   },
 ];
 
+const ROUTES_CONTRACT = 'core/contract/routes.ts';
+
+/** Named, ADR-0003-addendum-documented exceptions to the cursor-only list-route rule. */
+const OFFSET_PAGINATION_DEVIATIONS: ReadonlySet<string> = new Set([
+  'searchInputSchema',
+  'photosListInputSchema',
+  'photosSearchInputSchema',
+]);
+
+interface ExtractedInputSchema {
+  readonly name: string;
+  readonly body: string;
+}
+
+const extractInputSchemas = (source: string): ExtractedInputSchema[] => {
+  const schemas: ExtractedInputSchema[] = [];
+  const declaration = /export const (\w+InputSchema) = z\.object\(/g;
+  for (const match of source.matchAll(declaration)) {
+    const name = match[1];
+    if (name === undefined) continue;
+    const openIndex = match.index + match[0].length - 1;
+    let depth = 0;
+    let closeIndex = openIndex;
+    for (; closeIndex < source.length; closeIndex++) {
+      const char = source[closeIndex];
+      if (char === '(') depth++;
+      else if (char === ')') {
+        depth--;
+        if (depth === 0) break;
+      }
+    }
+    schemas.push({ name, body: source.slice(openIndex, closeIndex + 1) });
+  }
+  return schemas;
+};
+
+const OFFSET_FIELD = /(?:^|[{,\s])offset\s*:/;
+
+const routesSource = read(ROUTES_CONTRACT);
+const inputSchemas = extractInputSchemas(routesSource);
+const inputSchemasByName = new Map(inputSchemas.map((schema) => [schema.name, schema]));
+
 const problems: string[] = [];
+
+for (const schema of inputSchemas) {
+  if (!OFFSET_FIELD.test(schema.body)) continue;
+  if (OFFSET_PAGINATION_DEVIATIONS.has(schema.name)) continue;
+  problems.push(
+    `[offset-pagination] ${ROUTES_CONTRACT}: ${schema.name} declares an "offset" field, which ADR-0003 ` +
+      `§(d) bans for list routes — add a cursor field instead, or if this is a reviewed exception, name ` +
+      `${schema.name} in OFFSET_PAGINATION_DEVIATIONS (scripts/doc-lint.ts) and document it in the ADR-0003 addendum.`,
+  );
+}
+
+for (const name of OFFSET_PAGINATION_DEVIATIONS) {
+  const schema = inputSchemasByName.get(name);
+  if (schema === undefined) {
+    problems.push(`[offset-pagination] OFFSET_PAGINATION_DEVIATIONS names "${name}", which no longer exists in ${ROUTES_CONTRACT} — prune it.`);
+  } else if (!OFFSET_FIELD.test(schema.body)) {
+    problems.push(`[offset-pagination] OFFSET_PAGINATION_DEVIATIONS names "${name}", which no longer declares an "offset" field — prune it.`);
+  }
+}
 
 const trackedMarkdown = execFileSync('git', ['ls-files', '-z', '*.md'], {
   cwd: repoRoot,
@@ -242,6 +303,8 @@ if (problems.length > 0) {
 process.stdout.write(
   `doc-lint: OK — ${DOC_PROMISED_ENFORCERS.length} promised enforcer(s) present, ` +
     `${ADR_CLAIMS.length} ADR claim(s) honoured in docs and code, ` +
+    `${inputSchemas.length} list-route input schema(s) checked against the ${OFFSET_PAGINATION_DEVIATIONS.size} ` +
+    `sanctioned offset-pagination deviation(s), ` +
     `${readmes.length} README(s) documenting only real package scripts, ` +
     `${trackedMarkdown.length} tracked .md file(s) clean of dead links and leaked delimiters.\n`,
 );

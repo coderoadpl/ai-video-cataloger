@@ -192,8 +192,10 @@ function ffmpegBinary(): string {
 
 function ffprobeBinary(): string {
   const require = createRequire(import.meta.url);
-  const resolved: unknown = (require('@ffprobe-installer/ffprobe') as { path?: unknown }).path;
-  if (typeof resolved !== 'string' || !existsSync(resolved)) {
+  const installer: unknown = require('@ffprobe-installer/ffprobe');
+  const parsed = z.object({ path: z.string() }).safeParse(installer);
+  const resolved = parsed.success ? parsed.data.path : null;
+  if (resolved === null || !existsSync(resolved)) {
     throw new Error('@ffprobe-installer/ffprobe binary not found - run pnpm install');
   }
   return resolved;

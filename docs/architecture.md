@@ -104,6 +104,31 @@ Two scopes remain, with catalog ownership revised by
   managed runtime files, whisper models, provider credentials, and the
   append-only spend ledger and read-only mirror below.
 
+**`GET /api/scan` no longer creates a per-folder `catalog.db` (dated
+2026-08-03, W34a).** `CatalogRepositoryFactory.open` is a create-if-missing
+funnel (schema init + an eager persist), which made `scanFolder`/
+`cachedScanFolder` — pure reads — write a legacy `catalog.db` for a folder
+never processed before, violating the CQRS split this section otherwise
+documents. `openIfExists` is the read-path counterpart: it returns the open
+repository when `{folder}/.ai-video-cataloger/catalog.db` already exists on
+disk, `null` otherwise, and never creates one; `scanFolder`/`cachedScanFolder`
+use it, while `process`/`process-drive`/`status`/`reset` — the paths that
+actually own catalog writes — keep calling `open`, unchanged. Folder-identity
+marker creation on a first scan (`{folder}/.ai-video-cataloger/folder-id`,
+W35a) is a separate, already-sanctioned write and is unaffected. Scan's
+`writable` signal for artifact-root resolution still comes from
+`CatalogRepository.writable()` whenever a catalog exists — the same signal
+`process` uses, so the two never disagree about where a folder's artifacts
+live — and falls back to the marker write's own result only for a folder that
+has no catalog at all, where the old code would have created one. A read-only
+folder that still carries a marker from a writable era therefore stays in
+index-only mode instead of reading as untracked. The
+hybrid is not fully closed: scanning a folder that already has a legacy
+`catalog.db` still rewrites that file on open (`persistWhereWritable` runs
+unconditionally inside `open`) — a pre-existing characteristic of the sql.js
+adapter, not new here, and out of scope for this pass; only *creating* one
+newly is fixed.
+
 Exactly one variant resolves as selected for a file. Resolution uses the
 file's explicit `selected_config_id` when that variant exists, then the viewing
 folder's default configuration when that variant exists for the file, then the
@@ -691,6 +716,22 @@ bound, not a new one introduced here.
 following the `searchQuery`/`photosListQuery` pattern; the renderer
 consumption (grid, media chip, subnav, placeholders) is out of scope for this
 track.
+
+### Offset pagination — sanctioned ADR-0003 deviation (dated 2026-08-03)
+
+`GET /api/search`, `GET /api/photos/list` and `GET /api/photos/search` still
+paginate with raw `offset`/`limit` (`searchInputSchema`,
+`photosListInputSchema`, `photosSearchInputSchema` in
+`core/contract/routes.ts`), not the opaque cursor
+[ADR-0003 §(d)](decisions/0003-sqlite-data-conventions.md) requires for list
+endpoints. This is a named, reviewed exception, not silent drift: the CLI and
+renderer both call these routes as their live wire contract, so rewriting
+them is a breaking change out of scope here. `GET /api/library/collection`
+above already paginates with an opaque cursor and is the intended eventual
+replacement once every caller has migrated onto it — see the ADR-0003
+addendum for the full per-route rationale and the `doc-lint` rule that fails
+`check` if a fourth offset-paginated list route is added without being named
+there.
 
 ### The layout layer (page skeletons)
 

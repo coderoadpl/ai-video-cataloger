@@ -290,6 +290,10 @@ class InMemoryCatalogRepositoryFactory implements CatalogRepositoryFactory {
     this.repositories.set(folder, created);
     return Promise.resolve(ok(created));
   }
+
+  openIfExists(folder: string): Promise<Result<CatalogRepository | null, AppError>> {
+    return Promise.resolve(ok(this.repositories.get(folder) ?? null));
+  }
 }
 
 class InMemoryCatalogRepository implements CatalogRepository {

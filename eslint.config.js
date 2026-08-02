@@ -83,6 +83,22 @@ const WEB_SYNTAX_BANS = [
   QUERY_KEY_BAN,
 ];
 
+/**
+ * TODO(2026-08-03, W34a board 6hGPrcF4P3VGMCGm): these already use
+ * window.localStorage directly, predating the WINDOW_STORAGE_BAN rule below.
+ * Migration onto apps/web/src/lib/persistent-storage.ts is blocked here by
+ * the concurrent W36/W37 renderer waves owning apps/web/src/features/**;
+ * drop each entry as its owning file migrates.
+ */
+const LEGACY_WINDOW_STORAGE_FILES = [
+  'apps/web/src/AppLayout.tsx',
+  'apps/web/src/features/shell/use-mode-preference.ts',
+  'apps/web/src/features/catalog/use-scope-preference.ts',
+  'apps/web/src/features/library/use-search-suggestions.ts',
+  'apps/web/src/features/library/LibraryView.tsx',
+  'apps/web/src/features/photos/use-photos-analysis.ts',
+];
+
 const NO_HTTP = 'No direct HTTP in apps/web: go through core/client descriptors via TanStack Query.';
 const HTTP_GLOBALS = ['fetch', 'XMLHttpRequest', 'EventSource', 'WebSocket'].map((name) => ({
   name,
@@ -97,6 +113,23 @@ const STORAGE_GLOBALS = ['localStorage', 'sessionStorage'].map((name) => ({
   name,
   message: STORAGE_MESSAGE,
 }));
+const WINDOW_STORAGE_BAN = {
+  selector: 'MemberExpression[object.name="window"][property.name=/^(localStorage|sessionStorage)$/]',
+  message: STORAGE_MESSAGE,
+};
+
+const RENDERER_GLOBAL_BANS = [
+  {
+    name: 'process',
+    message: 'No Node process global in the renderer (apps/web is browser-only): read config through the composed bridge, never a Node global.',
+  },
+  {
+    name: 'ipcRenderer',
+    message: 'No raw ipcRenderer in the renderer: use the bound preload bridge exposed on window, never electron IPC directly.',
+  },
+];
+
+const RENDERER_SYNTAX_BANS = [...WEB_SYNTAX_BANS, RAW_COLOR_BAN];
 
 const STATE_LIB_MESSAGE =
   'Global state libraries are banned: server state lives in TanStack Query, UI state stays local (React 19 / compiler).';
@@ -188,7 +221,6 @@ export default tseslint.config(
       'dist-electron/**',
       'build/**',
       'release/**',
-      'test/**',
       'visual/**',
       'scripts/ralph/**',
       'landing/**',
@@ -550,6 +582,30 @@ export default tseslint.config(
     },
   },
   {
+    // test/ is a Playwright/vitest e2e+CLI harness, not part of the app's
+    // TS project (tsconfig.json excludes it): its own tsconfig.json gives
+    // type-aware rules a program to run against.
+    files: ['test/**/*.ts'],
+    languageOptions: {
+      parserOptions: {
+        projectService: false,
+        project: ['./test/tsconfig.json'],
+        tsconfigRootDir: import.meta.dirname,
+      },
+    },
+  },
+  {
+    // TODO(2026-08-03, W34a board 6hGPrcF4P3VGMCGm): `as`-casts on parsed CLI
+    // NDJSON payloads (typed `unknown` at the boundary) are pervasive in
+    // test/cli; narrowing every one is out of scope for bringing test/ under
+    // lint in this session. Only test/cli needs it — the rest of test/ keeps
+    // the full ban, and `any` stays banned everywhere.
+    files: ['test/cli/**/*.ts'],
+    rules: {
+      'no-restricted-syntax': ['error', NFC_NORMALIZE_BAN],
+    },
+  },
+  {
     files: ['apps/web/**/*.{ts,tsx}'],
     plugins: {
       '@tanstack/query': tanstackQuery,
@@ -578,7 +634,7 @@ export default tseslint.config(
       'react-hooks/rules-of-hooks': 'error',
       'react/no-unstable-nested-components': 'error',
       'no-console': ['error', { allow: ['warn', 'error'] }],
-      'no-restricted-globals': ['error', ...HTTP_GLOBALS, ...STORAGE_GLOBALS],
+      'no-restricted-globals': ['error', ...HTTP_GLOBALS, ...STORAGE_GLOBALS, ...RENDERER_GLOBAL_BANS],
       'no-restricted-imports': [
         'error',
         {
@@ -592,7 +648,20 @@ export default tseslint.config(
           patterns: [QUERY_CLIENT_SINGLETON_PATTERN, MUI_SKELETON_DEEP_BAN],
         },
       ],
-      'no-restricted-syntax': ['error', ...WEB_SYNTAX_BANS, RAW_COLOR_BAN],
+      'no-restricted-syntax': ['error', ...RENDERER_SYNTAX_BANS, WINDOW_STORAGE_BAN],
+    },
+  },
+  {
+    files: LEGACY_WINDOW_STORAGE_FILES,
+    rules: {
+      'no-restricted-syntax': ['error', ...RENDERER_SYNTAX_BANS],
+    },
+  },
+  {
+    files: ['apps/web/src/lib/persistent-storage.ts'],
+    rules: {
+      'no-restricted-globals': ['error', ...HTTP_GLOBALS, ...RENDERER_GLOBAL_BANS],
+      'no-restricted-syntax': ['error', ...RENDERER_SYNTAX_BANS],
     },
   },
   {
@@ -629,7 +698,7 @@ export default tseslint.config(
   {
     files: ['apps/web/src/api.ts'],
     rules: {
-      'no-restricted-globals': ['error', ...HTTP_GLOBALS_EXCEPT_FETCH, ...STORAGE_GLOBALS],
+      'no-restricted-globals': ['error', ...HTTP_GLOBALS_EXCEPT_FETCH, ...STORAGE_GLOBALS, ...RENDERER_GLOBAL_BANS],
       'no-restricted-imports': [
         'error',
         {
@@ -660,7 +729,7 @@ export default tseslint.config(
     files: ['apps/web/src/features/*/core/**/*.{ts,tsx}'],
     ignores: ['apps/web/src/features/*/core/**/*.test.{ts,tsx}'],
     rules: {
-      'no-restricted-globals': ['error', ...HTTP_GLOBALS, ...STORAGE_GLOBALS, ...ISLAND_CORE_DOM_GLOBALS],
+      'no-restricted-globals': ['error', ...HTTP_GLOBALS, ...STORAGE_GLOBALS, ...ISLAND_CORE_DOM_GLOBALS, ...RENDERER_GLOBAL_BANS],
       'no-restricted-imports': [
         'error',
         {

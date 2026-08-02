@@ -23,6 +23,23 @@ release history jumps from `0.5.10` to `0.5.12`.
   (`FilterBar`, `library/core/filter-state.ts`'s pre-existing `folderId`
   filter and chip plumbing). No contract change: `searchInputSchema` already
   accepted `folderId`.
+- The server composition edge (`apps/server/src/app.ts`) now registers a
+  Hono `onError` handler: a route handler that throws an unmodelled error
+  returns the standard `{ ok: false, error }` contract envelope (`internal`,
+  HTTP 500) instead of Hono's bare-text default response.
+- `scripts/doc-lint.ts` fails `check` if any new list-route input schema in
+  `core/contract/routes.ts` adds an `offset` field without being named in a
+  reviewed ADR-0003 deviation list; `searchInputSchema`,
+  `photosListInputSchema` and `photosSearchInputSchema` are the three named,
+  documented exceptions (see the ADR-0003 addendum).
+- New renderer lint rules: `window.localStorage`/`window.sessionStorage`
+  member access is banned outside `apps/web/src/lib/persistent-storage.ts`
+  (the designated persistence helper) and a dated list of pre-existing call
+  sites; bare `process`/`ipcRenderer` globals are banned across the renderer.
+  `test/**` is now linted (`any` banned everywhere; `as`-casts on parsed CLI
+  NDJSON payloads allowed under a dated exception scoped to `test/cli`).
+- `FOUNDATION.md` records the upstream agentproofarch fork point and points
+  to `docs/architecture.md` for the delta.
 
 ### Removed
 
@@ -36,6 +53,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- `vitest.config.ts` coverage thresholds (the `check` ratchet floor) raised
+  to the currently measured levels: statements/lines 86%, branches 83%,
+  functions 81%.
 - The Analysis sidebar now reflects the real hierarchy top to bottom: the
   folder identity block (name, path and Open Folder with its recent-folders
   menu) sits at the top of the sidebar, above the
@@ -50,6 +70,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- `GET /api/scan` no longer creates `{folder}/.ai-video-cataloger/catalog.db`
+  for a folder it only reads: the read path now opens the legacy per-folder
+  catalog only if it already exists (`CatalogRepositoryFactory.openIfExists`),
+  while the write flows (process/process-drive/status/reset) still create it
+  as before. The folder-identity marker write on a first scan is unchanged.
 - Silent-failure fixes across desktop and web: `folder:setCurrent` now returns
   an explicit ok/error result instead of resolving silently on an invalid path
   (surfaced via the folder-error snackbar); the wizard's language step, the

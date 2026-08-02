@@ -73,3 +73,40 @@ offset-paginated list endpoint may be added.
 - The cursor-grammar rule (d) has no code to guard yet — it is a forward
   contract; doc-lint keeps the promise recorded so the first list endpoint
   honours it.
+
+## Addendum (2026-08-03): sanctioned offset-pagination deviation
+
+Three list-route input schemas in `core/contract/routes.ts` paginate with
+`offset`/`limit`, not an opaque cursor, and are a deliberate, named exception
+to (d) rather than an unnoticed drift:
+
+- `searchInputSchema` (`GET /api/search`) — predates this ADR (2026-07-22
+  vs. 2026-07-25) and was grandfathered rather than migrated.
+- `photosListInputSchema` (`GET /api/photos/list`) and
+  `photosSearchInputSchema` (`GET /api/photos/search`) — added 2026-07-30,
+  after this ADR, and slipped through because (d) had no code anchor yet (see
+  Consequences above) — a real gap, not a considered exception, closed by the
+  doc-lint rule below.
+
+**Why not fixed now.** All three are load-bearing wire contracts: the CLI
+(`apps/cli/src/main.ts`, `apps/cli/src/photos-human.ts`) and the renderer
+(`apps/web/src/api.ts`, `core/client/queries.ts`) call them directly, and
+`photosListOutputSchema`/`searchOutputSchema` shape UI state keyed on a
+numeric `offset`. Rewriting them to opaque-cursor pagination is a breaking
+wire-contract change, not a doc fix, and is out of scope for a
+conformance-gates wave.
+
+**Migration intent.** `GET /api/library/collection`
+(`collectionInputSchema`/`core/server/usecases/collection.ts`, added after
+these three) already paginates with the opaque composite-offset `cursor` (d)
+calls for, and covers both video and photo search/browse. The intended
+migration is for the renderer's Library/Photos surfaces and the CLI to move
+onto `collection` and for `searchQuery`/`photosList`/`photosSearch` to be
+deprecated once every caller has moved, rather than for the three to grow a
+cursor mode in place.
+
+**Teeth.** `scripts/doc-lint.ts` fails `check` if any *new* list-route input
+schema in `core/contract/routes.ts` adds an `offset` field without being
+named in `OFFSET_PAGINATION_DEVIATIONS` — so a fourth offset-paginated list
+endpoint requires either a cursor design or an explicit, reviewed addition to
+this list, not a silent copy-paste of `photosListInputSchema`.

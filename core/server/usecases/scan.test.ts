@@ -228,6 +228,28 @@ describe('scanFolder', () => {
     });
   });
 
+  it('never opens a catalog for a folder it merely reads and has no catalog yet', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/fresh.mov', { size: 512, hash: 'fresh-hash' });
+    const catalogs = new InMemoryCatalogs([], fs);
+
+    const result = await scanFolder({ catalogs, fs, media: new InMemoryMedia() }, { folder: '/videos' });
+
+    expect(result).toMatchObject({ ok: true, value: { databasePath: null } });
+    expect(catalogs.openInputs).toEqual([]);
+  });
+
+  it('never opens a catalog when the cached scan path finds no cache and no prior catalog', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/fresh.mov', { size: 512, hash: 'fresh-hash' });
+    const catalogs = new InMemoryCatalogs([], fs);
+
+    const result = await cachedScanFolder({ catalogs, fs, media: new InMemoryMedia() }, { folder: '/videos' });
+
+    expect(result).toMatchObject({ ok: true, value: { databasePath: null, videos: [] } });
+    expect(catalogs.openInputs).toEqual([]);
+  });
+
   it('writes the folder identity marker when scanning a writable folder', async () => {
     const fs = new InMemoryFileSystem('/videos');
     fs.addFile('/videos/clip.mp4', { size: 2048, hash: 'hash-1' });
