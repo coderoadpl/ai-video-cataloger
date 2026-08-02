@@ -14,16 +14,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
-### Added
-
-- `GET /api/library/preview?fingerprint=` returns file size, duration, the selected variant's transcript and the observed people for a video, backing a read-only Library preview info panel that now shows everything the Analysis details view shows (transcript, description, tags, place, coordinates, capturedAt, file name/path, duration/size, people) for the selected variant, with no variant picker. `GlobalCatalogStore` gains `listPeopleForFile`.
-
-### Fixed
-
-- Grid-thumbnail generation is now resolution-and-provenance aware: it never treats the small 128x72 cover (or any source below the 512px grid floor) as an acceptable source, prefers the stored analysis frame, falls back to a source-video/original-photo seek when the drive is reachable and the frame is degraded, and otherwise removes a stale `.grid.jpg` rather than upscale it. An already-generated grid thumb is regenerated once a better source becomes reachable, even without `--force`.
-- Library and photo tiles render the small cover `contain` (honestly small, letterboxed) when no grid thumbnail exists, instead of crop-upscaling a 128px cover into the 168px tile, and a search row no longer reports a `gridThumbnailPath` for a grid thumb that was not produced.
-
-## [0.6.5] - 2026-08-02
+## [0.6.6] - 2026-08-02
 
 ### Added
 
@@ -36,7 +27,21 @@ release history jumps from `0.5.10` to `0.5.12`.
   every target entry the source does not provide (`credentials.json`,
   `photo-artifacts/`, `models/`, …) while naming in the plan what the source
   overwrites. See
-  [docs/qa/consolidation-runbook.md](docs/qa/consolidation-runbook.md).
+  [docs/qa/consolidation-runbook.md](docs/qa/consolidation-runbook.md)
+  ([`17e07a0`](https://github.com/coderoadpl/ai-video-cataloger/commit/17e07a04805d9345836d02f58b54b5936830a4fa)).
+- `GET /api/library/preview?fingerprint=` returns file size, duration, the selected variant's transcript and the observed people for a video, backing a read-only Library preview info panel that now shows everything the Analysis details view shows (transcript, description, tags, place, coordinates, capturedAt, file name/path, duration/size, people) for the selected variant, with no variant picker. `GlobalCatalogStore` gains `listPeopleForFile`
+  ([`6885607`](https://github.com/coderoadpl/ai-video-cataloger/commit/68856076489cc8b12ca1362ccb9e7b03cbb55960)).
+
+### Fixed
+
+- Grid-thumbnail generation is now resolution-and-provenance aware: it never treats the small 128x72 cover (or any source below the 512px grid floor) as an acceptable source, prefers the stored analysis frame, falls back to a source-video/original-photo seek when the drive is reachable and the frame is degraded, and otherwise removes a stale `.grid.jpg` rather than upscale it. An already-generated grid thumb is regenerated once a better source becomes reachable, even without `--force`.
+- Library and photo tiles render the small cover `contain` (honestly small, letterboxed) when no grid thumbnail exists, instead of crop-upscaling a 128px cover into the 168px tile, and a search row no longer reports a `gridThumbnailPath` for a grid thumb that was not produced
+  ([`6885607`](https://github.com/coderoadpl/ai-video-cataloger/commit/68856076489cc8b12ca1362ccb9e7b03cbb55960)).
+
+## [0.6.5] - 2026-08-02
+
+### Added
+
 - `photos import-libra <artifacts-dir> --manifest <path> [--dry-run]` CLI command and `POST
   /api/photos/import-libra` route one-shot import descriptions, faces (shared `catalog.db`
   pool, unassigned) and timeline-sourced GPS from a PHOTO LIBRA session into the photos
