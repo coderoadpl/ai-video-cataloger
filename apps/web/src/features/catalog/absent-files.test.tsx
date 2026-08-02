@@ -57,6 +57,28 @@ describe('absent files section', () => {
     await waitFor(() => expect(forgetBodies).toEqual([{ fingerprint: 'fp-missing' }]));
   });
 
+  it('keeps the confirmation dialog open and surfaces an error when forgetting fails', async () => {
+    server.use(
+      catalogFolderOk([
+        { fingerprint: 'fp-missing', fileName: 'gone.mp4', finalName: null, missing: true, missingAt: 1738368000000 },
+      ]),
+      http.post('/api/index/forget', () => HttpResponse.json(
+        { ok: false, error: { code: 'internal', message: 'Could not forget gone.mp4' } },
+        { status: 500 },
+      )),
+    );
+
+    renderThemed(<AbsentFilesSection folder={FOLDER} />);
+
+    fireEvent.click(await screen.findByTestId('absent-files-toggle'));
+    fireEvent.click(screen.getByTestId('absent-file-forget'));
+    expect(await screen.findByText(en.catalog.forgetEntryConfirmTitle)).toBeDefined();
+    fireEvent.click(screen.getByTestId('absent-file-forget-confirm'));
+
+    expect(await screen.findByText('Could not forget gone.mp4')).toBeDefined();
+    expect(screen.getByText(en.catalog.forgetEntryConfirmTitle)).toBeDefined();
+  });
+
   it('disables forgetting absent entries when the catalog is locked', async () => {
     server.use(
       catalogFolderOk([

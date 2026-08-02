@@ -196,6 +196,46 @@ describe('useProcessing batch', () => {
     await waitFor(() => expect(processed).toEqual(['/v/good1.mp4', '/v/good2.mp4']));
   }, scaledTimeout(30_000));
 
+  it('surfaces a notice instead of silently dropping an analyze click during a busy run', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    const processed: string[] = [];
+    server.use(
+      http.post('/api/process', async ({ request }) => {
+        const { videoPath } = processBodySchema.parse(await request.json());
+        processed.push(videoPath);
+        return HttpResponse.json({ ok: true, data: { jobId: `job:${videoPath}` } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({
+          ok: true,
+          data: { ...jobSnapshot(jobId), status: 'running', error: null },
+        });
+      }),
+    );
+    const addLine = vi.fn();
+    const { result } = renderHook(() => useProcessing({ videos, addLine, intervalMs: 1 }), { wrapper });
+    const first = videos[1];
+    const second = videos[2];
+    if (first === undefined || second === undefined) throw new Error('Expected processing fixtures');
+
+    act(() => {
+      result.current.analyze(first);
+    });
+    await waitFor(() => expect(processed).toEqual(['/v/good1.mp4']));
+    addLine.mockClear();
+
+    act(() => {
+      result.current.analyze(second);
+    });
+
+    expect(processed).toEqual(['/v/good1.mp4']);
+    expect(addLine).toHaveBeenCalledWith(expect.stringContaining('already running'), 'info');
+  });
+
   it('reports the renamed path after a completed analysis so selection can follow', async () => {
     const queryClient = createTestQueryClient();
     const wrapper = ({ children }: { children: ReactNode }) => (

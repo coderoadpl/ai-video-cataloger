@@ -1,4 +1,4 @@
-import { Box, FormControl, InputLabel, MenuItem, Select, Typography } from '@mui/material';
+import { Alert, Box, FormControl, InputLabel, MenuItem, Select, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { WizardController } from './use-wizard.js';
@@ -55,6 +55,11 @@ export const LanguageStep = ({ controller }: { controller: WizardController }) =
       <Typography variant="caption" color="text.secondary">
         {dictionary.language.outputHelper}
       </Typography>
+      {controller.validation === 'error' && controller.validationMessage !== null ? (
+        <Alert severity="error" data-testid="language-validation-error">
+          {controller.validationMessage}
+        </Alert>
+      ) : null}
     </Box>
   );
 };

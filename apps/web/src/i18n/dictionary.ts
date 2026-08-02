@@ -431,6 +431,7 @@ export interface Dictionary {
     setupIncomplete: string;
     startingAnalysis: (filename: string) => string;
     noPendingVideos: string;
+    analysisBusy: string;
     batchStart: (count: number) => string;
     batchCancelled: (processed: number, total: number) => string;
     batchProcessing: (current: number, total: number, filename: string) => string;
@@ -721,6 +722,7 @@ export interface Dictionary {
     cancelAnalysisAction: string;
     analysisCancelled: string;
     analysisNone: string;
+    analyzeUnavailable: string;
     detailDescription: string;
     detailScene: string;
     detailQuality: string;
@@ -1291,6 +1293,7 @@ export const en: Dictionary = {
     setupIncomplete: 'Processing setup is incomplete. Open Settings or run the Setup Wizard.',
     startingAnalysis: (filename) => `Starting analysis of ${filename}…`,
     noPendingVideos: 'No pending videos to analyze',
+    analysisBusy: 'Another analysis is already running. Wait for it to finish before starting a new one.',
     batchStart: (count) => `=== Starting batch analysis of ${String(count)} video(s) ===`,
     batchCancelled: (processed, total) => `Batch processing cancelled. Processed ${String(processed)} of ${String(total)} videos.`,
     batchProcessing: (current, total, filename) => `[${String(current)}/${String(total)}] Processing: ${filename}`,
@@ -1599,6 +1602,7 @@ export const en: Dictionary = {
     cancelAnalysisAction: 'Cancel analysis',
     analysisCancelled: 'Analysis cancelled by user',
     analysisNone: 'Not analysed yet.',
+    analyzeUnavailable: 'Select a photo whose folder has been scanned before analyzing.',
     detailDescription: 'Description',
     detailScene: 'Scene',
     detailQuality: 'Quality',
@@ -2178,6 +2182,7 @@ export const pl: Dictionary = {
     setupIncomplete: 'Konfiguracja przetwarzania jest niepełna. Otwórz Ustawienia albo uruchom Kreator konfiguracji.',
     startingAnalysis: (filename) => `Rozpoczynanie analizy ${filename}…`,
     noPendingVideos: 'Brak oczekujących filmów do analizy',
+    analysisBusy: 'Inna analiza jest już w toku. Poczekaj na jej zakończenie przed rozpoczęciem nowej.',
     batchStart: (count) => `=== Rozpoczynanie analizy wsadowej ${String(count)} film(ów) ===`,
     batchCancelled: (processed, total) => `Przetwarzanie wsadowe anulowane. Przetworzono ${String(processed)} z ${String(total)} filmów.`,
     batchProcessing: (current, total, filename) => `[${String(current)}/${String(total)}] Przetwarzanie: ${filename}`,
@@ -2486,6 +2491,7 @@ export const pl: Dictionary = {
     cancelAnalysisAction: 'Anuluj analizę',
     analysisCancelled: 'Analiza anulowana przez użytkownika',
     analysisNone: 'Jeszcze nie przeanalizowano.',
+    analyzeUnavailable: 'Wybierz zdjęcie, którego folder został już zeskanowany, aby rozpocząć analizę.',
     detailDescription: 'Opis',
     detailScene: 'Scena',
     detailQuality: 'Jakość',

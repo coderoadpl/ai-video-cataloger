@@ -252,7 +252,10 @@ export const useProcessing = ({
 
   const analyze = useCallback(
     (video: ProcessVideo, options?: { force?: boolean }) => {
-      if (busyRef.current) return;
+      if (busyRef.current) {
+        addLine(dictionary.processing.analysisBusy, 'info');
+        return;
+      }
       busyRef.current = true;
       cancelBatchRef.current = false;
       void (async () => {

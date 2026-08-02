@@ -31,6 +31,13 @@ export type Unsubscribe = () => void;
 
 export type FolderChangedHandler = (payload: { folderPath: string }) => void;
 
+export const folderSetCurrentResultSchema = z.discriminatedUnion('ok', [
+  z.object({ ok: z.literal(true) }),
+  z.object({ ok: z.literal(false), error: z.string() }),
+]);
+
+export type FolderSetCurrentResult = z.infer<typeof folderSetCurrentResultSchema>;
+
 export interface FolderStoreBridge {
   showPicker(purpose?: 'video' | 'photos'): Promise<string | null>;
   getCurrent(): Promise<string | null>;

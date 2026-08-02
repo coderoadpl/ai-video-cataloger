@@ -45,7 +45,8 @@ export class FolderStore {
   }
 
   async clearRecent(): Promise<void> {
-    await this.save(defaultFolderStore());
+    const store = await this.load();
+    await this.save({ currentFolder: store.currentFolder, recentFolders: [] });
   }
 
   private async load(): Promise<FolderStoreData> {

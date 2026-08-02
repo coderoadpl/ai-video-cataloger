@@ -140,4 +140,21 @@ describe('FacesIndexAction', () => {
     await waitFor(() => expect(addLine).toHaveBeenCalledWith('Face grouping index is updated', 'success'));
     expect(indexBody).toEqual({ root: FOLDER });
   });
+
+  it('surfaces a failed faces index job via a visible alert instead of only the terminal', async () => {
+    stubFaces({ facesEnabled: true, artifactsReady: true });
+    server.use(
+      http.post('/api/faces/index', () => HttpResponse.json(
+        { ok: false, error: { code: 'internal', message: 'index build crashed' } },
+        { status: 500 },
+      )),
+    );
+
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).toBeNull());
+    fireEvent.click(screen.getByTestId('people-index'));
+
+    expect((await screen.findByTestId('people-index-error')).textContent).toContain('index build crashed');
+  });
 });

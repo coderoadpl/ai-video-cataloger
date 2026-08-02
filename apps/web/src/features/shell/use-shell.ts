@@ -16,6 +16,7 @@ export interface ShellState {
   folderError: string | null;
   openFolder: () => void;
   selectRecentFolder: (folderPath: string) => void;
+  clearRecentFolders: () => void;
   nestedDb: NestedDbState;
   closeNestedDb: () => void;
   closeFolderError: () => void;
@@ -58,19 +59,16 @@ export const useShell = (): ShellState => {
       setIsCheckingFolder(true);
       setFolderError(null);
       try {
-        try {
-          const check = await queryClient.fetchQuery(actions.check({ folder: folderPath }));
-          if (check.hasNestedDatabases) {
-            setNestedDb({ open: true, paths: check.nestedPaths });
-            return;
-          }
-        } catch (error) {
-          setFolderError(error instanceof Error ? error.message : String(error));
+        const check = await queryClient.fetchQuery(actions.check({ folder: folderPath }));
+        if (check.hasNestedDatabases) {
+          setNestedDb({ open: true, paths: check.nestedPaths });
           return;
         }
         await bridge.folder.setCurrent(folderPath);
         await refreshFolders();
         setFolderAcceptedToken((token) => token + 1);
+      } catch (error) {
+        setFolderError(error instanceof Error ? error.message : String(error));
       } finally {
         setIsCheckingFolder(false);
       }
@@ -86,8 +84,12 @@ export const useShell = (): ShellState => {
 
   const openFolder = useCallback(() => {
     void (async () => {
-      const picked = await bridge.folder.showPicker();
-      if (picked !== null) await acceptFolder(picked);
+      try {
+        const picked = await bridge.folder.showPicker();
+        if (picked !== null) await acceptFolder(picked);
+      } catch (error) {
+        setFolderError(error instanceof Error ? error.message : String(error));
+      }
     })();
   }, [acceptFolder]);
 
@@ -100,8 +102,12 @@ export const useShell = (): ShellState => {
 
   const clearRecentFolders = useCallback(() => {
     void (async () => {
-      await bridge.folder.clearRecent();
-      await refreshFolders();
+      try {
+        await bridge.folder.clearRecent();
+        await refreshFolders();
+      } catch (error) {
+        setFolderError(error instanceof Error ? error.message : String(error));
+      }
     })();
   }, [refreshFolders]);
 
@@ -124,6 +130,7 @@ export const useShell = (): ShellState => {
     folderError,
     openFolder,
     selectRecentFolder,
+    clearRecentFolders,
     nestedDb,
     closeNestedDb,
     closeFolderError,

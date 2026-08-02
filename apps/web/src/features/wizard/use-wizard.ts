@@ -301,8 +301,16 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   );
 
   const advanceLanguage = useCallback(async (): Promise<void> => {
-    await writeConfig('output_language', outputLanguage);
-    setStep('analyzer');
+    setValidation('testing');
+    setValidationMessage(null);
+    try {
+      await writeConfig('output_language', outputLanguage);
+      setValidation('ok');
+      setStep('analyzer');
+    } catch (error) {
+      setValidation('error');
+      setValidationMessage(messageOf(error));
+    }
   }, [writeConfig, outputLanguage]);
 
   const persistAnalyzer = useCallback(

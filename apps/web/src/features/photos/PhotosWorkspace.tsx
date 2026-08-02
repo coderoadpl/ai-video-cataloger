@@ -58,6 +58,7 @@ export const PhotosWorkspace = ({ active, state, topStrip }: PhotosWorkspaceProp
             onSelectVariant={state.selectVariant}
             onAnalyze={state.analyzePhotos}
             isBusy={state.isBusy}
+            canAnalyze={state.canAnalyze}
             analyzeProgress={state.analyzeProgress}
           />
         </Box>

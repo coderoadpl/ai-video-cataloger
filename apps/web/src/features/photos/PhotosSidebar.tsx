@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { alpha, Box, Button, CircularProgress, List, ListItemButton, Tooltip, Typography, type SvgIconProps } from '@mui/material';
+import { alpha, Alert, Box, Button, CircularProgress, List, ListItemButton, Tooltip, Typography, type SvgIconProps } from '@mui/material';
 
 import { type AnalysisMedia, AnalysisMediaToggle } from '../../components/ui/AnalysisMediaToggle.js';
 import { CheckCircleIcon, ContentCopyIcon, ErrorIcon, ImageNotSupportedIcon, WarningIcon } from '../../components/ui/icons.js';
@@ -180,6 +180,12 @@ export const PhotosSidebar = ({
     </>
   );
 
+  const errorStrip = state.error === null ? null : (
+    <Alert severity="error" sx={{ mx: 2, mt: 1 }} data-testid="photos-job-error">
+      {state.error}
+    </Alert>
+  );
+
   if (state.isLoading && folderPanel !== 'no-folder') {
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -214,6 +220,7 @@ export const PhotosSidebar = ({
             {dictionary.photosSidebar.scanThisFolderCta}
           </Button>
         </Box>
+        {errorStrip}
       </Box>
     );
   }
@@ -226,6 +233,7 @@ export const PhotosSidebar = ({
       {toolbar === undefined ? null : (
         <Box sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: 'divider' }}>{toolbar}</Box>
       )}
+      {errorStrip}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {sections.length === 0 ? (
           <Centered>

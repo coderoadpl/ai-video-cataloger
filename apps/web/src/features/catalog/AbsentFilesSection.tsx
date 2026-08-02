@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import {
+  Alert,
   Box,
   Button,
   Collapse,
@@ -28,7 +29,7 @@ const lastSeenLabel = (missingAt: number): string => new Date(missingAt).toLocal
 
 export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
   const dictionary = useDictionary();
-  const { entries, forget, isForgetting } = useAbsentFiles(folder);
+  const { entries, forget, isForgetting, error } = useAbsentFiles(folder);
   const { disabledReason: lockReason } = useCatalogLock();
   const mutationsBlocked = lockReason !== undefined;
   const [open, setOpen] = useState(false);
@@ -102,6 +103,7 @@ export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
           <DialogContentText>
             {pending === null ? '' : dictionary.catalog.forgetEntryConfirmBody(pending.name)}
           </DialogContentText>
+          {error === null ? null : <Alert severity="error">{error}</Alert>}
         </DialogContent>
         <DialogActions>
           <Button color="inherit" onClick={() => setPending(null)}>
@@ -114,8 +116,11 @@ export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
             title={lockReason}
             data-testid="absent-file-forget-confirm"
             onClick={() => {
-              if (pending !== null) forget(pending.fingerprint);
-              setPending(null);
+              if (pending === null) return;
+              void (async () => {
+                const ok = await forget(pending.fingerprint);
+                if (ok) setPending(null);
+              })();
             }}
           >
             {dictionary.catalog.forgetEntryConfirm}

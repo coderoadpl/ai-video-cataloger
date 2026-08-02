@@ -30,6 +30,19 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Silent-failure fixes across desktop and web: `folder:setCurrent` now returns
+  an explicit ok/error result instead of resolving silently on an invalid path
+  (surfaced via the folder-error snackbar); the wizard's language step, the
+  shell's folder picker/clear-recent actions, and an Analyze click during a
+  running batch no longer swallow failures — each now surfaces an inline error
+  or terminal notice instead of a silent no-op; model download/activate/delete,
+  forgetting an absent file, photo scan/analyze/proxy jobs, photo variant
+  selection, and the faces index job now surface an inline error alongside the
+  terminal log instead of terminal-only; the photo Analyze action disables with
+  a reason instead of no-op when the target folder hasn't been scanned; the
+  folder-error snackbar no longer dismisses on an outside click (autoHides
+  after 8s or an explicit dismiss); and "Clear Recent" in the folder menu no
+  longer wipes the currently open folder, only the recent-folders list.
 - Library tiles, the folder-group header and the browse preview now say
   "file missing"/"brak pliku" instead of "drive not connected"/"dysk
   niepodłączony" when a catalogued folder was deleted while its drive stayed

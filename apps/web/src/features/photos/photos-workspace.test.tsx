@@ -188,6 +188,28 @@ describe('PhotosWorkspace', () => {
     expect(screen.queryByTestId('photos-analyze-strip')).toBeNull();
   });
 
+  it('disables the analyze action instead of a silent no-op when canAnalyze is false', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001' })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    const analyzePhotos = vi.fn();
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({
+        items,
+        selectedFingerprint: 'ph_0000000000000001',
+        detail: detailFor(firstItem),
+        canAnalyze: false,
+        analyzePhotos,
+      })}
+    />);
+
+    const button = screen.getByTestId('photos-analyze-action');
+    expect(button.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button);
+    expect(analyzePhotos).not.toHaveBeenCalled();
+  });
+
   it('renders tag chips without a dead click target — search over photos lives in the Library', () => {
     const items = [item({ fingerprint: 'ph_0000000000000001', analysed: true })];
     const firstItem = items[0];

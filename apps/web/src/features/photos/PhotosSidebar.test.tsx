@@ -139,6 +139,36 @@ describe('PhotosSidebar', () => {
     expect(onShowInLibrary).toHaveBeenCalledWith('/media');
   });
 
+  it('renders a scan/analyze/proxy job failure as an inline error strip, not just the terminal', () => {
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({ error: 'Analyze failed: ffmpeg exploded' })}
+        onShowInLibrary={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('photos-job-error').textContent).toContain('Analyze failed: ffmpeg exploded');
+  });
+
+  it('renders a failed scan of an unscanned folder as an inline error strip', () => {
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({
+          roots: [],
+          folder: '/a/b',
+          folderState: 'unscanned',
+          selectedRoot: null,
+          error: 'Scan failed: permission denied',
+        })}
+        onShowInLibrary={vi.fn()}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('photos-job-error').textContent).toContain('Scan failed: permission denied');
+  });
+
   it('row click selects the fingerprint and badges render per item state', () => {
     const selectFingerprint = vi.fn();
     const items = [

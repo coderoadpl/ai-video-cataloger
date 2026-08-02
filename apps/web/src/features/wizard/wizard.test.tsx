@@ -855,4 +855,15 @@ describe('SetupWizard', () => {
     await screen.findByTestId('wizard-step-analyzer');
     expect(recorders.configWrites).toContainEqual({ key: 'output_language', value: 'pl' });
   });
+
+  it('surfaces a failed language config write without advancing', async () => {
+    installHandlers({ rejectConfigKey: 'output_language' });
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await enterLanguageStep();
+
+    clickNext();
+
+    expect((await screen.findByTestId('language-validation-error')).textContent).toContain('output_language');
+    expect(screen.getByTestId('wizard-step-language')).toBeDefined();
+  });
 });

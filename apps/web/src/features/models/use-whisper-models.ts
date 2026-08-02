@@ -19,6 +19,7 @@ export interface WhisperDownloadProgress {
 export interface WhisperModelsState {
   isLoading: boolean;
   error: string | null;
+  actionError: string | null;
   models: WhisperModelEntry[];
   diskUsageLabel: string;
   isBusy: boolean;
@@ -58,6 +59,7 @@ export const useWhisperModels = ({
   const [downloadProgress, setDownloadProgress] = useState<WhisperDownloadProgress | null>(null);
   const [deletingModel, setDeletingModel] = useState<WhisperModelName | null>(null);
   const [activatingModel, setActivatingModel] = useState<WhisperModelName | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const isBusy = downloadProgress !== null || deletingModel !== null || activatingModel !== null;
   const refetch = listQuery.refetch;
@@ -65,6 +67,7 @@ export const useWhisperModels = ({
   const download = useCallback(
     (modelName: WhisperModelName) => {
       if (isBusy) return;
+      setActionError(null);
       setDownloadProgress({ modelName, percentage: 0 });
       addLine(dictionary.models.terminal.downloadingWhisper(modelName), 'info');
       void (async () => {
@@ -87,16 +90,17 @@ export const useWhisperModels = ({
             await queryClient.invalidateQueries();
             savedToastStore.show(dictionary.models.terminal.downloadedToast(modelName));
           } else {
-            addLine(
-              dictionary.models.terminal.failedDownload(
-                modelName,
-                final.error?.message ?? dictionary.models.terminal.unknownError,
-              ),
-              'error',
+            const message = dictionary.models.terminal.failedDownload(
+              modelName,
+              final.error?.message ?? dictionary.models.terminal.unknownError,
             );
+            addLine(message, 'error');
+            setActionError(message);
           }
         } catch (error) {
-          addLine(dictionary.models.terminal.failedDownload(modelName, messageOf(error)), 'error');
+          const message = dictionary.models.terminal.failedDownload(modelName, messageOf(error));
+          addLine(message, 'error');
+          setActionError(message);
         } finally {
           setDownloadProgress(null);
         }
@@ -108,6 +112,7 @@ export const useWhisperModels = ({
   const activate = useCallback(
     (modelName: WhisperModelName) => {
       if (isBusy) return;
+      setActionError(null);
       setActivatingModel(modelName);
       addLine(dictionary.models.terminal.settingActive(modelName), 'info');
       void (async () => {
@@ -118,7 +123,9 @@ export const useWhisperModels = ({
           await queryClient.invalidateQueries();
           savedToastStore.show(dictionary.wizard.controller.whisperModelActive(modelName));
         } catch (error) {
-          addLine(dictionary.models.terminal.failedActivate(modelName, messageOf(error)), 'error');
+          const message = dictionary.models.terminal.failedActivate(modelName, messageOf(error));
+          addLine(message, 'error');
+          setActionError(message);
         } finally {
           setActivatingModel(null);
         }
@@ -130,6 +137,7 @@ export const useWhisperModels = ({
   const remove = useCallback(
     (modelName: WhisperModelName) => {
       if (isBusy) return;
+      setActionError(null);
       setDeletingModel(modelName);
       addLine(dictionary.models.terminal.deletingModel(modelName), 'info');
       void (async () => {
@@ -140,7 +148,9 @@ export const useWhisperModels = ({
           await queryClient.invalidateQueries();
           savedToastStore.show(dictionary.models.terminal.deletedToast(modelName));
         } catch (error) {
-          addLine(dictionary.models.terminal.failedDelete(modelName, messageOf(error)), 'error');
+          const message = dictionary.models.terminal.failedDelete(modelName, messageOf(error));
+          addLine(message, 'error');
+          setActionError(message);
         } finally {
           setDeletingModel(null);
         }
@@ -154,6 +164,7 @@ export const useWhisperModels = ({
   return {
     isLoading: open && listQuery.isLoading,
     error: listQuery.error === null ? null : messageOf(listQuery.error),
+    actionError,
     models,
     diskUsageLabel: formatMb(whisperDiskUsageMb(models)),
     isBusy,

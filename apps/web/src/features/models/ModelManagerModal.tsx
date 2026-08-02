@@ -88,6 +88,11 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
                 </Box>
               ) : (
                 <>
+                  {whisper.actionError === null ? null : (
+                    <Alert severity="error" data-testid="whisper-action-error">
+                      {whisper.actionError}
+                    </Alert>
+                  )}
                   <Box
                     sx={{ display: 'flex', alignItems: 'center', gap: 1, color: 'text.secondary' }}
                     data-testid="whisper-disk-usage"

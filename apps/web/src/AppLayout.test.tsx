@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen } from '@testing-library/react';
-import { beforeEach, describe, expect, it } from 'vitest';
+import userEvent from '@testing-library/user-event';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppLayout, type TerminalPanelState } from './AppLayout.js';
 import { type LogLine } from './components/ui/use-terminal-log.js';
@@ -18,6 +19,7 @@ const stubShell: ShellState = {
   folderError: null,
   openFolder: () => undefined,
   selectRecentFolder: () => undefined,
+  clearRecentFolders: () => undefined,
   nestedDb: { open: false, paths: [] },
   closeNestedDb: () => undefined,
   closeFolderError: () => undefined,
@@ -147,6 +149,28 @@ describe('AppLayout composition', () => {
     );
 
     expect(screen.getByRole('alert').textContent).toContain('Folder no longer exists');
+  });
+
+  it('does not dismiss the folder error snackbar on an outside click', async () => {
+    const closeFolderError = vi.fn();
+    renderWithProviders(
+      <>
+        <div>outside</div>
+        <AppLayout
+          shell={{ ...stubShell, folderError: 'Folder no longer exists', closeFolderError }}
+          sidebar={<div />}
+          content={<div />}
+          mode="analysis"
+          onModeChange={() => undefined}
+          analysisMedia="videos"
+        />
+      </>,
+    );
+
+    await userEvent.click(screen.getByText('outside'));
+
+    expect(closeFolderError).not.toHaveBeenCalled();
+    expect(screen.getByRole('alert')).toBeDefined();
   });
 
   it('fills the banner slot above the content region', () => {

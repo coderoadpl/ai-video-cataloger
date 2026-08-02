@@ -16,6 +16,7 @@ import {
   desktopFetchRequestSchema,
   desktopFetchResponseSchema,
   type DesktopFetchResponse,
+  type FolderSetCurrentResult,
 } from '@core/contract/index.js';
 import type { App } from '@server/src/create-app.js';
 
@@ -91,15 +92,13 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
     return deps.folderStore.getCurrent();
   });
 
-  ipcMain.handle(CHANNELS.folderSetCurrent, async (event, folderPathInput: unknown): Promise<void> => {
-    if (!isTrustedSender(event)) return;
-    const folderPath = stringSchema.safeParse(folderPathInput);
-    if (!folderPath.success) return;
-    if (!(await isAbsoluteDirectory(folderPath.data))) return;
-    await deps.folderStore.setCurrent(folderPath.data);
-    void deps.folderWatch.watch(folderPath.data);
-    await updateMenu(deps);
-  });
+  ipcMain.handle(
+    CHANNELS.folderSetCurrent,
+    async (event, folderPathInput: unknown): Promise<FolderSetCurrentResult> => {
+      if (!isTrustedSender(event)) return { ok: false, error: 'Unauthorized IPC sender' };
+      return setFolderCurrent(deps, folderPathInput);
+    },
+  );
 
   ipcMain.handle(CHANNELS.folderGetRecent, async (event): Promise<string[]> => {
     if (!isTrustedSender(event)) return [];
@@ -202,8 +201,23 @@ export const cleanupIpcHandlers = (): void => {
   ipcMain.removeHandler(CHANNELS.onboardingSetCompleted);
 };
 
-const updateMenu = async (deps: IpcDeps): Promise<void> => {
+const updateMenu = async (deps: Pick<IpcDeps, 'getMainWindow' | 'folderStore'>): Promise<void> => {
   updateRecentFoldersMenu(deps.getMainWindow(), await deps.folderStore.getRecent());
+};
+
+export const setFolderCurrent = async (
+  deps: Pick<IpcDeps, 'folderStore' | 'folderWatch' | 'getMainWindow'>,
+  folderPathInput: unknown,
+): Promise<FolderSetCurrentResult> => {
+  const folderPath = stringSchema.safeParse(folderPathInput);
+  if (!folderPath.success) return { ok: false, error: 'Folder path must be a string' };
+  if (!(await isAbsoluteDirectory(folderPath.data))) {
+    return { ok: false, error: `Not a valid folder: ${folderPath.data}` };
+  }
+  await deps.folderStore.setCurrent(folderPath.data);
+  void deps.folderWatch.watch(folderPath.data);
+  await updateMenu(deps);
+  return { ok: true };
 };
 
 const isAbsoluteDirectory = async (folderPath: string): Promise<boolean> => {

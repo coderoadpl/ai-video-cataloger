@@ -33,6 +33,7 @@ export interface FacesIndexState {
   isLoading: boolean;
   isBusy: boolean;
   error: string | null;
+  actionError: string | null;
   indexFaces: () => void;
 }
 
@@ -51,10 +52,12 @@ export const useFacesIndex = ({
   const artifacts = useQuery({ ...actions.faceArtifacts, enabled: active && facesEnabled === true });
   const indexMutation = useMutation(actions.facesIndex);
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   const indexFaces = useCallback(() => {
     if (folder === null || activeJobLabel !== null) return;
     setActiveJobLabel(dictionary.people.indexingFacesLog);
+    setActionError(null);
     addLine(dictionary.people.indexingFacesLog, 'info');
     void (async () => {
       try {
@@ -70,10 +73,14 @@ export const useFacesIndex = ({
           addLine(dictionary.people.indexUpdatedLog, 'success');
           await queryClient.invalidateQueries();
         } else {
-          addLine(`${dictionary.people.indexFacesFailedLog}: ${final.error?.message ?? 'unknown error'}`, 'error');
+          const message = `${dictionary.people.indexFacesFailedLog}: ${final.error?.message ?? 'unknown error'}`;
+          addLine(message, 'error');
+          setActionError(message);
         }
       } catch (error) {
-        addLine(`${dictionary.people.indexFacesFailedLog}: ${messageOf(error)}`, 'error');
+        const message = `${dictionary.people.indexFacesFailedLog}: ${messageOf(error)}`;
+        addLine(message, 'error');
+        setActionError(message);
       } finally {
         setActiveJobLabel(null);
       }
@@ -90,6 +97,7 @@ export const useFacesIndex = ({
     isLoading: active && (config.isLoading || (facesEnabled === true && artifacts.isLoading)),
     isBusy: activeJobLabel !== null,
     error,
+    actionError,
     indexFaces,
   };
 };

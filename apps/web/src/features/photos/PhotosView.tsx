@@ -200,6 +200,7 @@ export const PhotosView = ({
       onSearchTag={photos.searchTag}
       onAnalyze={() => undefined}
       isBusy={false}
+      canAnalyze={false}
       analyzeProgress={null}
       onOpenInAnalysis={
         onOpenInAnalysis === undefined || photos.detail === null

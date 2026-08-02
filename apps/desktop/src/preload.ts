@@ -3,6 +3,7 @@ import { z } from 'zod';
 
 import {
   desktopFetchResponseSchema,
+  folderSetCurrentResultSchema,
   type DesktopBridge,
   type DesktopFetchResponse,
   type MenuEventHandler,
@@ -111,7 +112,8 @@ const desktopBridge: DesktopBridge = {
       z.string().nullable().parse(await invokeUnknown(CHANNELS.folderShowPicker, purpose)),
     getCurrent: async () => z.string().nullable().parse(await invokeUnknown(CHANNELS.folderGetCurrent)),
     setCurrent: async (folderPath) => {
-      await invokeUnknown(CHANNELS.folderSetCurrent, folderPath);
+      const result = folderSetCurrentResultSchema.parse(await invokeUnknown(CHANNELS.folderSetCurrent, folderPath));
+      if (!result.ok) throw new Error(result.error);
     },
     getRecent: async () => z.array(z.string()).parse(await invokeUnknown(CHANNELS.folderGetRecent)),
     removeRecent: async (folderPath) => {

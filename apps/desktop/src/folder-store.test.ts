@@ -53,6 +53,18 @@ describe('FolderStore', () => {
       recentFolders: ['/videos/a'],
     });
   });
+
+  it('keeps the current folder when clearing recent folders', async () => {
+    const storePath = path.join(await tempRoot(), 'folder-store.json');
+    const store = new FolderStore(storePath);
+    await store.setCurrent('/videos/a');
+    await store.setCurrent('/videos/b');
+
+    await store.clearRecent();
+
+    expect(await store.getCurrent()).toBe('/videos/b');
+    expect(await store.getRecent()).toEqual([]);
+  });
 });
 
 describe('trimRecentFolders', () => {

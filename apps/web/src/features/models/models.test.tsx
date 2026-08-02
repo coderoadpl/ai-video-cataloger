@@ -144,6 +144,21 @@ describe('model manager', () => {
     expect(downloadHit).toBe(true);
   });
 
+  it('surfaces a failed whisper model download as an inline alert, not just the terminal', async () => {
+    stubList();
+    server.use(
+      http.post('/api/models/whisper/download', () => HttpResponse.json(
+        { ok: false, error: { code: 'download_error', message: 'disk full' } },
+        { status: 502 },
+      )),
+    );
+    renderThemed(<ModelManagerModal open onClose={vi.fn()} addLine={vi.fn()} intervalMs={0} />);
+
+    fireEvent.click(await screen.findByTestId('whisper-download-button'));
+
+    expect((await screen.findByTestId('whisper-action-error')).textContent).toContain('disk full');
+  });
+
   it('installs the managed whisper runtime as a job', async () => {
     let installed = false;
     stubList();

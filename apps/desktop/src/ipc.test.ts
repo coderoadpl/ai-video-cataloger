@@ -1,9 +1,25 @@
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { Hono } from 'hono';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { App } from '@server/src/create-app.js';
 
-import { dispatchApiRequest } from './ipc.js';
+vi.mock('electron', () => ({
+  app: { name: 'AI Video Cataloger', isPackaged: false },
+  dialog: { showMessageBox: vi.fn() },
+  Menu: {
+    buildFromTemplate: vi.fn((template: unknown) => template),
+    setApplicationMenu: vi.fn(),
+  },
+  shell: { openExternal: vi.fn() },
+}));
+
+import { dispatchApiRequest, setFolderCurrent } from './ipc.js';
+import { FolderStore } from './folder-store.js';
+import { FolderWatchController } from './folder-watch.js';
 
 const unusedJob = async (): Promise<never> => {
   throw new Error('jobs port is not exercised by the api-request gate');
@@ -54,5 +70,53 @@ describe('deferred api-request gate', () => {
     await expect(dispatchApiRequest(composition, { url: '/status', method: 'GET' })).rejects.toThrow(
       'sql.js WASM init failed',
     );
+  });
+});
+
+const tempRoots: string[] = [];
+
+const tempRoot = async (): Promise<string> => {
+  const root = await mkdtemp(path.join(tmpdir(), 'avc-desktop-ipc-'));
+  tempRoots.push(root);
+  return root;
+};
+
+const buildFolderDeps = async () => {
+  const storePath = path.join(await tempRoot(), 'folder-store.json');
+  const folderStore = new FolderStore(storePath);
+  const folderWatch = new FolderWatchController({
+    desktopApp: Promise.resolve(buildDesktopApp()),
+    notify: () => undefined,
+  });
+  return { folderStore, folderWatch, getMainWindow: () => null };
+};
+
+describe('setFolderCurrent', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('returns an explicit failure instead of resolving silently when the path is not a string', async () => {
+    const deps = await buildFolderDeps();
+    const result = await setFolderCurrent(deps, 42);
+    expect(result).toEqual({ ok: false, error: 'Folder path must be a string' });
+    expect(await deps.folderStore.getCurrent()).toBeNull();
+  });
+
+  it('returns an explicit failure instead of resolving silently when the path is not a real directory', async () => {
+    const deps = await buildFolderDeps();
+    const missingPath = path.join(await tempRoot(), 'does-not-exist');
+    const result = await setFolderCurrent(deps, missingPath);
+    expect(result).toEqual({ ok: false, error: `Not a valid folder: ${missingPath}` });
+    expect(await deps.folderStore.getCurrent()).toBeNull();
+  });
+
+  it('persists the folder and returns ok on success', async () => {
+    const deps = await buildFolderDeps();
+    const validDir = await tempRoot();
+    const result = await setFolderCurrent(deps, validDir);
+    expect(result).toEqual({ ok: true });
+    expect(await deps.folderStore.getCurrent()).toBe(validDir);
   });
 });

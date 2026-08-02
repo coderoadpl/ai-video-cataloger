@@ -15,6 +15,7 @@ interface PhotoDetailPaneProps {
   onSearchTag?: ((tag: string) => void) | undefined;
   onAnalyze: () => void;
   isBusy: boolean;
+  canAnalyze: boolean;
   analyzeProgress: { current: number; total: number } | null;
   onOpenInAnalysis?: (() => void) | undefined;
 }
@@ -78,6 +79,7 @@ export const PhotoDetailPane = ({
   onSearchTag,
   onAnalyze,
   isBusy,
+  canAnalyze,
   analyzeProgress,
   onOpenInAnalysis,
 }: PhotoDetailPaneProps) => {
@@ -131,16 +133,19 @@ export const PhotoDetailPane = ({
                 color="inherit"
                 size="small"
                 onClick={onAnalyze}
-                disabled={isBusy}
+                disabled={isBusy || !canAnalyze}
+                title={canAnalyze ? undefined : dictionary.photos.analyzeUnavailable}
                 data-testid="photos-analyze-action"
               >
                 {dictionary.photos.analyzeAction}
               </Button>
             }
           >
-            {analyzeProgress === null
-              ? dictionary.photos.analysisNone
-              : dictionary.photos.analyzeProgress(analyzeProgress.current, analyzeProgress.total)}
+            {analyzeProgress !== null
+              ? dictionary.photos.analyzeProgress(analyzeProgress.current, analyzeProgress.total)
+              : canAnalyze
+                ? dictionary.photos.analysisNone
+                : dictionary.photos.analyzeUnavailable}
           </Alert>
         ) : (
           <Typography variant="body2" color="text.secondary">{dictionary.photos.analysisNone}</Typography>

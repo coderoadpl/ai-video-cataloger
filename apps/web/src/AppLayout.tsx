@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { Alert, Button, Snackbar, Typography } from '@mui/material';
+import { Alert, Button, Snackbar, Typography, type SnackbarCloseReason } from '@mui/material';
 
 import {
   AppShell,
@@ -250,7 +250,13 @@ export const AppLayout = ({
         paths={shell.nestedDb.paths}
         onClose={shell.closeNestedDb}
       />
-      <Snackbar open={shell.folderError !== null} onClose={shell.closeFolderError}>
+      <Snackbar
+        open={shell.folderError !== null}
+        autoHideDuration={8000}
+        onClose={(_event, reason: SnackbarCloseReason) => {
+          if (reason !== 'clickaway') shell.closeFolderError();
+        }}
+      >
         <Alert severity="error" onClose={shell.closeFolderError}>{shell.folderError}</Alert>
       </Snackbar>
       {overlays}

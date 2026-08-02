@@ -583,4 +583,90 @@ describe('usePhotosAnalysis', () => {
     expect(result.current.cancelConfirmation.open).toBe(false);
     await waitFor(() => expect(cancelledJobId).toBe('job-1'));
   });
+
+  it('surfaces an analyze job failure through the returned error, not just the terminal', async () => {
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'failed',
+          progress: null,
+          progressEvents: [],
+          error: { code: 'processing_error', message: 'ffmpeg exploded' },
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      })),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.analyzePhotos());
+
+    await waitFor(() => expect(result.current.error).toContain('ffmpeg exploded'));
+  });
+
+  it('surfaces a variant selection failure instead of leaving it fire-and-forget', async () => {
+    const fingerprint = 'ph_0000000000000001';
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint, currentPath: '/media/a.jpg' })]);
+    stubStatus();
+    server.use(
+      http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })),
+      http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })),
+      http.post('/api/photos/variants/select', () => HttpResponse.json(
+        { ok: false, error: { code: 'variant_not_found', message: 'unknown variant' } },
+        { status: 404 },
+      )),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.selectFingerprint(fingerprint));
+    await waitFor(() => expect(result.current.selectedFingerprint).toBe(fingerprint));
+
+    act(() => result.current.selectVariant('cfg_000000000404'));
+
+    await waitFor(() => expect(result.current.error).toContain('unknown variant'));
+  });
+
+  it('clears a stale variant selection error once a later selection succeeds', async () => {
+    const fingerprint = 'ph_0000000000000001';
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint, currentPath: '/media/a.jpg' })]);
+    stubStatus();
+    let selectAttempts = 0;
+    server.use(
+      http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })),
+      http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })),
+      http.post('/api/photos/variants/select', () => {
+        selectAttempts += 1;
+        if (selectAttempts === 1) {
+          return HttpResponse.json(
+            { ok: false, error: { code: 'variant_not_found', message: 'unknown variant' } },
+            { status: 404 },
+          );
+        }
+        return HttpResponse.json({ ok: true, data: { fingerprint, configId: null } });
+      }),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.selectFingerprint(fingerprint));
+    await waitFor(() => expect(result.current.selectedFingerprint).toBe(fingerprint));
+
+    act(() => result.current.selectVariant('cfg_000000000404'));
+    await waitFor(() => expect(result.current.error).toContain('unknown variant'));
+
+    act(() => result.current.selectVariant(null));
+
+    await waitFor(() => expect(result.current.error).toBeNull());
+  });
 });

@@ -98,6 +98,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   const [analyzeProgress, setAnalyzeProgress] = useState<{ current: number; total: number } | null>(null);
   const [processingFingerprints, setProcessingFingerprints] = useState<ReadonlySet<string>>(() => new Set());
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({ open: false, isBatch: false });
+  const [jobError, setJobError] = useState<string | null>(null);
   const [offset, setOffset] = useState(0);
   const [loadedItems, setLoadedItems] = useState<PhotoListItem[]>([]);
   const processingSetRef = useRef<Set<string>>(new Set());
@@ -181,6 +182,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     ) => {
       if (activeJobLabel !== null) return;
       setActiveJobLabel(label);
+      setJobError(null);
       addLine(label, 'info');
       void (async () => {
         try {
@@ -200,10 +202,14 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
             addLine(dictionary.photos.analysisCancelled, 'info');
             await invalidate();
           } else {
-            addLine(`${failure}: ${final.error?.message ?? 'unknown error'}`, 'error');
+            const message = `${failure}: ${final.error?.message ?? 'unknown error'}`;
+            addLine(message, 'error');
+            setJobError(message);
           }
         } catch (error) {
-          addLine(`${failure}: ${messageOf(error)}`, 'error');
+          const message = `${failure}: ${messageOf(error)}`;
+          addLine(message, 'error');
+          setJobError(message);
         } finally {
           setActiveJobLabel(null);
           onSettled?.();
@@ -329,17 +335,29 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     return dictionary.photos.analyzeProgress(analyzeProgress.current, analyzeProgress.total);
   }, [activeJobLabel, analyzeProgress, dictionary]);
 
-  const selectVariant = useCallback((configId: string | null) => {
-    if (selectedFingerprint === null) return;
-    selectVariantMutation.mutate({ fingerprint: selectedFingerprint, configId });
-  }, [selectedFingerprint, selectVariantMutation]);
+  const selectVariant = useCallback(
+    (configId: string | null) => {
+      if (selectedFingerprint === null) return;
+      setJobError(null);
+      void (async () => {
+        try {
+          await selectVariantMutation.mutateAsync({ fingerprint: selectedFingerprint, configId });
+        } catch (error) {
+          const message = `${dictionary.photos.variantPickerLabel}: ${messageOf(error)}`;
+          addLine(message, 'error');
+          setJobError(message);
+        }
+      })();
+    },
+    [addLine, dictionary, selectedFingerprint, selectVariantMutation],
+  );
 
   const error = useMemo(() => {
     for (const query of [tree, list]) {
       if (query.error !== null) return messageOf(query.error);
     }
-    return null;
-  }, [list, tree]);
+    return jobError;
+  }, [jobError, list, tree]);
 
   return {
     isLoading: active && (tree.isLoading || list.isLoading),
