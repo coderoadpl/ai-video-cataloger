@@ -349,6 +349,20 @@ Zdjęcia face become a Filmy/Zdjęcia toggle inside Analysis. The sidebar is
 Filmy and `PhotosSidebar` for Zdjęcia, and the rail heading follows it too
 (Filmy/Zdjęcia) — `DetailsPanel` and the terminal are unchanged.
 
+**The Analysis sidebar mirrors the real hierarchy: folder, then medium, then
+scope/content — top to bottom, in that order.** The top bar itself only carries
+app identity, the Biblioteka/Analiza switcher and the Settings/Models/
+Prerequisites actions; Open Folder (with its recent-folders menu) and the
+Filmy/Zdjęcia toggle both live inside the Analysis sidebar instead, above the
+"Ten folder"/"Całe drzewo" scope toggle and its list. The folder identity block
+(icon, name, path, an optional "Pokaż w Bibliotece" action and the Open Folder
+control) is one shared component, `components/ui/SidebarFolderPanel.tsx`,
+consumed by both `CatalogSidebar` and `PhotosSidebar` so the two media never
+duplicate that markup; each sidebar renders its own `AnalysisMediaToggle`
+directly below it, hard-set to its own medium (`videos` for `CatalogSidebar`,
+`photos` for `PhotosSidebar`) with the `onSelect` callback wired back to
+`analysisMedia`. `AppHeader` keeps no folder or medium state at all.
+
 **The Filmy/Zdjęcia toggle is a processing-mode switch over the same current
 folder — it never changes which folder is open.** The photos surface scopes
 to `currentFolder`: the "Ten folder" scope lists the photos of the current
@@ -361,16 +375,15 @@ is unchanged and still browses across every scanned photo root. Opening a
 folder keeps whichever medium (Filmy/Zdjęcia) was already selected in
 Analysis — it no longer forces Filmy, refining the folder-open behaviour
 recorded in the `[0.6.7]` changelog entry, which forced the Filmy view on
-every folder open regardless of the medium already active. The toggle itself
-lives in the top bar,
-next to the Biblioteka/Analiza switcher, so it stays visible regardless of
-scroll position inside the Analysis workspace; it renders only while
-`mode === 'analysis'`. Search exists only inside the Library's
-Kolekcja surface — it reuses the single `searchQuery` contract that already
-powers the library grid, no new endpoint or search-specific query shape. The
-Analysis details pane keeps its video player and variant tools exactly as
-before; this rewrite touches only how a user reaches that pane, not what it
-renders.
+every folder open regardless of the medium already active. Search exists only
+inside the Library's Kolekcja surface — it reuses the single `searchQuery`
+contract that already powers the library grid, no new endpoint or
+search-specific query shape. The Analysis details pane keeps its video player
+and variant tools exactly as before; this rewrite touches only how a user
+reaches that pane, not what it renders. Details/analysis panes carry no
+accordions or chevrons anywhere — `ArtifactsSection`'s "Pełna analiza AI"
+section (the one collapsible left in the app) is now a plain, always-expanded
+`Paper` block like its siblings; the pane scrolls instead.
 
 **Browse purification and the preview overlay.** Library and Map are
 strictly read-only: Library's Zdjęcia surface hides the analyze/re-run/
@@ -384,9 +397,10 @@ endpoint, no per-item detail route, video-only in this wave (a `kind:'photo'`
 union member is a later extension). It carries a discreet "Otwórz w Analizie"
 escape hatch that calls the same `openInAnalysis` routing `routes/index.tsx`
 already uses for the Library↔Analysis bridge, completing both directions of
-that bridge. The FolderBar and the terminal strip render only in Analysis
-mode — Library browses the cross-folder catalog without a current folder, so
-neither affordance applies there. The faces-index maintenance action lives
+that bridge. The Analysis sidebar (and with it `FolderBar`) and the terminal
+strip render only in Analysis mode — Library browses the cross-folder catalog
+without a current folder, so neither affordance applies there. The faces-index
+maintenance action lives
 exclusively in Analysis → Zdjęcia, at the `PhotosWorkspace` top strip
 (`FacesIndexAction`, backed by the extracted `use-faces-index` hook that
 `usePeople` also consumes, so the indexing behavior stays single-sourced);

@@ -70,7 +70,7 @@ const Harness = ({ folder }: { folder: string | null }) => {
 };
 
 const selectedFilename = (container: HTMLElement): string | null =>
-  container.querySelector('.Mui-selected')?.getAttribute('data-video-filename') ?? null;
+  container.querySelector('[data-testid="video-item"].Mui-selected')?.getAttribute('data-video-filename') ?? null;
 
 describe('catalog', () => {
   it('renders cached rows before the filesystem reconciliation finishes', async () => {
@@ -196,7 +196,7 @@ describe('catalog', () => {
     fireEvent.click(await screen.findByText('copy.mp4'));
 
     expect(selectedFilename(container)).toBe('copy.mp4');
-    expect(container.querySelectorAll('.Mui-selected')).toHaveLength(1);
+    expect(container.querySelectorAll('[data-testid="video-item"].Mui-selected')).toHaveLength(1);
   });
 
   it('generates a missing thumbnail then invalidates so the catalog refetches it', async () => {

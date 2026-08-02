@@ -213,6 +213,11 @@ export const IndexRoute = () => {
       subfolderVideoCount={subfolderVideoCount}
       onSwitchToWholeTree={() => setScope('tree')}
       onShowInLibrary={onShowInLibrary}
+      recentFolders={shell.recentFolders}
+      isCheckingFolder={shell.isCheckingFolder}
+      onOpenFolder={shell.openFolder}
+      onSelectRecentFolder={shell.selectRecentFolder}
+      onAnalysisMediaChange={setAnalysisMedia}
       toolbar={
         <ScopeAnalyzeToolbar
           scope={effectiveScope}
@@ -243,6 +248,10 @@ export const IndexRoute = () => {
       state={photosAnalysis}
       onShowInLibrary={onShowPhotosRootInLibrary}
       onOpenFolder={shell.openFolder}
+      recentFolders={shell.recentFolders}
+      isCheckingFolder={shell.isCheckingFolder}
+      onSelectRecentFolder={shell.selectRecentFolder}
+      onAnalysisMediaChange={setAnalysisMedia}
       toolbar={<PhotosScopeToolbar state={photosAnalysis} />}
     />
   );
@@ -391,7 +400,6 @@ export const IndexRoute = () => {
       mode={mode}
       onModeChange={setMode}
       analysisMedia={analysisMedia}
-      onAnalysisMediaChange={setAnalysisMedia}
       modalRequest={modalRequest}
       onModalRequestConsumed={() => setModalRequest(null)}
       content={mode === 'library' ? libraryContent : analysisContent}

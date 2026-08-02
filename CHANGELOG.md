@@ -14,6 +14,20 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The Analysis sidebar now reflects the real hierarchy top to bottom: the
+  folder identity block (name, path, "Pokaż w Bibliotece" and Open Folder with
+  its recent-folders menu) sits at the top of the sidebar, above the
+  Filmy/Zdjęcia medium toggle, above the existing "Ten folder"/"Całe drzewo"
+  scope toggle and its content. Both moved out of the top bar, which now only
+  carries app identity, the Biblioteka/Analiza switcher and Settings/Models/
+  Prerequisites. The two media sidebars share one folder-identity component
+  (`SidebarFolderPanel`) instead of duplicating that markup.
+- Every accordion/chevron in the details and analysis panes is gone —
+  including "Pełna analiza AI" — in favor of plain, always-expanded sections;
+  the pane scrolls instead.
+
 ### Fixed
 
 - Library tiles, the folder-group header and the browse preview now say

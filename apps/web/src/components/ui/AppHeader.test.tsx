@@ -14,17 +14,11 @@ const renderThemed = (ui: ReactElement) => renderWithProviders(<ThemeProvider th
 const renderHeader = (overrides: Partial<Parameters<typeof AppHeader>[0]> = {}) => {
   const props: Parameters<typeof AppHeader>[0] = {
     appVersion: 'dev',
-    recentFolders: [],
-    isCheckingFolder: false,
-    onOpenFolder: () => undefined,
-    onSelectRecentFolder: () => undefined,
     onShowSettings: () => undefined,
     onShowModelManager: () => undefined,
     onShowPrerequisites: () => undefined,
     mode: 'analysis',
     onModeChange: () => undefined,
-    analysisMedia: 'videos',
-    onAnalysisMediaChange: () => undefined,
     ...overrides,
   };
   return renderThemed(<AppHeader {...props} />);
@@ -47,32 +41,28 @@ describe('AppHeader mode switcher', () => {
     expect(screen.queryByRole('combobox')).toBeNull();
   });
 
-  it('renders the FolderBar in analysis mode', () => {
+  it('renders no FolderBar and no media toggle — both moved into the sidebar', () => {
     renderHeader({ mode: 'analysis' });
 
-    expect(screen.getByRole('button', { name: en.folderBar.openFolder })).toBeDefined();
-  });
-
-  it('renders no FolderBar in library mode', () => {
-    renderHeader({ mode: 'library' });
-
     expect(screen.queryByRole('button', { name: en.folderBar.openFolder })).toBeNull();
+    expect(screen.queryByTestId('analysis-media-videos')).toBeNull();
   });
 });
 
-describe('AppHeader analysis media toggle', () => {
-  it('renders the toggle next to the mode switcher in analysis mode and fires the callback', () => {
-    const onAnalysisMediaChange = vi.fn();
-    renderHeader({ mode: 'analysis', analysisMedia: 'videos', onAnalysisMediaChange });
+describe('AppHeader actions', () => {
+  it('fires the settings/models/prerequisites callbacks', () => {
+    const onShowSettings = vi.fn();
+    const onShowModelManager = vi.fn();
+    const onShowPrerequisites = vi.fn();
+    renderHeader({ onShowSettings, onShowModelManager, onShowPrerequisites });
 
-    expect(screen.getByTestId('analysis-media-videos')).toBeDefined();
-    fireEvent.click(screen.getByTestId('analysis-media-photos'));
-    expect(onAnalysisMediaChange).toHaveBeenCalledWith('photos');
-  });
+    fireEvent.click(screen.getByTestId('open-settings-button'));
+    expect(onShowSettings).toHaveBeenCalled();
 
-  it('renders no toggle in library mode', () => {
-    renderHeader({ mode: 'library' });
+    fireEvent.click(screen.getByText(en.appHeader.models));
+    expect(onShowModelManager).toHaveBeenCalled();
 
-    expect(screen.queryByTestId('analysis-media-videos')).toBeNull();
+    fireEvent.click(screen.getByText(en.appHeader.prerequisites));
+    expect(onShowPrerequisites).toHaveBeenCalled();
   });
 });

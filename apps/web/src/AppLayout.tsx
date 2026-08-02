@@ -73,7 +73,6 @@ interface AppLayoutProps {
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
   analysisMedia: AnalysisMedia;
-  onAnalysisMediaChange: (media: AnalysisMedia) => void;
   terminal?: TerminalPanelState;
   overlays?: ReactNode;
   renderModals?: (state: ShellModalState) => ReactNode;
@@ -91,7 +90,6 @@ export const AppLayout = ({
   mode,
   onModeChange,
   analysisMedia,
-  onAnalysisMediaChange,
   terminal,
   overlays,
   renderModals,
@@ -169,17 +167,11 @@ export const AppLayout = ({
         header={
           <AppHeader
             appVersion={shell.appVersion}
-            recentFolders={shell.recentFolders}
-            isCheckingFolder={shell.isCheckingFolder}
-            onOpenFolder={shell.openFolder}
-            onSelectRecentFolder={shell.selectRecentFolder}
             onShowSettings={() => setModal('settings')}
             onShowModelManager={() => setModal('models')}
             onShowPrerequisites={() => setModal('prerequisites')}
             mode={mode}
             onModeChange={onModeChange}
-            analysisMedia={analysisMedia}
-            onAnalysisMediaChange={onAnalysisMediaChange}
           />
         }
         sidebarHeading={

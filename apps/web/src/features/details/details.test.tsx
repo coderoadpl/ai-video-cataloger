@@ -166,7 +166,7 @@ describe('details panel', () => {
     expect(screen.getByText('Full AI Analysis')).toBeDefined();
   });
 
-  it('shows the full AI analysis expanded by default with an expand affordance', () => {
+  it('shows the full AI analysis always expanded, with no collapse affordance', () => {
     const video = makeVideo({
       artifacts: {
         ...makeVideo().artifacts,
@@ -184,9 +184,8 @@ describe('details panel', () => {
     renderThemed(<DetailsPanel video={video} analyzing={false} />);
 
     expect(screen.getByText('The full analysis text.')).toBeDefined();
-    const summary = screen.getByRole('button', { name: 'Full AI Analysis' });
-    expect(summary.getAttribute('aria-expanded')).toBe('true');
-    expect(within(summary).getByTestId('full-analysis-expand-icon')).toBeDefined();
+    expect(screen.getByText('Full AI Analysis')).toBeDefined();
+    expect(screen.queryByRole('button', { name: 'Full AI Analysis' })).toBeNull();
   });
 
   it('renders tag chips and routes chip clicks to search', () => {

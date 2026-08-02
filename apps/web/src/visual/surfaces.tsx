@@ -170,17 +170,11 @@ const VariantCompareFixture = () => (
 const Header = () => (
   <AppHeader
     appVersion="0.5.13"
-    recentFolders={[FOLDER]}
-    isCheckingFolder={false}
-    onOpenFolder={noop}
-    onSelectRecentFolder={noop}
     onShowSettings={noop}
     onShowModelManager={noop}
     onShowPrerequisites={noop}
     mode="analysis"
     onModeChange={noop}
-    analysisMedia="videos"
-    onAnalysisMediaChange={noop}
   />
 );
 

@@ -2,38 +2,24 @@ import { Box, Button, Typography } from '@mui/material';
 
 import { versionLabel } from '../../lib/format.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { FolderBar } from './FolderBar.js';
 import { ModeSwitcher, type AppMode } from './ModeSwitcher.js';
-import { AnalysisMediaToggle, type AnalysisMedia } from './AnalysisMediaToggle.js';
 
 interface AppHeaderProps {
   appVersion: string;
-  recentFolders: string[];
-  isCheckingFolder: boolean;
-  onOpenFolder: () => void;
-  onSelectRecentFolder: (folderPath: string) => void;
   onShowSettings: () => void;
   onShowModelManager: () => void;
   onShowPrerequisites: () => void;
   mode: AppMode;
   onModeChange: (mode: AppMode) => void;
-  analysisMedia: AnalysisMedia;
-  onAnalysisMediaChange: (media: AnalysisMedia) => void;
 }
 
 export const AppHeader = ({
   appVersion,
-  recentFolders,
-  isCheckingFolder,
-  onOpenFolder,
-  onSelectRecentFolder,
   onShowSettings,
   onShowModelManager,
   onShowPrerequisites,
   mode,
   onModeChange,
-  analysisMedia,
-  onAnalysisMediaChange,
 }: AppHeaderProps) => {
   const dictionary = useDictionary();
 
@@ -56,19 +42,7 @@ export const AppHeader = ({
         <Typography variant="caption">{versionLabel(appVersion)}</Typography>
       )}
       <ModeSwitcher mode={mode} onModeChange={onModeChange} />
-      {mode === 'analysis' ? (
-        <AnalysisMediaToggle media={analysisMedia} onSelect={onAnalysisMediaChange} />
-      ) : null}
-      <Box sx={{ flex: 1, display: 'flex', justifyContent: 'center' }}>
-        {mode === 'analysis' ? (
-          <FolderBar
-            recentFolders={recentFolders}
-            isCheckingFolder={isCheckingFolder}
-            onOpenFolder={onOpenFolder}
-            onSelectRecentFolder={onSelectRecentFolder}
-          />
-        ) : null}
-      </Box>
+      <Box sx={{ flex: 1 }} />
       <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
         <Button
           variant="outlined"

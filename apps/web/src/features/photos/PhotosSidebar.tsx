@@ -1,7 +1,9 @@
 import { type ReactNode } from 'react';
 import { alpha, Box, Button, CircularProgress, List, ListItemButton, Tooltip, Typography, type SvgIconProps } from '@mui/material';
 
-import { CheckCircleIcon, ContentCopyIcon, ErrorIcon, FolderIcon, ImageNotSupportedIcon, WarningIcon } from '../../components/ui/icons.js';
+import { type AnalysisMedia, AnalysisMediaToggle } from '../../components/ui/AnalysisMediaToggle.js';
+import { CheckCircleIcon, ContentCopyIcon, ErrorIcon, ImageNotSupportedIcon, WarningIcon } from '../../components/ui/icons.js';
+import { SidebarFolderPanel } from '../../components/ui/SidebarFolderPanel.js';
 import { StatusBadge } from '../../components/ui/StatusBadge.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
@@ -18,6 +20,10 @@ interface PhotosSidebarProps {
   onShowInLibrary: (root: string) => void;
   onOpenFolder: () => void;
   toolbar?: ReactNode;
+  recentFolders?: string[];
+  isCheckingFolder?: boolean;
+  onSelectRecentFolder?: (folderPath: string) => void;
+  onAnalysisMediaChange?: (media: AnalysisMedia) => void;
 }
 
 const Centered = ({ children }: { children: ReactNode }) => (
@@ -134,55 +140,80 @@ const PhotoSidebarRow = ({
   );
 };
 
-export const PhotosSidebar = ({ state, onShowInLibrary, onOpenFolder, toolbar }: PhotosSidebarProps) => {
+export const PhotosSidebar = ({
+  state,
+  onShowInLibrary,
+  onOpenFolder,
+  toolbar,
+  recentFolders = [],
+  isCheckingFolder = false,
+  onSelectRecentFolder = () => undefined,
+  onAnalysisMediaChange = () => undefined,
+}: PhotosSidebarProps) => {
   const dictionary = useDictionary();
 
   const folderPanel = state.scope === 'folder' && state.folderState !== 'scanned' ? state.folderState : null;
+  const currentFolder = state.folder;
+  const scannedRoot = state.selectedRoot;
+
+  const header = (
+    <>
+      <SidebarFolderPanel
+        folder={currentFolder}
+        recentFolders={recentFolders}
+        isCheckingFolder={isCheckingFolder}
+        onOpenFolder={onOpenFolder}
+        onSelectRecentFolder={onSelectRecentFolder}
+        onShowInLibrary={scannedRoot === null ? undefined : () => onShowInLibrary(scannedRoot)}
+        showInLibraryLabel={dictionary.photosSidebar.showInLibrary}
+        showInLibraryTestId="photos-folder-show-in-library"
+        emptyHint={(
+          <>
+            <Typography variant="body2" sx={{ fontWeight: 500 }}>{dictionary.photosSidebar.noFolderTitle}</Typography>
+            <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.noFolderBody}</Typography>
+          </>
+        )}
+      />
+      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+        <AnalysisMediaToggle media="photos" onSelect={onAnalysisMediaChange} />
+      </Box>
+    </>
+  );
 
   if (state.isLoading && folderPanel !== 'no-folder') {
     return (
-      <Box data-testid="photos-sidebar-loading" sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-        <CircularProgress size={22} />
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {header}
+        <Box data-testid="photos-sidebar-loading" sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
+          <CircularProgress size={22} />
+        </Box>
       </Box>
     );
   }
 
   if (folderPanel === 'no-folder') {
     return (
-      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="photos-sidebar-no-folder">
-        <Typography variant="body2" sx={{ fontWeight: 500 }}>{dictionary.photosSidebar.noFolderTitle}</Typography>
-        <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.noFolderBody}</Typography>
-        <Button
-          variant="contained"
-          size="small"
-          onClick={onOpenFolder}
-          data-testid="photos-open-folder-action"
-        >
-          {dictionary.folderBar.openFolder}
-        </Button>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-testid="photos-sidebar-no-folder">
+        {header}
       </Box>
     );
   }
 
   if (folderPanel === 'unscanned') {
     return (
-      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="photos-sidebar-unscanned">
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-          <FolderIcon fontSize="small" sx={{ color: 'primary.main' }} />
-          <Typography variant="h2" noWrap title={state.folder ?? ''} sx={{ flex: 1, minWidth: 0 }}>
-            {folderName(state.folder ?? '')}
-          </Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-testid="photos-sidebar-unscanned">
+        {header}
+        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.unscannedBody}</Typography>
+          <Button
+            variant="contained"
+            size="small"
+            onClick={state.scanFolder}
+            data-testid="photos-scan-action"
+          >
+            {dictionary.photosSidebar.scanThisFolderCta}
+          </Button>
         </Box>
-        <Typography variant="caption" noWrap title={state.folder ?? ''}>{state.folder}</Typography>
-        <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.unscannedBody}</Typography>
-        <Button
-          variant="contained"
-          size="small"
-          onClick={state.scanFolder}
-          data-testid="photos-scan-action"
-        >
-          {dictionary.photosSidebar.scanThisFolderCta}
-        </Button>
       </Box>
     );
   }
@@ -191,29 +222,10 @@ export const PhotosSidebar = ({ state, onShowInLibrary, onOpenFolder, toolbar }:
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Box sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: 'divider', display: 'flex', flexDirection: 'column', gap: 0.25 }}>
-        {state.selectedRoot === null ? null : (
-          <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-            <FolderIcon fontSize="small" sx={{ color: 'primary.main' }} />
-            <Typography variant="h2" noWrap title={state.selectedRoot} sx={{ flex: 1, minWidth: 0 }}>
-              {folderName(state.selectedRoot)}
-            </Typography>
-            <Button
-              size="small"
-              onClick={() => onShowInLibrary(state.selectedRoot ?? '')}
-              data-testid="photos-folder-show-in-library"
-            >
-              {dictionary.photosSidebar.showInLibrary}
-            </Button>
-          </Box>
-        )}
-        {state.selectedRoot === null ? null : (
-          <Typography variant="caption" noWrap title={state.selectedRoot}>
-            {state.selectedRoot}
-          </Typography>
-        )}
-        {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}
-      </Box>
+      {header}
+      {toolbar === undefined ? null : (
+        <Box sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: 'divider' }}>{toolbar}</Box>
+      )}
       <Box sx={{ flex: 1, minHeight: 0, overflow: 'auto' }}>
         {sections.length === 0 ? (
           <Centered>

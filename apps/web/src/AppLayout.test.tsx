@@ -70,7 +70,6 @@ const TerminalHarness = ({ initialLines = [], apiLines = [], onCopy }: TerminalH
         mode="analysis"
         onModeChange={() => undefined}
         analysisMedia="videos"
-        onAnalysisMediaChange={() => undefined}
         terminal={{ ...terminalPanel, lines, apiLines, onCopy: onCopy ?? terminalPanel.onCopy }}
       />
     </ThemeProvider>
@@ -95,7 +94,6 @@ describe('AppLayout composition', () => {
         mode="analysis"
         onModeChange={() => undefined}
         analysisMedia="videos"
-        onAnalysisMediaChange={() => undefined}
       />,
     );
 
@@ -106,7 +104,7 @@ describe('AppLayout composition', () => {
     expect(screen.getByText(en.appFrame.terminalTitle)).toBeDefined();
   });
 
-  it('renders no terminal strip and no FolderBar in library mode', () => {
+  it('renders no terminal strip in library mode', () => {
     renderWithProviders(
       <AppLayout
         shell={stubShell}
@@ -115,15 +113,13 @@ describe('AppLayout composition', () => {
         mode="library"
         onModeChange={() => undefined}
         analysisMedia="videos"
-        onAnalysisMediaChange={() => undefined}
       />,
     );
 
     expect(screen.queryByText(en.appFrame.terminalTitle)).toBeNull();
-    expect(screen.queryByRole('button', { name: en.folderBar.openFolder })).toBeNull();
   });
 
-  it('renders the terminal strip and the FolderBar in analysis mode', () => {
+  it('renders the terminal strip in analysis mode', () => {
     renderWithProviders(
       <AppLayout
         shell={stubShell}
@@ -132,29 +128,10 @@ describe('AppLayout composition', () => {
         mode="analysis"
         onModeChange={() => undefined}
         analysisMedia="videos"
-        onAnalysisMediaChange={() => undefined}
       />,
     );
 
     expect(screen.getByText(en.appFrame.terminalTitle)).toBeDefined();
-    expect(screen.getByRole('button', { name: en.folderBar.openFolder })).toBeDefined();
-  });
-
-  it('threads the analysis media toggle through to the header', () => {
-    const onAnalysisMediaChange = () => undefined;
-    renderWithProviders(
-      <AppLayout
-        shell={stubShell}
-        sidebar={<div />}
-        content={<div />}
-        mode="analysis"
-        onModeChange={() => undefined}
-        analysisMedia="photos"
-        onAnalysisMediaChange={onAnalysisMediaChange}
-      />,
-    );
-
-    expect(screen.getByTestId('analysis-media-photos').getAttribute('aria-pressed')).toBe('true');
   });
 
   it('renders folder-open failures as an alert', () => {
@@ -166,7 +143,6 @@ describe('AppLayout composition', () => {
         mode="analysis"
         onModeChange={() => undefined}
         analysisMedia="videos"
-        onAnalysisMediaChange={() => undefined}
       />,
     );
 
@@ -182,7 +158,6 @@ describe('AppLayout composition', () => {
         mode="analysis"
         onModeChange={() => undefined}
         analysisMedia="videos"
-        onAnalysisMediaChange={() => undefined}
         renderBanner={() => <div>banner-slot</div>}
       />,
     );
@@ -193,7 +168,7 @@ describe('AppLayout composition', () => {
 
   it('translates the sidebar collapse affordances and reveals the rail on toggle', () => {
     renderWithProviders(
-      <AppLayout shell={stubShell} sidebar={<div />} content={<div />} mode="analysis" onModeChange={() => undefined} analysisMedia="videos" onAnalysisMediaChange={() => undefined} />,
+      <AppLayout shell={stubShell} sidebar={<div />} content={<div />} mode="analysis" onModeChange={() => undefined} analysisMedia="videos" />,
     );
     expect(screen.queryByRole('button', { name: en.appFrame.showSidebar })).toBeNull();
 
@@ -204,7 +179,7 @@ describe('AppLayout composition', () => {
 
   it('offers copy and clear only when a terminal panel is wired', () => {
     const { unmount } = renderWithProviders(
-      <AppLayout shell={stubShell} sidebar={<div />} content={<div />} mode="analysis" onModeChange={() => undefined} analysisMedia="videos" onAnalysisMediaChange={() => undefined} />,
+      <AppLayout shell={stubShell} sidebar={<div />} content={<div />} mode="analysis" onModeChange={() => undefined} analysisMedia="videos" />,
     );
     expect(screen.queryByRole('button', { name: en.appFrame.terminalCopy })).toBeNull();
     unmount();

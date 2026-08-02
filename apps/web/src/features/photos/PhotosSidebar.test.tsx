@@ -5,6 +5,7 @@ import type { z } from 'zod';
 
 import type { photoListItemSchema } from '@core/contract/index.js';
 
+import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { createAppTheme } from '../../theme.js';
 import type { PhotosAnalysisState } from './use-photos-analysis.js';
@@ -86,7 +87,7 @@ describe('PhotosSidebar', () => {
     );
 
     expect(screen.getByTestId('photos-sidebar-no-folder')).toBeDefined();
-    fireEvent.click(screen.getByTestId('photos-open-folder-action'));
+    fireEvent.click(screen.getByRole('button', { name: en.folderBar.openFolder }));
     expect(onOpenFolder).toHaveBeenCalled();
   });
 
@@ -102,8 +103,31 @@ describe('PhotosSidebar', () => {
 
     expect(screen.getByTestId('photos-sidebar-unscanned')).toBeDefined();
     expect(screen.getAllByText('b').length).toBeGreaterThan(0);
+    expect(screen.queryByTestId('photos-folder-show-in-library')).toBeNull();
     fireEvent.click(screen.getByTestId('photos-scan-action'));
     expect(scanFolder).toHaveBeenCalled();
+  });
+
+  it('stacks the folder block above the medium toggle above the scoped content', () => {
+    const onAnalysisMediaChange = vi.fn();
+    const { container } = renderThemed(
+      <PhotosSidebar
+        state={baseState({ items: [item({ fingerprint: 'a' })], total: 1 })}
+        onShowInLibrary={vi.fn()}
+        onOpenFolder={vi.fn()}
+        onAnalysisMediaChange={onAnalysisMediaChange}
+        toolbar={<div data-testid="photos-scope-toolbar" />}
+      />,
+    );
+
+    const order = Array.from(container.querySelectorAll('[data-testid]'))
+      .map((element) => element.getAttribute('data-testid') ?? '');
+    expect(order.indexOf('sidebar-folder-panel')).toBeGreaterThanOrEqual(0);
+    expect(order.indexOf('sidebar-folder-panel')).toBeLessThan(order.indexOf('analysis-media-photos'));
+    expect(order.indexOf('analysis-media-photos')).toBeLessThan(order.indexOf('photos-scope-toolbar'));
+
+    fireEvent.click(screen.getByTestId('analysis-media-videos'));
+    expect(onAnalysisMediaChange).toHaveBeenCalledWith('videos');
   });
 
   it('shows the folder header with root name and path, and calls onShowInLibrary', () => {

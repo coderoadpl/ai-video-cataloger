@@ -1,9 +1,9 @@
 import { type ReactNode } from 'react';
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 
-import { FolderIcon } from '../../components/ui/icons.js';
+import { type AnalysisMedia, AnalysisMediaToggle } from '../../components/ui/AnalysisMediaToggle.js';
+import { SidebarFolderPanel } from '../../components/ui/SidebarFolderPanel.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { folderName } from '../../lib/format.js';
 import { AbsentFilesSection } from './AbsentFilesSection.js';
 import { TreeAbsentFilesSection } from './TreeAbsentFilesSection.js';
 import { CatalogTree } from './CatalogTree.js';
@@ -25,6 +25,11 @@ interface CatalogSidebarProps {
   subfolderVideoCount?: number;
   onSwitchToWholeTree?: (() => void) | undefined;
   onShowInLibrary?: ((folderPath: string, fingerprint: string | null) => void) | undefined;
+  recentFolders?: string[];
+  isCheckingFolder?: boolean;
+  onOpenFolder?: () => void;
+  onSelectRecentFolder?: (folderPath: string) => void;
+  onAnalysisMediaChange?: (media: AnalysisMedia) => void;
 }
 
 export const CatalogSidebar = ({
@@ -39,16 +44,44 @@ export const CatalogSidebar = ({
   subfolderVideoCount = 0,
   onSwitchToWholeTree,
   onShowInLibrary,
+  recentFolders = [],
+  isCheckingFolder = false,
+  onOpenFolder = () => undefined,
+  onSelectRecentFolder = () => undefined,
+  onAnalysisMediaChange = () => undefined,
 }: CatalogSidebarProps) => {
   const dictionary = useDictionary();
 
+  const header = (
+    <>
+      <SidebarFolderPanel
+        folder={folder}
+        recentFolders={recentFolders}
+        isCheckingFolder={isCheckingFolder}
+        onOpenFolder={onOpenFolder}
+        onSelectRecentFolder={onSelectRecentFolder}
+        onShowInLibrary={folder === null || onShowInLibrary === undefined ? undefined : () => onShowInLibrary(folder, null)}
+        showInLibraryLabel={dictionary.common.showInLibrary}
+        showInLibraryTestId="folder-show-in-library"
+        emptyHint={(
+          <>
+            <Typography variant="body2" color="text.secondary">
+              {dictionary.catalog.noFolderSelected}
+            </Typography>
+            <Typography variant="caption">{dictionary.catalog.openFolderHint}</Typography>
+          </>
+        )}
+      />
+      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
+        <AnalysisMediaToggle media="videos" onSelect={onAnalysisMediaChange} />
+      </Box>
+    </>
+  );
+
   if (folder === null) {
     return (
-      <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-        <Typography variant="body2" color="text.secondary">
-          {dictionary.catalog.noFolderSelected}
-        </Typography>
-        <Typography variant="caption">{dictionary.catalog.openFolderHint}</Typography>
+      <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+        {header}
       </Box>
     );
   }
@@ -62,43 +95,28 @@ export const CatalogSidebar = ({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <Box
-        sx={{
-          px: 2,
-          py: 1.25,
-          borderBottom: 1,
-          borderColor: 'divider',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 0.25,
-        }}
-      >
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.75, minWidth: 0 }}>
-          <FolderIcon fontSize="small" sx={{ color: 'primary.main' }} />
-          <Typography variant="h2" noWrap title={folder} sx={{ flex: 1, minWidth: 0 }}>
-            {folderName(folder)}
-          </Typography>
-          {onShowInLibrary === undefined ? null : (
-            <Button
-              size="small"
-              onClick={() => onShowInLibrary(folder, null)}
-              data-testid="folder-show-in-library"
-            >
-              {dictionary.common.showInLibrary}
-            </Button>
-          )}
+      {header}
+      {catalog.isGeneratingThumbnails || lockBanner !== undefined || toolbar !== undefined ? (
+        <Box
+          sx={{
+            px: 2,
+            py: 1.25,
+            borderBottom: 1,
+            borderColor: 'divider',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 1,
+          }}
+        >
+          {catalog.isGeneratingThumbnails ? (
+            <Typography variant="caption" sx={{ color: 'primary.main' }}>
+              {dictionary.catalog.generatingThumbnails}
+            </Typography>
+          ) : null}
+          {lockBanner === undefined ? null : lockBanner}
+          {toolbar === undefined ? null : toolbar}
         </Box>
-        <Typography variant="caption" noWrap title={folder}>
-          {folder}
-        </Typography>
-        {catalog.isGeneratingThumbnails ? (
-          <Typography variant="caption" sx={{ color: 'primary.main' }}>
-            {dictionary.catalog.generatingThumbnails}
-          </Typography>
-        ) : null}
-        {lockBanner === undefined ? null : <Box sx={{ mt: 1 }}>{lockBanner}</Box>}
-        {toolbar === undefined ? null : <Box sx={{ mt: 1 }}>{toolbar}</Box>}
-      </Box>
+      ) : null}
       <Box sx={{ flex: 1, minHeight: 0, overflow: !useTree || treeRoot === null ? (showTreeSkeleton ? 'hidden' : 'auto') : 'hidden' }}>
         {showTreeSkeleton ? (
           <SidebarSkeleton />
