@@ -236,17 +236,123 @@ describe('settings modal', () => {
 
     expect(await screen.findByText('7 frames')).toBeDefined();
     expect(screen.queryByTestId('settings-inherited-panel')).toBeNull();
+    expect(screen.queryByTestId('settings-other-values')).toBeNull();
 
-    const otherValues = screen.getByTestId('settings-other-values');
-    expect(within(otherValues).getByText(en.settingsModal.otherSettingsKeys.whisper_language)).toBeDefined();
-    const whisperLanguage = within(otherValues).getByTestId('settings-other-whisper_language');
-    expect(whisperLanguage.textContent).toContain(en.language.optionPolish);
-    const timeout = within(otherValues).getByTestId('settings-other-timeout');
-    expect(timeout.textContent).toContain('90 s');
+    const whisperLanguageSelect = await screen.findByTestId('whisper-language-select');
+    expect(within(whisperLanguageSelect).getByText(en.language.optionPolish)).toBeDefined();
+    expect(await screen.findByText('90 seconds')).toBeDefined();
 
     const provider = screen.getByTestId('settings-harness-model');
     expect(provider.textContent).not.toContain('{');
     expect(screen.getByTestId('settings-save').getAttribute('disabled')).not.toBeNull();
+  });
+
+  it('edits and persists the transcription language', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { key: string; value: string }[] = [];
+    stubEndpoints(emptyConfig);
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push({ key: body.key, value: body.value });
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'folder' as const, ignoredFolderValue: null },
+        });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const whisperLanguageSelect = await screen.findByTestId('whisper-language-select');
+    fireEvent.mouseDown(within(whisperLanguageSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Polish' }));
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(bodies.some((body) => body.key === 'whisper_language')).toBe(true));
+    expect(bodies).toEqual([{ key: 'whisper_language', value: 'pl' }]);
+  });
+
+  it('shows a BCP-47 transcription language the config already holds', async () => {
+    stubEndpoints({ ...emptyConfig, whisper_language: 'pt-BR' });
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const whisperLanguageSelect = await screen.findByTestId('whisper-language-select');
+    expect(within(whisperLanguageSelect).getByText('pt-BR')).toBeDefined();
+  });
+
+  it('disables the transcription language select when the analyzer transcribes natively', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const backendSelect = await screen.findByTestId('analyzer-backend-select');
+    fireEvent.mouseDown(within(backendSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Gemini (native video)' }));
+
+    const whisperLanguageSelect = await screen.findByTestId('whisper-language-select');
+    expect(within(whisperLanguageSelect).getByRole('combobox').getAttribute('aria-disabled')).toBe('true');
+  });
+
+  it('edits and persists the analyzer timeout', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { key: string; value: string }[] = [];
+    stubEndpoints(emptyConfig);
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push({ key: body.key, value: body.value });
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'folder' as const, ignoredFolderValue: null },
+        });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const timeoutSlider = await screen.findByTestId('analyzer-timeout-slider');
+    const slider = within(timeoutSlider).getByRole('slider');
+    fireEvent.change(slider, { target: { value: '200' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(bodies.some((body) => body.key === 'timeout')).toBe(true));
+    expect(bodies).toEqual([{ key: 'timeout', value: '200' }]);
+  });
+
+  it('edits and persists the Whisper API base URL and model only in API mode', async () => {
+    const configSetBody = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+    const bodies: { key: string; value: string }[] = [];
+    stubEndpoints({ ...emptyConfig, whisper_mode: 'api' });
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push({ key: body.key, value: body.value });
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'folder' as const, ignoredFolderValue: null },
+        });
+      }),
+    );
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    const baseUrl = await screen.findByTestId('whisper-api-base-url');
+    const model = screen.getByTestId('whisper-api-model');
+    fireEvent.change(baseUrl, { target: { value: 'https://custom.example.com/v1' } });
+    fireEvent.change(model, { target: { value: 'whisper-large' } });
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(bodies.length).toBe(2));
+    expect(bodies).toEqual(expect.arrayContaining([
+      { key: 'whisper_api_base_url', value: 'https://custom.example.com/v1' },
+      { key: 'whisper_api_model', value: 'whisper-large' },
+    ]));
+  });
+
+  it('hides the Whisper API base URL and model fields outside API mode', async () => {
+    stubEndpoints(emptyConfig);
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
+
+    await screen.findByTestId('whisper-mode-select');
+    expect(screen.queryByTestId('whisper-api-base-url')).toBeNull();
+    expect(screen.queryByTestId('whisper-api-model')).toBeNull();
   });
 
   it('hides the whisper model control when transcription is skipped', async () => {

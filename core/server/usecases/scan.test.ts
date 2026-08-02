@@ -104,7 +104,7 @@ describe('scanFolder', () => {
     fs.addFile('/videos/clip.mp4', { size: 2048, hash: 'hash-1' });
     fs.addFile('/videos/notes.txt', { size: 10 });
     fs.addDirectory('/videos/frames/renamed');
-    fs.addFile('/videos/frames/renamed/1.jpg');
+    fs.addFile('/videos/frames/renamed/frame-001.jpg', { size: 100 });
     fs.addFile('/videos/transcripts/renamed.txt', { content: 'transcript' });
     fs.addFile('/videos/summaries/renamed.txt', { content: 'human summary' });
     fs.addFile('/videos/summaries/renamed.json', {
@@ -149,7 +149,7 @@ describe('scanFolder', () => {
             status: 'completed',
             contentHash: 'hash-1',
             artifacts: {
-              framePaths: ['/videos/frames/renamed/1.jpg'],
+              framePaths: ['/videos/frames/renamed/frame-001.jpg'],
               transcriptContent: 'transcript',
               transcriptPath: '/videos/transcripts/renamed.txt',
               summary: { suggestedFilename: 'renamed.mp4' },
@@ -161,6 +161,51 @@ describe('scanFolder', () => {
           },
         ],
         summary: { total: 1, tracked: 1, completed: 1, notTracked: 0 },
+      },
+    });
+  });
+
+  it('excludes zero-byte and non-canonical entries from the frames directory listing', async () => {
+    const fs = new InMemoryFileSystem('/videos');
+    fs.addFile('/videos/clip.mp4', { size: 2048, hash: 'hash-1' });
+    fs.addDirectory('/videos/frames/clip');
+    fs.addFile('/videos/frames/clip/frame-001.jpg', { size: 100 });
+    fs.addFile('/videos/frames/clip/frame-002.jpg', { size: 100 });
+    fs.addFile('/videos/frames/clip/frame-003.jpg', { size: 100 });
+    fs.addFile('/videos/frames/clip/frame-004.jpg', { size: 0 });
+    fs.addFile('/videos/frames/clip/leftover.jpg', { size: 100 });
+    const media = new InMemoryMedia();
+    media.durations.set('/videos/clip.mp4', 65);
+    const catalogs = new InMemoryCatalogs([
+      {
+        folder: '/videos',
+        videos: [
+          videoFixture({
+            originalPath: '/videos/clip.mp4',
+            originalName: 'clip.mp4',
+            fileHash: 'hash-1',
+            status: 'completed',
+          }),
+        ],
+      },
+    ]);
+
+    const result = await scanFolder({ catalogs, fs, media }, { folder: '/videos' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        videos: [
+          {
+            artifacts: {
+              framePaths: [
+                '/videos/frames/clip/frame-001.jpg',
+                '/videos/frames/clip/frame-002.jpg',
+                '/videos/frames/clip/frame-003.jpg',
+              ],
+            },
+          },
+        ],
       },
     });
   });
@@ -412,7 +457,7 @@ describe('scanFolder', () => {
     const fs = new InMemoryFileSystem('/videos');
     fs.addFile('/videos/legacy.mp4', { size: 2048, hash: 'hash-1' });
     fs.addDirectory('/videos/frames/legacy');
-    fs.addFile('/videos/frames/legacy/frame-001.jpg');
+    fs.addFile('/videos/frames/legacy/frame-001.jpg', { size: 100 });
     fs.addFile('/videos/transcripts/legacy.txt', { content: 'legacy transcript' });
     const catalogs = new InMemoryCatalogs([
       {

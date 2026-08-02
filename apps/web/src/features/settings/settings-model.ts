@@ -23,21 +23,6 @@ export type SettingsDraft = AppConfig;
 export type LocalAiTier = z.output<typeof localAiTierSchema>;
 export type Machine = z.output<typeof machineSchema>;
 
-export const KEYS_WITHOUT_EDITOR = [
-  'whisper_language',
-  'whisper_api_base_url',
-  'whisper_api_model',
-  'timeout',
-] as const satisfies readonly ConfigKey[];
-
-export type OtherSettingsKey = (typeof KEYS_WITHOUT_EDITOR)[number];
-
-export interface EffectiveSetting {
-  key: OtherSettingsKey;
-  label: string;
-  value: string;
-}
-
 type StoredConfig = z.output<typeof storedConfigSchema>;
 type StoredDefaults = z.output<typeof storedConfigDefaultsSchema>;
 
@@ -128,89 +113,6 @@ export const credentialSavedMessage = (
   ? dictionary.credentials.savedKeychain
   : dictionary.credentials.savedFile;
 
-const languageValue = (dictionary: Dictionary, value: string): string => {
-  if (value === 'auto') return dictionary.language.optionAuto;
-  if (value === 'pl') return dictionary.language.optionPolish;
-  if (value === 'en') return dictionary.language.optionEnglish;
-  return value;
-};
-
-const analyzerProviderValue = (provider: AppConfig['analyzer_provider']): string => {
-  switch (provider.family) {
-    case 'api':
-      return `${provider.model} · ${provider.providerId}`;
-    case 'harness':
-      return provider.model === undefined ? provider.providerId : `${provider.model} · ${provider.providerId}`;
-    case 'local':
-      return provider.modelTag;
-    case 'gemini-native':
-      return provider.model;
-  }
-};
-
-const booleanValue = (dictionary: Dictionary, value: boolean): string =>
-  value ? dictionary.settingsModal.valueEnabled : dictionary.settingsModal.valueDisabled;
-
-const resolvedSettingValue = (
-  dictionary: Dictionary,
-  config: AppConfig,
-  key: ConfigKey,
-): string => {
-  switch (key) {
-    case 'whisper_binary_path':
-      return config.whisper_binary_path.length === 0
-        ? dictionary.settingsModal.valueNotSet
-        : config.whisper_binary_path;
-    case 'whisper_model':
-      return dictionary.settingsModal.whisperModels[config.whisper_model].label;
-    case 'whisper_language':
-      return languageValue(dictionary, config.whisper_language);
-    case 'whisper_mode':
-      return dictionary.settingsModal.whisperModes[config.whisper_mode].label;
-    case 'whisper_api_base_url':
-      return config.whisper_api_base_url;
-    case 'whisper_api_model':
-      return config.whisper_api_model;
-    case 'frames':
-      return dictionary.settingsModal.frameCountValue(config.frames);
-    case 'timeout':
-      return dictionary.settingsModal.secondsValue(config.timeout);
-    case 'skip_rename':
-      return booleanValue(dictionary, config.skip_rename);
-    case 'analyzer_backend':
-      return config.analyzer_backend === 'local'
-        ? dictionary.settingsAnalyzer.localOllama
-        : dictionary.settingsAnalyzer.claudeCli;
-    case 'local_model':
-      return config.local_model;
-    case 'analyzer_provider':
-      return analyzerProviderValue(config.analyzer_provider);
-    case 'faces_enabled':
-      return booleanValue(dictionary, config.faces_enabled);
-    case 'gemini_batch_mode':
-      return booleanValue(dictionary, config.gemini_batch_mode);
-    case 'gemini_monthly_budget_usd':
-      return config.gemini_monthly_budget_usd === null
-        ? dictionary.settingsModal.valueNoLimit
-        : `${String(config.gemini_monthly_budget_usd)} USD`;
-    case 'output_language':
-      return languageValue(dictionary, config.output_language);
-    case 'tag_language':
-      return languageValue(dictionary, config.tag_language);
-    case 'ui_language':
-      return languageValue(dictionary, config.ui_language);
-  }
-};
-
-export const otherSettings = (
-  dictionary: Dictionary,
-  config: AppConfig,
-): EffectiveSetting[] => KEYS_WITHOUT_EDITOR.map((key) => ({
-  key,
-  label: dictionary.settingsModal.otherSettingsKeys[key],
-  value: resolvedSettingValue(dictionary, config, key),
-}));
-
 export type BudgetInput =
   | { kind: 'empty' }
   | { kind: 'valid'; amountUsd: number }
@@ -232,11 +134,11 @@ export const serializeValue = (draft: SettingsDraft, key: ConfigKey): string => 
   return typeof value === 'object' ? JSON.stringify(value) : String(value);
 };
 
-export interface OutputLanguageOption {
+interface OutputLanguageOption {
   value: string;
 }
 
-export const OUTPUT_LANGUAGE_OPTIONS: OutputLanguageOption[] = [
+const OUTPUT_LANGUAGE_OPTIONS: OutputLanguageOption[] = [
   { value: 'auto' },
   { value: 'en' },
   { value: 'pl' },
@@ -246,6 +148,18 @@ export const UI_LANGUAGE_OPTIONS: Array<{ value: AppConfig['ui_language'] }> = [
   { value: 'en' },
   { value: 'pl' },
 ];
+
+export const languageOptionLabel = (dictionary: Dictionary, value: string): string => {
+  if (value === 'auto') return dictionary.language.optionAuto;
+  if (value === 'pl') return dictionary.language.optionPolish;
+  if (value === 'en') return dictionary.language.optionEnglish;
+  return value;
+};
+
+export const languageOptionsWith = (value: string): OutputLanguageOption[] =>
+  OUTPUT_LANGUAGE_OPTIONS.some((option) => option.value === value)
+    ? OUTPUT_LANGUAGE_OPTIONS
+    : [...OUTPUT_LANGUAGE_OPTIONS, { value }];
 
 export interface WhisperModeOption {
   value: AppConfig['whisper_mode'];

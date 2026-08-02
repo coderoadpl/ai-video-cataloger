@@ -407,10 +407,11 @@ const loadArtifacts = async (
   if (hasFrames(status)) {
     const frames = await fs.listDirectory(paths.framesDir);
     if (frames.ok) {
-      const framePaths = frames.value
-        .filter((entry) => entry.kind === 'file' && fs.extname(entry.name).toLowerCase() === '.jpg')
+      const candidates = frames.value
+        .filter((entry) => entry.kind === 'file' && FRAME_FILE_NAME_PATTERN.test(entry.name))
         .map((entry) => entry.path)
         .sort();
+      const framePaths = await materializedFrames(fs, candidates);
       artifacts.framePaths = framePaths.length > 0 ? framePaths : null;
     }
   }
@@ -437,6 +438,17 @@ const loadArtifacts = async (
   }
 
   return ok(artifacts);
+};
+
+const FRAME_FILE_NAME_PATTERN = /^frame-[0-9]{3}\.jpg$/;
+
+const materializedFrames = async (fs: FileSystemPort, candidates: readonly string[]): Promise<string[]> => {
+  const materialized: string[] = [];
+  for (const candidate of candidates) {
+    const stat = await fs.stat(candidate);
+    if (stat.ok && stat.value.size > 0) materialized.push(candidate);
+  }
+  return materialized;
 };
 
 const hasFrames = (status: VideoStatus): boolean =>

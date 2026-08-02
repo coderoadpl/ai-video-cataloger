@@ -21,8 +21,9 @@ import {
 
 import { SettingsAnalyzerSection } from './SettingsAnalyzerSection.js';
 import {
-  OUTPUT_LANGUAGE_OPTIONS,
   UI_LANGUAGE_OPTIONS,
+  languageOptionLabel,
+  languageOptionsWith,
   whisperModelOptions,
   whisperModeOptions,
   type SettingsDraft,
@@ -71,40 +72,6 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, py: 1 }}>
             {settings.error === null ? null : <Alert severity="error">{settings.error}</Alert>}
-            {settings.otherSettings.length === 0 ? null : (
-              <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }} data-testid="settings-other-values">
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>
-                  {dictionary.settingsModal.otherSettingsTitle}
-                </Typography>
-                {settings.otherSettings.map((setting) => (
-                  <Box
-                    key={setting.key}
-                    data-testid={`settings-other-${setting.key}`}
-                    sx={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'space-between',
-                      gap: 2,
-                      py: 0.75,
-                      borderBottom: 1,
-                      borderColor: 'divider',
-                    }}
-                  >
-                    <Box sx={{ minWidth: 0 }}>
-                      <Typography variant="caption" component="div">
-                        {setting.label}
-                      </Typography>
-                      <Typography variant="body2" sx={{ overflowWrap: 'anywhere' }}>
-                        {setting.value}
-                      </Typography>
-                    </Box>
-                  </Box>
-                ))}
-                <Typography variant="caption" color="text.secondary">
-                  {dictionary.settingsModal.otherSettingsHint}
-                </Typography>
-              </Box>
-            )}
 
             <SettingsAnalyzerSection
               backend={draft.analyzer_backend}
@@ -181,6 +148,29 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
               </Typography>
             </Box>
 
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {dictionary.settingsModal.analyzerTimeout}
+                </Typography>
+                <Typography variant="caption">{dictionary.settingsModal.secondsValue(draft.timeout)}</Typography>
+              </Box>
+              <Slider
+                aria-label={dictionary.settingsModal.analyzerTimeout}
+                data-testid="analyzer-timeout-slider"
+                min={30}
+                max={600}
+                step={10}
+                value={draft.timeout}
+                onChange={(_event, value) =>
+                  patch({ timeout: Array.isArray(value) ? (value[0] ?? draft.timeout) : value })
+                }
+              />
+              <Typography variant="caption">
+                {dictionary.settingsModal.analyzerTimeoutHelper}
+              </Typography>
+            </Box>
+
             <FormControl fullWidth size="small">
               <InputLabel id="whisper-mode-label">{dictionary.settingsModal.transcriptionMode}</InputLabel>
               <Select
@@ -207,6 +197,24 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                 {dictionary.wizard.transcription.nativeSkipNotice}
               </Typography>
             ) : null}
+
+            <FormControl fullWidth size="small">
+              <InputLabel id="whisper-language-label">{dictionary.settingsModal.transcriptionLanguage}</InputLabel>
+              <Select
+                labelId="whisper-language-label"
+                label={dictionary.settingsModal.transcriptionLanguage}
+                value={draft.whisper_language}
+                data-testid="whisper-language-select"
+                disabled={nativeAnalyzer}
+                onChange={(event) => patch({ whisper_language: event.target.value })}
+              >
+                {languageOptionsWith(draft.whisper_language).map((option) => (
+                  <MenuItem key={option.value} value={option.value}>
+                    {languageOptionLabel(dictionary, option.value)}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
 
             {draft.whisper_mode === 'local' ? (
               <>
@@ -240,16 +248,35 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                 />
               </>
             ) : draft.whisper_mode === 'api' ? (
-              <TextField
-                fullWidth
-                size="small"
-                label={dictionary.settingsModal.openAiWhisperApiKey}
-                type="password"
-                value={settings.whisperApiCredential}
-                autoComplete="new-password"
-                helperText={dictionary.settingsModal.openAiWhisperApiKeyHelper}
-                onChange={(event) => settings.setWhisperApiCredential(event.target.value)}
-              />
+              <>
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={dictionary.settingsModal.whisperApiBaseUrl}
+                  value={draft.whisper_api_base_url}
+                  onChange={(event) => patch({ whisper_api_base_url: event.target.value })}
+                  helperText={dictionary.settingsModal.whisperApiBaseUrlHelper}
+                  slotProps={{ htmlInput: { 'data-testid': 'whisper-api-base-url' } }}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={dictionary.settingsModal.whisperApiModel}
+                  value={draft.whisper_api_model}
+                  onChange={(event) => patch({ whisper_api_model: event.target.value })}
+                  slotProps={{ htmlInput: { 'data-testid': 'whisper-api-model' } }}
+                />
+                <TextField
+                  fullWidth
+                  size="small"
+                  label={dictionary.settingsModal.openAiWhisperApiKey}
+                  type="password"
+                  value={settings.whisperApiCredential}
+                  autoComplete="new-password"
+                  helperText={dictionary.settingsModal.openAiWhisperApiKeyHelper}
+                  onChange={(event) => settings.setWhisperApiCredential(event.target.value)}
+                />
+              </>
             ) : null}
 
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -267,7 +294,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                 >
                   {UI_LANGUAGE_OPTIONS.map((option) => (
                     <MenuItem key={option.value} value={option.value}>
-                      {option.value === 'pl' ? dictionary.language.optionPolish : dictionary.language.optionEnglish}
+                      {languageOptionLabel(dictionary, option.value)}
                     </MenuItem>
                   ))}
                 </Select>
@@ -281,13 +308,9 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                   data-testid="output-language-select"
                   onChange={(event) => patch({ output_language: event.target.value })}
                 >
-                  {OUTPUT_LANGUAGE_OPTIONS.map((option) => (
+                  {languageOptionsWith(draft.output_language).map((option) => (
                     <MenuItem key={option.value} value={option.value}>
-                      {option.value === 'auto'
-                        ? dictionary.language.optionAuto
-                        : option.value === 'pl'
-                          ? dictionary.language.optionPolish
-                          : dictionary.language.optionEnglish}
+                      {languageOptionLabel(dictionary, option.value)}
                     </MenuItem>
                   ))}
                 </Select>
@@ -301,13 +324,9 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
                   data-testid="tag-language-select"
                   onChange={(event) => patch({ tag_language: event.target.value })}
                 >
-                  {OUTPUT_LANGUAGE_OPTIONS.map((option) => (
+                  {languageOptionsWith(draft.tag_language).map((option) => (
                     <MenuItem key={option.value} value={option.value}>
-                      {option.value === 'auto'
-                        ? dictionary.language.optionAuto
-                        : option.value === 'pl'
-                          ? dictionary.language.optionPolish
-                          : dictionary.language.optionEnglish}
+                      {languageOptionLabel(dictionary, option.value)}
                     </MenuItem>
                   ))}
                 </Select>

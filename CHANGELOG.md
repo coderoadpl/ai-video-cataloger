@@ -23,6 +23,16 @@ release history jumps from `0.5.10` to `0.5.12`.
   `search`/`collection` contract's folder shape, backed by a pure classifier
   that checks whether the folder's `/Volumes/<name>` root still exists,
   distinguishes it from an actually-unmounted drive.
+- Settings gives real editors back to transcription language, the Whisper
+  API base URL and model, and the analyzer timeout instead of the flat
+  read-only list the settings-flatten pass left them in; the read-only list
+  itself is gone since every effective value now has an editor. A language
+  set to a BCP-47 code outside `auto`/`en`/`pl` stays visible and selected in
+  the language selects instead of rendering blank.
+- Frame extraction now clears stale `frame-NNN.jpg` files left by a previous,
+  larger extraction before writing new ones, and the frames gallery only
+  lists canonical, non-empty frame files, so a video re-analyzed with fewer
+  frames no longer shows leftover or broken thumbnails from an earlier run.
 
 ## [0.6.8] - 2026-08-02
 

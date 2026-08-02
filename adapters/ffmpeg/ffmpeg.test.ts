@@ -211,6 +211,35 @@ describe('FfmpegMediaAdapter', () => {
     }));
   });
 
+  it('clears stale frame files a previous, larger extraction left behind', async () => {
+    const root = await tempRoot();
+    const runtime = new FakeFfmpegRuntime();
+    runtime.writesOutputs = true;
+    const adapter = adapterWithFakeRuntime(runtime);
+    const outputDirectory = path.join(root, 'frames', 'clip');
+    mkdirSync(outputDirectory, { recursive: true });
+    writeFileSync(path.join(outputDirectory, 'frame-004.jpg'), 'stale');
+    writeFileSync(path.join(outputDirectory, 'frame-005.jpg'), 'stale');
+    writeFileSync(path.join(outputDirectory, 'frame-006.jpg'), 'stale');
+
+    const extracted = await adapter.extractFrames({
+      videoPath: path.join(root, 'clip.mp4'),
+      outputDirectory,
+      frameCount: 3,
+    });
+
+    expect(extracted).toEqual(ok({
+      framePaths: [
+        path.join(outputDirectory, 'frame-001.jpg'),
+        path.join(outputDirectory, 'frame-002.jpg'),
+        path.join(outputDirectory, 'frame-003.jpg'),
+      ],
+    }));
+    expect(existsSync(path.join(outputDirectory, 'frame-004.jpg'))).toBe(false);
+    expect(existsSync(path.join(outputDirectory, 'frame-005.jpg'))).toBe(false);
+    expect(existsSync(path.join(outputDirectory, 'frame-006.jpg'))).toBe(false);
+  });
+
   it('fails typed when no frame materializes', async () => {
     const root = await tempRoot();
     const runtime = new FakeFfmpegRuntime();

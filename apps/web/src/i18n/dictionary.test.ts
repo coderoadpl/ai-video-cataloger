@@ -57,9 +57,9 @@ describe('dictionary', () => {
   });
 
   it('keeps the Polish settings polish copy idiomatic', () => {
-    expect(pl.settingsModal.otherSettingsTitle).toBe('Pozostałe ustawienia');
-    expect(pl.settingsModal.otherSettingsHint)
-      .toBe('To wartości efektywne; nie ma tu jeszcze dla nich edytora.');
+    expect(pl.settingsModal.transcriptionLanguage).toBe('Język transkrypcji');
+    expect(pl.settingsModal.analyzerTimeoutHelper)
+      .toBe('Jak długo czekać na analizator AI, zanim zostanie przerwany.');
     expect(pl.credentials.savedKeychain).toBe('Klucz API zapisano w pęku kluczy macOS.');
     expect(pl.details.variants.configuredLabel(
       'gemini-3.6-flash',

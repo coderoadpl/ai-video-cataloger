@@ -15,11 +15,9 @@ import {
   credentialSavedMessage,
   draftFromEffective,
   formatBudgetInput,
-  otherSettings,
   parseBudgetInput,
   serializeValue,
   type CredentialNotice,
-  type EffectiveSetting,
   type LocalAiTier,
   type SettingsDraft,
 } from './settings-model.js';
@@ -42,7 +40,6 @@ export interface SettingsState {
   budgetInput: string;
   isBudgetInvalid: boolean;
   monthlySpend: MonthlySpend | null;
-  otherSettings: EffectiveSetting[];
   isForgettingCredential: boolean;
   forgetCredentialNotice: CredentialNotice | null;
   forgetCredential: () => void;
@@ -232,9 +229,6 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     budgetInput,
     isBudgetInvalid,
     monthlySpend: indexStatusQuery.data?.currentMonthSpend ?? null,
-    otherSettings: data !== undefined && 'config' in data
-      ? otherSettings(dictionary, draftFromEffective(data.effective))
-      : [],
     isForgettingCredential: deleteCredential.isPending,
     forgetCredentialNotice,
     forgetCredential,

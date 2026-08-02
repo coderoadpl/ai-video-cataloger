@@ -539,28 +539,22 @@ export interface Dictionary {
     title: string;
     selectFolderFirst: string;
     loading: string;
-    otherSettingsTitle: string;
-    otherSettingsHint: string;
-    otherSettingsKeys: {
-      whisper_language: string;
-      whisper_api_base_url: string;
-      whisper_api_model: string;
-      timeout: string;
-    };
-    valueNotSet: string;
-    valueEnabled: string;
-    valueDisabled: string;
-    valueNoLimit: string;
     secondsValue: (seconds: number) => string;
     frameCount: string;
     frameCountValue: (count: number) => string;
     frameCountHelper: string;
     transcriptionMode: string;
+    transcriptionLanguage: string;
     whisperModel: string;
     customWhisperPath: string;
     customWhisperPathHelper: string;
+    whisperApiBaseUrl: string;
+    whisperApiBaseUrlHelper: string;
+    whisperApiModel: string;
     openAiWhisperApiKey: string;
     openAiWhisperApiKeyHelper: string;
+    analyzerTimeout: string;
+    analyzerTimeoutHelper: string;
     facesSectionTitle: string;
     facesEnableLabel: string;
     facesHelper: string;
@@ -1419,28 +1413,22 @@ export const en: Dictionary = {
     title: 'Settings',
     selectFolderFirst: 'Please select a folder first to configure settings.',
     loading: 'Loading settings…',
-    otherSettingsTitle: 'Other settings',
-    otherSettingsHint: 'These use the effective value; there is no editor for them here yet.',
-    otherSettingsKeys: {
-      whisper_language: 'Transcription language',
-      whisper_api_base_url: 'Whisper API base URL',
-      whisper_api_model: 'Whisper API model',
-      timeout: 'Analyzer timeout',
-    },
-    valueNotSet: 'Not set',
-    valueEnabled: 'Enabled',
-    valueDisabled: 'Disabled',
-    valueNoLimit: 'No limit',
     secondsValue: (seconds) => `${String(seconds)} seconds`,
     frameCount: 'Frame Count',
     frameCountValue: (count) => `${count} ${count === 1 ? 'frame' : 'frames'}`,
     frameCountHelper: 'Number of frames to extract from each video for analysis.',
     transcriptionMode: 'Transcription Mode',
+    transcriptionLanguage: 'Transcription language',
     whisperModel: 'Whisper Model',
     customWhisperPath: 'Custom whisper.cpp path',
     customWhisperPathHelper: 'Optional. Takes precedence over the managed and system runtimes.',
+    whisperApiBaseUrl: 'Whisper API base URL',
+    whisperApiBaseUrlHelper: 'OpenAI-compatible Whisper API endpoint.',
+    whisperApiModel: 'Whisper API model',
     openAiWhisperApiKey: 'OpenAI Whisper API key',
     openAiWhisperApiKeyHelper: 'Leave blank to keep the stored OpenAI credential.',
+    analyzerTimeout: 'Analyzer timeout',
+    analyzerTimeoutHelper: 'How long to wait for the AI analyzer before giving up.',
     facesSectionTitle: 'Local face grouping (experimental)',
     facesEnableLabel: 'Enable local face grouping',
     facesHelper: 'Everything stays on this Mac; face grouping is opt-in; you can delete all face data anytime.',
@@ -2312,28 +2300,22 @@ export const pl: Dictionary = {
     title: 'Ustawienia',
     selectFolderFirst: 'Najpierw wybierz folder, aby skonfigurować ustawienia.',
     loading: 'Ładowanie ustawień…',
-    otherSettingsTitle: 'Pozostałe ustawienia',
-    otherSettingsHint: 'To wartości efektywne; nie ma tu jeszcze dla nich edytora.',
-    otherSettingsKeys: {
-      whisper_language: 'Język transkrypcji',
-      whisper_api_base_url: 'Bazowy URL API Whisper',
-      whisper_api_model: 'Model API Whisper',
-      timeout: 'Limit czasu analizatora',
-    },
-    valueNotSet: 'Nie ustawiono',
-    valueEnabled: 'Włączone',
-    valueDisabled: 'Wyłączone',
-    valueNoLimit: 'Bez limitu',
     secondsValue: (seconds) => `${String(seconds)} s`,
     frameCount: 'Liczba klatek',
     frameCountValue: (count) => `${count} ${plPlural(count, 'klatka', 'klatki', 'klatek')}`,
     frameCountHelper: 'Liczba klatek wyodrębnianych z każdego filmu do analizy.',
     transcriptionMode: 'Tryb transkrypcji',
+    transcriptionLanguage: 'Język transkrypcji',
     whisperModel: 'Model Whisper',
     customWhisperPath: 'Własna ścieżka whisper.cpp',
     customWhisperPathHelper: 'Opcjonalne. Ma pierwszeństwo przed zarządzanym i systemowym runtime.',
+    whisperApiBaseUrl: 'Bazowy URL API Whisper',
+    whisperApiBaseUrlHelper: 'Punkt końcowy API Whisper zgodny z OpenAI.',
+    whisperApiModel: 'Model API Whisper',
     openAiWhisperApiKey: 'Klucz OpenAI Whisper API',
     openAiWhisperApiKeyHelper: 'Pozostaw puste, aby zachować zapisane dane OpenAI.',
+    analyzerTimeout: 'Limit czasu analizatora',
+    analyzerTimeoutHelper: 'Jak długo czekać na analizator AI, zanim zostanie przerwany.',
     facesSectionTitle: 'Lokalne grupowanie twarzy (eksperymentalne)',
     facesEnableLabel: 'Włącz lokalne grupowanie twarzy',
     facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',

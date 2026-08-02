@@ -1,7 +1,7 @@
 import ffmpeg from 'fluent-ffmpeg';
 import { execFile } from 'node:child_process';
 import { spawn } from 'node:child_process';
-import { existsSync, mkdirSync, statSync } from 'node:fs';
+import { existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { createRequire } from 'node:module';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -162,6 +162,7 @@ export class FfmpegMediaAdapter implements MediaPort {
 
     try {
       mkdirSync(input.outputDirectory, { recursive: true });
+      clearStaleFrames(input.outputDirectory);
       const framePaths: string[] = [];
       let firstCommandError: AppError | null = null;
       for (let index = 1; index <= input.frameCount; index += 1) {
@@ -384,6 +385,15 @@ export const framesDirectoryForVideo = (videoPath: string): string =>
 
 export const frameOutputPath = (outputDirectory: string, frameNumber: number): string =>
   path.join(outputDirectory, `frame-${frameNumber.toString().padStart(3, '0')}.jpg`);
+
+const FRAME_FILE_NAME_PATTERN = /^frame-[0-9]{3}\.jpg$/;
+
+const clearStaleFrames = (outputDirectory: string): void => {
+  if (!existsSync(outputDirectory)) return;
+  for (const entry of readdirSync(outputDirectory)) {
+    if (FRAME_FILE_NAME_PATTERN.test(entry)) unlinkSync(path.join(outputDirectory, entry));
+  }
+};
 
 const frameMaterialized = (framePath: string): boolean => {
   if (!existsSync(framePath)) return false;
