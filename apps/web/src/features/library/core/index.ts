@@ -2,7 +2,6 @@ export { groupByCaptureDay, type LibraryDaySection, type LibraryItem } from './d
 export {
   buildRows,
   columnsForWidth,
-  rowIndexOfFingerprint,
   visibleRowRange,
   type LibraryGridRow,
   type LibrarySectionLike,

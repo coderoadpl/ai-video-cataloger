@@ -24,7 +24,6 @@ interface CatalogSidebarProps {
   registerVideos: (videos: readonly CatalogVideo[]) => void;
   subfolderVideoCount?: number;
   onSwitchToWholeTree?: (() => void) | undefined;
-  onShowInLibrary?: ((folderPath: string, fingerprint: string | null) => void) | undefined;
   recentFolders?: string[];
   isCheckingFolder?: boolean;
   onOpenFolder?: () => void;
@@ -43,7 +42,6 @@ export const CatalogSidebar = ({
   registerVideos,
   subfolderVideoCount = 0,
   onSwitchToWholeTree,
-  onShowInLibrary,
   recentFolders = [],
   isCheckingFolder = false,
   onOpenFolder = () => undefined,
@@ -60,9 +58,6 @@ export const CatalogSidebar = ({
         isCheckingFolder={isCheckingFolder}
         onOpenFolder={onOpenFolder}
         onSelectRecentFolder={onSelectRecentFolder}
-        onShowInLibrary={folder === null || onShowInLibrary === undefined ? undefined : () => onShowInLibrary(folder, null)}
-        showInLibraryLabel={dictionary.common.showInLibrary}
-        showInLibraryTestId="folder-show-in-library"
         emptyHint={(
           <>
             <Typography variant="body2" color="text.secondary">
@@ -123,7 +118,6 @@ export const CatalogSidebar = ({
         ) : !useTree || treeRoot === null ? (
           <>
             <VideoList
-              folder={folder}
               videos={catalog.videos}
               selectedKey={catalog.selectedKey}
               analyzingPath={analyzingPath}
@@ -134,7 +128,6 @@ export const CatalogSidebar = ({
               thumbnailFailedPaths={catalog.thumbnailFailedPaths}
               subfolderVideoCount={subfolderVideoCount}
               onSwitchToWholeTree={onSwitchToWholeTree}
-              onShowInLibrary={onShowInLibrary}
             />
             <AbsentFilesSection folder={folder} />
           </>

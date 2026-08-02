@@ -63,6 +63,24 @@ describe('reveal in finder context menu', () => {
     reveal.mockRestore();
   });
 
+  it('never offers a show-in-library item on the context menu', async () => {
+    renderThemed(
+      <VideoList
+        videos={[video]}
+        selectedKey={null}
+        analyzingPath={null}
+        isLoading={false}
+        isError={false}
+        error={null}
+        onSelect={() => {}}
+      />,
+    );
+
+    fireEvent.contextMenu(screen.getByTestId('video-item'));
+    await screen.findByTestId('reveal-in-finder-item');
+    expect(screen.queryByTestId('show-in-library-item')).toBeNull();
+  });
+
   it('shows an error toast when the reveal target is outside every known folder', async () => {
     const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(false);
     renderThemed(

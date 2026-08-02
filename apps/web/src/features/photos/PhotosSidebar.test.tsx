@@ -81,7 +81,6 @@ describe('PhotosSidebar', () => {
     renderThemed(
       <PhotosSidebar
         state={baseState({ roots: [], folder: null, folderState: 'no-folder', selectedRoot: null })}
-        onShowInLibrary={vi.fn()}
         onOpenFolder={onOpenFolder}
       />,
     );
@@ -96,7 +95,6 @@ describe('PhotosSidebar', () => {
     renderThemed(
       <PhotosSidebar
         state={baseState({ roots: [], folder: '/a/b', folderState: 'unscanned', selectedRoot: null, scanFolder })}
-        onShowInLibrary={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
     );
@@ -113,7 +111,6 @@ describe('PhotosSidebar', () => {
     const { container } = renderThemed(
       <PhotosSidebar
         state={baseState({ items: [item({ fingerprint: 'a' })], total: 1 })}
-        onShowInLibrary={vi.fn()}
         onOpenFolder={vi.fn()}
         onAnalysisMediaChange={onAnalysisMediaChange}
         toolbar={<div data-testid="photos-scope-toolbar" />}
@@ -130,20 +127,17 @@ describe('PhotosSidebar', () => {
     expect(onAnalysisMediaChange).toHaveBeenCalledWith('videos');
   });
 
-  it('shows the folder header with root name and path, and calls onShowInLibrary', () => {
-    const onShowInLibrary = vi.fn();
-    renderThemed(<PhotosSidebar state={baseState()} onShowInLibrary={onShowInLibrary} onOpenFolder={vi.fn()} />);
+  it('shows the folder header with root name and path, and renders no show-in-library action', () => {
+    renderThemed(<PhotosSidebar state={baseState()} onOpenFolder={vi.fn()} />);
 
     expect(screen.getAllByText('media').length).toBeGreaterThan(0);
-    fireEvent.click(screen.getByTestId('photos-folder-show-in-library'));
-    expect(onShowInLibrary).toHaveBeenCalledWith('/media');
+    expect(screen.queryByTestId('photos-folder-show-in-library')).toBeNull();
   });
 
   it('renders a scan/analyze/proxy job failure as an inline error strip, not just the terminal', () => {
     renderThemed(
       <PhotosSidebar
         state={baseState({ error: 'Analyze failed: ffmpeg exploded' })}
-        onShowInLibrary={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
     );
@@ -161,7 +155,6 @@ describe('PhotosSidebar', () => {
           selectedRoot: null,
           error: 'Scan failed: permission denied',
         })}
-        onShowInLibrary={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
     );
@@ -179,7 +172,7 @@ describe('PhotosSidebar', () => {
       item({ fingerprint: 'e', missingAt: 123 }),
       item({ fingerprint: 'f' }),
     ];
-    renderThemed(<PhotosSidebar state={baseState({ items, selectFingerprint })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />);
+    renderThemed(<PhotosSidebar state={baseState({ items, selectFingerprint })} onOpenFolder={vi.fn()} />);
 
     const rows = screen.getAllByTestId('photos-sidebar-row');
     expect(rows).toHaveLength(6);
@@ -201,7 +194,6 @@ describe('PhotosSidebar', () => {
             }),
           ],
         })}
-        onShowInLibrary={vi.fn()}
         onOpenFolder={vi.fn()}
       />,
     );
@@ -216,7 +208,6 @@ describe('PhotosSidebar', () => {
   it('renders the capture date localized instead of a raw ISO timestamp', () => {
     renderThemed(<PhotosSidebar
       state={baseState({ items: [item({ fingerprint: 'a', capturedAt: '2026-08-10T17:46:06.740Z' })] })}
-      onShowInLibrary={vi.fn()}
       onOpenFolder={vi.fn()}
     />);
 
@@ -234,7 +225,7 @@ describe('PhotosSidebar', () => {
       item({ fingerprint: 'd', exifReadAt: null }),
       item({ fingerprint: 'e', missingAt: 123 }),
     ];
-    renderThemed(<PhotosSidebar state={baseState({ items })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />);
+    renderThemed(<PhotosSidebar state={baseState({ items })} onOpenFolder={vi.fn()} />);
 
     const analysedBadge = screen.getByTestId('photos-sidebar-badge-analysed');
     expect(analysedBadge.hasAttribute('data-status-badge')).toBe(true);
@@ -260,7 +251,7 @@ describe('PhotosSidebar', () => {
       item({ fingerprint: 'c' }),
     ];
     renderThemed(
-      <PhotosSidebar state={baseState({ items, processingFingerprints: new Set(['b']) })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />,
+      <PhotosSidebar state={baseState({ items, processingFingerprints: new Set(['b']) })} onOpenFolder={vi.fn()} />,
     );
 
     const rows = screen.getAllByTestId('photos-sidebar-row');
@@ -270,14 +261,14 @@ describe('PhotosSidebar', () => {
 
   it('shows no in-flight rows when no analyze job is running', () => {
     const items = [item({ fingerprint: 'a' }), item({ fingerprint: 'b' })];
-    renderThemed(<PhotosSidebar state={baseState({ items })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />);
+    renderThemed(<PhotosSidebar state={baseState({ items })} onOpenFolder={vi.fn()} />);
 
     expect(screen.queryByTestId('photos-sidebar-row-inflight')).toBeNull();
   });
 
   it('shows a load-more button when hasMore is true and calls through', () => {
     const loadMore = vi.fn();
-    renderThemed(<PhotosSidebar state={baseState({ items: [item({ fingerprint: 'a' })], hasMore: true, loadMore })} onShowInLibrary={vi.fn()} onOpenFolder={vi.fn()} />);
+    renderThemed(<PhotosSidebar state={baseState({ items: [item({ fingerprint: 'a' })], hasMore: true, loadMore })} onOpenFolder={vi.fn()} />);
 
     fireEvent.click(screen.getByTestId('photos-sidebar-load-more'));
     expect(loadMore).toHaveBeenCalled();

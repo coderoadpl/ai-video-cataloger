@@ -1,10 +1,10 @@
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type MouseEvent } from 'react';
 import { Box, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
-import { buildRows, columnsForWidth, rowIndexOfFingerprint, visibleRowRange, type LibraryItem, type LibraryOfflineReason } from './core/index.js';
+import { buildRows, columnsForWidth, visibleRowRange, type LibraryItem, type LibraryOfflineReason } from './core/index.js';
 import { TileMenu, useTileMenu } from './TileMenu.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 
@@ -27,11 +27,9 @@ interface LibraryGridProps {
   sections: LibraryGridSection[];
   onOpen: (item: LibraryItem) => void;
   onOpenInAnalysis: (item: LibraryItem) => void;
-  scrollToFingerprint?: string | null;
-  onScrolledToFingerprint?: () => void;
 }
 
-export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis, scrollToFingerprint = null, onScrolledToFingerprint }: LibraryGridProps) => {
+export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis }: LibraryGridProps) => {
   const dictionary = useDictionary();
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -59,19 +57,6 @@ export const LibraryGrid = ({ sections, onOpen, onOpenInAnalysis, scrollToFinger
     () => visibleRowRange(scrollTop, viewportHeight, rowHeight, HEADER_HEIGHT, rows),
     [rowHeight, rows, scrollTop, viewportHeight],
   );
-
-  useLayoutEffect(() => {
-    if (scrollToFingerprint === null || containerRef.current === null) return;
-    const targetRow = rowIndexOfFingerprint(sections, columns, scrollToFingerprint);
-    if (targetRow === null) return;
-    let offset = 0;
-    for (let index = 0; index < targetRow; index += 1) {
-      offset += rows[index]?.kind === 'header' ? HEADER_HEIGHT : rowHeight;
-    }
-    containerRef.current.scrollTop = offset;
-    setScrollTop(offset);
-    onScrolledToFingerprint?.();
-  }, [scrollToFingerprint, sections, columns, rows, rowHeight, onScrolledToFingerprint]);
 
   return (
     <Box

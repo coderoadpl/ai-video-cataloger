@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Box, Button, Typography } from '@mui/material';
+import { Box, Typography } from '@mui/material';
 
 import { folderName } from '../../lib/format.js';
 import { FolderBar } from './FolderBar.js';
@@ -11,9 +11,6 @@ interface SidebarFolderPanelProps {
   isCheckingFolder: boolean;
   onOpenFolder: () => void;
   onSelectRecentFolder: (folderPath: string) => void;
-  onShowInLibrary?: (() => void) | undefined;
-  showInLibraryLabel?: string | undefined;
-  showInLibraryTestId?: string | undefined;
   emptyHint?: ReactNode;
 }
 
@@ -23,9 +20,6 @@ export const SidebarFolderPanel = ({
   isCheckingFolder,
   onOpenFolder,
   onSelectRecentFolder,
-  onShowInLibrary,
-  showInLibraryLabel,
-  showInLibraryTestId,
   emptyHint,
 }: SidebarFolderPanelProps) => (
   <Box
@@ -51,11 +45,6 @@ export const SidebarFolderPanel = ({
           <Typography variant="h2" noWrap title={folder} sx={{ flex: 1, minWidth: 0 }}>
             {folderName(folder)}
           </Typography>
-          {onShowInLibrary === undefined ? null : (
-            <Button size="small" onClick={onShowInLibrary} data-testid={showInLibraryTestId}>
-              {showInLibraryLabel}
-            </Button>
-          )}
         </Box>
         <Typography variant="caption" noWrap title={folder}>
           {folder}

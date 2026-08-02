@@ -13,7 +13,6 @@ export interface Dictionary {
     ok: string;
     revealInFinder: string;
     revealFailed: string;
-    showInLibrary: string;
   };
   language: {
     stepTitle: string;
@@ -758,7 +757,6 @@ export interface Dictionary {
     scanThisFolderCta: string;
     scopeThisFolder: string;
     scopeAllFolders: string;
-    showInLibrary: string;
     badgeProxyFailed: string;
     badgeExifMissing: string;
     badgeMissing: string;
@@ -796,6 +794,7 @@ export interface Dictionary {
     filterTags: string;
     filterPeople: string;
     filterPlace: string;
+    filterFolder: string;
     filterFrom: string;
     filterTo: string;
     filterHasGps: string;
@@ -839,7 +838,6 @@ export const en: Dictionary = {
     ok: 'OK',
     revealInFinder: 'Reveal in Finder',
     revealFailed: 'Could not reveal this file: it is outside every known catalog folder.',
-    showInLibrary: 'Show in Library',
   },
   language: {
     stepTitle: 'Language',
@@ -1638,7 +1636,6 @@ export const en: Dictionary = {
     scanThisFolderCta: 'Scan this folder',
     scopeThisFolder: 'This folder',
     scopeAllFolders: 'All scanned folders',
-    showInLibrary: 'Show in Library',
     badgeProxyFailed: 'Preview failed',
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
@@ -1676,6 +1673,7 @@ export const en: Dictionary = {
     filterTags: 'Tags',
     filterPeople: 'People',
     filterPlace: 'Place',
+    filterFolder: 'Folder',
     filterFrom: 'From',
     filterTo: 'To',
     filterHasGps: 'GPS',
@@ -1727,7 +1725,6 @@ export const pl: Dictionary = {
     ok: 'OK',
     revealInFinder: 'Pokaż w Finderze',
     revealFailed: 'Nie można pokazać tego pliku: jest poza wszystkimi znanymi folderami katalogu.',
-    showInLibrary: 'Pokaż w Bibliotece',
   },
   language: {
     stepTitle: 'Język',
@@ -2527,7 +2524,6 @@ export const pl: Dictionary = {
     scanThisFolderCta: 'Skanuj ten folder',
     scopeThisFolder: 'Ten folder',
     scopeAllFolders: 'Wszystkie foldery',
-    showInLibrary: 'Pokaż w Bibliotece',
     badgeProxyFailed: 'Podgląd nieudany',
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',
@@ -2567,6 +2563,7 @@ export const pl: Dictionary = {
     filterTags: 'Tagi',
     filterPeople: 'Osoby',
     filterPlace: 'Miejsce',
+    filterFolder: 'Folder',
     filterFrom: 'Od',
     filterTo: 'Do',
     filterHasGps: 'GPS',

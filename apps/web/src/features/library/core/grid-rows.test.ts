@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { LibraryDaySection, LibraryItem } from './day-groups.js';
-import { buildRows, columnsForWidth, rowIndexOfFingerprint, visibleRowRange, type LibraryGridRow } from './grid-rows.js';
+import { buildRows, columnsForWidth, visibleRowRange, type LibraryGridRow } from './grid-rows.js';
 
 const stubItem = (fingerprint: string): LibraryItem => ({
   fingerprint,
@@ -56,23 +56,6 @@ describe('buildRows', () => {
     const sections: LibraryDaySection[] = [{ day: 'd1', items: [] }];
 
     expect(buildRows(sections, 3)).toEqual<LibraryGridRow[]>([{ kind: 'header', section: 0 }]);
-  });
-});
-
-describe('rowIndexOfFingerprint', () => {
-  it('finds the row index of the tile carrying the given fingerprint', () => {
-    const sections: LibraryDaySection[] = [
-      { day: 'd1', items: [stubItem('a'), stubItem('b'), stubItem('c')] },
-      { day: 'd2', items: [stubItem('d')] },
-    ];
-
-    expect(rowIndexOfFingerprint(sections, 2, 'c')).toBe(2);
-    expect(rowIndexOfFingerprint(sections, 2, 'd')).toBe(4);
-  });
-
-  it('returns null when the fingerprint is not in any section', () => {
-    const sections: LibraryDaySection[] = [{ day: 'd1', items: [stubItem('a')] }];
-    expect(rowIndexOfFingerprint(sections, 2, 'missing')).toBeNull();
   });
 });
 

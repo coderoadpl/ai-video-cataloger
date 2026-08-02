@@ -228,6 +228,14 @@ describe('details panel', () => {
     expect(onShowOnMap).toHaveBeenCalledTimes(1);
   });
 
+  it('never offers a show-in-library action on the metadata card', () => {
+    const video = makeVideo();
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} />);
+
+    expect(screen.queryByTestId('details-show-in-library')).toBeNull();
+  });
+
   it('renders no coordinates row when the video has no location', () => {
     const video = makeVideo();
 

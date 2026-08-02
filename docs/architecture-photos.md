@@ -646,7 +646,7 @@ both consuming one lifted `use-photos-analysis.ts` hook instance
 (`usePhotosAnalysis`, a slimmed sibling of `usePhotos`; root/scope/selection
 state and the analysis-only queries — `photosDetail`, `photosVariants`,
 `photosStatus` — live at the route). `PhotosSidebar` shows a folder header
-(root name, path, "Pokaż w Bibliotece"), a `'folder' | 'all'` scope toggle now
+(root name, path), a `'folder' | 'all'` scope toggle now
 owned by `PhotosScopeToolbar` (folder-level actions: Zeskanuj, Przetwórz, the
 proxies-pending affordance) filling the sidebar's `toolbar` slot, and
 thumbnail rows carrying badges derived from `photoBadges` (`analysed`,

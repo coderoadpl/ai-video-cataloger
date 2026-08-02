@@ -282,7 +282,7 @@ describe('LibraryView', () => {
     expect(screen.getByTestId('library-chip-hasGps')).toBeDefined();
   });
 
-  it('seeding a folder shows a removable folder chip and scrolls to the seeded fingerprint', async () => {
+  it('picking a folder facet option filters results and shows a removable chip with the facet count', async () => {
     const items = [
       libraryItem({ fingerprint: 'fp-1' }),
       libraryItem({
@@ -291,20 +291,52 @@ describe('LibraryView', () => {
       }),
     ];
     stubSearch(items);
+    stubFacets({
+      folders: [
+        { folderId: '11111111-1111-4111-8111-111111111111', displayName: 'videos', currentPath: '/videos', online: true, count: 1 },
+        { folderId: '99999999-9999-4999-8999-999999999999', displayName: 'Other Folder', currentPath: '/other', online: true, count: 1 },
+      ],
+    });
 
-    renderThemed(
-      <LibraryView
-        active
-        onOpenResult={vi.fn()}
-        onPreview={vi.fn()}
-        onGoToVideos={vi.fn()}
-        seed={{ kind: 'folder', folderId: '99999999-9999-4999-8999-999999999999', folderLabel: 'Other Folder', fingerprint: 'fp-target' }}
-        onSeedConsumed={vi.fn()}
-      />,
-    );
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    expect(await screen.findAllByTestId('library-tile')).toHaveLength(2);
 
-    expect(await screen.findByText('Folder: Other Folder')).toBeDefined();
-    expect(await screen.findAllByTestId('library-tile')).toHaveLength(1);
+    const folderInput = screen.getByTestId('library-filter-folder').querySelector('input');
+    if (folderInput === null) throw new Error('missing folder filter input');
+    fireEvent.mouseDown(folderInput);
+    fireEvent.click(await screen.findByText('Other Folder (1)'));
+
+    expect(await screen.findByTestId('library-chip-folder:99999999-9999-4999-8999-999999999999')).toBeDefined();
+    expect(screen.getByText('Folder: Other Folder')).toBeDefined();
+    await waitFor(async () => expect(await screen.findAllByTestId('library-tile')).toHaveLength(1));
+
+    fireEvent.click(screen.getByTestId('library-chip-folder:99999999-9999-4999-8999-999999999999').querySelector('svg') ?? screen.getByTestId('library-chip-folder:99999999-9999-4999-8999-999999999999'));
+    await waitFor(() => expect(screen.queryByTestId('library-chip-folder:99999999-9999-4999-8999-999999999999')).toBeNull());
+  });
+
+  it('combines the folder facet with a text query in the same search request', async () => {
+    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubFacets({
+      folders: [{ folderId: '11111111-1111-4111-8111-111111111111', displayName: 'videos', currentPath: '/videos', online: true, count: 1 }],
+    });
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const folderInput = screen.getByTestId('library-filter-folder').querySelector('input');
+    if (folderInput === null) throw new Error('missing folder filter input');
+    fireEvent.mouseDown(folderInput);
+    fireEvent.click(await screen.findByText('videos (1)'));
+
+    const searchInput = screen.getByTestId('library-search-input').querySelector('input');
+    if (searchInput === null) throw new Error('missing search input');
+    fireEvent.change(searchInput, { target: { value: 'fp-1' } });
+
+    await waitFor(() => {
+      const latest = searchRequests[searchRequests.length - 1];
+      expect(latest?.get('folderId')).toBe('11111111-1111-4111-8111-111111111111');
+      expect(latest?.get('query')).toBe('fp-1');
+    });
   });
 
   it('keeps the chosen sort while a text query is active instead of silently falling back to relevance', async () => {

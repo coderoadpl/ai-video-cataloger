@@ -355,8 +355,8 @@ app identity, the Biblioteka/Analiza switcher and the Settings/Models/
 Prerequisites actions; Open Folder (with its recent-folders menu) and the
 Filmy/Zdjęcia toggle both live inside the Analysis sidebar instead, above the
 "Ten folder"/"Całe drzewo" scope toggle and its list. The folder identity block
-(icon, name, path, an optional "Pokaż w Bibliotece" action and the Open Folder
-control) is one shared component, `components/ui/SidebarFolderPanel.tsx`,
+(icon, name, path and the Open Folder control) is one shared component,
+`components/ui/SidebarFolderPanel.tsx`,
 consumed by both `CatalogSidebar` and `PhotosSidebar` so the two media never
 duplicate that markup; each sidebar renders its own `AnalysisMediaToggle`
 directly below it, hard-set to its own medium (`videos` for `CatalogSidebar`,
@@ -531,12 +531,14 @@ actions, the chip-list projection the filter bar renders, the mapping to the
 the active chips — all arithmetic here is unit-tested, none of it lives in
 JSX. `FilterBar.tsx` is controls only: MUI `Autocomplete` fed by the facets
 query for tags/people (options carry counts), a free-text place `Autocomplete`
-(substring semantics, debounced), a date range with quick presets sourced from
-the year facet, and a three-state has-GPS toggle. Every chip label — including
-the has-GPS, date-range and folder chips — is built in `core/` from dictionary
-parts passed in, so no English string can leak out of the pure layer. The count header always
-states `{shown} of {total}` from the same `searchQuery` response — a filtered
-view can never pretend to be the whole catalog.
+(substring semantics, debounced), a single-select folder `Autocomplete` fed by
+the same folder facet (options carry per-folder counts, one folder active at a
+time), a date range with quick presets sourced from the year facet, and a
+three-state has-GPS toggle. Every chip label — including the has-GPS,
+date-range and folder chips — is built in `core/` from dictionary parts passed
+in, so no English string can leak out of the pure layer. The count header
+always states `{shown} of {total}` from the same `searchQuery` response — a
+filtered view can never pretend to be the whole catalog.
 
 **Grouping is date or folder, decided in `core/`, not in the toggle handler.**
 `features/library/core/folder-groups.ts` emits the same `Section` shape
@@ -547,29 +549,22 @@ name; relevance only while a text query is active) is a tested matrix, not an
 improvised JSX branch — grouping and sort are independent axes (e.g.
 group-by-date with `sort=name` is legal).
 
-**Both tile↔folder connections are first-class.** A tile's primary click and
-its context menu (open in folder view, reveal in Finder, copy path) are the
-tile→folder direction; a folder header's "Show in Library" action and a
-file-level "Show in Library" context-menu/details-pane action are the
-folder→tile direction, seeding `filters.folderId` (rendered as a removable
-chip) and, for the file-level action, scrolling the grid to that file's row —
-`grid-rows.ts` answers "row index of this fingerprint" as a pure, tested
-function, never a pixel measurement. Per the cross-feature-import ban, the
-catalog and details features never import from `features/library`: they
-receive plain `onShowInLibrary(folderPath, fingerprint | null)` callbacks
-wired in `routes/index.tsx`, exactly like `openSearchResult` today.
-
-The folder→tile direction resolves `filters.folderId` against the folder facet
-the shell already loads, matching on the canonicalized path — a catalogued
-folder's persisted id is the `randomUUID` written into its marker file, so a
-path hash is never a substitute for it. `derivedFolderId(folderPath)` stays
-only as the fallback for a folder the catalog has never seen (and for the
-read-only folders whose id genuinely is that hash), where any id would match
-nothing anyway. Per the cross-feature-import ban, `VideoList`/`CatalogSidebar`/`DetailsPanel` never
-import from `features/library`: they take a plain
-`onShowInLibrary(folderPath, fingerprint | null)` callback, wired once in
-`routes/index.tsx`, which derives the seed and switches to the Library mode's
-Kolekcja surface.
+**The tile→folder direction is the only cross-surface folder connection left.**
+A tile's primary click and its context menu (open in folder view, reveal in
+Finder, copy path) resolve a tile to its Analysis folder. The former
+folder→tile direction — a folder header's "Show in Library" action and a
+file-level "Show in Library" context-menu/details-pane action, seeding
+`filters.folderId` from outside Library — is removed (W38): the Analysis
+sidebars and the details pane no longer offer any "jump to Library scoped to
+this folder" affordance. Filtering Library by folder is now done entirely
+inside Library itself, through the Folder facet described above, which
+dispatches `setFolder` directly from the facet's own `folderId`/`displayName`
+— no seed, no cross-feature callback threading through `routes/index.tsx`,
+and no scroll-to-fingerprint behavior (that was specific to the removed
+file-level action). `deriveLibrarySeed` and `LibrarySeed`'s `'folder'` variant
+were deleted as dead plumbing once their only callers — the removed
+buttons — were gone; `LibrarySeed` now only carries `'tag'` and `'person'`
+variants (see below).
 
 **Library is the default mode once the catalog is non-empty.** Initial mode
 resolution is persisted preference (localStorage, the `useScopePreference`

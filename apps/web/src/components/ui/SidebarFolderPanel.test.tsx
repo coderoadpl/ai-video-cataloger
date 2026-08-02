@@ -12,8 +12,7 @@ const renderThemed = (ui: Parameters<typeof renderWithProviders>[0]) =>
   renderWithProviders(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
 
 describe('SidebarFolderPanel', () => {
-  it('shows the folder name, path and an optional show-in-library action when a folder is open', () => {
-    const onShowInLibrary = vi.fn();
+  it('shows the folder name and path when a folder is open, with no show-in-library action', () => {
     renderThemed(
       <SidebarFolderPanel
         folder="/movies/clips"
@@ -21,19 +20,16 @@ describe('SidebarFolderPanel', () => {
         isCheckingFolder={false}
         onOpenFolder={vi.fn()}
         onSelectRecentFolder={vi.fn()}
-        onShowInLibrary={onShowInLibrary}
-        showInLibraryLabel="Show in Library"
-        showInLibraryTestId="show-in-library"
       />,
     );
 
     expect(screen.getAllByText('clips').length).toBeGreaterThan(0);
     expect(screen.getByText('/movies/clips')).toBeDefined();
-    fireEvent.click(screen.getByTestId('show-in-library'));
-    expect(onShowInLibrary).toHaveBeenCalled();
+    expect(screen.queryByTestId('show-in-library')).toBeNull();
+    expect(screen.queryByText('Show in Library')).toBeNull();
   });
 
-  it('renders the empty hint and hides the show-in-library action when no folder is open', () => {
+  it('renders the empty hint when no folder is open', () => {
     renderThemed(
       <SidebarFolderPanel
         folder={null}

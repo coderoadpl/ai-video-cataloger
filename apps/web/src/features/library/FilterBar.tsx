@@ -145,6 +145,23 @@ export const FilterBar = ({
           onInputChange={(_event, next) => setPlaceInput(next)}
           renderInput={(params) => <TextField {...params} label={dictionary.library.filterPlace} data-testid="library-filter-place" />}
         />
+        <Autocomplete
+          size="small"
+          sx={{ minWidth: 200 }}
+          options={facets.folders.map((folder) => folder.folderId)}
+          getOptionLabel={(folderId) => facets.folders.find((folder) => folder.folderId === folderId)?.displayName ?? folderId}
+          renderOption={(props, folderId) => {
+            const { key, ...optionProps } = props;
+            const folder = facets.folders.find((candidate) => candidate.folderId === folderId);
+            return <li key={key} {...optionProps}>{withCount(folder?.displayName ?? folderId, folder?.count ?? 0)}</li>;
+          }}
+          value={state.folderId}
+          onChange={(_event, next) => {
+            const folder = next === null ? null : facets.folders.find((candidate) => candidate.folderId === next);
+            dispatch({ type: 'setFolder', folderId: next, displayName: folder?.displayName ?? next });
+          }}
+          renderInput={(params) => <TextField {...params} label={dictionary.library.filterFolder} data-testid="library-filter-folder" />}
+        />
         <TextField
           size="small"
           type="date"

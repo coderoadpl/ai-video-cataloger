@@ -22,7 +22,6 @@ import { useSearchSuggestions } from './use-search-suggestions.js';
 import { useThumbnailsBackfillTrigger } from './use-thumbnails-backfill.js';
 
 export type LibrarySeed =
-  | { kind: 'folder'; folderId: string; folderLabel: string; fingerprint: string | null }
   | { kind: 'tag'; tag: string }
   | { kind: 'person'; personId: string; label: string };
 
@@ -56,7 +55,6 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
   const [filters, dispatch] = useReducer(libraryFilterReducer, EMPTY_LIBRARY_FILTERS);
   const [groupBy, setGroupByState] = useState<LibraryGroupBy>(() => readGroupBy());
   const [sort, setSort] = useState<LibrarySort>('captured_desc');
-  const [scrollTarget, setScrollTarget] = useState<string | null>(null);
   const [searchFocused, setSearchFocused] = useState(false);
   const suggestions = useSearchSuggestions();
 
@@ -67,10 +65,7 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
 
   useEffect(() => {
     if (seed === null) return;
-    if (seed.kind === 'folder') {
-      dispatch({ type: 'setFolder', folderId: seed.folderId, displayName: seed.folderLabel });
-      setScrollTarget(seed.fingerprint);
-    } else if (seed.kind === 'person') {
+    if (seed.kind === 'person') {
       dispatch({ type: 'addPerson', personId: seed.personId, displayName: seed.label });
     } else {
       dispatch({ type: 'addTag', tag: seed.tag });
@@ -211,8 +206,6 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
           sections={sections}
           onOpen={previewItem}
           onOpenInAnalysis={openInAnalysis}
-          scrollToFingerprint={scrollTarget}
-          onScrolledToFingerprint={() => setScrollTarget(null)}
         />
         {library.hasMore ? (
           <Box sx={{ display: 'flex', justifyContent: 'center', py: 1.5 }}>

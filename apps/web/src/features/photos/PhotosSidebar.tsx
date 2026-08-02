@@ -17,7 +17,6 @@ const THUMB_BOX = 56;
 
 interface PhotosSidebarProps {
   state: PhotosAnalysisState;
-  onShowInLibrary: (root: string) => void;
   onOpenFolder: () => void;
   toolbar?: ReactNode;
   recentFolders?: string[];
@@ -142,7 +141,6 @@ const PhotoSidebarRow = ({
 
 export const PhotosSidebar = ({
   state,
-  onShowInLibrary,
   onOpenFolder,
   toolbar,
   recentFolders = [],
@@ -154,7 +152,6 @@ export const PhotosSidebar = ({
 
   const folderPanel = state.scope === 'folder' && state.folderState !== 'scanned' ? state.folderState : null;
   const currentFolder = state.folder;
-  const scannedRoot = state.selectedRoot;
 
   const header = (
     <>
@@ -164,9 +161,6 @@ export const PhotosSidebar = ({
         isCheckingFolder={isCheckingFolder}
         onOpenFolder={onOpenFolder}
         onSelectRecentFolder={onSelectRecentFolder}
-        onShowInLibrary={scannedRoot === null ? undefined : () => onShowInLibrary(scannedRoot)}
-        showInLibraryLabel={dictionary.photosSidebar.showInLibrary}
-        showInLibraryTestId="photos-folder-show-in-library"
         emptyHint={(
           <>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>{dictionary.photosSidebar.noFolderTitle}</Typography>

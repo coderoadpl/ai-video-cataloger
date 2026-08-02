@@ -23,7 +23,6 @@ interface VideoDetailsProps {
   onTagSearch?: ((tag: string) => void) | undefined;
   location?: DetailsLocation | null | undefined;
   onShowOnMap?: (() => void) | undefined;
-  onShowInLibrary?: (() => void) | undefined;
 }
 
 const DuplicateDetail = ({
@@ -99,7 +98,6 @@ export const VideoDetails = ({
   onTagSearch,
   location,
   onShowOnMap,
-  onShowInLibrary,
 }: VideoDetailsProps) => {
   const dictionary = useDictionary();
   const duplicate = video.duplicate ?? null;
@@ -145,7 +143,7 @@ export const VideoDetails = ({
             </Box>
           </Box>
 
-          <MetadataCard video={video} location={location} onShowOnMap={onShowOnMap} onShowInLibrary={onShowInLibrary} />
+          <MetadataCard video={video} location={location} onShowOnMap={onShowOnMap} />
 
           <VariantSwitcher state={variants} />
 

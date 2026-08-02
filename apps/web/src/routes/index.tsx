@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 
-import { folderName } from '../lib/format.js';
-import { parentDir } from '../lib/media-url.js';
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
 import { LibrarySubnav } from '../components/ui/LibrarySubnav.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
@@ -21,7 +19,6 @@ import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { LibraryView, type LibraryItem, type LibrarySeed } from '../features/library/LibraryView.js';
-import { deriveLibrarySeed } from '../features/library/show-in-library.js';
 import { useCatalogIndex } from '../features/library/use-catalog-index.js';
 import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations, type CatalogLocation } from '../features/map/use-catalog-locations.js';
@@ -60,7 +57,6 @@ export const IndexRoute = () => {
   const [librarySeed, setLibrarySeed] = useState<LibrarySeed | null>(null);
   const [mapFocus, setMapFocus] = useState<string | null>(null);
   const [photoFocus, setPhotoFocus] = useState<string | null>(null);
-  const [photosRootSeed, setPhotosRootSeed] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const [preview, setPreview] = useState<PreviewMedia | null>(null);
   const shell = useShell();
@@ -185,22 +181,6 @@ export const IndexRoute = () => {
     const media = previewFromLocation(location);
     if (media !== null) setPreview(media);
   }, []);
-  const onShowInLibrary = useCallback(
-    (folderPath: string, fingerprint: string | null) => {
-      setLibrarySeed(deriveLibrarySeed(folderPath, folderName(folderPath), fingerprint, catalogIndex.folders));
-      setMode('library');
-      setLibrarySurface('collection');
-    },
-    [catalogIndex.folders, setLibrarySurface, setMode],
-  );
-  const onShowPhotosRootInLibrary = useCallback(
-    (root: string) => {
-      setMode('library');
-      setLibrarySurface('photos');
-      setPhotosRootSeed(root);
-    },
-    [setLibrarySurface, setMode],
-  );
   const videoSidebar = (
     <CatalogSidebar
       folder={shell.currentFolder}
@@ -212,7 +192,6 @@ export const IndexRoute = () => {
       registerVideos={videoRegistry.register}
       subfolderVideoCount={subfolderVideoCount}
       onSwitchToWholeTree={() => setScope('tree')}
-      onShowInLibrary={onShowInLibrary}
       recentFolders={shell.recentFolders}
       isCheckingFolder={shell.isCheckingFolder}
       onOpenFolder={shell.openFolder}
@@ -246,7 +225,6 @@ export const IndexRoute = () => {
   const photosSidebar = (
     <PhotosSidebar
       state={photosAnalysis}
-      onShowInLibrary={onShowPhotosRootInLibrary}
       onOpenFolder={shell.openFolder}
       recentFolders={shell.recentFolders}
       isCheckingFolder={shell.isCheckingFolder}
@@ -282,7 +260,6 @@ export const IndexRoute = () => {
         setMode('library');
         setLibrarySurface('map');
       }}
-      onShowInLibrary={selected === null ? undefined : () => onShowInLibrary(parentDir(selected.path), selectedFingerprint)}
     />
   );
 
@@ -305,8 +282,6 @@ export const IndexRoute = () => {
           active={mode === 'library' && librarySurface === 'photos'}
           focusFingerprint={photoFocus}
           onFocusConsumed={() => setPhotoFocus(null)}
-          rootSeed={photosRootSeed}
-          onRootSeedConsumed={() => setPhotosRootSeed(null)}
           onOpenInAnalysis={openPhotoInAnalysis}
         />
         <PeopleView

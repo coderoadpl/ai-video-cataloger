@@ -14,11 +14,31 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- The Library search filters gain a Folder facet, alongside Tagi/Osoby/
+  Miejsce/daty/GPS: a folder autocomplete with per-folder match counts from
+  the same facets endpoint the other filters use, a removable "Folder: …"
+  chip, and combinable with the text query and every other filter
+  (`FilterBar`, `library/core/filter-state.ts`'s pre-existing `folderId`
+  filter and chip plumbing). No contract change: `searchInputSchema` already
+  accepted `folderId`.
+
+### Removed
+
+- Every "Pokaż w Bibliotece"/"Show in Library" button and context-menu item
+  is gone — the Analysis sidebar folder header (both the video and photos
+  sidebars), the video tile right-click menu, and the video details
+  metadata card no longer offer it; folder-scoped Library navigation is now
+  done through the new Folder search facet instead. `deriveLibrarySeed` and
+  its `LibrarySeed` `'folder'` seed kind, the only remaining callers of that
+  removed affordance, are deleted as dead plumbing.
+
 ### Changed
 
 - The Analysis sidebar now reflects the real hierarchy top to bottom: the
-  folder identity block (name, path, "Pokaż w Bibliotece" and Open Folder with
-  its recent-folders menu) sits at the top of the sidebar, above the
+  folder identity block (name, path and Open Folder with its recent-folders
+  menu) sits at the top of the sidebar, above the
   Filmy/Zdjęcia medium toggle, above the existing "Ten folder"/"Całe drzewo"
   scope toggle and its content. Both moved out of the top bar, which now only
   carries app identity, the Biblioteka/Analiza switcher and Settings/Models/

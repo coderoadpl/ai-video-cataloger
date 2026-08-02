@@ -70,19 +70,3 @@ export const visibleRowRange = (
   return { first, last, topOffset: bounds[first]?.offset ?? 0, totalHeight };
 };
 
-export const rowIndexOfFingerprint = (
-  sections: readonly LibrarySectionLike[],
-  columns: number,
-  fingerprint: string,
-): number | null => {
-  const rows = buildRows(sections, columns);
-  for (let index = 0; index < rows.length; index += 1) {
-    const row = rows[index];
-    if (row === undefined || row.kind !== 'tiles') continue;
-    const section = sections[row.section];
-    if (section === undefined) continue;
-    const tiles = section.items.slice(row.start, row.start + row.count);
-    if (tiles.some((item) => item.fingerprint === fingerprint)) return index;
-  }
-  return null;
-};
