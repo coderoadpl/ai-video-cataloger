@@ -17,6 +17,7 @@ import {
   jobResultSchema,
   materializeSummarySchema,
   photoGpsBackfillSummarySchema,
+  photoImportLibraSummarySchema,
   photoProxiesSummarySchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
@@ -1101,6 +1102,29 @@ describe('route schemas', () => {
     const videoAcceptingCount = jobResultSchema.options.filter((option) => option.safeParse(videoSample).success).length;
     expect(videoAcceptingCount).toBe(1);
     expect(photoGpsBackfillSummarySchema.safeParse(videoSample).success).toBe(false);
+  });
+
+  it('round-trips photoImportLibraSummarySchema through jobResultSchema, and every other member rejects it', () => {
+    const sample = {
+      media: 'photo' as const,
+      artifactsDir: '/artifacts',
+      manifestPath: '/manifest.ndjson',
+      dryRun: false,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: '2026-01-01T00:01:00.000Z',
+      roots: 1,
+      manifest: { entries: 1, invalidLines: 0, matched: 1, unmatched: 0 },
+      descriptions: { entries: 1, invalidLines: 0, imported: 1, unmatched: 0 },
+      faces: { entries: 1, invalidLines: 0, imported: 1, skippedIncomplete: 0, unmatched: 0, photosCompleted: 1 },
+      geo: { entries: 1, invalidLines: 0, written: 1, unchanged: 0, skippedPrecedence: 0, skippedUnsupportedSource: 0, unmatched: 0 },
+      elapsedMs: 5,
+    };
+
+    const viaUnion = jobResultSchema.parse(sample);
+    expect(viaUnion).toEqual(sample);
+    const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
+    expect(acceptingCount).toBe(1);
+    expect(photoImportLibraSummarySchema.parse(sample)).toEqual(sample);
   });
 
   it('round-trips photosSearch, photosVariants* routes, and photosDetailOutputSchema.analysis both null and non-null (P6)', () => {

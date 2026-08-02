@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   photosForgetHuman,
   photosGpsBackfillHuman,
+  photosImportLibraHuman,
   photosProcessHuman,
   photosGridThumbsHuman,
   photosProxiesHuman,
@@ -218,5 +219,31 @@ describe('photosVariantsListHuman and photosVariantNdjsonRow', () => {
       analyzer: 'harness',
       model: 'claude-code',
     });
+  });
+});
+
+describe('photosImportLibraHuman', () => {
+  it('formats an import summary across every artifact', () => {
+    const text = photosImportLibraHuman({
+      media: 'photo',
+      artifactsDir: '/artifacts',
+      manifestPath: '/manifest.ndjson',
+      dryRun: false,
+      startedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: '2026-01-01T00:01:00.000Z',
+      roots: 1,
+      manifest: { entries: 2, invalidLines: 0, matched: 1, unmatched: 1 },
+      descriptions: { entries: 1, invalidLines: 0, imported: 1, unmatched: 0 },
+      faces: { entries: 1, invalidLines: 0, imported: 1, skippedIncomplete: 0, unmatched: 0, photosCompleted: 1 },
+      geo: { entries: 1, invalidLines: 0, written: 1, unchanged: 0, skippedPrecedence: 0, skippedUnsupportedSource: 0, unmatched: 0 },
+      elapsedMs: 5,
+    });
+    expect(text).toBe(
+      'Photo LIBRA import:\n'
+      + 'Manifest: 1 matched, 1 unmatched (0 invalid lines)\n'
+      + 'Descriptions: 1 imported, 0 unmatched\n'
+      + 'Faces: 1 imported across 1 photos, 0 skipped incomplete, 0 unmatched\n'
+      + 'Geo: 1 written, 0 unchanged, 0 skipped (precedence), 0 skipped (unsupported source), 0 unmatched',
+    );
   });
 });

@@ -49,6 +49,7 @@ import { doctorHuman } from './doctor-human.js';
 import {
   photosForgetHuman,
   photosGpsBackfillHuman,
+  photosImportLibraHuman,
   photosProcessHuman,
   photosGridThumbsHuman,
   photosProxiesHuman,
@@ -1512,6 +1513,37 @@ photosGps
       return;
     }
     await waitForJobAndEmit(json, result.value.jobId, photosGpsBackfillHuman, true);
+  });
+
+photos
+  .command('import-libra')
+  .argument('<artifacts-dir>')
+  .description('One-shot import of PHOTO LIBRA session artifacts (descriptions, faces, geo) into the photos catalog')
+  .option('--manifest <path>', 'path to the manifest.ndjson (path<->md5 map) used to join artifacts to scanned photos')
+  .option('--dry-run', 'report matches without writing', false)
+  .option('--json', 'machine-readable JSON output', false)
+  .action(async (
+    artifactsDir: string,
+    options: { manifest?: string; dryRun?: boolean; json?: boolean },
+  ) => {
+    const json = isJsonMode(options);
+    const resolvedArtifactsDir = path.resolve(cliWorkingDirectory, artifactsDir);
+    if (options.manifest === undefined) {
+      emitError(json, appError('validation', '--manifest <path> is required'));
+      return;
+    }
+    const input = {
+      artifactsDir: resolvedArtifactsDir,
+      manifestPath: path.resolve(cliWorkingDirectory, options.manifest),
+      dryRun: options.dryRun === true,
+    };
+    emitStarted(json, 'photos_import_libra', input);
+    const result = await api.photosImportLibra(input);
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, photosImportLibraHuman, true);
   });
 
 photos

@@ -14,6 +14,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- `photos import-libra <artifacts-dir> --manifest <path> [--dry-run]` CLI command and `POST
+  /api/photos/import-libra` route one-shot import descriptions, faces (shared `catalog.db`
+  pool, unassigned) and timeline-sourced GPS from a PHOTO LIBRA session into the photos
+  catalog without re-paying analysis, joining artifacts to already-scanned photos by manifest
+  path/md5 and never guessing an unmatched entry. Imported descriptions land as a new `family:
+  'imported'` photo config descriptor (`providerId: 'photo-libra'`) that can never collide with
+  or outrank a live analyzer variant.
+
 ## [0.6.4] - 2026-08-02
 
 ### Added

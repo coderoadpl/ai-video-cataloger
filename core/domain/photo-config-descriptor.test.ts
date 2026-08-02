@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildConfigDescriptor,
+  buildImportedPhotoConfigDescriptor,
   buildPhotoConfigDescriptor,
   configId,
   photoConfigDescriptorSchema,
@@ -57,5 +58,31 @@ describe('photo config descriptor identity', () => {
     const descriptor = buildPhotoConfigDescriptor({}, promptVersion);
     expect(descriptor).toMatchObject({ kind: 'photo' });
     expect(photoConfigDescriptorSchema.safeParse({ ...descriptor, kind: undefined }).success).toBe(false);
+  });
+});
+
+describe('imported photo config descriptor (photo-libra import)', () => {
+  it('is a fixed, deterministic descriptor identifying the imported family', () => {
+    const descriptor = buildImportedPhotoConfigDescriptor();
+    expect(descriptor).toMatchObject({ kind: 'photo', family: 'imported', providerId: 'photo-libra' });
+    expect(photoConfigId(descriptor)).toBe(photoConfigId(buildImportedPhotoConfigDescriptor()));
+  });
+
+  it('never collides with a live analyzer descriptor built from the same provider inputs', () => {
+    const live = buildPhotoConfigDescriptor(
+      { analyzer_provider: { family: 'gemini-native', providerId: 'photo-libra', apiKeyRef: 'ref', model: 'gemini-3.6-flash' } },
+      promptVersion,
+    );
+    expect(photoConfigId(live)).not.toBe(photoConfigId(buildImportedPhotoConfigDescriptor()));
+  });
+
+  it('rejects any analyzer field being set on the imported family', () => {
+    const descriptor = buildImportedPhotoConfigDescriptor();
+    expect(photoConfigDescriptorSchema.safeParse({ ...descriptor, model: 'anything' }).success).toBe(false);
+  });
+
+  it('rejects an imported descriptor whose providerId is not photo-libra', () => {
+    const descriptor = buildImportedPhotoConfigDescriptor();
+    expect(photoConfigDescriptorSchema.safeParse({ ...descriptor, providerId: 'someone-else' }).success).toBe(false);
   });
 });

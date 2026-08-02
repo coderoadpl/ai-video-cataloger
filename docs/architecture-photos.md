@@ -685,6 +685,99 @@ rules, identity conventions), separate **state** (photo rows never in the
 video store) — with the single deliberate exception of face identity, where
 the behavior *is* the shared state.
 
+## 10. Import-libra — one-shot PHOTO LIBRA import (wave-w29)
+
+`photos import-libra <artifacts-dir> --manifest <path> [--dry-run]`
+(`core/server/usecases/photo-import-libra.ts`, `POST
+/api/photos/import-libra`) is a one-shot, job-backed, idempotent bulk-load of
+a completed PHOTO LIBRA session's descriptions, faces and GPS matches into
+the app's photos catalog *without re-paying analysis*. It is intentionally
+built from existing ports only — no new `PhotosStore`/`GlobalCatalogStore`
+methods — because every write it needs (`recordPhotoAnalysis`,
+`upsertFaceObservation`, `applyPhotoGeoBackfill`, `completePhotoFaceIndex`)
+already exists and is already an idempotent upsert.
+
+**Join.** The artifacts key rows by `md5` (a manifest.ndjson entry maps
+`md5 <-> path`, relative to whatever drive the PHOTO LIBRA session ran
+against); the app keys rows by the `ph_`-prefixed SHA-256 fingerprint
+computed at `photos scan` time. The import never invents a mapping: for each
+manifest entry it takes the currently scanned `photos.listRoots()`, tries
+`<root>/<manifest path>` (NFC-normalized) against `PhotosStore
+.getSightingByPath`, first hit wins, and records `md5 -> fingerprint` only on
+a match. `geo.ndjson` entries carry a `path` directly and go through the same
+per-root lookup, no manifest needed. Every unmatched entry is counted per
+artifact (`manifest.unmatched`, `descriptions.unmatched`, `faces.unmatched`,
+`geo.unmatched`) and never guessed — the user must run `photos scan` against
+the same mount the manifest was built from first.
+
+**Descriptions/tags → an `imported` photo config descriptor.**
+`photoConfigDescriptorShape.family` gains a fifth member, `'imported'`,
+alongside the four live analyzer families — a descriptor that structurally
+cannot carry any analyzer field (`model`/`modelTag`/`maxImageDetail`
+/`promptStyle`/`reasoningEffort` all rejected by the same superRefine that
+enforces the live families' required fields) and whose `providerId` is
+pinned to the literal `'photo-libra'`. `buildImportedPhotoConfigDescriptor()`
+is a zero-argument, fully deterministic builder (`output_language: 'pl'` —
+honest, not `'auto'`, since the imported `descPl` field is Polish text; a
+frozen `PHOTO_LIBRA_IMPORT_PROMPT_VERSION`), so every import run produces the
+same `cfg_` id and reruns are pure upserts. Libra's `scene`/`quality`
+vocabularies are translated onto the app's closed `PHOTO_SCENES`/
+`PHOTO_QUALITIES` unions through an explicit finite dictionary (documented in
+`core/domain/photo-libra-import.ts`), never a fuzzy guess; an unmapped value
+falls back to `'other'`.
+
+**Default-selection safety.** The imported variant's `photo_analyses
+.created_at` is pinned to a fixed epoch sentinel
+(`IMPORTED_PHOTO_VARIANT_CREATED_AT`), not the real import wall-clock time.
+`resolveSelectedPhotoAnalysis`'s fallback (no explicit/folder-default
+selection → most recent `created_at` wins) means the imported variant is
+selected by default only when it is the *only* variant for a photo — any
+live analysis, run before or after the import, is strictly newer and always
+wins, regardless of run order. This is the concrete mechanism behind "selected
+by default only where no live analysis exists."
+
+**Faces → the shared identity pool, unassigned.** libra's `obsId` scheme
+(`<md5>:face:<n>`) is translated to the app's scheme with the fingerprint
+substituted and frame index pinned to **1** (§5/C2): `<fingerprint>:face:1
+:<n>`. Observations are written via the existing `GlobalCatalogStore
+.upsertFaceObservation` with `media: 'photo'`, `personId: null` — imported
+identities are never auto-assigned from libra's own `people.json`/
+`face-assignments.json`; the existing clustering/`faces recluster` pass is
+the only path that assigns them, per the no-AI-naming policy (§5). A face
+entry missing `bbox` or `embedding` (both optional in the libra schema,
+absent when libra detected zero faces in a photo) is skipped, never padded
+with placeholder geometry. Every fingerprint libra actually ran face
+detection against — whether or not it found a face — is marked via
+`PhotosStore.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION)`, so it
+is not re-queued by a future live photo faces pass.
+
+**GPS → `source: 'timeline'` only, never `'camera'`.** libra's own `source`
+field (`visit`/`activity`/`path`/`exif`/`null`) is honestly narrowed: only
+the three values that are literally `TimelineIntervalKind` members map
+through (`mapLibraGeoIntervalKind`) to a `GeoBackfillLocation` with
+`source: 'timeline'`, written through the existing `PhotosStore
+.applyPhotoGeoBackfill` (which re-checks `manual > camera > timeline`
+precedence in-transaction, §6 — imported GPS can never clobber a photo's own
+scanned EXIF). libra's `exif`-sourced and unsourced rows are **not**
+imported: the app's own `photos scan` EXIF pass is the sole authority for
+`gps_source = 'camera'`, and claiming that provenance for a value the app
+never independently verified would be dishonest, not merely redundant.
+libra's `confidence` (`high`/`medium`/`low`) maps to a declared accuracy
+radius (50m/150m/500m) via `accuracyMForLibraConfidence`; an unrecognised
+confidence is skipped (`geo.skippedUnsupportedSource`), never defaulted. A
+`geo.ndjson` row libra emitted for a photo it could not place carries
+`lat`/`lon` as `null` — a valid, expected shape, so it parses cleanly and is
+counted in `geo.skippedUnsupportedSource`, never in `geo.invalidLines`, which
+is reserved for genuinely malformed artifact lines.
+
+**Idempotency and dry-run.** Every mutating call the pass makes
+(`recordPhotoAnalysis`, `upsertFaceObservation`, `applyPhotoGeoBackfill`,
+`completePhotoFaceIndex`) is already an upsert keyed on stable identity, so
+re-running the import is a no-op beyond the precedence rules above (a
+`geo.written` on the first run becomes `geo.unchanged` on the second).
+`--dry-run` short-circuits every store write and reports the same
+matched/unmatched counts the real run would produce.
+
 ## Wave plan (final, resequenced per challenge D)
 
 1. **Wave 1 — Foundations**: `catalog.db` V11 (`media` column) + probe,

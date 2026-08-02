@@ -10,9 +10,12 @@ import {
   maxImageDetailSchema,
 } from './providers.js';
 
+export const PHOTO_LIBRA_IMPORT_PROVIDER_ID = 'photo-libra';
+export const PHOTO_LIBRA_IMPORT_PROMPT_VERSION = 1;
+
 export const photoConfigDescriptorShape = z.object({
   kind: z.literal('photo'),
-  family: z.enum(['api', 'harness', 'local', 'gemini-native']),
+  family: z.enum(['api', 'harness', 'local', 'gemini-native', 'imported']),
   providerId: z.string().trim().min(1),
   model: z.string().trim().min(1).optional(),
   modelTag: z.string().trim().min(1).optional(),
@@ -27,8 +30,15 @@ export const photoConfigDescriptorShape = z.object({
 const analyzerFieldNames = ['model', 'modelTag', 'maxImageDetail', 'promptStyle', 'reasoningEffort'] as const;
 type AnalyzerFieldName = (typeof analyzerFieldNames)[number];
 
+// 'imported' is not an analyzer family — it has no live prompt/model to describe, so it
+// requires none of the analyzer fields (this is the descriptor's identity discipline: it
+// cannot be built with analyzer fields set, so it can never be mistaken for a live variant).
+const requiredPhotoAnalyzerFields = (
+  family: PhotoConfigDescriptor['family'],
+): readonly AnalyzerFieldName[] => (family === 'imported' ? [] : requiredAnalyzerFields(family));
+
 export const photoConfigDescriptorSchema = photoConfigDescriptorShape.superRefine((descriptor, context) => {
-  const analyzerFields: readonly AnalyzerFieldName[] = requiredAnalyzerFields(descriptor.family);
+  const analyzerFields: readonly AnalyzerFieldName[] = requiredPhotoAnalyzerFields(descriptor.family);
   const analyzerOptionalFields: readonly AnalyzerFieldName[] = descriptor.family === 'harness'
     ? ['model', 'reasoningEffort']
     : [];
@@ -40,6 +50,13 @@ export const photoConfigDescriptorSchema = photoConfigDescriptorShape.superRefin
     if (!expected && descriptor[field] !== undefined) {
       context.addIssue({ code: 'custom', path: [field], message: `${field} is not valid for ${descriptor.family}` });
     }
+  }
+  if (descriptor.family === 'imported' && descriptor.providerId !== PHOTO_LIBRA_IMPORT_PROVIDER_ID) {
+    context.addIssue({
+      code: 'custom',
+      path: ['providerId'],
+      message: `providerId must be '${PHOTO_LIBRA_IMPORT_PROVIDER_ID}' for the imported family`,
+    });
   }
 });
 
@@ -91,6 +108,17 @@ export const buildPhotoConfigDescriptor = (
       });
   }
 };
+
+export const buildImportedPhotoConfigDescriptor = (): PhotoConfigDescriptor =>
+  photoConfigDescriptorSchema.parse({
+    kind: 'photo',
+    family: 'imported',
+    providerId: PHOTO_LIBRA_IMPORT_PROVIDER_ID,
+    // The imported corpus (PHOTO LIBRA's descPl field) is Polish text, so the descriptor
+    // states that honestly rather than 'auto' — 'auto' would claim a live analyzer chose it.
+    output_language: 'pl',
+    photoPromptVersion: PHOTO_LIBRA_IMPORT_PROMPT_VERSION,
+  });
 
 export const photoConfigId = (descriptor: PhotoConfigDescriptor): string => {
   const parsed = photoConfigDescriptorSchema.parse(descriptor);

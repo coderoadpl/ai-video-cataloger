@@ -533,6 +533,49 @@ export const photoGpsBackfillSummarySchema = z.object({
   elapsedMs: z.number().int().nonnegative(),
 });
 
+export const photoImportLibraInputSchema = z.object({
+  artifactsDir: z.string().min(1),
+  manifestPath: z.string().min(1),
+  dryRun: z.boolean().default(false),
+});
+
+const photoImportLibraArtifactCountsSchema = z.object({
+  entries: z.number().int().nonnegative(),
+  invalidLines: z.number().int().nonnegative(),
+});
+
+export const photoImportLibraSummarySchema = z.object({
+  media: z.literal('photo'),
+  artifactsDir: z.string().min(1),
+  manifestPath: z.string().min(1),
+  dryRun: z.boolean(),
+  startedAt: z.iso.datetime(),
+  finishedAt: z.iso.datetime().nullable(),
+  roots: z.number().int().nonnegative(),
+  manifest: photoImportLibraArtifactCountsSchema.extend({
+    matched: z.number().int().nonnegative(),
+    unmatched: z.number().int().nonnegative(),
+  }),
+  descriptions: photoImportLibraArtifactCountsSchema.extend({
+    imported: z.number().int().nonnegative(),
+    unmatched: z.number().int().nonnegative(),
+  }),
+  faces: photoImportLibraArtifactCountsSchema.extend({
+    imported: z.number().int().nonnegative(),
+    skippedIncomplete: z.number().int().nonnegative(),
+    unmatched: z.number().int().nonnegative(),
+    photosCompleted: z.number().int().nonnegative(),
+  }),
+  geo: photoImportLibraArtifactCountsSchema.extend({
+    written: z.number().int().nonnegative(),
+    unchanged: z.number().int().nonnegative(),
+    skippedPrecedence: z.number().int().nonnegative(),
+    skippedUnsupportedSource: z.number().int().nonnegative(),
+    unmatched: z.number().int().nonnegative(),
+  }),
+  elapsedMs: z.number().int().nonnegative(),
+});
+
 export const photoListItemSchema = z.object({
   fingerprint: z.string(),
   fileName: z.string(),
@@ -1280,6 +1323,7 @@ export const jobKindSchema = z.enum([
   'photo_grid_thumbs',
   'photo_process',
   'photo_gps_backfill',
+  'photo_import_libra',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -1340,6 +1384,8 @@ export const jobProgressStepSchema = z.enum([
   'photo-analysis-failed',
   'photo-analysis-usage',
   'photo-process-summary',
+  'photo-import-libra-scanning',
+  'photo-import-libra-summary',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -1401,6 +1447,7 @@ export const jobResultSchema = z.union([
   facesReclusterOutputSchema,
   facesExemplarsOutputSchema,
   photoGpsBackfillSummarySchema,
+  photoImportLibraSummarySchema,
   gpsBackfillSummarySchema,
 ]);
 
@@ -2123,6 +2170,12 @@ export const API_ROUTES = {
     input: photoGpsBackfillInputSchema,
     output: jobAcceptedOutputSchema,
   },
+  photosImportLibra: {
+    method: 'POST',
+    path: '/api/photos/import-libra',
+    input: photoImportLibraInputSchema,
+    output: jobAcceptedOutputSchema,
+  },
   photosTree: {
     method: 'GET',
     path: '/api/photos/tree',
@@ -2248,6 +2301,7 @@ export const API_PATHS = {
   photosGridThumbs: API_ROUTES.photosGridThumbs.path,
   photosProcess: API_ROUTES.photosProcess.path,
   photosGpsBackfill: API_ROUTES.photosGpsBackfill.path,
+  photosImportLibra: API_ROUTES.photosImportLibra.path,
   photosTree: API_ROUTES.photosTree.path,
   photosList: API_ROUTES.photosList.path,
   photosDetail: API_ROUTES.photosDetail.path,

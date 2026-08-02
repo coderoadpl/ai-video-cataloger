@@ -49,6 +49,7 @@ import {
   photosDetail,
   photosForget,
   photosGpsBackfill,
+  photosImportLibra,
   photosList,
   photosSearch,
   photosStatus,
@@ -696,6 +697,21 @@ export const buildApp = (deps: AppDeps): Hono => {
         reresolvePlaces: input.value.reresolvePlaces,
       })),
       API_ROUTES.photosGpsBackfill.output,
+    );
+  });
+
+  app.post(API_ROUTES.photosImportLibra.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.photosImportLibra.output);
+    const input = parseInput(API_ROUTES.photosImportLibra.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.photosImportLibra.output);
+    return respond(
+      await withCatalogWriteLockForJob(deps, () => photosImportLibra(deps, {
+        artifactsDir: input.value.artifactsDir,
+        manifestPath: input.value.manifestPath,
+        dryRun: input.value.dryRun,
+      })),
+      API_ROUTES.photosImportLibra.output,
     );
   });
 

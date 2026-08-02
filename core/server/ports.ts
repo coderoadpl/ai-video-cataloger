@@ -1219,7 +1219,8 @@ export type JobKind =
   | 'photo_proxies'
   | 'photo_grid_thumbs'
   | 'photo_process'
-  | 'photo_gps_backfill';
+  | 'photo_gps_backfill'
+  | 'photo_import_libra';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -1277,7 +1278,9 @@ export type ProcessJobStep =
   | 'photo-analysed'
   | 'photo-analysis-failed'
   | 'photo-analysis-usage'
-  | 'photo-process-summary';
+  | 'photo-process-summary'
+  | 'photo-import-libra-scanning'
+  | 'photo-import-libra-summary';
 
 export interface JobProgress {
   step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';

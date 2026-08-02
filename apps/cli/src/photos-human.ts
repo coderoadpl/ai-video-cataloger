@@ -1,4 +1,4 @@
-import { photoGpsBackfillSummarySchema, photoGridThumbsSummarySchema, photoProcessSummarySchema, photoProxiesSummarySchema, type photosVariantRecordSchema } from '@core/contract/index.js';
+import { photoGpsBackfillSummarySchema, photoGridThumbsSummarySchema, photoImportLibraSummarySchema, photoProcessSummarySchema, photoProxiesSummarySchema, type photosVariantRecordSchema } from '@core/contract/index.js';
 import type { z } from 'zod';
 import type { ApiClient } from '@core/client/index.js';
 import type { AppError, Result } from '@core/domain/index.js';
@@ -58,6 +58,22 @@ export const photosGpsBackfillHuman = (data: unknown): string => {
     `Written: ${summary.written}, unchanged: ${summary.unchanged}`,
     `Skipped: noCapturedAt=${summary.skipped.noCapturedAt}`,
     `Places: resolved=${summary.places.resolved} unresolved=${summary.places.unresolved} skippedNoDataset=${summary.places.skippedNoDataset}`,
+  ].join('\n');
+};
+
+export const photosImportLibraHuman = (data: unknown): string => {
+  const parsed = photoImportLibraSummarySchema.safeParse(data);
+  if (!parsed.success) return 'Photo LIBRA import complete';
+  const summary = parsed.data;
+  return [
+    summary.dryRun ? 'Photo LIBRA import (dry run):' : 'Photo LIBRA import:',
+    `Manifest: ${summary.manifest.matched} matched, ${summary.manifest.unmatched} unmatched (${summary.manifest.invalidLines} invalid lines)`,
+    `Descriptions: ${summary.descriptions.imported} imported, ${summary.descriptions.unmatched} unmatched`,
+    `Faces: ${summary.faces.imported} imported across ${summary.faces.photosCompleted} photos, `
+      + `${summary.faces.skippedIncomplete} skipped incomplete, ${summary.faces.unmatched} unmatched`,
+    `Geo: ${summary.geo.written} written, ${summary.geo.unchanged} unchanged, `
+      + `${summary.geo.skippedPrecedence} skipped (precedence), ${summary.geo.skippedUnsupportedSource} skipped (unsupported source), `
+      + `${summary.geo.unmatched} unmatched`,
   ].join('\n');
 };
 

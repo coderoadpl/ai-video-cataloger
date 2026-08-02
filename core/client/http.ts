@@ -953,6 +953,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       signal,
     );
   },
+  photosImportLibra: (input: z.input<typeof API_ROUTES.photosImportLibra.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosImportLibra.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosImportLibra.method,
+      API_ROUTES.photosImportLibra.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   photosTree: (signal?: AbortSignal) =>
     request(
       options,

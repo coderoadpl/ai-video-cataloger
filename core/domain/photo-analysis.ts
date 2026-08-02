@@ -77,6 +77,7 @@ export const PHOTO_BATCH_CLAMPS = {
   harness: 12,
   local: 4,
   'gemini-native': 12,
+  imported: 1,
 } as const satisfies Record<PhotoConfigDescriptor['family'], number>;
 
 export const clampPhotoBatchSize = (
