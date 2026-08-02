@@ -13,5 +13,10 @@ export default defineConfig({
     { name: 'gui', testMatch: /scenarios\.spec\.ts/ },
     { name: 'matrix', testMatch: /(matrix|faces-matrix)\.spec\.ts/ },
     { name: 'open-folder', testMatch: /open-folder\.spec\.ts/ },
+    { name: 'settings', testMatch: /settings\.spec\.ts/ },
+    { name: 'photos', testMatch: /photos\.spec\.ts/ },
+    { name: 'people', testMatch: /people\.spec\.ts/ },
+    { name: 'library', testMatch: /library\.spec\.ts/ },
+    { name: 'map', testMatch: /map\.spec\.ts/ },
   ],
 });

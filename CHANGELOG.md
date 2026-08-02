@@ -16,6 +16,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Five new clicked-GUI end-to-end legs (`test:e2e:settings`, `test:e2e:photos`,
+  `test:e2e:people`, `test:e2e:library`, `test:e2e:map`), each its own
+  Playwright project outside `check`/`smoke`: the Settings modal round-trip
+  (change, save, reopen to confirm persistence), the current-folder Photos
+  surface (real folder open, scan, grid thumbnails, analyze affordance),
+  People (real face-model artifacts, real indexing, rename via the card
+  menu), Library (real analyze, same-session search, subtitled preview), and
+  Map (honest empty state on a no-GPS home).
 - The Library search filters gain a Folder facet, alongside Tagi/Osoby/
   Miejsce/daty/GPS: a folder autocomplete with per-folder match counts from
   the same facets endpoint the other filters use, a removable "Folder: …"
