@@ -14,105 +14,182 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.4] - 2026-08-02
+
 ### Added
 
-- `GET /api/library/collection` merges videos and photos into one paged, filterable, sortable feed (composite-offset cursor, `media: all|video|photo`, honest positional cross-media relevance and video-only-filter semantics documented in `docs/architecture.md`); wired through `core/client/queries.ts` (`libraryCollectionQuery`) and `apps/web/src/api.ts` (`actions.libraryCollection`). `PhotosStore` gains a SQL-pushed, variant-aware `collectionPage` method.
-- Video processing and the `thumbnails` backfill pass now also generate a second, ~512px square, center-cropped "grid" thumbnail (`<base>.grid.jpg` sibling of the existing 128x72 thumbnail) from the stored analysis frame only, never the source file; `search` and `/api/search` results gain a `gridThumbnailPath` field (existence-only unless a frame is already stored). The `thumbnails` pass summary gains `gridGenerated`/`gridSkipped`/`gridFailed` counters.
-- Photo proxies now also generate a grid thumbnail sibling (`thumbs/<fingerprint>.grid.jpg`) from the freshly written proxy; `photosList`/`photosDetail`/`photosSearch` gain a `gridThumbPath` field, and the proxies pass summary gains a `gridFailed` counter. A new `photos grid-thumbs` CLI command and `POST /api/photos/grid-thumbs` route backfill grid thumbnails for every existing proxy.
-- Browse preview: clicking a Library tile or a map video pin opens a selected-variant preview (player, description, tags, place, capture date) with a discreet "Open in Analysis" escape hatch.
-- `photos gps backfill <timeline.json>` and `POST /api/photos/gps/backfill` match photo capture times against a Google Timeline export using the same matcher and precedence rules as the video backfill, resolve places offline through the shared places dataset, and push resolved place text into the photo search index (a photo's place is now searchable in the Photos tab). Rows whose capture time rests on an assumed timezone (`exif_local_assumed`/`file_mtime`) match with a tolerance widened to at least 180 minutes; the summary reports how many matches relied on that widening.
-- The map now plots photo pins alongside video pins on the same canvas, with an All/Videos/Photos filter and honest per-media coverage captions ("N of M catalogued photos have location"); clicking a photo pin opens it in the Photos tab. `GET /api/catalog/locations` gains `totalPhotos`/`locatedPhotos` and a `media` marker per location; existing video-only consumers are unaffected (the video counts keep their prior meaning, and old envelopes without the new fields still parse).
+- Versioning policy: the patch version is bumped with practically every merged
+  PR (at minimum every wave); no two differing builds may ever share a version
+  string. See [docs/qa/release-readiness.md](docs/qa/release-readiness.md)
+  ([`6bdbcd2`](https://github.com/coderoadpl/ai-video-cataloger/commit/6bdbcd2)).
+- `GET /api/library/collection` merges videos and photos into one paged, filterable, sortable feed (composite-offset cursor, `media: all|video|photo`, honest positional cross-media relevance and video-only-filter semantics documented in `docs/architecture.md`); wired through `core/client/queries.ts` (`libraryCollectionQuery`) and `apps/web/src/api.ts` (`actions.libraryCollection`). `PhotosStore` gains a SQL-pushed, variant-aware `collectionPage` method
+  ([`c4e9970`](https://github.com/coderoadpl/ai-video-cataloger/commit/c4e9970)).
+- Video processing and the `thumbnails` backfill pass now also generate a second, ~512px square, center-cropped "grid" thumbnail (`<base>.grid.jpg` sibling of the existing 128x72 thumbnail) from the stored analysis frame only, never the source file; `search` and `/api/search` results gain a `gridThumbnailPath` field (existence-only unless a frame is already stored). The `thumbnails` pass summary gains `gridGenerated`/`gridSkipped`/`gridFailed` counters
+  ([`c4e9970`](https://github.com/coderoadpl/ai-video-cataloger/commit/c4e9970)).
+- Photo proxies now also generate a grid thumbnail sibling (`thumbs/<fingerprint>.grid.jpg`) from the freshly written proxy; `photosList`/`photosDetail`/`photosSearch` gain a `gridThumbPath` field, and the proxies pass summary gains a `gridFailed` counter. A new `photos grid-thumbs` CLI command and `POST /api/photos/grid-thumbs` route backfill grid thumbnails for every existing proxy
+  ([`c4e9970`](https://github.com/coderoadpl/ai-video-cataloger/commit/c4e9970)).
+- Browse preview: clicking a Library tile or a map video pin opens a selected-variant preview (player, description, tags, place, capture date) with a discreet "Open in Analysis" escape hatch
+  ([`9439c96`](https://github.com/coderoadpl/ai-video-cataloger/commit/9439c96)).
+- `photos gps backfill <timeline.json>` and `POST /api/photos/gps/backfill` match photo capture times against a Google Timeline export using the same matcher and precedence rules as the video backfill, resolve places offline through the shared places dataset, and push resolved place text into the photo search index (a photo's place is now searchable in the Photos tab). Rows whose capture time rests on an assumed timezone (`exif_local_assumed`/`file_mtime`) match with a tolerance widened to at least 180 minutes; the summary reports how many matches relied on that widening
+  ([`da13229`](https://github.com/coderoadpl/ai-video-cataloger/commit/da13229)).
+- The map now plots photo pins alongside video pins on the same canvas, with an All/Videos/Photos filter and honest per-media coverage captions ("N of M catalogued photos have location"); clicking a photo pin opens it in the Photos tab. `GET /api/catalog/locations` gains `totalPhotos`/`locatedPhotos` and a `media` marker per location; existing video-only consumers are unaffected (the video counts keep their prior meaning, and old envelopes without the new fields still parse)
+  ([`da13229`](https://github.com/coderoadpl/ai-video-cataloger/commit/da13229)).
 - The Photos grid pages beyond its first 200 photos with a "Load more" control,
-  so a large library is fully browsable instead of silently truncated.
+  so a large library is fully browsable instead of silently truncated
+  ([`32fee09`](https://github.com/coderoadpl/ai-video-cataloger/commit/32fee09)).
 - The photos database gains schema version 2 (indexes on `photos.current_path`
-  and `(proxy_state, current_path)`), migrated in place on open.
+  and `(proxy_state, current_path)`), migrated in place on open
+  ([`0154152`](https://github.com/coderoadpl/ai-video-cataloger/commit/0154152)).
 - `pnpm run test:e2e:matrix` gains three photo legs: `photos-real-decode`
   (scan → real `sips` proxy/thumb decode → status → search), `photos-local-analysis`
   (a real local analyzer over the generated proxies) and the opt-in
-  `photos-raw-sample` (`E2E_PHOTOS_SAMPLE_RAW`).
+  `photos-raw-sample` (`E2E_PHOTOS_SAMPLE_RAW`)
+  ([`75149c0`](https://github.com/coderoadpl/ai-video-cataloger/commit/75149c0)).
 - `pnpm run qa:walkthrough` captures three photo steps — `photos-tab`,
   `photos-grid`, `photo-detail` — and skips them with a named reason when the
-  QA home has no catalogued photos.
+  QA home has no catalogued photos
+  ([`75149c0`](https://github.com/coderoadpl/ai-video-cataloger/commit/75149c0)).
 - [docs/qa/release-readiness.md](docs/qa/release-readiness.md) records the
-  ordered pre-release pass (gates → e2e → packaged app → docs → real-data sanity).
-- `photos status` reports a new `facesIndexed` count (foundational plumbing for photo faces indexing landing in a follow-up wave); the underlying `FaceObservation` record and its storage now carry a `media: 'video' | 'photo'` marker so photo-sourced face observations can share the same people pool as video ones.
+  ordered pre-release pass (gates → e2e → packaged app → docs → real-data sanity)
+  ([`75149c0`](https://github.com/coderoadpl/ai-video-cataloger/commit/75149c0)).
+- `photos status` reports a new `facesIndexed` count (foundational plumbing for photo faces indexing landing in a follow-up wave); the underlying `FaceObservation` record and its storage now carry a `media: 'video' | 'photo'` marker so photo-sourced face observations can share the same people pool as video ones
+  ([`3a9de31`](https://github.com/coderoadpl/ai-video-cataloger/commit/3a9de31)).
 - Photo search: `avc photos search "<query>"`, `/api/photos/search` and a search
   box in the Photos tab query file names, descriptions, tags and places over the
-  photos index; file-name search works before any analysis has run.
+  photos index; file-name search works before any analysis has run
+  ([`1685437`](https://github.com/coderoadpl/ai-video-cataloger/commit/1685437)).
 - Photo analysis variants are inspectable and selectable: `avc photos variants
   list|select|delete|folder-default`, `/api/photos/variants*`, and a variant
   picker with description, scene/quality and tag chips in the Photos detail pane;
-  the search index always follows the resolved selection.
-- Photo cataloging foundations: `avc photos scan|status|forget` and `/api/photos/scan|status|forget` index photos (jpg/jpeg/png/heic/arw/dng) into a new `~/.ai-video-cataloger/photos.db` by full-content `ph_` fingerprint, with EXIF capture time/camera/GPS extraction at scan and a cancellable, batch-resumable `photo_scan` job.
-- A Map view plots every catalogued video that carries GPS coordinates on an offline basemap, clustering nearby pins and opening the video from a pin; it always states its coverage ("110 of 3752 catalogued files have location") and shows an explicit empty state when no file carries GPS. The map downloads nothing: no map tiles are ever requested, and the geographic outline ships with the app.
-- `GET /api/catalog/locations` returns every catalog file that carries GPS coordinates together with the catalog-wide file total, so a client can state its own coverage honestly.
-- The video details panel shows the recorded coordinates of a catalogued file and a jump-to-map action.
-- `faces recluster [--dry-run]` rebuilds every person and every face assignment from the embeddings already stored in the catalog — no frame extraction, no detector and no `FACE_ENGINE_VERSION` bump — reporting people before/after, observations that changed owner, owner-set names carried or dropped, and people left without an exemplar; `--dry-run` computes the same report and writes nothing.
-- `thumbnails <root>` generates every missing catalog thumbnail under a folder tree by downscaling the analysis frame the selected variant already stored — no source video is opened, so it works on an index-only mirror of a read-only mount — reporting `thumbnails_scanning`/`thumbnails_file`/`thumbnails_done` NDJSON events and `generated`/`skipped`/`fromFrame`/`fromSource`/`failed` counts with per-file `failures`; a second run is a no-op and `--force` regenerates everything.
-- `process` and `process-drive` write each completed file's thumbnail during the run (one downscale of the frame already on disk), so a finished drive run leaves a catalog with covers instead of generating them lazily on first display; on a read-only source the cover lands in the home mirror and the source tree stays untouched.
-- Terminal panel gains a persisted Raw mode that shows each log line's attached raw job payload and interleaves a capped (500-entry) ring buffer of every renderer→server request/response, captured once at the `apps/web/src/api.ts` fetch seam.
-- Tag language is now configurable (`tag_language`, folder- or home-scoped): tags are generated in that language regardless of the language spoken in the clip. Unset, it follows `output_language`. The analyzer prompt also demands ASCII transliteration, so pinned non-English tags stay kebab-case.
-- `tags suggest-aliases [--json]` proposes tag merges from the existing catalog — normalisation (diacritics, case, separators), English and Polish plurals, a curated Polish irregular lexicon, and single-character spelling variants (`fiord`/`fjord`) — with file counts and a rule label per proposal; it never writes, and each proposal is applied by hand with `tags alias <from> <to>`.
-- Catalogued coordinates now record where they came from — `camera`, `timeline` or `manual` — together with an accuracy in metres and, for a timeline-sourced fix, which interval kind (`visit`/`activity`/`path`) produced it; a probe that finds no GPS no longer erases a coordinate already stored for that file.
-- `search_documents` gains a `place` column (rebuilt into the full-text index on upgrade), so a resolved place name is searchable and ranks between tags and the final name; nothing populates it yet in this wave.
-- Media probing extracts the container's `creation_time` (`MediaProbe.createdAtUtc`), normalised to UTC, and a processed file records it as its capture instant (`captured_at`, source `container`) — the matching key for a Google Timeline GPS backfill, never the filename's local clock.
-- `faces exemplars [--dry-run] [--limit <n>]` fills missing face photographs by decoding each missing observation's own frame, re-detecting it against the stored box and cutting the crop — a repair pass for catalogs indexed before crops became per-observation, reporting planned/written crops, unreachable files, detections that no longer match, and people still without a photograph.
-- `gps backfill <timeline.json> [--root <path>] [--dry-run] [--tolerance-minutes 30] [--max-visit-hours 36] [--reresolve-places]` fills empty catalog coordinates from a Google Timeline export, matching each file's UTC `captured_at` against the export's `visit`/`activity`/`timelinePath` intervals; camera- and manually-sourced rows are never touched, a second run is a no-op, and `--dry-run` computes and reports every count (matches by interval kind, an accuracy bucket histogram, place resolution) without writing.
-- The map's pin popover and the video details panel now draw a measured location (camera GPS) differently from an approximate one (timeline fix): a hollow pin with an accuracy halo sized to its `gps_accuracy_m`, plus a `Measured (camera)` / `Approximate (…) ±m` badge and, where resolved, a place line — never a single pin style for both.
-- The offline place resolver (`PlacesPort` / `GeoNamesPlacesAdapter`) resolves the nearest settlement, region and country for a coordinate from a versioned, self-generated GeoNames snapshot with no network call; the production dataset itself is not yet published, so every backfill run currently reports `places.skippedNoDataset` for every row until that follow-up ships (ADR-0015).
-- Photo proxies and thumbnails: `avc photos proxies <root> [--force]` and `/api/photos/proxies` generate a ≤1280px JPEG proxy and ≤320px thumbnail per photo fingerprint under `~/.ai-video-cataloger/photo-artifacts/` — RAW (ARW/DNG) via embedded-preview extraction with a full-decode sips fallback, never writing inside the photo folder; `photos scan` chains the pass automatically, an artifact that has gone missing from disk is regenerated on the next pass without `--force`, and per-file failures are reported, never fatal.
-- `/api/photos/tree|list|detail` expose scanned roots, paged photo listings and per-photo detail to clients.
-- A Photos tab browses the photo catalog: a root picker over scanned folders, a windowed thumbnail grid grouped by capture day with duplicate and missing badges, a proxy-based viewer with keyboard arrow navigation, and a detail pane showing EXIF basics, capture provenance and every path a photo was sighted at.
+  the search index always follows the resolved selection
+  ([`1685437`](https://github.com/coderoadpl/ai-video-cataloger/commit/1685437)).
+- Photo cataloging foundations: `avc photos scan|status|forget` and `/api/photos/scan|status|forget` index photos (jpg/jpeg/png/heic/arw/dng) into a new `~/.ai-video-cataloger/photos.db` by full-content `ph_` fingerprint, with EXIF capture time/camera/GPS extraction at scan and a cancellable, batch-resumable `photo_scan` job
+  ([`bd946d5`](https://github.com/coderoadpl/ai-video-cataloger/commit/bd946d5)).
+- A Map view plots every catalogued video that carries GPS coordinates on an offline basemap, clustering nearby pins and opening the video from a pin; it always states its coverage ("110 of 3752 catalogued files have location") and shows an explicit empty state when no file carries GPS. The map downloads nothing: no map tiles are ever requested, and the geographic outline ships with the app
+  ([`27f2cb1`](https://github.com/coderoadpl/ai-video-cataloger/commit/27f2cb1)).
+- `GET /api/catalog/locations` returns every catalog file that carries GPS coordinates together with the catalog-wide file total, so a client can state its own coverage honestly
+  ([`27f2cb1`](https://github.com/coderoadpl/ai-video-cataloger/commit/27f2cb1)).
+- The video details panel shows the recorded coordinates of a catalogued file and a jump-to-map action
+  ([`27f2cb1`](https://github.com/coderoadpl/ai-video-cataloger/commit/27f2cb1)).
+- `faces recluster [--dry-run]` rebuilds every person and every face assignment from the embeddings already stored in the catalog — no frame extraction, no detector and no `FACE_ENGINE_VERSION` bump — reporting people before/after, observations that changed owner, owner-set names carried or dropped, and people left without an exemplar; `--dry-run` computes the same report and writes nothing
+  ([`3ce711d`](https://github.com/coderoadpl/ai-video-cataloger/commit/3ce711d)).
+- `thumbnails <root>` generates every missing catalog thumbnail under a folder tree by downscaling the analysis frame the selected variant already stored — no source video is opened, so it works on an index-only mirror of a read-only mount — reporting `thumbnails_scanning`/`thumbnails_file`/`thumbnails_done` NDJSON events and `generated`/`skipped`/`fromFrame`/`fromSource`/`failed` counts with per-file `failures`; a second run is a no-op and `--force` regenerates everything
+  ([`01a70d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/01a70d2)).
+- `process` and `process-drive` write each completed file's thumbnail during the run (one downscale of the frame already on disk), so a finished drive run leaves a catalog with covers instead of generating them lazily on first display; on a read-only source the cover lands in the home mirror and the source tree stays untouched
+  ([`01a70d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/01a70d2)).
+- Terminal panel gains a persisted Raw mode that shows each log line's attached raw job payload and interleaves a capped (500-entry) ring buffer of every renderer→server request/response, captured once at the `apps/web/src/api.ts` fetch seam
+  ([`c09af23`](https://github.com/coderoadpl/ai-video-cataloger/commit/c09af23)).
+- Tag language is now configurable (`tag_language`, folder- or home-scoped): tags are generated in that language regardless of the language spoken in the clip. Unset, it follows `output_language`. The analyzer prompt also demands ASCII transliteration, so pinned non-English tags stay kebab-case
+  ([`83ed0f8`](https://github.com/coderoadpl/ai-video-cataloger/commit/83ed0f8)).
+- `tags suggest-aliases [--json]` proposes tag merges from the existing catalog — normalisation (diacritics, case, separators), English and Polish plurals, a curated Polish irregular lexicon, and single-character spelling variants (`fiord`/`fjord`) — with file counts and a rule label per proposal; it never writes, and each proposal is applied by hand with `tags alias <from> <to>`
+  ([`8f377b7`](https://github.com/coderoadpl/ai-video-cataloger/commit/8f377b7)).
+- Catalogued coordinates now record where they came from — `camera`, `timeline` or `manual` — together with an accuracy in metres and, for a timeline-sourced fix, which interval kind (`visit`/`activity`/`path`) produced it; a probe that finds no GPS no longer erases a coordinate already stored for that file
+  ([`950d513`](https://github.com/coderoadpl/ai-video-cataloger/commit/950d513)).
+- `search_documents` gains a `place` column (rebuilt into the full-text index on upgrade), so a resolved place name is searchable and ranks between tags and the final name; nothing populates it yet in this wave
+  ([`950d513`](https://github.com/coderoadpl/ai-video-cataloger/commit/950d513)).
+- Media probing extracts the container's `creation_time` (`MediaProbe.createdAtUtc`), normalised to UTC, and a processed file records it as its capture instant (`captured_at`, source `container`) — the matching key for a Google Timeline GPS backfill, never the filename's local clock
+  ([`950d513`](https://github.com/coderoadpl/ai-video-cataloger/commit/950d513)).
+- `faces exemplars [--dry-run] [--limit <n>]` fills missing face photographs by decoding each missing observation's own frame, re-detecting it against the stored box and cutting the crop — a repair pass for catalogs indexed before crops became per-observation, reporting planned/written crops, unreachable files, detections that no longer match, and people still without a photograph
+  ([`aad0d0c`](https://github.com/coderoadpl/ai-video-cataloger/commit/aad0d0c)).
+- `gps backfill <timeline.json> [--root <path>] [--dry-run] [--tolerance-minutes 30] [--max-visit-hours 36] [--reresolve-places]` fills empty catalog coordinates from a Google Timeline export, matching each file's UTC `captured_at` against the export's `visit`/`activity`/`timelinePath` intervals; camera- and manually-sourced rows are never touched, a second run is a no-op, and `--dry-run` computes and reports every count (matches by interval kind, an accuracy bucket histogram, place resolution) without writing
+  ([`8bb6231`](https://github.com/coderoadpl/ai-video-cataloger/commit/8bb6231)).
+- The map's pin popover and the video details panel now draw a measured location (camera GPS) differently from an approximate one (timeline fix): a hollow pin with an accuracy halo sized to its `gps_accuracy_m`, plus a `Measured (camera)` / `Approximate (…) ±m` badge and, where resolved, a place line — never a single pin style for both
+  ([`8bb6231`](https://github.com/coderoadpl/ai-video-cataloger/commit/8bb6231)).
+- The offline place resolver (`PlacesPort` / `GeoNamesPlacesAdapter`) resolves the nearest settlement, region and country for a coordinate from a versioned, self-generated GeoNames snapshot with no network call; the production dataset itself is not yet published, so every backfill run currently reports `places.skippedNoDataset` for every row until that follow-up ships (ADR-0015)
+  ([`8bb6231`](https://github.com/coderoadpl/ai-video-cataloger/commit/8bb6231)).
+- Photo proxies and thumbnails: `avc photos proxies <root> [--force]` and `/api/photos/proxies` generate a ≤1280px JPEG proxy and ≤320px thumbnail per photo fingerprint under `~/.ai-video-cataloger/photo-artifacts/` — RAW (ARW/DNG) via embedded-preview extraction with a full-decode sips fallback, never writing inside the photo folder; `photos scan` chains the pass automatically, an artifact that has gone missing from disk is regenerated on the next pass without `--force`, and per-file failures are reported, never fatal
+  ([`c013901`](https://github.com/coderoadpl/ai-video-cataloger/commit/c013901)).
+- `/api/photos/tree|list|detail` expose scanned roots, paged photo listings and per-photo detail to clients
+  ([`c013901`](https://github.com/coderoadpl/ai-video-cataloger/commit/c013901)).
+- A Photos tab browses the photo catalog: a root picker over scanned folders, a windowed thumbnail grid grouped by capture day with duplicate and missing badges, a proxy-based viewer with keyboard arrow navigation, and a detail pane showing EXIF basics, capture provenance and every path a photo was sighted at
+  ([`c013901`](https://github.com/coderoadpl/ai-video-cataloger/commit/c013901)).
 - Photo vision analysis: `avc photos process <root> [--force] [--batch-size N]`
   and `/api/photos/process` run description, tags, scene and quality over photo
   proxies through the configured analyzer (api / harness / local / gemini-native),
   batching ~12 photos per call with an automatic 12→6→1 split on malformed
   responses; results are variants keyed by a photo `cfg_` config id, and each
-  row records the actual batch size that produced it.
+  row records the actual batch size that produced it
+  ([`6128c50`](https://github.com/coderoadpl/ai-video-cataloger/commit/6128c50)).
 - Photo analysis runs honour the monthly `gemini_monthly_budget_usd` cap with
   the same pause-and-resume semantics as drive runs; `photos status` counts
-  analysed photos.
-- `GET /api/search` and `search` (client/CLI) accept an optional `query` alongside structured filters — `tags` (AND, alias-expanded), `people` (OR, by id), `place` (substring), `from`/`to` (captured-at range), `hasGps`, `folderId` — plus `sort` (`relevance`/`captured_desc`/`captured_asc`/`name_asc`) and `thumbnails` (`ensure`/`existing`); the response gains a `total` reflecting the full filtered match count, independent of the returned page. The CLI gains repeatable `--tag`/`--person` and the matching `--place`/`--from`/`--to`/`--has-gps`/`--no-has-gps`/`--folder`/`--sort` flags, with person names resolved against `faces people` and unknown folders/names reported as validation errors.
-- `media://` now also admits the `.ai-video-cataloger` sidecar directory of every catalogued folder (not only the currently open one and its read-only mirror), so a Library or search thumbnail generated for a folder that isn't the open one resolves instead of rendering blank; the sidecar's video-extension files stay unreachable through this root.
-- A Library tab browses every catalogued video regardless of folder: a debounced search box over a virtualized, date-grouped grid (existing thumbnails only, never generated on demand), with an honest empty-catalog state distinct from a no-match state and a "Load more" page sentinel; opening a tile reuses the existing search-result folder-open path.
-- `GET /api/library/facets` computes whole-catalog tag, person, place, capture-year and folder facets (plus GPS/capture-date/missing/offline-folder counts) server-side over the same selected-variant SQL join as search and locations, so a client can render filter options without loading a page and pretending it knows the whole catalog.
-- The Library tab gains an always-visible filter bar (tag/person/place/date-range/has-GPS chips, an honest `{shown} of {total}` count, and a no-match message that names every active filter) plus a date/folder grouping toggle with a sort control, so a browse can be scoped without leaving Library.
-- "Show in Library" now works in both directions: a Library tile's context menu opens its folder/processing context (open in folder view, reveal in Finder, copy path), and the current folder header, a Videos-list row, and the details panel's location row each gain a "Show in Library" action that scopes Library to that folder (removable chip) and, for a specific file, scrolls the grid to it.
-- Library becomes the default view on launch once the catalog holds at least one file (an empty catalog still opens on Videos); the last active view is persisted and always wins over that default. `ViewNav` now orders Library directly after Videos.
-- "Pokaż w Bibliotece" from the photos sidebar preselects the root in the Library Zdjęcia surface.
+  analysed photos
+  ([`6128c50`](https://github.com/coderoadpl/ai-video-cataloger/commit/6128c50)).
+- `GET /api/search` and `search` (client/CLI) accept an optional `query` alongside structured filters — `tags` (AND, alias-expanded), `people` (OR, by id), `place` (substring), `from`/`to` (captured-at range), `hasGps`, `folderId` — plus `sort` (`relevance`/`captured_desc`/`captured_asc`/`name_asc`) and `thumbnails` (`ensure`/`existing`); the response gains a `total` reflecting the full filtered match count, independent of the returned page. The CLI gains repeatable `--tag`/`--person` and the matching `--place`/`--from`/`--to`/`--has-gps`/`--no-has-gps`/`--folder`/`--sort` flags, with person names resolved against `faces people` and unknown folders/names reported as validation errors
+  ([`17df854`](https://github.com/coderoadpl/ai-video-cataloger/commit/17df854)).
+- `media://` now also admits the `.ai-video-cataloger` sidecar directory of every catalogued folder (not only the currently open one and its read-only mirror), so a Library or search thumbnail generated for a folder that isn't the open one resolves instead of rendering blank; the sidecar's video-extension files stay unreachable through this root
+  ([`17df854`](https://github.com/coderoadpl/ai-video-cataloger/commit/17df854)).
+- A Library tab browses every catalogued video regardless of folder: a debounced search box over a virtualized, date-grouped grid (existing thumbnails only, never generated on demand), with an honest empty-catalog state distinct from a no-match state and a "Load more" page sentinel; opening a tile reuses the existing search-result folder-open path
+  ([`17df854`](https://github.com/coderoadpl/ai-video-cataloger/commit/17df854)).
+- `GET /api/library/facets` computes whole-catalog tag, person, place, capture-year and folder facets (plus GPS/capture-date/missing/offline-folder counts) server-side over the same selected-variant SQL join as search and locations, so a client can render filter options without loading a page and pretending it knows the whole catalog
+  ([`637c8b3`](https://github.com/coderoadpl/ai-video-cataloger/commit/637c8b3)).
+- The Library tab gains an always-visible filter bar (tag/person/place/date-range/has-GPS chips, an honest `{shown} of {total}` count, and a no-match message that names every active filter) plus a date/folder grouping toggle with a sort control, so a browse can be scoped without leaving Library
+  ([`637c8b3`](https://github.com/coderoadpl/ai-video-cataloger/commit/637c8b3)).
+- "Show in Library" now works in both directions: a Library tile's context menu opens its folder/processing context (open in folder view, reveal in Finder, copy path), and the current folder header, a Videos-list row, and the details panel's location row each gain a "Show in Library" action that scopes Library to that folder (removable chip) and, for a specific file, scrolls the grid to it
+  ([`637c8b3`](https://github.com/coderoadpl/ai-video-cataloger/commit/637c8b3)).
+- Library becomes the default view on launch once the catalog holds at least one file (an empty catalog still opens on Videos); the last active view is persisted and always wins over that default. `ViewNav` now orders Library directly after Videos
+  ([`637c8b3`](https://github.com/coderoadpl/ai-video-cataloger/commit/637c8b3)).
+- "Pokaż w Bibliotece" from the photos sidebar preselects the root in the Library Zdjęcia surface
+  ([`a68d888`](https://github.com/coderoadpl/ai-video-cataloger/commit/a68d888)).
 
 ### Changed
 
-- Analysis → Zdjęcia workspace now opens the selected photo's detail (preview, EXIF, provenance, tags, variant picker, analyze) driven by the photos sidebar; folder actions (Zeskanuj, Przetwórz, podglądy) moved to the sidebar toolbar.
-- `qa:walkthrough`'s `analysis-photos` step verifies the photos sidebar and detail workspace.
-- Photo analysis and proxy generation now checkpoint the photos database inside a store batch — after every analyzer batch and every 50 generated proxies — so an interrupted run loses at most one analyzer batch of paid analysis instead of up to 500 photos' worth.
-- `photos scan`'s reconcile pass reads the sightings under a root through the path index instead of loading every path row in the database into memory.
-- All faces-writing jobs (`faces index`, `faces recluster`, `faces exemplars`) and the drive run's inline faces pass now serialize under a single `faces-write` resource; a concurrent request returns `conflict` instead of racing the shared people pool, and the drive run reports a new `faces_waiting` progress step while it waits its turn.
-- Global catalog schema v11: `face_observations` gains a `media` column (default `video`) preparing the shared face-identity pool for photos.
-- Global catalog schema v12: adds `idx_files_captured_at`, `idx_files_folder_id`, `idx_files_place_name`, `idx_file_tags_tag_id`, `idx_face_observations_person`, and `idx_analyses_fingerprint` indexes, so date, folder, tag and person lookups seek an index instead of scanning `files`, `file_tags` and `face_observations`. On the 3752-file reference catalog a person lookup drops from 2297 ms to 3 ms and a folder lookup from 0.28 ms to 0.03 ms.
-- The advisory catalog home lock is now a single shared owner across all catalog stores in a process; disposing or flushing one store no longer releases the lock while another still holds a lease.
-- The packaged desktop renderer is served with a Content-Security-Policy that permits no remote origin, so no renderer code path — present or future — can reach the network without an explicit, documented policy change (ADR-0013).
-- Face clustering no longer makes founding an identity harder than joining one: the auto-assign floor rises to 0.50, matching the new-cluster floor, and a new identity needs two mutually similar observations instead of three (ADR-0012).
-- Exemplar crops are sampled across files — at most one per file until a person has five — so a person spanning many folders is verifiable instead of showing five near-duplicates from one day; `faces people` now returns every stored exemplar path.
-- Face indexing now stores a crop for every detected face, keyed by the observation (`faces/obs/<fingerprint>/<frame>-<detection>.jpg`) instead of by the person that claimed it, and the up-to-five exemplars a person shows — at most one per file, best quality first — are chosen when the people list is read. A rebuilt identity therefore always has a photograph and always spreads it across the files it spans; previously a `faces recluster` could leave hundreds of nameless, photo-less people (ADR-0014). `faces recluster`'s `personsWithoutExemplar` counts the people the list actually shows without a photograph rather than the people holding no crop at all, so the number it reports — and the `faces exemplars` hint it triggers — matches what the owner sees.
-- `thumbnail <video-path>` and the GUI's lazy generation prefer the stored analysis frame over re-decoding the video, so a cover can be produced for a file whose drive is detached or mounted read-only, and an existing thumbnail is reported as skipped without starting ffmpeg.
-- The terminal panel no longer auto-expands on the first job output; it stays collapsed until opened from the header button or the `View` menu.
-- `tag_language` joins the analysis config descriptor, so pinning it (or having `output_language` pinned) produces a new `configId`; runs with `output_language` and `tag_language` both `auto` keep their existing configIds. Previously tags followed whatever language was narrated in the video, which split one concept into per-language tags.
-- `photos status` counts proxied and proxy-failed photos; `photos forget` deletes the forgotten photos' proxy and thumbnail artifacts.
-- The `media://` protocol serves the static photo-artifacts root; photo source folders are never exposed to the renderer.
-- `pnpm run check` fails on a direct `.normalize('NFC')` call outside `core/domain/paths.ts` and test files, so path canonicalization stays at the three boundaries that own it.
-- Search now follows `tag_aliases` in both directions: a merged-away term still finds the files that carry its canonical tag, and the canonical term also matches text occurrences of its aliases. Quoted phrases stay literal and literal hits still outrank alias hits.
-- Two-mode UI: a Library/Analysis switcher in the top bar replaces the five-tab view navigation; Library groups Collection/Photos/People/Map behind a subnav, Analysis groups the folder workspace behind a Videos/Photos toggle, and each mode remembers its own state.
-- Browse surfaces are strictly read-only: Library Photos hides analyze/variant actions and folder scanning, Library People hides the faces-index build (now in Analysis > Photos), and map video pins open the preview instead of the folder workspace.
-- The folder bar and the terminal strip render only in Analysis mode; the Library browses the cross-folder catalog without a current folder.
-- The Analysis Videos/Photos media toggle moves from the workspace content into the top bar, next to the Library/Analysis switcher, so it is always visible while in Analysis mode.
-- The Library search box's bottom margin doubles (8px → 16px) so it no longer crowds the filter bar beneath it.
-- `photosList` items now carry `analysed` and `exifReadAt`.
+- Analysis → Zdjęcia workspace now opens the selected photo's detail (preview, EXIF, provenance, tags, variant picker, analyze) driven by the photos sidebar; folder actions (Zeskanuj, Przetwórz, podglądy) moved to the sidebar toolbar
+  ([`73e9e39`](https://github.com/coderoadpl/ai-video-cataloger/commit/73e9e39)).
+- `qa:walkthrough`'s `analysis-photos` step verifies the photos sidebar and detail workspace
+  ([`73e9e39`](https://github.com/coderoadpl/ai-video-cataloger/commit/73e9e39)).
+- Photo analysis and proxy generation now checkpoint the photos database inside a store batch — after every analyzer batch and every 50 generated proxies — so an interrupted run loses at most one analyzer batch of paid analysis instead of up to 500 photos' worth
+  ([`0154152`](https://github.com/coderoadpl/ai-video-cataloger/commit/0154152)).
+- `photos scan`'s reconcile pass reads the sightings under a root through the path index instead of loading every path row in the database into memory
+  ([`0154152`](https://github.com/coderoadpl/ai-video-cataloger/commit/0154152)).
+- All faces-writing jobs (`faces index`, `faces recluster`, `faces exemplars`) and the drive run's inline faces pass now serialize under a single `faces-write` resource; a concurrent request returns `conflict` instead of racing the shared people pool, and the drive run reports a new `faces_waiting` progress step while it waits its turn
+  ([`3a9de31`](https://github.com/coderoadpl/ai-video-cataloger/commit/3a9de31)).
+- Global catalog schema v11: `face_observations` gains a `media` column (default `video`) preparing the shared face-identity pool for photos
+  ([`bd946d5`](https://github.com/coderoadpl/ai-video-cataloger/commit/bd946d5)).
+- Global catalog schema v12: adds `idx_files_captured_at`, `idx_files_folder_id`, `idx_files_place_name`, `idx_file_tags_tag_id`, `idx_face_observations_person`, and `idx_analyses_fingerprint` indexes, so date, folder, tag and person lookups seek an index instead of scanning `files`, `file_tags` and `face_observations`. On the 3752-file reference catalog a person lookup drops from 2297 ms to 3 ms and a folder lookup from 0.28 ms to 0.03 ms
+  ([`2eda683`](https://github.com/coderoadpl/ai-video-cataloger/commit/2eda683)).
+- The advisory catalog home lock is now a single shared owner across all catalog stores in a process; disposing or flushing one store no longer releases the lock while another still holds a lease
+  ([`bd946d5`](https://github.com/coderoadpl/ai-video-cataloger/commit/bd946d5)).
+- The packaged desktop renderer is served with a Content-Security-Policy that permits no remote origin, so no renderer code path — present or future — can reach the network without an explicit, documented policy change (ADR-0013)
+  ([`27f2cb1`](https://github.com/coderoadpl/ai-video-cataloger/commit/27f2cb1)).
+- Face clustering no longer makes founding an identity harder than joining one: the auto-assign floor rises to 0.50, matching the new-cluster floor, and a new identity needs two mutually similar observations instead of three (ADR-0012)
+  ([`3ce711d`](https://github.com/coderoadpl/ai-video-cataloger/commit/3ce711d)).
+- Exemplar crops are sampled across files — at most one per file until a person has five — so a person spanning many folders is verifiable instead of showing five near-duplicates from one day; `faces people` now returns every stored exemplar path
+  ([`3ce711d`](https://github.com/coderoadpl/ai-video-cataloger/commit/3ce711d)).
+- Face indexing now stores a crop for every detected face, keyed by the observation (`faces/obs/<fingerprint>/<frame>-<detection>.jpg`) instead of by the person that claimed it, and the up-to-five exemplars a person shows — at most one per file, best quality first — are chosen when the people list is read. A rebuilt identity therefore always has a photograph and always spreads it across the files it spans; previously a `faces recluster` could leave hundreds of nameless, photo-less people (ADR-0014). `faces recluster`'s `personsWithoutExemplar` counts the people the list actually shows without a photograph rather than the people holding no crop at all, so the number it reports — and the `faces exemplars` hint it triggers — matches what the owner sees
+  ([`aad0d0c`](https://github.com/coderoadpl/ai-video-cataloger/commit/aad0d0c)).
+- `thumbnail <video-path>` and the GUI's lazy generation prefer the stored analysis frame over re-decoding the video, so a cover can be produced for a file whose drive is detached or mounted read-only, and an existing thumbnail is reported as skipped without starting ffmpeg
+  ([`01a70d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/01a70d2)).
+- The terminal panel no longer auto-expands on the first job output; it stays collapsed until opened from the header button or the `View` menu
+  ([`c09af23`](https://github.com/coderoadpl/ai-video-cataloger/commit/c09af23)).
+- `tag_language` joins the analysis config descriptor, so pinning it (or having `output_language` pinned) produces a new `configId`; runs with `output_language` and `tag_language` both `auto` keep their existing configIds. Previously tags followed whatever language was narrated in the video, which split one concept into per-language tags
+  ([`83ed0f8`](https://github.com/coderoadpl/ai-video-cataloger/commit/83ed0f8)).
+- `photos status` counts proxied and proxy-failed photos; `photos forget` deletes the forgotten photos' proxy and thumbnail artifacts
+  ([`c013901`](https://github.com/coderoadpl/ai-video-cataloger/commit/c013901)).
+- The `media://` protocol serves the static photo-artifacts root; photo source folders are never exposed to the renderer
+  ([`c013901`](https://github.com/coderoadpl/ai-video-cataloger/commit/c013901)).
+- `pnpm run check` fails on a direct `.normalize('NFC')` call outside `core/domain/paths.ts` and test files, so path canonicalization stays at the three boundaries that own it
+  ([`a651ae8`](https://github.com/coderoadpl/ai-video-cataloger/commit/a651ae8)).
+- Search now follows `tag_aliases` in both directions: a merged-away term still finds the files that carry its canonical tag, and the canonical term also matches text occurrences of its aliases. Quoted phrases stay literal and literal hits still outrank alias hits
+  ([`8f377b7`](https://github.com/coderoadpl/ai-video-cataloger/commit/8f377b7)).
+- Two-mode UI: a Library/Analysis switcher in the top bar replaces the five-tab view navigation; Library groups Collection/Photos/People/Map behind a subnav, Analysis groups the folder workspace behind a Videos/Photos toggle, and each mode remembers its own state
+  ([`144bc84`](https://github.com/coderoadpl/ai-video-cataloger/commit/144bc84)).
+- Browse surfaces are strictly read-only: Library Photos hides analyze/variant actions and folder scanning, Library People hides the faces-index build (now in Analysis > Photos), and map video pins open the preview instead of the folder workspace
+  ([`9439c96`](https://github.com/coderoadpl/ai-video-cataloger/commit/9439c96)).
+- The folder bar and the terminal strip render only in Analysis mode; the Library browses the cross-folder catalog without a current folder
+  ([`9439c96`](https://github.com/coderoadpl/ai-video-cataloger/commit/9439c96)).
+- The Analysis Videos/Photos media toggle moves from the workspace content into the top bar, next to the Library/Analysis switcher, so it is always visible while in Analysis mode
+  ([`b666588`](https://github.com/coderoadpl/ai-video-cataloger/commit/b666588)).
+- The Library search box's bottom margin doubles (8px → 16px) so it no longer crowds the filter bar beneath it
+  ([`b666588`](https://github.com/coderoadpl/ai-video-cataloger/commit/b666588)).
+- `photosList` items now carry `analysed` and `exifReadAt`
+  ([`a68d888`](https://github.com/coderoadpl/ai-video-cataloger/commit/a68d888)).
 
 ### Removed
 
-- The standalone photos dashboard in Analysis (root dropdown, scan button and filename search there); browsing and search over photos live in the Library's Zdjęcia surface.
-- The global top-bar search and its full-screen results view; search now lives in the Library's Collection toolbar with the same recent-searches and top-tags suggestions.
+- The standalone photos dashboard in Analysis (root dropdown, scan button and filename search there); browsing and search over photos live in the Library's Zdjęcia surface
+  ([`73e9e39`](https://github.com/coderoadpl/ai-video-cataloger/commit/73e9e39)).
+- The global top-bar search and its full-screen results view; search now lives in the Library's Collection toolbar with the same recent-searches and top-tags suggestions
+  ([`144bc84`](https://github.com/coderoadpl/ai-video-cataloger/commit/144bc84)).
 
 ### Fixed
 
@@ -120,67 +197,105 @@ release history jumps from `0.5.10` to `0.5.12`.
   the catalog stores' binary collation and breaks capture-date ties by file
   name, so a `name_asc` or `captured_*` feed is no longer interleaved in an
   order neither leg produced (uppercase names previously sank below lowercase
-  ones).
+  ones)
+  ([`8c50c31`](https://github.com/coderoadpl/ai-video-cataloger/commit/8c50c31)).
 - The Electron desktop app now honors `AVC_HOME_DIRECTORY` when set (matching
   the CLI's existing override), instead of always resolving its home
-  directory from the OS user profile.
+  directory from the OS user profile
+  ([`8c50c31`](https://github.com/coderoadpl/ai-video-cataloger/commit/8c50c31)).
 - `photos forget` now also deletes a forgotten fingerprint's grid thumbnail
   artifact; it previously deleted only the proxy and small thumbnail, leaking
-  the `.grid.jpg` sibling on disk.
+  the `.grid.jpg` sibling on disk
+  ([`8c50c31`](https://github.com/coderoadpl/ai-video-cataloger/commit/8c50c31)).
 - Library → Zdjęcia grid tiles now render the 512px grid thumbnail
   (falling back to the small thumbnail) instead of the small thumbnail, and
   the Analysis → Zdjęcia sidebar rows now render the small thumbnail instead
-  of the 512px grid thumbnail: the two surfaces had the consumption inverted.
+  of the 512px grid thumbnail: the two surfaces had the consumption inverted
+  ([`c7ec6f5`](https://github.com/coderoadpl/ai-video-cataloger/commit/c7ec6f5)).
 - Library → Osoby mutation failures (rename, merge, forget, delete all face
   data) now surface via a dismissible alert on the People surface itself,
-  instead of only a terminal line that Library mode keeps hidden.
+  instead of only a terminal line that Library mode keeps hidden
+  ([`c7ec6f5`](https://github.com/coderoadpl/ai-video-cataloger/commit/c7ec6f5)).
 - `GET /api/library/collection` in match (query) mode now honors an explicit
   non-relevance `sort` for the photo side instead of always ranking photos by
   FTS score, so a query with `sort=captured_asc|captured_desc|name_asc`
   merges videos and photos in one consistent order instead of merging a
-  score-ordered photo stream against a date-ordered video stream.
+  score-ordered photo stream against a date-ordered video stream
+  ([`c7ec6f5`](https://github.com/coderoadpl/ai-video-cataloger/commit/c7ec6f5)).
 - A nested photo root (e.g. scanning both `~/Pictures` and `~/Pictures/2024`)
   no longer duplicates the child photos in the "all folders" sidebar sections,
   and the owning root used for Analyze in the "all folders" scope now resolves
-  to the deepest matching root instead of the first (typically parent) one.
+  to the deepest matching root instead of the first (typically parent) one
+  ([`c7ec6f5`](https://github.com/coderoadpl/ai-video-cataloger/commit/c7ec6f5)).
 - Load-more pagination in Photos, the Photos analysis sidebar, and the Library
   no longer re-appends the same page when a completed job or focus refetch
   refreshes the currently loaded offset: each offset is now merged into the
   loaded list at most once, so rows can no longer be duplicated and "has more"
-  can no longer flip false while later pages remain unloaded.
-- Analysis with Zdjęcia active now shows the photos sidebar (folder header, scope toggle, badge rows, honest empty state) instead of the video list.
+  can no longer flip false while later pages remain unloaded
+  ([`df91db4`](https://github.com/coderoadpl/ai-video-cataloger/commit/df91db4)).
+- Analysis with Zdjęcia active now shows the photos sidebar (folder header, scope toggle, badge rows, honest empty state) instead of the video list
+  ([`a68d888`](https://github.com/coderoadpl/ai-video-cataloger/commit/a68d888)).
 - The Library → Zdjęcia detail pane's "Otwórz w Analizie" escape hatch now
   switches to Analysis → Zdjęcia with the photo's root and the photo itself
   selected, instead of switching to Analysis → Filmy with the photo's folder
-  opened as a video folder and nothing selected.
-- Folders whose names carry diacritics are no longer silently skipped: every path entering the catalog is canonicalized to NFC at the contract, filesystem and store boundaries, so a path handed in as NFD (the on-disk form on macOS) matches the NFC rows the catalog stores. In a real-world catalog this recovered affected analyzed files that `faces index` had reported as a successful zero-file run.
-- `faces index <root>` no longer reports success over an empty set: a root that does not exist fails with `folder_not_found`, and an existing root with no catalog folders under it fails with `drive_root_empty` (exit 39), matching `materialize` and `process-drive`; a root whose files are all already indexed still succeeds and now reports the folders and analyzed files it saw.
-- A read-only mirror created before path canonicalization keeps its frames and thumbnails: the mirror id derived from the old decomposed folder name is rebuilt and used when no canonical mirror exists, so a diacritic folder is not silently re-mirrored from scratch.
-- A second person could never be founded once the unassigned pool held more than one identity: the new-cluster seed demanded that *all* candidate observations be mutually similar, so a mixed pool always returned nothing and every good detection was absorbed by the first person in a real-world catalog.
-- `faces recluster` no longer leaves people the owner cannot recognise: in a real-world catalog nearly every rebuilt identity had no crop because crops existed only for the exemplars of the single person that had been glued together at index time.
-- `driveRunSummarySchema` carries `snapshotSkipped` through the completed `process-drive` job payload instead of stripping it.
-- A corrupted stored variant descriptor or usage JSON in the global catalog surfaces as `read_error` (`READ_ERROR`, exit 28) instead of an untyped `internal` error.
-- Settings and the setup wizard only render the amber Gemini privacy warning when the selected analyzer is Gemini (native video); it no longer appears under Claude, local, or OpenAI-compatible API selections.
-- The `harness-cursor-agent × skip` e2e matrix leg now probes cursor-agent with a trivial invocation (not just `status`) before running the full pipeline, so an authenticated but usage-exhausted CLI self-skips instead of failing the leg.
-- `tags alias` re-points existing aliases at the new canonical tag instead of leaving them pointing at the deleted tag row, so chained merges (`dogs` → `psy`, then `psy` → `pieski`) keep resolving and no longer resurrect the merged-away tag on the next ingest.
-- One undecodable or very short video no longer kills a whole face-indexing pass: `faces index` and the faces pass chained into `process-drive` record the file in a `faces_file_failed` event and in the `faces` summary block (`filesFailed`, `failureCodes`, `aborted`), keep going, and exit 0 with partial results; only five consecutive failures of the same class abort the pass (`DRIVE_RUN_ABORTED`, exit 40).
-- Asking for more frames than a clip contains is no longer an error: frame extraction returns the frames ffmpeg actually wrote — and fails typed only when none did — and an RGB decode that seeks past the last frame falls back to the extracted frame image instead of failing with `Decoded RGB frame size mismatch: expected 15925248, got 0`.
-- `listLocations` resolves the selected variant (explicit selection, then folder default, then newest) instead of joining every stored variant, so a file with more than one analysis variant no longer produces a duplicate map pin, an inflated "located files" count, and a nondeterministic final name.
-- The API-log terminal seam no longer records the plaintext body of a `POST /api/credentials` request, so an entered provider API key never lands in the debug terminal's Raw view or on the clipboard via Copy.
-- `photos scan` no longer treats an unreadable subtree (permission change, flaky mount) as "gone": a folder that fails to list is reported via a new `photo-folder-skipped` event, counted in the summary's new `folderReadErrors`, and excluded from the reconcile pass, so its photos keep their sightings instead of being wrongly marked missing.
-- `photosVariantsSelect`, `photosVariantsDelete` and `photosVariantsFolderDefault` now flush `photos.db` under the same write-lock wrapper that already flushes the global catalog, so a variant selection survives an app quit instead of depending on the un-awaited `dispose()` at shutdown.
-- Library tiles now load the 512px grid thumbnail when it exists, falling back to the small thumbnail.
-- Offline/no-thumbnail Library and Photos tiles render as full square tiles with a deterministic gradient and centered name.
-- "Load more" in the Library keeps the scroll position and no longer flashes the no-results state.
-- People exemplar crops recorded under a previous home directory resolve against the current home (fixes 403 avatars).
-- People cards without an exemplar show an initials avatar; Delete moved into a per-card overflow menu behind the existing confirmation.
-- People filter options show display names ("Person N" for unnamed) instead of raw ids; tag filter options are ordered by count.
-- Preview overlay shows a localized capture date and uses the thumbnail as the video poster.
-- Analysis detail pane shows a "Select a video from the list" prompt instead of the full onboarding welcome screen once a folder with videos is open.
-- The Photos sidebar's badges (Ukończony/Completed, Duplikat, Brak EXIF, Podgląd nieudany, Brak pliku) now render through the same `StatusBadge` component as the video status badge, each with a fitting icon, matching the video list's exact "Completed"/"Ukończony" wording instead of a separate "Analysed" label.
-- Library and Photos placeholder tiles (no thumbnail) render a vertically centered composition — disk icon, middle-ellipsized filename, and an offline caption when the owning folder is offline — over a low-saturation duotone gradient from a single cool hue family with a subtle 1px border, replacing the corner "offline" pill for that case; the light theme tints the tiles pale with dark text and the dark theme keeps deep tiles with white text (`apps/web/src/components/ui/PlaceholderTile.tsx`, shared by `LibraryGrid` and `PhotoGrid`).
-- The photo detail pane's Analyze action targets the owning folder of the currently selected photo instead of the sidebar's (possibly unrelated) `selectedRoot` when the "Wszystkie foldery" (all folders) scope is active, so it no longer silently analyzes the wrong — or a stale — folder; the sidebar's Analyze button is disabled whenever no target folder resolves instead of being clickable with no effect.
-- Photos sidebar rows show the capture date localized (medium date, short time) instead of the raw ISO timestamp.
+  opened as a video folder and nothing selected
+  ([`c7ec6f5`](https://github.com/coderoadpl/ai-video-cataloger/commit/c7ec6f5)).
+- Folders whose names carry diacritics are no longer silently skipped: every path entering the catalog is canonicalized to NFC at the contract, filesystem and store boundaries, so a path handed in as NFD (the on-disk form on macOS) matches the NFC rows the catalog stores. In a real-world catalog this recovered affected analyzed files that `faces index` had reported as a successful zero-file run
+  ([`a651ae8`](https://github.com/coderoadpl/ai-video-cataloger/commit/a651ae8)).
+- `faces index <root>` no longer reports success over an empty set: a root that does not exist fails with `folder_not_found`, and an existing root with no catalog folders under it fails with `drive_root_empty` (exit 39), matching `materialize` and `process-drive`; a root whose files are all already indexed still succeeds and now reports the folders and analyzed files it saw
+  ([`a651ae8`](https://github.com/coderoadpl/ai-video-cataloger/commit/a651ae8)).
+- A read-only mirror created before path canonicalization keeps its frames and thumbnails: the mirror id derived from the old decomposed folder name is rebuilt and used when no canonical mirror exists, so a diacritic folder is not silently re-mirrored from scratch
+  ([`a651ae8`](https://github.com/coderoadpl/ai-video-cataloger/commit/a651ae8)).
+- A second person could never be founded once the unassigned pool held more than one identity: the new-cluster seed demanded that *all* candidate observations be mutually similar, so a mixed pool always returned nothing and every good detection was absorbed by the first person in a real-world catalog
+  ([`3ce711d`](https://github.com/coderoadpl/ai-video-cataloger/commit/3ce711d)).
+- `faces recluster` no longer leaves people the owner cannot recognise: in a real-world catalog nearly every rebuilt identity had no crop because crops existed only for the exemplars of the single person that had been glued together at index time
+  ([`aad0d0c`](https://github.com/coderoadpl/ai-video-cataloger/commit/aad0d0c)).
+- `driveRunSummarySchema` carries `snapshotSkipped` through the completed `process-drive` job payload instead of stripping it
+  ([`cd2b2d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/cd2b2d2)).
+- A corrupted stored variant descriptor or usage JSON in the global catalog surfaces as `read_error` (`READ_ERROR`, exit 28) instead of an untyped `internal` error
+  ([`cd2b2d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/cd2b2d2)).
+- Settings and the setup wizard only render the amber Gemini privacy warning when the selected analyzer is Gemini (native video); it no longer appears under Claude, local, or OpenAI-compatible API selections
+  ([`477ed91`](https://github.com/coderoadpl/ai-video-cataloger/commit/477ed91)).
+- The `harness-cursor-agent × skip` e2e matrix leg now probes cursor-agent with a trivial invocation (not just `status`) before running the full pipeline, so an authenticated but usage-exhausted CLI self-skips instead of failing the leg
+  ([`441580a`](https://github.com/coderoadpl/ai-video-cataloger/commit/441580a)).
+- `tags alias` re-points existing aliases at the new canonical tag instead of leaving them pointing at the deleted tag row, so chained merges (`dogs` → `psy`, then `psy` → `pieski`) keep resolving and no longer resurrect the merged-away tag on the next ingest
+  ([`8f377b7`](https://github.com/coderoadpl/ai-video-cataloger/commit/8f377b7)).
+- One undecodable or very short video no longer kills a whole face-indexing pass: `faces index` and the faces pass chained into `process-drive` record the file in a `faces_file_failed` event and in the `faces` summary block (`filesFailed`, `failureCodes`, `aborted`), keep going, and exit 0 with partial results; only five consecutive failures of the same class abort the pass (`DRIVE_RUN_ABORTED`, exit 40)
+  ([`e8c8549`](https://github.com/coderoadpl/ai-video-cataloger/commit/e8c8549)).
+- Asking for more frames than a clip contains is no longer an error: frame extraction returns the frames ffmpeg actually wrote — and fails typed only when none did — and an RGB decode that seeks past the last frame falls back to the extracted frame image instead of failing with `Decoded RGB frame size mismatch: expected 15925248, got 0`
+  ([`e8c8549`](https://github.com/coderoadpl/ai-video-cataloger/commit/e8c8549)).
+- `listLocations` resolves the selected variant (explicit selection, then folder default, then newest) instead of joining every stored variant, so a file with more than one analysis variant no longer produces a duplicate map pin, an inflated "located files" count, and a nondeterministic final name
+  ([`18b8fb9`](https://github.com/coderoadpl/ai-video-cataloger/commit/18b8fb9)).
+- The API-log terminal seam no longer records the plaintext body of a `POST /api/credentials` request, so an entered provider API key never lands in the debug terminal's Raw view or on the clipboard via Copy
+  ([`18b8fb9`](https://github.com/coderoadpl/ai-video-cataloger/commit/18b8fb9)).
+- `photos scan` no longer treats an unreadable subtree (permission change, flaky mount) as "gone": a folder that fails to list is reported via a new `photo-folder-skipped` event, counted in the summary's new `folderReadErrors`, and excluded from the reconcile pass, so its photos keep their sightings instead of being wrongly marked missing
+  ([`dc97ef4`](https://github.com/coderoadpl/ai-video-cataloger/commit/dc97ef4)).
+- `photosVariantsSelect`, `photosVariantsDelete` and `photosVariantsFolderDefault` now flush `photos.db` under the same write-lock wrapper that already flushes the global catalog, so a variant selection survives an app quit instead of depending on the un-awaited `dispose()` at shutdown
+  ([`6547821`](https://github.com/coderoadpl/ai-video-cataloger/commit/6547821)).
+- Library tiles now load the 512px grid thumbnail when it exists, falling back to the small thumbnail
+  ([`b492d76`](https://github.com/coderoadpl/ai-video-cataloger/commit/b492d76)).
+- Offline/no-thumbnail Library and Photos tiles render as full square tiles with a deterministic gradient and centered name
+  ([`b492d76`](https://github.com/coderoadpl/ai-video-cataloger/commit/b492d76)).
+- "Load more" in the Library keeps the scroll position and no longer flashes the no-results state
+  ([`b492d76`](https://github.com/coderoadpl/ai-video-cataloger/commit/b492d76)).
+- People exemplar crops recorded under a previous home directory resolve against the current home (fixes 403 avatars)
+  ([`b492d76`](https://github.com/coderoadpl/ai-video-cataloger/commit/b492d76)).
+- People cards without an exemplar show an initials avatar; Delete moved into a per-card overflow menu behind the existing confirmation
+  ([`b492d76`](https://github.com/coderoadpl/ai-video-cataloger/commit/b492d76)).
+- People filter options show display names ("Person N" for unnamed) instead of raw ids; tag filter options are ordered by count
+  ([`b492d76`](https://github.com/coderoadpl/ai-video-cataloger/commit/b492d76)).
+- Preview overlay shows a localized capture date and uses the thumbnail as the video poster
+  ([`b492d76`](https://github.com/coderoadpl/ai-video-cataloger/commit/b492d76)).
+- Analysis detail pane shows a "Select a video from the list" prompt instead of the full onboarding welcome screen once a folder with videos is open
+  ([`b492d76`](https://github.com/coderoadpl/ai-video-cataloger/commit/b492d76)).
+- The Photos sidebar's badges (Ukończony/Completed, Duplikat, Brak EXIF, Podgląd nieudany, Brak pliku) now render through the same `StatusBadge` component as the video status badge, each with a fitting icon, matching the video list's exact "Completed"/"Ukończony" wording instead of a separate "Analysed" label
+  ([`77c2df7`](https://github.com/coderoadpl/ai-video-cataloger/commit/77c2df7)).
+- Library and Photos placeholder tiles (no thumbnail) render a vertically centered composition — disk icon, middle-ellipsized filename, and an offline caption when the owning folder is offline — over a low-saturation duotone gradient from a single cool hue family with a subtle 1px border, replacing the corner "offline" pill for that case; the light theme tints the tiles pale with dark text and the dark theme keeps deep tiles with white text (`apps/web/src/components/ui/PlaceholderTile.tsx`, shared by `LibraryGrid` and `PhotoGrid`)
+  ([`77c2df7`](https://github.com/coderoadpl/ai-video-cataloger/commit/77c2df7)).
+- The photo detail pane's Analyze action targets the owning folder of the currently selected photo instead of the sidebar's (possibly unrelated) `selectedRoot` when the "Wszystkie foldery" (all folders) scope is active, so it no longer silently analyzes the wrong — or a stale — folder; the sidebar's Analyze button is disabled whenever no target folder resolves instead of being clickable with no effect
+  ([`77c2df7`](https://github.com/coderoadpl/ai-video-cataloger/commit/77c2df7)).
+- Photos sidebar rows show the capture date localized (medium date, short time) instead of the raw ISO timestamp
+  ([`77c2df7`](https://github.com/coderoadpl/ai-video-cataloger/commit/77c2df7)).
 
 ## [0.6.3] - 2026-07-29
 

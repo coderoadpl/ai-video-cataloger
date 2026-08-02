@@ -7,6 +7,12 @@ legitimately not applicable is recorded with its reason, never silently
 skipped. Rerunning a red gate until it passes is forbidden
 ([flake doctrine](../../CLAUDE.md)).
 
+## 0. Versioning policy
+
+The patch version is bumped with practically every merged PR (at minimum
+every wave); no two differing builds may ever share a version string
+(owner decision 2026-08-02).
+
 ## 1. The two gates
 
 | Step | Command | Pass condition |

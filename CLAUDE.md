@@ -135,3 +135,7 @@ re-run.
   leftover `security` processes and deleting FIFO fixtures. Any scenario that
   intentionally can raise a GUI prompt: warn the owner BEFORE the run, never
   fire it unattended.
+- **Versioning policy (owner decision 2026-08-02).** The patch version is
+  bumped with practically every merged PR (at minimum every wave); no two
+  differing builds may ever share a version string. See
+  [docs/qa/release-readiness.md](docs/qa/release-readiness.md).
