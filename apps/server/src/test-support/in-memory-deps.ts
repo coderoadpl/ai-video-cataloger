@@ -35,6 +35,7 @@ import type {
   AnalyzerPort,
   ApplyGeoBackfillInput,
   ApplyGeoBackfillResult,
+  CatalogFilePerson,
   CatalogFileRecord,
   CatalogLockSnapshot,
   CatalogRepository,
@@ -722,6 +723,17 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .sort((left, right) => left.displayName.localeCompare(right.displayName));
 
     return Promise.resolve(ok({ tags, people, places, years, folders: facetFolders, counts }));
+  }
+
+  listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>> {
+    const personIds = new Set<string>();
+    for (const observation of this.faceObservations.values()) {
+      if (observation.fingerprint === fingerprint && observation.personId !== null) personIds.add(observation.personId);
+    }
+    const result = [...personIds]
+      .map((personId) => ({ personId, displayName: this.people.get(personId)?.displayName ?? null }))
+      .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.personId.localeCompare(right.personId));
+    return Promise.resolve(ok(result));
   }
 
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>> {

@@ -33,6 +33,7 @@ import {
   jobOutputSchema,
   jobsListOutputSchema,
   libraryFacetsOutputSchema,
+  libraryPreviewOutputSchema,
   localAiDaemonStopOutputSchema,
   localAiRequirementsOutputSchema,
   providersListOutputSchema,
@@ -679,6 +680,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
         ['cursor', parsed.value.cursor ?? null],
       ]),
       collectionOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  libraryPreview: (input: z.input<typeof API_ROUTES.libraryPreview.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.libraryPreview.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.libraryPreview.method,
+      queryPath(API_ROUTES.libraryPreview.path, [['fingerprint', parsed.value.fingerprint]]),
+      libraryPreviewOutputSchema,
       undefined,
       signal,
     );

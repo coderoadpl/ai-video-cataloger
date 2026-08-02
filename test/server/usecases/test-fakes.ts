@@ -46,6 +46,7 @@ import type {
   CatalogSearchInput,
   CatalogSearchResults,
   CatalogSearchRow,
+  CatalogFilePerson,
   CatalogRepository,
   CatalogRepositoryFactory,
   CatalogResetSingleResult,
@@ -627,6 +628,7 @@ export class InMemoryMedia implements MediaPort {
   readonly durations = new Map<string, number | null>();
   readonly locations = new Map<string, { gpsLat: number; gpsLon: number }>();
   readonly createdAtUtc = new Map<string, string>();
+  readonly dimensions = new Map<string, { width: number | null; height: number | null }>();
   readonly frameFailures = new Map<string, AppError>();
   readonly frameFailureMinFrameCount = new Map<string, number>();
   readonly frameLimits = new Map<string, number>();
@@ -636,10 +638,11 @@ export class InMemoryMedia implements MediaPort {
 
   probe(input: { videoPath: string }): Promise<Result<MediaProbe, AppError>> {
     const location = this.locations.get(input.videoPath);
+    const dims = this.dimensions.get(input.videoPath);
     return Promise.resolve(ok({
       duration: this.durations.get(input.videoPath) ?? null,
-      width: null,
-      height: null,
+      width: dims?.width ?? null,
+      height: dims?.height ?? null,
       rotation: null,
       gpsLat: location?.gpsLat ?? null,
       gpsLon: location?.gpsLon ?? null,
@@ -1564,6 +1567,17 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .sort((left, right) => left.displayName.localeCompare(right.displayName));
 
     return Promise.resolve(ok({ tags, people, places, years, folders: facetFolders, counts }));
+  }
+
+  listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>> {
+    const personIds = new Set<string>();
+    for (const observation of this.faceObservations.values()) {
+      if (observation.fingerprint === fingerprint && observation.personId !== null) personIds.add(observation.personId);
+    }
+    const result = [...personIds]
+      .map((personId) => ({ personId, displayName: this.people.get(personId)?.displayName ?? null }))
+      .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.personId.localeCompare(right.personId));
+    return Promise.resolve(ok(result));
   }
 
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>> {

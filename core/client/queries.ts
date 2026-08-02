@@ -86,6 +86,7 @@ export type TestProviderInput = z.input<typeof API_ROUTES.providerTest.input>;
 export type ReadinessInput = z.input<typeof API_ROUTES.readiness.input>;
 export type SearchInput = z.input<typeof API_ROUTES.searchQuery.input>;
 export type CollectionInput = z.input<typeof API_ROUTES.libraryCollection.input>;
+export type LibraryPreviewInput = z.input<typeof API_ROUTES.libraryPreview.input>;
 export type InstallFaceArtifactsInput = z.input<typeof API_ROUTES.faceArtifactsInstall.input>;
 export type FacesIndexInput = z.input<typeof API_ROUTES.facesIndex.input>;
 export type FacesNameInput = z.input<typeof API_ROUTES.facesName.input>;
@@ -563,6 +564,12 @@ export const searchQuery = (api: ApiClient, input: SearchInput) => {
     call: ({ signal }) => api.search(parsed, signal),
   });
 };
+
+export const libraryPreviewQuery = (api: ApiClient, input: LibraryPreviewInput) =>
+  defineQuery({
+    queryKey: ['libraryPreview', input.fingerprint] as const,
+    call: ({ signal }) => api.libraryPreview(input, signal),
+  });
 
 export const libraryCollectionQuery = (api: ApiClient, input: CollectionInput) => {
   const parsed = API_ROUTES.libraryCollection.input.parse(input);

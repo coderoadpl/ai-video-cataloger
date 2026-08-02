@@ -124,7 +124,10 @@ export const runThumbnailsPass = async (
       if (framePath.value !== null) {
         const gridThumbnailPath = gridThumbnailArtifactPath(deps.fs, root.value, videoPath);
         const grid = await generateGridThumbnail(deps, {
-          framePath: framePath.value,
+          candidates: [
+            { kind: 'frame', path: framePath.value },
+            { kind: 'video', path: videoPath, seekPercent: 0.25 },
+          ],
           gridThumbnailPath,
           force: input.force,
           priority: 'background',

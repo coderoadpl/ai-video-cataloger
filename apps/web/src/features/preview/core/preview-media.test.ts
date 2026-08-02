@@ -73,6 +73,11 @@ describe('previewFromSearchResult', () => {
     expect(preview.capturedAt).toBe('2026-01-02T10:00:00.000Z');
   });
 
+  it('keeps the gps coordinates, or null when absent', () => {
+    expect(previewFromSearchResult(searchResult({ gps: { lat: 51.1, lon: 17.2 } })).gps).toEqual({ lat: 51.1, lon: 17.2 });
+    expect(previewFromSearchResult(searchResult({ gps: null })).gps).toBeNull();
+  });
+
   it('prefers the grid thumbnail for the poster, falling back to the small thumbnail', () => {
     expect(previewFromSearchResult(searchResult({ gridThumbnailPath: '/thumbs/clip.grid.jpg', thumbnailPath: '/thumbs/clip.jpg' })).posterPath)
       .toBe('/thumbs/clip.grid.jpg');
@@ -98,5 +103,9 @@ describe('previewFromLocation', () => {
 
   it('uses the location thumbPath as the poster', () => {
     expect(previewFromLocation(location({ thumbPath: '/thumbs/clip.jpg' }))?.posterPath).toBe('/thumbs/clip.jpg');
+  });
+
+  it('maps the location lat/lon into gps', () => {
+    expect(previewFromLocation(location({ lat: 51.1, lon: 17.2 }))?.gps).toEqual({ lat: 51.1, lon: 17.2 });
   });
 });

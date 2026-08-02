@@ -2250,6 +2250,39 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
   });
 });
 
+describe('SqlJsGlobalCatalogStore listPeopleForFile', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('returns the distinct named people observed on a file, and none for a file with no observations', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertFile({ ...file, fingerprint: 'fp-other', fileName: 'other.mp4' });
+    await store.upsertPerson(personFor('person-a', 1));
+    await store.upsertPerson(personFor('person-b', 1));
+    await store.upsertFaceObservation(observationFor('obs-1', file.fingerprint, 'person-a'));
+    await store.upsertFaceObservation(observationFor('obs-2', file.fingerprint, 'person-a'));
+    await store.upsertFaceObservation(observationFor('obs-3', file.fingerprint, 'person-b'));
+    await store.upsertFaceObservation(observationFor('obs-4', file.fingerprint, null));
+
+    const found = await store.listPeopleForFile(file.fingerprint);
+    const empty = await store.listPeopleForFile('fp-other');
+
+    expect(found).toEqual({
+      ok: true,
+      value: [
+        { personId: 'person-a', displayName: 'person-a' },
+        { personId: 'person-b', displayName: 'person-b' },
+      ],
+    });
+    expect(empty).toEqual({ ok: true, value: [] });
+  });
+});
+
 const lockPath = (home: string): string => path.join(home, '.ai-video-cataloger', 'catalog.lock');
 
 const writeLock = async (

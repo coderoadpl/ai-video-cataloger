@@ -238,6 +238,11 @@ export interface LibraryFacetCounts {
   missing: number;
 }
 
+export interface CatalogFilePerson {
+  personId: string;
+  displayName: string | null;
+}
+
 export interface LibraryFacets {
   tags: LibraryFacetTag[];
   people: LibraryFacetPerson[];
@@ -663,6 +668,7 @@ export interface GlobalCatalogStore {
   search(input: CatalogSearchInput): Promise<Result<CatalogSearchResults, AppError>>;
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>>;
   listLibraryFacets(): Promise<Result<LibraryFacets, AppError>>;
+  listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>>;
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>>;
   applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;
@@ -852,6 +858,7 @@ export interface ThumbnailInput {
   width: number;
   height: number;
   force: boolean;
+  fit?: 'inside' | 'cover' | undefined;
   priority?: 'foreground' | 'background' | undefined;
 }
 

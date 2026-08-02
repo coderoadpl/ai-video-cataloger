@@ -58,7 +58,7 @@ import { photoArtifactsRoot, photoGridThumbPath, photoProxyPath, photoThumbPath 
 import { reportStep as report } from './process-drive-batch.js';
 import { buildSearchMatch, sanitizeSearchQuery } from './search.js';
 import { shouldSkipDirectory } from './shared.js';
-import { generateGridThumbnail } from './thumbnail.js';
+import { generateGridThumbnail, type GridThumbnailCandidate } from './thumbnail.js';
 
 export const PHOTO_SCAN_BATCH_SIZE = 500;
 export const PHOTO_PROXY_CONCURRENCY = 4;
@@ -699,7 +699,10 @@ const processProxyCandidate = async (
     counters.generated += 1;
     if (thumbState === 'failed') counters.thumbFailed += 1;
     const grid = await generateGridThumbnail(deps, {
-      framePath: proxyPath,
+      candidates: [
+        { kind: 'proxy', path: proxyPath },
+        { kind: 'original', path: candidate.sourcePath },
+      ],
       gridThumbnailPath: gridThumbPath,
       force,
       priority: 'background',
@@ -775,8 +778,12 @@ export const runPhotoGridThumbsPass = async (
     }
     const proxyPath = photoProxyPath(deps.fs, artifactsRoot, fingerprint);
     const gridThumbnailPath = photoGridThumbPath(deps.fs, artifactsRoot, fingerprint);
+    const photo = await deps.photos.getPhoto(fingerprint);
+    if (!photo.ok) return photo;
+    const candidates: GridThumbnailCandidate[] = [{ kind: 'proxy', path: proxyPath }];
+    if (photo.value !== null) candidates.push({ kind: 'original', path: photo.value.currentPath });
     const grid = await generateGridThumbnail(deps, {
-      framePath: proxyPath,
+      candidates,
       gridThumbnailPath,
       force: input.force,
       priority: 'background',

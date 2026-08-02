@@ -77,6 +77,7 @@ import {
   scanTree,
   scanTreeFolderDetails,
   catalogTreeAbsentFiles,
+  libraryPreviewDetail,
   search,
   setConfig,
   setCredential,
@@ -495,6 +496,12 @@ export const buildApp = (deps: AppDeps): Hono => {
       limit: input.value.limit,
       offset: input.value.offset,
     }), API_ROUTES.searchQuery.output);
+  });
+
+  app.get(API_ROUTES.libraryPreview.path, async (context) => {
+    const input = parseInput(API_ROUTES.libraryPreview.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.libraryPreview.output);
+    return respond(await libraryPreviewDetail(deps, input.value), API_ROUTES.libraryPreview.output);
   });
 
   app.get(API_ROUTES.libraryCollection.path, async (context) => {

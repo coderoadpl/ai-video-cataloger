@@ -184,6 +184,8 @@ describe('LibraryView', () => {
     expect(gridImg?.getAttribute('src')).toContain('a.grid.jpg');
     expect(gridImg?.getAttribute('src')).not.toContain('a.jpg?');
     expect(smallImg?.getAttribute('src')).toContain('b.jpg');
+    expect(gridImg === undefined || gridImg === null ? null : window.getComputedStyle(gridImg).objectFit).toBe('cover');
+    expect(smallImg === undefined || smallImg === null ? null : window.getComputedStyle(smallImg).objectFit).toBe('contain');
   });
 
   it('renders a square gradient placeholder tile with the file name when no thumbnail exists', async () => {

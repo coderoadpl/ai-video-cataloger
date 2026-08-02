@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CatalogAnalysis, CatalogFile, CatalogFolder } from '@core/domain/index.js';
+import type { CatalogAnalysis, CatalogFile, CatalogFolder, FaceObservation, Person } from '@core/domain/index.js';
 
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
-import { buildSearchMatch, sanitizeSearchQuery, search, type SearchFiltersInput } from './search.js';
+import { buildSearchMatch, libraryPreviewDetail, sanitizeSearchQuery, search, type SearchFiltersInput } from './search.js';
 
 const EMPTY_FILTERS: SearchFiltersInput = {
   tags: [],
@@ -443,5 +443,93 @@ describe('search', () => {
 
     expect(result.ok && result.value.results[0]?.thumbnailPath).toBe('/media/online/.ai-video-cataloger/thumbnails/renamed.jpg');
     expect(media.thumbnailInputs).toEqual([]);
+  });
+
+  it('reports no grid thumbnail when every candidate source is below the grid floor', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addFile('/media/online/drone.mp4');
+    fs.addFile('/media/online/frames/drone/frame-001.jpg');
+    const media = new InMemoryMedia();
+    media.dimensions.set('/media/online/frames/drone/frame-001.jpg', { width: 320, height: 180 });
+    media.dimensions.set('/media/online/drone.mp4', { width: 320, height: 180 });
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-tiny-source', folderA.folderId, 'drone.mp4'));
+    await store.upsertAnalysis(analysis('fp-tiny-source', { transcript: 'drone' }));
+
+    const result = await search({ globalCatalog: store, fs, media }, {
+      query: 'drone',
+      filters: EMPTY_FILTERS,
+      sort: undefined,
+      thumbnails: 'ensure',
+      limit: 10,
+      offset: 0,
+    });
+
+    expect(result.ok && result.value.results[0]?.gridThumbnailPath).toBeNull();
+  });
+});
+
+const personFor = (personId: string, displayName: string | null): Person => ({
+  personId,
+  displayName,
+  kind: 'face',
+  createdAt: '2026-01-01T00:00:00.000Z',
+  centroid: Array.from({ length: 128 }, () => 0.1),
+  exemplarCount: 1,
+});
+
+const observationFor = (obsId: string, fingerprint: string, personId: string | null): FaceObservation => ({
+  obsId,
+  fingerprint,
+  kind: 'face',
+  media: 'video',
+  frameTsS: 1,
+  bbox: { x: 0, y: 0, width: 10, height: 10 },
+  embedding: Array.from({ length: 128 }, () => 0.2),
+  quality: 0.9,
+  personId,
+  cropPath: null,
+});
+
+describe('libraryPreviewDetail', () => {
+  it('combines file size/duration, the selected transcript and the observed people for a preview', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile({
+      ...file('fp-preview', folderA.folderId, 'drone-sunset.mp4'),
+      size: 12_582_912,
+      durationS: 90,
+    });
+    await store.upsertAnalysis(analysis('fp-preview', { transcript: 'quiet audio over the bay' }));
+    await store.upsertPerson(personFor('person-a', 'Ada'));
+    await store.upsertFaceObservation(observationFor('obs-1', 'fp-preview', 'person-a'));
+
+    const result = await libraryPreviewDetail({ globalCatalog: store, fs, media: new InMemoryMedia() }, { fingerprint: 'fp-preview' });
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        fingerprint: 'fp-preview',
+        path: '/media/online/drone-sunset.mp4',
+        fileName: 'drone-sunset.mp4',
+        size: 12_582_912,
+        sizeFormatted: '12.0 MB',
+        durationS: 90,
+        durationFormatted: '1:30',
+        transcript: 'quiet audio over the bay',
+        people: [{ personId: 'person-a', displayName: 'Ada' }],
+      },
+    });
+  });
+
+  it('reports not_found for an unknown fingerprint', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+
+    const result = await libraryPreviewDetail({ globalCatalog: store, fs, media: new InMemoryMedia() }, { fingerprint: 'missing' });
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
   });
 });

@@ -169,6 +169,26 @@ describe('runThumbnailsPass', () => {
     expect(result).toMatchObject({ ok: false, error: { message: 'Job cancelled' } });
   });
 
+  it('falls back to seeking the source video for the grid thumb when the stored frame is a degraded sub-512 source', async () => {
+    const fs = new InMemoryFileSystem('/root');
+    const media = new InMemoryMedia(fs);
+    seedCompletedFile(fs, '/root/a.mp4', 'a');
+    media.dimensions.set('/root/frames/a/frame-001.jpg', { width: 128, height: 70 });
+
+    const result = await runThumbnailsPass({ fs, media }, { root: '/root', force: false });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.gridGenerated).toBe(1);
+    expect(media.thumbnailInputs).toContainEqual(expect.objectContaining({
+      videoPath: '/root/a.mp4',
+      thumbnailPath: '/root/.ai-video-cataloger/thumbnails/a.grid.jpg',
+      width: 512,
+      height: 512,
+      fit: 'cover',
+    }));
+  });
+
   it('generates a thumbnail for a file under a diacritic subfolder written NFD on disk', async () => {
     const fs = new InMemoryFileSystem('/root');
     const media = new InMemoryMedia(fs);

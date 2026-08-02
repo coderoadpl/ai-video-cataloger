@@ -1557,7 +1557,10 @@ const ensureCompletedThumbnail = async (
       priority: 'background',
     });
     await generateGridThumbnail(deps, {
-      framePath: framePath.value,
+      candidates: [
+        { kind: 'frame', path: framePath.value },
+        { kind: 'video', path: finalPath, seekPercent: 0.25 },
+      ],
       gridThumbnailPath: paths.gridThumbnailPath,
       force: false,
       priority: 'background',

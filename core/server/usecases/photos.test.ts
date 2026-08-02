@@ -627,6 +627,41 @@ describe('runPhotoGridThumbsPass', () => {
 
     expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 0, failed: 1 });
   });
+
+  it('regenerates a grid thumb from the original photo when the proxy is a degenerate sub-512 source', async () => {
+    const { deps, fs, media } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    await runPhotoProxiesPass(deps, { root: '/work/photos', force: false });
+    const fingerprint = fingerprintOf('a');
+    const proxyPath = `/home/.ai-video-cataloger/photo-artifacts/proxies/${fingerprint}.jpg`;
+    media.dimensions.set(proxyPath, { width: 128, height: 70 });
+    media.dimensions.set('/work/photos/a.jpg', { width: 4000, height: 3000 });
+
+    const pass = await runPhotoGridThumbsPass(deps, { force: false });
+
+    expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 1, skipped: 0, failed: 0 });
+    expect(media.thumbnailFromFrameInputs.at(-1)).toEqual(
+      expect.objectContaining({ framePath: '/work/photos/a.jpg' }),
+    );
+  });
+
+  it('removes a stale grid thumb and leaves it skipped when the proxy is degenerate and the original is unreachable', async () => {
+    const { deps, fs, media } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    await runPhotoProxiesPass(deps, { root: '/work/photos', force: false });
+    const fingerprint = fingerprintOf('a');
+    const proxyPath = `/home/.ai-video-cataloger/photo-artifacts/proxies/${fingerprint}.jpg`;
+    const gridPath = `/home/.ai-video-cataloger/photo-artifacts/thumbs/${fingerprint}.grid.jpg`;
+    media.dimensions.set(proxyPath, { width: 128, height: 70 });
+    await fs.deleteFile('/work/photos/a.jpg');
+
+    const pass = await runPhotoGridThumbsPass(deps, { force: false });
+
+    expect(pass.ok && pass.value).toMatchObject({ candidates: 1, generated: 0, skipped: 1, failed: 0 });
+    await expect(fs.exists(gridPath)).resolves.toEqual({ ok: true, value: false });
+  });
 });
 
 describe('enqueuePhotoGridThumbs', () => {

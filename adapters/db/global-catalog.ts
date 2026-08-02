@@ -49,6 +49,7 @@ import type {
   AnalyzedFileLocation,
   ApplyGeoBackfillInput,
   ApplyGeoBackfillResult,
+  CatalogFilePerson,
   CatalogFileRecord,
   FaceIndexCandidate,
   FaceIndexScope,
@@ -836,6 +837,20 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       };
 
       return { tags: facetTags, people: facetPeople, places, years, folders: facetFolders, counts };
+    });
+  }
+
+  async listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>> {
+    return this.read((_db, client) => {
+      const rows = client.exec(
+        `SELECT DISTINCT p.person_id, p.display_name
+          FROM face_observations o
+          JOIN people p ON p.person_id = o.person_id
+          WHERE o.fingerprint = $fingerprint AND o.person_id IS NOT NULL
+          ORDER BY p.display_name IS NULL, p.display_name, p.person_id`,
+        { $fingerprint: fingerprint },
+      )[0]?.values ?? [];
+      return rows.map((row) => ({ personId: stringValue(row[0]), displayName: nullableStringValue(row[1]) }));
     });
   }
 

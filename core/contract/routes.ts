@@ -1631,6 +1631,27 @@ export const searchOutputSchema = z.object({
   results: z.array(searchResultSchema),
 });
 
+export const libraryPreviewInputSchema = z.object({
+  fingerprint: z.string().min(1),
+});
+
+export const libraryPreviewPersonSchema = z.object({
+  personId: z.string().min(1),
+  displayName: z.string().nullable(),
+});
+
+export const libraryPreviewOutputSchema = z.object({
+  fingerprint: z.string().min(1),
+  path: z.string().min(1),
+  fileName: z.string().min(1),
+  size: z.number().int().nonnegative(),
+  sizeFormatted: z.string(),
+  durationS: z.number().nonnegative().nullable(),
+  durationFormatted: z.string().nullable(),
+  transcript: z.string().nullable(),
+  people: z.array(libraryPreviewPersonSchema),
+});
+
 export const collectionMediaSchema = z.enum(['all', 'video', 'photo']);
 
 export const collectionVideoItemSchema = searchResultSchema.extend({
@@ -2080,6 +2101,12 @@ export const API_ROUTES = {
   tagsAlias: { method: 'POST', path: '/api/tags/alias', input: tagsAliasInputSchema, output: tagsAliasOutputSchema },
   tagsSuggestAliases: { method: 'GET', path: '/api/tags/suggest-aliases', input: emptyInputSchema, output: tagsSuggestAliasesOutputSchema },
   searchQuery: { method: 'GET', path: '/api/search', input: searchInputSchema, output: searchOutputSchema },
+  libraryPreview: {
+    method: 'GET',
+    path: '/api/library/preview',
+    input: libraryPreviewInputSchema,
+    output: libraryPreviewOutputSchema,
+  },
   libraryCollection: {
     method: 'GET',
     path: '/api/library/collection',

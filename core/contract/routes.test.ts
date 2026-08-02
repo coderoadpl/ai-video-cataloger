@@ -29,6 +29,9 @@ import {
   collectionInputSchema,
   collectionItemSchema,
   collectionOutputSchema,
+  libraryPreviewInputSchema,
+  libraryPreviewOutputSchema,
+  libraryPreviewPersonSchema,
   searchInputSchema,
   searchOutputSchema,
   tagsSuggestAliasesOutputSchema,
@@ -359,6 +362,27 @@ describe('route schemas', () => {
     expect(searchInputSchema.parse({ tags: 'beach' }).hasGps).toBeUndefined();
   });
 
+  it('requires a non-empty fingerprint for the library preview route, and validates its output shape', () => {
+    expect(libraryPreviewInputSchema.safeParse({ fingerprint: '' }).success).toBe(false);
+    expect(libraryPreviewInputSchema.parse({ fingerprint: 'fp-1' })).toEqual({ fingerprint: 'fp-1' });
+    expect(libraryPreviewPersonSchema.parse({ personId: 'person-a', displayName: null })).toEqual({
+      personId: 'person-a',
+      displayName: null,
+    });
+    const output = libraryPreviewOutputSchema.parse({
+      fingerprint: 'fp-1',
+      path: '/videos/clip.mp4',
+      fileName: 'clip.mp4',
+      size: 2048,
+      sizeFormatted: '2.0 KB',
+      durationS: 65,
+      durationFormatted: '1:05',
+      transcript: 'hello',
+      people: [{ personId: 'person-a', displayName: 'Ada' }],
+    });
+    expect(output.people).toEqual([{ personId: 'person-a', displayName: 'Ada' }]);
+  });
+
   it('parses a bare browse-everything collection input with defaults, cursor optional', () => {
     const parsed = collectionInputSchema.parse({});
     expect(parsed).toMatchObject({ tags: [], people: [], media: 'all', limit: 50 });
@@ -667,6 +691,7 @@ describe('route schemas', () => {
     expect(API_ROUTES.tagsList.method).toBe('GET');
     expect(API_ROUTES.tagsSuggestAliases).toMatchObject({ method: 'GET', path: '/api/tags/suggest-aliases' });
     expect(API_ROUTES.searchQuery).toMatchObject({ method: 'GET', path: '/api/search' });
+    expect(API_ROUTES.libraryPreview).toMatchObject({ method: 'GET', path: '/api/library/preview' });
     expect(API_ROUTES.variantsList).toMatchObject({ method: 'GET', path: '/api/variants' });
 
     expect(API_ROUTES.process.method).toBe('POST');

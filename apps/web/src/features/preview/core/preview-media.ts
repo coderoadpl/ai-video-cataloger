@@ -15,6 +15,7 @@ export interface PreviewMedia {
   placeName: string | null;
   capturedAt: string | null;
   posterPath: string | null;
+  gps: { lat: number; lon: number } | null;
 }
 
 export const previewFromSearchResult = (item: z.output<typeof searchResultSchema>): PreviewMedia => ({
@@ -30,6 +31,7 @@ export const previewFromSearchResult = (item: z.output<typeof searchResultSchema
   placeName: item.place?.name ?? null,
   capturedAt: item.capturedAt,
   posterPath: item.gridThumbnailPath ?? item.thumbnailPath,
+  gps: item.gps,
 });
 
 export const previewFromLocation = (location: z.output<typeof catalogLocationSchema>): PreviewMedia | null => {
@@ -47,5 +49,6 @@ export const previewFromLocation = (location: z.output<typeof catalogLocationSch
     placeName: location.place?.name ?? null,
     capturedAt: null,
     posterPath: location.thumbPath,
+    gps: { lat: location.lat, lon: location.lon },
   };
 };

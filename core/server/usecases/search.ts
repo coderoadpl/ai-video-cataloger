@@ -1,7 +1,7 @@
 import { appError, ok, type AppError, type CatalogPlace, type Result } from '@core/domain/index.js';
 
-import type { CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
-import { artifactPaths } from './shared.js';
+import type { CatalogFilePerson, CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
+import { artifactPaths, formatDuration, formatSize } from './shared.js';
 import { discoverArtifactRoot } from './artifact-root.js';
 import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 
@@ -217,11 +217,58 @@ export const resolveGridThumbnailPath = async (
   if (!framePath.ok) return framePath;
   if (framePath.value === null) return ok(null);
   const generated = await generateGridThumbnail(deps, {
-    framePath: framePath.value,
+    candidates: [
+      { kind: 'frame', path: framePath.value },
+      { kind: 'video', path: videoPath, seekPercent: 0.25 },
+    ],
     gridThumbnailPath,
     force: false,
   });
-  return ok(generated.ok ? generated.value.path : null);
+  if (!generated.ok || generated.value.source === null) return ok(null);
+  return ok(generated.value.path);
+};
+
+export interface LibraryPreviewDetail {
+  fingerprint: string;
+  path: string;
+  fileName: string;
+  size: number;
+  sizeFormatted: string;
+  durationS: number | null;
+  durationFormatted: string | null;
+  transcript: string | null;
+  people: CatalogFilePerson[];
+}
+
+export const libraryPreviewDetail = async (
+  deps: SearchDeps,
+  input: { fingerprint: string },
+): Promise<Result<LibraryPreviewDetail, AppError>> => {
+  const file = await deps.globalCatalog.getFile(input.fingerprint);
+  if (!file.ok) return file;
+  if (file.value === null) {
+    return { ok: false, error: appError('not_found', `Catalog file not found: ${input.fingerprint}`) };
+  }
+  const folder = await deps.globalCatalog.getFolder(file.value.folderId);
+  if (!folder.ok) return folder;
+  if (folder.value === null) {
+    return { ok: false, error: appError('folder_not_found', `Catalog folder not found: ${file.value.folderId}`) };
+  }
+  const analysis = await deps.globalCatalog.getAnalysis(input.fingerprint);
+  if (!analysis.ok) return analysis;
+  const people = await deps.globalCatalog.listPeopleForFile(input.fingerprint);
+  if (!people.ok) return people;
+  return ok({
+    fingerprint: input.fingerprint,
+    path: deps.fs.join(folder.value.currentPath, file.value.fileName),
+    fileName: file.value.fileName,
+    size: file.value.size,
+    sizeFormatted: formatSize(file.value.size),
+    durationS: file.value.durationS,
+    durationFormatted: file.value.durationS === null ? null : formatDuration(file.value.durationS),
+    transcript: analysis.value?.transcript ?? null,
+    people: people.value,
+  });
 };
 
 export const sanitizeSearchQuery = (query: string): Result<SanitizedSearchQuery, AppError> => {

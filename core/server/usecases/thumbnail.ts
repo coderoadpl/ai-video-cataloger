@@ -113,24 +113,82 @@ export const generateThumbnail = async (
   });
 };
 
+export interface GridThumbnailCandidate {
+  kind: 'frame' | 'proxy' | 'video' | 'original';
+  path: string;
+  seekPercent?: number;
+}
+
+export interface GridThumbnailOutput extends ThumbnailGeneration {
+  source: GridThumbnailCandidate['kind'] | null;
+}
+
+const meetsGridFloor = (width: number | null, height: number | null): boolean => {
+  if (width === null || height === null) return true;
+  return Math.min(width, height) >= GRID_THUMBNAIL_EDGE;
+};
+
+const selectGridThumbnailSource = async (
+  deps: { fs: FileSystemPort; media: MediaPort },
+  candidates: readonly GridThumbnailCandidate[],
+): Promise<Result<GridThumbnailCandidate | null, AppError>> => {
+  for (const candidate of candidates) {
+    const exists = await deps.fs.exists(candidate.path);
+    if (!exists.ok) return exists;
+    if (!exists.value) continue;
+    const probe = await deps.media.probe({ videoPath: candidate.path });
+    if (!probe.ok) continue;
+    if (meetsGridFloor(probe.value.width, probe.value.height)) return ok(candidate);
+  }
+  return ok(null);
+};
+
 export const generateGridThumbnail = async (
   deps: { fs: FileSystemPort; media: MediaPort },
   input: {
-    framePath: string;
+    candidates: readonly GridThumbnailCandidate[];
     gridThumbnailPath: string;
     force: boolean;
     priority?: 'foreground' | 'background' | undefined;
   },
-): Promise<Result<ThumbnailGeneration, AppError>> => {
-  const thumbnail = await deps.media.thumbnailFromFrame({
-    framePath: input.framePath,
-    thumbnailPath: input.gridThumbnailPath,
-    width: GRID_THUMBNAIL_EDGE,
-    height: GRID_THUMBNAIL_EDGE,
-    force: input.force,
-    fit: 'cover',
-    priority: input.priority,
-  });
+): Promise<Result<GridThumbnailOutput, AppError>> => {
+  const selection = await selectGridThumbnailSource(deps, input.candidates);
+  if (!selection.ok) return selection;
+  const winner = selection.value;
+
+  if (winner === null) {
+    const existing = await deps.fs.exists(input.gridThumbnailPath);
+    if (!existing.ok) return existing;
+    if (existing.value) {
+      const removed = await deps.fs.deleteFile(input.gridThumbnailPath);
+      if (!removed.ok) return removed;
+    }
+    return ok({ path: input.gridThumbnailPath, generated: false, skipped: true, source: null });
+  }
+
+  const isPrimary = input.candidates[0] === winner;
+  const forceThis = input.force || !isPrimary;
+
+  const thumbnail = winner.kind === 'video'
+    ? await deps.media.thumbnail({
+      videoPath: winner.path,
+      thumbnailPath: input.gridThumbnailPath,
+      seekPercent: winner.seekPercent ?? 0.25,
+      width: GRID_THUMBNAIL_EDGE,
+      height: GRID_THUMBNAIL_EDGE,
+      force: forceThis,
+      fit: 'cover',
+      priority: input.priority,
+    })
+    : await deps.media.thumbnailFromFrame({
+      framePath: winner.path,
+      thumbnailPath: input.gridThumbnailPath,
+      width: GRID_THUMBNAIL_EDGE,
+      height: GRID_THUMBNAIL_EDGE,
+      force: forceThis,
+      fit: 'cover',
+      priority: input.priority,
+    });
   if (!thumbnail.ok) return { ok: false, error: appError('thumbnail_error', thumbnail.error.message, thumbnail.error) };
-  return ok(thumbnail.value);
+  return ok({ ...thumbnail.value, source: winner.kind });
 };

@@ -131,6 +131,7 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
   const dictionary = useDictionary();
   const imagePath = item.gridThumbnailPath ?? item.thumbnailPath;
   const name = item.finalName ?? item.fileName;
+  const imageFit = item.gridThumbnailPath === null ? 'contain' : 'cover';
 
   return (
     <Box
@@ -157,7 +158,7 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
           loading="lazy"
           alt={name}
           src={mediaUrl(imagePath, item.fingerprint)}
-          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          sx={{ width: '100%', height: '100%', objectFit: imageFit }}
         />
       ) : (
         <PlaceholderTile

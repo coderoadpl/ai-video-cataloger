@@ -103,6 +103,7 @@ interface PhotoTileProps {
 const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) => {
   const dictionary = useDictionary();
   const imagePath = item.gridThumbPath ?? item.thumbPath;
+  const imageFit = item.gridThumbPath === null ? 'contain' : 'cover';
 
   return (
     <Box
@@ -129,7 +130,7 @@ const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) =
           loading="lazy"
           alt={item.fileName}
           src={mediaUrl(imagePath, item.fingerprint)}
-          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          sx={{ width: '100%', height: '100%', objectFit: imageFit }}
         />
       ) : (
         <PlaceholderTile testId="photos-tile-placeholder" name={item.fileName} />

@@ -25,7 +25,7 @@ import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { createApp } from '@server/src/create-app.js';
 import { createInMemoryDeps } from '@server/src/test-support/in-memory-deps.js';
 import packageJson from '../package.json' with { type: 'json' };
-import { REAL_JPEG_BLUE, REAL_JPEG_RED } from '../test/fixtures/real-jpegs.js';
+import { REAL_JPEG_BLUE_LARGE, REAL_JPEG_RED_LARGE } from '../test/fixtures/real-jpegs.js';
 import { z } from 'zod';
 
 const rootDir = join(dirname(fileURLToPath(import.meta.url)), '..');
@@ -498,8 +498,8 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
   const env = { HOME: home };
   const photosDir = join(folder, 'photos');
   mkdirSync(photosDir, { recursive: true });
-  writeFileSync(join(photosDir, 'a.jpg'), REAL_JPEG_RED);
-  writeFileSync(join(photosDir, 'b.jpg'), REAL_JPEG_BLUE);
+  writeFileSync(join(photosDir, 'a.jpg'), REAL_JPEG_RED_LARGE);
+  writeFileSync(join(photosDir, 'b.jpg'), REAL_JPEG_BLUE_LARGE);
   writeFileSync(join(photosDir, 'notes.txt'), 'not a photo');
   writeFileSync(join(photosDir, '._a.jpg'), 'apple double sidecar');
 

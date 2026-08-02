@@ -144,12 +144,14 @@ describe('generateThumbnail', () => {
 
 describe('generateGridThumbnail', () => {
   it('delegates a 512 cover-fit crop from the given frame to media', async () => {
+    const fs = new InMemoryFileSystem('/work');
     const media = new InMemoryMedia();
+    fs.addFile('/work/frames/clip/frame-001.jpg');
 
     const result = await generateGridThumbnail(
-      { fs: new InMemoryFileSystem('/work'), media },
+      { fs, media },
       {
-        framePath: '/work/frames/clip/frame-001.jpg',
+        candidates: [{ kind: 'frame', path: '/work/frames/clip/frame-001.jpg' }],
         gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
         force: false,
         priority: 'background',
@@ -162,6 +164,7 @@ describe('generateGridThumbnail', () => {
         path: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
         generated: true,
         skipped: false,
+        source: 'frame',
       },
     });
     expect(media.thumbnailFromFrameInputs).toEqual([
@@ -178,18 +181,145 @@ describe('generateGridThumbnail', () => {
   });
 
   it('maps media errors to thumbnail_error', async () => {
+    const fs = new InMemoryFileSystem('/work');
     const media = new InMemoryMedia();
     media.failFromFrame = true;
+    fs.addFile('/work/frames/clip/frame-001.jpg');
 
     const result = await generateGridThumbnail(
-      { fs: new InMemoryFileSystem('/work'), media },
+      { fs, media },
       {
-        framePath: '/work/frames/clip/frame-001.jpg',
+        candidates: [{ kind: 'frame', path: '/work/frames/clip/frame-001.jpg' }],
         gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
         force: false,
       },
     );
 
     expect(result).toMatchObject({ ok: false, error: { code: 'thumbnail_error' } });
+  });
+
+  it('never treats a sub-512 source as usable, and falls through to the next candidate', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/proxy.jpg');
+    fs.addFile('/work/original.jpg');
+    media.dimensions.set('/work/proxy.jpg', { width: 128, height: 70 });
+    media.dimensions.set('/work/original.jpg', { width: 4000, height: 3000 });
+
+    const result = await generateGridThumbnail(
+      { fs, media },
+      {
+        candidates: [
+          { kind: 'proxy', path: '/work/proxy.jpg' },
+          { kind: 'original', path: '/work/original.jpg' },
+        ],
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/ph.grid.jpg',
+        force: false,
+      },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        path: '/work/.ai-video-cataloger/thumbnails/ph.grid.jpg',
+        generated: true,
+        skipped: false,
+        source: 'original',
+      },
+    });
+    expect(media.thumbnailFromFrameInputs).toEqual([
+      expect.objectContaining({ framePath: '/work/original.jpg' }),
+    ]);
+  });
+
+  it('regenerates an existing grid thumb once a proper source becomes available, bypassing the exists-skip', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/proxy.jpg');
+    fs.addFile('/work/original.jpg');
+    fs.addFile('/work/.ai-video-cataloger/thumbnails/ph.grid.jpg');
+    media.dimensions.set('/work/proxy.jpg', { width: 128, height: 70 });
+    media.dimensions.set('/work/original.jpg', { width: 4000, height: 3000 });
+
+    const result = await generateGridThumbnail(
+      { fs, media },
+      {
+        candidates: [
+          { kind: 'proxy', path: '/work/proxy.jpg' },
+          { kind: 'original', path: '/work/original.jpg' },
+        ],
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/ph.grid.jpg',
+        force: false,
+      },
+    );
+
+    expect(result.ok && result.value.generated).toBe(true);
+    expect(media.thumbnailFromFrameInputs).toEqual([
+      expect.objectContaining({ framePath: '/work/original.jpg', force: true }),
+    ]);
+  });
+
+  it('skips and removes a stale grid thumb when no candidate meets the 512 floor', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/proxy.jpg');
+    fs.addFile('/work/.ai-video-cataloger/thumbnails/ph.grid.jpg');
+    media.dimensions.set('/work/proxy.jpg', { width: 128, height: 70 });
+
+    const result = await generateGridThumbnail(
+      { fs, media },
+      {
+        candidates: [{ kind: 'proxy', path: '/work/proxy.jpg' }],
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/ph.grid.jpg',
+        force: false,
+      },
+    );
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        path: '/work/.ai-video-cataloger/thumbnails/ph.grid.jpg',
+        generated: false,
+        skipped: true,
+        source: null,
+      },
+    });
+    expect(media.thumbnailFromFrameInputs).toEqual([]);
+    await expect(fs.exists('/work/.ai-video-cataloger/thumbnails/ph.grid.jpg')).resolves.toEqual({
+      ok: true,
+      value: false,
+    });
+  });
+
+  it('never generates from a source without probing it first, and falls back to the source-video seek when the stored frame is degraded', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/frames/clip/frame-001.jpg');
+    fs.addFile('/work/clip.mp4');
+    media.dimensions.set('/work/frames/clip/frame-001.jpg', { width: 400, height: 300 });
+
+    const result = await generateGridThumbnail(
+      { fs, media },
+      {
+        candidates: [
+          { kind: 'frame', path: '/work/frames/clip/frame-001.jpg' },
+          { kind: 'video', path: '/work/clip.mp4', seekPercent: 0.25 },
+        ],
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        force: false,
+      },
+    );
+
+    expect(result.ok && result.value.source).toBe('video');
+    expect(media.thumbnailInputs).toEqual([
+      expect.objectContaining({
+        videoPath: '/work/clip.mp4',
+        seekPercent: 0.25,
+        width: 512,
+        height: 512,
+        fit: 'cover',
+      }),
+    ]);
+    expect(media.thumbnailFromFrameInputs).toEqual([]);
   });
 });

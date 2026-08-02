@@ -271,12 +271,15 @@ export class FfmpegMediaAdapter implements MediaPort {
 
     try {
       mkdirSync(path.dirname(input.thumbnailPath), { recursive: true });
+      const filter = input.fit === 'cover'
+        ? thumbnailCoverFilter(input.width, input.height)
+        : thumbnailScaleFilter(input.width, input.height);
       const generated = await runCommand(
         this.runtime
           .command(input.videoPath)
           .seekInput(duration.value * input.seekPercent)
           .frames(1)
-          .videoFilters(thumbnailScaleFilter(input.width, input.height))
+          .videoFilters(filter)
           .output(input.thumbnailPath),
       );
       if (!generated.ok) return generated;
