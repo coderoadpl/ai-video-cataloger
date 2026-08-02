@@ -19,6 +19,7 @@ import { LibraryGrid, type LibraryGridSection } from './LibraryGrid.js';
 import { useLibrary } from './use-library.js';
 import { useLibraryFacets } from './use-library-facets.js';
 import { useSearchSuggestions } from './use-search-suggestions.js';
+import { useThumbnailsBackfillTrigger } from './use-thumbnails-backfill.js';
 
 export type LibrarySeed =
   | { kind: 'folder'; folderId: string; folderLabel: string; fingerprint: string | null }
@@ -88,6 +89,15 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
 
   const library = useLibrary({ active, filters, sort });
   const facetsState = useLibraryFacets({ active });
+  const backfillFolders = useMemo(
+    () => [...new Set(
+      library.items
+        .filter((item) => item.folder.online)
+        .map((item) => item.folder.currentPath),
+    )],
+    [library.items],
+  );
+  useThumbnailsBackfillTrigger({ active, folders: backfillFolders });
   const searchOptions = useMemo<SearchOption[]>(() => [
     ...suggestions.recentSearches.slice(0, 10).map((label) => ({ kind: 'recent' as const, label })),
     ...suggestions.topTags.slice(0, 15).map((tag) => ({ kind: 'tag' as const, label: tag.name, count: tag.count })),

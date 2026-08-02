@@ -1,9 +1,9 @@
 import { Box } from '@mui/material';
 
+import { useSubtitlesTrackUrl } from '../../components/ui/use-subtitles-track-url.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { playerBoxForSource } from '../../lib/player-box.js';
-import { useSubtitlesTrackUrl } from './use-subtitles-track-url.js';
 import { type DetailsVideo } from './details-video.js';
 
 interface VideoPlayerProps {

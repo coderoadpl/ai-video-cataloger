@@ -44,6 +44,10 @@ const stubPreviewDetail = (overrides: Record<string, unknown> = {}): void => {
         durationS: 65,
         durationFormatted: '1:05',
         transcript: null,
+        transcriptSegments: null,
+        width: null,
+        height: null,
+        rotation: null,
         people: [],
         ...overrides,
       },
@@ -161,5 +165,56 @@ describe('BrowsePreview', () => {
     expect(screen.queryByTestId('preview-player')).toBeNull();
     expect(screen.getByTestId('preview-unavailable').textContent).toBe(en.preview.offline);
     expect(screen.queryByTestId('preview-open-analysis')).toBeNull();
+  });
+
+  it('renders no subtitles track when the preview detail carries no timestamped segments', async () => {
+    stubPreviewDetail({ transcript: 'quiet audio over the bay', transcriptSegments: null });
+    renderThemed(<BrowsePreview item={previewItem()} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByTestId('preview-transcript')).toBeDefined());
+    expect(screen.queryByTestId('preview-subtitles-track')).toBeNull();
+  });
+
+  it('renders a subtitles track defaulted on when timestamped segments exist, using a blob: URL never a data: URL', async () => {
+    const objectUrl = 'blob:http://localhost/preview-subtitles-fixture';
+    const createObjectURL = vi.fn().mockReturnValue(objectUrl);
+    const revokeObjectURL = vi.fn();
+    class ObjectUrlStub extends URL {
+      static override createObjectURL = createObjectURL;
+      static override revokeObjectURL = revokeObjectURL;
+    }
+    vi.stubGlobal('URL', ObjectUrlStub);
+
+    stubPreviewDetail({
+      transcript: 'quiet audio over the bay',
+      transcriptSegments: [{ start: 0, end: 1, text: 'quiet audio over the bay' }],
+    });
+    const rendered = renderThemed(<BrowsePreview item={previewItem()} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    const track = await screen.findByTestId('preview-subtitles-track');
+    expect(track.getAttribute('src')).toBe(objectUrl);
+    expect(track.getAttribute('src')).not.toContain('data:');
+    if (!(track instanceof HTMLTrackElement)) throw new Error('expected a track element');
+    expect(track.default).toBe(true);
+    expect(createObjectURL).toHaveBeenCalledOnce();
+
+    rendered.unmount();
+    expect(revokeObjectURL).toHaveBeenCalledWith(objectUrl);
+  });
+
+  it('bounds the preview player to the true aspect for a portrait 9:16 source', async () => {
+    stubPreviewDetail({ width: 720, height: 1280 });
+    renderThemed(<BrowsePreview item={previewItem()} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    const player = screen.getByTestId('preview-player');
+    await waitFor(() => expect(Number(player.getAttribute('data-player-aspect'))).toBeCloseTo(720 / 1280));
+  });
+
+  it('defaults to a 16:9 aspect when the preview detail has no source dimensions yet', () => {
+    stubPreviewDetail({ width: null, height: null });
+    renderThemed(<BrowsePreview item={previewItem()} onClose={vi.fn()} onOpenInAnalysis={vi.fn()} />);
+
+    const player = screen.getByTestId('preview-player');
+    expect(Number(player.getAttribute('data-player-aspect'))).toBeCloseTo(16 / 9);
   });
 });

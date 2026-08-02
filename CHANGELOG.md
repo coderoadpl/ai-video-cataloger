@@ -33,6 +33,17 @@ release history jumps from `0.5.10` to `0.5.12`.
 - Library preview now plays catalogued videos that live outside the currently
   open folder; `media://` video resolution previously ignored the extra
   catalog-folder roots that image resolution already honored.
+- Library preview now renders subtitles (the player had no text track at
+  all) and letterboxes a portrait 9:16 source correctly instead of showing a
+  square-cropped poster; `GET /api/library/preview` gains
+  `transcriptSegments`/`width`/`height`/`rotation` for the currently online
+  tile.
+- The existing-thumbnails backfill that regenerates blurry old Library grid
+  tiles now runs once per session for every distinct folder that actually
+  contributed a visible tile to the Kolekcja grid, not only for whichever
+  folder happened to be open in Analysis; a Library session with tiles from
+  several catalogued folders previously left every folder but the open one
+  blurry.
 
 ### Changed
 

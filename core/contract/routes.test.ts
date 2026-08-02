@@ -378,9 +378,15 @@ describe('route schemas', () => {
       durationS: 65,
       durationFormatted: '1:05',
       transcript: 'hello',
+      transcriptSegments: [{ start: 0, end: 1, text: 'hello' }],
+      width: 1920,
+      height: 1080,
+      rotation: 0,
       people: [{ personId: 'person-a', displayName: 'Ada' }],
     });
     expect(output.people).toEqual([{ personId: 'person-a', displayName: 'Ada' }]);
+    expect(output.transcriptSegments).toEqual([{ start: 0, end: 1, text: 'hello' }]);
+    expect(output.width).toBe(1920);
   });
 
   it('parses a bare browse-everything collection input with defaults, cursor optional', () => {

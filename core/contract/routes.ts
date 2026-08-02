@@ -1649,6 +1649,10 @@ export const libraryPreviewOutputSchema = z.object({
   durationS: z.number().nonnegative().nullable(),
   durationFormatted: z.string().nullable(),
   transcript: z.string().nullable(),
+  transcriptSegments: z.array(transcriptSegmentSchema).nullable(),
+  width: z.number().int().positive().nullable(),
+  height: z.number().int().positive().nullable(),
+  rotation: z.number().nullable(),
   people: z.array(libraryPreviewPersonSchema),
 });
 

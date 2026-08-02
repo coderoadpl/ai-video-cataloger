@@ -16,13 +16,14 @@ import {
   isInProgressStatus,
   isSupportedVideoExtension,
   parseSummary,
+  readRichSegments,
   type SummaryData,
 } from './shared.js';
 import { artifactRootFor, type ArtifactRoot } from './artifact-root.js';
 import { reachableAnalyzedFileLocations } from './canonical-reachability.js';
 import { healRestoredRecords } from './catalog-index.js';
 import { readFolderMarker, resolveFolderIdentity } from './folder-identity.js';
-import { filterTranscript, parseRichSegments } from './transcript-hallucinations.js';
+import { filterTranscript } from './transcript-hallucinations.js';
 
 export interface TranscriptSegment {
   start: number;
@@ -417,8 +418,7 @@ const loadArtifacts = async (
   if (hasTranscript(status)) {
     const transcript = await fs.readTextFile(paths.transcriptPath);
     if (transcript.ok && transcript.value !== null) {
-      const richSegments = await loadRichSegments(fs, paths.transcriptJsonPath);
-      const filtered = filterTranscript(transcript.value, richSegments);
+      const filtered = filterTranscript(transcript.value, await readRichSegments(fs, paths.transcriptJsonPath));
       artifacts.transcriptContent = filtered.text;
       artifacts.transcriptPath = paths.transcriptPath;
       artifacts.transcriptSegments = filtered.segments.length === 0
@@ -447,21 +447,6 @@ const hasTranscript = (status: VideoStatus): boolean =>
 
 const hasSummary = (status: VideoStatus): boolean =>
   status === 'analyzed' || status === 'completed' || status === 'error';
-
-const loadRichSegments = async (
-  fs: FileSystemPort,
-  transcriptJsonPath: string,
-): Promise<ReturnType<typeof parseRichSegments>> => {
-  const content = await fs.readTextFile(transcriptJsonPath);
-  if (!content.ok || content.value === null) return null;
-  let decoded: unknown;
-  try {
-    decoded = JSON.parse(content.value);
-  } catch {
-    return null;
-  }
-  return parseRichSegments(decoded);
-};
 
 const summarize = (videos: ScanVideo[]): ScanOutput['summary'] => {
   const summary: ScanOutput['summary'] = {

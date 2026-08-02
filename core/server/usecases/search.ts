@@ -1,9 +1,10 @@
 import { appError, ok, type AppError, type CatalogPlace, type Result } from '@core/domain/index.js';
 
 import type { CatalogFilePerson, CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
-import { artifactPaths, formatDuration, formatSize } from './shared.js';
-import { discoverArtifactRoot } from './artifact-root.js';
+import { artifactPaths, formatDuration, formatSize, readRichSegments } from './shared.js';
+import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
 import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
+import { filterTranscript } from './transcript-hallucinations.js';
 
 export interface SearchDeps {
   globalCatalog: GlobalCatalogStore;
@@ -228,6 +229,12 @@ export const resolveGridThumbnailPath = async (
   return ok(generated.value.path);
 };
 
+export interface LibraryPreviewTranscriptSegment {
+  start: number;
+  end: number;
+  text: string;
+}
+
 export interface LibraryPreviewDetail {
   fingerprint: string;
   path: string;
@@ -237,6 +244,10 @@ export interface LibraryPreviewDetail {
   durationS: number | null;
   durationFormatted: string | null;
   transcript: string | null;
+  transcriptSegments: LibraryPreviewTranscriptSegment[] | null;
+  width: number | null;
+  height: number | null;
+  rotation: number | null;
   people: CatalogFilePerson[];
 }
 
@@ -258,6 +269,17 @@ export const libraryPreviewDetail = async (
   if (!analysis.ok) return analysis;
   const people = await deps.globalCatalog.listPeopleForFile(input.fingerprint);
   if (!people.ok) return people;
+
+  const online = await deps.fs.exists(folder.value.currentPath);
+  if (!online.ok) return online;
+  const player = online.value
+    ? await loadPreviewPlayerDetail(deps, {
+      folderPath: folder.value.currentPath,
+      fileName: file.value.fileName,
+      finalName: analysis.value?.finalName ?? null,
+    })
+    : { transcriptSegments: null, width: null, height: null, rotation: null };
+
   return ok({
     fingerprint: input.fingerprint,
     path: deps.fs.join(folder.value.currentPath, file.value.fileName),
@@ -267,8 +289,54 @@ export const libraryPreviewDetail = async (
     durationS: file.value.durationS,
     durationFormatted: file.value.durationS === null ? null : formatDuration(file.value.durationS),
     transcript: analysis.value?.transcript ?? null,
+    transcriptSegments: player.transcriptSegments,
+    width: player.width,
+    height: player.height,
+    rotation: player.rotation,
     people: people.value,
   });
+};
+
+interface PreviewPlayerDetail {
+  transcriptSegments: LibraryPreviewTranscriptSegment[] | null;
+  width: number | null;
+  height: number | null;
+  rotation: number | null;
+}
+
+// Segments are re-derived from the on-disk transcript artifacts rather than stored in the global
+// catalog DB, mirroring how core/server/usecases/scan.ts derives them for the per-folder scan view
+// — the two players stay in sync without a schema migration.
+const loadPreviewPlayerDetail = async (
+  deps: SearchDeps,
+  input: { folderPath: string; fileName: string; finalName: string | null },
+): Promise<PreviewPlayerDetail> => {
+  const videoPath = deps.fs.join(input.folderPath, input.finalName ?? input.fileName);
+  const root = await discoverArtifactRoot(deps.fs, input.folderPath);
+  const transcriptSegments = root.ok
+    ? await loadPreviewTranscriptSegments(deps.fs, root.value, videoPath, input.finalName)
+    : null;
+  const probe = await deps.media.probe({ videoPath });
+  return {
+    transcriptSegments,
+    width: probe.ok ? probe.value.width : null,
+    height: probe.ok ? probe.value.height : null,
+    rotation: probe.ok ? probe.value.rotation : null,
+  };
+};
+
+const loadPreviewTranscriptSegments = async (
+  fs: FileSystemPort,
+  root: ArtifactRoot,
+  videoPath: string,
+  finalName: string | null,
+): Promise<LibraryPreviewTranscriptSegment[] | null> => {
+  const paths = artifactPaths(fs, root, videoPath, finalName);
+  const rawText = await fs.readTextFile(paths.transcriptPath);
+  if (!rawText.ok || rawText.value === null) return null;
+  const filtered = filterTranscript(rawText.value, await readRichSegments(fs, paths.transcriptJsonPath));
+  if (filtered.segments.length === 0) return null;
+  return filtered.segments.map((segment) => ({ start: segment.start, end: segment.end, text: segment.text }));
 };
 
 export const sanitizeSearchQuery = (query: string): Result<SanitizedSearchQuery, AppError> => {

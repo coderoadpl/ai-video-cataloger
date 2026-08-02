@@ -5,16 +5,19 @@ import { actions } from '../../api.js';
 
 export interface UseThumbnailsBackfillTriggerInput {
   active: boolean;
-  folder: string | null;
+  folders: readonly string[];
 }
 
-export const useThumbnailsBackfillTrigger = ({ active, folder }: UseThumbnailsBackfillTriggerInput): void => {
+export const useThumbnailsBackfillTrigger = ({ active, folders }: UseThumbnailsBackfillTriggerInput): void => {
   const backfill = useMutation(actions.thumbnailsBackfill);
   const triggered = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    if (!active || folder === null || triggered.current.has(folder)) return;
-    triggered.current.add(folder);
-    backfill.mutate({ root: folder, force: false });
-  }, [active, folder, backfill]);
+    if (!active) return;
+    for (const folder of folders) {
+      if (triggered.current.has(folder)) continue;
+      triggered.current.add(folder);
+      backfill.mutate({ root: folder, force: false });
+    }
+  }, [active, folders, backfill]);
 };

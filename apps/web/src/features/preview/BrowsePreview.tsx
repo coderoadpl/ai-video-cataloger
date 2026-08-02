@@ -2,11 +2,15 @@ import { Box, Chip, Dialog, DialogContent, DialogTitle, Link, Typography } from 
 import { useQuery } from '@tanstack/react-query';
 
 import { actions } from '../../api.js';
+import { useSubtitlesTrackUrl } from '../../components/ui/use-subtitles-track-url.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatCapturedAt, formatCoordinates } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import { playerBoxForSource } from '../../lib/player-box.js';
 import { OpenInNewIcon } from '../../components/ui/icons.js';
 import type { PreviewMedia } from './core/index.js';
+
+const PREVIEW_PLAYER_MAX_HEIGHT = 420;
 
 interface BrowsePreviewProps {
   item: PreviewMedia | null;
@@ -31,6 +35,11 @@ export const BrowsePreview = ({ item, onClose, onOpenInAnalysis }: BrowsePreview
     enabled: item !== null,
   });
   const people = detail.data?.people ?? [];
+  const trackUrl = useSubtitlesTrackUrl(detail.data?.transcriptSegments);
+  const box = playerBoxForSource(
+    { width: detail.data?.width ?? null, height: detail.data?.height ?? null, rotation: detail.data?.rotation ?? null },
+    PREVIEW_PLAYER_MAX_HEIGHT,
+  );
 
   return (
     <Dialog open={item !== null} onClose={onClose} maxWidth="md" fullWidth data-testid="browse-preview">
@@ -71,8 +80,29 @@ export const BrowsePreview = ({ item, onClose, onOpenInAnalysis }: BrowsePreview
                 src={mediaUrl(item.path)}
                 {...(item.posterPath === null ? {} : { poster: mediaUrl(item.posterPath, item.fingerprint) })}
                 data-testid="preview-player"
-                sx={{ width: '100%', maxHeight: 420, objectFit: 'contain', bgcolor: 'common.black' }}
-              />
+                data-player-aspect={box.aspectRatio}
+                sx={{
+                  display: 'block',
+                  width: '100%',
+                  maxWidth: box.maxWidthPx === null ? '100%' : box.maxWidthPx,
+                  aspectRatio: String(box.aspectRatio),
+                  maxHeight: box.maxHeightPx,
+                  mx: 'auto',
+                  objectFit: 'contain',
+                  bgcolor: 'common.black',
+                }}
+              >
+                {trackUrl === null ? null : (
+                  <track
+                    kind="subtitles"
+                    default
+                    src={trackUrl}
+                    srcLang="en"
+                    label={dictionary.details.transcript}
+                    data-testid="preview-subtitles-track"
+                  />
+                )}
+              </Box>
             ) : (
               <Typography variant="body2" color="text.secondary" data-testid="preview-unavailable">
                 {item.online ? dictionary.preview.missing : dictionary.preview.offline}

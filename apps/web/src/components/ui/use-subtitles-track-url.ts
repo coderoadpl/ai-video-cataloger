@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { buildWebVtt, type TranscriptSegment } from './subtitles.js';
+import { buildWebVtt, type TranscriptSegment } from '../../lib/subtitles.js';
 
 export const useSubtitlesTrackUrl = (segments: readonly TranscriptSegment[] | null | undefined): string | null => {
   const [url, setUrl] = useState<string | null>(null);

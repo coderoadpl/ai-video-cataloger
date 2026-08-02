@@ -19,6 +19,7 @@ import { z } from 'zod';
 
 import type { FileSystemPort } from '../ports.js';
 import type { ArtifactRoot } from './artifact-root.js';
+import { parseRichSegments, type HallucinationSegment } from './transcript-hallucinations.js';
 
 export const VIDEO_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm'] as const;
 export const GRID_THUMBNAIL_EDGE = 512;
@@ -133,6 +134,21 @@ export const thumbnailArtifactPath = (fs: FileSystemPort, root: ArtifactRoot, vi
 
 export const gridThumbnailArtifactPath = (fs: FileSystemPort, root: ArtifactRoot, videoPath: string): string =>
   fs.join(root.catalogDirectory, 'thumbnails', `${fs.basenameWithoutExtension(videoPath)}.grid.jpg`);
+
+export const readRichSegments = async (
+  fs: FileSystemPort,
+  transcriptJsonPath: string,
+): Promise<HallucinationSegment[] | null> => {
+  const content = await fs.readTextFile(transcriptJsonPath);
+  if (!content.ok || content.value === null) return null;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(content.value);
+  } catch {
+    return null;
+  }
+  return parseRichSegments(decoded);
+};
 
 export const parseSummary = (content: string | null): SummaryData | null => {
   if (content === null) return null;

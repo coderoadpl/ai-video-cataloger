@@ -544,6 +544,10 @@ describe('libraryPreviewDetail', () => {
         durationS: 90,
         durationFormatted: '1:30',
         transcript: 'quiet audio over the bay',
+        transcriptSegments: null,
+        width: null,
+        height: null,
+        rotation: null,
         people: [{ personId: 'person-a', displayName: 'Ada' }],
       },
     });
@@ -556,5 +560,49 @@ describe('libraryPreviewDetail', () => {
     const result = await libraryPreviewDetail({ globalCatalog: store, fs, media: new InMemoryMedia() }, { fingerprint: 'missing' });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('adds timestamped transcript segments and the source dimensions for an online tile, mirroring the details player', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addDirectory('/media/online');
+    fs.addFile('/media/online/transcripts/drone-sunset.txt', { content: 'Hello there.' });
+    fs.addFile(
+      '/media/online/transcripts/drone-sunset.json',
+      { content: JSON.stringify([{ start: 0, end: 2, text: 'Hello there.' }]) },
+    );
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-preview', folderA.folderId, 'drone-sunset.mp4'));
+    await store.upsertAnalysis(analysis('fp-preview', { transcript: 'Hello there.' }));
+    const media = new InMemoryMedia();
+    media.dimensions.set('/media/online/drone-sunset.mp4', { width: 720, height: 1280 });
+
+    const result = await libraryPreviewDetail({ globalCatalog: store, fs, media }, { fingerprint: 'fp-preview' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: {
+        transcriptSegments: [{ start: 0, end: 2, text: 'Hello there.' }],
+        width: 720,
+        height: 1280,
+        rotation: null,
+      },
+    });
+  });
+
+  it('leaves player fields null for an online tile with no transcript artifacts on disk', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    fs.addDirectory('/media/online');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-preview', folderA.folderId, 'drone-sunset.mp4'));
+    await store.upsertAnalysis(analysis('fp-preview', {}));
+
+    const result = await libraryPreviewDetail({ globalCatalog: store, fs, media: new InMemoryMedia() }, { fingerprint: 'fp-preview' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { transcriptSegments: null, width: null, height: null, rotation: null },
+    });
   });
 });

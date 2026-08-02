@@ -574,14 +574,29 @@ photos and videos share the one Library query surface like everything else
 here.
 
 An offline or missing tile now always opens the preview instead of doing
-nothing on click — `libraryPreviewDetail` never stats the file, so every field
-it renders (path, size, duration, transcript, people) comes straight from the
-catalog row and needs no live filesystem access. Distinguishing *why* a tile
-is unreachable (the volume it lives on is unmounted vs. the file itself is
-gone from a mounted volume) is DEFER-NEXT-WAVE: it needs a new
-`offlineReason` field threaded through the search/collection contract and a
-small pure classifier in `core/server`, tracked for the next wave rather than
-this one.
+nothing on click — `libraryPreviewDetail` never stats the file for an offline
+or missing tile, so every field it renders in that case (path, size,
+duration, transcript, people) comes straight from the catalog row and needs
+no live filesystem access. Distinguishing *why* a tile is unreachable (the
+volume it lives on is unmounted vs. the file itself is gone from a mounted
+volume) is DEFER-NEXT-WAVE: it needs a new `offlineReason` field threaded
+through the search/collection contract and a small pure classifier in
+`core/server`, tracked for the next wave rather than this one.
+
+**Player fields for an online tile.** For a tile whose folder is online,
+`libraryPreviewDetail` also returns `transcriptSegments` (`{ start, end,
+text }[]`, nullable) and the source `width`/`height`/`rotation` (nullable),
+so `BrowsePreview`'s player can render an in-player subtitles track and
+letterbox portrait video exactly like the details player does. Segments are
+derived the same way `core/server/usecases/scan.ts` derives them for the
+per-folder scan view — reading the on-disk `transcript.txt` /
+`transcript.json` artifacts through `filterTranscript` — rather than persisted
+in the global catalog DB, so the two views stay in sync without a schema
+migration; `width`/`height`/`rotation` come from a fresh `MediaPort.probe`
+call, mirroring `resolveThumbnailPath`'s existing on-demand-generation
+pattern for a single fingerprint rather than a list. All four fields are
+`null` whenever the tile is offline/missing, keeping that path exactly as
+zero-I/O as before.
 
 ### Library collection feed — unified video+photo browse
 

@@ -77,6 +77,10 @@ describe('GET /api/library/preview', () => {
         durationS: 65,
         durationFormatted: '1:05',
         transcript: 'hello there',
+        transcriptSegments: null,
+        width: null,
+        height: null,
+        rotation: null,
         people: [{ personId: 'person-a', displayName: 'Ada' }],
       },
     });
