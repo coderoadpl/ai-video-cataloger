@@ -14,13 +14,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.7] - 2026-08-02
+
 ### Fixed
 
 - Open Folder now always switches the analysis view to Videos and shows the
   newly picked folder, even when the app was last left on Analysis > Photos or
   in Library mode; previously the folder store updated silently while the UI
   stayed on the old photos sidebar. `pnpm run test:e2e:open-folder` drives the
-  real header button through a packaged-style Electron launch to cover this.
+  real header button through a packaged-style Electron launch to cover this
+  ([`bdddcaa`](https://github.com/coderoadpl/ai-video-cataloger/commit/bdddcaa392d5a387f3bfb727f5cbfe572f5af85e)).
 
 ## [0.6.6] - 2026-08-02
 
