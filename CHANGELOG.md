@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.16] - 2026-08-03
+
 ### Fixed
 
 - `scripts/release-walkthrough.mjs`'s `analyze` step now maps its outcome to
@@ -24,7 +26,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   configured is `skipped` with the UI's own disabled-reason text — a skip that
   is not in `TOLERATED_SKIPS`, so a `--strict` release run must provide a real
   analyzer (W54; the previous mapping left the completed-analysis half of the
-  release checklist without evidence for four releases).
+  release checklist without evidence for four releases)
+  ([`392efd5`](https://github.com/coderoadpl/ai-video-cataloger/commit/392efd54a3fecdc35a59e40957e753dfbbd699f6)).
 
 ### Added
 
@@ -34,9 +37,14 @@ release history jumps from `0.5.10` to `0.5.12`.
   before launch, so the `analyze` step can complete offline against the system
   ollama with exactly the requested model; it fails fast, before the app
   launches, if ollama is unreachable or the model isn't installed, so a release
-  run never silently falls back to the claude-CLI default.
+  run never silently falls back to the claude-CLI default
+  ([`392efd5`](https://github.com/coderoadpl/ai-video-cataloger/commit/392efd54a3fecdc35a59e40957e753dfbbd699f6)).
 
 ## [0.6.15] - 2026-08-03
+
+**Note:** this build was merged and tagged but its publication was blocked by
+the independent reviewer; `v0.6.16` supersedes it. The tag stays unpublished
+and this section stays as history.
 
 ### Fixed
 
