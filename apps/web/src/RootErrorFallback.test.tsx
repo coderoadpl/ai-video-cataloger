@@ -20,6 +20,20 @@ describe('renderRootErrorFallback', () => {
 
     expect(screen.getByRole('alert').textContent).toContain('An unexpected error interrupted');
   });
+
+  it('sanitizes an absolute path leaked in an ApiError message', () => {
+    render(
+      renderRootErrorFallback(
+        new ApiError(
+          notFound('Could not read /Users/example/Movies/private-folder-name/clip.mp4: permission denied'),
+        ),
+      ),
+    );
+
+    const alert = screen.getByRole('alert');
+    expect(alert.textContent).not.toContain('/Users/example');
+    expect(alert.textContent).toContain('permission denied');
+  });
 });
 
 describe('RootErrorFallback', () => {

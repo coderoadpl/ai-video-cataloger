@@ -2,10 +2,16 @@ import { Box, Button, Paper, Typography } from '@mui/material';
 
 import { ApiError } from '@core/client/index.js';
 
+import { getDict } from './i18n/dictionary.js';
+import { formatAnalyzerError } from './lib/analyzer-error-message.js';
 import { activeTraceId } from './observability.js';
 
+const FALLBACK_DICTIONARY = getDict('en');
+
 const detailFor = (error: unknown): string =>
-  error instanceof ApiError ? error.appError.message : 'An unexpected error interrupted the app.';
+  error instanceof ApiError
+    ? formatAnalyzerError(error.appError.message, FALLBACK_DICTIONARY.errors)
+    : 'An unexpected error interrupted the app.';
 
 interface RootErrorFallbackProps {
   error: unknown;

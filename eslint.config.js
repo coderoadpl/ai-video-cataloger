@@ -494,7 +494,7 @@ export default tseslint.config(
             },
             {
               from: ['app-web'],
-              allow: ['app-web', 'core-domain', 'core-contract', 'core-client'],
+              allow: ['app-web', 'web-lib', 'web-i18n', 'core-domain', 'core-contract', 'core-client'],
             },
           ],
         },

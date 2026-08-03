@@ -14,6 +14,19 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- The details panel's "completed" status copy now names only the artifacts
+  the selected variant actually has (summary is always promised; transcript
+  and frames are named only when present), instead of unconditionally
+  promising all three even for a whisper-skip variant with no transcript or
+  a native variant with no frames (W58).
+- `RefreshSnackbar` and `RootErrorFallback` now sanitize `ApiError` messages
+  through the existing analyzer-error formatter before rendering them,
+  instead of interpolating the raw server message, so a background-refresh
+  toast or the crash fallback screen can no longer leak an absolute
+  filesystem path (W58).
+
 ## [0.6.16] - 2026-08-03
 
 ### Fixed

@@ -182,7 +182,7 @@ export interface Dictionary {
     };
     status: {
       analyzing: string;
-      completed: string;
+      completed: (available: { transcript: boolean; frames: boolean }) => string;
       error: string;
       pending: string;
       framesExtracted: string;
@@ -1021,7 +1021,12 @@ export const en: Dictionary = {
     },
     status: {
       analyzing: 'Video is being processed…',
-      completed: 'Analysis complete. Summary, transcript, and frames are available.',
+      completed: ({ transcript, frames }) => {
+        if (transcript && frames) return 'Analysis complete. Summary, transcript, and frames are available.';
+        if (transcript) return 'Analysis complete. Summary and transcript are available.';
+        if (frames) return 'Analysis complete. Summary and frames are available.';
+        return 'Analysis complete. Summary is available.';
+      },
       error: 'An error occurred during processing.',
       pending: 'Ready to be analyzed.',
       framesExtracted: 'Processing was interrupted at frames extraction step. Click Analyze to continue.',
@@ -1929,7 +1934,12 @@ export const pl: Dictionary = {
     },
     status: {
       analyzing: 'Film jest przetwarzany…',
-      completed: 'Analiza zakończona. Streszczenie, transkrypcja i klatki są dostępne.',
+      completed: ({ transcript, frames }) => {
+        if (transcript && frames) return 'Analiza zakończona. Streszczenie, transkrypcja i klatki są dostępne.';
+        if (transcript) return 'Analiza zakończona. Streszczenie i transkrypcja są dostępne.';
+        if (frames) return 'Analiza zakończona. Streszczenie i klatki są dostępne.';
+        return 'Analiza zakończona. Streszczenie jest dostępne.';
+      },
       error: 'Podczas przetwarzania wystąpił błąd.',
       pending: 'Gotowe do analizy.',
       framesExtracted: 'Przetwarzanie przerwano na etapie wyodrębniania klatek. Kliknij Analizuj, aby kontynuować.',

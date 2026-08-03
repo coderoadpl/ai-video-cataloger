@@ -151,7 +151,7 @@ export const VideoDetails = ({
             <>
               {video.status === 'error' && !analyzing ? null : (
                 <Typography variant="body2" color="text.secondary">
-                  {statusDescription(dictionary, video.status, analyzing)}
+                  {statusDescription(dictionary, video.status, analyzing, video.artifacts)}
                 </Typography>
               )}
               <StatusActions
