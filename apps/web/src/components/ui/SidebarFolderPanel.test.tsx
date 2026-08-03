@@ -79,4 +79,25 @@ describe('SidebarFolderPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: en.folderBar.openFolder }));
     expect(onOpenFolder).toHaveBeenCalled();
   });
+
+  it('gives the open-folder segment flex-grow and the dropdown segment a fixed width, matching both sidebars sharing this panel', () => {
+    renderThemed(
+      <SidebarFolderPanel
+        folder={null}
+        recentFolders={['/movies/a']}
+        isCheckingFolder={false}
+        onOpenFolder={vi.fn()}
+        onSelectRecentFolder={vi.fn()}
+      />,
+    );
+
+    const openFolderButton = screen.getByRole('button', { name: en.folderBar.openFolder });
+    const dropdownButton = screen.getByRole('button', { name: en.folderBar.recentFolders });
+
+    expect(getComputedStyle(openFolderButton).flexGrow).toBe('1');
+    expect(getComputedStyle(openFolderButton).width).toBe('auto');
+    expect(getComputedStyle(dropdownButton).flexGrow).toBe('0');
+    expect(getComputedStyle(dropdownButton).flexShrink).toBe('0');
+    expect(getComputedStyle(dropdownButton).width).toBe('auto');
+  });
 });

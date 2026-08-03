@@ -15,6 +15,10 @@ interface FolderBarProps {
 
 const dedupeFolders = (folders: readonly string[]): string[] => [...new Set(folders)];
 
+const dropdownSegmentSx = { px: 1, minWidth: 0 };
+const growingOpenSegmentSx = { flex: '1 1 auto', width: 'auto', minWidth: 0 };
+const cappedDropdownSegmentSx = { ...dropdownSegmentSx, flex: '0 0 auto', width: 'auto' };
+
 export const FolderBar = ({
   recentFolders,
   isCheckingFolder,
@@ -41,7 +45,7 @@ export const FolderBar = ({
   return (
     <Box sx={fullWidth ? { width: '100%' } : undefined}>
       <ButtonGroup ref={anchorRef} variant="contained" size="small" disableElevation fullWidth={fullWidth}>
-        <Button onClick={onOpenFolder} disabled={isCheckingFolder} fullWidth={fullWidth}>
+        <Button onClick={onOpenFolder} disabled={isCheckingFolder} sx={fullWidth ? growingOpenSegmentSx : undefined}>
           {isCheckingFolder ? dictionary.folderBar.checking : dictionary.folderBar.openFolder}
         </Button>
         <Button
@@ -50,7 +54,7 @@ export const FolderBar = ({
           aria-haspopup="menu"
           disabled={uniqueRecentFolders.length === 0}
           onClick={() => setOpen(true)}
-          sx={{ px: 1, minWidth: 0, flex: fullWidth ? '0 0 auto' : undefined }}
+          sx={fullWidth ? cappedDropdownSegmentSx : dropdownSegmentSx}
         >
           ▾
         </Button>

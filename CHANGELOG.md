@@ -14,6 +14,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- FolderBar's split button (shared by both the video and photos sidebars)
+  no longer renders with the "Otwórz folder" segment squeezed to a sliver
+  and the `▾` dropdown segment stretched across the width; the main segment
+  now grows to fill the available width and the dropdown stays a fixed
+  narrow cap.
+
 ## [0.6.11] - 2026-08-03
 
 ### Fixed

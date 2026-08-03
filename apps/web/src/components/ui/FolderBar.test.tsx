@@ -62,4 +62,26 @@ describe('FolderBar', () => {
 
     expect(screen.getAllByText('/movies/a')).toHaveLength(1);
   });
+
+  it('gives the main open-folder segment flex-grow and the dropdown segment a fixed narrow width when fullWidth', () => {
+    renderThemed(
+      <FolderBar
+        recentFolders={['/movies/a']}
+        isCheckingFolder={false}
+        onOpenFolder={vi.fn()}
+        onSelectRecentFolder={vi.fn()}
+        onClearRecentFolders={vi.fn()}
+        fullWidth
+      />,
+    );
+
+    const openButton = screen.getByRole('button', { name: en.folderBar.openFolder });
+    const dropdownButton = screen.getByRole('button', { name: en.folderBar.recentFolders });
+
+    expect(getComputedStyle(openButton).flexGrow).toBe('1');
+    expect(getComputedStyle(openButton).width).toBe('auto');
+    expect(getComputedStyle(dropdownButton).flexGrow).toBe('0');
+    expect(getComputedStyle(dropdownButton).flexShrink).toBe('0');
+    expect(getComputedStyle(dropdownButton).width).toBe('auto');
+  });
 });
