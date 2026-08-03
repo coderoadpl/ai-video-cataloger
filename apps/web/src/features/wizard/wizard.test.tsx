@@ -55,6 +55,7 @@ const readiness = (ready: boolean) => ({
 
 interface Recorders {
   configWrites: { folder?: string | undefined; key: string; value: string }[];
+  configUnsets: { folder: string; key: string }[];
   credentialWrites: { providerId: string }[];
   providerTests: { family: string; providerId: string }[];
   faceInstallRequests: number;
@@ -63,6 +64,7 @@ interface Recorders {
 }
 
 const configBodySchema = z.object({ folder: z.string().optional(), key: z.string(), value: z.string() });
+const configUnsetBodySchema = z.object({ folder: z.string(), key: z.string() });
 const credentialBodySchema = z.object({ providerId: z.string() });
 const providerBodySchema = z.object({ family: z.string(), providerId: z.string() });
 const faceInstallBodySchema = z.object({ force: z.boolean() });
@@ -82,6 +84,7 @@ const installHandlers = (
 ): Recorders => {
   const recorders: Recorders = {
     configWrites: [],
+    configUnsets: [],
     credentialWrites: [],
     providerTests: [],
     faceInstallRequests: 0,
@@ -156,6 +159,11 @@ const installHandlers = (
         );
       }
       return ok({ key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null });
+    }),
+    http.delete('/api/config', async ({ request }) => {
+      const body = configUnsetBodySchema.parse(await request.json());
+      recorders.configUnsets.push(body);
+      return ok({ key: body.key, previousValue: null, scope: 'folder' as const });
     }),
     http.post('/api/credentials', async ({ request }) => {
       const body = credentialBodySchema.parse(await request.json());
@@ -304,7 +312,30 @@ describe('SetupWizard', () => {
     expect(recorders.configWrites).toContainEqual({ key: 'local_model', value: 'gemma3:4b' });
     expect(recorders.configWrites).toContainEqual({ key: 'whisper_binary_path', value: '' });
     expect(recorders.configWrites.every((write) => write.folder === undefined)).toBe(true);
+    expect(recorders.configUnsets).toEqual([]);
   }, scaledTimeout(10_000));
+
+  it('clears a stale folder override for a key it just saved home-scoped', async () => {
+    const recorders = installHandlers();
+    server.use(
+      http.get('/api/config', () => ok({
+        config: { ...Object.fromEntries(Object.keys(configDefaults).map((key) => [key, null])), output_language: 'auto' },
+        defaults: configDefaults,
+        effective: configDefaults,
+        sources: { ...Object.fromEntries(Object.keys(configDefaults).map((key) => [key, 'default'])), output_language: 'folder' },
+      })),
+    );
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+
+    await enterLanguageStep();
+    openSelect('wizard-output-language-select');
+    fireEvent.click(await screen.findByRole('option', { name: 'Polish' }));
+    clickNext();
+
+    await screen.findByTestId('wizard-step-analyzer');
+    expect(recorders.configWrites).toContainEqual({ key: 'output_language', value: 'pl' });
+    expect(recorders.configUnsets).toEqual([{ folder: '/videos', key: 'output_language' }]);
+  });
 
   it('re-running the wizard preselects the currently configured harness, model and effort', async () => {
     installHandlers();

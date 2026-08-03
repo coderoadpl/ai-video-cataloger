@@ -142,6 +142,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const whisperModels = useQuery({ ...actions.modelsWhisper, enabled: open });
   const faceArtifacts = useQuery({ ...actions.faceArtifacts, enabled: open });
   const setConfig = useMutation(actions.setConfig);
+  const unsetConfig = useMutation(actions.unsetConfig);
   const setCredential = useMutation(actions.setCredential);
   const testProvider = useMutation(actions.testProvider);
   const installWhisperRuntime = useMutation(actions.installWhisperRuntime);
@@ -282,9 +283,13 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const writeConfig = useCallback(
     async (key: ConfigKey, value: string): Promise<void> => {
       await setConfig.mutateAsync({ key, value });
+      const data = configQuery.data;
+      if (folder !== null && data !== undefined && 'config' in data && data.config[key] !== null) {
+        await unsetConfig.mutateAsync({ folder, key });
+      }
       await queryClient.invalidateQueries();
     },
-    [queryClient, setConfig],
+    [configQuery.data, folder, queryClient, setConfig, unsetConfig],
   );
 
   const effectiveOutputLanguage =

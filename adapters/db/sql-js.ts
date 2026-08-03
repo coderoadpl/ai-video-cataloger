@@ -138,6 +138,17 @@ export class JsonConfigStore implements ConfigStore {
     return ok({ previousValue });
   }
 
+  async delete(scope: ConfigScope, key: ConfigKey): Promise<Result<{ previousValue: string | null }, AppError>> {
+    const values = await this.read(scope);
+    if (!values.ok) return values;
+    const previousValue = values.value[key] ?? null;
+    if (previousValue === null) return ok({ previousValue });
+    const next = Object.fromEntries(Object.entries(values.value).filter(([entryKey]) => entryKey !== key));
+    const written = writeConfig(configPath(scopeRoot(scope, this.options)), next);
+    if (!written.ok) return written;
+    return ok({ previousValue });
+  }
+
   private read(scope: ConfigScope): Promise<Result<Record<string, string>, AppError>> {
     return Promise.resolve(readConfig(configPath(scopeRoot(scope, this.options))));
   }

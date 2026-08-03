@@ -613,6 +613,13 @@ export class InMemoryConfig implements ConfigStore {
     return Promise.resolve(ok({ previousValue }));
   }
 
+  delete(scope: ConfigScope, key: ConfigKey): Promise<Result<{ previousValue: string | null }, AppError>> {
+    const values = this.scopeValues(scope);
+    const previousValue = values.get(key) ?? null;
+    values.delete(key);
+    return Promise.resolve(ok({ previousValue }));
+  }
+
   private scopeValues(scope: ConfigScope): Map<ConfigKey, string> {
     const key = scope.kind === 'home' ? 'home' : `folder:${scope.folder}`;
     const existing = this.scopes.get(key);

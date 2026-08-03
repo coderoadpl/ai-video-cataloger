@@ -48,6 +48,12 @@ export interface ConfigSetOutput {
   ignoredFolderValue: string | null;
 }
 
+export interface ConfigUnsetOutput {
+  key: ConfigKey;
+  previousValue: string | null;
+  scope: 'folder';
+}
+
 export const getConfig = async (
   deps: ConfigDeps,
   input: { folder?: string | undefined; key: ConfigKey | null },
@@ -117,6 +123,16 @@ export const setConfig = async (
     scope: scope.kind,
     ignoredFolderValue: ignoredFolderValue(folderValues.value, input.key),
   });
+};
+
+export const unsetConfig = async (
+  deps: ConfigDeps,
+  input: { folder: string; key: ConfigKey },
+): Promise<Result<ConfigUnsetOutput, AppError>> => {
+  const scope = { kind: 'folder', folder: deps.fs.resolve(input.folder) } as const;
+  const deleted = await deps.config.delete(scope, input.key);
+  if (!deleted.ok) return deleted;
+  return ok({ key: input.key, previousValue: deleted.value.previousValue, scope: 'folder' });
 };
 
 const ignoredFolderValue = (

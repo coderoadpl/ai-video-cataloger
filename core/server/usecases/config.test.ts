@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { APP_GLOBAL_CONFIG_KEYS, CONFIG_KEYS, isAppGlobalConfigKey } from '@core/domain/index.js';
 
-import { getConfig, setConfig } from './config.js';
+import { getConfig, setConfig, unsetConfig } from './config.js';
 import { InMemoryConfig, InMemoryFileSystem } from '../../../test/server/usecases/test-fakes.js';
 
 describe('config use-cases', () => {
@@ -269,6 +269,40 @@ describe('config use-cases', () => {
         },
       },
     });
+  });
+
+  it('unsets a folder override so the home value becomes effective again', async () => {
+    const config = new InMemoryConfig();
+    const deps = { config, fs: new InMemoryFileSystem('/work') };
+    await setConfig(deps, { key: 'output_language', value: 'en' });
+    await setConfig(deps, { folder: '/work', key: 'output_language', value: 'pl' });
+
+    const withOverride = await getConfig(deps, { folder: '/work', key: null });
+    expect(withOverride).toMatchObject({
+      ok: true,
+      value: { effective: { output_language: 'pl' }, sources: { output_language: 'folder' } },
+    });
+
+    const unset = await unsetConfig(deps, { folder: '/work', key: 'output_language' });
+    expect(unset).toEqual({
+      ok: true,
+      value: { key: 'output_language', previousValue: 'pl', scope: 'folder' },
+    });
+
+    const afterUnset = await getConfig(deps, { folder: '/work', key: null });
+    expect(afterUnset).toMatchObject({
+      ok: true,
+      value: { effective: { output_language: 'en' }, sources: { output_language: 'home' } },
+    });
+  });
+
+  it('reports a null previousValue when unsetting a key with no folder override', async () => {
+    const config = new InMemoryConfig();
+    const deps = { config, fs: new InMemoryFileSystem('/work') };
+
+    const unset = await unsetConfig(deps, { folder: '/work', key: 'frames' });
+
+    expect(unset).toEqual({ ok: true, value: { key: 'frames', previousValue: null, scope: 'folder' } });
   });
 
   it('inherits tag_language from output_language until it is explicitly set, then tracks the folder scope', async () => {

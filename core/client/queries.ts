@@ -75,6 +75,7 @@ export type ThumbnailsBackfillInput = z.input<typeof API_ROUTES.thumbnails.input
 export type ResetAllInput = z.input<typeof API_ROUTES.resetAll.input>;
 export type ResetSingleInput = z.input<typeof API_ROUTES.resetSingle.input>;
 export type SetConfigInput = z.input<typeof API_ROUTES.configSet.input>;
+export type UnsetConfigInput = z.input<typeof API_ROUTES.configUnset.input>;
 export type SetCredentialInput = z.input<typeof API_ROUTES.credentialSet.input>;
 export type DeleteCredentialInput = z.input<typeof API_ROUTES.credentialDelete.input>;
 export type DownloadWhisperModelInput = z.input<typeof API_ROUTES.whisperModelDownload.input>;
@@ -299,6 +300,7 @@ export const mutationScopes = {
   resetAll: () => ['resetAll'] as const,
   resetSingle: () => ['resetSingle'] as const,
   setConfig: () => ['setConfig'] as const,
+  unsetConfig: () => ['unsetConfig'] as const,
   setCredential: () => ['setCredential'] as const,
   deleteCredential: () => ['deleteCredential'] as const,
   downloadWhisperModel: () => ['downloadWhisperModel'] as const,
@@ -720,6 +722,12 @@ export const setConfigMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.setConfig(),
     call: (variables: SetConfigInput) => api.setConfig(variables),
+  });
+
+export const unsetConfigMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.unsetConfig(),
+    call: (variables: UnsetConfigInput) => api.unsetConfig(variables),
   });
 
 export const setCredentialMutation = (api: ApiClient) =>

@@ -19,6 +19,10 @@ class FakeConfigStore implements ConfigStore {
   set(): Promise<Result<{ previousValue: string | null }, AppError>> {
     return Promise.resolve(ok({ previousValue: null }));
   }
+
+  delete(): Promise<Result<{ previousValue: string | null }, AppError>> {
+    return Promise.resolve(ok({ previousValue: null }));
+  }
 }
 
 const readyDeps = (overrides: {

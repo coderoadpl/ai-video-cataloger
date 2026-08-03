@@ -61,6 +61,19 @@ describe('route schemas', () => {
       key: 'frames',
       value: '4',
     });
+    expect(API_ROUTES.configUnset.input.parse({ folder: '/videos', key: 'frames' })).toEqual({
+      folder: '/videos',
+      key: 'frames',
+    });
+  });
+
+  it('round-trips a config unset result', () => {
+    expect(API_ROUTES.configUnset.output.parse({ key: 'frames', previousValue: '4', scope: 'folder' })).toEqual({
+      key: 'frames',
+      previousValue: '4',
+      scope: 'folder',
+    });
+    expect(() => API_ROUTES.configUnset.input.parse({ key: 'frames' })).toThrow();
   });
 
   it('round-trips a scan result with artifacts and summary counts', () => {
@@ -727,6 +740,7 @@ describe('route schemas', () => {
 
     expect(API_ROUTES.whisperModelDelete.method).toBe('DELETE');
     expect(API_ROUTES.localAiRm.method).toBe('DELETE');
+    expect(API_ROUTES.configUnset).toMatchObject({ method: 'DELETE', path: '/api/config' });
   });
 
   it('accepts an explicit home readiness scope without a folder', () => {

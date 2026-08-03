@@ -87,6 +87,7 @@ import {
   gpsBackfill,
   testProvider,
   thumbnailsBackfill,
+  unsetConfig,
   useWhisperModel,
   whisperRuntimeStatus,
 } from '@core/server/index.js';
@@ -330,6 +331,14 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.configSet.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.configSet.output);
     return respond(await setConfig(deps, input.value), API_ROUTES.configSet.output);
+  });
+
+  app.delete(API_ROUTES.configUnset.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.configUnset.output);
+    const input = parseInput(API_ROUTES.configUnset.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.configUnset.output);
+    return respond(await unsetConfig(deps, input.value), API_ROUTES.configUnset.output);
   });
 
   app.post(API_ROUTES.credentialSet.path, async (context) => {

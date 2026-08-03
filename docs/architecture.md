@@ -285,6 +285,22 @@ always resolved home-scoped and ignore folder overrides. The GUI Prerequisites m
 configured-readiness section from `/api/readiness` with the selected folder;
 the doctor contract stays unchanged.
 
+Config write scope (owner decision 2026-08-03, closing the W35b 2.3 gap): the
+GUI never creates a per-folder override — the owner's doctrine is one
+effective value at a time, no per-folder inheritance to reason about. Settings
+and the setup wizard both read folder-effective config (a folder's override,
+if any, wins in the read they show) but write every key home-scoped, and on
+save they also clear a same-key folder override of the currently open folder
+via the new `configUnset` contract action (`DELETE /api/config`,
+`core/server/usecases/config.ts`'s `unsetConfig`, backed by
+`ConfigStore.delete`) — otherwise a stale override would keep shadowing the
+value the user just changed and the GUI save would look ignored. Folder-scope
+config remains a **CLI-only** surface from here on: `config set --folder`
+(`apps/cli`) is unchanged and stays the only sanctioned way to create a
+per-folder override, for the pro/parity workflows that still want one; the CLI
+does not gain a matching `config unset` command since it was never the gap
+being closed.
+
 ### Path canonicalization
 
 NFC is the one canonical Unicode normalization form for every path and file

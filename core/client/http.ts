@@ -12,6 +12,7 @@ import {
   collectionOutputSchema,
   configGetOutputSchema,
   configSetOutputSchema,
+  configUnsetOutputSchema,
   credentialDeleteOutputSchema,
   credentialSetOutputSchema,
   doctorOutputSchema,
@@ -459,6 +460,18 @@ export const createApiClient = (options: ApiClientOptions) => ({
       API_ROUTES.configSet.method,
       API_ROUTES.configSet.path,
       configSetOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
+  unsetConfig: (input: z.input<typeof API_ROUTES.configUnset.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.configUnset.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.configUnset.method,
+      API_ROUTES.configUnset.path,
+      configUnsetOutputSchema,
       parsed.value,
       signal,
     );

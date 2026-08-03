@@ -1051,6 +1051,17 @@ export const configSetOutputSchema = z.object({
   ignoredFolderValue: z.string().nullable(),
 });
 
+export const configUnsetInputSchema = z.object({
+  folder: canonicalPathString(),
+  key: configKeySchema,
+});
+
+export const configUnsetOutputSchema = z.object({
+  key: configKeySchema,
+  previousValue: z.string().nullable(),
+  scope: z.literal('folder'),
+});
+
 export const credentialSetInputSchema = z.object({
   providerId: z.string().trim().min(1),
   credential: z.string().min(1),
@@ -2002,6 +2013,12 @@ export const API_ROUTES = {
   },
   configGet: { method: 'GET', path: '/api/config', input: configGetInputSchema, output: configGetOutputSchema },
   configSet: { method: 'POST', path: '/api/config', input: configSetInputSchema, output: configSetOutputSchema },
+  configUnset: {
+    method: 'DELETE',
+    path: '/api/config',
+    input: configUnsetInputSchema,
+    output: configUnsetOutputSchema,
+  },
   credentialSet: {
     method: 'POST',
     path: '/api/credentials',
@@ -2291,6 +2308,7 @@ export const API_PATHS = {
   resetSingle: API_ROUTES.resetSingle.path,
   configGet: API_ROUTES.configGet.path,
   configSet: API_ROUTES.configSet.path,
+  configUnset: API_ROUTES.configUnset.path,
   providersList: API_ROUTES.providersList.path,
   providerTest: API_ROUTES.providerTest.path,
   whisperModelsList: API_ROUTES.whisperModelsList.path,

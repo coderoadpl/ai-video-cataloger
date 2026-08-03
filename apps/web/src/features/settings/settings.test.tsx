@@ -557,9 +557,10 @@ describe('settings modal', () => {
     await waitFor(() => expect(screen.getByTestId('settings-save').getAttribute('disabled')).toBeNull());
   });
 
-  it('saves only the changed keys and closes on success', async () => {
-    const configSetBody = z.object({ folder: z.literal(FOLDER), key: z.string(), value: z.string() });
-    const bodies: { folder: typeof FOLDER; key: string; value: string }[] = [];
+  it('saves only the changed keys home-scoped and closes on success', async () => {
+    const configSetBody = z.object({ key: z.string(), value: z.string() }).strict();
+    const bodies: { key: string; value: string }[] = [];
+    const unsetCalls: unknown[] = [];
     stubEndpoints(emptyConfig);
     server.use(
       http.post('/api/config', async ({ request }) => {
@@ -569,6 +570,10 @@ describe('settings modal', () => {
           ok: true,
           data: { key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null },
         });
+      }),
+      http.delete('/api/config', async ({ request }) => {
+        unsetCalls.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { key: 'skip_rename', previousValue: null, scope: 'folder' as const } });
       }),
     );
     const onClose = vi.fn();
@@ -583,7 +588,42 @@ describe('settings modal', () => {
 
     fireEvent.click(save);
     await waitFor(() => expect(onClose).toHaveBeenCalled());
-    expect(bodies).toEqual([{ folder: FOLDER, key: 'skip_rename', value: 'true' }]);
+    expect(bodies).toEqual([{ key: 'skip_rename', value: 'true' }]);
+    expect(unsetCalls).toEqual([]);
+  });
+
+  it('clears a stale folder override for a key it just saved home-scoped', async () => {
+    const configSetBody = z.object({ key: z.string(), value: z.string() }).strict();
+    const bodies: { key: string; value: string }[] = [];
+    const unsetCalls: { folder: string; key: string }[] = [];
+    const unsetBody = z.object({ folder: z.string(), key: z.string() });
+    stubEndpoints({ ...emptyConfig, output_language: 'auto' });
+    server.use(
+      http.post('/api/config', async ({ request }) => {
+        const body = configSetBody.parse(await request.json());
+        bodies.push(body);
+        return HttpResponse.json({
+          ok: true,
+          data: { key: body.key, value: body.value, previousValue: null, scope: 'home' as const, ignoredFolderValue: null },
+        });
+      }),
+      http.delete('/api/config', async ({ request }) => {
+        const body = unsetBody.parse(await request.json());
+        unsetCalls.push(body);
+        return HttpResponse.json({ ok: true, data: { key: body.key, previousValue: 'auto', scope: 'folder' as const } });
+      }),
+    );
+    const onClose = vi.fn();
+    renderThemed(<SettingsModal open folder={FOLDER} onClose={onClose} />);
+
+    const outputLanguageSelect = await screen.findByTestId('output-language-select');
+    fireEvent.mouseDown(within(outputLanguageSelect).getByRole('combobox'));
+    fireEvent.click(await screen.findByRole('option', { name: 'Polish' }));
+    fireEvent.click(screen.getByTestId('settings-save'));
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(bodies).toEqual([{ key: 'output_language', value: 'pl' }]);
+    expect(unsetCalls).toEqual([{ folder: FOLDER, key: 'output_language' }]);
   });
 
   it('shows local face grouping copy and saves the opt-in globally', async () => {
@@ -738,6 +778,10 @@ describe('settings modal', () => {
       http.post('/api/config', async ({ request }) => {
         const body = z.object({ key: z.string(), value: z.string() }).parse(await request.json());
         return HttpResponse.json({ ok: true, data: { ...body, previousValue: null, scope: 'home', ignoredFolderValue: null } });
+      }),
+      http.delete('/api/config', async ({ request }) => {
+        const body = z.object({ folder: z.string(), key: z.string() }).parse(await request.json());
+        return HttpResponse.json({ ok: true, data: { key: body.key, previousValue: null, scope: 'folder' } });
       }),
       http.post('/api/credentials', async ({ request }) => {
         const body = await request.json();

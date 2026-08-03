@@ -719,6 +719,7 @@ export interface ConfigStore {
   get(scope: ConfigScope, key: ConfigKey): Promise<Result<string | null, AppError>>;
   getAll(scope: ConfigScope): Promise<Result<Partial<Record<ConfigKey, string>>, AppError>>;
   set(scope: ConfigScope, key: ConfigKey, value: string): Promise<Result<{ previousValue: string | null }, AppError>>;
+  delete(scope: ConfigScope, key: ConfigKey): Promise<Result<{ previousValue: string | null }, AppError>>;
 }
 
 export interface SpendLedgerTotal {

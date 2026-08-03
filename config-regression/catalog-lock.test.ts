@@ -37,6 +37,7 @@ const NO_LOCK_REASON: Record<string, string> = {
   thumbnail: 'writes the derived thumbnail cache, never the canonical global catalog',
   thumbnails: 'writes only derived thumbnail-cache files, never the canonical global catalog',
   configSet: 'writes the user-settings store, not the global catalog',
+  configUnset: 'clears a folder override in the user-settings store, not the global catalog',
   credentialSet: 'writes the OS keychain, not the global catalog',
   credentialDelete: 'clears the OS keychain and the credentials file, not the global catalog',
   providerTest: 'read-only provider probe, performs no write',

@@ -65,6 +65,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   const requirementsQuery = useQuery({ ...actions.localAiRequirements, enabled });
   const indexStatusQuery = useQuery({ ...actions.indexStatus, enabled });
   const setConfig = useMutation(actions.setConfig);
+  const unsetConfig = useMutation(actions.unsetConfig);
   const setCredential = useMutation(actions.setCredential);
   const deleteCredential = useMutation(actions.deleteCredential);
 
@@ -142,13 +143,13 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
       setSaveError(null);
       let allOk = true;
       let savedCredentialBackend: CredentialsBackendStatus | null = null;
+      const folderOverrides = data !== undefined && 'config' in data ? data.config : null;
       for (const key of keys) {
         try {
-          await setConfig.mutateAsync({
-            ...(key === 'faces_enabled' || key === 'ui_language' || key === 'gemini_monthly_budget_usd' ? {} : { folder }),
-            key,
-            value: serializeValue(draft, key),
-          });
+          await setConfig.mutateAsync({ key, value: serializeValue(draft, key) });
+          if (folderOverrides !== null && folderOverrides[key] !== null) {
+            await unsetConfig.mutateAsync({ folder, key });
+          }
         } catch (error) {
           allOk = false;
           setSaveError(apiErrorMessage(error, dictionary));
@@ -195,6 +196,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
   }, [
     apiCredential,
     configQuery,
+    data,
     dictionary,
     draft,
     folder,
@@ -203,6 +205,7 @@ export const useSettings = ({ open, folder, onSaved }: UseSettingsOptions): Sett
     queryClient,
     setConfig,
     setCredential,
+    unsetConfig,
     whisperApiCredential,
   ]);
 

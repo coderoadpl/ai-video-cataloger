@@ -241,6 +241,12 @@ class InvalidatingConfigStore implements ConfigStore {
     if (result.ok) this.readiness.invalidate();
     return result;
   }
+
+  async delete(scope: ConfigScope, key: ConfigKey): Promise<Result<{ previousValue: string | null }, AppError>> {
+    const result = await this.store.delete(scope, key);
+    if (result.ok) this.readiness.invalidate();
+    return result;
+  }
 }
 
 class InvalidatingJobsPort implements JobsPort {

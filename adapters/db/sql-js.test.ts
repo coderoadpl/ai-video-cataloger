@@ -254,6 +254,34 @@ describe('JsonConfigStore', () => {
     expect(JSON.parse(raw)).toEqual({ whisper_model: 'small' });
   });
 
+  it('deletes a folder-scope key from config.json and reports its previous value', async () => {
+    const folder = await tempRoot();
+    const store = new JsonConfigStore();
+    await store.set({ kind: 'folder', folder }, 'frames', '7');
+    await store.set({ kind: 'folder', folder }, 'skip_rename', 'true');
+
+    const deleted = await store.delete({ kind: 'folder', folder }, 'frames');
+    if (!deleted.ok) throw new Error(deleted.error.message);
+    expect(deleted.value.previousValue).toBe('7');
+
+    const all = await store.getAll({ kind: 'folder', folder });
+    if (!all.ok) throw new Error(all.error.message);
+    expect(all.value).toEqual({ skip_rename: 'true' });
+
+    const raw = await readFile(path.join(folder, '.ai-video-cataloger', 'config.json'), 'utf8');
+    expect(JSON.parse(raw)).toEqual({ skip_rename: 'true' });
+  });
+
+  it('deleting an absent key reports a null previous value and writes nothing', async () => {
+    const folder = await tempRoot();
+    const store = new JsonConfigStore();
+
+    const deleted = await store.delete({ kind: 'folder', folder }, 'frames');
+
+    expect(deleted).toEqual({ ok: true, value: { previousValue: null } });
+    expect(existsSync(path.join(folder, '.ai-video-cataloger'))).toBe(false);
+  });
+
   it('keeps the existing config intact when its atomic temp write fails', async () => {
     const folder = await tempRoot();
     const store = new JsonConfigStore();

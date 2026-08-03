@@ -61,6 +61,16 @@ release history jumps from `0.5.10` to `0.5.12`.
   their siblings when the containing folder is also offline; every
   unavailable tile now gets the same full-opacity treatment as a plain
   offline-folder tile, with a single badge.
+- Settings and the setup wizard now write every config key home-scoped
+  (the W35b settings-flatten pass covered reads only; a save from either
+  surface used to write folder-scoped for any key that wasn't one of the
+  three app-global ones, silently creating a per-folder override the owner
+  doctrine bans). Both surfaces still read folder-effective config, and
+  saving a key that has an existing folder override for the open folder now
+  also clears that override (a new `configUnset` contract action,
+  `DELETE /api/config`), so the value just saved takes effect immediately
+  instead of continuing to be shadowed. `config set --folder` in the CLI is
+  unchanged and stays the only way to create a per-folder override.
 - Grid thumbnails (`.grid.jpg`) now generate for every completed file, not
   only ones whose selected variant has a projected frames directory: the
   backfill pass, search/library "ensure" mode, and the post-analysis
