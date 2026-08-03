@@ -461,16 +461,17 @@ export const photoProxiesSummarySchema = z.object({
 });
 
 export const photosProcessInputSchema = z.object({
-  root: canonicalPathString(),
+  root: canonicalPathString().optional(),
   force: z.boolean().optional().default(false),
   batchSize: z.number().int().min(1).max(12).optional(),
+  fingerprints: z.array(z.string().min(1)).optional(),
 });
 
 export const photoProcessSummarySchema = z.object({
   media: z.literal('photo'),
-  root: z.string(),
+  root: z.string().nullable(),
   force: z.boolean(),
-  configId: z.string(),
+  configId: z.string().nullable(),
   batchSize: z.number(),
   candidates: z.number(),
   analysed: z.number(),

@@ -1113,6 +1113,101 @@ describe('runPhotoProcess', () => {
 
     expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
   });
+
+  it('analyzes exactly the requested fingerprint when fingerprints scope the request, leaving the sibling photo untouched (W56 Q4b)', async () => {
+    const { deps, photos } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000002', '/work/photos/b.jpg');
+
+    const result = await runPhotoProcess(deps, {
+      root: '/work/photos', force: false, batchSize: null, fingerprints: ['ph_0000000000000002'],
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.candidates).toBe(1);
+    expect(result.value.analysed).toBe(1);
+    const analysedFingerprints = [...photos.analyses.values()].map((row) => row.fingerprint);
+    expect(analysedFingerprints).toEqual(['ph_0000000000000002']);
+  });
+
+  it('keeps the single-root photo-process-summary NDJSON payload carrying root and configId (CLI parity)', async () => {
+    const { deps, photos } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    const events: JobProgress[] = [];
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null }, recordingProgress(events));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    const summary = events.find((event) => event.step === 'photo-process-summary');
+    expect(summary?.data?.['root']).toBe('/work/photos');
+    expect(summary?.data?.['configId']).toBe(result.value.configId);
+    expect(typeof summary?.data?.['configId']).toBe('string');
+  });
+
+  const seedScannedRoot = async (photos: InMemoryPhotosStore, root: string, runId: string): Promise<void> => {
+    const now = '2026-01-01T00:00:00.000Z';
+    await photos.startPhotoRun({
+      runId, root, stage: 'scan', startedAt: now, finishedAt: now,
+      filesTotal: 1, filesDone: 1, filesSkipped: 0, filesFailed: 0, lastActivityAt: now, batchJson: null,
+    });
+  };
+
+  it('processes every scanned root when root is null, hitting every root exactly once with honest per-root progress (W56 Q5a)', async () => {
+    const { deps, photos } = buildDeps();
+    await seedScannedRoot(photos, '/work/a', 'seed-a');
+    await seedScannedRoot(photos, '/work/b', 'seed-b');
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/a/1.jpg');
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000002', '/work/b/1.jpg');
+    const events: JobProgress[] = [];
+
+    const result = await runPhotoProcess(deps, { root: null, force: false, batchSize: null }, recordingProgress(events));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.root).toBeNull();
+    expect(result.value.candidates).toBe(2);
+    expect(result.value.analysed).toBe(2);
+    const analysedFingerprints = [...photos.analyses.values()].map((row) => row.fingerprint).sort();
+    expect(analysedFingerprints).toEqual(['ph_0000000000000001', 'ph_0000000000000002']);
+    const scanningEvents = events.filter((event) => event.step === 'photo-analysis-scanning');
+    expect(scanningEvents.map((event) => event.data?.['root'])).toEqual(['/work/a', '/work/b']);
+    expect(scanningEvents.map((event) => event.data?.['rootIndex'])).toEqual([1, 2]);
+    expect(scanningEvents.every((event) => event.data?.['rootsTotal'] === 2)).toBe(true);
+  });
+
+  it('cancels an all-roots run cleanly between roots, keeping the already-analysed root and never starting the next one (W56 Q5a)', async () => {
+    const { deps, photos } = buildDeps();
+    await seedScannedRoot(photos, '/work/a', 'seed-a');
+    await seedScannedRoot(photos, '/work/b', 'seed-b');
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/a/1.jpg');
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000002', '/work/b/1.jpg');
+
+    const controller = new AbortController();
+    const originalFlush = photos.flush.bind(photos);
+    photos.flush = () => {
+      controller.abort();
+      return originalFlush();
+    };
+    const events: JobProgress[] = [];
+
+    const result = await runPhotoProcess(deps, { root: null, force: false, batchSize: null }, {
+      signal: controller.signal,
+      reportProgress: (progress: JobProgress): Promise<Result<void, AppError>> => {
+        events.push(progress);
+        return Promise.resolve(ok(undefined));
+      },
+    });
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe('processing_error');
+    const analysedFingerprints = [...photos.analyses.values()].map((row) => row.fingerprint);
+    expect(analysedFingerprints).toEqual(['ph_0000000000000001']);
+    const scannedRoots = events.filter((event) => event.step === 'photo-analysis-scanning').map((event) => event.data?.['root']);
+    expect(scannedRoots).toEqual(['/work/a']);
+  });
 });
 
 describe('enqueuePhotoProcess', () => {
@@ -1128,6 +1223,14 @@ describe('enqueuePhotoProcess', () => {
 
     fs.addDirectory('/work/photos');
     const enqueued = await enqueuePhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    expect(enqueued.ok).toBe(true);
+  });
+
+  it('enqueues an all-roots job without a root-existence check when root is null (W56 Q5a)', async () => {
+    const { deps } = buildDeps();
+
+    const enqueued = await enqueuePhotoProcess(deps, { root: null, force: false, batchSize: null });
+
     expect(enqueued.ok).toBe(true);
   });
 });

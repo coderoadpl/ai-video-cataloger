@@ -607,6 +607,28 @@ geometry-only and needs no change beyond a marker kind.
   (`photo-exif-failed`, `photo-proxy-failed` as per-file warning steps), not
   in three public-contract expansions (HTTP map + exit map + legacy map,
   all compiler-exhaustive) that no caller would branch on.
+- **Analysis scope, revised (W56).** `POST /api/photos/process`'s `root` is
+  now **optional** and it gains an optional `fingerprints: string[]`: a
+  single-photo run (the detail pane's own "Analizuj") passes the photo's
+  owner root plus `fingerprints: [fingerprint]`, narrowing
+  `listAnalysisCandidates`' result to that one fingerprint before it enters
+  the existing 12→6→1 cascade — batch-of-one needed no new batching
+  machinery. Omitting `root` means "every scanned root": `runPhotoProcess`
+  resolves the target list via `PhotosStore.listRoots()` and loops the
+  existing per-root body (extracted as `runPhotoProcessForRoot`)
+  sequentially inside **one job**, aggregating candidates/analysed/failed
+  across roots into a single `PhotoProcessSummary` (`root`/`configId` turn
+  nullable — an all-roots run has no single root, and folder-level analyzer
+  overrides mean roots can carry different config ids). The chosen design is
+  "extend the job", not "chain one job per root client-side": the abort
+  check the per-root loop already had between store batches now also gates
+  the loop between roots, so `JobsPort.cancel` cancels the whole run with no
+  client-side chaining logic, and `photo-analysis-scanning`'s existing
+  `data` bag gains `rootIndex`/`rootsTotal` so the renderer can show "root X
+  of Y" without a new progress-step enum member (`jobProgressSchema.data` is
+  already an open `z.record`). `resourceKey` stays `photo-process:${root}`
+  per root and becomes a literal `photo-process:*all-roots*` for the
+  all-roots job, so an all-roots run and a single-root run never collide.
 
 ## 8. Renderer
 
@@ -662,6 +684,27 @@ selected photo's proxy preview (click reopens the existing `PhotoViewer`
 overlay, prev/next following the sidebar's current item order via
 `flattenOrder`/`adjacentFingerprint` over `sidebarSections`) plus
 `PhotoDetailPane` with `showAnalysisTools` pinned to `true`.
+
+**Two independent analyze actions, both surfaced by `usePhotosAnalysis` (W56).**
+`PhotosScopeToolbar`'s "Przetwórz" stays root-wide: under the `'folder'` scope
+it targets `selectedRoot`; under `'all'` it now targets *every* scanned root
+(the process request omits `root` entirely), replacing the earlier behaviour
+of quietly falling back to the selected photo's owner folder. `analyzeSelectedPhoto`,
+wired only to `PhotoDetailPane`'s own "Analizuj" strip inside `PhotosWorkspace`,
+always scopes to the selected photo's owner root plus `fingerprints:
+[selectedFingerprint]`, regardless of which scope the sidebar is in, and is
+gated by its own `canAnalyzeSelectedPhoto` rather than the toolbar's `canAnalyze`.
+Both actions share the same job-tracking state (`activeJobLabel`,
+`analyzeProgress`, `processingFingerprints`, cancel) — only one process job
+can run at a time, so there is nothing to disambiguate between them at
+render time. The event handler that turns job progress into `analyzeProgress`/
+`processingFingerprints` is one function (`handleAnalyzeSnapshot`) shared by
+both actions; it also reads the new `rootIndex`/`rootsTotal` fields off
+`photo-analysis-scanning` events to compose an honest "root X of Y —
+analyzing A of B" label (`analyzeProgressAllRoots`) whenever a run spans more
+than one root, and per-photo badges (`photosSidebar.badgeAnalyzing`) already
+key off `processingFingerprints`, so a single-photo run reports exactly one
+photo as in-flight with no separate badge plumbing.
 
 ## 9. Shared vs duplicated — the ledger
 

@@ -283,7 +283,7 @@ describe('usePhotosAnalysis', () => {
     await waitFor(() => expect(processedRoot).toBe('/media'));
   });
 
-  it('under the "all folders" scope, analyzePhotos targets the selected photo\'s owner folder, not the stale selectedRoot', async () => {
+  it('under the "all folders" scope, analyzePhotos processes every scanned root, not just the selected photo\'s folder (W56 Q5a)', async () => {
     window.localStorage.setItem('avc.photosScope', 'all');
     stubTree([
       { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
@@ -296,11 +296,56 @@ describe('usePhotosAnalysis', () => {
     stubStatus();
     server.use(http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })));
     server.use(http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })));
-    let processedRoot: string | null = null;
+    let processedBody: Record<string, unknown> | null = null;
     server.use(
       http.post('/api/photos/process', async ({ request }) => {
-        const body = z.object({ root: z.string() }).parse(await request.json());
-        processedRoot = body.root;
+        processedBody = z.record(z.string(), z.unknown()).parse(await request.json());
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
+      }),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: null,
+          progressEvents: [],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          result: { media: 'photo', root: null, force: false, configId: null, batchSize: 1, candidates: 2, analysed: 2, failed: 0, skippedExisting: 0 },
+        },
+      })),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.selectFingerprint('b'));
+    await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === 'b')).toBe(true));
+    act(() => result.current.analyzePhotos());
+
+    await waitFor(() => expect(processedBody).not.toBeNull());
+    expect(processedBody).not.toHaveProperty('root');
+  });
+
+  it('analyzeSelectedPhoto scopes the process job to the selected photo\'s fingerprint and owner folder (W56 Q4b)', async () => {
+    window.localStorage.setItem('avc.photosScope', 'all');
+    stubTree([
+      { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
+      { root: '/other', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    stubList([
+      photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/other/b.jpg' }),
+    ]);
+    stubStatus();
+    server.use(http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })));
+    server.use(http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })));
+    const processedBodySchema = z.object({ root: z.string().optional(), fingerprints: z.array(z.string()).optional() });
+    let processedBody: z.output<typeof processedBodySchema> | null = null;
+    server.use(
+      http.post('/api/photos/process', async ({ request }) => {
+        processedBody = processedBodySchema.parse(await request.json());
         return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
       }),
       http.get('/api/jobs/status', () => HttpResponse.json({
@@ -323,9 +368,75 @@ describe('usePhotosAnalysis', () => {
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
     act(() => result.current.selectFingerprint('b'));
     await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === 'b')).toBe(true));
-    act(() => result.current.analyzePhotos());
+    act(() => result.current.analyzeSelectedPhoto());
 
-    await waitFor(() => expect(processedRoot).toBe('/other'));
+    await waitFor(() => expect(processedBody).toEqual({ root: '/other', fingerprints: ['b'] }));
+  });
+
+  it('marks only the single analyzed photo as in-flight, never its sibling, during analyzeSelectedPhoto (W56 Q4b)', async () => {
+    stubTree([{ root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([
+      photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/media/b.jpg' }),
+    ]);
+    stubStatus();
+    server.use(http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })));
+    server.use(http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })));
+
+    let statusCall = 0;
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => {
+        statusCall += 1;
+        if (statusCall === 1) {
+          return HttpResponse.json({
+            ok: true,
+            data: {
+              jobId: 'job-1',
+              kind: 'photo_process',
+              status: 'running',
+              progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a'] } },
+              progressEvents: [
+                { sequence: 1, progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a'] } } },
+              ],
+              error: null,
+              createdAt: '2026-01-01T00:00:00.000Z',
+              updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          });
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            jobId: 'job-1',
+            kind: 'photo_process',
+            status: 'completed',
+            progress: { step: 'photo-analysed', data: { fingerprint: 'a', current: 1, total: 1 } },
+            progressEvents: [
+              { sequence: 1, progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a'] } } },
+              { sequence: 2, progress: { step: 'photo-analysed', data: { fingerprint: 'a', current: 1, total: 1 } } },
+            ],
+            error: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+            result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0, splitRetries: 0 },
+          },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media', intervalMs: 250 }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.selectFingerprint('a'));
+    await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === 'a')).toBe(true));
+
+    act(() => result.current.analyzeSelectedPhoto());
+
+    await waitFor(() => expect(result.current.processingFingerprints.has('a')).toBe(true));
+    expect(result.current.processingFingerprints.has('b')).toBe(false);
+
+    await waitFor(() => expect(result.current.activeJobLabel).toBe(null));
+    expect(result.current.processingFingerprints.size).toBe(0);
   });
 
   it('does not duplicate already-loaded pages when a completed job invalidates and refetches the current offset', async () => {

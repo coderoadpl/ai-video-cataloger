@@ -56,9 +56,9 @@ export const PhotosWorkspace = ({ active, state, topStrip }: PhotosWorkspaceProp
             isLoading={state.isDetailLoading}
             variants={state.variants}
             onSelectVariant={state.selectVariant}
-            onAnalyze={state.analyzePhotos}
+            onAnalyze={state.analyzeSelectedPhoto}
             isBusy={state.isBusy}
-            canAnalyze={state.canAnalyze}
+            canAnalyze={state.canAnalyzeSelectedPhoto}
             analyzeProgress={state.analyzeProgress}
           />
         </Box>

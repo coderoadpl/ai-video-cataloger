@@ -313,6 +313,8 @@ const PHOTOS_SIDEBAR_STATE: PhotosAnalysisState = {
   selectVariant: noop,
   analyzePhotos: noop,
   canAnalyze: true,
+  analyzeSelectedPhoto: noop,
+  canAnalyzeSelectedPhoto: true,
   analyzeProgress: null,
   processingFingerprints: new Set(),
   generateProxies: noop,

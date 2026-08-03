@@ -728,6 +728,7 @@ export interface Dictionary {
     searchClear: string;
     analyzeAction: string;
     analyzeProgress: (current: number, total: number) => string;
+    analyzeProgressAllRoots: (rootIndex: number, rootsTotal: number, current: number, total: number) => string;
     cancelAnalysisAction: string;
     analysisCancelled: string;
     analysisNone: string;
@@ -1633,6 +1634,8 @@ export const en: Dictionary = {
     searchClear: 'Clear search',
     analyzeAction: 'Analyze',
     analyzeProgress: (current, total) => `Analyzing ${current} of ${total}…`,
+    analyzeProgressAllRoots: (rootIndex, rootsTotal, current, total) =>
+      `Root ${rootIndex} of ${rootsTotal} — analyzing ${current} of ${total}…`,
     cancelAnalysisAction: 'Cancel analysis',
     analysisCancelled: 'Analysis cancelled by user',
     analysisNone: 'Not analysed yet.',
@@ -2547,6 +2550,8 @@ export const pl: Dictionary = {
     searchClear: 'Wyczyść wyszukiwanie',
     analyzeAction: 'Analizuj',
     analyzeProgress: (current, total) => `Analizowanie ${current} z ${total}…`,
+    analyzeProgressAllRoots: (rootIndex, rootsTotal, current, total) =>
+      `Folder ${rootIndex} z ${rootsTotal} — analizowanie ${current} z ${total}…`,
     cancelAnalysisAction: 'Anuluj analizę',
     analysisCancelled: 'Analiza anulowana przez użytkownika',
     analysisNone: 'Jeszcze nie przeanalizowano.',

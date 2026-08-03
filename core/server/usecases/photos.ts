@@ -1177,9 +1177,9 @@ export const photosForget = async (
 
 export interface PhotoProcessSummary {
   media: 'photo';
-  root: string;
+  root: string | null;
   force: boolean;
-  configId: string;
+  configId: string | null;
   batchSize: number;
   candidates: number;
   analysed: number;
@@ -1223,21 +1223,25 @@ export const resolvePhotoAnalyzerOptions = async (
 
 export const enqueuePhotoProcess = async (
   deps: PhotosDeps,
-  input: { root: string; force: boolean; batchSize: number | null },
+  input: { root: string | null; force: boolean; batchSize: number | null; fingerprints?: readonly string[] | null },
 ): Promise<Result<{ jobId: string }, AppError>> => {
-  const root = deps.fs.resolve(input.root);
-  const exists = await deps.fs.exists(root);
-  if (!exists.ok) return exists;
-  if (!exists.value) return { ok: false, error: appError('folder_not_found', `Root not found: ${root}`) };
-  const directory = await deps.fs.isDirectory(root);
-  if (!directory.ok) return directory;
-  if (!directory.value) return { ok: false, error: appError('not_a_directory', `Root is not a directory: ${root}`) };
+  let root: string | null = null;
+  if (input.root !== null) {
+    root = deps.fs.resolve(input.root);
+    const exists = await deps.fs.exists(root);
+    if (!exists.ok) return exists;
+    if (!exists.value) return { ok: false, error: appError('folder_not_found', `Root not found: ${root}`) };
+    const directory = await deps.fs.isDirectory(root);
+    if (!directory.ok) return directory;
+    if (!directory.value) return { ok: false, error: appError('not_a_directory', `Root is not a directory: ${root}`) };
+  }
 
+  const fingerprints = input.fingerprints ?? null;
   return deps.jobs.enqueue({
     kind: 'photo_process',
-    payload: { root, force: input.force, batchSize: input.batchSize },
-    resourceKey: `photo-process:${root}`,
-    run: (context) => runPhotoProcess(deps, { root, force: input.force, batchSize: input.batchSize }, context),
+    payload: { root, force: input.force, batchSize: input.batchSize, fingerprints },
+    resourceKey: root === null ? 'photo-process:*all-roots*' : `photo-process:${root}`,
+    run: (context) => runPhotoProcess(deps, { root, force: input.force, batchSize: input.batchSize, fingerprints }, context),
   });
 };
 
@@ -1450,12 +1454,23 @@ export const runPhotoAnalysisCascade = async (
   return ok(undefined);
 };
 
-export const runPhotoProcess = async (
+interface PhotoProcessRootSummary {
+  configId: string;
+  batchSize: number;
+  candidates: number;
+  analysed: number;
+  failed: number;
+  skippedExisting: number;
+  splitRetries: number;
+}
+
+const runPhotoProcessForRoot = async (
   deps: PhotosDeps,
-  input: { root: string; force: boolean; batchSize: number | null },
-  progress?: JobExecutionContext,
-): Promise<Result<PhotoProcessSummary, AppError>> => {
-  const root = deps.fs.resolve(input.root);
+  input: { root: string; force: boolean; batchSize: number | null; fingerprints: readonly string[] | null },
+  progress: JobExecutionContext | undefined,
+  rootContext: { rootIndex: number; rootsTotal: number },
+): Promise<Result<PhotoProcessRootSummary, AppError>> => {
+  const root = input.root;
   const options = await resolvePhotoAnalyzerOptions(deps, root);
   if (!options.ok) return options;
   const descriptor = buildPhotoConfigDescriptor({
@@ -1477,12 +1492,20 @@ export const runPhotoProcess = async (
 
   const candidatesResult = await deps.photos.listAnalysisCandidates(root, configId, input.force);
   if (!candidatesResult.ok) return candidatesResult;
-  const { candidates, alreadyAnalysed } = candidatesResult.value;
+  const fingerprintScope = input.fingerprints === null ? null : new Set(input.fingerprints);
+  const candidates = fingerprintScope === null
+    ? candidatesResult.value.candidates
+    : candidatesResult.value.candidates.filter((candidate) => fingerprintScope.has(candidate.fingerprint));
+  const alreadyAnalysed = fingerprintScope === null
+    ? candidatesResult.value.alreadyAnalysed
+    : fingerprintScope.size - candidates.length;
   const scanReported = await report(progress, 'photo-analysis-scanning', {
     root,
     configId,
     candidates: candidates.length,
     skippedExisting: alreadyAnalysed,
+    rootIndex: rootContext.rootIndex,
+    rootsTotal: rootContext.rootsTotal,
   });
   if (!scanReported.ok) return scanReported;
 
@@ -1553,13 +1576,8 @@ export const runPhotoProcess = async (
   if (!finalUpdate.ok) return finalUpdate;
   const flushed = await deps.photos.flush();
   if (!flushed.ok) return flushed;
-  const summaryReported = await report(progress, 'photo-process-summary', { root, configId });
-  if (!summaryReported.ok) return summaryReported;
 
   return ok({
-    media: 'photo',
-    root,
-    force: input.force,
     configId,
     batchSize,
     candidates: candidates.length,
@@ -1567,5 +1585,71 @@ export const runPhotoProcess = async (
     failed: counters.failed,
     skippedExisting: alreadyAnalysed,
     splitRetries: counters.calls - counters.topLevelCalls,
+  });
+};
+
+export const runPhotoProcess = async (
+  deps: PhotosDeps,
+  input: { root: string | null; force: boolean; batchSize: number | null; fingerprints?: readonly string[] | null },
+  progress?: JobExecutionContext,
+): Promise<Result<PhotoProcessSummary, AppError>> => {
+  const resolvedRoot = input.root === null ? null : deps.fs.resolve(input.root);
+  let targetRoots: string[];
+  if (resolvedRoot !== null) {
+    targetRoots = [resolvedRoot];
+  } else {
+    const rootsResult = await deps.photos.listRoots();
+    if (!rootsResult.ok) return rootsResult;
+    targetRoots = rootsResult.value.map((entry) => entry.root);
+  }
+
+  const fingerprints = input.fingerprints ?? null;
+  const aggregate = { candidates: 0, analysed: 0, failed: 0, skippedExisting: 0, splitRetries: 0 };
+  let lastConfigId: string | null = null;
+  let lastBatchSize = 0;
+  let sawMultipleConfigIds = false;
+  let rootsProcessed = 0;
+
+  for (const root of targetRoots) {
+    if (progress?.signal.aborted === true) {
+      return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
+    }
+    const perRoot = await runPhotoProcessForRoot(
+      deps,
+      { root, force: input.force, batchSize: input.batchSize, fingerprints },
+      progress,
+      { rootIndex: rootsProcessed + 1, rootsTotal: targetRoots.length },
+    );
+    if (!perRoot.ok) return perRoot;
+    aggregate.candidates += perRoot.value.candidates;
+    aggregate.analysed += perRoot.value.analysed;
+    aggregate.failed += perRoot.value.failed;
+    aggregate.skippedExisting += perRoot.value.skippedExisting;
+    aggregate.splitRetries += perRoot.value.splitRetries;
+    if (lastConfigId !== null && lastConfigId !== perRoot.value.configId) sawMultipleConfigIds = true;
+    lastConfigId = perRoot.value.configId;
+    lastBatchSize = perRoot.value.batchSize;
+    rootsProcessed += 1;
+  }
+
+  const summaryReported = await report(progress, 'photo-process-summary', {
+    root: resolvedRoot,
+    configId: sawMultipleConfigIds ? null : lastConfigId,
+    rootsProcessed,
+    rootsTotal: targetRoots.length,
+  });
+  if (!summaryReported.ok) return summaryReported;
+
+  return ok({
+    media: 'photo',
+    root: resolvedRoot,
+    force: input.force,
+    configId: sawMultipleConfigIds ? null : lastConfigId,
+    batchSize: lastBatchSize,
+    candidates: aggregate.candidates,
+    analysed: aggregate.analysed,
+    failed: aggregate.failed,
+    skippedExisting: aggregate.skippedExisting,
+    splitRetries: aggregate.splitRetries,
   });
 };

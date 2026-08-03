@@ -129,6 +129,8 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   selectVariant: vi.fn(),
   analyzePhotos: vi.fn(),
   canAnalyze: true,
+  analyzeSelectedPhoto: vi.fn(),
+  canAnalyzeSelectedPhoto: true,
   analyzeProgress: null,
   processingFingerprints: new Set(),
   generateProxies: vi.fn(),
@@ -205,10 +207,33 @@ describe('PhotosWorkspace', () => {
     expect(screen.queryByTestId('photos-analyze-strip')).toBeNull();
   });
 
-  it('disables the analyze action instead of a silent no-op when canAnalyze is false', () => {
+  it('disables the analyze action instead of a silent no-op when canAnalyzeSelectedPhoto is false', () => {
     const items = [item({ fingerprint: 'ph_0000000000000001' })];
     const firstItem = items[0];
     if (firstItem === undefined) throw new Error('missing item');
+    const analyzeSelectedPhoto = vi.fn();
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({
+        items,
+        selectedFingerprint: 'ph_0000000000000001',
+        detail: detailFor(firstItem),
+        canAnalyzeSelectedPhoto: false,
+        analyzeSelectedPhoto,
+      })}
+    />);
+
+    const button = screen.getByTestId('photos-analyze-action');
+    expect(button.hasAttribute('disabled')).toBe(true);
+    fireEvent.click(button);
+    expect(analyzeSelectedPhoto).not.toHaveBeenCalled();
+  });
+
+  it('calls analyzeSelectedPhoto, not the root-wide analyzePhotos, from the detail pane analyze action', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001' })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    const analyzeSelectedPhoto = vi.fn();
     const analyzePhotos = vi.fn();
     renderThemed(<PhotosWorkspace
       active
@@ -216,14 +241,14 @@ describe('PhotosWorkspace', () => {
         items,
         selectedFingerprint: 'ph_0000000000000001',
         detail: detailFor(firstItem),
-        canAnalyze: false,
+        analyzeSelectedPhoto,
         analyzePhotos,
       })}
     />);
 
-    const button = screen.getByTestId('photos-analyze-action');
-    expect(button.hasAttribute('disabled')).toBe(true);
-    fireEvent.click(button);
+    fireEvent.click(screen.getByTestId('photos-analyze-action'));
+
+    expect(analyzeSelectedPhoto).toHaveBeenCalled();
     expect(analyzePhotos).not.toHaveBeenCalled();
   });
 

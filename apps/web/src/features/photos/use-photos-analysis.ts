@@ -78,6 +78,8 @@ export interface PhotosAnalysisState {
   selectVariant: (configId: string | null) => void;
   analyzePhotos: () => void;
   canAnalyze: boolean;
+  analyzeSelectedPhoto: () => void;
+  canAnalyzeSelectedPhoto: boolean;
   analyzeProgress: { current: number; total: number } | null;
   processingFingerprints: ReadonlySet<string>;
   generateProxies: () => void;
@@ -96,6 +98,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
   const [activeAnalyzeJobId, setActiveAnalyzeJobId] = useState<string | null>(null);
   const [analyzeProgress, setAnalyzeProgress] = useState<{ current: number; total: number } | null>(null);
+  const [rootProgress, setRootProgress] = useState<{ current: number; total: number } | null>(null);
   const [processingFingerprints, setProcessingFingerprints] = useState<ReadonlySet<string>>(() => new Set());
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({ open: false, isBatch: false });
   const [jobError, setJobError] = useState<string | null>(null);
@@ -239,63 +242,85 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     );
   }, [dictionary, proxiesMutation, runJob, selectedRoot]);
 
-  const analyzeTargetRoot = useMemo(() => {
-    if (scope === 'folder') return selectedRoot;
-    const selectedItem = loadedItems.find((item) => item.fingerprint === selectedFingerprint) ?? null;
-    return selectedItem === null ? null : ownerRootFor(selectedItem.currentPath, roots);
-  }, [loadedItems, roots, scope, selectedFingerprint, selectedRoot]);
+  const selectedItem = useMemo(
+    () => loadedItems.find((candidate) => candidate.fingerprint === selectedFingerprint) ?? null,
+    [loadedItems, selectedFingerprint],
+  );
+  const selectedItemRoot = useMemo(
+    () => (selectedItem === null ? null : ownerRootFor(selectedItem.currentPath, roots)),
+    [selectedItem, roots],
+  );
 
-  const analyzePhotos = useCallback(() => {
-    if (analyzeTargetRoot === null) return;
+  const canAnalyze = scope === 'folder' ? selectedRoot !== null : roots.length > 0;
+  const canAnalyzeSelectedPhoto = selectedItemRoot !== null;
+
+  const resetAnalyzeTracking = useCallback(() => {
     setAnalyzeProgress(null);
+    setRootProgress(null);
     processingSetRef.current = new Set();
     setProcessingFingerprints(new Set());
     lastAnalyzeSequenceRef.current = 0;
+  }, []);
+
+  const handleAnalyzeSnapshot = useCallback((snapshot: JobOutput) => {
+    let processingChanged = false;
+    let sawCompletion = false;
+    for (const event of snapshot.progressEvents) {
+      if (event.sequence <= lastAnalyzeSequenceRef.current) continue;
+      lastAnalyzeSequenceRef.current = event.sequence;
+      const { step, data } = event.progress;
+      if (step === 'photo-analysis-scanning') {
+        const candidates = data?.['candidates'];
+        if (typeof candidates === 'number') setAnalyzeProgress({ current: 0, total: candidates });
+        const rootIndex = data?.['rootIndex'];
+        const rootsTotal = data?.['rootsTotal'];
+        setRootProgress(
+          typeof rootIndex === 'number' && typeof rootsTotal === 'number' && rootsTotal > 1
+            ? { current: rootIndex, total: rootsTotal }
+            : null,
+        );
+        continue;
+      }
+      if (step === 'photo-analysis-batch-started') {
+        const fingerprints = data?.['fingerprints'];
+        if (Array.isArray(fingerprints)) {
+          for (const fingerprint of fingerprints) {
+            if (typeof fingerprint === 'string') processingSetRef.current.add(fingerprint);
+          }
+          processingChanged = true;
+        }
+        continue;
+      }
+      if (step === 'photo-analysed') {
+        const fingerprint = data?.['fingerprint'];
+        if (typeof fingerprint === 'string' && processingSetRef.current.delete(fingerprint)) processingChanged = true;
+        const current = data?.['current'];
+        const total = data?.['total'];
+        if (typeof current === 'number' && typeof total === 'number') setAnalyzeProgress({ current, total });
+        sawCompletion = true;
+        continue;
+      }
+      if (step === 'photo-analysis-failed') {
+        const fingerprint = data?.['fingerprint'];
+        if (typeof fingerprint === 'string' && processingSetRef.current.delete(fingerprint)) processingChanged = true;
+        sawCompletion = true;
+      }
+    }
+    if (processingChanged) setProcessingFingerprints(new Set(processingSetRef.current));
+    if (sawCompletion) void invalidatePhotosQueries(queryClient);
+  }, [queryClient]);
+
+  const analyzePhotos = useCallback(() => {
+    if (!canAnalyze) return;
+    resetAnalyzeTracking();
     runJob(
-      processMutation.mutateAsync({ root: analyzeTargetRoot, force: false }),
+      processMutation.mutateAsync(scope === 'folder' && selectedRoot !== null
+        ? { root: selectedRoot, force: false }
+        : { force: false }),
       dictionary.photos.analyzeProgress(0, 0),
       dictionary.photos.analyzeAction,
       dictionary.photos.analyzeAction,
-      (snapshot) => {
-        let processingChanged = false;
-        let sawCompletion = false;
-        for (const event of snapshot.progressEvents) {
-          if (event.sequence <= lastAnalyzeSequenceRef.current) continue;
-          lastAnalyzeSequenceRef.current = event.sequence;
-          const { step, data } = event.progress;
-          if (step === 'photo-analysis-scanning') {
-            const candidates = data?.['candidates'];
-            if (typeof candidates === 'number') setAnalyzeProgress({ current: 0, total: candidates });
-            continue;
-          }
-          if (step === 'photo-analysis-batch-started') {
-            const fingerprints = data?.['fingerprints'];
-            if (Array.isArray(fingerprints)) {
-              for (const fingerprint of fingerprints) {
-                if (typeof fingerprint === 'string') processingSetRef.current.add(fingerprint);
-              }
-              processingChanged = true;
-            }
-            continue;
-          }
-          if (step === 'photo-analysed') {
-            const fingerprint = data?.['fingerprint'];
-            if (typeof fingerprint === 'string' && processingSetRef.current.delete(fingerprint)) processingChanged = true;
-            const current = data?.['current'];
-            const total = data?.['total'];
-            if (typeof current === 'number' && typeof total === 'number') setAnalyzeProgress({ current, total });
-            sawCompletion = true;
-            continue;
-          }
-          if (step === 'photo-analysis-failed') {
-            const fingerprint = data?.['fingerprint'];
-            if (typeof fingerprint === 'string' && processingSetRef.current.delete(fingerprint)) processingChanged = true;
-            sawCompletion = true;
-          }
-        }
-        if (processingChanged) setProcessingFingerprints(new Set(processingSetRef.current));
-        if (sawCompletion) void invalidatePhotosQueries(queryClient);
-      },
+      handleAnalyzeSnapshot,
       (jobId) => {
         analyzeJobIdRef.current = jobId;
         setActiveAnalyzeJobId(jobId);
@@ -303,12 +328,31 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
       () => {
         analyzeJobIdRef.current = null;
         setActiveAnalyzeJobId(null);
-        setAnalyzeProgress(null);
-        processingSetRef.current = new Set();
-        setProcessingFingerprints(new Set());
+        resetAnalyzeTracking();
       },
     );
-  }, [analyzeTargetRoot, dictionary, processMutation, queryClient, runJob]);
+  }, [canAnalyze, dictionary, handleAnalyzeSnapshot, processMutation, resetAnalyzeTracking, runJob, scope, selectedRoot]);
+
+  const analyzeSelectedPhoto = useCallback(() => {
+    if (selectedFingerprint === null || selectedItemRoot === null) return;
+    resetAnalyzeTracking();
+    runJob(
+      processMutation.mutateAsync({ root: selectedItemRoot, force: false, fingerprints: [selectedFingerprint] }),
+      dictionary.photos.analyzeProgress(0, 1),
+      dictionary.photos.analyzeAction,
+      dictionary.photos.analyzeAction,
+      handleAnalyzeSnapshot,
+      (jobId) => {
+        analyzeJobIdRef.current = jobId;
+        setActiveAnalyzeJobId(jobId);
+      },
+      () => {
+        analyzeJobIdRef.current = null;
+        setActiveAnalyzeJobId(null);
+        resetAnalyzeTracking();
+      },
+    );
+  }, [dictionary, handleAnalyzeSnapshot, processMutation, resetAnalyzeTracking, runJob, selectedFingerprint, selectedItemRoot]);
 
   const cancelAnalysisMutation = useMutation(actions.cancelJob);
 
@@ -332,8 +376,10 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   const analyzeStatusLabel = useMemo(() => {
     if (activeJobLabel === null) return null;
     if (analyzeProgress === null) return activeJobLabel;
-    return dictionary.photos.analyzeProgress(analyzeProgress.current, analyzeProgress.total);
-  }, [activeJobLabel, analyzeProgress, dictionary]);
+    return rootProgress === null
+      ? dictionary.photos.analyzeProgress(analyzeProgress.current, analyzeProgress.total)
+      : dictionary.photos.analyzeProgressAllRoots(rootProgress.current, rootProgress.total, analyzeProgress.current, analyzeProgress.total);
+  }, [activeJobLabel, analyzeProgress, dictionary, rootProgress]);
 
   const selectVariant = useCallback(
     (configId: string | null) => {
@@ -392,7 +438,9 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     variants: variants.data?.variants ?? [],
     selectVariant,
     analyzePhotos,
-    canAnalyze: analyzeTargetRoot !== null,
+    canAnalyze,
+    analyzeSelectedPhoto,
+    canAnalyzeSelectedPhoto,
     analyzeProgress,
     processingFingerprints,
     generateProxies,

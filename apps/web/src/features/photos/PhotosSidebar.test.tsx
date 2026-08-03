@@ -64,6 +64,8 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   selectVariant: vi.fn(),
   analyzePhotos: vi.fn(),
   canAnalyze: true,
+  analyzeSelectedPhoto: vi.fn(),
+  canAnalyzeSelectedPhoto: true,
   analyzeProgress: null,
   processingFingerprints: new Set(),
   generateProxies: vi.fn(),

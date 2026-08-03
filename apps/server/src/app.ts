@@ -702,7 +702,12 @@ export const buildApp = (deps: AppDeps): Hono => {
     const input = parseInput(API_ROUTES.photosProcess.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.photosProcess.output);
     return respond(
-      await withCatalogWriteLockForJob(deps, () => enqueuePhotoProcess(deps, { ...input.value, batchSize: input.value.batchSize ?? null })),
+      await withCatalogWriteLockForJob(deps, () => enqueuePhotoProcess(deps, {
+        ...input.value,
+        root: input.value.root ?? null,
+        batchSize: input.value.batchSize ?? null,
+        fingerprints: input.value.fingerprints ?? null,
+      })),
       API_ROUTES.photosProcess.output,
     );
   });

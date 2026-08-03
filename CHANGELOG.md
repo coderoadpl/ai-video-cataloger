@@ -14,6 +14,17 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Photo analysis scope split into two independent actions: the photo detail
+  pane's "Analizuj" now analyzes only the selected photo (`POST
+  /api/photos/process` gains an optional `fingerprints[]`), and the sidebar
+  toolbar's "Przetwórz" under the "Wszystkie" scope now processes every
+  scanned root sequentially in one job with an honest "root X of Y" progress
+  label and clean mid-sequence cancellation, instead of silently falling back
+  to the selected photo's owner folder (`root` on `POST /api/photos/process`
+  is now optional; omitting it means every scanned root).
+
 ### Fixed
 
 - The details panel's "completed" status copy now names only the artifacts

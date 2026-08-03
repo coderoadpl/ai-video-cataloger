@@ -19,6 +19,7 @@ import {
   photoGpsBackfillSummarySchema,
   photoImportLibraSummarySchema,
   photoProxiesSummarySchema,
+  photosProcessInputSchema,
   scanOutputSchema,
   whisperModelsListOutputSchema,
   providerTestOutputSchema,
@@ -1095,6 +1096,19 @@ describe('route schemas', () => {
 
     const acceptingCount = jobResultSchema.options.filter((option) => option.safeParse(sample).success).length;
     expect(acceptingCount).toBe(1);
+  });
+
+  it('photosProcessInputSchema accepts an omitted root (all-roots scope) and an explicit fingerprints scope (W56)', () => {
+    const allRoots = photosProcessInputSchema.safeParse({ force: false });
+    expect(allRoots.success).toBe(true);
+    expect(allRoots.success && allRoots.data.root).toBeUndefined();
+
+    const singlePhoto = photosProcessInputSchema.safeParse({ root: '/photos', fingerprints: ['ph_0000000000000001'] });
+    expect(singlePhoto.success).toBe(true);
+    expect(singlePhoto.success && singlePhoto.data.fingerprints).toEqual(['ph_0000000000000001']);
+
+    const rejected = photosProcessInputSchema.safeParse({ root: '/photos', fingerprints: [''] });
+    expect(rejected.success).toBe(false);
   });
 
   it('round-trips photoGpsBackfillSummarySchema through jobResultSchema, pins gpsBackfillSummarySchema shape unchanged, and each rejects the other', () => {
