@@ -89,6 +89,7 @@ export const usePeople = ({
     (accepted: Promise<{ jobId: string }>, label: string, success: string, failure: string) => {
       if (activeJobLabel !== null) return;
       setActiveJobLabel(label);
+      setMutationError(null);
       addLine(label, 'info');
       void (async () => {
         try {
@@ -104,10 +105,14 @@ export const usePeople = ({
             addLine(success, 'success');
             await invalidate();
           } else {
-            addLine(`${failure}: ${final.error?.message ?? 'unknown error'}`, 'error');
+            const message = `${failure}: ${final.error?.message ?? 'unknown error'}`;
+            addLine(message, 'error');
+            setMutationError(message);
           }
         } catch (error) {
-          addLine(`${failure}: ${messageOf(error)}`, 'error');
+          const message = `${failure}: ${messageOf(error)}`;
+          addLine(message, 'error');
+          setMutationError(message);
         } finally {
           setActiveJobLabel(null);
         }

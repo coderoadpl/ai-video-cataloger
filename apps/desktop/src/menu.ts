@@ -47,7 +47,9 @@ const appMenu = (mainWindow: BrowserWindow | null): MenuItemConstructorOptions =
     {
       label: 'Install Command Line Tool…',
       click: () => {
-        void installCliTool(mainWindow);
+        void installCliTool(mainWindow).catch((error: unknown) => {
+          void dialog.showMessageBox({ type: 'error', message: String(error) });
+        });
       },
     },
     { type: 'separator' },
@@ -80,11 +82,15 @@ export const cliInstallSuccessMessage = (installedPath: string): string =>
 
 const withShadowGuidance = async (installedPath: string): Promise<string> => {
   const base = cliInstallSuccessMessage(installedPath);
-  const commandName = commandNameForRuntime(app.isPackaged);
-  const entries = await new NodeCliPathAdapter({ commandName, ownedInstallPaths: [installedPath] }).resolveOnPath();
-  if (!entries.ok) return base;
-  const guidance = describeInstallShadows(commandName, installedPath, app.getVersion(), entries.value);
-  return guidance === null ? base : `${base}\n\n${guidance}`;
+  try {
+    const commandName = commandNameForRuntime(app.isPackaged);
+    const entries = await new NodeCliPathAdapter({ commandName, ownedInstallPaths: [installedPath] }).resolveOnPath();
+    if (!entries.ok) return base;
+    const guidance = describeInstallShadows(commandName, installedPath, app.getVersion(), entries.value);
+    return guidance === null ? base : `${base}\n\n${guidance}`;
+  } catch {
+    return base;
+  }
 };
 
 const fileMenu = (
@@ -215,7 +221,9 @@ const helpMenu = (mainWindow: BrowserWindow | null): MenuItemConstructorOptions 
     {
       label: 'Learn More',
       click: () => {
-        void shell.openExternal('https://github.com/anthropics/claude-code');
+        void shell.openExternal('https://github.com/anthropics/claude-code').catch((error: unknown) => {
+          void dialog.showMessageBox({ type: 'error', message: `Could not open the link: ${String(error)}` });
+        });
       },
     },
   ],

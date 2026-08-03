@@ -873,6 +873,24 @@ describe('SetupWizard', () => {
     expect(recorders.configWrites).toContainEqual({ key: 'ui_language', value: 'pl' });
   });
 
+  it('surfaces a failed UI-language write via the validation alert instead of silently reverting the selection', async () => {
+    server.use(
+      http.get('/api/config', () => ok(configView('en', 'auto'))),
+      http.post('/api/config', () => HttpResponse.json(
+        { ok: false, error: { code: 'internal', message: 'Could not write ui_language' } },
+        { status: 500 },
+      )),
+    );
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await enterLanguageStep();
+
+    openSelect('wizard-ui-language-select');
+    fireEvent.click(await screen.findByRole('option', { name: en.language.optionPolish }));
+
+    const alert = await screen.findByTestId('language-validation-error');
+    expect(alert.textContent).toContain('Could not write ui_language');
+  });
+
   it('persists the chosen output language when advancing from the language step', async () => {
     const recorders = installHandlers();
     server.use(http.get('/api/config', () => ok(configView('en', 'auto'))));

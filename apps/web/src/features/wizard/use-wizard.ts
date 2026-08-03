@@ -300,7 +300,10 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
 
   const setUiLanguage = useCallback(
     (locale: Locale): void => {
-      void writeConfig('ui_language', locale);
+      void writeConfig('ui_language', locale).catch((error: unknown) => {
+        setValidation('error');
+        setValidationMessage(messageOf(error));
+      });
     },
     [writeConfig],
   );

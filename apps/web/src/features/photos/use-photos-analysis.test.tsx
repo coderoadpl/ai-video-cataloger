@@ -249,6 +249,66 @@ describe('usePhotosAnalysis', () => {
     expect(scanSpy).not.toHaveBeenCalled();
   });
 
+  it('does not start generate-proxies while a scan is still in flight', async () => {
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+    const proxiesSpy = vi.fn();
+    server.use(
+      http.post('/api/photos/scan', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => new Promise(() => undefined)),
+      http.post('/api/photos/proxies', () => {
+        proxiesSpy();
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-2' } });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }),
+      { wrapper: Wrapper },
+    );
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.scanFolder());
+    await waitFor(() => expect(result.current.activeJobLabel).not.toBeNull());
+
+    act(() => result.current.generateProxies());
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(proxiesSpy).not.toHaveBeenCalled();
+  });
+
+  it('gives scanFolder distinct start/success/failure labels instead of reusing the page title for all three', async () => {
+    stubTree([]);
+    stubList([]);
+    stubStatus();
+    const addLine = vi.fn();
+    server.use(
+      http.post('/api/photos/scan', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_scan',
+          status: 'completed',
+          progress: null,
+          progressEvents: [],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+        },
+      })),
+    );
+
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine, folder: '/media' }),
+      { wrapper: Wrapper },
+    );
+    act(() => result.current.scanFolder());
+
+    await waitFor(() => expect(addLine.mock.calls.some(([, level]) => level === 'success')).toBe(true));
+    const messages = new Set(addLine.mock.calls.map(([message]) => message));
+    expect(messages.size).toBeGreaterThan(1);
+  });
+
   it('analyzePhotos runs the process job over the selected root', async () => {
     stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);

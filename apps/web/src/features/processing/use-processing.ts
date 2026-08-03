@@ -181,9 +181,21 @@ export const useProcessing = ({
   const busyRef = useRef(false);
   const cancelBatchRef = useRef(false);
   const activeJobIdRef = useRef<string | null>(null);
+  const cancelRequestedRef = useRef(false);
   const pendingCancelIsBatchRef = useRef(false);
   const lastProgressKeyRef = useRef('');
   const lastInvalidatedFileIndexRef = useRef(0);
+
+  const applyPendingCancel = useCallback(
+    (jobId: string) => {
+      if (!cancelRequestedRef.current) return;
+      cancelRequestedRef.current = false;
+      void cancelAsync({ jobId }).catch((error: unknown) => {
+        addLine(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
+      });
+    },
+    [addLine, cancelAsync, dictionary],
+  );
 
   const runVideo = useCallback(
     async (video: ProcessVideo, force = false): Promise<RunOutcome> => {
@@ -201,6 +213,7 @@ export const useProcessing = ({
       }
 
       activeJobIdRef.current = jobId;
+      applyPendingCancel(jobId);
       try {
         const final = await pollJobUntilTerminal(jobId, {
           intervalMs,
@@ -247,7 +260,7 @@ export const useProcessing = ({
         activeJobIdRef.current = null;
       }
     },
-    [processAsync, queryClient, addLine, intervalMs, dictionary],
+    [processAsync, queryClient, addLine, intervalMs, dictionary, applyPendingCancel],
   );
 
   const analyze = useCallback(
@@ -258,6 +271,7 @@ export const useProcessing = ({
       }
       busyRef.current = true;
       cancelBatchRef.current = false;
+      cancelRequestedRef.current = false;
       void (async () => {
         if (checkReadiness !== undefined && !await checkReadiness()) {
           addLine(dictionary.processing.setupIncomplete, 'error');
@@ -288,6 +302,7 @@ export const useProcessing = ({
     }
     busyRef.current = true;
     cancelBatchRef.current = false;
+    cancelRequestedRef.current = false;
     void (async () => {
       if (checkReadiness !== undefined && !await checkReadiness()) {
         addLine(dictionary.processing.setupIncomplete, 'error');
@@ -361,6 +376,7 @@ export const useProcessing = ({
       }
 
       activeJobIdRef.current = jobId;
+      applyPendingCancel(jobId);
       const rendered = new Set<number>();
       let counts = emptyDriveCounts();
       try {
@@ -431,7 +447,7 @@ export const useProcessing = ({
         activeJobIdRef.current = null;
       }
     },
-    [processDriveAsync, queryClient, addLine, intervalMs, dictionary],
+    [processDriveAsync, queryClient, addLine, intervalMs, dictionary, applyPendingCancel],
   );
 
   const driveAnalyze = useCallback(
@@ -439,6 +455,7 @@ export const useProcessing = ({
       if (busyRef.current) return;
       busyRef.current = true;
       cancelBatchRef.current = false;
+      cancelRequestedRef.current = false;
       void (async () => {
         if (checkReadiness !== undefined && !await checkReadiness()) {
           addLine(dictionary.processing.setupIncomplete, 'error');
@@ -466,9 +483,15 @@ export const useProcessing = ({
 
   const driveCancel = useCallback(() => {
     const jobId = activeJobIdRef.current;
-    if (jobId === null) return;
+    if (jobId === null) {
+      cancelRequestedRef.current = true;
+      addLine(dictionary.processing.cancelWillApplyOnStart, 'info');
+      return;
+    }
     addLine(dictionary.processing.stoppingDrive, 'info');
-    void cancelAsync({ jobId });
+    void cancelAsync({ jobId }).catch((error: unknown) => {
+      addLine(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
+    });
   }, [addLine, cancelAsync, dictionary]);
 
   const requestCancel = useCallback(() => {
@@ -490,7 +513,12 @@ export const useProcessing = ({
         isBatch ? dictionary.processing.cancellingCurrentAndBatch : dictionary.processing.cancellingAnalysis,
         'info',
       );
-      void cancelAsync({ jobId });
+      void cancelAsync({ jobId }).catch((error: unknown) => {
+        addLine(dictionary.processing.cancelRequestFailed(messageOf(error)), 'error');
+      });
+    } else {
+      cancelRequestedRef.current = true;
+      addLine(dictionary.processing.cancelWillApplyOnStart, 'info');
     }
     setCancelConfirmation({ open: false, isBatch });
   }, [addLine, cancelAsync, dictionary]);

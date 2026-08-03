@@ -107,10 +107,7 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
 
   ipcMain.handle(CHANNELS.folderRemoveRecent, async (event, folderPathInput: unknown): Promise<void> => {
     if (!isTrustedSender(event)) return;
-    const folderPath = stringSchema.safeParse(folderPathInput);
-    if (!folderPath.success || !path.isAbsolute(folderPath.data)) return;
-    await deps.folderStore.removeRecent(folderPath.data);
-    await updateMenu(deps);
+    await removeRecentFolder(deps, folderPathInput);
   });
 
   ipcMain.handle(CHANNELS.folderClearRecent, async (event): Promise<void> => {
@@ -215,9 +212,23 @@ export const setFolderCurrent = async (
     return { ok: false, error: `Not a valid folder: ${folderPath.data}` };
   }
   await deps.folderStore.setCurrent(folderPath.data);
-  void deps.folderWatch.watch(folderPath.data);
+  void deps.folderWatch.watch(folderPath.data).catch((error: unknown) => {
+    console.error(`Auto-refresh watcher failed to start for ${folderPath.data}:`, error);
+  });
   await updateMenu(deps);
   return { ok: true };
+};
+
+export const removeRecentFolder = async (
+  deps: Pick<IpcDeps, 'folderStore' | 'getMainWindow'>,
+  folderPathInput: unknown,
+): Promise<void> => {
+  const folderPath = stringSchema.safeParse(folderPathInput);
+  if (!folderPath.success || !path.isAbsolute(folderPath.data)) {
+    throw new Error('Folder path must be an absolute string');
+  }
+  await deps.folderStore.removeRecent(folderPath.data);
+  await updateMenu(deps);
 };
 
 const isAbsoluteDirectory = async (folderPath: string): Promise<boolean> => {

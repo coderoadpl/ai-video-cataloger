@@ -396,4 +396,55 @@ describe('useProcessing drive', () => {
     await waitFor(() => expect(result.current.isBusy).toBe(false));
     expect(started).not.toHaveBeenCalled();
   });
+
+  it('honours a Stop click that lands before the run has an assigned job id, instead of letting the run start anyway', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    let releaseAccept!: () => void;
+    const accepted = new Promise<void>((resolve) => {
+      releaseAccept = resolve;
+    });
+    let cancelledJobId: string | null = null;
+    server.use(
+      http.post('/api/process-drive', async () => {
+        await accepted;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job:drive-race' } });
+      }),
+      http.post('/api/jobs/cancel', async ({ request }) => {
+        const body = z.object({ jobId: z.string() }).parse(await request.json());
+        cancelledJobId = body.jobId;
+        return HttpResponse.json({ ok: true, data: { jobId: body.jobId, cancelled: true } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({
+          ok: true,
+          data: { ...driveJob(jobId), status: cancelledJobId === jobId ? 'cancelled' : 'running' },
+        });
+      }),
+    );
+    const addLine = vi.fn();
+
+    const { result } = renderHook(
+      () => useProcessing({ videos: [], addLine, intervalMs: 0 }),
+      { wrapper },
+    );
+
+    act(() => {
+      result.current.driveAnalyze('/videos');
+    });
+    await waitFor(() => expect(result.current.isBusy).toBe(true));
+
+    act(() => {
+      result.current.driveCancel();
+    });
+    expect(addLine).toHaveBeenCalledWith('Stop requested — will cancel as soon as the run starts.', 'info');
+
+    releaseAccept();
+
+    await waitFor(() => expect(cancelledJobId).toBe('job:drive-race'));
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+  });
 });

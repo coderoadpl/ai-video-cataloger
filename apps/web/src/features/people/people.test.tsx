@@ -196,6 +196,26 @@ describe('PeopleView', () => {
     expect(installBody).toEqual({ force: false });
   });
 
+  it('surfaces an install-models failure via the mutation error alert, not only the terminal', async () => {
+    const addLine = vi.fn();
+    stubPeople({ facesEnabled: true, artifactsReady: false });
+    server.use(
+      http.post('/api/models/faces/install', () => HttpResponse.json(
+        { ok: false, error: { code: 'internal', message: 'Model download failed' } },
+        { status: 500 },
+      )),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={addLine} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    fireEvent.click(await screen.findByTestId('people-install-models'));
+
+    const alert = await screen.findByTestId('people-mutation-error');
+    expect(alert.textContent).toContain('Model download failed');
+  });
+
   it('shows the empty state pointing at Analysis, with no index button in the browse view', async () => {
     stubPeople({ facesEnabled: true, artifactsReady: true, observations: 0, people: [] });
 

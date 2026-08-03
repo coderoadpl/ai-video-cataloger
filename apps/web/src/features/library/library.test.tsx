@@ -8,6 +8,7 @@ import type { z } from 'zod';
 
 import type { libraryFacetsOutputSchema, searchResultSchema } from '@core/contract/index.js';
 
+import { bridge } from '../../api.js';
 import { en } from '../../i18n/dictionary.js';
 import { configResponse } from '../../test/config-response.js';
 import { renderWithProviders } from '../../test/render.js';
@@ -345,6 +346,37 @@ describe('LibraryView', () => {
     fireEvent.click(await screen.findByTestId('library-tile-menu-open-analysis'));
 
     expect(onOpenResult).toHaveBeenCalledWith('/videos', '/videos/fp-menu.mp4');
+  });
+
+  it('shows an error toast when revealing a library tile fails, instead of doing nothing', async () => {
+    const items = [libraryItem({ fingerprint: 'fp-reveal' })];
+    stubSearch(items);
+    const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(false);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    fireEvent.contextMenu(await screen.findByTestId('library-tile'));
+    fireEvent.click(await screen.findByTestId('library-tile-menu-reveal'));
+
+    await screen.findByTestId('library-tile-menu-reveal-failed-toast');
+    reveal.mockRestore();
+  });
+
+  it('confirms a successful copy-path and surfaces a rejected clipboard write instead of failing silently', async () => {
+    const items = [libraryItem({ fingerprint: 'fp-copy' })];
+    stubSearch(items);
+    const writeText = vi.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValueOnce(undefined);
+    Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    fireEvent.contextMenu(await screen.findByTestId('library-tile'));
+    fireEvent.click(await screen.findByTestId('library-tile-menu-copy-path'));
+
+    await screen.findByTestId('library-tile-menu-copy-failed-toast');
+
+    fireEvent.contextMenu(await screen.findByTestId('library-tile'));
+    fireEvent.click(await screen.findByTestId('library-tile-menu-copy-path'));
+
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
   });
 
   it('surfaces a failed catalog read instead of claiming nothing has been processed', async () => {

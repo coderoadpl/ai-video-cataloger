@@ -17,7 +17,7 @@ vi.mock('electron', () => ({
   shell: { openExternal: vi.fn() },
 }));
 
-import { dispatchApiRequest, setFolderCurrent } from './ipc.js';
+import { dispatchApiRequest, removeRecentFolder, setFolderCurrent } from './ipc.js';
 import { FolderStore } from './folder-store.js';
 import { FolderWatchController } from './folder-watch.js';
 
@@ -118,5 +118,49 @@ describe('setFolderCurrent', () => {
     const result = await setFolderCurrent(deps, validDir);
     expect(result).toEqual({ ok: true });
     expect(await deps.folderStore.getCurrent()).toBe(validDir);
+  });
+
+  it('logs a failed folder watch instead of letting it drop as an unhandled rejection', async () => {
+    const deps = await buildFolderDeps();
+    const watchError = new Error('inotify limit reached');
+    vi.spyOn(deps.folderWatch, 'watch').mockRejectedValue(watchError);
+    const consoleError = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    const validDir = await tempRoot();
+
+    const result = await setFolderCurrent(deps, validDir);
+    expect(result).toEqual({ ok: true });
+    await vi.waitFor(() => expect(consoleError).toHaveBeenCalled());
+    expect(consoleError.mock.calls[0]?.join(' ')).toContain('inotify limit reached');
+    consoleError.mockRestore();
+  });
+});
+
+describe('removeRecentFolder', () => {
+  afterEach(async () => {
+    await Promise.all(tempRoots.map((root) => rm(root, { recursive: true, force: true })));
+    tempRoots.length = 0;
+  });
+
+  it('rejects instead of resolving as success when the path fails validation', async () => {
+    const deps = await buildFolderDeps();
+    await expect(removeRecentFolder(deps, 'relative/path')).rejects.toThrow(
+      'Folder path must be an absolute string',
+    );
+  });
+
+  it('rejects instead of resolving as success when the path is not a string', async () => {
+    const deps = await buildFolderDeps();
+    await expect(removeRecentFolder(deps, 42)).rejects.toThrow('Folder path must be an absolute string');
+  });
+
+  it('removes a known recent folder on success', async () => {
+    const deps = await buildFolderDeps();
+    const validDir = await tempRoot();
+    await setFolderCurrent(deps, validDir);
+    expect(await deps.folderStore.getRecent()).toContain(validDir);
+
+    await removeRecentFolder(deps, validDir);
+
+    expect(await deps.folderStore.getRecent()).not.toContain(validDir);
   });
 });

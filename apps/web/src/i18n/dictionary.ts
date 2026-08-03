@@ -19,6 +19,7 @@ export interface Dictionary {
     aspectPanoramaLabel: string;
     copyToClipboard: string;
     copied: string;
+    copyFailed: string;
   };
   language: {
     stepTitle: string;
@@ -454,6 +455,8 @@ export interface Dictionary {
     stoppingDrive: string;
     cancellingCurrentAndBatch: string;
     cancellingAnalysis: string;
+    cancelWillApplyOnStart: string;
+    cancelRequestFailed: (message: string) => string;
     stepLabels: Record<string, string>;
   };
   people: {
@@ -691,8 +694,14 @@ export interface Dictionary {
     emptyNoRootsTitle: string;
     emptyNoRootsBodyBrowse: string;
     scanFolderAction: string;
+    scanStartedLog: string;
+    scanCompletedLog: string;
+    scanFailedLog: string;
     emptyNoPhotos: string;
     generateProxiesAction: string;
+    generateProxiesStartedLog: string;
+    generateProxiesCompletedLog: string;
+    generateProxiesFailedLog: string;
     proxiesPendingStrip: string;
     unknownDate: string;
     duplicatesBadge: (count: number) => string;
@@ -727,6 +736,8 @@ export interface Dictionary {
     searchNoResults: string;
     searchClear: string;
     analyzeAction: string;
+    analyzeCompletedLog: string;
+    analyzeFailedLog: string;
     analyzeProgress: (current: number, total: number) => string;
     analyzeProgressAllRoots: (rootIndex: number, rootsTotal: number, current: number, total: number) => string;
     cancelAnalysisAction: string;
@@ -851,6 +862,7 @@ export const en: Dictionary = {
     aspectPanoramaLabel: 'Panoramic aspect ratio',
     copyToClipboard: 'Copy to clipboard',
     copied: 'Copied',
+    copyFailed: 'Could not copy to the clipboard',
   },
   language: {
     stepTitle: 'Language',
@@ -1327,6 +1339,8 @@ export const en: Dictionary = {
     stoppingDrive: 'Stopping folder tree analysis…',
     cancellingCurrentAndBatch: 'Cancelling current video and stopping batch…',
     cancellingAnalysis: 'Cancelling analysis…',
+    cancelWillApplyOnStart: 'Stop requested — will cancel as soon as the run starts.',
+    cancelRequestFailed: (message) => `Could not cancel: ${message}`,
     stepLabels: {
       extracting_frames: 'Extracting frames',
       extracting_audio: 'Extracting audio',
@@ -1597,8 +1611,14 @@ export const en: Dictionary = {
     emptyNoRootsTitle: 'No photo folders scanned yet',
     emptyNoRootsBodyBrowse: 'Scan a folder from Analysis → Photos to start browsing here.',
     scanFolderAction: 'Scan a folder…',
+    scanStartedLog: 'Scanning photos…',
+    scanCompletedLog: 'Photo scan complete',
+    scanFailedLog: 'Photo scan failed',
     emptyNoPhotos: 'No photos found under this root.',
     generateProxiesAction: 'Generate proxies',
+    generateProxiesStartedLog: 'Generating proxies…',
+    generateProxiesCompletedLog: 'Proxies generated',
+    generateProxiesFailedLog: 'Proxy generation failed',
     proxiesPendingStrip: 'Proxies are still pending for this root.',
     unknownDate: 'Unknown date',
     duplicatesBadge: (count) => `${count} copies`,
@@ -1633,6 +1653,8 @@ export const en: Dictionary = {
     searchNoResults: 'No photos match this search.',
     searchClear: 'Clear search',
     analyzeAction: 'Analyze',
+    analyzeCompletedLog: 'Photo analysis complete',
+    analyzeFailedLog: 'Photo analysis failed',
     analyzeProgress: (current, total) => `Analyzing ${current} of ${total}…`,
     analyzeProgressAllRoots: (rootIndex, rootsTotal, current, total) =>
       `Root ${rootIndex} of ${rootsTotal} — analyzing ${current} of ${total}…`,
@@ -1766,6 +1788,7 @@ export const pl: Dictionary = {
     revealFailed: 'Nie można pokazać tego pliku: jest poza wszystkimi znanymi folderami katalogu.',
     copyToClipboard: 'Kopiuj do schowka',
     copied: 'Skopiowano',
+    copyFailed: 'Nie udało się skopiować do schowka',
   },
   language: {
     stepTitle: 'Język',
@@ -2243,6 +2266,8 @@ export const pl: Dictionary = {
     stoppingDrive: 'Zatrzymywanie analizy drzewa folderów…',
     cancellingCurrentAndBatch: 'Anulowanie bieżącego filmu i zatrzymywanie wsadu…',
     cancellingAnalysis: 'Anulowanie analizy…',
+    cancelWillApplyOnStart: 'Zażądano zatrzymania — zostanie anulowane, gdy tylko uruchomi się przebieg.',
+    cancelRequestFailed: (message) => `Nie udało się anulować: ${message}`,
     stepLabels: {
       extracting_frames: 'Wyodrębnianie klatek',
       extracting_audio: 'Wyodrębnianie dźwięku',
@@ -2513,8 +2538,14 @@ export const pl: Dictionary = {
     emptyNoRootsTitle: 'Nie zeskanowano jeszcze żadnego folderu zdjęć',
     emptyNoRootsBodyBrowse: 'Zeskanuj folder w Analizie → Zdjęcia, aby zacząć tu przeglądać.',
     scanFolderAction: 'Zeskanuj folder…',
+    scanStartedLog: 'Skanowanie zdjęć…',
+    scanCompletedLog: 'Skanowanie zdjęć zakończone',
+    scanFailedLog: 'Skanowanie zdjęć nie powiodło się',
     emptyNoPhotos: 'Nie znaleziono zdjęć w tym folderze.',
     generateProxiesAction: 'Wygeneruj podglądy',
+    generateProxiesStartedLog: 'Generowanie podglądów…',
+    generateProxiesCompletedLog: 'Podglądy wygenerowane',
+    generateProxiesFailedLog: 'Generowanie podglądów nie powiodło się',
     proxiesPendingStrip: 'Podglądy dla tego folderu wciąż oczekują na wygenerowanie.',
     unknownDate: 'Nieznana data',
     duplicatesBadge: (count) => `${count} ${plPlural(count, 'kopia', 'kopie', 'kopii')}`,
@@ -2549,6 +2580,8 @@ export const pl: Dictionary = {
     searchNoResults: 'Żadne zdjęcie nie pasuje do tego wyszukiwania.',
     searchClear: 'Wyczyść wyszukiwanie',
     analyzeAction: 'Analizuj',
+    analyzeCompletedLog: 'Analiza zdjęć zakończona',
+    analyzeFailedLog: 'Analiza zdjęć nie powiodła się',
     analyzeProgress: (current, total) => `Analizowanie ${current} z ${total}…`,
     analyzeProgressAllRoots: (rootIndex, rootsTotal, current, total) =>
       `Folder ${rootIndex} z ${rootsTotal} — analizowanie ${current} z ${total}…`,

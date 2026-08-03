@@ -37,6 +37,28 @@ release history jumps from `0.5.10` to `0.5.12`.
   instead of interpolating the raw server message, so a background-refresh
   toast or the crash fallback screen can no longer leak an absolute
   filesystem path (W58).
+- W59 silent-failure fix wave: People "Install models" failures now set the
+  same `mutationError` Snackbar as every other People mutation instead of
+  logging to the terminal only; Photos scan/generate-proxies/analyze now
+  submit their job request only after the busy guard passes (a thunk instead
+  of an eagerly-evaluated promise) and each has distinct start/success/failure
+  log labels instead of reusing the page title or action name for all three;
+  a Stop click that lands before a drive/single-video run has an assigned job
+  id is now honoured once the job starts (instead of silently doing nothing
+  while the run proceeds), and every programmatic cancel now surfaces a
+  cancel-request failure instead of swallowing it; the Wizard's UI-language
+  dropdown surfaces a failed config write via the existing validation alert
+  instead of silently reverting the selection; the Library tile menu's
+  "Reveal in Finder" now shows the same reveal-failed toast as every other
+  reveal entry point, and "Copy path" confirms success and surfaces a failed
+  clipboard write instead of doing nothing either way; the catalog-lock
+  banner's Retry button now appends the mutation failure to the banner text
+  instead of discarding it; the desktop menu's "Install Command Line Tool…"
+  and "Learn More" actions now show an error dialog on failure instead of
+  silently doing nothing; a folder-watch start failure is now logged instead
+  of dropped as an unhandled rejection; and the `folder:removeRecent` IPC
+  handler now rejects on invalid input instead of resolving as a silent
+  no-op.
 
 ## [0.6.16] - 2026-08-03
 

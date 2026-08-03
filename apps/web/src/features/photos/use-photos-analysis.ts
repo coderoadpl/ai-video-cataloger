@@ -175,7 +175,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
 
   const runJob = useCallback(
     (
-      accepted: Promise<{ jobId: string }>,
+      submit: () => Promise<{ jobId: string }>,
       label: string,
       success: string,
       failure: string,
@@ -189,7 +189,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
       addLine(label, 'info');
       void (async () => {
         try {
-          const job = await accepted;
+          const job = await submit();
           onJobAccepted?.(job.jobId);
           const final = await pollJobUntilTerminal(job.jobId, {
             intervalMs,
@@ -223,22 +223,22 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   );
 
   const scanFolder = useCallback(() => {
-    if (activeJobLabel !== null || folder === null) return;
+    if (folder === null) return;
     runJob(
-      scanMutation.mutateAsync({ root: folder }),
-      dictionary.photos.title,
-      dictionary.photos.title,
-      dictionary.photos.title,
+      () => scanMutation.mutateAsync({ root: folder }),
+      dictionary.photos.scanStartedLog,
+      dictionary.photos.scanCompletedLog,
+      dictionary.photos.scanFailedLog,
     );
-  }, [activeJobLabel, dictionary, folder, runJob, scanMutation]);
+  }, [dictionary, folder, runJob, scanMutation]);
 
   const generateProxies = useCallback(() => {
     if (selectedRoot === null) return;
     runJob(
-      proxiesMutation.mutateAsync({ root: selectedRoot, force: false }),
-      dictionary.photos.generateProxiesAction,
-      dictionary.photos.generateProxiesAction,
-      dictionary.photos.generateProxiesAction,
+      () => proxiesMutation.mutateAsync({ root: selectedRoot, force: false }),
+      dictionary.photos.generateProxiesStartedLog,
+      dictionary.photos.generateProxiesCompletedLog,
+      dictionary.photos.generateProxiesFailedLog,
     );
   }, [dictionary, proxiesMutation, runJob, selectedRoot]);
 
@@ -314,12 +314,12 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     if (!canAnalyze) return;
     resetAnalyzeTracking();
     runJob(
-      processMutation.mutateAsync(scope === 'folder' && selectedRoot !== null
+      () => processMutation.mutateAsync(scope === 'folder' && selectedRoot !== null
         ? { root: selectedRoot, force: false }
         : { force: false }),
       dictionary.photos.analyzeProgress(0, 0),
-      dictionary.photos.analyzeAction,
-      dictionary.photos.analyzeAction,
+      dictionary.photos.analyzeCompletedLog,
+      dictionary.photos.analyzeFailedLog,
       handleAnalyzeSnapshot,
       (jobId) => {
         analyzeJobIdRef.current = jobId;
@@ -337,10 +337,10 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     if (selectedFingerprint === null || selectedItemRoot === null) return;
     resetAnalyzeTracking();
     runJob(
-      processMutation.mutateAsync({ root: selectedItemRoot, force: false, fingerprints: [selectedFingerprint] }),
+      () => processMutation.mutateAsync({ root: selectedItemRoot, force: false, fingerprints: [selectedFingerprint] }),
       dictionary.photos.analyzeProgress(0, 1),
-      dictionary.photos.analyzeAction,
-      dictionary.photos.analyzeAction,
+      dictionary.photos.analyzeCompletedLog,
+      dictionary.photos.analyzeFailedLog,
       handleAnalyzeSnapshot,
       (jobId) => {
         analyzeJobIdRef.current = jobId;
