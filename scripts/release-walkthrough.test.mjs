@@ -1,10 +1,10 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-import { blockingSkips, BROKEN_PHOTO_NAME, prepareScratchFixtures, TOLERATED_SKIPS } from './release-walkthrough.mjs';
+import { blockingSkips, BROKEN_PHOTO_MTIME, BROKEN_PHOTO_NAME, prepareScratchFixtures, TOLERATED_SKIPS } from './release-walkthrough.mjs';
 
 describe('blockingSkips', () => {
   it('excludes the tolerated allowlist from the blocking set', () => {
@@ -49,5 +49,17 @@ describe('prepareScratchFixtures', () => {
     expect(bytes[0]).toBe(0xff);
     expect(bytes[1]).toBe(0xd8);
     expect(bytes.length).toBeLessThan(64);
+  });
+
+  it('plants the broken jpg with an old mtime so it sorts last in a captured-at ordering', () => {
+    const source = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-fixtures-src-'));
+    mkdirSync(source, { recursive: true });
+
+    const scratchDir = prepareScratchFixtures(source);
+    const brokenPath = path.join(scratchDir, BROKEN_PHOTO_NAME);
+
+    const { mtime } = statSync(brokenPath);
+    expect(mtime.getTime()).toBe(BROKEN_PHOTO_MTIME.getTime());
+    expect(mtime.getTime()).toBeLessThan(new Date('2001-01-01T00:00:00Z').getTime());
   });
 });

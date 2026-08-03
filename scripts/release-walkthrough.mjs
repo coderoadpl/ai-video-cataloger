@@ -1,5 +1,5 @@
 import { Buffer } from 'node:buffer';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
@@ -11,6 +11,10 @@ import { z } from 'zod';
 // by nothing, so proxy generation fails and the placeholder tile has to render.
 export const BROKEN_PHOTO_NAME = 'broken-photo.jpg';
 const TRUNCATED_JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+// No EXIF survives the truncation, so the scanner falls back to file mtime for
+// capturedAt; an old mtime keeps this row sorted last instead of shadowing real
+// fixtures in every date-sorted photo UI (W52).
+export const BROKEN_PHOTO_MTIME = new Date('2000-01-01T00:00:00Z');
 
 const HELP = `release-walkthrough — scripted self-QA pass over a packaged build.
 
@@ -135,7 +139,9 @@ const timestamp = () => new Date().toISOString().replaceAll(':', '-').slice(0, 1
 export const prepareScratchFixtures = (fixturesDir) => {
   const scratchDir = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-fixtures-scratch-'));
   cpSync(fixturesDir, scratchDir, { recursive: true });
-  writeFileSync(path.join(scratchDir, BROKEN_PHOTO_NAME), TRUNCATED_JPEG_BYTES);
+  const brokenPhotoPath = path.join(scratchDir, BROKEN_PHOTO_NAME);
+  writeFileSync(brokenPhotoPath, TRUNCATED_JPEG_BYTES);
+  utimesSync(brokenPhotoPath, BROKEN_PHOTO_MTIME, BROKEN_PHOTO_MTIME);
   return scratchDir;
 };
 
@@ -423,9 +429,13 @@ const drive = async (plan) => {
   });
 
   await record('analysis-photos', async () => {
-    const row = page.getByTestId('photos-sidebar-row').first();
-    if (!(await appeared(row, SETTLE_TIMEOUT_MS))) return skipped('no photos catalogued in this home');
-    await row.click();
+    const rows = page.getByTestId('photos-sidebar-row');
+    if (!(await appeared(rows.first(), SETTLE_TIMEOUT_MS))) return skipped('no photos catalogued in this home');
+    const usableRow = rows.filter({ hasNot: page.getByTestId('photos-sidebar-badge-proxyFailed') }).first();
+    if (!(await appeared(usableRow, SETTLE_TIMEOUT_MS))) {
+      return skipped('every catalogued photo has a failed proxy (analyze strip needs proxyState=done)');
+    }
+    await usableRow.click();
     if (!(await appeared(page.getByTestId('photos-analysis-detail'), VISIBLE_TIMEOUT_MS))) {
       return skipped('photo detail workspace did not render');
     }

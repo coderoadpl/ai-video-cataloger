@@ -44,7 +44,10 @@ Every run launches with:
   real JPEG start-of-image marker with no image data — so the photo scan the
   `photos-sidebar` step auto-triggers always has one file whose proxy
   generation fails (W51: the broken-image placeholder had never been
-  exercised by a walkthrough run before).
+  exercised by a walkthrough run before). The plant sets an old (year-2000)
+  mtime: with no surviving EXIF, `capturedAt` falls back to file mtime, and an
+  old mtime keeps the row sorted last in every captured-at-DESC photo UI
+  instead of shadowing real fixtures as the newest photo (W52).
 
 A run therefore never mutates real user data. Analysis needs a configured
 analyzer, which a throwaway home does not have: pass `--home` pointing at a
@@ -139,7 +142,9 @@ selected. `photos-browse` asserts the Library Photos detail pane never shows
 the analyze strip (browse surfaces are read-only). `photos-sidebar` switches
 Analysis to Zdjęcia and captures the sidebar state (folder header, scope
 toggle, badge rows) before any row is clicked. `analysis-photos` then clicks
-the first sidebar row and asserts the workspace detail (`photos-analysis-detail`)
+the first sidebar row that does not carry the `proxyFailed` badge (the analyze
+strip only renders once `proxyState` is `done`, and the planted broken photo
+is always `failed`) and asserts the workspace detail (`photos-analysis-detail`)
 and the analyze strip render, and that the video list is never visible in the
 photos sidebar.
 

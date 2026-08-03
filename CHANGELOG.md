@@ -16,6 +16,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- `pnpm run qa:walkthrough`'s planted `broken-photo.jpg` now gets a year-2000
+  mtime instead of a current one, so it no longer sorts first (newest) in the
+  Analysis Photos sidebar and shadows the real fixtures; the `analysis-photos`
+  step also now selects the first sidebar row without a `proxyFailed` badge
+  instead of always clicking the first row, so `--strict` no longer fails on
+  every run.
 - Stored analysis error strings (including legacy pre-W50 messages that leak
   an absolute filesystem path) now render through a single renderer-side
   formatter at every error display site — catalog sidebar rows and tree, the

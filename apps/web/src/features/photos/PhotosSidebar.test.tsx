@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 
@@ -311,6 +311,17 @@ describe('PhotosSidebar', () => {
       const icon = screen.getByTestId(`photos-sidebar-badge-${badge}`).querySelector('svg');
       expect(icon?.classList.contains('MuiChip-icon')).toBe(true);
     }
+  });
+
+  it('nests the proxyFailed badge inside its own row so a row-scoped filter can skip it', () => {
+    const items = [
+      item({ fingerprint: 'broken', proxyState: 'failed' }),
+      item({ fingerprint: 'usable' }),
+    ];
+    renderThemed(<PhotosSidebar state={baseState({ items })} onOpenFolder={vi.fn()} />);
+
+    const rows = screen.getAllByTestId('photos-sidebar-row');
+    expect(rows.map((row) => within(row).queryByTestId('photos-sidebar-badge-proxyFailed') !== null)).toEqual([true, false]);
   });
 
   it('marks only the in-flight rows whose fingerprint is currently being analyzed', () => {
