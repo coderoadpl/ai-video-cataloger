@@ -6,20 +6,33 @@ import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { formatDayLabel } from '../../lib/format.js';
 import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
 import { FilterBar, type LibraryGroupBy } from './FilterBar.js';
-import { groupByCaptureDay, groupByFolder, type LibraryItem } from './core/index.js';
+import { LibraryPhotoViewer } from './LibraryPhotoViewer.js';
+import {
+  adjacentPhotoFingerprint,
+  groupByCaptureDay,
+  groupByFolder,
+  isLibraryMedia,
+  ownerPhotoRootFor,
+  type LibraryItem,
+  type LibraryMedia,
+  type LibraryPhotoItem,
+  type LibraryVideoItem,
+} from './core/index.js';
 
-export type { LibraryItem } from './core/index.js';
+export type { LibraryItem, LibraryVideoItem } from './core/index.js';
 import {
   EMPTY_LIBRARY_FILTERS,
   libraryFilterIsEmpty,
   libraryFilterReducer,
   noMatchSentence,
+  videoOnlyFilterChips,
   type LibraryFilterChipLabels,
 } from './core/filter-state.js';
 import type { LibrarySort } from './core/folder-groups.js';
 import { LibraryGrid, type LibraryGridSection } from './LibraryGrid.js';
 import { useLibrary } from './use-library.js';
 import { useLibraryFacets } from './use-library-facets.js';
+import { usePhotoRoots } from './use-photo-roots.js';
 import { useSearchSuggestions } from './use-search-suggestions.js';
 import { useThumbnailsBackfillTrigger } from './use-thumbnails-backfill.js';
 
@@ -30,7 +43,8 @@ export type LibrarySeed =
 interface LibraryViewProps {
   active: boolean;
   onOpenResult: (folderPath: string, videoPath: string) => void;
-  onPreview: (item: LibraryItem) => void;
+  onOpenPhotoInAnalysis?: (root: string, fingerprint: string) => void;
+  onPreview: (item: LibraryVideoItem) => void;
   onGoToVideos: () => void;
   seed?: LibrarySeed | null;
   onSeedConsumed?: () => void;
@@ -52,17 +66,38 @@ const readGroupBy = (): LibraryGroupBy => {
   return raw === 'folder' ? 'folder' : 'date';
 };
 
-export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, seed = null, onSeedConsumed }: LibraryViewProps) => {
+const MEDIA_KEY = 'avc.library.media';
+const readMedia = (): LibraryMedia => {
+  if (typeof window === 'undefined') return 'all';
+  const raw = window.localStorage.getItem(MEDIA_KEY);
+  return raw !== null && isLibraryMedia(raw) ? raw : 'all';
+};
+
+export const LibraryView = ({
+  active,
+  onOpenResult,
+  onOpenPhotoInAnalysis,
+  onPreview,
+  onGoToVideos,
+  seed = null,
+  onSeedConsumed,
+}: LibraryViewProps) => {
   const dictionary = useDictionary();
   const [filters, dispatch] = useReducer(libraryFilterReducer, EMPTY_LIBRARY_FILTERS);
   const [groupBy, setGroupByState] = useState<LibraryGroupBy>(() => readGroupBy());
+  const [media, setMediaState] = useState<LibraryMedia>(() => readMedia());
   const [sort, setSort] = useState<LibrarySort>('captured_desc');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [photoViewerFingerprint, setPhotoViewerFingerprint] = useState<string | null>(null);
   const suggestions = useSearchSuggestions();
 
   const setGroupBy = (next: LibraryGroupBy) => {
     setGroupByState(next);
     if (typeof window !== 'undefined') window.localStorage.setItem(GROUP_BY_KEY, next);
+  };
+  const setMedia = (next: LibraryMedia) => {
+    setMediaState(next);
+    if (typeof window !== 'undefined') window.localStorage.setItem(MEDIA_KEY, next);
   };
 
   useEffect(() => {
@@ -84,12 +119,13 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
     dateTo: dictionary.library.chipDateTo,
   }), [dictionary]);
 
-  const library = useLibrary({ active, filters, sort });
+  const library = useLibrary({ active, filters, sort, media });
   const facetsState = useLibraryFacets({ active });
+  const photoRoots = usePhotoRoots({ active });
   const backfillFolders = useMemo(
     () => [...new Set(
       library.items
-        .filter((item) => item.folder.online)
+        .filter((item): item is LibraryVideoItem => item.media === 'video' && item.folder.online)
         .map((item) => item.folder.currentPath),
     )],
     [library.items],
@@ -101,9 +137,12 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
   ], [suggestions.recentSearches, suggestions.topTags]);
   const searchDropdownOpen = searchFocused && library.query.trim().length === 0 && searchOptions.length > 0;
 
+  const canGroupByFolder = media === 'video' || library.photoTotal === 0;
+  const effectiveGroupBy: LibraryGroupBy = canGroupByFolder ? groupBy : 'date';
   const sections: LibraryGridSection[] = useMemo(() => {
-    if (groupBy === 'folder') {
-      return groupByFolder(library.items, library.effectiveSort).map((section) => ({
+    if (effectiveGroupBy === 'folder') {
+      const videoItems = library.items.filter((item): item is LibraryVideoItem => item.media === 'video');
+      return groupByFolder(videoItems, library.effectiveSort).map((section) => ({
         key: section.folderId,
         label: section.displayName,
         offline: section.offline,
@@ -118,22 +157,54 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
       offlineReason: null,
       items: section.items,
     }));
-  }, [groupBy, library.items, library.effectiveSort, dictionary.library.unknownDate, dictionary.locale]);
+  }, [effectiveGroupBy, library.items, library.effectiveSort, dictionary.library.unknownDate, dictionary.locale]);
+
+  const photoOrder = useMemo(
+    () => sections.flatMap((section) => section.items.filter((item) => item.media === 'photo').map((item) => item.fingerprint)),
+    [sections],
+  );
+  const photoViewerItem = photoViewerFingerprint === null
+    ? null
+    : library.items.find((item): item is LibraryPhotoItem => item.media === 'photo' && item.fingerprint === photoViewerFingerprint) ?? null;
+
+  useEffect(() => {
+    if (sort === 'relevance' && media === 'all') setSort('captured_desc');
+  }, [sort, media]);
 
   if (!active) return null;
 
   const previewItem = (item: LibraryItem): void => {
-    onPreview(item);
+    if (item.media === 'video') {
+      onPreview(item);
+      return;
+    }
+    setPhotoViewerFingerprint(item.fingerprint);
   };
 
   const openInAnalysis = (item: LibraryItem): void => {
-    if (!item.folder.online) return;
-    onOpenResult(item.folder.currentPath, `${item.folder.currentPath}/${item.fileName}`);
+    if (item.media === 'video') {
+      if (!item.folder.online) return;
+      onOpenResult(item.folder.currentPath, `${item.folder.currentPath}/${item.fileName}`);
+      return;
+    }
+    if (onOpenPhotoInAnalysis === undefined) return;
+    const root = ownerPhotoRootFor(item.currentPath, photoRoots);
+    if (root === null) return;
+    onOpenPhotoInAnalysis(root, item.fingerprint);
   };
 
   const isEmptyCatalog = !library.isLoading && library.error === null && library.debouncedQuery.length === 0
     && libraryFilterIsEmpty(filters) && library.total === 0;
   const isNoMatch = !library.isLoading && library.error === null && library.total === 0 && !isEmptyCatalog;
+  const videoOnlyFilterActive = filters.personIds.length > 0 || filters.place !== null || filters.hasGps !== null || filters.folderId !== null;
+  const showVideoOnlyFilterNotice = media === 'all' && videoOnlyFilterActive;
+  const videosCounted = media !== 'photo';
+  const photosCounted = media !== 'video' && !videoOnlyFilterActive;
+  const mediaTotals = {
+    all: videosCounted && photosCounted ? library.total : null,
+    video: videosCounted ? library.videoTotal : null,
+    photo: photosCounted ? library.photoTotal : null,
+  };
 
   const body = () => {
     if (library.error !== null) {
@@ -204,6 +275,11 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
     }
     return (
       <>
+        {showVideoOnlyFilterNotice ? (
+          <Alert severity="info" data-testid="library-video-only-filter-notice" sx={{ mx: 2, mt: 1 }}>
+            {dictionary.library.videoOnlyFilterNotice(videoOnlyFilterChips(filters, chipLabels).map((chip) => chip.label).join(', '))}
+          </Alert>
+        ) : null}
         <LibraryGrid
           sections={sections}
           onOpen={previewItem}
@@ -317,14 +393,34 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
           dispatch={dispatch}
           facets={facetsState.facets}
           chipLabels={chipLabels}
-          groupBy={groupBy}
+          groupBy={effectiveGroupBy}
           onGroupByChange={setGroupBy}
+          canGroupByFolder={canGroupByFolder}
           sort={library.effectiveSort}
           onSortChange={setSort}
           hasQuery={library.debouncedQuery.length > 0}
+          media={media}
+          onMediaChange={setMedia}
+          mediaTotals={mediaTotals}
         />
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{body()}</Box>
+      {photoViewerItem === null ? null : (
+        <LibraryPhotoViewer
+          item={photoViewerItem}
+          onClose={() => setPhotoViewerFingerprint(null)}
+          onPrevious={
+            adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, -1) === null
+              ? null
+              : () => setPhotoViewerFingerprint(adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, -1))
+          }
+          onNext={
+            adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, 1) === null
+              ? null
+              : () => setPhotoViewerFingerprint(adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, 1))
+          }
+        />
+      )}
     </Box>
   );
 };

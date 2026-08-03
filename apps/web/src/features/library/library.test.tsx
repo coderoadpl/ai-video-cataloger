@@ -6,7 +6,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 import type { z } from 'zod';
 
-import type { libraryFacetsOutputSchema, searchResultSchema } from '@core/contract/index.js';
+import type { libraryFacetsOutputSchema } from '@core/contract/index.js';
 
 import { bridge } from '../../api.js';
 import { en } from '../../i18n/dictionary.js';
@@ -15,14 +15,14 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
 import { LibraryView } from './LibraryView.js';
+import type { LibraryItem, LibraryPhotoItem, LibraryVideoItem } from './core/index.js';
 
 const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) =>
   renderWithProviders(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
 
-type LibraryItem = z.output<typeof searchResultSchema>;
-
-const libraryItem = (overrides: Partial<LibraryItem> & { fingerprint: string }): LibraryItem => ({
+const videoItem = (overrides: Partial<LibraryVideoItem> & { fingerprint: string }): LibraryVideoItem => ({
+  media: 'video',
   variantCount: 1,
   fileName: `${overrides.fingerprint}.mp4`,
   finalName: null,
@@ -47,29 +47,90 @@ const libraryItem = (overrides: Partial<LibraryItem> & { fingerprint: string }):
   ...overrides,
 });
 
-const searchRequests: URLSearchParams[] = [];
+const photoItem = (overrides: Partial<LibraryPhotoItem> & { fingerprint: string }): LibraryPhotoItem => ({
+  media: 'photo',
+  fileName: `${overrides.fingerprint}.jpg`,
+  currentPath: `/photos/${overrides.fingerprint}.jpg`,
+  ext: 'jpg',
+  capturedAt: '2026-01-02T10:00:00.000Z',
+  description: null,
+  snippet: '',
+  tags: [],
+  variantCount: 0,
+  missingAt: null,
+  thumbPath: `/photos/.ai-video-cataloger/thumbnails/${overrides.fingerprint}.jpg`,
+  gridThumbPath: null,
+  proxyPath: null,
+  ...overrides,
+});
 
-const stubSearch = (items: LibraryItem[]) => {
+const displayNameOf = (item: LibraryItem): string => item.media === 'video' ? (item.finalName ?? item.fileName) : item.fileName;
+
+const matchesQuery = (item: LibraryItem, query: string): boolean =>
+  displayNameOf(item).includes(query) || item.tags.some((tag) => tag.includes(query));
+
+const collectionRequests: URLSearchParams[] = [];
+
+const CURSOR_LIMIT_DEFAULT = 200;
+
+const stubCollection = (items: LibraryItem[]) => {
   server.use(
-    http.get('/api/search', ({ request }) => {
+    http.get('/api/library/collection', ({ request }) => {
       const url = new URL(request.url);
-      searchRequests.push(url.searchParams);
+      collectionRequests.push(url.searchParams);
       const query = url.searchParams.get('query');
+      const people = url.searchParams.get('people');
+      const place = url.searchParams.get('place');
       const hasGps = url.searchParams.get('hasGps');
       const folderId = url.searchParams.get('folderId');
-      let matched = query === null || query.length === 0 ? items : items.filter((item) => item.fileName.includes(query));
-      if (hasGps === 'true') matched = matched.filter((item) => item.gps !== null);
-      if (hasGps === 'false') matched = matched.filter((item) => item.gps === null);
-      if (folderId !== null && folderId.length > 0) matched = matched.filter((item) => item.folder.folderId === folderId);
+      const media = url.searchParams.get('media') ?? 'all';
+      const sort = url.searchParams.get('sort');
+      const limit = Number(url.searchParams.get('limit') ?? String(CURSOR_LIMIT_DEFAULT));
+      const cursor = url.searchParams.get('cursor');
+      const offset = cursor === null ? 0 : Number(cursor);
+
+      const videoOnlyFilterActive = (people !== null && people.length > 0) || place !== null || hasGps !== null || folderId !== null;
+
+      let matchedVideo = items.filter((item) => item.media === 'video');
+      let matchedPhoto = media === 'video' || (media === 'all' && videoOnlyFilterActive)
+        ? []
+        : items.filter((item) => item.media === 'photo');
+
+      if (query !== null && query.length > 0) {
+        matchedVideo = matchedVideo.filter((item) => matchesQuery(item, query));
+        matchedPhoto = matchedPhoto.filter((item) => matchesQuery(item, query));
+      }
+      if (hasGps === 'true') matchedVideo = matchedVideo.filter((item) => item.media === 'video' && item.gps !== null);
+      if (hasGps === 'false') matchedVideo = matchedVideo.filter((item) => item.media === 'video' && item.gps === null);
+      if (folderId !== null && folderId.length > 0) {
+        matchedVideo = matchedVideo.filter((item) => item.media === 'video' && item.folder.folderId === folderId);
+      }
+      if (media === 'video') matchedPhoto = [];
+      if (media === 'photo') matchedVideo = [];
+
+      const combined = [...matchedVideo, ...matchedPhoto].sort((left, right) => {
+        if (sort === 'name_asc') return displayNameOf(left).localeCompare(displayNameOf(right));
+        if (sort === 'captured_asc') return (left.capturedAt ?? '').localeCompare(right.capturedAt ?? '');
+        if (sort === 'relevance') return 0;
+        return (right.capturedAt ?? '').localeCompare(left.capturedAt ?? '');
+      });
+
+      const page = combined.slice(offset, offset + limit);
+      const nextOffset = offset + page.length;
+      const nextCursor = nextOffset < combined.length ? String(nextOffset) : null;
+
       return HttpResponse.json({
         ok: true,
         data: {
           query,
-          limit: 200,
-          offset: 0,
-          count: matched.length,
-          total: matched.length,
-          results: matched,
+          media,
+          limit,
+          total: matchedVideo.length + matchedPhoto.length,
+          videoTotal: matchedVideo.length,
+          photoTotal: matchedPhoto.length,
+          count: page.length,
+          items: page,
+          nextCursor,
         },
       });
     }),
@@ -99,15 +160,22 @@ const stubFacets = (overrides: Partial<z.infer<typeof libraryFacetsOutputSchema>
   );
 };
 
+const stubPhotoRoots = (roots: { root: string; photos: number; missing: number; lastScanAt: string }[] = []) => {
+  server.use(http.get('/api/photos/tree', () => HttpResponse.json({ ok: true, data: { media: 'photo', roots } })));
+};
+
 describe('LibraryView', () => {
   beforeEach(() => {
-    searchRequests.length = 0;
+    collectionRequests.length = 0;
     window.localStorage.removeItem(RECENT_SEARCHES_KEY);
+    window.localStorage.removeItem('avc.library.media');
+    window.localStorage.removeItem('avc.library.groupBy');
     stubFacets();
+    stubPhotoRoots();
   });
 
   it('renders the honest empty-catalog state, not a generic no-results message', async () => {
-    stubSearch([]);
+    stubCollection([]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
 
@@ -115,8 +183,18 @@ describe('LibraryView', () => {
     expect(screen.queryByTestId('library-no-match')).toBeNull();
   });
 
+  it('mentions both videos and photos in the empty-catalog copy', async () => {
+    stubCollection([]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    const body = await screen.findByText(en.library.emptyCatalogBody);
+    expect(body.textContent?.toLowerCase()).toContain('video');
+    expect(body.textContent?.toLowerCase()).toContain('photo');
+  });
+
   it('routes the empty-catalog action to the Videos view', async () => {
-    stubSearch([]);
+    stubCollection([]);
     const onGoToVideos = vi.fn();
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={onGoToVideos} />);
@@ -127,10 +205,10 @@ describe('LibraryView', () => {
 
   it('renders tiles grouped by capture day with the file count header', async () => {
     const items = [
-      libraryItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' }),
-      libraryItem({ fingerprint: 'fp-2', capturedAt: '2026-01-02T08:00:00.000Z' }),
+      videoItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' }),
+      videoItem({ fingerprint: 'fp-2', capturedAt: '2026-01-02T08:00:00.000Z' }),
     ];
-    stubSearch(items);
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
 
@@ -140,7 +218,7 @@ describe('LibraryView', () => {
   });
 
   it('renders the capture-day section header in the UI language, never the raw ISO group key', async () => {
-    stubSearch([libraryItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' })]);
     server.use(http.get('/api/config', () => HttpResponse.json(configResponse('pl'))));
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
@@ -151,8 +229,8 @@ describe('LibraryView', () => {
   });
 
   it('opens the preview for an online tile, not the analysis workspace', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-open' })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-open' })];
+    stubCollection(items);
     const onPreview = vi.fn();
     const onOpenResult = vi.fn();
 
@@ -164,8 +242,8 @@ describe('LibraryView', () => {
   });
 
   it('opens the preview for an offline-folder tile instead of doing nothing', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-offline', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/Volumes/Ghost', displayName: 'offline', online: false, offlineReason: 'drive-disconnected' } })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-offline', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/Volumes/Ghost', displayName: 'offline', online: false, offlineReason: 'drive-disconnected' } })];
+    stubCollection(items);
     const onPreview = vi.fn();
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={onPreview} onGoToVideos={vi.fn()} />);
@@ -177,8 +255,8 @@ describe('LibraryView', () => {
   });
 
   it('shows the file-missing badge for a folder deleted on a still-mounted volume, not a drive-disconnected badge', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-deleted-folder', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' } })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-deleted-folder', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' } })];
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
@@ -187,14 +265,14 @@ describe('LibraryView', () => {
   });
 
   it('shows exactly one missing-file label when the folder is offline and the file is also flagged missing', async () => {
-    const items = [libraryItem({
+    const items = [videoItem({
       fingerprint: 'fp-offline-missing',
       thumbnailPath: null,
       gridThumbnailPath: null,
       missing: true,
       folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' },
     })];
-    stubSearch(items);
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
@@ -205,14 +283,14 @@ describe('LibraryView', () => {
 
   it('renders every unavailable tile at the same opacity as a plain offline-folder tile', async () => {
     const items = [
-      libraryItem({
+      videoItem({
         fingerprint: 'fp-offline-only',
         thumbnailPath: null,
         gridThumbnailPath: null,
         missing: false,
         folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' },
       }),
-      libraryItem({
+      videoItem({
         fingerprint: 'fp-offline-and-missing',
         thumbnailPath: null,
         gridThumbnailPath: null,
@@ -220,7 +298,7 @@ describe('LibraryView', () => {
         folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' },
       }),
     ];
-    stubSearch(items);
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -235,13 +313,13 @@ describe('LibraryView', () => {
   });
 
   it('keeps the per-file missing badge when the folder is online but the file alone is missing', async () => {
-    const items = [libraryItem({
+    const items = [videoItem({
       fingerprint: 'fp-online-missing',
       thumbnailPath: '/videos/.ai-video-cataloger/thumbnails/fp-online-missing.jpg',
       missing: true,
       folder: { folderId: '11111111-1111-4111-8111-111111111111', currentPath: '/videos', displayName: 'videos', online: true, offlineReason: null },
     })];
-    stubSearch(items);
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
@@ -250,8 +328,8 @@ describe('LibraryView', () => {
   });
 
   it('shows the portrait aspect-ratio indicator for a tile whose stored dimensions are taller than wide', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-portrait', width: 1080, height: 1920 })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-portrait', width: 1080, height: 1920 })];
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
@@ -260,8 +338,8 @@ describe('LibraryView', () => {
   });
 
   it('shows the panorama aspect-ratio indicator for an extreme-wide tile', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-panorama', width: 3000, height: 1000 })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-panorama', width: 3000, height: 1000 })];
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
@@ -270,8 +348,8 @@ describe('LibraryView', () => {
   });
 
   it('shows no aspect-ratio indicator for a plain landscape tile', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-landscape', width: 1920, height: 1080 })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-landscape', width: 1920, height: 1080 })];
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
@@ -280,8 +358,8 @@ describe('LibraryView', () => {
   });
 
   it('shows no aspect-ratio indicator when dimensions are unknown', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-unknown-dims', width: null, height: null })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-unknown-dims', width: null, height: null })];
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
@@ -291,18 +369,18 @@ describe('LibraryView', () => {
 
   it('tiles request the 512px grid thumbnail when it exists, small thumb only as fallback', async () => {
     const items = [
-      libraryItem({
+      videoItem({
         fingerprint: 'fp-grid',
         thumbnailPath: '/videos/.ai-video-cataloger/thumbnails/a.jpg',
         gridThumbnailPath: '/videos/.ai-video-cataloger/thumbnails/a.grid.jpg',
       }),
-      libraryItem({
+      videoItem({
         fingerprint: 'fp-small',
         thumbnailPath: '/videos/.ai-video-cataloger/thumbnails/b.jpg',
         gridThumbnailPath: null,
       }),
     ];
-    stubSearch(items);
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
 
@@ -320,8 +398,8 @@ describe('LibraryView', () => {
   });
 
   it('renders a square gradient placeholder tile with the file name when no thumbnail exists', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-none', thumbnailPath: null, gridThumbnailPath: null, fileName: 'clip.mp4' })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-none', thumbnailPath: null, gridThumbnailPath: null, fileName: 'clip.mp4' })];
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
 
@@ -335,8 +413,8 @@ describe('LibraryView', () => {
   });
 
   it('the tile menu opens the video in Analysis, with no folder-view item', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-menu' })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-menu' })];
+    stubCollection(items);
     const onOpenResult = vi.fn();
 
     renderThemed(<LibraryView active onOpenResult={onOpenResult} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
@@ -349,8 +427,8 @@ describe('LibraryView', () => {
   });
 
   it('shows an error toast when revealing a library tile fails, instead of doing nothing', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-reveal' })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-reveal' })];
+    stubCollection(items);
     const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(false);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
@@ -362,8 +440,8 @@ describe('LibraryView', () => {
   });
 
   it('confirms a successful copy-path and surfaces a rejected clipboard write instead of failing silently', async () => {
-    const items = [libraryItem({ fingerprint: 'fp-copy' })];
-    stubSearch(items);
+    const items = [videoItem({ fingerprint: 'fp-copy' })];
+    stubCollection(items);
     const writeText = vi.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValueOnce(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 
@@ -380,7 +458,7 @@ describe('LibraryView', () => {
   });
 
   it('surfaces a failed catalog read instead of claiming nothing has been processed', async () => {
-    server.use(http.get('/api/search', () => HttpResponse.json({ ok: false, error: { code: 'read_error', message: 'catalog is locked' } }, { status: 500 })));
+    server.use(http.get('/api/library/collection', () => HttpResponse.json({ ok: false, error: { code: 'read_error', message: 'catalog is locked' } }, { status: 500 })));
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
 
@@ -389,7 +467,7 @@ describe('LibraryView', () => {
   });
 
   it('never leaks an absolute filesystem path from a failed catalog read into the error strip', async () => {
-    server.use(http.get('/api/search', () => HttpResponse.json(
+    server.use(http.get('/api/library/collection', () => HttpResponse.json(
       { ok: false, error: { code: 'read_error', message: 'Command failed: /var/folders/s4/xw5m39vj0bvd7z1v0pcs5ssr0000gn/T/cmux-cli-shims/8DC7FBD3-E6C8-42C3-B012-BECEA9CC11AD/claude' } },
       { status: 500 },
     )));
@@ -401,7 +479,7 @@ describe('LibraryView', () => {
   });
 
   it('renders the no-match state, distinct from the empty-catalog state, once a query eliminates everything', async () => {
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -415,7 +493,7 @@ describe('LibraryView', () => {
   });
 
   it('names the active chip in the no-match copy', async () => {
-    stubSearch([libraryItem({ fingerprint: 'fp-1', gps: { lat: 1, lon: 2 } })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1', gps: { lat: 1, lon: 2 } })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -428,9 +506,9 @@ describe('LibraryView', () => {
   });
 
   it('a hasGps chip narrows the search request', async () => {
-    stubSearch([
-      libraryItem({ fingerprint: 'fp-gps', gps: { lat: 1, lon: 2 } }),
-      libraryItem({ fingerprint: 'fp-no-gps' }),
+    stubCollection([
+      videoItem({ fingerprint: 'fp-gps', gps: { lat: 1, lon: 2 } }),
+      videoItem({ fingerprint: 'fp-no-gps' }),
     ]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
@@ -445,13 +523,13 @@ describe('LibraryView', () => {
 
   it('picking a folder facet option filters results and shows a removable chip with the facet count', async () => {
     const items = [
-      libraryItem({ fingerprint: 'fp-1' }),
-      libraryItem({
+      videoItem({ fingerprint: 'fp-1' }),
+      videoItem({
         fingerprint: 'fp-target',
         folder: { folderId: '99999999-9999-4999-8999-999999999999', currentPath: '/other', displayName: 'Other Folder', online: true, offlineReason: null },
       }),
     ];
-    stubSearch(items);
+    stubCollection(items);
     stubFacets({
       folders: [
         { folderId: '11111111-1111-4111-8111-111111111111', displayName: 'videos', currentPath: '/videos', online: true, count: 1 },
@@ -476,7 +554,7 @@ describe('LibraryView', () => {
   });
 
   it('combines the folder facet with a text query in the same search request', async () => {
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
     stubFacets({
       folders: [{ folderId: '11111111-1111-4111-8111-111111111111', displayName: 'videos', currentPath: '/videos', online: true, count: 1 }],
     });
@@ -494,14 +572,14 @@ describe('LibraryView', () => {
     fireEvent.change(searchInput, { target: { value: 'fp-1' } });
 
     await waitFor(() => {
-      const latest = searchRequests[searchRequests.length - 1];
+      const latest = collectionRequests[collectionRequests.length - 1];
       expect(latest?.get('folderId')).toBe('11111111-1111-4111-8111-111111111111');
       expect(latest?.get('query')).toBe('fp-1');
     });
   });
 
   it('keeps the chosen sort while a text query is active instead of silently falling back to relevance', async () => {
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -511,7 +589,7 @@ describe('LibraryView', () => {
     fireEvent.change(screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input'), { target: { value: 'fp' } });
 
     await waitFor(() => {
-      const latest = searchRequests[searchRequests.length - 1];
+      const latest = collectionRequests[collectionRequests.length - 1];
       expect(latest?.get('query')).toBe('fp');
       expect(latest?.get('sort')).toBe('name_asc');
     });
@@ -519,7 +597,7 @@ describe('LibraryView', () => {
 
   it('offers facet options with their whole-catalog counts', async () => {
     stubFacets({ tags: [{ name: 'beach', count: 4 }, { name: 'sunset', count: 2 }] });
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -532,7 +610,7 @@ describe('LibraryView', () => {
 
   it('reads unnamed people by their People-surface number, never a raw person id', async () => {
     stubFacets({ people: [{ personId: 'person-abc123', displayName: null, count: 3, fallbackIndex: 6 }] });
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -545,7 +623,7 @@ describe('LibraryView', () => {
   });
 
   it('debounces the free-text place filter into a single search request', async () => {
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -556,16 +634,16 @@ describe('LibraryView', () => {
     fireEvent.change(target, { target: { value: 'Wr' } });
     fireEvent.change(target, { target: { value: 'Wro' } });
 
-    await waitFor(() => expect(searchRequests.filter((params) => params.get('place') !== null)).toHaveLength(1));
-    expect(searchRequests[searchRequests.length - 1]?.get('place')).toBe('Wro');
+    await waitFor(() => expect(collectionRequests.filter((params) => params.get('place') !== null)).toHaveLength(1));
+    expect(collectionRequests[collectionRequests.length - 1]?.get('place')).toBe('Wro');
   });
 
   it('toggles grouping by folder', async () => {
     const items = [
-      libraryItem({ fingerprint: 'fp-1', folder: { folderId: '11111111-1111-4111-8111-000000000001', currentPath: '/a', displayName: 'Alpha', online: true, offlineReason: null } }),
-      libraryItem({ fingerprint: 'fp-2', folder: { folderId: '22222222-2222-4222-8222-000000000002', currentPath: '/b', displayName: 'Beta', online: true, offlineReason: null } }),
+      videoItem({ fingerprint: 'fp-1', folder: { folderId: '11111111-1111-4111-8111-000000000001', currentPath: '/a', displayName: 'Alpha', online: true, offlineReason: null } }),
+      videoItem({ fingerprint: 'fp-2', folder: { folderId: '22222222-2222-4222-8222-000000000002', currentPath: '/b', displayName: 'Beta', online: true, offlineReason: null } }),
     ];
-    stubSearch(items);
+    stubCollection(items);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -581,7 +659,7 @@ describe('LibraryView', () => {
   it('shows recent searches and top tags when the empty search field is focused', async () => {
     window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
     stubTags([{ name: 'beach', count: 4 }]);
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -596,7 +674,7 @@ describe('LibraryView', () => {
   it('picking a suggestion sets the query and the grid request carries it', async () => {
     window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
     stubTags([]);
-    stubSearch([libraryItem({ fingerprint: 'fp-1', fileName: 'drone-clip.mp4' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1', fileName: 'drone-clip.mp4' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -606,7 +684,7 @@ describe('LibraryView', () => {
     fireEvent.click(await screen.findByText('drone'));
 
     await waitFor(() => {
-      const latest = searchRequests[searchRequests.length - 1];
+      const latest = collectionRequests[collectionRequests.length - 1];
       expect(latest?.get('query')).toBe('drone');
     });
   });
@@ -614,7 +692,7 @@ describe('LibraryView', () => {
   it('deleting a recent entry removes it from storage', async () => {
     window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
     stubTags([]);
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -629,7 +707,7 @@ describe('LibraryView', () => {
 
   it('records an Enter submit into recent searches', async () => {
     stubTags([]);
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
@@ -644,7 +722,7 @@ describe('LibraryView', () => {
   });
 
   it('a tag seed adds a removable tag chip', async () => {
-    stubSearch([libraryItem({ fingerprint: 'fp-1', tags: ['aerial'] })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1', tags: ['aerial'] })]);
 
     renderThemed(
       <LibraryView
@@ -661,7 +739,7 @@ describe('LibraryView', () => {
   });
 
   it('a person seed filters by that person and shows a removable chip built from the seed label', async () => {
-    stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
     renderThemed(
       <LibraryView
@@ -676,30 +754,33 @@ describe('LibraryView', () => {
 
     expect(await screen.findByText('Alex')).toBeDefined();
     await waitFor(() =>
-      expect(searchRequests[searchRequests.length - 1]?.get('people')).toBe('person-abc123'),
+      expect(collectionRequests[collectionRequests.length - 1]?.get('people')).toBe('person-abc123'),
     );
   });
 
   it('load more keeps the grid mounted and does not flash the no-match state while the next page is in flight', async () => {
-    const page1 = [libraryItem({ fingerprint: 'fp-1' })];
-    const page2 = [libraryItem({ fingerprint: 'fp-2' })];
+    const page1 = [videoItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' })];
+    const page2 = [videoItem({ fingerprint: 'fp-2', capturedAt: '2026-01-01T10:00:00.000Z' })];
     const total = 201;
     const release: { current: (() => void) | null } = { current: null };
     const page2Gate = new Promise<void>((resolve) => { release.current = resolve; });
 
     server.use(
-      http.get('/api/search', async ({ request }) => {
-        const offset = Number(new URL(request.url).searchParams.get('offset') ?? '0');
-        if (offset > 0) await page2Gate;
+      http.get('/api/library/collection', async ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('cursor');
+        if (cursor !== null) await page2Gate;
         return HttpResponse.json({
           ok: true,
           data: {
             query: null,
+            media: 'all',
             limit: 200,
-            offset,
-            count: offset === 0 ? page1.length : page2.length,
             total,
-            results: offset === 0 ? page1 : page2,
+            videoTotal: total,
+            photoTotal: 0,
+            count: cursor === null ? page1.length : page2.length,
+            items: cursor === null ? page1 : page2,
+            nextCursor: cursor === null ? '200' : null,
           },
         });
       }),
@@ -719,5 +800,286 @@ describe('LibraryView', () => {
     await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
     const fingerprints = screen.getAllByTestId('library-tile').map((tile) => tile.getAttribute('data-fingerprint'));
     expect(fingerprints).toEqual(['fp-1', 'fp-2']);
+  });
+
+  it('never carries a cursor from the previous result set into the request that a media change starts', async () => {
+    server.use(
+      http.get('/api/library/collection', ({ request }) => {
+        const url = new URL(request.url);
+        collectionRequests.push(url.searchParams);
+        const media = url.searchParams.get('media') ?? 'all';
+        const cursor = url.searchParams.get('cursor');
+        const items: LibraryItem[] = media === 'video'
+          ? [videoItem({ fingerprint: 'fp-v1' })]
+          : [cursor === null ? videoItem({ fingerprint: 'fp-v1' }) : photoItem({ fingerprint: 'ph_0000000000000001' })];
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            query: null,
+            media,
+            limit: 1,
+            total: media === 'video' ? 1 : 2,
+            videoTotal: 1,
+            photoTotal: media === 'video' ? 0 : 1,
+            count: items.length,
+            items,
+            nextCursor: media === 'all' && cursor === null ? 'page-2' : null,
+          },
+        });
+      }),
+    );
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    fireEvent.click(await screen.findByTestId('library-load-more'));
+    await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
+
+    fireEvent.click(screen.getByTestId('library-media-video'));
+
+    await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(1));
+    expect(collectionRequests.filter((params) => params.get('media') === 'video' && params.get('cursor') !== null)).toEqual([]);
+  });
+
+  it('does not duplicate an item that both the first and the next cursor page return, the #74 offset-merge bug class in the new cursor world', async () => {
+    const shared = videoItem({ fingerprint: 'fp-shared', capturedAt: '2026-01-02T09:00:00.000Z' });
+    const page1 = [videoItem({ fingerprint: 'fp-first', capturedAt: '2026-01-02T10:00:00.000Z' }), shared];
+    const page2 = [shared, videoItem({ fingerprint: 'fp-second', capturedAt: '2026-01-02T08:00:00.000Z' })];
+    const release: { current: (() => void) | null } = { current: null };
+    const page2Gate = new Promise<void>((resolve) => { release.current = resolve; });
+
+    server.use(
+      http.get('/api/library/collection', async ({ request }) => {
+        const cursor = new URL(request.url).searchParams.get('cursor');
+        if (cursor !== null) await page2Gate;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            query: null,
+            media: 'all',
+            limit: 2,
+            total: 3,
+            videoTotal: 3,
+            photoTotal: 0,
+            count: cursor === null ? page1.length : page2.length,
+            items: cursor === null ? page1 : page2,
+            nextCursor: cursor === null ? 'next' : null,
+          },
+        });
+      }),
+    );
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    fireEvent.click(await screen.findByTestId('library-load-more'));
+    release.current?.();
+
+    await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(3));
+    const fingerprints = screen.getAllByTestId('library-tile').map((tile) => tile.getAttribute('data-fingerprint'));
+    expect(new Set(fingerprints).size).toBe(3);
+  });
+
+  describe('mixed media (Kolekcja)', () => {
+    it('renders a photo tile alongside video tiles in one shared date-grouped timeline', async () => {
+      const items = [
+        videoItem({ fingerprint: 'fp-v1', capturedAt: '2026-05-01T09:00:00.000Z' }),
+        photoItem({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-05-01T15:00:00.000Z' }),
+      ];
+      stubCollection(items);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+
+      const tiles = await screen.findAllByTestId('library-tile');
+      expect(tiles).toHaveLength(2);
+      expect(screen.getAllByTestId('library-section-header')).toHaveLength(1);
+      const media = tiles.map((tile) => tile.getAttribute('data-media')).sort();
+      expect(media).toEqual(['photo', 'video']);
+    });
+
+    it('shows Wszystko/Filmy/Zdjęcia media chips with server-reported totals', async () => {
+      stubCollection([
+        videoItem({ fingerprint: 'fp-v1' }),
+        photoItem({ fingerprint: 'ph_0000000000000001' }),
+        photoItem({ fingerprint: 'ph_0000000000000002' }),
+      ]);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+
+      expect(screen.getByTestId('library-media-all').textContent).toContain('3');
+      expect(screen.getByTestId('library-media-video').textContent).toContain('1');
+      expect(screen.getByTestId('library-media-photo').textContent).toContain('2');
+    });
+
+    it('clicking the Photos media chip narrows the request to photos only', async () => {
+      stubCollection([videoItem({ fingerprint: 'fp-v1' }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+
+      fireEvent.click(screen.getByTestId('library-media-photo'));
+
+      await waitFor(() => {
+        const tiles = screen.getAllByTestId('library-tile');
+        expect(tiles).toHaveLength(1);
+        expect(tiles[0]?.getAttribute('data-media')).toBe('photo');
+      });
+      expect(collectionRequests[collectionRequests.length - 1]?.get('media')).toBe('photo');
+    });
+
+    it('shows an inline notice and hides photos when a video-only filter is active with media set to all', async () => {
+      stubCollection([videoItem({ fingerprint: 'fp-v1', gps: { lat: 1, lon: 2 } }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+      expect(screen.queryByTestId('library-video-only-filter-notice')).toBeNull();
+
+      const gpsSelect = screen.getByTestId('library-filter-has-gps').querySelector('input');
+      fireEvent.change(gpsSelect ?? screen.getByTestId('library-filter-has-gps'), { target: { value: 'with' } });
+
+      await waitFor(() => expect(screen.getByTestId('library-video-only-filter-notice')).toBeDefined());
+      await waitFor(() => {
+        const tiles = screen.getAllByTestId('library-tile');
+        expect(tiles.every((tile) => tile.getAttribute('data-media') === 'video')).toBe(true);
+      });
+    });
+
+    it('disables folder grouping once photos are mixed into the Kolekcja results', async () => {
+      stubCollection([videoItem({ fingerprint: 'fp-v1' }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+
+      expect(screen.getByTestId('library-group-by-folder')).toHaveProperty('disabled', true);
+    });
+
+    it('hides the relevance sort option while media is set to all, even with an active query', async () => {
+      stubCollection([videoItem({ fingerprint: 'fp-v1', fileName: 'drone-1.mp4' }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+
+      fireEvent.change(screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input'), { target: { value: 'drone' } });
+      await waitFor(() => expect(collectionRequests[collectionRequests.length - 1]?.get('query')).toBe('drone'));
+
+      const sortDisplay = screen.getByTestId('library-sort').querySelector('[role="combobox"]');
+      if (sortDisplay === null) throw new Error('missing sort combobox');
+      fireEvent.mouseDown(sortDisplay);
+
+      expect(screen.queryByRole('option', { name: en.library.sortRelevance })).toBeNull();
+    });
+
+    it('offers the relevance sort option once media is narrowed to a single medium with a query', async () => {
+      stubCollection([videoItem({ fingerprint: 'fp-v1', fileName: 'drone-1.mp4' })]);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+
+      fireEvent.click(screen.getByTestId('library-media-video'));
+      fireEvent.change(screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input'), { target: { value: 'drone' } });
+      await waitFor(() => expect(collectionRequests[collectionRequests.length - 1]?.get('query')).toBe('drone'));
+
+      const sortDisplay = screen.getByTestId('library-sort').querySelector('[role="combobox"]');
+      if (sortDisplay === null) throw new Error('missing sort combobox');
+      fireEvent.mouseDown(sortDisplay);
+
+      expect(screen.getByRole('option', { name: en.library.sortRelevance })).toBeDefined();
+    });
+
+    it('opens the photo viewer, not the video preview, for a photo tile', async () => {
+      stubCollection([photoItem({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-01-02T10:00:00.000Z' })]);
+      const onPreview = vi.fn();
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={onPreview} onGoToVideos={vi.fn()} />);
+      fireEvent.click(await screen.findByTestId('library-tile'));
+
+      expect(await screen.findByTestId('photos-viewer')).toBeDefined();
+      expect(onPreview).not.toHaveBeenCalled();
+    });
+
+    it('the tile menu opens a photo in Analysis by resolving its owning photo root', async () => {
+      stubPhotoRoots([{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }]);
+      stubCollection([photoItem({ fingerprint: 'ph_0000000000000001', currentPath: '/photos/2024/a.jpg' })]);
+      const onOpenPhotoInAnalysis = vi.fn();
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onOpenPhotoInAnalysis={onOpenPhotoInAnalysis} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      fireEvent.contextMenu(await screen.findByTestId('library-tile'));
+      fireEvent.click(await screen.findByTestId('library-tile-menu-open-analysis'));
+
+      expect(onOpenPhotoInAnalysis).toHaveBeenCalledWith('/photos', 'ph_0000000000000001');
+    });
+
+    it('keeps the loaded tiles on screen while a media-chip change is still in flight, instead of blanking the grid', async () => {
+      const release: { current: (() => void) | null } = { current: null };
+      const videoGate = new Promise<void>((resolve) => { release.current = resolve; });
+
+      server.use(
+        http.get('/api/library/collection', async ({ request }) => {
+          const media = new URL(request.url).searchParams.get('media') ?? 'all';
+          if (media === 'video') await videoGate;
+          const items: LibraryItem[] = media === 'video'
+            ? [videoItem({ fingerprint: 'fp-v1' })]
+            : [videoItem({ fingerprint: 'fp-v1' }), photoItem({ fingerprint: 'ph_0000000000000001' })];
+          return HttpResponse.json({
+            ok: true,
+            data: {
+              query: null,
+              media,
+              limit: 200,
+              total: items.length,
+              videoTotal: 1,
+              photoTotal: media === 'video' ? 0 : 1,
+              count: items.length,
+              items,
+              nextCursor: null,
+            },
+          });
+        }),
+      );
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
+
+      fireEvent.click(screen.getByTestId('library-media-video'));
+
+      expect(screen.queryAllByTestId('library-tile')).toHaveLength(2);
+      expect(screen.queryByTestId('library-no-match')).toBeNull();
+
+      release.current?.();
+      await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(1));
+    });
+
+    it('drops the count from a media chip whose medium the narrowed request never counted', async () => {
+      stubCollection([
+        videoItem({ fingerprint: 'fp-v1' }),
+        photoItem({ fingerprint: 'ph_0000000000000001' }),
+        photoItem({ fingerprint: 'ph_0000000000000002' }),
+      ]);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+
+      fireEvent.click(screen.getByTestId('library-media-photo'));
+
+      await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
+      expect(screen.getByTestId('library-media-photo').textContent).toContain('2');
+      expect(screen.getByTestId('library-media-video').textContent).toBe(en.library.mediaVideo);
+      expect(screen.getByTestId('library-media-all').textContent).toBe(en.library.mediaAll);
+    });
+
+    it('drops the photo count while a video-only filter hides photos from an all-media request', async () => {
+      stubCollection([videoItem({ fingerprint: 'fp-v1', gps: { lat: 1, lon: 2 } }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+      expect(screen.getByTestId('library-media-photo').textContent).toContain('1');
+
+      const gpsSelect = screen.getByTestId('library-filter-has-gps').querySelector('input');
+      fireEvent.change(gpsSelect ?? screen.getByTestId('library-filter-has-gps'), { target: { value: 'with' } });
+
+      await waitFor(() => expect(screen.getByTestId('library-video-only-filter-notice')).toBeDefined());
+      await waitFor(() => expect(screen.getByTestId('library-media-photo').textContent).toBe(en.library.mediaPhoto));
+      expect(screen.getByTestId('library-media-all').textContent).toBe(en.library.mediaAll);
+      expect(screen.getByTestId('library-media-video').textContent).toContain('1');
+    });
   });
 });

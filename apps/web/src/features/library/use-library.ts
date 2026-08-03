@@ -4,11 +4,11 @@ import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { ApiError } from '@core/client/index.js';
 
 import { actions } from '../../api.js';
-import type { LibraryItem } from './core/index.js';
+import type { LibraryItem, LibraryMedia } from './core/index.js';
 import { toSearchParams, type LibraryFilterState, type LibrarySearchParams } from './core/filter-state.js';
 import type { LibrarySort } from './core/folder-groups.js';
 
-const PAGE_SIZE = 200;
+const PAGE_LIMIT = 200;
 const SEARCH_DEBOUNCE_MS = 220;
 
 export interface LibraryState {
@@ -18,6 +18,8 @@ export interface LibraryState {
   debouncedQuery: string;
   items: LibraryItem[];
   total: number;
+  videoTotal: number;
+  photoTotal: number;
   isLoading: boolean;
   isLoadingMore: boolean;
   isError: boolean;
@@ -34,31 +36,41 @@ const messageOf = (error: unknown): string => {
 
 const searchParamsKey = (params: LibrarySearchParams): string => JSON.stringify(params);
 
+const dedupeByFingerprint = (items: readonly LibraryItem[]): LibraryItem[] => {
+  const seen = new Set<string>();
+  const deduped: LibraryItem[] = [];
+  for (const item of items) {
+    if (seen.has(item.fingerprint)) continue;
+    seen.add(item.fingerprint);
+    deduped.push(item);
+  }
+  return deduped;
+};
+
 export const useLibrary = (input: {
   active: boolean;
   filters: LibraryFilterState;
   sort: LibrarySort;
+  media: LibraryMedia;
 }): LibraryState => {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [items, setItems] = useState<LibraryItem[]>([]);
-  const [offset, setOffset] = useState(0);
+  const [pagination, setPagination] = useState<{ requestKey: string; cursor: string } | null>(null);
   const searchParams = toSearchParams(input.filters);
   const filtersKey = searchParamsKey(searchParams);
+  const requestKey = `${filtersKey}|${input.sort}|${input.media}|${debouncedQuery}`;
+  const cursor = pagination !== null && pagination.requestKey === requestKey ? pagination.cursor : null;
 
   useEffect(() => {
     const handle = window.setTimeout(() => setDebouncedQuery(query.trim()), SEARCH_DEBOUNCE_MS);
     return () => window.clearTimeout(handle);
   }, [query]);
 
-  useEffect(() => {
-    setOffset(0);
-  }, [debouncedQuery, filtersKey, input.sort]);
-
   const effectiveSort: LibrarySort = input.sort === 'relevance' && debouncedQuery.length === 0 ? 'captured_desc' : input.sort;
 
   const page = useQuery({
-    ...actions.search({
+    ...actions.libraryCollection({
       ...(debouncedQuery.length > 0 ? { query: debouncedQuery } : {}),
       tags: searchParams.tags,
       people: searchParams.people,
@@ -68,28 +80,32 @@ export const useLibrary = (input: {
       ...(searchParams.hasGps === null ? {} : { hasGps: searchParams.hasGps }),
       ...(searchParams.folderId === null ? {} : { folderId: searchParams.folderId }),
       sort: effectiveSort,
-      thumbnails: 'existing',
-      limit: PAGE_SIZE,
-      offset,
+      media: input.media,
+      limit: PAGE_LIMIT,
+      ...(cursor === null ? {} : { cursor }),
     }),
     enabled: input.active,
     placeholderData: keepPreviousData,
   });
 
-  const mergedOffsetRef = useRef(-1);
+  const mergedCursorRef = useRef<string | null>(null);
   useEffect(() => {
     if (page.data === undefined || page.isPlaceholderData) return;
-    if (offset === 0) {
-      setItems(page.data.results);
-      mergedOffsetRef.current = 0;
+    if (cursor === null) {
+      setItems(dedupeByFingerprint(page.data.items));
+      mergedCursorRef.current = null;
       return;
     }
-    if (mergedOffsetRef.current === offset) return;
-    setItems((current) => [...current, ...page.data.results]);
-    mergedOffsetRef.current = offset;
-  }, [page.data, page.isPlaceholderData, offset]);
+    if (mergedCursorRef.current === cursor) return;
+    setItems((current) => dedupeByFingerprint([...current, ...page.data.items]));
+    mergedCursorRef.current = cursor;
+  }, [page.data, page.isPlaceholderData, cursor]);
 
-  const loadMore = useCallback(() => setOffset((current) => current + PAGE_SIZE), []);
+  const loadMore = useCallback(() => {
+    const nextCursor = page.data?.nextCursor ?? null;
+    if (nextCursor === null) return;
+    setPagination({ requestKey, cursor: nextCursor });
+  }, [page.data?.nextCursor, requestKey]);
 
   return {
     query,
@@ -98,11 +114,13 @@ export const useLibrary = (input: {
     debouncedQuery,
     items,
     total: page.data?.total ?? 0,
-    isLoading: input.active && offset === 0 && page.isLoading,
-    isLoadingMore: offset > 0 && page.isFetching,
+    videoTotal: page.data?.videoTotal ?? 0,
+    photoTotal: page.data?.photoTotal ?? 0,
+    isLoading: input.active && cursor === null && page.isLoading,
+    isLoadingMore: cursor !== null && page.isFetching,
     isError: page.isError,
     error: page.isError ? messageOf(page.error) : null,
-    hasMore: items.length < (page.data?.total ?? 0),
+    hasMore: (page.data?.nextCursor ?? null) !== null,
     loadMore,
   };
 };

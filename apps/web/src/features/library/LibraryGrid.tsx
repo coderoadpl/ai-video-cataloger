@@ -120,14 +120,31 @@ interface LibraryTileProps {
 
 const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
   const dictionary = useDictionary();
-  const imagePath = item.gridThumbnailPath ?? item.thumbnailPath;
-  const name = item.finalName ?? item.fileName;
-  const imageFit = item.gridThumbnailPath === null ? 'contain' : 'cover';
+  const isVideo = item.media === 'video';
+  const imagePath = isVideo ? (item.gridThumbnailPath ?? item.thumbnailPath) : (item.gridThumbPath ?? item.thumbPath);
+  const gridPath = isVideo ? item.gridThumbnailPath : item.gridThumbPath;
+  const name = isVideo ? (item.finalName ?? item.fileName) : item.fileName;
+  const imageFit = gridPath === null ? 'contain' : 'cover';
+  const isOfflineFolder = isVideo && !item.folder.online;
+  const offlineReason = isVideo ? item.folder.offlineReason : null;
+  const isFileMissing = isVideo ? item.missing : item.missingAt !== null;
+  const width = isVideo ? item.width : null;
+  const height = isVideo ? item.height : null;
+  const showOfflineBadge = imagePath !== null && isOfflineFolder;
+  const showMissingBadge = imagePath !== null && isFileMissing && !isOfflineFolder;
+  const placeholderCaption = imagePath !== null
+    ? undefined
+    : isOfflineFolder
+      ? offlineLabel(dictionary, offlineReason)
+      : isFileMissing
+        ? dictionary.library.missingBadge
+        : undefined;
 
   return (
     <Box
       data-testid="library-tile"
       data-fingerprint={item.fingerprint}
+      data-media={item.media}
       onClick={onOpen}
       onContextMenu={onContextMenu}
       sx={{
@@ -154,20 +171,20 @@ const LibraryTile = ({ item, onOpen, onContextMenu }: LibraryTileProps) => {
         <PlaceholderTile
           testId="library-tile-placeholder"
           name={name}
-          caption={item.folder.online ? undefined : offlineLabel(dictionary, item.folder.offlineReason)}
+          caption={placeholderCaption}
           captionTestId="library-offline-badge"
         />
       )}
-      {item.folder.online || imagePath === null ? null : (
+      {showOfflineBadge ? (
         <Box
           data-testid="library-offline-badge"
           sx={{ position: 'absolute', top: 4, right: 4, bgcolor: 'background.paper', px: 0.5, borderRadius: 1 }}
         >
-          <Typography variant="caption">{offlineLabel(dictionary, item.folder.offlineReason)}</Typography>
+          <Typography variant="caption">{offlineLabel(dictionary, offlineReason)}</Typography>
         </Box>
-      )}
-      <AspectRatioIndicator width={item.width} height={item.height} testId="library-aspect-indicator" />
-      {item.missing && item.folder.online ? (
+      ) : null}
+      <AspectRatioIndicator width={width} height={height} testId="library-aspect-indicator" />
+      {showMissingBadge ? (
         <Box
           data-testid="library-missing-badge"
           sx={{ position: 'absolute', bottom: 4, left: 4, bgcolor: 'background.paper', px: 0.5, borderRadius: 1 }}

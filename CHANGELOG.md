@@ -14,6 +14,21 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- Biblioteka → Kolekcja now surfaces analyzed photos alongside videos: it
+  reads `GET /api/library/collection` with cursor-based pagination instead of
+  video-only `GET /api/search`, groups every item into one shared
+  capture-day timeline, and adds Wszystko/Filmy/Zdjęcia media chips carrying
+  the per-medium totals the current request actually counted (W55). When a
+  video-only filter (people, place, GPS, folder) is active while the media
+  filter is "Wszystko", photos
+  are hidden server-side and an inline notice names the active filter;
+  folder grouping and relevance sort are disabled with a tooltip whenever
+  photos are mixed into the results or the media filter isn't a single
+  medium. Photo tiles open a dedicated photo viewer and route "Otwórz w
+  analizie" to the photo's owning scanned root.
+
 ### Changed
 
 - Photo analysis scope split into two independent actions: the photo detail

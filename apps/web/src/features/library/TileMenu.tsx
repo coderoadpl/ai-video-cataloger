@@ -28,6 +28,8 @@ export const useTileMenu = (): TileMenuController => {
   return { anchor, open, close };
 };
 
+const pathOf = (item: LibraryItem): string => item.media === 'video' ? `${item.folder.currentPath}/${item.fileName}` : item.currentPath;
+
 interface TileMenuProps {
   controller: TileMenuController;
   onOpenInAnalysis: (item: LibraryItem) => void;
@@ -63,7 +65,7 @@ export const TileMenu = ({ controller, onOpenInAnalysis }: TileMenuProps) => {
         <MenuItem
           data-testid="library-tile-menu-reveal"
           onClick={() => {
-            const target = item === null ? null : `${item.folder.currentPath}/${item.fileName}`;
+            const target = item === null ? null : pathOf(item);
             close();
             if (target === null) return;
             void (async () => {
@@ -77,7 +79,7 @@ export const TileMenu = ({ controller, onOpenInAnalysis }: TileMenuProps) => {
         <MenuItem
           data-testid="library-tile-menu-copy-path"
           onClick={() => {
-            const target = item === null ? null : `${item.folder.currentPath}/${item.fileName}`;
+            const target = item === null ? null : pathOf(item);
             close();
             if (target === null) return;
             void (async () => {

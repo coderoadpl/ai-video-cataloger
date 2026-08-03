@@ -837,6 +837,12 @@ export interface Dictionary {
     sortCapturedAsc: string;
     sortNameAsc: string;
     sortRelevance: string;
+    sortRelevanceUnavailableTooltip: string;
+    groupByFolderUnavailableTooltip: string;
+    mediaAll: string;
+    mediaVideo: string;
+    mediaPhoto: string;
+    videoOnlyFilterNotice: (parts: string) => string;
   };
   preview: {
     offline: string;
@@ -1717,7 +1723,7 @@ export const en: Dictionary = {
     loadMore: 'Load more',
     unknownDate: 'No date',
     emptyCatalogTitle: 'Nothing processed yet',
-    emptyCatalogBody: 'Process a folder in Videos to start building your library.',
+    emptyCatalogBody: 'Process a folder of videos or photos to start building your library.',
     emptyCatalogAction: 'Go to Videos',
     noMatchTitle: (query) => query.length === 0 ? 'No results' : `No results for "${query}"`,
     noMatchBody: 'Try a different search or clear the filters.',
@@ -1755,6 +1761,12 @@ export const en: Dictionary = {
     sortCapturedAsc: 'Oldest first',
     sortNameAsc: 'Name',
     sortRelevance: 'Relevance',
+    sortRelevanceUnavailableTooltip: 'Relevance sort needs a single media type — choose Videos or Photos.',
+    groupByFolderUnavailableTooltip: 'Folder grouping is only available for Videos.',
+    mediaAll: 'All',
+    mediaVideo: 'Videos',
+    mediaPhoto: 'Photos',
+    videoOnlyFilterNotice: (parts) => `${parts} only applies to videos — photos are hidden while it is active.`,
   },
   preview: {
     offline: 'This file is on a drive that is not connected.',
@@ -2646,7 +2658,7 @@ export const pl: Dictionary = {
     loadMore: 'Wczytaj więcej',
     unknownDate: 'Brak daty',
     emptyCatalogTitle: 'Jeszcze nic nie przetworzono',
-    emptyCatalogBody: 'Przetwórz folder w zakładce Filmy, aby zacząć budować bibliotekę.',
+    emptyCatalogBody: 'Przetwórz folder z filmami lub zdjęciami, aby zacząć budować bibliotekę.',
     emptyCatalogAction: 'Przejdź do Filmów',
     noMatchTitle: (query) => query.length === 0 ? 'Brak wyników' : `Brak wyników dla „${query}”`,
     noMatchBody: 'Spróbuj innego wyszukiwania lub wyczyść filtry.',
@@ -2684,6 +2696,12 @@ export const pl: Dictionary = {
     sortCapturedAsc: 'Od najstarszych',
     sortNameAsc: 'Nazwa',
     sortRelevance: 'Trafność',
+    sortRelevanceUnavailableTooltip: 'Sortowanie po trafności wymaga jednego typu mediów — wybierz Filmy lub Zdjęcia.',
+    groupByFolderUnavailableTooltip: 'Grupowanie po folderze jest dostępne tylko dla filmów.',
+    mediaAll: 'Wszystko',
+    mediaVideo: 'Filmy',
+    mediaPhoto: 'Zdjęcia',
+    videoOnlyFilterNotice: (parts) => `${parts} dotyczy tylko filmów — zdjęcia są ukryte, dopóki jest aktywny.`,
   },
   preview: {
     offline: 'Ten plik znajduje się na dysku, który nie jest podłączony.',

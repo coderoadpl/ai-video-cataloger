@@ -4,6 +4,7 @@ import type { LibraryDaySection, LibraryItem } from './day-groups.js';
 import { buildRows, columnsForWidth, visibleRowRange, type LibraryGridRow } from './grid-rows.js';
 
 const stubItem = (fingerprint: string): LibraryItem => ({
+  media: 'video',
   fingerprint,
   variantCount: 1,
   fileName: `${fingerprint}.mp4`,

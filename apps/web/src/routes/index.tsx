@@ -19,7 +19,7 @@ import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
-import { LibraryView, type LibraryItem, type LibrarySeed } from '../features/library/LibraryView.js';
+import { LibraryView, type LibrarySeed, type LibraryVideoItem } from '../features/library/LibraryView.js';
 import { useCatalogIndex } from '../features/library/use-catalog-index.js';
 import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations, type CatalogLocation } from '../features/map/use-catalog-locations.js';
@@ -189,7 +189,7 @@ export const IndexRoute = () => {
     previousFolderAcceptedTokenRef.current = folderAcceptedToken;
     if (mode === 'library') setMode('analysis');
   }, [folderAcceptedToken, mode, setMode]);
-  const onPreview = useCallback((item: LibraryItem) => setPreview(previewFromSearchResult(item)), []);
+  const onPreview = useCallback((item: LibraryVideoItem) => setPreview(previewFromSearchResult(item)), []);
   const onOpenMapPreview = useCallback((location: CatalogLocation) => {
     const media = previewFromLocation(location);
     if (media !== null) setPreview(media);
@@ -290,6 +290,7 @@ export const IndexRoute = () => {
         <LibraryView
           active={mode === 'library' && librarySurface === 'collection'}
           onOpenResult={openInAnalysis}
+          onOpenPhotoInAnalysis={openPhotoInAnalysis}
           onPreview={onPreview}
           onGoToVideos={() => {
             setMode('analysis');

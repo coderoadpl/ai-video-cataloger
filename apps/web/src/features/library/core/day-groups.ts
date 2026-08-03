@@ -1,8 +1,10 @@
 import type { z } from 'zod';
 
-import type { searchResultSchema } from '@core/contract/index.js';
+import type { collectionItemSchema, collectionPhotoItemSchema, collectionVideoItemSchema } from '@core/contract/index.js';
 
-export type LibraryItem = z.output<typeof searchResultSchema>;
+export type LibraryItem = z.output<typeof collectionItemSchema>;
+export type LibraryVideoItem = z.output<typeof collectionVideoItemSchema>;
+export type LibraryPhotoItem = z.output<typeof collectionPhotoItemSchema>;
 
 export interface LibraryDaySection {
   day: string | null;

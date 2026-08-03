@@ -9,6 +9,7 @@ import {
   TextField,
   ToggleButton,
   ToggleButtonGroup,
+  Tooltip,
 } from '@mui/material';
 
 import type { LibraryFacetsOutput } from '@core/client/index.js';
@@ -16,8 +17,15 @@ import type { LibraryFacetsOutput } from '@core/client/index.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { libraryFilterChips, libraryFilterIsEmpty, type LibraryFilterAction, type LibraryFilterChipLabels, type LibraryFilterState } from './core/filter-state.js';
 import { isLibrarySort, type LibrarySort } from './core/folder-groups.js';
+import type { LibraryMedia } from './core/media.js';
 
 export type LibraryGroupBy = 'date' | 'folder';
+
+export interface LibraryMediaTotals {
+  all: number | null;
+  video: number | null;
+  photo: number | null;
+}
 
 const PLACE_DEBOUNCE_MS = 250;
 
@@ -28,12 +36,18 @@ interface FilterBarProps {
   chipLabels: LibraryFilterChipLabels;
   groupBy: LibraryGroupBy;
   onGroupByChange: (value: LibraryGroupBy) => void;
+  canGroupByFolder: boolean;
   sort: LibrarySort;
   onSortChange: (value: LibrarySort) => void;
   hasQuery: boolean;
+  media: LibraryMedia;
+  onMediaChange: (value: LibraryMedia) => void;
+  mediaTotals: LibraryMediaTotals;
 }
 
 const withCount = (label: string, count: number): string => `${label} (${String(count)})`;
+
+const withMeasuredCount = (label: string, count: number | null): string => count === null ? label : withCount(label, count);
 
 export const FilterBar = ({
   state,
@@ -42,9 +56,13 @@ export const FilterBar = ({
   chipLabels,
   groupBy,
   onGroupByChange,
+  canGroupByFolder,
   sort,
   onSortChange,
   hasQuery,
+  media,
+  onMediaChange,
+  mediaTotals,
 }: FilterBarProps) => {
   const dictionary = useDictionary();
   const [placeInput, setPlaceInput] = useState(state.place ?? '');
@@ -233,27 +251,46 @@ export const FilterBar = ({
         <ToggleButtonGroup
           size="small"
           exclusive
+          value={media}
+          onChange={(_event, next: LibraryMedia | null) => { if (next !== null) onMediaChange(next); }}
+          data-testid="library-media-filter"
+        >
+          <ToggleButton value="all" data-testid="library-media-all">{withMeasuredCount(dictionary.library.mediaAll, mediaTotals.all)}</ToggleButton>
+          <ToggleButton value="video" data-testid="library-media-video">{withMeasuredCount(dictionary.library.mediaVideo, mediaTotals.video)}</ToggleButton>
+          <ToggleButton value="photo" data-testid="library-media-photo">{withMeasuredCount(dictionary.library.mediaPhoto, mediaTotals.photo)}</ToggleButton>
+        </ToggleButtonGroup>
+        <ToggleButtonGroup
+          size="small"
+          exclusive
           value={groupBy}
           onChange={(_event, next: LibraryGroupBy | null) => { if (next !== null) onGroupByChange(next); }}
           data-testid="library-group-by"
         >
           <ToggleButton value="date" data-testid="library-group-by-date">{dictionary.library.groupByDate}</ToggleButton>
-          <ToggleButton value="folder" data-testid="library-group-by-folder">{dictionary.library.groupByFolder}</ToggleButton>
+          <Tooltip title={canGroupByFolder ? '' : dictionary.library.groupByFolderUnavailableTooltip}>
+            <span>
+              <ToggleButton value="folder" data-testid="library-group-by-folder" disabled={!canGroupByFolder}>
+                {dictionary.library.groupByFolder}
+              </ToggleButton>
+            </span>
+          </Tooltip>
         </ToggleButtonGroup>
-        <TextField
-          size="small"
-          select
-          label={dictionary.library.sortLabel}
-          value={sort}
-          onChange={(event) => { if (isLibrarySort(event.target.value)) onSortChange(event.target.value); }}
-          data-testid="library-sort"
-          sx={{ minWidth: 150 }}
-        >
-          <MenuItem value="captured_desc">{dictionary.library.sortCapturedDesc}</MenuItem>
-          <MenuItem value="captured_asc">{dictionary.library.sortCapturedAsc}</MenuItem>
-          <MenuItem value="name_asc">{dictionary.library.sortNameAsc}</MenuItem>
-          {hasQuery ? <MenuItem value="relevance">{dictionary.library.sortRelevance}</MenuItem> : null}
-        </TextField>
+        <Tooltip title={hasQuery && media === 'all' ? dictionary.library.sortRelevanceUnavailableTooltip : ''}>
+          <TextField
+            size="small"
+            select
+            label={dictionary.library.sortLabel}
+            value={sort}
+            onChange={(event) => { if (isLibrarySort(event.target.value)) onSortChange(event.target.value); }}
+            data-testid="library-sort"
+            sx={{ minWidth: 150 }}
+          >
+            <MenuItem value="captured_desc">{dictionary.library.sortCapturedDesc}</MenuItem>
+            <MenuItem value="captured_asc">{dictionary.library.sortCapturedAsc}</MenuItem>
+            <MenuItem value="name_asc">{dictionary.library.sortNameAsc}</MenuItem>
+            {hasQuery && media !== 'all' ? <MenuItem value="relevance">{dictionary.library.sortRelevance}</MenuItem> : null}
+          </TextField>
+        </Tooltip>
       </Stack>
     </Stack>
   );

@@ -1,9 +1,10 @@
 import { describe, expect, it } from 'vitest';
 
-import type { LibraryItem } from './day-groups.js';
+import type { LibraryItem, LibraryPhotoItem, LibraryVideoItem } from './day-groups.js';
 import { groupByFolder, sortItems } from './folder-groups.js';
 
-const item = (fingerprint: string, overrides: Partial<LibraryItem> = {}): LibraryItem => ({
+const item = (fingerprint: string, overrides: Partial<LibraryVideoItem> = {}): LibraryVideoItem => ({
+  media: 'video',
   fingerprint,
   variantCount: 1,
   fileName: `${fingerprint}.mp4`,
@@ -26,6 +27,24 @@ const item = (fingerprint: string, overrides: Partial<LibraryItem> = {}): Librar
   place: null,
   width: null,
   height: null,
+  ...overrides,
+});
+
+const photo = (fingerprint: string, overrides: Partial<LibraryPhotoItem> = {}): LibraryPhotoItem => ({
+  media: 'photo',
+  fingerprint,
+  fileName: `${fingerprint}.jpg`,
+  currentPath: `/photos/${fingerprint}.jpg`,
+  ext: 'jpg',
+  capturedAt: null,
+  description: null,
+  snippet: '',
+  tags: [],
+  variantCount: 0,
+  missingAt: null,
+  thumbPath: null,
+  gridThumbPath: null,
+  proxyPath: null,
   ...overrides,
 });
 
@@ -79,5 +98,13 @@ describe('sortItems', () => {
   it('keeps insertion order for relevance (already scored upstream)', () => {
     const items = [item('b'), item('a')];
     expect(sortItems(items, 'relevance').map((entry) => entry.fingerprint)).toEqual(['b', 'a']);
+  });
+
+  it('sorts a mixed video/photo array by display name using each item media-specific label', () => {
+    const items: LibraryItem[] = [
+      photo('p-zebra', { fileName: 'zebra.jpg' }),
+      item('v-apple', { finalName: 'apple.mp4' }),
+    ];
+    expect(sortItems(items, 'name_asc').map((entry) => entry.fingerprint)).toEqual(['v-apple', 'p-zebra']);
   });
 });

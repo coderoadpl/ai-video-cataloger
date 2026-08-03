@@ -126,6 +126,10 @@ export const libraryFilterChips = (state: LibraryFilterState, labels: LibraryFil
   return chips;
 };
 
+export const videoOnlyFilterChips = (state: LibraryFilterState, labels: LibraryFilterChipLabels): LibraryFilterChip[] =>
+  libraryFilterChips(state, labels).filter((chip) =>
+    chip.id.startsWith('person:') || chip.id === 'place' || chip.id === 'hasGps' || chip.id.startsWith('folder:'));
+
 export const libraryFilterIsEmpty = (state: LibraryFilterState): boolean =>
   state.tags.length === 0
   && state.personIds.length === 0

@@ -1,4 +1,11 @@
-export { groupByCaptureDay, type LibraryDaySection, type LibraryItem } from './day-groups.js';
+export {
+  groupByCaptureDay,
+  type LibraryDaySection,
+  type LibraryItem,
+  type LibraryPhotoItem,
+  type LibraryVideoItem,
+} from './day-groups.js';
+export { isLibraryMedia, type LibraryMedia } from './media.js';
 export {
   buildRows,
   columnsForWidth,
@@ -22,9 +29,12 @@ export {
   libraryFilterReducer,
   noMatchSentence,
   toSearchParams,
+  videoOnlyFilterChips,
   type LibraryFilterAction,
   type LibraryFilterChip,
   type LibraryFilterChipLabels,
   type LibraryFilterState,
   type LibrarySearchParams,
 } from './filter-state.js';
+export { adjacentPhotoFingerprint, ownerPhotoRootFor, type LibraryPhotoRoot } from './photo-nav.js';
+export { photoViewerSourceCandidates } from './photo-source.js';

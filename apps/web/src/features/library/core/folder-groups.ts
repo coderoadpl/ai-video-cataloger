@@ -1,13 +1,13 @@
-import type { LibraryItem } from './day-groups.js';
+import type { LibraryItem, LibraryVideoItem } from './day-groups.js';
 
-export type LibraryOfflineReason = LibraryItem['folder']['offlineReason'];
+export type LibraryOfflineReason = LibraryVideoItem['folder']['offlineReason'];
 
 export interface LibraryFolderSection {
   folderId: string;
   displayName: string;
   offline: boolean;
   offlineReason: LibraryOfflineReason;
-  items: LibraryItem[];
+  items: LibraryVideoItem[];
 }
 
 export type LibrarySort = 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
@@ -15,9 +15,11 @@ export type LibrarySort = 'relevance' | 'captured_desc' | 'captured_asc' | 'name
 export const isLibrarySort = (value: string): value is LibrarySort =>
   value === 'relevance' || value === 'captured_desc' || value === 'captured_asc' || value === 'name_asc';
 
-export const sortItems = (items: readonly LibraryItem[], sort: LibrarySort): LibraryItem[] => {
+const displayNameOf = (item: LibraryItem): string => item.media === 'video' ? (item.finalName ?? item.fileName) : item.fileName;
+
+export const sortItems = <T extends LibraryItem>(items: readonly T[], sort: LibrarySort): T[] => {
   if (sort === 'name_asc') {
-    return [...items].sort((left, right) => (left.finalName ?? left.fileName).localeCompare(right.finalName ?? right.fileName));
+    return [...items].sort((left, right) => displayNameOf(left).localeCompare(displayNameOf(right)));
   }
   if (sort === 'captured_asc') {
     return [...items].sort((left, right) => (left.capturedAt ?? '').localeCompare(right.capturedAt ?? ''));
@@ -28,7 +30,7 @@ export const sortItems = (items: readonly LibraryItem[], sort: LibrarySort): Lib
   return [...items];
 };
 
-export const groupByFolder = (items: readonly LibraryItem[], sort: LibrarySort): LibraryFolderSection[] => {
+export const groupByFolder = (items: readonly LibraryVideoItem[], sort: LibrarySort): LibraryFolderSection[] => {
   const byFolder = new Map<string, LibraryFolderSection>();
   const order: string[] = [];
 

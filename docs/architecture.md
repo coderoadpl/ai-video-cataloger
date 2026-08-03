@@ -869,9 +869,39 @@ bound, not a new one introduced here.
 
 `core/client/queries.ts` (`libraryCollectionQuery`) and `apps/web/src/api.ts`
 (`actions.libraryCollection`) wire the route with a registered query key,
-following the `searchQuery`/`photosListQuery` pattern; the renderer
-consumption (grid, media chip, subnav, placeholders) is out of scope for this
-track.
+following the `searchQuery`/`photosListQuery` pattern.
+
+**Renderer consumption (W55).** `useLibrary` (`apps/web/src/features/library/`)
+calls `actions.libraryCollection` instead of `actions.search`, accumulating
+pages by `nextCursor` and de-duplicating merged items by fingerprint — the
+cursor-world regression test for the offset-merge bug class fixed in #74. The
+held cursor is stamped with the query/filter/sort/media request key it was
+issued for, so a key change drops it in the same render that starts the new
+request — a page-2 cursor is never replayed against a different result set —
+while the already-loaded items stay on screen (`keepPreviousData`) until the
+new first page lands. `LibraryItem` is now the route's discriminated
+`video | photo` union; `LibraryGrid`, `TileMenu` and the day/folder grouping
+helpers in `features/library/core` branch on `item.media` exhaustively rather
+than assuming a video shape. Filter chips still request `media: 'all'` by
+default; `FilterBar` renders Wszystko/Filmy/Zdjęcia chips carrying the route's
+`videoTotal`/`photoTotal` — a chip drops its count whenever the current
+request did not count that medium (a narrowed `media`, or photos suppressed by
+a video-only filter), so no chip ever reports a zero it did not measure — and
+shows an inline notice — naming the active
+video-only filter chip(s) — whenever one of `people`/`place`/`hasGps`/
+`folderId` is set while `media === 'all'`, matching the server's "photo
+source contributes zero rows" semantics above. Folder grouping and the
+relevance sort option are disabled (with a tooltip) whenever the loaded page
+actually mixes photos in (`photoTotal > 0`) or, for relevance, whenever
+`media` isn't a single medium — both because neither operation is meaningful
+across the two shapes (photos carry no `folder`, and the two FTS engines'
+scores are not comparable, per the Ordering note above). A photo tile opens a
+self-contained `LibraryPhotoViewer` and resolves "Otwórz w analizie" against
+`GET /api/photos/tree`'s roots (`ownerPhotoRootFor`, a `features/library/core`
+copy of the photos feature's `ownerRootFor` — the two features are lint-enforced
+islands, so small pure helpers are duplicated rather than cross-imported,
+matching the pre-existing `day-groups.ts`/`grid-rows.ts` split) — never a
+video-shaped `folder.currentPath` join.
 
 ### Offset pagination — sanctioned ADR-0003 deviation (dated 2026-08-03)
 

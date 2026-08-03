@@ -16,6 +16,7 @@ const FOLDER = '/movies';
 const OTHER_FOLDER = '/movies/holidays';
 
 const searchResult = (overrides: Record<string, unknown> = {}): Record<string, unknown> => ({
+  media: 'video',
   fingerprint: 'fp-1',
   variantCount: 1,
   fileName: 'clip.mp4',
@@ -35,7 +36,7 @@ const searchResult = (overrides: Record<string, unknown> = {}): Record<string, u
   ...overrides,
 });
 
-const stubBaseline = (results: Record<string, unknown>[] = []) => {
+const stubBaseline = (items: Record<string, unknown>[] = []) => {
   server.use(
     http.get('/api/scan', () => HttpResponse.json({
       ok: true,
@@ -51,9 +52,19 @@ const stubBaseline = (results: Record<string, unknown>[] = []) => {
       ok: true,
       data: { media: 'photo', root: null, total: 0, offset: 0, items: [] },
     })),
-    http.get('/api/search', () => HttpResponse.json({
+    http.get('/api/library/collection', () => HttpResponse.json({
       ok: true,
-      data: { query: null, limit: 200, offset: 0, count: results.length, total: results.length, results },
+      data: {
+        query: null,
+        media: 'all',
+        limit: 200,
+        total: items.length,
+        videoTotal: items.length,
+        photoTotal: 0,
+        count: items.length,
+        items,
+        nextCursor: null,
+      },
     })),
     http.get('/api/library/facets', () => HttpResponse.json({
       ok: true,

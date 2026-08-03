@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 
-import { groupByCaptureDay, type LibraryItem } from './day-groups.js';
+import { groupByCaptureDay, type LibraryItem, type LibraryPhotoItem, type LibraryVideoItem } from './day-groups.js';
 
-const item = (overrides: Partial<LibraryItem> & { fingerprint: string }): LibraryItem => ({
+const videoItem = (overrides: Partial<LibraryVideoItem> & { fingerprint: string }): LibraryVideoItem => ({
+  media: 'video',
   variantCount: 1,
   fileName: `${overrides.fingerprint}.mp4`,
   finalName: null,
@@ -26,6 +27,25 @@ const item = (overrides: Partial<LibraryItem> & { fingerprint: string }): Librar
   height: null,
   ...overrides,
 });
+
+const photoItem = (overrides: Partial<LibraryPhotoItem> & { fingerprint: string }): LibraryPhotoItem => ({
+  media: 'photo',
+  fileName: `${overrides.fingerprint}.jpg`,
+  currentPath: `/photos/${overrides.fingerprint}.jpg`,
+  ext: 'jpg',
+  capturedAt: null,
+  description: null,
+  snippet: '',
+  tags: [],
+  variantCount: 0,
+  missingAt: null,
+  thumbPath: null,
+  gridThumbPath: null,
+  proxyPath: null,
+  ...overrides,
+});
+
+const item = videoItem;
 
 const fixedLocalDay = (isoUtc: string): string => isoUtc.slice(0, 10);
 
@@ -71,5 +91,16 @@ describe('groupByCaptureDay', () => {
 
   it('returns an empty array for no items', () => {
     expect(groupByCaptureDay([], fixedLocalDay)).toEqual([]);
+  });
+
+  it('groups a video and a photo captured on the same day into one shared section', () => {
+    const items: LibraryItem[] = [
+      videoItem({ fingerprint: 'v1', capturedAt: '2026-05-01T09:00:00.000Z' }),
+      photoItem({ fingerprint: 'p1', capturedAt: '2026-05-01T15:00:00.000Z' }),
+    ];
+
+    const sections = groupByCaptureDay(items, fixedLocalDay);
+
+    expect(sections).toEqual([{ day: '2026-05-01', items: [items[0], items[1]] }]);
   });
 });

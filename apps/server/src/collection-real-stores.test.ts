@@ -135,6 +135,45 @@ const buildDeps = async () => {
 };
 
 describe('libraryCollection against real SqlJsGlobalCatalogStore + SqlJsPhotosStore', () => {
+  it('finds a freshly analyzed photo by a word that only its description carries', async () => {
+    const { deps, globalCatalog, photos } = await buildDeps();
+    await globalCatalog.upsertFolder(videoFolder);
+    await globalCatalog.upsertFile(video('v1', '2026-01-03T00:00:00.000Z', 'v1.mp4'));
+    await globalCatalog.upsertAnalysis(videoAnalysis('v1', 'v1.mp4'));
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertPhoto(photo('p1', '2026-01-02T00:00:00.000Z', 'IMG_1234.jpg'));
+    await photos.upsertAnalysisConfig({
+      configId: 'cfg_test',
+      descriptorJson: '{"kind":"photo"}',
+      label: 'harness · claude-code · en',
+      now: '2026-01-01T00:00:00.000Z',
+    });
+    await photos.recordPhotoAnalysis({
+      fingerprint: 'p1',
+      configId: 'cfg_test',
+      description: 'a red bicycle leaning against a brick wall',
+      scene: 'urban',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      usageJson: null,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const result = await libraryCollection(deps, {
+      query: 'bicycle', filters: EMPTY_FILTERS, sort: undefined, media: 'all', limit: 50, cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.fingerprint)).toEqual(['p1']);
+    expect(result.value.photoTotal).toBe(1);
+    expect(result.value.videoTotal).toBe(0);
+  });
+
   it('pins cross-source ordering in browse mode (captured_desc, video-before-photo on tie)', async () => {
     const { deps, globalCatalog, photos } = await buildDeps();
     await globalCatalog.upsertFolder(videoFolder);
