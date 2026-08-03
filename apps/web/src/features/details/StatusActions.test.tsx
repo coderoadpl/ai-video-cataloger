@@ -89,4 +89,43 @@ describe('StatusActions error rendering', () => {
     await waitFor(() => expect(screen.getByText(pl.errors.analyzerFailed)).toBeDefined());
     expect(document.body.textContent).not.toContain('Command failed');
   });
+
+  it('exposes an analysis-error-card testid so an automated walkthrough can tell an error state from a timeout', () => {
+    renderThemed(
+      <StatusActions video={makeVideo({ status: 'error' })} analyzing={false} onAnalyze={vi.fn()} />,
+    );
+
+    expect(screen.getByTestId('analysis-error-card')).toBeDefined();
+  });
+
+  it('never renders an analysis-error-card for a completed video', () => {
+    renderThemed(
+      <StatusActions video={makeVideo({ status: 'completed' })} analyzing={false} onAnalyze={vi.fn()} />,
+    );
+
+    expect(screen.queryByTestId('analysis-error-card')).toBeNull();
+  });
+});
+
+describe('StatusActions disabled-reason attribute', () => {
+  it('exposes the disabled reason as data-disabled-reason on the analyze button', () => {
+    renderThemed(
+      <StatusActions
+        video={makeVideo({ status: 'pending' })}
+        analyzing={false}
+        onAnalyze={vi.fn()}
+        disabledReason="No analyzer configured"
+      />,
+    );
+
+    expect(screen.getByTestId('analyze-button').getAttribute('data-disabled-reason')).toBe('No analyzer configured');
+  });
+
+  it('leaves data-disabled-reason empty when the action is enabled', () => {
+    renderThemed(
+      <StatusActions video={makeVideo({ status: 'pending' })} analyzing={false} onAnalyze={vi.fn()} />,
+    );
+
+    expect(screen.getByTestId('analyze-button').getAttribute('data-disabled-reason')).toBe('');
+  });
 });

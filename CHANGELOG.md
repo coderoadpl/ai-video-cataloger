@@ -14,6 +14,28 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- `scripts/release-walkthrough.mjs`'s `analyze` step now maps its outcome to
+  the real result read from the driven UI (the `analysis-error-card` testid
+  and `detail-layout`'s `data-video-status` attribute) instead of reporting
+  `ok` whenever the run merely finished: `completed` with no error card is
+  `ok` (naming the analyzed file), an error card is `failed`, and no analyzer
+  configured is `skipped` with the UI's own disabled-reason text — a skip that
+  is not in `TOLERATED_SKIPS`, so a `--strict` release run must provide a real
+  analyzer (W54; the previous mapping left the completed-analysis half of the
+  release checklist without evidence for four releases).
+
+### Added
+
+- `pnpm run qa:walkthrough -- --analyzer local:<model>` seeds the scratch
+  home's `config.json` with a real local analyzer (`analyzer_backend: local`,
+  the given `local_model`, and no `analyzer_provider`) and `whisper_mode: skip`
+  before launch, so the `analyze` step can complete offline against the system
+  ollama with exactly the requested model; it fails fast, before the app
+  launches, if ollama is unreachable or the model isn't installed, so a release
+  run never silently falls back to the claude-CLI default.
+
 ## [0.6.15] - 2026-08-03
 
 ### Fixed

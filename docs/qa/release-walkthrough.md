@@ -53,9 +53,56 @@ A run therefore never mutates real user data. Analysis needs a configured
 analyzer, which a throwaway home does not have: pass `--home` pointing at a
 prepared QA home (for example the
 `~/repositories/claude-tmp/avc-e2e-matrix-home` cache used by
-`pnpm run test:e2e:matrix`) when the analysis step must actually run. Without
-it the step reports itself `skipped`, which is a legitimate outcome — a silent
-pass is not.
+`pnpm run test:e2e:matrix`), or `--analyzer local:<model>` (below) to seed one
+into the scratch home for this run. Without either the step reports itself
+`skipped`, which is a legitimate outcome for a video-only pass — but it is
+**not** in `TOLERATED_SKIPS`, so a `--strict` release run fails on it: a
+release must prove the analysis half of the checklist, not skip it silently
+(W54, 2026-08-03 — four releases shipped with the analyze step reporting `ok`
+whenever the run merely *finished*, even when analysis itself had errored).
+
+### `--analyzer local:<model>`
+
+Seeds the scratch home's `.ai-video-cataloger/config.json` with
+`analyzer_backend: "local"`, `local_model: "<model>"` and `whisper_mode:
+"skip"` — the real, honest transcription-less path
+(`core/domain/config.ts`), not a fabricated offline whisper setup — before the
+app launches, so the analyze step can complete against the **system ollama**
+at `http://127.0.0.1:11434` with no external services. It fails fast, before
+the app is ever launched, if ollama is not reachable there or `<model>` is not
+in `ollama list`:
+
+```bash
+curl -s http://127.0.0.1:11434/api/tags | jq '.models[].name'
+ollama pull gemma3:4b   # if it's missing
+```
+
+A release run must never silently fall back to the claude-CLI default when the
+requested local model isn't available — that fallback would drive a real
+paid/harness analyzer during an otherwise-offline QA pass and quietly change
+what the screenshots prove. `--analyzer` always overwrites
+`analyzer_backend`/`local_model`/`whisper_mode` in the driven `--home` (or the
+default throwaway home) and drops that home's `analyzer_provider` — the key
+Settings writes, which outranks `analyzer_backend` in
+`core/server/usecases/config-resolution.ts` — so passing it forces the exact
+local model under test regardless of whatever analyzer that home was last
+configured with. A folder-scoped analyzer inside the fixtures tree would still
+win; release runs point `--fixtures` at a clean fixture set, which has none.
+
+### The analyze step's outcome
+
+The step maps to the analysis's **real** result, read from the UI state it
+already drives (the `analysis-error-card` testid and `detail-layout`'s
+`data-video-status` attribute), never from timing:
+
+- Analysis reaches `completed` with no error card → `ok`, and the note names
+  the analyzed file.
+- Analysis ends in error (the `analysis-error-card` renders) → `failed` — not
+  `ok`, not `skipped` — with the card's message as the note.
+- No analyzer configured in the driven home (the Analyze button is disabled)
+  → `skipped`, with the UI's own disabled-reason text as the note. This skip
+  is not tolerated: release runs must provide an analyzer via `--home` or
+  `--analyzer`.
 
 ## Procedure
 
@@ -83,14 +130,23 @@ pass is not.
      --fixtures ~/repositories/claude-tmp/avc-walkthrough-fixtures \
      --home ~/repositories/claude-tmp/avc-e2e-matrix-home \
      --strict \
+     --analyzer local:gemma3:4b \
      --archive-to ~/repositories/claude-tmp/avc-release-shots/<version>/
    ```
 
+   `--analyzer local:gemma3:4b` requires the system ollama running at its
+   default port; check first with `curl -s http://127.0.0.1:11434/api/tags`.
+   Release runs always pass it: `--strict` now makes an unconfigured analyzer
+   a hard failure (see "The analyze step's outcome" above), so the analyzer
+   must be real and reachable, not left to whatever `--home` happened to have
+   configured last.
+
    `pnpm run qa:walkthrough -- --help` lists every option;
-   `--dry-run` validates the inputs and writes `plan.json` without launching
-   the app. Release runs add `--strict`: any step that reports `skipped`
-   turns the exit code non-zero instead of leaving it to a reviewer to
-   notice in the manifest — **except** the tolerated-skips allowlist
+   `--dry-run` validates the inputs (including, with `--analyzer`, that ollama
+   is reachable and the model is installed) and writes `plan.json` without
+   launching the app. Release runs add `--strict`: any step that reports
+   `skipped` turns the exit code non-zero instead of leaving it to a reviewer
+   to notice in the manifest — **except** the tolerated-skips allowlist
    (`TOLERATED_SKIPS` in `scripts/release-walkthrough.mjs`):
 
    - `first-run-wizard` — the wizard's dismissal is persisted to the home, so
@@ -213,6 +269,14 @@ Read every screenshot against the sensitivities that have burned us before:
   not-yet-analysed state, distinct from completed/error, in both this shot
   and the `search`/`select-video` shots taken later for the videos the
   `analyze` step never touched?
+- **Completed analysis (the `analyze` step's hard evidence, W54)** — in the
+  `analyze` screenshot, does the selected video show the **Ukończony** badge
+  (not Błąd, not still-processing) next to the error/duplicate slot; a real
+  decoded frame thumbnail (never a placeholder or broken image) for that
+  video; and a description with tags visible in the details panel?
+- **Populated Biblioteka** — in the `search` screenshot, does the Biblioteka
+  hold more than 0 `plików`, and does the search return a real hit for the
+  analyzed video rather than an empty-state panel?
 
 The manual suites in [manual-test-checklists.md](manual-test-checklists.md) stay
 the deeper pass; this walkthrough is the always-run floor beneath them.

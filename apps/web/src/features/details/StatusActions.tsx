@@ -56,6 +56,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
       <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
         <Button
           data-testid="analyze-button"
+          data-disabled-reason={disabledReason ?? ''}
           variant="contained"
           fullWidth
           disabled={analyzing || disabledReason !== undefined}
@@ -83,6 +84,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
         </Typography>
         <Button
           data-testid="analyze-button"
+          data-disabled-reason={disabledReason ?? ''}
           variant="contained"
           fullWidth
           disabled={analyzing || disabledReason !== undefined}
@@ -103,7 +105,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
 
   if (video.status === 'error') {
     return (
-      <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+      <Paper data-testid="analysis-error-card" variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
         <CardHeader
           icon={<ErrorIcon fontSize="small" sx={{ color: 'status.error.main' }} />}
           title={dictionary.details.processingFailed}
@@ -114,6 +116,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
         <Box>
           <Button
             data-testid="analyze-button"
+            data-disabled-reason={disabledReason ?? ''}
             variant="outlined"
             size="small"
             disabled={analyzing || disabledReason !== undefined}
@@ -139,6 +142,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
       <Button
         data-testid="analyze-button"
+        data-disabled-reason={disabledReason ?? ''}
         variant={analysisPlan.key === 'newVariant' ? 'contained' : 'outlined'}
         fullWidth
         disabled={analyzing || disabledReason !== undefined}

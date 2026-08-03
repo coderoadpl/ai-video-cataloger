@@ -16,6 +16,10 @@ const TRUNCATED_JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x
 // fixtures in every date-sorted photo UI (W52).
 export const BROKEN_PHOTO_MTIME = new Date('2000-01-01T00:00:00Z');
 
+// Matches adapters/ollama-runtime/index.ts's SYSTEM_OLLAMA_BASE_URL: this script runs as
+// plain node (no TS path aliases), so the value is duplicated rather than imported.
+const SYSTEM_OLLAMA_BASE_URL = 'http://127.0.0.1:11434';
+
 const HELP = `release-walkthrough — scripted self-QA pass over a packaged build.
 
 Usage:
@@ -42,6 +46,15 @@ Options:
                                PNG) to this directory before the run exits, so it survives a worktree
                                cleanup. Release runs pass
                                ~/repositories/claude-tmp/avc-release-shots/<version>/.
+  --analyzer local:<model>     Seed the SCRATCH home's config.json with a real local analyzer
+                               (analyzer_backend: 'local', local_model: '<model>') and whisper_mode:
+                               'skip', so the analyze step can complete offline against the system
+                               ollama at ${SYSTEM_OLLAMA_BASE_URL}. Fails fast, before launching the
+                               app, if ollama is not reachable or the model is not installed there —
+                               a release run must never silently fall back to the claude-CLI default.
+                               Overwrites analyzer_backend/local_model/whisper_mode and drops any
+                               analyzer_provider a prepared --home was configured with, so the run
+                               analyzes with exactly the requested model.
   --help                       Print this help.
 
 Every run launches with an isolated user-data directory, an isolated home and
@@ -60,6 +73,8 @@ const SCREENSHOT_SETTLE_TIMEOUT_MS = 3_000;
 const SCREENSHOT_SETTLE_FALLBACK_MS = 250;
 const DEFAULT_WINDOW_SIZE = '1920x1200';
 const WINDOW_SIZE_PATTERN = /^(\d+)x(\d+)$/;
+const OLLAMA_CHECK_TIMEOUT_MS = 5_000;
+const ANALYZER_FLAG_PATTERN = /^local:(.+)$/;
 
 const optionsSchema = z.object({
   app: z.string().min(1),
@@ -72,7 +87,42 @@ const optionsSchema = z.object({
   dryRun: z.boolean().default(false),
   strict: z.boolean().default(false),
   archiveTo: z.string().min(1).optional(),
+  analyzer: z.string().regex(ANALYZER_FLAG_PATTERN, 'expected local:<model>, e.g. local:gemma3:4b').optional(),
 });
+
+export const parseAnalyzerFlag = (value) => {
+  const match = ANALYZER_FLAG_PATTERN.exec(value);
+  if (match === null) throw new Error(`invalid --analyzer: ${value} (expected local:<model>, e.g. local:gemma3:4b)`);
+  return { backend: 'local', model: match[1] };
+};
+
+export const checkOllamaAnalyzer = async (model) => {
+  const url = `${SYSTEM_OLLAMA_BASE_URL}/api/tags`;
+  let response;
+  try {
+    response = await fetch(url, { signal: AbortSignal.timeout(OLLAMA_CHECK_TIMEOUT_MS) });
+  } catch (error) {
+    const cause = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `--analyzer local:${model} requires the system ollama at ${SYSTEM_OLLAMA_BASE_URL} to be reachable ` +
+        `(connect failed: ${cause}); start it first (\`ollama serve\` or the desktop app), a release run never ` +
+        'falls back to the claude-CLI default',
+    );
+  }
+  if (!response.ok) {
+    throw new Error(`--analyzer local:${model}: ollama at ${SYSTEM_OLLAMA_BASE_URL} responded with HTTP ${String(response.status)}`);
+  }
+  const body = await response.json();
+  const installed = Array.isArray(body?.models)
+    ? body.models.map((entry) => entry?.name).filter((name) => typeof name === 'string')
+    : [];
+  if (!installed.includes(model)) {
+    throw new Error(
+      `--analyzer local:${model}: model not installed in ollama at ${SYSTEM_OLLAMA_BASE_URL} ` +
+        `(installed: ${installed.length > 0 ? installed.join(', ') : 'none'}); pull it first with \`ollama pull ${model}\``,
+    );
+  }
+};
 
 const parseWindowSize = (windowSize) => {
   const match = WINDOW_SIZE_PATTERN.exec(windowSize);
@@ -96,6 +146,7 @@ const readOptions = (argv) => {
       'dry-run': { type: 'boolean' },
       strict: { type: 'boolean' },
       'archive-to': { type: 'string' },
+      analyzer: { type: 'string' },
       help: { type: 'boolean' },
     },
   });
@@ -112,6 +163,7 @@ const readOptions = (argv) => {
       dryRun: values['dry-run'] ?? false,
       strict: values.strict ?? false,
       archiveTo: values['archive-to'],
+      analyzer: values.analyzer,
     }),
   };
 };
@@ -145,7 +197,7 @@ export const prepareScratchFixtures = (fixturesDir) => {
   return scratchDir;
 };
 
-const buildPlan = (options) => {
+const buildPlan = async (options) => {
   const appPath = requireDirectory(options.app, '--app');
   const sourceFixturesDir = requireDirectory(options.fixtures, '--fixtures');
   const fixturesDir = prepareScratchFixtures(sourceFixturesDir);
@@ -155,6 +207,8 @@ const buildPlan = (options) => {
     ? mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-home-'))
     : requireDirectory(options.home, '--home');
   const windowSize = parseWindowSize(options.windowSize);
+  const analyzer = options.analyzer === undefined ? null : parseAnalyzerFlag(options.analyzer);
+  if (analyzer !== null) await checkOllamaAnalyzer(analyzer.model);
   return {
     appPath,
     executablePath: executableInside(appPath),
@@ -170,6 +224,7 @@ const buildPlan = (options) => {
     dryRun: options.dryRun,
     strict: options.strict,
     archiveTo: options.archiveTo === undefined ? null : path.resolve(options.archiveTo),
+    analyzer,
   };
 };
 
@@ -188,12 +243,30 @@ const seedWindowState = (plan) => {
   );
 };
 
-const seedUiLanguage = (plan) => {
-  const configDir = path.join(plan.homeDir, '.ai-video-cataloger');
+const updateHomeConfig = (homeDir, update) => {
+  const configDir = path.join(homeDir, '.ai-video-cataloger');
   const configFile = path.join(configDir, 'config.json');
   mkdirSync(configDir, { recursive: true });
   const existing = existsSync(configFile) ? JSON.parse(readFileSync(configFile, 'utf8')) : {};
-  writeFileSync(configFile, JSON.stringify({ ...existing, ui_language: 'pl' }, null, 2));
+  writeFileSync(configFile, JSON.stringify(update(existing), null, 2));
+};
+
+const seedUiLanguage = (plan) => updateHomeConfig(plan.homeDir, (existing) => ({ ...existing, ui_language: 'pl' }));
+
+// whisper_mode: 'skip' is the honest transcription-less path (core/domain/config.ts) rather than a
+// fabricated offline whisper setup: it lets the pipeline reach 'analyze' without a local whisper
+// binary/model in the scratch home. analyzer_provider outranks analyzer_backend in
+// core/server/usecases/config-resolution.ts, so a home that configured an analyzer through Settings
+// would keep analyzing with that provider instead of the requested local model.
+export const localAnalyzerConfig = (existing, model) => {
+  const seeded = { ...existing, analyzer_backend: 'local', local_model: model, whisper_mode: 'skip' };
+  delete seeded.analyzer_provider;
+  return seeded;
+};
+
+const seedLocalAnalyzer = (plan) => {
+  if (plan.analyzer === null) return;
+  updateHomeConfig(plan.homeDir, (existing) => localAnalyzerConfig(existing, plan.analyzer.model));
 };
 
 const appeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
@@ -207,6 +280,15 @@ const appeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
 
 const done = (note = '') => ({ status: 'ok', note });
 const skipped = (note) => ({ status: 'skipped', note });
+const failed = (note) => ({ status: 'failed', note });
+
+// Kept free of Playwright so the mapping from observed DOM state to outcome is unit-testable
+// without driving a real app.
+export const analyzeOutcome = ({ errorCardVisible, errorNote, videoStatus, filename }) => {
+  if (errorCardVisible) return failed(errorNote === '' ? 'analysis ended in error' : errorNote);
+  if (videoStatus === 'completed') return done(`analysis completed for ${filename ?? 'the selected video'}`);
+  return failed(`analysis finished in unexpected status "${videoStatus ?? 'unknown'}" (no error card, not completed)`);
+};
 
 // Both steps depend on state a reused QA home may legitimately not have (a
 // wizard that already got dismissed, a Library tile from an earlier scan);
@@ -268,6 +350,7 @@ const stubOpenDialog = async (app, folderPath) => {
 const drive = async (plan) => {
   seedWindowState(plan);
   seedUiLanguage(plan);
+  seedLocalAnalyzer(plan);
   const launchedAt = Date.now();
   const app = await electron.launch({
     executablePath: plan.executablePath,
@@ -350,7 +433,10 @@ const drive = async (plan) => {
   await record('analyze', async () => {
     const analyze = page.getByTestId('analyze-button').first();
     if (!(await appeared(analyze, SETTLE_TIMEOUT_MS))) return skipped('no analyze action on the selected video');
-    if (await analyze.isDisabled()) return skipped('analyzer not configured in this home');
+    if (await analyze.isDisabled()) {
+      const reason = await analyze.getAttribute('data-disabled-reason');
+      return skipped(reason !== null && reason !== '' ? reason : 'analyzer not configured in this home');
+    }
     await analyze.click();
     await page
       .locator('[data-testid="analysis-state"][data-analyzing="true"]')
@@ -358,7 +444,13 @@ const drive = async (plan) => {
     await page
       .locator('[data-testid="analysis-state"][data-analyzing="false"]')
       .waitFor({ state: 'attached', timeout: plan.analyzeTimeoutMs });
-    return done('one analysis run finished');
+    const errorCard = page.getByTestId('analysis-error-card');
+    const errorCardVisible = await appeared(errorCard, SETTLE_TIMEOUT_MS);
+    const errorNote = errorCardVisible ? ((await errorCard.first().textContent()) ?? '').trim() : '';
+    const detailLayout = page.getByTestId('detail-layout').first();
+    const videoStatus = await detailLayout.getAttribute('data-video-status');
+    const filename = await detailLayout.locator('h1').first().getAttribute('title');
+    return analyzeOutcome({ errorCardVisible, errorNote, videoStatus, filename });
   });
 
   await record('search', async () => {
@@ -411,7 +503,7 @@ const drive = async (plan) => {
       return skipped('photo detail pane did not render');
     }
     if (await appeared(page.getByTestId('photos-analyze-strip'), SETTLE_TIMEOUT_MS)) {
-      return { status: 'failed', note: 'analyze strip visible in the browse Photos surface' };
+      return failed('analyze strip visible in the browse Photos surface');
     }
     return done('browse Photos detail pane shows no analyze affordance');
   });
@@ -444,7 +536,7 @@ const drive = async (plan) => {
       return skipped('no analyze strip (photo already analysed or proxy pending)');
     }
     if (await appeared(page.getByTestId('video-item'), SETTLE_TIMEOUT_MS)) {
-      return { status: 'failed', note: 'video list visible in the photos sidebar' };
+      return failed('video list visible in the photos sidebar');
     }
     return done('Analysis Photos workspace shows the detail and analyze affordance');
   });
@@ -514,7 +606,7 @@ const main = async () => {
     return 2;
   }
 
-  const plan = buildPlan(parsed.data);
+  const plan = await buildPlan(parsed.data);
   mkdirSync(plan.outDir, { recursive: true });
   writeFileSync(path.join(plan.outDir, 'plan.json'), JSON.stringify(plan, null, 2));
   console.log(`release-walkthrough: ${plan.dryRun ? 'plan only' : 'driving'} ${plan.appPath}`);
@@ -522,6 +614,9 @@ const main = async () => {
   console.log(`  home       ${plan.homeDir}`);
   console.log(`  user data  ${plan.userDataDir}`);
   console.log(`  output     ${plan.outDir}`);
+  if (plan.analyzer !== null) {
+    console.log(`  analyzer   local:${plan.analyzer.model} (system ollama at ${SYSTEM_OLLAMA_BASE_URL})`);
+  }
   if (plan.dryRun) {
     console.log('release-walkthrough: --dry-run, the app was not launched');
     return 0;
@@ -532,10 +627,10 @@ const main = async () => {
     path.join(plan.outDir, 'manifest.json'),
     JSON.stringify({ plan, timeToWindowMs, steps: results }, null, 2),
   );
-  const failed = results.filter((result) => result.status === 'failed');
+  const failedSteps = results.filter((result) => result.status === 'failed');
   const skippedSteps = results.filter((result) => result.status === 'skipped');
   console.log(
-    `release-walkthrough: ${String(results.length)} step(s), ${String(failed.length)} failed, ` +
+    `release-walkthrough: ${String(results.length)} step(s), ${String(failedSteps.length)} failed, ` +
       `${String(skippedSteps.length)} skipped`,
   );
   console.log(`release-walkthrough: review the screenshots in ${plan.outDir}`);
@@ -549,7 +644,7 @@ const main = async () => {
     console.error(`release-walkthrough: --strict forbids skipped steps: ${blocking.map((step) => step.name).join(', ')}`);
     return 1;
   }
-  return failed.length === 0 ? 0 : 1;
+  return failedSteps.length === 0 ? 0 : 1;
 };
 
 const isDirectlyExecuted = process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
