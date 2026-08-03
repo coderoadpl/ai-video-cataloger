@@ -29,10 +29,22 @@ Ground-up rewrite on the agentproofarch foundation
 - `pnpm run check` = typecheck + eslint (boundaries; the local plugin joins
   with the renderer phase) + dependency-cruiser + the renderer bundle build
   (`electron:build:renderer`, which refuses any Node builtin in the renderer
-  module graph) + vitest.
+  module graph) + vitest + `pnpm run visual` (Playwright screenshot comparison
+  against the darwin baselines, armed into `check` 2026-08-03 per owner mandate
+  — [ADR-0005](docs/decisions/0005-visual-regression.md)(d)).
 - `pnpm run smoke` = installed-tree check → lockfile lint → boot the real
   in-process app in a temp HOME/folder → drive doctor/scan/config/status
   through the CLI → assert envelope shapes and taxonomy exit codes.
+
+`pnpm run visual` (screenshot comparison of the layout skeletons, including the
+sidebar surfaces, against the darwin baselines in `visual/__screenshots__/` —
+[ADR-0005](docs/decisions/0005-visual-regression.md)) builds and previews the
+`apps/web/visual.html` harness — no Electron, no server, no analysis run — and
+is now part of `check` (armed 2026-08-03, owner mandate, W43). An intentional
+UI change is a two-step commit: land the change, run
+`pnpm run visual -- --update-snapshots`, review and commit the PNGs.
+`scripts/gallery-shots.mjs` stays a capture-only dev tool, never a second
+baseline store.
 
 `doc-lint` also holds the docs to the toolchain: every `pnpm run <script>` a
 tracked `README.md` documents must exist in the `package.json` that owns that
@@ -93,13 +105,6 @@ specs testing the CLI surface itself are exempt. Reference:
   work batch and before a release; never add it to a normal gate. It must be
   run from a normal (unsandboxed) shell — `hdiutil create` fails with `Device
   not configured` under an agent Bash sandbox.
-- `pnpm run visual` = screenshot comparison of the layout skeletons against the
-  darwin baselines in `visual/__screenshots__/`
-  ([ADR-0005](docs/decisions/0005-visual-regression.md)). It builds and previews
-  the `apps/web/visual.html` harness — no Electron, no server, no analysis run —
-  and is deliberately outside `check` and `smoke` until the owner arms it.
-  `scripts/gallery-shots.mjs` stays a capture-only dev tool, never a second
-  baseline store.
 - `pnpm run verify:package` = packaged-bundle shape check (single darwin
   onnxruntime binding, no non-darwin artifacts); run it on the built bundle
   before a release, also outside the normal gates.

@@ -14,8 +14,22 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Added
+
+- `pnpm run qa:walkthrough` gained an `--archive-to <dir>` flag that copies
+  the finished screenshot set (`plan.json`, `manifest.json`, every PNG) to a
+  directory outside the worktree before the process exits, so a release
+  screenshot set survives a worktree cleanup.
+
 ### Changed
 
+- `pnpm run visual` now joins `pnpm run check` (runs last) and its darwin
+  baselines cover the `CatalogSidebar`/`PhotosSidebar` skeletons — including
+  the `SidebarFolderPanel` split button — at a 260px stress width and the
+  440px default width, in both themes.
+- The release walkthrough procedure now requires an independent reviewer
+  (never the agent that ran the walkthrough) to work the screenshot checklist
+  against the archived set, with authority to fail the release.
 - Entering Analysis → Zdjęcia for a folder that has never been photo-scanned
   now auto-starts the scan immediately, showing the normal scan progress in
   the sidebar, instead of gating on a "Skanuj ten folder" button click — the

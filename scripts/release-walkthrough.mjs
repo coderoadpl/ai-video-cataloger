@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
@@ -22,6 +22,10 @@ Options:
   --window-size <WxH>          Window size for the driven app, e.g. 1920x1200 (default: 1920x1200).
   --dry-run                    Validate the inputs, write plan.json, stop before launching the app.
   --strict                     Exit 1 if any step reports 'skipped' (release runs use this).
+  --archive-to <path>          Copy the finished screenshot set (plan.json, manifest.json and every
+                               PNG) to this directory before the run exits, so it survives a worktree
+                               cleanup. Release runs pass
+                               ~/repositories/claude-tmp/avc-release-shots/<version>/.
   --help                       Print this help.
 
 Every run launches with an isolated user-data directory, an isolated home and
@@ -49,6 +53,7 @@ const optionsSchema = z.object({
   windowSize: z.string().regex(WINDOW_SIZE_PATTERN, 'expected WxH, e.g. 1920x1200').default(DEFAULT_WINDOW_SIZE),
   dryRun: z.boolean().default(false),
   strict: z.boolean().default(false),
+  archiveTo: z.string().min(1).optional(),
 });
 
 const parseWindowSize = (windowSize) => {
@@ -72,6 +77,7 @@ const readOptions = (argv) => {
       'window-size': { type: 'string' },
       'dry-run': { type: 'boolean' },
       strict: { type: 'boolean' },
+      'archive-to': { type: 'string' },
       help: { type: 'boolean' },
     },
   });
@@ -87,6 +93,7 @@ const readOptions = (argv) => {
       windowSize: values['window-size'],
       dryRun: values['dry-run'] ?? false,
       strict: values.strict ?? false,
+      archiveTo: values['archive-to'],
     }),
   };
 };
@@ -131,6 +138,7 @@ const buildPlan = (options) => {
     windowHeight: windowSize.height,
     dryRun: options.dryRun,
     strict: options.strict,
+    archiveTo: options.archiveTo === undefined ? null : path.resolve(options.archiveTo),
   };
 };
 
@@ -471,6 +479,11 @@ const main = async () => {
       `${String(skippedSteps.length)} skipped`,
   );
   console.log(`release-walkthrough: review the screenshots in ${plan.outDir}`);
+  if (plan.archiveTo !== null) {
+    mkdirSync(plan.archiveTo, { recursive: true });
+    cpSync(plan.outDir, plan.archiveTo, { recursive: true });
+    console.log(`release-walkthrough: archived the screenshot set to ${plan.archiveTo}`);
+  }
   if (plan.strict && skippedSteps.length > 0) {
     console.error(`release-walkthrough: --strict forbids skipped steps: ${skippedSteps.map((step) => step.name).join(', ')}`);
     return 1;

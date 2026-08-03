@@ -54,23 +54,35 @@ pass is not.
    ```
 
 3. Run the walkthrough against the built `.app` and a fixture folder of sample
-   videos:
+   videos, archiving the finished set as part of the same command
+   (W43, 2026-08-03 owner mandate — a worktree cleanup between the run and the
+   review previously deleted the only copy of a screenshot set that would have
+   caught a shipped regression):
 
    ```bash
    pnpm run qa:walkthrough -- \
      --app "release/mac-arm64/AI Video Cataloger.app" \
      --fixtures ~/repositories/claude-tmp/avc-walkthrough-fixtures \
-     --home ~/repositories/claude-tmp/avc-e2e-matrix-home
+     --home ~/repositories/claude-tmp/avc-e2e-matrix-home \
+     --strict \
+     --archive-to ~/repositories/claude-tmp/avc-release-shots/<version>/
    ```
 
    `pnpm run qa:walkthrough -- --help` lists every option;
    `--dry-run` validates the inputs and writes `plan.json` without launching
    the app. Release runs add `--strict`: any step that reports `skipped`
    turns the exit code non-zero instead of leaving it to a reviewer to
-   notice in the manifest.
+   notice in the manifest. `--archive-to <dir>` copies the finished set
+   (`plan.json`, `manifest.json`, every PNG) to `<dir>` before the process
+   exits — run it **before any worktree cleanup**; a set that only exists
+   inside a worktree does not survive the worktree being removed.
 
-4. Review the screenshot set (see below) before writing a single word of the
-   handoff message.
+4. Hand the archived set to an **independent reviewer** — someone other than
+   whoever ran step 3 — and have them work the checklist below against the
+   archived PNGs, not against a description of them. This reviewer has
+   authority to fail the release: a release does not proceed on the release
+   agent's own "looks correct" (W43, 2026-08-03 — the previous incident
+   included exactly that self-graded, and wrong, verdict).
 
 ## Real UI, not synthetic events
 
@@ -109,7 +121,13 @@ The photo steps need a home whose photos DB already has a scanned root —
 outcome for a video-only review pass and a missing proof for a release that
 ships photo changes.
 
-## Review the screenshots
+## Review the screenshots (independent reviewer, authority to fail)
+
+This step is performed by someone other than the agent that ran the
+walkthrough, against the **archived** set from step 3 above, not a live
+worktree. It is a gate, not a courtesy pass: a reviewer who finds a violation
+below fails the release and sends it back — they do not "note it for later" or
+accept the release agent's own assessment of its own screenshots.
 
 A `failed` step is a P1 — fix it or pull the release; a re-run to green without
 a diagnosis is forbidden ([flake doctrine](../../CLAUDE.md)). A `skipped` step is
@@ -118,6 +136,10 @@ fixture tree, no analyzer in this home).
 
 Read every screenshot against the sensitivities that have burned us before:
 
+- **Sidebar geometry** — the folder split button (Open Folder + the recent-folders
+  dropdown caret) never wraps its label under the caret and the caret never
+  swallows the row; the sidebar tree/list never overlaps the details column;
+  no row's badge or thumbnail is clipped by the sidebar's right edge.
 - **Status badges** — icon inset and label padding symmetrical, no clipped text,
   the same height across pending/completed/error/duplicate.
 - **Thumbnails** — real frames where a video was analyzed, the placeholder (not a

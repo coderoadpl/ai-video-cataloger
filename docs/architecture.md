@@ -878,6 +878,35 @@ against a real codebase anywhere. Rule (b)'s mechanical half closes when it does
 **Visual specs** per skeleton and per state land with the visual-regression
 suite (migration plan P2), not here.
 
+### Layout-truth verification (dump-and-measure)
+
+`getComputedStyle` assertions in a jsdom vitest run (`flexGrow`, `width: auto`,
+…) prove intent, not geometry: jsdom has no layout engine, so a passing
+structural assertion can still ship a wrapped label or an overflowing split
+button — exactly what happened to `FolderBar` before the W42 fix (commit
+`0d8ed43`) and what W43's sidebar visual surfaces now pin. For any
+layout-touching change (flex/grid sizing, min/max width, wrapping), structural
+`sx` assertions are necessary but not sufficient; verify the rendered geometry
+before calling it done:
+
+1. Render the component in the jsdom vitest project as usual and serialize its
+   emotion-generated styles plus the container's HTML (e.g. `container.innerHTML`
+   and the `<style>` tags emotion inserted) to a fixture file.
+2. Load that fixture in a real layout engine and measure it —
+   `pnpm exec node` driving headless Chromium (Playwright) against the
+   serialized HTML, reading `getBoundingClientRect()` on the elements the
+   change touches (no wrap, no overflow, expected pixel widths at the
+   viewport(s) the change targets).
+3. Treat mismatches as the bug, not the test.
+
+**Caveat**: run step 2 with `pnpm exec node` (not bare `node`) — headless
+Chromium needs the workspace's Playwright install on the resolved `PATH`/module
+graph, and a bare `node` invocation from outside the workspace silently uses a
+different (or missing) browser binary. For the surfaces this now pins as
+baselines, `pnpm run visual` (ADR-0005) is the committed, repeatable version of
+this technique; dump-and-measure is the ad hoc form for a change too small or
+too early to justify a new visual surface.
+
 ## Delta 5 — long-running work
 
 The Electron main process (and the CLI process, for its lifetime) is a

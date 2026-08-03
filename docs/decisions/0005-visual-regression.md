@@ -1,7 +1,8 @@
 # ADR-0005: Visual regression — Playwright screenshots over the built renderer
 
-Date: 2026-07-27 · Status: accepted (standing delegation, migration plan
-decision 2) · Adopts the foundation's ADR-0008
+Date: 2026-07-27 · Status: **armed into `check` (2026-08-03, owner mandate,
+W43)** — see (d) below for what changed and why. Adopts the foundation's
+ADR-0008
 (`agentproofarch/docs/decisions/0008-visual-regression.md`) with the
 app-specific rulings below. Builds on [ADR-0004](0004-layout-layer.md) (the
 layout layer, whose skeletons are the surfaces screenshotted here) and the flake
@@ -108,6 +109,8 @@ its slots filled by fixture content, and the states the skeleton owns:
 | `shell-sidebar-collapsed` | the collapsed rail and its expand affordance (ADR-0004 §c: a skeleton state, not a caller branch) |
 | `shell-terminal-open` | the terminal drawer at its default height with fixture log lines |
 | `shell-loading` | the non-happy branch inside the skeleton: banner slot, `SidebarSkeleton`, `DetailsSkeleton` |
+| `catalog-sidebar-narrow` / `catalog-sidebar-wide` | `CatalogSidebar` (video list, badges, the `SidebarFolderPanel` split button) at a 260px stress width and the 440px default width |
+| `photos-sidebar-narrow` / `photos-sidebar-wide` | `PhotosSidebar` (badge chips, thumbnails, the same split button) at the same two widths |
 
 Each renders in **dark and light** (two Playwright projects driving
 `prefers-color-scheme` through the real `ThemeModeProvider`): we are dark-first,
@@ -116,15 +119,37 @@ the regression this gate exists to catch. **EN only** — Polish copy is behavio
 and rides `test:e2e:parity`; re-baselining every skeleton per locale would buy
 font-metric noise, not coverage.
 
-### (d) The check is non-required until the owner arms it
+The sidebar surfaces render `CatalogSidebar`/`PhotosSidebar` directly (not
+through the full `AppShell`, since the split-button regression they pin lives
+inside the sidebar's own `SidebarFolderPanel` header) inside a fixed-width
+panel `Box` that mirrors `AppShell`'s sidebar chrome. The narrow width (260px)
+is deliberately **below** `SIDEBAR_MIN_SIZE` (280px, `AppShell.tsx`): it is a
+stress width, not a resize the shell's own panel would ever produce, chosen
+because that is exactly where the W42 split-button regression showed up (the
+label segment lost its `fullWidth` sizing and wrapped under the dropdown
+segment). The wide width is `SIDEBAR_DEFAULT_SIZE` (440px).
 
-`pnpm run visual` joins **no** gate: not `check`, not `smoke`, not the e2e
-projects, not `main-gates` — and it has **no CI job yet**. It is a command run on
-demand, on the machine that also runs the gates. The order is deliberate: a CI
-job comes first (non-required, on the self-hosted mac runner, once that runner is
-registered — OWNER), then a run history of green comparisons, and only then the
-ruleset edit that arms it. It is reverted the moment it flakes — a flaky required
-gate is a P1, and an enforcer that cannot be trusted is worse than no enforcer.
+### (d) Armed into `check` (2026-08-03, owner mandate, W43)
+
+`pnpm run visual` now joins `check` (`pnpm run check` runs it last, after
+`test:coverage`). This reverses the original non-required posture: the owner
+ordered it after a visually broken button (the same `FolderBar` split-button
+regression fixed in W42, commit `0d8ed43`) shipped through three gates — DOM-only
+structural tests stayed green over broken geometry, a release agent self-graded
+screenshots "looks correct" incorrectly, and the screenshots that would have
+shown the break were deleted with the worktree before anyone could review them.
+`check` was the only required gate positioned to have caught it, so it is the
+gate that now runs the suite.
+
+The self-hosted-runner CI-job path described in the original version of this
+ADR (non-required job first, then a green run history, then a ruleset edit) is
+superseded: there is still no CI runner, `check` runs on the same darwin
+machine that authors the baselines regardless of CI, and the owner chose
+immediate safety over that staged rollout. It is still reverted the moment it
+flakes — a flaky required gate is a P1, and an enforcer that cannot be trusted
+is worse than no enforcer; the flake doctrine in
+[CLAUDE.md](../../CLAUDE.md) and the `retries: 0` / `workers: 1` determinism
+levers above are what keep that reversion rare.
 
 ### (e) `scripts/gallery-shots.mjs` keeps its round-1 role
 

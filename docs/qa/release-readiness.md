@@ -42,14 +42,18 @@ skipped legs are named in the release notes to the owner.
 |---|---|---|
 | Build | `pnpm run electron:package` | the bundle builds |
 | Bundle shape | `pnpm run verify:package` | a single darwin onnxruntime binding, no non-darwin artifacts |
-| Self-QA walkthrough | `pnpm run qa:walkthrough -- --strict ...` | no `failed` step and no `skipped` step |
-| Screenshot review | — | the full checklist in [release-walkthrough.md](release-walkthrough.md), including the photo grid and photo detail shots |
+| Self-QA walkthrough | `pnpm run qa:walkthrough -- --strict --archive-to ~/repositories/claude-tmp/avc-release-shots/<version>/ ...` | no `failed` step, no `skipped` step, and the set is archived outside the worktree |
+| Screenshot review | — | an **independent reviewer** (not the agent that ran the walkthrough) works the full checklist in [release-walkthrough.md](release-walkthrough.md) against the archived set, including the sidebar geometry, photo grid and photo detail shots; that reviewer has authority to fail the release |
 
 A release that ships photo changes runs the walkthrough against a `--home`
 whose photos DB has a scanned root, so `photos-grid` and `photo-detail` produce
 real screenshots instead of honest skips. Release runs use `--strict`: a `skipped`
 step means the `--home` is not fully provisioned for this release's scope, and
 `--strict` turns that into a non-zero exit instead of a note a reviewer could miss.
+The set is archived **before** the release worktree is cleaned up
+(`--archive-to`, W43 2026-08-03): a screenshot set that only lives in a
+worktree does not survive the worktree being removed, which is how a prior
+broken release shipped unreviewed.
 
 ## 4. Docs and changelog
 
