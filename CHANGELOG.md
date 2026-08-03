@@ -14,23 +14,29 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.13] - 2026-08-03
+
 ### Fixed
 
 - The photos grid tile now always renders as a square, cover-filled thumbnail
   (the duplicate/proxy-failed badges anchor to it correctly) instead of
   letterboxing an uncropped image inside the square slot whenever a
-  512px grid thumbnail had not been generated yet.
+  512px grid thumbnail had not been generated yet
+  ([`71d7fdd`](https://github.com/coderoadpl/ai-video-cataloger/commit/71d7fdd7353481f866df3d23708f6b8ee3ac1ebb)).
 - A photo tile whose thumbnail image fails to load now falls back to the
   named `PlaceholderTile`, matching video thumbnail behavior, instead of
-  showing the browser's native broken-image icon.
+  showing the browser's native broken-image icon
+  ([`71d7fdd`](https://github.com/coderoadpl/ai-video-cataloger/commit/71d7fdd7353481f866df3d23708f6b8ee3ac1ebb)).
 - The Zdjęcia sidebar's scope toggle ("Ten folder" / "Wszystkie foldery")
   truncates its label with an ellipsis instead of wrapping onto extra lines
-  at narrow sidebar widths.
+  at narrow sidebar widths
+  ([`71d7fdd`](https://github.com/coderoadpl/ai-video-cataloger/commit/71d7fdd7353481f866df3d23708f6b8ee3ac1ebb)).
 - The "Not analysed yet" photo notice, the "Could not load analysis variants"
   notice and the photos proxies-pending strip are now a neutral `Paper`
   section (matching the W45 video details idiom) instead of a tinted `Alert`,
   since all three are persistent state, not a one-off reaction to a user
-  action.
+  action
+  ([`71d7fdd`](https://github.com/coderoadpl/ai-video-cataloger/commit/71d7fdd7353481f866df3d23708f6b8ee3ac1ebb)).
 - A failed video no longer shows its "An error occurred during processing."
   status line twice — once as a bare caption, once inside the "Processing
   Failed" section — and that section no longer leaks the raw resolved
@@ -38,15 +44,22 @@ release history jumps from `0.5.10` to `0.5.12`.
   the full diagnostic (command, args, stderr) always goes to the terminal
   log instead. An analyzer command that cannot be spawned at all now reports
   the reason ("Command not found.", "Command is not executable.") instead of
-  Node's raw `spawn <resolved path> ENOENT`.
+  Node's raw `spawn <resolved path> ENOENT`
+  ([`71d7fdd`](https://github.com/coderoadpl/ai-video-cataloger/commit/71d7fdd7353481f866df3d23708f6b8ee3ac1ebb)).
 - `pnpm run qa:walkthrough --strict` no longer fails on the `first-run-wizard`
   and `library-preview` steps, which can legitimately skip on any prepared
-  QA home reused across runs; every other skip still fails the run.
+  QA home reused across runs; every other skip still fails the run
+  ([`71d7fdd`](https://github.com/coderoadpl/ai-video-cataloger/commit/71d7fdd7353481f866df3d23708f6b8ee3ac1ebb)).
 - `pnpm run qa:walkthrough` now seeds the driven home's UI language to
   Polish before launch, so its screenshots show production Polish copy
-  instead of the English fallback.
+  instead of the English fallback
+  ([`71d7fdd`](https://github.com/coderoadpl/ai-video-cataloger/commit/71d7fdd7353481f866df3d23708f6b8ee3ac1ebb)).
 
 ## [0.6.12] - 2026-08-03
+
+**Note:** this build was merged and tagged but its publication was blocked by
+the independent reviewer; `v0.6.13` supersedes it. The tag stays unpublished
+and this section stays as history.
 
 ### Added
 
