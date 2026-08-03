@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.17] - 2026-08-04
+
 ### Added
 
 - Biblioteka → Kolekcja now surfaces analyzed photos alongside videos: it
@@ -27,7 +29,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   folder grouping and relevance sort are disabled with a tooltip whenever
   photos are mixed into the results or the media filter isn't a single
   medium. Photo tiles open a dedicated photo viewer and route "Otwórz w
-  analizie" to the photo's owning scanned root.
+  analizie" to the photo's owning scanned root
+  ([`4c5e2c3`](https://github.com/coderoadpl/ai-video-cataloger/commit/4c5e2c3e2a4c27dd719db4a3f2c0d24f766d865b)).
 
 ### Changed
 
@@ -38,7 +41,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   endpoints back it (`GET /api/photos/tree/folders` for the folder summary,
   `GET /api/photos/tree/folder` for a folder's direct photos on expand) so it
   stays honest at large photo counts instead of deriving from the full
-  paginated list client-side (W57).
+  paginated list client-side (W57)
+  ([`147e645`](https://github.com/coderoadpl/ai-video-cataloger/commit/147e6456f76dd0c8284fe98aad3c6c1a547c6824)).
 - Photo analysis scope split into two independent actions: the photo detail
   pane's "Analizuj" now analyzes only the selected photo (`POST
   /api/photos/process` gains an optional `fingerprints[]`), and the sidebar
@@ -46,7 +50,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   scanned root sequentially in one job with an honest "root X of Y" progress
   label and clean mid-sequence cancellation, instead of silently falling back
   to the selected photo's owner folder (`root` on `POST /api/photos/process`
-  is now optional; omitting it means every scanned root).
+  is now optional; omitting it means every scanned root) (W56)
+  ([`218f843`](https://github.com/coderoadpl/ai-video-cataloger/commit/218f8433172810891ab16d0baef73d6f80793051)).
 
 ### Fixed
 
@@ -54,17 +59,20 @@ release history jumps from `0.5.10` to `0.5.12`.
   the selected variant actually has (summary is always promised; transcript
   and frames are named only when present), instead of unconditionally
   promising all three even for a whisper-skip variant with no transcript or
-  a native variant with no frames (W58).
+  a native variant with no frames (W58)
+  ([`3c9f15e`](https://github.com/coderoadpl/ai-video-cataloger/commit/3c9f15e1c548e721a87922ef3109282263649e09)).
 - `RefreshSnackbar` and `RootErrorFallback` now sanitize `ApiError` messages
   through the existing analyzer-error formatter before rendering them,
   instead of interpolating the raw server message, so a background-refresh
   toast or the crash fallback screen can no longer leak an absolute
-  filesystem path (W58).
+  filesystem path (W58)
+  ([`3c9f15e`](https://github.com/coderoadpl/ai-video-cataloger/commit/3c9f15e1c548e721a87922ef3109282263649e09)).
 - The photo detail pane's single-photo "Analizuj" now resolves the selected
   photo's owner root from the already-fetched photo detail when the selection
   is not in the currently loaded page of the flat list, instead of staying
   disabled — reachable for the first time now that the folder tree can select
-  a photo the flat list has not paginated to (W57).
+  a photo the flat list has not paginated to (W57)
+  ([`147e645`](https://github.com/coderoadpl/ai-video-cataloger/commit/147e6456f76dd0c8284fe98aad3c6c1a547c6824)).
 - W59 silent-failure fix wave: People "Install models" failures now set the
   same `mutationError` Snackbar as every other People mutation instead of
   logging to the terminal only; Photos scan/generate-proxies/analyze now
@@ -86,7 +94,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   silently doing nothing; a folder-watch start failure is now logged instead
   of dropped as an unhandled rejection; and the `folder:removeRecent` IPC
   handler now rejects on invalid input instead of resolving as a silent
-  no-op.
+  no-op
+  ([`140c9e2`](https://github.com/coderoadpl/ai-video-cataloger/commit/140c9e20141108346115f728ab9e3658820a60c1)).
 
 ## [0.6.16] - 2026-08-03
 
