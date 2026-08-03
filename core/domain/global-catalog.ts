@@ -4,7 +4,7 @@ import { configDescriptorSchema, configId } from './config-descriptor.js';
 import { appError, type AppError } from './errors.js';
 import { canonicalPath } from './paths.js';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 12;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 13;
 export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 11;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
@@ -65,6 +65,8 @@ export const catalogFileSchema = z.object({
   fileName: z.string().min(1),
   size: z.number().int().nonnegative(),
   durationS: z.number().nonnegative().nullable(),
+  width: z.number().int().positive().nullable().default(null),
+  height: z.number().int().positive().nullable().default(null),
   gpsLat: z.number().min(-90).max(90).nullable().default(null),
   gpsLon: z.number().min(-180).max(180).nullable().default(null),
   processedAt: z.iso.datetime(),

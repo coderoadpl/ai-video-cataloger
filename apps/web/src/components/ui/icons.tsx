@@ -145,6 +145,18 @@ export const ImageNotSupportedIcon = (props: SvgIconProps) => (
   </SvgIcon>
 );
 
+export const CropPortraitIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M17 2H7c-1.1 0-2 .9-2 2v16c0 1.1.9 2 2 2h10c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 18H7V4h10v16z" />
+  </SvgIcon>
+);
+
+export const PanoramaIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M2 6v11c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2H4c-1.1 0-2 .9-2 2zm7.94 2.66 1.31 1.75 1.83-2.28L15.75 15H4l3.94-4.99 2.06 2.53z" />
+  </SvgIcon>
+);
+
 export const OpenInNewIcon = (props: SvgIconProps) => (
   <SvgIcon {...props}>
     <path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z" />

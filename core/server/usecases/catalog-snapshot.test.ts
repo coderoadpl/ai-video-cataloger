@@ -27,6 +27,8 @@ const file = (fingerprint: string, processedAt: string): CatalogFile => ({
   fileName: 'clip.mp4',
   size: 2048,
   durationS: 12.5,
+  width: null,
+  height: null,
   gpsLat: null,
   gpsLon: null,
   processedAt,

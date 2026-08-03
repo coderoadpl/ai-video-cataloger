@@ -28,6 +28,8 @@ const file = (fingerprint: string, folderId: string, fileName: string, gps: { la
   fileName,
   size: 100,
   durationS: null,
+  width: null,
+  height: null,
   gpsLat: gps?.lat ?? null,
   gpsLon: gps?.lon ?? null,
   processedAt: '2026-01-02T00:00:00.000Z',

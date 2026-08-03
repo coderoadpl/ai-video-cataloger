@@ -134,6 +134,8 @@ export const upsertProcessedVideo = async (
     fileName: input.fileName,
     size: input.size,
     durationS: input.durationS,
+    width: null,
+    height: null,
     gpsLat: input.gpsLat,
     gpsLon: input.gpsLon,
     processedAt: input.processedAt,

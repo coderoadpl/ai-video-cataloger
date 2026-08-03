@@ -4,6 +4,7 @@ import { Box, Tooltip, Typography } from '@mui/material';
 import { WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
+import { AspectRatioIndicator } from '../../components/ui/AspectRatioIndicator.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
 import { buildRows, columnsForWidth, visibleRowRange, type DaySection, type PhotoListItem } from './core/index.js';
 
@@ -135,6 +136,7 @@ const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) =
       ) : (
         <PlaceholderTile testId="photos-tile-placeholder" name={item.fileName} />
       )}
+      <AspectRatioIndicator width={item.width} height={item.height} testId="photos-aspect-indicator" />
       {item.sightings > 1 ? (
         <Box
           data-testid="photos-duplicate-badge"

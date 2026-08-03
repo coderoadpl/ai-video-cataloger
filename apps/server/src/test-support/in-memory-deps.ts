@@ -610,6 +610,8 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
             score: 1,
             capturedAt: file.capturedAt,
             place: file.place,
+            width: file.width,
+            height: file.height,
           };
         }
         const searchable = [
@@ -635,6 +637,8 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
           score: 1,
           capturedAt: file.capturedAt,
           place: file.place,
+          width: file.width,
+          height: file.height,
         };
       })
       .filter((row): row is CatalogSearchRow => row !== null);

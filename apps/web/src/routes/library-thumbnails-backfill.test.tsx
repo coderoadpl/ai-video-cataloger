@@ -30,6 +30,8 @@ const searchResult = (overrides: Record<string, unknown> = {}): Record<string, u
   missing: false,
   capturedAt: null,
   place: null,
+  width: null,
+  height: null,
   ...overrides,
 });
 

@@ -166,6 +166,8 @@ describe('GUI process route variant identity', () => {
       fileName: path.basename(originalPath),
       size: 2048,
       durationS: null,
+      width: null,
+      height: null,
       gpsLat: null,
       gpsLon: null,
       processedAt: nowIso,

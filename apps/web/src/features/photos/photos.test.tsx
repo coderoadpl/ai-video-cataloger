@@ -152,6 +152,7 @@ const stubPhotos = (input: {
       const body = variantsSelectBody.parse(await request.json());
       return HttpResponse.json({ ok: true, data: { media: 'photo', fingerprint: body.fingerprint, configId: body.configId } });
     }),
+    http.post('/api/photos/grid-thumbs', () => HttpResponse.json({ ok: true, data: { jobId: 'job-grid-thumbs' } })),
   );
 };
 
@@ -186,6 +187,36 @@ describe('PhotosView', () => {
     const image = tiles[0]?.querySelector('img');
     expect(image?.getAttribute('src')).toContain('media://local/');
     expect(screen.getByTestId('photos-duplicate-badge')).toBeDefined();
+  });
+
+  it('shows the portrait aspect-ratio indicator for a tile taller than wide', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001', width: 900, height: 1600 })];
+    stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
+
+    renderThemed(<PhotosView active />);
+    await screen.findAllByTestId('photos-tile');
+
+    expect(screen.getByTestId('photos-aspect-indicator')).toBeDefined();
+  });
+
+  it('shows no aspect-ratio indicator for a plain landscape tile', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001', width: 800, height: 600 })];
+    stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
+
+    renderThemed(<PhotosView active />);
+    await screen.findAllByTestId('photos-tile');
+
+    expect(screen.queryByTestId('photos-aspect-indicator')).toBeNull();
+  });
+
+  it('shows no aspect-ratio indicator when the photo has no stored dimensions', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000001', width: null, height: null })];
+    stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
+
+    renderThemed(<PhotosView active />);
+    await screen.findAllByTestId('photos-tile');
+
+    expect(screen.queryByTestId('photos-aspect-indicator')).toBeNull();
   });
 
   it('prefers the 512px grid thumbnail over the small thumbnail for a grid tile', async () => {

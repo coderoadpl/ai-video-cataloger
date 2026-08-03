@@ -8,6 +8,7 @@ import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, owne
 import { PhotoDetailPane } from './PhotoDetailPane.js';
 import { PhotoGrid } from './PhotoGrid.js';
 import { PhotoViewer } from './PhotoViewer.js';
+import { usePhotoThumbnailsBackfillTrigger } from './use-photo-thumbnails-backfill.js';
 import { usePhotos } from './use-photos.js';
 
 interface PhotosViewProps {
@@ -71,6 +72,8 @@ export const PhotosView = ({
     selectRoot(rootSeed);
     onRootSeedConsumed();
   }, [rootSeed, selectRoot, onRootSeedConsumed]);
+
+  usePhotoThumbnailsBackfillTrigger({ active, hasRoots: photos.roots.length > 0 });
 
   if (!active) return null;
 

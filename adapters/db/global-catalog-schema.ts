@@ -15,6 +15,8 @@ export const files = sqliteTable('files', {
   fileName: text('file_name').notNull(),
   size: integer('size').notNull(),
   durationS: real('duration_s'),
+  width: integer('width'),
+  height: integer('height'),
   gpsLat: real('gps_lat'),
   gpsLon: real('gps_lon'),
   processedAt: text('processed_at').notNull(),
@@ -373,4 +375,9 @@ export const migrateGlobalCatalogSchemaSqlV12 = [
   'CREATE INDEX idx_file_tags_tag_id ON file_tags(tag_id)',
   'CREATE INDEX idx_face_observations_person ON face_observations(person_id)',
   'CREATE INDEX idx_analyses_fingerprint ON analyses(fingerprint)',
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV13 = [
+  'ALTER TABLE files ADD COLUMN width INTEGER',
+  'ALTER TABLE files ADD COLUMN height INTEGER',
 ] as const;

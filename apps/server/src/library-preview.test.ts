@@ -19,6 +19,8 @@ describe('GET /api/library/preview', () => {
       fileName: 'clip.mp4',
       size: 2048,
       durationS: 65,
+      width: null,
+      height: null,
       gpsLat: null,
       gpsLon: null,
       processedAt: '2026-01-02T00:00:00.000Z',

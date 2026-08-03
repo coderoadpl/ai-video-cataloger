@@ -40,6 +40,8 @@ const libraryItem = (overrides: Partial<LibraryItem> & { fingerprint: string }):
   missing: false,
   capturedAt: '2026-01-02T10:00:00.000Z',
   place: null,
+  width: null,
+  height: null,
   ...overrides,
 });
 
@@ -169,6 +171,78 @@ describe('LibraryView', () => {
     await screen.findByTestId('library-tile');
 
     expect(screen.getByTestId('library-offline-badge').textContent).toBe(en.library.missingBadge);
+  });
+
+  it('shows exactly one missing-file label when the folder is offline and the file is also flagged missing', async () => {
+    const items = [libraryItem({
+      fingerprint: 'fp-offline-missing',
+      thumbnailPath: null,
+      gridThumbnailPath: null,
+      missing: true,
+      folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' },
+    })];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+
+    expect(screen.queryByTestId('library-missing-badge')).toBeNull();
+    expect(screen.getAllByText(en.library.missingBadge)).toHaveLength(1);
+  });
+
+  it('keeps the per-file missing badge when the folder is online but the file alone is missing', async () => {
+    const items = [libraryItem({
+      fingerprint: 'fp-online-missing',
+      thumbnailPath: '/videos/.ai-video-cataloger/thumbnails/fp-online-missing.jpg',
+      missing: true,
+      folder: { folderId: '11111111-1111-4111-8111-111111111111', currentPath: '/videos', displayName: 'videos', online: true, offlineReason: null },
+    })];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+
+    expect(screen.getByTestId('library-missing-badge').textContent).toBe(en.library.missingBadge);
+  });
+
+  it('shows the portrait aspect-ratio indicator for a tile whose stored dimensions are taller than wide', async () => {
+    const items = [libraryItem({ fingerprint: 'fp-portrait', width: 1080, height: 1920 })];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+
+    expect(screen.getByTestId('library-aspect-indicator')).toBeDefined();
+  });
+
+  it('shows the panorama aspect-ratio indicator for an extreme-wide tile', async () => {
+    const items = [libraryItem({ fingerprint: 'fp-panorama', width: 3000, height: 1000 })];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+
+    expect(screen.getByTestId('library-aspect-indicator')).toBeDefined();
+  });
+
+  it('shows no aspect-ratio indicator for a plain landscape tile', async () => {
+    const items = [libraryItem({ fingerprint: 'fp-landscape', width: 1920, height: 1080 })];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+
+    expect(screen.queryByTestId('library-aspect-indicator')).toBeNull();
+  });
+
+  it('shows no aspect-ratio indicator when dimensions are unknown', async () => {
+    const items = [libraryItem({ fingerprint: 'fp-unknown-dims', width: null, height: null })];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+
+    expect(screen.queryByTestId('library-aspect-indicator')).toBeNull();
   });
 
   it('tiles request the 512px grid thumbnail when it exists, small thumb only as fallback', async () => {

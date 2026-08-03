@@ -1624,6 +1624,8 @@ export const searchResultSchema = z.object({
   missing: z.boolean(),
   capturedAt: z.iso.datetime().nullable(),
   place: catalogPlaceSchema.nullable(),
+  width: z.number().int().positive().nullable(),
+  height: z.number().int().positive().nullable(),
 });
 
 export const searchOutputSchema = z.object({

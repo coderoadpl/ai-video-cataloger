@@ -1620,6 +1620,8 @@ const recordGlobalCatalog = async (
         fileName: deps.fs.basename(finalPath),
         size: stat.value.size,
         durationS: probe.value.duration,
+        width: probe.value.width,
+        height: probe.value.height,
         gpsLat: probe.value.gpsLat,
         gpsLon: probe.value.gpsLon,
         processedAt: createdAt,

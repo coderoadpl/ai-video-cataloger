@@ -29,6 +29,8 @@ const searchResult = (overrides: Partial<SearchResult> = {}): SearchResult => ({
   missing: false,
   capturedAt: '2026-01-02T10:00:00.000Z',
   place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 10, dataset: 'test' },
+  width: null,
+  height: null,
   ...overrides,
 });
 

@@ -1452,6 +1452,8 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       score,
       capturedAt: file.capturedAt,
       place: file.place,
+      width: file.width,
+      height: file.height,
     };
   }
 

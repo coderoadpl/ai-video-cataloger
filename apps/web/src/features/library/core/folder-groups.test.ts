@@ -24,6 +24,8 @@ const item = (fingerprint: string, overrides: Partial<LibraryItem> = {}): Librar
   missing: false,
   capturedAt: null,
   place: null,
+  width: null,
+  height: null,
   ...overrides,
 });
 

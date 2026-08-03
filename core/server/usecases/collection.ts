@@ -60,6 +60,8 @@ export interface CollectionVideoItem {
   missing: boolean;
   capturedAt: string | null;
   place: CatalogPlace | null;
+  width: number | null;
+  height: number | null;
 }
 
 export interface CollectionPhotoItem {
@@ -392,6 +394,8 @@ const videoItemFrom = async (deps: CollectionDeps, row: CatalogSearchRow): Promi
     missing: row.missing,
     capturedAt: row.capturedAt,
     place: row.place,
+    width: row.width,
+    height: row.height,
   });
 };
 

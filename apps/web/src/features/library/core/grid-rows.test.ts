@@ -24,6 +24,8 @@ const stubItem = (fingerprint: string): LibraryItem => ({
   missing: false,
   capturedAt: null,
   place: null,
+  width: null,
+  height: null,
 });
 
 describe('columnsForWidth', () => {

@@ -249,6 +249,22 @@ whose winning source is a fallback (see above), this just makes sure the
 pass actually runs so pre-existing blurry tiles get swept without the owner
 running `thumbnails` by hand.
 
+**Photo counterpart, wired in W39.** `enqueuePhotoGridThumbs`/
+`runPhotoGridThumbsPass` (`core/server/usecases/photos.ts`) and the
+`POST /api/photos/grid-thumbs` route existed since the grid-thumbnail work
+above shipped, but nothing in the renderer ever called it — the video
+trigger's photo counterpart was a systemic gap, not a design choice. The
+Library photos surface now fires the same trigger shape
+(`features/photos/use-photo-thumbnails-backfill.ts`, mirroring
+`use-thumbnails-backfill.ts`): once per app session, `force: false`,
+background priority, the moment `PhotosView` is active and at least one
+photo root is visible. Unlike the video trigger there is one call, not one
+per root — `runPhotoGridThumbsPass` sweeps every photo proxy in the catalog
+in a single pass, it takes no root parameter, so a second per-root call
+would just re-walk the same set. No new generation logic: the existing pass
+already regenerates a missing `.grid.jpg` and self-heals a stale one exactly
+like the video pass does, once it actually runs.
+
 Expanded sub-folder rows in the catalog tree get the same foreground
 thumbnail priority as the root list, scoped to the windowed-visible range
 (`CatalogTree.tsx`): every expanded folder's videos used to land in one
@@ -631,6 +647,34 @@ offline row; no new dictionary strings were added. `MapPinPopover` and
 `catalogLocations`/`libraryFacets` keep their coarser online/offline-only
 signal for this wave — only the Library and browse-preview surfaces the bug
 report named carry the distinction.
+
+**One offline label per tile (W39).** The folder-level offline caption above
+already subsumes the per-file `missing` chip whenever the two coincide — a
+file that is itself flagged `missing` inside a folder that is already
+`offline` used to render both, duplicating the same "Brak pliku" text on one
+tile. `LibraryGrid`'s per-file missing badge now only renders when
+`item.folder.online` is true; an offline folder's caption is always the
+single source of truth for that tile, and the per-file chip still renders
+normally once the folder itself is reachable and only the file is missing.
+
+**Aspect-ratio indicator on grid tiles (W39).** Library/Kolekcja and Zdjęcia
+tiles keep their square cover crop, but a non-landscape source now gets a
+small bottom-right icon: portrait (`height > width`) or extreme panorama
+(`width / height >= 2.4`); plain landscape and square sources get nothing,
+by design (the common case should stay quiet). The pure classifier lives in
+`apps/web/src/lib/aspect-ratio-indicator.ts`
+(`aspectRatioIndicatorKind`), rendered by the shared
+`components/ui/AspectRatioIndicator.tsx` from already-resolved
+`width`/`height` — never a per-tile probe. Photos already carried EXIF
+`width`/`height` on every list row (`photoListItemSchema`); videos did not:
+`process`'s `recordGlobalCatalog` already calls `MediaPort.probe` for
+duration and GPS, so its `width`/`height` are now also persisted onto the
+global catalog `files` row (migration v13, two nullable `INTEGER` columns,
+backfilled to `null` on upgrade) and surfaced on `searchResultSchema`
+(and by extension `collectionVideoItemSchema`) — no new I/O on the read
+path, no per-tile ffprobe. A file processed before this migration simply
+shows no indicator until it is reprocessed, which is the honest answer for
+"unknown dimensions" rather than a synthesized default.
 
 **Player fields for an online tile.** For a tile whose folder is online,
 `libraryPreviewDetail` also returns `transcriptSegments` (`{ start, end,

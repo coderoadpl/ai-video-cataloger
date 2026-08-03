@@ -13,6 +13,8 @@ export interface Dictionary {
     ok: string;
     revealInFinder: string;
     revealFailed: string;
+    aspectPortraitLabel: string;
+    aspectPanoramaLabel: string;
   };
   language: {
     stepTitle: string;
@@ -838,6 +840,8 @@ export const en: Dictionary = {
     ok: 'OK',
     revealInFinder: 'Reveal in Finder',
     revealFailed: 'Could not reveal this file: it is outside every known catalog folder.',
+    aspectPortraitLabel: 'Portrait orientation',
+    aspectPanoramaLabel: 'Panoramic aspect ratio',
   },
   language: {
     stepTitle: 'Language',
@@ -1724,6 +1728,8 @@ export const pl: Dictionary = {
     openSettings: 'Otwórz ustawienia',
     ok: 'OK',
     revealInFinder: 'Pokaż w Finderze',
+    aspectPortraitLabel: 'Orientacja pionowa',
+    aspectPanoramaLabel: 'Proporcje panoramiczne',
     revealFailed: 'Nie można pokazać tego pliku: jest poza wszystkimi znanymi folderami katalogu.',
   },
   language: {

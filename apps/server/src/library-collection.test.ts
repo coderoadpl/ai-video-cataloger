@@ -41,6 +41,8 @@ describe('GET /api/library/collection', () => {
       fileName: 'clip.mp4',
       size: 100,
       durationS: null,
+      width: null,
+      height: null,
       gpsLat: null,
       gpsLon: null,
       processedAt: '2026-01-02T00:00:00.000Z',

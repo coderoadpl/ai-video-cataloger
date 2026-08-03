@@ -37,6 +37,8 @@ const file = (fingerprint: string, folderId: string, fileName: string): CatalogF
   fileName,
   size: 100,
   durationS: null,
+  width: null,
+  height: null,
   gpsLat: null,
   gpsLon: null,
   processedAt: '2026-01-02T00:00:00.000Z',

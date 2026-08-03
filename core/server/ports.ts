@@ -132,6 +132,8 @@ export interface CatalogSearchRow {
   score: number;
   capturedAt: string | null;
   place: CatalogPlace | null;
+  width: number | null;
+  height: number | null;
 }
 
 export interface CatalogSearchResults {

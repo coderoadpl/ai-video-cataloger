@@ -98,6 +98,7 @@ import {
   migrateGlobalCatalogSchemaSqlV10,
   migrateGlobalCatalogSchemaSqlV11,
   migrateGlobalCatalogSchemaSqlV12,
+  migrateGlobalCatalogSchemaSqlV13,
   schemaMeta,
   tagAliases,
   tags,
@@ -1418,6 +1419,10 @@ const migrate = (client: Database): boolean => {
     for (const statement of migrateGlobalCatalogSchemaSqlV12) runMigrationStatement(client, statement);
     migrated = true;
   }
+  if (currentVersion < 13) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV13) runMigrationStatement(client, statement);
+    migrated = true;
+  }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
     const db = drizzle(client, { schema: globalCatalogSchema });
@@ -1502,6 +1507,8 @@ const rowToFile = (row: typeof files.$inferSelect): CatalogFile => ({
   fileName: canonicalPath(row.fileName),
   size: row.size,
   durationS: row.durationS,
+  width: row.width,
+  height: row.height,
   gpsLat: row.gpsLat,
   gpsLon: row.gpsLon,
   processedAt: row.processedAt,
@@ -1536,6 +1543,8 @@ const fileToRow = (file: CatalogFile): typeof files.$inferInsert => ({
   fileName: canonicalPath(file.fileName),
   size: file.size,
   durationS: file.durationS,
+  width: file.width,
+  height: file.height,
   gpsLat: file.gpsLat,
   gpsLon: file.gpsLon,
   processedAt: file.processedAt,
@@ -1990,6 +1999,8 @@ const searchRowFromValues = (row: SqlValue[], rankingTerms: readonly string[]): 
     }, rankingTerms),
     capturedAt: nullableStringValue(row[17]),
     place: searchPlaceFromValues(row),
+    width: nullableNumberValue(row[24]),
+    height: nullableNumberValue(row[25]),
   };
 };
 
@@ -2035,7 +2046,9 @@ const SEARCH_ROW_COLUMNS = `
   f.place_country,
   f.place_country_code,
   f.place_distance_m,
-  f.place_dataset
+  f.place_dataset,
+  f.width,
+  f.height
 `;
 
 const SEARCH_COLUMNS_MATCHED = SEARCH_ROW_COLUMNS.replace(

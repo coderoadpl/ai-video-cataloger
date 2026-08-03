@@ -317,6 +317,8 @@ const seedSmokeVariant = async (home: string, folder: string): Promise<string> =
     fileName: 'variant-smoke.mp4',
     size: statSync(videoPath).size,
     durationS: null,
+    width: null,
+    height: null,
     gpsLat: null,
     gpsLon: null,
     processedAt: '2026-08-03T00:00:00.000Z',

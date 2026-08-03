@@ -216,6 +216,8 @@ describe('route schemas', () => {
         missing: false,
         capturedAt: '2026-01-01T00:00:00.000Z',
         place: null,
+        width: null,
+        height: null,
       }],
     });
     expect(parsed.results[0]?.folder.online).toBe(true);
@@ -308,6 +310,8 @@ describe('route schemas', () => {
         missing: false,
         capturedAt: null,
         place: null,
+        width: null,
+        height: null,
       }],
     });
     expect(parsed.results[0]?.folder.folderId).toBe('path-1a2b3c4d');
@@ -422,6 +426,8 @@ describe('route schemas', () => {
       missing: false,
       capturedAt: null,
       place: null,
+      width: null,
+      height: null,
     });
     expect(video.media).toBe('video');
 

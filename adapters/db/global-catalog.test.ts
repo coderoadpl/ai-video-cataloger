@@ -31,6 +31,7 @@ import {
   migrateGlobalCatalogSchemaSqlV9,
   migrateGlobalCatalogSchemaSqlV10,
   migrateGlobalCatalogSchemaSqlV11,
+  migrateGlobalCatalogSchemaSqlV12,
 } from './global-catalog-schema.js';
 
 const tempRoots: string[] = [];
@@ -65,6 +66,8 @@ const file: CatalogFile = {
   fileName: 'clip.mp4',
   size: 1024,
   durationS: 30.5,
+  width: null,
+  height: null,
   gpsLat: null,
   gpsLon: null,
   processedAt: '2026-01-03T00:00:00.000Z',
@@ -548,6 +551,30 @@ describe('SqlJsGlobalCatalogStore', () => {
 
     const search = await store.search({ match: 'fjordvik*', rankingTerms: ['fjordvik'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
     expect(search.ok && search.value.rows.map((row) => row.fingerprint)).toEqual([file.fingerprint]);
+  });
+
+  it('carries stored dimensions onto a search row without disturbing the place columns', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile({
+      ...file,
+      width: 1080,
+      height: 1920,
+      place: { name: 'Fjordvik', region: null, country: 'Norway', countryCode: 'NO', distanceM: 120, dataset: 'test-dataset' },
+    });
+
+    const search = await store.search({ match: 'fjordvik*', rankingTerms: ['fjordvik'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
+    expect(search.ok && search.value.rows[0]?.width).toBe(1080);
+    expect(search.ok && search.value.rows[0]?.height).toBe(1920);
+    expect(search.ok && search.value.rows[0]?.place).toEqual({
+      name: 'Fjordvik',
+      region: null,
+      country: 'Norway',
+      countryCode: 'NO',
+      distanceM: 120,
+      dataset: 'test-dataset',
+    });
   });
 
   it('batches writes: a crash before flush loses only un-flushed rows and a re-run heals', async () => {
@@ -1346,7 +1373,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     ]);
   });
 
-  it('migrates a v10 catalog to the current version losslessly, adding media=video to face_observations only', async () => {
+  it('migrates a v10 catalog to the current version losslessly, adding media=video to face_observations and width/height to files', async () => {
     const home = await tempHome();
     await writeV10Catalog(home);
     const tableNames = ['folders', 'files', 'analyses', 'tags', 'file_tags', 'tag_aliases', 'drive_runs', 'people', 'face_index_state'];
@@ -1368,7 +1395,10 @@ describe('SqlJsGlobalCatalogStore', () => {
     after.close();
 
     expect(versionResult[0]?.values[0]?.[0]).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
-    expect(afterSnapshot).toEqual(beforeSnapshot);
+    expect(afterSnapshot).toEqual({
+      ...beforeSnapshot,
+      files: (beforeSnapshot.files ?? []).map((row) => [...row, null, null]),
+    });
     expect(afterObservations).toEqual(beforeObservations.map((row) => [...row, 'video']));
   });
 
@@ -1393,13 +1423,41 @@ describe('SqlJsGlobalCatalogStore', () => {
 
     const after = new SQL.Database(await readFile(store.databasePath()));
     const versionResult = after.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
-    expect(versionResult[0]?.values[0]?.[0]).toBe(12);
+    expect(versionResult[0]?.values[0]?.[0]).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
     const indexNames = (table: string): string[] =>
       (after.exec(`PRAGMA index_list('${table}')`)[0]?.values ?? []).map((row) => String(row[1]));
     expect(indexNames('files')).toEqual(expect.arrayContaining(['idx_files_captured_at', 'idx_files_folder_id', 'idx_files_place_name']));
     expect(indexNames('file_tags')).toEqual(expect.arrayContaining(['idx_file_tags_tag_id']));
     expect(indexNames('face_observations')).toEqual(expect.arrayContaining(['idx_face_observations_person']));
     expect(indexNames('analyses')).toEqual(expect.arrayContaining(['idx_analyses_fingerprint']));
+    after.close();
+  });
+
+  it('migrates a v12 catalog to v13, adding nullable width/height columns to files', async () => {
+    const home = await tempHome();
+    const SQL = await initSqlJs();
+    const client = new SQL.Database(await (async () => {
+      const seeded = await tempHome();
+      await writeV10Catalog(seeded);
+      return readFile(path.join(seeded, '.ai-video-cataloger', 'catalog.db'));
+    })());
+    for (const statement of migrateGlobalCatalogSchemaSqlV11) client.run(statement);
+    for (const statement of migrateGlobalCatalogSchemaSqlV12) client.run(statement);
+    client.run('UPDATE schema_meta SET version = 12');
+    const databasePath = path.join(home, '.ai-video-cataloger', 'catalog.db');
+    await mkdir(path.dirname(databasePath), { recursive: true });
+    await writeFile(databasePath, Buffer.from(client.export()));
+    client.close();
+
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    expect((await store.counts()).ok).toBe(true);
+    expect((await store.flush()).ok).toBe(true);
+
+    const after = new SQL.Database(await readFile(store.databasePath()));
+    const versionResult = after.exec('SELECT version FROM schema_meta ORDER BY version DESC LIMIT 1');
+    expect(versionResult[0]?.values[0]?.[0]).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
+    const columnNames = (after.exec('PRAGMA table_info(files)')[0]?.values ?? []).map((row) => row[1]);
+    expect(columnNames).toEqual(expect.arrayContaining(['width', 'height']));
     after.close();
   });
 
