@@ -521,6 +521,60 @@ describe('SqlJsPhotosStore', () => {
     expect(page.ok && page.value.items.map((item) => item.fingerprint)).toEqual(['ph_0000000000000001']);
   });
 
+  it('listFolderTree aggregates photo and analysed counts per exact folder directory', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const tripFolder: PhotoFolderRecord = { ...folder, folderId: 'path-bbbbbbbb', currentPath: '/media/photos/trip', displayName: 'trip' };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(tripFolder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', currentPath: '/media/photos/a.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', folderId: tripFolder.folderId, currentPath: '/media/photos/trip/b.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000003', folderId: tripFolder.folderId, currentPath: '/media/photos/trip/c.jpg' }));
+
+    const tree = await store.listFolderTree();
+    expect(tree.ok && tree.value).toEqual([
+      { folderId: folder.folderId, currentPath: '/media/photos', photoCount: 1, analysedCount: 0 },
+      { folderId: tripFolder.folderId, currentPath: '/media/photos/trip', photoCount: 2, analysedCount: 0 },
+    ]);
+  });
+
+  it('listFolderTree omits a photo_folders row with no photos', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const emptyFolder: PhotoFolderRecord = { ...folder, folderId: 'path-cccccccc', currentPath: '/media/empty', displayName: 'empty' };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(emptyFolder);
+    await store.upsertPhoto(photo());
+
+    const tree = await store.listFolderTree();
+    expect(tree.ok && tree.value).toEqual([
+      { folderId: folder.folderId, currentPath: '/media/photos', photoCount: 1, analysedCount: 0 },
+    ]);
+  });
+
+  it('listPhotosInFolder returns only photos whose folder_id matches exactly, newest captured first', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const tripFolder: PhotoFolderRecord = { ...folder, folderId: 'path-bbbbbbbb', currentPath: '/media/photos/trip', displayName: 'trip' };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(tripFolder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', currentPath: '/media/photos/a.jpg', capturedAt: '2026-01-01T00:00:00.000Z' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', folderId: tripFolder.folderId, currentPath: '/media/photos/trip/b.jpg', capturedAt: '2026-01-02T00:00:00.000Z' }));
+
+    const rootItems = await store.listPhotosInFolder(folder.folderId);
+    expect(rootItems.ok && rootItems.value.map((item) => item.fingerprint)).toEqual(['ph_0000000000000001']);
+
+    const tripItems = await store.listPhotosInFolder(tripFolder.folderId);
+    expect(tripItems.ok && tripItems.value.map((item) => item.fingerprint)).toEqual(['ph_0000000000000002']);
+  });
+
+  it('listPhotosInFolder returns an empty list for an unknown folder id', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const items = await store.listPhotosInFolder('path-ffffffff');
+    expect(items.ok && items.value).toEqual([]);
+  });
+
   it('listPhotosPage includes a duplicate sighted under the root but owned elsewhere, with the sightings count', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });

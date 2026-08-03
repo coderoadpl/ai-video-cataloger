@@ -104,6 +104,7 @@ export type PhotosProxiesInput = z.input<typeof API_ROUTES.photosProxies.input>;
 export type PhotosGridThumbsInput = z.input<typeof API_ROUTES.photosGridThumbs.input>;
 export type PhotosProcessInput = z.input<typeof API_ROUTES.photosProcess.input>;
 export type PhotosListInput = z.input<typeof API_ROUTES.photosList.input>;
+export type PhotosTreeFolderInput = z.input<typeof API_ROUTES.photosTreeFolder.input>;
 export type PhotosDetailInput = z.input<typeof API_ROUTES.photosDetail.input>;
 export type SelectVariantInput = z.input<typeof API_ROUTES.variantsSelect.input>;
 export type DeleteVariantInput = z.input<typeof API_ROUTES.variantsDelete.input>;
@@ -283,6 +284,8 @@ export const photosScopes = {
   all: () => ['photos'] as const,
   status: (root?: string | undefined) => ['photos', 'status', root ?? null] as const,
   tree: () => ['photos', 'tree'] as const,
+  folderTree: () => ['photos', 'folder-tree'] as const,
+  treeFolder: (folder: string) => ['photos', 'tree-folder', folder] as const,
   list: (root: string | undefined, offset: number) => ['photos', 'list', root ?? null, offset] as const,
   detail: (fingerprint: string) => ['photos', 'detail', fingerprint] as const,
   search: (query: string, offset: number) => ['photos', 'search', query, offset] as const,
@@ -637,6 +640,22 @@ export const photosTreeQuery = (api: ApiClient) =>
     staleTime: 0,
     call: ({ signal }) => api.photosTree(signal),
   });
+
+export const photosFolderTreeQuery = (api: ApiClient) =>
+  defineQuery({
+    queryKey: photosScopes.folderTree(),
+    staleTime: 0,
+    call: ({ signal }) => api.photosFolderTree(signal),
+  });
+
+export const photosTreeFolderQuery = (api: ApiClient, input: PhotosTreeFolderInput) => {
+  const parsed = API_ROUTES.photosTreeFolder.input.parse(input);
+  return defineQuery({
+    queryKey: photosScopes.treeFolder(parsed.folder),
+    staleTime: 0,
+    call: ({ signal }) => api.photosTreeFolder(parsed, signal),
+  });
+};
 
 export const photosListQuery = (api: ApiClient, input: PhotosListInput) =>
   defineQuery({

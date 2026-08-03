@@ -42,6 +42,7 @@ import type {
   PhotoDetail,
   PhotoFaceIndexCandidate,
   PhotoFolderRecord,
+  PhotoFolderTreeEntry,
   PhotoGeoBackfillCandidate,
   PhotoListItem,
   PhotoLocationRow,
@@ -608,6 +609,38 @@ export class SqlJsPhotosStore implements PhotosStore {
     });
   }
 
+  async listFolderTree(): Promise<Result<PhotoFolderTreeEntry[], AppError>> {
+    return this.read((_db, client) => {
+      const result = client.exec(
+        `SELECT pf.folder_id AS folder_id, pf.current_path AS current_path,
+                COUNT(p.fingerprint) AS photo_count,
+                SUM(CASE WHEN EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) THEN 1 ELSE 0 END) AS analysed_count
+         FROM photo_folders pf
+         JOIN photos p ON p.folder_id = pf.folder_id
+         GROUP BY pf.folder_id
+         ORDER BY pf.current_path ASC`,
+      );
+      return (result[0]?.values ?? []).map((row): PhotoFolderTreeEntry => ({
+        folderId: stringValue(row[0]),
+        currentPath: canonicalPath(stringValue(row[1])),
+        photoCount: numberValue(row[2]),
+        analysedCount: numberValue(row[3]),
+      }));
+    });
+  }
+
+  async listPhotosInFolder(folderId: string): Promise<Result<PhotoListItem[], AppError>> {
+    return this.read((_db, client) => {
+      const rowsResult = client.exec(
+        `SELECT ${PHOTO_LIST_ITEM_COLUMNS}
+         FROM photos WHERE folder_id = $folderId
+         ORDER BY captured_at DESC, fingerprint ASC`,
+        { $folderId: folderId },
+      );
+      return (rowsResult[0]?.values ?? []).map(rowToPhotoListItem);
+    });
+  }
+
   async listPhotosPage(input: { root: string | null; offset: number; limit: number }):
   Promise<Result<{ total: number; items: PhotoListItem[] }, AppError>> {
     return this.read((_db, client) => {
@@ -615,31 +648,13 @@ export class SqlJsPhotosStore implements PhotosStore {
       const totalResult = client.exec(`SELECT COUNT(*) FROM photos WHERE ${scope.where}`, scope.params);
       const total = numberValue(totalResult[0]?.values[0]?.[0]);
       const rowsResult = client.exec(
-        `SELECT fingerprint, file_name, current_path, ext, captured_at, captured_at_source, width, height,
-                proxy_state, thumb_state, missing_at, exif_read_at,
-                (SELECT COUNT(*) FROM photo_paths WHERE fingerprint = photos.fingerprint) AS sightings,
-                EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = photos.fingerprint) AS analysed
+        `SELECT ${PHOTO_LIST_ITEM_COLUMNS}
          FROM photos WHERE ${scope.where}
          ORDER BY captured_at DESC, fingerprint ASC
          LIMIT $scopeLimit OFFSET $scopeOffset`,
         { ...scope.params, $scopeLimit: input.limit, $scopeOffset: input.offset },
       );
-      const items = (rowsResult[0]?.values ?? []).map((row): PhotoListItem => ({
-        fingerprint: stringValue(row[0]),
-        fileName: stringValue(row[1]),
-        currentPath: canonicalPath(stringValue(row[2])),
-        ext: parseExtension(stringValue(row[3])),
-        capturedAt: nullableStringValue(row[4]),
-        capturedAtSource: parseCapturedAtSource(nullableStringValue(row[5])),
-        width: nullableNumberValue(row[6]),
-        height: nullableNumberValue(row[7]),
-        proxyState: parseProxyState(stringValue(row[8])),
-        thumbState: parseThumbState(stringValue(row[9])),
-        missingAt: nullableNumberValue(row[10]),
-        exifReadAt: nullableStringValue(row[11]),
-        sightings: numberValue(row[12]),
-        analysed: numberValue(row[13]) === 1,
-      }));
+      const items = (rowsResult[0]?.values ?? []).map(rowToPhotoListItem);
       return { total, items };
     });
   }
@@ -1193,6 +1208,28 @@ const parseProxyState = (value: string): PhotoRecord['proxyState'] => {
 };
 
 const parseThumbState = (value: string): PhotoRecord['thumbState'] => (value === 'done' || value === 'failed' ? value : 'pending');
+
+const PHOTO_LIST_ITEM_COLUMNS = `fingerprint, file_name, current_path, ext, captured_at, captured_at_source, width, height,
+                proxy_state, thumb_state, missing_at, exif_read_at,
+                (SELECT COUNT(*) FROM photo_paths WHERE fingerprint = photos.fingerprint) AS sightings,
+                EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = photos.fingerprint) AS analysed`;
+
+const rowToPhotoListItem = (row: readonly SqlValue[]): PhotoListItem => ({
+  fingerprint: stringValue(row[0]),
+  fileName: stringValue(row[1]),
+  currentPath: canonicalPath(stringValue(row[2])),
+  ext: parseExtension(stringValue(row[3])),
+  capturedAt: nullableStringValue(row[4]),
+  capturedAtSource: parseCapturedAtSource(nullableStringValue(row[5])),
+  width: nullableNumberValue(row[6]),
+  height: nullableNumberValue(row[7]),
+  proxyState: parseProxyState(stringValue(row[8])),
+  thumbState: parseThumbState(stringValue(row[9])),
+  missingAt: nullableNumberValue(row[10]),
+  exifReadAt: nullableStringValue(row[11]),
+  sightings: numberValue(row[12]),
+  analysed: numberValue(row[13]) === 1,
+});
 
 const parsePhotoGpsSource = (value: string | null): GpsSource | null =>
   value === 'camera' || value === 'timeline' || value === 'manual' ? value : null;

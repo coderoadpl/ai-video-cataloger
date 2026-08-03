@@ -31,6 +31,14 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- The photos sidebar's "Wszystkie" scope now renders a full collapsible
+  folder tree (roots → subfolders → photo rows, each with photo/analysed
+  counts, root expanded and children collapsed by default) instead of a flat
+  per-root photo list, matching the videos catalog tree; two new read-only
+  endpoints back it (`GET /api/photos/tree/folders` for the folder summary,
+  `GET /api/photos/tree/folder` for a folder's direct photos on expand) so it
+  stays honest at large photo counts instead of deriving from the full
+  paginated list client-side (W57).
 - Photo analysis scope split into two independent actions: the photo detail
   pane's "Analizuj" now analyzes only the selected photo (`POST
   /api/photos/process` gains an optional `fingerprints[]`), and the sidebar
@@ -52,6 +60,11 @@ release history jumps from `0.5.10` to `0.5.12`.
   instead of interpolating the raw server message, so a background-refresh
   toast or the crash fallback screen can no longer leak an absolute
   filesystem path (W58).
+- The photo detail pane's single-photo "Analizuj" now resolves the selected
+  photo's owner root from the already-fetched photo detail when the selection
+  is not in the currently loaded page of the flat list, instead of staying
+  disabled — reachable for the first time now that the folder tree can select
+  a photo the flat list has not paginated to (W57).
 - W59 silent-failure fix wave: People "Install models" failures now set the
   same `mutationError` Snackbar as every other People mutation instead of
   logging to the terminal only; Photos scan/generate-proxies/analyze now

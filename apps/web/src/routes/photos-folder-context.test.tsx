@@ -77,6 +77,47 @@ const stubPhotosList = (byRoot: Record<string, { fingerprint: string; currentPat
   }));
 };
 
+const toTreeItem = (entry: { fingerprint: string; currentPath: string; fileName: string }) => ({
+  fileName: entry.fileName,
+  currentPath: entry.currentPath,
+  ext: 'jpg',
+  capturedAt: null,
+  capturedAtSource: null,
+  width: null,
+  height: null,
+  proxyState: 'done',
+  thumbState: 'done',
+  missingAt: null,
+  sightings: 1,
+  thumbPath: null,
+  gridThumbPath: null,
+  proxyPath: null,
+  analysed: false,
+  exifReadAt: null,
+  fingerprint: entry.fingerprint,
+});
+
+const stubPhotosFolderTree = (byRoot: Record<string, { fingerprint: string; currentPath: string; fileName: string }[]>) => {
+  const folders = Object.entries(byRoot).map(([root, items]) => ({
+    path: root,
+    name: root.split('/').filter(Boolean).pop() ?? root,
+    relativePath: '',
+    root,
+    depth: 0,
+    photoCount: items.length,
+    analysedCount: 0,
+  }));
+  server.use(http.get('/api/photos/tree/folders', () => HttpResponse.json({
+    ok: true,
+    data: { media: 'photo', folders, photoTotal: folders.reduce((sum, folder) => sum + folder.photoCount, 0), analysedTotal: 0 },
+  })));
+  server.use(http.get('/api/photos/tree/folder', ({ request }) => {
+    const folder = new URL(request.url).searchParams.get('folder') ?? '';
+    const items = (byRoot[folder] ?? []).map(toTreeItem);
+    return HttpResponse.json({ ok: true, data: { media: 'photo', items } });
+  }));
+};
+
 const stubPhotosScan = (onScan: () => void = () => undefined) => {
   server.use(
     http.post('/api/photos/scan', () => {
@@ -146,6 +187,7 @@ describe('the photos surface scopes to the current folder', () => {
     mockFolderBridge('/a/b');
     stubPhotosTree([{ root: '/old/pictures', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubPhotosList({ '/old/pictures': [{ fingerprint: 'x', currentPath: '/old/pictures/x.jpg', fileName: 'x.jpg' }] });
+    stubPhotosFolderTree({ '/old/pictures': [{ fingerprint: 'x', currentPath: '/old/pictures/x.jpg', fileName: 'x.jpg' }] });
     stubPhotosScan();
 
     renderRoute();

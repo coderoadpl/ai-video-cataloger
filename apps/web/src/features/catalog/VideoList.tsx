@@ -12,7 +12,7 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
 import { type CatalogVideo, keyOf } from './core/index.js';
-import { useWindowedList } from './use-windowed-list.js';
+import { useWindowedList } from '../../components/ui/use-windowed-list.js';
 
 const EMPTY_FAILED: ReadonlySet<string> = new Set();
 const VIDEO_ROW_HEIGHT = 96;

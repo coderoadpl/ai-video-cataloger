@@ -102,6 +102,7 @@ import type {
   PhotoDetail,
   PhotoFaceIndexCandidate,
   PhotoFolderRecord,
+  PhotoFolderTreeEntry,
   PhotoGeoBackfillCandidate,
   PhotoListItem,
   PhotoLocationRow,
@@ -2243,6 +2244,54 @@ export class InMemoryPhotosStore implements PhotosStore {
         };
       });
     return Promise.resolve(ok(summaries));
+  }
+
+  listFolderTree(): Promise<Result<PhotoFolderTreeEntry[], AppError>> {
+    const counts = new Map<string, { photoCount: number; analysedCount: number }>();
+    for (const photo of this.photoRows.values()) {
+      const current = counts.get(photo.folderId) ?? { photoCount: 0, analysedCount: 0 };
+      current.photoCount += 1;
+      if (this.analysesFor(photo.fingerprint).length > 0) current.analysedCount += 1;
+      counts.set(photo.folderId, current);
+    }
+    const entries = [...this.folders.values()]
+      .filter((folder) => counts.has(folder.folderId))
+      .map((folder): PhotoFolderTreeEntry => {
+        const count = counts.get(folder.folderId) ?? { photoCount: 0, analysedCount: 0 };
+        return { folderId: folder.folderId, currentPath: folder.currentPath, ...count };
+      })
+      .sort((left, right) => left.currentPath.localeCompare(right.currentPath));
+    return Promise.resolve(ok(entries));
+  }
+
+  listPhotosInFolder(folderId: string): Promise<Result<PhotoListItem[], AppError>> {
+    const sightingCounts = new Map<string, number>();
+    for (const sighting of this.sightings.values()) sightingCounts.set(sighting.fingerprint, (sightingCounts.get(sighting.fingerprint) ?? 0) + 1);
+    const items = [...this.photoRows.values()]
+      .filter((photo) => photo.folderId === folderId)
+      .sort((left, right) => {
+        const leftCaptured = left.capturedAt ?? '';
+        const rightCaptured = right.capturedAt ?? '';
+        if (leftCaptured !== rightCaptured) return rightCaptured.localeCompare(leftCaptured);
+        return left.fingerprint.localeCompare(right.fingerprint);
+      })
+      .map((photo): PhotoListItem => ({
+        fingerprint: photo.fingerprint,
+        fileName: photo.fileName,
+        currentPath: photo.currentPath,
+        ext: photo.ext,
+        capturedAt: photo.capturedAt,
+        capturedAtSource: photo.capturedAtSource,
+        width: photo.width,
+        height: photo.height,
+        proxyState: photo.proxyState,
+        thumbState: photo.thumbState,
+        missingAt: photo.missingAt,
+        sightings: sightingCounts.get(photo.fingerprint) ?? 0,
+        analysed: this.analysesFor(photo.fingerprint).length > 0,
+        exifReadAt: photo.exifReadAt,
+      }));
+    return Promise.resolve(ok(items));
   }
 
   listPhotosPage(input: { root: string | null; offset: number; limit: number }):

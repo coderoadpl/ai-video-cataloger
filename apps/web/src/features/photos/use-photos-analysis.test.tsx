@@ -344,6 +344,7 @@ describe('usePhotosAnalysis', () => {
   });
 
   it('under the "all folders" scope, analyzePhotos processes every scanned root, not just the selected photo\'s folder (W56 Q5a)', async () => {
+    const fingerprintB = 'ph_00000000000000bb';
     window.localStorage.setItem('avc.photosScope', 'all');
     stubTree([
       { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
@@ -351,10 +352,48 @@ describe('usePhotosAnalysis', () => {
     ]);
     stubList([
       photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
-      photoItem({ fingerprint: 'b', currentPath: '/other/b.jpg' }),
+      photoItem({ fingerprint: fingerprintB, currentPath: '/other/b.jpg' }),
     ]);
     stubStatus();
-    server.use(http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })));
+    server.use(http.get('/api/photos/detail', () => HttpResponse.json({
+      ok: true,
+      data: {
+        media: 'photo',
+        photo: {
+          fingerprint: fingerprintB,
+          folderId: 'folder-b',
+          fileName: 'b.jpg',
+          currentPath: '/other/b.jpg',
+          ext: 'jpg',
+          size: 1024,
+          width: null,
+          height: null,
+          orientation: null,
+          cameraMake: null,
+          cameraModel: null,
+          lens: null,
+          iso: null,
+          fNumber: null,
+          exposureTime: null,
+          exifRating: null,
+          capturedAt: null,
+          capturedAtSource: null,
+          discoveredAt: '2026-01-01T00:00:00.000Z',
+          exifReadAt: null,
+          proxyState: 'pending',
+          proxyWidth: null,
+          proxyHeight: null,
+          thumbState: 'pending',
+          missingAt: null,
+        },
+        sightings: [{ currentPath: '/other/b.jpg', folderId: 'folder-b', lastSeenAt: '2026-01-01T00:00:00.000Z' }],
+        ownerPath: '/other/b.jpg',
+        proxyPath: null,
+        thumbPath: null,
+        gridThumbPath: null,
+        analysis: null,
+      },
+    })));
     server.use(http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })));
     let processedBody: Record<string, unknown> | null = null;
     server.use(
@@ -380,8 +419,8 @@ describe('usePhotosAnalysis', () => {
 
     const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
-    act(() => result.current.selectFingerprint('b'));
-    await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === 'b')).toBe(true));
+    act(() => result.current.selectFingerprint(fingerprintB));
+    await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === fingerprintB)).toBe(true));
     act(() => result.current.analyzePhotos());
 
     await waitFor(() => expect(processedBody).not.toBeNull());
@@ -431,6 +470,88 @@ describe('usePhotosAnalysis', () => {
     act(() => result.current.analyzeSelectedPhoto());
 
     await waitFor(() => expect(processedBody).toEqual({ root: '/other', fingerprints: ['b'] }));
+  });
+
+  it('analyzeSelectedPhoto still resolves the owner folder for a photo the flat list has not paginated to (W57 tree selection)', async () => {
+    const fingerprintTreeOnly = 'ph_00000000000000bb';
+    window.localStorage.setItem('avc.photosScope', 'all');
+    stubTree([
+      { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
+      { root: '/other', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
+    ]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+    server.use(http.get('/api/photos/detail', () => HttpResponse.json({
+      ok: true,
+      data: {
+        media: 'photo',
+        photo: {
+          fingerprint: fingerprintTreeOnly,
+          folderId: 'folder-b',
+          fileName: 'b.jpg',
+          currentPath: '/other/nested/b.jpg',
+          ext: 'jpg',
+          size: 1024,
+          width: null,
+          height: null,
+          orientation: null,
+          cameraMake: null,
+          cameraModel: null,
+          lens: null,
+          iso: null,
+          fNumber: null,
+          exposureTime: null,
+          exifRating: null,
+          capturedAt: null,
+          capturedAtSource: null,
+          discoveredAt: '2026-01-01T00:00:00.000Z',
+          exifReadAt: null,
+          proxyState: 'pending',
+          proxyWidth: null,
+          proxyHeight: null,
+          thumbState: 'pending',
+          missingAt: null,
+        },
+        sightings: [{ currentPath: '/other/nested/b.jpg', folderId: 'folder-b', lastSeenAt: '2026-01-01T00:00:00.000Z' }],
+        ownerPath: '/other/nested/b.jpg',
+        proxyPath: null,
+        thumbPath: null,
+        gridThumbPath: null,
+        analysis: null,
+      },
+    })));
+    server.use(http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })));
+    const processedBodySchema = z.object({ root: z.string().optional(), fingerprints: z.array(z.string()).optional() });
+    let processedBody: z.output<typeof processedBodySchema> | null = null;
+    server.use(
+      http.post('/api/photos/process', async ({ request }) => {
+        processedBody = processedBodySchema.parse(await request.json());
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
+      }),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: null,
+          progressEvents: [],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          result: { media: 'photo', root: '/other', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0 },
+        },
+      })),
+    );
+
+    const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    act(() => result.current.selectFingerprint(fingerprintTreeOnly));
+    expect(result.current.items.some((item) => item.fingerprint === fingerprintTreeOnly)).toBe(false);
+    await waitFor(() => expect(result.current.canAnalyzeSelectedPhoto).toBe(true));
+    act(() => result.current.analyzeSelectedPhoto());
+
+    await waitFor(() => expect(processedBody).toEqual({ root: '/other', fingerprints: [fingerprintTreeOnly] }));
   });
 
   it('marks only the single analyzed photo as in-flight, never its sibling, during analyzeSelectedPhoto (W56 Q4b)', async () => {

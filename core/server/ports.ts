@@ -547,6 +547,13 @@ export interface PhotoDetail {
   sightings: PhotoSightingRecord[];
 }
 
+export interface PhotoFolderTreeEntry {
+  folderId: string;
+  currentPath: string;
+  photoCount: number;
+  analysedCount: number;
+}
+
 export interface PhotoProxyOutcome {
   proxyWidth: number;
   proxyHeight: number;
@@ -592,6 +599,8 @@ export interface PhotosStore {
     thumbState: 'done' | 'failed';
   }): Promise<Result<void, AppError>>;
   listRoots(): Promise<Result<PhotoRootSummary[], AppError>>;
+  listFolderTree(): Promise<Result<PhotoFolderTreeEntry[], AppError>>;
+  listPhotosInFolder(folderId: string): Promise<Result<PhotoListItem[], AppError>>;
   listPhotosPage(input: { root: string | null; offset: number; limit: number }):
     Promise<Result<{ total: number; items: PhotoListItem[] }, AppError>>;
   getPhotoDetail(fingerprint: string): Promise<Result<PhotoDetail | null, AppError>>;

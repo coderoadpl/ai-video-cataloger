@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useState, type MouseEvent, type ReactNode } from 'react';
+import { useCallback, useEffect, useMemo, useState, type MouseEvent } from 'react';
 import { Alert, Box, Button, CircularProgress, List, ListItemButton, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { ChevronRightIcon, ExpandMoreIcon, FolderIcon } from '../../components/ui/icons.js';
 import { MediaThumbnail } from '../../components/ui/MediaThumbnail.js';
 import { RevealContextMenu, useRevealContextMenu } from '../../components/ui/RevealContextMenu.js';
+import { TreeRowGuides } from '../../components/ui/TreeRowGuides.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { ApiError } from '@core/client/index.js';
 import { actions, bridge } from '../../api.js';
@@ -27,7 +28,7 @@ import {
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
 import { thumbnailLoading } from './VideoList.js';
 import { useThumbnailGeneration } from './use-thumbnail-generation.js';
-import { useWindowedList } from './use-windowed-list.js';
+import { useWindowedList } from '../../components/ui/use-windowed-list.js';
 
 interface CatalogTreeProps {
   root: CatalogTreeNode;
@@ -69,39 +70,6 @@ const countsText = (counts: FolderCountsData, dictionary: Dictionary): string =>
   return dictionary.catalog.folderCounts(counts.pending, counts.done);
 };
 
-const RowGuides = ({ row }: { row: TreeRow }) => {
-  if (row.depth === 0) return null;
-  const connector = row.depth - 1;
-  const lines: ReactNode[] = [];
-  for (let level = 0; level < connector; level += 1) {
-    if (!row.ancestorContinues[level]) continue;
-    lines.push(
-      <Box
-        key={`v-${String(level)}`}
-        sx={(theme) => ({
-          position: 'absolute',
-          top: 0,
-          bottom: 0,
-          left: level * INDENT + INDENT / 2,
-          width: '1px',
-          bgcolor: theme.palette.divider,
-        })}
-      />,
-    );
-  }
-  const x = connector * INDENT + INDENT / 2;
-  return (
-    <Box aria-hidden sx={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} data-testid="row-guides">
-      {lines}
-      <Box sx={(theme) => ({ position: 'absolute', top: 0, height: '50%', left: x, width: '1px', bgcolor: theme.palette.divider })} />
-      {row.isLast ? null : (
-        <Box sx={(theme) => ({ position: 'absolute', top: '50%', bottom: 0, left: x, width: '1px', bgcolor: theme.palette.divider })} />
-      )}
-      <Box sx={(theme) => ({ position: 'absolute', top: '50%', left: x, width: INDENT / 2, height: '1px', bgcolor: theme.palette.divider })} />
-    </Box>
-  );
-};
-
 const FolderRowView = ({
   row,
   onToggle,
@@ -126,7 +94,7 @@ const FolderRowView = ({
       title={row.path}
       sx={{ position: 'relative', gap: 0.75, py: 0.5, pl: `${row.depth * INDENT + 8}px`, height: FOLDER_ROW_HEIGHT, borderRadius: 1 }}
     >
-      <RowGuides row={row} />
+      <TreeRowGuides row={row} />
       {row.expanded ? <ExpandMoreIcon fontSize="small" /> : <ChevronRightIcon fontSize="small" />}
       <FolderIcon fontSize="small" sx={{ color: 'primary.main' }} />
       <Typography variant="body2" noWrap sx={{ fontWeight: 500, minWidth: 0 }}>
@@ -172,7 +140,7 @@ const VideoRowView = ({
       data-video-status={video.status}
       sx={{ position: 'relative', alignItems: 'center', gap: 1.25, borderRadius: 1, py: 1, height, pl: `${row.depth * INDENT + 8}px` }}
     >
-      <RowGuides row={row} />
+      <TreeRowGuides row={row} />
       <MediaThumbnail
         path={video.artifacts.thumbnailPath}
         mtime={video.artifacts.thumbnailMtime}
@@ -218,7 +186,7 @@ const StatusRowView = ({ row }: { row: StatusRow }) => {
   const dictionary = useDictionary();
   return (
     <Box sx={{ position: 'relative', height: STATUS_ROW_HEIGHT, display: 'flex', alignItems: 'center', gap: 1, pl: `${row.depth * INDENT + 8}px` }}>
-      <RowGuides row={row} />
+      <TreeRowGuides row={row} />
       {row.variant === 'loading' ? (
         <>
           <CircularProgress size={16} />

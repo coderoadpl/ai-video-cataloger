@@ -823,6 +823,64 @@ export const photosTree = async (
   return ok({ media: 'photo', roots: roots.value });
 };
 
+export interface PhotosFolderTreeFolder {
+  path: string;
+  name: string;
+  relativePath: string;
+  root: string;
+  depth: number;
+  photoCount: number;
+  analysedCount: number;
+}
+
+export interface PhotosFolderTreeOutput {
+  media: 'photo';
+  folders: PhotosFolderTreeFolder[];
+  photoTotal: number;
+  analysedTotal: number;
+}
+
+const isUnderRoot = (path: string, root: string): boolean => path === root || path.startsWith(`${root}/`);
+
+const ownerRootForPath = (path: string, roots: readonly string[]): string | null => {
+  const matches = roots.filter((root) => isUnderRoot(path, root));
+  if (matches.length === 0) return null;
+  return matches.reduce((deepest, candidate) => (candidate.length > deepest.length ? candidate : deepest));
+};
+
+export const photosFolderTree = async (
+  deps: PhotosDeps,
+): Promise<Result<PhotosFolderTreeOutput, AppError>> => {
+  const roots = await deps.photos.listRoots();
+  if (!roots.ok) return roots;
+  const entries = await deps.photos.listFolderTree();
+  if (!entries.ok) return entries;
+  const rootPaths = roots.value.map((root) => root.root);
+  const folders: PhotosFolderTreeFolder[] = [];
+  let photoTotal = 0;
+  let analysedTotal = 0;
+  for (const entry of entries.value) {
+    const root = ownerRootForPath(entry.currentPath, rootPaths);
+    if (root === null) continue;
+    const relativePath = entry.currentPath === root ? '' : entry.currentPath.slice(root.length + 1);
+    const segments = relativePath === '' ? [] : relativePath.split('/');
+    const lastSegment = segments[segments.length - 1];
+    folders.push({
+      path: entry.currentPath,
+      name: lastSegment ?? deps.fs.basename(root),
+      relativePath,
+      root,
+      depth: segments.length,
+      photoCount: entry.photoCount,
+      analysedCount: entry.analysedCount,
+    });
+    photoTotal += entry.photoCount;
+    analysedTotal += entry.analysedCount;
+  }
+  folders.sort((left, right) => left.path.localeCompare(right.path));
+  return ok({ media: 'photo', folders, photoTotal, analysedTotal });
+};
+
 const resolveGridThumbPath = async (
   deps: PhotosDeps,
   artifactsRoot: string,
@@ -834,12 +892,51 @@ const resolveGridThumbPath = async (
   return ok(exists.value ? gridThumbPath : null);
 };
 
+type EnrichedPhotoListItem = PhotoListItem & { thumbPath: string | null; gridThumbPath: string | null; proxyPath: string | null };
+
+const enrichPhotoListItems = async (
+  deps: PhotosDeps,
+  artifactsRoot: string,
+  items: readonly PhotoListItem[],
+): Promise<Result<EnrichedPhotoListItem[], AppError>> => {
+  const enriched: EnrichedPhotoListItem[] = [];
+  for (const item of items) {
+    const gridThumbPath = await resolveGridThumbPath(deps, artifactsRoot, item.fingerprint);
+    if (!gridThumbPath.ok) return gridThumbPath;
+    enriched.push({
+      ...item,
+      proxyPath: item.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, item.fingerprint) : null,
+      thumbPath: item.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, item.fingerprint) : null,
+      gridThumbPath: gridThumbPath.value,
+    });
+  }
+  return ok(enriched);
+};
+
+export interface PhotosTreeFolderOutput {
+  media: 'photo';
+  items: EnrichedPhotoListItem[];
+}
+
+export const photosTreeFolder = async (
+  deps: PhotosDeps,
+  input: { folder: string },
+): Promise<Result<PhotosTreeFolderOutput, AppError>> => {
+  const folderId = derivedFolderId(input.folder);
+  const items = await deps.photos.listPhotosInFolder(folderId);
+  if (!items.ok) return items;
+  const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
+  const enriched = await enrichPhotoListItems(deps, artifactsRoot, items.value);
+  if (!enriched.ok) return enriched;
+  return ok({ media: 'photo', items: enriched.value });
+};
+
 export interface PhotosListOutput {
   media: 'photo';
   root: string | null;
   total: number;
   offset: number;
-  items: (PhotoListItem & { thumbPath: string | null; gridThumbPath: string | null; proxyPath: string | null })[];
+  items: EnrichedPhotoListItem[];
 }
 
 export const photosList = async (
@@ -850,23 +947,14 @@ export const photosList = async (
   const page = await deps.photos.listPhotosPage({ root, offset: input.offset, limit: input.limit });
   if (!page.ok) return page;
   const artifactsRoot = photoArtifactsRoot(deps.fs, deps.photos);
-  const items: PhotosListOutput['items'] = [];
-  for (const item of page.value.items) {
-    const gridThumbPath = await resolveGridThumbPath(deps, artifactsRoot, item.fingerprint);
-    if (!gridThumbPath.ok) return gridThumbPath;
-    items.push({
-      ...item,
-      proxyPath: item.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, item.fingerprint) : null,
-      thumbPath: item.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, item.fingerprint) : null,
-      gridThumbPath: gridThumbPath.value,
-    });
-  }
+  const items = await enrichPhotoListItems(deps, artifactsRoot, page.value.items);
+  if (!items.ok) return items;
   return ok({
     media: 'photo',
     root,
     total: page.value.total,
     offset: input.offset,
-    items,
+    items: items.value,
   });
 };
 

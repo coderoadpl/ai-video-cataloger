@@ -5,3 +5,16 @@ export { viewerSourceCandidates } from './sources.js';
 export { searchResultsToItems, searchSections, type PhotosSearchResult, type PhotosViewMode } from './search-mode.js';
 export { photoBadges, type PhotoBadge, type PhotoBadgeInput } from './sidebar-badges.js';
 export { ownerRootFor, sidebarSections, type PhotoRoot, type SidebarSection } from './sidebar-sections.js';
+export { detailToListItem, type PhotoDetail } from './detail-to-item.js';
+export { buildPhotoTrees, type PhotoTreeFolderData, type PhotoTreeNode } from './photos-tree-model.js';
+export {
+  buildPhotoTreeRows,
+  folderNeedsFetch as photoFolderNeedsFetch,
+  photoFolderKey,
+  type BuildPhotoTreeRowsInput,
+  type LoadedPhotoFolder,
+  type PhotoFolderRow,
+  type PhotoItemRow,
+  type PhotoStatusRow,
+  type PhotoTreeRow,
+} from './photos-tree-rows.js';

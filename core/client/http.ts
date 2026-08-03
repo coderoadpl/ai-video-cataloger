@@ -43,10 +43,12 @@ import {
   localAiRmOutputSchema,
   looseEnvelopeSchema,
   photosDetailOutputSchema,
+  photosFolderTreeOutputSchema,
   photosForgetOutputSchema,
   photosListOutputSchema,
   photosSearchOutputSchema,
   photosStatusOutputSchema,
+  photosTreeFolderOutputSchema,
   photosTreeOutputSchema,
   photosVariantsDeleteOutputSchema,
   photosVariantsFolderDefaultOutputSchema,
@@ -1000,6 +1002,27 @@ export const createApiClient = (options: ApiClientOptions) => ({
       undefined,
       signal,
     ),
+  photosFolderTree: (signal?: AbortSignal) =>
+    request(
+      options,
+      API_ROUTES.photosFolderTree.method,
+      API_ROUTES.photosFolderTree.path,
+      photosFolderTreeOutputSchema,
+      undefined,
+      signal,
+    ),
+  photosTreeFolder: (input: z.input<typeof API_ROUTES.photosTreeFolder.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.photosTreeFolder.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.photosTreeFolder.method,
+      queryPath(API_ROUTES.photosTreeFolder.path, [['folder', parsed.value.folder]]),
+      photosTreeFolderOutputSchema,
+      undefined,
+      signal,
+    );
+  },
   photosList: (input: z.input<typeof API_ROUTES.photosList.input> = {}, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.photosList.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

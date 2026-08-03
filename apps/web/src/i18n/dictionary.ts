@@ -783,6 +783,7 @@ export interface Dictionary {
     badgeAnalyzing: string;
     loadMore: string;
     analyzeFolderAction: string;
+    treeFolderCounts: (photoCount: number, analysedCount: number) => string;
   };
   photosWorkspace: {
     emptyTitle: string;
@@ -1707,6 +1708,7 @@ export const en: Dictionary = {
     badgeAnalyzing: 'Analyzing…',
     loadMore: 'Load more',
     analyzeFolderAction: 'Process',
+    treeFolderCounts: (photoCount, analysedCount) => `${photoCount} ${photoCount === 1 ? 'photo' : 'photos'} · ${analysedCount} analysed`,
   },
   photosWorkspace: {
     emptyTitle: 'Select a photo from the list',
@@ -2640,6 +2642,8 @@ export const pl: Dictionary = {
     badgeAnalyzing: 'Analizowanie…',
     loadMore: 'Wczytaj więcej',
     analyzeFolderAction: 'Przetwórz',
+    treeFolderCounts: (photoCount, analysedCount) =>
+      `${photoCount} ${plPlural(photoCount, 'zdjęcie', 'zdjęcia', 'zdjęć')} · ${analysedCount} przeanalizowanych`,
   },
   photosWorkspace: {
     emptyTitle: 'Wybierz zdjęcie z listy po lewej',

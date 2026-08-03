@@ -47,6 +47,7 @@ import {
   enqueuePhotoProxies,
   enqueuePhotoProcess,
   photosDetail,
+  photosFolderTree,
   photosForget,
   photosGpsBackfill,
   photosImportLibra,
@@ -54,6 +55,7 @@ import {
   photosSearch,
   photosStatus,
   photosTree,
+  photosTreeFolder,
   photosVariantsDelete,
   photosVariantsFolderDefault,
   photosVariantsList,
@@ -747,6 +749,16 @@ export const buildApp = (deps: AppDeps): Hono => {
 
   app.get(API_ROUTES.photosTree.path, async () => {
     return respond(await photosTree(deps), API_ROUTES.photosTree.output);
+  });
+
+  app.get(API_ROUTES.photosFolderTree.path, async () => {
+    return respond(await photosFolderTree(deps), API_ROUTES.photosFolderTree.output);
+  });
+
+  app.get(API_ROUTES.photosTreeFolder.path, async (context) => {
+    const input = parseInput(API_ROUTES.photosTreeFolder.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.photosTreeFolder.output);
+    return respond(await photosTreeFolder(deps, input.value), API_ROUTES.photosTreeFolder.output);
   });
 
   app.get(API_ROUTES.photosList.path, async (context) => {

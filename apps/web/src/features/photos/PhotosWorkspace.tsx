@@ -3,7 +3,7 @@ import { Box, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { mediaUrl } from '../../lib/media-url.js';
-import { adjacentFingerprint, flattenOrder, sidebarSections } from './core/index.js';
+import { adjacentFingerprint, detailToListItem, flattenOrder, sidebarSections } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
 import { PhotoViewer } from './PhotoViewer.js';
 import type { PhotosAnalysisState } from './use-photos-analysis.js';
@@ -23,7 +23,13 @@ export const PhotosWorkspace = ({ active, state, topStrip }: PhotosWorkspaceProp
     [state.items, state.roots, state.scope, state.selectedRoot],
   );
   const order = useMemo(() => flattenOrder(sections), [sections]);
-  const selectedItem = state.items.find((item) => item.fingerprint === state.selectedFingerprint) ?? null;
+  const selectedItem = useMemo(() => {
+    const fromLoadedItems = state.items.find((item) => item.fingerprint === state.selectedFingerprint) ?? null;
+    if (fromLoadedItems !== null) return fromLoadedItems;
+    return state.detail !== null && state.detail.photo.fingerprint === state.selectedFingerprint
+      ? detailToListItem(state.detail)
+      : null;
+  }, [state.items, state.selectedFingerprint, state.detail]);
 
   if (!active) return null;
 

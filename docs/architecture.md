@@ -463,8 +463,57 @@ writing to the mount; unreadable subfolders are reported as skipped rather
 than failing the run.
 The photo-roots table (ADR-0016) remains an internal storage detail
 used to answer "is the current folder a known photo root"; it is never
-surfaced as a user-facing root list or picker. The "Wszystkie foldery" scope
-is unchanged and still browses across every scanned photo root. Opening a
+surfaced as a user-facing root list or picker.
+
+**"Wszystkie" now renders a full collapsible folder tree, not a flat per-root
+list (W57).** The old rendering put every photo under a root directly beneath
+a plain-text section header, dumping a Luminar/Lightroom catalog's internal
+folder structure flat into the sidebar. `PhotosTree.tsx` mirrors
+`CatalogTree.tsx`'s architecture — roots and subfolders are collapsible rows
+(root expanded by default, children collapsed), each carrying its own
+photo/analysed counts, with photo rows nested under the folder they live in.
+Two shared pieces were extracted downward rather than duplicated:
+`components/ui/use-windowed-list.ts` (moved out of `features/catalog`, plain
+row-height virtualization with no feature-specific data) and
+`components/ui/TreeRowGuides.tsx` (the connector-line rendering, parameterized
+over `{ depth, isLast, ancestorContinues }` instead of the video-specific
+`TreeRow` union). `features/photos/PhotoRow.tsx` was pulled out of
+`PhotosSidebar.tsx` so the flat "Ten folder" list and the new tree render the
+exact same row (badges, thumbnail, testids) instead of two copies.
+
+At 50k-photo scale, a client-side derivation from the full paginated photo
+list is not honest — so the tree is server-summarized like `catalogTree`:
+`GET /api/photos/tree/folders` (`photosFolderTree` usecase) returns one entry
+per **directory that directly contains a photo** (`photo_folders` joined to
+`photos`, grouped by `folder_id` — cheap, no filesystem walk, no full-photo
+payload) with `photoCount`/`analysedCount`, tagged with the owning root
+(longest-prefix match over `photosTree`'s existing root list, same rule as
+`ownerRootFor`). The client (`features/photos/core/photos-tree-model.ts`)
+synthesizes every zero-count intermediate ancestor directory purely from the
+relative-path segments — the same `ensure()`/`finalize()` shape as
+`catalog-tree-model.ts`, kept as a separate small module rather than a shared
+generic since photos carry no pending/processed duality. Expanding a folder
+lazily fetches its **direct, non-recursive** photos via
+`GET /api/photos/tree/folder?folder=<path>` (`photosTreeFolder` usecase,
+`PhotosStore.listPhotosInFolder` — an exact `folder_id` match, unlike
+`photosList`'s root-prefix scope which is recursive), mirroring
+`catalogTreeFolder`'s per-folder lazy fetch. Folder scope ("Ten folder") is
+untouched: still `photosList` and the flat per-item row list.
+
+Because tree-selected rows now come from a query decoupled from
+`usePhotosAnalysis`'s paginated `items` list, two read paths that used to
+assume "the selected fingerprint is always in `items`" needed a real fix, not
+a workaround: `analyzeTargetRoot` (used for "Wszystkie"-scope Analyze/Process)
+now derives the owner root from `state.detail?.ownerPath` — the
+already-fetched per-fingerprint detail — instead of searching `items`, which
+is both more correct and simpler. `PhotosWorkspace`'s detail pane and
+`PhotoViewer` fall back to `detailToListItem(state.detail)`
+(`features/photos/core/detail-to-item.ts`) when the selection isn't in
+`items`; prev/next viewer navigation still orders off `items`, so it has no
+next/previous for a photo selected from deeper in the tree than the flat list
+has paginated to — a known, accepted gap, not a silent wrong-photo bug.
+
+Opening a
 folder keeps whichever medium (Filmy/Zdjęcia) was already selected in
 Analysis — it no longer forces Filmy, refining the folder-open behaviour
 recorded in the `[0.6.7]` changelog entry, which forced the Filmy view on

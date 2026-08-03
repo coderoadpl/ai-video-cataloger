@@ -242,13 +242,16 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     );
   }, [dictionary, proxiesMutation, runJob, selectedRoot]);
 
-  const selectedItem = useMemo(
-    () => loadedItems.find((candidate) => candidate.fingerprint === selectedFingerprint) ?? null,
-    [loadedItems, selectedFingerprint],
-  );
+  const selectedPhotoPath = useMemo(() => {
+    const fromLoadedItems = loadedItems.find((candidate) => candidate.fingerprint === selectedFingerprint) ?? null;
+    if (fromLoadedItems !== null) return fromLoadedItems.currentPath;
+    return detail.data !== undefined && detail.data.photo.fingerprint === selectedFingerprint
+      ? detail.data.ownerPath
+      : null;
+  }, [detail.data, loadedItems, selectedFingerprint]);
   const selectedItemRoot = useMemo(
-    () => (selectedItem === null ? null : ownerRootFor(selectedItem.currentPath, roots)),
-    [selectedItem, roots],
+    () => (selectedPhotoPath === null ? null : ownerRootFor(selectedPhotoPath, roots)),
+    [selectedPhotoPath, roots],
   );
 
   const canAnalyze = scope === 'folder' ? selectedRoot !== null : roots.length > 0;

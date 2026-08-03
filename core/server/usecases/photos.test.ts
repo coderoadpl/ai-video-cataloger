@@ -28,11 +28,13 @@ import {
   enqueuePhotoProxies,
   enqueuePhotoScan,
   photosDetail,
+  photosFolderTree,
   photosForget,
   photosList,
   photosSearch,
   photosStatus,
   photosTree,
+  photosTreeFolder,
   photosVariantsDelete,
   photosVariantsFolderDefault,
   photosVariantsList,
@@ -758,6 +760,78 @@ describe('enqueuePhotoProxies', () => {
     if (!enqueued.ok) return;
     const record = await jobs.get(enqueued.value.jobId);
     expect(record.ok && record.value?.status).toBe('completed');
+  });
+});
+
+describe('photosFolderTree, photosTreeFolder', () => {
+  it('groups counts by exact directory across roots, including nested folders', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    fs.addFile('/work/photos/trip/b.jpg', { content: 'b' });
+    fs.addFile('/work/photos/trip/c.jpg', { content: 'c' });
+    fs.addFile('/other/photos/d.jpg', { content: 'd' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    await runPhotoScan(deps, { root: '/other/photos' });
+
+    const tree = await photosFolderTree(deps);
+    expect(tree.ok).toBe(true);
+    if (!tree.ok) return;
+    expect(tree.value.photoTotal).toBe(4);
+    expect(tree.value.analysedTotal).toBe(0);
+    expect(tree.value.folders).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: '/work/photos', root: '/work/photos', relativePath: '', depth: 0, photoCount: 1 }),
+      expect.objectContaining({ path: '/work/photos/trip', root: '/work/photos', relativePath: 'trip', depth: 1, photoCount: 2 }),
+      expect.objectContaining({ path: '/other/photos', root: '/other/photos', relativePath: '', depth: 0, photoCount: 1 }),
+    ]));
+  });
+
+  it('marks a folder analysedCount once its photos have an analysis recorded', async () => {
+    const { deps, fs, photos } = buildDeps();
+    fs.addFile('/work/photos/trip/b.jpg', { content: 'b' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    const fingerprint = fingerprintOf('b');
+    await photos.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'harness · claude-code · en', now: '2026-01-01T00:00:00.000Z' });
+    await photos.recordPhotoAnalysis({
+      fingerprint,
+      configId: 'cfg_aaaaaaaaaaaa',
+      description: 'd',
+      scene: 's',
+      quality: 'q',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      usageJson: null,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    const tree = await photosFolderTree(deps);
+    expect(tree.ok && tree.value.analysedTotal).toBe(1);
+    expect(tree.ok && tree.value.folders).toEqual([
+      expect.objectContaining({ path: '/work/photos/trip', analysedCount: 1 }),
+    ]);
+  });
+
+  it('folder contents returns only photos directly inside that folder, not descendants', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    fs.addFile('/work/photos/trip/b.jpg', { content: 'b' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+
+    const rootContents = await photosTreeFolder(deps, { folder: '/work/photos' });
+    expect(rootContents.ok).toBe(true);
+    expect(rootContents.ok && rootContents.value.items.map((item) => item.fingerprint)).toEqual([fingerprintOf('a')]);
+
+    const subContents = await photosTreeFolder(deps, { folder: '/work/photos/trip' });
+    expect(subContents.ok && subContents.value.items.map((item) => item.fingerprint)).toEqual([fingerprintOf('b')]);
+    expect(subContents.ok && subContents.value.items[0]?.gridThumbPath).toBeDefined();
+  });
+
+  it('folder contents for an unknown folder returns an empty list', async () => {
+    const { deps } = buildDeps();
+    const contents = await photosTreeFolder(deps, { folder: '/work/nowhere' });
+    expect(contents.ok && contents.value.items).toEqual([]);
   });
 });
 

@@ -609,6 +609,32 @@ export const photosTreeOutputSchema = z.object({
   })),
 });
 
+export const photosFolderTreeInputSchema = z.object({});
+
+export const photosFolderTreeFolderSchema = z.object({
+  path: z.string(),
+  name: z.string(),
+  relativePath: z.string(),
+  root: z.string(),
+  depth: z.number().int().nonnegative(),
+  photoCount: z.number().int().nonnegative(),
+  analysedCount: z.number().int().nonnegative(),
+});
+
+export const photosFolderTreeOutputSchema = z.object({
+  media: z.literal('photo'),
+  folders: z.array(photosFolderTreeFolderSchema),
+  photoTotal: z.number().int().nonnegative(),
+  analysedTotal: z.number().int().nonnegative(),
+});
+
+export const photosTreeFolderInputSchema = folderInputSchema;
+
+export const photosTreeFolderOutputSchema = z.object({
+  media: z.literal('photo'),
+  items: z.array(photoListItemSchema),
+});
+
 export const photosListInputSchema = z.object({
   root: canonicalPathString().optional(),
   offset: queryInteger(0, 0, 1_000_000),
@@ -2238,6 +2264,18 @@ export const API_ROUTES = {
     input: photosTreeInputSchema,
     output: photosTreeOutputSchema,
   },
+  photosFolderTree: {
+    method: 'GET',
+    path: '/api/photos/tree/folders',
+    input: photosFolderTreeInputSchema,
+    output: photosFolderTreeOutputSchema,
+  },
+  photosTreeFolder: {
+    method: 'GET',
+    path: '/api/photos/tree/folder',
+    input: photosTreeFolderInputSchema,
+    output: photosTreeFolderOutputSchema,
+  },
   photosList: {
     method: 'GET',
     path: '/api/photos/list',
@@ -2360,6 +2398,8 @@ export const API_PATHS = {
   photosGpsBackfill: API_ROUTES.photosGpsBackfill.path,
   photosImportLibra: API_ROUTES.photosImportLibra.path,
   photosTree: API_ROUTES.photosTree.path,
+  photosFolderTree: API_ROUTES.photosFolderTree.path,
+  photosTreeFolder: API_ROUTES.photosTreeFolder.path,
   photosList: API_ROUTES.photosList.path,
   photosDetail: API_ROUTES.photosDetail.path,
   photosSearch: API_ROUTES.photosSearch.path,
