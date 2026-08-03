@@ -4,6 +4,7 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { CardHeader } from '../../components/ui/CardHeader.js';
 import { ClockIcon, OpenInNewIcon } from '../../components/ui/icons.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
+import { formatCapturedAt } from '../../lib/format.js';
 import type { CapturedAtSource, PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
 import type { PhotoDetail, PhotoVariantRecord } from './use-photos.js';
 
@@ -111,7 +112,7 @@ export const PhotoDetailPane = ({
       <Box>
         <Typography variant="caption" color="text.secondary">{dictionary.photos.detailCaptured}</Typography>
         <Typography variant="body2">
-          {photo.capturedAt ?? dictionary.photos.unknownDate}
+          {formatCapturedAt(photo.capturedAt, dictionary.locale) ?? dictionary.photos.unknownDate}
           {photo.capturedAtSource === null ? '' : ` (${capturedAtSourceLabel(dictionary, photo.capturedAtSource)})`}
         </Typography>
       </Box>

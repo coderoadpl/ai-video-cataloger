@@ -1,13 +1,14 @@
 import { ApiError } from '@core/client/index.js';
 
+import { formatAnalyzerError } from '../lib/analyzer-error-message.js';
 import type { Dictionary } from './dictionary.js';
 
 export const apiErrorMessage = (error: unknown, dictionary: Dictionary): string => {
   if (error instanceof ApiError) {
     return error.appError.code === 'keychain_unavailable'
       ? dictionary.credentials.keychainUnavailable
-      : error.appError.message;
+      : formatAnalyzerError(error.appError.message, dictionary.errors);
   }
-  if (error instanceof Error) return error.message;
-  return String(error);
+  if (error instanceof Error) return formatAnalyzerError(error.message, dictionary.errors);
+  return formatAnalyzerError(String(error), dictionary.errors);
 };

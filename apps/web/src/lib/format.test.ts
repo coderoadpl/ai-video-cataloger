@@ -22,13 +22,20 @@ describe('formatCoordinates', () => {
 
 describe('formatCapturedAt', () => {
   it('renders a human-readable date and time instead of a raw ISO string', () => {
-    const result = formatCapturedAt('2026-06-19T10:03:37.000Z');
+    const result = formatCapturedAt('2026-06-19T10:03:37.000Z', 'en');
     expect(result).not.toBeNull();
     expect(result).not.toContain('T');
     expect(result).not.toContain('Z');
   });
 
   it('passes null through unchanged', () => {
-    expect(formatCapturedAt(null)).toBeNull();
+    expect(formatCapturedAt(null, 'en')).toBeNull();
+  });
+
+  it('renders Polish month names for the pl UI locale instead of always formatting in English', () => {
+    const result = formatCapturedAt('2026-08-10T17:46:06.744Z', 'pl');
+    expect(result).not.toBeNull();
+    expect(result).toContain('sie');
+    expect(result).not.toMatch(/Aug/);
   });
 });

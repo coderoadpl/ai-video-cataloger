@@ -1,6 +1,8 @@
 import { useCallback, useState } from 'react';
 import { useMutation, useQuery } from '@tanstack/react-query';
 
+import { ApiError } from '@core/client/index.js';
+
 import { type DetailsVideo } from './details-video.js';
 import {
   analysisPlan,
@@ -37,6 +39,10 @@ export interface VariantsState {
 
 const variantLocator = (video: DetailsVideo): { fingerprint: string } | { videoPath: string } =>
   video.contentHash === null ? { videoPath: video.path } : { fingerprint: video.contentHash };
+
+const isNeverAnalyzedError = (error: unknown): boolean =>
+  error instanceof ApiError
+  && (error.appError.code === 'video_not_found' || error.appError.code === 'folder_not_found');
 
 export const useVariants = (video: DetailsVideo): VariantsState => {
   const [previewConfigId, setPreviewConfigId] = useState<string | null>(null);
@@ -81,7 +87,7 @@ export const useVariants = (video: DetailsVideo): VariantsState => {
     preview,
     plan,
     loading: query.isLoading,
-    loadError: query.error,
+    loadError: isNeverAnalyzedError(query.error) ? null : query.error,
     actionError: selection.error ?? folderDefault.error,
     selectingConfigId: selection.isPending ? selection.variables?.configId ?? null : null,
     settingFolderDefault: folderDefault.isPending,

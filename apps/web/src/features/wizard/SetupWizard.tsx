@@ -49,7 +49,11 @@ export const SetupWizard = ({ open, folder, onClose }: SetupWizardProps) => {
     <Dialog open={open} onClose={onClose} fullWidth maxWidth="sm" data-testid="setup-wizard">
       <DialogTitle>{dictionary.wizard.setupWizard}</DialogTitle>
       <DialogContent dividers>
-        <Stepper activeStep={activeStep} alternativeLabel sx={{ mb: 3 }}>
+        <Stepper
+          activeStep={activeStep}
+          alternativeLabel
+          sx={{ mb: 3, '& .MuiStepLabel-label': { fontSize: '0.6875rem' } }}
+        >
           {WIZARD_STEPS.map((wizardStep) => (
             <Step key={wizardStep}>
               <StepLabel>{stepLabels[wizardStep]}</StepLabel>

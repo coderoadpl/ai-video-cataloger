@@ -2,6 +2,7 @@ import { useEffect, useMemo, useReducer, useState } from 'react';
 import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAdornment, TextField, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
 import { FilterBar, type LibraryGroupBy } from './FilterBar.js';
 import { groupByCaptureDay, groupByFolder, type LibraryItem } from './core/index.js';
@@ -135,7 +136,7 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
 
   const body = () => {
     if (library.error !== null) {
-      return <Alert severity="error" data-testid="library-error" sx={{ m: 2 }}>{library.error}</Alert>;
+      return <Alert severity="error" data-testid="library-error" sx={{ m: 2 }}>{formatAnalyzerError(library.error, dictionary.errors)}</Alert>;
     }
     if (library.isLoading) {
       return (
@@ -187,7 +188,7 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
         >
           <Typography variant="h2" color="text.primary">{dictionary.library.noMatchTitle(library.debouncedQuery)}</Typography>
           <Typography variant="body2" sx={{ maxWidth: 420 }} data-testid="library-no-match-body">
-            {noMatchSentence(filters, library.debouncedQuery, chipLabels, (parts) => dictionary.library.noMatchNamed(parts.join(', ')), dictionary.library.noMatchBody)}
+            {noMatchSentence(filters, chipLabels, (parts) => dictionary.library.noMatchNamed(parts.join(', ')), dictionary.library.noMatchBody)}
           </Typography>
           <Button
             variant="outlined"

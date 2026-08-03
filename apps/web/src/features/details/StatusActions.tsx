@@ -3,6 +3,7 @@ import { Box, Button, CircularProgress, Paper, Typography } from '@mui/material'
 import { ErrorIcon, PlayCircleIcon, WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { CardHeader } from '../../components/ui/CardHeader.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { type DetailsVideo, isIncomplete } from './details-video.js';
 import { type AnalysisPlan } from './index.web.js';
 import { variantLabelText } from './variant-label.js';
@@ -108,7 +109,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
           title={dictionary.details.processingFailed}
         />
         {video.errorMessage != null && video.errorMessage.length > 0 ? (
-          <Typography variant="body2">{video.errorMessage}</Typography>
+          <Typography variant="body2">{formatAnalyzerError(video.errorMessage, dictionary.errors)}</Typography>
         ) : null}
         <Box>
           <Button

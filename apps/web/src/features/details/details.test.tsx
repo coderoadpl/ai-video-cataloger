@@ -179,6 +179,23 @@ describe('details panel', () => {
     expect(screen.queryByText('An error occurred during processing.')).toBeNull();
   });
 
+  it('shows one retry affordance, not a competing variants-load-error card, for a video that was never successfully analyzed', async () => {
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(
+        { ok: false, error: { code: 'video_not_found', message: 'Catalog video not found: hash-a' } },
+        { status: 404 },
+      )),
+    );
+    const video = makeVideo({ status: 'error', errorMessage: 'Command failed (exit code 1).' });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} onAnalyze={vi.fn()} />);
+
+    await waitFor(() => expect(screen.getByRole('heading', { name: 'Processing Failed' })).toBeDefined());
+    await waitFor(() => expect(screen.queryByText('Loading analysis variants…')).toBeNull());
+    expect(screen.queryByTestId('variant-load-error')).toBeNull();
+    expect(screen.getAllByRole('button', { name: /Retry/ })).toHaveLength(1);
+  });
+
   it('shows the full AI analysis always expanded, with no collapse affordance', () => {
     const video = makeVideo({
       artifacts: {

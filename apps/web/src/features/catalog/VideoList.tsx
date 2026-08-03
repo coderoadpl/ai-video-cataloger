@@ -9,6 +9,7 @@ import { RevealContextMenu, useRevealContextMenu } from '../../components/ui/Rev
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
 import { type CatalogVideo, keyOf } from './core/index.js';
 import { useWindowedList } from './use-windowed-list.js';
@@ -62,7 +63,9 @@ const Centered = ({ children }: { children: ReactNode }) => (
 );
 
 const errorMessage = (error: unknown, dictionary: Dictionary): string =>
-  error instanceof ApiError ? error.appError.message : dictionary.catalog.genericScanError;
+  error instanceof ApiError
+    ? formatAnalyzerError(error.appError.message, dictionary.errors)
+    : dictionary.catalog.genericScanError;
 
 const VideoRow = ({
   video,
@@ -78,56 +81,60 @@ const VideoRow = ({
   thumbnailLoadingState: boolean;
   onSelect: (video: CatalogVideo) => void;
   onContextMenu: (event: MouseEvent, path: string) => void;
-}) => (
-  <ListItemButton
-    selected={selected}
-    onClick={() => onSelect(video)}
-    onContextMenu={(event) => onContextMenu(event, video.path)}
-    title={video.path}
-    data-testid="video-item"
-    data-video-filename={video.filename}
-    data-video-status={video.status}
-    sx={{ alignItems: 'center', gap: 1.25, borderRadius: 1, py: 1, height: rowHeightOf(video) }}
-  >
-    <MediaThumbnail
-      path={video.artifacts.thumbnailPath}
-      mtime={video.artifacts.thumbnailMtime}
-      alt={video.filename}
-      width={THUMB_BOX}
-      square
-      source={video.source}
+}) => {
+  const dictionary = useDictionary();
+  const formattedError = video.errorMessage == null ? null : formatAnalyzerError(video.errorMessage, dictionary.errors);
+  return (
+    <ListItemButton
       selected={selected}
-      loading={thumbnailLoadingState}
-    />
-    <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-      <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
-        {video.filename}
-      </Typography>
-      <Typography variant="caption" component="div" noWrap>
-        {video.durationFormatted === null ? null : <span>{video.durationFormatted}</span>}
-        {video.durationFormatted === null ? null : <span> · </span>}
-        <span>{video.sizeFormatted}</span>
-      </Typography>
-      <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-        {video.duplicate != null && !analyzing ? (
-          <DuplicateBadge canonicalPath={video.duplicate.canonicalPath} />
-        ) : (
-          <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
-        )}
-      </Box>
-      {video.status === 'error' && video.errorMessage != null && video.errorMessage.length > 0 ? (
-        <Typography
-          variant="caption"
-          noWrap
-          title={video.errorMessage}
-          sx={(theme) => ({ color: theme.palette.status.error.main })}
-        >
-          {video.errorMessage}
+      onClick={() => onSelect(video)}
+      onContextMenu={(event) => onContextMenu(event, video.path)}
+      title={video.path}
+      data-testid="video-item"
+      data-video-filename={video.filename}
+      data-video-status={video.status}
+      sx={{ alignItems: 'center', gap: 1.25, borderRadius: 1, py: 1, height: rowHeightOf(video) }}
+    >
+      <MediaThumbnail
+        path={video.artifacts.thumbnailPath}
+        mtime={video.artifacts.thumbnailMtime}
+        alt={video.filename}
+        width={THUMB_BOX}
+        square
+        source={video.source}
+        selected={selected}
+        loading={thumbnailLoadingState}
+      />
+      <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
+        <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
+          {video.filename}
         </Typography>
-      ) : null}
-    </Box>
-  </ListItemButton>
-);
+        <Typography variant="caption" component="div" noWrap>
+          {video.durationFormatted === null ? null : <span>{video.durationFormatted}</span>}
+          {video.durationFormatted === null ? null : <span> · </span>}
+          <span>{video.sizeFormatted}</span>
+        </Typography>
+        <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+          {video.duplicate != null && !analyzing ? (
+            <DuplicateBadge canonicalPath={video.duplicate.canonicalPath} />
+          ) : (
+            <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
+          )}
+        </Box>
+        {video.status === 'error' && formattedError !== null && formattedError.length > 0 ? (
+          <Typography
+            variant="caption"
+            noWrap
+            title={formattedError}
+            sx={(theme) => ({ color: theme.palette.status.error.main })}
+          >
+            {formattedError}
+          </Typography>
+        ) : null}
+      </Box>
+    </ListItemButton>
+  );
+};
 
 export const VideoList = ({
   videos,

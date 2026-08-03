@@ -130,7 +130,7 @@ export const BrowsePreview = ({ item, onClose, onOpenInAnalysis }: BrowsePreview
                 testId="preview-coordinates"
               />
             )}
-            <Row label={dictionary.photos.detailCaptured} value={formatCapturedAt(item.capturedAt)} />
+            <Row label={dictionary.photos.detailCaptured} value={formatCapturedAt(item.capturedAt, dictionary.locale)} />
             {people.length === 0 ? null : (
               <Box>
                 <Typography variant="caption" color="text.secondary">{dictionary.people.title}</Typography>

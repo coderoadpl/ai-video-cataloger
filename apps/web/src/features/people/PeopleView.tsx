@@ -25,6 +25,7 @@ import { MoreVertIcon } from '../../components/ui/icons.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
 import { placeholderGradients } from '../../theme.js';
@@ -99,7 +100,7 @@ export const PeopleView = ({
         </Box>
       </Box>
 
-      {people.error === null ? null : <Alert severity="error">{people.error}</Alert>}
+      {people.error === null ? null : <Alert severity="error">{formatAnalyzerError(people.error, dictionary.errors)}</Alert>}
       {people.activeJobLabel === null ? null : (
         <Alert severity="info" data-testid="people-active-job">{people.activeJobLabel}</Alert>
       )}

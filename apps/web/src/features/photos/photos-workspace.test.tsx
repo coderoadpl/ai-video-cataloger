@@ -165,6 +165,20 @@ describe('PhotosWorkspace', () => {
     expect(screen.queryByTestId('photos-workspace-empty')).toBeNull();
   });
 
+  it('renders the captured-at date formatted, never as a raw ISO timestamp', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-08-10T17:46:06.744Z' })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({ items, selectedFingerprint: 'ph_0000000000000001', detail: detailFor(firstItem) })}
+    />);
+
+    const detail = screen.getByTestId('photos-analysis-detail');
+    expect(detail.textContent).not.toContain('2026-08-10T17:46:06.744Z');
+    expect(detail.textContent).toContain('10 Aug 2026');
+  });
+
   it('renders the variant picker for an analysed photo and selecting a variant calls through', async () => {
     const items = [item({ fingerprint: 'ph_0000000000000001', analysed: true })];
     const firstItem = items[0];

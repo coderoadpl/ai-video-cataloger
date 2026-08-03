@@ -1,6 +1,10 @@
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
-import { blockingSkips, TOLERATED_SKIPS } from './release-walkthrough.mjs';
+import { blockingSkips, BROKEN_PHOTO_NAME, prepareScratchFixtures, TOLERATED_SKIPS } from './release-walkthrough.mjs';
 
 describe('blockingSkips', () => {
   it('excludes the tolerated allowlist from the blocking set', () => {
@@ -18,5 +22,32 @@ describe('blockingSkips', () => {
     const results = [...TOLERATED_SKIPS].map((name) => ({ name, status: 'skipped', note: '' }));
 
     expect(blockingSkips(results)).toEqual([]);
+  });
+});
+
+describe('prepareScratchFixtures', () => {
+  it('copies the source fixtures into a fresh scratch folder without mutating the original', () => {
+    const source = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-fixtures-src-'));
+    writeFileSync(path.join(source, 'clip.mp4'), 'not a real video, just a marker');
+
+    const scratchDir = prepareScratchFixtures(source);
+
+    expect(scratchDir).not.toBe(source);
+    expect(existsSync(path.join(scratchDir, 'clip.mp4'))).toBe(true);
+    expect(existsSync(path.join(source, BROKEN_PHOTO_NAME))).toBe(false);
+  });
+
+  it('plants an unloadable jpg alongside the copied fixtures', () => {
+    const source = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-fixtures-src-'));
+    mkdirSync(source, { recursive: true });
+
+    const scratchDir = prepareScratchFixtures(source);
+    const brokenPath = path.join(scratchDir, BROKEN_PHOTO_NAME);
+
+    expect(existsSync(brokenPath)).toBe(true);
+    const bytes = readFileSync(brokenPath);
+    expect(bytes[0]).toBe(0xff);
+    expect(bytes[1]).toBe(0xd8);
+    expect(bytes.length).toBeLessThan(64);
   });
 });

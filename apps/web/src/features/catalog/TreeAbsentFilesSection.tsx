@@ -15,6 +15,7 @@ import {
 
 import { ChevronRightIcon, ExpandMoreIcon, WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatDate } from '../../lib/format.js';
 import { folderName } from '../../lib/format.js';
 import { type CatalogTreeNode } from './core/index.js';
 import { type AbsentFileEntry } from './use-absent-files.js';
@@ -22,7 +23,6 @@ import { useTreeAbsentFiles } from './use-tree-absent-files.js';
 import { useCatalogLock } from './use-catalog-lock.js';
 
 const nameOf = (entry: AbsentFileEntry): string => entry.finalName ?? entry.fileName;
-const lastSeenLabel = (missingAt: number): string => new Date(missingAt).toLocaleDateString();
 
 export const TreeAbsentFilesSection = ({ root }: { root: CatalogTreeNode | null }) => {
   const dictionary = useDictionary();
@@ -82,7 +82,7 @@ export const TreeAbsentFilesSection = ({ root }: { root: CatalogTreeNode | null 
                       </Typography>
                       {entry.missingAt === null ? null : (
                         <Typography variant="caption" color="text.secondary">
-                          {dictionary.catalog.absentLastSeen(lastSeenLabel(entry.missingAt))}
+                          {dictionary.catalog.absentLastSeen(formatDate(entry.missingAt, dictionary.locale))}
                         </Typography>
                       )}
                     </Box>

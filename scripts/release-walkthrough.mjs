@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -6,6 +7,11 @@ import { parseArgs } from 'node:util';
 import { _electron as electron } from '@playwright/test';
 import { z } from 'zod';
 
+// A real JPEG SOI marker, so the scanner accepts the file as a photo, followed
+// by nothing, so proxy generation fails and the placeholder tile has to render.
+export const BROKEN_PHOTO_NAME = 'broken-photo.jpg';
+const TRUNCATED_JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46]);
+
 const HELP = `release-walkthrough — scripted self-QA pass over a packaged build.
 
 Usage:
@@ -13,7 +19,12 @@ Usage:
 
 Options:
   --app <path>                 Packaged .app bundle to drive (required).
-  --fixtures <path>            Folder of sample videos the walkthrough opens (required).
+  --fixtures <path>            Folder of sample videos the walkthrough opens (required). Never
+                               mutated: the runner copies it into a scratch temp folder and plants
+                               an unloadable ${BROKEN_PHOTO_NAME} there before opening it, so a photo
+                               scan exercises the broken-image placeholder. The source folder should
+                               hold at least two videos so one stays unanalyzed after the analyze step
+                               clicks only the first.
   --out <path>                 Root for the screenshot set (default: release/walkthrough).
   --home <path>                Prepared QA home; the default throwaway temp home has no analyzer
                                configured, so the analysis step reports itself skipped.
@@ -119,9 +130,19 @@ const executableInside = (appPath) => {
 
 const timestamp = () => new Date().toISOString().replaceAll(':', '-').slice(0, 19);
 
+// Copies rather than plants in place: walkthrough fixture folders are shared,
+// read-only templates that a QA run must never mutate (see repo CLAUDE.md).
+export const prepareScratchFixtures = (fixturesDir) => {
+  const scratchDir = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-fixtures-scratch-'));
+  cpSync(fixturesDir, scratchDir, { recursive: true });
+  writeFileSync(path.join(scratchDir, BROKEN_PHOTO_NAME), TRUNCATED_JPEG_BYTES);
+  return scratchDir;
+};
+
 const buildPlan = (options) => {
   const appPath = requireDirectory(options.app, '--app');
-  const fixturesDir = requireDirectory(options.fixtures, '--fixtures');
+  const sourceFixturesDir = requireDirectory(options.fixtures, '--fixtures');
+  const fixturesDir = prepareScratchFixtures(sourceFixturesDir);
   const outRoot = options.out === undefined ? path.join(REPO_ROOT, 'release', 'walkthrough') : path.resolve(options.out);
   const userDataDir = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-userdata-'));
   const homeDir = options.home === undefined
@@ -131,6 +152,7 @@ const buildPlan = (options) => {
   return {
     appPath,
     executablePath: executableInside(appPath),
+    sourceFixturesDir,
     fixturesDir,
     outDir: path.join(outRoot, timestamp()),
     userDataDir,
@@ -292,7 +314,10 @@ const drive = async (plan) => {
       return skipped(`no videos listed for ${plan.fixturesDir}`);
     }
     const count = await page.getByTestId('video-item').count();
-    return done(`${String(count)} video row(s) listed`);
+    const unanalyzedNote = count >= 2
+      ? '; at least one stays unanalyzed after the analyze step'
+      : '; WARNING: fewer than 2 videos, no unanalyzed-tile coverage this run';
+    return done(`${String(count)} video row(s) listed${unanalyzedNote}`);
   });
 
   await record('tree-expand', async () => {
@@ -429,7 +454,11 @@ const drive = async (plan) => {
     }
     const tiles = await page.getByTestId('photos-tile').count();
     if (tiles === 0) return skipped('photo grid rendered with no tiles');
-    return done(`${String(tiles)} photo tile(s) listed`);
+    const brokenPlaceholder = await appeared(page.getByTestId('photos-tile-placeholder'), SETTLE_TIMEOUT_MS);
+    const brokenNote = brokenPlaceholder
+      ? `; broken-image placeholder shown for ${BROKEN_PHOTO_NAME}`
+      : `; WARNING: no broken-image placeholder found (expected ${BROKEN_PHOTO_NAME} to fail its proxy)`;
+    return done(`${String(tiles)} photo tile(s) listed${brokenNote}`);
   });
 
   await record('photo-detail', async () => {
@@ -478,7 +507,7 @@ const main = async () => {
   mkdirSync(plan.outDir, { recursive: true });
   writeFileSync(path.join(plan.outDir, 'plan.json'), JSON.stringify(plan, null, 2));
   console.log(`release-walkthrough: ${plan.dryRun ? 'plan only' : 'driving'} ${plan.appPath}`);
-  console.log(`  fixtures   ${plan.fixturesDir}`);
+  console.log(`  fixtures   ${plan.sourceFixturesDir} (scratch copy driven: ${plan.fixturesDir})`);
   console.log(`  home       ${plan.homeDir}`);
   console.log(`  user data  ${plan.userDataDir}`);
   console.log(`  output     ${plan.outDir}`);

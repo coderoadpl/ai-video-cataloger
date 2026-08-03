@@ -29,6 +29,7 @@ import {
   type SettingsDraft,
 } from './settings-model.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { useSettings } from './use-settings.js';
 
 interface SettingsModalProps {
@@ -71,7 +72,7 @@ export const SettingsModal = ({ open, folder, onClose, onSaved, onRunWizard }: S
           </Box>
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3, py: 1 }}>
-            {settings.error === null ? null : <Alert severity="error">{settings.error}</Alert>}
+            {settings.error === null ? null : <Alert severity="error">{formatAnalyzerError(settings.error, dictionary.errors)}</Alert>}
 
             <SettingsAnalyzerSection
               backend={draft.analyzer_backend}

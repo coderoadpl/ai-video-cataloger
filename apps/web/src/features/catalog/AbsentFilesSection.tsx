@@ -16,6 +16,8 @@ import {
 
 import { ChevronRightIcon, ExpandMoreIcon, WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
+import { formatDate } from '../../lib/format.js';
 import { useAbsentFiles, type AbsentFileEntry } from './use-absent-files.js';
 import { useCatalogLock } from './use-catalog-lock.js';
 
@@ -25,7 +27,6 @@ interface AbsentFilesSectionProps {
 
 const nameOf = (entry: AbsentFileEntry): string => entry.finalName ?? entry.fileName;
 
-const lastSeenLabel = (missingAt: number): string => new Date(missingAt).toLocaleDateString();
 
 export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
   const dictionary = useDictionary();
@@ -79,7 +80,7 @@ export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
                 </Typography>
                 {entry.missingAt === null ? null : (
                   <Typography variant="caption" color="text.secondary">
-                    {dictionary.catalog.absentLastSeen(lastSeenLabel(entry.missingAt))}
+                    {dictionary.catalog.absentLastSeen(formatDate(entry.missingAt, dictionary.locale))}
                   </Typography>
                 )}
               </Box>
@@ -103,7 +104,7 @@ export const AbsentFilesSection = ({ folder }: AbsentFilesSectionProps) => {
           <DialogContentText>
             {pending === null ? '' : dictionary.catalog.forgetEntryConfirmBody(pending.name)}
           </DialogContentText>
-          {error === null ? null : <Alert severity="error">{error}</Alert>}
+          {error === null ? null : <Alert severity="error">{formatAnalyzerError(error, dictionary.errors)}</Alert>}
         </DialogContent>
         <DialogActions>
           <Button color="inherit" onClick={() => setPending(null)}>

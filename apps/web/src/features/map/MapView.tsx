@@ -1,6 +1,7 @@
 import { Alert, Box, Chip, CircularProgress, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { MapCanvas } from './MapCanvas.js';
 import { MAP_MEDIA_FILTERS, type MapMediaFilter } from './core/index.js';
 import { useCatalogLocations, type CatalogLocation } from './use-catalog-locations.js';
@@ -71,7 +72,7 @@ export const MapView = ({ active, focusFingerprint, onFocusConsumed, onOpenPrevi
           <Typography variant="body2">{dictionary.map.loading}</Typography>
         </Box>
       ) : locations.error !== null ? (
-        <Alert severity="error" data-testid="map-error">{locations.error}</Alert>
+        <Alert severity="error" data-testid="map-error">{formatAnalyzerError(locations.error, dictionary.errors)}</Alert>
       ) : nothingLocated ? (
         <Box
           sx={{

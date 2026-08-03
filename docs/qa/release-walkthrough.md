@@ -36,6 +36,15 @@ Every run launches with:
   the English fallback. Reviewing an English capture cannot catch a Polish
   copy defect (W50: the v0.6.12 review ran in English and could not judge
   Polish strings at all).
+- `--fixtures` itself — `prepareScratchFixtures` (`scripts/release-walkthrough.mjs`)
+  copies the given folder into a scratch temp directory before the app ever
+  opens it, so the source folder (which may be a read-only walkthrough
+  template such as `claude-tmp/avc-release-walkthrough-template/`) is never
+  written to. The scratch copy also gets one planted `broken-photo.jpg` — a
+  real JPEG start-of-image marker with no image data — so the photo scan the
+  `photos-sidebar` step auto-triggers always has one file whose proxy
+  generation fails (W51: the broken-image placeholder had never been
+  exercised by a walkthrough run before).
 
 A run therefore never mutates real user data. Analysis needs a configured
 analyzer, which a throwaway home does not have: pass `--home` pointing at a
@@ -181,11 +190,24 @@ Read every screenshot against the sensitivities that have burned us before:
   and, when analysed, the description/tags with the variant picker; the "also
   at: N paths" duplicate line is read-only and offers nothing destructive.
 - **Zdjęcia sidebar** — does the Zdjęcia sidebar show the folder header
-  ("Ten folder"/"Wszystkie foldery" scope toggle), photo count badges
+  ("Ten folder"/"Wszystkie" scope toggle), photo count badges
   (Ukończony / Duplikat / Podgląd nieudany / Brak EXIF / Brak pliku) and a
   selection highlight?
 - **Zdjęcia sidebar empty state** — with a fresh home, does the Zdjęcia
   sidebar show its own empty scan CTA, and never fall back to the video list?
+- **Broken-image placeholder** — the runner plants an unloadable
+  `broken-photo.jpg` in a scratch copy of `--fixtures` (never the source
+  folder) before every run; in the `photos-grid` screenshot, does that tile
+  show the placeholder tile (never a broken `<img>` icon, never a permanent
+  shimmer), and does the step's manifest note confirm the placeholder was
+  found?
+- **Unanalysed video tile** — the `open-folder` screenshot is taken right
+  after the folder opens, before the `analyze` step runs; with a fixtures
+  folder holding 2+ videos (the runner's manifest note flags a fixtures
+  folder with fewer), does at least one video row show the honest
+  not-yet-analysed state, distinct from completed/error, in both this shot
+  and the `search`/`select-video` shots taken later for the videos the
+  `analyze` step never touched?
 
 The manual suites in [manual-test-checklists.md](manual-test-checklists.md) stay
 the deeper pass; this walkthrough is the always-run floor beneath them.

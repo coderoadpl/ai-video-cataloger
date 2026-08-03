@@ -283,7 +283,7 @@ describe('PhotosSidebar', () => {
     const row = screen.getAllByTestId('photos-sidebar-row')[0];
     if (row === undefined) throw new Error('missing row');
     expect(row.textContent).not.toContain('2026-08-10T17:46:06.740Z');
-    expect(row.textContent).toContain(new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-08-10T17:46:06.740Z')));
+    expect(row.textContent).toContain(new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-08-10T17:46:06.740Z')));
   });
 
   it('renders every sidebar badge through the shared status-badge component, with an icon and the video-parity label for analysed', () => {

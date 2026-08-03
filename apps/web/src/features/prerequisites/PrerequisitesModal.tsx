@@ -14,6 +14,7 @@ import {
 import { CheckCircleIcon, ErrorIcon } from '../../components/ui/icons.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import {
   dependencyDisplayName,
   missingCount,
@@ -42,7 +43,7 @@ export const PrerequisitesModal = ({ open, folder, onClose }: PrerequisitesModal
           </Box>
         ) : error !== null ? (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.5, py: 2 }}>
-            <Alert severity="error">{error}</Alert>
+            <Alert severity="error">{formatAnalyzerError(error, dictionary.errors)}</Alert>
             <Button variant="outlined" onClick={check} data-testid="prerequisites-retry">
               {dictionary.prerequisites.retry}
             </Button>

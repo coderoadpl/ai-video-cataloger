@@ -16,6 +16,7 @@ import type { WhisperModelName } from '@core/domain/index.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { StorageIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 
 import { DeleteModelDialog } from './DeleteModelDialog.js';
 import { LocalAiSection } from './LocalAiSection.js';
@@ -50,7 +51,7 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
               {runtime.isLoading ? (
                 <Typography variant="caption">{dictionary.models.checkingWhisperRuntime}</Typography>
               ) : runtime.error !== null ? (
-                <Alert severity="error">{runtime.error}</Alert>
+                <Alert severity="error">{formatAnalyzerError(runtime.error, dictionary.errors)}</Alert>
               ) : runtime.available ? (
                 <Alert severity="success" data-testid="whisper-runtime-status">
                   {dictionary.models.runtimeStatus(runtime.source, runtime.path)}
@@ -81,7 +82,7 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
                 </Box>
               ) : whisper.error !== null ? (
                 <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-                  <Alert severity="error">{whisper.error}</Alert>
+                  <Alert severity="error">{formatAnalyzerError(whisper.error, dictionary.errors)}</Alert>
                   <Button size="small" onClick={whisper.retry}>
                     {dictionary.models.retry}
                   </Button>
@@ -90,7 +91,7 @@ export const ModelManagerModal = ({ open, onClose, addLine, intervalMs }: ModelM
                 <>
                   {whisper.actionError === null ? null : (
                     <Alert severity="error" data-testid="whisper-action-error">
-                      {whisper.actionError}
+                      {formatAnalyzerError(whisper.actionError, dictionary.errors)}
                     </Alert>
                   )}
                   <Box

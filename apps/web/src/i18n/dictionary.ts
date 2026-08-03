@@ -1,3 +1,5 @@
+import type { AnalyzerErrorMessages } from '../lib/analyzer-error-message.js';
+
 export type Locale = 'en' | 'pl';
 
 export interface Dictionary {
@@ -624,6 +626,7 @@ export interface Dictionary {
     entryUnreadable: string;
     entryUnreadableRetained: string;
   };
+  errors: AnalyzerErrorMessages;
   folderBar: {
     openFolder: string;
     checking: string;
@@ -1508,6 +1511,22 @@ export const en: Dictionary = {
     entryUnreadable: 'The credentials file entry for this provider could not be read, so nothing was removed. Fix or remove that entry by hand.',
     entryUnreadableRetained: 'The credentials file entry for this provider could not be read and was left untouched. Fix or remove that entry by hand.',
   },
+  errors: {
+    analyzerFailed: 'Analysis failed.',
+    analyzerFailedWithCode: (code) => `Analysis failed (exit code ${String(code)}).`,
+    analyzerCommandNotFound: 'Analyzer command was not found.',
+    analyzerCommandNotStarted: 'Analyzer command could not be started.',
+    analyzerTimedOut: 'Analysis timed out.',
+    analyzerCancelled: 'Analysis was cancelled.',
+    localAiUnavailable: 'Local AI runtime is unavailable.',
+    modelNotInstalled: 'The selected model is not installed.',
+    providerAuthFailed: 'The provider rejected the stored credential.',
+    providerRateLimited: 'The provider rate limit was reached.',
+    providerTimedOut: 'The provider request timed out.',
+    providerRequestFailed: 'The provider request failed.',
+    providerEmptyResponse: 'The provider returned an empty response.',
+    rootNotFound: (path) => `Root not found: ${path}`,
+  },
   folderBar: {
     openFolder: 'Open Folder',
     checking: 'Checking…',
@@ -1645,7 +1664,7 @@ export const en: Dictionary = {
     noFolderBody: 'Open a folder to see its photos.',
     autoScanningBody: 'Indexing photos in this folder…',
     scopeThisFolder: 'This folder',
-    scopeAllFolders: 'All scanned folders',
+    scopeAllFolders: 'All folders',
     badgeProxyFailed: 'Preview failed',
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
@@ -2401,6 +2420,22 @@ export const pl: Dictionary = {
     entryUnreadable: 'Nie udało się odczytać wpisu tego dostawcy w pliku poświadczeń, więc nic nie zostało usunięte. Popraw lub usuń ten wpis ręcznie.',
     entryUnreadableRetained: 'Nie udało się odczytać wpisu tego dostawcy w pliku poświadczeń i został on nietknięty. Popraw lub usuń ten wpis ręcznie.',
   },
+  errors: {
+    analyzerFailed: 'Analiza nie powiodła się.',
+    analyzerFailedWithCode: (code) => `Analiza nie powiodła się (kod wyjścia ${String(code)}).`,
+    analyzerCommandNotFound: 'Nie znaleziono polecenia analizatora.',
+    analyzerCommandNotStarted: 'Nie udało się uruchomić polecenia analizatora.',
+    analyzerTimedOut: 'Przekroczono limit czasu analizy.',
+    analyzerCancelled: 'Analiza została anulowana.',
+    localAiUnavailable: 'Lokalny model AI jest niedostępny.',
+    modelNotInstalled: 'Wybrany model nie jest zainstalowany.',
+    providerAuthFailed: 'Dostawca odrzucił zapisane poświadczenia.',
+    providerRateLimited: 'Osiągnięto limit zapytań dostawcy.',
+    providerTimedOut: 'Przekroczono czas odpowiedzi dostawcy.',
+    providerRequestFailed: 'Żądanie do dostawcy nie powiodło się.',
+    providerEmptyResponse: 'Dostawca zwrócił pustą odpowiedź.',
+    rootNotFound: (path) => `Nie znaleziono folderu: ${path}`,
+  },
   folderBar: {
     openFolder: 'Otwórz folder',
     checking: 'Sprawdzanie…',
@@ -2538,7 +2573,7 @@ export const pl: Dictionary = {
     noFolderBody: 'Otwórz folder, aby zobaczyć jego zdjęcia.',
     autoScanningBody: 'Indeksowanie zdjęć w tym folderze…',
     scopeThisFolder: 'Ten folder',
-    scopeAllFolders: 'Wszystkie foldery',
+    scopeAllFolders: 'Wszystkie',
     badgeProxyFailed: 'Podgląd nieudany',
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',

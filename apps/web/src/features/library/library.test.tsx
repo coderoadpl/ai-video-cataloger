@@ -344,6 +344,18 @@ describe('LibraryView', () => {
     expect(screen.queryByTestId('library-empty-catalog')).toBeNull();
   });
 
+  it('never leaks an absolute filesystem path from a failed catalog read into the error strip', async () => {
+    server.use(http.get('/api/search', () => HttpResponse.json(
+      { ok: false, error: { code: 'read_error', message: 'Command failed: /var/folders/s4/xw5m39vj0bvd7z1v0pcs5ssr0000gn/T/cmux-cli-shims/8DC7FBD3-E6C8-42C3-B012-BECEA9CC11AD/claude' } },
+      { status: 500 },
+    )));
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    expect((await screen.findByTestId('library-error')).textContent).toBe(en.errors.analyzerFailed);
+    expect(document.body.textContent).not.toContain('/var/folders');
+  });
+
   it('renders the no-match state, distinct from the empty-catalog state, once a query eliminates everything', async () => {
     stubSearch([libraryItem({ fingerprint: 'fp-1' })]);
 

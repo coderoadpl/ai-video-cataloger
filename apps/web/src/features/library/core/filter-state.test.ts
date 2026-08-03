@@ -101,13 +101,13 @@ describe('toSearchParams', () => {
 });
 
 describe('noMatchSentence', () => {
-  it('names every active chip and the text query', () => {
+  it('names only the active filter chips, since the no-match title already states the search query', () => {
     const state = libraryFilterReducer(EMPTY_LIBRARY_FILTERS, { type: 'addTag', tag: 'beach' });
-    const sentence = noMatchSentence(state, 'sunset', labels, (parts) => `No files match ${parts.join(', ')}`, 'No results');
-    expect(sentence).toBe('No files match "sunset", #beach');
+    const sentence = noMatchSentence(state, labels, (parts) => `No files match ${parts.join(', ')}`, 'No results');
+    expect(sentence).toBe('No files match #beach');
   });
 
-  it('falls back to the generic body when nothing is active', () => {
-    expect(noMatchSentence(EMPTY_LIBRARY_FILTERS, '', labels, () => 'unused', 'No results')).toBe('No results');
+  it('falls back to the generic body instead of repeating the query the title already names', () => {
+    expect(noMatchSentence(EMPTY_LIBRARY_FILTERS, labels, () => 'unused', 'No results')).toBe('No results');
   });
 });

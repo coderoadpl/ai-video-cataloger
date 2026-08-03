@@ -4,6 +4,7 @@ import { Alert, Box, Button, CircularProgress, IconButton, MenuItem, Select, Tex
 import { CancelIcon } from '../../components/ui/icons.js';
 import { PhotosLayout } from '../../components/layout/PhotosLayout.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { adjacentFingerprint, flattenOrder, focusTarget, groupByCaptureDay, ownerRootFor, searchResultsToItems, searchSections } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
 import { PhotoGrid } from './PhotoGrid.js';
@@ -137,7 +138,9 @@ export const PhotosView = ({
     </Box>
   );
 
-  const notice = photos.error === null ? undefined : <Alert severity="error">{photos.error}</Alert>;
+  const notice = photos.error === null
+    ? undefined
+    : <Alert severity="error">{formatAnalyzerError(photos.error, dictionary.errors)}</Alert>;
 
   const grid = photos.viewMode.kind === 'search' ? (
     photos.isSearchLoading ? (

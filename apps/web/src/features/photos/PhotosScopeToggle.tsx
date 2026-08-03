@@ -20,12 +20,12 @@ export const PhotosScopeToggle = ({ scope, onScopeChange }: PhotosScopeTogglePro
         if (next !== null) onScopeChange(next);
       }}
     >
-      <ToggleButton value="folder" data-testid="photos-scope-folder" title={dictionary.photosSidebar.scopeThisFolder} sx={{ minWidth: 0 }}>
+      <ToggleButton value="folder" data-testid="photos-scope-folder" title={dictionary.photosSidebar.scopeThisFolder} sx={{ minWidth: 0, px: 0.25, fontSize: '0.6875rem' }}>
         <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {dictionary.photosSidebar.scopeThisFolder}
         </Box>
       </ToggleButton>
-      <ToggleButton value="all" data-testid="photos-scope-all" title={dictionary.photosSidebar.scopeAllFolders} sx={{ minWidth: 0 }}>
+      <ToggleButton value="all" data-testid="photos-scope-all" title={dictionary.photosSidebar.scopeAllFolders} sx={{ minWidth: 0, px: 0.25, fontSize: '0.6875rem' }}>
         <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {dictionary.photosSidebar.scopeAllFolders}
         </Box>

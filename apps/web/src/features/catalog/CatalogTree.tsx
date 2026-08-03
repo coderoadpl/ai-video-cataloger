@@ -10,6 +10,7 @@ import { ApiError } from '@core/client/index.js';
 import { actions, bridge } from '../../api.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import {
   buildTreeRows,
   folderNeedsFetch,
@@ -153,8 +154,10 @@ const VideoRowView = ({
   onSelect: (video: CatalogVideo) => void;
   onContextMenu: (event: MouseEvent, path: string) => void;
 }) => {
+  const dictionary = useDictionary();
   const video = row.video;
   const height = hasErrorLine(video) ? ERROR_VIDEO_ROW_HEIGHT : VIDEO_ROW_HEIGHT;
+  const formattedError = video.errorMessage == null ? null : formatAnalyzerError(video.errorMessage, dictionary.errors);
   return (
     <ListItemButton
       role="treeitem"
@@ -196,14 +199,14 @@ const VideoRowView = ({
             <VideoStatusBadge status={video.status} analyzing={analyzing} variant="list" />
           )}
         </Box>
-        {hasErrorLine(video) ? (
+        {hasErrorLine(video) && formattedError !== null ? (
           <Typography
             variant="caption"
             noWrap
-            title={video.errorMessage ?? undefined}
+            title={formattedError}
             sx={(theme) => ({ color: theme.palette.status.error.main })}
           >
-            {video.errorMessage}
+            {formattedError}
           </Typography>
         ) : null}
       </Box>
@@ -223,7 +226,9 @@ const StatusRowView = ({ row }: { row: StatusRow }) => {
         </>
       ) : (
         <Typography variant="caption" role="alert" sx={(theme) => ({ color: theme.palette.status.error.main })}>
-          {row.error instanceof ApiError ? row.error.appError.message : dictionary.catalog.genericScanError}
+          {row.error instanceof ApiError
+            ? formatAnalyzerError(row.error.appError.message, dictionary.errors)
+            : dictionary.catalog.genericScanError}
         </Typography>
       )}
     </Box>

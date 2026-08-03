@@ -7,6 +7,7 @@ import { SidebarFolderPanel } from '../../components/ui/SidebarFolderPanel.js';
 import { StatusBadge } from '../../components/ui/StatusBadge.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { folderName, formatCapturedAt } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import type { StatusToken } from '../../theme.js';
@@ -131,7 +132,7 @@ const PhotoSidebarRow = ({
           {item.fileName}
         </Typography>
         <Typography variant="caption" noWrap>
-          {formatCapturedAt(item.capturedAt) ?? dictionary.photos.unknownDate}
+          {formatCapturedAt(item.capturedAt, dictionary.locale) ?? dictionary.photos.unknownDate}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
           {photoBadges(item).map((badge) => <BadgeChip key={badge} badge={badge} dictionary={dictionary} />)}
@@ -173,12 +174,12 @@ export const PhotosSidebar = ({
           </>
         )}
       />
-      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 1 }}>
-        <Box sx={{ flex: 1, minWidth: 0 }}>
-          <AnalysisMediaToggle media="photos" onSelect={onAnalysisMediaChange} fullWidth />
+      <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 0.5 }}>
+        <Box sx={{ flex: '0 0 auto', minWidth: 0 }}>
+          <AnalysisMediaToggle media="photos" onSelect={onAnalysisMediaChange} dense />
         </Box>
         {scopeToggle === undefined ? null : (
-          <Box sx={{ flex: 1, minWidth: 0 }}>{scopeToggle}</Box>
+          <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>{scopeToggle}</Box>
         )}
       </Box>
     </>
@@ -186,7 +187,7 @@ export const PhotosSidebar = ({
 
   const errorStrip = state.error === null ? null : (
     <Alert severity="error" sx={{ mx: 2, mt: 1 }} data-testid="photos-job-error">
-      {state.error}
+      {formatAnalyzerError(state.error, dictionary.errors)}
     </Alert>
   );
 

@@ -3,6 +3,7 @@ import { Box, IconButton, Modal, Typography } from '@mui/material';
 
 import { ArrowBackIcon, CancelIcon, SkipNextIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatCapturedAt } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { viewerSourceCandidates, type PhotoListItem } from './core/index.js';
 
@@ -89,7 +90,7 @@ export const PhotoViewer = ({ item, proxyPath, onClose, onPrevious, onNext }: Ph
         <Box sx={{ p: 1, textAlign: 'center' }}>
           <Typography variant="body2">
             {item.fileName}
-            {item.capturedAt === null ? '' : ` · ${item.capturedAt}`}
+            {item.capturedAt === null ? '' : ` · ${formatCapturedAt(item.capturedAt, dictionary.locale) ?? ''}`}
           </Typography>
         </Box>
       </Box>

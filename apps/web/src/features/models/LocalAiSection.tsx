@@ -1,6 +1,7 @@
 import { Alert, Box, Button, Chip, CircularProgress, LinearProgress, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { tierSupportBadge, type LocalAiTier } from './models-model.js';
 import type { LocalAiState } from './use-local-ai.js';
 
@@ -37,7 +38,7 @@ export const LocalAiSection = ({ state }: LocalAiSectionProps) => {
         <Typography variant="body2">{dictionary.models.loadingLocalAi}</Typography>
       </Box>
     ) : null}
-    {state.error === null ? null : <Alert severity="error">{state.error}</Alert>}
+    {state.error === null ? null : <Alert severity="error">{formatAnalyzerError(state.error, dictionary.errors)}</Alert>}
 
     {state.tiers === null
       ? null

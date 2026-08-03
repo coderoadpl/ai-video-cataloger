@@ -1,6 +1,7 @@
 import { Alert, Box, Button } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useFacesIndex } from './use-faces-index.js';
 
@@ -30,7 +31,7 @@ export const FacesIndexAction = ({ active, folder, addLine, lockReason }: FacesI
       </Button>
       {facesIndex.actionError === null ? null : (
         <Alert severity="error" data-testid="people-index-error">
-          {facesIndex.actionError}
+          {formatAnalyzerError(facesIndex.actionError, dictionary.errors)}
         </Alert>
       )}
     </Box>

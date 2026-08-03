@@ -14,6 +14,38 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Stored analysis error strings (including legacy pre-W50 messages that leak
+  an absolute filesystem path) now render through a single renderer-side
+  formatter at every error display site — catalog sidebar rows and tree, the
+  details status card, the photos sidebar and grid, Library, Map, People,
+  Settings, the model manager, the prerequisites modal, the absent-files
+  section, the refresh toast and the root error fallback — instead of the raw
+  string; known analyzer failure shapes map to a localized message (en/pl) and
+  unknown strings pass through with any absolute path stripped, including
+  quoted and parenthesised ones, while URLs are left intact.
+- The Zdjęcia sidebar's scope toggle no longer clips "Wszystkie" behind an
+  ellipsis at the narrow (260px) sidebar width; both the media and scope
+  toggles now fit their full labels on one row.
+- Photo capture dates and the absent-files "last seen" date now format using
+  the active UI language's locale instead of English or the host locale, and
+  the photo detail pane's "Data wykonania" field now formats the timestamp
+  instead of showing the raw ISO string.
+- The Library's no-match empty state no longer repeats the search query in
+  both the title and the body sentence with inconsistent quote styles; the
+  body now names only the active filter chips.
+- A video that was never successfully analyzed no longer shows a competing
+  "variants load error" card alongside its processing-failed card; the
+  variant switcher now treats a not-yet-analyzed video as the empty state.
+- The setup wizard's step labels ("Analizator" / "Transkrypcja") no longer
+  touch each other in the stepper at the wizard's default width.
+- `scripts/release-walkthrough.mjs` now runs every walkthrough against a
+  scratch copy of `--fixtures` (never mutating the source) with a planted
+  unloadable photo, so the release walkthrough exercises the broken-image
+  placeholder; `docs/qa/release-walkthrough.md` gained matching checklist
+  bullets for the broken-image placeholder and an unanalyzed video tile.
+
 ## [0.6.13] - 2026-08-03
 
 ### Fixed

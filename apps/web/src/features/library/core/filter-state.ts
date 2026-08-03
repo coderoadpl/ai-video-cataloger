@@ -157,13 +157,10 @@ export const toSearchParams = (state: LibraryFilterState): LibrarySearchParams =
 
 export const noMatchSentence = (
   state: LibraryFilterState,
-  query: string,
   labels: LibraryFilterChipLabels,
   build: (parts: string[]) => string,
   genericBody: string,
 ): string => {
-  const parts: string[] = [];
-  if (query.length > 0) parts.push(`"${query}"`);
-  for (const chip of libraryFilterChips(state, labels)) parts.push(chip.label);
+  const parts = libraryFilterChips(state, labels).map((chip) => chip.label);
   return parts.length === 0 ? genericBody : build(parts);
 };
