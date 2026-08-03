@@ -61,6 +61,10 @@ describe('sidebarSections', () => {
     expect(sections).toEqual([{ root: '/media', items: [items[0]] }]);
   });
 
+  it('folder scope with a scanned but photo-less root returns no sections, so the sidebar reads as empty rather than as a nameless header', () => {
+    expect(sidebarSections([], [root({ root: '/media' })], 'folder', '/media')).toEqual([]);
+  });
+
   it('folder scope with no selected root returns no sections', () => {
     expect(sidebarSections([item('a', '/media/a.jpg')], [root({ root: '/media' })], 'folder', null)).toEqual([]);
   });

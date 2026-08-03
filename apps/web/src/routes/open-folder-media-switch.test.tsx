@@ -55,6 +55,20 @@ const stubBaseline = () => {
       ok: true,
       data: { media: 'photo', root: '/pictures', total: 0, offset: 0, items: [] },
     })),
+    http.post('/api/photos/scan', () => HttpResponse.json({ ok: true, data: { jobId: 'job-auto-scan' } })),
+    http.get('/api/jobs/status', () => HttpResponse.json({
+      ok: true,
+      data: {
+        jobId: 'job-auto-scan',
+        kind: 'photo_scan',
+        status: 'completed',
+        progress: null,
+        progressEvents: [],
+        error: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    })),
   );
 };
 

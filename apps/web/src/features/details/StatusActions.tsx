@@ -12,12 +12,13 @@ interface StatusActionsProps {
   onAnalyze?: ((video: DetailsVideo, options?: { force?: boolean }) => void) | undefined;
   disabledReason?: string | undefined;
   analysisPlan?: AnalysisPlan | null | undefined;
+  variantCount?: number;
 }
 
 const spinner = <CircularProgress size={16} color="inherit" />;
 const play = <PlayCircleIcon fontSize="small" />;
 
-export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, analysisPlan }: StatusActionsProps) => {
+export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, analysisPlan, variantCount = 0 }: StatusActionsProps) => {
   const dictionary = useDictionary();
 
   if (onAnalyze === undefined) return null;
@@ -28,20 +29,23 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
     }
     onAnalyze(video);
   };
+  const hasNoVariants = variantCount === 0;
   const planLabel = analysisPlan === undefined || analysisPlan === null
     ? null
     : variantLabelText(analysisPlan.label, dictionary);
   const actionLabel = analysisPlan === undefined || analysisPlan === null
     ? null
-    : analysisPlan.key === 'newVariant'
-      ? dictionary.details.variants.createNewVariant
-      : dictionary.details.variants.rerunExistingVariant;
+    : hasNoVariants
+      ? dictionary.details.analyzeAction
+      : analysisPlan.key === 'newVariant'
+        ? dictionary.details.variants.createNewVariant
+        : dictionary.details.variants.rerunExistingVariant;
   const planState = analysisPlan === undefined || analysisPlan === null
     ? null
     : analysisPlan.key === 'newVariant'
       ? dictionary.details.variants.newVariant
       : dictionary.details.variants.existingVariant;
-  const planHint = planLabel === null || planState === null
+  const planHint = hasNoVariants || planLabel === null || planState === null
     ? null
     : dictionary.details.variants.analysisState(planLabel, planState);
 

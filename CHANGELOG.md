@@ -14,6 +14,21 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Entering Analysis → Zdjęcia for a folder that has never been photo-scanned
+  now auto-starts the scan immediately, showing the normal scan progress in
+  the sidebar, instead of gating on a "Skanuj ten folder" button click — the
+  same always-on behavior Filmy already has. The scan fires once per folder
+  per session; a folder with no photos lands on the honest "no photos here"
+  sidebar state once the scan completes, and a scan that fails (unmounted
+  drive, deleted folder) shows the error with a "Skanuj folder" retry action
+  instead of an indexing caption that never ends.
+- The video details pane's primary analyze button reads just "Analizuj" (and
+  drops the "Utworzy nowy wariant." helper line) when the file has zero
+  analysis variants, instead of "Analizuj jako nowy wariant"; once at least
+  one variant exists the button keeps its prior label and helper text.
+
 ### Fixed
 
 - FolderBar's split button (shared by both the video and photos sidebars)

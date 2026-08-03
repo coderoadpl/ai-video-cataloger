@@ -407,9 +407,45 @@ directly below it, hard-set to its own medium (`videos` for `CatalogSidebar`,
 **The Filmy/Zdjęcia toggle is a processing-mode switch over the same current
 folder — it never changes which folder is open.** The photos surface scopes
 to `currentFolder`: the "Ten folder" scope lists the photos of the current
-folder, and a current folder that is not yet a scanned photo root shows an
-honest scan CTA for *that* folder — no second, independent folder picker for
-photos. The photo-roots table (ADR-0016) remains an internal storage detail
+folder, and a current folder that is not yet a scanned photo root **auto-starts
+the photo scan the moment Zdjęcia becomes active (W44)** — the same behaviour
+Filmy already has via `useCatalog`'s always-on scan query, so the two media
+never diverge on "do I have to click something to see my folder's content".
+`features/photos/use-photos-auto-scan.ts` is a standalone effect hook wired in
+`routes/index.tsx` (not inside `usePhotosAnalysis`, which stays a pure
+derivation/query layer with no side effects of its own): it watches
+`folderState`, and the moment it reads `'unscanned'` for the active folder —
+once the photo-roots query has actually resolved, so it never fires against a
+stale "not a root yet" read while `photosTree` is still loading — it calls
+`scanFolder()` exactly once per folder per session, tracked in a `useRef` set
+so neither a re-render nor toggling away to Filmy and back re-fires it; a
+folder scanned earlier in the session, or already a known root, is untouched.
+`PhotosSidebar`'s former "Skanuj ten folder" CTA is gone — the unscanned state
+now renders the same honest "indexing…" caption plus a progress bar while the
+auto-fired job is busy, with no click required and no independent folder
+picker for photos. A folder that comes back with zero photos still lands on
+the ordinary empty state (`photos.emptyNoPhotos`) once the scan completes,
+because a photo run always writes a `photo_runs` row (and hence a root)
+regardless of how many photos it found — scanning empty is still scanning;
+`sidebarSections` therefore drops a photo-less "Ten folder" section the same
+way the "Wszystkie foldery" scope already drops an empty root, so an
+automatically scanned video-only folder reads as "no photos here" instead of a
+bare folder header over nothing. Because the scan is no longer a click, its
+failure needs its own exit: a scan that ends in an error (unmounted drive,
+deleted folder) replaces the "indexing…" caption with the error strip and a
+"Skanuj folder" retry button, since the once-per-folder ref would otherwise
+leave that folder permanently captioned as indexing until the app restarts.
+Nothing was added to the heavy-artifact path: the auto-fired job is the very
+same `photo_scan` the CTA used to fire, so it still chains its usual proxies
+pass over the photos it just indexed and nothing else — no extra RAW work was
+introduced, it is only reached without a click now. A
+manual re-scan is still reachable once the folder is scanned, from
+`PhotosScopeToolbar`'s existing "Skanuj folder" action in the sidebar toolbar.
+Photo artifacts live next to the photos database under the home directory, so
+an auto-scan of a read-only mount reads the tree and indexes it without ever
+writing to the mount; unreadable subfolders are reported as skipped rather
+than failing the run.
+The photo-roots table (ADR-0016) remains an internal storage detail
 used to answer "is the current folder a known photo root"; it is never
 surfaced as a user-facing root list or picker. The "Wszystkie foldery" scope
 is unchanged and still browses across every scanned photo root. Opening a
@@ -425,6 +461,26 @@ reaches that pane, not what it renders. Details/analysis panes carry no
 accordions or chevrons anywhere — `ArtifactsSection`'s "Pełna analiza AI"
 section (the one collapsible left in the app) is now a plain, always-expanded
 `Paper` block like its siblings; the pane scrolls instead.
+
+**The primary analyze button names itself honestly (W44).** `StatusActions`
+(video details pane) and `PhotoDetailPane` (photos) both drive their button
+label off `analysisPlan.key` (`newVariant` vs `existingVariant`), which only
+distinguishes "current settings match an existing variant" from "they don't"
+— it says nothing about whether the file has ever been analyzed at all. A
+file with zero variants always has `key: 'newVariant'` too, so the button used
+to read "Analizuj jako nowy wariant" / "Utworzy nowy wariant" even for a
+video that had never been analyzed once, implying a choice between variants
+that does not exist yet. `StatusActions` now takes an explicit
+`variantCount` (`variants.data?.variants.length ?? 0` from `useVariants`):
+when it is zero the button reads the plain `dictionary.details.analyzeAction`
+("Analizuj") and drops the variant-creation caption entirely, falling back to
+the ordinary `analyzeHint`; once at least one variant exists, the button keeps
+its prior "Analizuj jako nowy wariant" / "Wznów wariant" behaviour unchanged.
+`PhotoDetailPane`'s analyze button already only renders while `analysis ===
+null` (i.e. before any variant exists) and was already labelled with the bare
+`dictionary.photos.analyzeAction` ("Analizuj") for that state — there is no
+"analyze as a new variant" affordance in the photos pane to begin with, so no
+change was needed there beyond confirming the existing label is correct.
 
 **Browse purification and the preview overlay.** Library and Map are
 strictly read-only: Library's Zdjęcia surface hides the analyze/re-run/

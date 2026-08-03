@@ -160,6 +160,7 @@ export const VideoDetails = ({
                 onAnalyze={onAnalyze}
                 disabledReason={disabledReason}
                 analysisPlan={variants.plan}
+                variantCount={variants.data?.variants.length ?? 0}
               />
             </>
           ) : (

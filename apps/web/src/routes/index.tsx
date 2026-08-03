@@ -32,6 +32,7 @@ import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { PhotosView } from '../features/photos/PhotosView.js';
 import { PhotosWorkspace } from '../features/photos/PhotosWorkspace.js';
 import { usePhotosAnalysis } from '../features/photos/use-photos-analysis.js';
+import { usePhotosAutoScan } from '../features/photos/use-photos-auto-scan.js';
 import { BrowsePreview, previewFromLocation, previewFromSearchResult, type PreviewMedia } from '../features/preview/index.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
 import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
@@ -65,10 +66,19 @@ export const IndexRoute = () => {
   const [scope, setScope] = useScopePreference(shell.currentFolder);
   const terminal = useTerminalLog();
   const apiLog = useApiLog();
+  const photosAnalysisActive = mode === 'analysis' && analysisMedia === 'photos';
   const photosAnalysis = usePhotosAnalysis({
-    active: mode === 'analysis' && analysisMedia === 'photos',
+    active: photosAnalysisActive,
     addLine: terminal.addLine,
     folder: shell.currentFolder,
+  });
+  usePhotosAutoScan({
+    active: photosAnalysisActive,
+    folder: photosAnalysis.folder,
+    folderState: photosAnalysis.folderState,
+    isRootsReady: !photosAnalysis.isLoading,
+    isBusy: photosAnalysis.isBusy,
+    scanFolder: photosAnalysis.scanFolder,
   });
   const catalog = useCatalog(shell.currentFolder);
   const videoRegistry = useCatalogVideoRegistry();

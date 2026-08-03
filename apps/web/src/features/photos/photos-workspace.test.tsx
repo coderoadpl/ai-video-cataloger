@@ -159,6 +159,7 @@ describe('PhotosWorkspace', () => {
 
     expect(screen.getByTestId('photos-analysis-detail')).toBeDefined();
     expect(screen.getByTestId('photos-analyze-strip')).toBeDefined();
+    expect(screen.getByTestId('photos-analyze-action').textContent).toBe('Analyze');
     expect(screen.queryByTestId('photos-workspace-empty')).toBeNull();
   });
 

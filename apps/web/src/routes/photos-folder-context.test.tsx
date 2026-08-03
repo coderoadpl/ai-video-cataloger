@@ -77,6 +77,28 @@ const stubPhotosList = (byRoot: Record<string, { fingerprint: string; currentPat
   }));
 };
 
+const stubPhotosScan = (onScan: () => void = () => undefined) => {
+  server.use(
+    http.post('/api/photos/scan', () => {
+      onScan();
+      return HttpResponse.json({ ok: true, data: { jobId: 'job-auto-scan' } });
+    }),
+    http.get('/api/jobs/status', () => HttpResponse.json({
+      ok: true,
+      data: {
+        jobId: 'job-auto-scan',
+        kind: 'photo_scan',
+        status: 'completed',
+        progress: null,
+        progressEvents: [],
+        error: null,
+        createdAt: '2026-01-01T00:00:00.000Z',
+        updatedAt: '2026-01-01T00:00:00.000Z',
+      },
+    })),
+  );
+};
+
 const mockFolderBridge = (folder: string | null) => {
   vi.spyOn(bridge.folder, 'getCurrent').mockResolvedValue(folder);
   vi.spyOn(bridge.folder, 'getRecent').mockResolvedValue(folder === null ? [] : [folder]);
@@ -91,26 +113,32 @@ describe('the photos surface scopes to the current folder', () => {
     stubPhotosStatus();
   });
 
-  it('shows the current folder scan CTA and none of an unrelated known root\'s content', async () => {
+  it('auto-scans the current folder and shows none of an unrelated known root\'s content', async () => {
     mockFolderBridge('/a/b');
     stubPhotosTree([{ root: '/old/pictures', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubPhotosList({ '/old/pictures': [{ fingerprint: 'x', currentPath: '/old/pictures/x.jpg', fileName: 'x.jpg' }] });
+    let scanCalls = 0;
+    stubPhotosScan(() => { scanCalls += 1; });
 
     renderRoute();
 
     await screen.findByTestId('photos-sidebar-unscanned');
+    await waitFor(() => expect(scanCalls).toBe(1));
     expect(screen.queryByText('pictures')).toBeNull();
     expect(screen.queryByTestId('photos-sidebar-row')).toBeNull();
   });
 
-  it('requests the photo list scoped to the current folder once it is a known root', async () => {
+  it('requests the photo list scoped to the current folder once it is a known root, without auto-scanning it again', async () => {
     mockFolderBridge('/a/b');
     stubPhotosTree([{ root: '/a/b', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubPhotosList({ '/a/b': [{ fingerprint: 'y', currentPath: '/a/b/y.jpg', fileName: 'y.jpg' }] });
+    let scanCalls = 0;
+    stubPhotosScan(() => { scanCalls += 1; });
 
     renderRoute();
 
     await waitFor(() => expect(screen.getAllByTestId('photos-sidebar-row').length).toBe(1));
+    expect(scanCalls).toBe(0);
   });
 
   it('keeps the all-folders browse and its scope toggle reachable from an unscanned current folder', async () => {
@@ -118,6 +146,7 @@ describe('the photos surface scopes to the current folder', () => {
     mockFolderBridge('/a/b');
     stubPhotosTree([{ root: '/old/pictures', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubPhotosList({ '/old/pictures': [{ fingerprint: 'x', currentPath: '/old/pictures/x.jpg', fileName: 'x.jpg' }] });
+    stubPhotosScan();
 
     renderRoute();
 

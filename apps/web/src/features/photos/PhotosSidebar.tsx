@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { alpha, Alert, Box, Button, CircularProgress, List, ListItemButton, Tooltip, Typography, type SvgIconProps } from '@mui/material';
+import { alpha, Alert, Box, Button, CircularProgress, LinearProgress, List, ListItemButton, Tooltip, Typography, type SvgIconProps } from '@mui/material';
 
 import { type AnalysisMedia, AnalysisMediaToggle } from '../../components/ui/AnalysisMediaToggle.js';
 import { CheckCircleIcon, ContentCopyIcon, ErrorIcon, ImageNotSupportedIcon, WarningIcon } from '../../components/ui/icons.js';
@@ -210,21 +210,24 @@ export const PhotosSidebar = ({
   }
 
   if (folderPanel === 'unscanned') {
+    const autoScanFailed = state.error !== null && !state.isBusy;
     return (
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }} data-testid="photos-sidebar-unscanned">
         {header}
-        <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-          <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.unscannedBody}</Typography>
-          <Button
-            variant="contained"
-            size="small"
-            onClick={state.scanFolder}
-            data-testid="photos-scan-action"
-          >
-            {dictionary.photosSidebar.scanThisFolderCta}
-          </Button>
-        </Box>
+        {autoScanFailed ? null : (
+          <Box sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }} data-testid="photos-sidebar-scanning">
+            <Typography variant="caption" color="text.secondary">{dictionary.photosSidebar.autoScanningBody}</Typography>
+            {state.isBusy ? <LinearProgress data-testid="photos-sidebar-scan-progress" /> : null}
+          </Box>
+        )}
         {errorStrip}
+        {autoScanFailed ? (
+          <Box sx={{ p: 2 }}>
+            <Button variant="contained" size="small" onClick={state.scanFolder} data-testid="photos-scan-action">
+              {dictionary.photos.scanFolderAction}
+            </Button>
+          </Box>
+        ) : null}
       </Box>
     );
   }

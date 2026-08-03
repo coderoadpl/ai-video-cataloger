@@ -29,7 +29,7 @@ export const sidebarSections = (
   selectedRoot: string | null,
 ): SidebarSection[] => {
   if (scope === 'folder') {
-    if (selectedRoot === null) return [];
+    if (selectedRoot === null || items.length === 0) return [];
     return [{ root: selectedRoot, items: [...items] }];
   }
   const seen = new Set<string>();

@@ -125,6 +125,7 @@ export interface Dictionary {
     transcript: string;
     fullAiAnalysis: string;
     analyzeVideo: string;
+    analyzeAction: string;
     analyzingButton: string;
     analyzeHint: string;
     processingIncomplete: string;
@@ -755,9 +756,7 @@ export interface Dictionary {
   photosSidebar: {
     noFolderTitle: string;
     noFolderBody: string;
-    unscannedTitle: string;
-    unscannedBody: string;
-    scanThisFolderCta: string;
+    autoScanningBody: string;
     scopeThisFolder: string;
     scopeAllFolders: string;
     badgeProxyFailed: string;
@@ -961,6 +960,7 @@ export const en: Dictionary = {
     transcript: 'Transcript',
     fullAiAnalysis: 'Full AI Analysis',
     analyzeVideo: 'Analyze Video',
+    analyzeAction: 'Analyze',
     analyzingButton: 'Analyzing…',
     analyzeHint: 'This will extract frames, transcribe audio, and generate a summary using AI.',
     processingIncomplete: 'Processing Incomplete',
@@ -1637,9 +1637,7 @@ export const en: Dictionary = {
   photosSidebar: {
     noFolderTitle: 'No folder open',
     noFolderBody: 'Open a folder to see its photos.',
-    unscannedTitle: 'Not scanned for photos yet',
-    unscannedBody: 'Scan this folder to index its photos and browse them here.',
-    scanThisFolderCta: 'Scan this folder',
+    autoScanningBody: 'Indexing photos in this folder…',
     scopeThisFolder: 'This folder',
     scopeAllFolders: 'All scanned folders',
     badgeProxyFailed: 'Preview failed',
@@ -1851,6 +1849,7 @@ export const pl: Dictionary = {
     transcript: 'Transkrypcja',
     fullAiAnalysis: 'Pełna analiza AI',
     analyzeVideo: 'Analizuj film',
+    analyzeAction: 'Analizuj',
     analyzingButton: 'Analizowanie…',
     analyzeHint: 'Wyodrębni klatki, przepisze audio i wygeneruje streszczenie przy użyciu AI.',
     processingIncomplete: 'Przetwarzanie nieukończone',
@@ -2528,9 +2527,7 @@ export const pl: Dictionary = {
   photosSidebar: {
     noFolderTitle: 'Brak otwartego folderu',
     noFolderBody: 'Otwórz folder, aby zobaczyć jego zdjęcia.',
-    unscannedTitle: 'Ten folder nie był jeszcze skanowany',
-    unscannedBody: 'Skanuj ten folder, aby zindeksować zdjęcia i przeglądać je tutaj.',
-    scanThisFolderCta: 'Skanuj ten folder',
+    autoScanningBody: 'Indeksowanie zdjęć w tym folderze…',
     scopeThisFolder: 'Ten folder',
     scopeAllFolders: 'Wszystkie foldery',
     badgeProxyFailed: 'Podgląd nieudany',

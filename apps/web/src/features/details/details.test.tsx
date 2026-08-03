@@ -697,6 +697,19 @@ describe('details panel', () => {
     expect(onAnalyze).toHaveBeenCalledWith(makeVideo());
   });
 
+  it('reads just "Analyze" with no variant-creation caption for a video that has never been analyzed', async () => {
+    const onAnalyze = vi.fn();
+    server.use(http.get('/api/variants', () => HttpResponse.json(variantsResponse([]))));
+
+    const video = makeVideo({ status: 'pending' });
+    renderThemed(<DetailsPanel video={video} analyzing={false} onAnalyze={onAnalyze} />);
+
+    await waitFor(() => expect(screen.getByTestId('analyze-button').textContent).toBe('Analyze'));
+    expect(screen.queryByText(/Creates a new variant/)).toBeNull();
+    fireEvent.click(screen.getByTestId('analyze-button'));
+    expect(onAnalyze).toHaveBeenCalledWith(video);
+  });
+
   it('enables the folder default action until the selected configuration is the stored default', async () => {
     const defaultWrites: unknown[] = [];
     let folderDefaultConfigId: string | null = null;

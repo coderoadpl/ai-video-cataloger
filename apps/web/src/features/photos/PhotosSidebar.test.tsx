@@ -90,11 +90,10 @@ describe('PhotosSidebar', () => {
     expect(onOpenFolder).toHaveBeenCalled();
   });
 
-  it('renders a scan-this-folder CTA when the current folder has not been scanned yet', () => {
-    const scanFolder = vi.fn();
+  it('renders an honest auto-scanning state for a folder that has not been scanned yet, with no CTA to click', () => {
     renderThemed(
       <PhotosSidebar
-        state={baseState({ roots: [], folder: '/a/b', folderState: 'unscanned', selectedRoot: null, scanFolder })}
+        state={baseState({ roots: [], folder: '/a/b', folderState: 'unscanned', selectedRoot: null })}
         onOpenFolder={vi.fn()}
       />,
     );
@@ -102,8 +101,71 @@ describe('PhotosSidebar', () => {
     expect(screen.getByTestId('photos-sidebar-unscanned')).toBeDefined();
     expect(screen.getAllByText('b').length).toBeGreaterThan(0);
     expect(screen.queryByTestId('photos-folder-show-in-library')).toBeNull();
+    expect(screen.queryByTestId('photos-scan-action')).toBeNull();
+  });
+
+  it('drops the indexing caption for a retry action once the auto-fired scan has failed', () => {
+    const scanFolder = vi.fn();
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({
+          roots: [],
+          folder: '/a/b',
+          folderState: 'unscanned',
+          selectedRoot: null,
+          isBusy: false,
+          error: 'Root not found: /a/b',
+          scanFolder,
+        })}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('photos-job-error').textContent).toContain('Root not found: /a/b');
+    expect(screen.queryByTestId('photos-sidebar-scanning')).toBeNull();
     fireEvent.click(screen.getByTestId('photos-scan-action'));
     expect(scanFolder).toHaveBeenCalled();
+  });
+
+  it('keeps the indexing caption while the auto-fired scan is still running despite an earlier error', () => {
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({
+          roots: [],
+          folder: '/a/b',
+          folderState: 'unscanned',
+          selectedRoot: null,
+          isBusy: true,
+          error: 'Root not found: /a/b',
+        })}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('photos-sidebar-scanning')).toBeDefined();
+    expect(screen.queryByTestId('photos-scan-action')).toBeNull();
+  });
+
+  it('shows the scan progress bar while the auto-fired scan job is running', () => {
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({ roots: [], folder: '/a/b', folderState: 'unscanned', selectedRoot: null, isBusy: true, activeJobLabel: 'Photos' })}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByTestId('photos-sidebar-scan-progress')).toBeDefined();
+  });
+
+  it('hides the scan progress bar once the auto-fired scan is not busy yet', () => {
+    renderThemed(
+      <PhotosSidebar
+        state={baseState({ roots: [], folder: '/a/b', folderState: 'unscanned', selectedRoot: null, isBusy: false })}
+        onOpenFolder={vi.fn()}
+      />,
+    );
+
+    expect(screen.queryByTestId('photos-sidebar-scan-progress')).toBeNull();
   });
 
   it('stacks the folder block above the medium toggle above the scoped content', () => {
