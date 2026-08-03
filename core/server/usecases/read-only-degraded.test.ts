@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { appError, derivedFolderId, normalizeEmbedding, ok, type AppError, type Result } from '@core/domain/index.js';
+import { appError, defaultGeminiNativeProvider, derivedFolderId, normalizeEmbedding, ok, type AppError, type Result } from '@core/domain/index.js';
 
 import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput, JobProgress } from '../ports.js';
 import { readOnlyArtifactRoot } from './artifact-root.js';
@@ -304,6 +304,34 @@ describe('drive processing over a read-only folder', () => {
       .toBe('/drive/ro/.ai-video-cataloger/thumbnails/clip.jpg');
     expect(afterAnalysis.ok && afterAnalysis.value.thumbnailPath)
       .toBe(`${mirrorRoot(fs, '/drive/ro')}/thumbnails/clip.jpg`);
+  });
+
+  it('degrades a grid thumbnail for a native-style (frameless) analysis over a read-only folder into the mirror, honestly', async () => {
+    const fs = new ReadOnlyFolderFileSystem('/drive/ro');
+    fs.addFile('/drive/ro/clip.mp4', { size: 1024, mtimeMs: 0, hash: 'hash-ro' });
+    const deps = makeDeps(fs);
+    await deps.config.set(
+      { kind: 'folder', folder: '/drive/ro' },
+      'analyzer_provider',
+      JSON.stringify(defaultGeminiNativeProvider('gemini-3.6-flash')),
+    );
+    deps.analyzer.rawResponse = 'DESCRIPTION: A boat museum hall.\nFILENAME: boat-museum-hall\nTAGS: boat, museum';
+
+    const run = await processDrive(deps, baseInput, undefined, { runId: 'run-ro-native' });
+
+    expect(run.ok).toBe(true);
+    expect(run.ok && run.value.filesDone).toBe(1);
+    expect(run.ok && run.value.filesFailed).toBe(0);
+    const mirror = mirrorRoot(fs, '/drive/ro');
+    expect(deps.media.thumbnailInputs).toContainEqual(expect.objectContaining({
+      videoPath: '/drive/ro/clip.mp4',
+      thumbnailPath: `${mirror}/thumbnails/clip.grid.jpg`,
+      width: 512,
+      height: 512,
+      fit: 'cover',
+    }));
+    const folderEntries = await fs.listDirectory('/drive/ro');
+    expect(folderEntries.ok && folderEntries.value.map((entry) => entry.name)).toEqual(['clip.mp4']);
   });
 
   it('writes the drive-run thumbnail into the mirror and leaves the read-only source untouched', async () => {

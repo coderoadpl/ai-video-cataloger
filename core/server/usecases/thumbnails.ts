@@ -9,7 +9,7 @@ import {
 } from '../ports.js';
 import { discoverArtifactRoot } from './artifact-root.js';
 import { discoverCatalogFolders, type DriveRunFailure } from './process-drive.js';
-import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
+import { ensureGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 import { artifactPaths, gridThumbnailArtifactPath, thumbnailArtifactPath } from './shared.js';
 
 const maxFailures = 200;
@@ -121,24 +121,24 @@ export const runThumbnailsPass = async (
         });
       const framePath = await storedAnalysisFramePath(deps.fs, paths.framesDir);
       if (!framePath.ok) return framePath;
-      if (framePath.value !== null) {
-        const gridThumbnailPath = gridThumbnailArtifactPath(deps.fs, root.value, videoPath);
-        const grid = await generateGridThumbnail(deps, {
-          candidates: [
-            { kind: 'frame', path: framePath.value },
-            { kind: 'video', path: videoPath, seekPercent: 0.25 },
-          ],
-          gridThumbnailPath,
-          force: input.force,
-          priority: 'background',
-        });
-        if (!grid.ok) {
-          output.gridFailed += 1;
-        } else if (grid.value.skipped) {
-          output.gridSkipped += 1;
-        } else {
-          output.gridGenerated += 1;
-        }
+      const fingerprint = await deps.fs.partialContentHash(videoPath);
+      if (!fingerprint.ok) return fingerprint;
+      const gridThumbnailPath = gridThumbnailArtifactPath(deps.fs, root.value, videoPath);
+      const grid = await ensureGridThumbnail(deps, {
+        videoPath,
+        projectedFramePath: framePath.value,
+        catalogDirectory: root.value.catalogDirectory,
+        fingerprint: fingerprint.value,
+        gridThumbnailPath,
+        force: input.force,
+        priority: 'background',
+      });
+      if (!grid.ok) {
+        output.gridFailed += 1;
+      } else if (grid.value.skipped) {
+        output.gridSkipped += 1;
+      } else {
+        output.gridGenerated += 1;
       }
       if (!input.force) {
         const exists = await deps.fs.isFile(thumbnailPath);

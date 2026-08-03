@@ -3,7 +3,7 @@ import { appError, ok, type AppError, type CatalogPlace, type Result } from '@co
 import type { CatalogFilePerson, CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
 import { artifactPaths, classifyOfflineFolder, formatDuration, formatSize, readRichSegments, type OfflineReason } from './shared.js';
 import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
-import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
+import { ensureGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 import { filterTranscript } from './transcript-hallucinations.js';
 
 export interface SearchDeps {
@@ -231,14 +231,17 @@ export const resolveGridThumbnailPath = async (
   if (!exists.ok) return exists;
   if (exists.value) return ok(gridThumbnailPath);
   if (thumbnails === 'existing') return ok(null);
+  if (row.missing) return ok(null);
+  const analysis = await deps.globalCatalog.getAnalysis(row.fingerprint);
+  if (!analysis.ok) return analysis;
+  if (analysis.value === null) return ok(null);
   const framePath = await storedAnalysisFramePath(deps.fs, framesDir);
   if (!framePath.ok) return framePath;
-  if (framePath.value === null) return ok(null);
-  const generated = await generateGridThumbnail(deps, {
-    candidates: [
-      { kind: 'frame', path: framePath.value },
-      { kind: 'video', path: videoPath, seekPercent: 0.25 },
-    ],
+  const generated = await ensureGridThumbnail(deps, {
+    videoPath,
+    projectedFramePath: framePath.value,
+    catalogDirectory: root.value.catalogDirectory,
+    fingerprint: row.fingerprint,
     gridThumbnailPath,
     force: false,
   });

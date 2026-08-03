@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { generateGridThumbnail, generateThumbnail } from './thumbnail.js';
+import { ensureGridThumbnail, generateGridThumbnail, generateThumbnail, stagedFrameCandidates } from './thumbnail.js';
 import { InMemoryFileSystem, InMemoryMedia } from '../../../test/server/usecases/test-fakes.js';
 
 describe('generateThumbnail', () => {
@@ -321,5 +321,145 @@ describe('generateGridThumbnail', () => {
       }),
     ]);
     expect(media.thumbnailFromFrameInputs).toEqual([]);
+  });
+});
+
+describe('stagedFrameCandidates', () => {
+  it('returns an empty list when the fingerprint has no staged frames directory', async () => {
+    const fs = new InMemoryFileSystem('/work');
+
+    const result = await stagedFrameCandidates(fs, '/work/.ai-video-cataloger', 'fp-absent');
+
+    expect(result).toEqual({ ok: true, value: [] });
+  });
+
+  it('returns the first frame file of the only staged frames key', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addFile('/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_a/frame-001.jpg');
+    fs.addFile('/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_a/frame-002.jpg');
+
+    const result = await stagedFrameCandidates(fs, '/work/.ai-video-cataloger', 'fp-1');
+
+    expect(result).toEqual({
+      ok: true,
+      value: [{ kind: 'frame', path: '/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_a/frame-001.jpg' }],
+    });
+  });
+
+  it('picks the newest staged frames key by mtime when several are staged for the same fingerprint', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addFile('/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_old/frame-001.jpg', { mtimeMs: 1000 });
+    fs.addFile('/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_new/frame-001.jpg', { mtimeMs: 2000 });
+
+    const result = await stagedFrameCandidates(fs, '/work/.ai-video-cataloger', 'fp-1');
+
+    expect(result).toEqual({
+      ok: true,
+      value: [{ kind: 'frame', path: '/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_new/frame-001.jpg' }],
+    });
+  });
+
+  it('ignores a staged key directory left with no frame files', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_empty');
+
+    const result = await stagedFrameCandidates(fs, '/work/.ai-video-cataloger', 'fp-1');
+
+    expect(result).toEqual({ ok: true, value: [] });
+  });
+});
+
+describe('ensureGridThumbnail', () => {
+  it('prefers the projected frame over a staged frame and the source video', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/frames/clip/frame-001.jpg');
+    fs.addFile('/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_a/frame-001.jpg');
+    fs.addFile('/work/clip.mp4');
+
+    const result = await ensureGridThumbnail(
+      { fs, media },
+      {
+        videoPath: '/work/clip.mp4',
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        projectedFramePath: '/work/frames/clip/frame-001.jpg',
+        catalogDirectory: '/work/.ai-video-cataloger',
+        fingerprint: 'fp-1',
+        force: false,
+      },
+    );
+
+    expect(result.ok && result.value.source).toBe('frame');
+    expect(media.thumbnailFromFrameInputs).toEqual([
+      expect.objectContaining({ framePath: '/work/frames/clip/frame-001.jpg' }),
+    ]);
+  });
+
+  it('falls back to the staged frame when there is no projected frame, without seeking the video', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_a/frame-001.jpg');
+    fs.addFile('/work/clip.mp4');
+
+    const result = await ensureGridThumbnail(
+      { fs, media },
+      {
+        videoPath: '/work/clip.mp4',
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        projectedFramePath: null,
+        catalogDirectory: '/work/.ai-video-cataloger',
+        fingerprint: 'fp-1',
+        force: false,
+      },
+    );
+
+    expect(result.ok && result.value.source).toBe('frame');
+    expect(media.thumbnailFromFrameInputs).toEqual([
+      expect.objectContaining({ framePath: '/work/.ai-video-cataloger/artifacts/frames/fp-1/frm_a/frame-001.jpg' }),
+    ]);
+    expect(media.thumbnailInputs).toEqual([]);
+  });
+
+  it('falls back to seeking the source video when there is neither a projected nor a staged frame', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/clip.mp4');
+
+    const result = await ensureGridThumbnail(
+      { fs, media },
+      {
+        videoPath: '/work/clip.mp4',
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        projectedFramePath: null,
+        catalogDirectory: '/work/.ai-video-cataloger',
+        fingerprint: 'fp-1',
+        force: false,
+      },
+    );
+
+    expect(result.ok && result.value.source).toBe('video');
+    expect(media.thumbnailInputs).toEqual([
+      expect.objectContaining({ videoPath: '/work/clip.mp4', seekPercent: 0.25 }),
+    ]);
+  });
+
+  it('falls back to seeking the source video when the fingerprint is unavailable (native-style variant)', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const media = new InMemoryMedia();
+    fs.addFile('/work/clip.mp4');
+
+    const result = await ensureGridThumbnail(
+      { fs, media },
+      {
+        videoPath: '/work/clip.mp4',
+        gridThumbnailPath: '/work/.ai-video-cataloger/thumbnails/clip.grid.jpg',
+        projectedFramePath: null,
+        catalogDirectory: '/work/.ai-video-cataloger',
+        fingerprint: null,
+        force: false,
+      },
+    );
+
+    expect(result.ok && result.value.source).toBe('video');
   });
 });

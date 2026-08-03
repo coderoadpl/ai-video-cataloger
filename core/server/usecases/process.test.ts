@@ -317,6 +317,29 @@ describe('process pipeline resume behavior', () => {
     expect(result.value.video).toContain('litter-bin');
   });
 
+  it('still produces a grid thumbnail for the native gemini path by seeking the source video, even without an extracted frame', async () => {
+    const deps = makeDeps('pending');
+    await deps.config.set(
+      { kind: 'folder', folder: '/work' },
+      'analyzer_provider',
+      JSON.stringify(defaultGeminiNativeProvider('gemini-3.6-flash')),
+    );
+    deps.analyzer.rawResponse = 'DESCRIPTION: A boat museum hall.\nFILENAME: boat-museum-hall\nTAGS: boat, museum';
+
+    const result = await processVideoPipeline(deps, { ...baseInput, skipRename: true, skipRenameExplicit: true });
+
+    expect(result).toMatchObject({ ok: true, value: { status: 'completed' } });
+    expect(deps.media.frameInputs).toHaveLength(0);
+    expect(deps.media.thumbnailInputs).toContainEqual(expect.objectContaining({
+      videoPath,
+      thumbnailPath: '/work/.ai-video-cataloger/thumbnails/Clip One.grid.jpg',
+      seekPercent: 0.25,
+      width: 512,
+      height: 512,
+      fit: 'cover',
+    }));
+  });
+
   it('does not extract audio when whisper is skipped', async () => {
     const deps = makeDeps('pending');
 

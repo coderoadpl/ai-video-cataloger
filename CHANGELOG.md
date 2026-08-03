@@ -61,6 +61,14 @@ release history jumps from `0.5.10` to `0.5.12`.
   their siblings when the containing folder is also offline; every
   unavailable tile now gets the same full-opacity treatment as a plain
   offline-folder tile, with a single badge.
+- Grid thumbnails (`.grid.jpg`) now generate for every completed file, not
+  only ones whose selected variant has a projected frames directory: the
+  backfill pass, search/library "ensure" mode, and the post-analysis
+  pipeline step all now try a projected frame, then a staged-but-unprojected
+  frame from the artifact store, then a source-video seek, before giving up.
+  Previously a completed native-Gemini variant (which never projects a
+  frames directory) could never get a grid thumbnail and the library grid
+  fell back to stretching the legacy 128x72 cover.
 
 ## [0.6.11] - 2026-08-03
 

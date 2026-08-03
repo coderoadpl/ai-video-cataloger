@@ -73,7 +73,7 @@ describe('runThumbnailsPass', () => {
     expect(forced.ok && forced.value.gridGenerated).toBe(1);
   });
 
-  it('does not generate a .grid.jpg when the candidate has no stored analysis frame', async () => {
+  it('falls back to seeking the source video for the grid thumb when there is no projected or staged frame (native-style variant)', async () => {
     const fs = new InMemoryFileSystem('/root');
     const media = new InMemoryMedia(fs);
     fs.addFile('/root/a.mp4', { size: 100 });
@@ -87,13 +87,47 @@ describe('runThumbnailsPass', () => {
       }),
     });
 
+    const result = await runThumbnailsPass({ fs, media }, { root: '/root', force: true });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.gridGenerated).toBe(1);
+    expect(result.value.gridSkipped).toBe(0);
+    expect(result.value.gridFailed).toBe(0);
+    expect(media.thumbnailInputs).toContainEqual(expect.objectContaining({
+      videoPath: '/root/a.mp4',
+      thumbnailPath: '/root/.ai-video-cataloger/thumbnails/a.grid.jpg',
+      width: 512,
+      height: 512,
+      fit: 'cover',
+    }));
+  });
+
+  it('uses a staged-but-unprojected frame for the grid thumb, cheaper than seeking the source video', async () => {
+    const fs = new InMemoryFileSystem('/root');
+    const media = new InMemoryMedia(fs);
+    fs.addFile('/root/a.mp4', { size: 100, hash: 'fp-a' });
+    fs.addFile('/root/summaries/a.json', {
+      content: JSON.stringify({
+        schemaVersion: 1,
+        description: 'd',
+        suggestedFilename: 'a',
+        fullAnalysis: 'DESCRIPTION: d\nFILENAME: x',
+        analyzedAt: '2026-01-01T00:00:00.000Z',
+      }),
+    });
+    fs.addFile('/root/.ai-video-cataloger/artifacts/frames/fp-a/frm_a/frame-001.jpg');
+
     const result = await runThumbnailsPass({ fs, media }, { root: '/root', force: false });
 
     expect(result.ok).toBe(true);
     if (!result.ok) return;
-    expect(result.value.gridGenerated).toBe(0);
-    expect(result.value.gridSkipped).toBe(0);
-    expect(result.value.gridFailed).toBe(0);
+    expect(result.value.gridGenerated).toBe(1);
+    expect(media.thumbnailFromFrameInputs).toContainEqual(expect.objectContaining({
+      framePath: '/root/.ai-video-cataloger/artifacts/frames/fp-a/frm_a/frame-001.jpg',
+      thumbnailPath: '/root/.ai-video-cataloger/thumbnails/a.grid.jpg',
+    }));
+    expect(media.thumbnailInputs.some((input) => input.thumbnailPath === '/root/.ai-video-cataloger/thumbnails/a.grid.jpg')).toBe(false);
   });
 
   it('regenerates an existing grid thumbnail without --force when the stored frame is below the grid floor', async () => {

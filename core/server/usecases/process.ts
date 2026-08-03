@@ -78,7 +78,7 @@ import { filterTranscript, parseRichSegments } from './transcript-hallucinations
 import { resolveConfigValues } from './config-resolution.js';
 import { resolveFolderIntoIndex, upsertProcessedVariant } from './catalog-index.js';
 import { finalVideoName, normalizeKebabSlug, uniqueFilename } from './final-name.js';
-import { generateGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
+import { ensureGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 
 const TOTAL_STEPS = 5;
 const DEFAULT_LOCAL_TIMEOUT_SECONDS = 300;
@@ -1556,18 +1556,18 @@ const ensureCompletedThumbnail = async (
       force: false,
       priority: 'background',
     });
-    await generateGridThumbnail(deps, {
-      candidates: [
-        { kind: 'frame', path: framePath.value },
-        { kind: 'video', path: finalPath, seekPercent: 0.25 },
-      ],
-      gridThumbnailPath: paths.gridThumbnailPath,
-      force: false,
-      priority: 'background',
-    });
-    return;
+  } else {
+    await generateThumbnail(deps, { videoPath: finalPath, force: false, priority: 'background' });
   }
-  await generateThumbnail(deps, { videoPath: finalPath, force: false, priority: 'background' });
+  await ensureGridThumbnail(deps, {
+    videoPath: finalPath,
+    projectedFramePath: framePath.ok ? framePath.value : null,
+    catalogDirectory: resolved.artifactRoot.catalogDirectory,
+    fingerprint: resolved.fingerprint,
+    gridThumbnailPath: paths.gridThumbnailPath,
+    force: false,
+    priority: 'background',
+  });
 };
 
 const recordGlobalCatalog = async (

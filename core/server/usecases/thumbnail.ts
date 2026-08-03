@@ -119,6 +119,68 @@ export interface GridThumbnailCandidate {
   seekPercent?: number;
 }
 
+export const stagedFrameCandidates = async (
+  fs: FileSystemPort,
+  catalogDirectory: string,
+  fingerprint: string,
+): Promise<Result<GridThumbnailCandidate[], AppError>> => {
+  const framesRoot = fs.join(catalogDirectory, 'artifacts', 'frames', fingerprint);
+  const isDirectory = await fs.isDirectory(framesRoot);
+  if (!isDirectory.ok) return isDirectory;
+  if (!isDirectory.value) return ok([]);
+  const keyEntries = await fs.listDirectory(framesRoot);
+  if (!keyEntries.ok) return keyEntries;
+
+  let newest: { framePath: string; mtimeMs: number; key: string } | null = null;
+  for (const entry of keyEntries.value) {
+    if (entry.kind !== 'directory') continue;
+    const framePath = await storedAnalysisFramePath(fs, entry.path);
+    if (!framePath.ok) return framePath;
+    if (framePath.value === null) continue;
+    const stat = await fs.stat(framePath.value);
+    if (!stat.ok) continue;
+    if (
+      newest === null
+      || stat.value.mtimeMs > newest.mtimeMs
+      || (stat.value.mtimeMs === newest.mtimeMs && entry.name > newest.key)
+    ) {
+      newest = { framePath: framePath.value, mtimeMs: stat.value.mtimeMs, key: entry.name };
+    }
+  }
+  return ok(newest === null ? [] : [{ kind: 'frame', path: newest.framePath }]);
+};
+
+export interface EnsureGridThumbnailInput {
+  videoPath: string;
+  gridThumbnailPath: string;
+  projectedFramePath: string | null;
+  catalogDirectory: string;
+  fingerprint: string | null;
+  force: boolean;
+  priority?: 'foreground' | 'background' | undefined;
+}
+
+export const ensureGridThumbnail = async (
+  deps: { fs: FileSystemPort; media: MediaPort },
+  input: EnsureGridThumbnailInput,
+): Promise<Result<GridThumbnailOutput, AppError>> => {
+  const staged: Result<GridThumbnailCandidate[], AppError> = input.fingerprint === null
+    ? ok([])
+    : await stagedFrameCandidates(deps.fs, input.catalogDirectory, input.fingerprint);
+  if (!staged.ok) return staged;
+  const candidates: GridThumbnailCandidate[] = [
+    ...(input.projectedFramePath === null ? [] : [{ kind: 'frame' as const, path: input.projectedFramePath }]),
+    ...staged.value,
+    { kind: 'video' as const, path: input.videoPath, seekPercent: 0.25 },
+  ];
+  return generateGridThumbnail(deps, {
+    candidates,
+    gridThumbnailPath: input.gridThumbnailPath,
+    force: input.force,
+    priority: input.priority,
+  });
+};
+
 export interface GridThumbnailOutput extends ThumbnailGeneration {
   source: GridThumbnailCandidate['kind'] | null;
 }
