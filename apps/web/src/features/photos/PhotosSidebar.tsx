@@ -179,7 +179,7 @@ export const PhotosSidebar = ({
           <AnalysisMediaToggle media="photos" onSelect={onAnalysisMediaChange} dense />
         </Box>
         {scopeToggle === undefined ? null : (
-          <Box sx={{ flex: '1 1 auto', minWidth: 0 }}>{scopeToggle}</Box>
+          <Box sx={{ flex: 1, minWidth: 0 }}>{scopeToggle}</Box>
         )}
       </Box>
     </>

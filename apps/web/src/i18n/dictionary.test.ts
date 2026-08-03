@@ -40,6 +40,15 @@ describe('dictionary', () => {
     expect(pl.settingsModal.frameCountValue(2)).toBe('2 klatki');
     expect(pl.settingsModal.frameCountValue(5)).toBe('5 klatek');
     expect(pl.settingsModal.frameCountValue(22)).toBe('22 klatki');
+    expect(pl.photos.statusProxyFailed(1)).toBe('1 nieudany podgląd');
+    expect(pl.photos.statusProxyFailed(3)).toBe('3 nieudane podglądy');
+    expect(pl.photos.statusProxyFailed(5)).toBe('5 nieudanych podglądów');
+    expect(pl.map.clusterLabel(2)).toBe('2 filmy w tym obszarze');
+    expect(pl.map.clusterLabel(5)).toBe('5 filmów w tym obszarze');
+    expect(pl.photos.duplicatesBadge(2)).toBe('2 kopie');
+    expect(pl.photos.duplicatesBadge(5)).toBe('5 kopii');
+    expect(pl.catalog.largeRunWarningBody(2002).startsWith('Znaleziono 2002 filmy.')).toBe(true);
+    expect(pl.catalog.largeRunWarningBody(2005).startsWith('Znaleziono 2005 filmów.')).toBe(true);
   });
 
   it('uses English singular/plural siblings for counted copy', () => {

@@ -319,6 +319,7 @@ const drive = async (plan) => {
     if (!(await appeared(page.getByTestId('video-item'), FOLDER_TIMEOUT_MS))) {
       return skipped(`no videos listed for ${plan.fixturesDir}`);
     }
+    await settle(page).catch(() => undefined);
     const count = await page.getByTestId('video-item').count();
     const unanalyzedNote = count >= 2
       ? '; at least one stays unanalyzed after the analyze step'

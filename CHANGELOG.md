@@ -14,6 +14,23 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Photos and Library day-group section headers (`10 sierpnia 2026` / `10 August
+  2026`) now render through a locale-aware formatter instead of the raw
+  `YYYY-MM-DD` group key; the ISO string still drives grouping and sort order.
+- The Polish "failed previews" counter on the photos status strip now declines
+  correctly for 1/2-4/5+ (`1 nieudany podgląd`, `3 nieudane podglądy`, `5
+  nieudanych podglądów`) instead of always using the plural-many form; three
+  more counters found in the same sweep (the map cluster label, the photo
+  duplicate-copies badge and the large-folder-tree warning) had the same
+  always-plural-many bug and were fixed the same way.
+- The "Wymagania" (Prerequisites) header button now uses the same neutral
+  outlined style as "Ustawienia"/"Modele" instead of a bare text button.
+- `scripts/release-walkthrough.mjs`'s `open-folder` step now waits for the
+  video list to settle before reading the row count, closing a race where the
+  reported count could be stale relative to the captured screenshot.
+
 ## [0.6.14] - 2026-08-03
 
 ### Fixed

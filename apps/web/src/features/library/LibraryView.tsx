@@ -3,6 +3,7 @@ import { Alert, Autocomplete, Box, Button, CircularProgress, IconButton, InputAd
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
+import { formatDayLabel } from '../../lib/format.js';
 import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
 import { FilterBar, type LibraryGroupBy } from './FilterBar.js';
 import { groupByCaptureDay, groupByFolder, type LibraryItem } from './core/index.js';
@@ -112,12 +113,12 @@ export const LibraryView = ({ active, onOpenResult, onPreview, onGoToVideos, see
     }
     return groupByCaptureDay(library.items, toLocalDay).map((section) => ({
       key: section.day ?? 'undated',
-      label: section.day ?? dictionary.library.unknownDate,
+      label: section.day === null ? dictionary.library.unknownDate : formatDayLabel(section.day, dictionary.locale),
       offline: false,
       offlineReason: null,
       items: section.items,
     }));
-  }, [groupBy, library.items, library.effectiveSort, dictionary.library.unknownDate]);
+  }, [groupBy, library.items, library.effectiveSort, dictionary.library.unknownDate, dictionary.locale]);
 
   if (!active) return null;
 

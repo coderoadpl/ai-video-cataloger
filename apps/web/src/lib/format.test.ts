@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { formatCapturedAt, formatCoordinates } from './format.js';
+import { formatCapturedAt, formatCoordinates, formatDayLabel } from './format.js';
 
 describe('formatCoordinates', () => {
   it('renders northern and eastern hemispheres', () => {
@@ -37,5 +37,23 @@ describe('formatCapturedAt', () => {
     expect(result).not.toBeNull();
     expect(result).toContain('sie');
     expect(result).not.toMatch(/Aug/);
+  });
+});
+
+describe('formatDayLabel', () => {
+  it('renders a Polish section-header day label instead of the raw ISO group key', () => {
+    expect(formatDayLabel('2026-08-10', 'pl')).toBe('10 sierpnia 2026');
+  });
+
+  it('renders an English section-header day label', () => {
+    expect(formatDayLabel('2026-08-10', 'en')).toBe('10 August 2026');
+  });
+
+  it('constructs the date from local components, not `new Date(isoString)`, so it cannot shift a day across a UTC offset', () => {
+    expect(formatDayLabel('2000-01-01', 'pl')).toBe('1 stycznia 2000');
+  });
+
+  it('passes malformed input through unchanged rather than throwing', () => {
+    expect(formatDayLabel('not-a-day', 'en')).toBe('not-a-day');
   });
 });

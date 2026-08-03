@@ -56,7 +56,7 @@ export const AppHeader = ({
         <Button variant="outlined" size="small" color="inherit" onClick={onShowModelManager}>
           {dictionary.appHeader.models}
         </Button>
-        <Button variant="text" size="small" color="inherit" onClick={onShowPrerequisites}>
+        <Button variant="outlined" size="small" color="inherit" onClick={onShowPrerequisites}>
           {dictionary.appHeader.prerequisites}
         </Button>
       </Box>

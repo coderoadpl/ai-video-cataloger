@@ -1,4 +1,4 @@
-import { ToggleButton, ToggleButtonGroup } from '@mui/material';
+import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 
@@ -11,9 +11,11 @@ interface AnalysisMediaToggleProps {
   dense?: boolean;
 }
 
+const labelSx = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
+
 export const AnalysisMediaToggle = ({ media, onSelect, fullWidth = false, dense = false }: AnalysisMediaToggleProps) => {
   const dictionary = useDictionary();
-  const buttonSx = dense ? { minWidth: 0, px: 0.75, fontSize: '0.75rem' } : undefined;
+  const buttonSx = { minWidth: 0, ...(dense ? { px: 0.75, fontSize: '0.75rem' } : undefined) };
   return (
     <ToggleButtonGroup
       exclusive
@@ -26,10 +28,10 @@ export const AnalysisMediaToggle = ({ media, onSelect, fullWidth = false, dense 
       aria-label={dictionary.appFrame.mediaToggleLabel}
     >
       <ToggleButton value="videos" data-testid="analysis-media-videos" sx={buttonSx}>
-        {dictionary.appFrame.mediaVideos}
+        <Box component="span" sx={labelSx}>{dictionary.appFrame.mediaVideos}</Box>
       </ToggleButton>
       <ToggleButton value="photos" data-testid="analysis-media-photos" sx={buttonSx}>
-        {dictionary.appFrame.mediaPhotos}
+        <Box component="span" sx={labelSx}>{dictionary.appFrame.mediaPhotos}</Box>
       </ToggleButton>
     </ToggleButtonGroup>
   );

@@ -3,6 +3,7 @@ import { Box, Tooltip, Typography } from '@mui/material';
 
 import { WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatDayLabel } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { AspectRatioIndicator } from '../../components/ui/AspectRatioIndicator.js';
 import { PlaceholderTile } from '../../components/ui/PlaceholderTile.js';
@@ -66,7 +67,9 @@ export const PhotoGrid = ({ sections, selectedFingerprint, onSelect, onOpenViewe
                   variant="subtitle2"
                   sx={{ height: HEADER_HEIGHT, display: 'flex', alignItems: 'center' }}
                 >
-                  {section.day === null && section.label === '' ? dictionary.photos.unknownDate : section.label}
+                  {section.day === null
+                    ? (section.label === '' ? dictionary.photos.unknownDate : section.label)
+                    : formatDayLabel(section.day, dictionary.locale)}
                 </Typography>
               );
             }

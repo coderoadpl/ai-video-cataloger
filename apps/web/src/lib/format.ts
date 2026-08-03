@@ -21,3 +21,12 @@ export const formatCapturedAt = (iso: string | null, locale: FormatLocale): stri
 
 export const formatDate = (epochMs: number, locale: FormatLocale): string =>
   new Intl.DateTimeFormat(INTL_LOCALE_TAG[locale], { dateStyle: 'medium' }).format(new Date(epochMs));
+
+export const formatDayLabel = (day: string, locale: FormatLocale): string => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
+  if (match === null) return day;
+  const [, year, month, date] = match;
+  return new Intl.DateTimeFormat(INTL_LOCALE_TAG[locale], { dateStyle: 'long' }).format(
+    new Date(Number(year), Number(month) - 1, Number(date)),
+  );
+};

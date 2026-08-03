@@ -9,6 +9,7 @@ import type { z } from 'zod';
 import type { libraryFacetsOutputSchema, searchResultSchema } from '@core/contract/index.js';
 
 import { en } from '../../i18n/dictionary.js';
+import { configResponse } from '../../test/config-response.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
@@ -135,6 +136,17 @@ describe('LibraryView', () => {
     const tiles = await screen.findAllByTestId('library-tile');
     expect(tiles).toHaveLength(2);
     expect(await screen.findByText('2 files')).toBeDefined();
+  });
+
+  it('renders the capture-day section header in the UI language, never the raw ISO group key', async () => {
+    stubSearch([libraryItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' })]);
+    server.use(http.get('/api/config', () => HttpResponse.json(configResponse('pl'))));
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+
+    await waitFor(() => {
+      expect(screen.getByTestId('library-section-header').textContent).toBe('2 stycznia 2026');
+    });
   });
 
   it('opens the preview for an online tile, not the analysis workspace', async () => {
