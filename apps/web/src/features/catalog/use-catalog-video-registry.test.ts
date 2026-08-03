@@ -54,6 +54,28 @@ describe('useCatalogVideoRegistry', () => {
     expect(result.current.lookup('/videos/b.mp4')).not.toBeNull();
   });
 
+  it('keeps both entries for a real duplicate pair registered together (same contentHash, both still on disk)', () => {
+    const { result } = renderHook(() => useCatalogVideoRegistry());
+
+    act(() => result.current.register([
+      makeVideo('/videos/meduzy.mp4', 'hash-1'),
+      makeVideo('/videos/meduzy-kopia.mp4', 'hash-1'),
+    ]));
+
+    expect(result.current.lookup('/videos/meduzy.mp4')).not.toBeNull();
+    expect(result.current.lookup('/videos/meduzy-kopia.mp4')).not.toBeNull();
+  });
+
+  it('still drops a stale rename even when the duplicate pair is re-registered afterwards', () => {
+    const { result } = renderHook(() => useCatalogVideoRegistry());
+
+    act(() => result.current.register([makeVideo('/videos/old.mp4', 'hash-1')]));
+    act(() => result.current.register([makeVideo('/videos/renamed.mp4', 'hash-1')]));
+
+    expect(result.current.lookup('/videos/old.mp4')).toBeNull();
+    expect(result.current.lookup('/videos/renamed.mp4')).not.toBeNull();
+  });
+
   it('never drops entries when the registered video has no contentHash', () => {
     const { result } = renderHook(() => useCatalogVideoRegistry());
 

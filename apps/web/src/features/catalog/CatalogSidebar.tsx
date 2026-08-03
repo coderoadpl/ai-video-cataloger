@@ -20,6 +20,7 @@ interface CatalogSidebarProps {
   showTree?: boolean;
   analyzingPath?: string | null;
   toolbar?: ReactNode;
+  scopeToggle?: ReactNode;
   lockBanner?: ReactNode;
   registerVideos: (videos: readonly CatalogVideo[]) => void;
   subfolderVideoCount?: number;
@@ -28,6 +29,7 @@ interface CatalogSidebarProps {
   isCheckingFolder?: boolean;
   onOpenFolder?: () => void;
   onSelectRecentFolder?: (folderPath: string) => void;
+  onClearRecentFolders?: (() => void) | undefined;
   onAnalysisMediaChange?: (media: AnalysisMedia) => void;
 }
 
@@ -38,6 +40,7 @@ export const CatalogSidebar = ({
   showTree = true,
   analyzingPath = null,
   toolbar,
+  scopeToggle,
   lockBanner,
   registerVideos,
   subfolderVideoCount = 0,
@@ -46,6 +49,7 @@ export const CatalogSidebar = ({
   isCheckingFolder = false,
   onOpenFolder = () => undefined,
   onSelectRecentFolder = () => undefined,
+  onClearRecentFolders,
   onAnalysisMediaChange = () => undefined,
 }: CatalogSidebarProps) => {
   const dictionary = useDictionary();
@@ -58,6 +62,7 @@ export const CatalogSidebar = ({
         isCheckingFolder={isCheckingFolder}
         onOpenFolder={onOpenFolder}
         onSelectRecentFolder={onSelectRecentFolder}
+        onClearRecentFolders={onClearRecentFolders}
         emptyHint={(
           <>
             <Typography variant="body2" color="text.secondary">
@@ -67,8 +72,13 @@ export const CatalogSidebar = ({
           </>
         )}
       />
-      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-        <AnalysisMediaToggle media="videos" onSelect={onAnalysisMediaChange} />
+      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 1 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <AnalysisMediaToggle media="videos" onSelect={onAnalysisMediaChange} fullWidth />
+        </Box>
+        {scopeToggle === undefined ? null : (
+          <Box sx={{ flex: 1, minWidth: 0 }}>{scopeToggle}</Box>
+        )}
       </Box>
     </>
   );

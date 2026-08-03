@@ -1,7 +1,7 @@
-import { Alert, Box, Button, LinearProgress, ToggleButton, ToggleButtonGroup, Typography } from '@mui/material';
+import { Alert, Box, Button, LinearProgress, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import type { PhotosAnalysisScope, PhotosAnalysisState } from './use-photos-analysis.js';
+import type { PhotosAnalysisState } from './use-photos-analysis.js';
 
 interface PhotosScopeToolbarProps {
   state: PhotosAnalysisState;
@@ -14,22 +14,6 @@ export const PhotosScopeToolbar = ({ state }: PhotosScopeToolbarProps) => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      <ToggleButtonGroup
-        size="small"
-        exclusive
-        fullWidth
-        value={state.scope}
-        onChange={(_event, next: PhotosAnalysisScope | null) => {
-          if (next !== null) state.setScope(next);
-        }}
-      >
-        <ToggleButton value="folder" data-testid="photos-scope-folder">
-          {dictionary.photosSidebar.scopeThisFolder}
-        </ToggleButton>
-        <ToggleButton value="all" data-testid="photos-scope-all">
-          {dictionary.photosSidebar.scopeAllFolders}
-        </ToggleButton>
-      </ToggleButtonGroup>
       <Box sx={{ display: 'flex', gap: 1 }}>
         <Button
           variant="outlined"

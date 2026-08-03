@@ -107,6 +107,23 @@ describe('usePhotosAnalysis', () => {
     expect(result.current.folderState).toBe('scanned');
   });
 
+  it('never flashes "unscanned" for an already-scanned folder while the media switch activates the queries', async () => {
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+
+    const { result, rerender } = renderHook(
+      ({ active }: { active: boolean }) => usePhotosAnalysis({ active, addLine: vi.fn(), folder: '/media' }),
+      { wrapper: Wrapper, initialProps: { active: false } },
+    );
+
+    rerender({ active: true });
+
+    expect(result.current.isLoading).toBe(true);
+
+    await waitFor(() => expect(result.current.folderState).toBe('scanned'));
+  });
+
   it('never falls back to another known root when the current folder is not one of them', async () => {
     stubTree([{ root: '/old/pictures', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([photoItem({ fingerprint: 'a', currentPath: '/old/pictures/a.jpg' })]);

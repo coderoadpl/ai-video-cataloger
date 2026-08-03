@@ -14,6 +14,42 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Photo scan no longer indexes the app's own video-analysis artifact
+  directories (`frames/`, `transcripts/`, `summaries/`, everywhere the
+  artifact layout creates them — every dot-directory was already skipped).
+  A scan also reconciles away any photo that was already indexed under one
+  of these directories in a prior run, dropping the `photos.db` row instead
+  of marking it merely missing.
+- The sidebar's recents dropdown (`▾` next to Otwórz folder) gained a
+  "Wyczyść ostatnie" action at the bottom, restoring the clear-recents entry
+  lost when W37b moved Open Folder into the sidebar; recent-folder paths are
+  now also NFC-normalized before comparison/storage and deduplicated at
+  render time, so two on-disk spellings of the same accented path no longer
+  produce duplicate rows.
+- Both media sidebars are now condensed per the owner's layout: a full-width
+  "Otwórz folder" button (with the recents split-button) leads, the folder
+  identity block sits underneath it, and the medium toggle (Filmy/Zdjęcia)
+  sits in one 50/50 row together with the scope toggle (Ten
+  folder/Całe drzewo for videos, Ten folder/Wszystkie foldery for photos).
+- The in-progress row of a whole-tree ("Całe drzewo") batch run now shows the
+  analyzing spinner/label instead of the misleading "Nieukończony" badge —
+  `analyzingPath` is now populated during a drive run from the per-file
+  progress event's path, not only during a single-folder batch.
+- Clicking a duplicate video in the sidebar again opens its own detail view
+  (own path/name/size, a "przejdź do oryginału" link to the canonical file,
+  and a force re-analyze action) instead of jumping straight to the
+  canonical's detail. Root cause: the video registry's stale-rename cleanup
+  treated two simultaneously-existing files sharing a content hash (a real
+  duplicate pair) the same as an old path superseded by a rename, deleting
+  one entry from the registry; it now only drops an existing entry when that
+  entry's own path is absent from the just-registered batch. The rename-follow
+  effect was the second half of the jump: a duplicate living in a lazily
+  loaded tree subfolder is absent from the tree query's payload, so the
+  selection was re-pointed at the canonical file that shares its content hash;
+  a selection still known to the video registry is now left alone.
+
 ## [0.6.10] - 2026-08-03
 
 ### Added

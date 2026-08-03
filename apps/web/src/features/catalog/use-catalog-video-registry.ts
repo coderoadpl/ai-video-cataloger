@@ -21,10 +21,12 @@ export const useCatalogVideoRegistry = (): CatalogVideoRegistry => {
         next.set(key, video);
       }
       if (next === null) return current;
+      const freshKeys = new Set(videos.map(keyOf));
       for (const video of videos) {
         if (video.contentHash === null) continue;
         for (const [existingKey, existingVideo] of next) {
           if (existingKey === keyOf(video)) continue;
+          if (freshKeys.has(existingKey)) continue;
           if (existingVideo.contentHash === video.contentHash) next.delete(existingKey);
         }
       }

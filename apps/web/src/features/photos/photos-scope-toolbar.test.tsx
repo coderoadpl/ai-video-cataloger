@@ -50,14 +50,6 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
 });
 
 describe('PhotosScopeToolbar', () => {
-  it('scope toggle switches between folder and all scope', () => {
-    const setScope = vi.fn();
-    renderThemed(<PhotosScopeToolbar state={baseState({ setScope })} />);
-
-    fireEvent.click(screen.getByTestId('photos-scope-all'));
-    expect(setScope).toHaveBeenCalledWith('all');
-  });
-
   it('scan and analyze actions call through', () => {
     const scanFolder = vi.fn();
     const analyzePhotos = vi.fn();

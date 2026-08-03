@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Box } from '@mui/material';
 
+import { AnalyzeScopeToggle } from '../components/ui/AnalyzeScopeToggle.js';
 import { ScopeAnalyzeToolbar, type AnalyzeScope } from '../components/ui/ScopeAnalyzeToolbar.js';
 import { LibrarySubnav } from '../components/ui/LibrarySubnav.js';
 import { BatchSummaryDialog } from '../components/ui/dialogs/BatchSummaryDialog.js';
@@ -25,6 +26,7 @@ import { useCatalogLocations, type CatalogLocation } from '../features/map/use-c
 import { ModelManagerModal } from '../features/models/ModelManagerModal.js';
 import { FacesIndexAction } from '../features/people/FacesIndexAction.js';
 import { PeopleView } from '../features/people/PeopleView.js';
+import { PhotosScopeToggle } from '../features/photos/PhotosScopeToggle.js';
 import { PhotosScopeToolbar } from '../features/photos/PhotosScopeToolbar.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { PhotosView } from '../features/photos/PhotosView.js';
@@ -112,9 +114,10 @@ export const IndexRoute = () => {
     if (currentKey === null) return;
     const freshVideos = tree.root === null ? catalog.videos : [...catalog.videos, ...flattenTreeVideos(tree.root)];
     if (freshVideos.some((video) => video.path === currentKey)) return;
+    if (videoRegistry.lookup(currentKey) !== null) return;
     const followed = followRenamedKey(selectedSnapshotRef.current, freshVideos);
     if (followed !== null && followed !== currentKey) selectKey(followed);
-  }, [catalog.videos, tree.root, catalog.selectedKey, selectKey]);
+  }, [catalog.videos, tree.root, catalog.selectedKey, selectKey, videoRegistry]);
 
   const selectedFingerprint = selected?.contentHash ?? null;
   const locations = useCatalogLocations({
@@ -196,16 +199,21 @@ export const IndexRoute = () => {
       isCheckingFolder={shell.isCheckingFolder}
       onOpenFolder={shell.openFolder}
       onSelectRecentFolder={shell.selectRecentFolder}
+      onClearRecentFolders={shell.clearRecentFolders}
       onAnalysisMediaChange={setAnalysisMedia}
-      toolbar={
-        <ScopeAnalyzeToolbar
+      scopeToggle={(
+        <AnalyzeScopeToggle
           scope={effectiveScope}
           onScopeChange={setScope}
+          disabled={!treeScopeAvailable || processing.isBusy}
+        />
+      )}
+      toolbar={
+        <ScopeAnalyzeToolbar
           pendingCount={scopedPendingCount}
           isBusy={processing.isBusy}
           progress={activeProgress}
           batchWait={processing.driveBatchWait}
-          scopeToggleDisabled={!treeScopeAvailable}
           approximateCount={effectiveScope === 'tree'}
           canAnalyze={effectiveScope === 'tree' ? treeCanAnalyze : undefined}
           onAnalyze={() => {
@@ -229,7 +237,9 @@ export const IndexRoute = () => {
       recentFolders={shell.recentFolders}
       isCheckingFolder={shell.isCheckingFolder}
       onSelectRecentFolder={shell.selectRecentFolder}
+      onClearRecentFolders={shell.clearRecentFolders}
       onAnalysisMediaChange={setAnalysisMedia}
+      scopeToggle={<PhotosScopeToggle scope={photosAnalysis.scope} onScopeChange={photosAnalysis.setScope} />}
       toolbar={<PhotosScopeToolbar state={photosAnalysis} />}
     />
   );

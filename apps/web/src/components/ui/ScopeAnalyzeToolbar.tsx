@@ -1,4 +1,4 @@
-import { Box, Button, LinearProgress, ToggleButton, ToggleButtonGroup, Tooltip, Typography } from '@mui/material';
+import { Box, Button, LinearProgress, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type BatchProgressView } from './BatchToolbar.js';
@@ -7,8 +7,6 @@ import { CancelIcon, PlayCircleIcon } from './icons.js';
 export type AnalyzeScope = 'folder' | 'tree';
 
 interface ScopeAnalyzeToolbarProps {
-  scope: AnalyzeScope;
-  onScopeChange: (scope: AnalyzeScope) => void;
   pendingCount: number;
   isBusy: boolean;
   progress: BatchProgressView | null;
@@ -16,14 +14,11 @@ interface ScopeAnalyzeToolbarProps {
   onAnalyze: () => void;
   onStop: () => void;
   disabledReason?: string | undefined;
-  scopeToggleDisabled?: boolean;
   approximateCount?: boolean;
   canAnalyze?: boolean | undefined;
 }
 
 export const ScopeAnalyzeToolbar = ({
-  scope,
-  onScopeChange,
   pendingCount,
   isBusy,
   progress,
@@ -31,7 +26,6 @@ export const ScopeAnalyzeToolbar = ({
   onAnalyze,
   onStop,
   disabledReason,
-  scopeToggleDisabled = false,
   approximateCount = false,
   canAnalyze,
 }: ScopeAnalyzeToolbarProps) => {
@@ -40,29 +34,6 @@ export const ScopeAnalyzeToolbar = ({
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      <Tooltip title={scopeToggleDisabled ? dictionary.batchToolbar.scopeToggleDisabled : ''}>
-        <span>
-          <ToggleButtonGroup
-            exclusive
-            fullWidth
-            size="small"
-            value={scope}
-            disabled={isBusy || scopeToggleDisabled}
-            onChange={(_event, next: AnalyzeScope | null) => {
-              if (next !== null) onScopeChange(next);
-            }}
-            aria-label={dictionary.batchToolbar.analyzeScope}
-          >
-            <ToggleButton value="folder" data-testid="scope-folder">
-              {dictionary.batchToolbar.thisFolder}
-            </ToggleButton>
-            <ToggleButton value="tree" data-testid="scope-tree">
-              {dictionary.batchToolbar.wholeTree}
-            </ToggleButton>
-          </ToggleButtonGroup>
-        </span>
-      </Tooltip>
-
       {batchWait !== null && batchWait !== undefined ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }} data-testid="batch-wait">
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

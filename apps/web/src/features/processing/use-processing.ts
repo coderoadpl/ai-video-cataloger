@@ -390,7 +390,10 @@ export const useProcessing = ({
                 }
               }
               if (outcome.folderProgress !== null) setDriveProgress(outcome.folderProgress);
-              if (outcome.fileProgress !== null) setDriveFileProgress(outcome.fileProgress);
+              if (outcome.fileProgress !== null) {
+                setDriveFileProgress(outcome.fileProgress);
+                setAnalyzingPath(outcome.fileProgress.currentPath);
+              }
               if (outcome.batchWait !== undefined) setDriveBatchWait(outcome.batchWait);
               if (
                 outcome.fileProgress !== null
@@ -451,6 +454,7 @@ export const useProcessing = ({
         setDriveProgress(null);
         setDriveFileProgress(null);
         setDriveBatchWait(null);
+        setAnalyzingPath(null);
         await queryClient.invalidateQueries();
         if (outcome.success && driveSummaryRef.current !== null) {
           setDriveSummary({ open: true, counts: driveSummaryRef.current });

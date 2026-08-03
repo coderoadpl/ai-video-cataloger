@@ -1,6 +1,7 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
+import { canonicalPath } from '@core/domain/index.js';
 import { z } from 'zod';
 
 const MAX_RECENT_FOLDERS = 10;
@@ -74,8 +75,12 @@ export const normalizeFolderStore = (data: FolderStoreData): FolderStoreData => 
 
 export const trimRecentFolders = (folders: readonly string[]): string[] => {
   const result: string[] = [];
+  const seen = new Set<string>();
   for (const folder of folders) {
-    if (!result.includes(folder)) result.push(folder);
+    const canonical = canonicalPath(folder);
+    if (seen.has(canonical)) continue;
+    seen.add(canonical);
+    result.push(canonical);
     if (result.length === MAX_RECENT_FOLDERS) break;
   }
   return result;

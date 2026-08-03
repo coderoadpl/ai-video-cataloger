@@ -624,6 +624,7 @@ export interface Dictionary {
     openFolder: string;
     checking: string;
     recentFolders: string;
+    clearRecent: string;
   };
   videoStatus: {
     incomplete: string;
@@ -1505,6 +1506,7 @@ export const en: Dictionary = {
     openFolder: 'Open Folder',
     checking: 'Checking…',
     recentFolders: 'recent folders',
+    clearRecent: 'Clear recent',
   },
   videoStatus: {
     incomplete: 'Incomplete',
@@ -2395,6 +2397,7 @@ export const pl: Dictionary = {
     openFolder: 'Otwórz folder',
     checking: 'Sprawdzanie…',
     recentFolders: 'ostatnie foldery',
+    clearRecent: 'Wyczyść ostatnie',
   },
   videoStatus: {
     incomplete: 'Nieukończony',

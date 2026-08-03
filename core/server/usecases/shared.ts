@@ -56,10 +56,25 @@ export const EXCLUDED_DIRECTORY_NAMES = new Set([
   '.fseventsd',
   '.TemporaryItems',
   'System Volume Information',
+  'frames',
+  'transcripts',
+  'summaries',
 ]);
 
 export const shouldSkipDirectory = (name: string): boolean =>
   name.startsWith('.') || EXCLUDED_DIRECTORY_NAMES.has(name);
+
+export const isUnderExcludedDirectory = (fs: FileSystemPort, path: string): boolean => {
+  let current = fs.dirname(path);
+  for (;;) {
+    const name = fs.basename(current);
+    if (name === '') return false;
+    if (shouldSkipDirectory(name)) return true;
+    const parent = fs.dirname(current);
+    if (parent === current) return false;
+    current = parent;
+  }
+};
 
 export const isInProgressStatus = (status: VideoStatus): boolean =>
   IN_PROGRESS_STATUSES.some((candidate) => candidate === status);

@@ -248,6 +248,41 @@ describe('runPhotoScan', () => {
     expect(result.ok && result.value.filesTotal).toBe(1);
   });
 
+  it('skips the video-analysis artifact directories (frames, transcripts, summaries) at every depth', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    fs.addFile('/work/photos/frames/gotowanie/frame-001.jpg', { content: 'frame-1' });
+    fs.addFile('/work/photos/frames/gotowanie/frame-002.jpg', { content: 'frame-2' });
+    fs.addFile('/work/photos/transcripts/gotowanie.jpg', { content: 'not-really-but-named-like-one' });
+    fs.addFile('/work/photos/summaries/gotowanie.jpg', { content: 'also-not-really' });
+    fs.addFile('/work/photos/sub/frames/clip/frame-001.jpg', { content: 'nested-frame' });
+
+    const result = await runPhotoScan(deps, { root: '/work/photos' });
+
+    expect(result.ok).toBe(true);
+    expect(result.ok && result.value.filesTotal).toBe(1);
+    const status = await photosStatus(deps, {});
+    expect(status.ok && status.value.counts).toMatchObject({ photos: 1, paths: 1 });
+  });
+
+  it('purges photos.db entries that were previously indexed under an artifact directory once the scanner skips it', async () => {
+    const { deps, fs, photos } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await seedPhoto(photos, fingerprintOf('junk-frame'), '/work/photos/frames/gotowanie/frame-001.jpg');
+    fs.addFile('/work/photos/frames/gotowanie/frame-001.jpg', { content: 'junk-frame' });
+
+    const before = await photosStatus(deps, {});
+    expect(before.ok && before.value.counts).toMatchObject({ photos: 1, paths: 1 });
+
+    const result = await runPhotoScan(deps, { root: '/work/photos' });
+
+    expect(result.ok).toBe(true);
+    const after = await photosStatus(deps, {});
+    expect(after.ok && after.value.counts).toMatchObject({ photos: 1, paths: 1 });
+    const junkPhoto = await deps.photos.getPhoto(fingerprintOf('junk-frame'));
+    expect(junkPhoto.ok && junkPhoto.value).toBe(null);
+  });
+
   it('re-scan fast path skips re-hashing an unchanged file', async () => {
     const { deps, fs, photos } = buildDeps();
     fs.addFile('/work/photos/a.jpg', { content: 'photo-a-bytes', mtimeMs: 1000, size: 13 });

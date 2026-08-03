@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
-import { ScopeAnalyzeToolbar } from '../../components/ui/ScopeAnalyzeToolbar.js';
+import { AnalyzeScopeToggle } from '../../components/ui/AnalyzeScopeToggle.js';
 import { useTreeScopeAvailability } from './use-tree-absent-files.js';
 
 const theme = createAppTheme('light');
@@ -33,18 +33,7 @@ const absentGroups = (entries: number) => ({
 
 const ScopeProbe = ({ subfolderVideoCount }: { subfolderVideoCount: number }) => {
   const available = useTreeScopeAvailability('/drive', subfolderVideoCount);
-  return (
-    <ScopeAnalyzeToolbar
-      scope="folder"
-      onScopeChange={vi.fn()}
-      pendingCount={0}
-      isBusy={false}
-      progress={null}
-      onAnalyze={vi.fn()}
-      onStop={vi.fn()}
-      scopeToggleDisabled={!available}
-    />
-  );
+  return <AnalyzeScopeToggle scope="folder" onScopeChange={vi.fn()} disabled={!available} />;
 };
 
 const renderProbe = (subfolderVideoCount: number) =>

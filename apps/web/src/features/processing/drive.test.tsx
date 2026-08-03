@@ -216,6 +216,58 @@ describe('useProcessing drive', () => {
     await waitFor(() => expect(result.current.isBusy).toBe(false));
   });
 
+  it('exposes analyzingPath for the file currently in progress during a drive run, not just single-video batches (W41 item 4)', async () => {
+    const queryClient = createTestQueryClient();
+    const wrapper = ({ children }: { children: ReactNode }) => (
+      <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    );
+    let cancelled = false;
+    server.use(
+      http.post('/api/process-drive', () => HttpResponse.json({ ok: true, data: { jobId: 'job:drive' } })),
+      http.post('/api/jobs/cancel', () => {
+        cancelled = true;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job:drive', cancelled: true } });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            jobId,
+            kind: 'process_drive',
+            status: cancelled ? 'cancelled' : 'running',
+            progress: null,
+            progressEvents: [
+              { sequence: 1, progress: { step: 'run-started', data: { runId: 'r1', root: '/videos', foldersTotal: 1, filesTotal: 1 } } },
+              { sequence: 2, progress: { step: 'folder-started', data: { path: '/videos/a', filesTotal: 1 } } },
+              {
+                sequence: 3,
+                progress: { step: 'extracting_frames', percentage: 20, current: 1, total: 1, data: { video: '/videos/a/gotowanie.mp4' } },
+              },
+            ],
+            error: null,
+            createdAt: '2026-01-01T00:00:00.000Z',
+            updatedAt: '2026-01-01T00:00:00.000Z',
+          },
+        });
+      }),
+    );
+
+    const { result } = renderHook(() => useProcessing({ videos: [], addLine: vi.fn(), intervalMs: 0 }), { wrapper });
+
+    act(() => {
+      result.current.driveAnalyze('/videos');
+    });
+
+    await waitFor(() => expect(result.current.analyzingPath).toBe('/videos/a/gotowanie.mp4'));
+
+    act(() => {
+      result.current.driveCancel();
+    });
+    await waitFor(() => expect(result.current.isBusy).toBe(false));
+    expect(result.current.analyzingPath).toBe(null);
+  });
+
   const batchJob = (jobId: string) => ({
     jobId,
     kind: 'process_drive',

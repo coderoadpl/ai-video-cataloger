@@ -45,6 +45,25 @@ describe('SidebarFolderPanel', () => {
     expect(screen.queryByTestId('show-in-library')).toBeNull();
   });
 
+  it("renders the FolderBar's primary control above the folder identity block (owner W41 condensed layout)", () => {
+    renderThemed(
+      <SidebarFolderPanel
+        folder="/movies/clips"
+        recentFolders={[]}
+        isCheckingFolder={false}
+        onOpenFolder={vi.fn()}
+        onSelectRecentFolder={vi.fn()}
+      />,
+    );
+
+    const panel = screen.getByTestId('sidebar-folder-panel');
+    const openFolderButton = screen.getByRole('button', { name: en.folderBar.openFolder });
+    const identityBlock = screen.getByTestId('sidebar-folder-identity');
+    const position = openFolderButton.compareDocumentPosition(identityBlock);
+    expect(panel.contains(openFolderButton)).toBe(true);
+    expect(Boolean(position & Node.DOCUMENT_POSITION_FOLLOWING)).toBe(true);
+  });
+
   it("always renders the FolderBar's primary control, regardless of folder state", () => {
     const onOpenFolder = vi.fn();
     renderThemed(

@@ -19,9 +19,11 @@ interface PhotosSidebarProps {
   state: PhotosAnalysisState;
   onOpenFolder: () => void;
   toolbar?: ReactNode;
+  scopeToggle?: ReactNode;
   recentFolders?: string[];
   isCheckingFolder?: boolean;
   onSelectRecentFolder?: (folderPath: string) => void;
+  onClearRecentFolders?: (() => void) | undefined;
   onAnalysisMediaChange?: (media: AnalysisMedia) => void;
 }
 
@@ -143,9 +145,11 @@ export const PhotosSidebar = ({
   state,
   onOpenFolder,
   toolbar,
+  scopeToggle,
   recentFolders = [],
   isCheckingFolder = false,
   onSelectRecentFolder = () => undefined,
+  onClearRecentFolders,
   onAnalysisMediaChange = () => undefined,
 }: PhotosSidebarProps) => {
   const dictionary = useDictionary();
@@ -161,6 +165,7 @@ export const PhotosSidebar = ({
         isCheckingFolder={isCheckingFolder}
         onOpenFolder={onOpenFolder}
         onSelectRecentFolder={onSelectRecentFolder}
+        onClearRecentFolders={onClearRecentFolders}
         emptyHint={(
           <>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>{dictionary.photosSidebar.noFolderTitle}</Typography>
@@ -168,8 +173,13 @@ export const PhotosSidebar = ({
           </>
         )}
       />
-      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider' }}>
-        <AnalysisMediaToggle media="photos" onSelect={onAnalysisMediaChange} />
+      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 1 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <AnalysisMediaToggle media="photos" onSelect={onAnalysisMediaChange} fullWidth />
+        </Box>
+        {scopeToggle === undefined ? null : (
+          <Box sx={{ flex: 1, minWidth: 0 }}>{scopeToggle}</Box>
+        )}
       </Box>
     </>
   );

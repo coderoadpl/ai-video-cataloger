@@ -13,13 +13,10 @@ const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) => renderWithProviders(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
 
 describe('ScopeAnalyzeToolbar', () => {
-  it('switches scope and shows the scoped pending count on the action button', async () => {
-    const onScopeChange = vi.fn();
+  it('shows the scoped pending count on the action button and triggers analyze', async () => {
     const onAnalyze = vi.fn();
     renderThemed(
       <ScopeAnalyzeToolbar
-        scope="folder"
-        onScopeChange={onScopeChange}
         pendingCount={4}
         isBusy={false}
         progress={null}
@@ -30,9 +27,6 @@ describe('ScopeAnalyzeToolbar', () => {
 
     expect(screen.getByTestId('analyze-all-button').textContent).toContain(en.batchToolbar.analyzeAll(4));
 
-    await userEvent.click(screen.getByTestId('scope-tree'));
-    expect(onScopeChange).toHaveBeenCalledWith('tree');
-
     await userEvent.click(screen.getByTestId('analyze-all-button'));
     expect(onAnalyze).toHaveBeenCalledOnce();
   });
@@ -41,8 +35,6 @@ describe('ScopeAnalyzeToolbar', () => {
     const onAnalyze = vi.fn();
     renderThemed(
       <ScopeAnalyzeToolbar
-        scope="tree"
-        onScopeChange={vi.fn()}
         pendingCount={200}
         isBusy={false}
         progress={null}
@@ -62,8 +54,6 @@ describe('ScopeAnalyzeToolbar', () => {
   it('shows the analyze button when only unknown pending is present at a zero count', () => {
     renderThemed(
       <ScopeAnalyzeToolbar
-        scope="tree"
-        onScopeChange={vi.fn()}
         pendingCount={0}
         isBusy={false}
         progress={null}
@@ -81,8 +71,6 @@ describe('ScopeAnalyzeToolbar', () => {
     const onStop = vi.fn();
     renderThemed(
       <ScopeAnalyzeToolbar
-        scope="tree"
-        onScopeChange={vi.fn()}
         pendingCount={0}
         isBusy
         progress={{ currentIndex: 2, totalCount: 5, currentFilename: 'clip.mp4' }}
@@ -104,8 +92,6 @@ describe('ScopeAnalyzeToolbar', () => {
     const onStop = vi.fn();
     renderThemed(
       <ScopeAnalyzeToolbar
-        scope="tree"
-        onScopeChange={vi.fn()}
         pendingCount={0}
         isBusy
         progress={{ currentIndex: 2, totalCount: 5, currentFilename: 'clip.mp4' }}

@@ -57,7 +57,7 @@ import { resolveConfigValues } from './config-resolution.js';
 import { photoArtifactsRoot, photoGridThumbPath, photoProxyPath, photoThumbPath } from './photo-artifacts.js';
 import { reportStep as report } from './process-drive-batch.js';
 import { buildSearchMatch, sanitizeSearchQuery } from './search.js';
-import { shouldSkipDirectory } from './shared.js';
+import { isUnderExcludedDirectory, shouldSkipDirectory } from './shared.js';
 import { generateGridThumbnail, type GridThumbnailCandidate } from './thumbnail.js';
 
 export const PHOTO_SCAN_BATCH_SIZE = 500;
@@ -489,9 +489,14 @@ const reconcileRoot = async (
       const ownerUnderRoot = photoRecord.value.currentPath === root || photoRecord.value.currentPath.startsWith(`${root}/`);
       if (remaining.value.length === 0) {
         if (ownerUnderRoot) {
-          const marked = await deps.photos.upsertPhoto({ ...photoRecord.value, missingAt: Date.now() });
-          if (!marked.ok) return marked;
-          counters.missingMarked += 1;
+          if (isUnderExcludedDirectory(deps.fs, photoRecord.value.currentPath)) {
+            const dropped = await deps.photos.deletePhoto(fingerprint);
+            if (!dropped.ok) return dropped;
+          } else {
+            const marked = await deps.photos.upsertPhoto({ ...photoRecord.value, missingAt: Date.now() });
+            if (!marked.ok) return marked;
+            counters.missingMarked += 1;
+          }
         }
         continue;
       }

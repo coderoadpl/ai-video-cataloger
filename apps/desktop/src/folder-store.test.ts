@@ -71,6 +71,14 @@ describe('trimRecentFolders', () => {
   it('deduplicates before applying the max recent folder limit', () => {
     expect(trimRecentFolders(['/a', '/b', '/a', '/c'])).toEqual(['/a', '/b', '/c']);
   });
+
+  it('deduplicates NFC/NFD variants of the same folder path', () => {
+    const nfc = '/videos/café'.normalize('NFC');
+    const nfd = '/videos/café'.normalize('NFD');
+    expect(nfc).not.toBe(nfd);
+
+    expect(trimRecentFolders([nfc, nfd, '/videos/other'])).toEqual([nfc, '/videos/other']);
+  });
 });
 
 const tempRoot = async (): Promise<string> => {

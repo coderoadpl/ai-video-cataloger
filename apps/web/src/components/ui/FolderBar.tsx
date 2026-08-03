@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { Box, Button, ButtonGroup, Menu, MenuItem, Typography } from '@mui/material';
+import { Box, Button, ButtonGroup, Divider, Menu, MenuItem, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { folderName } from '../../lib/format.js';
@@ -9,36 +9,48 @@ interface FolderBarProps {
   isCheckingFolder: boolean;
   onOpenFolder: () => void;
   onSelectRecentFolder: (folderPath: string) => void;
+  onClearRecentFolders?: (() => void) | undefined;
+  fullWidth?: boolean;
 }
+
+const dedupeFolders = (folders: readonly string[]): string[] => [...new Set(folders)];
 
 export const FolderBar = ({
   recentFolders,
   isCheckingFolder,
   onOpenFolder,
   onSelectRecentFolder,
+  onClearRecentFolders,
+  fullWidth = false,
 }: FolderBarProps) => {
   const anchorRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const dictionary = useDictionary();
+  const uniqueRecentFolders = dedupeFolders(recentFolders);
 
   const select = (folderPath: string) => {
     setOpen(false);
     onSelectRecentFolder(folderPath);
   };
 
+  const clearRecent = () => {
+    setOpen(false);
+    onClearRecentFolders?.();
+  };
+
   return (
-    <Box>
-      <ButtonGroup ref={anchorRef} variant="contained" size="small" disableElevation>
-        <Button onClick={onOpenFolder} disabled={isCheckingFolder}>
+    <Box sx={fullWidth ? { width: '100%' } : undefined}>
+      <ButtonGroup ref={anchorRef} variant="contained" size="small" disableElevation fullWidth={fullWidth}>
+        <Button onClick={onOpenFolder} disabled={isCheckingFolder} fullWidth={fullWidth}>
           {isCheckingFolder ? dictionary.folderBar.checking : dictionary.folderBar.openFolder}
         </Button>
         <Button
           size="small"
           aria-label={dictionary.folderBar.recentFolders}
           aria-haspopup="menu"
-          disabled={recentFolders.length === 0}
+          disabled={uniqueRecentFolders.length === 0}
           onClick={() => setOpen(true)}
-          sx={{ px: 1, minWidth: 0 }}
+          sx={{ px: 1, minWidth: 0, flex: fullWidth ? '0 0 auto' : undefined }}
         >
           ▾
         </Button>
@@ -50,7 +62,7 @@ export const FolderBar = ({
         anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
         transformOrigin={{ vertical: 'top', horizontal: 'right' }}
       >
-        {recentFolders.map((folderPath) => (
+        {uniqueRecentFolders.map((folderPath) => (
           <MenuItem key={folderPath} onClick={() => select(folderPath)} sx={{ maxWidth: 360 }}>
             <Box sx={{ minWidth: 0 }}>
               <Typography variant="body2" noWrap>
@@ -62,6 +74,12 @@ export const FolderBar = ({
             </Box>
           </MenuItem>
         ))}
+        {onClearRecentFolders === undefined || uniqueRecentFolders.length === 0 ? null : [
+          <Divider key="clear-recent-divider" />,
+          <MenuItem key="clear-recent" onClick={clearRecent}>
+            {dictionary.folderBar.clearRecent}
+          </MenuItem>,
+        ]}
       </Menu>
     </Box>
   );

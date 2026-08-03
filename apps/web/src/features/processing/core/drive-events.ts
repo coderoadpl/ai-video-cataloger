@@ -80,6 +80,7 @@ export interface FileProgressView {
   currentIndex: number;
   totalCount: number;
   currentFilename: string;
+  currentPath: string;
 }
 
 export interface BatchWaitView {
@@ -327,13 +328,14 @@ export const reduceDriveEvent = (
   }
 
   if (PER_FILE_STEPS.has(step)) {
-    const filename = basename(strField(data, 'video'));
+    const path = strField(data, 'video');
+    const filename = basename(path);
     const current = progress.current ?? 0;
     const total = progress.total ?? 0;
     return {
       ...idle(counts),
       messages: [{ kind: 'fileProgress', level: 'info', current, total, step, filename }],
-      fileProgress: { currentIndex: current, totalCount: total, currentFilename: filename },
+      fileProgress: { currentIndex: current, totalCount: total, currentFilename: filename, currentPath: path },
     };
   }
 

@@ -7,13 +7,15 @@ export type AnalysisMedia = 'videos' | 'photos';
 interface AnalysisMediaToggleProps {
   media: AnalysisMedia;
   onSelect: (media: AnalysisMedia) => void;
+  fullWidth?: boolean;
 }
 
-export const AnalysisMediaToggle = ({ media, onSelect }: AnalysisMediaToggleProps) => {
+export const AnalysisMediaToggle = ({ media, onSelect, fullWidth = false }: AnalysisMediaToggleProps) => {
   const dictionary = useDictionary();
   return (
     <ToggleButtonGroup
       exclusive
+      fullWidth={fullWidth}
       size="small"
       value={media}
       onChange={(_event, next: AnalysisMedia | null) => {
