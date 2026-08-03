@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.10] - 2026-08-03
+
 ### Added
 
 - Library and Zdjęcia grid tiles now show a small bottom-right aspect-ratio
@@ -23,18 +25,21 @@ release history jumps from `0.5.10` to `0.5.12`.
   gains nullable `width`/`height`, backed by a new global-catalog schema
   version 13 (`files.width`/`files.height`, populated from the
   `MediaPort.probe` call `process` already makes); photo tiles already
-  carried EXIF dimensions.
+  carried EXIF dimensions
+  ([`aebb94c`](https://github.com/coderoadpl/ai-video-cataloger/commit/aebb94c7fed7ad97888471a83b508c0825beccc3)).
 - The Library photos surface now triggers the existing (previously unwired)
   `photos grid-thumbs` backfill once per app session, background priority,
   the moment a photo root is visible — mirroring the video grid-thumbnail
   backfill trigger, so legacy/stale photo `.grid.jpg` thumbnails self-heal
-  the same way stale video ones already did.
+  the same way stale video ones already did
+  ([`aebb94c`](https://github.com/coderoadpl/ai-video-cataloger/commit/aebb94c7fed7ad97888471a83b508c0825beccc3)).
 
 ### Fixed
 
 - `LibraryGrid`'s per-file "Brak pliku" chip no longer renders on top of an
   already-offline folder's own offline caption — a missing file inside an
-  offline folder now shows exactly one missing-file label, not two.
+  offline folder now shows exactly one missing-file label, not two
+  ([`aebb94c`](https://github.com/coderoadpl/ai-video-cataloger/commit/aebb94c7fed7ad97888471a83b508c0825beccc3)).
 
 ## [0.6.9] - 2026-08-03
 
