@@ -136,7 +136,7 @@ export const useWizard = ({ open, folder, onFinish, intervalMs = 1000 }: UseWiza
   const dictionary = useDictionary();
   const uiLanguage = useUiLanguage();
   const queryClient = useQueryClient();
-  const configQuery = useQuery({ ...actions.config({}), enabled: open });
+  const configQuery = useQuery({ ...actions.config(folder === null ? {} : { folder }), enabled: open });
   const requirements = useQuery({ ...actions.localAiRequirements, enabled: open });
   const whisperRuntime = useQuery({ ...actions.whisperRuntime, enabled: open });
   const whisperModels = useQuery({ ...actions.modelsWhisper, enabled: open });

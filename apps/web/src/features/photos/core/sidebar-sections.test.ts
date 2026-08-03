@@ -69,6 +69,10 @@ describe('sidebarSections', () => {
     expect(sidebarSections([item('a', '/media/a.jpg')], [root({ root: '/media' })], 'folder', null)).toEqual([]);
   });
 
+  it('folder scope with a scanned but empty selected root returns no sections, not a header with zero items', () => {
+    expect(sidebarSections([], [root({ root: '/media', photos: 0 })], 'folder', '/media')).toEqual([]);
+  });
+
   it('all scope with a nested root does not duplicate a child photo across the parent and child sections', () => {
     const items = [
       item('a', '/Pictures/vacation.jpg'),

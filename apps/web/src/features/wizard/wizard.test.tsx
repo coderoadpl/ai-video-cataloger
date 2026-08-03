@@ -866,4 +866,23 @@ describe('SetupWizard', () => {
     expect((await screen.findByTestId('language-validation-error')).textContent).toContain('output_language');
     expect(screen.getByTestId('wizard-step-language')).toBeDefined();
   });
+
+  it('preselects the output language from the currently open folder\'s effective config, not the home default', async () => {
+    installHandlers();
+    server.use(
+      http.get('/api/config', ({ request }) => {
+        const url = new URL(request.url);
+        const scoped = url.searchParams.get('folder') === '/videos';
+        return ok(configView('en', scoped ? 'pl' : 'auto'));
+      }),
+    );
+    renderWithProviders(<SetupWizard open folder="/videos" onClose={vi.fn()} />);
+    await enterLanguageStep();
+
+    const select = await screen.findByTestId('wizard-output-language-select');
+    await waitFor(() => expect(within(select).getByRole('combobox').textContent).toBe(en.language.optionPolish));
+
+    clickNext();
+    await screen.findByTestId('wizard-step-analyzer');
+  });
 });

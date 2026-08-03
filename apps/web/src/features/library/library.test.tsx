@@ -190,6 +190,37 @@ describe('LibraryView', () => {
     expect(screen.getAllByText(en.library.missingBadge)).toHaveLength(1);
   });
 
+  it('renders every unavailable tile at the same opacity as a plain offline-folder tile', async () => {
+    const items = [
+      libraryItem({
+        fingerprint: 'fp-offline-only',
+        thumbnailPath: null,
+        gridThumbnailPath: null,
+        missing: false,
+        folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' },
+      }),
+      libraryItem({
+        fingerprint: 'fp-offline-and-missing',
+        thumbnailPath: null,
+        gridThumbnailPath: null,
+        missing: true,
+        folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' },
+      }),
+    ];
+    stubSearch(items);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const offlineOnly = document.querySelector('[data-testid="library-tile"][data-fingerprint="fp-offline-only"]');
+    const offlineAndMissing = document.querySelector(
+      '[data-testid="library-tile"][data-fingerprint="fp-offline-and-missing"]',
+    );
+    if (offlineOnly === null || offlineAndMissing === null) throw new Error('expected both tiles to render');
+
+    expect(getComputedStyle(offlineAndMissing).opacity).toBe(getComputedStyle(offlineOnly).opacity);
+  });
+
   it('keeps the per-file missing badge when the folder is online but the file alone is missing', async () => {
     const items = [libraryItem({
       fingerprint: 'fp-online-missing',

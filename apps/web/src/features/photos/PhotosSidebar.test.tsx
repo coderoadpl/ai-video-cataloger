@@ -196,6 +196,13 @@ describe('PhotosSidebar', () => {
     expect(screen.queryByTestId('photos-folder-show-in-library')).toBeNull();
   });
 
+  it('shows an honest empty state for a scanned folder with zero photos, not a bare section header', () => {
+    renderThemed(<PhotosSidebar state={baseState()} onOpenFolder={vi.fn()} />);
+
+    expect(screen.queryByTestId('photos-sidebar-section-header')).toBeNull();
+    expect(screen.getByText(en.photos.emptyNoPhotos)).toBeDefined();
+  });
+
   it('renders a scan/analyze/proxy job failure as an inline error strip, not just the terminal', () => {
     renderThemed(
       <PhotosSidebar

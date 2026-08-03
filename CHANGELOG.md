@@ -36,6 +36,17 @@ release history jumps from `0.5.10` to `0.5.12`.
   and the `▾` dropdown segment stretched across the width; the main segment
   now grows to fill the available width and the dropdown stays a fixed
   narrow cap.
+- A photo-scanned folder with zero photos now shows the honest "no photos"
+  empty state instead of a bare, unlabeled section header with nothing
+  under it.
+- The setup wizard's language step now seeds the output-language dropdown
+  from the currently open folder's effective config instead of always
+  reading the home-scope default, so it stops proposing English when the
+  folder already has a different output language configured.
+- Library tiles for an unavailable file no longer render dimmed relative to
+  their siblings when the containing folder is also offline; every
+  unavailable tile now gets the same full-opacity treatment as a plain
+  offline-folder tile, with a single badge.
 
 ## [0.6.11] - 2026-08-03
 
