@@ -1,7 +1,8 @@
-import { Alert, Box, Button, Chip, CircularProgress, Divider, Link, MenuItem, Select, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, Divider, Link, MenuItem, Paper, Select, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { OpenInNewIcon } from '../../components/ui/icons.js';
+import { CardHeader } from '../../components/ui/CardHeader.js';
+import { ClockIcon, OpenInNewIcon } from '../../components/ui/icons.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import type { CapturedAtSource, PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
 import type { PhotoDetail, PhotoVariantRecord } from './use-photos.js';
@@ -125,12 +126,24 @@ export const PhotoDetailPane = ({
       <Divider />
       {analysis === null ? (
         showAnalysisTools && photo.proxyState === 'done' ? (
-          <Alert
-            severity="info"
+          <Paper
+            variant="outlined"
             data-testid="photos-analyze-strip"
-            action={
+            sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}
+          >
+            <CardHeader
+              icon={<ClockIcon fontSize="small" sx={{ color: 'status.notTracked.main' }} />}
+              title={
+                analyzeProgress !== null
+                  ? dictionary.photos.analyzeProgress(analyzeProgress.current, analyzeProgress.total)
+                  : canAnalyze
+                    ? dictionary.photos.analysisNone
+                    : dictionary.photos.analyzeUnavailable
+              }
+            />
+            <Box>
               <Button
-                color="inherit"
+                variant="contained"
                 size="small"
                 onClick={onAnalyze}
                 disabled={isBusy || !canAnalyze}
@@ -139,14 +152,8 @@ export const PhotoDetailPane = ({
               >
                 {dictionary.photos.analyzeAction}
               </Button>
-            }
-          >
-            {analyzeProgress !== null
-              ? dictionary.photos.analyzeProgress(analyzeProgress.current, analyzeProgress.total)
-              : canAnalyze
-                ? dictionary.photos.analysisNone
-                : dictionary.photos.analyzeUnavailable}
-          </Alert>
+            </Box>
+          </Paper>
         ) : (
           <Typography variant="body2" color="text.secondary">{dictionary.photos.analysisNone}</Typography>
         )

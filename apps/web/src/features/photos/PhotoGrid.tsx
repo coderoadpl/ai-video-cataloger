@@ -104,7 +104,13 @@ interface PhotoTileProps {
 const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) => {
   const dictionary = useDictionary();
   const imagePath = item.gridThumbPath ?? item.thumbPath;
-  const imageFit = item.gridThumbPath === null ? 'contain' : 'cover';
+  const [imageFailed, setImageFailed] = useState(false);
+
+  useEffect(() => {
+    setImageFailed(false);
+  }, [imagePath]);
+
+  const showImage = item.thumbState === 'done' && imagePath !== null && !imageFailed;
 
   return (
     <Box
@@ -125,13 +131,14 @@ const PhotoTile = ({ item, selected, onSelect, onOpenViewer }: PhotoTileProps) =
         bgcolor: 'background.default',
       }}
     >
-      {item.thumbState === 'done' && imagePath !== null ? (
+      {showImage ? (
         <Box
           component="img"
           loading="lazy"
           alt={item.fileName}
           src={mediaUrl(imagePath, item.fingerprint)}
-          sx={{ width: '100%', height: '100%', objectFit: imageFit }}
+          onError={() => setImageFailed(true)}
+          sx={{ width: '100%', height: '100%', objectFit: 'cover' }}
         />
       ) : (
         <PlaceholderTile testId="photos-tile-placeholder" name={item.fileName} />

@@ -510,8 +510,14 @@ token + a plain `Typography variant="h2"`) carrying the semantic weight
 instead of a tinted background. `Alert` (with its assertive `role="alert"`
 live region — the wrong semantics for a block that is permanently present
 whenever the file is in that state) stays reserved for messages that really
-are transient reactions to a user action: `VariantSwitcher`'s `loadError` /
-`actionError`, `ReadinessNotice`, and modal/wizard alerts are unchanged. The
+are transient reactions to a user action: `VariantSwitcher`'s `actionError`,
+`ReadinessNotice`, and modal/wizard alerts are unchanged. W50 finished the
+sweep across the photos surfaces on the same test — does this block stay on
+screen for as long as a state holds, or does it react to one action? — so
+`PhotoDetailPane`'s "not analysed yet" strip, `PhotosScopeToolbar`'s
+proxies-pending strip and `VariantSwitcher`'s `loadError` (which never clears
+itself: it occupies the panel until a retry succeeds) are `Paper` sections
+too, with their action as a neutral outlined button. The
 duplicate notice's canonical path is a one-line monospace copy field
 (`CodeSnippetField`, `components/ui/`: ellipsis overflow, full path in
 `title`, a copy button with copied-feedback) rather than a link, with
@@ -1009,6 +1015,13 @@ only behind explicit user consent. With consent absent (the default), no
 exporter is registered and the facade no-ops — zero network. The wide-event
 middleware still runs (annotations are free); the composition root decides
 whether anything leaves the process.
+
+The same split applies to failure text: an `AppError.message` is user-facing
+copy and never carries a resolved executable path, a temp directory or any
+other internal filesystem location (v0.6.12 showed a `.../cmux-cli-shims/claude`
+path in the details panel). The analyzer command runner writes the full
+diagnostic — command, args, exit code, stderr — to the process's stderr, which
+the terminal log already surfaces, and returns a plain sentence to the caller.
 
 ## Delta 7 — configured readiness
 

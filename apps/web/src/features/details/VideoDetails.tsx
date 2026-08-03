@@ -7,7 +7,7 @@ import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { ArtifactsSection } from './ArtifactsSection.js';
-import { CardHeader } from './CardHeader.js';
+import { CardHeader } from '../../components/ui/CardHeader.js';
 import { type DetailsVideo } from './details-video.js';
 import { MetadataCard, type DetailsLocation } from './MetadataCard.js';
 import { StatusActions } from './StatusActions.js';
@@ -149,9 +149,11 @@ export const VideoDetails = ({
 
           {duplicate === null ? (
             <>
-              <Typography variant="body2" color="text.secondary">
-                {statusDescription(dictionary, video.status, analyzing)}
-              </Typography>
+              {video.status === 'error' && !analyzing ? null : (
+                <Typography variant="body2" color="text.secondary">
+                  {statusDescription(dictionary, video.status, analyzing)}
+                </Typography>
+              )}
               <StatusActions
                 video={video}
                 analyzing={analyzing}

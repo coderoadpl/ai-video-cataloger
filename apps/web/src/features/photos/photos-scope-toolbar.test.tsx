@@ -92,6 +92,14 @@ describe('PhotosScopeToolbar', () => {
     expect(generateProxies).toHaveBeenCalled();
   });
 
+  it('renders the proxies-pending state as a neutral Paper section, not a tinted alert', () => {
+    renderThemed(<PhotosScopeToolbar state={baseState({
+      counts: { photos: 3, paths: 3, proxied: 0, proxyFailed: 0 },
+    })} />);
+
+    expect(screen.getByTestId('photos-proxies-pending').getAttribute('role')).not.toBe('alert');
+  });
+
   it('hides the proxies-pending affordance once proxies exist', () => {
     renderThemed(<PhotosScopeToolbar state={baseState({
       counts: { photos: 3, paths: 3, proxied: 3, proxyFailed: 0 },

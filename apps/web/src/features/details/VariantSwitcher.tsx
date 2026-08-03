@@ -10,8 +10,9 @@ import {
   Typography,
 } from '@mui/material';
 
+import { CardHeader } from '../../components/ui/CardHeader.js';
 import { StatusBadge } from '../../components/ui/StatusBadge.js';
-import { CheckCircleIcon } from '../../components/ui/icons.js';
+import { CheckCircleIcon, ErrorIcon } from '../../components/ui/icons.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { variantLabelModel, type VariantData } from './core/variant-model.js';
@@ -64,16 +65,21 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
   }
   if (state.loadError !== null) {
     return (
-      <Alert
-        severity="error"
-        action={(
-          <Button color="inherit" size="small" onClick={state.retryLoad}>
+      <Paper
+        variant="outlined"
+        data-testid="variant-load-error"
+        sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}
+      >
+        <CardHeader
+          icon={<ErrorIcon fontSize="small" sx={{ color: 'status.error.main' }} />}
+          title={dictionary.details.variants.loadError}
+        />
+        <Box>
+          <Button variant="outlined" size="small" onClick={state.retryLoad}>
             {dictionary.details.variants.retry}
           </Button>
-        )}
-      >
-        {dictionary.details.variants.loadError}
-      </Alert>
+        </Box>
+      </Paper>
     );
   }
   if (data === null || data.variants.length < 2) return null;

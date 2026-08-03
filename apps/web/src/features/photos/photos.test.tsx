@@ -237,7 +237,7 @@ describe('PhotosView', () => {
     expect(image === null || image === undefined ? null : window.getComputedStyle(image).objectFit).toBe('cover');
   });
 
-  it('never crops-and-upscales the small thumb when no grid thumbnail exists', async () => {
+  it('renders a square cover tile from the small thumb when no grid thumbnail exists', async () => {
     const items = [
       photoItem({
         fingerprint: 'ph_0000000000000002',
@@ -251,7 +251,22 @@ describe('PhotosView', () => {
 
     const tiles = await screen.findAllByTestId('photos-tile');
     const image = tiles[0]?.querySelector('img');
-    expect(image === null || image === undefined ? null : window.getComputedStyle(image).objectFit).toBe('contain');
+    expect(image === null || image === undefined ? null : window.getComputedStyle(image).objectFit).toBe('cover');
+  });
+
+  it('falls back to the placeholder tile when the thumbnail image fails to load', async () => {
+    const items = [photoItem({ fingerprint: 'ph_0000000000000004' })];
+    stubPhotos({ roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2024-03-02T10:00:00.000Z' }], items });
+
+    renderThemed(<PhotosView active />);
+
+    const tiles = await screen.findAllByTestId('photos-tile');
+    const image = tiles[0]?.querySelector('img');
+    if (image === null || image === undefined) throw new Error('missing image element');
+    fireEvent.error(image);
+
+    expect(await screen.findByTestId('photos-tile-placeholder')).toBeDefined();
+    expect(tiles[0]?.querySelector('img')).toBeNull();
   });
 
   it('renders a square gradient placeholder for a photo tile with no thumbnail', async () => {

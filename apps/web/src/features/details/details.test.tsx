@@ -166,6 +166,19 @@ describe('details panel', () => {
     expect(screen.getByText('Full AI Analysis')).toBeDefined();
   });
 
+  it('shows the processing-failed message exactly once, and never leaks a raw internal command path', () => {
+    const video = makeVideo({
+      status: 'error',
+      errorMessage: 'rate limit exceeded',
+    });
+
+    renderThemed(<DetailsPanel video={video} analyzing={false} onAnalyze={vi.fn()} />);
+
+    expect(screen.getByRole('heading', { name: 'Processing Failed' })).toBeDefined();
+    expect(screen.getAllByText('rate limit exceeded')).toHaveLength(1);
+    expect(screen.queryByText('An error occurred during processing.')).toBeNull();
+  });
+
   it('shows the full AI analysis always expanded, with no collapse affordance', () => {
     const video = makeVideo({
       artifacts: {
@@ -434,9 +447,9 @@ describe('details panel', () => {
 
     renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
 
-    const alert = await screen.findByRole('alert');
-    expect(alert.textContent).toContain('Could not load analysis variants.');
-    fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
+    const notice = await screen.findByTestId('variant-load-error');
+    expect(notice.textContent).toContain('Could not load analysis variants.');
+    fireEvent.click(within(notice).getByRole('button', { name: 'Retry' }));
     await screen.findByTestId('variant-switcher');
     expect(screen.getByText('2 variants')).toBeDefined();
     expect(requests).toBe(2);

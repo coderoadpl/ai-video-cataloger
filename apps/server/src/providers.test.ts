@@ -192,7 +192,7 @@ describe('provider routes', () => {
         providerId: 'missing-agent',
         available: false,
         version: null,
-        message: expect.stringContaining('ENOENT'),
+        message: 'Command not found.',
       },
     });
   }, scaledTimeout(30_000));

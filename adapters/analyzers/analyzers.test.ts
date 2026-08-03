@@ -404,6 +404,54 @@ describe('HarnessAnalyzerAdapter', () => {
       error: { message: expect.stringContaining(cause === 'timeout' ? 'timed out' : 'cancelled') },
     });
   }, scaledTimeout(30_000));
+
+  it('never leaks the resolved command path into the user-facing error when a command fails with no stderr', async () => {
+    const stderrWrites: string[] = [];
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stderrWrites.push(chunk.toString());
+      return true;
+    });
+
+    try {
+      const result = await childProcessAnalyzerCommandRunner.run(process.execPath, ['-e', 'process.exit(3)'], {
+        env: process.env,
+        timeoutMs: 5000,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.error.message).not.toContain(process.execPath);
+      expect(result.error.message).toContain('3');
+
+      const logged = stderrWrites.join('');
+      expect(logged).toContain(process.execPath);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  }, scaledTimeout(10_000));
+
+  it('never leaks the resolved command path into the user-facing error when the command cannot be spawned', async () => {
+    const stderrWrites: string[] = [];
+    const writeSpy = vi.spyOn(process.stderr, 'write').mockImplementation((chunk: string | Uint8Array) => {
+      stderrWrites.push(chunk.toString());
+      return true;
+    });
+    const missing = path.join(tmpdir(), 'avc-missing-shims', 'claude');
+
+    try {
+      const result = await childProcessAnalyzerCommandRunner.run(missing, ['--version'], {
+        env: process.env,
+        timeoutMs: 5000,
+      });
+
+      expect(result.ok).toBe(false);
+      if (result.ok) throw new Error('expected failure');
+      expect(result.error.message).not.toContain(missing);
+      expect(stderrWrites.join('')).toContain(missing);
+    } finally {
+      writeSpy.mockRestore();
+    }
+  }, scaledTimeout(10_000));
 });
 
 describe('OllamaAnalyzerAdapter', () => {

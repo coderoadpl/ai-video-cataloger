@@ -1044,6 +1044,16 @@ const postOllamaChat = async (
 const unavailableMessage = (baseUrl: string, cause: unknown): string =>
   `Local AI runtime not reachable at ${baseUrl}: ${cause instanceof Error ? cause.message : String(cause)}`;
 
+const spawnErrnoSchema = z.object({ code: z.string() });
+
+const spawnFailureMessage = (cause: unknown): string => {
+  const parsed = spawnErrnoSchema.safeParse(cause);
+  if (!parsed.success) return 'Command could not be started.';
+  if (parsed.data.code === 'ENOENT') return 'Command not found.';
+  if (parsed.data.code === 'EACCES') return 'Command is not executable.';
+  return `Command could not be started (${parsed.data.code}).`;
+};
+
 export const childProcessAnalyzerCommandRunner: AnalyzerCommandRunner = {
   run: (command, args, options) =>
     new Promise((resolve) => {
@@ -1090,7 +1100,8 @@ export const childProcessAnalyzerCommandRunner: AnalyzerCommandRunner = {
         clearTimeout(timeout);
         if (forcedTermination !== undefined) clearTimeout(forcedTermination);
         options.signal?.removeEventListener('abort', abort);
-        resolve({ ok: false, error: appError('processing_error', cause.message, cause) });
+        process.stderr.write(`[analyzer] command could not be started: ${command} ${args.join(' ')}\n${cause.message}\n`);
+        resolve({ ok: false, error: appError('processing_error', spawnFailureMessage(cause), cause) });
       });
       child.on('close', (code) => {
         if (settled) return;
@@ -1099,15 +1110,21 @@ export const childProcessAnalyzerCommandRunner: AnalyzerCommandRunner = {
         if (forcedTermination !== undefined) clearTimeout(forcedTermination);
         options.signal?.removeEventListener('abort', abort);
         if (timedOut) {
-          resolve({ ok: false, error: appError('processing_error', `Command timed out: ${command}`) });
+          process.stderr.write(`[analyzer] command timed out: ${command} ${args.join(' ')}\n${stderr}`);
+          resolve({ ok: false, error: appError('processing_error', 'Command timed out.') });
           return;
         }
         if (cancelled) {
-          resolve({ ok: false, error: appError('processing_error', `Command cancelled: ${command}`) });
+          process.stderr.write(`[analyzer] command cancelled: ${command} ${args.join(' ')}\n${stderr}`);
+          resolve({ ok: false, error: appError('processing_error', 'Command cancelled.') });
           return;
         }
         if (code !== 0) {
-          resolve({ ok: false, error: appError('processing_error', stderr.trim() || `Command failed: ${command}`) });
+          process.stderr.write(`[analyzer] command failed (exit ${String(code)}): ${command} ${args.join(' ')}\n${stderr}`);
+          resolve({
+            ok: false,
+            error: appError('processing_error', stderr.trim() || `Command failed (exit code ${String(code)}).`),
+          });
           return;
         }
         resolve(ok({ stdout, stderr }));

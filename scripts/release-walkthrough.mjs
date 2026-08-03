@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
@@ -21,7 +21,8 @@ Options:
   --analyze-timeout <seconds>  Wait for one analysis run to finish (default: 300).
   --window-size <WxH>          Window size for the driven app, e.g. 1920x1200 (default: 1920x1200).
   --dry-run                    Validate the inputs, write plan.json, stop before launching the app.
-  --strict                     Exit 1 if any step reports 'skipped' (release runs use this).
+  --strict                     Exit 1 if any step reports 'skipped', except the tolerated allowlist
+                               (first-run-wizard, library-preview — see docs/qa/release-walkthrough.md).
   --archive-to <path>          Copy the finished screenshot set (plan.json, manifest.json and every
                                PNG) to this directory before the run exits, so it survives a worktree
                                cleanup. Release runs pass
@@ -30,7 +31,9 @@ Options:
 
 Every run launches with an isolated user-data directory, an isolated home and
 AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1: it never reads or writes the real catalog,
-the real settings or the login keychain.
+the real settings or the login keychain. The home's config.json is seeded with
+ui_language: "pl" before launch, so every screenshot shows production Polish
+copy, not English fallback strings.
 `;
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
@@ -157,6 +160,14 @@ const seedWindowState = (plan) => {
   );
 };
 
+const seedUiLanguage = (plan) => {
+  const configDir = path.join(plan.homeDir, '.ai-video-cataloger');
+  const configFile = path.join(configDir, 'config.json');
+  mkdirSync(configDir, { recursive: true });
+  const existing = existsSync(configFile) ? JSON.parse(readFileSync(configFile, 'utf8')) : {};
+  writeFileSync(configFile, JSON.stringify({ ...existing, ui_language: 'pl' }, null, 2));
+};
+
 const appeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
   try {
     await locator.first().waitFor({ state: 'visible', timeout });
@@ -168,6 +179,14 @@ const appeared = async (locator, timeout = VISIBLE_TIMEOUT_MS) => {
 
 const done = (note = '') => ({ status: 'ok', note });
 const skipped = (note) => ({ status: 'skipped', note });
+
+// Both steps depend on state a reused QA home may legitimately not have (a
+// wizard that already got dismissed, a Library tile from an earlier scan);
+// docs/qa/release-walkthrough.md carries the full rationale.
+export const TOLERATED_SKIPS = new Set(['first-run-wizard', 'library-preview']);
+
+export const blockingSkips = (results) =>
+  results.filter((result) => result.status === 'skipped' && !TOLERATED_SKIPS.has(result.name));
 
 /* eslint-disable no-undef -- runs inside the driven page via Playwright's waitForFunction, not this Node process */
 const noPendingTransitionsOrSpinners = () =>
@@ -220,6 +239,7 @@ const stubOpenDialog = async (app, folderPath) => {
 
 const drive = async (plan) => {
   seedWindowState(plan);
+  seedUiLanguage(plan);
   const launchedAt = Date.now();
   const app = await electron.launch({
     executablePath: plan.executablePath,
@@ -484,19 +504,23 @@ const main = async () => {
     cpSync(plan.outDir, plan.archiveTo, { recursive: true });
     console.log(`release-walkthrough: archived the screenshot set to ${plan.archiveTo}`);
   }
-  if (plan.strict && skippedSteps.length > 0) {
-    console.error(`release-walkthrough: --strict forbids skipped steps: ${skippedSteps.map((step) => step.name).join(', ')}`);
+  const blocking = blockingSkips(skippedSteps);
+  if (plan.strict && blocking.length > 0) {
+    console.error(`release-walkthrough: --strict forbids skipped steps: ${blocking.map((step) => step.name).join(', ')}`);
     return 1;
   }
   return failed.length === 0 ? 0 : 1;
 };
 
-main().then(
-  (code) => {
-    process.exitCode = code;
-  },
-  (error) => {
-    console.error(`release-walkthrough: ${error instanceof Error ? error.message : String(error)}`);
-    process.exitCode = 1;
-  },
-);
+const isDirectlyExecuted = process.argv[1] !== undefined && import.meta.url === `file://${process.argv[1]}`;
+if (isDirectlyExecuted) {
+  main().then(
+    (code) => {
+      process.exitCode = code;
+    },
+    (error) => {
+      console.error(`release-walkthrough: ${error instanceof Error ? error.message : String(error)}`);
+      process.exitCode = 1;
+    },
+  );
+}

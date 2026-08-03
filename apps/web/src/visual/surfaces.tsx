@@ -20,6 +20,7 @@ import {
   VariantCompareView,
   type VariantCompareVariant,
 } from '../features/details/VariantCompareView.js';
+import { PhotosScopeToggle } from '../features/photos/PhotosScopeToggle.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { type PhotosAnalysisState } from '../features/photos/use-photos-analysis.js';
 import { getDict } from '../i18n/dictionary.js';
@@ -364,6 +365,7 @@ const PhotosSidebarFixture = ({ width }: { width: number }) => (
       isCheckingFolder={false}
       onSelectRecentFolder={noop}
       onClearRecentFolders={noop}
+      scopeToggle={<PhotosScopeToggle scope="folder" onScopeChange={noop} />}
     />
   </SidebarPanelFrame>
 );

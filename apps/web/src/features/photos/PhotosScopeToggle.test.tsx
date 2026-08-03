@@ -18,4 +18,22 @@ describe('PhotosScopeToggle', () => {
     fireEvent.click(screen.getByTestId('photos-scope-all'));
     expect(onScopeChange).toHaveBeenCalledWith('all');
   });
+
+  it('truncates each toggle label instead of wrapping onto a second line at narrow widths', () => {
+    renderThemed(<PhotosScopeToggle scope="folder" onScopeChange={vi.fn()} />);
+
+    const folderButton = screen.getByTestId('photos-scope-folder');
+    const allButton = screen.getByTestId('photos-scope-all');
+    expect(getComputedStyle(folderButton).minWidth).toBe('0px');
+    expect(getComputedStyle(allButton).minWidth).toBe('0px');
+
+    for (const button of [folderButton, allButton]) {
+      const label = button.querySelector('span');
+      if (label === null) throw new Error('missing label span');
+      const style = getComputedStyle(label);
+      expect(style.whiteSpace).toBe('nowrap');
+      expect(style.overflow).toBe('hidden');
+      expect(style.textOverflow).toBe('ellipsis');
+    }
+  });
 });

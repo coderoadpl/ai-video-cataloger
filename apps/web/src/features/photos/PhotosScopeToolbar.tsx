@@ -1,5 +1,7 @@
-import { Alert, Box, Button, LinearProgress, Typography } from '@mui/material';
+import { Box, Button, LinearProgress, Paper, Typography } from '@mui/material';
 
+import { CardHeader } from '../../components/ui/CardHeader.js';
+import { ImageIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { PhotosAnalysisState } from './use-photos-analysis.js';
 
@@ -62,17 +64,21 @@ export const PhotosScopeToolbar = ({ state }: PhotosScopeToolbarProps) => {
         </Box>
       ) : null}
       {proxiesPending ? (
-        <Alert
-          severity="info"
+        <Paper
+          variant="outlined"
           data-testid="photos-proxies-pending"
-          action={
-            <Button color="inherit" size="small" onClick={state.generateProxies} disabled={state.isBusy}>
+          sx={{ p: 1.5, display: 'flex', flexDirection: 'column', gap: 1 }}
+        >
+          <CardHeader
+            icon={<ImageIcon fontSize="small" sx={{ color: 'status.notTracked.main' }} />}
+            title={dictionary.photos.proxiesPendingStrip}
+          />
+          <Box>
+            <Button variant="outlined" size="small" onClick={state.generateProxies} disabled={state.isBusy}>
               {dictionary.photos.generateProxiesAction}
             </Button>
-          }
-        >
-          {dictionary.photos.proxiesPendingStrip}
-        </Alert>
+          </Box>
+        </Paper>
       ) : null}
     </Box>
   );

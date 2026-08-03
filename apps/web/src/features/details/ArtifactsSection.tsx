@@ -2,7 +2,7 @@ import { Box, Paper, Typography } from '@mui/material';
 
 import { DescriptionIcon, ImageIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
-import { CardHeader } from './CardHeader.js';
+import { CardHeader } from '../../components/ui/CardHeader.js';
 import { type DetailsVideo } from './details-video.js';
 import { FrameGallery } from './FrameGallery.js';
 

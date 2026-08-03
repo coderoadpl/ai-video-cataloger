@@ -30,6 +30,12 @@ Every run launches with:
   QA home, so the home-scoped catalog, config and models are never the owner's.
 - `AI_VIDEO_CATALOGER_DISABLE_KEYCHAIN=1` — the login keychain is never read,
   written or prompted for.
+- `ui_language: "pl"` — seeded into the home's `.ai-video-cataloger/config.json`
+  before launch (merged with whatever else a prepared QA home already has
+  there), so every captured screenshot shows production Polish copy instead of
+  the English fallback. Reviewing an English capture cannot catch a Polish
+  copy defect (W50: the v0.6.12 review ran in English and could not judge
+  Polish strings at all).
 
 A run therefore never mutates real user data. Analysis needs a configured
 analyzer, which a throwaway home does not have: pass `--home` pointing at a
@@ -72,10 +78,24 @@ pass is not.
    `--dry-run` validates the inputs and writes `plan.json` without launching
    the app. Release runs add `--strict`: any step that reports `skipped`
    turns the exit code non-zero instead of leaving it to a reviewer to
-   notice in the manifest. `--archive-to <dir>` copies the finished set
-   (`plan.json`, `manifest.json`, every PNG) to `<dir>` before the process
-   exits — run it **before any worktree cleanup**; a set that only exists
-   inside a worktree does not survive the worktree being removed.
+   notice in the manifest — **except** the tolerated-skips allowlist
+   (`TOLERATED_SKIPS` in `scripts/release-walkthrough.mjs`):
+
+   - `first-run-wizard` — the wizard's dismissal is persisted to the home, so
+     it never fires again once a prepared QA home has opened it before; a
+     home reused across walkthrough runs (as `--home` recommends) will
+     legitimately skip this every time after the first.
+   - `library-preview` — depends on the Library already holding a tile left
+     over from a previous scan into that home; a home whose most recent scan
+     was into a different folder can legitimately have nothing to preview.
+
+   Every other `skipped` step (no analyzer configured, no photos catalogued,
+   no subfolders in the fixture tree, …) still turns `--strict` non-zero: a
+   tolerated skip is reported in the summary and the manifest exactly like
+   before, it just does not fail the run. `--archive-to <dir>` copies the
+   finished set (`plan.json`, `manifest.json`, every PNG) to `<dir>` before
+   the process exits — run it **before any worktree cleanup**; a set that
+   only exists inside a worktree does not survive the worktree being removed.
 
 4. Hand the archived set to an **independent reviewer** — someone other than
    whoever ran step 3 — and have them work the checklist below against the

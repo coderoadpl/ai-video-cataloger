@@ -126,7 +126,7 @@ export default defineConfig({
       },
       {
         extends: true,
-        test: { name: 'scripts', environment: 'node', include: ['scripts/**/*.test.ts'] },
+        test: { name: 'scripts', environment: 'node', include: ['scripts/**/*.test.{ts,mjs}'] },
       },
     ],
   },

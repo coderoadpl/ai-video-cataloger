@@ -158,7 +158,9 @@ describe('PhotosWorkspace', () => {
     />);
 
     expect(screen.getByTestId('photos-analysis-detail')).toBeDefined();
-    expect(screen.getByTestId('photos-analyze-strip')).toBeDefined();
+    const strip = screen.getByTestId('photos-analyze-strip');
+    expect(strip).toBeDefined();
+    expect(strip.getAttribute('role')).not.toBe('alert');
     expect(screen.getByTestId('photos-analyze-action').textContent).toBe('Analyze');
     expect(screen.queryByTestId('photos-workspace-empty')).toBeNull();
   });
