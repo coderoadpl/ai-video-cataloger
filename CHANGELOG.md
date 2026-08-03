@@ -14,22 +14,27 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.12] - 2026-08-03
+
 ### Added
 
 - `pnpm run qa:walkthrough` gained an `--archive-to <dir>` flag that copies
   the finished screenshot set (`plan.json`, `manifest.json`, every PNG) to a
   directory outside the worktree before the process exits, so a release
-  screenshot set survives a worktree cleanup.
+  screenshot set survives a worktree cleanup
+  ([`7025800`](https://github.com/coderoadpl/ai-video-cataloger/commit/7025800db605a7f1ad180fc71cb1f42b92aa3ded)).
 
 ### Changed
 
 - `pnpm run visual` now joins `pnpm run check` (runs last) and its darwin
   baselines cover the `CatalogSidebar`/`PhotosSidebar` skeletons — including
   the `SidebarFolderPanel` split button — at a 260px stress width and the
-  440px default width, in both themes.
+  440px default width, in both themes
+  ([`7025800`](https://github.com/coderoadpl/ai-video-cataloger/commit/7025800db605a7f1ad180fc71cb1f42b92aa3ded)).
 - The release walkthrough procedure now requires an independent reviewer
   (never the agent that ran the walkthrough) to work the screenshot checklist
-  against the archived set, with authority to fail the release.
+  against the archived set, with authority to fail the release
+  ([`7025800`](https://github.com/coderoadpl/ai-video-cataloger/commit/7025800db605a7f1ad180fc71cb1f42b92aa3ded)).
 - Entering Analysis → Zdjęcia for a folder that has never been photo-scanned
   now auto-starts the scan immediately, showing the normal scan progress in
   the sidebar, instead of gating on a "Skanuj ten folder" button click — the
@@ -37,11 +42,13 @@ release history jumps from `0.5.10` to `0.5.12`.
   per session; a folder with no photos lands on the honest "no photos here"
   sidebar state once the scan completes, and a scan that fails (unmounted
   drive, deleted folder) shows the error with a "Skanuj folder" retry action
-  instead of an indexing caption that never ends.
+  instead of an indexing caption that never ends
+  ([`39e83dc`](https://github.com/coderoadpl/ai-video-cataloger/commit/39e83dcd8339a54cfedfbe2dd8cff5052db79c46)).
 - The video details pane's primary analyze button reads just "Analizuj" (and
   drops the "Utworzy nowy wariant." helper line) when the file has zero
   analysis variants, instead of "Analizuj jako nowy wariant"; once at least
-  one variant exists the button keeps its prior label and helper text.
+  one variant exists the button keeps its prior label and helper text
+  ([`39e83dc`](https://github.com/coderoadpl/ai-video-cataloger/commit/39e83dcd8339a54cfedfbe2dd8cff5052db79c46)).
 - The details pane's "Przetwarzanie nieukończone" and "Plik zduplikowany"
   notices are now plain `Paper` sections with a status-colored header icon
   instead of tinted `Alert` backgrounds, matching the rest of the pane; the
@@ -57,7 +64,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   and shows the selected variant as a status badge instead of a plain filled
   chip. Outlined buttons app-wide now render with a neutral border/text
   instead of primary blue by default, so "blue outlined" is no longer a third
-  button style alongside filled-primary and neutral-outlined.
+  button style alongside filled-primary and neutral-outlined
+  ([`9121f10`](https://github.com/coderoadpl/ai-video-cataloger/commit/9121f1028728efef4e202d993e1a9793fb5c3e18)).
 
 ### Fixed
 
@@ -65,18 +73,22 @@ release history jumps from `0.5.10` to `0.5.12`.
   no longer renders with the "Otwórz folder" segment squeezed to a sliver
   and the `▾` dropdown segment stretched across the width; the main segment
   now grows to fill the available width and the dropdown stays a fixed
-  narrow cap.
+  narrow cap
+  ([`0d8ed43`](https://github.com/coderoadpl/ai-video-cataloger/commit/0d8ed437db926263618b65f1c752e321ea1f4a00)).
 - A photo-scanned folder with zero photos now shows the honest "no photos"
   empty state instead of a bare, unlabeled section header with nothing
-  under it.
+  under it
+  ([`f33e860`](https://github.com/coderoadpl/ai-video-cataloger/commit/f33e860d75600e02b999731acbb987c68bad853a)).
 - The setup wizard's language step now seeds the output-language dropdown
   from the currently open folder's effective config instead of always
   reading the home-scope default, so it stops proposing English when the
-  folder already has a different output language configured.
+  folder already has a different output language configured
+  ([`f33e860`](https://github.com/coderoadpl/ai-video-cataloger/commit/f33e860d75600e02b999731acbb987c68bad853a)).
 - Library tiles for an unavailable file no longer render dimmed relative to
   their siblings when the containing folder is also offline; every
   unavailable tile now gets the same full-opacity treatment as a plain
-  offline-folder tile, with a single badge.
+  offline-folder tile, with a single badge
+  ([`f33e860`](https://github.com/coderoadpl/ai-video-cataloger/commit/f33e860d75600e02b999731acbb987c68bad853a)).
 - Settings and the setup wizard now write every config key home-scoped
   (the W35b settings-flatten pass covered reads only; a save from either
   surface used to write folder-scoped for any key that wasn't one of the
@@ -86,7 +98,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   also clears that override (a new `configUnset` contract action,
   `DELETE /api/config`), so the value just saved takes effect immediately
   instead of continuing to be shadowed. `config set --folder` in the CLI is
-  unchanged and stays the only way to create a per-folder override.
+  unchanged and stays the only way to create a per-folder override
+  ([`3db5ad8`](https://github.com/coderoadpl/ai-video-cataloger/commit/3db5ad88e354e5cc2115b715a0c451227a335a7c)).
 - Grid thumbnails (`.grid.jpg`) now generate for every completed file, not
   only ones whose selected variant has a projected frames directory: the
   backfill pass, search/library "ensure" mode, and the post-analysis
@@ -94,7 +107,8 @@ release history jumps from `0.5.10` to `0.5.12`.
   frame from the artifact store, then a source-video seek, before giving up.
   Previously a completed native-Gemini variant (which never projects a
   frames directory) could never get a grid thumbnail and the library grid
-  fell back to stretching the legacy 128x72 cover.
+  fell back to stretching the legacy 128x72 cover
+  ([`67862fc`](https://github.com/coderoadpl/ai-video-cataloger/commit/67862fc462749022e641af0473c867a0d70cd874)).
 
 ## [0.6.11] - 2026-08-03
 
