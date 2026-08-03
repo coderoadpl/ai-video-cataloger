@@ -10,6 +10,8 @@ import {
   Typography,
 } from '@mui/material';
 
+import { StatusBadge } from '../../components/ui/StatusBadge.js';
+import { CheckCircleIcon } from '../../components/ui/icons.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { variantLabelModel, type VariantData } from './core/variant-model.js';
@@ -31,12 +33,21 @@ const VariantRow = ({
     selected={previewed}
     onClick={onPreview}
     data-testid={`variant-option-${variant.configId}`}
-    sx={{ borderRadius: 1, alignItems: 'flex-start', gap: 1 }}
+    sx={{ borderRadius: 1, alignItems: 'center', gap: 1.5, px: 1.5, py: 1, minHeight: 40 }}
   >
-    <Typography variant="body2" sx={{ flex: 1 }}>
+    <Typography variant="body2" sx={{ flex: 1, minWidth: 0, lineHeight: 1.4 }}>
       {variantLabelText(variantLabelModel(variant), dictionary)}
     </Typography>
-    {variant.selected ? <Chip size="small" label={dictionary.details.variants.selected} /> : null}
+    {variant.selected ? (
+      <Box sx={{ flexShrink: 0 }}>
+        <StatusBadge
+          icon={<CheckCircleIcon fontSize="inherit" />}
+          label={dictionary.details.variants.selected}
+          token="completed"
+          testId="variant-selected-badge"
+        />
+      </Box>
+    ) : null}
   </ListItemButton>
 );
 
@@ -65,10 +76,7 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
       </Alert>
     );
   }
-  if (data === null) return null;
-  const selectedVariant = data.variants.find((variant) => variant.selected);
-  const selectedIsDefault = selectedVariant !== undefined
-    && data.folderDefaultConfigId === selectedVariant.configId;
+  if (data === null || data.variants.length < 2) return null;
 
   return (
     <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1.5 }}>
@@ -76,7 +84,7 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
         <Typography variant="h2">{dictionary.details.variants.title}</Typography>
         <Chip size="small" variant="outlined" label={dictionary.details.variants.count(data.variants.length)} />
       </Box>
-      <List dense disablePadding data-testid="variant-switcher">
+      <List disablePadding data-testid="variant-switcher" sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         {data.variants.map((variant) => (
           <VariantRow
             key={variant.configId}
@@ -87,16 +95,14 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
           />
         ))}
       </List>
-      {data.variants.length < 2 ? null : (
-        <Button
-          variant="outlined"
-          size="small"
-          onClick={state.showComparison}
-          data-testid="compare-variants"
-        >
-          {dictionary.details.variants.compare}
-        </Button>
-      )}
+      <Button
+        variant="outlined"
+        size="small"
+        onClick={state.showComparison}
+        data-testid="compare-variants"
+      >
+        {dictionary.details.variants.compare}
+      </Button>
       {state.previewVariant === null || state.previewVariant.selected ? null : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
           <Button
@@ -114,22 +120,6 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
           <Typography variant="caption">{dictionary.details.variants.selectionImpact}</Typography>
         </Box>
       )}
-      <Button
-        variant="outlined"
-        size="small"
-        disabled={
-          selectedVariant === undefined
-          || selectedIsDefault
-          || state.selectingConfigId !== null
-          || state.settingFolderDefault
-        }
-        onClick={state.useCurrentAsFolderDefault}
-        data-testid="set-folder-default-variant"
-      >
-        {selectedIsDefault
-          ? dictionary.details.variants.folderDefault
-          : dictionary.details.variants.setFolderDefault}
-      </Button>
       {state.actionError === null ? null : (
         <Alert severity="error">{dictionary.details.variants.actionError}</Alert>
       )}

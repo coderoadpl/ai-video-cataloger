@@ -337,6 +337,29 @@ describe('details panel', () => {
     expect(screen.queryByTestId('video-status-badge')).toBeNull();
   });
 
+  it('shows the duplicate notice as a plain section with a one-line copy field and a button to jump to the original', () => {
+    const onNavigateToCanonical = vi.fn();
+    const video = makeVideo({ status: 'pending', duplicate: { canonicalPath: '/videos/canon.mp4' } });
+    renderThemed(
+      <DetailsPanel
+        video={video}
+        analyzing={false}
+        onAnalyze={vi.fn()}
+        onNavigateToCanonical={onNavigateToCanonical}
+      />,
+    );
+
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Duplicate file' })).toBeDefined();
+    const canonicalField = screen.getByTestId('duplicate-canonical-path');
+    expect(canonicalField.textContent).toBe('/videos/canon.mp4');
+    expect(canonicalField.tagName).toBe('CODE');
+    expect(screen.queryByRole('link')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('duplicate-canonical-button'));
+    expect(onNavigateToCanonical).toHaveBeenCalledWith('/videos/canon.mp4');
+  });
+
   it('replaces the duplicate badge with Processing while a forced analysis runs', () => {
     const video = makeVideo({ status: 'pending', duplicate: { canonicalPath: '/videos/canon.mp4' } });
     renderThemed(<DetailsPanel video={video} analyzing onAnalyze={vi.fn()} />);
@@ -404,6 +427,7 @@ describe('details panel', () => {
         }
         return HttpResponse.json(variantsResponse([
           variant(firstConfigId, firstDescriptor, true, 'Recovered summary'),
+          variant(secondConfigId, secondDescriptor, false, 'Second summary'),
         ]));
       }),
     );
@@ -414,7 +438,7 @@ describe('details panel', () => {
     expect(alert.textContent).toContain('Could not load analysis variants.');
     fireEvent.click(within(alert).getByRole('button', { name: 'Retry' }));
     await screen.findByTestId('variant-switcher');
-    expect(screen.getByText('1 variant')).toBeDefined();
+    expect(screen.getByText('2 variants')).toBeDefined();
     expect(requests).toBe(2);
   });
 
@@ -436,7 +460,7 @@ describe('details panel', () => {
       }),
     );
     const rendered = renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
-    await screen.findByTestId('variant-switcher');
+    await waitFor(() => expect(screen.queryByText('Loading analysis variants…')).toBeNull());
     const renamed = makeVideo({
       path: '/videos/2026-08-03_renamed.mp4',
       filename: '2026-08-03_renamed.mp4',
@@ -453,7 +477,7 @@ describe('details panel', () => {
 
     expect(await screen.findByRole('heading', { name: '2026-08-03_renamed.mp4' })).toBeDefined();
     expect(screen.getByText('/videos/2026-08-03_renamed.mp4')).toBeDefined();
-    expect(screen.getByText('1 variant')).toBeDefined();
+    expect(screen.queryByTestId('variant-switcher')).toBeNull();
     expect(screen.queryByText('Settings partly unknown')).toBeNull();
     expect(locators.every((locator) => locator === '?fingerprint=hash-a')).toBe(true);
   });
@@ -710,40 +734,49 @@ describe('details panel', () => {
     expect(onAnalyze).toHaveBeenCalledWith(video);
   });
 
-  it('enables the folder default action until the selected configuration is the stored default', async () => {
-    const defaultWrites: unknown[] = [];
-    let folderDefaultConfigId: string | null = null;
+  it('hides the entire variants section when the video has just one variant — no "1 variant" line, no pro-feature affordance for a non-choice', async () => {
     server.use(
       http.get('/api/variants', () => HttpResponse.json(variantsResponse([
-        variant(firstConfigId, firstDescriptor, false, 'First summary'),
-        variant(secondConfigId, secondDescriptor, true, 'Second summary'),
-      ], { configId: thirdConfigId, descriptor: thirdDescriptor }, folderDefaultConfigId))),
-      http.post('/api/variants/folder-default', async ({ request }) => {
-        defaultWrites.push(await request.json());
-        folderDefaultConfigId = secondConfigId;
-        return HttpResponse.json({
-          ok: true,
-          data: {
-            folderId: '11111111-1111-4111-8111-111111111111',
-            defaultConfigId: secondConfigId,
-            resolvedConfigId: secondConfigId,
-          },
-        });
-      }),
+        variant(firstConfigId, firstDescriptor, true, 'First summary'),
+      ]))),
     );
 
     renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
 
-    const defaultAction = await screen.findByTestId('set-folder-default-variant');
-    if (!(defaultAction instanceof HTMLButtonElement)) throw new Error('expected a button');
-    expect(defaultAction.disabled).toBe(false);
-    expect(defaultAction.textContent).toContain('Use current configuration as folder default');
-    fireEvent.click(defaultAction);
-    await waitFor(() => expect(defaultWrites).toEqual([
-      { folderPath: '/videos', configId: secondConfigId },
-    ]));
-    await waitFor(() => expect(defaultAction.disabled).toBe(true));
-    expect(defaultAction.textContent).toContain('Current configuration is the folder default');
+    await waitFor(() => expect(screen.queryByText('Loading analysis variants…')).toBeNull());
+    expect(screen.queryByTestId('variant-switcher')).toBeNull();
+    expect(screen.queryByText(/variant/i)).toBeNull();
+  });
+
+  it('never offers a folder-default button in the UI — the mechanism is dormant, not exposed', async () => {
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
+        variant(firstConfigId, firstDescriptor, false, 'First summary'),
+        variant(secondConfigId, secondDescriptor, true, 'Second summary'),
+      ]))),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+
+    await screen.findByTestId('variant-switcher');
+    expect(screen.queryByTestId('set-folder-default-variant')).toBeNull();
+    expect(screen.queryByText('Use current configuration as folder default')).toBeNull();
+  });
+
+  it('shows the selected variant as a completed-status badge, not a plain filled chip', async () => {
+    server.use(
+      http.get('/api/variants', () => HttpResponse.json(variantsResponse([
+        variant(firstConfigId, firstDescriptor, true, 'First summary'),
+        variant(secondConfigId, secondDescriptor, false, 'Second summary'),
+      ]))),
+    );
+
+    renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
+
+    await screen.findByTestId('variant-switcher');
+    const badge = screen.getByTestId('variant-selected-badge');
+    expect(badge.getAttribute('data-status-badge')).toBe('');
+    expect(badge.textContent).toContain('Selected');
   });
 });
 
@@ -786,5 +819,29 @@ describe('status actions', () => {
       <StatusActions video={makeVideo({ status: 'pending' })} analyzing onAnalyze={vi.fn()} />,
     );
     expect(screen.getByTestId('analyze-button').textContent).toContain('Analyzing…');
+  });
+
+  it('renders the interrupted-processing notice as a plain section, not an assertive alert, and the resume button as the primary filled action even while disabled', () => {
+    renderThemed(
+      <StatusActions video={makeVideo({ status: 'transcribed' })} analyzing onAnalyze={vi.fn()} />,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Processing Incomplete' })).toBeDefined();
+    const button = screen.getByTestId('analyze-button');
+    if (!(button instanceof HTMLButtonElement)) throw new Error('expected a button');
+    expect(button.className).toContain('MuiButton-contained');
+    expect(button.disabled).toBe(true);
+  });
+
+  it('renders the failed-processing notice as a plain section, not an assertive alert', () => {
+    renderThemed(
+      <StatusActions
+        video={makeVideo({ status: 'error', errorMessage: 'ffmpeg exploded' })}
+        analyzing={false}
+        onAnalyze={vi.fn()}
+      />,
+    );
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByRole('heading', { name: 'Processing Failed' })).toBeDefined();
   });
 });

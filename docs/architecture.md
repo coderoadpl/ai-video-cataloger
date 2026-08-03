@@ -498,6 +498,40 @@ null` (i.e. before any variant exists) and was already labelled with the bare
 "analyze as a new variant" affordance in the photos pane to begin with, so no
 change was needed there beyond confirming the existing label is correct.
 
+**Notice idiom: persistent state is a `Paper` section, `Alert` is transient
+(W45).** A file's status — interrupted processing, a failed run, being a
+duplicate — is true for as long as the file is in that state, not a one-off
+message reacting to something the user just did; `StatusActions`'s
+`isIncomplete`/`error` branches and `VideoDetails`'s `DuplicateDetail` render
+that as the same `Paper variant="outlined" sx={{ p: 2, flexDirection:
+'column', gap: 1 }}` section idiom as `MetadataCard` and `VariantSwitcher`,
+with a header row (small status icon in the matching `theme.palette.status.*`
+token + a plain `Typography variant="h2"`) carrying the semantic weight
+instead of a tinted background. `Alert` (with its assertive `role="alert"`
+live region — the wrong semantics for a block that is permanently present
+whenever the file is in that state) stays reserved for messages that really
+are transient reactions to a user action: `VariantSwitcher`'s `loadError` /
+`actionError`, `ReadinessNotice`, and modal/wizard alerts are unchanged. The
+duplicate notice's canonical path is a one-line monospace copy field
+(`CodeSnippetField`, `components/ui/`: ellipsis overflow, full path in
+`title`, a copy button with copied-feedback) rather than a link, with
+"Analizuj mimo to" and "Przejdź do oryginału" (canonical navigation, now a
+button, reusing the existing `onNavigateToCanonical` wiring) as two
+equal-weight secondary actions below it. `VariantSwitcher` hides itself
+entirely below two variants — a single variant is not a choice, so there is
+no "1 wariant" line — and its "Wybrany" marker is the same `StatusBadge`
+(`token="completed"`) vocabulary used everywhere else state is shown, not a
+plain filled `Chip` that reads as a button. Its folder-default action is
+removed from the UI (the `setFolderDefaultVariant` mutation and
+`useCurrentAsFolderDefault` stay wired in `use-variants.ts` for a future
+call site; the mechanism is dormant pending a parity decision, not deleted).
+Button language is exactly two styles app-wide — filled primary and neutral
+outlined with the divider-colored border also used by the header's
+Settings/Models buttons — enforced structurally by a `MuiButton` `variants`
+entry in `theme.ts` keyed on `{ variant: 'outlined', color: 'primary' }` so
+any default-color outlined button renders neutral without every call site
+passing `color="inherit"`.
+
 **Browse purification and the preview overlay.** Library and Map are
 strictly read-only: Library's Zdjęcia surface hides the analyze/re-run/
 variant-picker actions and folder scanning, Library's Osoby surface hides the

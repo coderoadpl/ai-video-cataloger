@@ -1,7 +1,8 @@
-import { Alert, Box, Button, CircularProgress, Typography } from '@mui/material';
+import { Box, Button, CircularProgress, Paper, Typography } from '@mui/material';
 
-import { PlayCircleIcon } from '../../components/ui/icons.js';
+import { ErrorIcon, PlayCircleIcon, WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { CardHeader } from './CardHeader.js';
 import { type DetailsVideo, isIncomplete } from './details-video.js';
 import { type AnalysisPlan } from './index.web.js';
 import { variantLabelText } from './variant-label.js';
@@ -71,19 +72,17 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
 
   if (isIncomplete(video.status)) {
     return (
-      <Alert
-        severity="warning"
-        icon={false}
-        sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}
-      >
-        <Typography variant="h2">{dictionary.details.processingIncomplete}</Typography>
+      <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <CardHeader
+          icon={<WarningIcon fontSize="small" sx={{ color: 'status.pending.main' }} />}
+          title={dictionary.details.processingIncomplete}
+        />
         <Typography variant="body2">
           {dictionary.details.incompleteHint}
         </Typography>
         <Button
           data-testid="analyze-button"
-          variant="outlined"
-          color="inherit"
+          variant="contained"
           fullWidth
           disabled={analyzing || disabledReason !== undefined}
           startIcon={analyzing ? spinner : play}
@@ -92,19 +91,22 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
           {analyzing ? dictionary.details.processingButton : actionLabel ?? dictionary.details.continueAnalysis}
         </Button>
         {disabledReason === undefined ? null : (
-          <Typography variant="caption">{disabledReason}</Typography>
+          <Typography variant="caption" align="center">{disabledReason}</Typography>
         )}
         {disabledReason !== undefined || planHint === null ? null : (
-          <Typography variant="caption">{planHint}</Typography>
+          <Typography variant="caption" align="center">{planHint}</Typography>
         )}
-      </Alert>
+      </Paper>
     );
   }
 
   if (video.status === 'error') {
     return (
-      <Alert severity="error" icon={false} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-        <Typography variant="h2">{dictionary.details.processingFailed}</Typography>
+      <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+        <CardHeader
+          icon={<ErrorIcon fontSize="small" sx={{ color: 'status.error.main' }} />}
+          title={dictionary.details.processingFailed}
+        />
         {video.errorMessage != null && video.errorMessage.length > 0 ? (
           <Typography variant="body2">{video.errorMessage}</Typography>
         ) : null}
@@ -112,7 +114,6 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
           <Button
             data-testid="analyze-button"
             variant="outlined"
-            color="inherit"
             size="small"
             disabled={analyzing || disabledReason !== undefined}
             startIcon={analyzing ? spinner : undefined}
@@ -127,7 +128,7 @@ export const StatusActions = ({ video, analyzing, onAnalyze, disabledReason, ana
         {disabledReason !== undefined || planHint === null ? null : (
           <Typography variant="caption">{planHint}</Typography>
         )}
-      </Alert>
+      </Paper>
     );
   }
 

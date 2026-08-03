@@ -169,6 +169,19 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
         styleOverrides: {
           root: { borderRadius: RADIUS - 2 },
         },
+        variants: [
+          {
+            props: { variant: 'outlined', color: 'primary' },
+            style: {
+              borderColor: c.border,
+              color: c.ink,
+              '&:hover': {
+                borderColor: c.border,
+                backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.04)' : 'rgba(0, 0, 0, 0.04)',
+              },
+            },
+          },
+        ],
       },
       MuiChip: {
         styleOverrides: {

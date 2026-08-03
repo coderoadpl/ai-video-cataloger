@@ -42,6 +42,22 @@ release history jumps from `0.5.10` to `0.5.12`.
   drops the "Utworzy nowy wariant." helper line) when the file has zero
   analysis variants, instead of "Analizuj jako nowy wariant"; once at least
   one variant exists the button keeps its prior label and helper text.
+- The details pane's "Przetwarzanie nieukończone" and "Plik zduplikowany"
+  notices are now plain `Paper` sections with a status-colored header icon
+  instead of tinted `Alert` backgrounds, matching the rest of the pane; the
+  duplicate notice's canonical path is a one-line monospace copy field with a
+  copy button instead of a link, alongside a new "Przejdź do oryginału"
+  button next to "Analizuj mimo to". The "Przetwarzanie..." resume button is
+  now the same filled primary button (disabled with a spinner) as the
+  pending-video analyze button, instead of a ghost outlined button that read
+  as dead while disabled. The "Warianty analizy" section now hides itself
+  entirely when a file has fewer than two variants (a single variant is not a
+  choice), drops the "Ustaw bieżącą konfigurację jako domyślną folderu"
+  button from the UI (the mechanism stays wired for a later parity decision),
+  and shows the selected variant as a status badge instead of a plain filled
+  chip. Outlined buttons app-wide now render with a neutral border/text
+  instead of primary blue by default, so "blue outlined" is no longer a third
+  button style alongside filled-primary and neutral-outlined.
 
 ### Fixed
 

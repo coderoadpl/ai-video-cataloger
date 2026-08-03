@@ -1,10 +1,13 @@
-import { Alert, Box, Button, Chip, Link, Typography } from '@mui/material';
+import { Box, Button, Chip, Paper, Typography } from '@mui/material';
 
+import { CodeSnippetField } from '../../components/ui/CodeSnippetField.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
+import { ContentCopyIcon } from '../../components/ui/icons.js';
 import { VideoStatusBadge } from '../../components/ui/VideoStatusBadge.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { ArtifactsSection } from './ArtifactsSection.js';
+import { CardHeader } from './CardHeader.js';
 import { type DetailsVideo } from './details-video.js';
 import { MetadataCard, type DetailsLocation } from './MetadataCard.js';
 import { StatusActions } from './StatusActions.js';
@@ -42,51 +45,46 @@ const DuplicateDetail = ({
   disabledReason?: string | undefined;
   dictionary: Dictionary;
 }) => (
-  <Alert severity="info" icon={false} sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-    <Typography variant="h2">{dictionary.details.duplicateTitle}</Typography>
+  <Paper variant="outlined" sx={{ p: 2, display: 'flex', flexDirection: 'column', gap: 1 }}>
+    <CardHeader icon={<ContentCopyIcon fontSize="small" />} title={dictionary.details.duplicateTitle} />
     <Typography variant="body2">{dictionary.details.duplicateExplanation}</Typography>
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
       <Typography variant="caption" color="text.secondary">
         {dictionary.details.duplicateCanonicalLabel}
       </Typography>
-      {onNavigateToCanonical === undefined ? (
-        <Typography variant="body2" sx={{ wordBreak: 'break-all' }}>
-          {canonicalPath}
-        </Typography>
-      ) : (
-        <Link
-          component="button"
-          type="button"
-          variant="body2"
-          align="left"
-          data-testid="duplicate-canonical-link"
-          onClick={() => onNavigateToCanonical(canonicalPath)}
-          sx={{ wordBreak: 'break-all', textAlign: 'left' }}
-        >
-          {canonicalPath}
-        </Link>
-      )}
+      <CodeSnippetField value={canonicalPath} testId="duplicate-canonical-path" />
     </Box>
-    {onAnalyze === undefined ? null : (
-      <Box sx={{ mt: 1 }}>
-        <Button
-          data-testid="analyze-anyway-button"
-          variant="outlined"
-          color="inherit"
-          size="small"
-          disabled={analyzing || disabledReason !== undefined}
-          onClick={() => onAnalyze(video, { force: true })}
-        >
-          {analyzing ? dictionary.details.analyzingButton : dictionary.details.analyzeAnyway}
-        </Button>
-        {disabledReason === undefined ? null : (
-          <Typography variant="caption" sx={{ display: 'block', mt: 0.5 }}>
-            {disabledReason}
-          </Typography>
+    {onAnalyze === undefined && onNavigateToCanonical === undefined ? null : (
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5, mt: 1 }}>
+        <Box sx={{ display: 'flex', gap: 1 }}>
+          {onAnalyze === undefined ? null : (
+            <Button
+              data-testid="analyze-anyway-button"
+              variant="outlined"
+              size="small"
+              disabled={analyzing || disabledReason !== undefined}
+              onClick={() => onAnalyze(video, { force: true })}
+            >
+              {analyzing ? dictionary.details.analyzingButton : dictionary.details.analyzeAnyway}
+            </Button>
+          )}
+          {onNavigateToCanonical === undefined ? null : (
+            <Button
+              data-testid="duplicate-canonical-button"
+              variant="outlined"
+              size="small"
+              onClick={() => onNavigateToCanonical(canonicalPath)}
+            >
+              {dictionary.details.navigateToOriginal}
+            </Button>
+          )}
+        </Box>
+        {onAnalyze === undefined || disabledReason === undefined ? null : (
+          <Typography variant="caption">{disabledReason}</Typography>
         )}
       </Box>
     )}
-  </Alert>
+  </Paper>
 );
 
 export const VideoDetails = ({

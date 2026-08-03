@@ -1,17 +1,10 @@
-import { type ReactNode } from 'react';
 import { Box, Paper, Typography } from '@mui/material';
 
 import { DescriptionIcon, ImageIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { CardHeader } from './CardHeader.js';
 import { type DetailsVideo } from './details-video.js';
 import { FrameGallery } from './FrameGallery.js';
-
-const CardHeader = ({ icon, title }: { icon: ReactNode; title: string }) => (
-  <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-    <Box sx={{ color: 'text.secondary', display: 'flex' }}>{icon}</Box>
-    <Typography variant="h2">{title}</Typography>
-  </Box>
-);
 
 export const ArtifactsSection = ({ video }: { video: DetailsVideo }) => {
   const dictionary = useDictionary();

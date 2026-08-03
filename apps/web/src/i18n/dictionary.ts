@@ -15,6 +15,8 @@ export interface Dictionary {
     revealFailed: string;
     aspectPortraitLabel: string;
     aspectPanoramaLabel: string;
+    copyToClipboard: string;
+    copied: string;
   };
   language: {
     stepTitle: string;
@@ -139,6 +141,7 @@ export interface Dictionary {
     duplicateExplanation: string;
     duplicateCanonicalLabel: string;
     analyzeAnyway: string;
+    navigateToOriginal: string;
     variants: {
       title: string;
       count: (count: number) => string;
@@ -842,6 +845,8 @@ export const en: Dictionary = {
     revealFailed: 'Could not reveal this file: it is outside every known catalog folder.',
     aspectPortraitLabel: 'Portrait orientation',
     aspectPanoramaLabel: 'Panoramic aspect ratio',
+    copyToClipboard: 'Copy to clipboard',
+    copied: 'Copied',
   },
   language: {
     stepTitle: 'Language',
@@ -974,6 +979,7 @@ export const en: Dictionary = {
     duplicateExplanation: 'This file has the same content as another video already in your catalog, so it is not analyzed automatically.',
     duplicateCanonicalLabel: 'Original file',
     analyzeAnyway: 'Analyze anyway',
+    navigateToOriginal: 'Go to original',
     variants: {
       title: 'Analysis variants',
       count: (count) => `${count} ${count === 1 ? 'variant' : 'variants'}`,
@@ -1731,6 +1737,8 @@ export const pl: Dictionary = {
     aspectPortraitLabel: 'Orientacja pionowa',
     aspectPanoramaLabel: 'Proporcje panoramiczne',
     revealFailed: 'Nie można pokazać tego pliku: jest poza wszystkimi znanymi folderami katalogu.',
+    copyToClipboard: 'Kopiuj do schowka',
+    copied: 'Skopiowano',
   },
   language: {
     stepTitle: 'Język',
@@ -1863,6 +1871,7 @@ export const pl: Dictionary = {
     duplicateExplanation: 'Ten plik ma tę samą zawartość co inny film już w katalogu, więc nie jest analizowany automatycznie.',
     duplicateCanonicalLabel: 'Plik oryginalny',
     analyzeAnyway: 'Analizuj mimo to',
+    navigateToOriginal: 'Przejdź do oryginału',
     variants: {
       title: 'Warianty analizy',
       count: (count) => `${count} ${plPlural(count, 'wariant', 'warianty', 'wariantów')}`,

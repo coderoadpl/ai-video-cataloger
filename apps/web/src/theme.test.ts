@@ -10,3 +10,20 @@ describe('chip icon spacing', () => {
     });
   }
 });
+
+describe('outlined button neutrality', () => {
+  for (const mode of ['light', 'dark'] as const) {
+    it(`renders a default-color outlined button with the neutral divider border and default text, not primary blue, in ${mode} mode`, () => {
+      const theme = createAppTheme(mode);
+      const variants = theme.components?.MuiButton?.variants ?? [];
+      const neutralOutlined = variants.find((variant) => {
+        if (typeof variant.props === 'function') return false;
+        return variant.props.variant === 'outlined' && variant.props.color === 'primary';
+      });
+      expect(neutralOutlined?.style).toMatchObject({
+        borderColor: theme.palette.divider,
+        color: theme.palette.text.primary,
+      });
+    });
+  }
+});

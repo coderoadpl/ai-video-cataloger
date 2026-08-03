@@ -108,7 +108,7 @@ describe('selecting a duplicate in the tree', () => {
     fireEvent.click(duplicateRow);
 
     await waitFor(() => expect(screen.getByTestId('detail-layout').textContent).toContain(`${FOLDER}/sub/kopia.mp4`));
-    expect(screen.getByTestId('duplicate-canonical-link').textContent).toBe(`${FOLDER}/original.mp4`);
+    expect(screen.getByTestId('duplicate-canonical-path').textContent).toBe(`${FOLDER}/original.mp4`);
     expect(screen.getByTestId('analyze-anyway-button')).toBeDefined();
   }, 15_000);
 });
