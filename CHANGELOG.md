@@ -14,14 +14,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.14] - 2026-08-03
+
 ### Fixed
 
-- `pnpm run qa:walkthrough`'s planted `broken-photo.jpg` now gets a year-2000
-  mtime instead of a current one, so it no longer sorts first (newest) in the
-  Analysis Photos sidebar and shadows the real fixtures; the `analysis-photos`
-  step also now selects the first sidebar row without a `proxyFailed` badge
-  instead of always clicking the first row, so `--strict` no longer fails on
-  every run.
 - Stored analysis error strings (including legacy pre-W50 messages that leak
   an absolute filesystem path) now render through a single renderer-side
   formatter at every error display site — catalog sidebar rows and tree, the
@@ -30,29 +26,47 @@ release history jumps from `0.5.10` to `0.5.12`.
   section, the refresh toast and the root error fallback — instead of the raw
   string; known analyzer failure shapes map to a localized message (en/pl) and
   unknown strings pass through with any absolute path stripped, including
-  quoted and parenthesised ones, while URLs are left intact.
+  quoted and parenthesised ones, while URLs are left intact
+  ([`38ba860`](https://github.com/coderoadpl/ai-video-cataloger/commit/38ba86064c9fd2897dcffc23cc9b48ccee728cb4)).
 - The Zdjęcia sidebar's scope toggle no longer clips "Wszystkie" behind an
   ellipsis at the narrow (260px) sidebar width; both the media and scope
-  toggles now fit their full labels on one row.
+  toggles now fit their full labels on one row
+  ([`38ba860`](https://github.com/coderoadpl/ai-video-cataloger/commit/38ba86064c9fd2897dcffc23cc9b48ccee728cb4)).
 - Photo capture dates and the absent-files "last seen" date now format using
   the active UI language's locale instead of English or the host locale, and
   the photo detail pane's "Data wykonania" field now formats the timestamp
-  instead of showing the raw ISO string.
+  instead of showing the raw ISO string
+  ([`38ba860`](https://github.com/coderoadpl/ai-video-cataloger/commit/38ba86064c9fd2897dcffc23cc9b48ccee728cb4)).
 - The Library's no-match empty state no longer repeats the search query in
   both the title and the body sentence with inconsistent quote styles; the
-  body now names only the active filter chips.
+  body now names only the active filter chips
+  ([`38ba860`](https://github.com/coderoadpl/ai-video-cataloger/commit/38ba86064c9fd2897dcffc23cc9b48ccee728cb4)).
 - A video that was never successfully analyzed no longer shows a competing
   "variants load error" card alongside its processing-failed card; the
-  variant switcher now treats a not-yet-analyzed video as the empty state.
+  variant switcher now treats a not-yet-analyzed video as the empty state
+  ([`38ba860`](https://github.com/coderoadpl/ai-video-cataloger/commit/38ba86064c9fd2897dcffc23cc9b48ccee728cb4)).
 - The setup wizard's step labels ("Analizator" / "Transkrypcja") no longer
-  touch each other in the stepper at the wizard's default width.
+  touch each other in the stepper at the wizard's default width
+  ([`38ba860`](https://github.com/coderoadpl/ai-video-cataloger/commit/38ba86064c9fd2897dcffc23cc9b48ccee728cb4)).
 - `scripts/release-walkthrough.mjs` now runs every walkthrough against a
   scratch copy of `--fixtures` (never mutating the source) with a planted
   unloadable photo, so the release walkthrough exercises the broken-image
   placeholder; `docs/qa/release-walkthrough.md` gained matching checklist
-  bullets for the broken-image placeholder and an unanalyzed video tile.
+  bullets for the broken-image placeholder and an unanalyzed video tile
+  ([`38ba860`](https://github.com/coderoadpl/ai-video-cataloger/commit/38ba86064c9fd2897dcffc23cc9b48ccee728cb4)).
+- `pnpm run qa:walkthrough`'s planted `broken-photo.jpg` now gets a year-2000
+  mtime instead of a current one, so it no longer sorts first (newest) in the
+  Analysis Photos sidebar and shadows the real fixtures; the `analysis-photos`
+  step also now selects the first sidebar row without a `proxyFailed` badge
+  instead of always clicking the first row, so `--strict` no longer fails on
+  every run
+  ([`c096a88`](https://github.com/coderoadpl/ai-video-cataloger/commit/c096a88dfef1670a2dd2a65093753e5ef2d9beff)).
 
 ## [0.6.13] - 2026-08-03
+
+**Note:** this build was merged and tagged but its publication was blocked by
+the independent reviewer; `v0.6.14` supersedes it. The tag stays unpublished
+and this section stays as history.
 
 ### Fixed
 
