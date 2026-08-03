@@ -2444,6 +2444,7 @@ export class InMemoryPhotosStore implements PhotosStore {
   }): Promise<Result<{ total: number; rows: PhotoSearchRow[] }, AppError>> {
     const rows = [...this.photoRows.values()]
       .map((photo): PhotoSearchRow | null => {
+        if (this.analysesFor(photo.fingerprint).length === 0) return null;
         const selected = this.resolvePhotoAnalysis(photo.fingerprint);
         const tags = selected?.tags === undefined ? [] : [...selected.tags];
         const searchable = [photo.fileName, selected?.description ?? '', ...tags, photo.placeName ?? '']

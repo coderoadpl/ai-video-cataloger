@@ -10,10 +10,14 @@ import {
   BROKEN_PHOTO_MTIME,
   BROKEN_PHOTO_NAME,
   checkOllamaAnalyzer,
+  collectionPhotoChipOutcome,
   localAnalyzerConfig,
   parseAnalyzerFlag,
+  parseMediaChipCount,
+  photoTreeAnalyzeOutcome,
   prepareScratchFixtures,
   TOLERATED_SKIPS,
+  treeSelectAnalyzeOutcome,
 } from './release-walkthrough.mjs';
 
 describe('blockingSkips', () => {
@@ -66,6 +70,121 @@ describe('analyzeOutcome', () => {
 
     expect(outcome.status).toBe('failed');
     expect(outcome.note).toContain('frames_extracted');
+  });
+});
+
+describe('treeSelectAnalyzeOutcome', () => {
+  it('reports skipped when the "Wszystkie" tree never rendered a root row', () => {
+    const outcome = treeSelectAnalyzeOutcome({
+      treeVisible: false, rowVisible: false, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: null,
+    });
+
+    expect(outcome).toEqual({ status: 'skipped', note: 'no photos catalogued in this home' });
+  });
+
+  it('reports skipped when the tree has folder rows but no photo row to select', () => {
+    const outcome = treeSelectAnalyzeOutcome({
+      treeVisible: true, rowVisible: false, usableRowVisible: false, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: null,
+    });
+
+    expect(outcome.status).toBe('skipped');
+    expect(outcome.note).toContain('no photo rows to select');
+  });
+
+  it('reports skipped when every tree photo is already analysed or has a failed proxy', () => {
+    const outcome = treeSelectAnalyzeOutcome({
+      treeVisible: true, rowVisible: true, usableRowVisible: false, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: null,
+    });
+
+    expect(outcome.status).toBe('skipped');
+    expect(outcome.note).toContain('already analysed or has a failed proxy');
+  });
+
+  it('reports failed when a tree-selected photo never opened the detail workspace', () => {
+    const outcome = treeSelectAnalyzeOutcome({
+      treeVisible: true, rowVisible: true, usableRowVisible: true, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: '/media/a.jpg',
+    });
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toContain('detail workspace');
+  });
+
+  it('reports failed when Analizuj is disabled for a tree-selected photo (the W57 regression)', () => {
+    const outcome = treeSelectAnalyzeOutcome({
+      treeVisible: true, rowVisible: true, usableRowVisible: true, detailVisible: true, analyzeVisible: true, analyzeDisabled: true, disabledReason: 'analyzer not configured', path: '/media/a.jpg',
+    });
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toBe('Analizuj is disabled for a tree-selected photo: analyzer not configured (W57 regression)');
+  });
+
+  it('reports ok and names the photo path when Analizuj is enabled for a tree-selected photo', () => {
+    const outcome = treeSelectAnalyzeOutcome({
+      treeVisible: true, rowVisible: true, usableRowVisible: true, detailVisible: true, analyzeVisible: true, analyzeDisabled: false, disabledReason: '', path: '/media/a.jpg',
+    });
+
+    expect(outcome).toEqual({ status: 'ok', note: 'tree-selected /media/a.jpg has Analizuj enabled' });
+  });
+});
+
+describe('photoTreeAnalyzeOutcome', () => {
+  it('reports failed when the sidebar job-error alert is visible', () => {
+    const outcome = photoTreeAnalyzeOutcome({ errorVisible: true, errorNote: 'Local AI runtime not reachable', badgeVisible: false });
+
+    expect(outcome).toEqual({ status: 'failed', note: 'Local AI runtime not reachable' });
+  });
+
+  it('falls back to a generic note when the error alert has no readable text', () => {
+    const outcome = photoTreeAnalyzeOutcome({ errorVisible: true, errorNote: '', badgeVisible: false });
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toBe('photo analysis ended in error');
+  });
+
+  it('reports ok once the tree-selected row carries the analysed badge with no error alert', () => {
+    const outcome = photoTreeAnalyzeOutcome({ errorVisible: false, errorNote: '', badgeVisible: true });
+
+    expect(outcome.status).toBe('ok');
+  });
+
+  it('reports failed when the run finished with neither the badge nor an error card', () => {
+    const outcome = photoTreeAnalyzeOutcome({ errorVisible: false, errorNote: '', badgeVisible: false });
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toContain('neither');
+  });
+});
+
+describe('parseMediaChipCount', () => {
+  it('parses the count out of "Zdjęcia (3)"', () => {
+    expect(parseMediaChipCount('Zdjęcia (3)')).toBe(3);
+  });
+
+  it('returns null when the chip carries no measured count', () => {
+    expect(parseMediaChipCount('Zdjęcia')).toBeNull();
+    expect(parseMediaChipCount(null)).toBeNull();
+  });
+});
+
+describe('collectionPhotoChipOutcome', () => {
+  it('reports failed when the chip rendered no measured count', () => {
+    const outcome = collectionPhotoChipOutcome(null);
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toContain('did not render a measured count');
+  });
+
+  it('reports failed when the chip still counts zero analyzed photos', () => {
+    const outcome = collectionPhotoChipOutcome(0);
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.note).toContain('still reports 0');
+  });
+
+  it('reports ok once the chip counts at least one analyzed photo', () => {
+    const outcome = collectionPhotoChipOutcome(1);
+
+    expect(outcome).toEqual({ status: 'ok', note: 'Kolekcja Zdjęcia chip shows 1 analyzed photo(s)' });
   });
 });
 

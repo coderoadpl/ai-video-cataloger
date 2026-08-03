@@ -812,8 +812,10 @@ export class SqlJsPhotosStore implements PhotosStore {
       const clauses = [...tagWhere.clauses, ...dateWhere.clauses];
       const params = { ...tagWhere.params, ...dateWhere.params };
 
+      const analysedClause = 'EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint)';
+
       if (input.match !== null) {
-        const extraWhere = clauses.length === 0 ? '' : ` AND ${clauses.join(' AND ')}`;
+        const extraWhere = ` AND ${[analysedClause, ...clauses].join(' AND ')}`;
         const result = client.exec(
           `SELECT
               p.fingerprint, p.file_name, p.current_path, p.ext, p.captured_at,
@@ -845,7 +847,7 @@ export class SqlJsPhotosStore implements PhotosStore {
 
       const baseFrom = `FROM photos p
           LEFT JOIN photo_search_documents sd ON sd.fingerprint = p.fingerprint`;
-      const where = clauses.length === 0 ? '1=1' : clauses.join(' AND ');
+      const where = [analysedClause, ...clauses].join(' AND ');
       const countResult = client.exec(`SELECT COUNT(*) ${baseFrom} WHERE ${where}`, params);
       const total = numberValue(countResult[0]?.values[0]?.[0]);
       const sort = input.sort === 'relevance' ? 'captured_desc' : input.sort;

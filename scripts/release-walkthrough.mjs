@@ -290,6 +290,36 @@ export const analyzeOutcome = ({ errorCardVisible, errorNote, videoStatus, filen
   return failed(`analysis finished in unexpected status "${videoStatus ?? 'unknown'}" (no error card, not completed)`);
 };
 
+export const treeSelectAnalyzeOutcome = ({ treeVisible, rowVisible, usableRowVisible, detailVisible, analyzeVisible, analyzeDisabled, disabledReason, path: photoPath }) => {
+  if (!treeVisible) return skipped('no photos catalogued in this home');
+  if (!rowVisible) return skipped('the "Wszystkie" tree has no photo rows to select (roots/folders only)');
+  if (!usableRowVisible) return skipped('every tree photo is already analysed or has a failed proxy (no single-photo Analizuj to click)');
+  if (!detailVisible) return failed('photo detail workspace did not render for a tree-selected photo');
+  if (!analyzeVisible) return failed('no Analizuj affordance for a tree-selected photo (already analysed, or proxy pending)');
+  if (analyzeDisabled) {
+    return failed(`Analizuj is disabled for a tree-selected photo${disabledReason === '' ? '' : `: ${disabledReason}`} (W57 regression)`);
+  }
+  return done(`tree-selected ${photoPath ?? 'a photo'} has Analizuj enabled`);
+};
+
+export const photoTreeAnalyzeOutcome = ({ errorVisible, errorNote, badgeVisible }) => {
+  if (errorVisible) return failed(errorNote === '' ? 'photo analysis ended in error' : errorNote);
+  if (badgeVisible) return done('the tree-selected photo carries the "analysed" badge');
+  return failed('analysis finished with neither the "analysed" badge nor an error card');
+};
+
+// null, not 0: withMeasuredCount renders the bare label while the totals are still loading.
+export const parseMediaChipCount = (text) => {
+  const match = /\((\d+)\)/.exec(text ?? '');
+  return match === null ? null : Number(match[1]);
+};
+
+export const collectionPhotoChipOutcome = (photoChipCount) => {
+  if (photoChipCount === null) return failed('Kolekcja Zdjęcia chip did not render a measured count');
+  if (photoChipCount >= 1) return done(`Kolekcja Zdjęcia chip shows ${String(photoChipCount)} analyzed photo(s)`);
+  return failed('Kolekcja Zdjęcia chip still reports 0 after a single-photo analyze completed (W55 payoff unproven)');
+};
+
 // Both steps depend on state a reused QA home may legitimately not have (a
 // wizard that already got dismissed, a Library tile from an earlier scan);
 // docs/qa/release-walkthrough.md carries the full rationale.
@@ -302,7 +332,21 @@ export const blockingSkips = (results) =>
 const noPendingTransitionsOrSpinners = () =>
   document.getAnimations().every((animation) => animation.playState !== 'running') &&
   document.querySelector('[role="progressbar"], [data-testid*="spinner" i], [data-testid*="loading" i]') === null;
+
+const selectedRowAnalysedOrJobError = (selectedRow) =>
+  document.querySelector(`${selectedRow} [data-testid="photos-sidebar-badge-analysed"]`) !== null ||
+  document.querySelector('[data-testid="photos-job-error"]') !== null;
 /* eslint-enable no-undef */
+
+// The sidebar toolbar's folder-wide "Analizuj folder" shares this testid, so the bare locator
+// resolves to two elements: Playwright rejects every action on it, and .first() would drive the
+// whole-folder batch instead of the single photo.
+const singlePhotoAnalyzeAction = (page) =>
+  page.getByTestId('photos-analysis-detail').getByTestId('photos-analyze-action');
+
+// Only the tree row the step itself selected proves this run's analysis; a badge anywhere in the
+// sidebar can predate it in a reused QA home.
+const SELECTED_PHOTO_ROW = '[data-testid="photos-sidebar-row"].Mui-selected';
 
 const settle = async (page) => {
   try {
@@ -539,6 +583,71 @@ const drive = async (plan) => {
       return failed('video list visible in the photos sidebar');
     }
     return done('Analysis Photos workspace shows the detail and analyze affordance');
+  });
+
+  await record('photos-tree', async () => {
+    const scopeAll = page.getByTestId('photos-scope-all');
+    if (!(await appeared(scopeAll, SETTLE_TIMEOUT_MS))) return skipped('no "Wszystkie" scope toggle in this build');
+    await scopeAll.click();
+    const rootRow = page.getByTestId('photos-tree-root-row').first();
+    if (!(await appeared(rootRow, FOLDER_TIMEOUT_MS))) {
+      return treeSelectAnalyzeOutcome({ treeVisible: false, rowVisible: false, usableRowVisible: false, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: null });
+    }
+    const folderRow = page.getByTestId('photos-tree-folder-row').first();
+    if (await appeared(folderRow, SETTLE_TIMEOUT_MS)) await folderRow.click();
+    const rows = page.getByTestId('photos-sidebar-row');
+    const rowVisible = await appeared(rows.first(), SETTLE_TIMEOUT_MS);
+    if (!rowVisible) {
+      return treeSelectAnalyzeOutcome({ treeVisible: true, rowVisible: false, usableRowVisible: false, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: null });
+    }
+    // The detail pane offers a single-photo Analizuj only while the photo has no analysis and a
+    // usable proxy, and the fixtures deliberately plant an unloadable photo (BROKEN_PHOTO_NAME).
+    const treeRow = rows
+      .filter({ hasNot: page.getByTestId('photos-sidebar-badge-analysed') })
+      .filter({ hasNot: page.getByTestId('photos-sidebar-badge-proxyFailed') })
+      .first();
+    if (!(await appeared(treeRow, SETTLE_TIMEOUT_MS))) {
+      return treeSelectAnalyzeOutcome({ treeVisible: true, rowVisible: true, usableRowVisible: false, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: null });
+    }
+    const photoPath = await treeRow.getAttribute('title');
+    await treeRow.click();
+    const detailVisible = await appeared(page.getByTestId('photos-analysis-detail'), VISIBLE_TIMEOUT_MS);
+    const analyzeAction = singlePhotoAnalyzeAction(page);
+    const analyzeVisible = detailVisible && (await appeared(analyzeAction, SETTLE_TIMEOUT_MS));
+    const analyzeDisabled = analyzeVisible && (await analyzeAction.isDisabled());
+    const disabledReason = analyzeDisabled ? ((await analyzeAction.getAttribute('title')) ?? '') : '';
+    return treeSelectAnalyzeOutcome({ treeVisible: true, rowVisible: true, usableRowVisible: true, detailVisible, analyzeVisible, analyzeDisabled, disabledReason, path: photoPath });
+  });
+
+  await record('photos-tree-analyze', async () => {
+    const analyzeAction = singlePhotoAnalyzeAction(page);
+    if (!(await appeared(analyzeAction, SETTLE_TIMEOUT_MS))) {
+      return skipped('no Analizuj affordance for the tree-selected photo (the photos-tree step did not select one)');
+    }
+    if (await analyzeAction.isDisabled()) return skipped('Analizuj is disabled for the tree-selected photo');
+    await analyzeAction.click();
+    await page
+      .waitForFunction(selectedRowAnalysedOrJobError, SELECTED_PHOTO_ROW, { timeout: plan.analyzeTimeoutMs })
+      .catch(() => undefined);
+    const badge = page.locator(SELECTED_PHOTO_ROW).getByTestId('photos-sidebar-badge-analysed');
+    const errorAlert = page.getByTestId('photos-job-error');
+    const errorVisible = await appeared(errorAlert, SETTLE_TIMEOUT_MS);
+    const errorNote = errorVisible ? ((await errorAlert.first().textContent()) ?? '').trim() : '';
+    const badgeVisible = await appeared(badge, SETTLE_TIMEOUT_MS);
+    return photoTreeAnalyzeOutcome({ errorVisible, errorNote, badgeVisible });
+  });
+
+  await record('collection-photo-analyzed', async () => {
+    const modeLibrary = page.getByTestId('mode-library');
+    if (!(await appeared(modeLibrary, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
+    await modeLibrary.click();
+    const subnavCollection = page.getByTestId('subnav-collection');
+    if (!(await appeared(subnavCollection, SETTLE_TIMEOUT_MS))) return skipped('no Kolekcja subnav in this build');
+    await subnavCollection.click();
+    const photoChip = page.getByTestId('library-media-photo');
+    if (!(await appeared(photoChip, FOLDER_TIMEOUT_MS))) return skipped('no Zdjęcia media chip in this build');
+    const chipText = await photoChip.first().textContent();
+    return collectionPhotoChipOutcome(parseMediaChipCount(chipText));
   });
 
   await record('photos-tab', async () => {

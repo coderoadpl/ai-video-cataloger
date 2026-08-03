@@ -187,8 +187,9 @@ equivalent, add it back deliberately and record the WHY here.
 The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`,
 `mode-switch`, `mode-analysis`, `open-folder`, `tree-expand`, `select-video`,
 `analyze`, `search`, `library-preview`, `photos-browse`, `photos-sidebar`,
-`analysis-photos`, `photos-tab`, `photos-grid`, `photo-detail`, `settings`,
-`wizard`.
+`analysis-photos`, `photos-tree`, `photos-tree-analyze`,
+`collection-photo-analyzed`, `photos-tab`, `photos-grid`, `photo-detail`,
+`settings`, `wizard`.
 `mode-switch`, `mode-analysis` and `search` drive the two-mode switcher: the
 workspace steps run in Analysis mode, `search` and `photos-tab` switch to
 Library first. `library-preview` clicks a Kolekcja tile, asserts the browse
@@ -204,12 +205,52 @@ is always `failed`) and asserts the workspace detail (`photos-analysis-detail`)
 and the analyze strip render, and that the video list is never visible in the
 photos sidebar.
 
+**`photos-tree` / `photos-tree-analyze` / `collection-photo-analyzed` (W60).**
+These three steps exercise the W57 folder tree end-to-end, closing the gap the
+v0.6.17 independent review found (B1/B2): every earlier photo step drives the
+"Ten folder" flat list, so the collapsible roots→subfolders→photo-rows tree
+that only renders in the "Wszystkie" scope (`PhotosSidebar.tsx`,
+`state.scope === 'all'`) had never been clicked, screenshotted, or used to
+select a photo.
+- `photos-tree` clicks the "Wszystkie" scope toggle (`photos-scope-all`),
+  waits for a `photos-tree-root-row`, expands the first
+  `photos-tree-folder-row` if one exists, selects the first photo row the tree
+  renders that is neither already analysed nor proxy-failed
+  (`photos-sidebar-row`, the same testid the flat list uses — the tree reuses
+  `PhotoRow`; the detail pane offers a single-photo "Analizuj" only for such a
+  photo, and the fixtures deliberately plant an unloadable one), and asserts
+  that "Analizuj" is enabled for the tree-selected photo — the exact affordance
+  W57 made reachable (a photo the flat list has never paginated to can now
+  still be analyzed). The button is always located **inside**
+  `photos-analysis-detail`: the sidebar toolbar's folder-wide "Analizuj folder"
+  carries the same `photos-analyze-action` testid, so an unscoped locator
+  resolves to two elements and Playwright's strict mode rejects every action on
+  it. A run whose tree holds only analysed or proxy-failed photos reports
+  `skipped`, so the QA home must keep at least one unanalyzed photo.
+- `photos-tree-analyze` clicks that enabled "Analizuj" and waits for the
+  tree-selected photo's own row (`.Mui-selected`, so a badge that predates the
+  run on some other row can never stand in for it) to carry the
+  `photos-sidebar-badge-analysed` badge (or, on a real failure, the
+  `photos-job-error` alert) — the outcome comes from that DOM state, never from
+  a fixed delay, matching the W54 doctrine the `analyze` step already follows
+  for videos.
+- `collection-photo-analyzed` switches to Biblioteka → Kolekcja and reads the
+  `library-media-photo` chip's rendered `Zdjęcia (N)` count, asserting `N >= 1`
+  — proving W55's actual payoff (an analyzed photo reaching the unified feed),
+  which the W60 collection filter (see architecture doc, "Analyzed-only photo
+  source") now requires; before that filter this chip could show >0 with zero
+  analyzed photos underneath, per the same review finding.
+
+None of these three are in `TOLERATED_SKIPS`: like `analyze`, a release run
+must prove them, not skip them — the walkthrough always runs with
+`--analyzer` (see below), so they can genuinely complete.
+
 The photo steps need a home whose photos DB already has a scanned root —
 `--home` pointing at a QA home that has run `photos scan`. Without one,
-`photos-sidebar`, `analysis-photos`, `photos-grid` and `photo-detail` report
-`skipped` with "no photos catalogued in this home", which is a legitimate
-outcome for a video-only review pass and a missing proof for a release that
-ships photo changes.
+`photos-sidebar`, `analysis-photos`, `photos-tree`, `photos-grid` and
+`photo-detail` report `skipped` with "no photos catalogued in this home",
+which is a legitimate outcome for a video-only review pass and a missing
+proof for a release that ships photo changes.
 
 ## Review the screenshots (independent reviewer, authority to fail)
 
@@ -277,6 +318,21 @@ Read every screenshot against the sensitivities that have burned us before:
 - **Populated Biblioteka** — in the `search` screenshot, does the Biblioteka
   hold more than 0 `plików`, and does the search return a real hit for the
   analyzed video rather than an empty-state panel?
+- **Photos folder tree (W57/W60)** — in the `photos-tree` screenshot, does the
+  "Wszystkie" scope render the collapsible tree (root row(s), an expanded
+  folder row if the fixtures have subfolders, each carrying an
+  `analysed/total` count), not the flat "Ten folder" list; is a tree row
+  visibly selected; and does the detail pane's "Analizuj" button read as
+  enabled (not greyed out) for that tree-selected photo?
+- **Tree-selected single-photo analysis (W60)** — in the `photos-tree-analyze`
+  screenshot, does the selected photo's sidebar row carry the **Ukończony**
+  ("analysed") badge, with no error alert, proving the tree-selection ->
+  single-photo-analyze path actually completes?
+- **Kolekcja shows the analyzed photo (W55 payoff, W60)** — in the
+  `collection-photo-analyzed` screenshot, does the Zdjęcia media chip in
+  Biblioteka → Kolekcja read `Zdjęcia (N)` with `N >= 1`, and does the
+  timeline itself show a photo tile (not just an incremented chip with an
+  empty grid)?
 
 The manual suites in [manual-test-checklists.md](manual-test-checklists.md) stay
 the deeper pass; this walkthrough is the always-run floor beneath them.

@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen, waitFor } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -143,6 +143,19 @@ describe('selecting a photo from the Analysis photos sidebar', () => {
 
     await waitFor(() => expect(screen.getByTestId('photos-analysis-detail')).toBeDefined());
     expect(screen.queryByTestId('photos-viewer')).toBeNull();
+  });
+
+  it('leaves photos-analyze-action ambiguous outside the detail pane, which release-walkthrough.mjs scopes to', async () => {
+    renderRoute();
+
+    const rows = await screen.findAllByTestId('photos-sidebar-row');
+    const firstRow = rows[0];
+    if (firstRow === undefined) throw new Error('missing sidebar row');
+    fireEvent.click(firstRow);
+
+    await waitFor(() => expect(screen.getByTestId('photos-analyze-strip')).toBeDefined());
+    expect(screen.getAllByTestId('photos-analyze-action')).toHaveLength(2);
+    expect(within(screen.getByTestId('photos-analysis-detail')).getAllByTestId('photos-analyze-action')).toHaveLength(1);
   });
 
   it('keeps the viewer closed when the route re-renders after a selection', async () => {

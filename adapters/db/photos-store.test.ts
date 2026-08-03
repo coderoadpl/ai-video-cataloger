@@ -830,6 +830,10 @@ describe('SqlJsPhotosStore', () => {
     await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-01-03T00:00:00.000Z', fileName: 'c.jpg', currentPath: '/media/photos/c.jpg' }));
     await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', capturedAt: null, fileName: 'a.jpg', currentPath: '/media/photos/a.jpg' }));
     await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000003', capturedAt: '2026-01-05T00:00:00.000Z', fileName: 'b.jpg', currentPath: '/media/photos/b.jpg' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001' }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000003' }));
 
     const page = await store.collectionPage({
       match: null, rankingTerms: [], from: null, to: null, tagTermSets: [], sort: 'captured_desc', limit: 2, offset: 0,
@@ -841,6 +845,28 @@ describe('SqlJsPhotosStore', () => {
       match: null, rankingTerms: [], from: null, to: null, tagTermSets: [], sort: 'captured_desc', limit: 2, offset: 2,
     });
     expect(nextPage.ok && nextPage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+  });
+
+  it('collectionPage excludes a scanned-but-never-analyzed photo from browse and match mode, keeping totals honest', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', fileName: 'vacation-unanalyzed.jpg', currentPath: '/media/photos/vacation-unanalyzed.jpg' }));
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', fileName: 'vacation-analyzed.jpg', currentPath: '/media/photos/vacation-analyzed.jpg' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
+
+    const browsePage = await store.collectionPage({
+      match: null, rankingTerms: [], from: null, to: null, tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
+    });
+    expect(browsePage.ok && browsePage.value.total).toBe(1);
+    expect(browsePage.ok && browsePage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+
+    const matchPage = await store.collectionPage({
+      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'relevance', limit: 50, offset: 0,
+    });
+    expect(matchPage.ok && matchPage.value.total).toBe(1);
+    expect(matchPage.ok && matchPage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
   });
 
   it('collectionPage filters browse rows by an AND of tag OR-groups', async () => {
@@ -867,6 +893,9 @@ describe('SqlJsPhotosStore', () => {
     await store.upsertFolder(folder);
     await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-01-01T00:00:00.000Z', fileName: 'a.jpg', currentPath: '/media/photos/a.jpg' }));
     await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', capturedAt: '2026-06-01T00:00:00.000Z', fileName: 'b.jpg', currentPath: '/media/photos/b.jpg' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001' }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
 
     const filtered = await store.collectionPage({
       match: null, rankingTerms: [], from: '2026-03-01', to: '2026-12-31', tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
@@ -880,6 +909,9 @@ describe('SqlJsPhotosStore', () => {
     await store.upsertFolder(folder);
     await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001', fileName: 'vacation-a.jpg', currentPath: '/media/photos/vacation-a.jpg' }));
     await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000002', fileName: 'vacation-b.jpg', currentPath: '/media/photos/vacation-b.jpg' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001' }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
 
     const page = await store.collectionPage({
       match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'relevance', limit: 1, offset: 0,
@@ -904,6 +936,9 @@ describe('SqlJsPhotosStore', () => {
       fileName: 'vacation.jpg',
       currentPath: '/media/photos/vacation.jpg',
     }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001' }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
 
     const byScore = await store.collectionPage({
       match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'relevance', limit: 50, offset: 0,

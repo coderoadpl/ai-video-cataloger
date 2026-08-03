@@ -906,6 +906,26 @@ advances). `total` is `videoTotal + photoTotal` for the active filter set;
 `videoTotal`/`photoTotal` ride along so the UI can label media chips with
 honest per-media counts without a second round trip.
 
+**Analyzed-only photo source (W60), asymmetric with browse on purpose.**
+Videos already appear in Kolekcja only once analyzed (`globalCatalog.search`
+reads the catalog's `files` table, populated at analysis completion, never at
+scan time). `PhotosStore.collectionPage` now applies the same rule
+explicitly: both its match (FTS) and browse (plain `WHERE`) branches require
+`EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint)`,
+so a scanned-but-never-analyzed photo — which does get a `photo_search_documents`
+row at scan time via `syncPhotoSearchDocument`, with an empty description —
+never reaches Kolekcja, matching the video side and this feature's own intent
+(a unified feed of *analyzed* media). This is scoped to `collectionPage`
+only: `GET /api/photos/list` (`PhotosStore.listPhotosPage`, the Library →
+Zdjęcia browse tab) and `GET /api/photos/tree` (the Analysis-side photos
+sidebar) both intentionally keep listing every scanned photo regardless of
+analysis state — browsing and picking a photo to analyze is their job, and
+narrowing either to analyzed-only would make an unanalyzed photo unreachable
+from the UI. Verified in `core/server/usecases/collection.test.ts` (a
+scanned-not-analyzed photo is absent from the feed and does not count toward
+`photoTotal`; an analyzed one is present) and against the real
+`SqlJsPhotosStore` in `apps/server/src/collection-real-stores.test.ts`.
+
 `PhotosStore.collectionPage` (`adapters/db/photos-store.ts`) is SQL-pushed
 and variant-aware exactly like `searchPhotos`: it reads `photo_search_documents`,
 which `syncPhotoSearchDocument` already keeps in sync with the selected

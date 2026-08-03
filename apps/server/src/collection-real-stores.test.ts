@@ -123,6 +123,29 @@ const photo = (fingerprint: string, capturedAt: string | null, fileName: string)
   selectedConfigId: null,
 });
 
+const analyzePhoto = async (photos: SqlJsPhotosStore, fingerprint: string): Promise<void> => {
+  await photos.upsertAnalysisConfig({
+    configId: 'cfg_test',
+    descriptorJson: '{"kind":"photo"}',
+    label: 'harness · claude-code · en',
+    now: '2026-01-01T00:00:00.000Z',
+  });
+  await photos.recordPhotoAnalysis({
+    fingerprint,
+    configId: 'cfg_test',
+    description: 'a photo',
+    scene: 'unknown',
+    quality: 'good',
+    language: 'en',
+    analyzer: 'harness',
+    model: 'claude-code',
+    batchSize: 1,
+    usageJson: null,
+    tags: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+};
+
 const buildDeps = async () => {
   const home = await tempHome();
   const globalCatalog = new SqlJsGlobalCatalogStore({ homeDirectory: home });
@@ -174,6 +197,24 @@ describe('libraryCollection against real SqlJsGlobalCatalogStore + SqlJsPhotosSt
     expect(result.value.videoTotal).toBe(0);
   });
 
+  it('excludes a scanned-but-never-analyzed photo from the feed and its totals, while an analyzed photo is present', async () => {
+    const { deps, photos } = await buildDeps();
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertPhoto(photo('p-unanalyzed', '2026-01-01T00:00:00.000Z', 'unanalyzed.jpg'));
+    await photos.upsertPhoto(photo('p-analyzed', '2026-01-02T00:00:00.000Z', 'analyzed.jpg'));
+    await analyzePhoto(photos, 'p-analyzed');
+
+    const result = await libraryCollection(deps, {
+      query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'all', limit: 50, cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.fingerprint)).toEqual(['p-analyzed']);
+    expect(result.value.photoTotal).toBe(1);
+    expect(result.value.total).toBe(1);
+  });
+
   it('pins cross-source ordering in browse mode (captured_desc, video-before-photo on tie)', async () => {
     const { deps, globalCatalog, photos } = await buildDeps();
     await globalCatalog.upsertFolder(videoFolder);
@@ -181,6 +222,7 @@ describe('libraryCollection against real SqlJsGlobalCatalogStore + SqlJsPhotosSt
     await globalCatalog.upsertFile(video('v2', '2026-01-01T00:00:00.000Z', 'v2.mp4'));
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', '2026-01-02T00:00:00.000Z', 'p1.jpg'));
+    await analyzePhoto(photos, 'p1');
 
     const result = await libraryCollection(deps, {
       query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'all', limit: 50, cursor: null,
@@ -202,6 +244,7 @@ describe('libraryCollection against real SqlJsGlobalCatalogStore + SqlJsPhotosSt
     await globalCatalog.upsertAnalysis(videoAnalysis('v1', 'drone-shot.mp4'));
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', null, 'drone-photo.jpg'));
+    await analyzePhoto(photos, 'p1');
 
     const result = await libraryCollection(deps, {
       query: 'drone', filters: EMPTY_FILTERS, sort: undefined, media: 'all', limit: 50, cursor: null,
@@ -221,6 +264,8 @@ describe('libraryCollection against real SqlJsGlobalCatalogStore + SqlJsPhotosSt
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', null, 'Gamma.jpg'));
     await photos.upsertPhoto(photo('p2', null, 'alpha.jpg'));
+    await analyzePhoto(photos, 'p1');
+    await analyzePhoto(photos, 'p2');
 
     const result = await libraryCollection(deps, {
       query: null, filters: EMPTY_FILTERS, sort: 'name_asc', media: 'all', limit: 50, cursor: null,
@@ -239,6 +284,8 @@ describe('libraryCollection against real SqlJsGlobalCatalogStore + SqlJsPhotosSt
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', null, 'Drone-Alpha.jpg'));
     await photos.upsertPhoto(photo('p2', null, 'drone-zulu.jpg'));
+    await analyzePhoto(photos, 'p1');
+    await analyzePhoto(photos, 'p2');
 
     const result = await libraryCollection(deps, {
       query: 'drone', filters: EMPTY_FILTERS, sort: 'name_asc', media: 'all', limit: 50, cursor: null,
@@ -257,6 +304,8 @@ describe('libraryCollection against real SqlJsGlobalCatalogStore + SqlJsPhotosSt
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', capturedAt, 'a.jpg'));
     await photos.upsertPhoto(photo('p2', capturedAt, 'c.jpg'));
+    await analyzePhoto(photos, 'p1');
+    await analyzePhoto(photos, 'p2');
 
     const result = await libraryCollection(deps, {
       query: null, filters: EMPTY_FILTERS, sort: 'captured_desc', media: 'all', limit: 50, cursor: null,

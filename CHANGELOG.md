@@ -14,6 +14,23 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Biblioteka → Kolekcja no longer lists a photo that was scanned but never
+  analyzed: `PhotosStore.collectionPage` now requires a `photo_analyses` row
+  in both its browse and search-match branches, matching the video side
+  (which already only surfaces analyzed files) and the release's own W55
+  Added entry. The Library → Zdjęcia browse tab and the Analysis photos
+  sidebar/tree are unaffected — browsing and picking a photo to analyze
+  intentionally still lists every scanned photo (W60).
+- The release walkthrough now exercises the W57 photos folder tree
+  end-to-end instead of leaving it entirely unscreenshotted: three new steps
+  (`photos-tree`, `photos-tree-analyze`, `collection-photo-analyzed`) switch
+  the Zdjęcia sidebar to "Wszystkie", expand a folder row, select a photo
+  from the tree and assert its single-photo "Analizuj" is enabled, run that
+  analysis to completion, and then assert the analyzed photo reaches
+  Biblioteka → Kolekcja (W60).
+
 ## [0.6.17] - 2026-08-04
 
 ### Added

@@ -105,6 +105,20 @@ describe('GET /api/library/collection', () => {
       missingAt: null,
       selectedConfigId: null,
     });
+    await deps.photos.recordPhotoAnalysis({
+      fingerprint: 'ph_0000000000000001',
+      configId: 'cfg_test',
+      description: 'a photo',
+      scene: 'unknown',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      usageJson: null,
+      tags: [],
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
     const app = buildApp(deps);
 
     const response = await app.request('/api/library/collection');

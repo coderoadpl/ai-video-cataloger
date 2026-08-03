@@ -112,6 +112,23 @@ const photo = (fingerprint: string, capturedAt: string | null, fileName: string)
   selectedConfigId: null,
 });
 
+const analyzePhoto = async (photos: InMemoryPhotosStore, fingerprint: string): Promise<void> => {
+  await photos.recordPhotoAnalysis({
+    fingerprint,
+    configId: 'cfg_test',
+    description: 'a photo',
+    scene: 'unknown',
+    quality: 'good',
+    language: 'en',
+    analyzer: 'harness',
+    model: 'claude-code',
+    batchSize: 1,
+    usageJson: null,
+    tags: [],
+    createdAt: '2026-01-01T00:00:00.000Z',
+  });
+};
+
 const buildDeps = () => {
   const fs = new InMemoryFileSystem('/media');
   fs.addDirectory('/media/videos');
@@ -183,6 +200,7 @@ describe('libraryCollection', () => {
     await globalCatalog.upsertFile(video('v2', '2026-01-01T00:00:00.000Z'));
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', '2026-01-02T00:00:00.000Z', 'p1.jpg'));
+    await analyzePhoto(photos, 'p1');
 
     const result = await libraryCollection(deps, {
       query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'all', limit: 50, cursor: null,
@@ -197,6 +215,24 @@ describe('libraryCollection', () => {
     expect(result.value.nextCursor).toBeNull();
   });
 
+  it('excludes a scanned-but-never-analyzed photo from the feed and its totals, while an analyzed photo is present', async () => {
+    const { deps, photos } = buildDeps();
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertPhoto(photo('p-unanalyzed', '2026-01-01T00:00:00.000Z', 'unanalyzed.jpg'));
+    await photos.upsertPhoto(photo('p-analyzed', '2026-01-02T00:00:00.000Z', 'analyzed.jpg'));
+    await analyzePhoto(photos, 'p-analyzed');
+
+    const result = await libraryCollection(deps, {
+      query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'all', limit: 50, cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.fingerprint)).toEqual(['p-analyzed']);
+    expect(result.value.photoTotal).toBe(1);
+    expect(result.value.total).toBe(1);
+  });
+
   it('paginates with no duplicates and no gaps across two pages', async () => {
     const { deps, globalCatalog, photos } = buildDeps();
     await globalCatalog.upsertFolder(folderA);
@@ -204,6 +240,7 @@ describe('libraryCollection', () => {
     for (let index = 0; index < 3; index += 1) {
       await globalCatalog.upsertFile(video(`v${String(index)}`, `2026-01-0${String(index + 1)}T00:00:00.000Z`));
       await photos.upsertPhoto(photo(`p${String(index)}`, `2026-01-0${String(index + 1)}T12:00:00.000Z`, `p${String(index)}.jpg`));
+      await analyzePhoto(photos, `p${String(index)}`);
     }
 
     const page1 = await libraryCollection(deps, { query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'all', limit: 3, cursor: null });
@@ -229,6 +266,7 @@ describe('libraryCollection', () => {
     await globalCatalog.upsertFile(video('v1', '2026-01-01T00:00:00.000Z'));
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', '2026-01-01T00:00:00.000Z', 'p1.jpg'));
+    await analyzePhoto(photos, 'p1');
 
     const videoOnly = await libraryCollection(deps, { query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'video', limit: 50, cursor: null });
     expect(videoOnly.ok && videoOnly.value.items.map((item) => item.media)).toEqual(['video']);
@@ -245,6 +283,7 @@ describe('libraryCollection', () => {
     await globalCatalog.upsertFile(video('v1', '2026-01-01T00:00:00.000Z'));
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', '2026-01-01T00:00:00.000Z', 'p1.jpg'));
+    await analyzePhoto(photos, 'p1');
 
     const result = await libraryCollection(deps, {
       query: null, filters: { ...EMPTY_FILTERS, hasGps: true }, sort: 'captured_desc', media: 'all', limit: 50, cursor: null,
@@ -263,6 +302,7 @@ describe('libraryCollection', () => {
     await globalCatalog.upsertAnalysis(videoAnalysis('v1'));
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p1', null, 'drone-photo.jpg'));
+    await analyzePhoto(photos, 'p1');
 
     const result = await libraryCollection(deps, {
       query: 'drone', filters: EMPTY_FILTERS, sort: undefined, media: 'all', limit: 50, cursor: null,
@@ -282,6 +322,8 @@ describe('libraryCollection', () => {
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p-old', '2020-01-01T00:00:00.000Z', 'drone-photo-old.jpg'));
     await photos.upsertPhoto(photo('p-new', '2024-01-01T00:00:00.000Z', 'drone-photo-new.jpg'));
+    await analyzePhoto(photos, 'p-old');
+    await analyzePhoto(photos, 'p-new');
 
     const result = await libraryCollection(deps, {
       query: 'drone', filters: EMPTY_FILTERS, sort: 'captured_asc', media: 'all', limit: 50, cursor: null,
@@ -297,6 +339,8 @@ describe('libraryCollection', () => {
     await photos.upsertFolder(photoFolder);
     await photos.upsertPhoto(photo('p-newer-weaker', '2024-01-01T00:00:00.000Z', 'drone.jpg'));
     await photos.upsertPhoto(photo('p-older-stronger', '2020-01-01T00:00:00.000Z', 'drone-drone.jpg'));
+    await analyzePhoto(photos, 'p-newer-weaker');
+    await analyzePhoto(photos, 'p-older-stronger');
 
     const result = await libraryCollection(deps, {
       query: 'drone', filters: EMPTY_FILTERS, sort: 'relevance', media: 'photo', limit: 50, cursor: null,
