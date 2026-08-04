@@ -14,3 +14,4 @@ playwright-report/
 .cli-stage/
 **/__avc_probe_*/
 .claude/
+.gallery-shots/
