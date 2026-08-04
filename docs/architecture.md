@@ -943,7 +943,8 @@ following the `searchQuery`/`photosListQuery` pattern.
 **Renderer consumption (W55).** `useLibrary` (`apps/web/src/features/library/`)
 calls `actions.libraryCollection` instead of `actions.search`, accumulating
 pages by `nextCursor` and de-duplicating merged items by fingerprint — the
-cursor-world regression test for the offset-merge bug class fixed in #74. The
+cursor-world regression test for the offset-merge bug class fixed in
+[#74](https://github.com/coderoadpl/ai-video-cataloger--archive/pull/74). The
 held cursor is stamped with the query/filter/sort/media request key it was
 issued for, so a key change drops it in the same render that starts the new
 request — a page-2 cursor is never replayed against a different result set —

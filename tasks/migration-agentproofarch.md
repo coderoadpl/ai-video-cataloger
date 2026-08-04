@@ -28,8 +28,9 @@ load-bearing claim below was re-verified against both repos.
 
 ## 1. Baseline — where the app forked from
 
-**The app was forked from foundation commit `9b4bcd5`** (merge of PR #8
-"smoke-gate", 2026-07-12 02:29). Evidence:
+**The app was forked from foundation commit `9b4bcd5`** (merge of foundation
+PR [#8](https://github.com/chomamateusz/agentproofarch/pull/8) "smoke-gate",
+2026-07-12 02:29). Evidence:
 
 - App kickoff commit `439d2ae5` ("docs: foundation-rewrite kickoff") is dated
   2026-07-12 21:45; the first foundation commit after `9b4bcd5` is `956cc5c`/
