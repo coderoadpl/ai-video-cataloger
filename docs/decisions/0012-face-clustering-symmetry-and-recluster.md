@@ -31,7 +31,8 @@ Two independent mechanisms caused this, both in `core/domain/faces.ts`:
   reference threshold is 0.363. 0.50 sits a full band above the different-person mass with
   headroom, deliberately on the conservative side of 0.45, because a false merge is
   unrecoverable without a full rebuild (and poisons the centroid, attracting more wrong
-  faces — exactly what the real-world catalog shows), while a false split is one `faces merge` away.
+  faces — exactly what the real-world catalog showed), while a false split is one
+  `faces merge` away.
   `newClusterMinObservations: 2` is the only remaining asymmetry and it is on *count*, not
   *similarity*: one corroborating observation is the minimum that stops a single spurious
   detection from minting an identity, and it costs nothing — a lone orphan is never

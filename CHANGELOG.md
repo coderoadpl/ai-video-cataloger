@@ -924,7 +924,7 @@ and this section stays as history.
   ([`a651ae8`](https://github.com/coderoadpl/ai-video-cataloger/commit/a651ae8)).
 - A second person could never be founded once the unassigned pool held more than one identity: the new-cluster seed demanded that *all* candidate observations be mutually similar, so a mixed pool always returned nothing and every good detection was absorbed by the first person in a real-world catalog
   ([`3ce711d`](https://github.com/coderoadpl/ai-video-cataloger/commit/3ce711d)).
-- `faces recluster` no longer leaves people the owner cannot recognise: in a real-world catalog nearly every rebuilt identity had no crop because crops existed only for the exemplars of the single person that had been glued together at index time
+- `faces recluster` no longer leaves people without recognisable exemplars: in a real-world catalog nearly every rebuilt identity had no crop because crops existed only for the exemplars of the single identity that had been glued together at index time
   ([`aad0d0c`](https://github.com/coderoadpl/ai-video-cataloger/commit/aad0d0c)).
 - `driveRunSummarySchema` carries `snapshotSkipped` through the completed `process-drive` job payload instead of stripping it
   ([`cd2b2d2`](https://github.com/coderoadpl/ai-video-cataloger/commit/cd2b2d2)).

@@ -42,7 +42,7 @@ rather than shown as the wrong face. `FACE_ENGINE_VERSION` stays 2.
 - **Let recluster write crops (chain extraction into it).** Destroys the W12
   compile-time guarantee (`FacesReclusterDeps = Pick<FacesDeps, 'config' | 'fs' |
   'globalCatalog'>`) that makes "recluster never touches media" a type error rather than
-  a promise, and makes the fast rebuild an hour-long job.
+  a promise, and turns a fast rebuild into a long-running job.
 - **`faces recluster --with-exemplars` chaining the backfill.** Keeps the type
   separation but hides an hour-long media pass behind a command whose whole selling
   point is that it is instant and offline-safe. Instead: recluster's human line ends
@@ -58,7 +58,8 @@ rather than shown as the wrong face. `FACE_ENGINE_VERSION` stays 2.
 
 ## Consequences
 
-Index pays one JPEG encode and a small amount of disk per observation and in exchange loses the deferred crop
+Index pays one JPEG encode and a small amount of disk per observation and in exchange
+loses the deferred crop
 machinery (`nextCropPath`, `shouldStoreExemplar`, `ObservationContext`,
 `persistedContext`, `releaseCropPixels`) and holds aligned pixels for one detection
 instead of one file. Legacy person-scoped crop files stay valid and are never migrated,
