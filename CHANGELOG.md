@@ -14,6 +14,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.18] - 2026-08-04
+
 ### Fixed
 
 - Biblioteka → Kolekcja no longer lists a photo that was scanned but never
@@ -22,14 +24,16 @@ release history jumps from `0.5.10` to `0.5.12`.
   (which already only surfaces analyzed files) and the release's own W55
   Added entry. The Library → Zdjęcia browse tab and the Analysis photos
   sidebar/tree are unaffected — browsing and picking a photo to analyze
-  intentionally still lists every scanned photo (W60).
+  intentionally still lists every scanned photo (W60)
+  ([`889a2e7`](https://github.com/coderoadpl/ai-video-cataloger/commit/889a2e744f26c06808eafd2bda61c55980fe94a6)).
 - The release walkthrough now exercises the W57 photos folder tree
   end-to-end instead of leaving it entirely unscreenshotted: three new steps
   (`photos-tree`, `photos-tree-analyze`, `collection-photo-analyzed`) switch
   the Zdjęcia sidebar to "Wszystkie", expand a folder row, select a photo
   from the tree and assert its single-photo "Analizuj" is enabled, run that
   analysis to completion, and then assert the analyzed photo reaches
-  Biblioteka → Kolekcja (W60).
+  Biblioteka → Kolekcja (W60)
+  ([`889a2e7`](https://github.com/coderoadpl/ai-video-cataloger/commit/889a2e744f26c06808eafd2bda61c55980fe94a6)).
 
 ## [0.6.17] - 2026-08-04
 
