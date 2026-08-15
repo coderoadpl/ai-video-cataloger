@@ -1,4 +1,4 @@
-import type { PhotoListItem } from './day-groups.js';
+import type { PhotoListItem } from './photo-list-item.js';
 import type { PhotoTreeNode } from './photos-tree-model.js';
 
 export interface PhotoFolderRow {

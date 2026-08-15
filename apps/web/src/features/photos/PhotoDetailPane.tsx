@@ -1,26 +1,23 @@
-import { Box, Button, Chip, CircularProgress, Divider, Link, MenuItem, Paper, Select, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, Divider, MenuItem, Paper, Select, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { CardHeader } from '../../components/ui/CardHeader.js';
-import { ClockIcon, OpenInNewIcon } from '../../components/ui/icons.js';
+import { ClockIcon } from '../../components/ui/icons.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import { formatCapturedAt } from '../../lib/format.js';
 import type { CapturedAtSource, PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
 import { analysisProvenanceText } from './analysis-provenance.js';
-import type { PhotoDetail, PhotoVariantRecord } from './use-photos.js';
+import type { PhotoDetail, PhotoVariantRecord } from './use-photos-analysis.js';
 
 interface PhotoDetailPaneProps {
-  showAnalysisTools: boolean;
   detail: PhotoDetail | null;
   isLoading: boolean;
   variants: PhotoVariantRecord[];
   onSelectVariant: (configId: string | null) => void;
-  onSearchTag?: ((tag: string) => void) | undefined;
   onAnalyze: () => void;
   isBusy: boolean;
   canAnalyze: boolean;
   analyzeProgress: { current: number; total: number } | null;
-  onOpenInAnalysis?: (() => void) | undefined;
 }
 
 type PhotosDictStringKey = { [K in keyof Dictionary['photos']]: Dictionary['photos'][K] extends string ? K : never }[keyof Dictionary['photos']];
@@ -74,17 +71,14 @@ const capturedAtSourceLabel = (dictionary: Dictionary, source: CapturedAtSource)
 };
 
 export const PhotoDetailPane = ({
-  showAnalysisTools,
   detail,
   isLoading,
   variants,
   onSelectVariant,
-  onSearchTag,
   onAnalyze,
   isBusy,
   canAnalyze,
   analyzeProgress,
-  onOpenInAnalysis,
 }: PhotoDetailPaneProps) => {
   const dictionary = useDictionary();
 
@@ -127,7 +121,7 @@ export const PhotoDetailPane = ({
       ))}
       <Divider />
       {analysis === null ? (
-        showAnalysisTools && photo.proxyState === 'done' ? (
+        photo.proxyState === 'done' ? (
           <Paper
             variant="outlined"
             data-testid="photos-analyze-strip"
@@ -173,45 +167,27 @@ export const PhotoDetailPane = ({
                   label={tag}
                   size="small"
                   data-testid="photo-tag-chip"
-                  onClick={onSearchTag === undefined ? undefined : () => onSearchTag(tag)}
                 />
               ))}
             </Box>
           </Box>
-          {showAnalysisTools ? (
-            <>
-              <Row label={dictionary.photos.detailVariant} value={analysisProvenanceText(analysis, dictionary)} />
-              <Typography variant="caption" color="text.secondary">{dictionary.photos.detailVariantCount(analysis.variantCount)}</Typography>
-              <Select
-                size="small"
-                value={analysis.explicit ? analysis.configId : ''}
-                displayEmpty
-                aria-label={dictionary.photos.variantPickerLabel}
-                data-testid="photo-variant-picker"
-                onChange={(event) => onSelectVariant(event.target.value === '' ? null : event.target.value)}
-              >
-                <MenuItem value="">{dictionary.photos.variantAutomatic}</MenuItem>
-                {variants.map((variantOption) => (
-                  <MenuItem key={variantOption.configId} value={variantOption.configId}>{variantOption.label}</MenuItem>
-                ))}
-              </Select>
-            </>
-          ) : null}
+          <Row label={dictionary.photos.detailVariant} value={analysisProvenanceText(analysis, dictionary)} />
+          <Typography variant="caption" color="text.secondary">{dictionary.photos.detailVariantCount(analysis.variantCount)}</Typography>
+          <Select
+            size="small"
+            value={analysis.explicit ? analysis.configId : ''}
+            displayEmpty
+            aria-label={dictionary.photos.variantPickerLabel}
+            data-testid="photo-variant-picker"
+            onChange={(event) => onSelectVariant(event.target.value === '' ? null : event.target.value)}
+          >
+            <MenuItem value="">{dictionary.photos.variantAutomatic}</MenuItem>
+            {variants.map((variantOption) => (
+              <MenuItem key={variantOption.configId} value={variantOption.configId}>{variantOption.label}</MenuItem>
+            ))}
+          </Select>
         </Box>
       )}
-      {!showAnalysisTools && ownerPath !== null && onOpenInAnalysis !== undefined ? (
-        <Link
-          component="button"
-          variant="body2"
-          underline="hover"
-          data-testid="photos-open-analysis"
-          onClick={onOpenInAnalysis}
-          sx={{ display: 'flex', alignItems: 'center', gap: 0.5, alignSelf: 'flex-start' }}
-        >
-          <OpenInNewIcon fontSize="small" />
-          {dictionary.photos.openInAnalysis}
-        </Link>
-      ) : null}
     </Box>
   );
 };

@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
-import type { DaySection, PhotoListItem } from './day-groups.js';
+import type { PhotoListItem } from './photo-list-item.js';
 import type { SidebarSection } from './sidebar-sections.js';
-import { adjacentFingerprint, flattenOrder, focusTarget } from './viewer-nav.js';
+import { adjacentFingerprint, flattenOrder, type OrderSection } from './viewer-nav.js';
 
 const stubItem = (fingerprint: string): PhotoListItem => ({
   fingerprint,
@@ -24,9 +24,9 @@ const stubItem = (fingerprint: string): PhotoListItem => ({
   exifReadAt: null,
 });
 
-const sections: DaySection[] = [
-  { day: 'd1', label: 'd1', items: [stubItem('a'), stubItem('b')] },
-  { day: 'd2', label: 'd2', items: [stubItem('c')] },
+const sections: OrderSection[] = [
+  { items: [stubItem('a'), stubItem('b')] },
+  { items: [stubItem('c')] },
 ];
 
 describe('flattenOrder', () => {
@@ -62,17 +62,5 @@ describe('adjacentFingerprint', () => {
 
   it('returns null when the current fingerprint is not in the order', () => {
     expect(adjacentFingerprint(order, 'missing', 1)).toBeNull();
-  });
-});
-
-describe('focusTarget', () => {
-  const order = flattenOrder(sections);
-
-  it('opens the viewer when the fingerprint is in the currently loaded order', () => {
-    expect(focusTarget(order, 'b')).toEqual({ select: 'b', openViewer: true });
-  });
-
-  it('selects without opening the viewer when the fingerprint is not loaded', () => {
-    expect(focusTarget(order, 'not-loaded')).toEqual({ select: 'not-loaded', openViewer: false });
   });
 });

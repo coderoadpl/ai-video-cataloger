@@ -48,8 +48,8 @@ promotion **verbatim**. So:
 
 A carried `photos.db` keeps its `photo-artifacts/` tree (proxies, thumbnails,
 grid thumbnails) by the rule above — the rows say `proxyState: done` and the
-files are still there, so the Photos tab is not left pointing at artifacts
-that the promotion deleted.
+files are still there, so Kolekcja and Analysis are not left pointing at
+artifacts that promotion deleted.
 
 There is no flag to force the last case. Reconciling two non-empty
 `photos.db` files is a real feature, not a promotion detail, and isn't built.

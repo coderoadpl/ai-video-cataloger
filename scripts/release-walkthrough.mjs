@@ -534,24 +534,6 @@ const drive = async (plan) => {
     return done('tile opened a preview; escape hatch landed in Analysis');
   });
 
-  await record('photos-browse', async () => {
-    const modeLibrary = page.getByTestId('mode-library');
-    if (await appeared(modeLibrary, SETTLE_TIMEOUT_MS)) await modeLibrary.click();
-    const subnavPhotos = page.getByTestId('subnav-photos');
-    if (!(await appeared(subnavPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Photos subnav in this build');
-    await subnavPhotos.click();
-    const tile = page.getByTestId('photos-tile').first();
-    if (!(await appeared(tile, FOLDER_TIMEOUT_MS))) return skipped('no photos catalogued in this home');
-    await tile.click();
-    if (!(await appeared(page.getByTestId('photos-detail'), VISIBLE_TIMEOUT_MS))) {
-      return skipped('photo detail pane did not render');
-    }
-    if (await appeared(page.getByTestId('photos-analyze-strip'), SETTLE_TIMEOUT_MS)) {
-      return failed('analyze strip visible in the browse Photos surface');
-    }
-    return done('browse Photos detail pane shows no analyze affordance');
-  });
-
   await record('photos-sidebar', async () => {
     const modeAnalysis = page.getByTestId('mode-analysis');
     if (!(await appeared(modeAnalysis, SETTLE_TIMEOUT_MS))) return skipped('no mode switcher in this build');
@@ -647,43 +629,23 @@ const drive = async (plan) => {
     const photoChip = page.getByTestId('library-media-photo');
     if (!(await appeared(photoChip, FOLDER_TIMEOUT_MS))) return skipped('no Zdjęcia media chip in this build');
     const chipText = await photoChip.first().textContent();
+    await photoChip.click();
     return collectionPhotoChipOutcome(parseMediaChipCount(chipText));
   });
 
-  await record('photos-tab', async () => {
-    const modeLibrary = page.getByTestId('mode-library');
-    if (await appeared(modeLibrary, SETTLE_TIMEOUT_MS)) await modeLibrary.click();
-    const subnavPhotos = page.getByTestId('subnav-photos');
-    if (!(await appeared(subnavPhotos, SETTLE_TIMEOUT_MS))) return skipped('no Photos subnav in this build');
-    await subnavPhotos.click();
-    if (!(await appeared(page.getByTestId('photos-layout'), FOLDER_TIMEOUT_MS))) return skipped('Photos view did not render');
-    return done('Photos view opened');
-  });
-
-  await record('photos-grid', async () => {
-    if (!(await appeared(page.getByTestId('photos-grid'), FOLDER_TIMEOUT_MS))) {
-      return skipped('no photos catalogued in this home');
-    }
-    const tiles = await page.getByTestId('photos-tile').count();
-    if (tiles === 0) return skipped('photo grid rendered with no tiles');
-    const brokenPlaceholder = await appeared(page.getByTestId('photos-tile-placeholder'), SETTLE_TIMEOUT_MS);
-    const brokenNote = brokenPlaceholder
-      ? `; broken-image placeholder shown for ${BROKEN_PHOTO_NAME}`
-      : `; WARNING: no broken-image placeholder found (expected ${BROKEN_PHOTO_NAME} to fail its proxy)`;
-    return done(`${String(tiles)} photo tile(s) listed${brokenNote}`);
-  });
-
-  await record('photo-detail', async () => {
-    const tile = page.getByTestId('photos-tile').first();
-    if (!(await appeared(tile, SETTLE_TIMEOUT_MS))) return skipped('no photo tile to select');
+  await record('collection-photo-viewer', async () => {
+    const tile = page.getByTestId('library-tile').first();
+    if (!(await appeared(tile, FOLDER_TIMEOUT_MS))) return skipped('no analyzed photo in Kolekcja');
     await tile.click();
-    if (!(await appeared(page.getByTestId('photos-detail'), VISIBLE_TIMEOUT_MS))) {
-      return skipped('photo detail pane did not render');
+    if (!(await appeared(page.getByTestId('photos-viewer'), VISIBLE_TIMEOUT_MS))) {
+      return skipped('Kolekcja photo viewer did not render');
     }
-    return done('photo detail pane opened');
+    return done('Kolekcja photo tile opened the shared viewer');
   });
 
   await record('settings', async () => {
+    const viewerClose = page.getByTestId('photos-viewer-close');
+    if (await appeared(viewerClose, SETTLE_TIMEOUT_MS)) await viewerClose.click();
     const settingsButton = page.getByTestId('open-settings-button');
     if (!(await appeared(settingsButton, SETTLE_TIMEOUT_MS))) return skipped('no Settings control in this build');
     await settingsButton.click();

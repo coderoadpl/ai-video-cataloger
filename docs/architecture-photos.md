@@ -7,9 +7,11 @@ overridden here applies verbatim: layer discipline, contract-as-only-bridge,
 path canonicalization (NFC at the three seams, `canonicalPath` only), the
 renderer architecture, the two gates.
 
-Companion PRD: `prd-photos.md`. Owner constraints (frozen): separate photos
-DB, separate Photos tab, shared machinery, no file mutation in v1, content
-hash as the join key.
+Companion PRD: `prd-photos.md`. The original owner constraints established a
+separate photos DB, shared machinery, no file mutation in v1 and content hash
+as the join key. The 2026-08-15 owner decision supersedes the separate Library
+Photos tab: Kolekcja is the single analyzed-only browse surface, while scanned
+but unanalyzed photos remain reachable only in Analysis → Zdjęcia.
 
 Revision 2 (2026-07-30): incorporates the design-challenge review
 (`design-challenge.md`). Every accepted/rebutted finding is recorded in the
@@ -551,7 +553,7 @@ geometry-only and needs no change beyond a marker kind.
   entry carrying `media: 'video' | 'photo'` (defaulted `'video'` so a
   pre-4b envelope still parses) and — for photo rows only — a nullable
   `thumbPath` resolved through the same `photoThumbPath` convention the
-  Photos tab already uses, so the map's photo pin popover can show a
+  photo catalog already uses, so the map's photo pin popover can show a
   thumbnail without a cross-feature import into `features/photos/`.
 
 ## 7. Contract, CLI, jobs
@@ -632,40 +634,25 @@ geometry-only and needs no change beyond a marker kind.
 
 ## 8. Renderer
 
-`features/photos/` is an independent island: `PhotosView` mounts once as the
-Library subnav's Zdjęcia surface, and `PhotosSidebar`/`PhotosWorkspace` mount
-as the Analysis media toggle's Zdjęcia face (`docs/architecture.md`'s
-two-mode IA delta), each controlled by its own `active` flag, the route
-wiring it like `people`/`map`. Island
-core (`features/photos/core/`) owns grid grouping (capture-day sections),
-windowed-list selection and typed dictionary keys; the web binding injects
-bound descriptors from `api.ts`. No cross-feature imports: the map interop
-(jump-to-photo) goes through route-supplied props exactly as
-`details`↔`map` does today. Layout skeleton (grid + detail split) lives in
-`components/layout/`; copy in `i18n` en/pl; thumbnails via `media://`.
+`features/photos/` is an independent Analysis island:
+`PhotosSidebar`/`PhotosWorkspace` mount as the Analysis media toggle's
+Zdjęcia face (`docs/architecture.md`'s two-mode IA delta), controlled by one
+`active` flag. Island core owns sidebar ordering, selection and typed photo
+records; the web binding injects bound descriptors from `api.ts`. Photo
+browsing in Library belongs to `features/library/`, where Kolekcja consumes
+the analyzed-only `GET /api/library/collection` union. Map photo actions route
+to Kolekcja with its Zdjęcia media chip selected. Copy remains in the typed
+`i18n` en/pl dictionary and thumbnails resolve through `media://`.
 Boundaries plugin: `photos` obeys the same element types as existing
 features — no new lint rules needed, the existing ones already fence it
 (verified: wildcard feature rules in `eslint.config.js`,
 `tsconfig.islands.json` glob).
 
-`PhotosView` is mounted **once**, as the Library subnav's Zdjęcia surface —
-browse and search over photos live only there. It always renders the
-descriptive block of `PhotoDetailPane` (EXIF rows, captured, sightings,
-description/scene/quality/tags) via a narrower `showAnalysisTools: boolean`
-prop pinned to `false`; the analyze strip, analyze progress and the variant
-picker are unreachable from browse. The toolbar carries only the root filter
-and the search field — no scan action, no proxies-pending strip (scanning is
-Analysis work); the empty state, when no root has been scanned, points at
-Analysis → Zdjęcia instead of offering a scan CTA. The browse pane appends a
-discreet "Otwórz w Analizie" link when an owner path is known, routing
-through the same `openInAnalysis` callback the Library↔Analysis bridge uses
-elsewhere; tag chips in browse keep their local-search behavior.
-
 The Analysis media toggle's Zdjęcia face is `PhotosSidebar` (navigation,
 scope, badges, folder actions) + `PhotosWorkspace` (photo detail: proxy
 preview, EXIF, provenance, description/tags, variant picker, analyze strip),
 both consuming one lifted `use-photos-analysis.ts` hook instance
-(`usePhotosAnalysis`, a slimmed sibling of `usePhotos`; root/scope/selection
+(`usePhotosAnalysis`; root/scope/selection
 state and the analysis-only queries — `photosDetail`, `photosVariants`,
 `photosStatus` — live at the route). `PhotosSidebar` shows a folder header
 (root name, path), a `'folder' | 'all'` scope toggle now
@@ -683,7 +670,7 @@ root, not inside `features/photos/`), shows a placeholder
 selected photo's proxy preview (click reopens the existing `PhotoViewer`
 overlay, prev/next following the sidebar's current item order via
 `flattenOrder`/`adjacentFingerprint` over `sidebarSections`) plus
-`PhotoDetailPane` with `showAnalysisTools` pinned to `true`.
+`PhotoDetailPane` with its Analysis actions and variant picker.
 
 **Two independent analyze actions, both surfaced by `usePhotosAnalysis` (W56).**
 `PhotosScopeToolbar`'s "Przetwórz" stays root-wide: under the `'folder'` scope
@@ -829,7 +816,7 @@ matched/unmatched counts the real run would produce.
    smoke leg. (Full spec: `wave-1-spec.md`.)
 2. **Wave 2 — Proxies & browse**: `PhotoMediaPort` (RAW preview extraction,
    sips fallback), proxies + thumbs into `photo-artifacts/`, `media://`
-   photo root, Photos tab (grid, viewer, detail pane).
+   photo root, and the now-retired Library Photos grid/viewer/detail pane.
 3. **Wave 3 — Analysis & search**: photo descriptor + batched analysis,
    variants, budget-guard extraction, FTS search + tags, tab search.
 4. **Wave 4 — Faces & places**: photo faces pass into the shared pool,

@@ -43,7 +43,6 @@ import {
   photosProcessMutation,
   photosProxiesMutation,
   photosScanMutation,
-  photosSearchQuery,
   photosStatusQuery,
   photosTreeFolderQuery,
   photosTreeQuery,
@@ -83,7 +82,6 @@ import {
   type LibraryPreviewInput,
   type PhotosDetailInput,
   type PhotosListInput,
-  type PhotosSearchInput,
   type PhotosStatusInput,
   type PhotosTreeFolderInput,
   type PhotosVariantsListInput,
@@ -228,7 +226,6 @@ export const actions = {
   photosGridThumbs: photosGridThumbsMutation(apiClient),
   photosForget: photosForgetMutation(apiClient),
   photosProcess: photosProcessMutation(apiClient),
-  photosSearch: (input: PhotosSearchInput) => photosSearchQuery(apiClient, input),
   photosVariants: (input: PhotosVariantsListInput) => photosVariantsQuery(apiClient, input),
   photosVariantsSelect: photosVariantsSelectMutation(apiClient),
 };

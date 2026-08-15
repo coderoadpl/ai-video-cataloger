@@ -1,4 +1,4 @@
-import type { PhotoListItem } from './day-groups.js';
+import type { PhotoListItem } from './photo-list-item.js';
 
 export type PhotoBadge = 'analysed' | 'duplicate' | 'proxyFailed' | 'exifMissing' | 'missing';
 

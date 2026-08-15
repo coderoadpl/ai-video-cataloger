@@ -46,7 +46,6 @@ export interface Dictionary {
     modeLibrary: string;
     modeAnalysis: string;
     subnavCollection: string;
-    subnavPhotos: string;
     subnavPeople: string;
     subnavMap: string;
     mediaVideos: string;
@@ -525,7 +524,7 @@ export interface Dictionary {
     zoomIn: string;
     zoomOut: string;
     resetView: string;
-    openPhoto: string;
+    showPhotosInCollection: string;
     openPreview: string;
     coordinates: string;
     source: {
@@ -691,12 +690,7 @@ export interface Dictionary {
     cancelAnalysis: string;
   };
   photos: {
-    title: string;
-    subtitle: string;
-    rootPickerLabel: string;
-    rootPickerAll: string;
     emptyNoRootsTitle: string;
-    emptyNoRootsBodyBrowse: string;
     scanFolderAction: string;
     scanStartedLog: string;
     scanCompletedLog: string;
@@ -729,16 +723,6 @@ export interface Dictionary {
     capturedSourceFileMtime: string;
     detailOwnerPath: string;
     detailAlsoAt: (count: number) => string;
-    statusPhotos: (count: number) => string;
-    statusPaths: (count: number) => string;
-    statusProxied: (count: number) => string;
-    statusProxyFailed: (count: number) => string;
-    loadingPhotos: string;
-    loadMore: string;
-    searchPlaceholder: string;
-    searchResultsLabel: (count: number) => string;
-    searchNoResults: string;
-    searchClear: string;
     analyzeAction: string;
     analyzeCompletedLog: string;
     analyzeFailedLog: string;
@@ -777,7 +761,6 @@ export interface Dictionary {
     qualityDark: string;
     qualityOverexposed: string;
     qualityOther: string;
-    openInAnalysis: string;
   };
   photosSidebar: {
     noFolderTitle: string;
@@ -902,7 +885,6 @@ export const en: Dictionary = {
     modeLibrary: 'Library',
     modeAnalysis: 'Analysis',
     subnavCollection: 'Collection',
-    subnavPhotos: 'Photos',
     subnavPeople: 'People',
     subnavMap: 'Map',
     mediaVideos: 'Videos',
@@ -1436,7 +1418,7 @@ export const en: Dictionary = {
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     resetView: 'Reset view',
-    openPhoto: 'Open photo',
+    showPhotosInCollection: 'Show photos in Collection',
     openPreview: 'Preview',
     coordinates: 'Coordinates',
     source: {
@@ -1621,12 +1603,7 @@ export const en: Dictionary = {
     cancelAnalysis: 'Cancel Analysis',
   },
   photos: {
-    title: 'Photos',
-    subtitle: 'Browse scanned photo roots by capture day.',
-    rootPickerLabel: 'Photo root',
-    rootPickerAll: 'All photos',
     emptyNoRootsTitle: 'No photo folders scanned yet',
-    emptyNoRootsBodyBrowse: 'Scan a folder from Analysis → Photos to start browsing here.',
     scanFolderAction: 'Scan a folder…',
     scanStartedLog: 'Scanning photos…',
     scanCompletedLog: 'Photo scan complete',
@@ -1659,16 +1636,6 @@ export const en: Dictionary = {
     capturedSourceFileMtime: 'File modified time',
     detailOwnerPath: 'Owner path',
     detailAlsoAt: (count) => `Also at: ${count} path${count === 1 ? '' : 's'}`,
-    statusPhotos: (count) => `${count} photos`,
-    statusPaths: (count) => `${count} paths`,
-    statusProxied: (count) => `${count} proxied`,
-    statusProxyFailed: (count) => `${count} proxy failed`,
-    loadingPhotos: 'Loading photos…',
-    loadMore: 'Load more',
-    searchPlaceholder: 'Search file names, descriptions, tags, places…',
-    searchResultsLabel: (count) => `${count} result${count === 1 ? '' : 's'}`,
-    searchNoResults: 'No photos match this search.',
-    searchClear: 'Clear search',
     analyzeAction: 'Analyze',
     analyzeCompletedLog: 'Photo analysis complete',
     analyzeFailedLog: 'Photo analysis failed',
@@ -1708,7 +1675,6 @@ export const en: Dictionary = {
     qualityDark: 'Dark',
     qualityOverexposed: 'Overexposed',
     qualityOther: 'Other',
-    openInAnalysis: 'Open in Analysis',
   },
   photosSidebar: {
     noFolderTitle: 'No folder open',
@@ -1841,7 +1807,6 @@ export const pl: Dictionary = {
     modeLibrary: 'Biblioteka',
     modeAnalysis: 'Analiza',
     subnavCollection: 'Kolekcja',
-    subnavPhotos: 'Zdjęcia',
     subnavPeople: 'Osoby',
     subnavMap: 'Mapa',
     mediaVideos: 'Filmy',
@@ -2376,7 +2341,7 @@ export const pl: Dictionary = {
     zoomIn: 'Przybliż',
     zoomOut: 'Oddal',
     resetView: 'Zresetuj widok',
-    openPhoto: 'Otwórz zdjęcie',
+    showPhotosInCollection: 'Pokaż zdjęcia w Kolekcji',
     openPreview: 'Podgląd',
     coordinates: 'Współrzędne',
     source: {
@@ -2561,12 +2526,7 @@ export const pl: Dictionary = {
     cancelAnalysis: 'Anuluj analizę',
   },
   photos: {
-    title: 'Zdjęcia',
-    subtitle: 'Przeglądaj zeskanowane foldery zdjęć według dnia wykonania.',
-    rootPickerLabel: 'Folder zdjęć',
-    rootPickerAll: 'Wszystkie zdjęcia',
     emptyNoRootsTitle: 'Nie zeskanowano jeszcze żadnego folderu zdjęć',
-    emptyNoRootsBodyBrowse: 'Zeskanuj folder w Analizie → Zdjęcia, aby zacząć tu przeglądać.',
     scanFolderAction: 'Zeskanuj folder…',
     scanStartedLog: 'Skanowanie zdjęć…',
     scanCompletedLog: 'Skanowanie zdjęć zakończone',
@@ -2599,16 +2559,6 @@ export const pl: Dictionary = {
     capturedSourceFileMtime: 'Czas modyfikacji pliku',
     detailOwnerPath: 'Ścieżka właściciela',
     detailAlsoAt: (count) => `Także w: ${count} ${plPlural(count, 'ścieżce', 'ścieżkach', 'ścieżkach')}`,
-    statusPhotos: (count) => `${count} ${plPlural(count, 'zdjęcie', 'zdjęcia', 'zdjęć')}`,
-    statusPaths: (count) => `${count} ${plPlural(count, 'ścieżka', 'ścieżki', 'ścieżek')}`,
-    statusProxied: (count) => `${count} z podglądem`,
-    statusProxyFailed: (count) => `${count} ${plPlural(count, 'nieudany', 'nieudane', 'nieudanych')} ${plPlural(count, 'podgląd', 'podglądy', 'podglądów')}`,
-    loadingPhotos: 'Ładowanie zdjęć…',
-    loadMore: 'Wczytaj więcej',
-    searchPlaceholder: 'Szukaj po nazwie pliku, opisie, tagach, miejscu…',
-    searchResultsLabel: (count) => `${count} ${plPlural(count, 'wynik', 'wyniki', 'wyników')}`,
-    searchNoResults: 'Żadne zdjęcie nie pasuje do tego wyszukiwania.',
-    searchClear: 'Wyczyść wyszukiwanie',
     analyzeAction: 'Analizuj',
     analyzeCompletedLog: 'Analiza zdjęć zakończona',
     analyzeFailedLog: 'Analiza zdjęć nie powiodła się',
@@ -2648,7 +2598,6 @@ export const pl: Dictionary = {
     qualityDark: 'Ciemna',
     qualityOverexposed: 'Prześwietlona',
     qualityOther: 'Inna',
-    openInAnalysis: 'Otwórz w Analizie',
   },
   photosSidebar: {
     noFolderTitle: 'Brak otwartego folderu',

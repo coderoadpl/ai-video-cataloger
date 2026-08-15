@@ -2,7 +2,7 @@ import type { z } from 'zod';
 
 import type { photosDetailOutputSchema } from '@core/contract/index.js';
 
-import type { PhotoListItem } from './day-groups.js';
+import type { PhotoListItem } from './photo-list-item.js';
 
 export type PhotoDetail = z.output<typeof photosDetailOutputSchema>;
 

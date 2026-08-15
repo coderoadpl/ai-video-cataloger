@@ -254,11 +254,11 @@ running `thumbnails` by hand.
 `POST /api/photos/grid-thumbs` route existed since the grid-thumbnail work
 above shipped, but nothing in the renderer ever called it — the video
 trigger's photo counterpart was a systemic gap, not a design choice. The
-Library photos surface now fires the same trigger shape
-(`features/photos/use-photo-thumbnails-backfill.ts`, mirroring
+Kolekcja now fires the same trigger shape
+(`features/library/use-photo-thumbnails-backfill.ts`, mirroring
 `use-thumbnails-backfill.ts`): once per app session, `force: false`,
-background priority, the moment `PhotosView` is active and at least one
-photo root is visible. Unlike the video trigger there is one call, not one
+background priority, the moment Kolekcja is active and at least one photo
+root is visible. Unlike the video trigger there is one call, not one
 per root — `runPhotoGridThumbsPass` sweeps every photo proxy in the catalog
 in a single pass, it takes no root parameter, so a second per-root call
 would just re-walk the same set. No new generation logic: the existing pass
@@ -399,7 +399,7 @@ config change re-renders every consumer without a restart. `web-i18n` may import
 The app has exactly two persisted top-bar modes, switched by a segmented
 control: **Biblioteka** (cross-folder browse over the catalog index) and
 **Analiza** (folder-centric work surface). `ViewNav`'s five tabs are retired
-and redistributed: Kolekcja, Zdjęcia, Osoby and Mapa become a horizontal
+and redistributed: Kolekcja, Osoby and Mapa become a horizontal
 subnav inside Library (no catalog sidebar there); the folder workspace and its
 Zdjęcia face become a Filmy/Zdjęcia toggle inside Analysis. The sidebar is
 **medium-aware**: it follows `analysisMedia`, rendering `CatalogSidebar` for
@@ -488,8 +488,9 @@ payload) with `photoCount`/`analysedCount`, tagged with the owning root
 (longest-prefix match over `photosTree`'s existing root list, same rule as
 `ownerRootFor`). The client (`features/photos/core/photos-tree-model.ts`)
 filters those summaries through `buildPhotoTreeForRoot` before rendering, so
-entries belonging to every other registered root remain available to the
-Library but cannot enter the Analysis sidebar. It synthesizes every zero-count
+entries belonging to every other registered root stay registered — their
+analyzed photos remain browsable in Library → Kolekcja — but cannot enter the
+Analysis sidebar. It synthesizes every zero-count
 intermediate ancestor directory purely from the relative-path segments — the
 same `ensure()`/`finalize()` shape as
 `catalog-tree-model.ts`, kept as a separate small module rather than a shared
@@ -598,8 +599,8 @@ any default-color outlined button renders neutral without every call site
 passing `color="inherit"`.
 
 **Browse purification and the preview overlay.** Library and Map are
-strictly read-only: Library's Zdjęcia surface hides the analyze/re-run/
-variant-picker actions and folder scanning, Library's Osoby surface hides the
+strictly read-only: Kolekcja is the single analyzed-only browse surface for
+both videos and photos, Library's Osoby surface hides the
 faces-index build (moved to Analysis → Zdjęcia, see below), and a Map video
 pin opens a preview instead of jumping into the Analysis workspace. The
 preview is a new island, `features/preview/`, rendering a selected-variant-
@@ -828,8 +829,8 @@ tile. `LibraryGrid`'s per-file missing badge now only renders when
 single source of truth for that tile, and the per-file chip still renders
 normally once the folder itself is reachable and only the file is missing.
 
-**Aspect-ratio indicator on grid tiles (W39).** Library/Kolekcja and Zdjęcia
-tiles keep their square cover crop, but a non-landscape source now gets a
+**Aspect-ratio indicator on grid tiles (W39).** Library/Kolekcja tiles keep
+their square cover crop, but a non-landscape source now gets a
 small bottom-right icon: portrait (`height > width`) or extreme panorama
 (`width / height >= 2.4`); plain landscape and square sources get nothing,
 by design (the common case should stay quiet). The pure classifier lives in
@@ -926,12 +927,12 @@ so a scanned-but-never-analyzed photo — which does get a `photo_search_documen
 row at scan time via `syncPhotoSearchDocument`, with an empty description —
 never reaches Kolekcja, matching the video side and this feature's own intent
 (a unified feed of *analyzed* media). This is scoped to `collectionPage`
-only: `GET /api/photos/list` (`PhotosStore.listPhotosPage`, the Library →
-Zdjęcia browse tab) and `GET /api/photos/tree` (the Analysis-side photos
-sidebar) both intentionally keep listing every scanned photo regardless of
-analysis state — browsing and picking a photo to analyze is their job, and
-narrowing either to analyzed-only would make an unanalyzed photo unreachable
-from the UI. Verified in `core/server/usecases/collection.test.ts` (a
+only: `GET /api/photos/list` (`PhotosStore.listPhotosPage`) and
+`GET /api/photos/tree` both intentionally keep listing every scanned photo
+regardless of analysis state for Analysis → Zdjęcia and non-renderer clients —
+browsing and picking a photo to analyze is their job, and narrowing either to
+analyzed-only would make an unanalyzed photo unreachable from the UI. Verified
+in `core/server/usecases/collection.test.ts` (a
 scanned-not-analyzed photo is absent from the feed and does not count toward
 `photoTotal`; an analyzed one is present) and against the real
 `SqlJsPhotosStore` in `apps/server/src/collection-real-stores.test.ts`.

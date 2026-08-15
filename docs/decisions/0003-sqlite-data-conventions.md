@@ -100,8 +100,8 @@ conformance-gates wave.
 (`collectionInputSchema`/`core/server/usecases/collection.ts`, added after
 these three) already paginates with the opaque composite-offset `cursor` (d)
 calls for, and covers both video and photo search/browse. The intended
-migration is for the renderer's Library/Photos surfaces and the CLI to move
-onto `collection` and for `searchQuery`/`photosList`/`photosSearch` to be
+migration is for the renderer's Kolekcja surface and the CLI to move onto
+`collection` and for `searchQuery`/`photosList`/`photosSearch` to be
 deprecated once every caller has moved, rather than for the three to grow a
 cursor mode in place.
 

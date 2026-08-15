@@ -362,7 +362,7 @@ describe('MapView', () => {
     expect(screen.queryByTestId('map-coverage-photos')).toBeNull();
   });
 
-  it('shows a photo pin popover with an open-photo action and no open-video button, and routes the click through onOpenPhoto', async () => {
+  it('shows a photo pin popover with a Collection action and no open-video button, and routes the click through onOpenPhoto', async () => {
     const onOpenPhoto = vi.fn();
     respondWith({
       totalFiles: 0,

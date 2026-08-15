@@ -40,8 +40,8 @@ async function launch(workdir: string): Promise<Session> {
   return { app, page };
 }
 
-test.describe('Current-folder photos surface', () => {
-  test('scans a folder, shows real grid thumbnails, and honestly reflects analysis availability', async () => {
+test.describe('Current-folder photos analysis', () => {
+  test('keeps scanned-only photos in Analysis and adds analyzed photos to Kolekcja', async () => {
     test.skip(process.platform !== 'darwin', 'photo decode uses /usr/bin/sips');
 
     const folder = makeEmptyWorkdir('photos-current-folder');
@@ -87,13 +87,11 @@ test.describe('Current-folder photos surface', () => {
       await expect(rows).toHaveCount(2);
 
       await session.page.getByTestId('mode-library').click();
-      await session.page.getByTestId('subnav-photos').click();
-      const grid = session.page.getByTestId('photos-grid');
-      await expect(grid).toBeVisible({ timeout: 30_000 });
-      const tiles = session.page.getByTestId('photos-tile');
-      await expect(tiles).toHaveCount(2, { timeout: 30_000 });
-      await expect(tiles.first().locator('img')).toBeVisible({ timeout: 30_000 });
-      await expect(session.page.getByTestId('photos-tile-placeholder')).toHaveCount(0);
+      await expect(session.page.getByTestId('subnav-collection')).toBeVisible();
+      await expect(session.page.getByTestId('subnav-people')).toBeVisible();
+      await expect(session.page.getByTestId('subnav-map')).toBeVisible();
+      await expect(session.page.getByTestId('subnav-photos')).toHaveCount(0);
+      await expect(session.page.getByTestId('library-tile')).toHaveCount(0);
 
       await session.page.getByTestId('mode-analysis').click();
       await expect(session.page.getByTestId('analysis-media-photos')).toHaveAttribute('aria-pressed', 'true', { timeout: 5_000 });
@@ -110,6 +108,10 @@ test.describe('Current-folder photos surface', () => {
         await expect(analyzeAction).toBeEnabled({ timeout: 15_000 });
         await analyzeAction.click();
         await expect(analyzeStrip).toBeHidden({ timeout: 180_000 });
+
+        await session.page.getByTestId('mode-library').click();
+        await session.page.getByTestId('library-media-photo').click();
+        await expect(session.page.getByTestId('library-tile').first()).toBeVisible({ timeout: 30_000 });
       }
     } finally {
       await session.app.close().catch(() => undefined);

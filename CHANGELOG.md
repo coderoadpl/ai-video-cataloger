@@ -26,6 +26,12 @@ release history jumps from `0.5.10` to `0.5.12`.
   processes exactly that scope, while manual rescan moved to the open-folder
   dropdown and photo-run cancellation now uses photo-specific copy (W62).
 
+### Removed
+
+- Biblioteka no longer has a separate Zdjęcia browse tab: Kolekcja is the
+  single analyzed-only timeline for videos and photos, while scanned but
+  unanalyzed photos remain available in Analiza → Zdjęcia (W63).
+
 ### Fixed
 
 - The sidebar media/scope toggle row no longer truncates its labels at narrow

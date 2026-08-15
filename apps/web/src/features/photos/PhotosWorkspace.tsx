@@ -57,7 +57,6 @@ export const PhotosWorkspace = ({ active, state, topStrip }: PhotosWorkspaceProp
             />
           )}
           <PhotoDetailPane
-            showAnalysisTools
             detail={state.detail}
             isLoading={state.isDetailLoading}
             variants={state.variants}
