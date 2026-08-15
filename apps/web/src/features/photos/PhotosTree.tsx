@@ -136,7 +136,6 @@ export const PhotosTree = ({ root, selectedFingerprint, processingFingerprints, 
 
   useEffect(() => {
     setExpanded(new Set([rootKey]));
-    setLoaded(new Map());
   }, [rootKey]);
 
   const isExpanded = useCallback((key: string) => expanded.has(key), [expanded]);

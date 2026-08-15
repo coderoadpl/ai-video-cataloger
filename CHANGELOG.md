@@ -34,6 +34,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Analysis → Photos, "Whole tree" scope: the root folder's own photos now
+  render as rows instead of a permanent "Scanning folder…" placeholder when
+  that folder's contents were already fetched by the "This folder" scope
+  (W65).
 - The sidebar media/scope toggle row no longer truncates its labels at narrow
   sidebar widths: "Videos"/"Photos" rendered as "Vide…"/"Pho…" at 260 px in
   both the videos and photos sidebars, and now every label renders in full in
