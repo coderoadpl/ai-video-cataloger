@@ -1,3 +1,4 @@
+import { Buffer } from 'node:buffer';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -18,7 +19,18 @@ import {
   prepareScratchFixtures,
   TOLERATED_SKIPS,
   treeSelectAnalyzeOutcome,
+  TREE_PHOTO_PATH,
 } from './release-walkthrough.mjs';
+
+const JPEG_WITH_EOI = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x4a, 0x46, 0x49, 0x46, 0xff, 0xd9]);
+
+const sourceWithPhotos = () => {
+  const source = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-fixtures-src-'));
+  writeFileSync(path.join(source, 'photo-01.jpg'), JPEG_WITH_EOI);
+  writeFileSync(path.join(source, 'photo-01-duplicate.jpg'), JPEG_WITH_EOI);
+  writeFileSync(path.join(source, 'photo-02.jpg'), Buffer.concat([JPEG_WITH_EOI, Buffer.from([0x00])]));
+  return source;
+};
 
 describe('blockingSkips', () => {
   it('excludes the tolerated allowlist from the blocking set', () => {
@@ -74,7 +86,7 @@ describe('analyzeOutcome', () => {
 });
 
 describe('treeSelectAnalyzeOutcome', () => {
-  it('reports skipped when the "Wszystkie" tree never rendered a root row', () => {
+  it('reports skipped when the whole-tree scope never rendered a root row', () => {
     const outcome = treeSelectAnalyzeOutcome({
       treeVisible: false, rowVisible: false, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: null,
     });
@@ -293,5 +305,44 @@ describe('prepareScratchFixtures', () => {
     const { mtime } = statSync(brokenPath);
     expect(mtime.getTime()).toBe(BROKEN_PHOTO_MTIME.getTime());
     expect(mtime.getTime()).toBeLessThan(new Date('2001-01-01T00:00:00Z').getTime());
+  });
+
+  it('gives every copied photo content the source never had, so a QA home cannot key it back to the source root', () => {
+    const source = sourceWithPhotos();
+
+    const first = readFileSync(path.join(prepareScratchFixtures(source), 'photo-01.jpg'));
+    const second = readFileSync(path.join(prepareScratchFixtures(source), 'photo-01.jpg'));
+    const original = readFileSync(path.join(source, 'photo-01.jpg'));
+
+    expect(first.equals(original)).toBe(false);
+    expect(first.subarray(0, original.length).equals(original)).toBe(true);
+    expect(first.equals(second)).toBe(false);
+  });
+
+  it('keeps the intentional duplicate pair byte-identical to each other', () => {
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos());
+
+    const photo = readFileSync(path.join(scratchDir, 'photo-01.jpg'));
+    const duplicate = readFileSync(path.join(scratchDir, 'photo-01-duplicate.jpg'));
+    const other = readFileSync(path.join(scratchDir, 'photo-02.jpg'));
+
+    expect(photo.equals(duplicate)).toBe(true);
+    expect(photo.equals(other)).toBe(false);
+  });
+
+  it('plants a photo in a subfolder, whose own fingerprint is what makes the whole-tree scope available', () => {
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos());
+
+    const treePhoto = readFileSync(path.join(scratchDir, TREE_PHOTO_PATH));
+    const rootPhotos = ['photo-01.jpg', 'photo-01-duplicate.jpg', 'photo-02.jpg']
+      .map((name) => readFileSync(path.join(scratchDir, name)));
+
+    expect(rootPhotos.some((photo) => photo.equals(treePhoto))).toBe(false);
+  });
+
+  it('leaves the planted broken photo out of the per-run marking, so its proxy still fails', () => {
+    const scratchDir = prepareScratchFixtures(sourceWithPhotos());
+
+    expect(readFileSync(path.join(scratchDir, BROKEN_PHOTO_NAME)).length).toBeLessThan(64);
   });
 });

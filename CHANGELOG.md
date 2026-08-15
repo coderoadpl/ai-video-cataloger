@@ -38,6 +38,13 @@ release history jumps from `0.5.10` to `0.5.12`.
   sidebar widths: "Videos"/"Photos" rendered as "Vide…"/"Pho…" at 260 px in
   both the videos and photos sidebars, and now every label renders in full in
   English and Polish (W62).
+- `pnpm run qa:walkthrough` passes again on the W62 photos scope model: its
+  photos steps drive the shared "This folder"/"Whole tree" toggle instead of
+  the removed "Wszystkie" one, and every photo it copies into the per-run
+  scratch fixtures now gets a unique content fingerprint (the intentional
+  duplicate pair excepted, and one copy planted in a subfolder so the
+  whole-tree scope exists), so a prepared QA home can no longer key the copies
+  back to the source folder and leave the run with nothing to analyze (W64).
 
 ## [0.6.19] - 2026-08-15
 

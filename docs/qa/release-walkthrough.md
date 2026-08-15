@@ -48,6 +48,22 @@ Every run launches with:
   mtime: with no surviving EXIF, `capturedAt` falls back to file mtime, and an
   old mtime keeps the row sorted last in every captured-at-DESC photo UI
   instead of shadowing real fixtures as the newest photo (W52).
+  Every copied JPEG also gets a per-run marker appended after its EOI marker
+  (trailing bytes a decoder ignores — `sips` and `exifr` both still read the
+  file), because photos.db keys a photo by the sha256 of its bytes: a prepared
+  QA home that already catalogued the source fixtures under their own root
+  otherwise re-attaches every byte-identical scratch copy to those rows, which
+  keep pointing at the source folder, and the scratch root ends up with nothing
+  analyzable under the current-folder scope (W64 — this is what turned the
+  v0.6.20 walkthrough red). The whole run shares one marker, so the fixtures'
+  intentional duplicate pair stays byte-identical to each other and still earns
+  its `Duplikat` badge, and the `.ai-video-cataloger` sidecar is left untouched,
+  exactly as the scanner's own walk skips it. One further copy is planted as
+  `subfolder/tree-photo.jpg` with a fingerprint of its own: the whole-tree scope
+  is offered only while the opened root owns a photo-bearing subfolder
+  (`treeScopeAvailable` in `use-photos-analysis.ts`), and the sanctioned fixture
+  sets keep their subfolder video-only, so `photos-tree` would have no tree to
+  expand.
 
 A run therefore never mutates real user data. Analysis needs a configured
 analyzer, which a throwaway home does not have: pass `--home` pointing at a
@@ -205,16 +221,20 @@ and the analyze strip render, and that the video list is never visible in the
 photos sidebar.
 
 **`photos-tree` / `photos-tree-analyze` / `collection-photo-analyzed` /
-`collection-photo-viewer` (W60/W63).** These steps exercise the W57 folder tree
+`collection-photo-viewer` (W60/W63/W64).** These steps exercise the W57 folder tree
 end-to-end, closing the gap the
 v0.6.17 independent review found (B1/B2): every earlier photo step drives the
-"Ten folder" flat list, so the collapsible roots→subfolders→photo-rows tree
-that only renders in the "Wszystkie" scope (`PhotosSidebar.tsx`,
-`state.scope === 'all'`) had never been clicked, screenshotted, or used to
+"Ten folder" flat list, so the collapsible root→subfolders→photo-rows tree
+that only renders in the whole-tree scope (`PhotosSidebar.tsx`,
+`state.scope === 'tree'`) had never been clicked, screenshotted, or used to
 select a photo.
-- `photos-tree` clicks the "Wszystkie" scope toggle (`photos-scope-all`),
-  waits for a `photos-tree-root-row`, expands the first
-  `photos-tree-folder-row` if one exists, selects the first photo row the tree
+- `photos-tree` clicks the "Całe drzewo" scope toggle (`scope-tree`, the shared
+  `AnalyzeScopeToggle` the videos sidebar also uses since W62; a build whose
+  root owns no photo-bearing subfolder renders it disabled and the step reports
+  `skipped`), waits for a `photos-tree-root-row`, expands that root and the
+  first `photos-tree-folder-row` if either is collapsed (a row click toggles,
+  and the tree opens its root expanded, so an unconditional click would
+  collapse what it meant to open), selects the first photo row the tree
   renders that is neither already analysed nor proxy-failed
   (`photos-sidebar-row`, the same testid the flat list uses — the tree reuses
   `PhotoRow`; the detail pane offers a single-photo "Analizuj" only for such a
@@ -292,7 +312,7 @@ Read every screenshot against the sensitivities that have burned us before:
   and evenly gapped, and `collection-photo-viewer` shows a real image from
   `media://local/` rather than a broken element.
 - **Zdjęcia sidebar** — does the Zdjęcia sidebar show the folder header
-  ("Ten folder"/"Wszystkie" scope toggle), photo count badges
+  ("Ten folder"/"Całe drzewo" scope toggle), photo count badges
   (Ukończony / Duplikat / Podgląd nieudany / Brak EXIF / Brak pliku) and a
   selection highlight?
 - **Zdjęcia sidebar empty state** — with a fresh home, does the Zdjęcia
@@ -312,9 +332,9 @@ Read every screenshot against the sensitivities that have burned us before:
 - **Populated Biblioteka** — in the `search` screenshot, does the Biblioteka
   hold more than 0 `plików`, and does the search return a real hit for the
   analyzed video rather than an empty-state panel?
-- **Photos folder tree (W57/W60)** — in the `photos-tree` screenshot, does the
-  "Wszystkie" scope render the collapsible tree (root row(s), an expanded
-  folder row if the fixtures have subfolders, each carrying an
+- **Photos folder tree (W57/W60/W64)** — in the `photos-tree` screenshot, does the
+  "Całe drzewo" scope render the collapsible tree (the root row and the
+  expanded `subfolder` row the runner plants a photo into, each carrying an
   `analysed/total` count), not the flat "Ten folder" list; is a tree row
   visibly selected; and does the detail pane's "Analizuj" button read as
   enabled (not greyed out) for that tree-selected photo?

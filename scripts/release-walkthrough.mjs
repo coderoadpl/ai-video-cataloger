@@ -1,5 +1,6 @@
 import { Buffer } from 'node:buffer';
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
+import { randomUUID } from 'node:crypto';
+import { appendFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, statSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { parseArgs } from 'node:util';
@@ -15,6 +16,22 @@ const TRUNCATED_JPEG_BYTES = Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10, 0x
 // capturedAt; an old mtime keeps this row sorted last instead of shadowing real
 // fixtures in every date-sorted photo UI (W52).
 export const BROKEN_PHOTO_MTIME = new Date('2000-01-01T00:00:00Z');
+
+const PHOTO_EXTENSIONS = new Set(['.jpg', '.jpeg']);
+// photos.db keys a photo by the sha256 of its bytes, and a prepared QA home has already catalogued
+// the source fixtures under their own root: a byte-identical scratch copy re-attaches to that row,
+// which keeps pointing at the source folder, so the scratch root ends up with no analyzable photo
+// at all (W64). Trailing bytes after the JPEG EOI are ignored by decoders — sips and exifr both
+// still read the file — so appending a per-run marker gives every run its own fingerprints. One
+// marker for the whole run, so the fixtures' intentional duplicate pair stays byte-identical.
+const runPhotoMarker = () => Buffer.from(`\n<!-- avc-walkthrough-run ${randomUUID()} -->\n`);
+// The whole-tree scope is only offered when the opened root owns a photo-bearing subfolder
+// (treeScopeAvailable in apps/web/src/features/photos/use-photos-analysis.ts), and the sanctioned
+// fixture sets keep their subfolder video-only, so the photos-tree step would have nothing to
+// expand. The extra byte keeps this copy's fingerprint distinct from the photo it was copied from,
+// which is what makes its folder a tree node of its own.
+export const TREE_PHOTO_PATH = path.join('subfolder', 'tree-photo.jpg');
+const TREE_PHOTO_SUFFIX = Buffer.from('\n');
 
 // Matches adapters/ollama-runtime/index.ts's SYSTEM_OLLAMA_BASE_URL: this script runs as
 // plain node (no TS path aliases), so the value is duplicated rather than imported.
@@ -188,9 +205,30 @@ const timestamp = () => new Date().toISOString().replaceAll(':', '-').slice(0, 1
 
 // Copies rather than plants in place: walkthrough fixture folders are shared,
 // read-only templates that a QA run must never mutate (see repo CLAUDE.md).
+// Mirrors the scanner's own walk (shouldSkipDirectory in core/server/usecases/shared.ts): a
+// fixture folder carries a .ai-video-cataloger sidecar of thumbnails and extracted frames that no
+// photo scan ever catalogues, and rewriting those would edit the video catalog instead.
+const scratchPhotoPaths = (scratchDir) =>
+  readdirSync(scratchDir, { recursive: true, withFileTypes: true })
+    .filter((entry) => entry.isFile() && PHOTO_EXTENSIONS.has(path.extname(entry.name).toLowerCase()))
+    .map((entry) => path.join(entry.parentPath, entry.name))
+    .filter((photoPath) => !path.relative(scratchDir, photoPath).split(path.sep).some((segment) => segment.startsWith('.')))
+    .sort((left, right) => left.localeCompare(right));
+
+const plantTreePhoto = (scratchDir, sourcePhotoPath) => {
+  if (sourcePhotoPath === undefined) return;
+  const treePhotoPath = path.join(scratchDir, TREE_PHOTO_PATH);
+  mkdirSync(path.dirname(treePhotoPath), { recursive: true });
+  writeFileSync(treePhotoPath, Buffer.concat([readFileSync(sourcePhotoPath), TREE_PHOTO_SUFFIX]));
+};
+
 export const prepareScratchFixtures = (fixturesDir) => {
   const scratchDir = mkdtempSync(path.join(tmpdir(), 'avc-walkthrough-fixtures-scratch-'));
   cpSync(fixturesDir, scratchDir, { recursive: true });
+  const copiedPhotos = scratchPhotoPaths(scratchDir);
+  const marker = runPhotoMarker();
+  for (const photoPath of copiedPhotos) appendFileSync(photoPath, marker);
+  plantTreePhoto(scratchDir, copiedPhotos[0]);
   const brokenPhotoPath = path.join(scratchDir, BROKEN_PHOTO_NAME);
   writeFileSync(brokenPhotoPath, TRUNCATED_JPEG_BYTES);
   utimesSync(brokenPhotoPath, BROKEN_PHOTO_MTIME, BROKEN_PHOTO_MTIME);
@@ -292,7 +330,7 @@ export const analyzeOutcome = ({ errorCardVisible, errorNote, videoStatus, filen
 
 export const treeSelectAnalyzeOutcome = ({ treeVisible, rowVisible, usableRowVisible, detailVisible, analyzeVisible, analyzeDisabled, disabledReason, path: photoPath }) => {
   if (!treeVisible) return skipped('no photos catalogued in this home');
-  if (!rowVisible) return skipped('the "Wszystkie" tree has no photo rows to select (roots/folders only)');
+  if (!rowVisible) return skipped('the whole-tree scope has no photo rows to select (roots/folders only)');
   if (!usableRowVisible) return skipped('every tree photo is already analysed or has a failed proxy (no single-photo Analizuj to click)');
   if (!detailVisible) return failed('photo detail workspace did not render for a tree-selected photo');
   if (!analyzeVisible) return failed('no Analizuj affordance for a tree-selected photo (already analysed, or proxy pending)');
@@ -347,6 +385,12 @@ const singlePhotoAnalyzeAction = (page) =>
 // Only the tree row the step itself selected proves this run's analysis; a badge anywhere in the
 // sidebar can predate it in a reused QA home.
 const SELECTED_PHOTO_ROW = '[data-testid="photos-sidebar-row"].Mui-selected';
+
+// A folder row click toggles, and the tree opens its root expanded, so an unconditional click
+// would collapse whatever it was meant to open.
+const expandTreeRow = async (row) => {
+  if ((await row.getAttribute('aria-expanded')) === 'false') await row.click();
+};
 
 const settle = async (page) => {
   try {
@@ -568,15 +612,17 @@ const drive = async (plan) => {
   });
 
   await record('photos-tree', async () => {
-    const scopeAll = page.getByTestId('photos-scope-all');
-    if (!(await appeared(scopeAll, SETTLE_TIMEOUT_MS))) return skipped('no "Wszystkie" scope toggle in this build');
-    await scopeAll.click();
+    const scopeTree = page.getByTestId('scope-tree');
+    if (!(await appeared(scopeTree, SETTLE_TIMEOUT_MS))) return skipped('no whole-tree scope toggle in this build');
+    if (await scopeTree.isDisabled()) return skipped('the whole-tree scope is unavailable: the opened root owns no photo-bearing subfolder');
+    await scopeTree.click();
     const rootRow = page.getByTestId('photos-tree-root-row').first();
     if (!(await appeared(rootRow, FOLDER_TIMEOUT_MS))) {
       return treeSelectAnalyzeOutcome({ treeVisible: false, rowVisible: false, usableRowVisible: false, detailVisible: false, analyzeVisible: false, analyzeDisabled: false, disabledReason: '', path: null });
     }
+    await expandTreeRow(rootRow);
     const folderRow = page.getByTestId('photos-tree-folder-row').first();
-    if (await appeared(folderRow, SETTLE_TIMEOUT_MS)) await folderRow.click();
+    if (await appeared(folderRow, SETTLE_TIMEOUT_MS)) await expandTreeRow(folderRow);
     const rows = page.getByTestId('photos-sidebar-row');
     const rowVisible = await appeared(rows.first(), SETTLE_TIMEOUT_MS);
     if (!rowVisible) {
