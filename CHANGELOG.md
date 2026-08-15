@@ -14,41 +14,49 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.20] - 2026-08-15
+
 ### Changed
 
 - Analysis → Photos now mirrors the videos scope model: "This folder" keeps
   the direct-photo list, while "Whole tree" shows only the current folder's
   collapsible subtree and is disabled when that folder has no subfolders. The
   global tree of every registered photo root no longer appears in this
-  sidebar; those roots remain registered and available in the Library (W62).
+  sidebar; those roots remain registered and available in the Library (W62)
+  ([`3540c5e`](https://github.com/coderoadpl/ai-video-cataloger/commit/3540c5ed81fcaa8eb5642997de656d40bc503656)).
 - The photos sidebar's primary action is now "Analyze All (N)", with `N`
   counting pending photos in the current direct-folder or subtree scope. It
   processes exactly that scope, while manual rescan moved to the open-folder
-  dropdown and photo-run cancellation now uses photo-specific copy (W62).
+  dropdown and photo-run cancellation now uses photo-specific copy (W62)
+  ([`3540c5e`](https://github.com/coderoadpl/ai-video-cataloger/commit/3540c5ed81fcaa8eb5642997de656d40bc503656)).
 
 ### Removed
 
 - Biblioteka no longer has a separate Zdjęcia browse tab: Kolekcja is the
   single analyzed-only timeline for videos and photos, while scanned but
-  unanalyzed photos remain available in Analiza → Zdjęcia (W63).
+  unanalyzed photos remain available in Analiza → Zdjęcia (W63)
+  ([`d76a56f`](https://github.com/coderoadpl/ai-video-cataloger/commit/d76a56f353204c4a07cd59b6b5a3364fc39e55d4)).
 
 ### Fixed
 
 - Analysis → Photos, "Whole tree" scope: the root folder's own photos now
   render as rows instead of a permanent "Scanning folder…" placeholder when
   that folder's contents were already fetched by the "This folder" scope
-  (W65).
+  (W65)
+  ([`635d292`](https://github.com/coderoadpl/ai-video-cataloger/commit/635d292e153607e3dc53097300d5243733226d26)).
 - The sidebar media/scope toggle row no longer truncates its labels at narrow
   sidebar widths: "Videos"/"Photos" rendered as "Vide…"/"Pho…" at 260 px in
   both the videos and photos sidebars, and now every label renders in full in
-  English and Polish (W62).
+  English and Polish (W62)
+  ([`3540c5e`](https://github.com/coderoadpl/ai-video-cataloger/commit/3540c5ed81fcaa8eb5642997de656d40bc503656)).
 - `pnpm run qa:walkthrough` passes again on the W62 photos scope model: its
   photos steps drive the shared "This folder"/"Whole tree" toggle instead of
   the removed "Wszystkie" one, and every photo it copies into the per-run
   scratch fixtures now gets a unique content fingerprint (the intentional
   duplicate pair excepted, and one copy planted in a subfolder so the
   whole-tree scope exists), so a prepared QA home can no longer key the copies
-  back to the source folder and leave the run with nothing to analyze (W64).
+  back to the source folder and leave the run with nothing to analyze (W64)
+  ([`612dcd7`](https://github.com/coderoadpl/ai-video-cataloger/commit/612dcd7a5d52c7d4c60e718290776137ceefdf21)).
 
 ## [0.6.19] - 2026-08-15
 
