@@ -42,7 +42,9 @@ sidebar surfaces, against the darwin baselines in `visual/__screenshots__/` —
 `apps/web/visual.html` harness — no Electron, no server, no analysis run — and
 is now part of `check` (armed 2026-08-03, owner mandate, W43). An intentional
 UI change is a two-step commit: land the change, run
-`pnpm run visual -- --update-snapshots`, review and commit the PNGs.
+`pnpm run visual --update-snapshots` (no `--` — pnpm 10 forwards the literal
+`--` and Playwright then silently ignores the flag), review and commit the
+PNGs.
 `scripts/gallery-shots.mjs` stays a capture-only dev tool, never a second
 baseline store.
 
