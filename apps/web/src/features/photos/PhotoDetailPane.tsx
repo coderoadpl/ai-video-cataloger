@@ -6,6 +6,7 @@ import { ClockIcon, OpenInNewIcon } from '../../components/ui/icons.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import { formatCapturedAt } from '../../lib/format.js';
 import type { CapturedAtSource, PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
+import { analysisProvenanceText } from './analysis-provenance.js';
 import type { PhotoDetail, PhotoVariantRecord } from './use-photos.js';
 
 interface PhotoDetailPaneProps {
@@ -179,7 +180,7 @@ export const PhotoDetailPane = ({
           </Box>
           {showAnalysisTools ? (
             <>
-              <Row label={dictionary.photos.detailVariant} value={`${analysis.label} · ${analysis.createdAt}`} />
+              <Row label={dictionary.photos.detailVariant} value={analysisProvenanceText(analysis, dictionary)} />
               <Typography variant="caption" color="text.secondary">{dictionary.photos.detailVariantCount(analysis.variantCount)}</Typography>
               <Select
                 size="small"

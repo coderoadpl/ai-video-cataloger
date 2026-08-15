@@ -16,6 +16,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- The photo details "Analiza" row now reads as human copy instead of raw
+  provenance: the provider and output-language tokens of the stored variant
+  label are translated through the dictionary (the model tag stays verbatim)
+  and the analysis timestamp is formatted in the UI locale instead of being
+  printed as an ISO string. The stored label itself is unchanged.
 - The landing page download button now points at this repository's GitHub
   Releases (`coderoadpl/ai-video-cataloger`); the separate
   `chomamateusz/ai-video-cataloger-releases` distribution repo is retired now

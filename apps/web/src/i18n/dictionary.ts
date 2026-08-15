@@ -749,6 +749,10 @@ export interface Dictionary {
     detailQuality: string;
     detailTags: string;
     detailVariant: string;
+    provenanceProviderLocal: string;
+    provenanceProviderApi: string;
+    provenanceProviderHarness: string;
+    provenanceLanguageAuto: string;
     detailVariantCount: (count: number) => string;
     variantPickerLabel: string;
     variantAutomatic: string;
@@ -1674,6 +1678,10 @@ export const en: Dictionary = {
     detailQuality: 'Quality',
     detailTags: 'Tags',
     detailVariant: 'Analysis',
+    provenanceProviderLocal: 'Local',
+    provenanceProviderApi: 'API',
+    provenanceProviderHarness: 'Agent harness',
+    provenanceLanguageAuto: 'auto-detected language',
     detailVariantCount: (count) => `${count} variant${count === 1 ? '' : 's'}`,
     variantPickerLabel: 'Analysis variant',
     variantAutomatic: 'Automatic',
@@ -2608,6 +2616,10 @@ export const pl: Dictionary = {
     detailQuality: 'Jakość',
     detailTags: 'Tagi',
     detailVariant: 'Analiza',
+    provenanceProviderLocal: 'Lokalny',
+    provenanceProviderApi: 'API',
+    provenanceProviderHarness: 'Agent harness',
+    provenanceLanguageAuto: 'język wykryty automatycznie',
     detailVariantCount: (count) => `${count} ${plPlural(count, 'wariant', 'warianty', 'wariantów')}`,
     variantPickerLabel: 'Wariant analizy',
     variantAutomatic: 'Automatycznie',
