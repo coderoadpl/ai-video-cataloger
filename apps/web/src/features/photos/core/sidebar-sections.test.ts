@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PhotoListItem } from './day-groups.js';
+import type { PhotoListItem } from './photo-list-item.js';
 import { ownerRootFor, sidebarSections, type PhotoRoot } from './sidebar-sections.js';
 
 const item = (fingerprint: string, currentPath: string): PhotoListItem => ({

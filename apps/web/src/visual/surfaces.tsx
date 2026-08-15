@@ -25,12 +25,6 @@ import { PhotosScopeToolbar } from '../features/photos/PhotosScopeToolbar.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { type PhotosAnalysisState } from '../features/photos/use-photos-analysis.js';
 import { getDict } from '../i18n/dictionary.js';
-import { PhotosLayout } from '../components/layout/PhotosLayout.js';
-
-interface PhotosFixtureItem {
-  fingerprint: string;
-  fileName: string;
-}
 
 const SURFACE_IDS = [
   'shell-default',
@@ -38,7 +32,6 @@ const SURFACE_IDS = [
   'shell-terminal-open',
   'shell-loading',
   'variant-compare',
-  'photos-layout',
   'catalog-sidebar-narrow',
   'catalog-sidebar-wide',
   'photos-sidebar-narrow',
@@ -48,7 +41,6 @@ const SURFACE_IDS = [
 export type SurfaceId = (typeof SURFACE_IDS)[number];
 type StandaloneSurfaceId =
   | 'variant-compare'
-  | 'photos-layout'
   | 'catalog-sidebar-narrow'
   | 'catalog-sidebar-wide'
   | 'photos-sidebar-narrow'
@@ -483,47 +475,11 @@ const surfaceFor = (id: ShellSurfaceId): Surface => {
   }
 };
 
-const PHOTOS_FIXTURE_ITEMS: readonly PhotosFixtureItem[] = [
-  { fingerprint: 'ph_0000000000000001', fileName: 'coastal-market.jpg' },
-];
-
-const PhotosFixture = () => (
-  <PhotosLayout
-    heading={
-      <Box>
-        <Typography variant="h1">{dictionary.photos.title}</Typography>
-        <Typography variant="caption">{dictionary.photos.subtitle}</Typography>
-      </Box>
-    }
-    toolbar={<Button variant="outlined" size="small">{dictionary.photos.scanFolderAction}</Button>}
-    grid={
-      <Box sx={{ display: 'flex', gap: 1 }}>
-        {PHOTOS_FIXTURE_ITEMS.map((item) => (
-          <Box
-            key={item.fingerprint}
-            sx={{ width: 168, height: 168, bgcolor: 'background.default', borderRadius: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-          >
-            <Typography variant="caption">{item.fileName}</Typography>
-          </Box>
-        ))}
-      </Box>
-    }
-    detail={<Typography variant="body2">{dictionary.photos.detailDimensions}: 4000×3000</Typography>}
-  />
-);
-
 export const VisualSurface = ({ id }: { id: SurfaceId }) => {
   if (id === 'variant-compare') {
     return (
       <Box data-testid="visual-surface-variant-compare" sx={{ minHeight: '100vh' }}>
         <VariantCompareFixture />
-      </Box>
-    );
-  }
-  if (id === 'photos-layout') {
-    return (
-      <Box data-testid="visual-surface-photos-layout" sx={{ minHeight: '100vh' }}>
-        <PhotosFixture />
       </Box>
     );
   }

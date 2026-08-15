@@ -43,11 +43,11 @@ skipped legs are named in the release notes to the owner.
 | Build | `pnpm run electron:package` | the bundle builds |
 | Bundle shape | `pnpm run verify:package` | a single darwin onnxruntime binding, no non-darwin artifacts |
 | Self-QA walkthrough | `pnpm run qa:walkthrough -- --strict --analyzer local:gemma3:4b --archive-to ~/repositories/claude-tmp/avc-release-shots/<version>/ ...` | no `failed` step, no `skipped` step, and the set is archived outside the worktree |
-| Screenshot review | — | an **independent reviewer** (not the agent that ran the walkthrough) works the full checklist in [release-walkthrough.md](release-walkthrough.md) against the archived set, including the sidebar geometry, photo grid, photo detail and completed-analysis shots; that reviewer has authority to fail the release |
+| Screenshot review | — | an **independent reviewer** (not the agent that ran the walkthrough) works the full checklist in [release-walkthrough.md](release-walkthrough.md) against the archived set, including the sidebar geometry, Kolekcja photo viewer and completed-analysis shots; that reviewer has authority to fail the release |
 
 A release that ships photo changes runs the walkthrough against a `--home`
-whose photos DB has a scanned root, so `photos-grid` and `photo-detail` produce
-real screenshots instead of honest skips. Release runs use `--strict`: a `skipped`
+whose photos DB has a scanned root, so the Analysis photos and Kolekcja photo
+steps produce real screenshots instead of honest skips. Release runs use `--strict`: a `skipped`
 step means the `--home` is not fully provisioned for this release's scope, and
 `--strict` turns that into a non-zero exit instead of a note a reviewer could miss.
 The set is archived **before** the release worktree is cleaned up
@@ -83,8 +83,8 @@ analysis itself had errored; see
 
 - `avc photos status <root>` on a real library answers immediately and its
   counts agree with the folder.
-- The Photos tab pages: the grid loads its first page and "Load more" appends
-  the next until the count matches `total`.
+- Analysis → Zdjęcia pages its scanned-photo sidebar until the loaded count
+  matches `total`; Kolekcja remains analyzed-only.
 - Duplicates are read-only everywhere (the detail pane's "also at" list); no
   surface offers deletion of a source file.
 

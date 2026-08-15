@@ -33,12 +33,14 @@ import { LibraryGrid, type LibraryGridSection } from './LibraryGrid.js';
 import { useLibrary } from './use-library.js';
 import { useLibraryFacets } from './use-library-facets.js';
 import { usePhotoRoots } from './use-photo-roots.js';
+import { usePhotoThumbnailsBackfillTrigger } from './use-photo-thumbnails-backfill.js';
 import { useSearchSuggestions } from './use-search-suggestions.js';
 import { useThumbnailsBackfillTrigger } from './use-thumbnails-backfill.js';
 
 export type LibrarySeed =
   | { kind: 'tag'; tag: string }
-  | { kind: 'person'; personId: string; label: string };
+  | { kind: 'person'; personId: string; label: string }
+  | { kind: 'media'; media: LibraryMedia };
 
 interface LibraryViewProps {
   active: boolean;
@@ -104,8 +106,10 @@ export const LibraryView = ({
     if (seed === null) return;
     if (seed.kind === 'person') {
       dispatch({ type: 'addPerson', personId: seed.personId, displayName: seed.label });
-    } else {
+    } else if (seed.kind === 'tag') {
       dispatch({ type: 'addTag', tag: seed.tag });
+    } else {
+      setMedia(seed.media);
     }
     onSeedConsumed?.();
   }, [seed, onSeedConsumed]);
@@ -131,6 +135,7 @@ export const LibraryView = ({
     [library.items],
   );
   useThumbnailsBackfillTrigger({ active, folders: backfillFolders });
+  usePhotoThumbnailsBackfillTrigger({ active, hasRoots: photoRoots.length > 0 });
   const searchOptions = useMemo<SearchOption[]>(() => [
     ...suggestions.recentSearches.slice(0, 10).map((label) => ({ kind: 'recent' as const, label })),
     ...suggestions.topTags.slice(0, 15).map((tag) => ({ kind: 'tag' as const, label: tag.name, count: tag.count })),

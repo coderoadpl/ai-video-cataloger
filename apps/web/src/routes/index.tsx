@@ -29,7 +29,6 @@ import { PeopleView } from '../features/people/PeopleView.js';
 import { PhotosScopeToggle } from '../features/photos/PhotosScopeToggle.js';
 import { PhotosScopeToolbar } from '../features/photos/PhotosScopeToolbar.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
-import { PhotosView } from '../features/photos/PhotosView.js';
 import { PhotosWorkspace } from '../features/photos/PhotosWorkspace.js';
 import { usePhotosAnalysis } from '../features/photos/use-photos-analysis.js';
 import { usePhotosAutoScan } from '../features/photos/use-photos-auto-scan.js';
@@ -59,7 +58,6 @@ export const IndexRoute = () => {
   } = useModePreference(catalogIndex.hasFiles);
   const [librarySeed, setLibrarySeed] = useState<LibrarySeed | null>(null);
   const [mapFocus, setMapFocus] = useState<string | null>(null);
-  const [photoFocus, setPhotoFocus] = useState<string | null>(null);
   const [modalRequest, setModalRequest] = useState<'settings' | null>(null);
   const [preview, setPreview] = useState<PreviewMedia | null>(null);
   const shell = useShell();
@@ -305,12 +303,6 @@ export const IndexRoute = () => {
           seed={librarySeed}
           onSeedConsumed={() => setLibrarySeed(null)}
         />
-        <PhotosView
-          active={mode === 'library' && librarySurface === 'photos'}
-          focusFingerprint={photoFocus}
-          onFocusConsumed={() => setPhotoFocus(null)}
-          onOpenInAnalysis={openPhotoInAnalysis}
-        />
         <PeopleView
           active={mode === 'library' && librarySurface === 'people'}
           folder={shell.currentFolder}
@@ -326,9 +318,9 @@ export const IndexRoute = () => {
         <MapView
           active={mode === 'library' && librarySurface === 'map'}
           focusFingerprint={mapFocus}
-          onOpenPhoto={(fingerprint) => {
-            setPhotoFocus(fingerprint);
-            setLibrarySurface('photos');
+          onOpenPhoto={() => {
+            setLibrarySeed({ kind: 'media', media: 'photo' });
+            setLibrarySurface('collection');
           }}
           onFocusConsumed={() => setMapFocus(null)}
           onOpenPreview={onOpenMapPreview}

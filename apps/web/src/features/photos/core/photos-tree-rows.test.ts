@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { PhotoListItem } from './day-groups.js';
+import type { PhotoListItem } from './photo-list-item.js';
 import { buildPhotoTrees, type PhotoTreeFolderData } from './photos-tree-model.js';
 import { buildPhotoTreeRows, photoFolderKey, type LoadedPhotoFolder } from './photos-tree-rows.js';
 

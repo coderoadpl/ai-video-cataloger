@@ -40,9 +40,9 @@ describe('dictionary', () => {
     expect(pl.settingsModal.frameCountValue(2)).toBe('2 klatki');
     expect(pl.settingsModal.frameCountValue(5)).toBe('5 klatek');
     expect(pl.settingsModal.frameCountValue(22)).toBe('22 klatki');
-    expect(pl.photos.statusProxyFailed(1)).toBe('1 nieudany podgląd');
-    expect(pl.photos.statusProxyFailed(3)).toBe('3 nieudane podglądy');
-    expect(pl.photos.statusProxyFailed(5)).toBe('5 nieudanych podglądów');
+    expect(pl.photosSidebar.treeFolderCounts(1, 0)).toBe('1 zdjęcie · 0 przeanalizowanych');
+    expect(pl.photosSidebar.treeFolderCounts(3, 0)).toBe('3 zdjęcia · 0 przeanalizowanych');
+    expect(pl.photosSidebar.treeFolderCounts(5, 0)).toBe('5 zdjęć · 0 przeanalizowanych');
     expect(pl.map.clusterLabel(2)).toBe('2 filmy w tym obszarze');
     expect(pl.map.clusterLabel(5)).toBe('5 filmów w tym obszarze');
     expect(pl.photos.duplicatesBadge(2)).toBe('2 kopie');

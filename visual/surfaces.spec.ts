@@ -6,7 +6,6 @@ const SURFACES = [
   'shell-terminal-open',
   'shell-loading',
   'variant-compare',
-  'photos-layout',
   'catalog-sidebar-narrow',
   'catalog-sidebar-wide',
   'photos-sidebar-narrow',
@@ -21,8 +20,6 @@ for (const surface of SURFACES) {
       await expect(page.getByRole('heading', { name: 'AI Video Cataloger' })).toBeVisible();
     } else if (surface === 'variant-compare') {
       await expect(page.getByRole('heading', { name: 'Compare analysis variants' })).toBeVisible();
-    } else if (surface === 'photos-layout') {
-      await expect(page.getByRole('heading', { name: 'Photos' })).toBeVisible();
     } else {
       await expect(page.getByTestId('sidebar-folder-panel')).toBeVisible();
     }

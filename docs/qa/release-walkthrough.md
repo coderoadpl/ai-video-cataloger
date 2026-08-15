@@ -186,17 +186,16 @@ equivalent, add it back deliberately and record the WHY here.
 
 The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`,
 `mode-switch`, `mode-analysis`, `open-folder`, `tree-expand`, `select-video`,
-`analyze`, `search`, `library-preview`, `photos-browse`, `photos-sidebar`,
+`analyze`, `search`, `library-preview`, `photos-sidebar`,
 `analysis-photos`, `photos-tree`, `photos-tree-analyze`,
-`collection-photo-analyzed`, `photos-tab`, `photos-grid`, `photo-detail`,
+`collection-photo-analyzed`, `collection-photo-viewer`,
 `settings`, `wizard`.
 `mode-switch`, `mode-analysis` and `search` drive the two-mode switcher: the
-workspace steps run in Analysis mode, `search` and `photos-tab` switch to
-Library first. `library-preview` clicks a Kolekcja tile, asserts the browse
+workspace steps run in Analysis mode, while `search` and the collection photo
+steps switch to Library first. `library-preview` clicks a Kolekcja tile, asserts the browse
 preview overlay and its player render, then follows the "Otwórz w Analizie"
 escape hatch and asserts it lands in the Analysis details panel with the file
-selected. `photos-browse` asserts the Library Photos detail pane never shows
-the analyze strip (browse surfaces are read-only). `photos-sidebar` switches
+selected. `photos-sidebar` switches
 Analysis to Zdjęcia and captures the sidebar state (folder header, scope
 toggle, badge rows) before any row is clicked. `analysis-photos` then clicks
 the first sidebar row that does not carry the `proxyFailed` badge (the analyze
@@ -205,8 +204,9 @@ is always `failed`) and asserts the workspace detail (`photos-analysis-detail`)
 and the analyze strip render, and that the video list is never visible in the
 photos sidebar.
 
-**`photos-tree` / `photos-tree-analyze` / `collection-photo-analyzed` (W60).**
-These three steps exercise the W57 folder tree end-to-end, closing the gap the
+**`photos-tree` / `photos-tree-analyze` / `collection-photo-analyzed` /
+`collection-photo-viewer` (W60/W63).** These steps exercise the W57 folder tree
+end-to-end, closing the gap the
 v0.6.17 independent review found (B1/B2): every earlier photo step drives the
 "Ten folder" flat list, so the collapsible roots→subfolders→photo-rows tree
 that only renders in the "Wszystkie" scope (`PhotosSidebar.tsx`,
@@ -240,15 +240,18 @@ select a photo.
   which the W60 collection filter (see architecture doc, "Analyzed-only photo
   source") now requires; before that filter this chip could show >0 with zero
   analyzed photos underneath, per the same review finding.
+- `collection-photo-viewer` keeps the Zdjęcia chip selected, clicks the first
+  analyzed photo tile in Kolekcja and asserts the shared photo viewer opens.
+  This replaces the retired Library → Zdjęcia tab/grid/detail steps.
 
-None of these three are in `TOLERATED_SKIPS`: like `analyze`, a release run
+None of these four are in `TOLERATED_SKIPS`: like `analyze`, a release run
 must prove them, not skip them — the walkthrough always runs with
 `--analyzer` (see below), so they can genuinely complete.
 
 The photo steps need a home whose photos DB already has a scanned root —
 `--home` pointing at a QA home that has run `photos scan`. Without one,
-`photos-sidebar`, `analysis-photos`, `photos-tree`, `photos-grid` and
-`photo-detail` report `skipped` with "no photos catalogued in this home",
+`photos-sidebar`, `analysis-photos`, `photos-tree` and the collection photo
+steps report `skipped` with "no photos catalogued in this home",
 which is a legitimate outcome for a video-only review pass and a missing
 proof for a release that ships photo changes.
 
@@ -284,25 +287,16 @@ Read every screenshot against the sensitivities that have burned us before:
   English fallback sentence, no clipped label in a narrower Polish string.
 - **Layout** — the modal set (settings, wizard) is centred and fully inside the
   window at the walkthrough's window size (1920x1200 by default).
-- **Photo grid** — tiles are square and evenly gapped, thumbnails render from
-  `media://local/` (not a broken image), the duplicate/missing/proxy-failed
-  badges read the same as the video badges, and the day headers group in
-  capture order.
-- **Photo detail** — the selected tile's pane shows capture provenance, EXIF
-  and, when analysed, the description/tags with the variant picker; the "also
-  at: N paths" duplicate line is read-only and offers nothing destructive.
+- **Kolekcja photos** — after `photos-tree-analyze`, the unified Kolekcja
+  Zdjęcia chip reports at least one analyzed photo, its tiles remain square
+  and evenly gapped, and `collection-photo-viewer` shows a real image from
+  `media://local/` rather than a broken element.
 - **Zdjęcia sidebar** — does the Zdjęcia sidebar show the folder header
   ("Ten folder"/"Wszystkie" scope toggle), photo count badges
   (Ukończony / Duplikat / Podgląd nieudany / Brak EXIF / Brak pliku) and a
   selection highlight?
 - **Zdjęcia sidebar empty state** — with a fresh home, does the Zdjęcia
   sidebar show its own empty scan CTA, and never fall back to the video list?
-- **Broken-image placeholder** — the runner plants an unloadable
-  `broken-photo.jpg` in a scratch copy of `--fixtures` (never the source
-  folder) before every run; in the `photos-grid` screenshot, does that tile
-  show the placeholder tile (never a broken `<img>` icon, never a permanent
-  shimmer), and does the step's manifest note confirm the placeholder was
-  found?
 - **Unanalysed video tile** — the `open-folder` screenshot is taken right
   after the folder opens, before the `analyze` step runs; with a fixtures
   folder holding 2+ videos (the runner's manifest note flags a fixtures

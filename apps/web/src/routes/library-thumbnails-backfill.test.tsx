@@ -36,6 +36,23 @@ const searchResult = (overrides: Record<string, unknown> = {}): Record<string, u
   ...overrides,
 });
 
+const photoResult = (): Record<string, unknown> => ({
+  media: 'photo',
+  fingerprint: 'ph_0000000000000001',
+  fileName: 'photo.jpg',
+  currentPath: '/photos/photo.jpg',
+  ext: 'jpg',
+  capturedAt: '2026-01-02T10:00:00.000Z',
+  description: null,
+  snippet: '',
+  tags: [],
+  variantCount: 1,
+  missingAt: null,
+  thumbPath: '/artifacts/thumbs/ph_0000000000000001.jpg',
+  gridThumbPath: null,
+  proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
+});
+
 const stubBaseline = (items: Record<string, unknown>[] = []) => {
   server.use(
     http.get('/api/scan', () => HttpResponse.json({
@@ -170,5 +187,40 @@ describe('Library collection activation triggers a thumbnails backfill', () => {
 
     await screen.findByTestId('library-tile');
     expect(backfillRequests).toHaveLength(0);
+  });
+
+  it('moves the photo grid-thumbs backfill trigger to Kolekcja', async () => {
+    stubBaseline([]);
+    const item = photoResult();
+    const backfillRequests: unknown[] = [];
+    server.use(
+      http.get('/api/photos/tree', () => HttpResponse.json({
+        ok: true,
+        data: { media: 'photo', roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2026-01-02T10:00:00.000Z' }] },
+      })),
+      http.get('/api/library/collection', () => HttpResponse.json({
+        ok: true,
+        data: {
+          query: null,
+          media: 'all',
+          limit: 200,
+          total: 1,
+          videoTotal: 0,
+          photoTotal: 1,
+          count: 1,
+          items: [item],
+          nextCursor: null,
+        },
+      })),
+      http.post('/api/photos/grid-thumbs', async ({ request }) => {
+        backfillRequests.push(await request.json());
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-photo-thumbs' } });
+      }),
+    );
+
+    renderRoute();
+
+    await screen.findByTestId('library-tile');
+    await waitFor(() => expect(backfillRequests).toEqual([{ force: false }]));
   });
 });

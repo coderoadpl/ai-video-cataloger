@@ -758,6 +758,26 @@ describe('LibraryView', () => {
     );
   });
 
+  it('a photo media seed preselects the Kolekcja Zdjęcia chip for map navigation', async () => {
+    stubCollection([photoItem({ fingerprint: 'ph_0000000000000001' })]);
+
+    renderThemed(
+      <LibraryView
+        active
+        onOpenResult={vi.fn()}
+        onPreview={vi.fn()}
+        onGoToVideos={vi.fn()}
+        seed={{ kind: 'media', media: 'photo' }}
+        onSeedConsumed={vi.fn()}
+      />,
+    );
+
+    await waitFor(() =>
+      expect(collectionRequests[collectionRequests.length - 1]?.get('media')).toBe('photo'),
+    );
+    expect(screen.getByTestId('library-media-photo').getAttribute('aria-pressed')).toBe('true');
+  });
+
   it('load more keeps the grid mounted and does not flash the no-match state while the next page is in flight', async () => {
     const page1 = [videoItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' })];
     const page2 = [videoItem({ fingerprint: 'fp-2', capturedAt: '2026-01-01T10:00:00.000Z' })];

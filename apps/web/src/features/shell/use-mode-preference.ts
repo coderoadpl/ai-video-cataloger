@@ -11,7 +11,7 @@ const LEGACY_VIEW_KEY = 'avc.activeView';
 
 const isAppMode = (value: string | null): value is AppMode => value === 'library' || value === 'analysis';
 const isLibrarySurface = (value: string | null): value is LibrarySurface =>
-  value === 'collection' || value === 'photos' || value === 'people' || value === 'map';
+  value === 'collection' || value === 'people' || value === 'map';
 const isAnalysisMedia = (value: string | null): value is AnalysisMedia => value === 'videos' || value === 'photos';
 
 const canUseStorage = (): boolean =>
@@ -55,7 +55,7 @@ export const migrateLegacyView = (raw: string | null): LegacyModeMigration | nul
     case 'library':
       return { mode: 'library', librarySurface: 'collection' };
     case 'photos':
-      return { mode: 'library', librarySurface: 'photos' };
+      return { mode: 'library', librarySurface: 'collection' };
     case 'people':
       return { mode: 'library', librarySurface: 'people' };
     case 'map':

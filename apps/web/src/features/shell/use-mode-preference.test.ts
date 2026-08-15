@@ -18,7 +18,7 @@ describe('migrateLegacyView', () => {
   it('migrates each legacy MainView to its mode/surface pair', () => {
     expect(migrateLegacyView('videos')).toEqual({ mode: 'analysis', analysisMedia: 'videos' });
     expect(migrateLegacyView('library')).toEqual({ mode: 'library', librarySurface: 'collection' });
-    expect(migrateLegacyView('photos')).toEqual({ mode: 'library', librarySurface: 'photos' });
+    expect(migrateLegacyView('photos')).toEqual({ mode: 'library', librarySurface: 'collection' });
     expect(migrateLegacyView('people')).toEqual({ mode: 'library', librarySurface: 'people' });
     expect(migrateLegacyView('map')).toEqual({ mode: 'library', librarySurface: 'map' });
   });
@@ -30,7 +30,7 @@ describe('resolveInitialMode', () => {
   });
 
   it('falls back to the legacy migration when nothing is persisted', () => {
-    expect(resolveInitialMode(null, { mode: 'library', librarySurface: 'photos' }, false)).toBe('library');
+    expect(resolveInitialMode(null, { mode: 'library', librarySurface: 'collection' }, false)).toBe('library');
   });
 
   it('falls back to library when the catalog is non-empty and nothing is persisted or legacy', () => {
@@ -79,11 +79,19 @@ describe('useModePreference', () => {
     );
 
     expect(result.current.mode).toBe('library');
-    expect(result.current.librarySurface).toBe('photos');
+    expect(result.current.librarySurface).toBe('collection');
 
     rerender({ hasFiles: true });
     expect(result.current.mode).toBe('library');
     expect(window.localStorage.getItem('avc.activeView')).toBe('photos');
+  });
+
+  it('removes the photos-browse route by redirecting its persisted surface to Kolekcja', () => {
+    window.localStorage.setItem('avc.librarySurface', 'photos');
+
+    const { result } = renderHook(() => useModePreference(false));
+
+    expect(result.current.librarySurface).toBe('collection');
   });
 
   it('setters persist and each mode remembers its own surface independently', () => {

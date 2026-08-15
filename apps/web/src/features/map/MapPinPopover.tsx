@@ -96,7 +96,7 @@ export const MapPinPopover = ({ anchorEl, location, onClose, onOpenPreview, onOp
               onClick={() => onOpenPhoto(location.fingerprint)}
               data-testid="map-open-photo"
             >
-              {dictionary.map.openPhoto}
+              {dictionary.map.showPhotosInCollection}
             </Button>
           ) : (
             <Button
