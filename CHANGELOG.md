@@ -14,6 +14,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The landing page download button now points at this repository's GitHub
+  Releases (`coderoadpl/ai-video-cataloger`); the separate
+  `chomamateusz/ai-video-cataloger-releases` distribution repo is retired now
+  that this repository is public.
+
 ## [0.6.18] - 2026-08-04
 
 ### Fixed
