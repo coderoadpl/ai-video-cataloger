@@ -26,6 +26,13 @@ release history jumps from `0.5.10` to `0.5.12`.
   processes exactly that scope, while manual rescan moved to the open-folder
   dropdown and photo-run cancellation now uses photo-specific copy (W62).
 
+### Fixed
+
+- The sidebar media/scope toggle row no longer truncates its labels at narrow
+  sidebar widths: "Videos"/"Photos" rendered as "Vide…"/"Pho…" at 260 px in
+  both the videos and photos sidebars, and now every label renders in full in
+  English and Polish (W62).
+
 ## [0.6.19] - 2026-08-15
 
 ### Changed
