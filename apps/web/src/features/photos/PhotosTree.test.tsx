@@ -1,11 +1,12 @@
 import { ThemeProvider } from '@mui/material/styles';
-import { QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { describe, expect, it, vi } from 'vitest';
 
+import { actions } from '../../api.js';
 import { createTestQueryClient } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
@@ -13,14 +14,13 @@ import { buildPhotoTreeForRoot } from './core/index.js';
 import { PhotosTree } from './PhotosTree.js';
 
 const theme = createAppTheme('light');
-const renderThemed = (ui: Parameters<typeof render>[0]) => {
-  const queryClient = createTestQueryClient();
-  return render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>, {
+const renderWithClient = (ui: Parameters<typeof render>[0], queryClient: QueryClient) =>
+  render(<ThemeProvider theme={theme}>{ui}</ThemeProvider>, {
     wrapper: ({ children }: { children: ReactNode }) => (
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     ),
   });
-};
+const renderThemed = (ui: Parameters<typeof render>[0]) => renderWithClient(ui, createTestQueryClient());
 
 interface FolderFixture {
   path: string;
@@ -155,5 +155,57 @@ describe('PhotosTree', () => {
     );
 
     await waitFor(() => expect(screen.getByTestId('photos-tree-root-row').getAttribute('aria-expanded')).toBe('false'));
+  });
+
+  it('renders the root photo rows when their folder query already resolved before mount', async () => {
+    stubFolderContents({ '/media/photos': [photoFixture('ph_0000000000000005', 'e.jpg')] });
+    const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    await queryClient.fetchQuery(actions.photosTreeFolder({ folder: '/media/photos' }));
+
+    renderWithClient(
+      <PhotosTree
+        root={treeFor([
+          { path: '/media/photos', name: 'photos', relativePath: '', root: '/media/photos', depth: 0, photoCount: 1, analysedCount: 0 },
+        ])}
+        selectedFingerprint={null}
+        processingFingerprints={new Set()}
+        onSelect={vi.fn()}
+      />,
+      queryClient,
+    );
+
+    expect(await screen.findByText('e.jpg')).toBeDefined();
+    expect(screen.queryByText('Scanning folder…')).toBeNull();
+  });
+
+  it('expands the new root by default when the current root changes', async () => {
+    stubFolderContents({});
+    const rendered = renderTree([
+      { path: '/media/photos', name: 'photos', relativePath: '', root: '/media/photos', depth: 0, photoCount: 0, analysedCount: 0 },
+      { path: '/media/photos/trip', name: 'trip', relativePath: 'trip', root: '/media/photos', depth: 1, photoCount: 0, analysedCount: 0 },
+    ]);
+    await screen.findByTestId('photos-tree-root-row');
+
+    rendered.rerender(
+      <ThemeProvider theme={theme}>
+        <PhotosTree
+          root={treeFor(
+            [
+              { path: '/home/Pictures', name: 'Pictures', relativePath: '', root: '/home/Pictures', depth: 0, photoCount: 0, analysedCount: 0 },
+              { path: '/home/Pictures/2026', name: '2026', relativePath: '2026', root: '/home/Pictures', depth: 1, photoCount: 0, analysedCount: 0 },
+            ],
+            '/home/Pictures',
+          )}
+          selectedFingerprint={null}
+          processingFingerprints={new Set()}
+          onSelect={vi.fn()}
+        />
+      </ThemeProvider>,
+    );
+
+    const rootRow = await screen.findByTestId('photos-tree-root-row');
+    expect(rootRow.getAttribute('data-folder-name')).toBe('Pictures');
+    expect(rootRow.getAttribute('aria-expanded')).toBe('true');
+    expect(await screen.findByTestId('photos-tree-folder-row')).toBeDefined();
   });
 });
