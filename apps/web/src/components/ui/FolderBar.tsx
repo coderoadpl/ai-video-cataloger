@@ -10,6 +10,7 @@ interface FolderBarProps {
   onOpenFolder: () => void;
   onSelectRecentFolder: (folderPath: string) => void;
   onClearRecentFolders?: (() => void) | undefined;
+  secondaryAction?: { label: string; onSelect: () => void; disabled?: boolean } | undefined;
   fullWidth?: boolean;
 }
 
@@ -25,6 +26,7 @@ export const FolderBar = ({
   onOpenFolder,
   onSelectRecentFolder,
   onClearRecentFolders,
+  secondaryAction,
   fullWidth = false,
 }: FolderBarProps) => {
   const anchorRef = useRef<HTMLDivElement | null>(null);
@@ -42,6 +44,11 @@ export const FolderBar = ({
     onClearRecentFolders?.();
   };
 
+  const selectSecondary = () => {
+    setOpen(false);
+    secondaryAction?.onSelect();
+  };
+
   return (
     <Box sx={fullWidth ? { width: '100%' } : undefined}>
       <ButtonGroup ref={anchorRef} variant="contained" size="small" disableElevation fullWidth={fullWidth}>
@@ -50,9 +57,9 @@ export const FolderBar = ({
         </Button>
         <Button
           size="small"
-          aria-label={dictionary.folderBar.recentFolders}
+          aria-label={secondaryAction === undefined ? dictionary.folderBar.recentFolders : dictionary.folderBar.folderActions}
           aria-haspopup="menu"
-          disabled={uniqueRecentFolders.length === 0}
+          disabled={uniqueRecentFolders.length === 0 && secondaryAction === undefined}
           onClick={() => setOpen(true)}
           sx={fullWidth ? cappedDropdownSegmentSx : dropdownSegmentSx}
         >
@@ -78,6 +85,12 @@ export const FolderBar = ({
             </Box>
           </MenuItem>
         ))}
+        {secondaryAction === undefined ? null : [
+          uniqueRecentFolders.length === 0 ? null : <Divider key="secondary-action-divider" />,
+          <MenuItem key="secondary-action" onClick={selectSecondary} disabled={secondaryAction.disabled === true}>
+            {secondaryAction.label}
+          </MenuItem>,
+        ]}
         {onClearRecentFolders === undefined || uniqueRecentFolders.length === 0 ? null : [
           <Divider key="clear-recent-divider" />,
           <MenuItem key="clear-recent" onClick={clearRecent}>

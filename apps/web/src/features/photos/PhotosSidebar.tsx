@@ -42,7 +42,7 @@ export const PhotosSidebar = ({
 }: PhotosSidebarProps) => {
   const dictionary = useDictionary();
 
-  const folderPanel = state.scope === 'folder' && state.folderState !== 'scanned' ? state.folderState : null;
+  const folderPanel = state.folderState !== 'scanned' ? state.folderState : null;
   const currentFolder = state.folder;
 
   const header = (
@@ -54,6 +54,11 @@ export const PhotosSidebar = ({
         onOpenFolder={onOpenFolder}
         onSelectRecentFolder={onSelectRecentFolder}
         onClearRecentFolders={onClearRecentFolders}
+        secondaryAction={currentFolder === null ? undefined : {
+          label: dictionary.photosSidebar.scanCurrentFolderAction,
+          onSelect: state.scanFolder,
+          disabled: state.isBusy,
+        }}
         emptyHint={(
           <>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>{dictionary.photosSidebar.noFolderTitle}</Typography>
@@ -61,9 +66,9 @@ export const PhotosSidebar = ({
           </>
         )}
       />
-      <Box sx={{ px: 1, py: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 0.5 }}>
-        <Box sx={{ flex: '0 0 auto', minWidth: 0 }}>
-          <AnalysisMediaToggle media="photos" onSelect={onAnalysisMediaChange} dense />
+      <Box sx={{ px: 2, py: 1, borderBottom: 1, borderColor: 'divider', display: 'flex', gap: 1 }}>
+        <Box sx={{ flex: 1, minWidth: 0 }}>
+          <AnalysisMediaToggle media="photos" onSelect={onAnalysisMediaChange} fullWidth />
         </Box>
         {scopeToggle === undefined ? null : (
           <Box sx={{ flex: 1, minWidth: 0 }}>{scopeToggle}</Box>
@@ -109,18 +114,11 @@ export const PhotosSidebar = ({
           </Box>
         )}
         {errorStrip}
-        {autoScanFailed ? (
-          <Box sx={{ p: 2 }}>
-            <Button variant="contained" size="small" onClick={state.scanFolder} data-testid="photos-scan-action">
-              {dictionary.photos.scanFolderAction}
-            </Button>
-          </Box>
-        ) : null}
       </Box>
     );
   }
 
-  const sections = state.scope === 'folder' ? sidebarSections(state.items, state.roots, state.scope, state.selectedRoot) : [];
+  const sections = state.scope === 'folder' ? sidebarSections(state.items, state.scope, state.selectedRoot) : [];
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -129,13 +127,20 @@ export const PhotosSidebar = ({
         <Box sx={{ px: 2, py: 1.25, borderBottom: 1, borderColor: 'divider' }}>{toolbar}</Box>
       )}
       {errorStrip}
-      <Box sx={{ flex: 1, minHeight: 0, overflow: state.scope === 'all' ? 'hidden' : 'auto' }}>
-        {state.scope === 'all' ? (
-          <PhotosTree
-            selectedFingerprint={state.selectedFingerprint}
-            processingFingerprints={state.processingFingerprints}
-            onSelect={state.selectFingerprint}
-          />
+      <Box sx={{ flex: 1, minHeight: 0, overflow: state.scope === 'tree' ? 'hidden' : 'auto' }}>
+        {state.scope === 'tree' ? (
+          state.treeRoot === null ? (
+            <Centered>
+              <Typography variant="body2">{dictionary.photos.emptyNoPhotos}</Typography>
+            </Centered>
+          ) : (
+            <PhotosTree
+              root={state.treeRoot}
+              selectedFingerprint={state.selectedFingerprint}
+              processingFingerprints={state.processingFingerprints}
+              onSelect={state.selectFingerprint}
+            />
+          )
         ) : sections.length === 0 ? (
           <Centered>
             <Typography variant="body2">{dictionary.photos.emptyNoPhotos}</Typography>

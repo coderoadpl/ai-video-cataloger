@@ -1,35 +1,12 @@
-import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
-
-import { useDictionary } from '../../i18n/use-dictionary.js';
+import { AnalyzeScopeToggle } from '../../components/ui/AnalyzeScopeToggle.js';
 import type { PhotosAnalysisScope } from './use-photos-analysis.js';
 
 interface PhotosScopeToggleProps {
   scope: PhotosAnalysisScope;
   onScopeChange: (scope: PhotosAnalysisScope) => void;
+  disabled?: boolean;
 }
 
-export const PhotosScopeToggle = ({ scope, onScopeChange }: PhotosScopeToggleProps) => {
-  const dictionary = useDictionary();
-  return (
-    <ToggleButtonGroup
-      size="small"
-      exclusive
-      fullWidth
-      value={scope}
-      onChange={(_event, next: PhotosAnalysisScope | null) => {
-        if (next !== null) onScopeChange(next);
-      }}
-    >
-      <ToggleButton value="folder" data-testid="photos-scope-folder" title={dictionary.photosSidebar.scopeThisFolder} sx={{ minWidth: 0, px: 0.25, fontSize: '0.6875rem' }}>
-        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {dictionary.photosSidebar.scopeThisFolder}
-        </Box>
-      </ToggleButton>
-      <ToggleButton value="all" data-testid="photos-scope-all" title={dictionary.photosSidebar.scopeAllFolders} sx={{ minWidth: 0, px: 0.25, fontSize: '0.6875rem' }}>
-        <Box component="span" sx={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {dictionary.photosSidebar.scopeAllFolders}
-        </Box>
-      </ToggleButton>
-    </ToggleButtonGroup>
-  );
-};
+export const PhotosScopeToggle = ({ scope, onScopeChange, disabled = false }: PhotosScopeToggleProps) => (
+  <AnalyzeScopeToggle scope={scope} onScopeChange={onScopeChange} disabled={disabled} />
+);

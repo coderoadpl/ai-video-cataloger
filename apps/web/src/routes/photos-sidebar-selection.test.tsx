@@ -70,6 +70,25 @@ const stubBaseline = () => {
       ok: true,
       data: { media: 'photo', root: '/pictures', total: 2, offset: 0, items: [photo('ph_0000000000000001'), photo('ph_0000000000000002')] },
     })),
+    http.get('/api/photos/tree/folders', () => HttpResponse.json({
+      ok: true,
+      data: {
+        media: 'photo',
+        folders: [
+          { path: '/pictures', name: 'pictures', relativePath: '', root: '/pictures', depth: 0, photoCount: 2, analysedCount: 2 },
+          { path: '/pictures/trip', name: 'trip', relativePath: 'trip', root: '/pictures', depth: 1, photoCount: 0, analysedCount: 0 },
+        ],
+        photoTotal: 2,
+        analysedTotal: 2,
+      },
+    })),
+    http.get('/api/photos/tree/folder', ({ request }) => {
+      const folder = new URL(request.url).searchParams.get('folder');
+      return HttpResponse.json({
+        ok: true,
+        data: { media: 'photo', items: folder === '/pictures' ? [photo('ph_0000000000000001'), photo('ph_0000000000000002')] : [] },
+      });
+    }),
     http.get('/api/photos/detail', ({ request }) => {
       const fingerprint = new URL(request.url).searchParams.get('fingerprint') ?? '';
       const item = photo(fingerprint);
@@ -165,9 +184,9 @@ describe('selecting a photo from the Analysis photos sidebar', () => {
     const firstRow = rows[0];
     if (firstRow === undefined) throw new Error('missing sidebar row');
     fireEvent.click(firstRow);
-    fireEvent.click(screen.getByTestId('photos-scope-all'));
+    fireEvent.click(screen.getByTestId('scope-tree'));
 
-    await waitFor(() => expect(screen.getByTestId('photos-scope-all').getAttribute('aria-pressed')).toBe('true'));
+    await waitFor(() => expect(screen.getByTestId('scope-tree').getAttribute('aria-pressed')).toBe('true'));
     expect(screen.queryByTestId('photos-viewer')).toBeNull();
   });
 });

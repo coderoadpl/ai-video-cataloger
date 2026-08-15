@@ -11,7 +11,13 @@ export {
   type AnalysisProvenance,
   type AnalysisProvenanceCopy,
 } from './analysis-provenance.js';
-export { buildPhotoTrees, type PhotoTreeFolderData, type PhotoTreeNode } from './photos-tree-model.js';
+export {
+  buildPhotoTreeForRoot,
+  buildPhotoTrees,
+  photoScopePendingCount,
+  type PhotoTreeFolderData,
+  type PhotoTreeNode,
+} from './photos-tree-model.js';
 export {
   buildPhotoTreeRows,
   folderNeedsFetch as photoFolderNeedsFetch,

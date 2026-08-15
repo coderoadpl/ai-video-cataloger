@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { buildPhotoTrees, type PhotoTreeFolderData } from './photos-tree-model.js';
+import {
+  buildPhotoTreeForRoot,
+  buildPhotoTrees,
+  photoScopePendingCount,
+  type PhotoTreeFolderData,
+} from './photos-tree-model.js';
 
 const folder = (overrides: Partial<PhotoTreeFolderData>): PhotoTreeFolderData => ({
   path: '/media/photos',
@@ -58,5 +63,32 @@ describe('buildPhotoTrees', () => {
       folder({ path: '/media/photos/apple', name: 'apple', relativePath: 'apple', depth: 1, photoCount: 1 }),
     ]);
     expect(tree?.children.map((child) => child.name)).toEqual(['apple', 'zebra']);
+  });
+});
+
+describe('buildPhotoTreeForRoot', () => {
+  it('derives only the current root and excludes every other registered root', () => {
+    const tree = buildPhotoTreeForRoot([
+      folder({ path: '/media/current', root: '/media/current', relativePath: '', photoCount: 2, analysedCount: 1 }),
+      folder({ path: '/media/current/trip', root: '/media/current', relativePath: 'trip', depth: 1, photoCount: 3, analysedCount: 1 }),
+      folder({ path: '/home/Pictures', root: '/home/Pictures', relativePath: '', photoCount: 40, analysedCount: 30 }),
+      folder({ path: '/tmp/old-test', root: '/tmp/old-test', relativePath: '', photoCount: 10, analysedCount: 0 }),
+    ], '/media/current');
+
+    expect(tree).toMatchObject({ root: '/media/current', photoCount: 5, analysedCount: 2 });
+    expect(tree?.children.map((child) => child.path)).toEqual(['/media/current/trip']);
+  });
+});
+
+describe('photoScopePendingCount', () => {
+  it('counts only direct pending photos for folder scope and the full subtree for tree scope', () => {
+    const tree = buildPhotoTreeForRoot([
+      folder({ path: '/media/current', root: '/media/current', relativePath: '', photoCount: 4, analysedCount: 1 }),
+      folder({ path: '/media/current/trip', root: '/media/current', relativePath: 'trip', depth: 1, photoCount: 5, analysedCount: 2 }),
+      folder({ path: '/home/Pictures', root: '/home/Pictures', relativePath: '', photoCount: 100, analysedCount: 0 }),
+    ], '/media/current');
+
+    expect(photoScopePendingCount(tree, 'folder')).toBe(3);
+    expect(photoScopePendingCount(tree, 'tree')).toBe(6);
   });
 });

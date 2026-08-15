@@ -19,8 +19,8 @@ export const PhotosWorkspace = ({ active, state, topStrip }: PhotosWorkspaceProp
   const [viewerOpen, setViewerOpen] = useState(false);
 
   const sections = useMemo(
-    () => sidebarSections(state.items, state.roots, state.scope, state.selectedRoot),
-    [state.items, state.roots, state.scope, state.selectedRoot],
+    () => sidebarSections(state.items, state.scope, state.selectedRoot),
+    [state.items, state.scope, state.selectedRoot],
   );
   const order = useMemo(() => flattenOrder(sections), [sections]);
   const selectedItem = useMemo(() => {

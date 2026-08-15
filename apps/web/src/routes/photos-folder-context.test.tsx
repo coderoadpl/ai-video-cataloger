@@ -51,29 +51,44 @@ const stubPhotosTree = (roots: { root: string; photos: number; missing: number; 
 };
 
 const stubPhotosList = (byRoot: Record<string, { fingerprint: string; currentPath: string; fileName: string }[]>) => {
+  const responseItems = (source: { fingerprint: string; currentPath: string; fileName: string }[]) => source.map((entry) => ({
+    fileName: entry.fileName,
+    currentPath: entry.currentPath,
+    ext: 'jpg',
+    capturedAt: null,
+    capturedAtSource: null,
+    width: null,
+    height: null,
+    proxyState: 'done',
+    thumbState: 'done',
+    missingAt: null,
+    sightings: 1,
+    thumbPath: null,
+    gridThumbPath: null,
+    proxyPath: null,
+    analysed: false,
+    exifReadAt: null,
+    fingerprint: entry.fingerprint,
+  }));
   server.use(http.get('/api/photos/list', ({ request }) => {
     const root = new URL(request.url).searchParams.get('root');
     const source = root === null ? Object.values(byRoot).flat() : byRoot[root] ?? [];
-    const items = source.map((entry) => ({
-      fileName: entry.fileName,
-      currentPath: entry.currentPath,
-      ext: 'jpg',
-      capturedAt: null,
-      capturedAtSource: null,
-      width: null,
-      height: null,
-      proxyState: 'done',
-      thumbState: 'done',
-      missingAt: null,
-      sightings: 1,
-      thumbPath: null,
-      gridThumbPath: null,
-      proxyPath: null,
-      analysed: false,
-      exifReadAt: null,
-      fingerprint: entry.fingerprint,
-    }));
+    const items = responseItems(source);
     return HttpResponse.json({ ok: true, data: { media: 'photo', root, total: items.length, offset: 0, items } });
+  }), http.get('/api/photos/tree/folders', () => {
+    const folders = Object.entries(byRoot).map(([root, entries]) => ({
+      path: root,
+      name: root.split('/').filter(Boolean).pop() ?? root,
+      relativePath: '',
+      root,
+      depth: 0,
+      photoCount: entries.length,
+      analysedCount: 0,
+    }));
+    return HttpResponse.json({ ok: true, data: { media: 'photo', folders, photoTotal: folders.reduce((sum, folder) => sum + folder.photoCount, 0), analysedTotal: 0 } });
+  }), http.get('/api/photos/tree/folder', ({ request }) => {
+    const folder = new URL(request.url).searchParams.get('folder') ?? '';
+    return HttpResponse.json({ ok: true, data: { media: 'photo', items: responseItems(byRoot[folder] ?? []) } });
   }));
 };
 
@@ -182,7 +197,7 @@ describe('the photos surface scopes to the current folder', () => {
     expect(scanCalls).toBe(0);
   });
 
-  it('keeps the all-folders browse and its scope toggle reachable from an unscanned current folder', async () => {
+  it('never renders an old global photos root when the current folder is unscanned', async () => {
     window.localStorage.setItem('avc.photosScope', 'all');
     mockFolderBridge('/a/b');
     stubPhotosTree([{ root: '/old/pictures', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
@@ -192,9 +207,10 @@ describe('the photos surface scopes to the current folder', () => {
 
     renderRoute();
 
-    await waitFor(() => expect(screen.getAllByTestId('photos-sidebar-row').length).toBe(1));
-    expect(screen.queryByTestId('photos-sidebar-unscanned')).toBeNull();
-    expect(screen.getByTestId('photos-scope-folder')).toBeDefined();
+    await screen.findByTestId('photos-sidebar-unscanned');
+    expect(screen.queryByText('pictures')).toBeNull();
+    expect(screen.queryByTestId('photos-sidebar-row')).toBeNull();
+    expect(screen.getByTestId('scope-tree').getAttribute('disabled')).not.toBeNull();
   });
 
   it('ignores a stale persisted photos root in localStorage', async () => {

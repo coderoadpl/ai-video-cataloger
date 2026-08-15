@@ -14,6 +14,18 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Analysis → Photos now mirrors the videos scope model: "This folder" keeps
+  the direct-photo list, while "Whole tree" shows only the current folder's
+  collapsible subtree and is disabled when that folder has no subfolders. The
+  global tree of every registered photo root no longer appears in this
+  sidebar; those roots remain registered and available in the Library (W62).
+- The photos sidebar's primary action is now "Analyze All (N)", with `N`
+  counting pending photos in the current direct-folder or subtree scope. It
+  processes exactly that scope, while manual rescan moved to the open-folder
+  dropdown and photo-run cancellation now uses photo-specific copy (W62).
+
 ## [0.6.19] - 2026-08-15
 
 ### Changed

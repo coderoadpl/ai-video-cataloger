@@ -1,5 +1,6 @@
 import { Box, Button, LinearProgress, Paper, Typography } from '@mui/material';
 
+import { AnalyzeAllButton } from '../../components/ui/AnalyzeAllButton.js';
 import { CardHeader } from '../../components/ui/CardHeader.js';
 import { ImageIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -16,28 +17,14 @@ export const PhotosScopeToolbar = ({ state }: PhotosScopeToolbarProps) => {
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-      <Box sx={{ display: 'flex', gap: 1 }}>
-        <Button
-          variant="outlined"
-          size="small"
-          fullWidth
-          onClick={state.scanFolder}
-          disabled={state.isBusy || state.folder === null}
-          data-testid="photos-scan-action"
-        >
-          {dictionary.photos.scanFolderAction}
-        </Button>
-        <Button
-          variant="contained"
-          size="small"
-          fullWidth
+      {state.activeJobLabel === null ? (
+        <AnalyzeAllButton
+          pendingCount={state.pendingCount}
           onClick={state.analyzePhotos}
-          disabled={state.isBusy || !state.canAnalyze}
-          data-testid="photos-analyze-action"
-        >
-          {dictionary.photosSidebar.analyzeFolderAction}
-        </Button>
-      </Box>
+          disabled={!state.canAnalyze}
+          testId="photos-analyze-action"
+        />
+      ) : null}
       {state.activeJobLabel !== null ? (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
           <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 1 }}>

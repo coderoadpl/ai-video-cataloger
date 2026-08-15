@@ -17,12 +17,14 @@ export interface CancelConfirmation {
 
 interface CancelConfirmationDialogProps {
   confirmation: CancelConfirmation;
+  media?: 'video' | 'photo';
   onClose: () => void;
   onConfirm: () => void;
 }
 
 export const CancelConfirmationDialog = ({
   confirmation,
+  media = 'video',
   onClose,
   onConfirm,
 }: CancelConfirmationDialogProps) => {
@@ -31,10 +33,19 @@ export const CancelConfirmationDialog = ({
   return (
     <Dialog open={confirmation.open} onClose={onClose} maxWidth="xs" fullWidth>
       <DialogTitle>
-        {confirmation.isBatch ? dictionary.cancelDialog.batchTitle : dictionary.cancelDialog.singleTitle}
+        {media === 'photo'
+          ? dictionary.cancelDialog.photoTitle
+          : confirmation.isBatch ? dictionary.cancelDialog.batchTitle : dictionary.cancelDialog.singleTitle}
       </DialogTitle>
       <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
-        {confirmation.isBatch ? (
+        {media === 'photo' ? (
+          <>
+            <DialogContentText>{dictionary.cancelDialog.photoBody}</DialogContentText>
+            <Alert severity="warning" icon={false}>
+              {dictionary.cancelDialog.photoAlert}
+            </Alert>
+          </>
+        ) : confirmation.isBatch ? (
           <>
             <DialogContentText>{dictionary.cancelDialog.batchBody}</DialogContentText>
             <Alert severity="warning" icon={false}>

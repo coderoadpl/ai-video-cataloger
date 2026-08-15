@@ -448,15 +448,15 @@ way the "Wszystkie foldery" scope already drops an empty root, so an
 automatically scanned video-only folder reads as "no photos here" instead of a
 bare folder header over nothing. Because the scan is no longer a click, its
 failure needs its own exit: a scan that ends in an error (unmounted drive,
-deleted folder) replaces the "indexing…" caption with the error strip and a
-"Skanuj folder" retry button, since the once-per-folder ref would otherwise
-leave that folder permanently captioned as indexing until the app restarts.
+deleted folder) replaces the "indexing…" caption with the error strip; retry
+remains available from the open-folder dropdown, so the once-per-folder ref
+does not leave that folder permanently captioned as indexing until restart.
 Nothing was added to the heavy-artifact path: the auto-fired job is the very
 same `photo_scan` the CTA used to fire, so it still chains its usual proxies
 pass over the photos it just indexed and nothing else — no extra RAW work was
-introduced, it is only reached without a click now. A
-manual re-scan is still reachable once the folder is scanned, from
-`PhotosScopeToolbar`'s existing "Skanuj folder" action in the sidebar toolbar.
+introduced, it is only reached without a click now. A manual re-scan remains
+available as a secondary action in the sidebar's open-folder dropdown; the
+primary toolbar row is reserved for analysis.
 Photo artifacts live next to the photos database under the home directory, so
 an auto-scan of a read-only mount reads the tree and indexes it without ever
 writing to the mount; unreadable subfolders are reported as skipped rather
@@ -465,12 +465,10 @@ The photo-roots table (ADR-0016) remains an internal storage detail
 used to answer "is the current folder a known photo root"; it is never
 surfaced as a user-facing root list or picker.
 
-**"Wszystkie" now renders a full collapsible folder tree, not a flat per-root
-list (W57).** The old rendering put every photo under a root directly beneath
-a plain-text section header, dumping a Luminar/Lightroom catalog's internal
-folder structure flat into the sidebar. `PhotosTree.tsx` mirrors
-`CatalogTree.tsx`'s architecture — roots and subfolders are collapsible rows
-(root expanded by default, children collapsed), each carrying its own
+**"Całe drzewo" renders the current folder's collapsible subtree, never the
+home registry of photo roots (W62).** `PhotosTree.tsx` mirrors
+`CatalogTree.tsx`'s architecture — the current root and its subfolders are
+collapsible rows (root expanded by default, children collapsed), each carrying its own
 photo/analysed counts, with photo rows nested under the folder they live in.
 Two shared pieces were extracted downward rather than duplicated:
 `components/ui/use-windowed-list.ts` (moved out of `features/catalog`, plain
@@ -489,22 +487,34 @@ per **directory that directly contains a photo** (`photo_folders` joined to
 payload) with `photoCount`/`analysedCount`, tagged with the owning root
 (longest-prefix match over `photosTree`'s existing root list, same rule as
 `ownerRootFor`). The client (`features/photos/core/photos-tree-model.ts`)
-synthesizes every zero-count intermediate ancestor directory purely from the
-relative-path segments — the same `ensure()`/`finalize()` shape as
+filters those summaries through `buildPhotoTreeForRoot` before rendering, so
+entries belonging to every other registered root remain available to the
+Library but cannot enter the Analysis sidebar. It synthesizes every zero-count
+intermediate ancestor directory purely from the relative-path segments — the
+same `ensure()`/`finalize()` shape as
 `catalog-tree-model.ts`, kept as a separate small module rather than a shared
 generic since photos carry no pending/processed duality. Expanding a folder
 lazily fetches its **direct, non-recursive** photos via
 `GET /api/photos/tree/folder?folder=<path>` (`photosTreeFolder` usecase,
 `PhotosStore.listPhotosInFolder` — an exact `folder_id` match, unlike
 `photosList`'s root-prefix scope which is recursive), mirroring
-`catalogTreeFolder`'s per-folder lazy fetch. Folder scope ("Ten folder") is
-untouched: still `photosList` and the flat per-item row list.
+`catalogTreeFolder`'s per-folder lazy fetch. Folder scope ("Ten folder") uses
+that same exact-folder endpoint for its flat direct-photo list. The scope
+toggle is shared with videos and disables "Całe drzewo" when the derived
+current-root tree has no children.
 
-Because tree-selected rows now come from a query decoupled from
-`usePhotosAnalysis`'s paginated `items` list, two read paths that used to
+The sidebar's primary action uses the shared video wording "Analizuj wszystko
+(N)". `N` is derived from direct photo/analysed counts for "Ten folder" and
+aggregated current-root counts for "Całe drzewo". Direct runs submit only the
+pending direct-photo fingerprints; subtree runs submit the current root, so
+neither path can process another registered root. Folder progress appears only
+for subtree runs whose pending photos span multiple folders.
+
+Because tree-selected rows come from a query decoupled from
+`usePhotosAnalysis`'s direct-folder `items` list, two read paths that used to
 assume "the selected fingerprint is always in `items`" needed a real fix, not
-a workaround: `analyzeTargetRoot` (used for "Wszystkie"-scope Analyze/Process)
-now derives the owner root from `state.detail?.ownerPath` — the
+a workaround: single-photo analysis derives the owner root from
+`state.detail?.ownerPath` — the
 already-fetched per-fingerprint detail — instead of searching `items`, which
 is both more correct and simpler. `PhotosWorkspace`'s detail pane and
 `PhotoViewer` fall back to `detailToListItem(state.detail)`
