@@ -13,6 +13,9 @@ import { server } from '../../test/server.js';
 import { usePhotosAnalysis } from './use-photos-analysis.js';
 
 type PhotoListItem = z.output<typeof photoListItemSchema>;
+type RootFixture = { root: string; photos: number; missing: number; lastScanAt: string };
+
+let currentRoots: RootFixture[] = [];
 
 const photoItem = (overrides: Partial<PhotoListItem> & { fingerprint: string; currentPath: string }): PhotoListItem => ({
   fileName: `${overrides.fingerprint}.jpg`,
@@ -33,29 +36,78 @@ const photoItem = (overrides: Partial<PhotoListItem> & { fingerprint: string; cu
   ...overrides,
 });
 
-const stubTree = (roots: { root: string; photos: number; missing: number; lastScanAt: string }[]) => {
+const stubTree = (roots: RootFixture[]) => {
+  currentRoots = roots;
   server.use(http.get('/api/photos/tree', () =>
     HttpResponse.json({ ok: true, data: { media: 'photo', roots } })));
 };
 
+const folderOf = (path: string): string => path.slice(0, path.lastIndexOf('/'));
+
+const rootFor = (path: string): string | null => {
+  const matches = currentRoots.filter((root) => path === root.root || path.startsWith(`${root.root}/`));
+  return matches.reduce<string | null>((deepest, candidate) =>
+    deepest === null || candidate.root.length > deepest.length ? candidate.root : deepest, null);
+};
+
 const stubList = (items: PhotoListItem[]) => {
-  server.use(http.get('/api/photos/list', ({ request }) => {
-    const root = new URL(request.url).searchParams.get('root');
-    const scoped = root === null ? items : items.filter((item) => item.currentPath.startsWith(`${root}/`));
-    return HttpResponse.json({ ok: true, data: { media: 'photo', root, total: scoped.length, offset: 0, items: scoped } });
-  }));
+  server.use(
+    http.get('/api/photos/tree/folders', () => {
+      const groups = new Map<string, PhotoListItem[]>();
+      for (const item of items) {
+        const path = folderOf(item.currentPath);
+        groups.set(path, [...(groups.get(path) ?? []), item]);
+      }
+      const folders = [...groups.entries()].flatMap(([path, folderItems]) => {
+        const root = rootFor(path);
+        if (root === null) return [];
+        const relativePath = path === root ? '' : path.slice(root.length + 1);
+        return [{
+          path,
+          name: path.slice(path.lastIndexOf('/') + 1),
+          relativePath,
+          root,
+          depth: relativePath === '' ? 0 : relativePath.split('/').length,
+          photoCount: folderItems.length,
+          analysedCount: folderItems.filter((item) => item.analysed).length,
+        }];
+      });
+      return HttpResponse.json({
+        ok: true,
+        data: {
+          media: 'photo',
+          folders,
+          photoTotal: folders.reduce((sum, folder) => sum + folder.photoCount, 0),
+          analysedTotal: folders.reduce((sum, folder) => sum + folder.analysedCount, 0),
+        },
+      });
+    }),
+    http.get('/api/photos/tree/folder', ({ request }) => {
+      const folder = new URL(request.url).searchParams.get('folder') ?? '';
+      return HttpResponse.json({ ok: true, data: { media: 'photo', items: items.filter((item) => folderOf(item.currentPath) === folder) } });
+    }),
+  );
 };
 
 const stubPagedList = (allItems: PhotoListItem[], analysedFlag: { current: boolean }) => {
-  server.use(http.get('/api/photos/list', ({ request }) => {
-    const url = new URL(request.url);
-    const root = url.searchParams.get('root');
-    const offset = Number(url.searchParams.get('offset') ?? '0');
-    const limit = Number(url.searchParams.get('limit') ?? '200');
-    const scoped = root === null ? allItems : allItems.filter((item) => item.currentPath.startsWith(`${root}/`));
-    const page = scoped.slice(offset, offset + limit).map((item) => ({ ...item, analysed: analysedFlag.current }));
-    return HttpResponse.json({ ok: true, data: { media: 'photo', root, total: scoped.length, offset, items: page } });
-  }));
+  server.use(
+    http.get('/api/photos/tree/folders', () => HttpResponse.json({
+      ok: true,
+      data: {
+        media: 'photo',
+        folders: [{
+          path: '/media', name: 'media', relativePath: '', root: '/media', depth: 0,
+          photoCount: allItems.length, analysedCount: analysedFlag.current ? allItems.length : 0,
+        }],
+        photoTotal: allItems.length,
+        analysedTotal: analysedFlag.current ? allItems.length : 0,
+      },
+    })),
+    http.get('/api/photos/tree/folder', () => HttpResponse.json({
+      ok: true,
+      data: { media: 'photo', items: allItems.map((item) => ({ ...item, analysed: analysedFlag.current })) },
+    })),
+  );
 };
 
 const stubStatus = () => {
@@ -91,6 +143,7 @@ const Wrapper = ({ children }: { children: ReactNode }): ReactElement => {
 describe('usePhotosAnalysis', () => {
   beforeEach(() => {
     window.localStorage.clear();
+    currentRoots = [];
   });
 
   it('derives the selected root from the current folder when it matches a known root', async () => {
@@ -169,21 +222,22 @@ describe('usePhotosAnalysis', () => {
   });
 
   it('persists the scope choice across a fresh mount', async () => {
-    stubTree([]);
-    stubList([]);
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/trip/a.jpg' })]);
 
     const first = renderHook(
-      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: null }),
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }),
       { wrapper: Wrapper },
     );
-    act(() => first.result.current.setScope('all'));
-    expect(first.result.current.scope).toBe('all');
+    await waitFor(() => expect(first.result.current.treeScopeAvailable).toBe(true));
+    act(() => first.result.current.setScope('tree'));
+    expect(first.result.current.scope).toBe('tree');
 
     const second = renderHook(
-      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: null }),
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }),
       { wrapper: Wrapper },
     );
-    expect(second.result.current.scope).toBe('all');
+    await waitFor(() => expect(second.result.current.scope).toBe('tree'));
   });
 
   it('scanFolder never opens a folder picker and scans the current folder directly', async () => {
@@ -309,15 +363,19 @@ describe('usePhotosAnalysis', () => {
     expect(messages.size).toBeGreaterThan(1);
   });
 
-  it('analyzePhotos runs the process job over the selected root', async () => {
-    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
-    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+  it('folder-scope analyzePhotos submits only pending direct-photo fingerprints', async () => {
+    stubTree([{ root: '/media', photos: 3, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([
+      photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
+      photoItem({ fingerprint: 'done', currentPath: '/media/done.jpg', analysed: true }),
+      photoItem({ fingerprint: 'nested', currentPath: '/media/trip/nested.jpg' }),
+    ]);
     stubStatus();
-    let processedRoot: string | null = null;
+    const processBodySchema = z.object({ root: z.string(), force: z.boolean(), fingerprints: z.array(z.string()) });
+    let processedBody: z.output<typeof processBodySchema> | null = null;
     server.use(
       http.post('/api/photos/process', async ({ request }) => {
-        const body = z.object({ root: z.string() }).parse(await request.json());
-        processedRoot = body.root;
+        processedBody = processBodySchema.parse(await request.json());
         return HttpResponse.json({ ok: true, data: { jobId: 'job-1' } });
       }),
       http.get('/api/jobs/status', () => HttpResponse.json({
@@ -337,64 +395,24 @@ describe('usePhotosAnalysis', () => {
     );
 
     const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+    await waitFor(() => expect(result.current.pendingCount).toBe(1));
     act(() => result.current.analyzePhotos());
 
-    await waitFor(() => expect(processedRoot).toBe('/media'));
+    await waitFor(() => expect(processedBody).toEqual({ root: '/media', force: false, fingerprints: ['a'] }));
   });
 
-  it('under the "all folders" scope, analyzePhotos processes every scanned root, not just the selected photo\'s folder (W56 Q5a)', async () => {
-    const fingerprintB = 'ph_00000000000000bb';
-    window.localStorage.setItem('avc.photosScope', 'all');
+  it('under whole-tree scope, analyzePhotos processes only the current root subtree and never another scanned root', async () => {
+    window.localStorage.setItem('avc.photosScope', 'tree');
     stubTree([
-      { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
+      { root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
       { root: '/other', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
     ]);
     stubList([
       photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
-      photoItem({ fingerprint: fingerprintB, currentPath: '/other/b.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/media/trip/b.jpg' }),
+      photoItem({ fingerprint: 'c', currentPath: '/other/c.jpg' }),
     ]);
     stubStatus();
-    server.use(http.get('/api/photos/detail', () => HttpResponse.json({
-      ok: true,
-      data: {
-        media: 'photo',
-        photo: {
-          fingerprint: fingerprintB,
-          folderId: 'folder-b',
-          fileName: 'b.jpg',
-          currentPath: '/other/b.jpg',
-          ext: 'jpg',
-          size: 1024,
-          width: null,
-          height: null,
-          orientation: null,
-          cameraMake: null,
-          cameraModel: null,
-          lens: null,
-          iso: null,
-          fNumber: null,
-          exposureTime: null,
-          exifRating: null,
-          capturedAt: null,
-          capturedAtSource: null,
-          discoveredAt: '2026-01-01T00:00:00.000Z',
-          exifReadAt: null,
-          proxyState: 'pending',
-          proxyWidth: null,
-          proxyHeight: null,
-          thumbState: 'pending',
-          missingAt: null,
-        },
-        sightings: [{ currentPath: '/other/b.jpg', folderId: 'folder-b', lastSeenAt: '2026-01-01T00:00:00.000Z' }],
-        ownerPath: '/other/b.jpg',
-        proxyPath: null,
-        thumbPath: null,
-        gridThumbPath: null,
-        analysis: null,
-      },
-    })));
-    server.use(http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })));
     let processedBody: Record<string, unknown> | null = null;
     server.use(
       http.post('/api/photos/process', async ({ request }) => {
@@ -412,30 +430,26 @@ describe('usePhotosAnalysis', () => {
           error: null,
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
-          result: { media: 'photo', root: null, force: false, configId: null, batchSize: 1, candidates: 2, analysed: 2, failed: 0, skippedExisting: 0 },
+          result: { media: 'photo', root: '/media', force: false, configId: null, batchSize: 1, candidates: 2, analysed: 2, failed: 0, skippedExisting: 0 },
         },
       })),
     );
 
     const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
-    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
-    act(() => result.current.selectFingerprint(fingerprintB));
-    await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === fingerprintB)).toBe(true));
+    await waitFor(() => expect(result.current.scope).toBe('tree'));
+    expect(result.current.pendingCount).toBe(2);
     act(() => result.current.analyzePhotos());
 
     await waitFor(() => expect(processedBody).not.toBeNull());
-    expect(processedBody).not.toHaveProperty('root');
+    expect(processedBody).toMatchObject({ root: '/media', force: false });
+    expect(processedBody).not.toHaveProperty('fingerprints');
   });
 
   it('analyzeSelectedPhoto scopes the process job to the selected photo\'s fingerprint and owner folder (W56 Q4b)', async () => {
-    window.localStorage.setItem('avc.photosScope', 'all');
-    stubTree([
-      { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
-      { root: '/other', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
-    ]);
+    stubTree([{ root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     stubList([
       photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
-      photoItem({ fingerprint: 'b', currentPath: '/other/b.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/media/b.jpg' }),
     ]);
     stubStatus();
     server.use(http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })));
@@ -458,7 +472,7 @@ describe('usePhotosAnalysis', () => {
           error: null,
           createdAt: '2026-01-01T00:00:00.000Z',
           updatedAt: '2026-01-01T00:00:00.000Z',
-          result: { media: 'photo', root: '/other', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0 },
+          result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 1, failed: 0, skippedExisting: 0 },
         },
       })),
     );
@@ -469,12 +483,12 @@ describe('usePhotosAnalysis', () => {
     await waitFor(() => expect(result.current.items.some((item) => item.fingerprint === 'b')).toBe(true));
     act(() => result.current.analyzeSelectedPhoto());
 
-    await waitFor(() => expect(processedBody).toEqual({ root: '/other', fingerprints: ['b'] }));
+    await waitFor(() => expect(processedBody).toEqual({ root: '/media', fingerprints: ['b'] }));
   });
 
   it('analyzeSelectedPhoto still resolves the owner folder for a photo the flat list has not paginated to (W57 tree selection)', async () => {
     const fingerprintTreeOnly = 'ph_00000000000000bb';
-    window.localStorage.setItem('avc.photosScope', 'all');
+    window.localStorage.setItem('avc.photosScope', 'tree');
     stubTree([
       { root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
       { root: '/other', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' },
@@ -620,7 +634,7 @@ describe('usePhotosAnalysis', () => {
     expect(result.current.processingFingerprints.size).toBe(0);
   });
 
-  it('does not duplicate already-loaded pages when a completed job invalidates and refetches the current offset', async () => {
+  it('refetches the exact-folder list after a completed job without duplicating photos', async () => {
     stubTree([{ root: '/media', photos: 300, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
     const allItems = Array.from({ length: 300 }, (_, index) =>
       photoItem({ fingerprint: `p${index}`, currentPath: `/media/p${index}.jpg` }));
@@ -651,9 +665,6 @@ describe('usePhotosAnalysis', () => {
     const { result } = renderHook(() => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media' }), { wrapper: Wrapper });
 
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
-    await waitFor(() => expect(result.current.items.length).toBe(200));
-
-    act(() => result.current.loadMore());
     await waitFor(() => expect(result.current.items.length).toBe(300));
     expect(result.current.hasMore).toBe(false);
 
@@ -741,6 +752,60 @@ describe('usePhotosAnalysis', () => {
     await waitFor(() => expect(result.current.activeJobLabel).toBe(null));
     expect(result.current.analyzeProgress).toBe(null);
     expect(result.current.processingFingerprints.size).toBe(0);
+  });
+
+  it('shows folder progress only when a whole-tree run spans multiple photo folders', async () => {
+    window.localStorage.setItem('avc.photosScope', 'tree');
+    stubTree([{ root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([
+      photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/media/trip/b.jpg' }),
+    ]);
+    stubStatus();
+    let statusCall = 0;
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => {
+        statusCall += 1;
+        const progressEvents = [
+          { sequence: 1, progress: { step: 'photo-analysis-scanning', data: { candidates: 2 } } },
+          { sequence: 2, progress: { step: 'photo-analysis-batch-started', data: { fingerprints: ['a', 'b'] } } },
+          { sequence: 3, progress: { step: 'photo-analysed', data: { fingerprint: 'a', path: '/media/a.jpg', current: 1, total: 2 } } },
+        ];
+        if (statusCall === 1) {
+          return HttpResponse.json({
+            ok: true,
+            data: {
+              jobId: 'job-1', kind: 'photo_process', status: 'running', progress: progressEvents[2]?.progress,
+              progressEvents, error: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+            },
+          });
+        }
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            jobId: 'job-1', kind: 'photo_process', status: 'completed',
+            progress: { step: 'photo-analysed', data: { fingerprint: 'b', path: '/media/trip/b.jpg', current: 2, total: 2 } },
+            progressEvents: [
+              ...progressEvents,
+              { sequence: 4, progress: { step: 'photo-analysed', data: { fingerprint: 'b', path: '/media/trip/b.jpg', current: 2, total: 2 } } },
+            ],
+            error: null, createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+            result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 2, candidates: 2, analysed: 2, failed: 0, skippedExisting: 0, splitRetries: 0 },
+          },
+        });
+      }),
+    );
+
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/media', intervalMs: 250 }),
+      { wrapper: Wrapper },
+    );
+    await waitFor(() => expect(result.current.scope).toBe('tree'));
+    act(() => result.current.analyzePhotos());
+
+    await waitFor(() => expect(result.current.analyzeStatusLabel).toBe('Folder 1 of 2 — analyzing 1 of 2…'));
+    await waitFor(() => expect(result.current.activeJobLabel).toBeNull());
   });
 
   it('seeds the total from the scanning candidate count so the label never sits at 0 of 0 while the first batch runs', async () => {

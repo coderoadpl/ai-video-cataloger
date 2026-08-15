@@ -1,8 +1,9 @@
 import { Box, Button, LinearProgress, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { AnalyzeAllButton } from './AnalyzeAllButton.js';
 import { type BatchProgressView } from './BatchToolbar.js';
-import { CancelIcon, PlayCircleIcon } from './icons.js';
+import { CancelIcon } from './icons.js';
 
 export type AnalyzeScope = 'folder' | 'tree';
 
@@ -83,19 +84,12 @@ export const ScopeAnalyzeToolbar = ({
         </Box>
       ) : isBusy || !showAnalyze ? null : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }}>
-          <Button
-            data-testid="analyze-all-button"
-            variant="contained"
-            fullWidth
-            size="small"
+          <AnalyzeAllButton
+            pendingCount={pendingCount}
+            approximate={approximateCount}
             disabled={disabledReason !== undefined}
-            startIcon={<PlayCircleIcon fontSize="small" />}
             onClick={onAnalyze}
-          >
-            {approximateCount
-              ? dictionary.batchToolbar.analyzeUpTo(pendingCount)
-              : dictionary.batchToolbar.analyzeAll(pendingCount)}
-          </Button>
+          />
           {disabledReason === undefined ? null : (
             <Typography variant="caption" color="text.secondary">
               {disabledReason}

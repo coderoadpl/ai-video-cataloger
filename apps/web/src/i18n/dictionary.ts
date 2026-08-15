@@ -634,6 +634,7 @@ export interface Dictionary {
     openFolder: string;
     checking: string;
     recentFolders: string;
+    folderActions: string;
     clearRecent: string;
   };
   videoStatus: {
@@ -682,6 +683,9 @@ export interface Dictionary {
     batchAlert: string;
     singleBody: string;
     singleAlert: string;
+    photoTitle: string;
+    photoBody: string;
+    photoAlert: string;
     continueProcessing: string;
     stopBatch: string;
     cancelAnalysis: string;
@@ -739,7 +743,7 @@ export interface Dictionary {
     analyzeCompletedLog: string;
     analyzeFailedLog: string;
     analyzeProgress: (current: number, total: number) => string;
-    analyzeProgressAllRoots: (rootIndex: number, rootsTotal: number, current: number, total: number) => string;
+    analyzeProgressFolders: (folderIndex: number, foldersTotal: number, current: number, total: number) => string;
     cancelAnalysisAction: string;
     analysisCancelled: string;
     analysisNone: string;
@@ -779,14 +783,12 @@ export interface Dictionary {
     noFolderTitle: string;
     noFolderBody: string;
     autoScanningBody: string;
-    scopeThisFolder: string;
-    scopeAllFolders: string;
+    scanCurrentFolderAction: string;
     badgeProxyFailed: string;
     badgeExifMissing: string;
     badgeMissing: string;
     badgeAnalyzing: string;
     loadMore: string;
-    analyzeFolderAction: string;
     treeFolderCounts: (photoCount: number, analysedCount: number) => string;
   };
   photosWorkspace: {
@@ -1562,6 +1564,7 @@ export const en: Dictionary = {
     openFolder: 'Open Folder',
     checking: 'Checking…',
     recentFolders: 'recent folders',
+    folderActions: 'folder actions',
     clearRecent: 'Clear recent',
   },
   videoStatus: {
@@ -1610,6 +1613,9 @@ export const en: Dictionary = {
     batchAlert: 'The current video may be left in an incomplete state. Already processed videos will keep their results.',
     singleBody: 'Are you sure you want to cancel the current video analysis?',
     singleAlert: 'This may leave the video in an incomplete state. Partial data (extracted frames, audio, etc.) may remain and you may need to re-analyze the video from the beginning.',
+    photoTitle: 'Cancel photo analysis?',
+    photoBody: 'Are you sure you want to cancel the current photo analysis?',
+    photoAlert: 'Photos already analyzed will keep their results. The current photo may need to be analyzed again.',
     continueProcessing: 'Continue Processing',
     stopBatch: 'Stop Batch',
     cancelAnalysis: 'Cancel Analysis',
@@ -1667,8 +1673,8 @@ export const en: Dictionary = {
     analyzeCompletedLog: 'Photo analysis complete',
     analyzeFailedLog: 'Photo analysis failed',
     analyzeProgress: (current, total) => `Analyzing ${current} of ${total}…`,
-    analyzeProgressAllRoots: (rootIndex, rootsTotal, current, total) =>
-      `Root ${rootIndex} of ${rootsTotal} — analyzing ${current} of ${total}…`,
+    analyzeProgressFolders: (folderIndex, foldersTotal, current, total) =>
+      `Folder ${folderIndex} of ${foldersTotal} — analyzing ${current} of ${total}…`,
     cancelAnalysisAction: 'Cancel analysis',
     analysisCancelled: 'Analysis cancelled by user',
     analysisNone: 'Not analysed yet.',
@@ -1708,14 +1714,12 @@ export const en: Dictionary = {
     noFolderTitle: 'No folder open',
     noFolderBody: 'Open a folder to see its photos.',
     autoScanningBody: 'Indexing photos in this folder…',
-    scopeThisFolder: 'This folder',
-    scopeAllFolders: 'All folders',
+    scanCurrentFolderAction: 'Rescan current folder',
     badgeProxyFailed: 'Preview failed',
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
     badgeAnalyzing: 'Analyzing…',
     loadMore: 'Load more',
-    analyzeFolderAction: 'Process',
     treeFolderCounts: (photoCount, analysedCount) => `${photoCount} ${photoCount === 1 ? 'photo' : 'photos'} · ${analysedCount} analysed`,
   },
   photosWorkspace: {
@@ -2500,6 +2504,7 @@ export const pl: Dictionary = {
     openFolder: 'Otwórz folder',
     checking: 'Sprawdzanie…',
     recentFolders: 'ostatnie foldery',
+    folderActions: 'akcje folderu',
     clearRecent: 'Wyczyść ostatnie',
   },
   videoStatus: {
@@ -2548,6 +2553,9 @@ export const pl: Dictionary = {
     batchAlert: 'Bieżący film może pozostać w stanie nieukończonym. Już przetworzone filmy zachowają swoje wyniki.',
     singleBody: 'Czy na pewno chcesz anulować analizę bieżącego filmu?',
     singleAlert: 'Może to pozostawić film w stanie nieukończonym. Częściowe dane (wyodrębnione klatki, audio itp.) mogą pozostać i konieczne może być ponowne przeanalizowanie filmu od początku.',
+    photoTitle: 'Anulować analizę zdjęć?',
+    photoBody: 'Czy na pewno chcesz anulować bieżącą analizę zdjęć?',
+    photoAlert: 'Już przeanalizowane zdjęcia zachowają wyniki. Bieżące zdjęcie może wymagać ponownej analizy.',
     continueProcessing: 'Kontynuuj przetwarzanie',
     stopBatch: 'Zatrzymaj wsad',
     cancelAnalysis: 'Anuluj analizę',
@@ -2605,8 +2613,8 @@ export const pl: Dictionary = {
     analyzeCompletedLog: 'Analiza zdjęć zakończona',
     analyzeFailedLog: 'Analiza zdjęć nie powiodła się',
     analyzeProgress: (current, total) => `Analizowanie ${current} z ${total}…`,
-    analyzeProgressAllRoots: (rootIndex, rootsTotal, current, total) =>
-      `Folder ${rootIndex} z ${rootsTotal} — analizowanie ${current} z ${total}…`,
+    analyzeProgressFolders: (folderIndex, foldersTotal, current, total) =>
+      `Folder ${folderIndex} z ${foldersTotal} — analizowanie ${current} z ${total}…`,
     cancelAnalysisAction: 'Anuluj analizę',
     analysisCancelled: 'Analiza anulowana przez użytkownika',
     analysisNone: 'Jeszcze nie przeanalizowano.',
@@ -2646,14 +2654,12 @@ export const pl: Dictionary = {
     noFolderTitle: 'Brak otwartego folderu',
     noFolderBody: 'Otwórz folder, aby zobaczyć jego zdjęcia.',
     autoScanningBody: 'Indeksowanie zdjęć w tym folderze…',
-    scopeThisFolder: 'Ten folder',
-    scopeAllFolders: 'Wszystkie',
+    scanCurrentFolderAction: 'Zeskanuj ponownie bieżący folder',
     badgeProxyFailed: 'Podgląd nieudany',
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',
     badgeAnalyzing: 'Analizowanie…',
     loadMore: 'Wczytaj więcej',
-    analyzeFolderAction: 'Przetwórz',
     treeFolderCounts: (photoCount, analysedCount) =>
       `${photoCount} ${plPlural(photoCount, 'zdjęcie', 'zdjęcia', 'zdjęć')} · ${analysedCount} przeanalizowanych`,
   },

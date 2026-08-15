@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Alert, Box, CircularProgress, List, ListItemButton, Tooltip, Typography } from '@mui/material';
+import { Box, CircularProgress, List, ListItemButton, Tooltip, Typography } from '@mui/material';
 import { useQuery } from '@tanstack/react-query';
 
 import { ApiError } from '@core/client/index.js';
@@ -11,7 +11,6 @@ import type { Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import {
-  buildPhotoTrees,
   buildPhotoTreeRows,
   photoFolderKey,
   type LoadedPhotoFolder,
@@ -121,29 +120,24 @@ const PhotoFolderFetcher = ({
 };
 
 interface PhotosTreeProps {
+  root: PhotoTreeNode;
   selectedFingerprint: string | null;
   processingFingerprints: ReadonlySet<string>;
   onSelect: (fingerprint: string) => void;
 }
 
-export const PhotosTree = ({ selectedFingerprint, processingFingerprints, onSelect }: PhotosTreeProps) => {
+export const PhotosTree = ({ root, selectedFingerprint, processingFingerprints, onSelect }: PhotosTreeProps) => {
   const dictionary = useDictionary();
-  const tree = useQuery(actions.photosFolderTree);
-  const roots = useMemo(() => buildPhotoTrees(tree.data?.folders ?? []), [tree.data]);
+  const rootKey = photoFolderKey(root.root, '');
+  const roots = useMemo(() => [root], [root]);
 
-  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set([rootKey]));
   const [loaded, setLoaded] = useState<ReadonlyMap<string, LoadedPhotoFolder>>(() => new Map());
 
   useEffect(() => {
-    const rootKeys = roots.map((root) => photoFolderKey(root.root, ''));
-    setExpanded((current) => {
-      const missing = rootKeys.filter((key) => !current.has(key));
-      if (missing.length === 0) return current;
-      const next = new Set(current);
-      missing.forEach((key) => next.add(key));
-      return next;
-    });
-  }, [roots]);
+    setExpanded(new Set([rootKey]));
+    setLoaded(new Map());
+  }, [rootKey]);
 
   const isExpanded = useCallback((key: string) => expanded.has(key), [expanded]);
   const onToggle = useCallback((key: string) => {
@@ -181,42 +175,13 @@ export const PhotosTree = ({ selectedFingerprint, processingFingerprints, onSele
       if (node.directPhotoCount > 0) targets.push({ key, path: node.path });
       node.children.forEach(visit);
     };
-    roots.forEach(visit);
+    visit(root);
     return targets;
-  }, [roots, expanded]);
+  }, [root, expanded]);
 
   const rows = useMemo(() => buildPhotoTreeRows({ roots, isExpanded, loadedFolder }), [roots, isExpanded, loadedFolder]);
   const rowHeights = useMemo(() => rows.map(rowHeightOf), [rows]);
   const { range, onScroll, containerRef } = useWindowedList(rowHeights);
-
-  if (tree.isLoading) {
-    return (
-      <Box data-testid="photos-tree-loading" sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-        <CircularProgress size={22} />
-      </Box>
-    );
-  }
-
-  if (tree.isError) {
-    return (
-      <Alert severity="error" sx={{ m: 2 }} data-testid="photos-tree-error">
-        {tree.error instanceof ApiError
-          ? formatAnalyzerError(tree.error.appError.message, dictionary.errors)
-          : dictionary.catalog.genericScanError}
-      </Alert>
-    );
-  }
-
-  if (roots.length === 0) {
-    return (
-      <Box
-        data-testid="photos-tree-empty"
-        sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 1, py: 6, px: 2, textAlign: 'center' }}
-      >
-        <Typography variant="body2">{dictionary.photos.emptyNoPhotos}</Typography>
-      </Box>
-    );
-  }
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%', minHeight: 0 }}>
@@ -231,7 +196,7 @@ export const PhotosTree = ({ selectedFingerprint, processingFingerprints, onSele
         ref={containerRef}
         onScroll={onScroll}
         role="tree"
-        aria-label={dictionary.photosSidebar.scopeAllFolders}
+        aria-label={dictionary.batchToolbar.wholeTree}
         data-testid="photos-tree-scroll"
         sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 1 }}
       >

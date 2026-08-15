@@ -1,6 +1,7 @@
 import { Box, ToggleButton, ToggleButtonGroup } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { sidebarToggleButtonSx } from './sidebar-toggle-row.js';
 
 export type AnalysisMedia = 'videos' | 'photos';
 
@@ -8,14 +9,12 @@ interface AnalysisMediaToggleProps {
   media: AnalysisMedia;
   onSelect: (media: AnalysisMedia) => void;
   fullWidth?: boolean;
-  dense?: boolean;
 }
 
 const labelSx = { overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' } as const;
 
-export const AnalysisMediaToggle = ({ media, onSelect, fullWidth = false, dense = false }: AnalysisMediaToggleProps) => {
+export const AnalysisMediaToggle = ({ media, onSelect, fullWidth = false }: AnalysisMediaToggleProps) => {
   const dictionary = useDictionary();
-  const buttonSx = { minWidth: 0, ...(dense ? { px: 0.75, fontSize: '0.75rem' } : undefined) };
   return (
     <ToggleButtonGroup
       exclusive
@@ -27,10 +26,20 @@ export const AnalysisMediaToggle = ({ media, onSelect, fullWidth = false, dense 
       }}
       aria-label={dictionary.appFrame.mediaToggleLabel}
     >
-      <ToggleButton value="videos" data-testid="analysis-media-videos" sx={buttonSx}>
+      <ToggleButton
+        value="videos"
+        data-testid="analysis-media-videos"
+        title={dictionary.appFrame.mediaVideos}
+        sx={sidebarToggleButtonSx}
+      >
         <Box component="span" sx={labelSx}>{dictionary.appFrame.mediaVideos}</Box>
       </ToggleButton>
-      <ToggleButton value="photos" data-testid="analysis-media-photos" sx={buttonSx}>
+      <ToggleButton
+        value="photos"
+        data-testid="analysis-media-photos"
+        title={dictionary.appFrame.mediaPhotos}
+        sx={sidebarToggleButtonSx}
+      >
         <Box component="span" sx={labelSx}>{dictionary.appFrame.mediaPhotos}</Box>
       </ToggleButton>
     </ToggleButtonGroup>

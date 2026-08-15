@@ -11,29 +11,18 @@ const renderThemed = (ui: Parameters<typeof renderWithProviders>[0]) =>
   renderWithProviders(<ThemeProvider theme={theme}>{ui}</ThemeProvider>);
 
 describe('PhotosScopeToggle', () => {
-  it('switches between folder and all scope', () => {
+  it('uses the shared video scope toggle and switches to whole-tree scope', () => {
     const onScopeChange = vi.fn();
     renderThemed(<PhotosScopeToggle scope="folder" onScopeChange={onScopeChange} />);
 
-    fireEvent.click(screen.getByTestId('photos-scope-all'));
-    expect(onScopeChange).toHaveBeenCalledWith('all');
+    fireEvent.click(screen.getByTestId('scope-tree'));
+    expect(onScopeChange).toHaveBeenCalledWith('tree');
+    expect(screen.getByTestId('scope-folder').textContent).toBe('This folder');
+    expect(screen.getByTestId('scope-tree').textContent).toBe('Whole tree');
   });
 
-  it('truncates each toggle label instead of wrapping onto a second line at narrow widths', () => {
-    renderThemed(<PhotosScopeToggle scope="folder" onScopeChange={vi.fn()} />);
-
-    const folderButton = screen.getByTestId('photos-scope-folder');
-    const allButton = screen.getByTestId('photos-scope-all');
-    expect(getComputedStyle(folderButton).minWidth).toBe('0px');
-    expect(getComputedStyle(allButton).minWidth).toBe('0px');
-
-    for (const button of [folderButton, allButton]) {
-      const label = button.querySelector('span');
-      if (label === null) throw new Error('missing label span');
-      const style = getComputedStyle(label);
-      expect(style.whiteSpace).toBe('nowrap');
-      expect(style.overflow).toBe('hidden');
-      expect(style.textOverflow).toBe('ellipsis');
-    }
+  it('disables whole-tree selection under the same rule as videos', () => {
+    renderThemed(<PhotosScopeToggle scope="folder" onScopeChange={vi.fn()} disabled />);
+    expect(screen.getByTestId('scope-tree').getAttribute('disabled')).not.toBeNull();
   });
 });

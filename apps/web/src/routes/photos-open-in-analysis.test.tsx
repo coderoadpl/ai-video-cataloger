@@ -70,6 +70,19 @@ const stubBaseline = () => {
       ok: true,
       data: { media: 'photo', root: '/pictures', total: 1, offset: 0, items: [photo('ph_0000000000000001')] },
     })),
+    http.get('/api/photos/tree/folders', () => HttpResponse.json({
+      ok: true,
+      data: {
+        media: 'photo',
+        folders: [{ path: '/pictures', name: 'pictures', relativePath: '', root: '/pictures', depth: 0, photoCount: 1, analysedCount: 1 }],
+        photoTotal: 1,
+        analysedTotal: 1,
+      },
+    })),
+    http.get('/api/photos/tree/folder', () => HttpResponse.json({
+      ok: true,
+      data: { media: 'photo', items: [photo('ph_0000000000000001')] },
+    })),
     http.get('/api/photos/detail', ({ request }) => {
       const fingerprint = new URL(request.url).searchParams.get('fingerprint') ?? '';
       const item = photo(fingerprint);

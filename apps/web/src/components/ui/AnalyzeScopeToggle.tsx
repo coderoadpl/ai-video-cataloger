@@ -2,6 +2,7 @@ import { ToggleButton, ToggleButtonGroup, Tooltip } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type AnalyzeScope } from './ScopeAnalyzeToolbar.js';
+import { sidebarToggleButtonSx } from './sidebar-toggle-row.js';
 
 interface AnalyzeScopeToggleProps {
   scope: AnalyzeScope;
@@ -25,10 +26,10 @@ export const AnalyzeScopeToggle = ({ scope, onScopeChange, disabled = false }: A
           }}
           aria-label={dictionary.batchToolbar.analyzeScope}
         >
-          <ToggleButton value="folder" data-testid="scope-folder">
+          <ToggleButton value="folder" data-testid="scope-folder" sx={sidebarToggleButtonSx}>
             {dictionary.batchToolbar.thisFolder}
           </ToggleButton>
-          <ToggleButton value="tree" data-testid="scope-tree">
+          <ToggleButton value="tree" data-testid="scope-tree" sx={sidebarToggleButtonSx}>
             {dictionary.batchToolbar.wholeTree}
           </ToggleButton>
         </ToggleButtonGroup>

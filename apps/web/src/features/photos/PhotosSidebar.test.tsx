@@ -46,6 +46,11 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   folder: '/media',
   folderState: 'scanned',
   selectedRoot: '/media',
+  treeRoot: {
+    path: '/media', name: 'media', relativePath: '', root: '/media', depth: 0,
+    directPhotoCount: 1, directAnalysedCount: 0, photoCount: 1, analysedCount: 0, children: [],
+  },
+  treeScopeAvailable: false,
   items: [],
   total: 0,
   hasMore: false,
@@ -64,6 +69,7 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   selectVariant: vi.fn(),
   analyzePhotos: vi.fn(),
   canAnalyze: true,
+  pendingCount: 1,
   analyzeSelectedPhoto: vi.fn(),
   canAnalyzeSelectedPhoto: true,
   analyzeProgress: null,
@@ -106,7 +112,7 @@ describe('PhotosSidebar', () => {
     expect(screen.queryByTestId('photos-scan-action')).toBeNull();
   });
 
-  it('drops the indexing caption for a retry action once the auto-fired scan has failed', () => {
+  it('moves manual scan retry into the open-folder dropdown after auto-scan fails', () => {
     const scanFolder = vi.fn();
     renderThemed(
       <PhotosSidebar
@@ -125,7 +131,9 @@ describe('PhotosSidebar', () => {
 
     expect(screen.getByTestId('photos-job-error').textContent).toContain('Root not found: /a/b');
     expect(screen.queryByTestId('photos-sidebar-scanning')).toBeNull();
-    fireEvent.click(screen.getByTestId('photos-scan-action'));
+    expect(screen.queryByTestId('photos-scan-action')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: en.folderBar.folderActions }));
+    fireEvent.click(screen.getByText(en.photosSidebar.scanCurrentFolderAction));
     expect(scanFolder).toHaveBeenCalled();
   });
 
@@ -178,6 +186,7 @@ describe('PhotosSidebar', () => {
         onOpenFolder={vi.fn()}
         onAnalysisMediaChange={onAnalysisMediaChange}
         toolbar={<div data-testid="photos-scope-toolbar" />}
+        scopeToggle={<div data-testid="photos-scope-toggle" />}
       />,
     );
 
@@ -186,6 +195,14 @@ describe('PhotosSidebar', () => {
     expect(order.indexOf('sidebar-folder-panel')).toBeGreaterThanOrEqual(0);
     expect(order.indexOf('sidebar-folder-panel')).toBeLessThan(order.indexOf('analysis-media-photos'));
     expect(order.indexOf('analysis-media-photos')).toBeLessThan(order.indexOf('photos-scope-toolbar'));
+
+    const mediaToggle = screen.getByTestId('analysis-media-photos');
+    const scopeToggle = screen.getByTestId('photos-scope-toggle');
+    const mediaWrapper = mediaToggle.closest('.MuiBox-root');
+    const scopeWrapper = scopeToggle.parentElement;
+    expect(mediaWrapper?.parentElement).toBe(scopeWrapper?.parentElement);
+    expect(mediaWrapper === null ? null : getComputedStyle(mediaWrapper).flexGrow).toBe('1');
+    expect(scopeWrapper === null ? null : getComputedStyle(scopeWrapper).flexGrow).toBe('1');
 
     fireEvent.click(screen.getByTestId('analysis-media-videos'));
     expect(onAnalysisMediaChange).toHaveBeenCalledWith('videos');

@@ -12,6 +12,7 @@ interface SidebarFolderPanelProps {
   onOpenFolder: () => void;
   onSelectRecentFolder: (folderPath: string) => void;
   onClearRecentFolders?: (() => void) | undefined;
+  secondaryAction?: { label: string; onSelect: () => void; disabled?: boolean } | undefined;
   emptyHint?: ReactNode;
 }
 
@@ -22,6 +23,7 @@ export const SidebarFolderPanel = ({
   onOpenFolder,
   onSelectRecentFolder,
   onClearRecentFolders,
+  secondaryAction,
   emptyHint,
 }: SidebarFolderPanelProps) => (
   <Box
@@ -42,6 +44,7 @@ export const SidebarFolderPanel = ({
       onOpenFolder={onOpenFolder}
       onSelectRecentFolder={onSelectRecentFolder}
       onClearRecentFolders={onClearRecentFolders}
+      secondaryAction={secondaryAction}
       fullWidth
     />
     {folder === null ? (

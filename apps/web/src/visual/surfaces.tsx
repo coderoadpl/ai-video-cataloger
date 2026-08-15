@@ -21,6 +21,7 @@ import {
   type VariantCompareVariant,
 } from '../features/details/VariantCompareView.js';
 import { PhotosScopeToggle } from '../features/photos/PhotosScopeToggle.js';
+import { PhotosScopeToolbar } from '../features/photos/PhotosScopeToolbar.js';
 import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { type PhotosAnalysisState } from '../features/photos/use-photos-analysis.js';
 import { getDict } from '../i18n/dictionary.js';
@@ -295,6 +296,8 @@ const PHOTOS_SIDEBAR_STATE: PhotosAnalysisState = {
   folder: '/Volumes/Media/Photos',
   folderState: 'scanned',
   selectedRoot: '/Volumes/Media/Photos',
+  treeRoot: null,
+  treeScopeAvailable: false,
   items: [...PHOTOS_SIDEBAR_ITEMS],
   total: PHOTOS_SIDEBAR_ITEMS.length,
   hasMore: false,
@@ -313,6 +316,7 @@ const PHOTOS_SIDEBAR_STATE: PhotosAnalysisState = {
   selectVariant: noop,
   analyzePhotos: noop,
   canAnalyze: true,
+  pendingCount: 3,
   analyzeSelectedPhoto: noop,
   canAnalyzeSelectedPhoto: true,
   analyzeProgress: null,
@@ -368,6 +372,7 @@ const PhotosSidebarFixture = ({ width }: { width: number }) => (
       onSelectRecentFolder={noop}
       onClearRecentFolders={noop}
       scopeToggle={<PhotosScopeToggle scope="folder" onScopeChange={noop} />}
+      toolbar={<PhotosScopeToolbar state={PHOTOS_SIDEBAR_STATE} />}
     />
   </SidebarPanelFrame>
 );

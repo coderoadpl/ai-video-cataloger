@@ -33,60 +33,26 @@ const root = (overrides: Partial<PhotoRoot> & { root: string }): PhotoRoot => ({
 describe('sidebarSections', () => {
   it('folder scope returns exactly one section for the selected root', () => {
     const items = [item('a', '/media/a.jpg'), item('b', '/media/b.jpg')];
-    const roots = [root({ root: '/media' }), root({ root: '/other' })];
-
-    const sections = sidebarSections(items, roots, 'folder', '/media');
+    const sections = sidebarSections(items, 'folder', '/media');
 
     expect(sections).toEqual([{ root: '/media', items }]);
   });
 
-  it('all scope returns one section per root in photosTree order, routing each item by path prefix', () => {
+  it('tree scope never derives global root sections from the flat item list', () => {
     const items = [item('a', '/media/a.jpg'), item('b', '/other/b.jpg'), item('c', '/media/c.jpg')];
-    const roots = [root({ root: '/media' }), root({ root: '/other' })];
-
-    const sections = sidebarSections(items, roots, 'all', null);
-
-    expect(sections).toEqual([
-      { root: '/media', items: [items[0], items[2]] },
-      { root: '/other', items: [items[1]] },
-    ]);
-  });
-
-  it('all scope omits a root with no items in the current page', () => {
-    const items = [item('a', '/media/a.jpg')];
-    const roots = [root({ root: '/media' }), root({ root: '/other' })];
-
-    const sections = sidebarSections(items, roots, 'all', null);
-
-    expect(sections).toEqual([{ root: '/media', items: [items[0]] }]);
+    expect(sidebarSections(items, 'tree', '/media')).toEqual([]);
   });
 
   it('folder scope with a scanned but photo-less root returns no sections, so the sidebar reads as empty rather than as a nameless header', () => {
-    expect(sidebarSections([], [root({ root: '/media' })], 'folder', '/media')).toEqual([]);
+    expect(sidebarSections([], 'folder', '/media')).toEqual([]);
   });
 
   it('folder scope with no selected root returns no sections', () => {
-    expect(sidebarSections([item('a', '/media/a.jpg')], [root({ root: '/media' })], 'folder', null)).toEqual([]);
+    expect(sidebarSections([item('a', '/media/a.jpg')], 'folder', null)).toEqual([]);
   });
 
   it('folder scope with a scanned but empty selected root returns no sections, not a header with zero items', () => {
-    expect(sidebarSections([], [root({ root: '/media', photos: 0 })], 'folder', '/media')).toEqual([]);
-  });
-
-  it('all scope with a nested root does not duplicate a child photo across the parent and child sections', () => {
-    const items = [
-      item('a', '/Pictures/vacation.jpg'),
-      item('b', '/Pictures/2024/beach.jpg'),
-      item('c', '/Pictures/2024/park.jpg'),
-    ];
-    const roots = [root({ root: '/Pictures' }), root({ root: '/Pictures/2024' })];
-
-    const sections = sidebarSections(items, roots, 'all', null);
-
-    expect(sections).toEqual([
-      { root: '/Pictures', items: [items[0]] },
-      { root: '/Pictures/2024', items: [items[1], items[2]] },
-    ]);
+    expect(sidebarSections([], 'folder', '/media')).toEqual([]);
   });
 });
 

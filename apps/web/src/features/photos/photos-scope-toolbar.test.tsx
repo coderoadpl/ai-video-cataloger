@@ -2,6 +2,7 @@ import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
+import { en } from '../../i18n/dictionary.js';
 import { renderWithProviders } from '../../test/render.js';
 import { createAppTheme } from '../../theme.js';
 import { PhotosScopeToolbar } from './PhotosScopeToolbar.js';
@@ -20,6 +21,11 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   folder: '/media',
   folderState: 'scanned',
   selectedRoot: '/media',
+  treeRoot: {
+    path: '/media', name: 'media', relativePath: '', root: '/media', depth: 0,
+    directPhotoCount: 1, directAnalysedCount: 0, photoCount: 1, analysedCount: 0, children: [],
+  },
+  treeScopeAvailable: false,
   items: [],
   total: 0,
   hasMore: false,
@@ -38,6 +44,7 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
   selectVariant: vi.fn(),
   analyzePhotos: vi.fn(),
   canAnalyze: true,
+  pendingCount: 1,
   analyzeSelectedPhoto: vi.fn(),
   canAnalyzeSelectedPhoto: true,
   analyzeProgress: null,
@@ -52,35 +59,29 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
 });
 
 describe('PhotosScopeToolbar', () => {
-  it('scan and analyze actions call through', () => {
-    const scanFolder = vi.fn();
+  it('renders the shared analyze-all action with the honest pending count', () => {
     const analyzePhotos = vi.fn();
-    renderThemed(<PhotosScopeToolbar state={baseState({ scanFolder, analyzePhotos })} />);
+    renderThemed(<PhotosScopeToolbar state={baseState({ analyzePhotos, pendingCount: 7 })} />);
 
-    fireEvent.click(screen.getByTestId('photos-scan-action'));
     fireEvent.click(screen.getByTestId('photos-analyze-action'));
 
-    expect(scanFolder).toHaveBeenCalled();
     expect(analyzePhotos).toHaveBeenCalled();
+    expect(screen.getByTestId('photos-analyze-action').textContent).toContain(en.batchToolbar.analyzeAll(7));
+    expect(screen.queryByTestId('photos-scan-action')).toBeNull();
   });
 
-  it('disables scan and analyze while busy', () => {
+  it('hides the primary action while busy and shows progress instead', () => {
     renderThemed(<PhotosScopeToolbar state={baseState({ isBusy: true, activeJobLabel: 'Working…' })} />);
 
-    expect(screen.getByTestId('photos-scan-action').getAttribute('disabled')).not.toBeNull();
-    expect(screen.getByTestId('photos-analyze-action').getAttribute('disabled')).not.toBeNull();
+    expect(screen.queryByTestId('photos-analyze-action')).toBeNull();
+    expect(screen.getByTestId('photos-analyze-status-label')).toBeDefined();
   });
 
-  it('disables scan while no folder is open', () => {
-    renderThemed(<PhotosScopeToolbar state={baseState({ scope: 'all', folder: null, folderState: 'no-folder', selectedRoot: null })} />);
-
-    expect(screen.getByTestId('photos-scan-action').getAttribute('disabled')).not.toBeNull();
-  });
-
-  it('disables analyze when no target folder resolves, even though a root is selected', () => {
-    renderThemed(<PhotosScopeToolbar state={baseState({ scope: 'all', canAnalyze: false })} />);
+  it('disables analyze when the current scope has no pending photos', () => {
+    renderThemed(<PhotosScopeToolbar state={baseState({ canAnalyze: false, pendingCount: 0 })} />);
 
     expect(screen.getByTestId('photos-analyze-action').getAttribute('disabled')).not.toBeNull();
+    expect(screen.getByTestId('photos-analyze-action').textContent).toContain(en.batchToolbar.analyzeAll(0));
   });
 
   it('shows the proxies-pending affordance when the root has photos but no proxies yet', () => {

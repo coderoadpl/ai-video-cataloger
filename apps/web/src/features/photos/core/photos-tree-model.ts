@@ -98,3 +98,21 @@ export const buildPhotoTrees = (folders: readonly PhotoTreeFolderData[]): PhotoT
     .sort((left, right) => left.localeCompare(right))
     .map((root) => buildRootTree(root, byRoot.get(root) ?? []));
 };
+
+export const buildPhotoTreeForRoot = (
+  folders: readonly PhotoTreeFolderData[],
+  root: string,
+): PhotoTreeNode | null => {
+  const scoped = folders.filter((folder) => folder.root === root);
+  return scoped.length === 0 ? null : buildRootTree(root, scoped);
+};
+
+export const photoScopePendingCount = (
+  root: PhotoTreeNode | null,
+  scope: 'folder' | 'tree',
+): number => {
+  if (root === null) return 0;
+  return scope === 'folder'
+    ? Math.max(0, root.directPhotoCount - root.directAnalysedCount)
+    : Math.max(0, root.photoCount - root.analysedCount);
+};

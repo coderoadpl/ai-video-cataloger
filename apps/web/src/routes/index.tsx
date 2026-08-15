@@ -249,7 +249,13 @@ export const IndexRoute = () => {
       onSelectRecentFolder={shell.selectRecentFolder}
       onClearRecentFolders={shell.clearRecentFolders}
       onAnalysisMediaChange={setAnalysisMedia}
-      scopeToggle={<PhotosScopeToggle scope={photosAnalysis.scope} onScopeChange={photosAnalysis.setScope} />}
+      scopeToggle={(
+        <PhotosScopeToggle
+          scope={photosAnalysis.scope}
+          onScopeChange={photosAnalysis.setScope}
+          disabled={!photosAnalysis.treeScopeAvailable || photosAnalysis.isBusy}
+        />
+      )}
       toolbar={<PhotosScopeToolbar state={photosAnalysis} />}
     />
   );
@@ -372,6 +378,7 @@ export const IndexRoute = () => {
       />
       <CancelConfirmationDialog
         confirmation={photosAnalysis.cancelConfirmation}
+        media="photo"
         onClose={photosAnalysis.closeCancelConfirmation}
         onConfirm={photosAnalysis.confirmCancelAnalysis}
       />

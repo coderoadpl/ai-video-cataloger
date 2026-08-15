@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
@@ -10,12 +10,19 @@ import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import type { CancelConfirmation } from '../../components/ui/dialogs/CancelConfirmationDialog.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
-import { ownerRootFor, type PhotoListItem, type PhotoRoot } from './core/index.js';
+import {
+  buildPhotoTreeForRoot,
+  ownerRootFor,
+  photoScopePendingCount,
+  type PhotoListItem,
+  type PhotoRoot,
+  type PhotoTreeNode,
+} from './core/index.js';
 
-const PAGE_LIMIT = 200;
 const SCOPE_KEY = 'avc.photosScope';
+const QUERY_DISABLED_FOLDER = ' ';
 
-export type PhotosAnalysisScope = 'folder' | 'all';
+export type PhotosAnalysisScope = 'folder' | 'tree';
 export type PhotosFolderState = 'no-folder' | 'unscanned' | 'scanned';
 export type PhotoDetail = z.output<typeof photosDetailOutputSchema>;
 export type PhotoVariantRecord = z.output<typeof photosVariantRecordSchema>;
@@ -25,12 +32,11 @@ const canUseStorage = (): boolean =>
   && typeof window.localStorage?.getItem === 'function'
   && typeof window.localStorage?.setItem === 'function';
 
-const isScope = (value: string | null): value is PhotosAnalysisScope => value === 'folder' || value === 'all';
-
 const readScope = (): PhotosAnalysisScope => {
   if (!canUseStorage()) return 'folder';
   const raw = window.localStorage.getItem(SCOPE_KEY);
-  return isScope(raw) ? raw : 'folder';
+  if (raw === 'tree' || raw === 'all') return 'tree';
+  return 'folder';
 };
 
 const deriveSelectedRoot = (folder: string | null, roots: readonly PhotoRoot[]): string | null => {
@@ -42,6 +48,22 @@ const messageOf = (error: unknown): string => {
   if (error instanceof ApiError) return error.appError.message;
   if (error instanceof Error) return error.message;
   return String(error);
+};
+
+const pendingFolderPaths = (root: PhotoTreeNode | null): string[] => {
+  if (root === null) return [];
+  const paths: string[] = [];
+  const visit = (node: PhotoTreeNode): void => {
+    if (node.directPhotoCount > node.directAnalysedCount) paths.push(node.path);
+    node.children.forEach(visit);
+  };
+  visit(root);
+  return paths;
+};
+
+const parentFolder = (path: string): string => {
+  const separator = path.lastIndexOf('/');
+  return separator <= 0 ? path : path.slice(0, separator);
 };
 
 interface UsePhotosAnalysisOptions {
@@ -60,6 +82,8 @@ export interface PhotosAnalysisState {
   folder: string | null;
   folderState: PhotosFolderState;
   selectedRoot: string | null;
+  treeRoot: PhotoTreeNode | null;
+  treeScopeAvailable: boolean;
   items: PhotoListItem[];
   total: number;
   hasMore: boolean;
@@ -78,6 +102,7 @@ export interface PhotosAnalysisState {
   selectVariant: (configId: string | null) => void;
   analyzePhotos: () => void;
   canAnalyze: boolean;
+  pendingCount: number;
   analyzeSelectedPhoto: () => void;
   canAnalyzeSelectedPhoto: boolean;
   analyzeProgress: { current: number; total: number } | null;
@@ -93,20 +118,19 @@ export interface PhotosAnalysisState {
 export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }: UsePhotosAnalysisOptions): PhotosAnalysisState => {
   const queryClient = useQueryClient();
   const dictionary = useDictionary();
-  const [scope, setScopeState] = useState<PhotosAnalysisScope>(() => readScope());
+  const [scopePreference, setScopePreference] = useState<PhotosAnalysisScope>(() => readScope());
   const [selectedFingerprint, setSelectedFingerprint] = useState<string | null>(null);
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
   const [activeAnalyzeJobId, setActiveAnalyzeJobId] = useState<string | null>(null);
   const [analyzeProgress, setAnalyzeProgress] = useState<{ current: number; total: number } | null>(null);
-  const [rootProgress, setRootProgress] = useState<{ current: number; total: number } | null>(null);
+  const [folderProgress, setFolderProgress] = useState<{ current: number; total: number } | null>(null);
   const [processingFingerprints, setProcessingFingerprints] = useState<ReadonlySet<string>>(() => new Set());
   const [cancelConfirmation, setCancelConfirmation] = useState<CancelConfirmation>({ open: false, isBatch: false });
   const [jobError, setJobError] = useState<string | null>(null);
-  const [offset, setOffset] = useState(0);
-  const [loadedItems, setLoadedItems] = useState<PhotoListItem[]>([]);
   const processingSetRef = useRef<Set<string>>(new Set());
   const lastAnalyzeSequenceRef = useRef(0);
   const analyzeJobIdRef = useRef<string | null>(null);
+  const analysisFolderPathsRef = useRef<readonly string[]>([]);
 
   const tree = useQuery({ ...actions.photosTree, enabled: active });
   const treeRoots = tree.data?.roots;
@@ -118,36 +142,28 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     return selectedRoot === null ? 'unscanned' : 'scanned';
   }, [folder, selectedRoot]);
 
+  const folderTree = useQuery({
+    ...actions.photosFolderTree,
+    enabled: active && selectedRoot !== null,
+  });
+  const treeRoot = useMemo(
+    () => selectedRoot === null ? null : buildPhotoTreeForRoot(folderTree.data?.folders ?? [], selectedRoot),
+    [folderTree.data, selectedRoot],
+  );
+  const treeScopeAvailable = (treeRoot?.children.length ?? 0) > 0;
+  const scope: PhotosAnalysisScope = treeScopeAvailable ? scopePreference : 'folder';
+
   const setScope = useCallback((next: PhotosAnalysisScope) => {
-    setScopeState(next);
+    setScopePreference(next);
     if (canUseStorage()) window.localStorage.setItem(SCOPE_KEY, next);
   }, []);
 
-  const listRoot = scope === 'folder' ? selectedRoot : null;
-
-  useEffect(() => {
-    setOffset(0);
-  }, [listRoot]);
-
-  const list = useQuery({
-    ...actions.photosList({ ...(listRoot === null ? {} : { root: listRoot }), offset, limit: PAGE_LIMIT }),
-    enabled: active,
+  const directPhotos = useQuery({
+    ...actions.photosTreeFolder({ folder: selectedRoot ?? QUERY_DISABLED_FOLDER }),
+    enabled: active && selectedRoot !== null,
   });
-
-  const mergedOffsetRef = useRef(-1);
-  useEffect(() => {
-    if (list.data === undefined) return;
-    if (offset === 0) {
-      setLoadedItems(list.data.items);
-      mergedOffsetRef.current = 0;
-      return;
-    }
-    if (mergedOffsetRef.current === offset) return;
-    setLoadedItems((current) => [...current, ...list.data.items]);
-    mergedOffsetRef.current = offset;
-  }, [list.data, offset]);
-
-  const loadMore = useCallback(() => setOffset((current) => current + PAGE_LIMIT), []);
+  const items = useMemo(() => directPhotos.data?.items ?? [], [directPhotos.data]);
+  const loadMore = useCallback(() => undefined, []);
 
   const status = useQuery({
     ...actions.photosStatus(selectedRoot === null ? {} : { root: selectedRoot }),
@@ -243,26 +259,36 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   }, [dictionary, proxiesMutation, runJob, selectedRoot]);
 
   const selectedPhotoPath = useMemo(() => {
-    const fromLoadedItems = loadedItems.find((candidate) => candidate.fingerprint === selectedFingerprint) ?? null;
+    const fromLoadedItems = items.find((candidate) => candidate.fingerprint === selectedFingerprint) ?? null;
     if (fromLoadedItems !== null) return fromLoadedItems.currentPath;
     return detail.data !== undefined && detail.data.photo.fingerprint === selectedFingerprint
       ? detail.data.ownerPath
       : null;
-  }, [detail.data, loadedItems, selectedFingerprint]);
+  }, [detail.data, items, selectedFingerprint]);
   const selectedItemRoot = useMemo(
     () => (selectedPhotoPath === null ? null : ownerRootFor(selectedPhotoPath, roots)),
     [selectedPhotoPath, roots],
   );
 
-  const canAnalyze = scope === 'folder' ? selectedRoot !== null : roots.length > 0;
+  const pendingCount = photoScopePendingCount(treeRoot, scope);
+  const canAnalyze = selectedRoot !== null && pendingCount > 0;
   const canAnalyzeSelectedPhoto = selectedItemRoot !== null;
 
   const resetAnalyzeTracking = useCallback(() => {
     setAnalyzeProgress(null);
-    setRootProgress(null);
+    setFolderProgress(null);
     processingSetRef.current = new Set();
     setProcessingFingerprints(new Set());
     lastAnalyzeSequenceRef.current = 0;
+    analysisFolderPathsRef.current = [];
+  }, []);
+
+  const updateFolderProgress = useCallback((path: unknown) => {
+    if (typeof path !== 'string') return;
+    const folders = analysisFolderPathsRef.current;
+    if (folders.length <= 1) return;
+    const index = folders.indexOf(parentFolder(path));
+    if (index >= 0) setFolderProgress({ current: index + 1, total: folders.length });
   }, []);
 
   const handleAnalyzeSnapshot = useCallback((snapshot: JobOutput) => {
@@ -275,13 +301,6 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
       if (step === 'photo-analysis-scanning') {
         const candidates = data?.['candidates'];
         if (typeof candidates === 'number') setAnalyzeProgress({ current: 0, total: candidates });
-        const rootIndex = data?.['rootIndex'];
-        const rootsTotal = data?.['rootsTotal'];
-        setRootProgress(
-          typeof rootIndex === 'number' && typeof rootsTotal === 'number' && rootsTotal > 1
-            ? { current: rootIndex, total: rootsTotal }
-            : null,
-        );
         continue;
       }
       if (step === 'photo-analysis-batch-started') {
@@ -295,6 +314,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
         continue;
       }
       if (step === 'photo-analysed') {
+        updateFolderProgress(data?.['path']);
         const fingerprint = data?.['fingerprint'];
         if (typeof fingerprint === 'string' && processingSetRef.current.delete(fingerprint)) processingChanged = true;
         const current = data?.['current'];
@@ -304,6 +324,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
         continue;
       }
       if (step === 'photo-analysis-failed') {
+        updateFolderProgress(data?.['path']);
         const fingerprint = data?.['fingerprint'];
         if (typeof fingerprint === 'string' && processingSetRef.current.delete(fingerprint)) processingChanged = true;
         sawCompletion = true;
@@ -311,16 +332,18 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     }
     if (processingChanged) setProcessingFingerprints(new Set(processingSetRef.current));
     if (sawCompletion) void invalidatePhotosQueries(queryClient);
-  }, [queryClient]);
+  }, [queryClient, updateFolderProgress]);
 
   const analyzePhotos = useCallback(() => {
-    if (!canAnalyze) return;
+    if (!canAnalyze || selectedRoot === null) return;
     resetAnalyzeTracking();
+    analysisFolderPathsRef.current = scope === 'tree' ? pendingFolderPaths(treeRoot) : [];
+    const directFingerprints = items.filter((item) => !item.analysed).map((item) => item.fingerprint);
     runJob(
-      () => processMutation.mutateAsync(scope === 'folder' && selectedRoot !== null
-        ? { root: selectedRoot, force: false }
-        : { force: false }),
-      dictionary.photos.analyzeProgress(0, 0),
+      () => processMutation.mutateAsync(scope === 'folder'
+        ? { root: selectedRoot, force: false, fingerprints: directFingerprints }
+        : { root: selectedRoot, force: false }),
+      dictionary.photos.analyzeProgress(0, pendingCount),
       dictionary.photos.analyzeCompletedLog,
       dictionary.photos.analyzeFailedLog,
       handleAnalyzeSnapshot,
@@ -334,7 +357,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
         resetAnalyzeTracking();
       },
     );
-  }, [canAnalyze, dictionary, handleAnalyzeSnapshot, processMutation, resetAnalyzeTracking, runJob, scope, selectedRoot]);
+  }, [canAnalyze, dictionary, handleAnalyzeSnapshot, items, pendingCount, processMutation, resetAnalyzeTracking, runJob, scope, selectedRoot, treeRoot]);
 
   const analyzeSelectedPhoto = useCallback(() => {
     if (selectedFingerprint === null || selectedItemRoot === null) return;
@@ -379,10 +402,10 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   const analyzeStatusLabel = useMemo(() => {
     if (activeJobLabel === null) return null;
     if (analyzeProgress === null) return activeJobLabel;
-    return rootProgress === null
+    return folderProgress === null
       ? dictionary.photos.analyzeProgress(analyzeProgress.current, analyzeProgress.total)
-      : dictionary.photos.analyzeProgressAllRoots(rootProgress.current, rootProgress.total, analyzeProgress.current, analyzeProgress.total);
-  }, [activeJobLabel, analyzeProgress, dictionary, rootProgress]);
+      : dictionary.photos.analyzeProgressFolders(folderProgress.current, folderProgress.total, analyzeProgress.current, analyzeProgress.total);
+  }, [activeJobLabel, analyzeProgress, dictionary, folderProgress]);
 
   const selectVariant = useCallback(
     (configId: string | null) => {
@@ -402,14 +425,14 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   );
 
   const error = useMemo(() => {
-    for (const query of [tree, list]) {
+    for (const query of [tree, folderTree, directPhotos]) {
       if (query.error !== null) return messageOf(query.error);
     }
     return jobError;
-  }, [jobError, list, tree]);
+  }, [directPhotos, folderTree, jobError, tree]);
 
   return {
-    isLoading: active && (tree.isLoading || list.isLoading),
+    isLoading: active && (tree.isLoading || (selectedRoot !== null && (folderTree.isLoading || directPhotos.isLoading))),
     error,
     roots,
     scope,
@@ -417,10 +440,12 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     folder,
     folderState,
     selectedRoot,
-    items: loadedItems,
-    total: list.data?.total ?? 0,
-    hasMore: loadedItems.length < (list.data?.total ?? 0),
-    isLoadingMore: offset > 0 && list.isFetching,
+    treeRoot,
+    treeScopeAvailable,
+    items,
+    total: items.length,
+    hasMore: false,
+    isLoadingMore: false,
     loadMore,
     counts: status.data === undefined
       ? null
@@ -442,6 +467,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     selectVariant,
     analyzePhotos,
     canAnalyze,
+    pendingCount,
     analyzeSelectedPhoto,
     canAnalyzeSelectedPhoto,
     analyzeProgress,
