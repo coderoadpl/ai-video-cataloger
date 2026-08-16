@@ -126,7 +126,7 @@ describe('SqlJsPhotosStore', () => {
     ]);
   });
 
-  it('migrates a version 1 database to the version 2 indexes without touching its rows', async () => {
+  it('migrates a version 1 database to the current schema without touching its rows', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });
     expect((await store.upsertFolder(folder)).ok).toBe(true);
@@ -160,7 +160,7 @@ describe('SqlJsPhotosStore', () => {
       'idx_photos_folder',
       'idx_photos_proxy_state_path',
     ]);
-    expect(version).toBe(2);
+    expect(version).toBe(3);
   });
 
   it('checkpoint persists mid-batch work without ending the batch', async () => {
@@ -560,6 +560,40 @@ describe('SqlJsPhotosStore', () => {
     expect(items.ok && items.value.map((item) => item.fingerprint)).toEqual(['ph_0000000000000001']);
   });
 
+  it('keeps cross-folder membership coherent between the tree and collection identity totals', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const ownerFolder: PhotoFolderRecord = { ...folder, folderId: 'path-bbbbbbbb', currentPath: '/media/owner', displayName: 'owner' };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(ownerFolder);
+    await store.upsertPhoto(photo({ folderId: ownerFolder.folderId, currentPath: '/media/owner/a.jpg' }));
+    await store.upsertSighting(sighting({ folderId: ownerFolder.folderId, currentPath: '/media/owner/a.jpg' }));
+    await store.upsertSighting(sighting({ currentPath: '/media/photos/a.jpg' }));
+    await store.upsertSighting(sighting({ currentPath: '/media/photos/a-copy.jpg' }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput());
+
+    const tree = await store.listFolderTree();
+    const filtered = await store.collectionPage({
+      match: null, rankingTerms: [], from: null, to: null, folderId: folder.folderId,
+      tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
+    });
+    const unfiltered = await store.collectionPage({
+      match: null, rankingTerms: [], from: null, to: null, folderId: null,
+      tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
+    });
+
+    expect(tree.ok && tree.value).toContainEqual({
+      folderId: folder.folderId,
+      currentPath: '/media/photos',
+      photoCount: 1,
+      analysedCount: 1,
+    });
+    expect(filtered.ok && filtered.value.total).toBe(1);
+    expect(filtered.ok && filtered.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000001']);
+    expect(unfiltered.ok && unfiltered.value.total).toBe(1);
+  });
+
   it('listFolderTree omits a photo_folders row with no photos', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });
@@ -817,6 +851,41 @@ describe('SqlJsPhotosStore', () => {
     tags: ['bicycle', 'brick-wall'],
     createdAt: '2026-01-01T00:00:00.000Z',
     ...overrides,
+  });
+
+  it('adds nullable resolved-language columns and treats migrated analyses as satisfied', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ proxyState: 'done' }));
+    await store.upsertSighting(sighting());
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ resolvedOutputLanguage: 'en', resolvedTagLanguage: 'en' }));
+    await store.flush();
+
+    const SQL = await initSqlJs();
+    const downgraded = new SQL.Database(fs.readFileSync(store.databasePath()));
+    downgraded.run('ALTER TABLE photo_analyses DROP COLUMN resolved_output_language');
+    downgraded.run('ALTER TABLE photo_analyses DROP COLUMN resolved_tag_language');
+    downgraded.run('UPDATE schema_meta SET version = 2');
+    fs.writeFileSync(store.databasePath(), Buffer.from(downgraded.export()));
+    downgraded.close();
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const candidates = await reopened.listAnalysisCandidates('/media/photos', 'cfg_aaaaaaaaaaaa', false, {
+      outputLanguage: 'pl', tagLanguage: 'pl', outputAuto: true, tagAuto: true,
+    });
+    expect(candidates.ok ? '' : candidates.error.message).toBe('');
+    expect(candidates.ok && candidates.value).toEqual({ candidates: [], alreadyAnalysed: 1 });
+    await reopened.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-02T00:00:00.000Z' });
+    await reopened.flush();
+
+    const migrated = new SQL.Database(fs.readFileSync(reopened.databasePath()));
+    const row = migrated.exec('SELECT resolved_output_language, resolved_tag_language FROM photo_analyses')[0]?.values[0];
+    const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
+    migrated.close();
+    expect(row).toEqual([null, null]);
+    expect(version).toBe(3);
   });
 
   it('searchPhotos finds an un-analysed photo by file name only, and matches an analysed photo by description and tag terms, with a mark-carrying snippet and place matches (P1)', async () => {

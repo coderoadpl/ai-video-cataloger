@@ -12,18 +12,29 @@ interface HarnessProps {
   folder: string | null;
   photosActive?: boolean;
   photosBusy?: boolean;
-  scanPhotos?: () => void;
+  scanPhotos?: () => Promise<boolean>;
 }
 
-const Harness = ({ folder, photosActive = false, photosBusy = false, scanPhotos = () => undefined }: HarnessProps) => {
+const Harness = ({ folder, photosActive = false, photosBusy = false, scanPhotos = () => Promise.resolve(true) }: HarnessProps) => {
   useFolderWatch(folder, { photosActive, photosBusy, scanPhotos });
   return null;
 };
 
-const BusyHarness = ({ scanPhotos }: { scanPhotos: () => void }) => {
+const BusyHarness = ({ scanPhotos }: { scanPhotos: () => Promise<boolean> }) => {
   const [photosBusy, setPhotosBusy] = useState(true);
   useFolderWatch('/drive', { photosActive: true, photosBusy, scanPhotos });
   return <button onClick={() => setPhotosBusy(false)}>Settle photo job</button>;
+};
+
+const RetryHarness = ({ scanPhotos }: { scanPhotos: () => Promise<boolean> }) => {
+  const [photosBusy, setPhotosBusy] = useState(false);
+  useFolderWatch('/drive', { photosActive: true, photosBusy, scanPhotos });
+  return (
+    <>
+      <button onClick={() => setPhotosBusy(true)}>Start photo job</button>
+      <button onClick={() => setPhotosBusy(false)}>Settle photo job</button>
+    </>
+  );
 };
 
 afterEach(() => {
@@ -55,7 +66,7 @@ describe('useFolderWatch', () => {
 
   it('rescans photos when the current watched folder changes in photos mode', async () => {
     const subscription = captureHandler();
-    const scanPhotos = vi.fn();
+    const scanPhotos = vi.fn().mockResolvedValue(true);
     renderWithProviders(<Harness folder="/drive" photosActive scanPhotos={scanPhotos} />);
 
     await act(async () => {
@@ -67,7 +78,7 @@ describe('useFolderWatch', () => {
 
   it('holds a pending photo rescan until the active photo job settles', async () => {
     const subscription = captureHandler();
-    const scanPhotos = vi.fn();
+    const scanPhotos = vi.fn().mockResolvedValue(true);
     renderWithProviders(<BusyHarness scanPhotos={scanPhotos} />);
 
     await act(async () => {
@@ -80,9 +91,39 @@ describe('useFolderWatch', () => {
     expect(scanPhotos).toHaveBeenCalledTimes(1);
   });
 
+  it('retries one failed watched-folder scan without requiring another filesystem event', async () => {
+    vi.useFakeTimers();
+    const subscription = captureHandler();
+    const scanPhotos = vi.fn()
+      .mockResolvedValueOnce(false)
+      .mockResolvedValueOnce(true);
+    renderWithProviders(<RetryHarness scanPhotos={scanPhotos} />);
+
+    await act(async () => {
+      subscription.handlers[0]?.({ folderPath: '/drive' });
+      await Promise.resolve();
+    });
+    expect(scanPhotos).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Start photo job' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Settle photo job' }));
+    expect(scanPhotos).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
+    expect(scanPhotos).toHaveBeenCalledTimes(2);
+
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(10_000);
+    });
+    expect(scanPhotos).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
   it('ignores changes reported for another folder', async () => {
     const subscription = captureHandler();
-    const scanPhotos = vi.fn();
+    const scanPhotos = vi.fn().mockResolvedValue(true);
     const { queryClient } = renderWithProviders(
       <Harness folder="/drive" photosActive scanPhotos={scanPhotos} />,
     );

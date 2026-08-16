@@ -336,14 +336,17 @@ describe('resolveRevealPath', () => {
     expect(await resolveRevealPath('relative/clip.mp4', [current])).toBeNull();
   });
 
-  it('admits a photo under a registered photo root when no video catalog folder owns it', async () => {
+  it('admits a photo only while its photo root remains registered', async () => {
     const current = await tempRoot();
     const photoRoot = await tempRoot();
     const target = path.join(photoRoot, 'trip', 'photo.jpg');
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, 'photo', 'utf8');
+    const registeredRoots = [photoRoot];
 
-    expect(await resolveRegisteredRevealPath(target, current, [], [photoRoot])).toBe(await realpath(target));
+    expect(await resolveRegisteredRevealPath(target, current, [], registeredRoots)).toBe(await realpath(target));
+    registeredRoots.length = 0;
+    expect(await resolveRegisteredRevealPath(target, current, [], registeredRoots)).toBeNull();
   });
 });
 

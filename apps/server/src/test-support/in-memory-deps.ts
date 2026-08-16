@@ -11,6 +11,7 @@ import {
   appError,
   canonicalPath,
   ok,
+  type AnalysisLanguageResolution,
   type AppError,
   type CatalogAnalysis,
   type CatalogFile,
@@ -385,6 +386,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
   private readonly variants = new Map<string, CatalogVariant>();
+  private readonly variantLanguageResolutions = new Map<string, AnalysisLanguageResolution>();
   private readonly selectedConfigIds = new Map<string, string>();
   private readonly folderDefaultVariants = new Map<string, string>();
   private readonly driveRuns = new Map<string, DriveRunRecord>();
@@ -472,10 +474,16 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(this.variants.get(`${fingerprint}\u0000${configId}`) ?? null));
   }
 
-  upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>> {
-    this.variants.set(`${variant.fingerprint}\u0000${variant.configId}`, variant);
+  upsertVariant(variant: CatalogVariant, languageResolution?: AnalysisLanguageResolution): Promise<Result<void, AppError>> {
+    const key = `${variant.fingerprint}\u0000${variant.configId}`;
+    this.variants.set(key, variant);
+    if (languageResolution !== undefined) this.variantLanguageResolutions.set(key, languageResolution);
     if (!this.analyses.has(variant.fingerprint)) this.analyses.set(variant.fingerprint, variant);
     return Promise.resolve(ok(undefined));
+  }
+
+  getVariantLanguageResolution(fingerprint: string, configId: string): Promise<Result<AnalysisLanguageResolution | null, AppError>> {
+    return Promise.resolve(ok(this.variantLanguageResolutions.get(`${fingerprint}\u0000${configId}`) ?? null));
   }
 
   async deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
@@ -484,7 +492,9 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       return { ok: false, error: appError('conflict', 'Cannot delete the last analysis variant') };
     }
     const selected = await this.getSelectedConfigId(fingerprint);
-    this.variants.delete(`${fingerprint}\u0000${configId}`);
+    const key = `${fingerprint}\u0000${configId}`;
+    this.variants.delete(key);
+    this.variantLanguageResolutions.delete(key);
     if (selected.ok && selected.value === configId) {
       const promoted = variants
         .filter((variant) => variant.configId !== configId)
@@ -499,7 +509,10 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   clearAnalysisVariants(fingerprint: string): Promise<Result<void, AppError>> {
     for (const [key, variant] of this.variants) {
-      if (variant.fingerprint === fingerprint) this.variants.delete(key);
+      if (variant.fingerprint === fingerprint) {
+        this.variants.delete(key);
+        this.variantLanguageResolutions.delete(key);
+      }
     }
     this.analyses.delete(fingerprint);
     this.selectedConfigIds.delete(fingerprint);

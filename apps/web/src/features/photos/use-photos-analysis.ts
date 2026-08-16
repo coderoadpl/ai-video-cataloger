@@ -95,7 +95,7 @@ export interface PhotosAnalysisState {
   activeJobLabel: string | null;
   analyzeStatusLabel: string | null;
   isBusy: boolean;
-  scanFolder: () => void;
+  scanFolder: () => Promise<boolean>;
   detail: PhotoDetail | null;
   isDetailLoading: boolean;
   variants: PhotoVariantRecord[];
@@ -198,12 +198,12 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
       onSnapshot?: (snapshot: JobOutput) => void,
       onJobAccepted?: (jobId: string) => void,
       onSettled?: () => void,
-    ) => {
-      if (activeJobLabel !== null) return;
+    ): Promise<boolean> => {
+      if (activeJobLabel !== null) return Promise.resolve(false);
       setActiveJobLabel(label);
       setJobError(null);
       addLine(label, 'info');
-      void (async () => {
+      return (async () => {
         try {
           const job = await submit();
           onJobAccepted?.(job.jobId);
@@ -217,18 +217,22 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
           if (final.status === 'completed') {
             addLine(success, 'success');
             await invalidate();
+            return true;
           } else if (final.status === 'cancelled') {
             addLine(dictionary.photos.analysisCancelled, 'info');
             await invalidate();
+            return false;
           } else {
             const message = `${failure}: ${final.error?.message ?? 'unknown error'}`;
             addLine(message, 'error');
             setJobError(message);
+            return false;
           }
         } catch (error) {
           const message = `${failure}: ${messageOf(error)}`;
           addLine(message, 'error');
           setJobError(message);
+          return false;
         } finally {
           setActiveJobLabel(null);
           onSettled?.();
@@ -238,9 +242,9 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     [activeJobLabel, addLine, dictionary, intervalMs, invalidate, queryClient],
   );
 
-  const scanFolder = useCallback(() => {
-    if (folder === null) return;
-    runJob(
+  const scanFolder = useCallback((): Promise<boolean> => {
+    if (folder === null) return Promise.resolve(false);
+    return runJob(
       () => scanMutation.mutateAsync({ root: folder }),
       dictionary.photos.scanStartedLog,
       dictionary.photos.scanCompletedLog,
@@ -250,7 +254,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
 
   const generateProxies = useCallback(() => {
     if (selectedRoot === null) return;
-    runJob(
+    void runJob(
       () => proxiesMutation.mutateAsync({ root: selectedRoot, force: false }),
       dictionary.photos.generateProxiesStartedLog,
       dictionary.photos.generateProxiesCompletedLog,
@@ -339,7 +343,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     resetAnalyzeTracking();
     analysisFolderPathsRef.current = scope === 'tree' ? pendingFolderPaths(treeRoot) : [];
     const directFingerprints = items.filter((item) => !item.analysed).map((item) => item.fingerprint);
-    runJob(
+    void runJob(
       () => processMutation.mutateAsync(scope === 'folder'
         ? { root: selectedRoot, force: false, fingerprints: directFingerprints }
         : { root: selectedRoot, force: false }),
@@ -362,7 +366,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
   const analyzeSelectedPhoto = useCallback(() => {
     if (selectedFingerprint === null || selectedItemRoot === null) return;
     resetAnalyzeTracking();
-    runJob(
+    void runJob(
       () => processMutation.mutateAsync({ root: selectedItemRoot, force: false, fingerprints: [selectedFingerprint] }),
       dictionary.photos.analyzeProgress(0, 1),
       dictionary.photos.analyzeCompletedLog,

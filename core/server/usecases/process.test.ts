@@ -1024,6 +1024,53 @@ describe('process pipeline global catalog idempotency', () => {
     expect(variant !== null && variant.ok && variant.value?.descriptor).toMatchObject({ output_language: 'auto' });
   });
 
+  it('reprocesses an auto-language video after the UI language changes without changing config identity', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'en');
+
+    const english = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'pl');
+    const polish = await processVideoPipeline({ ...deps, globalCatalog }, input);
+
+    expect(english.ok && polish.ok && polish.value.configId).toBe(english.ok ? english.value.configId : '');
+    expect(deps.analyzer.inputs.map((entry) => entry.uiLanguage)).toEqual(['en', 'pl']);
+  });
+
+  it('reprocesses a video when only tag_language is auto after the UI language changes', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'output_language', 'en');
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'tag_language', 'auto');
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'en');
+
+    const english = await processVideoPipeline({ ...deps, globalCatalog }, input);
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'pl');
+    const polish = await processVideoPipeline({ ...deps, globalCatalog }, input);
+
+    expect(english.ok && polish.ok && polish.value.configId).toBe(english.ok ? english.value.configId : '');
+    expect(deps.analyzer.inputs.map((entry) => entry.uiLanguage)).toEqual(['en', 'pl']);
+    expect(deps.analyzer.inputs.map((entry) => entry.outputLanguage)).toEqual(['en', 'en']);
+    expect(deps.analyzer.inputs.map((entry) => entry.tagLanguage)).toEqual(['auto', 'auto']);
+  });
+
+  it('keeps an explicitly pinned video output and tag language satisfied after a UI language change', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'output_language', 'en');
+    await deps.config.set({ kind: 'folder', folder: '/work' }, 'tag_language', 'pl');
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'en');
+
+    await processVideoPipeline({ ...deps, globalCatalog }, input);
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'pl');
+    await processVideoPipeline({ ...deps, globalCatalog }, input);
+
+    expect(deps.analyzer.inputs).toHaveLength(1);
+  });
+
   it('reprocesses an already indexed fingerprint when force is set', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();

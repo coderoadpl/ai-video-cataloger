@@ -13,6 +13,8 @@ import {
   outputLanguageSchema,
   parsePhotoBatchResponse,
   photoConfigId,
+  resolveDescriptorLanguages,
+  resolvePromptLanguage,
   type PhotoConfigDescriptor,
   photoExtensionSchema,
   photoFingerprintFromSha256,
@@ -1240,6 +1242,8 @@ export const photosForget = async (
         }
       }
     }
+    const deletedRuns = await deps.photos.deletePhotoRuns(root);
+    if (!deletedRuns.ok) return deletedRuns;
     return ok({ media: 'photo', root, pathsRemoved, photosDeleted, photosRepointed });
   });
   if (!batched.ok) return batched;
@@ -1505,6 +1509,8 @@ export const runPhotoAnalysisCascade = async (
       usageJson: analyzeResult.value.usage === undefined ? null : JSON.stringify(analyzeResult.value.usage),
       tags: element.tags,
       createdAt: new Date().toISOString(),
+      resolvedOutputLanguage: resolvePromptLanguage(ctx.outputLanguage, ctx.uiLanguage),
+      resolvedTagLanguage: resolvePromptLanguage(ctx.tagLanguage, ctx.uiLanguage),
     });
     if (!recorded.ok) return recorded;
     ctx.counters.analysed += 1;
@@ -1583,7 +1589,12 @@ const runPhotoProcessForRoot = async (
   });
   if (!upserted.ok) return upserted;
 
-  const candidatesResult = await deps.photos.listAnalysisCandidates(root, configId, input.force);
+  const languageResolution = resolveDescriptorLanguages(descriptor, options.value.uiLanguage);
+  const candidatesResult = await deps.photos.listAnalysisCandidates(root, configId, input.force, {
+    ...languageResolution,
+    outputAuto: descriptor.output_language === 'auto',
+    tagAuto: (descriptor.tag_language ?? descriptor.output_language) === 'auto',
+  });
   if (!candidatesResult.ok) return candidatesResult;
   const fingerprintScope = input.fingerprints === null ? null : new Set(input.fingerprints);
   const candidates = fingerprintScope === null

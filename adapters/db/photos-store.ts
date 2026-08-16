@@ -19,6 +19,7 @@ import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.j
 
 import {
   FACE_ENGINE_VERSION,
+  analysisLanguageResolutionSchema,
   acceptsGpsWrite,
   appError,
   canonicalPath,
@@ -37,6 +38,7 @@ import {
 import type {
   ApplyGeoBackfillResult,
   ApplyPhotoGeoBackfillInput,
+  AnalysisLanguageCandidateRule,
   PhotoAnalysisCandidate,
   PhotoAnalysisCandidates,
   PhotoDetail,
@@ -62,6 +64,7 @@ import type {
 import {
   createPhotosSchemaSqlV1,
   createPhotosSchemaSqlV2,
+  createPhotosSchemaSqlV3,
   photoAnalyses,
   photoAnalysisConfigs,
   photoFaceIndexState,
@@ -529,6 +532,16 @@ export class SqlJsPhotosStore implements PhotosStore {
     });
   }
 
+  async deletePhotoRuns(root: string): Promise<Result<void, AppError>> {
+    return this.write((_db, client) => {
+      const canonicalRoot = canonicalPath(root);
+      client.run(
+        'DELETE FROM photo_runs WHERE root = $root OR (root >= $scopeLower AND root < $scopeUpper)',
+        { $root: canonicalRoot, $scopeLower: `${canonicalRoot}/`, $scopeUpper: `${canonicalRoot}0` },
+      );
+    });
+  }
+
   async listProxyCandidates(root: string): Promise<Result<PhotoProxyCandidate[], AppError>> {
     return this.read((_db, client) => {
       const canonicalRoot = canonicalPath(root);
@@ -679,13 +692,27 @@ export class SqlJsPhotosStore implements PhotosStore {
     });
   }
 
-  async listAnalysisCandidates(root: string, configId: string, force: boolean): Promise<Result<PhotoAnalysisCandidates, AppError>> {
+  async listAnalysisCandidates(
+    root: string,
+    configId: string,
+    force: boolean,
+    languageRule?: AnalysisLanguageCandidateRule,
+  ): Promise<Result<PhotoAnalysisCandidates, AppError>> {
+    const parsedResolution = languageRule === undefined ? null : analysisLanguageResolutionSchema.safeParse({
+      outputLanguage: languageRule.outputLanguage,
+      tagLanguage: languageRule.tagLanguage,
+    });
+    if (parsedResolution !== null && !parsedResolution.success) {
+      return { ok: false, error: appError('validation', parsedResolution.error.message) };
+    }
     return this.read((_db, client) => {
       const canonicalRoot = canonicalPath(root);
       const scope = scopeForRoot(canonicalRoot);
       const rows = client.exec(
         `SELECT fingerprint, file_name, current_path,
-                EXISTS (SELECT 1 FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId) AS analysed
+                EXISTS (SELECT 1 FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId) AS analysed,
+                (SELECT resolved_output_language FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId),
+                (SELECT resolved_tag_language FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId)
          FROM photos
          WHERE missing_at IS NULL AND proxy_state = 'done' AND (${scope.where})
          ORDER BY current_path ASC`,
@@ -694,7 +721,18 @@ export class SqlJsPhotosStore implements PhotosStore {
       const candidates: PhotoAnalysisCandidate[] = [];
       let alreadyAnalysed = 0;
       for (const row of rows[0]?.values ?? []) {
-        const analysed = numberValue(row[3]) === 1;
+        const exists = numberValue(row[3]) === 1;
+        const storedOutputLanguage = nullableStringValue(row[4]);
+        const storedTagLanguage = nullableStringValue(row[5]);
+        const resolution = parsedResolution?.data;
+        const analysed = exists && (
+          languageRule === undefined
+          || resolution === undefined
+          || storedOutputLanguage === null
+          || storedTagLanguage === null
+          || ((!languageRule.outputAuto || storedOutputLanguage === resolution.outputLanguage)
+            && (!languageRule.tagAuto || storedTagLanguage === resolution.tagLanguage))
+        );
         if (analysed && !force) {
           alreadyAnalysed += 1;
           continue;
@@ -729,6 +767,15 @@ export class SqlJsPhotosStore implements PhotosStore {
   }
 
   async recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>> {
+    const parsedResolution = input.resolvedOutputLanguage === undefined && input.resolvedTagLanguage === undefined
+      ? null
+      : analysisLanguageResolutionSchema.safeParse({
+          outputLanguage: input.resolvedOutputLanguage,
+          tagLanguage: input.resolvedTagLanguage,
+        });
+    if (parsedResolution !== null && !parsedResolution.success) {
+      return { ok: false, error: appError('validation', parsedResolution.error.message) };
+    }
     return this.write((db, client) => {
       runPhotosTransaction(client, () => {
         db.insert(photoAnalyses)
@@ -744,6 +791,8 @@ export class SqlJsPhotosStore implements PhotosStore {
             batchSize: input.batchSize,
             createdAt: input.createdAt,
             usageJson: input.usageJson,
+            resolvedOutputLanguage: parsedResolution?.data.outputLanguage ?? null,
+            resolvedTagLanguage: parsedResolution?.data.tagLanguage ?? null,
           })
           .onConflictDoUpdate({
             target: [photoAnalyses.fingerprint, photoAnalyses.configId],
@@ -757,6 +806,8 @@ export class SqlJsPhotosStore implements PhotosStore {
               batchSize: input.batchSize,
               createdAt: input.createdAt,
               usageJson: input.usageJson,
+              resolvedOutputLanguage: parsedResolution?.data.outputLanguage ?? null,
+              resolvedTagLanguage: parsedResolution?.data.tagLanguage ?? null,
             },
           })
           .run();
@@ -1076,6 +1127,10 @@ const migrate = (client: Database): boolean => {
     for (const statement of createPhotosSchemaSqlV2) client.run(statement);
     migrated = true;
   }
+  if (currentVersion < 3) {
+    for (const statement of createPhotosSchemaSqlV3) runPhotosMigrationStatement(client, statement);
+    migrated = true;
+  }
   if (currentVersion < PHOTOS_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
     const db = drizzle(client, { schema: photosSchema });
@@ -1083,6 +1138,15 @@ const migrate = (client: Database): boolean => {
     migrated = true;
   }
   return migrated;
+};
+
+const runPhotosMigrationStatement = (client: Database, statement: string): void => {
+  try {
+    client.run(statement);
+  } catch (cause) {
+    if (cause instanceof Error && cause.message.includes('duplicate column name')) return;
+    throw cause;
+  }
 };
 
 const readSchemaVersion = (client: Database): number => {
@@ -1619,7 +1683,13 @@ const photoFolderWhereClause = (
   folderId: string | null,
 ): { clauses: string[]; params: Record<string, string> } => folderId === null
   ? { clauses: [], params: {} }
-  : { clauses: ['p.folder_id = $folderId'], params: { $folderId: folderId } };
+  : {
+      clauses: [`(p.folder_id = $folderId OR EXISTS (
+        SELECT 1 FROM photo_paths pp
+        WHERE pp.fingerprint = p.fingerprint AND pp.folder_id = $folderId
+      ))`],
+      params: { $folderId: folderId },
+    };
 
 const photoCollectionOrderBySql = (sort: 'captured_desc' | 'captured_asc' | 'name_asc'): string => {
   switch (sort) {

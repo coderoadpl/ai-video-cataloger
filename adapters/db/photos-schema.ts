@@ -99,6 +99,8 @@ export const photoAnalyses = sqliteTable('photo_analyses', {
   batchSize: integer('batch_size'),
   createdAt: text('created_at').notNull(),
   usageJson: text('usage_json'),
+  resolvedOutputLanguage: text('resolved_output_language'),
+  resolvedTagLanguage: text('resolved_tag_language'),
 }, (table) => [
   primaryKey({ columns: [table.fingerprint, table.configId] }),
 ]);
@@ -151,7 +153,7 @@ export const photosSchema = {
   photosSchemaMeta,
 };
 
-export const PHOTOS_SCHEMA_VERSION = 2;
+export const PHOTOS_SCHEMA_VERSION = 3;
 
 export const createPhotosSchemaSqlV1 = [
   'CREATE TABLE schema_meta (version INTEGER PRIMARY KEY)',
@@ -247,4 +249,9 @@ export const createPhotosSchemaSqlV2 = [
   'CREATE INDEX idx_photos_current_path ON photos(current_path)',
   'CREATE INDEX idx_photos_proxy_state_path ON photos(proxy_state, current_path)',
   'DROP INDEX IF EXISTS idx_photos_proxy_state',
+] as const;
+
+export const createPhotosSchemaSqlV3 = [
+  'ALTER TABLE photo_analyses ADD COLUMN resolved_output_language TEXT',
+  'ALTER TABLE photo_analyses ADD COLUMN resolved_tag_language TEXT',
 ] as const;

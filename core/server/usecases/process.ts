@@ -8,6 +8,8 @@ import {
   geminiCostEstimateFromUsage,
   normalizeTagList,
   ok,
+  analysisLanguagesAreCurrent,
+  resolveDescriptorLanguages,
   spendLedgerEntrySchema,
   spendMonth,
   type AppConfig,
@@ -203,15 +205,17 @@ export const processVideoPipeline = async (
     videoPath,
     deps.globalCatalog === undefined ? null : fingerprint.value,
     identity.configId,
+    identity.descriptor,
+    resolved.value.analyzer.uiLanguage,
     input.force === true,
     progress,
   );
   if (!skipped.ok) return skipped;
-  if (skipped.value !== null) {
+  if (skipped.value.selectedConfigId !== null) {
     return ok({
       ...completedOutput(deps.fs, video.value),
       configId: identity.configId,
-      selectedConfigId: skipped.value,
+      selectedConfigId: skipped.value.selectedConfigId,
     });
   }
   const options = pipelineOptions(
@@ -221,7 +225,7 @@ export const processVideoPipeline = async (
     resolved.value,
     deps.globalCatalog === undefined ? null : fingerprint.value,
     identity,
-    input.force === true,
+    input.force === true || skipped.value.languageStale,
   );
 
   const runResult = await runPipelineSteps(deps, repository.value, video.value, options, progress);
@@ -1519,20 +1523,30 @@ const alreadyIndexed = async (
   videoPath: string,
   fingerprint: string | null,
   configIdValue: string,
+  descriptor: ConfigDescriptor,
+  uiLanguage: AppConfig['ui_language'],
   force: boolean,
   progress: JobExecutionContext | undefined,
-): Promise<Result<string | null, AppError>> => {
+): Promise<Result<{ selectedConfigId: string | null; languageStale: boolean }, AppError>> => {
   const globalCatalog = deps.globalCatalog;
-  if (globalCatalog === undefined || force || fingerprint === null) return ok(null);
+  if (globalCatalog === undefined || force || fingerprint === null) {
+    return ok({ selectedConfigId: null, languageStale: false });
+  }
   const catalogDeps = { globalCatalog, fs: deps.fs };
   const resolved = await resolveFolderIntoIndex(catalogDeps, folder);
   if (!resolved.ok) return resolved;
   const variant = await globalCatalog.getVariant(fingerprint, configIdValue);
   if (!variant.ok) return variant;
-  if (variant.value === null) return ok(null);
+  if (variant.value === null) return ok({ selectedConfigId: null, languageStale: false });
+  const storedResolution = await globalCatalog.getVariantLanguageResolution(fingerprint, configIdValue);
+  if (!storedResolution.ok) return storedResolution;
+  const currentResolution = resolveDescriptorLanguages(descriptor, uiLanguage);
+  if (!analysisLanguagesAreCurrent(descriptor, storedResolution.value, currentResolution)) {
+    return ok({ selectedConfigId: null, languageStale: true });
+  }
   const reachable = await analyzedCanonicalIsReachable({ fs: deps.fs, globalCatalog }, fingerprint);
   if (!reachable.ok) return reachable;
-  if (!reachable.value) return ok(null);
+  if (!reachable.value) return ok({ selectedConfigId: null, languageStale: false });
   if (progress !== undefined) {
     const reported = await progress.reportProgress({
       step: 'catalog_index_skipped',
@@ -1540,7 +1554,9 @@ const alreadyIndexed = async (
     });
     if (!reported.ok) return reported;
   }
-  return globalCatalog.getSelectedConfigId(fingerprint);
+  const selectedConfigId = await globalCatalog.getSelectedConfigId(fingerprint);
+  if (!selectedConfigId.ok) return selectedConfigId;
+  return ok({ selectedConfigId: selectedConfigId.value, languageStale: false });
 };
 
 const ensureCompletedThumbnail = async (
@@ -1655,6 +1671,7 @@ const recordGlobalCatalog = async (
         language: resolved.descriptor.output_language,
         tags: summary.value?.tags ?? [],
       },
+      languageResolution: resolveDescriptorLanguages(resolved.descriptor, resolved.analyzer.uiLanguage),
     },
   );
   if (!upserted.ok) return upserted;

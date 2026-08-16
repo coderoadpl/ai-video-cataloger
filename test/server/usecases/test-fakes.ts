@@ -13,6 +13,7 @@ import {
   type AppConfig,
   type AppError,
   type AnalyzerProviderConfig,
+  type AnalysisLanguageResolution,
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
@@ -75,6 +76,7 @@ import type {
   AnalysisOutput,
   AnalyzePhotosInput,
   AnalyzePhotosOutput,
+  AnalysisLanguageCandidateRule,
   AnalyzerTranscript,
   ConfigScope,
   ConfigStore,
@@ -1163,6 +1165,7 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
   private readonly files = new Map<string, CatalogFile>();
   private readonly analyses = new Map<string, CatalogAnalysis>();
   private readonly variants = new Map<string, CatalogVariant>();
+  private readonly variantLanguageResolutions = new Map<string, AnalysisLanguageResolution>();
   private readonly selectedConfigIds = new Map<string, string>();
   private readonly folderDefaultVariants = new Map<string, string>();
   private readonly aliases = new Map<string, string>();
@@ -1265,10 +1268,16 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok(this.variants.get(`${fingerprint}\u0000${configId}`) ?? null));
   }
 
-  upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>> {
-    this.variants.set(`${variant.fingerprint}\u0000${variant.configId}`, variant);
+  upsertVariant(variant: CatalogVariant, languageResolution?: AnalysisLanguageResolution): Promise<Result<void, AppError>> {
+    const key = `${variant.fingerprint}\u0000${variant.configId}`;
+    this.variants.set(key, variant);
+    if (languageResolution !== undefined) this.variantLanguageResolutions.set(key, languageResolution);
     if (!this.analyses.has(variant.fingerprint)) this.analyses.set(variant.fingerprint, variant);
     return Promise.resolve(ok(undefined));
+  }
+
+  getVariantLanguageResolution(fingerprint: string, configId: string): Promise<Result<AnalysisLanguageResolution | null, AppError>> {
+    return Promise.resolve(ok(this.variantLanguageResolutions.get(`${fingerprint}\u0000${configId}`) ?? null));
   }
 
   async deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
@@ -1277,7 +1286,9 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       return { ok: false, error: appError('conflict', 'Cannot delete the last analysis variant') };
     }
     const selected = await this.getSelectedConfigId(fingerprint);
-    this.variants.delete(`${fingerprint}\u0000${configId}`);
+    const key = `${fingerprint}\u0000${configId}`;
+    this.variants.delete(key);
+    this.variantLanguageResolutions.delete(key);
     if (selected.ok && selected.value === configId) {
       const promoted = variants
         .filter((variant) => variant.configId !== configId)
@@ -1292,7 +1303,10 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   clearAnalysisVariants(fingerprint: string): Promise<Result<void, AppError>> {
     for (const [key, variant] of this.variants) {
-      if (variant.fingerprint === fingerprint) this.variants.delete(key);
+      if (variant.fingerprint === fingerprint) {
+        this.variants.delete(key);
+        this.variantLanguageResolutions.delete(key);
+      }
     }
     this.analyses.delete(fingerprint);
     this.selectedConfigIds.delete(fingerprint);
@@ -2171,6 +2185,14 @@ export class InMemoryPhotosStore implements PhotosStore {
     return Promise.resolve(ok(undefined));
   }
 
+  deletePhotoRuns(root: string): Promise<Result<void, AppError>> {
+    const canonicalRoot = canonicalPath(root);
+    for (const [runId, run] of this.runs) {
+      if (isUnderRoot(run.root, canonicalRoot)) this.runs.delete(runId);
+    }
+    return Promise.resolve(ok(undefined));
+  }
+
   listProxyCandidates(root: string): Promise<Result<PhotoProxyCandidate[], AppError>> {
     const canonicalRoot = canonicalPath(root);
     const sightingsUnderRoot = [...this.sightings.values()].filter((sighting) => isUnderRoot(sighting.currentPath, canonicalRoot));
@@ -2359,7 +2381,12 @@ export class InMemoryPhotosStore implements PhotosStore {
     return Promise.resolve(ok({ photo, sightings }));
   }
 
-  listAnalysisCandidates(root: string, configId: string, force: boolean): Promise<Result<PhotoAnalysisCandidates, AppError>> {
+  listAnalysisCandidates(
+    root: string,
+    configId: string,
+    force: boolean,
+    languageRule?: AnalysisLanguageCandidateRule,
+  ): Promise<Result<PhotoAnalysisCandidates, AppError>> {
     const canonicalRoot = canonicalPath(root);
     const scopedFingerprints = new Set([
       ...[...this.sightings.values()].filter((sighting) => isUnderRoot(sighting.currentPath, canonicalRoot)).map((sighting) => sighting.fingerprint),
@@ -2372,7 +2399,14 @@ export class InMemoryPhotosStore implements PhotosStore {
     let alreadyAnalysed = 0;
     const candidates: PhotoAnalysisCandidate[] = [];
     for (const photo of eligible) {
-      const analysed = this.analyses.has(analysisKey(photo.fingerprint, configId));
+      const analysis = this.analyses.get(analysisKey(photo.fingerprint, configId));
+      const missingResolution = analysis?.resolvedOutputLanguage === undefined || analysis.resolvedTagLanguage === undefined;
+      const analysed = analysis !== undefined && (
+        languageRule === undefined
+        || missingResolution
+        || ((!languageRule.outputAuto || analysis.resolvedOutputLanguage === languageRule.outputLanguage)
+          && (!languageRule.tagAuto || analysis.resolvedTagLanguage === languageRule.tagLanguage))
+      );
       if (analysed && !force) {
         alreadyAnalysed += 1;
         continue;
@@ -2477,7 +2511,9 @@ export class InMemoryPhotosStore implements PhotosStore {
         }
         if (input.from !== null && (photo.capturedAt === null || photo.capturedAt < input.from)) return null;
         if (input.to !== null && (photo.capturedAt === null || photo.capturedAt > input.to)) return null;
-        if (input.folderId !== null && photo.folderId !== input.folderId) return null;
+        if (input.folderId !== null && photo.folderId !== input.folderId
+          && ![...this.sightings.values()].some((sighting) =>
+            sighting.fingerprint === photo.fingerprint && sighting.folderId === input.folderId)) return null;
         return {
           fingerprint: photo.fingerprint,
           fileName: photo.fileName,

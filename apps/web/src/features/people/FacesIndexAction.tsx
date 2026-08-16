@@ -10,21 +10,21 @@ interface FacesIndexActionProps {
   folder: string | null;
   addLine: AddLogLine;
   lockReason?: string | undefined;
-  hasAnalyzedPhotos: boolean;
+  hasAnalyzedVideos: boolean;
 }
 
-export const FacesIndexAction = ({ active, folder, addLine, lockReason, hasAnalyzedPhotos }: FacesIndexActionProps) => {
+export const FacesIndexAction = ({ active, folder, addLine, lockReason, hasAnalyzedVideos }: FacesIndexActionProps) => {
   const dictionary = useDictionary();
   const facesIndex = useFacesIndex({ active, folder, addLine });
   const mutationsBlocked = lockReason !== undefined;
-  const analyzedPhotosMissing = folder !== null && !hasAnalyzedPhotos;
-  const disabledTitle = lockReason ?? (analyzedPhotosMissing ? dictionary.people.indexFacesNoAnalyzedPhotos : undefined);
+  const analyzedVideosMissing = folder !== null && !hasAnalyzedVideos;
+  const disabledTitle = lockReason ?? (analyzedVideosMissing ? dictionary.people.indexFacesNoAnalyzedVideos : undefined);
   const disabled = folder === null
     || facesIndex.isBusy
     || facesIndex.facesEnabled !== true
     || facesIndex.artifactsReady !== true
     || mutationsBlocked
-    || analyzedPhotosMissing;
+    || analyzedVideosMissing;
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 1 }}>

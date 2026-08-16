@@ -5,10 +5,12 @@ import { sha256Hex } from './sha256.js';
 import {
   configSchema,
   outputLanguageSchema,
+  resolvePromptLanguage,
   whisperLanguageSchema,
   type AppConfig,
   type ConfigInput,
   type ConfigKey,
+  type UiLanguage,
 } from './config.js';
 import { whisperModelNameSchema } from './models.js';
 import {
@@ -142,8 +144,38 @@ export const configDescriptorSchema = configDescriptorShape.superRefine((descrip
 
 export type ConfigDescriptor = z.output<typeof configDescriptorSchema>;
 
-export const descriptorTagLanguage = (descriptor: ConfigDescriptor): string =>
+const resolvedAnalysisLanguageSchema = outputLanguageSchema.refine((language) => language !== 'auto', {
+  message: 'Resolved analysis language cannot be auto',
+});
+
+export const analysisLanguageResolutionSchema = z.object({
+  outputLanguage: resolvedAnalysisLanguageSchema,
+  tagLanguage: resolvedAnalysisLanguageSchema,
+}).strict();
+
+export type AnalysisLanguageResolution = z.output<typeof analysisLanguageResolutionSchema>;
+
+export const descriptorTagLanguage = (
+  descriptor: Pick<ConfigDescriptor, 'output_language' | 'tag_language'>,
+): string =>
   descriptor.tag_language ?? descriptor.output_language;
+
+export const resolveDescriptorLanguages = (
+  descriptor: Pick<ConfigDescriptor, 'output_language' | 'tag_language'>,
+  uiLanguage: UiLanguage,
+): AnalysisLanguageResolution => analysisLanguageResolutionSchema.parse({
+  outputLanguage: resolvePromptLanguage(descriptor.output_language, uiLanguage),
+  tagLanguage: resolvePromptLanguage(descriptor.tag_language ?? descriptor.output_language, uiLanguage),
+});
+
+export const analysisLanguagesAreCurrent = (
+  descriptor: Pick<ConfigDescriptor, 'output_language' | 'tag_language'>,
+  stored: AnalysisLanguageResolution | null,
+  current: AnalysisLanguageResolution,
+): boolean => stored === null || (
+  (descriptor.output_language !== 'auto' || stored.outputLanguage === current.outputLanguage)
+  && (descriptorTagLanguage(descriptor) !== 'auto' || stored.tagLanguage === current.tagLanguage)
+);
 
 const transcriptionIdentity = (config: AppConfig) => {
   switch (config.whisper_mode) {

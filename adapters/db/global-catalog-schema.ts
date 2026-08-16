@@ -50,6 +50,8 @@ export const analyses = sqliteTable('analyses', {
   model: text('model'),
   createdAt: text('created_at').notNull(),
   usageJson: text('usage_json'),
+  resolvedOutputLanguage: text('resolved_output_language'),
+  resolvedTagLanguage: text('resolved_tag_language'),
 }, (table) => [
   primaryKey({ columns: [table.fingerprint, table.configId] }),
 ]);
@@ -380,4 +382,9 @@ export const migrateGlobalCatalogSchemaSqlV12 = [
 export const migrateGlobalCatalogSchemaSqlV13 = [
   'ALTER TABLE files ADD COLUMN width INTEGER',
   'ALTER TABLE files ADD COLUMN height INTEGER',
+] as const;
+
+export const migrateGlobalCatalogSchemaSqlV14 = [
+  'ALTER TABLE analyses ADD COLUMN resolved_output_language TEXT',
+  'ALTER TABLE analyses ADD COLUMN resolved_tag_language TEXT',
 ] as const;

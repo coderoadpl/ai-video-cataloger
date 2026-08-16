@@ -22,6 +22,7 @@ import {
   FACE_ENGINE_VERSION,
   GLOBAL_CATALOG_SCHEMA_VERSION,
   LEGACY_CONFIG_ID,
+  analysisLanguageResolutionSchema,
   catalogVariantSchema,
   configId,
   configDescriptorSchema,
@@ -99,6 +100,7 @@ import {
   migrateGlobalCatalogSchemaSqlV11,
   migrateGlobalCatalogSchemaSqlV12,
   migrateGlobalCatalogSchemaSqlV13,
+  migrateGlobalCatalogSchemaSqlV14,
   schemaMeta,
   tagAliases,
   tags,
@@ -384,9 +386,15 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
-  async upsertVariant(input: CatalogVariant): Promise<Result<void, AppError>> {
+  async upsertVariant(input: CatalogVariant, languageResolution?: z.input<typeof analysisLanguageResolutionSchema>): Promise<Result<void, AppError>> {
     const parsed = catalogVariantSchema.safeParse(input);
     if (!parsed.success) return { ok: false, error: appError('validation', parsed.error.message) };
+    const parsedResolution = languageResolution === undefined
+      ? null
+      : analysisLanguageResolutionSchema.safeParse(languageResolution);
+    if (parsedResolution !== null && !parsedResolution.success) {
+      return { ok: false, error: appError('validation', parsedResolution.error.message) };
+    }
     const variant = parsed.data;
     if (variant.configId === LEGACY_CONFIG_ID ? variant.descriptor !== null : variant.descriptor === null) {
       return { ok: false, error: appError('validation', 'Only the legacy variant may omit its config descriptor') };
@@ -396,8 +404,15 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     }
     return this.write((db, client) => {
       upsertAnalysisConfig(db, variant);
+      const resolutionFields = parsedResolution === null ? {} : {
+        resolvedOutputLanguage: parsedResolution.data.outputLanguage,
+        resolvedTagLanguage: parsedResolution.data.tagLanguage,
+      };
       db.insert(analyses)
-        .values(variantToRow(variant))
+        .values({
+          ...variantToRow(variant),
+          ...resolutionFields,
+        })
         .onConflictDoUpdate({
           target: [analyses.fingerprint, analyses.configId],
           set: {
@@ -410,11 +425,25 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
             model: variant.model,
             createdAt: variant.createdAt,
             usageJson: variant.usage === null ? null : JSON.stringify(variant.usage),
+            ...resolutionFields,
           },
         })
         .run();
       setVariantTags(db, variant.fingerprint, variant.configId, variant.tags);
       syncSearchDocument(db, client, variant.fingerprint);
+    });
+  }
+
+  async getVariantLanguageResolution(fingerprint: string, configIdValue: string) {
+    return this.read((db) => {
+      const row = db.select({
+        outputLanguage: analyses.resolvedOutputLanguage,
+        tagLanguage: analyses.resolvedTagLanguage,
+      }).from(analyses)
+        .where(and(eq(analyses.fingerprint, fingerprint), eq(analyses.configId, configIdValue)))
+        .get();
+      if (row === undefined || row.outputLanguage === null || row.tagLanguage === null) return null;
+      return analysisLanguageResolutionSchema.parse(row);
     });
   }
 
@@ -1421,6 +1450,10 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 13) {
     for (const statement of migrateGlobalCatalogSchemaSqlV13) runMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 14) {
+    for (const statement of migrateGlobalCatalogSchemaSqlV14) runMigrationStatement(client, statement);
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {

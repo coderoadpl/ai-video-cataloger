@@ -299,4 +299,53 @@ describe('Library collection activation triggers a thumbnails backfill', () => {
     expect(decodeURIComponent(image.getAttribute('src') ?? '')).toContain('/artifacts/grid-thumbs/ph_0000000000000001.jpg');
     expect(collectionRequests).toBe(2);
   });
+
+  it('refetches photo tiles when a completed backfill disappears before status polling', async () => {
+    let collectionRequests = 0;
+    let gridThumbReady = false;
+    stubBaseline([]);
+    server.use(
+      http.get('/api/photos/tree', () => HttpResponse.json({
+        ok: true,
+        data: { media: 'photo', roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2026-01-02T10:00:00.000Z' }] },
+      })),
+      http.get('/api/library/collection', () => {
+        collectionRequests += 1;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            query: null,
+            media: 'all',
+            limit: 200,
+            total: 1,
+            videoTotal: 0,
+            photoTotal: 1,
+            mediaTotals: { all: 1, video: 0, photo: 1 },
+            count: 1,
+            items: [{
+              ...photoResult(),
+              thumbPath: null,
+              gridThumbPath: gridThumbReady ? '/artifacts/grid-thumbs/ph_0000000000000001.jpg' : null,
+            }],
+            nextCursor: null,
+          },
+        });
+      }),
+      http.post('/api/photos/grid-thumbs', () => {
+        gridThumbReady = true;
+        return HttpResponse.json({ ok: true, data: { jobId: 'job-photo-gone' } });
+      }),
+      http.get('/api/jobs/status', () => HttpResponse.json(
+        { ok: false, error: { code: 'not_found', message: 'Job not found' } },
+        { status: 404 },
+      )),
+    );
+
+    renderRoute();
+
+    await screen.findByTestId('library-tile-placeholder');
+    const image = await screen.findByRole('img', { name: 'photo.jpg' });
+    expect(decodeURIComponent(image.getAttribute('src') ?? '')).toContain('/artifacts/grid-thumbs/ph_0000000000000001.jpg');
+    expect(collectionRequests).toBe(2);
+  });
 });
