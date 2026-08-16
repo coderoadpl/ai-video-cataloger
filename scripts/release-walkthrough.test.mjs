@@ -45,7 +45,7 @@ describe('library walkthrough search state', () => {
     expect(searchTermFromAnalyzedFilename('2026-08-16_jezowak-warszawa-oceanografic.mp4')).toBe('jezowak');
   });
 
-  it('clears and reapplies the library search before opening preview', async () => {
+  it('clears the library search field before opening preview', async () => {
     const input = { click: vi.fn(), fill: vi.fn(), press: vi.fn() };
     const { page } = popperPageStub();
 
@@ -53,16 +53,15 @@ describe('library walkthrough search state', () => {
 
     expect(input.click).toHaveBeenCalledOnce();
     expect(input.fill).toHaveBeenCalledWith('');
-    expect(input.press).toHaveBeenNthCalledWith(1, 'Enter');
   });
 
-  it('dismisses the suggestion popper with Escape and waits for it to disappear', async () => {
+  it('dismisses the suggestion popper with a single Escape and waits for it to disappear', async () => {
     const input = { click: vi.fn(), fill: vi.fn(), press: vi.fn() };
     const { page, waitFor } = popperPageStub();
 
     await clearLibrarySearch(page, input);
 
-    expect(input.press).toHaveBeenNthCalledWith(2, 'Escape');
+    expect(input.press.mock.calls).toEqual([['Escape']]);
     expect(page.locator).toHaveBeenCalledWith('.MuiAutocomplete-popper');
     expect(waitFor).toHaveBeenCalledWith(expect.objectContaining({ state: 'hidden' }));
   });

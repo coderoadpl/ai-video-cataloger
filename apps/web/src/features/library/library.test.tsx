@@ -734,6 +734,48 @@ describe('LibraryView', () => {
     expect(await screen.findByText('beach')).toBeDefined();
   });
 
+  it('Escape closes the suggestion popper while the field stays focused', async () => {
+    window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
+    stubTags([{ name: 'beach', count: 4 }]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
+    fireEvent.focus(input);
+    await screen.findByText('drone');
+
+    fireEvent.keyDown(input, { key: 'Escape' });
+
+    await waitFor(() => {
+      expect(screen.queryByText('drone')).toBeNull();
+      expect(screen.queryByText('beach')).toBeNull();
+    });
+  });
+
+  it('typing after Escape reopens the suggestions once the field is empty again', async () => {
+    window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
+    stubTags([{ name: 'beach', count: 4 }]);
+    stubCollection([videoItem({ fingerprint: 'fp-1' })]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findAllByTestId('library-tile');
+
+    const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
+    fireEvent.focus(input);
+    await screen.findByText('drone');
+    fireEvent.keyDown(input, { key: 'Escape' });
+    await waitFor(() => {
+      expect(screen.queryByText('drone')).toBeNull();
+    });
+
+    fireEvent.change(input, { target: { value: 'dro' } });
+    fireEvent.change(input, { target: { value: '' } });
+
+    expect(await screen.findByText('drone')).toBeDefined();
+  });
+
   it('picking a suggestion sets the query and the grid request carries it', async () => {
     window.localStorage.setItem(RECENT_SEARCHES_KEY, JSON.stringify(['drone']));
     stubTags([]);
