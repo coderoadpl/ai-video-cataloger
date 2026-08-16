@@ -95,7 +95,15 @@ describe('StatusActions error rendering', () => {
       <StatusActions video={makeVideo({ status: 'error' })} analyzing={false} onAnalyze={vi.fn()} />,
     );
 
-    expect(screen.getByTestId('analysis-error-card')).toBeDefined();
+    expect(screen.getByTestId('analysis-error-card').getAttribute('data-detail-status-card')).toBe('true');
+  });
+
+  it('uses the shared detail status card for incomplete analysis', () => {
+    renderThemed(
+      <StatusActions video={makeVideo({ status: 'transcribed' })} analyzing={false} onAnalyze={vi.fn()} />,
+    );
+
+    expect(document.querySelector('[data-detail-status-card="true"]')).not.toBeNull();
   });
 
   it('never renders an analysis-error-card for a completed video', () => {

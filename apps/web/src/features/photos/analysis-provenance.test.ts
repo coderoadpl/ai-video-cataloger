@@ -8,12 +8,12 @@ const createdAt = '2026-08-10T17:46:06.744Z';
 describe('analysisProvenanceText', () => {
   it('renders the en line with a named provider, the verbatim model and a named language', () => {
     const line = analysisProvenanceText({ label: 'local · gemma3:4b · auto', createdAt }, en);
-    expect(line).toMatch(/^Local · gemma3:4b · auto-detected language · /);
+    expect(line).toMatch(/^Local · gemma3:4b · app language \(auto\) · /);
   });
 
   it('renders the pl line with a named provider, the verbatim model and a named language', () => {
     const line = analysisProvenanceText({ label: 'local · gemma3:4b · auto', createdAt }, pl);
-    expect(line).toMatch(/^Lokalny · gemma3:4b · język wykryty automatycznie · /);
+    expect(line).toMatch(/^Lokalny · gemma3:4b · język aplikacji \(auto\) · /);
   });
 
   it('renders a readable en date instead of the raw ISO timestamp', () => {

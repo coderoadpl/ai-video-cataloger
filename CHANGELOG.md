@@ -16,6 +16,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Video and photo detail panes now consume shared metadata-row, status-card,
+  and variant-control primitives, keeping row typography, neutral status-card
+  treatment, and control-caption spacing aligned across both media (W68b).
+- Analyzed photo details now present description, scene, and quality in an
+  outlined Description card while keeping clickable tags separate, and both
+  photo provenance and video output-language captions use humanized language
+  names (W68b).
+- Automatic analysis-language provenance now says that it follows the app
+  language in both English and Polish instead of claiming language detection
+  (W68b).
 - Analyzer `output_language: auto` now follows the configured app UI language for video descriptions, filenames, tags, and photo descriptions without changing stored variant identity (Wave D: N2).
 - The Kolekcja photo viewer now shows description, scene, quality, tags, humanized analysis provenance, and an action that opens the photo in Analysis (N9).
 - Analysis → Photos now automatically rescans the current open folder after debounced filesystem changes and refreshes its photo tree and sidebar when the scan completes (N14).

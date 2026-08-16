@@ -55,6 +55,30 @@ export const StorageIcon = (props: SvgIconProps) => (
   </SvgIcon>
 );
 
+export const CameraIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M9 2 7.17 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V6c0-1.1-.9-2-2-2h-3.17L15 2H9zm3 15.5A4.5 4.5 0 1 1 12 8a4.5 4.5 0 0 1 0 9.5zm0-1.8a2.7 2.7 0 1 0 0-5.4 2.7 2.7 0 0 0 0 5.4z" />
+  </SvgIcon>
+);
+
+export const LensIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm3.5 5.5-2.2 3.8H8.9l-2.2-3.8h8.8zM6.1 8.6l2.2 3.8-2.2 3.8a7.96 7.96 0 0 1 0-7.6zm1.1 8.9 2.2-3.8h4.4l2.2 3.8H7.2zm10.7-2.1-2.2-3.8 2.2-3.8a7.96 7.96 0 0 1 0 7.6z" />
+  </SvgIcon>
+);
+
+export const IsoIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="M3 3v18h18V3H3zm4 14H5V7h2v10zm6.5 0H9v-2h4.5v-2H9V7h6v2h-4v2h4.5v6h-2zm3.5 0V7h2v10h-2z" />
+  </SvgIcon>
+);
+
+export const StarIcon = (props: SvgIconProps) => (
+  <SvgIcon {...props}>
+    <path d="m12 17.27 6.18 3.73-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21 12 17.27z" />
+  </SvgIcon>
+);
+
 export const PlayCircleIcon = (props: SvgIconProps) => (
   <SvgIcon {...props}>
     <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 14.5v-9l6 4.5-6 4.5z" />

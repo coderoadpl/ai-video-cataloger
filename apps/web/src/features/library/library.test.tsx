@@ -1211,7 +1211,7 @@ describe('LibraryView', () => {
       expect(screen.getByText(en.photos.sceneLandscape)).toBeDefined();
       expect(screen.getByText(en.photos.qualityGood)).toBeDefined();
       expect(screen.getByText('sunset')).toBeDefined();
-      expect(screen.getByText(/^Local · gemma3:4b · auto-detected language · /)).toBeDefined();
+      expect(screen.getByText(/^Local · gemma3:4b · app language \(auto\) · /)).toBeDefined();
     });
 
     it('opens the viewed Kolekcja photo in Analysis through the registered photo root', async () => {

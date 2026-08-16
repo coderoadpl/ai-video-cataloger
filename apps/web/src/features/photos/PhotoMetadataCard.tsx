@@ -1,8 +1,9 @@
 import { type ReactNode } from 'react';
-import { Box, Paper, Typography } from '@mui/material';
+import { Paper, Typography } from '@mui/material';
 import type { CapturedAtSource } from '@core/domain/index.js';
 
-import { ClockIcon, DescriptionIcon, FilmIcon, FolderIcon, ImageIcon, StorageIcon } from '../../components/ui/icons.js';
+import { DetailMetadataRow } from '../../components/ui/DetailMetadataRow.js';
+import { CameraIcon, ClockIcon, FolderIcon, ImageIcon, IsoIcon, LensIcon, StarIcon } from '../../components/ui/icons.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { formatCapturedAt } from '../../lib/format.js';
@@ -36,17 +37,13 @@ const Row = ({
 }) => {
   if (value === null) return null;
   return (
-    <Box data-testid={testId} sx={{ display: 'flex', alignItems: 'center', gap: 1, minWidth: 0 }}>
-      <Box sx={{ color: 'text.secondary', display: 'flex' }}>{icon}</Box>
-      {label === '' ? null : (
-        <Typography variant="body2" color="text.secondary">
-          {label}{separator ? ':' : ''}
-        </Typography>
-      )}
-      <Typography variant="body2" noWrap sx={{ fontWeight: 500 }} title={value}>
-        {value}
-      </Typography>
-    </Box>
+    <DetailMetadataRow
+      icon={icon}
+      label={label === '' ? null : label}
+      value={value}
+      separator={separator}
+      {...(testId === undefined ? {} : { testId })}
+    />
   );
 };
 
@@ -68,24 +65,24 @@ export const PhotoMetadataCard = ({ detail }: { detail: PhotoDetail }) => {
         testId="photo-metadata-row-dimensions"
       />
       <Row
-        icon={<FilmIcon fontSize="small" />}
+        icon={<CameraIcon fontSize="small" />}
         label={dictionary.photos.detailCamera}
         value={[photo.cameraMake, photo.cameraModel].filter((part) => part !== null).join(' ') || null}
       />
-      <Row icon={<DescriptionIcon fontSize="small" />} label={dictionary.photos.detailLens} value={photo.lens} />
+      <Row icon={<LensIcon fontSize="small" />} label={dictionary.photos.detailLens} value={photo.lens} />
       <Row
         icon={<ClockIcon fontSize="small" />}
         label={dictionary.photos.detailExposure}
         value={photo.exposureTime === null ? null : `${String(photo.exposureTime)}s`}
       />
-      <Row icon={<StorageIcon fontSize="small" />} label={dictionary.photos.detailIso} value={photo.iso === null ? null : String(photo.iso)} />
+      <Row icon={<IsoIcon fontSize="small" />} label={dictionary.photos.detailIso} value={photo.iso === null ? null : String(photo.iso)} />
       <Row
-        icon={<DescriptionIcon fontSize="small" />}
+        icon={<LensIcon fontSize="small" />}
         label={dictionary.photos.detailAperture}
         value={photo.fNumber === null ? null : `f/${String(photo.fNumber)}`}
       />
       <Row
-        icon={<StorageIcon fontSize="small" />}
+        icon={<StarIcon fontSize="small" />}
         label={dictionary.photos.detailRating}
         value={photo.exifRating === null ? null : String(photo.exifRating)}
       />

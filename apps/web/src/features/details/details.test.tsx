@@ -170,6 +170,7 @@ describe('details panel', () => {
     renderThemed(<DetailsPanel video={video} analyzing={false} />);
 
     expect(screen.getByText('Video Information')).toBeDefined();
+    expect(document.querySelectorAll('[data-detail-metadata-row="true"]')).toHaveLength(3);
     expect(screen.getByText('A cooking tutorial about pasta.')).toBeDefined();
     expect(screen.getByText('cooking-tutorial-pasta')).toBeDefined();
     expect(screen.getByText('Extracted Frames (2)')).toBeDefined();
@@ -654,7 +655,7 @@ describe('details panel', () => {
     expect(within(firstColumn).getByText('First summary tag')).toBeDefined();
     expect(within(firstColumn).getByTestId('active-frame')).toBeDefined();
     expect(within(secondColumn).getByText('Second summary')).toBeDefined();
-    expect(within(secondColumn).getByText('Output language: pl')).toBeDefined();
+    expect(within(secondColumn).getByText('Output language: Polish')).toBeDefined();
     expect(within(secondColumn).getByText('Prompt version: 1')).toBeDefined();
     expect(within(secondColumn).getByText('Estimated cost: $0.0123 USD')).toBeDefined();
     expect(screen.getAllByText('Video duration: 1:30')).toHaveLength(2);
