@@ -64,6 +64,19 @@ describe('buildPhotoAnalyzerPrompt', () => {
     expect(prompt).toContain('English');
   });
 
+  it.each(['en', 'pl'])('states the language-independent JSON array tags contract for %s', (language) => {
+    const prompt = buildPhotoAnalyzerPrompt({
+      items,
+      frameMode: 'attached-images',
+      outputLanguage: language,
+      tagLanguage: language,
+    });
+
+    expect(prompt).toContain('"tags" (a JSON array of 3-8 short kebab-case strings');
+    expect(prompt).toContain('["tag-one", "tag-two"]');
+    expect(prompt).toContain('never a comma-separated string');
+  });
+
   const familyFrameModes: Array<{ family: string; frameMode: PhotoFrameMode }> = [
     { family: 'local/ollama', frameMode: 'attached-images' },
     { family: 'api', frameMode: 'attached-images' },
@@ -107,6 +120,54 @@ describe('buildPhotoAnalyzerPrompt', () => {
 });
 
 describe('parsePhotoBatchResponse', () => {
+  it('coerces the observed comma-separated Gemma tags response to an array', () => {
+    const raw = JSON.stringify([{
+      index: 1,
+      description: 'Zdjęcie przedstawia idylliczną, zieloną dolinę z małym strumieniem i kwiatami. Woda odbija niebo, tworząc magiczny efekt.',
+      tags: 'rzeka, dolina, trawa, kwiaty, woda, krajobraz, natura, światło',
+      scene: 'landscape',
+      quality: 'good',
+    }]);
+    const result = parsePhotoBatchResponse(raw, 1);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: [{ tags: ['rzeka', 'dolina', 'trawa', 'kwiaty', 'woda', 'krajobraz', 'natura', 'światło'] }],
+    });
+  });
+
+  it('trims, drops empty segments and deduplicates semicolon-separated string tags', () => {
+    const raw = JSON.stringify([{ ...element(1), tags: ' rzeka ; ; dolina; rzeka ; trawa ' }]);
+    const result = parsePhotoBatchResponse(raw, 1);
+
+    expect(result).toMatchObject({ ok: true, value: [{ tags: ['rzeka', 'dolina', 'trawa'] }] });
+  });
+
+  it('rejects string tags that yield no valid segments', () => {
+    const raw = JSON.stringify([{ ...element(1), tags: ' ; , ; ' }]);
+    const result = parsePhotoBatchResponse(raw, 1);
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'processing_error' } });
+  });
+
+  it('keeps proper array tag semantics unchanged', () => {
+    const raw = JSON.stringify([{ ...element(1), tags: [' rzeka ', 'rzeka', 'dolina'] }]);
+    const result = parsePhotoBatchResponse(raw, 1);
+
+    expect(result).toMatchObject({ ok: true, value: [{ tags: ['rzeka', 'rzeka', 'dolina'] }] });
+  });
+
+  it('caps string tags at twelve segments', () => {
+    const tags = Array.from({ length: 14 }, (_, index) => `tag-${String(index + 1)}`).join(', ');
+    const raw = JSON.stringify([{ ...element(1), tags }]);
+    const result = parsePhotoBatchResponse(raw, 1);
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: [{ tags: Array.from({ length: 12 }, (_, index) => `tag-${String(index + 1)}`) }],
+    });
+  });
+
   it('parses a fenced JSON array', () => {
     const raw = '```json\n' + JSON.stringify([element(1), element(2)]) + '\n```';
     const result = parsePhotoBatchResponse(raw, 2);
