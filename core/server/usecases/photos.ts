@@ -20,6 +20,7 @@ import {
   spendMonth,
   splitPhotoBatch,
   PHOTO_ANALYSIS_PROMPT_VERSION,
+  uiLanguageSchema,
   type AnalyzerProviderConfig,
   type AppConfig,
   type AppError,
@@ -1290,6 +1291,7 @@ export const resolvePhotoAnalyzerOptions = async (
   provider: AnalyzerProviderConfig;
   outputLanguage: AppConfig['output_language'];
   tagLanguage: AppConfig['tag_language'];
+  uiLanguage: AppConfig['ui_language'];
   timeoutSeconds: number;
 }, AppError>> => {
   const stored = await resolveConfigValues(deps.config, root);
@@ -1305,6 +1307,7 @@ export const resolvePhotoAnalyzerOptions = async (
     provider,
     outputLanguage: outputLanguageSchema.parse(effective.output_language),
     tagLanguage: outputLanguageSchema.parse(effective.tag_language),
+    uiLanguage: uiLanguageSchema.parse(effective.ui_language),
     timeoutSeconds: configValueSchema.shape.timeout.parse(effective.timeout),
   });
 };
@@ -1390,6 +1393,7 @@ interface CascadeContext {
   provider: AnalyzerProviderConfig;
   outputLanguage: AppConfig['output_language'];
   tagLanguage: AppConfig['tag_language'];
+  uiLanguage: AppConfig['ui_language'];
   timeoutSeconds: number;
 }
 
@@ -1471,6 +1475,7 @@ export const runPhotoAnalysisCascade = async (
     provider: ctx.provider,
     outputLanguage: ctx.outputLanguage,
     tagLanguage: ctx.tagLanguage,
+    uiLanguage: ctx.uiLanguage,
     timeoutSeconds: ctx.timeoutSeconds,
     verbose: false,
     signal: ctx.progress?.signal,
@@ -1647,6 +1652,7 @@ const runPhotoProcessForRoot = async (
           provider: options.value.provider,
           outputLanguage: options.value.outputLanguage,
           tagLanguage: options.value.tagLanguage,
+          uiLanguage: options.value.uiLanguage,
           timeoutSeconds: options.value.timeoutSeconds,
         });
         if (!cascadeResult.ok) return cascadeResult;

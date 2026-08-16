@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { LANGUAGE_DISPLAY_NAMES } from './config.js';
+import { LANGUAGE_DISPLAY_NAMES, resolvePromptLanguage, type UiLanguage } from './config.js';
 import { appError, type AppError } from './errors.js';
 import type { PhotoConfigDescriptor } from './photo-config-descriptor.js';
 import { ok, type Result } from './result.js';
@@ -33,16 +33,17 @@ export type PhotoAnalysisElement = z.output<typeof photoAnalysisElementSchema>;
 
 export type PhotoFrameMode = 'attached-images' | 'file-url' | 'dir-access';
 
-const photoLanguageInstruction = (input: { outputLanguage: string; tagLanguage: string }): string => {
+const photoLanguageInstruction = (input: {
+  outputLanguage: string;
+  tagLanguage: string;
+  uiLanguage?: UiLanguage | undefined;
+}): string => {
   const displayName = (language: string): string => LANGUAGE_DISPLAY_NAMES[language] ?? language;
-  const description = input.outputLanguage === 'auto'
-    ? ''
-    : `Write every DESCRIPTION in ${displayName(input.outputLanguage)}.`;
-  const tags = input.tagLanguage === 'auto'
-    ? ''
-    : `Write every TAG in ${displayName(input.tagLanguage)}, whatever language is spoken in the photo's context. Keep tags in ASCII kebab-case: transliterate diacritics (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z) and use only a-z, 0-9 and hyphens.`;
-  const parts = [description, tags].filter((part) => part.length > 0);
-  return parts.length === 0 ? '' : `\n\n${parts.join(' ')}`;
+  const outputLanguage = resolvePromptLanguage(input.outputLanguage, input.uiLanguage);
+  const tagLanguage = resolvePromptLanguage(input.tagLanguage, input.uiLanguage);
+  const description = `Write every DESCRIPTION in ${displayName(outputLanguage)}.`;
+  const tags = `Write every TAG in ${displayName(tagLanguage)}, whatever language is spoken in the photo's context. Keep tags in ASCII kebab-case: transliterate diacritics (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z) and use only a-z, 0-9 and hyphens.`;
+  return `\n\n${description} ${tags}`;
 };
 
 export const buildPhotoAnalyzerPrompt = (input: {
@@ -50,6 +51,7 @@ export const buildPhotoAnalyzerPrompt = (input: {
   frameMode: PhotoFrameMode;
   outputLanguage: string;
   tagLanguage: string;
+  uiLanguage?: UiLanguage | undefined;
 }): string => {
   const listing = input.frameMode === 'attached-images'
     ? input.items.map((item) => `${String(item.index)}. ${item.fileName}`).join('\n')
@@ -67,7 +69,11 @@ export const buildPhotoAnalyzerPrompt = (input: {
     + '"tags" (3-8 short kebab-case tags), "scene" (one of '
     + `${PHOTO_SCENES.join(', ')}), "quality" (one of ${PHOTO_QUALITIES.join(', ')}).\n\n`
     + 'Respond with exactly one JSON array containing one object per photo, nothing before or after it.'
-    + photoLanguageInstruction({ outputLanguage: input.outputLanguage, tagLanguage: input.tagLanguage });
+    + photoLanguageInstruction({
+      outputLanguage: input.outputLanguage,
+      tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
+    });
 };
 
 export const DEFAULT_PHOTO_BATCH_SIZE = 12;

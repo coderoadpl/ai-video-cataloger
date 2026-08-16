@@ -1009,6 +1009,21 @@ describe('process pipeline global catalog idempotency', () => {
     expect(inherited.ok && pinned.ok && inherited.value.configId).not.toBe(pinned.ok ? pinned.value.configId : '');
   });
 
+  it('passes the home-scoped UI language to the analyzer without resolving the stored auto token', async () => {
+    const deps = makeDeps('pending');
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'pl');
+
+    const result = await processVideoPipeline(
+      { ...deps, globalCatalog },
+      { ...baseInput, skipRename: true, skipRenameExplicit: true },
+    );
+    const variant = result.ok ? await globalCatalog.getVariant('hash-clip', result.value.configId) : null;
+
+    expect(deps.analyzer.inputs[0]?.uiLanguage).toBe('pl');
+    expect(variant !== null && variant.ok && variant.value?.descriptor).toMatchObject({ output_language: 'auto' });
+  });
+
   it('reprocesses an already indexed fingerprint when force is set', async () => {
     const deps = makeDeps('pending');
     const globalCatalog = new InMemoryGlobalCatalogStore();

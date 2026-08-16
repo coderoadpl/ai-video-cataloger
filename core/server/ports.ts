@@ -1008,6 +1008,7 @@ export interface AnalyzeInput {
   timeoutSeconds: number;
   outputLanguage: AppConfig['output_language'];
   tagLanguage: AppConfig['tag_language'];
+  uiLanguage?: AppConfig['ui_language'] | undefined;
   verbose: boolean;
   signal?: AbortSignal | undefined;
   onWarning?: ((warning: string) => void) | undefined;
@@ -1041,6 +1042,7 @@ export interface AnalyzePhotosInput {
   provider: AnalyzerProviderConfig;
   outputLanguage: AppConfig['output_language'];
   tagLanguage: AppConfig['tag_language'];
+  uiLanguage?: AppConfig['ui_language'] | undefined;
   timeoutSeconds: number;
   verbose: boolean;
   signal?: AbortSignal | undefined;
@@ -1095,6 +1097,7 @@ export interface AnalyzerBatchPort {
     provider: AnalyzerProviderConfig;
     displayName: string;
     requests: readonly AnalyzerBatchRequest[];
+    uiLanguage?: AppConfig['ui_language'] | undefined;
     signal?: AbortSignal | undefined;
   }): Promise<Result<AnalyzerBatchSubmission, AppError>>;
   findBatchByDisplayName(input: {

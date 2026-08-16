@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { buildGeminiPrompt } from '@adapters/gemini/index.js';
+import type { UiLanguage } from '@core/domain/config.js';
 
 import { buildAnalyzerPrompt } from './index.js';
 import { ANALYSIS_PROMPT_VERSION, languageInstruction } from './prompt.js';
@@ -17,7 +18,11 @@ const retrievalMarkers = [
   'notable text or proper nouns you read in frame',
 ];
 
-const framePrompt = (outputLanguage: string, tagLanguage: string = outputLanguage): string =>
+const framePrompt = (
+  outputLanguage: string,
+  tagLanguage: string = outputLanguage,
+  uiLanguage?: UiLanguage | undefined,
+): string =>
   buildAnalyzerPrompt({
     videoName: 'Clip.mp4',
     transcript: 'spoken words',
@@ -25,7 +30,48 @@ const framePrompt = (outputLanguage: string, tagLanguage: string = outputLanguag
     frameMode: 'attached-images',
     outputLanguage,
     tagLanguage,
+    ...(uiLanguage === undefined ? {} : { uiLanguage }),
   });
+
+const familyPromptBuilders: Array<{
+  family: string;
+  build: (outputLanguage: string, tagLanguage: string, uiLanguage?: UiLanguage | undefined) => string;
+}> = [
+  { family: 'local/ollama', build: framePrompt },
+  {
+    family: 'api',
+    build: (outputLanguage, tagLanguage, uiLanguage) => buildAnalyzerPrompt({
+      videoName: 'Clip.mp4',
+      transcript: 'spoken words',
+      framePaths: ['/frame.jpg'],
+      frameMode: 'attached-images',
+      outputLanguage,
+      tagLanguage,
+      ...(uiLanguage === undefined ? {} : { uiLanguage }),
+    }),
+  },
+  {
+    family: 'harness/claude-cli',
+    build: (outputLanguage, tagLanguage, uiLanguage) => buildAnalyzerPrompt({
+      videoName: 'Clip.mp4',
+      transcript: 'spoken words',
+      framePaths: ['/frame.jpg'],
+      frameMode: 'dir-access',
+      outputLanguage,
+      tagLanguage,
+      ...(uiLanguage === undefined ? {} : { uiLanguage }),
+    }),
+  },
+  {
+    family: 'gemini-native',
+    build: (outputLanguage, tagLanguage, uiLanguage) => buildGeminiPrompt({
+      videoName: 'Clip.mp4',
+      outputLanguage,
+      tagLanguage,
+      ...(uiLanguage === undefined ? {} : { uiLanguage }),
+    }),
+  },
+];
 
 describe('retrieval-grade prompt', () => {
   it('pins the prompt version used by configuration identity', () => {
@@ -47,12 +93,33 @@ describe('retrieval-grade prompt', () => {
   });
 
   it('shares one language directive between both prompts', () => {
-    const directive = languageInstruction({ outputLanguage: 'pl', tagLanguage: 'auto' });
+    const directive = languageInstruction({ outputLanguage: 'pl', tagLanguage: 'auto', uiLanguage: 'en' });
 
-    expect(directive).toBe('\n\nWrite the DESCRIPTION and the FILENAME in Polish.');
-    expect(framePrompt('pl', 'auto')).toContain(directive);
-    expect(buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'pl', tagLanguage: 'auto' })).toContain(directive);
-    expect(languageInstruction({ outputLanguage: 'auto', tagLanguage: 'auto' })).toBe('');
+    expect(directive).toBe('\n\nWrite the DESCRIPTION and the FILENAME in Polish. Write every TAG in English, whatever language is spoken in the video or used in the description. Keep tags in ASCII kebab-case: transliterate diacritics (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z) and use only a-z, 0-9 and hyphens.');
+    expect(framePrompt('pl', 'auto', 'en')).toContain(directive);
+    expect(buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage: 'pl', tagLanguage: 'auto', uiLanguage: 'en' })).toContain(directive);
+  });
+
+  it.each(familyPromptBuilders)('$family resolves auto to the configured Polish UI language', ({ build }) => {
+    const prompt = build('auto', 'auto', 'pl');
+
+    expect(prompt).toContain('Write the DESCRIPTION and the FILENAME in Polish.');
+    expect(prompt).toContain('Write every TAG in Polish');
+  });
+
+  it.each(familyPromptBuilders)('$family leaves explicit English output unchanged', ({ build }) => {
+    const prompt = build('en', 'en', 'pl');
+
+    expect(prompt).toContain('Write the DESCRIPTION and the FILENAME in English.');
+    expect(prompt).toContain('Write every TAG in English');
+    expect(prompt).not.toContain('in Polish');
+  });
+
+  it.each(familyPromptBuilders)('$family falls back to English when the UI language is missing', ({ build }) => {
+    const prompt = build('auto', 'auto');
+
+    expect(prompt).toContain('Write the DESCRIPTION and the FILENAME in English.');
+    expect(prompt).toContain('Write every TAG in English');
   });
 
   it.each([
@@ -61,23 +128,16 @@ describe('retrieval-grade prompt', () => {
     { outputLanguage: 'pl', tagLanguage: 'pl' },
     { outputLanguage: 'pl', tagLanguage: 'en' },
   ])('builds the exact language clauses for output=$outputLanguage tag=$tagLanguage', ({ outputLanguage, tagLanguage }) => {
-    const directive = languageInstruction({ outputLanguage, tagLanguage });
+    const directive = languageInstruction({ outputLanguage, tagLanguage, uiLanguage: 'en' });
+    const outputLanguageName = outputLanguage === 'pl' ? 'Polish' : 'English';
+    const tagLanguageName = tagLanguage === 'pl' ? 'Polish' : 'English';
 
-    if (outputLanguage === 'auto' && tagLanguage === 'auto') {
-      expect(directive).toBe('');
-      return;
-    }
-    if (outputLanguage !== 'auto') {
-      expect(directive).toContain(`Write the DESCRIPTION and the FILENAME in ${outputLanguage === 'pl' ? 'Polish' : 'English'}.`);
-    }
-    if (tagLanguage !== 'auto') {
-      const tagLanguageName = tagLanguage === 'pl' ? 'Polish' : 'English';
-      expect(directive).toContain(`Write every TAG in ${tagLanguageName}`);
-      expect(directive).toContain('transliterate diacritics');
-      expect(directive).toContain('ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z');
-    }
-    expect(framePrompt(outputLanguage, tagLanguage)).toContain(directive);
-    expect(buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage, tagLanguage })).toContain(directive);
+    expect(directive).toContain(`Write the DESCRIPTION and the FILENAME in ${outputLanguageName}.`);
+    expect(directive).toContain(`Write every TAG in ${tagLanguageName}`);
+    expect(directive).toContain('transliterate diacritics');
+    expect(directive).toContain('ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z');
+    expect(framePrompt(outputLanguage, tagLanguage, 'en')).toContain(directive);
+    expect(buildGeminiPrompt({ videoName: 'clip.mp4', outputLanguage, tagLanguage, uiLanguage: 'en' })).toContain(directive);
   });
 
   it('leaves the gemini transcript section untouched', () => {

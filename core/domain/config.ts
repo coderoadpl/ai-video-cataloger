@@ -131,6 +131,9 @@ export const configPatchSchema = configValueSchema.partial();
 
 export const CONFIG_DEFAULTS = configSchema.parse({});
 
+export const resolvePromptLanguage = (language: string, uiLanguage?: UiLanguage | undefined): string =>
+  language === 'auto' ? uiLanguage ?? CONFIG_DEFAULTS.ui_language : language;
+
 export const configDescriptions: Record<ConfigKey, string> = {
   whisper_binary_path: 'Path to a custom whisper.cpp executable',
   whisper_model: `Whisper model (${WHISPER_MODEL_NAMES.join(', ')})`,

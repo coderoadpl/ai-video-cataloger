@@ -1060,12 +1060,15 @@ describe('resolvePhotoAnalyzerOptions', () => {
 
     const defaulted = await resolvePhotoAnalyzerOptions(deps, '/work/photos');
     expect(defaulted.ok && defaulted.value.provider.family).toBe('harness');
+    expect(defaulted.ok && defaulted.value.uiLanguage).toBe('en');
 
+    await config.set({ kind: 'home' }, 'ui_language', 'pl');
     await config.set({ kind: 'folder', folder: '/work/photos' }, 'analyzer_provider', JSON.stringify({
       family: 'api', providerId: 'openai', baseUrl: 'https://api.openai.com/v1', apiKeyRef: 'openai', model: 'gpt-5.5', maxImageDetail: 'high',
     }));
     const resolved = await resolvePhotoAnalyzerOptions(deps, '/work/photos');
     expect(resolved.ok && resolved.value.provider).toMatchObject({ family: 'api', providerId: 'openai' });
+    expect(resolved.ok && resolved.value.uiLanguage).toBe('pl');
   });
 });
 

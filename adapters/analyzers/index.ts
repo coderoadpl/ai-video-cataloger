@@ -198,6 +198,7 @@ export class OpenAiCompatibleAnalyzerAdapter implements AnalyzerPort, ProvidersP
       frameMode: 'attached-images',
       outputLanguage: input.outputLanguage,
       tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
     });
     const result = await postOpenAiCompatibleChat(this.fetchImpl, {
       provider,
@@ -233,6 +234,7 @@ export class OpenAiCompatibleAnalyzerAdapter implements AnalyzerPort, ProvidersP
       frameMode: 'attached-images',
       outputLanguage: input.outputLanguage,
       tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
     });
     const result = await postOpenAiCompatibleChat(this.fetchImpl, {
       provider,
@@ -322,6 +324,7 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       frameMode: provider.promptStyle === 'file-urls' ? 'file-url' : 'dir-access',
       outputLanguage: input.outputLanguage,
       tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
     });
     const runtime = harnessRuntimeDefinition(provider.providerId);
     try {
@@ -371,6 +374,7 @@ export class HarnessAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       frameMode: provider.promptStyle === 'file-urls' ? 'file-url' : 'dir-access',
       outputLanguage: input.outputLanguage,
       tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
     });
     const runtime = harnessRuntimeDefinition(provider.providerId);
     try {
@@ -545,6 +549,7 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       frameMode: 'attached-images',
       outputLanguage: input.outputLanguage,
       tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
     });
     if (verbose) {
       this.writeStdout(`[verbose] Local analysis via ${baseUrl} model ${input.localModel}\n`);
@@ -596,6 +601,7 @@ export class OllamaAnalyzerAdapter implements AnalyzerPort, ProvidersPort {
       frameMode: 'attached-images',
       outputLanguage: input.outputLanguage,
       tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
     });
     if (verbose) {
       this.writeStdout(`[verbose] Local analysis via ${baseUrl} model ${modelTag}\n`);
@@ -782,6 +788,7 @@ export const buildAnalyzerPrompt = (input: {
   frameMode: 'file-url' | 'dir-access' | 'attached-images';
   outputLanguage: string;
   tagLanguage: string;
+  uiLanguage?: AnalyzeInput['uiLanguage'];
 }): string => {
   const transcriptBlock = input.transcript === null
     ? 'This video has no audio or transcript available.\n\n'
@@ -791,7 +798,7 @@ export const buildAnalyzerPrompt = (input: {
     : input.frameMode === 'dir-access'
       ? `Read these ${input.framePaths.length} frame file(s) from the accessible video workspace:\n${input.framePaths.join('\n')}\n\n`
       : `Attached are ${input.framePaths.length} frame(s) extracted from the video (as images).\n\n`;
-  return `You are analyzing a video file named "${input.videoName}".\n\n${transcriptBlock}${frameBlock}${responseContractInstructions(input.transcript !== null)}${languageInstruction({ outputLanguage: input.outputLanguage, tagLanguage: input.tagLanguage })}`;
+  return `You are analyzing a video file named "${input.videoName}".\n\n${transcriptBlock}${frameBlock}${responseContractInstructions(input.transcript !== null)}${languageInstruction({ outputLanguage: input.outputLanguage, tagLanguage: input.tagLanguage, uiLanguage: input.uiLanguage })}`;
 };
 
 const responseContractInstructions = (hasTranscript: boolean): string =>
