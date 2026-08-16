@@ -178,7 +178,7 @@ describe('PhotosWorkspace', () => {
     expect(screen.queryByTestId('analysis-empty-state')).toBeNull();
   });
 
-  it('renders the detail with the analyze strip for an unanalysed selected photo', () => {
+  it('renders the detail with the analyze strip for an unanalyzed selected photo', () => {
     const items = [item({ fingerprint: 'ph_0000000000000001' })];
     const firstItem = items[0];
     if (firstItem === undefined) throw new Error('missing item');
@@ -207,7 +207,7 @@ describe('PhotosWorkspace', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: firstItem.fileName })).toBeDefined();
     expect(within(screen.getByTestId('photos-detail-header')).getByTitle(firstItem.currentPath)).toBeDefined();
-    expect(screen.getByTestId('photos-detail-badge-pending').textContent).toContain('Not analysed yet.');
+    expect(screen.getByTestId('photos-detail-badge-pending').textContent).toContain('Not analyzed');
   });
 
   it('renders photo information in an outlined metadata card with icon rows', () => {
@@ -238,7 +238,7 @@ describe('PhotosWorkspace', () => {
     expect(detail.textContent).toContain('10 Aug 2026');
   });
 
-  it('renders the variant picker for an analysed photo and selecting a variant calls through', async () => {
+  it('renders the variant picker for an analyzed photo and selecting a variant calls through', async () => {
     const items = [item({ fingerprint: 'ph_0000000000000001', analysed: true })];
     const firstItem = items[0];
     if (firstItem === undefined) throw new Error('missing item');

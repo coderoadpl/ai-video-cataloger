@@ -116,7 +116,7 @@ describe('MapView', () => {
     );
 
     await waitFor(() => expect(screen.getByTestId('map-cluster')).toBeDefined());
-    expect(screen.getByTestId('map-cluster').getAttribute('aria-label')).toBe('4 videos in this area');
+    expect(screen.getByTestId('map-cluster').getAttribute('aria-label')).toBe('4 items in this area');
     expect(screen.getAllByTestId('map-pin')).toHaveLength(1);
 
     fireEvent.click(screen.getByTestId('map-cluster'));

@@ -85,7 +85,7 @@ describe('PhotosTree', () => {
     expect(folderRow.getAttribute('data-folder-name')).toBe('trip');
     expect(folderRow.getAttribute('aria-expanded')).toBe('false');
     expect(folderRow.textContent).toContain('1/2');
-    expect(rootRow.querySelector('[aria-label]')?.getAttribute('aria-label')).toBe('3 photos · 1 analysed');
+    expect(rootRow.querySelector('[aria-label]')?.getAttribute('aria-label')).toBe('3 photos · 1 analyzed');
     expect(screen.queryByText('Pictures')).toBeNull();
   });
 

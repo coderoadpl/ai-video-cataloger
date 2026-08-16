@@ -308,7 +308,7 @@ describe('PhotosSidebar', () => {
     expect(row.textContent).toContain(new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium', timeStyle: 'short' }).format(new Date('2026-08-10T17:46:06.740Z')));
   });
 
-  it('renders every sidebar badge through the shared status-badge component, with an icon and the video-parity label for analysed', () => {
+  it('renders every sidebar badge through the shared status-badge component, with an icon and a photo-specific analyzed label', () => {
     const items = [
       item({ fingerprint: 'a', analysed: true }),
       item({ fingerprint: 'b', sightings: 2 }),
@@ -321,7 +321,7 @@ describe('PhotosSidebar', () => {
     const analysedBadge = screen.getByTestId('photos-sidebar-badge-analysed');
     expect(analysedBadge.hasAttribute('data-status-badge')).toBe(true);
     expect(analysedBadge.querySelector('svg')).not.toBeNull();
-    expect(analysedBadge.textContent).toBe('Completed');
+    expect(analysedBadge.textContent).toBe('Analyzed');
 
     for (const badge of ['duplicate', 'proxyFailed', 'exifMissing', 'missing']) {
       const chip = screen.getByTestId(`photos-sidebar-badge-${badge}`);

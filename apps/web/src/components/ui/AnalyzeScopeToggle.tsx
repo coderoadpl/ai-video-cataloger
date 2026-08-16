@@ -4,16 +4,29 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type AnalyzeScope } from './ScopeAnalyzeToolbar.js';
 import { sidebarToggleButtonSx } from './sidebar-toggle-row.js';
 
+export type AnalyzeScopeDisabledReason = 'busy' | 'no-video-subfolders' | 'no-photo-subfolders';
+
 interface AnalyzeScopeToggleProps {
   scope: AnalyzeScope;
   onScopeChange: (scope: AnalyzeScope) => void;
   disabled?: boolean;
+  disabledReason?: AnalyzeScopeDisabledReason | undefined;
 }
 
-export const AnalyzeScopeToggle = ({ scope, onScopeChange, disabled = false }: AnalyzeScopeToggleProps) => {
+export const AnalyzeScopeToggle = ({
+  scope,
+  onScopeChange,
+  disabled = false,
+  disabledReason,
+}: AnalyzeScopeToggleProps) => {
   const dictionary = useDictionary();
+  const disabledReasonCopy: Record<AnalyzeScopeDisabledReason, string> = {
+    busy: dictionary.batchToolbar.scopeToggleBusy,
+    'no-video-subfolders': dictionary.batchToolbar.scopeToggleNoVideoSubfolders,
+    'no-photo-subfolders': dictionary.batchToolbar.scopeToggleNoPhotoSubfolders,
+  };
   return (
-    <Tooltip title={disabled ? dictionary.batchToolbar.scopeToggleDisabled : ''}>
+    <Tooltip title={disabled && disabledReason !== undefined ? disabledReasonCopy[disabledReason] : ''}>
       <span>
         <ToggleButtonGroup
           exclusive

@@ -36,6 +36,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Analysis copy now uses coherent terminology and American English spelling across language selection, readiness, status, cancellation, wizard, badge, and Library surfaces.
+- Polish photo-tree, Gemini spend, analysis summary, and terminal counts now use count-aware numeral forms, with correct English singular and plural summary wording.
+- Video and photo scope toggles now explain whether they are disabled because analysis is busy or because the active medium has no subfolders.
+- Map descriptions and accessibility labels now cover both videos and photos, including media-neutral cluster counts.
 - Kolekcja now refreshes photo tiles after the queued grid-thumbnail backfill actually completes, so a tile mounted before generation does not retain a filename placeholder when its thumbnail exists (N1).
 - Biblioteka's Folder filter now returns matching videos and photos without a photos-hidden notice; people, place, and GPS filters remain video-only (N10).
 - "Show in Finder" now admits Kolekcja photos under registered photo roots while preserving the existing path-scope guard (N7).
