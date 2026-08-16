@@ -20,23 +20,32 @@ export const usePhotoThumbnailsBackfillTrigger = ({ active, hasRoots }: UsePhoto
   useEffect(() => {
     if (!active || !hasRoots || triggered.current) return;
     triggered.current = true;
-    let cancelled = false;
+    const controller = new AbortController();
+    let jobId: string | null = null;
     void (async () => {
-      const accepted = await runBackfill({ force: false });
-      const final = await pollJobUntilTerminal(accepted.jobId, {
-        delay: sleep,
-        fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
-        isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
-        shouldStop: () => cancelled,
-      });
-      if (cancelled || final.status !== 'completed') return;
-      await Promise.all([
-        invalidateCollectionQueries(queryClient),
-        invalidatePhotosQueries(queryClient),
-      ]);
-    })().catch(() => undefined);
+      try {
+        const accepted = await runBackfill({ force: false });
+        jobId = accepted.jobId;
+        await pollJobUntilTerminal(accepted.jobId, {
+          delay: sleep,
+          fetchJob: (currentJobId) => queryClient.fetchQuery(actions.job({ jobId: currentJobId })),
+          isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+          signal: controller.signal,
+        });
+      } catch {
+        return;
+      } finally {
+        if (!controller.signal.aborted) {
+          await Promise.allSettled([
+            invalidateCollectionQueries(queryClient),
+            invalidatePhotosQueries(queryClient),
+          ]);
+        }
+      }
+    })();
     return () => {
-      cancelled = true;
+      controller.abort();
+      if (jobId !== null) void queryClient.cancelQueries(actions.job({ jobId }));
     };
   }, [active, hasRoots, queryClient, runBackfill]);
 };

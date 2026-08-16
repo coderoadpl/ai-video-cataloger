@@ -1397,6 +1397,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(versionResult[0]?.values[0]?.[0]).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
     expect(afterSnapshot).toEqual({
       ...beforeSnapshot,
+      analyses: (beforeSnapshot.analyses ?? []).map((row) => [...row, null, null]),
       files: (beforeSnapshot.files ?? []).map((row) => [...row, null, null]),
     });
     expect(afterObservations).toEqual(beforeObservations.map((row) => [...row, 'video']));
@@ -1433,7 +1434,7 @@ describe('SqlJsGlobalCatalogStore', () => {
     after.close();
   });
 
-  it('migrates a v12 catalog to v13, adding nullable width/height columns to files', async () => {
+  it('migrates a v12 catalog to the current schema, adding nullable file and analysis columns', async () => {
     const home = await tempHome();
     const SQL = await initSqlJs();
     const client = new SQL.Database(await (async () => {
@@ -1459,6 +1460,95 @@ describe('SqlJsGlobalCatalogStore', () => {
     const columnNames = (after.exec('PRAGMA table_info(files)')[0]?.values ?? []).map((row) => row[1]);
     expect(columnNames).toEqual(expect.arrayContaining(['width', 'height']));
     after.close();
+  });
+
+  it('adds nullable resolved-language columns without invalidating existing variants', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const descriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'auto',
+      promptVersion: 1,
+    });
+    const variant: CatalogVariant = {
+      fingerprint: file.fingerprint,
+      configId: configId(descriptor),
+      descriptor,
+      finalName: 'clip.mp4',
+      description: 'description',
+      transcript: null,
+      language: 'auto',
+      tags: [],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    };
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertVariant(variant, { outputLanguage: 'en', tagLanguage: 'en' });
+    await store.flush();
+
+    const SQL = await initSqlJs();
+    const downgraded = new SQL.Database(await readFile(store.databasePath()));
+    downgraded.run('ALTER TABLE analyses DROP COLUMN resolved_output_language');
+    downgraded.run('ALTER TABLE analyses DROP COLUMN resolved_tag_language');
+    downgraded.run('UPDATE schema_meta SET version = 13');
+    await writeFile(store.databasePath(), Buffer.from(downgraded.export()));
+    downgraded.close();
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const migratedVariant = await reopened.getVariant(file.fingerprint, variant.configId);
+    const migratedResolution = await reopened.getVariantLanguageResolution(file.fingerprint, variant.configId);
+    expect(migratedVariant.ok && migratedVariant.value?.description).toBe('description');
+    expect(migratedResolution.ok && migratedResolution.value).toBeNull();
+    await reopened.flush();
+
+    const migrated = new SQL.Database(await readFile(reopened.databasePath()));
+    const row = migrated.exec('SELECT resolved_output_language, resolved_tag_language FROM analyses')[0]?.values[0];
+    const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
+    migrated.close();
+    expect(row).toEqual([null, null]);
+    expect(version).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
+  });
+
+  it('preserves resolved-language provenance when a later write only updates variant materialization', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const descriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'auto',
+      promptVersion: 1,
+    });
+    const variant: CatalogVariant = {
+      fingerprint: file.fingerprint,
+      configId: configId(descriptor),
+      descriptor,
+      finalName: null,
+      description: 'description',
+      transcript: null,
+      language: 'auto',
+      tags: [],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+    };
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertVariant(variant, { outputLanguage: 'en', tagLanguage: 'en' });
+    await store.upsertVariant({ ...variant, finalName: 'materialized.mp4' });
+
+    const resolution = await store.getVariantLanguageResolution(file.fingerprint, variant.configId);
+    expect(resolution.ok && resolution.value).toEqual({ outputLanguage: 'en', tagLanguage: 'en' });
   });
 
   it('creates the read-path indexes on a fresh database', async () => {

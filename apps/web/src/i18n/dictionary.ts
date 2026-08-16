@@ -475,7 +475,7 @@ export interface Dictionary {
     subtitle: string;
     mergeSelected: string;
     indexFaces: string;
-    indexFacesNoAnalyzedPhotos: string;
+    indexFacesNoAnalyzedVideos: string;
     localFaceGroupingOffTitle: string;
     localFaceGroupingOffBody: string;
     modelsMissingTitle: string;
@@ -1372,10 +1372,10 @@ export const en: Dictionary = {
     emptyTitle: 'No people yet',
     emptyBody: 'Index the current folder to find and group faces across your videos.',
     title: 'People',
-    subtitle: 'Local face grouping across indexed catalog videos.',
+    subtitle: 'Local face grouping from analyzed catalog videos.',
     mergeSelected: 'Merge selected',
     indexFaces: 'Index faces',
-    indexFacesNoAnalyzedPhotos: 'Analyze at least one photo in this folder before indexing faces.',
+    indexFacesNoAnalyzedVideos: 'Analyze at least one video in this folder before indexing faces.',
     localFaceGroupingOffTitle: 'Local face grouping is off',
     localFaceGroupingOffBody: 'Turn on local face grouping in Settings to group faces on this Mac.',
     modelsMissingTitle: 'Face grouping models are not installed',
@@ -1384,7 +1384,7 @@ export const en: Dictionary = {
     noFaceGroupingsTitle: 'No face groupings yet',
     noFolderBody: 'Select a folder, then run ai-video-cataloger faces index <folder>.',
     runIndexingBody: 'Run indexing to create local face groupings for this folder.',
-    runIndexingInAnalysis: 'Open a folder in Analysis > Photos to index faces.',
+    runIndexingInAnalysis: 'Open a folder in Analysis > Videos to index faces.',
     dangerArea: 'Danger area',
     dangerBody: 'Delete all local face data if you want to remove every grouping and exemplar crop.',
     deleteAllFaceData: 'Delete all face data',
@@ -2307,10 +2307,10 @@ export const pl: Dictionary = {
     emptyTitle: 'Brak osób',
     emptyBody: 'Zindeksuj bieżący folder, aby znaleźć i pogrupować twarze w Twoich filmach.',
     title: 'Osoby',
-    subtitle: 'Lokalne grupowanie twarzy w zindeksowanych filmach katalogu.',
+    subtitle: 'Lokalne grupowanie twarzy z przeanalizowanych filmów katalogu.',
     mergeSelected: 'Scal wybrane',
     indexFaces: 'Indeksuj twarze',
-    indexFacesNoAnalyzedPhotos: 'Przeanalizuj co najmniej jedno zdjęcie w tym folderze przed indeksowaniem twarzy.',
+    indexFacesNoAnalyzedVideos: 'Przeanalizuj co najmniej jeden film w tym folderze przed indeksowaniem twarzy.',
     localFaceGroupingOffTitle: 'Lokalne grupowanie twarzy jest wyłączone',
     localFaceGroupingOffBody: 'Włącz lokalne grupowanie twarzy w Ustawieniach, aby grupować twarze na tym Macu.',
     modelsMissingTitle: 'Modele grupowania twarzy nie są zainstalowane',
@@ -2319,7 +2319,7 @@ export const pl: Dictionary = {
     noFaceGroupingsTitle: 'Brak grup twarzy',
     noFolderBody: 'Wybierz folder, a potem uruchom ai-video-cataloger faces index <folder>.',
     runIndexingBody: 'Uruchom indeksowanie, aby utworzyć lokalne grupy twarzy dla tego folderu.',
-    runIndexingInAnalysis: 'Otwórz folder w Analiza > Zdjęcia, aby zindeksować twarze.',
+    runIndexingInAnalysis: 'Otwórz folder w Analiza > Filmy, aby zindeksować twarze.',
     dangerArea: 'Strefa ryzyka',
     dangerBody: 'Usuń wszystkie lokalne dane twarzy, jeśli chcesz usunąć każdą grupę i przykładowe wycinki.',
     deleteAllFaceData: 'Usuń wszystkie dane twarzy',

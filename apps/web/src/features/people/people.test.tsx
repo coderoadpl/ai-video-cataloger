@@ -224,7 +224,7 @@ describe('PeopleView', () => {
     );
 
     expect(await screen.findByTestId('people-empty-state')).toBeDefined();
-    expect(screen.getByText('Open a folder in Analysis > Photos to index faces.')).toBeDefined();
+    expect(screen.getByText('Open a folder in Analysis > Videos to index faces.')).toBeDefined();
     expect(screen.queryByTestId('people-index')).toBeNull();
   });
 

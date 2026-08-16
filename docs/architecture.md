@@ -265,11 +265,12 @@ would just re-walk the same set. No new generation logic: the existing pass
 already regenerates a missing `.grid.jpg` and self-heals a stale one exactly
 like the video pass does, once it actually runs. The trigger follows the
 accepted job to a terminal state and invalidates both photo and
-`libraryCollection` query scopes after successful completion. Invalidating
-when the enqueue request returns is too early, and invalidating only the
-`photos` scope leaves a collection tile that mounted before generation with
-its cached null image paths even though the generated file is already
-available to later sidebar queries.
+`libraryCollection` query scopes after every terminal outcome, including
+completion, failure, cancellation, a disappeared job, or a polling error.
+Invalidation is a cheap reconciliation step: limiting it to successful
+completion could leave a collection tile with stale null image paths after a
+server restart. Renderer teardown aborts the status request and its pending
+delay, so the poller cannot issue another fetch after unmount.
 
 Expanded sub-folder rows in the catalog tree get the same foreground
 thumbnail priority as the root list, scoped to the windowed-visible range
@@ -297,9 +298,15 @@ built. `output_language: 'auto'` resolves to the effective app-global
 resolved language governs auto description, filename, and tag instructions
 for video and photo prompts. Explicit output and tag language values keep
 their existing prompt semantics. Configuration descriptors, variant labels,
-NDJSON, and database rows retain the literal `auto` token: request-time
-resolution never rewrites stored identity or persistence shapes. The CLI uses
-the same server config resolution and therefore follows the configured app UI
+and NDJSON retain the literal `auto` token, so request-time resolution never
+changes variant identity. The global `analyses` and photo `photo_analyses`
+rows additionally record nullable `resolved_output_language` and
+`resolved_tag_language` provenance. A non-forced run with an automatic
+dimension is current only when that stored language matches the language
+resolved from the current UI configuration; explicit dimensions are
+unaffected. Rows migrated without provenance retain `null` and are treated as
+current to avoid an unexpected one-time mass re-analysis. The CLI uses the
+same server config resolution and therefore follows the configured app UI
 language too.
 
 Config write scope (owner decision 2026-08-03, closing the W35b 2.3 gap): the
@@ -473,7 +480,10 @@ same `photo_scan` the CTA used to fire, so it still chains its usual proxies
 pass over the photos it just indexed and nothing else — no extra RAW work was
 introduced, it is only reached without a click now. A manual re-scan remains
 available as a secondary action in the sidebar's open-folder dropdown; the
-primary toolbar row is reserved for analysis.
+primary toolbar row is reserved for analysis. `photos forget` deletes the
+forgotten root's `photo_runs` provenance as well as its photo membership,
+immediately removing that root from `photoRootPaths` and revoking reveal
+authorization for it.
 Photo artifacts live next to the photos database under the home directory, so
 an auto-scan of a read-only mount reads the tree and indexes it without ever
 writing to the mount; unreadable subfolders are reported as skipped rather
@@ -636,7 +646,13 @@ maintenance action lives
 exclusively in Analysis → Zdjęcia, at the `PhotosWorkspace` top strip
 (`FacesIndexAction`, backed by the extracted `use-faces-index` hook that
 `usePeople` also consumes, so the indexing behavior stays single-sourced);
-Library's Osoby view keeps only curation (rename/merge/forget).
+Library's Osoby view keeps only curation (rename/merge/forget). Despite that
+placement, the current face pipeline indexes analyzed catalog videos only:
+the action is gated by the current root's analyzed-video count and its English
+and Polish copy names videos rather than photos. Photo candidates and image
+proxies exist at the storage boundary, but people-filter collection queries
+and exemplar source reconstruction remain video-only, so merely feeding those
+candidates into `facesIndex` would expose an incomplete photo capability.
 
 ### Island cores (ADR-0005 rung 1) and i18n
 
@@ -928,9 +944,14 @@ calibration is out of scope for one session.
 `query`, `from`, `to`, `tags`, and `folderId` apply to both video and photo
 (photos carry variant tags in their own FTS). A selected catalog folder ID
 resolves to its canonical path, then to the path-derived photo-folder ID
-before `PhotosStore.collectionPage` applies an exact owning-folder predicate;
-this bridges writable video-folder UUIDs and photo folders without changing
-the route contract. `people`, `place`, and `hasGps` remain video-only — when
+before `PhotosStore.collectionPage` applies a membership predicate: a photo
+belongs to a folder when that folder owns its identity row or contains a
+sighting of the same fingerprint. This matches the photo tree, which counts a
+distinct fingerprint once per folder membership, while an unfiltered
+collection still counts the photo identity only once across all sightings.
+The path-derived ID bridges writable video-folder UUIDs and photo folders
+without changing the route contract. `people`, `place`, and `hasGps` remain
+video-only — when
 any of them is set, the photo source contributes **zero rows** rather than
 silently ignoring the filter, so a Library user filtering by person never
 sees an unfiltered photo sneak into the page pretending to satisfy a filter
@@ -1274,7 +1295,11 @@ managed runtimes, and its working-directory fallback.
   (`process` / `process_drive`) is active and emits a single coalesced refresh
   once the run settles. Electron main subscribes through `App.watchFolder` and
   forwards `folder:changed` over the preload bridge; the renderer invalidates
-  its server state so the sidebar tree and counts follow the disk.
+  its server state so the sidebar tree and counts follow the disk. Photo-mode
+  changes also queue a debounced photo scan. A failed or externally locked
+  scan retains that pending change and retries it with capped exponential
+  backoff until one scan succeeds, so no second filesystem event is required
+  and a persistent failure cannot become an infinite hot loop.
 - `DesktopBridge` (client-side port) — preload adapter in `apps/desktop`.
 
 Harness commands are always spawned directly from an argument vector. The

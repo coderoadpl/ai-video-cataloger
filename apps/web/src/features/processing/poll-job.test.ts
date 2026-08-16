@@ -4,7 +4,7 @@ import type { JobOutput } from '@core/client/index.js';
 
 import { isTerminalJobStatus } from '@core/client/index.js';
 
-import { pollJobUntilTerminal } from '../../lib/poll-job.js';
+import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 
 const job = (status: JobOutput['status']): JobOutput => ({
   jobId: 'j',
@@ -73,5 +73,57 @@ describe('pollJobUntilTerminal', () => {
     expect(final.status).toBe('running');
     expect(fetchJob).toHaveBeenCalledTimes(1);
     expect(delay).not.toHaveBeenCalled();
+  });
+
+  it('does not fetch again when teardown happens during the pending delay', async () => {
+    let cancelled = false;
+    const fetchJob = vi.fn().mockResolvedValue(job('running'));
+    const delay = vi.fn().mockImplementation(async () => {
+      cancelled = true;
+    });
+
+    await pollJobUntilTerminal<JobOutput>('j', {
+      fetchJob,
+      delay,
+      isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+      shouldStop: () => cancelled,
+    });
+
+    expect(fetchJob).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a fetch when its signal was cancelled before polling begins', async () => {
+    const controller = new AbortController();
+    const fetchJob = vi.fn().mockResolvedValue(job('running'));
+    controller.abort();
+
+    await expect(pollJobUntilTerminal<JobOutput>('j', {
+      fetchJob,
+      delay: resolvedDelay,
+      isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+      signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
+
+    expect(fetchJob).not.toHaveBeenCalled();
+  });
+
+  it('cancels a pending delay without starting another fetch', async () => {
+    vi.useFakeTimers();
+    const controller = new AbortController();
+    const fetchJob = vi.fn().mockResolvedValue(job('running'));
+    const polling = pollJobUntilTerminal<JobOutput>('j', {
+      fetchJob,
+      delay: sleep,
+      isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+      signal: controller.signal,
+    });
+    await vi.advanceTimersByTimeAsync(0);
+
+    controller.abort();
+
+    await expect(polling).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchJob).toHaveBeenCalledTimes(1);
+    expect(vi.getTimerCount()).toBe(0);
+    vi.useRealTimers();
   });
 });

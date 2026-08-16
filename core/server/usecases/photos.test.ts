@@ -540,6 +540,19 @@ describe('photosForget', () => {
       `/home/.ai-video-cataloger/photo-artifacts/thumbs/${fingerprintB}.grid.jpg`,
     ].sort());
   });
+
+  it('removes the forgotten root from reveal authorization roots', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    const before = await deps.photos.listRoots();
+    expect(before.ok && before.value.map((entry) => entry.root)).toContain('/work/photos');
+
+    await photosForget(deps, { root: '/work/photos' });
+
+    const after = await deps.photos.listRoots();
+    expect(after.ok && after.value.map((entry) => entry.root)).not.toContain('/work/photos');
+  });
 });
 
 describe('runPhotoProxiesPass', () => {
@@ -1147,6 +1160,38 @@ describe('runPhotoProcess', () => {
     expect(differentProvider.value.candidates).toBe(1);
     expect([...photos.analyses.values()].filter((row) => row.configId === firstConfigId)).toHaveLength(1);
     expect([...photos.analyses.values()].filter((row) => row.configId === differentProvider.value.configId)).toHaveLength(1);
+  });
+
+  it('reprocesses photo auto output and tag languages after the UI language changes', async () => {
+    const { deps, photos, config, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    await config.set({ kind: 'home' }, 'ui_language', 'en');
+
+    const english = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    await config.set({ kind: 'home' }, 'ui_language', 'pl');
+    const polish = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+
+    expect(english.ok && polish.ok && polish.value.configId).toBe(english.ok ? english.value.configId : '');
+    expect(polish.ok && polish.value.candidates).toBe(1);
+    expect(analyzer.analyzePhotosCalls.map((entry) => entry.uiLanguage)).toEqual(['en', 'pl']);
+  });
+
+  it('reprocesses photos when only tag_language is auto and keeps explicit languages satisfied', async () => {
+    const { deps, photos, config, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    await config.set({ kind: 'folder', folder: '/work/photos' }, 'output_language', 'en');
+    await config.set({ kind: 'folder', folder: '/work/photos' }, 'tag_language', 'auto');
+    await config.set({ kind: 'home' }, 'ui_language', 'en');
+    await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    await config.set({ kind: 'home' }, 'ui_language', 'pl');
+    await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    expect(analyzer.analyzePhotosCalls).toHaveLength(2);
+
+    await config.set({ kind: 'folder', folder: '/work/photos' }, 'tag_language', 'pl');
+    await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    await config.set({ kind: 'home' }, 'ui_language', 'en');
+    await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: null });
+    expect(analyzer.analyzePhotosCalls).toHaveLength(3);
   });
 
   it('pauses when the monthly Gemini budget is exceeded, keeping already recorded rows and reporting budget_cap_reached (P6)', async () => {

@@ -3,6 +3,7 @@ import {
   ok,
   spendMonth,
   type AppError,
+  type AnalysisLanguageResolution,
   type CatalogAnalysis,
   type CatalogFile,
   type CatalogFolder,
@@ -56,6 +57,7 @@ export interface ProcessedVariantInput {
   folderPath: string;
   file: Omit<CatalogFile, 'folderId'>;
   variant: CatalogVariant;
+  languageResolution: AnalysisLanguageResolution;
 }
 
 export interface IndexStatusFolder {
@@ -186,7 +188,7 @@ export const upsertProcessedVariant = async (
   if (!existingVariants.ok) return existingVariants;
   const upsertedFile = await deps.globalCatalog.upsertFile({ ...input.file, folderId: resolved.value.folderId });
   if (!upsertedFile.ok) return upsertedFile;
-  const upsertedVariant = await deps.globalCatalog.upsertVariant(input.variant);
+  const upsertedVariant = await deps.globalCatalog.upsertVariant(input.variant, input.languageResolution);
   if (!upsertedVariant.ok) return upsertedVariant;
   if (existingVariants.value.length === 0) {
     const selected = await deps.globalCatalog.setSelectedVariant(input.file.fingerprint, input.variant.configId);

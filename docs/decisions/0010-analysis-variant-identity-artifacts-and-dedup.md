@@ -48,6 +48,15 @@ descriptors and labels deliberately retain `auto`, and changing the app UI
 language never rewrites or rehashes an existing variant. A new config key must
 be explicitly classified before it can join or remain outside identity.
 
+The analysis row records the resolved output and tag languages in two nullable,
+additive provenance columns alongside that unchanged descriptor identity. For
+an automatic dimension, this provenance participates in freshness rather than
+identity: a non-forced run is skipped only when the stored resolution matches
+the currently resolved app UI language. Explicit language dimensions ignore
+the provenance comparison. Rows created before these columns were introduced
+have `null` provenance and are treated as current, deliberately avoiding a
+surprise mass re-analysis during migration.
+
 Pre-feature analyses use the reserved `legacy` sentinel. The app cannot safely
 derive a real configId because their transcription and frame inputs were never
 persisted.
@@ -84,9 +93,13 @@ repeat the most expensive pipeline work.
 ### 3. Deduplication and force operate per pair
 
 The global-index skip is evaluated on `(fingerprint, configId)`. A run skips
-when that pair exists, but a different configId for the same content runs and
-adds another variant. `--force` bypasses the skip and replaces only the
-addressed pair; it does not delete or overwrite other variants.
+when that pair exists and any automatic language dimensions are current under
+the provenance rule above. Changing the UI language therefore re-runs an
+automatic descriptor and replaces that same pair without creating a new
+identity; explicit language descriptors remain skipped. A different configId
+for the same content runs and adds another variant. `--force` bypasses the
+skip and replaces only the addressed pair; it does not delete or overwrite
+other variants.
 
 This is chosen over fingerprint-only skipping, which would require `--force`
 for every new configuration and would destroy the previous result. An
@@ -99,6 +112,9 @@ multiple variants come from multiple runs.
 - Configuration identity is portable and deterministic, with golden vectors
   guarding it from accidental drift. Changing only `output_language`,
   `tag_language`, or `promptVersion` intentionally creates a new variant.
+- Changing `ui_language` re-analyzes only rows whose corresponding descriptor
+  language is automatic and whose non-null resolved provenance is stale; it
+  does not change `configId`.
 - Files remain one row per fingerprint, so duplicate copies of the same content
   share their variant set and explicit selection.
 - Shared inputs are reused only after their key and on-disk presence are

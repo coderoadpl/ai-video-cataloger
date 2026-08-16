@@ -301,7 +301,7 @@ const PHOTOS_SIDEBAR_STATE: PhotosAnalysisState = {
   activeJobLabel: null,
   analyzeStatusLabel: null,
   isBusy: false,
-  scanFolder: noop,
+  scanFolder: () => Promise.resolve(true),
   detail: null,
   isDetailLoading: false,
   variants: [],

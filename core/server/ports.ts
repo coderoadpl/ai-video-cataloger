@@ -1,6 +1,7 @@
 import type {
   AppConfig,
   AppError,
+  AnalysisLanguageResolution,
   AnalyzerProviderConfig,
   CliPathEntry,
   CatalogAnalysis,
@@ -508,6 +509,13 @@ export interface RecordPhotoAnalysisInput {
   usageJson: string | null;
   tags: readonly string[];
   createdAt: string;
+  resolvedOutputLanguage?: string | undefined;
+  resolvedTagLanguage?: string | undefined;
+}
+
+export interface AnalysisLanguageCandidateRule extends AnalysisLanguageResolution {
+  outputAuto: boolean;
+  tagAuto: boolean;
 }
 
 export interface PhotoProxyCandidate {
@@ -590,6 +598,7 @@ export interface PhotosStore {
   counts(root: string | null): Promise<Result<PhotosCounts, AppError>>;
   startPhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>>;
   updatePhotoRun(run: PhotoRunRecord): Promise<Result<void, AppError>>;
+  deletePhotoRuns(root: string): Promise<Result<void, AppError>>;
   listProxyCandidates(root: string): Promise<Result<PhotoProxyCandidate[], AppError>>;
   setProxyOutcome(input: {
     fingerprint: string;
@@ -604,7 +613,12 @@ export interface PhotosStore {
   listPhotosPage(input: { root: string | null; offset: number; limit: number }):
     Promise<Result<{ total: number; items: PhotoListItem[] }, AppError>>;
   getPhotoDetail(fingerprint: string): Promise<Result<PhotoDetail | null, AppError>>;
-  listAnalysisCandidates(root: string, configId: string, force: boolean): Promise<Result<PhotoAnalysisCandidates, AppError>>;
+  listAnalysisCandidates(
+    root: string,
+    configId: string,
+    force: boolean,
+    languageRule?: AnalysisLanguageCandidateRule | undefined,
+  ): Promise<Result<PhotoAnalysisCandidates, AppError>>;
   upsertAnalysisConfig(input: { configId: string; descriptorJson: string; label: string; now: string }): Promise<Result<void, AppError>>;
   recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>>;
   searchPhotos(input: { match: string; rankingTerms: readonly string[]; limit: number; offset: number }):
@@ -665,7 +679,8 @@ export interface GlobalCatalogStore {
   upsertAnalysis(analysis: CatalogAnalysis): Promise<Result<void, AppError>>;
   listVariants(fingerprint: string): Promise<Result<CatalogVariant[], AppError>>;
   getVariant(fingerprint: string, configId: string): Promise<Result<CatalogVariant | null, AppError>>;
-  upsertVariant(variant: CatalogVariant): Promise<Result<void, AppError>>;
+  upsertVariant(variant: CatalogVariant, languageResolution?: AnalysisLanguageResolution | undefined): Promise<Result<void, AppError>>;
+  getVariantLanguageResolution(fingerprint: string, configId: string): Promise<Result<AnalysisLanguageResolution | null, AppError>>;
   clearAnalysisVariants(fingerprint: string): Promise<Result<void, AppError>>;
   deleteVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>>;
   setSelectedVariant(fingerprint: string, configId: string | null): Promise<Result<void, AppError>>;

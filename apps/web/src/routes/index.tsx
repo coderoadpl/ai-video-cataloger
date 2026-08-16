@@ -76,7 +76,9 @@ export const IndexRoute = () => {
     folderState: photosAnalysis.folderState,
     isRootsReady: !photosAnalysis.isLoading,
     isBusy: photosAnalysis.isBusy,
-    scanFolder: photosAnalysis.scanFolder,
+    scanFolder: () => {
+      void photosAnalysis.scanFolder();
+    },
   });
   const catalog = useCatalog(shell.currentFolder);
   const videoRegistry = useCatalogVideoRegistry();
@@ -268,7 +270,7 @@ export const IndexRoute = () => {
             folder={shell.currentFolder}
             addLine={terminal.addLine}
             lockReason={catalogLock.disabledReason}
-            hasAnalyzedPhotos={(photosAnalysis.treeRoot?.analysedCount ?? 0) > 0}
+            hasAnalyzedVideos={tree.processedTotal > 0}
           />
         </Box>
       )}

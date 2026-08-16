@@ -2,12 +2,14 @@ import { randomUUID } from 'node:crypto';
 
 import {
   appError,
+  analysisLanguagesAreCurrent,
   configDescriptorSchema,
   configId,
   driveRunBatchDisplayName,
   geminiModelPrice,
   isBatchSubmitRejection,
   ok,
+  resolveDescriptorLanguages,
   type AnalyzerProviderConfig,
   type AnalyzerProviderId,
   type AppConfig,
@@ -1251,6 +1253,10 @@ const alreadyProcessed = async (
   const variant = await deps.globalCatalog.getVariant(video.contentHash, identity.configId);
   if (!variant.ok) return variant;
   if (variant.value === null) return ok(false);
+  const storedResolution = await deps.globalCatalog.getVariantLanguageResolution(video.contentHash, identity.configId);
+  if (!storedResolution.ok) return storedResolution;
+  const currentResolution = resolveDescriptorLanguages(identity.descriptor, resolved.value.analyzer.uiLanguage);
+  if (!analysisLanguagesAreCurrent(identity.descriptor, storedResolution.value, currentResolution)) return ok(false);
   return analyzedCanonicalIsReachable({ fs: deps.fs, globalCatalog: deps.globalCatalog }, video.contentHash);
 };
 

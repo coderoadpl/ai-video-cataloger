@@ -275,7 +275,9 @@ describe('usePhotosAnalysis', () => {
       () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: '/new-root' }),
       { wrapper: Wrapper },
     );
-    act(() => result.current.scanFolder());
+    act(() => {
+      void result.current.scanFolder();
+    });
 
     await waitFor(() => expect(scannedRoot).toBe('/new-root'));
     expect(showPicker).not.toHaveBeenCalled();
@@ -297,7 +299,9 @@ describe('usePhotosAnalysis', () => {
       () => usePhotosAnalysis({ active: true, addLine: vi.fn(), folder: null }),
       { wrapper: Wrapper },
     );
-    act(() => result.current.scanFolder());
+    act(() => {
+      void result.current.scanFolder();
+    });
 
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(scanSpy).not.toHaveBeenCalled();
@@ -322,7 +326,9 @@ describe('usePhotosAnalysis', () => {
       { wrapper: Wrapper },
     );
     await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
-    act(() => result.current.scanFolder());
+    act(() => {
+      void result.current.scanFolder();
+    });
     await waitFor(() => expect(result.current.activeJobLabel).not.toBeNull());
 
     act(() => result.current.generateProxies());
@@ -356,7 +362,9 @@ describe('usePhotosAnalysis', () => {
       () => usePhotosAnalysis({ active: true, addLine, folder: '/media' }),
       { wrapper: Wrapper },
     );
-    act(() => result.current.scanFolder());
+    act(() => {
+      void result.current.scanFolder();
+    });
 
     await waitFor(() => expect(addLine.mock.calls.some(([, level]) => level === 'success')).toBe(true));
     const messages = new Set(addLine.mock.calls.map(([message]) => message));
