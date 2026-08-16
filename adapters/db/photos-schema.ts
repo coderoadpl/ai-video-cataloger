@@ -105,6 +105,16 @@ export const photoAnalyses = sqliteTable('photo_analyses', {
   primaryKey({ columns: [table.fingerprint, table.configId] }),
 ]);
 
+export const photoAnalysisErrors = sqliteTable('photo_analysis_errors', {
+  fingerprint: text('fingerprint').notNull(),
+  configId: text('config_id').notNull(),
+  errorCode: text('error_code').notNull(),
+  errorMessage: text('error_message').notNull(),
+  createdAt: text('created_at').notNull(),
+}, (table) => [
+  primaryKey({ columns: [table.fingerprint, table.configId] }),
+]);
+
 export const photoTags = sqliteTable('photo_tags', {
   tagId: integer('tag_id').primaryKey({ autoIncrement: true }),
   name: text('name').notNull().unique(),
@@ -145,6 +155,7 @@ export const photosSchema = {
   photoRuns,
   photoAnalysisConfigs,
   photoAnalyses,
+  photoAnalysisErrors,
   photoTags,
   photoTagAliases,
   photoFileTags,
@@ -153,7 +164,7 @@ export const photosSchema = {
   photosSchemaMeta,
 };
 
-export const PHOTOS_SCHEMA_VERSION = 3;
+export const PHOTOS_SCHEMA_VERSION = 4;
 
 export const createPhotosSchemaSqlV1 = [
   'CREATE TABLE schema_meta (version INTEGER PRIMARY KEY)',
@@ -254,4 +265,15 @@ export const createPhotosSchemaSqlV2 = [
 export const createPhotosSchemaSqlV3 = [
   'ALTER TABLE photo_analyses ADD COLUMN resolved_output_language TEXT',
   'ALTER TABLE photo_analyses ADD COLUMN resolved_tag_language TEXT',
+] as const;
+
+export const createPhotosSchemaSqlV4 = [
+  `CREATE TABLE IF NOT EXISTS photo_analysis_errors (
+      fingerprint TEXT NOT NULL,
+      config_id TEXT NOT NULL,
+      error_code TEXT NOT NULL,
+      error_message TEXT NOT NULL,
+      created_at TEXT NOT NULL,
+      PRIMARY KEY (fingerprint, config_id)
+    )`,
 ] as const;

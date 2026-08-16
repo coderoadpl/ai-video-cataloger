@@ -217,6 +217,11 @@ CREATE TABLE photo_face_index_state (    -- per-photo faces completion (see §5)
 CREATE INDEX idx_photo_face_index_engine ON photo_face_index_state(engine_version);
 ```
 
+Schema v4 adds `photo_analysis_errors(fingerprint, config_id, error_code,
+error_message, created_at)` with `(fingerprint, config_id)` as its primary
+key. It preserves the latest failure for each analysis variant across
+restarts; a successful write of that variant removes its failure row.
+
 **Indexes are part of the schema, in v1** (challenge B2 — the video catalog
 declares none anywhere and gets away with it at a few thousand rows; 50k
 photos with per-day grouping and per-folder filtering does not). Adding one
@@ -438,7 +443,11 @@ per-file calls):
 - Response contract: one JSON array, each element carrying an `index` echo;
   the parser zod-validates per element. A malformed array or count mismatch
   **splits the batch** (12 → 6+6 → … → singles) before any photo is marked
-  failed; a single-photo failure is that photo's failure. NDJSON stays
+  failed. A single-photo `processing_error` is retried exactly once before
+  that photo is marked failed; this per-file retry is fixed, has no config
+  knob, and does not increment `splitRetries`. Exhausted failures are stored
+  in `photo_analysis_errors` for the active `(fingerprint, config_id)` and a
+  later successful analysis clears that row. NDJSON stays
   per-photo (`photo_started`/`photo_completed`), so scripts never see
   batching.
 - `AnalyzerBatchPort` (Gemini Batch API, half price) applies to photo runs

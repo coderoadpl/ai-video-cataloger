@@ -33,6 +33,7 @@ const item = (overrides: Partial<PhotoListItem> & { fingerprint: string }): Phot
   gridThumbPath: null,
   proxyPath: null,
   analysed: false,
+  analysisError: null,
   exifReadAt: '2026-01-01T00:00:00.000Z',
   ...overrides,
 });

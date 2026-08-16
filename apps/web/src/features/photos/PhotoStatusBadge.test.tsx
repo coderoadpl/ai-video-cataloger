@@ -15,11 +15,13 @@ describe('PhotoStatusBadge', () => {
       <ThemeProvider theme={theme}>
         <PhotoStatusBadge status="pending" dictionary={en} testId="pending" />
         <PhotoStatusBadge status="analysed" dictionary={en} testId="analysed" />
+        <PhotoStatusBadge status="analysisFailed" dictionary={en} testId="analysis-failed" />
       </ThemeProvider>,
     );
 
     expect(screen.getByTestId('pending').textContent).toBe('Not analyzed');
     expect(screen.getByTestId('analysed').textContent).toBe('Analyzed');
+    expect(screen.getByTestId('analysis-failed').textContent).toBe('Analysis failed');
   });
 
   it('uses grammatically neutral short Polish photo status labels', () => {
@@ -27,10 +29,12 @@ describe('PhotoStatusBadge', () => {
       <ThemeProvider theme={theme}>
         <PhotoStatusBadge status="pending" dictionary={pl} testId="pending" />
         <PhotoStatusBadge status="analysed" dictionary={pl} testId="analysed" />
+        <PhotoStatusBadge status="analysisFailed" dictionary={pl} testId="analysis-failed" />
       </ThemeProvider>,
     );
 
     expect(screen.getByTestId('pending').textContent).toBe('Nieprzeanalizowane');
     expect(screen.getByTestId('analysed').textContent).toBe('Przeanalizowane');
+    expect(screen.getByTestId('analysis-failed').textContent).toBe('Błąd analizy');
   });
 });

@@ -32,6 +32,7 @@ const photoItem = (overrides: Partial<PhotoListItem>): PhotoListItem => ({
   gridThumbPath: null,
   proxyPath: null,
   analysed: false,
+  analysisError: null,
   exifReadAt: null,
   ...overrides,
 });

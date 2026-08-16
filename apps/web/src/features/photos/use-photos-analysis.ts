@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
 import { ApiError, invalidatePhotosQueries, isTerminalJobStatus, type JobOutput } from '@core/client/index.js';
-import type { photosDetailOutputSchema, photosVariantRecordSchema } from '@core/contract/index.js';
+import { photoProcessSummarySchema, type photosDetailOutputSchema, type photosVariantRecordSchema } from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
@@ -215,6 +215,24 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
             onSnapshot: onSnapshot ?? (() => undefined),
           });
           if (final.status === 'completed') {
+            if (final.kind === 'photo_process') {
+              const summary = photoProcessSummarySchema.safeParse(final.result);
+              if (summary.success && summary.data.failed > 0) {
+                if (summary.data.analysed === 0) {
+                  const message = dictionary.photos.analyzeAllFailedLog(summary.data.failed);
+                  addLine(message, 'error');
+                  setJobError(message);
+                  await invalidate();
+                  return false;
+                }
+                addLine(
+                  dictionary.photos.analyzeCompletedWithFailuresLog(summary.data.analysed, summary.data.failed),
+                  'success',
+                );
+                await invalidate();
+                return true;
+              }
+            }
             addLine(success, 'success');
             await invalidate();
             return true;
@@ -329,6 +347,8 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
       }
       if (step === 'photo-analysis-failed') {
         updateFolderProgress(data?.['path']);
+        const failedPath = data?.['path'];
+        if (typeof failedPath === 'string') addLine(dictionary.photos.analyzeFileFailedLog(failedPath), 'error');
         const fingerprint = data?.['fingerprint'];
         if (typeof fingerprint === 'string' && processingSetRef.current.delete(fingerprint)) processingChanged = true;
         sawCompletion = true;
@@ -336,7 +356,7 @@ export const usePhotosAnalysis = ({ active, addLine, folder, intervalMs = 1000 }
     }
     if (processingChanged) setProcessingFingerprints(new Set(processingSetRef.current));
     if (sawCompletion) void invalidatePhotosQueries(queryClient);
-  }, [queryClient, updateFolderProgress]);
+  }, [addLine, dictionary, queryClient, updateFolderProgress]);
 
   const analyzePhotos = useCallback(() => {
     if (!canAnalyze || selectedRoot === null) return;

@@ -36,6 +36,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Failed photo analyses now persist across restarts, appear in photo badges and detail retry cards with sanitized messages, and produce honest per-file, partial-run, and all-failed reporting.
+- Photo analysis now retries a retryable single-photo processing failure exactly once before persisting the failure, without changing batch split-retry accounting.
 - Kolekcja folder filtering now follows photo membership through either ownership or sightings while unfiltered totals still count each photo identity once.
 - Automatic video and photo analyses now record resolved output and tag languages and rerun the same variant after the UI language changes, while explicit languages and migrated rows without provenance remain unaffected.
 - Folder snapshots now round-trip resolved video output and tag languages, so an auto-language variant recovered from a snapshot reruns after the UI language changes while older snapshot rows retain legacy-null freshness semantics.

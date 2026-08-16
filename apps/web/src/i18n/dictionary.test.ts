@@ -43,6 +43,15 @@ describe('dictionary', () => {
     expect(pl.photosSidebar.treeFolderCounts(1, 1)).toBe('1 zdjęcie · 1 przeanalizowane');
     expect(pl.photosSidebar.treeFolderCounts(3, 3)).toBe('3 zdjęcia · 3 przeanalizowane');
     expect(pl.photosSidebar.treeFolderCounts(5, 0)).toBe('5 zdjęć · 0 przeanalizowanych');
+    expect(pl.photos.analyzeCompletedWithFailuresLog(1, 2)).toBe(
+      'Analiza zdjęć zakończona: 1 przeanalizowane zdjęcie, 2 nieudane zdjęcia',
+    );
+    expect(pl.photos.analyzeCompletedWithFailuresLog(5, 1)).toBe(
+      'Analiza zdjęć zakończona: 5 przeanalizowanych zdjęć, 1 nieudane zdjęcie',
+    );
+    expect(pl.photos.analyzeAllFailedLog(5)).toBe(
+      'Analiza zdjęć nie powiodła się: 5 nieudanych zdjęć',
+    );
     expect(pl.settingsModal.geminiSpendReadout('2026-08', 1, 1)).toContain('w 1 analizie');
     expect(pl.settingsModal.geminiSpendReadout('2026-08', 1, 3)).toContain('w 3 analizach');
     expect(pl.batchSummary.successful(1)).toBe('udany film');

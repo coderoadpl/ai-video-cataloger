@@ -266,6 +266,7 @@ const photoItem = (overrides: Partial<PhotoListItem> & { fingerprint: string }):
   gridThumbPath: null,
   proxyPath: null,
   analysed: false,
+  analysisError: null,
   exifReadAt: '2026-06-14T09:31:00.000Z',
   ...overrides,
 });
