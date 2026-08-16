@@ -127,7 +127,10 @@ override. The search step requires a matching Library tile rather than treating
 the no-results state as evidence. Before `library-preview`, the runner clears
 and submits the empty search so the overlay and its `Otwórz w Analizie` action
 are exercised against the unfiltered collection rather than skipped because
-the preceding filter is still active.
+the preceding filter is still active. Clearing ends with a real `Escape`
+keypress and a wait for the `MuiAutocomplete-popper` to be hidden: the
+suggestion popper re-opens on focus with the empty query, and left open it
+covers the grid and intercepts the preview tile click.
 
 ## Procedure
 

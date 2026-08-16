@@ -34,6 +34,12 @@ const sourceWithPhotos = () => {
   return source;
 };
 
+const popperPageStub = (waitForError) => {
+  const waitFor = vi.fn(() => (waitForError === undefined ? Promise.resolve() : Promise.reject(waitForError)));
+  const page = { locator: vi.fn(() => ({ first: () => ({ waitFor }) })) };
+  return { page, waitFor };
+};
+
 describe('library walkthrough search state', () => {
   it('derives a reliable search term from the analyzed fixture filename', () => {
     expect(searchTermFromAnalyzedFilename('2026-08-16_jezowak-warszawa-oceanografic.mp4')).toBe('jezowak');
@@ -41,12 +47,31 @@ describe('library walkthrough search state', () => {
 
   it('clears and reapplies the library search before opening preview', async () => {
     const input = { click: vi.fn(), fill: vi.fn(), press: vi.fn() };
+    const { page } = popperPageStub();
 
-    await clearLibrarySearch(input);
+    await clearLibrarySearch(page, input);
 
     expect(input.click).toHaveBeenCalledOnce();
     expect(input.fill).toHaveBeenCalledWith('');
-    expect(input.press).toHaveBeenCalledWith('Enter');
+    expect(input.press).toHaveBeenNthCalledWith(1, 'Enter');
+  });
+
+  it('dismisses the suggestion popper with Escape and waits for it to disappear', async () => {
+    const input = { click: vi.fn(), fill: vi.fn(), press: vi.fn() };
+    const { page, waitFor } = popperPageStub();
+
+    await clearLibrarySearch(page, input);
+
+    expect(input.press).toHaveBeenNthCalledWith(2, 'Escape');
+    expect(page.locator).toHaveBeenCalledWith('.MuiAutocomplete-popper');
+    expect(waitFor).toHaveBeenCalledWith(expect.objectContaining({ state: 'hidden' }));
+  });
+
+  it('propagates a popper that never closes instead of leaving it over the grid', async () => {
+    const input = { click: vi.fn(), fill: vi.fn(), press: vi.fn() };
+    const { page } = popperPageStub(new Error('popper still visible'));
+
+    await expect(clearLibrarySearch(page, input)).rejects.toThrow('popper still visible');
   });
 });
 

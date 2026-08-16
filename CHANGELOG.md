@@ -19,6 +19,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 - The release walkthrough now derives its default Library query from the
   analyzed fixture filename, requires a matching result, and clears that query
   before exercising the preview overlay and its Analysis action.
+- The release walkthrough now dismisses the Library search suggestions with a
+  real `Escape` keypress after clearing the query and waits for the popper to
+  disappear, so it can no longer intercept the preview tile click.
 
 ### Fixed
 
