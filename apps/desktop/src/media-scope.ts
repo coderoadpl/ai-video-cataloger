@@ -110,6 +110,14 @@ export const resolveRevealPath = async (
   return resolveAnyScopedPath(requestedPath, roots);
 };
 
+export const resolveRegisteredRevealPath = async (
+  requestedPath: string,
+  currentFolder: string | null,
+  catalogFolderPaths: readonly string[],
+  photoRootPaths: readonly string[],
+): Promise<string | null> =>
+  resolveRevealPath(requestedPath, [currentFolder, ...catalogFolderPaths, ...photoRootPaths]);
+
 const resolveAnyScopedPath = async (
   requestedPath: string,
   roots: readonly MediaRoot[],

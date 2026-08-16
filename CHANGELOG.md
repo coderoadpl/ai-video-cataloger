@@ -14,6 +14,15 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The Kolekcja photo viewer now shows description, scene, quality, tags, humanized analysis provenance, and an action that opens the photo in Analysis (N9).
+
+### Fixed
+
+- "Show in Finder" now admits Kolekcja photos under registered photo roots while preserving the existing path-scope guard (N7).
+- Kolekcja's Wszystko, Filmy, and Zdjęcia chips now keep stable totals for the active non-media filters when the media selection changes (N8).
+
 ## [0.6.21] - 2026-08-16
 
 ### Changed

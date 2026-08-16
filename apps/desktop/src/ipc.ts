@@ -23,7 +23,7 @@ import type { App } from '@server/src/create-app.js';
 import { CHANNELS } from './channels.js';
 import type { FolderStore } from './folder-store.js';
 import type { FolderWatchController } from './folder-watch.js';
-import { resolveRevealPath } from './media-scope.js';
+import { resolveRegisteredRevealPath } from './media-scope.js';
 import { updateRecentFoldersMenu } from './menu.js';
 
 export interface IpcDeps {
@@ -121,8 +121,12 @@ export const registerIpcHandlers = (deps: IpcDeps): void => {
     const targetPath = stringSchema.safeParse(pathInput);
     if (!targetPath.success || !path.isAbsolute(targetPath.data)) return false;
     const app = await deps.desktopApp;
-    const knownFolders = [await deps.folderStore.getCurrent(), ...(await app.catalogFolderPaths())];
-    const scopedPath = await resolveRevealPath(targetPath.data, knownFolders);
+    const scopedPath = await resolveRegisteredRevealPath(
+      targetPath.data,
+      await deps.folderStore.getCurrent(),
+      await app.catalogFolderPaths(),
+      await app.photoRootPaths(),
+    );
     if (scopedPath === null) return false;
     shell.showItemInFolder(scopedPath);
     return true;

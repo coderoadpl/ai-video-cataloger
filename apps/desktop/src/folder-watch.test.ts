@@ -34,6 +34,7 @@ const recordingApp = (
       acquireResource: unusedJob,
     },
     catalogFolderPaths: async () => [],
+    photoRootPaths: async () => [],
     watchFolder: (root, onChange) => {
       roots.push(root);
       notifiers.push(onChange);

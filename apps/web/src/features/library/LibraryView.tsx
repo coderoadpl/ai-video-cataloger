@@ -203,14 +203,6 @@ export const LibraryView = ({
   const isNoMatch = !library.isLoading && library.error === null && library.total === 0 && !isEmptyCatalog;
   const videoOnlyFilterActive = filters.personIds.length > 0 || filters.place !== null || filters.hasGps !== null || filters.folderId !== null;
   const showVideoOnlyFilterNotice = media === 'all' && videoOnlyFilterActive;
-  const videosCounted = media !== 'photo';
-  const photosCounted = media !== 'video' && !videoOnlyFilterActive;
-  const mediaTotals = {
-    all: videosCounted && photosCounted ? library.total : null,
-    video: videosCounted ? library.videoTotal : null,
-    photo: photosCounted ? library.photoTotal : null,
-  };
-
   const body = () => {
     if (library.error !== null) {
       return <Alert severity="error" data-testid="library-error" sx={{ m: 2 }}>{formatAnalyzerError(library.error, dictionary.errors)}</Alert>;
@@ -406,7 +398,7 @@ export const LibraryView = ({
           hasQuery={library.debouncedQuery.length > 0}
           media={media}
           onMediaChange={setMedia}
-          mediaTotals={mediaTotals}
+          mediaTotals={library.mediaTotals}
         />
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{body()}</Box>
@@ -414,6 +406,7 @@ export const LibraryView = ({
         <LibraryPhotoViewer
           item={photoViewerItem}
           onClose={() => setPhotoViewerFingerprint(null)}
+          onOpenInAnalysis={() => openInAnalysis(photoViewerItem)}
           onPrevious={
             adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, -1) === null
               ? null

@@ -10,6 +10,7 @@ export interface App {
   honoApp: Hono;
   jobs: JobsPort;
   catalogFolderPaths: () => Promise<string[]>;
+  photoRootPaths: () => Promise<string[]>;
   watchFolder: (
     root: string,
     onChange: () => void,
@@ -28,6 +29,10 @@ export const createApp = (config: AppConfig = {}, inMemoryDepsFactory?: InMemory
     catalogFolderPaths: async () => {
       const folders = await deps.globalCatalog.listFolders();
       return folders.ok ? folders.value.map((folder) => folder.currentPath) : [];
+    },
+    photoRootPaths: async () => {
+      const roots = await deps.photos.listRoots();
+      return roots.ok ? roots.value.map((root) => root.root) : [];
     },
     dispose: async () => {
       await deps.photos.dispose();

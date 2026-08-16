@@ -90,6 +90,7 @@ export interface CollectionOutput {
   total: number;
   videoTotal: number;
   photoTotal: number;
+  mediaTotals: { all: number; video: number; photo: number };
   count: number;
   items: CollectionItem[];
   nextCursor: string | null;
@@ -176,7 +177,8 @@ export const libraryCollection = async (
   if (!cursor.ok) return cursor;
 
   const videoEnabled = input.media !== 'photo';
-  const photoEnabled = input.media !== 'video' && !videoOnlyFiltersActive(input.filters);
+  const photosMatchFilters = !videoOnlyFiltersActive(input.filters);
+  const photoEnabled = input.media !== 'video' && photosMatchFilters;
 
   let videoMatch: string | null = null;
   let videoRankingTerms: string[] = [];
@@ -187,14 +189,12 @@ export const libraryCollection = async (
     const sanitized = sanitizeSearchQuery(input.query);
     if (!sanitized.ok) return sanitized;
 
-    if (videoEnabled) {
-      const videoExpansions = await deps.globalCatalog.expandTagTerms([...sanitized.value.rankingTerms, ...input.filters.tags]);
-      if (!videoExpansions.ok) return videoExpansions;
-      const videoEquivalents = new Map(videoExpansions.value.map((entry) => [entry.term, entry.equivalents]));
-      videoMatch = buildSearchMatch(sanitized.value.parts, videoEquivalents);
-      videoRankingTerms = sanitized.value.rankingTerms;
-    }
-    if (photoEnabled) {
+    const videoExpansions = await deps.globalCatalog.expandTagTerms([...sanitized.value.rankingTerms, ...input.filters.tags]);
+    if (!videoExpansions.ok) return videoExpansions;
+    const videoEquivalents = new Map(videoExpansions.value.map((entry) => [entry.term, entry.equivalents]));
+    videoMatch = buildSearchMatch(sanitized.value.parts, videoEquivalents);
+    videoRankingTerms = sanitized.value.rankingTerms;
+    if (photosMatchFilters) {
       const photoExpansions = await deps.photos.expandPhotoTagTerms([...sanitized.value.rankingTerms, ...input.filters.tags]);
       if (!photoExpansions.ok) return photoExpansions;
       const photoEquivalents = new Map(photoExpansions.value.map((entry) => [entry.term, entry.equivalents]));
@@ -203,9 +203,9 @@ export const libraryCollection = async (
     }
   }
 
-  const videoTagTermSets = await tagTermSetsFor(deps, 'video', input.filters.tags, videoEnabled);
+  const videoTagTermSets = await tagTermSetsFor(deps, 'video', input.filters.tags, true);
   if (!videoTagTermSets.ok) return videoTagTermSets;
-  const photoTagTermSets = await tagTermSetsFor(deps, 'photo', input.filters.tags, photoEnabled);
+  const photoTagTermSets = await tagTermSetsFor(deps, 'photo', input.filters.tags, photosMatchFilters);
   if (!photoTagTermSets.ok) return photoTagTermSets;
 
   const emptyVideoPage: { total: number; rows: CatalogSearchRow[] } = { total: 0, rows: [] };
@@ -237,6 +237,35 @@ export const libraryCollection = async (
     : ok(emptyPhotoPage);
   if (!photoPage.ok) return photoPage;
 
+  const videoTotalsPage = videoEnabled
+    ? videoPage
+    : await fetchVideoPage(deps, {
+      match: videoMatch,
+      rankingTerms: videoRankingTerms,
+      filters: input.filters,
+      tagTermSets: videoTagTermSets.value,
+      sort,
+      limit: 0,
+      offset: 0,
+    });
+  if (!videoTotalsPage.ok) return videoTotalsPage;
+
+  const photoTotalsPage = !photosMatchFilters
+    ? ok(emptyPhotoPage)
+    : photoEnabled
+      ? photoPage
+      : await deps.photos.collectionPage({
+        match: photoMatch,
+        rankingTerms: photoRankingTerms,
+        from: input.filters.from,
+        to: input.filters.to,
+        tagTermSets: photoTagTermSets.value,
+        sort,
+        limit: 0,
+        offset: 0,
+      });
+  if (!photoTotalsPage.ok) return photoTotalsPage;
+
   const merged = await mergePage(deps, {
     videoRows: videoPage.value.rows,
     photoRows: photoPage.value.rows,
@@ -262,6 +291,11 @@ export const libraryCollection = async (
     total: videoPage.value.total + photoPage.value.total,
     videoTotal: videoPage.value.total,
     photoTotal: photoPage.value.total,
+    mediaTotals: {
+      all: videoTotalsPage.value.total + photoTotalsPage.value.total,
+      video: videoTotalsPage.value.total,
+      photo: photoTotalsPage.value.total,
+    },
     count: merged.value.items.length,
     items: merged.value.items,
     nextCursor,

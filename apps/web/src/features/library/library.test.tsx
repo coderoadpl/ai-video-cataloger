@@ -92,9 +92,7 @@ const stubCollection = (items: LibraryItem[]) => {
       const videoOnlyFilterActive = (people !== null && people.length > 0) || place !== null || hasGps !== null || folderId !== null;
 
       let matchedVideo = items.filter((item) => item.media === 'video');
-      let matchedPhoto = media === 'video' || (media === 'all' && videoOnlyFilterActive)
-        ? []
-        : items.filter((item) => item.media === 'photo');
+      let matchedPhoto = videoOnlyFilterActive ? [] : items.filter((item) => item.media === 'photo');
 
       if (query !== null && query.length > 0) {
         matchedVideo = matchedVideo.filter((item) => matchesQuery(item, query));
@@ -105,6 +103,11 @@ const stubCollection = (items: LibraryItem[]) => {
       if (folderId !== null && folderId.length > 0) {
         matchedVideo = matchedVideo.filter((item) => item.media === 'video' && item.folder.folderId === folderId);
       }
+      const mediaTotals = {
+        all: matchedVideo.length + matchedPhoto.length,
+        video: matchedVideo.length,
+        photo: matchedPhoto.length,
+      };
       if (media === 'video') matchedPhoto = [];
       if (media === 'photo') matchedVideo = [];
 
@@ -128,6 +131,7 @@ const stubCollection = (items: LibraryItem[]) => {
           total: matchedVideo.length + matchedPhoto.length,
           videoTotal: matchedVideo.length,
           photoTotal: matchedPhoto.length,
+          mediaTotals,
           count: page.length,
           items: page,
           nextCursor,
@@ -162,6 +166,59 @@ const stubFacets = (overrides: Partial<z.infer<typeof libraryFacetsOutputSchema>
 
 const stubPhotoRoots = (roots: { root: string; photos: number; missing: number; lastScanAt: string }[] = []) => {
   server.use(http.get('/api/photos/tree', () => HttpResponse.json({ ok: true, data: { media: 'photo', roots } })));
+};
+
+const stubPhotoDetail = (fingerprint: string) => {
+  server.use(http.get('/api/photos/detail', () => HttpResponse.json({
+    ok: true,
+    data: {
+      media: 'photo',
+      photo: {
+        fingerprint,
+        folderId: 'path-aaaaaaaa',
+        fileName: `${fingerprint}.jpg`,
+        currentPath: `/photos/${fingerprint}.jpg`,
+        ext: 'jpg',
+        size: 1024,
+        width: 1920,
+        height: 1080,
+        orientation: 1,
+        cameraMake: null,
+        cameraModel: null,
+        lens: null,
+        iso: null,
+        fNumber: null,
+        exposureTime: null,
+        exifRating: null,
+        capturedAt: '2026-01-02T10:00:00.000Z',
+        capturedAtSource: 'file_mtime',
+        discoveredAt: '2026-01-02T10:00:00.000Z',
+        exifReadAt: null,
+        proxyState: 'done',
+        proxyWidth: 1920,
+        proxyHeight: 1080,
+        thumbState: 'done',
+        missingAt: null,
+      },
+      sightings: [{ currentPath: `/photos/${fingerprint}.jpg`, folderId: 'path-aaaaaaaa', lastSeenAt: '2026-01-02T10:00:00.000Z' }],
+      ownerPath: `/photos/${fingerprint}.jpg`,
+      proxyPath: `/photo-artifacts/proxies/${fingerprint}.jpg`,
+      thumbPath: `/photo-artifacts/thumbs/${fingerprint}.jpg`,
+      gridThumbPath: null,
+      analysis: {
+        configId: 'cfg_0123456789ab',
+        label: 'local · gemma3:4b · auto',
+        description: 'Sunset over a quiet lake',
+        scene: 'landscape',
+        quality: 'good',
+        tags: ['sunset', 'lake'],
+        batchSize: 1,
+        createdAt: '2026-01-03T12:00:00.000Z',
+        variantCount: 1,
+        explicit: false,
+      },
+    },
+  })));
 };
 
 describe('LibraryView', () => {
@@ -798,6 +855,7 @@ describe('LibraryView', () => {
             total,
             videoTotal: total,
             photoTotal: 0,
+            mediaTotals: { all: total, video: total, photo: 0 },
             count: cursor === null ? page1.length : page2.length,
             items: cursor === null ? page1 : page2,
             nextCursor: cursor === null ? '200' : null,
@@ -841,6 +899,7 @@ describe('LibraryView', () => {
             total: media === 'video' ? 1 : 2,
             videoTotal: 1,
             photoTotal: media === 'video' ? 0 : 1,
+            mediaTotals: { all: 2, video: 1, photo: 1 },
             count: items.length,
             items,
             nextCursor: media === 'all' && cursor === null ? 'page-2' : null,
@@ -879,6 +938,7 @@ describe('LibraryView', () => {
             total: 3,
             videoTotal: 3,
             photoTotal: 0,
+            mediaTotals: { all: 3, video: 3, photo: 0 },
             count: cursor === null ? page1.length : page2.length,
             items: cursor === null ? page1 : page2,
             nextCursor: cursor === null ? 'next' : null,
@@ -1048,6 +1108,7 @@ describe('LibraryView', () => {
               total: items.length,
               videoTotal: 1,
               photoTotal: media === 'video' ? 0 : 1,
+              mediaTotals: { all: 2, video: 1, photo: 1 },
               count: items.length,
               items,
               nextCursor: null,
@@ -1068,7 +1129,7 @@ describe('LibraryView', () => {
       await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(1));
     });
 
-    it('drops the count from a media chip whose medium the narrowed request never counted', async () => {
+    it('keeps all media chip totals stable after selecting a single medium', async () => {
       stubCollection([
         videoItem({ fingerprint: 'fp-v1' }),
         photoItem({ fingerprint: 'ph_0000000000000001' }),
@@ -1082,8 +1143,8 @@ describe('LibraryView', () => {
 
       await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
       expect(screen.getByTestId('library-media-photo').textContent).toContain('2');
-      expect(screen.getByTestId('library-media-video').textContent).toBe(en.library.mediaVideo);
-      expect(screen.getByTestId('library-media-all').textContent).toBe(en.library.mediaAll);
+      expect(screen.getByTestId('library-media-video').textContent).toContain('1');
+      expect(screen.getByTestId('library-media-all').textContent).toContain('3');
     });
 
     it('drops the photo count while a video-only filter hides photos from an all-media request', async () => {
@@ -1097,9 +1158,39 @@ describe('LibraryView', () => {
       fireEvent.change(gpsSelect ?? screen.getByTestId('library-filter-has-gps'), { target: { value: 'with' } });
 
       await waitFor(() => expect(screen.getByTestId('library-video-only-filter-notice')).toBeDefined());
-      await waitFor(() => expect(screen.getByTestId('library-media-photo').textContent).toBe(en.library.mediaPhoto));
-      expect(screen.getByTestId('library-media-all').textContent).toBe(en.library.mediaAll);
+      await waitFor(() => expect(screen.getByTestId('library-media-photo').textContent).toContain('0'));
+      expect(screen.getByTestId('library-media-all').textContent).toContain('1');
       expect(screen.getByTestId('library-media-video').textContent).toContain('1');
+    });
+
+    it('shows analysis details beside the photo in the Kolekcja viewer', async () => {
+      const fingerprint = 'ph_0000000000000001';
+      stubCollection([photoItem({ fingerprint })]);
+      stubPhotoDetail(fingerprint);
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      fireEvent.click(await screen.findByTestId('library-tile'));
+
+      expect(await screen.findByTestId('library-photo-viewer-details')).toBeDefined();
+      expect(await screen.findByText('Sunset over a quiet lake')).toBeDefined();
+      expect(screen.getByText(en.photos.sceneLandscape)).toBeDefined();
+      expect(screen.getByText(en.photos.qualityGood)).toBeDefined();
+      expect(screen.getByText('sunset')).toBeDefined();
+      expect(screen.getByText(/^Local · gemma3:4b · auto-detected language · /)).toBeDefined();
+    });
+
+    it('opens the viewed Kolekcja photo in Analysis through the registered photo root', async () => {
+      const fingerprint = 'ph_0000000000000001';
+      stubPhotoRoots([{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2026-01-02T10:00:00.000Z' }]);
+      stubCollection([photoItem({ fingerprint, currentPath: `/photos/trip/${fingerprint}.jpg` })]);
+      stubPhotoDetail(fingerprint);
+      const onOpenPhotoInAnalysis = vi.fn();
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onOpenPhotoInAnalysis={onOpenPhotoInAnalysis} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      fireEvent.click(await screen.findByTestId('library-tile'));
+      fireEvent.click(await screen.findByTestId('library-photo-viewer-open-analysis'));
+
+      expect(onOpenPhotoInAnalysis).toHaveBeenCalledWith('/photos', fingerprint);
     });
   });
 });
