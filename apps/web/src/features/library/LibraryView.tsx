@@ -90,6 +90,7 @@ export const LibraryView = ({
   const [media, setMediaState] = useState<LibraryMedia>(() => readMedia());
   const [sort, setSort] = useState<LibrarySort>('captured_desc');
   const [searchFocused, setSearchFocused] = useState(false);
+  const [searchDismissed, setSearchDismissed] = useState(false);
   const [photoViewerFingerprint, setPhotoViewerFingerprint] = useState<string | null>(null);
   const suggestions = useSearchSuggestions();
 
@@ -140,7 +141,10 @@ export const LibraryView = ({
     ...suggestions.recentSearches.slice(0, 10).map((label) => ({ kind: 'recent' as const, label })),
     ...suggestions.topTags.slice(0, 15).map((tag) => ({ kind: 'tag' as const, label: tag.name, count: tag.count })),
   ], [suggestions.recentSearches, suggestions.topTags]);
-  const searchDropdownOpen = searchFocused && library.query.trim().length === 0 && searchOptions.length > 0;
+  const searchDropdownOpen = searchFocused
+    && !searchDismissed
+    && library.query.trim().length === 0
+    && searchOptions.length > 0;
 
   const canGroupByFolder = media === 'video' || library.photoTotal === 0;
   const effectiveGroupBy: LibraryGroupBy = canGroupByFolder ? groupBy : 'date';
@@ -315,8 +319,11 @@ export const LibraryView = ({
           options={searchOptions}
           groupBy={(option) => option.kind === 'recent' ? dictionary.library.recentSearches : dictionary.library.topTags}
           getOptionLabel={(option) => typeof option === 'string' ? option : option.label}
+          onClose={() => setSearchDismissed(true)}
           onInputChange={(_, value, reason) => {
-            if (reason === 'input' || reason === 'clear') library.setQuery(value);
+            if (reason !== 'input' && reason !== 'clear') return;
+            library.setQuery(value);
+            setSearchDismissed(false);
           }}
           onChange={(_, value) => {
             if (value === null) return;
@@ -326,6 +333,7 @@ export const LibraryView = ({
           }}
           onFocus={() => {
             setSearchFocused(true);
+            setSearchDismissed(false);
             suggestions.onSearchFocus();
           }}
           onBlur={() => setSearchFocused(false)}

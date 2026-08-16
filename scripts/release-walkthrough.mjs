@@ -365,12 +365,10 @@ export const searchTermFromAnalyzedFilename = (filename) => {
   return tokens[0] ?? basename.toLowerCase();
 };
 
-// MUI's Autocomplete re-opens its suggestion popper whenever the input regains focus and Enter
-// does not dismiss it; left open it covers the grid and swallows the library-preview tile click.
+// An open suggestion popper covers the grid and swallows the library-preview tile click.
 export const clearLibrarySearch = async (page, input) => {
   await input.click();
   await input.fill('');
-  await input.press('Enter');
   await input.press('Escape');
   await page.locator(AUTOCOMPLETE_POPPER).first().waitFor({ state: 'hidden', timeout: SETTLE_TIMEOUT_MS });
 };
