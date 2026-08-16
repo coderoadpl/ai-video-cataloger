@@ -19,6 +19,7 @@ describe('GET /api/library/collection', () => {
         total: 0,
         videoTotal: 0,
         photoTotal: 0,
+        mediaTotals: { all: 0, video: 0, photo: 0 },
         count: 0,
         items: [],
         nextCursor: null,
@@ -128,6 +129,7 @@ describe('GET /api/library/collection', () => {
     expect(body.ok).toBe(true);
     expect(body.data.videoTotal).toBe(1);
     expect(body.data.photoTotal).toBe(1);
+    expect(body.data.mediaTotals).toEqual({ all: 2, video: 1, photo: 1 });
     expect(body.data.total).toBe(2);
     expect(body.data.items.map((item: { media: string; fingerprint: string }) => item.media).sort()).toEqual(['photo', 'video']);
   });

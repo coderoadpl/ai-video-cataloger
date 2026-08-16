@@ -277,6 +277,26 @@ describe('libraryCollection', () => {
     expect(photoOnly.ok && photoOnly.value.videoTotal).toBe(0);
   });
 
+  it('reports stable all, video, and photo totals independent of the selected media filter', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    await globalCatalog.upsertFolder(folderA);
+    await globalCatalog.upsertFile(video('v1', '2026-01-02T00:00:00.000Z'));
+    await globalCatalog.upsertFile(video('v2', '2026-01-01T00:00:00.000Z'));
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertPhoto(photo('p1', '2026-01-03T00:00:00.000Z', 'p1.jpg'));
+    await analyzePhoto(photos, 'p1');
+
+    const videoOnly = await libraryCollection(deps, {
+      query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'video', limit: 50, cursor: null,
+    });
+    const photoOnly = await libraryCollection(deps, {
+      query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'photo', limit: 50, cursor: null,
+    });
+
+    expect(videoOnly.ok && videoOnly.value.mediaTotals).toEqual({ all: 3, video: 2, photo: 1 });
+    expect(photoOnly.ok && photoOnly.value.mediaTotals).toEqual({ all: 3, video: 2, photo: 1 });
+  });
+
   it('zeroes the photo leg when a video-only filter (people/place/hasGps/folderId) is set', async () => {
     const { deps, globalCatalog, photos } = buildDeps();
     await globalCatalog.upsertFolder(folderA);

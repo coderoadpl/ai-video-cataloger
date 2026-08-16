@@ -22,9 +22,9 @@ import type { LibraryMedia } from './core/media.js';
 export type LibraryGroupBy = 'date' | 'folder';
 
 export interface LibraryMediaTotals {
-  all: number | null;
-  video: number | null;
-  photo: number | null;
+  all: number;
+  video: number;
+  photo: number;
 }
 
 const PLACE_DEBOUNCE_MS = 250;
@@ -46,8 +46,6 @@ interface FilterBarProps {
 }
 
 const withCount = (label: string, count: number): string => `${label} (${String(count)})`;
-
-const withMeasuredCount = (label: string, count: number | null): string => count === null ? label : withCount(label, count);
 
 export const FilterBar = ({
   state,
@@ -255,9 +253,9 @@ export const FilterBar = ({
           onChange={(_event, next: LibraryMedia | null) => { if (next !== null) onMediaChange(next); }}
           data-testid="library-media-filter"
         >
-          <ToggleButton value="all" data-testid="library-media-all">{withMeasuredCount(dictionary.library.mediaAll, mediaTotals.all)}</ToggleButton>
-          <ToggleButton value="video" data-testid="library-media-video">{withMeasuredCount(dictionary.library.mediaVideo, mediaTotals.video)}</ToggleButton>
-          <ToggleButton value="photo" data-testid="library-media-photo">{withMeasuredCount(dictionary.library.mediaPhoto, mediaTotals.photo)}</ToggleButton>
+          <ToggleButton value="all" data-testid="library-media-all">{withCount(dictionary.library.mediaAll, mediaTotals.all)}</ToggleButton>
+          <ToggleButton value="video" data-testid="library-media-video">{withCount(dictionary.library.mediaVideo, mediaTotals.video)}</ToggleButton>
+          <ToggleButton value="photo" data-testid="library-media-photo">{withCount(dictionary.library.mediaPhoto, mediaTotals.photo)}</ToggleButton>
         </ToggleButtonGroup>
         <ToggleButtonGroup
           size="small"

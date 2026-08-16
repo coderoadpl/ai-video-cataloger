@@ -1750,6 +1750,11 @@ export const collectionOutputSchema = z.object({
   total: z.number().int().nonnegative(),
   videoTotal: z.number().int().nonnegative(),
   photoTotal: z.number().int().nonnegative(),
+  mediaTotals: z.object({
+    all: z.number().int().nonnegative(),
+    video: z.number().int().nonnegative(),
+    photo: z.number().int().nonnegative(),
+  }),
   count: z.number().int().nonnegative(),
   items: z.array(collectionItemSchema),
   nextCursor: z.string().nullable(),

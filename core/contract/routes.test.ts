@@ -472,11 +472,13 @@ describe('route schemas', () => {
       total: 3,
       videoTotal: 2,
       photoTotal: 1,
+      mediaTotals: { all: 3, video: 2, photo: 1 },
       count: 3,
       items: [],
       nextCursor: null,
     });
     expect(parsed.nextCursor).toBeNull();
+    expect(parsed.mediaTotals).toEqual({ all: 3, video: 2, photo: 1 });
   });
 
   it('defines family-specific cheap provider check results', () => {

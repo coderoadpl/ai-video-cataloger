@@ -39,6 +39,7 @@ const buildDesktopApp = (): App => {
       acquireResource: unusedJob,
     },
     catalogFolderPaths: async () => [],
+    photoRootPaths: async () => [],
     watchFolder: async () => ({ ok: true, value: { stop: () => undefined } }),
     dispose: async () => undefined,
   };

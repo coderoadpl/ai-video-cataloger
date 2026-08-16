@@ -912,10 +912,13 @@ video-only concepts today — when any of them is set, the photo source
 contributes **zero rows** rather than silently ignoring the filter, so a
 Library user filtering by person never sees an unfiltered photo sneak into
 the page pretending to satisfy a filter it cannot express. `media: 'video' |
-'photo'` short-circuits the other source entirely (its offset never
-advances). `total` is `videoTotal + photoTotal` for the active filter set;
-`videoTotal`/`photoTotal` ride along so the UI can label media chips with
-honest per-media counts without a second round trip.
+'photo'` short-circuits the other source's page rows entirely (its offset
+never advances). `total` remains the total for the selected `media` page and
+the existing `videoTotal`/`photoTotal` fields remain the selected request's
+source totals. The additive `mediaTotals: { all, video, photo }` object is
+computed from the same query and non-media filters with the media selection
+removed, so all three chip labels stay stable without a second renderer round
+trip.
 
 **Analyzed-only photo source (W60), asymmetric with browse on purpose.**
 Videos already appear in Kolekcja only once analyzed (`globalCatalog.search`
@@ -964,11 +967,10 @@ new first page lands. `LibraryItem` is now the route's discriminated
 `video | photo` union; `LibraryGrid`, `TileMenu` and the day/folder grouping
 helpers in `features/library/core` branch on `item.media` exhaustively rather
 than assuming a video shape. Filter chips still request `media: 'all'` by
-default; `FilterBar` renders Wszystko/Filmy/Zdjęcia chips carrying the route's
-`videoTotal`/`photoTotal` — a chip drops its count whenever the current
-request did not count that medium (a narrowed `media`, or photos suppressed by
-a video-only filter), so no chip ever reports a zero it did not measure — and
-shows an inline notice — naming the active
+default; `FilterBar` renders Wszystko/Filmy/Zdjęcia chips from the route's
+`mediaTotals`, so every chip always carries the total for the current search,
+tags, dates, and other non-media filters regardless of the selected media.
+The view also shows an inline notice — naming the active
 video-only filter chip(s) — whenever one of `people`/`place`/`hasGps`/
 `folderId` is set while `media === 'all'`, matching the server's "photo
 source contributes zero rows" semantics above. Folder grouping and the
@@ -977,8 +979,10 @@ actually mixes photos in (`photoTotal > 0`) or, for relevance, whenever
 `media` isn't a single medium — both because neither operation is meaningful
 across the two shapes (photos carry no `folder`, and the two FTS engines'
 scores are not comparable, per the Ordering note above). A photo tile opens a
-self-contained `LibraryPhotoViewer` and resolves "Otwórz w analizie" against
-`GET /api/photos/tree`'s roots (`ownerPhotoRootFor`, a `features/library/core`
+self-contained `LibraryPhotoViewer`, which fetches the registered
+`photosDetail` query to show description, scene, quality, tags, and humanized
+analysis provenance alongside the image. Its "Otwórz w analizie" action
+resolves against `GET /api/photos/tree`'s roots (`ownerPhotoRootFor`, a `features/library/core`
 copy of the photos feature's `ownerRootFor` — the two features are lint-enforced
 islands, so small pure helpers are duplicated rather than cross-imported,
 matching the pre-existing `day-groups.ts`/`grid-rows.ts` split) — never a
