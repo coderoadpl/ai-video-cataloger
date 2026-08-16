@@ -12,6 +12,7 @@ export interface AnalyzerErrorMessages {
   providerTimedOut: string;
   providerRequestFailed: string;
   providerEmptyResponse: string;
+  photoResponseInvalid: string;
   rootNotFound: (path: string) => string;
   catalogRootEmpty: string;
 }
@@ -41,6 +42,10 @@ const KNOWN_ERROR_SHAPES: readonly KnownErrorShape[] = [
   { pattern: /^API provider request timed out$/, resolve: (_match, messages) => messages.providerTimedOut },
   { pattern: /^API provider request failed$/, resolve: (_match, messages) => messages.providerRequestFailed },
   { pattern: /returned an empty response$/, resolve: (_match, messages) => messages.providerEmptyResponse },
+  {
+    pattern: /^Photo batch response (?:did not contain a JSON array|was not valid JSON|did not match the expected element shape|returned \d+ elements, expected \d+|index \d+ is (?:out of range|duplicated))$/,
+    resolve: (_match, messages) => messages.photoResponseInvalid,
+  },
   { pattern: /^Root not found: (.+)$/, resolve: (match, messages) => messages.rootNotFound(match[1] ?? '') },
   { pattern: /^No catalog folders found under:/, resolve: (_match, messages) => messages.catalogRootEmpty },
 ];

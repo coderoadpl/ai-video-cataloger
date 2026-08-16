@@ -1086,6 +1086,104 @@ describe('resolvePhotoAnalyzerOptions', () => {
 });
 
 describe('runPhotoProcess', () => {
+  it('retries a single-photo parse-shape failure once and records only the successful analysis', async () => {
+    const { deps, photos, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    analyzer.photoCallScripts = [
+      { kind: 'ok', rawResponse: '[{"index":1}]' },
+      undefined,
+    ];
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: 1 });
+
+    expect(result.ok && result.value).toMatchObject({ analysed: 1, failed: 0, splitRetries: 0 });
+    expect(analyzer.analyzePhotosCalls).toHaveLength(2);
+    expect([...photos.analyses.values()]).toEqual([
+      expect.objectContaining({ fingerprint: 'ph_0000000000000001' }),
+    ]);
+    expect(photos.analysisErrors.size).toBe(0);
+  });
+
+  it('persists the intact parse-shape message after a single-photo retry also fails to parse', async () => {
+    const { deps, photos, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    analyzer.photoCallScripts = [
+      { kind: 'ok', rawResponse: '[{"index":1}]' },
+      { kind: 'ok', rawResponse: '[{"index":1}]' },
+    ];
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: 1 });
+
+    expect(result.ok && result.value).toMatchObject({ analysed: 0, failed: 1, splitRetries: 0 });
+    expect(analyzer.analyzePhotosCalls).toHaveLength(2);
+    expect(photos.analyses.size).toBe(0);
+    expect([...photos.analysisErrors.values()]).toEqual([
+      expect.objectContaining({
+        fingerprint: 'ph_0000000000000001',
+        code: 'processing_error',
+        message: 'Photo batch response did not match the expected element shape',
+      }),
+    ]);
+  });
+
+  it('uses only one single-photo retry when an analyzer failure is followed by a parse failure', async () => {
+    const { deps, photos, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    analyzer.photoCallScripts = [
+      { kind: 'error', error: appError('processing_error', 'Local AI transient failure') },
+      { kind: 'ok', rawResponse: '[{"index":1}]' },
+    ];
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: 1 });
+
+    expect(result.ok && result.value).toMatchObject({ analysed: 0, failed: 1, splitRetries: 0 });
+    expect(analyzer.analyzePhotosCalls).toHaveLength(2);
+    expect([...photos.analysisErrors.values()]).toEqual([
+      expect.objectContaining({ message: 'Photo batch response did not match the expected element shape' }),
+    ]);
+  });
+
+  it('does not retry or persist a parse failure after cancellation', async () => {
+    const { deps, photos, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    analyzer.photoCallScripts = [{ kind: 'ok', rawResponse: '[{"index":1}]' }];
+    const controller = new AbortController();
+
+    const result = await runPhotoProcess(
+      deps,
+      { root: '/work/photos', force: false, batchSize: 1 },
+      {
+        signal: controller.signal,
+        reportProgress: (progress): Promise<Result<void, AppError>> => {
+          if (progress.step === 'photo-analysis-batch-started') controller.abort();
+          return Promise.resolve(ok(undefined));
+        },
+      },
+    );
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'processing_error' } });
+    expect(analyzer.analyzePhotosCalls).toHaveLength(1);
+    expect(photos.analysisErrors.size).toBe(0);
+  });
+
+  it('splits a multi-photo parse-shape failure and analyzes each half independently', async () => {
+    const { deps, photos, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000002', '/work/photos/b.jpg');
+    analyzer.photoCallScripts = [
+      { kind: 'ok', rawResponse: '[{"index":1}]' },
+      undefined,
+      undefined,
+    ];
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: 2 });
+
+    expect(result.ok && result.value).toMatchObject({ analysed: 2, failed: 0, splitRetries: 2 });
+    expect(analyzer.analyzePhotosCalls.map((call) => call.items.length)).toEqual([2, 1, 1]);
+    expect([...photos.analyses.values()].map((analysis) => analysis.batchSize)).toEqual([1, 1]);
+    expect(photos.analysisErrors.size).toBe(0);
+  });
+
   it('retries one retryable single-photo processing failure once and records only the successful analysis', async () => {
     const { deps, photos, analyzer } = buildDeps();
     await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
@@ -1142,6 +1240,7 @@ describe('runPhotoProcess', () => {
       { kind: 'ok', rawResponse: 'not an array' },
       { kind: 'ok', rawResponse: 'not an array' },
       undefined,
+      { kind: 'ok', rawResponse: 'not an array' },
       { kind: 'ok', rawResponse: 'not an array' },
       undefined,
     ];

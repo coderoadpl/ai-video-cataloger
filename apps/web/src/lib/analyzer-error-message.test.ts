@@ -16,11 +16,38 @@ const messages: AnalyzerErrorMessages = {
   providerTimedOut: 'Przekroczono czas odpowiedzi dostawcy.',
   providerRequestFailed: 'Żądanie do dostawcy nie powiodło się.',
   providerEmptyResponse: 'Dostawca zwrócił pustą odpowiedź.',
+  photoResponseInvalid: 'Odpowiedź analizatora nie pasowała do oczekiwanego formatu. Spróbuj ponownie.',
   rootNotFound: (path) => `Nie znaleziono folderu: ${path}`,
   catalogRootEmpty: 'Brak przeanalizowanych plików w tym folderze.',
 };
 
+const englishMessages: AnalyzerErrorMessages = {
+  ...messages,
+  photoResponseInvalid: 'The analyzer response did not match the expected format. Try again.',
+};
+
 describe('formatAnalyzerError', () => {
+  it('maps photo response shape failures to localized English and Polish copy', () => {
+    const raw = 'Photo batch response did not match the expected element shape';
+
+    expect(formatAnalyzerError(raw, englishMessages)).toBe('The analyzer response did not match the expected format. Try again.');
+    expect(formatAnalyzerError(raw, messages)).toBe('Odpowiedź analizatora nie pasowała do oczekiwanego formatu. Spróbuj ponownie.');
+  });
+
+  it('maps every persisted photo response parsing failure to the same safe copy', () => {
+    const rawMessages = [
+      'Photo batch response did not contain a JSON array',
+      'Photo batch response was not valid JSON',
+      'Photo batch response returned 2 elements, expected 3',
+      'Photo batch response index 4 is out of range',
+      'Photo batch response index 1 is duplicated',
+    ];
+
+    for (const raw of rawMessages) {
+      expect(formatAnalyzerError(raw, messages)).toBe(messages.photoResponseInvalid);
+    }
+  });
+
   it('maps the legacy pre-W50 leaked shell path to the localized generic failure message', () => {
     const leaked = 'Command failed: /var/folders/s4/xw5m39vj0bvd7z1v0pcs5ssr0000gn/T/cmux-cli-shims/8DC7FBD3-E6C8-42C3-B012-BECEA9CC11AD/claude';
 
