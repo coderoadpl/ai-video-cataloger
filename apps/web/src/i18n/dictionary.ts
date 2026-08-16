@@ -113,6 +113,7 @@ export interface Dictionary {
     gettingStartedSteps: readonly string[];
     videoTags: string;
     videoInformation: string;
+    photoInformation: string;
     duration: string;
     unknown: string;
     size: string;
@@ -962,6 +963,7 @@ export const en: Dictionary = {
     ],
     videoTags: 'Video tags',
     videoInformation: 'Video Information',
+    photoInformation: 'Photo Information',
     duration: 'Duration',
     unknown: 'Unknown',
     size: 'Size',
@@ -1888,6 +1890,7 @@ export const pl: Dictionary = {
     ],
     videoTags: 'Tagi filmu',
     videoInformation: 'Informacje o filmie',
+    photoInformation: 'Informacje o zdjęciu',
     duration: 'Czas trwania',
     unknown: 'Nieznany',
     size: 'Rozmiar',

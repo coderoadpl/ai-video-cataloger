@@ -106,15 +106,16 @@ mechanical half closes with it.
 
 ## Survey — what was extracted, and what was deliberately not
 
-The shell is the only skeleton extracted. The renderer was surveyed for
-repeated page-shape patterns (`Container`, page-level `maxWidth`, centred
-cards) and the result is honest and small:
+The shell and media-detail view are the extracted skeletons. The renderer was
+surveyed for repeated page-shape patterns (`Container`, page-level `maxWidth`,
+centred cards) and the result remains small:
 
 | Pattern | Occurrences | Ruling |
 |---|---|---|
 | App chrome (100vh column, sidebar rail, content region, terminal drawer) | 1, and it is the shell | extracted → `components/layout/AppShell.tsx` |
+| Media detail (responsive padding, 1180px cap, flexible content + 440px preview, below-content region) | 2 (`VideoDetails`, `PhotosWorkspace`) | extracted → `components/layout/MediaDetailLayout.tsx`; translated, domain-aware content stays in each feature |
 | Centred card page (`display: grid; placeItems: center` + a `maxWidth` `Paper`) | 1 (`RootErrorFallback.tsx`) | **not** extracted — one occurrence names nothing; the second one is the trigger |
-| Padded content page (`p: 3–4` + column flex + a content `maxWidth`) | 3 (`VideoDetails`, `DetailsPanel`, `PeopleView`), with three different paddings and three different max widths | **not** extracted — they are not the same skeleton, and unifying them would be a redesign |
+| Other padded content pages (`p: 3–4` + column flex + a content `maxWidth`) | 2 (`DetailsPanel`, `PeopleView`), with different paddings and max widths | **not** extracted — they are not the media-detail skeleton, and unifying them would be a redesign |
 | `Container` / `AppBar` / `Drawer` / `Toolbar` | 0 | nothing to move; the ban in (d) keeps it that way |
 
 The foundation rejected a seven-primitive catalog as one app's output; the same
@@ -129,6 +130,11 @@ reasoning forbids us inventing primitives no feature needs.
   `features/shell/` keeps its hooks (`use-shell.ts`, `use-menu-events.ts`) —
   they are server/bridge state, not chrome — and `components/ui/AppLayout.tsx`
   is gone.
+- `components/layout/MediaDetailLayout.tsx` holds the shared video/photo detail
+  shape. It receives pre-rendered main, media and optional below-content slots
+  plus test attributes; it does not import features, contracts, i18n or query
+  state. The media slot is visually first at narrow widths and becomes the
+  fixed 440px right column at large widths.
 - `routes/index.tsx` renders `AppLayout`; the route stays thin and unchanged in
   behaviour. Every route is pixel-equivalent: this is a structural refactor.
 - The enforcement matrix for rule (a): **TYPE** n/a (an import edge is not a

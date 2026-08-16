@@ -357,7 +357,15 @@ export const IndexRoute = () => {
         </Box>
       </Box>
       <Box sx={{ display: analysisMedia === 'photos' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <PhotosWorkspace active={mode === 'analysis' && analysisMedia === 'photos'} state={photosAnalysis} />
+        <PhotosWorkspace
+          active={mode === 'analysis' && analysisMedia === 'photos'}
+          state={photosAnalysis}
+          onSearchTag={(tag) => {
+            setLibrarySeed({ kind: 'tag', tag });
+            setMode('library');
+            setLibrarySurface('collection');
+          }}
+        />
       </Box>
     </Box>
   );

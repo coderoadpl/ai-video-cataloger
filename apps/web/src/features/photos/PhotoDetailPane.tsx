@@ -1,12 +1,13 @@
-import { Box, Button, Chip, CircularProgress, Divider, MenuItem, Paper, Select, Typography } from '@mui/material';
+import { Box, Button, Chip, CircularProgress, MenuItem, Paper, Select, Typography } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import { CardHeader } from '../../components/ui/CardHeader.js';
 import { ClockIcon } from '../../components/ui/icons.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
-import { formatCapturedAt } from '../../lib/format.js';
-import type { CapturedAtSource, PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
+import type { PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
 import { analysisProvenanceText } from './analysis-provenance.js';
+import { PhotoMetadataCard } from './PhotoMetadataCard.js';
+import { PhotoStatusBadge, type PhotoStatus } from './PhotoStatusBadge.js';
 import type { PhotoDetail, PhotoVariantRecord } from './use-photos-analysis.js';
 
 interface PhotoDetailPaneProps {
@@ -15,6 +16,7 @@ interface PhotoDetailPaneProps {
   variants: PhotoVariantRecord[];
   onSelectVariant: (configId: string | null) => void;
   onAnalyze: () => void;
+  onSearchTag?: ((tag: string) => void) | undefined;
   isBusy: boolean;
   canAnalyze: boolean;
   analyzeProgress: { current: number; total: number } | null;
@@ -57,25 +59,13 @@ const sceneLabel = (dictionary: Dictionary, scene: string): string =>
 const qualityLabel = (dictionary: Dictionary, quality: string): string =>
   isPhotoQuality(quality) ? dictionary.photos[QUALITY_LABEL_KEYS[quality]] : quality;
 
-const capturedAtSourceLabel = (dictionary: Dictionary, source: CapturedAtSource): string => {
-  switch (source) {
-    case 'exif_offset':
-      return dictionary.photos.capturedSourceExifOffset;
-    case 'exif_gps_time':
-      return dictionary.photos.capturedSourceExifGpsTime;
-    case 'exif_local_assumed':
-      return dictionary.photos.capturedSourceExifLocalAssumed;
-    case 'file_mtime':
-      return dictionary.photos.capturedSourceFileMtime;
-  }
-};
-
 export const PhotoDetailPane = ({
   detail,
   isLoading,
   variants,
   onSelectVariant,
   onAnalyze,
+  onSearchTag,
   isBusy,
   canAnalyze,
   analyzeProgress,
@@ -92,34 +82,27 @@ export const PhotoDetailPane = ({
 
   if (detail === null) return null;
 
-  const { photo, sightings, ownerPath, analysis } = detail;
+  const { photo, sightings, analysis } = detail;
+  const statuses: PhotoStatus[] = [analysis === null ? 'pending' : 'analysed'];
+  if (sightings.length > 1) statuses.push('duplicate');
 
   return (
-    <Box data-testid="photos-detail" sx={{ display: 'flex', flexDirection: 'column', gap: 1, p: 1 }}>
-      <Typography variant="subtitle1" noWrap title={photo.fileName}>{photo.fileName}</Typography>
-      <Row label={dictionary.photos.detailDimensions} value={photo.width === null || photo.height === null ? null : `${String(photo.width)}×${String(photo.height)}`} />
-      <Row label={dictionary.photos.detailCamera} value={[photo.cameraMake, photo.cameraModel].filter((part) => part !== null).join(' ') || null} />
-      <Row label={dictionary.photos.detailLens} value={photo.lens} />
-      <Row label={dictionary.photos.detailIso} value={photo.iso === null ? null : String(photo.iso)} />
-      <Row label={dictionary.photos.detailAperture} value={photo.fNumber === null ? null : `f/${String(photo.fNumber)}`} />
-      <Row label={dictionary.photos.detailExposure} value={photo.exposureTime === null ? null : `${String(photo.exposureTime)}s`} />
-      <Row label={dictionary.photos.detailRating} value={photo.exifRating === null ? null : String(photo.exifRating)} />
-      <Box>
-        <Typography variant="caption" color="text.secondary">{dictionary.photos.detailCaptured}</Typography>
-        <Typography variant="body2">
-          {formatCapturedAt(photo.capturedAt, dictionary.locale) ?? dictionary.photos.unknownDate}
-          {photo.capturedAtSource === null ? '' : ` (${capturedAtSourceLabel(dictionary, photo.capturedAtSource)})`}
-        </Typography>
+    <Box data-testid="photos-detail" sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+      <Box data-testid="photos-detail-header" sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+        <Typography variant="h1" noWrap title={photo.fileName}>{photo.fileName}</Typography>
+        <Typography variant="caption" noWrap title={photo.currentPath}>{photo.currentPath}</Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+          {statuses.map((status) => (
+            <PhotoStatusBadge
+              key={status}
+              status={status}
+              dictionary={dictionary}
+              testId={`photos-detail-badge-${status}`}
+            />
+          ))}
+        </Box>
       </Box>
-      <Divider />
-      <Row label={dictionary.photos.detailOwnerPath} value={ownerPath} />
-      <Typography variant="caption" color="text.secondary">{dictionary.photos.detailAlsoAt(sightings.length)}</Typography>
-      {sightings.map((sighting) => (
-        <Typography key={sighting.currentPath} variant="caption" noWrap title={sighting.currentPath}>
-          {sighting.currentPath}
-        </Typography>
-      ))}
-      <Divider />
+      <PhotoMetadataCard detail={detail} />
       {analysis === null ? (
         photo.proxyState === 'done' ? (
           <Paper
@@ -166,6 +149,8 @@ export const PhotoDetailPane = ({
                   key={tag}
                   label={tag}
                   size="small"
+                  clickable={onSearchTag !== undefined}
+                  onClick={onSearchTag === undefined ? undefined : () => onSearchTag(tag)}
                   data-testid="photo-tag-chip"
                 />
               ))}

@@ -1,5 +1,5 @@
 import { ThemeProvider } from '@mui/material/styles';
-import { fireEvent, screen } from '@testing-library/react';
+import { fireEvent, screen, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 import type { z } from 'zod';
 
@@ -195,6 +195,33 @@ describe('PhotosWorkspace', () => {
     expect(screen.queryByTestId('photos-workspace-empty')).toBeNull();
   });
 
+  it('renders the photo filename, path, and pending status in the detail header', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001' })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({ items, selectedFingerprint: firstItem.fingerprint, detail: detailFor(firstItem) })}
+    />);
+
+    expect(screen.getByRole('heading', { level: 1, name: firstItem.fileName })).toBeDefined();
+    expect(within(screen.getByTestId('photos-detail-header')).getByTitle(firstItem.currentPath)).toBeDefined();
+    expect(screen.getByTestId('photos-detail-badge-pending').textContent).toContain('Not analysed yet.');
+  });
+
+  it('renders photo information in an outlined metadata card with icon rows', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001', width: 4032, height: 3024 })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({ items, selectedFingerprint: firstItem.fingerprint, detail: detailFor(firstItem) })}
+    />);
+
+    expect(screen.getByRole('heading', { name: 'Photo Information' })).toBeDefined();
+    expect(screen.getByTestId('photo-metadata-row-dimensions').textContent).toContain('4032×3024');
+  });
+
   it('renders the captured-at date formatted, never as a raw ISO timestamp', () => {
     const items = [item({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-08-10T17:46:06.744Z' })];
     const firstItem = items[0];
@@ -280,12 +307,14 @@ describe('PhotosWorkspace', () => {
     expect(analyzePhotos).not.toHaveBeenCalled();
   });
 
-  it('renders tag chips without a dead click target — search over photos lives in the Library', () => {
+  it('uses a photo tag chip to request a Library tag search', () => {
     const items = [item({ fingerprint: 'ph_0000000000000001', analysed: true })];
     const firstItem = items[0];
     if (firstItem === undefined) throw new Error('missing item');
+    const onSearchTag = vi.fn();
     renderThemed(<PhotosWorkspace
       active
+      onSearchTag={onSearchTag}
       state={baseState({
         items,
         selectedFingerprint: 'ph_0000000000000001',
@@ -294,7 +323,9 @@ describe('PhotosWorkspace', () => {
     />);
 
     const chip = screen.getByTestId('photo-tag-chip');
-    expect(chip.className).not.toContain('clickable');
+    fireEvent.click(chip);
+    expect(chip.className).toContain('clickable');
+    expect(onSearchTag).toHaveBeenCalledWith('bicycle');
   });
 
   it('renders nothing when inactive', () => {

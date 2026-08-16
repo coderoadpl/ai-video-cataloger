@@ -650,7 +650,7 @@ features — no new lint rules needed, the existing ones already fence it
 
 The Analysis media toggle's Zdjęcia face is `PhotosSidebar` (navigation,
 scope, badges, folder actions) + `PhotosWorkspace` (photo detail: proxy
-preview, EXIF, provenance, description/tags, variant picker, analyze strip),
+preview, metadata, provenance, description/tags, variant picker, analyze strip),
 both consuming one lifted `use-photos-analysis.ts` hook instance
 (`usePhotosAnalysis`; root/scope/selection
 state and the analysis-only queries — `photosDetail`, `photosVariants`,
@@ -662,15 +662,18 @@ thumbnail rows carrying badges derived from `photoBadges` (`analysed`,
 `duplicate`, `proxyFailed`, `exifMissing`, `missing`) — parity with
 `CatalogSidebar`/`VideoList`. With zero scanned roots it renders an honest
 empty state with a scan CTA, never falling back to the video list.
-`PhotosWorkspace` mounts `FacesIndexAction` at its top (unchanged
-active/folder/addLine/lockReason semantics, supplied by the route via a
-`topStrip` slot to keep the cross-feature import at the route composition
-root, not inside `features/photos/`), shows a placeholder
-(`photos-workspace-empty`) when nothing is selected, and otherwise the
-selected photo's proxy preview (click reopens the existing `PhotoViewer`
+`PhotosWorkspace` shows a placeholder (`photos-workspace-empty`) when nothing
+is selected, and otherwise renders the selected photo through the shared
+structure-only `MediaDetailLayout`: its proxy
+preview occupies the 440px media slot (click reopens the existing `PhotoViewer`
 overlay, prev/next following the sidebar's current item order via
-`flattenOrder`/`adjacentFingerprint` over `sidebarSections`) plus
-`PhotoDetailPane` with its Analysis actions and variant picker.
+`flattenOrder`/`adjacentFingerprint` over `sidebarSections`), while
+`PhotoDetailPane` occupies the main slot. The pane mirrors the video header
+hierarchy with filename, path and shared status-badge styling; its outlined
+"Photo Information" card presents EXIF, capture provenance, owner path and
+sightings as icon rows. Analysis results, provenance and the variant picker
+remain photo-owned, and tag chips route into Library tag search through a
+callback bound at the route composition.
 
 **Two independent analyze actions, both surfaced by `usePhotosAnalysis` (W56).**
 `PhotosScopeToolbar`'s "Przetwórz" stays root-wide: under the `'folder'` scope
