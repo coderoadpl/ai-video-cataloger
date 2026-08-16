@@ -36,6 +36,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Photo analysis now accepts comma- or semicolon-separated string tags from local models as validated non-empty tag arrays, and its prompt explicitly requires JSON array syntax (Wave L).
 - Single-photo analyzer responses that fail parsing now receive one fresh analysis-and-parse attempt, while multi-photo parse failures continue through recursive batch splitting.
 - Persisted photo-response parsing failures now render as localized English or Polish guidance while retaining the original diagnostic message in storage.
 - Failed photo analyses now persist across restarts, appear in photo badges and detail retry cards with sanitized messages, and produce honest per-file, partial-run, and all-failed reporting.

@@ -21,10 +21,17 @@ const coerceToUnion = <const T extends readonly string[]>(values: T, fallback: T
     return match ?? fallback;
   });
 
+const tagsArraySchema = z.array(z.string().trim().min(1)).min(1).max(12);
+const stringTagsSchema = z.string()
+  .transform((value) => [...new Set(
+    value.split(/[;,]/).map((segment) => segment.trim()).filter((segment) => segment.length > 0),
+  )].slice(0, 12))
+  .pipe(tagsArraySchema);
+
 export const photoAnalysisElementSchema = z.object({
   index: z.number().int().min(1),
   description: z.string().trim().min(1),
-  tags: z.array(z.string().trim().min(1)).min(1).max(12),
+  tags: z.union([tagsArraySchema, stringTagsSchema]),
   scene: coerceToUnion(PHOTO_SCENES, 'other'),
   quality: coerceToUnion(PHOTO_QUALITIES, 'other'),
 });
@@ -66,7 +73,7 @@ export const buildPhotoAnalyzerPrompt = (input: {
   return `You are analyzing a batch of ${String(input.items.length)} photos.\n\n${accessBlock}`
     + 'For each photo, in the same order, write one JSON object with these keys: '
     + '"index" (the number above), "description" (at most 2 sentences on what the photo actually shows), '
-    + '"tags" (3-8 short kebab-case tags), "scene" (one of '
+    + '"tags" (a JSON array of 3-8 short kebab-case strings, for example ["tag-one", "tag-two"], never a comma-separated string), "scene" (one of '
     + `${PHOTO_SCENES.join(', ')}), "quality" (one of ${PHOTO_QUALITIES.join(', ')}).\n\n`
     + 'Respond with exactly one JSON array containing one object per photo, nothing before or after it.'
     + photoLanguageInstruction({
