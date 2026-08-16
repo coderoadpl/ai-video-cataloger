@@ -12,6 +12,7 @@ import {
 
 import { CardHeader } from '../../components/ui/CardHeader.js';
 import { StatusBadge } from '../../components/ui/StatusBadge.js';
+import { VariantControl } from '../../components/ui/VariantControl.js';
 import { CheckCircleIcon, ErrorIcon } from '../../components/ui/icons.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -110,21 +111,23 @@ export const VariantSwitcher = ({ state }: { state: VariantsState }) => {
         {dictionary.details.variants.compare}
       </Button>
       {state.previewVariant === null || state.previewVariant.selected ? null : (
-        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
-          <Button
-            variant="contained"
-            size="small"
-            disabled={state.selectingConfigId === state.previewVariant.configId}
-            onClick={state.usePreviewAsSelected}
-            data-testid="use-preview-as-selected"
-          >
-            {state.selectingConfigId === state.previewVariant.configId
-              ? <CircularProgress size={14} color="inherit" />
-              : null}
-            {dictionary.details.variants.useAsSelected}
-          </Button>
-          <Typography variant="caption">{dictionary.details.variants.selectionImpact}</Typography>
-        </Box>
+        <VariantControl
+          control={(
+            <Button
+              variant="contained"
+              size="small"
+              disabled={state.selectingConfigId === state.previewVariant.configId}
+              onClick={state.usePreviewAsSelected}
+              data-testid="use-preview-as-selected"
+            >
+              {state.selectingConfigId === state.previewVariant.configId
+                ? <CircularProgress size={14} color="inherit" />
+                : null}
+              {dictionary.details.variants.useAsSelected}
+            </Button>
+          )}
+          caption={dictionary.details.variants.selectionImpact}
+        />
       )}
       {state.actionError === null ? null : (
         <Alert severity="error">{dictionary.details.variants.actionError}</Alert>

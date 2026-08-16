@@ -2,6 +2,7 @@ import { useCallback, type ReactNode } from 'react';
 import { Alert, Box, Button, Chip, CircularProgress, Paper, Typography } from '@mui/material';
 
 import { VariantCompareLayout } from '../../components/layout/VariantCompareLayout.js';
+import { humanizedVariantLanguage } from '../../components/ui/VariantControl.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { type DetailsVideo } from './details-video.js';
 import { FrameGallery } from './FrameGallery.js';
@@ -69,7 +70,9 @@ const VariantColumn = ({
         {descriptor === null ? null : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.25 }}>
             <Typography variant="caption">
-              {dictionary.details.variants.outputLanguage(descriptor.output_language)}
+              {dictionary.details.variants.outputLanguage(
+                humanizedVariantLanguage(descriptor.output_language, dictionary),
+              )}
             </Typography>
             <Typography variant="caption">
               {dictionary.details.variants.promptVersion(descriptor.promptVersion)}

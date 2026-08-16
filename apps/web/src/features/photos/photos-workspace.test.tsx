@@ -190,6 +190,7 @@ describe('PhotosWorkspace', () => {
     expect(screen.getByTestId('photos-analysis-detail')).toBeDefined();
     const strip = screen.getByTestId('photos-analyze-strip');
     expect(strip).toBeDefined();
+    expect(strip.getAttribute('data-detail-status-card')).toBe('true');
     expect(strip.getAttribute('role')).not.toBe('alert');
     expect(screen.getByTestId('photos-analyze-action').textContent).toBe('Analyze');
     expect(screen.queryByTestId('photos-workspace-empty')).toBeNull();
@@ -220,6 +221,7 @@ describe('PhotosWorkspace', () => {
 
     expect(screen.getByRole('heading', { name: 'Photo Information' })).toBeDefined();
     expect(screen.getByTestId('photo-metadata-row-dimensions').textContent).toContain('4032×3024');
+    expect(document.querySelectorAll('[data-detail-metadata-row="true"]')).toHaveLength(4);
   });
 
   it('renders the captured-at date formatted, never as a raw ISO timestamp', () => {
@@ -255,6 +257,11 @@ describe('PhotosWorkspace', () => {
     const picker = screen.getByTestId('photo-variant-picker');
     expect(screen.getByText('Analysis variant')).toBeDefined();
     expect(screen.queryByText('2 variants')).toBeNull();
+    const control = screen.getByTestId('photo-variant-control');
+    const caption = within(control).getByTestId('photo-variant-caption');
+    expect(control.contains(picker)).toBe(true);
+    expect(caption.textContent).toMatch(/^Agent harness · claude-code · English · /);
+    expect(Array.from(control.children).indexOf(caption)).toBeGreaterThan(Array.from(control.children).indexOf(picker));
     const combobox = picker.querySelector('[role="combobox"]');
     if (combobox === null) throw new Error('missing combobox element');
     fireEvent.mouseDown(combobox);
@@ -262,6 +269,28 @@ describe('PhotosWorkspace', () => {
 
     expect(selectVariant).toHaveBeenCalledWith('cfg_ba21dc43fe65');
     expect(screen.queryByTestId('photos-analyze-strip')).toBeNull();
+  });
+
+  it('renders description, scene, and quality in the shared summary-card pattern while tags stay outside', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001', analysed: true })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({
+        items,
+        selectedFingerprint: firstItem.fingerprint,
+        detail: { ...detailFor(firstItem), analysis: analysedVariant },
+      })}
+    />);
+
+    const card = screen.getByTestId('photo-description-card');
+    expect(within(card).getByRole('heading', { name: 'Description' })).toBeDefined();
+    expect(within(card).getByText('a red bicycle')).toBeDefined();
+    expect(within(card).getByText('Urban')).toBeDefined();
+    expect(within(card).getByText('Good')).toBeDefined();
+    expect(within(card).queryByTestId('photo-tag-chip')).toBeNull();
+    expect(screen.getByTestId('photo-tag-chip')).toBeDefined();
   });
 
   it('disables the analyze action instead of a silent no-op when canAnalyzeSelectedPhoto is false', () => {
