@@ -37,6 +37,16 @@ const photoItem = (overrides: Partial<PhotoListItem> & { fingerprint: string; cu
   ...overrides,
 });
 
+type Gate = { wait: Promise<void>; open: () => void };
+
+const createGate = (): Gate => {
+  let open = (): void => undefined;
+  const wait = new Promise<void>((resolve) => {
+    open = resolve;
+  });
+  return { wait, open };
+};
+
 const stubTree = (roots: RootFixture[]) => {
   currentRoots = roots;
   server.use(http.get('/api/photos/tree', () =>
@@ -587,10 +597,11 @@ describe('usePhotosAnalysis', () => {
     server.use(http.get('/api/photos/detail', () => HttpResponse.json({ ok: false, error: { code: 'not_found', message: 'no detail' } })));
     server.use(http.get('/api/photos/variants', () => HttpResponse.json({ ok: true, data: { variants: [] } })));
 
+    const completion = createGate();
     let statusCall = 0;
     server.use(
       http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
-      http.get('/api/jobs/status', () => {
+      http.get('/api/jobs/status', async () => {
         statusCall += 1;
         if (statusCall === 1) {
           return HttpResponse.json({
@@ -609,6 +620,7 @@ describe('usePhotosAnalysis', () => {
             },
           });
         }
+        await completion.wait;
         return HttpResponse.json({
           ok: true,
           data: {
@@ -638,6 +650,11 @@ describe('usePhotosAnalysis', () => {
 
     await waitFor(() => expect(result.current.processingFingerprints.has('a')).toBe(true));
     expect(result.current.processingFingerprints.has('b')).toBe(false);
+
+    await act(async () => {
+      completion.open();
+      await completion.wait;
+    });
 
     await waitFor(() => expect(result.current.activeJobLabel).toBe(null));
     expect(result.current.processingFingerprints.size).toBe(0);
