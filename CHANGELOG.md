@@ -14,52 +14,134 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.22] - 2026-08-16
+
 ### Changed
 
 - Video and photo detail panes now consume shared metadata-row, status-card,
   and variant-control primitives, keeping row typography, neutral status-card
-  treatment, and control-caption spacing aligned across both media (W68b).
+  treatment, and control-caption spacing aligned across both media (W68b)
+  ([`f1d49bf`](https://github.com/coderoadpl/ai-video-cataloger/commit/f1d49bf0c45409cf3124012cc09160a3d83638f4)).
 - Analyzed photo details now present description, scene, and quality in an
   outlined Description card while keeping clickable tags separate, and both
   photo provenance and video output-language captions use humanized language
-  names (W68b).
+  names (W68b)
+  ([`f1d49bf`](https://github.com/coderoadpl/ai-video-cataloger/commit/f1d49bf0c45409cf3124012cc09160a3d83638f4)).
 - Automatic analysis-language provenance now says that it follows the app
   language in both English and Polish instead of claiming language detection
-  (W68b).
-- Analyzer `output_language: auto` now follows the configured app UI language for video descriptions, filenames, tags, and photo descriptions without changing stored variant identity (Wave D: N2).
-- The Kolekcja photo viewer now shows description, scene, quality, tags, humanized analysis provenance, and an action that opens the photo in Analysis (N9).
-- Analysis → Photos now automatically rescans the current open folder after debounced filesystem changes and refreshes its photo tree and sidebar when the scan completes (N14).
+  (W68b)
+  ([`f1d49bf`](https://github.com/coderoadpl/ai-video-cataloger/commit/f1d49bf0c45409cf3124012cc09160a3d83638f4)).
+- Analyzer `output_language: auto` now follows the configured app UI language
+  for video descriptions, filenames, tags, and photo descriptions without
+  changing stored variant identity (Wave D: N2)
+  ([`7c818f9`](https://github.com/coderoadpl/ai-video-cataloger/commit/7c818f9ccd76656397a9de2798ebed06cfedabd9)).
+- The Kolekcja photo viewer now shows description, scene, quality, tags,
+  humanized analysis provenance, and an action that opens the photo in
+  Analysis (N9)
+  ([`6f95b0a`](https://github.com/coderoadpl/ai-video-cataloger/commit/6f95b0a60fdcc8960e292911eecfa3e0c115ef31)).
+- Analysis → Photos now automatically rescans the current open folder after
+  debounced filesystem changes and refreshes its photo tree and sidebar when
+  the scan completes (N14)
+  ([`126338d`](https://github.com/coderoadpl/ai-video-cataloger/commit/126338dc75255cec6bd2668ee1106c74524c5840)).
 
 ### Removed
 
-- The manual "Rescan current folder" entry has been removed from the Photos open-folder menu because current-folder changes now trigger an automatic rescan (N14).
+- The manual "Rescan current folder" entry has been removed from the Photos
+  open-folder menu because current-folder changes now trigger an automatic
+  rescan (N14)
+  ([`126338d`](https://github.com/coderoadpl/ai-video-cataloger/commit/126338dc75255cec6bd2668ee1106c74524c5840)).
 
 ### Fixed
 
-- Photo analysis now accepts comma- or semicolon-separated string tags from local models as validated non-empty tag arrays, and its prompt explicitly requires JSON array syntax (Wave L).
-- Single-photo analyzer responses that fail parsing now receive one fresh analysis-and-parse attempt, while multi-photo parse failures continue through recursive batch splitting.
-- Persisted photo-response parsing failures now render as localized English or Polish guidance while retaining the original diagnostic message in storage.
-- Failed photo analyses now persist across restarts, appear in photo badges and detail retry cards with sanitized messages, and produce honest per-file, partial-run, and all-failed reporting.
-- Photo analysis now retries a retryable single-photo processing failure exactly once before persisting the failure, without changing batch split-retry accounting.
-- Kolekcja folder filtering now follows photo membership through either ownership or sightings while unfiltered totals still count each photo identity once.
-- Automatic video and photo analyses now record resolved output and tag languages and rerun the same variant after the UI language changes, while explicit languages and migrated rows without provenance remain unaffected.
-- Folder snapshots now round-trip resolved video output and tag languages, so an auto-language variant recovered from a snapshot reruns after the UI language changes while older snapshot rows retain legacy-null freshness semantics.
-- `photos forget` now removes forgotten scan-root provenance, revoking both root listing and reveal authorization.
-- A watched photo rescan that fails under an external catalog lock now retains the pending change and retries with bounded backoff without requiring another filesystem event.
-- Photo grid-thumbnail backfill now invalidates photo and collection queries after every terminal or polling outcome, including a disappeared job.
-- Electron renderer transport now rejects a pending bridge request with `AbortError` when its signal aborts, allowing polling teardown to settle without post-unmount effects while the already-dispatched main-process request finishes independently.
-- Face-index controls and English and Polish copy now accurately gate and describe the current video-only pipeline instead of promising photo-face indexing.
-- Analysis copy now uses coherent terminology and American English spelling across language selection, readiness, status, cancellation, wizard, badge, and Library surfaces.
-- Polish photo-tree, Gemini spend, analysis summary, and terminal counts now use count-aware numeral forms, with correct English singular and plural summary wording.
-- Video and photo scope toggles now explain whether they are disabled because analysis is busy or because the active medium has no subfolders.
-- Map descriptions and accessibility labels now cover both videos and photos, including media-neutral cluster counts.
-- Kolekcja now refreshes photo tiles after the queued grid-thumbnail backfill actually completes, so a tile mounted before generation does not retain a filename placeholder when its thumbnail exists (N1).
-- Biblioteka's Folder filter now returns matching videos and photos without a photos-hidden notice; people, place, and GPS filters remain video-only (N10).
-- "Show in Finder" now admits Kolekcja photos under registered photo roots while preserving the existing path-scope guard (N7).
-- Kolekcja's Wszystko, Filmy, and Zdjęcia chips now keep stable totals for the active non-media filters when the media selection changes (N8).
-- Photo analysis provenance now renders configured provider names and localized English, Polish, and automatic output-language labels while title-casing unknown provider IDs (N6).
-- Analysis wording, photo variant-picker labeling, and fingerprint-distinct photo tree counts now stay coherent across Polish analysis surfaces and duplicate sightings (N11).
-- In-progress photo rows now keep their normal thumbnail placeholder and show the same orange analyzing status-badge treatment as video rows (N13).
+- Photo analysis now accepts comma- or semicolon-separated string tags from
+  local models as validated non-empty tag arrays, and its prompt explicitly
+  requires JSON array syntax (Wave L)
+  ([`9560e02`](https://github.com/coderoadpl/ai-video-cataloger/commit/9560e02ecbfe67d52d8a5d227aafe37952c82d80)).
+- Single-photo analyzer responses that fail parsing now receive one fresh
+  analysis-and-parse attempt, while multi-photo parse failures continue
+  through recursive batch splitting
+  ([`ddd956b`](https://github.com/coderoadpl/ai-video-cataloger/commit/ddd956bd529ddbe5794f12303b2f96d3d066d758)).
+- Persisted photo-response parsing failures now render as localized English or
+  Polish guidance while retaining the original diagnostic message in storage
+  ([`ddd956b`](https://github.com/coderoadpl/ai-video-cataloger/commit/ddd956bd529ddbe5794f12303b2f96d3d066d758)).
+- Failed photo analyses now persist across restarts, appear in photo badges
+  and detail retry cards with sanitized messages, and produce honest per-file,
+  partial-run, and all-failed reporting
+  ([`ce7ceb6`](https://github.com/coderoadpl/ai-video-cataloger/commit/ce7ceb61149f85e1705cd68ab85eb04d34baf2c2)).
+- Photo analysis now retries a retryable single-photo processing failure
+  exactly once before persisting the failure, without changing batch
+  split-retry accounting
+  ([`ce7ceb6`](https://github.com/coderoadpl/ai-video-cataloger/commit/ce7ceb61149f85e1705cd68ab85eb04d34baf2c2)).
+- Kolekcja folder filtering now follows photo membership through either
+  ownership or sightings while unfiltered totals still count each photo
+  identity once
+  ([`ebfc808`](https://github.com/coderoadpl/ai-video-cataloger/commit/ebfc808dc86a898080ab84bb93fc1715799255d1)).
+- Automatic video and photo analyses now record resolved output and tag
+  languages and rerun the same variant after the UI language changes, while
+  explicit languages and migrated rows without provenance remain unaffected
+  ([`ebfc808`](https://github.com/coderoadpl/ai-video-cataloger/commit/ebfc808dc86a898080ab84bb93fc1715799255d1)).
+- Folder snapshots now round-trip resolved video output and tag languages, so
+  an auto-language variant recovered from a snapshot reruns after the UI
+  language changes while older snapshot rows retain legacy-null freshness
+  semantics
+  ([`de1ab47`](https://github.com/coderoadpl/ai-video-cataloger/commit/de1ab47ba44cebc2425cdf6e0b67118a776424fb)).
+- `photos forget` now removes forgotten scan-root provenance, revoking both
+  root listing and reveal authorization
+  ([`ebfc808`](https://github.com/coderoadpl/ai-video-cataloger/commit/ebfc808dc86a898080ab84bb93fc1715799255d1)).
+- A watched photo rescan that fails under an external catalog lock now retains
+  the pending change and retries with bounded backoff without requiring
+  another filesystem event
+  ([`ebfc808`](https://github.com/coderoadpl/ai-video-cataloger/commit/ebfc808dc86a898080ab84bb93fc1715799255d1)).
+- Photo grid-thumbnail backfill now invalidates photo and collection queries
+  after every terminal or polling outcome, including a disappeared job
+  ([`ebfc808`](https://github.com/coderoadpl/ai-video-cataloger/commit/ebfc808dc86a898080ab84bb93fc1715799255d1)).
+- Electron renderer transport now rejects a pending bridge request with
+  `AbortError` when its signal aborts, allowing polling teardown to settle
+  without post-unmount effects while the already-dispatched main-process
+  request finishes independently
+  ([`de1ab47`](https://github.com/coderoadpl/ai-video-cataloger/commit/de1ab47ba44cebc2425cdf6e0b67118a776424fb)).
+- Face-index controls and English and Polish copy now accurately gate and
+  describe the current video-only pipeline instead of promising photo-face
+  indexing
+  ([`ebfc808`](https://github.com/coderoadpl/ai-video-cataloger/commit/ebfc808dc86a898080ab84bb93fc1715799255d1)).
+- Analysis copy now uses coherent terminology and American English spelling
+  across language selection, readiness, status, cancellation, wizard, badge,
+  and Library surfaces
+  ([`0d1dbf1`](https://github.com/coderoadpl/ai-video-cataloger/commit/0d1dbf1186555557ae425b8a3af4378ab425efbe)).
+- Polish photo-tree, Gemini spend, analysis summary, and terminal counts now
+  use count-aware numeral forms, with correct English singular and plural
+  summary wording
+  ([`0d1dbf1`](https://github.com/coderoadpl/ai-video-cataloger/commit/0d1dbf1186555557ae425b8a3af4378ab425efbe)).
+- Video and photo scope toggles now explain whether they are disabled because
+  analysis is busy or because the active medium has no subfolders
+  ([`0d1dbf1`](https://github.com/coderoadpl/ai-video-cataloger/commit/0d1dbf1186555557ae425b8a3af4378ab425efbe)).
+- Map descriptions and accessibility labels now cover both videos and photos,
+  including media-neutral cluster counts
+  ([`0d1dbf1`](https://github.com/coderoadpl/ai-video-cataloger/commit/0d1dbf1186555557ae425b8a3af4378ab425efbe)).
+- Kolekcja now refreshes photo tiles after the queued grid-thumbnail backfill
+  actually completes, so a tile mounted before generation does not retain a
+  filename placeholder when its thumbnail exists (N1)
+  ([`97063e3`](https://github.com/coderoadpl/ai-video-cataloger/commit/97063e31840bd1016ad8e3014cd99a451f102a54)).
+- Biblioteka's Folder filter now returns matching videos and photos without a
+  photos-hidden notice; people, place, and GPS filters remain video-only (N10)
+  ([`97063e3`](https://github.com/coderoadpl/ai-video-cataloger/commit/97063e31840bd1016ad8e3014cd99a451f102a54)).
+- "Show in Finder" now admits Kolekcja photos under registered photo roots
+  while preserving the existing path-scope guard (N7)
+  ([`6f95b0a`](https://github.com/coderoadpl/ai-video-cataloger/commit/6f95b0a60fdcc8960e292911eecfa3e0c115ef31)).
+- Kolekcja's Wszystko, Filmy, and Zdjęcia chips now keep stable totals for the
+  active non-media filters when the media selection changes (N8)
+  ([`6f95b0a`](https://github.com/coderoadpl/ai-video-cataloger/commit/6f95b0a60fdcc8960e292911eecfa3e0c115ef31)).
+- Photo analysis provenance now renders configured provider names and
+  localized English, Polish, and automatic output-language labels while
+  title-casing unknown provider IDs (N6)
+  ([`64b880a`](https://github.com/coderoadpl/ai-video-cataloger/commit/64b880ac7c10ec6040b136850c91f7ce073769e5)).
+- Analysis wording, photo variant-picker labeling, and fingerprint-distinct
+  photo tree counts now stay coherent across Polish analysis surfaces and
+  duplicate sightings (N11)
+  ([`64b880a`](https://github.com/coderoadpl/ai-video-cataloger/commit/64b880ac7c10ec6040b136850c91f7ce073769e5)).
+- In-progress photo rows now keep their normal thumbnail placeholder and show
+  the same orange analyzing status-badge treatment as video rows (N13)
+  ([`64b880a`](https://github.com/coderoadpl/ai-video-cataloger/commit/64b880ac7c10ec6040b136850c91f7ce073769e5)).
 
 ## [0.6.21] - 2026-08-16
 
