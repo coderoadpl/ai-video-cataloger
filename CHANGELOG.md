@@ -14,29 +14,36 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.21] - 2026-08-16
+
 ### Changed
 
 - Video and photo detail panes now share one responsive media-detail layout:
   the preview leads on narrow screens, becomes a fixed-width right column on
   large screens, and the existing video detail test IDs and status attributes
-  remain intact (W68a).
+  remain intact (W68a)
+  ([`8c7c940`](https://github.com/coderoadpl/ai-video-cataloger/commit/8c7c940ea3b95a0c089b64fe78909b9e65b2f2b9)).
 - Photo details now match the video header and metadata-card patterns with a
   filename/path/status header, shared status badges, icon-led photo metadata,
-  and clickable tags that open the matching Library search (W68a).
+  and clickable tags that open the matching Library search (W68a)
+  ([`8c7c940`](https://github.com/coderoadpl/ai-video-cataloger/commit/8c7c940ea3b95a0c089b64fe78909b9e65b2f2b9)).
 - Analysis now uses one neutral outlined empty-state pattern for videos and
   photos when a folder is open but no file is selected, with medium-specific
   copy when that folder contains no files of the active medium. The full
-  welcome and onboarding view now appears only when no folder is open (W66).
+  welcome and onboarding view now appears only when no folder is open (W66)
+  ([`5787425`](https://github.com/coderoadpl/ai-video-cataloger/commit/5787425f5118119b0eda08f8deedbc9b6278c451)).
 - The Analysis → Photos face-index action now lives with the photo-analysis
   actions in the sidebar and stays disabled with an explanatory tooltip until
   the current root contains analyzed photos, instead of floating above the
-  main-pane empty state (W66).
+  main-pane empty state (W66)
+  ([`5787425`](https://github.com/coderoadpl/ai-video-cataloger/commit/5787425f5118119b0eda08f8deedbc9b6278c451)).
 
 ### Fixed
 
 - Face-index failures now pass through the analyzer-error formatter before
   localized failure copy is composed, so an empty catalog root no longer
-  exposes raw English server text or its filesystem path (W66).
+  exposes raw English server text or its filesystem path (W66)
+  ([`5787425`](https://github.com/coderoadpl/ai-video-cataloger/commit/5787425f5118119b0eda08f8deedbc9b6278c451)).
 
 ## [0.6.20] - 2026-08-15
 
