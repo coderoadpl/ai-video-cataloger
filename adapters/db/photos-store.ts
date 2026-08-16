@@ -87,6 +87,7 @@ import {
 } from './photos-schema.js';
 import { CatalogAppError, HomeLock, type CatalogLockFs } from './home-lock.js';
 import { countTerm } from './search-score.js';
+import { normalizeStoredTagNames } from './tag-normalization-migration.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'photos.db';
@@ -1172,6 +1173,13 @@ const migrate = (client: Database): boolean => {
     for (const statement of createPhotosSchemaSqlV4) client.run(statement);
     migrated = true;
   }
+  if (currentVersion < 5) {
+    runPhotosTransaction(client, () => {
+      normalizeStoredTagNames(client, { tags: 'photo_tags', fileTags: 'photo_file_tags', tagAliases: 'photo_tag_aliases' });
+      rebuildPhotoSearchIndex(drizzle(client, { schema: photosSchema }), client);
+    });
+    migrated = true;
+  }
   if (currentVersion < PHOTOS_SCHEMA_VERSION) {
     client.run('DELETE FROM schema_meta');
     const db = drizzle(client, { schema: photosSchema });
@@ -1690,6 +1698,14 @@ const ensurePhotoSearchDocuments = (db: PhotosDrizzle, client: Database): boolea
   const fingerprints = (missing[0]?.values ?? []).map((row) => stringValue(row[0]));
   for (const fingerprint of fingerprints) syncPhotoSearchDocument(db, client, fingerprint);
   return fingerprints.length > 0;
+};
+
+const rebuildPhotoSearchIndex = (db: PhotosDrizzle, client: Database): void => {
+  client.run('DELETE FROM photo_search_documents_fts');
+  client.run('DELETE FROM photo_search_documents');
+  for (const row of db.select({ fingerprint: photos.fingerprint }).from(photos).all()) {
+    syncPhotoSearchDocument(db, client, row.fingerprint);
+  }
 };
 
 const photoSearchRowFromValues = (

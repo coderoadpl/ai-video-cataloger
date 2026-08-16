@@ -18,3 +18,4 @@ export * from './stale-cli.js';
 export * from './tag-alias-suggestions.js';
 export * from './text-order.js';
 export * from './timeline.js';
+export * from './transliteration.js';

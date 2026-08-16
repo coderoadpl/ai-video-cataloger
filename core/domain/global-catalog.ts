@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
+import { transliterateLatinToAscii } from './transliteration.js';
+
 import { analysisLanguageResolutionSchema, configDescriptorSchema, configId } from './config-descriptor.js';
 import { appError, type AppError } from './errors.js';
 import { canonicalPath } from './paths.js';
 
-export const GLOBAL_CATALOG_SCHEMA_VERSION = 14;
+export const GLOBAL_CATALOG_SCHEMA_VERSION = 15;
 export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 12;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
@@ -222,7 +224,7 @@ export const newerWins = (existingProcessedAt: string, incomingProcessedAt: stri
   Date.parse(incomingProcessedAt) > Date.parse(existingProcessedAt);
 
 export const normalizeTagName = (value: string): string =>
-  value
+  transliterateLatinToAscii(value)
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, ' ')
     .replace(/\s+/g, '-')

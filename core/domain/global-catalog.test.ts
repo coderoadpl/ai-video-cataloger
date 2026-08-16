@@ -1,11 +1,25 @@
 import { describe, expect, it } from 'vitest';
 
-import { acceptsGpsWrite, gpsSourceSchema } from './global-catalog.js';
+import { acceptsGpsWrite, gpsSourceSchema, normalizeTagName } from './global-catalog.js';
 
 const EMPTY = { lat: null, lon: null, source: null };
 const CAMERA = { lat: 1, lon: 1, source: gpsSourceSchema.parse('camera') };
 const TIMELINE = { lat: 1, lon: 1, source: gpsSourceSchema.parse('timeline') };
 const MANUAL = { lat: 1, lon: 1, source: gpsSourceSchema.parse('manual') };
+
+describe('normalizeTagName', () => {
+  it('transliterates Polish diacritics before applying kebab-case normalization', () => {
+    expect(normalizeTagName('jeżowak')).toBe('jezowak');
+    expect(normalizeTagName('gałęzie')).toBe('galezie');
+    expect(normalizeTagName('liście')).toBe('liscie');
+    expect(normalizeTagName('morskiego-jeżowaka')).toBe('morskiego-jezowaka');
+  });
+
+  it('transliterates common Latin characters that do not decompose and preserves ASCII input', () => {
+    expect(normalizeTagName('Ł Đ ø æ ß')).toBe('l-d-o-ae-ss');
+    expect(normalizeTagName('already-ascii')).toBe('already-ascii');
+  });
+});
 
 describe('acceptsGpsWrite', () => {
   it('never accepts a null incoming coordinate, even onto an empty cell', () => {

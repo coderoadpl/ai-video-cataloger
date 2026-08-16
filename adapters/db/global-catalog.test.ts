@@ -1522,6 +1522,53 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(version).toBe(GLOBAL_CATALOG_SCHEMA_VERSION);
   });
 
+  it('migrates recoverable non-ASCII tags and dedupes collisions without losing file links', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    await store.upsertAnalysis({
+      fingerprint: file.fingerprint,
+      finalName: 'clip.mp4',
+      description: 'description',
+      transcript: null,
+      language: 'pl',
+      tags: ['jezowak'],
+    });
+    await store.flush();
+
+    const SQL = await initSqlJs();
+    const seeded = new SQL.Database(await readFile(store.databasePath()));
+    seeded.run("INSERT INTO tags (name) VALUES ('jeżowak'), ('gałęzie')");
+    seeded.run(`INSERT INTO file_tags (fingerprint, config_id, tag_id)
+      SELECT ?, config_id, (SELECT tag_id FROM tags WHERE name = 'jeżowak')
+      FROM file_tags WHERE fingerprint = ? LIMIT 1`, [file.fingerprint, file.fingerprint]);
+    seeded.run(`INSERT INTO file_tags (fingerprint, config_id, tag_id)
+      SELECT ?, config_id, (SELECT tag_id FROM tags WHERE name = 'gałęzie')
+      FROM file_tags WHERE fingerprint = ? LIMIT 1`, [file.fingerprint, file.fingerprint]);
+    seeded.run("INSERT INTO tag_aliases (alias, tag_id) VALUES ('urchin', (SELECT tag_id FROM tags WHERE name = 'jeżowak'))");
+    seeded.run('UPDATE schema_meta SET version = 14');
+    await writeFile(store.databasePath(), Buffer.from(seeded.export()));
+    seeded.close();
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const analysis = await reopened.getAnalysis(file.fingerprint);
+    expect(analysis.ok && analysis.value?.tags).toEqual(['galezie', 'jezowak']);
+    await reopened.flush();
+
+    const migrated = new SQL.Database(await readFile(reopened.databasePath()));
+    const tags = migrated.exec('SELECT name FROM tags ORDER BY name')[0]?.values ?? [];
+    const links = migrated.exec('SELECT COUNT(*) FROM file_tags WHERE fingerprint = ?', [file.fingerprint])[0]?.values[0]?.[0];
+    const aliasTarget = migrated.exec(`SELECT t.name FROM tag_aliases a JOIN tags t ON t.tag_id = a.tag_id WHERE a.alias = 'urchin'`)[0]?.values[0]?.[0];
+    const searchTags = migrated.exec('SELECT tags_text FROM search_documents WHERE fingerprint = ?', [file.fingerprint])[0]?.values[0]?.[0];
+    migrated.close();
+
+    expect(tags).toEqual([['galezie'], ['jezowak']]);
+    expect(links).toBe(2);
+    expect(aliasTarget).toBe('jezowak');
+    expect(searchTags).toBe('galezie\njezowak');
+  });
+
   it('preserves resolved-language provenance when a later write only updates variant materialization', async () => {
     const home = await tempHome();
     const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });

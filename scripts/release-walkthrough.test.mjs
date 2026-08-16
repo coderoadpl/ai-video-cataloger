@@ -11,12 +11,14 @@ import {
   BROKEN_PHOTO_MTIME,
   BROKEN_PHOTO_NAME,
   checkOllamaAnalyzer,
+  clearLibrarySearch,
   collectionPhotoChipOutcome,
   localAnalyzerConfig,
   parseAnalyzerFlag,
   parseMediaChipCount,
   photoTreeAnalyzeOutcome,
   prepareScratchFixtures,
+  searchTermFromAnalyzedFilename,
   TOLERATED_SKIPS,
   treeSelectAnalyzeOutcome,
   TREE_PHOTO_PATH,
@@ -31,6 +33,22 @@ const sourceWithPhotos = () => {
   writeFileSync(path.join(source, 'photo-02.jpg'), Buffer.concat([JPEG_WITH_EOI, Buffer.from([0x00])]));
   return source;
 };
+
+describe('library walkthrough search state', () => {
+  it('derives a reliable search term from the analyzed fixture filename', () => {
+    expect(searchTermFromAnalyzedFilename('2026-08-16_jezowak-warszawa-oceanografic.mp4')).toBe('jezowak');
+  });
+
+  it('clears and reapplies the library search before opening preview', async () => {
+    const input = { click: vi.fn(), fill: vi.fn(), press: vi.fn() };
+
+    await clearLibrarySearch(input);
+
+    expect(input.click).toHaveBeenCalledOnce();
+    expect(input.fill).toHaveBeenCalledWith('');
+    expect(input.press).toHaveBeenCalledWith('Enter');
+  });
+});
 
 describe('blockingSkips', () => {
   it('excludes the tolerated allowlist from the blocking set', () => {

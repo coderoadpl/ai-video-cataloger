@@ -14,6 +14,22 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- The release walkthrough now derives its default Library query from the
+  analyzed fixture filename, requires a matching result, and clears that query
+  before exercising the preview overlay and its Analysis action.
+
+### Fixed
+
+- Tag and suggested-filename normalization now share NFD-based diacritic
+  transliteration, including Polish `ł` and common non-decomposing Latin
+  characters, so normalized tag values now retain their ASCII letters (for
+  example, `jeżowak` becomes `jezowak`); catalog and photo-store migrations
+  recover remaining Unicode tag rows, merge normalization collisions, and
+  rebuild their search indexes without changing CLI, NDJSON, or contract
+  shapes.
+
 ## [0.6.22] - 2026-08-16
 
 ### Changed
