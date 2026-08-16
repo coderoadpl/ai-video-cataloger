@@ -91,7 +91,33 @@ describe('useFolderWatch', () => {
     expect(scanPhotos).toHaveBeenCalledTimes(1);
   });
 
-  it('retries one failed watched-folder scan without requiring another filesystem event', async () => {
+  it('caps repeated watched-folder scan retries at five seconds', async () => {
+    vi.useFakeTimers();
+    const subscription = captureHandler();
+    const scanPhotos = vi.fn().mockResolvedValue(false);
+    renderWithProviders(<RetryHarness scanPhotos={scanPhotos} />);
+
+    await act(async () => {
+      subscription.handlers[0]?.({ folderPath: '/drive' });
+      await Promise.resolve();
+    });
+    expect(scanPhotos).toHaveBeenCalledTimes(1);
+
+    const retryDelays = [500, 1000, 2000, 4000, 5000, 5000];
+    for (const [index, delay] of retryDelays.entries()) {
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(delay - 1);
+      });
+      expect(scanPhotos).toHaveBeenCalledTimes(index + 1);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(1);
+      });
+    }
+    expect(scanPhotos).toHaveBeenCalledTimes(7);
+    vi.useRealTimers();
+  });
+
+  it('fires one pending rescan after an external busy state persists across retries and unlocks', async () => {
     vi.useFakeTimers();
     const subscription = captureHandler();
     const scanPhotos = vi.fn()
@@ -103,19 +129,16 @@ describe('useFolderWatch', () => {
       subscription.handlers[0]?.({ folderPath: '/drive' });
       await Promise.resolve();
     });
-    expect(scanPhotos).toHaveBeenCalledTimes(1);
-
     fireEvent.click(screen.getByRole('button', { name: 'Start photo job' }));
-    fireEvent.click(screen.getByRole('button', { name: 'Settle photo job' }));
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(20_000);
+    });
     expect(scanPhotos).toHaveBeenCalledTimes(1);
 
+    fireEvent.click(screen.getByRole('button', { name: 'Settle photo job' }));
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(500);
-    });
-    expect(scanPhotos).toHaveBeenCalledTimes(2);
-
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(10_000);
+      await Promise.resolve();
+      await vi.advanceTimersByTimeAsync(20_000);
     });
     expect(scanPhotos).toHaveBeenCalledTimes(2);
     vi.useRealTimers();

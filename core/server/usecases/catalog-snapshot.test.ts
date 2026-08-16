@@ -208,6 +208,8 @@ describe('catalog snapshot roundtrip', () => {
       model: null,
       createdAt: '2026-01-05T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
       finalName: 'first.mp4',
       description: 'First',
       transcript: 'shared',
@@ -222,6 +224,8 @@ describe('catalog snapshot roundtrip', () => {
       model: null,
       createdAt: '2026-01-06T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
       finalName: 'second.mp4',
       description: 'Second',
       transcript: 'shared',
@@ -242,6 +246,46 @@ describe('catalog snapshot roundtrip', () => {
       secondConfigId,
     ].sort());
     expect(selected).toEqual({ ok: true, value: firstConfigId });
+  });
+
+  it('imports an older variant snapshot line without language provenance as legacy-null', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addDirectory('/work');
+    const descriptor = buildConfigDescriptor({}, 1);
+    const descriptorConfigId = configId(descriptor);
+    const header = JSON.stringify({
+      type: 'header',
+      version: CATALOG_SNAPSHOT_SCHEMA_VERSION - 1,
+      folder: folder('/work'),
+      exportedAt: '2026-01-02T00:00:00.000Z',
+    });
+    const record = JSON.stringify({
+      type: 'record',
+      file: file('legacy-provenance', '2026-01-05T00:00:00.000Z'),
+      analyses: [{
+        fingerprint: 'legacy-provenance',
+        configId: descriptorConfigId,
+        descriptor,
+        analyzer: 'claude-code',
+        model: null,
+        createdAt: '2026-01-05T00:00:00.000Z',
+        usage: null,
+        finalName: null,
+        description: 'Legacy snapshot variant',
+        transcript: null,
+        language: 'en',
+        tags: [],
+      }],
+      selectedConfigId: descriptorConfigId,
+    });
+    fs.addFile(folderSnapshotPath(fs, '/work'), { content: `${header}\n${record}\n` });
+    const target = new InMemoryGlobalCatalogStore();
+
+    const imported = await importFolderSnapshot({ globalCatalog: target, fs }, '/work');
+    const resolution = await target.getVariantLanguageResolution('legacy-provenance', descriptorConfigId);
+
+    expect(imported.ok && imported.value.imported).toBe(1);
+    expect(resolution).toEqual({ ok: true, value: null });
   });
 
   it('keeps the newer processed_at row when importing a conflicting snapshot', async () => {

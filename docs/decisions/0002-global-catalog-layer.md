@@ -107,9 +107,14 @@ edit could be silently lost, so a coarse timestamp comparison is sufficient and
 no merge or vector-clock machinery is warranted.
 
 The NDJSON snapshot carries **only** the folder header and its file/analysis
-records. It does **not** carry `tag_aliases` or `drive_runs` rows; those live
-solely in the global index. Recovery caveat: rebuilding the index purely from
-snapshots restores files, analyses, and tags but not tag-alias mappings or
+records. Each variant record includes nullable resolved output and tag
+languages so snapshot recovery preserves automatic-language freshness across
+app-language changes. Snapshot schema version 12 adds those fields; older
+variant rows without them remain importable and resolve both to null, retaining
+the documented legacy-satisfies behavior. The snapshot does **not** carry
+`tag_aliases` or `drive_runs` rows; those live solely in the global index.
+Recovery caveat: rebuilding the index purely from snapshots restores files,
+analyses, tags, and modern language provenance but not tag-alias mappings or
 drive-run bookkeeping, which are re-derived by re-running rather than restored.
 
 ### (e) Privacy stance for the future faces feature

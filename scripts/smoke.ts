@@ -346,6 +346,8 @@ const seedSmokeVariant = async (home: string, folder: string): Promise<string> =
     model: 'gemma3:12b',
     createdAt: '2026-08-03T00:00:00.000Z',
     usage: null,
+    resolvedOutputLanguage: null,
+    resolvedTagLanguage: null,
   }), 'variants fixture analysis');
   requiredValue(await store.setSelectedVariant(fingerprint, resolvedConfigId), 'variants fixture selection');
   requiredValue(await store.setFolderDefaultVariant(folderId, resolvedConfigId), 'variants fixture default');

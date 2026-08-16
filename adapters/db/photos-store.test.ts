@@ -6,7 +6,24 @@ import initSqlJs from 'sql.js';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { FACE_ENGINE_VERSION } from '@core/domain/index.js';
-import type { PhotoFolderRecord, PhotoRecord, PhotoRunRecord, PhotoSightingRecord } from '@core/server/index.js';
+import {
+  photosForget,
+  type PhotoFolderRecord,
+  type PhotoRecord,
+  type PhotoRunRecord,
+  type PhotoSightingRecord,
+  type PhotosDeps,
+} from '@core/server/index.js';
+
+import {
+  FakeExifPort,
+  FakePhotoMediaPort,
+  InMemoryAnalyzer,
+  InMemoryConfig,
+  InMemoryFileSystem,
+  InMemoryJobs,
+  InMemoryMedia,
+} from '../../test/server/usecases/test-fakes.js';
 
 import { SqlJsPhotosStore } from './photos-store.js';
 
@@ -494,6 +511,34 @@ describe('SqlJsPhotosStore', () => {
     expect(roots.ok && roots.value).toEqual([
       { root: '/media/photos', photos: 1, missing: 0, lastScanAt: '2026-01-02T00:00:00.000Z' },
     ]);
+  });
+
+  it('removes a forgotten scan root from real-store reveal authorization', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const memoryFs = new InMemoryFileSystem('/media');
+    const deps: PhotosDeps = {
+      photos: store,
+      fs: memoryFs,
+      exif: new FakeExifPort(),
+      jobs: new InMemoryJobs(),
+      photoMedia: new FakePhotoMediaPort(memoryFs),
+      media: new InMemoryMedia(memoryFs),
+      config: new InMemoryConfig(),
+      analyzer: new InMemoryAnalyzer(),
+    };
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    await store.upsertSighting(sighting());
+    await store.startPhotoRun(run());
+    const photoRootPaths = async (): Promise<string[]> => {
+      const roots = await store.listRoots();
+      return roots.ok ? roots.value.map((entry) => entry.root) : [];
+    };
+
+    expect(await photoRootPaths()).toContain('/media/photos');
+    expect(await photosForget(deps, { root: '/media/photos' })).toMatchObject({ ok: true });
+    expect(await photoRootPaths()).not.toContain('/media/photos');
   });
 
   it('listPhotosPage orders by captured_at DESC with a fingerprint tiebreak and applies stable offsets', async () => {

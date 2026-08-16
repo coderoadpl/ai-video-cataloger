@@ -126,4 +126,25 @@ describe('pollJobUntilTerminal', () => {
     expect(vi.getTimerCount()).toBe(0);
     vi.useRealTimers();
   });
+
+  it('forwards cancellation to a pending fetch and produces no snapshots after abort', async () => {
+    const controller = new AbortController();
+    const seen: JobOutput[] = [];
+    const fetchJob = vi.fn((_jobId: string, signal?: AbortSignal) => new Promise<JobOutput>((_resolve, reject) => {
+      signal?.addEventListener('abort', () => reject(new DOMException('Request aborted', 'AbortError')), { once: true });
+    }));
+    const polling = pollJobUntilTerminal<JobOutput>('j', {
+      fetchJob,
+      delay: resolvedDelay,
+      isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+      onSnapshot: (snapshot) => seen.push(snapshot),
+      signal: controller.signal,
+    });
+
+    controller.abort();
+
+    await expect(polling).rejects.toMatchObject({ name: 'AbortError' });
+    expect(fetchJob).toHaveBeenCalledWith('j', controller.signal);
+    expect(seen).toEqual([]);
+  });
 });

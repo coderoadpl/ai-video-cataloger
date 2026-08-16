@@ -154,6 +154,8 @@ describe('SqlJsGlobalCatalogStore', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     };
     const second: CatalogVariant = {
       ...first,
@@ -1119,6 +1121,8 @@ describe('SqlJsGlobalCatalogStore', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     };
     const second: CatalogVariant = {
       ...first,
@@ -1487,6 +1491,8 @@ describe('SqlJsGlobalCatalogStore', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     };
     await store.upsertFolder(folder);
     await store.upsertFile(file);
@@ -1541,13 +1547,20 @@ describe('SqlJsGlobalCatalogStore', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     };
     await store.upsertFolder(folder);
     await store.upsertFile(file);
     await store.upsertVariant(variant, { outputLanguage: 'en', tagLanguage: 'en' });
     await store.upsertVariant({ ...variant, finalName: 'materialized.mp4' });
 
+    const storedVariant = await store.getVariant(file.fingerprint, variant.configId);
     const resolution = await store.getVariantLanguageResolution(file.fingerprint, variant.configId);
+    expect(storedVariant.ok && storedVariant.value).toMatchObject({
+      resolvedOutputLanguage: 'en',
+      resolvedTagLanguage: 'en',
+    });
     expect(resolution.ok && resolution.value).toEqual({ outputLanguage: 'en', tagLanguage: 'en' });
   });
 
@@ -1609,6 +1622,8 @@ describe('SqlJsGlobalCatalogStore', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     };
     expect((await store.upsertVariant(variant)).ok).toBe(true);
     expect((await store.flush()).ok).toBe(true);
@@ -1811,6 +1826,8 @@ describe('SqlJsGlobalCatalogStore', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     });
 
     const found = await store.search({ match: 'psy*', rankingTerms: ['psy'], filters: NO_SEARCH_FILTERS, sort: 'relevance', limit: 10, offset: 0 });
@@ -2072,6 +2089,8 @@ describe('SqlJsGlobalCatalogStore search filters (Library spec 1)', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     };
     const newer: CatalogVariant = {
       ...selected,
@@ -2283,6 +2302,8 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     };
     const nonSelected: CatalogVariant = {
       ...selected,
@@ -2366,6 +2387,8 @@ describe('SqlJsGlobalCatalogStore listLibraryFacets (Library spec 2)', () => {
       model: 'gemma3:12b',
       createdAt: '2026-01-03T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     });
     for (const fingerprint of ['fp-tag-1', 'fp-tag-2', 'fp-tag-3']) {
       await store.upsertFile({ ...file, fingerprint, fileName: `${fingerprint}.mp4` });

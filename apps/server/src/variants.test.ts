@@ -59,6 +59,8 @@ const variant: CatalogVariant = {
   model: null,
   createdAt: '2026-08-02T00:00:00.000Z',
   usage: { estimatedCostUsd: 0.02 },
+  resolvedOutputLanguage: null,
+  resolvedTagLanguage: null,
 };
 
 const seededApp = async () => {
