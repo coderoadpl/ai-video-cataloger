@@ -108,6 +108,7 @@ import {
 } from './global-catalog-schema.js';
 import { CatalogAppError, HomeLock, type CatalogLockFs } from './home-lock.js';
 import { countTerm } from './search-score.js';
+import { normalizeStoredTagNames } from './tag-normalization-migration.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
 const dbFileName = 'catalog.db';
@@ -1454,6 +1455,13 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 14) {
     for (const statement of migrateGlobalCatalogSchemaSqlV14) runMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 15) {
+    runCatalogTransaction(client, () => {
+      normalizeStoredTagNames(client, { tags: 'tags', fileTags: 'file_tags', tagAliases: 'tag_aliases' });
+      rebuildSearchIndex(drizzle(client, { schema: globalCatalogSchema }), client);
+    });
     migrated = true;
   }
   if (currentVersion < GLOBAL_CATALOG_SCHEMA_VERSION) {

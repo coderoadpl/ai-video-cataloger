@@ -164,7 +164,7 @@ export const photosSchema = {
   photosSchemaMeta,
 };
 
-export const PHOTOS_SCHEMA_VERSION = 4;
+export const PHOTOS_SCHEMA_VERSION = 5;
 
 export const createPhotosSchemaSqlV1 = [
   'CREATE TABLE schema_meta (version INTEGER PRIMARY KEY)',

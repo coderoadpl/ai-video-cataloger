@@ -120,6 +120,15 @@ already drives (the `analysis-error-card` testid and `detail-layout`'s
   is not tolerated: release runs must provide an analyzer via `--home` or
   `--analyzer`.
 
+The following Library search derives its default query from the filename shown
+after that analysis completes, so a Polish analyzer rename cannot invalidate a
+hard-coded English query. `--query <text>` remains available as an explicit
+override. The search step requires a matching Library tile rather than treating
+the no-results state as evidence. Before `library-preview`, the runner clears
+and submits the empty search so the overlay and its `Otwórz w Analizie` action
+are exercised against the unfiltered collection rather than skipped because
+the preceding filter is still active.
+
 ## Procedure
 
 1. Build the bundle under test:

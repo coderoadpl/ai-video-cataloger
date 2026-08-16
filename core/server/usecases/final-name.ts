@@ -1,9 +1,9 @@
-import { ok, type AppError, type Result } from '@core/domain/index.js';
+import { ok, transliterateLatinToAscii, type AppError, type Result } from '@core/domain/index.js';
 
 import type { FileSystemPort } from '../ports.js';
 
 export const normalizeKebabSlug = (value: string): string => {
-  const slug = value
+  const slug = transliterateLatinToAscii(value)
     .toLowerCase()
     .replace(/[^a-z0-9\s-]/g, '')
     .replace(/\s+/g, '-')

@@ -4,6 +4,7 @@ import {
   appError,
   defaultGeminiNativeProvider,
   geminiUsageAccounting,
+  normalizeTagName,
   type AppError,
   type Result,
   type VideoStatus,
@@ -134,6 +135,17 @@ TAGS: Red Car, City Street, Wide Shot, red-car`);
         tags: ['red-car', 'city-street', 'wide-shot'],
       },
     });
+  });
+
+  it('transliterates diacritics in suggested filenames with the tag normalization policy', () => {
+    expect(normalizeKebabSlug('Jeżowak Warszawa Oceanografic')).toBe('jezowak-warszawa-oceanografic');
+    expect(normalizeKebabSlug('Morskiego jeżowaka')).toBe('morskiego-jezowaka');
+    expect(normalizeKebabSlug('Ł Đ ø æ ß')).toBe('l-d-o-ae-ss');
+  });
+
+  it('shares transliteration behavior between tag and suggested-filename sanitizers', () => {
+    const value = 'Morskiego Jeżowaka Łódź Đ ø æ ß';
+    expect(normalizeKebabSlug(value)).toBe(normalizeTagName(value));
   });
 
   it('fails on missing filename and falls back description when only filename exists', () => {

@@ -1,3 +1,5 @@
+import { transliterateLatinToAscii } from './transliteration.js';
+
 export const TAG_ALIAS_RULES = [
   'normalization',
   'pl-irregular',
@@ -44,9 +46,7 @@ const SPELLING_SUBSTITUTIONS: readonly (readonly [string, string])[] = [
 ];
 
 const foldKey = (tag: string): string =>
-  tag
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')
+  transliterateLatinToAscii(tag)
     .toLowerCase()
     .replace(/[^a-z0-9]/g, '');
 

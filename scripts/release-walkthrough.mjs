@@ -53,7 +53,7 @@ Options:
   --out <path>                 Root for the screenshot set (default: release/walkthrough).
   --home <path>                Prepared QA home; the default throwaway temp home has no analyzer
                                configured, so the analysis step reports itself skipped.
-  --query <text>               Query typed into the Library search (default: "video").
+  --query <text>               Override the Library search term (default: derived from the analyzed filename).
   --analyze-timeout <seconds>  Wait for one analysis run to finish (default: 300).
   --window-size <WxH>          Window size for the driven app, e.g. 1920x1200 (default: 1920x1200).
   --dry-run                    Validate the inputs, write plan.json, stop before launching the app.
@@ -98,7 +98,7 @@ const optionsSchema = z.object({
   fixtures: z.string().min(1),
   out: z.string().min(1).optional(),
   home: z.string().min(1).optional(),
-  query: z.string().min(1).default('video'),
+  query: z.string().min(1).optional(),
   analyzeTimeout: z.coerce.number().int().positive().default(300),
   windowSize: z.string().regex(WINDOW_SIZE_PATTERN, 'expected WxH, e.g. 1920x1200').default(DEFAULT_WINDOW_SIZE),
   dryRun: z.boolean().default(false),
@@ -358,6 +358,18 @@ export const collectionPhotoChipOutcome = (photoChipCount) => {
   return failed('Kolekcja Zdjęcia chip still reports 0 after a single-photo analyze completed (W55 payoff unproven)');
 };
 
+export const searchTermFromAnalyzedFilename = (filename) => {
+  const basename = path.basename(filename, path.extname(filename));
+  const tokens = basename.toLowerCase().split(/[^a-z0-9]+/).filter((token) => token.length >= 3 && !/^\d+$/.test(token));
+  return tokens[0] ?? basename.toLowerCase();
+};
+
+export const clearLibrarySearch = async (input) => {
+  await input.click();
+  await input.fill('');
+  await input.press('Enter');
+};
+
 // Both steps depend on state a reused QA home may legitimately not have (a
 // wizard that already got dismissed, a Library tile from an earlier scan);
 // docs/qa/release-walkthrough.md carries the full rationale.
@@ -450,6 +462,8 @@ const drive = async (plan) => {
   const timeToWindowMs = Date.now() - launchedAt;
 
   const { results, record } = createRecorder(page, plan.outDir);
+  let selectedFilename = '';
+  let analyzedFilename = '';
 
   await record('launch', async () => {
     await page.locator('header').first().waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
@@ -514,7 +528,9 @@ const drive = async (plan) => {
     const video = page.getByTestId('video-item').first();
     if (!(await appeared(video))) return skipped('no video row to select');
     await video.click();
-    await page.getByTestId('detail-layout').first().waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
+    const detailLayout = page.getByTestId('detail-layout').first();
+    await detailLayout.waitFor({ state: 'visible', timeout: VISIBLE_TIMEOUT_MS });
+    selectedFilename = (await detailLayout.locator('h1').first().getAttribute('title')) ?? '';
     return done('details panel opened');
   });
 
@@ -538,6 +554,7 @@ const drive = async (plan) => {
     const detailLayout = page.getByTestId('detail-layout').first();
     const videoStatus = await detailLayout.getAttribute('data-video-status');
     const filename = await detailLayout.locator('h1').first().getAttribute('title');
+    analyzedFilename = filename ?? '';
     return analyzeOutcome({ errorCardVisible, errorNote, videoStatus, filename });
   });
 
@@ -548,11 +565,13 @@ const drive = async (plan) => {
     const input = page.getByTestId(SEARCH_INPUT).locator('input').first();
     if (!(await appeared(input))) return skipped('no library search input');
     await input.click();
-    await input.fill(plan.query);
+    const query = plan.query ?? searchTermFromAnalyzedFilename(analyzedFilename || selectedFilename);
+    if (query.length === 0) return failed('could not derive a search term from the selected fixture filename');
+    await input.fill(query);
     await input.press('Enter');
-    const filtered = page.getByTestId('library-no-match').or(page.getByTestId('library-tile'));
-    if (!(await appeared(filtered))) return skipped(`no filtered library view for "${plan.query}"`);
-    return done(`library filtered for "${plan.query}"`);
+    const tile = page.getByTestId('library-tile').first();
+    if (!(await appeared(tile))) return failed(`no library result matched "${query}"`);
+    return done(`library result matched "${query}"`);
   });
 
   await record('library-preview', async () => {
@@ -560,6 +579,9 @@ const drive = async (plan) => {
     if (await appeared(modeLibrary, SETTLE_TIMEOUT_MS)) await modeLibrary.click();
     const subnavCollection = page.getByTestId('subnav-collection');
     if (await appeared(subnavCollection, SETTLE_TIMEOUT_MS)) await subnavCollection.click();
+    const searchInput = page.getByTestId(SEARCH_INPUT).locator('input').first();
+    if (!(await appeared(searchInput, SETTLE_TIMEOUT_MS))) return failed('no library search input to clear before preview');
+    await clearLibrarySearch(searchInput);
     const tile = page.getByTestId('library-tile').first();
     if (!(await appeared(tile, SETTLE_TIMEOUT_MS))) return skipped('no library tile to preview');
     await tile.click();

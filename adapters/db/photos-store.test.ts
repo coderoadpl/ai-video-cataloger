@@ -26,6 +26,7 @@ import {
 } from '../../test/server/usecases/test-fakes.js';
 
 import { SqlJsPhotosStore } from './photos-store.js';
+import { PHOTOS_SCHEMA_VERSION } from './photos-schema.js';
 
 const tempRoots: string[] = [];
 
@@ -177,7 +178,55 @@ describe('SqlJsPhotosStore', () => {
       'idx_photos_folder',
       'idx_photos_proxy_state_path',
     ]);
-    expect(version).toBe(4);
+    expect(version).toBe(PHOTOS_SCHEMA_VERSION);
+  });
+
+  it('migrates recoverable non-ASCII photo tags and dedupes collisions without losing file links', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ tags: ['jezowak'] }));
+    await store.flush();
+
+    const SQL = await initSqlJs();
+    const seeded = new SQL.Database(fs.readFileSync(store.databasePath()));
+    seeded.run("INSERT INTO photo_tags (name) VALUES ('jeżowak'), ('gałęzie')");
+    seeded.run(`INSERT INTO photo_file_tags (fingerprint, config_id, tag_id)
+      SELECT ?, config_id, (SELECT tag_id FROM photo_tags WHERE name = 'jeżowak')
+      FROM photo_file_tags WHERE fingerprint = ? LIMIT 1`, [photo().fingerprint, photo().fingerprint]);
+    seeded.run(`INSERT INTO photo_file_tags (fingerprint, config_id, tag_id)
+      SELECT ?, config_id, (SELECT tag_id FROM photo_tags WHERE name = 'gałęzie')
+      FROM photo_file_tags WHERE fingerprint = ? LIMIT 1`, [photo().fingerprint, photo().fingerprint]);
+    seeded.run("INSERT INTO photo_tag_aliases (alias, tag_id) VALUES ('urchin', (SELECT tag_id FROM photo_tags WHERE name = 'jeżowak'))");
+    seeded.run('UPDATE schema_meta SET version = 4');
+    fs.writeFileSync(store.databasePath(), Buffer.from(seeded.export()));
+    seeded.close();
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const config = await reopened.upsertAnalysisConfig({
+      configId: 'cfg_aaaaaaaaaaaa',
+      descriptorJson: '{}',
+      label: 'A',
+      now: '2026-01-02T00:00:00.000Z',
+    });
+    expect(config.ok ? '' : config.error.message).toBe('');
+    await reopened.flush();
+
+    const migrated = new SQL.Database(fs.readFileSync(reopened.databasePath()));
+    const tags = migrated.exec('SELECT name FROM photo_tags ORDER BY name')[0]?.values ?? [];
+    const links = migrated.exec('SELECT COUNT(*) FROM photo_file_tags WHERE fingerprint = ?', [photo().fingerprint])[0]?.values[0]?.[0];
+    const aliasTarget = migrated.exec(`SELECT t.name FROM photo_tag_aliases a JOIN photo_tags t ON t.tag_id = a.tag_id WHERE a.alias = 'urchin'`)[0]?.values[0]?.[0];
+    const searchTags = migrated.exec('SELECT tags_text FROM photo_search_documents WHERE fingerprint = ?', [photo().fingerprint])[0]?.values[0]?.[0];
+    const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
+    migrated.close();
+
+    expect(version).toBe(PHOTOS_SCHEMA_VERSION);
+    expect(tags).toEqual([['galezie'], ['jezowak']]);
+    expect(links).toBe(2);
+    expect(aliasTarget).toBe('jezowak');
+    expect(searchTags).toBe('galezie\njezowak');
   });
 
   it('checkpoint persists mid-batch work without ending the batch', async () => {
@@ -975,7 +1024,7 @@ describe('SqlJsPhotosStore', () => {
     const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
     migrated.close();
     expect(row).toEqual([null, null]);
-    expect(version).toBe(4);
+    expect(version).toBe(PHOTOS_SCHEMA_VERSION);
   });
 
   it('searchPhotos finds an un-analysed photo by file name only, and matches an analysed photo by description and tag terms, with a mark-carrying snippet and place matches (P1)', async () => {
