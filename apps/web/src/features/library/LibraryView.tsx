@@ -201,7 +201,7 @@ export const LibraryView = ({
   const isEmptyCatalog = !library.isLoading && library.error === null && library.debouncedQuery.length === 0
     && libraryFilterIsEmpty(filters) && library.total === 0;
   const isNoMatch = !library.isLoading && library.error === null && library.total === 0 && !isEmptyCatalog;
-  const videoOnlyFilterActive = filters.personIds.length > 0 || filters.place !== null || filters.hasGps !== null || filters.folderId !== null;
+  const videoOnlyFilterActive = filters.personIds.length > 0 || filters.place !== null || filters.hasGps !== null;
   const showVideoOnlyFilterNotice = media === 'all' && videoOnlyFilterActive;
   const body = () => {
     if (library.error !== null) {

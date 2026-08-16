@@ -614,6 +614,7 @@ export interface PhotosStore {
     rankingTerms: readonly string[];
     from: string | null;
     to: string | null;
+    folderId: string | null;
     tagTermSets: readonly (readonly string[])[];
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;

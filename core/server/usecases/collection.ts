@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { appError, compareUtf8Bytes, ok, type AppError, type CatalogPlace, type PhotoExtension, type Result } from '@core/domain/index.js';
+import { appError, compareUtf8Bytes, derivedFolderId, ok, type AppError, type CatalogPlace, type PhotoExtension, type Result } from '@core/domain/index.js';
 
 import type {
   CatalogSearchInput,
@@ -159,8 +159,8 @@ const capturedAtCompare = (left: string | null, right: string | null, direction:
 const resolveSort = (requested: CatalogSearchSort | undefined, hasQuery: boolean): CatalogSearchSort =>
   requested ?? (hasQuery ? 'relevance' : 'captured_desc');
 
-const videoOnlyFiltersActive = (filters: CollectionFiltersInput): boolean =>
-  filters.people.length > 0 || filters.place !== null || filters.hasGps !== null || filters.folderId !== null;
+const photoUnsupportedFiltersActive = (filters: CollectionFiltersInput): boolean =>
+  filters.people.length > 0 || filters.place !== null || filters.hasGps !== null;
 
 export const libraryCollection = async (
   deps: CollectionDeps,
@@ -177,8 +177,14 @@ export const libraryCollection = async (
   if (!cursor.ok) return cursor;
 
   const videoEnabled = input.media !== 'photo';
-  const photosMatchFilters = !videoOnlyFiltersActive(input.filters);
+  const photosMatchFilters = !photoUnsupportedFiltersActive(input.filters);
   const photoEnabled = input.media !== 'video' && photosMatchFilters;
+  let photoFolderId = input.filters.folderId;
+  if (photoFolderId !== null) {
+    const folder = await deps.globalCatalog.getFolder(photoFolderId);
+    if (!folder.ok) return folder;
+    if (folder.value !== null) photoFolderId = derivedFolderId(folder.value.currentPath);
+  }
 
   let videoMatch: string | null = null;
   let videoRankingTerms: string[] = [];
@@ -229,6 +235,7 @@ export const libraryCollection = async (
       rankingTerms: photoRankingTerms,
       from: input.filters.from,
       to: input.filters.to,
+      folderId: photoFolderId,
       tagTermSets: photoTagTermSets.value,
       sort,
       limit: input.limit,
@@ -259,6 +266,7 @@ export const libraryCollection = async (
         rankingTerms: photoRankingTerms,
         from: input.filters.from,
         to: input.filters.to,
+        folderId: photoFolderId,
         tagTermSets: photoTagTermSets.value,
         sort,
         limit: 0,

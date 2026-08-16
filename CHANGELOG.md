@@ -26,6 +26,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Kolekcja now refreshes photo tiles after the queued grid-thumbnail backfill actually completes, so a tile mounted before generation does not retain a filename placeholder when its thumbnail exists (N1).
+- Biblioteka's Folder filter now returns matching videos and photos without a photos-hidden notice; people, place, and GPS filters remain video-only (N10).
 - "Show in Finder" now admits Kolekcja photos under registered photo roots while preserving the existing path-scope guard (N7).
 - Kolekcja's Wszystko, Filmy, and Zdjęcia chips now keep stable totals for the active non-media filters when the media selection changes (N8).
 - Photo analysis provenance now renders configured provider names and localized English, Polish, and automatic output-language labels while title-casing unknown provider IDs (N6).

@@ -858,13 +858,13 @@ describe('SqlJsPhotosStore', () => {
     await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000003' }));
 
     const page = await store.collectionPage({
-      match: null, rankingTerms: [], from: null, to: null, tagTermSets: [], sort: 'captured_desc', limit: 2, offset: 0,
+      match: null, rankingTerms: [], from: null, to: null, folderId: null, tagTermSets: [], sort: 'captured_desc', limit: 2, offset: 0,
     });
     expect(page.ok && page.value.total).toBe(3);
     expect(page.ok && page.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000003', 'ph_0000000000000001']);
 
     const nextPage = await store.collectionPage({
-      match: null, rankingTerms: [], from: null, to: null, tagTermSets: [], sort: 'captured_desc', limit: 2, offset: 2,
+      match: null, rankingTerms: [], from: null, to: null, folderId: null, tagTermSets: [], sort: 'captured_desc', limit: 2, offset: 2,
     });
     expect(nextPage.ok && nextPage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
   });
@@ -879,13 +879,13 @@ describe('SqlJsPhotosStore', () => {
     await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
 
     const browsePage = await store.collectionPage({
-      match: null, rankingTerms: [], from: null, to: null, tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
+      match: null, rankingTerms: [], from: null, to: null, folderId: null, tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
     });
     expect(browsePage.ok && browsePage.value.total).toBe(1);
     expect(browsePage.ok && browsePage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
 
     const matchPage = await store.collectionPage({
-      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'relevance', limit: 50, offset: 0,
+      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, folderId: null, tagTermSets: [], sort: 'relevance', limit: 50, offset: 0,
     });
     expect(matchPage.ok && matchPage.value.total).toBe(1);
     expect(matchPage.ok && matchPage.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
@@ -902,7 +902,7 @@ describe('SqlJsPhotosStore', () => {
     await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002', tags: ['harbour'] }));
 
     const filtered = await store.collectionPage({
-      match: null, rankingTerms: [], from: null, to: null,
+      match: null, rankingTerms: [], from: null, to: null, folderId: null,
       tagTermSets: [['bicycle', 'boat']],
       sort: 'name_asc', limit: 50, offset: 0,
     });
@@ -920,9 +920,47 @@ describe('SqlJsPhotosStore', () => {
     await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
 
     const filtered = await store.collectionPage({
-      match: null, rankingTerms: [], from: '2026-03-01', to: '2026-12-31', tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
+      match: null, rankingTerms: [], from: '2026-03-01', to: '2026-12-31', folderId: null, tagTermSets: [], sort: 'name_asc', limit: 50, offset: 0,
     });
     expect(filtered.ok && filtered.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002']);
+  });
+
+  it('collectionPage constrains photos to their owning folder', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const otherFolder: PhotoFolderRecord = {
+      ...folder,
+      folderId: 'path-bbbbbbbb',
+      currentPath: '/media/other',
+      displayName: 'other',
+    };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(otherFolder);
+    await store.upsertPhoto(photo({ fingerprint: 'ph_0000000000000001' }));
+    await store.upsertPhoto(photo({
+      fingerprint: 'ph_0000000000000002',
+      folderId: otherFolder.folderId,
+      fileName: 'b.jpg',
+      currentPath: '/media/other/b.jpg',
+    }));
+    await store.upsertAnalysisConfig({ configId: 'cfg_aaaaaaaaaaaa', descriptorJson: '{}', label: 'A', now: '2026-01-01T00:00:00.000Z' });
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000001' }));
+    await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
+
+    const filtered = await store.collectionPage({
+      match: null,
+      rankingTerms: [],
+      from: null,
+      to: null,
+      folderId: folder.folderId,
+      tagTermSets: [],
+      sort: 'name_asc',
+      limit: 50,
+      offset: 0,
+    });
+
+    expect(filtered.ok && filtered.value.total).toBe(1);
+    expect(filtered.ok && filtered.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000001']);
   });
 
   it('collectionPage in match mode reuses the FTS search and pushes total/limit/offset over the matched set', async () => {
@@ -936,7 +974,7 @@ describe('SqlJsPhotosStore', () => {
     await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
 
     const page = await store.collectionPage({
-      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'relevance', limit: 1, offset: 0,
+      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, folderId: null, tagTermSets: [], sort: 'relevance', limit: 1, offset: 0,
     });
     expect(page.ok && page.value.total).toBe(2);
     expect(page.ok && page.value.rows).toHaveLength(1);
@@ -963,12 +1001,12 @@ describe('SqlJsPhotosStore', () => {
     await store.recordPhotoAnalysis(analysisInput({ fingerprint: 'ph_0000000000000002' }));
 
     const byScore = await store.collectionPage({
-      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'relevance', limit: 50, offset: 0,
+      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, folderId: null, tagTermSets: [], sort: 'relevance', limit: 50, offset: 0,
     });
     expect(byScore.ok && byScore.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000001', 'ph_0000000000000002']);
 
     const byCapturedAsc = await store.collectionPage({
-      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, tagTermSets: [], sort: 'captured_asc', limit: 50, offset: 0,
+      match: 'vacation*', rankingTerms: ['vacation'], from: null, to: null, folderId: null, tagTermSets: [], sort: 'captured_asc', limit: 50, offset: 0,
     });
     expect(byCapturedAsc.ok && byCapturedAsc.value.rows.map((row) => row.fingerprint)).toEqual(['ph_0000000000000002', 'ph_0000000000000001']);
   });

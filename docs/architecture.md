@@ -263,7 +263,13 @@ per root — `runPhotoGridThumbsPass` sweeps every photo proxy in the catalog
 in a single pass, it takes no root parameter, so a second per-root call
 would just re-walk the same set. No new generation logic: the existing pass
 already regenerates a missing `.grid.jpg` and self-heals a stale one exactly
-like the video pass does, once it actually runs.
+like the video pass does, once it actually runs. The trigger follows the
+accepted job to a terminal state and invalidates both photo and
+`libraryCollection` query scopes after successful completion. Invalidating
+when the enqueue request returns is too early, and invalidating only the
+`photos` scope leaves a collection tile that mounted before generation with
+its cached null image paths even though the generated file is already
+available to later sidebar queries.
 
 Expanded sub-folder rows in the catalog tree get the same foreground
 thumbnail priority as the root list, scoped to the windowed-visible range
@@ -919,12 +925,16 @@ honest limitation, not silently glossed over; true cross-DB score
 calibration is out of scope for one session.
 
 **Filter semantics, stated once instead of silently diverging per media.**
-`query`, `from`, `to`, `tags` apply to both video and photo (photos carry
-variant tags in their own FTS). `people`, `place`, `hasGps`, `folderId` are
-video-only concepts today — when any of them is set, the photo source
-contributes **zero rows** rather than silently ignoring the filter, so a
-Library user filtering by person never sees an unfiltered photo sneak into
-the page pretending to satisfy a filter it cannot express. `media: 'video' |
+`query`, `from`, `to`, `tags`, and `folderId` apply to both video and photo
+(photos carry variant tags in their own FTS). A selected catalog folder ID
+resolves to its canonical path, then to the path-derived photo-folder ID
+before `PhotosStore.collectionPage` applies an exact owning-folder predicate;
+this bridges writable video-folder UUIDs and photo folders without changing
+the route contract. `people`, `place`, and `hasGps` remain video-only — when
+any of them is set, the photo source contributes **zero rows** rather than
+silently ignoring the filter, so a Library user filtering by person never
+sees an unfiltered photo sneak into the page pretending to satisfy a filter
+it cannot express. `media: 'video' |
 'photo'` short-circuits the other source's page rows entirely (its offset
 never advances). `total` remains the total for the selected `media` page and
 the existing `videoTotal`/`photoTotal` fields remain the selected request's
@@ -984,9 +994,10 @@ default; `FilterBar` renders Wszystko/Filmy/Zdjęcia chips from the route's
 `mediaTotals`, so every chip always carries the total for the current search,
 tags, dates, and other non-media filters regardless of the selected media.
 The view also shows an inline notice — naming the active
-video-only filter chip(s) — whenever one of `people`/`place`/`hasGps`/
-`folderId` is set while `media === 'all'`, matching the server's "photo
-source contributes zero rows" semantics above. Folder grouping and the
+video-only filter chip(s) — whenever one of `people`/`place`/`hasGps` is set
+while `media === 'all'`, matching the server's "photo source contributes zero
+rows" semantics above. A folder-only filter keeps matching photos visible and
+does not show that notice. Folder grouping and the
 relevance sort option are disabled (with a tooltip) whenever the loaded page
 actually mixes photos in (`photoTotal > 0`) or, for relevance, whenever
 `media` isn't a single medium — both because neither operation is meaningful
