@@ -367,6 +367,9 @@ describe('details panel', () => {
     renderThemed(<DetailsPanel video={makeVideo()} analyzing={false} />);
     const layout = screen.getByTestId('detail-layout');
     expect(layout.contains(screen.getByTestId('detail-video-player'))).toBe(true);
+    expect(within(screen.getByTestId('media-detail-main')).getByText('Video Information')).toBeDefined();
+    expect(within(screen.getByTestId('media-detail-media')).getByTestId('detail-video-player')).toBeDefined();
+    expect(within(screen.getByTestId('media-detail-below')).getByText('Summary')).toBeDefined();
     expect(screen.getByText('Video Information')).toBeDefined();
   });
 

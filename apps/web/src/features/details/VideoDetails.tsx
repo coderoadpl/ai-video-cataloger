@@ -1,5 +1,6 @@
 import { Box, Button, Chip, Paper, Typography } from '@mui/material';
 
+import { MediaDetailLayout } from '../../components/layout/MediaDetailLayout.js';
 import { CodeSnippetField } from '../../components/ui/CodeSnippetField.js';
 import { DuplicateBadge } from '../../components/ui/DuplicateBadge.js';
 import { ContentCopyIcon } from '../../components/ui/icons.js';
@@ -118,13 +119,14 @@ export const VideoDetails = ({
   }
 
   return (
-    <Box sx={{ p: 3, display: 'flex', flexDirection: 'column', gap: 3, maxWidth: { xs: 780, lg: 1180 } }}>
-      <Box
-        data-testid="detail-layout"
-        data-video-status={video.status}
-        sx={{ display: 'flex', flexDirection: { xs: 'column', lg: 'row' }, gap: 3, alignItems: 'flex-start' }}
-      >
-        <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 3 }}>
+    <MediaDetailLayout
+      layoutTestId="detail-layout"
+      mainTestId="media-detail-main"
+      mediaTestId="media-detail-media"
+      belowTestId="media-detail-below"
+      detailTestAttributes={{ 'data-video-status': video.status }}
+      main={(
+        <>
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
             <Typography variant="h1" noWrap title={video.filename}>
               {video.filename}
@@ -174,15 +176,11 @@ export const VideoDetails = ({
               dictionary={dictionary}
             />
           )}
-        </Box>
-
-        <Box sx={{ width: { xs: '100%', lg: 440 }, flexShrink: 0, order: { xs: -1, lg: 0 } }}>
-          <VideoPlayer video={video} />
-        </Box>
-      </Box>
-
-      <ArtifactsSection video={previewVideo} />
-    </Box>
+        </>
+      )}
+      media={<VideoPlayer video={video} />}
+      below={<ArtifactsSection video={previewVideo} />}
+    />
   );
 };
 

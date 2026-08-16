@@ -16,6 +16,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Video and photo detail panes now share one responsive media-detail layout:
+  the preview leads on narrow screens, becomes a fixed-width right column on
+  large screens, and the existing video detail test IDs and status attributes
+  remain intact (W68a).
+- Photo details now match the video header and metadata-card patterns with a
+  filename/path/status header, shared status badges, icon-led photo metadata,
+  and clickable tags that open the matching Library search (W68a).
 - Analysis now uses one neutral outlined empty-state pattern for videos and
   photos when a folder is open but no file is selected, with medium-specific
   copy when that folder contains no files of the active medium. The full

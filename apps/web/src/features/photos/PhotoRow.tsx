@@ -1,62 +1,12 @@
-import { alpha, Box, CircularProgress, ListItemButton, Tooltip, Typography, type SvgIconProps } from '@mui/material';
+import { alpha, Box, CircularProgress, ListItemButton, Tooltip, Typography } from '@mui/material';
 
-import { CheckCircleIcon, ContentCopyIcon, ErrorIcon, ImageNotSupportedIcon, WarningIcon } from '../../components/ui/icons.js';
-import { StatusBadge } from '../../components/ui/StatusBadge.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import { formatCapturedAt } from '../../lib/format.js';
 import { mediaUrl } from '../../lib/media-url.js';
-import type { StatusToken } from '../../theme.js';
-import { photoBadges, type PhotoBadge, type PhotoListItem } from './core/index.js';
+import { photoBadges, type PhotoListItem } from './core/index.js';
+import { PhotoStatusBadge } from './PhotoStatusBadge.js';
 
 export const PHOTO_ROW_THUMB_BOX = 56;
-
-const badgeLabel = (badge: PhotoBadge, dictionary: Dictionary): string => {
-  switch (badge) {
-    case 'analysed':
-      return dictionary.videoStatus.completed;
-    case 'duplicate':
-      return dictionary.catalog.duplicateBadge;
-    case 'proxyFailed':
-      return dictionary.photosSidebar.badgeProxyFailed;
-    case 'exifMissing':
-      return dictionary.photosSidebar.badgeExifMissing;
-    case 'missing':
-      return dictionary.photosSidebar.badgeMissing;
-  }
-};
-
-const TOKEN_FOR_BADGE: Record<PhotoBadge, StatusToken> = {
-  analysed: 'completed',
-  duplicate: 'notTracked',
-  proxyFailed: 'pending',
-  exifMissing: 'notTracked',
-  missing: 'error',
-};
-
-const BadgeIcon = ({ badge, ...props }: { badge: PhotoBadge } & SvgIconProps) => {
-  switch (badge) {
-    case 'analysed':
-      return <CheckCircleIcon fontSize="inherit" {...props} />;
-    case 'duplicate':
-      return <ContentCopyIcon fontSize="inherit" {...props} />;
-    case 'proxyFailed':
-      return <WarningIcon fontSize="inherit" {...props} />;
-    case 'exifMissing':
-      return <ImageNotSupportedIcon fontSize="inherit" {...props} />;
-    case 'missing':
-      return <ErrorIcon fontSize="inherit" {...props} />;
-  }
-};
-
-const BadgeChip = ({ badge, dictionary }: { badge: PhotoBadge; dictionary: Dictionary }) => (
-  <StatusBadge
-    key={badge}
-    icon={<BadgeIcon badge={badge} />}
-    label={badgeLabel(badge, dictionary)}
-    token={TOKEN_FOR_BADGE[badge]}
-    testId={`photos-sidebar-badge-${badge}`}
-  />
-);
 
 export const PhotoRow = ({
   item,
@@ -111,7 +61,14 @@ export const PhotoRow = ({
           {formatCapturedAt(item.capturedAt, dictionary.locale) ?? dictionary.photos.unknownDate}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-          {photoBadges(item).map((badge) => <BadgeChip key={badge} badge={badge} dictionary={dictionary} />)}
+          {photoBadges(item).map((badge) => (
+            <PhotoStatusBadge
+              key={badge}
+              status={badge}
+              dictionary={dictionary}
+              testId={`photos-sidebar-badge-${badge}`}
+            />
+          ))}
         </Box>
       </Box>
     </ListItemButton>
