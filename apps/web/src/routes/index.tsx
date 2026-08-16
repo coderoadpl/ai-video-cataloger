@@ -254,7 +254,18 @@ export const IndexRoute = () => {
           disabled={!photosAnalysis.treeScopeAvailable || photosAnalysis.isBusy}
         />
       )}
-      toolbar={<PhotosScopeToolbar state={photosAnalysis} />}
+      toolbar={(
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.75 }}>
+          <PhotosScopeToolbar state={photosAnalysis} />
+          <FacesIndexAction
+            active={photosAnalysisActive}
+            folder={shell.currentFolder}
+            addLine={terminal.addLine}
+            lockReason={catalogLock.disabledReason}
+            hasAnalyzedPhotos={(photosAnalysis.treeRoot?.analysedCount ?? 0) > 0}
+          />
+        </Box>
+      )}
     />
   );
 
@@ -263,6 +274,7 @@ export const IndexRoute = () => {
       video={selected}
       analyzing={analyzing}
       loading={shell.currentFolder !== null && selected === null && (catalog.isLoading || tree.isLoading)}
+      folderOpen={shell.currentFolder !== null}
       hasVideos={shell.currentFolder !== null && catalog.videos.length > 0}
       onAnalyze={processing.analyze}
       onNavigateToCanonical={catalog.selectKey}
@@ -345,18 +357,7 @@ export const IndexRoute = () => {
         </Box>
       </Box>
       <Box sx={{ display: analysisMedia === 'photos' ? 'flex' : 'none', flexDirection: 'column', flex: 1, minHeight: 0 }}>
-        <PhotosWorkspace
-          active={mode === 'analysis' && analysisMedia === 'photos'}
-          state={photosAnalysis}
-          topStrip={(
-            <FacesIndexAction
-              active={mode === 'analysis' && analysisMedia === 'photos'}
-              folder={shell.currentFolder}
-              addLine={terminal.addLine}
-              lockReason={catalogLock.disabledReason}
-            />
-          )}
-        />
+        <PhotosWorkspace active={mode === 'analysis' && analysisMedia === 'photos'} state={photosAnalysis} />
       </Box>
     </Box>
   );

@@ -146,11 +146,36 @@ const baseState = (overrides: Partial<PhotosAnalysisState> = {}): PhotosAnalysis
 });
 
 describe('PhotosWorkspace', () => {
-  it('renders the empty placeholder when nothing is selected', () => {
-    renderThemed(<PhotosWorkspace active state={baseState()} />);
+  it('renders the shared select-a-file empty state when nothing is selected', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001' })];
+    renderThemed(<PhotosWorkspace active state={baseState({ items, total: 1 })} />);
 
     expect(screen.getByTestId('photos-workspace-empty')).toBeDefined();
+    expect(screen.getByTestId('analysis-empty-state').textContent).toContain(
+      'Select a photo from the list on the left to see its details.',
+    );
     expect(screen.queryByTestId('photos-analysis-detail')).toBeNull();
+  });
+
+  it('renders the shared medium-empty state when the open folder has no photos', () => {
+    renderThemed(<PhotosWorkspace active state={baseState({
+      counts: { photos: 0, paths: 0, proxied: 0, proxyFailed: 0 },
+    })} />);
+
+    expect(screen.getByTestId('analysis-empty-state').textContent).toContain(
+      'No photos were found in this folder.',
+    );
+  });
+
+  it('renders the welcome screen instead of an empty-selection prompt when no folder is open', () => {
+    renderThemed(<PhotosWorkspace active state={baseState({
+      folder: null,
+      folderState: 'no-folder',
+      selectedRoot: null,
+    })} />);
+
+    expect(screen.getByText('Welcome to AI Video Cataloger')).toBeDefined();
+    expect(screen.queryByTestId('analysis-empty-state')).toBeNull();
   });
 
   it('renders the detail with the analyze strip for an unanalysed selected photo', () => {
@@ -270,12 +295,6 @@ describe('PhotosWorkspace', () => {
 
     const chip = screen.getByTestId('photo-tag-chip');
     expect(chip.className).not.toContain('clickable');
-  });
-
-  it('renders the passed top strip when active', () => {
-    renderThemed(<PhotosWorkspace active state={baseState()} topStrip={<div data-testid="top-strip-probe" />} />);
-
-    expect(screen.getByTestId('top-strip-probe')).toBeDefined();
   });
 
   it('renders nothing when inactive', () => {

@@ -17,6 +17,7 @@ const messages: AnalyzerErrorMessages = {
   providerRequestFailed: 'Żądanie do dostawcy nie powiodło się.',
   providerEmptyResponse: 'Dostawca zwrócił pustą odpowiedź.',
   rootNotFound: (path) => `Nie znaleziono folderu: ${path}`,
+  catalogRootEmpty: 'Brak przeanalizowanych plików w tym folderze.',
 };
 
 describe('formatAnalyzerError', () => {
@@ -82,6 +83,14 @@ describe('formatAnalyzerError', () => {
 
   it('keeps the user-chosen root path visible when the root itself is missing, localized', () => {
     expect(formatAnalyzerError('Root not found: /a/b', messages)).toBe(messages.rootNotFound('/a/b'));
+  });
+
+  it('maps an empty catalog root to dictionary copy without exposing the server path', () => {
+    const result = formatAnalyzerError('No catalog folders found under: /Users/example/empty', messages);
+
+    expect(result).toBe(messages.catalogRootEmpty);
+    expect(result).not.toContain('No catalog folders found');
+    expect(result).not.toContain('/Users/example');
   });
 
   it('passes an unknown path-free message through unchanged', () => {

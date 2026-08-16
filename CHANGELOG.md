@@ -14,6 +14,23 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Analysis now uses one neutral outlined empty-state pattern for videos and
+  photos when a folder is open but no file is selected, with medium-specific
+  copy when that folder contains no files of the active medium. The full
+  welcome and onboarding view now appears only when no folder is open (W66).
+- The Analysis → Photos face-index action now lives with the photo-analysis
+  actions in the sidebar and stays disabled with an explanatory tooltip until
+  the current root contains analyzed photos, instead of floating above the
+  main-pane empty state (W66).
+
+### Fixed
+
+- Face-index failures now pass through the analyzer-error formatter before
+  localized failure copy is composed, so an empty catalog root no longer
+  exposes raw English server text or its filesystem path (W66).
+
 ## [0.6.20] - 2026-08-15
 
 ### Changed

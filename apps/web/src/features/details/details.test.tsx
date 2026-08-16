@@ -124,15 +124,26 @@ afterEach(() => {
 });
 
 describe('details panel', () => {
-  it('shows the welcome screen when no video is selected', () => {
+  it('shows the welcome screen only when no folder is open', () => {
     renderThemed(<DetailsPanel video={null} analyzing={false} />);
     expect(screen.getByText('Welcome to AI Video Cataloger')).toBeDefined();
+    expect(screen.queryByTestId('analysis-empty-state')).toBeNull();
   });
 
-  it('shows a pick-a-video prompt instead of the full welcome screen once the folder has files', () => {
-    renderThemed(<DetailsPanel video={null} analyzing={false} hasVideos />);
+  it('shows the shared select-a-file empty state when a folder is open and no video is selected', () => {
+    renderThemed(<DetailsPanel video={null} analyzing={false} folderOpen hasVideos />);
     expect(screen.queryByText('Welcome to AI Video Cataloger')).toBeNull();
-    expect(screen.getByText('Select a video from the list')).toBeDefined();
+    expect(screen.getByTestId('analysis-empty-state').textContent).toContain(
+      'Select a video from the list on the left to see its details.',
+    );
+  });
+
+  it('shows the shared medium-empty state when an open folder has no videos', () => {
+    renderThemed(<DetailsPanel video={null} analyzing={false} folderOpen />);
+    expect(screen.queryByText('Welcome to AI Video Cataloger')).toBeNull();
+    expect(screen.getByTestId('analysis-empty-state').textContent).toContain(
+      'No videos were found in this folder.',
+    );
   });
 
   it('renders metadata, summary, frames, transcript and full analysis for a completed video', () => {

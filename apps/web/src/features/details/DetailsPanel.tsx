@@ -1,8 +1,7 @@
-import { Box, List, ListItem, Paper, Typography } from '@mui/material';
-
-import { type Dictionary } from '../../i18n/dictionary.js';
-import { useDictionary } from '../../i18n/use-dictionary.js';
 import { type DetailsVideo } from './details-video.js';
+
+import { AnalysisEmptyState } from '../../components/ui/AnalysisEmptyState.js';
+import { AnalysisWelcome } from '../../components/ui/AnalysisWelcome.js';
 import { DetailsSkeleton } from './DetailsSkeleton.js';
 import { type DetailsLocation } from './MetadataCard.js';
 import { VideoDetails } from './VideoDetails.js';
@@ -11,6 +10,7 @@ interface DetailsPanelProps {
   video: DetailsVideo | null;
   analyzing: boolean;
   loading?: boolean;
+  folderOpen?: boolean;
   hasVideos?: boolean;
   onAnalyze?: ((video: DetailsVideo, options?: { force?: boolean }) => void) | undefined;
   onNavigateToCanonical?: ((canonicalPath: string) => void) | undefined;
@@ -20,41 +20,11 @@ interface DetailsPanelProps {
   onShowOnMap?: (() => void) | undefined;
 }
 
-const Welcome = ({ dictionary }: { dictionary: Dictionary }) => (
-  <Box sx={{ p: 4, maxWidth: 720, display: 'flex', flexDirection: 'column', gap: 3 }}>
-    <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
-      <Typography variant="h1">{dictionary.details.welcomeTitle}</Typography>
-      <Typography variant="body2" color="text.secondary">
-        {dictionary.details.welcomeBody}
-      </Typography>
-    </Box>
-    <Paper variant="outlined" sx={{ p: 2 }}>
-      <Typography variant="h2" gutterBottom>
-        {dictionary.details.gettingStarted}
-      </Typography>
-      <List dense sx={{ listStyleType: 'decimal', pl: 2.5 }}>
-        {dictionary.details.gettingStartedSteps.map((step) => (
-          <ListItem key={step} sx={{ display: 'list-item', py: 0.25, px: 0 }} disableGutters>
-            <Typography variant="body2" color="text.secondary">
-              {step}
-            </Typography>
-          </ListItem>
-        ))}
-      </List>
-    </Paper>
-  </Box>
-);
-
-const SelectVideoPrompt = ({ dictionary }: { dictionary: Dictionary }) => (
-  <Box sx={{ p: 4, display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100%' }}>
-    <Typography variant="body1" color="text.secondary">{dictionary.details.selectVideoPrompt}</Typography>
-  </Box>
-);
-
 export const DetailsPanel = ({
   video,
   analyzing,
   loading = false,
+  folderOpen = false,
   hasVideos = false,
   onAnalyze,
   onNavigateToCanonical,
@@ -63,12 +33,10 @@ export const DetailsPanel = ({
   location,
   onShowOnMap,
 }: DetailsPanelProps) => {
-  const dictionary = useDictionary();
-
   if (video === null && loading) return <DetailsSkeleton />;
 
   return video === null ? (
-    hasVideos ? <SelectVideoPrompt dictionary={dictionary} /> : <Welcome dictionary={dictionary} />
+    folderOpen ? <AnalysisEmptyState media="video" empty={!hasVideos} /> : <AnalysisWelcome />
   ) : (
     <VideoDetails
       key={video.path}
