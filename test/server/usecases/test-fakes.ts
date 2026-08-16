@@ -2455,6 +2455,7 @@ export class InMemoryPhotosStore implements PhotosStore {
     rankingTerms: readonly string[];
     from: string | null;
     to: string | null;
+    folderId: string | null;
     tagTermSets: readonly (readonly string[])[];
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
@@ -2476,6 +2477,7 @@ export class InMemoryPhotosStore implements PhotosStore {
         }
         if (input.from !== null && (photo.capturedAt === null || photo.capturedAt < input.from)) return null;
         if (input.to !== null && (photo.capturedAt === null || photo.capturedAt > input.to)) return null;
+        if (input.folderId !== null && photo.folderId !== input.folderId) return null;
         return {
           fingerprint: photo.fingerprint,
           fileName: photo.fileName,

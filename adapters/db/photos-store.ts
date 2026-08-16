@@ -810,6 +810,7 @@ export class SqlJsPhotosStore implements PhotosStore {
     rankingTerms: readonly string[];
     from: string | null;
     to: string | null;
+    folderId: string | null;
     tagTermSets: readonly (readonly string[])[];
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
@@ -818,8 +819,9 @@ export class SqlJsPhotosStore implements PhotosStore {
     return this.read((_db, client) => {
       const tagWhere = photoTagWhereClauses(input.tagTermSets);
       const dateWhere = photoDateWhereClauses(input.from, input.to);
-      const clauses = [...tagWhere.clauses, ...dateWhere.clauses];
-      const params = { ...tagWhere.params, ...dateWhere.params };
+      const folderWhere = photoFolderWhereClause(input.folderId);
+      const clauses = [...tagWhere.clauses, ...dateWhere.clauses, ...folderWhere.clauses];
+      const params = { ...tagWhere.params, ...dateWhere.params, ...folderWhere.params };
 
       const analysedClause = 'EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint)';
 
@@ -1612,6 +1614,12 @@ const photoDateWhereClauses = (
   }
   return { clauses, params };
 };
+
+const photoFolderWhereClause = (
+  folderId: string | null,
+): { clauses: string[]; params: Record<string, string> } => folderId === null
+  ? { clauses: [], params: {} }
+  : { clauses: ['p.folder_id = $folderId'], params: { $folderId: folderId } };
 
 const photoCollectionOrderBySql = (sort: 'captured_desc' | 'captured_asc' | 'name_asc'): string => {
   switch (sort) {

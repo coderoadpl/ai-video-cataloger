@@ -245,6 +245,9 @@ export const collectionScopes = {
   ] as const,
 };
 
+export const invalidateCollectionQueries = (client: { invalidateQueries: (filters: { queryKey: QueryKey }) => Promise<void> }): Promise<void> =>
+  client.invalidateQueries({ queryKey: collectionScopes.all() });
+
 export const tagsScopes = {
   all: () => ['tags'] as const,
 };
@@ -862,9 +865,6 @@ export const photosGridThumbsMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.photosGridThumbs(),
     call: (variables: PhotosGridThumbsInput) => api.photosGridThumbs(variables),
-    onSettled: (_data, _error, _variables, _onMutateResult, context) => {
-      void context.client.invalidateQueries({ queryKey: photosScopes.all() });
-    },
   });
 
 export const photosProcessMutation = (api: ApiClient) =>

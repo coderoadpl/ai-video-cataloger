@@ -89,7 +89,7 @@ const stubCollection = (items: LibraryItem[]) => {
       const cursor = url.searchParams.get('cursor');
       const offset = cursor === null ? 0 : Number(cursor);
 
-      const videoOnlyFilterActive = (people !== null && people.length > 0) || place !== null || hasGps !== null || folderId !== null;
+      const videoOnlyFilterActive = (people !== null && people.length > 0) || place !== null || hasGps !== null;
 
       let matchedVideo = items.filter((item) => item.media === 'video');
       let matchedPhoto = videoOnlyFilterActive ? [] : items.filter((item) => item.media === 'photo');
@@ -101,7 +101,13 @@ const stubCollection = (items: LibraryItem[]) => {
       if (hasGps === 'true') matchedVideo = matchedVideo.filter((item) => item.media === 'video' && item.gps !== null);
       if (hasGps === 'false') matchedVideo = matchedVideo.filter((item) => item.media === 'video' && item.gps === null);
       if (folderId !== null && folderId.length > 0) {
+        const folderPath = items.find(
+          (item): item is LibraryVideoItem => item.media === 'video' && item.folder.folderId === folderId,
+        )?.folder.currentPath;
         matchedVideo = matchedVideo.filter((item) => item.media === 'video' && item.folder.folderId === folderId);
+        matchedPhoto = folderPath === undefined
+          ? []
+          : matchedPhoto.filter((item) => item.media === 'photo' && item.currentPath.startsWith(`${folderPath}/`));
       }
       const mediaTotals = {
         all: matchedVideo.length + matchedPhoto.length,
@@ -1021,6 +1027,35 @@ describe('LibraryView', () => {
         const tiles = screen.getAllByTestId('library-tile');
         expect(tiles.every((tile) => tile.getAttribute('data-media') === 'video')).toBe(true);
       });
+    });
+
+    it('keeps photos visible without a hidden-photo notice when only the folder filter is active', async () => {
+      const folderId = '99999999-9999-4999-8999-999999999999';
+      stubCollection([
+        videoItem({
+          fingerprint: 'fp-folder',
+          folder: { folderId, currentPath: '/shared', displayName: 'Shared', online: true, offlineReason: null },
+        }),
+        photoItem({ fingerprint: 'ph_0000000000000001', currentPath: '/shared/photo.jpg' }),
+        photoItem({ fingerprint: 'ph_0000000000000002', currentPath: '/other/photo.jpg' }),
+      ]);
+      stubFacets({
+        folders: [{ folderId, displayName: 'Shared', currentPath: '/shared', online: true, count: 1 }],
+      });
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      await screen.findAllByTestId('library-tile');
+
+      const folderInput = screen.getByTestId('library-filter-folder').querySelector('input');
+      if (folderInput === null) throw new Error('missing folder filter input');
+      fireEvent.mouseDown(folderInput);
+      fireEvent.click(await screen.findByText('Shared (1)'));
+
+      await waitFor(() => {
+        const tiles = screen.getAllByTestId('library-tile');
+        expect(tiles.map((tile) => tile.getAttribute('data-fingerprint')).sort()).toEqual(['fp-folder', 'ph_0000000000000001']);
+      });
+      expect(screen.queryByTestId('library-video-only-filter-notice')).toBeNull();
     });
 
     it('disables folder grouping once photos are mixed into the Kolekcja results', async () => {

@@ -53,6 +53,25 @@ const photoResult = (): Record<string, unknown> => ({
   proxyPath: '/artifacts/proxies/ph_0000000000000001.jpg',
 });
 
+const completedPhotoGridJob = (jobId: string) => ({
+  jobId,
+  kind: 'photo_grid_thumbs',
+  status: 'completed',
+  progress: null,
+  progressEvents: [],
+  error: null,
+  createdAt: '2026-01-01T00:00:00.000Z',
+  updatedAt: '2026-01-01T00:00:01.000Z',
+});
+
+const deferred = <T,>(): { promise: Promise<T>; resolve: (value: T) => void } => {
+  let resolver: (value: T) => void = () => undefined;
+  const promise = new Promise<T>((resolve) => {
+    resolver = resolve;
+  });
+  return { promise, resolve: resolver };
+};
+
 const stubBaseline = (items: Record<string, unknown>[] = []) => {
   server.use(
     http.get('/api/scan', () => HttpResponse.json({
@@ -218,11 +237,66 @@ describe('Library collection activation triggers a thumbnails backfill', () => {
         backfillRequests.push(await request.json());
         return HttpResponse.json({ ok: true, data: { jobId: 'job-photo-thumbs' } });
       }),
+      http.get('/api/jobs/status', () => HttpResponse.json({ ok: true, data: completedPhotoGridJob('job-photo-thumbs') })),
     );
 
     renderRoute();
 
     await screen.findByTestId('library-tile');
     await waitFor(() => expect(backfillRequests).toEqual([{ force: false }]));
+  });
+
+  it('refetches the collection after the photo grid-thumb job completes', async () => {
+    const completed = deferred<boolean>();
+    let collectionRequests = 0;
+    let gridThumbReady = false;
+    stubBaseline([]);
+    server.use(
+      http.get('/api/photos/tree', () => HttpResponse.json({
+        ok: true,
+        data: { media: 'photo', roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2026-01-02T10:00:00.000Z' }] },
+      })),
+      http.get('/api/library/collection', () => {
+        collectionRequests += 1;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            query: null,
+            media: 'all',
+            limit: 200,
+            total: 1,
+            videoTotal: 0,
+            photoTotal: 1,
+            mediaTotals: { all: 1, video: 0, photo: 1 },
+            count: 1,
+            items: [{
+              ...photoResult(),
+              thumbPath: null,
+              gridThumbPath: gridThumbReady ? '/artifacts/grid-thumbs/ph_0000000000000001.jpg' : null,
+            }],
+            nextCursor: null,
+          },
+        });
+      }),
+      http.post('/api/photos/grid-thumbs', () => HttpResponse.json({ ok: true, data: { jobId: 'job-photo-race' } })),
+      http.get('/api/jobs/status', async () => {
+        await completed.promise;
+        gridThumbReady = true;
+        return HttpResponse.json({
+          ok: true,
+          data: completedPhotoGridJob('job-photo-race'),
+        });
+      }),
+    );
+
+    renderRoute();
+
+    await screen.findByTestId('library-tile-placeholder');
+    expect(collectionRequests).toBe(1);
+    completed.resolve(true);
+
+    const image = await screen.findByRole('img', { name: 'photo.jpg' });
+    expect(decodeURIComponent(image.getAttribute('src') ?? '')).toContain('/artifacts/grid-thumbs/ph_0000000000000001.jpg');
+    expect(collectionRequests).toBe(2);
   });
 });

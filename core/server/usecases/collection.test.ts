@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import type { CatalogAnalysis, CatalogFile, CatalogFolder } from '@core/domain/index.js';
+import { derivedFolderId, type CatalogAnalysis, type CatalogFile, type CatalogFolder } from '@core/domain/index.js';
 import type { PhotoFolderRecord, PhotoRecord } from '../ports.js';
 
 import {
@@ -31,7 +31,7 @@ const folderA: CatalogFolder = {
 };
 
 const photoFolder: PhotoFolderRecord = {
-  folderId: 'path-aaaaaaaa',
+  folderId: derivedFolderId('/media/photos'),
   currentPath: '/media/photos',
   displayName: 'photos',
   firstSeenAt: '2026-01-01T00:00:00.000Z',
@@ -297,7 +297,7 @@ describe('libraryCollection', () => {
     expect(photoOnly.ok && photoOnly.value.mediaTotals).toEqual({ all: 3, video: 2, photo: 1 });
   });
 
-  it('zeroes the photo leg when a video-only filter (people/place/hasGps/folderId) is set', async () => {
+  it('zeroes the photo leg when a photo-unsupported people, place, or GPS filter is set', async () => {
     const { deps, globalCatalog, photos } = buildDeps();
     await globalCatalog.upsertFolder(folderA);
     await globalCatalog.upsertFile(video('v1', '2026-01-01T00:00:00.000Z'));
@@ -313,6 +313,42 @@ describe('libraryCollection', () => {
     if (!result.ok) return;
     expect(result.value.photoTotal).toBe(0);
     expect(result.value.items.every((item) => item.media === 'video')).toBe(true);
+  });
+
+  it('filters photos through the selected catalog folder path when its photo folder has a derived id', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    const selectedFolder = { ...folderA, currentPath: photoFolder.currentPath, displayName: photoFolder.displayName };
+    const otherFolder: PhotoFolderRecord = {
+      ...photoFolder,
+      folderId: derivedFolderId('/media/other'),
+      currentPath: '/media/other',
+      displayName: 'other',
+    };
+    await globalCatalog.upsertFolder(selectedFolder);
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertFolder(otherFolder);
+    await photos.upsertPhoto(photo('p-selected', '2026-01-02T00:00:00.000Z', 'selected.jpg'));
+    await photos.upsertPhoto({
+      ...photo('p-other', '2026-01-01T00:00:00.000Z', 'other.jpg'),
+      folderId: otherFolder.folderId,
+      currentPath: '/media/other/other.jpg',
+    });
+    await analyzePhoto(photos, 'p-selected');
+    await analyzePhoto(photos, 'p-other');
+
+    const result = await libraryCollection(deps, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, folderId: selectedFolder.folderId },
+      sort: 'captured_desc',
+      media: 'all',
+      limit: 50,
+      cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.fingerprint)).toEqual(['p-selected']);
+    expect(result.value.photoTotal).toBe(1);
   });
 
   it('merges relevance results positionally by per-source rank, video-first on tie', async () => {
