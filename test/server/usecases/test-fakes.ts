@@ -1253,6 +1253,8 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       model: file?.model ?? null,
       createdAt: file?.processedAt ?? '1970-01-01T00:00:00.000Z',
       usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
     });
     if (!this.selectedConfigIds.has(analysis.fingerprint)) {
       this.selectedConfigIds.set(analysis.fingerprint, LEGACY_CONFIG_ID);
@@ -1270,7 +1272,11 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   upsertVariant(variant: CatalogVariant, languageResolution?: AnalysisLanguageResolution): Promise<Result<void, AppError>> {
     const key = `${variant.fingerprint}\u0000${variant.configId}`;
-    this.variants.set(key, variant);
+    this.variants.set(key, {
+      ...variant,
+      resolvedOutputLanguage: languageResolution?.outputLanguage ?? variant.resolvedOutputLanguage,
+      resolvedTagLanguage: languageResolution?.tagLanguage ?? variant.resolvedTagLanguage,
+    });
     if (languageResolution !== undefined) this.variantLanguageResolutions.set(key, languageResolution);
     if (!this.analyses.has(variant.fingerprint)) this.analyses.set(variant.fingerprint, variant);
     return Promise.resolve(ok(undefined));

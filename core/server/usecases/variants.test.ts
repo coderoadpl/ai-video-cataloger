@@ -90,6 +90,8 @@ const variant = (
   model: descriptor.model ?? descriptor.modelTag ?? null,
   createdAt,
   usage: null,
+  resolvedOutputLanguage: null,
+  resolvedTagLanguage: null,
 });
 
 const seedVariantArtifacts = async (

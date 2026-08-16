@@ -36,6 +36,12 @@ roots:
 `core/contract` + the typed client survive unchanged — zod envelope,
 taxonomy, descriptors, CQRS branding all run over Hono's fetch-compatible
 `app.request`. The contract stays the single bridge; only the medium changed.
+The Electron renderer adapts `DesktopApiBridge.request` to the same fetch
+surface. Aborting its `AbortSignal` rejects the renderer-side promise with
+`AbortError` and suppresses any later IPC response. The preload request has no
+physical cancellation channel, so a request already dispatched to the main
+process still completes there; renderer cancellation means local settlement,
+not server-side interruption.
 The foundation's deployment matrix (Vercel/Docker), public surface
 (embeds/headless API), and domain provisioning do not apply and are removed,
 not stubbed.
@@ -269,8 +275,9 @@ accepted job to a terminal state and invalidates both photo and
 completion, failure, cancellation, a disappeared job, or a polling error.
 Invalidation is a cheap reconciliation step: limiting it to successful
 completion could leave a collection tile with stale null image paths after a
-server restart. Renderer teardown aborts the status request and its pending
-delay, so the poller cannot issue another fetch after unmount.
+server restart. Renderer teardown aborts the renderer-side status promise and
+its pending delay, so the poller cannot issue another fetch or invalidate
+queries after unmount.
 
 Expanded sub-folder rows in the catalog tree get the same foreground
 thumbnail priority as the root list, scoped to the windowed-visible range

@@ -4,6 +4,8 @@ import path from 'node:path';
 
 import { afterEach, describe, expect, it } from 'vitest';
 
+import { SqlJsPhotosStore } from '../../../adapters/db/photos-store.js';
+
 import {
   catalogMediaRoots,
   parseMediaUrl,
@@ -342,11 +344,29 @@ describe('resolveRevealPath', () => {
     const target = path.join(photoRoot, 'trip', 'photo.jpg');
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, 'photo', 'utf8');
-    const registeredRoots = [photoRoot];
+    const store = new SqlJsPhotosStore({ homeDirectory: current });
+    await store.startPhotoRun({
+      runId: 'photo-run-reveal',
+      root: photoRoot,
+      stage: 'scan',
+      startedAt: '2026-01-01T00:00:00.000Z',
+      finishedAt: '2026-01-01T00:00:01.000Z',
+      filesTotal: 1,
+      filesDone: 1,
+      filesSkipped: 0,
+      filesFailed: 0,
+      lastActivityAt: '2026-01-01T00:00:01.000Z',
+      batchJson: null,
+    });
+    const registeredRoots = async (): Promise<string[]> => {
+      const roots = await store.listRoots();
+      return roots.ok ? roots.value.map((entry) => entry.root) : [];
+    };
 
-    expect(await resolveRegisteredRevealPath(target, current, [], registeredRoots)).toBe(await realpath(target));
-    registeredRoots.length = 0;
-    expect(await resolveRegisteredRevealPath(target, current, [], registeredRoots)).toBeNull();
+    expect(await resolveRegisteredRevealPath(target, current, [], await registeredRoots())).toBe(await realpath(target));
+    await store.deletePhotoRuns(photoRoot);
+    expect(await resolveRegisteredRevealPath(target, current, [], await registeredRoots())).toBeNull();
+    await store.dispose();
   });
 });
 

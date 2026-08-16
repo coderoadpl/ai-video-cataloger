@@ -167,8 +167,9 @@ Verbose processing can emit `artifact_reused` with `kind` (`frames` or
 one NDJSON row per variant with `configId`, `descriptor`, `selected`,
 `createdAt`, analyzer, model, and `estimatedCostUsd` when known, followed by its
 normal `completed` envelope. The per-folder `catalog.ndjson` snapshot records
-an `analyses` array and `selectedConfigId`; older single-analysis snapshots
-remain importable.
+an `analyses` array with nullable resolved output/tag-language provenance and
+`selectedConfigId`; older variant rows without that provenance and older
+single-analysis snapshots remain importable.
 
 `--gemini-batch` (config key `gemini_batch_mode`) sends a whole `process-drive`
 run to the Gemini Batch API at half the interactive token price; results

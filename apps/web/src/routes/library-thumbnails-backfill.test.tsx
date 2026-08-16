@@ -300,6 +300,50 @@ describe('Library collection activation triggers a thumbnails backfill', () => {
     expect(collectionRequests).toBe(2);
   });
 
+  it('produces no post-unmount invalidation while photo backfill polling is pending', async () => {
+    const statusStarted = deferred<boolean>();
+    const statusCompleted = deferred<boolean>();
+    stubBaseline([]);
+    server.use(
+      http.get('/api/photos/tree', () => HttpResponse.json({
+        ok: true,
+        data: { media: 'photo', roots: [{ root: '/photos', photos: 1, missing: 0, lastScanAt: '2026-01-02T10:00:00.000Z' }] },
+      })),
+      http.get('/api/library/collection', () => HttpResponse.json({
+        ok: true,
+        data: {
+          query: null,
+          media: 'all',
+          limit: 200,
+          total: 1,
+          videoTotal: 0,
+          photoTotal: 1,
+          mediaTotals: { all: 1, video: 0, photo: 1 },
+          count: 1,
+          items: [photoResult()],
+          nextCursor: null,
+        },
+      })),
+      http.post('/api/photos/grid-thumbs', () => HttpResponse.json({ ok: true, data: { jobId: 'job-photo-unmount' } })),
+      http.get('/api/jobs/status', async () => {
+        statusStarted.resolve(true);
+        await statusCompleted.promise;
+        return HttpResponse.json({ ok: true, data: completedPhotoGridJob('job-photo-unmount') });
+      }),
+    );
+    const rendered = renderRoute();
+    const invalidate = vi.spyOn(rendered.queryClient, 'invalidateQueries');
+
+    await statusStarted.promise;
+    rendered.unmount();
+    const callsAtUnmount = invalidate.mock.calls.length;
+    statusCompleted.resolve(true);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(invalidate).toHaveBeenCalledTimes(callsAtUnmount);
+  });
+
   it('refetches photo tiles when a completed backfill disappears before status polling', async () => {
     let collectionRequests = 0;
     let gridThumbReady = false;

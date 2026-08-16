@@ -10,6 +10,7 @@ import {
 } from '@core/domain/index.js';
 
 import { readOnlyArtifactRoot } from './artifact-root.js';
+import { exportFolderSnapshot, folderSnapshotPath, importFolderSnapshot } from './catalog-snapshot.js';
 import { normalizeKebabSlug } from './final-name.js';
 import { enqueueProcess } from './jobs.js';
 import { parseAnalysisResponse, parseTagsLine, processVideoPipeline, tempAudioPath, type ProcessDeps } from './process.js';
@@ -1035,6 +1036,39 @@ describe('process pipeline global catalog idempotency', () => {
     const polish = await processVideoPipeline({ ...deps, globalCatalog }, input);
 
     expect(english.ok && polish.ok && polish.value.configId).toBe(english.ok ? english.value.configId : '');
+    expect(deps.analyzer.inputs.map((entry) => entry.uiLanguage)).toEqual(['en', 'pl']);
+  });
+
+  it('reprocesses recovered auto-language analysis after the UI language changes', async () => {
+    const deps = makeDeps('pending');
+    const source = new InMemoryGlobalCatalogStore();
+    const input = { ...baseInput, skipRename: true, skipRenameExplicit: true };
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'en');
+
+    const english = await processVideoPipeline({ ...deps, globalCatalog: source }, input);
+    const folders = await source.listFolders();
+    expect(english.ok).toBe(true);
+    expect(folders.ok && folders.value).toHaveLength(1);
+    if (!folders.ok || folders.value[0] === undefined) return;
+    const sourceResolution = english.ok
+      ? await source.getVariantLanguageResolution('hash-clip', english.value.configId)
+      : null;
+    expect(sourceResolution).toEqual({ ok: true, value: { outputLanguage: 'en', tagLanguage: 'en' } });
+    expect(await exportFolderSnapshot({ globalCatalog: source, fs: deps.fs }, folders.value[0])).toMatchObject({ ok: true });
+    const snapshot = await deps.fs.readTextFile(folderSnapshotPath(deps.fs, '/work'));
+    expect(snapshot.ok && snapshot.value).toContain('"resolvedOutputLanguage":"en"');
+    expect(snapshot.ok && snapshot.value).toContain('"resolvedTagLanguage":"en"');
+
+    const recovered = new InMemoryGlobalCatalogStore();
+    expect(await importFolderSnapshot({ globalCatalog: recovered, fs: deps.fs }, '/work')).toMatchObject({ ok: true });
+    const recoveredResolution = english.ok
+      ? await recovered.getVariantLanguageResolution('hash-clip', english.value.configId)
+      : null;
+    expect(recoveredResolution).toEqual({ ok: true, value: { outputLanguage: 'en', tagLanguage: 'en' } });
+    await deps.config.set({ kind: 'home' }, 'ui_language', 'pl');
+    const polish = await processVideoPipeline({ ...deps, globalCatalog: recovered }, input);
+
+    expect(polish.ok && english.ok && polish.value.configId).toBe(english.ok ? english.value.configId : '');
     expect(deps.analyzer.inputs.map((entry) => entry.uiLanguage)).toEqual(['en', 'pl']);
   });
 

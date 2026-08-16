@@ -38,10 +38,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Kolekcja folder filtering now follows photo membership through either ownership or sightings while unfiltered totals still count each photo identity once.
 - Automatic video and photo analyses now record resolved output and tag languages and rerun the same variant after the UI language changes, while explicit languages and migrated rows without provenance remain unaffected.
+- Folder snapshots now round-trip resolved video output and tag languages, so an auto-language variant recovered from a snapshot reruns after the UI language changes while older snapshot rows retain legacy-null freshness semantics.
 - `photos forget` now removes forgotten scan-root provenance, revoking both root listing and reveal authorization.
 - A watched photo rescan that fails under an external catalog lock now retains the pending change and retries with bounded backoff without requiring another filesystem event.
 - Photo grid-thumbnail backfill now invalidates photo and collection queries after every terminal or polling outcome, including a disappeared job.
-- Photo grid-thumbnail polling teardown now aborts both the pending status request and retry delay so no fetch starts after unmount.
+- Electron renderer transport now rejects a pending bridge request with `AbortError` when its signal aborts, allowing polling teardown to settle without post-unmount effects while the already-dispatched main-process request finishes independently.
 - Face-index controls and English and Polish copy now accurately gate and describe the current video-only pipeline instead of promising photo-face indexing.
 - Analysis copy now uses coherent terminology and American English spelling across language selection, readiness, status, cancellation, wizard, badge, and Library surfaces.
 - Polish photo-tree, Gemini spend, analysis summary, and terminal counts now use count-aware numeral forms, with correct English singular and plural summary wording.

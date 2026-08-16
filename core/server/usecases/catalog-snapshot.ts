@@ -126,7 +126,10 @@ const applyRecord = async (
   const upsertedFile = await deps.globalCatalog.upsertFile(file);
   if (!upsertedFile.ok) return upsertedFile;
   for (const variant of variants) {
-    const upsertedVariant = await deps.globalCatalog.upsertVariant(variant);
+    const languageResolution = variant.resolvedOutputLanguage === null || variant.resolvedTagLanguage === null
+      ? undefined
+      : { outputLanguage: variant.resolvedOutputLanguage, tagLanguage: variant.resolvedTagLanguage };
+    const upsertedVariant = await deps.globalCatalog.upsertVariant(variant, languageResolution);
     if (!upsertedVariant.ok) return upsertedVariant;
   }
   const selected = await deps.globalCatalog.setSelectedVariant(file.fingerprint, selectedConfigId);

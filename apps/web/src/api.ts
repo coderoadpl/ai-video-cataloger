@@ -104,22 +104,45 @@ const headerRecord = (headers: HeadersInit | undefined): Record<string, string> 
   return record;
 };
 
-const bridgeFetch =
+export const bridgeFetch =
   (api: DesktopApiBridge): FetchLike =>
-  async (input, init) => {
+  (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const headers = headerRecord(init?.headers);
     const body = typeof init?.body === 'string' ? init.body : null;
-    const response = await api.request({
+    const signal = init?.signal;
+    if (signal?.aborted === true) return Promise.reject(new DOMException('Request aborted', 'AbortError'));
+    const pending = api.request({
       url,
       ...(init?.method === undefined ? {} : { method: init.method }),
       ...(headers === undefined ? {} : { headers }),
       body,
     });
-    return new Response(response.body, {
-      status: response.status,
-      statusText: response.statusText,
-      headers: response.headers,
+    return new Promise<Response>((resolve, reject) => {
+      let settled = false;
+      const abort = (): void => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', abort);
+        reject(new DOMException('Request aborted', 'AbortError'));
+      };
+      signal?.addEventListener('abort', abort, { once: true });
+      if (signal?.aborted === true) abort();
+      void pending.then((response) => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', abort);
+        resolve(new Response(response.body, {
+          status: response.status,
+          statusText: response.statusText,
+          headers: response.headers,
+        }));
+      }, (error: unknown) => {
+        if (settled) return;
+        settled = true;
+        signal?.removeEventListener('abort', abort);
+        reject(error);
+      });
     });
   };
 

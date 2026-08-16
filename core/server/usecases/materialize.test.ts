@@ -127,6 +127,8 @@ const seedFixture = async (options: SeedOptions = {}): Promise<Fixture> => {
     model: 'gemma3:12b',
     createdAt: '2026-01-01T00:00:00.000Z',
     usage: null,
+    resolvedOutputLanguage: null,
+    resolvedTagLanguage: null,
   };
   await globalCatalog.upsertVariant(variant);
   await globalCatalog.setSelectedVariant(fingerprint, cfgId);
@@ -479,6 +481,8 @@ describe('materializeCatalog', () => {
         model: 'gemma3:12b',
         createdAt: '2026-01-01T00:00:00.000Z',
         usage: null,
+        resolvedOutputLanguage: null,
+        resolvedTagLanguage: null,
       });
       await globalCatalog.setSelectedVariant(extraFingerprint, cfgId);
     }

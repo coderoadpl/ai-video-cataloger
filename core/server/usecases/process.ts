@@ -1670,6 +1670,8 @@ const recordGlobalCatalog = async (
         transcript: transcript.value,
         language: resolved.descriptor.output_language,
         tags: summary.value?.tags ?? [],
+        resolvedOutputLanguage: null,
+        resolvedTagLanguage: null,
       },
       languageResolution: resolveDescriptorLanguages(resolved.descriptor, resolved.analyzer.uiLanguage),
     },

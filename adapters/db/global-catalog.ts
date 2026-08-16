@@ -1624,6 +1624,8 @@ const rowToVariant = (row: typeof analyses.$inferSelect, analysisTags: string[])
     model: row.model,
     createdAt: row.createdAt,
     usage: parseStoredJson(row.usageJson, catalogVariantSchema.shape.usage),
+    resolvedOutputLanguage: row.resolvedOutputLanguage,
+    resolvedTagLanguage: row.resolvedTagLanguage,
   });
 
 const variantToRow = (variant: CatalogVariant): typeof analyses.$inferInsert => ({

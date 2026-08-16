@@ -1,11 +1,11 @@
 import { z } from 'zod';
 
-import { configDescriptorSchema, configId } from './config-descriptor.js';
+import { analysisLanguageResolutionSchema, configDescriptorSchema, configId } from './config-descriptor.js';
 import { appError, type AppError } from './errors.js';
 import { canonicalPath } from './paths.js';
 
 export const GLOBAL_CATALOG_SCHEMA_VERSION = 14;
-export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 11;
+export const CATALOG_SNAPSHOT_SCHEMA_VERSION = 12;
 
 const DERIVED_FOLDER_ID_PATTERN = /^path-[0-9a-f]{8}$/;
 
@@ -120,6 +120,8 @@ export const catalogVariantSchema = catalogAnalysisSchema.extend({
   model: z.string().nullable(),
   createdAt: z.iso.datetime(),
   usage: z.record(z.string(), z.json()).nullable(),
+  resolvedOutputLanguage: analysisLanguageResolutionSchema.shape.outputLanguage.nullable().default(null),
+  resolvedTagLanguage: analysisLanguageResolutionSchema.shape.tagLanguage.nullable().default(null),
 });
 
 export type CatalogVariant = z.output<typeof catalogVariantSchema>;
