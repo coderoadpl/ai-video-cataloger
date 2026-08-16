@@ -83,6 +83,7 @@ copy, not English fallback strings.
 
 const REPO_ROOT = path.resolve(import.meta.dirname, '..');
 const SEARCH_INPUT = 'library-search-input';
+const AUTOCOMPLETE_POPPER = '.MuiAutocomplete-popper';
 const VISIBLE_TIMEOUT_MS = 15_000;
 const SETTLE_TIMEOUT_MS = 5_000;
 const FOLDER_TIMEOUT_MS = 60_000;
@@ -364,10 +365,14 @@ export const searchTermFromAnalyzedFilename = (filename) => {
   return tokens[0] ?? basename.toLowerCase();
 };
 
-export const clearLibrarySearch = async (input) => {
+// MUI's Autocomplete re-opens its suggestion popper whenever the input regains focus and Enter
+// does not dismiss it; left open it covers the grid and swallows the library-preview tile click.
+export const clearLibrarySearch = async (page, input) => {
   await input.click();
   await input.fill('');
   await input.press('Enter');
+  await input.press('Escape');
+  await page.locator(AUTOCOMPLETE_POPPER).first().waitFor({ state: 'hidden', timeout: SETTLE_TIMEOUT_MS });
 };
 
 // Both steps depend on state a reused QA home may legitimately not have (a
@@ -581,7 +586,7 @@ const drive = async (plan) => {
     if (await appeared(subnavCollection, SETTLE_TIMEOUT_MS)) await subnavCollection.click();
     const searchInput = page.getByTestId(SEARCH_INPUT).locator('input').first();
     if (!(await appeared(searchInput, SETTLE_TIMEOUT_MS))) return failed('no library search input to clear before preview');
-    await clearLibrarySearch(searchInput);
+    await clearLibrarySearch(page, searchInput);
     const tile = page.getByTestId('library-tile').first();
     if (!(await appeared(tile, SETTLE_TIMEOUT_MS))) return skipped('no library tile to preview');
     await tile.click();
