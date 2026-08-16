@@ -152,6 +152,30 @@ describe('watchCatalogFolder', () => {
     expect(onRefresh).toHaveBeenCalledTimes(1);
   });
 
+  it('holds the refresh while a photo analysis run is active and fires once it settles', async () => {
+    const watcher = fakeWatcher();
+    const clock = manualClock();
+    const records = [jobRecord('photo_process', 'running')];
+    const onRefresh = vi.fn();
+
+    await watchCatalogFolder(
+      { watcher: watcher.port, jobs: jobsListing(records) },
+      '/drive',
+      onRefresh,
+      { schedule: clock.schedule },
+    );
+
+    watcher.change();
+    await flush();
+    expect(onRefresh).not.toHaveBeenCalled();
+    expect(clock.pending()).toBe(1);
+
+    records[0] = jobRecord('photo_process', 'completed');
+    await clock.tick();
+    await flush();
+    expect(onRefresh).toHaveBeenCalledTimes(1);
+  });
+
   it('coalesces changes that arrive while the refresh is held', async () => {
     const watcher = fakeWatcher();
     const clock = manualClock();
