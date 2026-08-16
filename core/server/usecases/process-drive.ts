@@ -153,6 +153,7 @@ interface DriveBatchPlan {
   configIdentity: ProcessConfigIdentity;
   outputLanguage: AppConfig['output_language'];
   tagLanguage: AppConfig['tag_language'];
+  uiLanguage: AppConfig['ui_language'];
   timeoutSeconds: number;
   reattachedRequests: Map<string, DriveRunBatchRequest> | null;
 }
@@ -573,6 +574,7 @@ const resolveBatchPlan = async (
     configIdentity: processConfigIdentity(resolved.value, deps.analyzer.promptVersion(provider)),
     outputLanguage: resolved.value.analyzer.outputLanguage,
     tagLanguage: resolved.value.analyzer.tagLanguage,
+    uiLanguage: resolved.value.analyzer.uiLanguage,
     timeoutSeconds: resolved.value.analyzer.timeoutSeconds,
     reattachedRequests: null,
   });
@@ -617,8 +619,8 @@ const folderTakesBatch = async (
   const analyzer = resolved.value.analyzer;
   return ok(
     analyzer.provider.family === 'gemini-native'
-    && batchConfigKey(analyzer.provider, analyzer.outputLanguage, analyzer.tagLanguage, analyzer.timeoutSeconds)
-      === batchConfigKey(plan.provider, plan.outputLanguage, plan.tagLanguage, plan.timeoutSeconds),
+    && batchConfigKey(analyzer.provider, analyzer.outputLanguage, analyzer.tagLanguage, analyzer.uiLanguage, analyzer.timeoutSeconds)
+      === batchConfigKey(plan.provider, plan.outputLanguage, plan.tagLanguage, plan.uiLanguage, plan.timeoutSeconds),
   );
 };
 
@@ -626,12 +628,14 @@ const batchConfigKey = (
   provider: AnalyzerProviderConfig,
   outputLanguage: AppConfig['output_language'],
   tagLanguage: AppConfig['tag_language'],
+  uiLanguage: AppConfig['ui_language'],
   timeoutSeconds: number,
 ): string =>
   JSON.stringify([
     Object.entries(provider).sort(([left], [right]) => left.localeCompare(right)),
     outputLanguage,
     tagLanguage,
+    uiLanguage,
     timeoutSeconds,
   ]);
 
@@ -737,6 +741,7 @@ const runBatchPass = async (pass: BatchPassInput): Promise<Result<void, AppError
       provider: plan.provider,
       displayName,
       requests: pass.requests,
+      uiLanguage: plan.uiLanguage,
       submittedBefore: persistedBatch !== null && persistedBatch !== undefined,
       ...(progress === undefined ? {} : { signal: progress.signal }),
     })

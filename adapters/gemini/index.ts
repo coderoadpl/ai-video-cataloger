@@ -144,7 +144,12 @@ export const geminiProviderPricing = (
   return fromModel ?? {};
 };
 
-export const buildGeminiPrompt = (input: { videoName: string; outputLanguage: string; tagLanguage: string }): string =>
+export const buildGeminiPrompt = (input: {
+  videoName: string;
+  outputLanguage: string;
+  tagLanguage: string;
+  uiLanguage?: AnalyzeInput['uiLanguage'];
+}): string =>
   `You are analyzing a video file named "${input.videoName}". You can see the video and hear its full audio track: speech, music and ambient sound.
 
 ${retrievalBriefing}
@@ -153,7 +158,7 @@ Respond in exactly this format:
 DESCRIPTION: ${descriptionInstruction} If there is no speech, say so and describe the music or ambient sound instead.
 FILENAME: ${filenameInstruction}
 TAGS: ${tagsInstruction}
-TRANSCRIPT: verbatim speech and on-screen text with timestamps, one segment per line formatted [MM:SS] text. If there is no speech at all, write exactly: NONE${languageInstruction({ outputLanguage: input.outputLanguage, tagLanguage: input.tagLanguage })}`;
+TRANSCRIPT: verbatim speech and on-screen text with timestamps, one segment per line formatted [MM:SS] text. If there is no speech at all, write exactly: NONE${languageInstruction({ outputLanguage: input.outputLanguage, tagLanguage: input.tagLanguage, uiLanguage: input.uiLanguage })}`;
 
 const bytesToBase64 = (bytes: Uint8Array): string => Buffer.from(bytes).toString('base64');
 
@@ -281,6 +286,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
       videoName: basename(input.videoPath),
       outputLanguage: input.outputLanguage,
       tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
     });
     const timeoutMs = input.timeoutSeconds * 1000;
     const signal = combinedSignal(input.signal, timeoutMs);
@@ -343,6 +349,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
       frameMode: 'attached-images',
       outputLanguage: input.outputLanguage,
       tagLanguage: input.tagLanguage,
+      uiLanguage: input.uiLanguage,
     });
     const timeoutMs = input.timeoutSeconds * 1000;
     const signal = combinedSignal(input.signal, timeoutMs);
@@ -392,6 +399,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
     provider: AnalyzerProviderConfig;
     displayName: string;
     requests: readonly AnalyzerBatchRequest[];
+    uiLanguage?: AnalyzeInput['uiLanguage'];
     signal?: AbortSignal | undefined;
   }): Promise<Result<AnalyzerBatchSubmission, AppError>> {
     const provider = input.provider;
@@ -409,6 +417,7 @@ export class GeminiNativeAnalyzerAdapter implements AnalyzerPort, AnalyzerBatchP
           videoName: basename(request.videoPath),
           outputLanguage: request.outputLanguage,
           tagLanguage: request.tagLanguage,
+          uiLanguage: input.uiLanguage,
         }),
       })),
     );

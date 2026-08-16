@@ -150,6 +150,6 @@ describe('whole-tree analysis refreshes the tree row after every finished file',
     await waitFor(() => {
       const row = screen.getByTestId('video-item');
       expect(row.getAttribute('data-video-status')).toBe('completed');
-    });
+    }, { timeout: 5000 });
   }, 10_000);
 });

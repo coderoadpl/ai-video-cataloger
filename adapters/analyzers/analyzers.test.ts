@@ -1081,7 +1081,7 @@ describe('analyzer helpers', () => {
     expect(prompt).toContain('DESCRIPTION: <text>');
   });
 
-  it('omits any language directive when the output language is auto', () => {
+  it('falls back to English when the output and UI languages are auto and missing', () => {
     const prompt = buildAnalyzerPrompt({
       videoName: 'Clip.mp4',
       transcript: null,
@@ -1091,7 +1091,8 @@ describe('analyzer helpers', () => {
       tagLanguage: 'auto',
     });
 
-    expect(prompt).not.toContain('Write the DESCRIPTION');
+    expect(prompt).toContain('Write the DESCRIPTION and the FILENAME in English.');
+    expect(prompt).toContain('Write every TAG in English');
   });
 
   it('instructs the model to write description and filename in the configured language', () => {

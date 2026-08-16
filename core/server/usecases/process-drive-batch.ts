@@ -2,6 +2,7 @@ import {
   appError,
   ok,
   type AnalyzerProviderConfig,
+  type AppConfig,
   type AppError,
   type Result,
 } from '@core/domain/index.js';
@@ -36,6 +37,7 @@ export interface EnsureBatchJobInput {
   provider: AnalyzerProviderConfig;
   displayName: string;
   requests: readonly AnalyzerBatchRequest[];
+  uiLanguage?: AppConfig['ui_language'] | undefined;
   submittedBefore: boolean;
   signal?: AbortSignal | undefined;
 }
@@ -56,6 +58,7 @@ export const ensureBatchJob = async (
     provider: input.provider,
     displayName: input.displayName,
     requests: input.requests,
+    uiLanguage: input.uiLanguage,
     ...(input.signal === undefined ? {} : { signal: input.signal }),
   });
   if (!submitted.ok) return submitted;

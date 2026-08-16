@@ -25,6 +25,7 @@ import {
   analyzerBackendSchema,
   configValueSchema,
   outputLanguageSchema,
+  uiLanguageSchema,
   whisperLanguageSchema,
 } from '@core/domain/config.js';
 import { whisperModelNameSchema } from '@core/domain/models.js';
@@ -531,6 +532,7 @@ const runPipelineSteps = async (
       localModel: resolved.analyzer.localModel,
       outputLanguage: resolved.analyzer.outputLanguage,
       tagLanguage: resolved.analyzer.tagLanguage,
+      uiLanguage: resolved.analyzer.uiLanguage,
       provider: resolved.analyzer.provider,
       timeoutSeconds: resolved.analyzer.timeoutSeconds,
       verbose: resolved.verbose,
@@ -626,6 +628,7 @@ const runNativePipeline = async (
         localModel: resolved.analyzer.localModel,
         outputLanguage: resolved.analyzer.outputLanguage,
         tagLanguage: resolved.analyzer.tagLanguage,
+        uiLanguage: resolved.analyzer.uiLanguage,
         provider: resolved.analyzer.provider,
         timeoutSeconds: resolved.analyzer.timeoutSeconds,
         verbose: resolved.verbose,
@@ -802,6 +805,7 @@ interface ResolvedAnalyzer {
   timeoutSeconds: number;
   outputLanguage: AppConfig['output_language'];
   tagLanguage: AppConfig['tag_language'];
+  uiLanguage: AppConfig['ui_language'];
   provider: AnalyzerProviderConfig;
 }
 
@@ -922,6 +926,7 @@ export const resolveProcessOptions = async (
       timeoutSeconds,
       outputLanguage: outputLanguageSchema.parse(effective.output_language ?? CONFIG_DEFAULTS.output_language),
       tagLanguage: outputLanguageSchema.parse(effective.tag_language),
+      uiLanguage: uiLanguageSchema.parse(effective.ui_language ?? CONFIG_DEFAULTS.ui_language),
       provider,
     },
     native: provider.family === 'gemini-native',

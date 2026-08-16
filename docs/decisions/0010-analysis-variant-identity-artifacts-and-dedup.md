@@ -34,16 +34,19 @@ The strict descriptor includes:
 - `frames` except for `gemini-native`, which extracts no frames;
 - `output_language`;
 - `tag_language`, omitted only when it and `output_language` both resolve to
-  `auto` — the single state whose analyzer prompt is byte-identical to runs made
-  before the key existed, so those descriptors keep their historical ids;
+  the literal `auto` token, so those descriptors keep their historical ids;
 - `promptVersion`, an integer next to each prompt template that is bumped when
   the template changes.
 
 Secrets and operational settings are excluded. `apiKeyRef` and credential
 values cannot enter identity. `whisper_binary_path` is machine-local. `timeout`,
-`skip_rename`, `faces_enabled`, `ui_language`, `gemini_batch_mode`, and
-`gemini_monthly_budget_usd` do not shape the analysis result. A new config key
-must be explicitly classified before it can join or remain outside identity.
+`skip_rename`, `faces_enabled`, `gemini_batch_mode`, and
+`gemini_monthly_budget_usd` do not shape the analysis result. `ui_language` is
+also excluded even though it supplies the request-time response language when
+`output_language` or `tag_language` is the literal `auto` token: stored
+descriptors and labels deliberately retain `auto`, and changing the app UI
+language never rewrites or rehashes an existing variant. A new config key must
+be explicitly classified before it can join or remain outside identity.
 
 Pre-feature analyses use the reserved `legacy` sentinel. The app cannot safely
 derive a real configId because their transcription and frame inputs were never

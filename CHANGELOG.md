@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Analyzer `output_language: auto` now follows the configured app UI language for video descriptions, filenames, tags, and photo descriptions without changing stored variant identity (Wave D: N2).
 - The Kolekcja photo viewer now shows description, scene, quality, tags, humanized analysis provenance, and an action that opens the photo in Analysis (N9).
 - Analysis → Photos now automatically rescans the current open folder after debounced filesystem changes and refreshes its photo tree and sidebar when the scan completes (N14).
 

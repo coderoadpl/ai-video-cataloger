@@ -285,6 +285,17 @@ always resolved home-scoped and ignore folder overrides. The GUI Prerequisites m
 configured-readiness section from `/api/readiness` with the selected folder;
 the doctor contract stays unchanged.
 
+Analyzer output-language resolution happens when each provider request is
+built. `output_language: 'auto'` resolves to the effective app-global
+`ui_language`, with `en` as the fallback when that value is absent; the same
+resolved language governs auto description, filename, and tag instructions
+for video and photo prompts. Explicit output and tag language values keep
+their existing prompt semantics. Configuration descriptors, variant labels,
+NDJSON, and database rows retain the literal `auto` token: request-time
+resolution never rewrites stored identity or persistence shapes. The CLI uses
+the same server config resolution and therefore follows the configured app UI
+language too.
+
 Config write scope (owner decision 2026-08-03, closing the W35b 2.3 gap): the
 GUI never creates a per-folder override — the owner's doctrine is one
 effective value at a time, no per-folder inheritance to reason about. Settings

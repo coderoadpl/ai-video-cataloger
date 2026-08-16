@@ -1,4 +1,4 @@
-import { LANGUAGE_DISPLAY_NAMES } from '@core/domain/config.js';
+import { LANGUAGE_DISPLAY_NAMES, resolvePromptLanguage, type UiLanguage } from '@core/domain/config.js';
 
 export const ANALYSIS_PROMPT_VERSION = 4;
 
@@ -16,13 +16,14 @@ export const tagsInstruction =
 
 const displayName = (language: string): string => LANGUAGE_DISPLAY_NAMES[language] ?? language;
 
-export const languageInstruction = (input: { outputLanguage: string; tagLanguage: string }): string => {
-  const description = input.outputLanguage === 'auto'
-    ? ''
-    : `Write the DESCRIPTION and the FILENAME in ${displayName(input.outputLanguage)}.`;
-  const tags = input.tagLanguage === 'auto'
-    ? ''
-    : `Write every TAG in ${displayName(input.tagLanguage)}, whatever language is spoken in the video or used in the description. Keep tags in ASCII kebab-case: transliterate diacritics (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z) and use only a-z, 0-9 and hyphens.`;
-  const parts = [description, tags].filter((part) => part.length > 0);
-  return parts.length === 0 ? '' : `\n\n${parts.join(' ')}`;
+export const languageInstruction = (input: {
+  outputLanguage: string;
+  tagLanguage: string;
+  uiLanguage?: UiLanguage | undefined;
+}): string => {
+  const outputLanguage = resolvePromptLanguage(input.outputLanguage, input.uiLanguage);
+  const tagLanguage = resolvePromptLanguage(input.tagLanguage, input.uiLanguage);
+  const description = `Write the DESCRIPTION and the FILENAME in ${displayName(outputLanguage)}.`;
+  const tags = `Write every TAG in ${displayName(tagLanguage)}, whatever language is spoken in the video or used in the description. Keep tags in ASCII kebab-case: transliterate diacritics (ą→a, ć→c, ę→e, ł→l, ń→n, ó→o, ś→s, ź→z, ż→z) and use only a-z, 0-9 and hyphens.`;
+  return `\n\n${description} ${tags}`;
 };

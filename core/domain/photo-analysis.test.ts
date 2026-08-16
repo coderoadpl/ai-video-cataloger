@@ -7,6 +7,7 @@ import {
   clampPhotoBatchSize,
   parsePhotoBatchResponse,
   splitPhotoBatch,
+  type PhotoFrameMode,
 } from './index.js';
 
 const element = (index: number) => ({
@@ -63,9 +64,45 @@ describe('buildPhotoAnalyzerPrompt', () => {
     expect(prompt).toContain('English');
   });
 
-  it('omits the language clause when both languages are auto', () => {
+  const familyFrameModes: Array<{ family: string; frameMode: PhotoFrameMode }> = [
+    { family: 'local/ollama', frameMode: 'attached-images' },
+    { family: 'api', frameMode: 'attached-images' },
+    { family: 'harness/claude-cli', frameMode: 'dir-access' },
+    { family: 'gemini-native', frameMode: 'attached-images' },
+  ];
+
+  it.each(familyFrameModes)('$family resolves auto to the configured Polish UI language', ({ frameMode }) => {
+    const prompt = buildPhotoAnalyzerPrompt({
+      items,
+      frameMode,
+      outputLanguage: 'auto',
+      tagLanguage: 'auto',
+      uiLanguage: 'pl',
+    });
+
+    expect(prompt).toContain('Write every DESCRIPTION in Polish.');
+    expect(prompt).toContain('Write every TAG in Polish');
+  });
+
+  it('leaves explicit English unchanged when the UI language is Polish', () => {
+    const prompt = buildPhotoAnalyzerPrompt({
+      items,
+      frameMode: 'attached-images',
+      outputLanguage: 'en',
+      tagLanguage: 'en',
+      uiLanguage: 'pl',
+    });
+
+    expect(prompt).toContain('Write every DESCRIPTION in English.');
+    expect(prompt).toContain('Write every TAG in English');
+    expect(prompt).not.toContain('in Polish');
+  });
+
+  it('falls back to English when the UI language is missing', () => {
     const prompt = buildPhotoAnalyzerPrompt({ items, frameMode: 'attached-images', outputLanguage: 'auto', tagLanguage: 'auto' });
-    expect(prompt.trim().endsWith('nothing before or after it.')).toBe(true);
+
+    expect(prompt).toContain('Write every DESCRIPTION in English.');
+    expect(prompt).toContain('Write every TAG in English');
   });
 });
 
