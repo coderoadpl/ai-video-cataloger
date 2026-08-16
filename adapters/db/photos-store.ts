@@ -612,11 +612,16 @@ export class SqlJsPhotosStore implements PhotosStore {
   async listFolderTree(): Promise<Result<PhotoFolderTreeEntry[], AppError>> {
     return this.read((_db, client) => {
       const result = client.exec(
-        `SELECT pf.folder_id AS folder_id, pf.current_path AS current_path,
-                COUNT(p.fingerprint) AS photo_count,
-                SUM(CASE WHEN EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint) THEN 1 ELSE 0 END) AS analysed_count
+        `WITH folder_photos AS (
+           SELECT folder_id, fingerprint FROM photos
+           UNION
+           SELECT folder_id, fingerprint FROM photo_paths
+         )
+         SELECT pf.folder_id AS folder_id, pf.current_path AS current_path,
+                COUNT(DISTINCT fp.fingerprint) AS photo_count,
+                COUNT(DISTINCT CASE WHEN EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = fp.fingerprint) THEN fp.fingerprint END) AS analysed_count
          FROM photo_folders pf
-         JOIN photos p ON p.folder_id = pf.folder_id
+         JOIN folder_photos fp ON fp.folder_id = pf.folder_id
          GROUP BY pf.folder_id
          ORDER BY pf.current_path ASC`,
       );
@@ -633,7 +638,11 @@ export class SqlJsPhotosStore implements PhotosStore {
     return this.read((_db, client) => {
       const rowsResult = client.exec(
         `SELECT ${PHOTO_LIST_ITEM_COLUMNS}
-         FROM photos WHERE folder_id = $folderId
+         FROM photos
+         WHERE folder_id = $folderId OR EXISTS (
+           SELECT 1 FROM photo_paths folder_path
+           WHERE folder_path.fingerprint = photos.fingerprint AND folder_path.folder_id = $folderId
+         )
          ORDER BY captured_at DESC, fingerprint ASC`,
         { $folderId: folderId },
       );

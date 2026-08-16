@@ -157,7 +157,7 @@ export const PhotoDetailPane = ({
             </Box>
           </Box>
           <Row label={dictionary.photos.detailVariant} value={analysisProvenanceText(analysis, dictionary)} />
-          <Typography variant="caption" color="text.secondary">{dictionary.photos.detailVariantCount(analysis.variantCount)}</Typography>
+          <Typography variant="caption" color="text.secondary">{dictionary.photos.variantPickerLabel}</Typography>
           <Select
             size="small"
             value={analysis.explicit ? analysis.configId : ''}

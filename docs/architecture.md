@@ -483,8 +483,9 @@ At 50k-photo scale, a client-side derivation from the full paginated photo
 list is not honest — so the tree is server-summarized like `catalogTree`:
 `GET /api/photos/tree/folders` (`photosFolderTree` usecase) returns one entry
 per **directory that directly contains a photo** (`photo_folders` joined to
-`photos`, grouped by `folder_id` — cheap, no filesystem walk, no full-photo
-payload) with `photoCount`/`analysedCount`, tagged with the owning root
+the union of owner rows and `photo_paths`, counting distinct fingerprints per
+`folder_id` — cheap, no filesystem walk, no full-photo payload) with
+`photoCount`/`analysedCount`, tagged with the owning root
 (longest-prefix match over `photosTree`'s existing root list, same rule as
 `ownerRootFor`). The client (`features/photos/core/photos-tree-model.ts`)
 filters those summaries through `buildPhotoTreeForRoot` before rendering, so
@@ -495,9 +496,10 @@ intermediate ancestor directory purely from the relative-path segments — the
 same `ensure()`/`finalize()` shape as
 `catalog-tree-model.ts`, kept as a separate small module rather than a shared
 generic since photos carry no pending/processed duality. Expanding a folder
-lazily fetches its **direct, non-recursive** photos via
+lazily fetches its **direct, non-recursive, fingerprint-distinct** photos via
 `GET /api/photos/tree/folder?folder=<path>` (`photosTreeFolder` usecase,
-`PhotosStore.listPhotosInFolder` — an exact `folder_id` match, unlike
+`PhotosStore.listPhotosInFolder` — an exact owner-or-sighting `folder_id`
+match, deduplicated by fingerprint, unlike
 `photosList`'s root-prefix scope which is recursive), mirroring
 `catalogTreeFolder`'s per-folder lazy fetch. Folder scope ("Ten folder") uses
 that same exact-folder endpoint for its flat direct-photo list. The scope

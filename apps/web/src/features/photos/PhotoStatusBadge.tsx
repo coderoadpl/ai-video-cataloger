@@ -1,4 +1,4 @@
-import { type SvgIconProps } from '@mui/material';
+import { CircularProgress, type SvgIconProps } from '@mui/material';
 
 import { StatusBadge } from '../../components/ui/StatusBadge.js';
 import {
@@ -13,7 +13,7 @@ import type { Dictionary } from '../../i18n/dictionary.js';
 import type { StatusToken } from '../../theme.js';
 import type { PhotoBadge } from './core/index.js';
 
-export type PhotoStatus = PhotoBadge | 'pending';
+export type PhotoStatus = PhotoBadge | 'pending' | 'analyzing';
 
 const badgeLabel = (status: PhotoStatus, dictionary: Dictionary): string => {
   switch (status) {
@@ -29,6 +29,8 @@ const badgeLabel = (status: PhotoStatus, dictionary: Dictionary): string => {
       return dictionary.photosSidebar.badgeMissing;
     case 'pending':
       return dictionary.photos.analysisNone;
+    case 'analyzing':
+      return dictionary.photosSidebar.badgeAnalyzing;
   }
 };
 
@@ -39,6 +41,7 @@ const TOKEN_FOR_STATUS: Record<PhotoStatus, StatusToken> = {
   exifMissing: 'notTracked',
   missing: 'error',
   pending: 'pending',
+  analyzing: 'pending',
 };
 
 const BadgeIcon = ({ status, ...props }: { status: PhotoStatus } & SvgIconProps) => {
@@ -55,6 +58,8 @@ const BadgeIcon = ({ status, ...props }: { status: PhotoStatus } & SvgIconProps)
       return <ErrorIcon fontSize="inherit" {...props} />;
     case 'pending':
       return <ClockIcon fontSize="inherit" {...props} />;
+    case 'analyzing':
+      return <CircularProgress size={12} thickness={6} color="inherit" />;
   }
 };
 

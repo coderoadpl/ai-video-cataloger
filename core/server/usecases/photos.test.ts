@@ -785,6 +785,24 @@ describe('photosFolderTree, photosTreeFolder', () => {
     ]));
   });
 
+  it('counts and lists a duplicate fingerprint once in each folder where it is sighted', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'same-photo' });
+    fs.addFile('/work/photos/trip/a-copy.jpg', { content: 'same-photo' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+
+    const tree = await photosFolderTree(deps);
+    expect(tree.ok && tree.value.folders).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: '/work/photos', photoCount: 1 }),
+      expect.objectContaining({ path: '/work/photos/trip', photoCount: 1 }),
+    ]));
+
+    const rootContents = await photosTreeFolder(deps, { folder: '/work/photos' });
+    const tripContents = await photosTreeFolder(deps, { folder: '/work/photos/trip' });
+    expect(rootContents.ok && rootContents.value.items).toHaveLength(1);
+    expect(tripContents.ok && tripContents.value.items).toHaveLength(1);
+  });
+
   it('marks a folder analysedCount once its photos have an analysis recorded', async () => {
     const { deps, fs, photos } = buildDeps();
     fs.addFile('/work/photos/trip/b.jpg', { content: 'b' });

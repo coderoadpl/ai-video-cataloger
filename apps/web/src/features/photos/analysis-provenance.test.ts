@@ -29,13 +29,19 @@ describe('analysisProvenanceText', () => {
   });
 
   it('names the api and harness providers', () => {
-    expect(analysisProvenanceText({ label: 'api · gpt-5 · en', createdAt }, en)).toMatch(/^API · gpt-5 · en · /);
-    expect(analysisProvenanceText({ label: 'harness · sonnet · pl', createdAt }, pl)).toMatch(/^Agent harness · sonnet · pl · /);
+    expect(analysisProvenanceText({ label: 'api · gpt-5 · en', createdAt }, en)).toMatch(/^API · gpt-5 · English · /);
+    expect(analysisProvenanceText({ label: 'harness · sonnet · pl', createdAt }, pl)).toMatch(/^Agent harness · sonnet · polski · /);
   });
 
-  it('passes unknown provider and language tokens through unchanged', () => {
+  it('uses configured names for built-in provider ids and localizes ISO output languages', () => {
+    expect(analysisProvenanceText({ label: 'codex · dir-access · en', createdAt }, en)).toMatch(/^Codex · dir-access · English · /);
+    expect(analysisProvenanceText({ label: 'codex · dir-access · en', createdAt }, pl)).toMatch(/^Codex · dir-access · angielski · /);
+    expect(analysisProvenanceText({ label: 'claude-code · file-urls · pl', createdAt }, en)).toMatch(/^Claude Code · file-urls · Polish · /);
+  });
+
+  it('title-cases unknown providers and passes unknown language tokens through unchanged', () => {
     const line = analysisProvenanceText({ label: 'gemini-native · gemini-2.5 · pt-BR', createdAt }, en);
-    expect(line).toMatch(/^gemini-native · gemini-2\.5 · pt-BR · /);
+    expect(line).toMatch(/^Gemini Native · gemini-2\.5 · pt-BR · /);
   });
 
   it('leaves a label that is not provider/model/language shaped untouched', () => {
