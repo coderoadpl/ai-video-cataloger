@@ -106,6 +106,11 @@ describe('dictionary', () => {
     expect(getDict('en')).toBe(en);
   });
 
+  it('localizes invalid photo analyzer responses in English and Polish', () => {
+    expect(en.errors.photoResponseInvalid).toBe('The analyzer response did not match the expected format. Try again.');
+    expect(pl.errors.photoResponseInvalid).toBe('Odpowiedź analizatora nie pasowała do oczekiwanego formatu. Spróbuj ponownie.');
+  });
+
   it('keeps the Polish settings polish copy idiomatic', () => {
     expect(pl.settingsModal.transcriptionLanguage).toBe('Język transkrypcji');
     expect(pl.settingsModal.analyzerTimeoutHelper)

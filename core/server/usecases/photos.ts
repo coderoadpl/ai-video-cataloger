@@ -1489,7 +1489,7 @@ export const runPhotoAnalysisCascade = async (
   const analyzeInput: { items: AnalyzePhotoItem[] } = {
     items: items.map((item) => ({ fingerprint: item.fingerprint, fileName: item.fileName, proxyPath: item.proxyPath })),
   };
-  let analyzeResult = await deps.analyzer.analyzePhotos({
+  const analyze = () => deps.analyzer.analyzePhotos({
     ...analyzeInput,
     provider: ctx.provider,
     outputLanguage: ctx.outputLanguage,
@@ -1499,28 +1499,36 @@ export const runPhotoAnalysisCascade = async (
     verbose: false,
     signal: ctx.progress?.signal,
   });
+  const isCancelled = (): boolean => ctx.progress?.signal.aborted === true;
+  let singleRetryUsed = false;
+  let analyzeResult = await analyze();
 
   if (!analyzeResult.ok && items.length === 1 && analyzeResult.error.code === 'processing_error') {
-    if (ctx.progress?.signal.aborted === true) return analyzeResult;
-    analyzeResult = await deps.analyzer.analyzePhotos({
-      ...analyzeInput,
-      provider: ctx.provider,
-      outputLanguage: ctx.outputLanguage,
-      tagLanguage: ctx.tagLanguage,
-      uiLanguage: ctx.uiLanguage,
-      timeoutSeconds: ctx.timeoutSeconds,
-      verbose: false,
-      signal: ctx.progress?.signal,
-    });
+    if (isCancelled()) return analyzeResult;
+    singleRetryUsed = true;
+    analyzeResult = await analyze();
   }
 
   if (!analyzeResult.ok) {
-    if (ctx.progress?.signal.aborted === true) return analyzeResult;
+    if (isCancelled()) return analyzeResult;
     return failPhotoBatch(deps, items, ctx, analyzeResult.error);
   }
 
-  const parsed = parsePhotoBatchResponse(analyzeResult.value.rawResponse, items.length);
-  if (!parsed.ok) return failPhotoBatch(deps, items, ctx, parsed.error);
+  let parsed = parsePhotoBatchResponse(analyzeResult.value.rawResponse, items.length);
+  if (!parsed.ok && items.length === 1 && parsed.error.code === 'processing_error' && !singleRetryUsed) {
+    if (isCancelled()) return parsed;
+    singleRetryUsed = true;
+    analyzeResult = await analyze();
+    if (!analyzeResult.ok) {
+      if (isCancelled()) return analyzeResult;
+      return failPhotoBatch(deps, items, ctx, analyzeResult.error);
+    }
+    parsed = parsePhotoBatchResponse(analyzeResult.value.rawResponse, items.length);
+  }
+  if (!parsed.ok) {
+    if (isCancelled()) return parsed;
+    return failPhotoBatch(deps, items, ctx, parsed.error);
+  }
 
   for (const element of parsed.value) {
     const item = items[element.index - 1];
