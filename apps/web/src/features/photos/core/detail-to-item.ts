@@ -23,5 +23,6 @@ export const detailToListItem = (detail: PhotoDetail): PhotoListItem => ({
   gridThumbPath: detail.gridThumbPath,
   proxyPath: detail.proxyPath,
   analysed: detail.analysis !== null,
+  analysisError: detail.analysisError,
   exifReadAt: detail.photo.exifReadAt,
 });

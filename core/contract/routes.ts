@@ -577,6 +577,12 @@ export const photoImportLibraSummarySchema = z.object({
   elapsedMs: z.number().int().nonnegative(),
 });
 
+export const photoAnalysisErrorSchema = z.object({
+  code: z.enum(ERROR_CODES),
+  message: z.string(),
+  createdAt: z.string(),
+});
+
 export const photoListItemSchema = z.object({
   fingerprint: z.string(),
   fileName: z.string(),
@@ -594,6 +600,7 @@ export const photoListItemSchema = z.object({
   gridThumbPath: z.string().nullable().default(null),
   proxyPath: z.string().nullable(),
   analysed: z.boolean(),
+  analysisError: photoAnalysisErrorSchema.nullable().default(null),
   exifReadAt: z.string().nullable(),
 });
 
@@ -703,6 +710,7 @@ export const photosDetailOutputSchema = z.object({
     variantCount: z.number().int().nonnegative(),
     explicit: z.boolean(),
   }).nullable(),
+  analysisError: photoAnalysisErrorSchema.nullable().default(null),
 });
 
 export const photosSearchResultSchema = z.object({

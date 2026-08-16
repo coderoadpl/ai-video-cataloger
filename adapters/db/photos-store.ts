@@ -16,8 +16,10 @@ import { homedir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import initSqlJs, { type Database, type SqlJsStatic, type SqlValue } from 'sql.js';
+import { z } from 'zod';
 
 import {
+  ERROR_CODES,
   FACE_ENGINE_VERSION,
   analysisLanguageResolutionSchema,
   acceptsGpsWrite,
@@ -41,6 +43,7 @@ import type {
   AnalysisLanguageCandidateRule,
   PhotoAnalysisCandidate,
   PhotoAnalysisCandidates,
+  PhotoAnalysisError,
   PhotoDetail,
   PhotoFaceIndexCandidate,
   PhotoFolderRecord,
@@ -58,6 +61,7 @@ import type {
   PhotosStore,
   PhotoVariantRecord,
   RecordPhotoAnalysisInput,
+  RecordPhotoAnalysisFailureInput,
   TagTermExpansion,
 } from '@core/server/index.js';
 
@@ -65,6 +69,8 @@ import {
   createPhotosSchemaSqlV1,
   createPhotosSchemaSqlV2,
   createPhotosSchemaSqlV3,
+  createPhotosSchemaSqlV4,
+  photoAnalysisErrors,
   photoAnalyses,
   photoAnalysisConfigs,
   photoFaceIndexState,
@@ -309,6 +315,7 @@ export class SqlJsPhotosStore implements PhotosStore {
         client.run('DELETE FROM photo_face_index_state WHERE fingerprint = ?', [fingerprint]);
         client.run('DELETE FROM photo_file_tags WHERE fingerprint = ?', [fingerprint]);
         client.run('DELETE FROM photo_analyses WHERE fingerprint = ?', [fingerprint]);
+        client.run('DELETE FROM photo_analysis_errors WHERE fingerprint = ?', [fingerprint]);
         const searchRow = client.exec('SELECT docid FROM photo_search_documents WHERE fingerprint = ?', [fingerprint]);
         const docid = searchRow[0]?.values[0]?.[0];
         if (typeof docid === 'number') {
@@ -688,7 +695,7 @@ export class SqlJsPhotosStore implements PhotosStore {
       const sightingRows = db.select().from(photoPaths).where(eq(photoPaths.fingerprint, fingerprint)).all();
       const sightings = sightingRows.map(rowToSighting).sort((left, right) =>
         right.lastSeenAt.localeCompare(left.lastSeenAt) || left.currentPath.localeCompare(right.currentPath));
-      return { photo: rowToPhoto(row), sightings };
+      return { photo: rowToPhoto(row), sightings, analysisError: resolveLatestPhotoAnalysisError(db, fingerprint) };
     });
   }
 
@@ -712,7 +719,8 @@ export class SqlJsPhotosStore implements PhotosStore {
         `SELECT fingerprint, file_name, current_path,
                 EXISTS (SELECT 1 FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId) AS analysed,
                 (SELECT resolved_output_language FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId),
-                (SELECT resolved_tag_language FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId)
+                (SELECT resolved_tag_language FROM photo_analyses WHERE photo_analyses.fingerprint = photos.fingerprint AND photo_analyses.config_id = $configId),
+                EXISTS (SELECT 1 FROM photo_analysis_errors WHERE photo_analysis_errors.fingerprint = photos.fingerprint AND photo_analysis_errors.config_id = $configId) AS failed
          FROM photos
          WHERE missing_at IS NULL AND proxy_state = 'done' AND (${scope.where})
          ORDER BY current_path ASC`,
@@ -722,10 +730,11 @@ export class SqlJsPhotosStore implements PhotosStore {
       let alreadyAnalysed = 0;
       for (const row of rows[0]?.values ?? []) {
         const exists = numberValue(row[3]) === 1;
+        const failed = numberValue(row[6]) === 1;
         const storedOutputLanguage = nullableStringValue(row[4]);
         const storedTagLanguage = nullableStringValue(row[5]);
         const resolution = parsedResolution?.data;
-        const analysed = exists && (
+        const analysed = exists && !failed && (
           languageRule === undefined
           || resolution === undefined
           || storedOutputLanguage === null
@@ -812,8 +821,33 @@ export class SqlJsPhotosStore implements PhotosStore {
           })
           .run();
         setPhotoVariantTags(db, input.fingerprint, input.configId, input.tags);
+        db.delete(photoAnalysisErrors)
+          .where(and(eq(photoAnalysisErrors.fingerprint, input.fingerprint), eq(photoAnalysisErrors.configId, input.configId)))
+          .run();
         syncPhotoSearchDocument(db, client, input.fingerprint);
       });
+    });
+  }
+
+  async recordPhotoAnalysisFailure(input: RecordPhotoAnalysisFailureInput): Promise<Result<void, AppError>> {
+    return this.write((db) => {
+      db.insert(photoAnalysisErrors)
+        .values({
+          fingerprint: input.fingerprint,
+          configId: input.configId,
+          errorCode: input.code,
+          errorMessage: input.message,
+          createdAt: input.createdAt,
+        })
+        .onConflictDoUpdate({
+          target: [photoAnalysisErrors.fingerprint, photoAnalysisErrors.configId],
+          set: {
+            errorCode: input.code,
+            errorMessage: input.message,
+            createdAt: input.createdAt,
+          },
+        })
+        .run();
     });
   }
 
@@ -1029,6 +1063,9 @@ export class SqlJsPhotosStore implements PhotosStore {
         db.delete(photoAnalyses)
           .where(and(eq(photoAnalyses.fingerprint, fingerprint), eq(photoAnalyses.configId, configId)))
           .run();
+        db.delete(photoAnalysisErrors)
+          .where(and(eq(photoAnalysisErrors.fingerprint, fingerprint), eq(photoAnalysisErrors.configId, configId)))
+          .run();
         if (photoRow?.selectedConfigId === configId) {
           db.update(photos).set({ selectedConfigId: null }).where(eq(photos.fingerprint, fingerprint)).run();
         }
@@ -1129,6 +1166,10 @@ const migrate = (client: Database): boolean => {
   }
   if (currentVersion < 3) {
     for (const statement of createPhotosSchemaSqlV3) runPhotosMigrationStatement(client, statement);
+    migrated = true;
+  }
+  if (currentVersion < 4) {
+    for (const statement of createPhotosSchemaSqlV4) client.run(statement);
     migrated = true;
   }
   if (currentVersion < PHOTOS_SCHEMA_VERSION) {
@@ -1289,7 +1330,25 @@ const parseThumbState = (value: string): PhotoRecord['thumbState'] => (value ===
 const PHOTO_LIST_ITEM_COLUMNS = `fingerprint, file_name, current_path, ext, captured_at, captured_at_source, width, height,
                 proxy_state, thumb_state, missing_at, exif_read_at,
                 (SELECT COUNT(*) FROM photo_paths WHERE fingerprint = photos.fingerprint) AS sightings,
-                EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = photos.fingerprint) AS analysed`;
+                EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = photos.fingerprint) AS analysed,
+                (SELECT error_code FROM photo_analysis_errors pae WHERE pae.fingerprint = photos.fingerprint ORDER BY created_at DESC, config_id ASC LIMIT 1),
+                (SELECT error_message FROM photo_analysis_errors pae WHERE pae.fingerprint = photos.fingerprint ORDER BY created_at DESC, config_id ASC LIMIT 1),
+                (SELECT created_at FROM photo_analysis_errors pae WHERE pae.fingerprint = photos.fingerprint ORDER BY created_at DESC, config_id ASC LIMIT 1)`;
+
+const appErrorCodeSchema = z.enum(ERROR_CODES);
+
+const photoAnalysisErrorFromValues = (
+  code: SqlValue | undefined,
+  message: SqlValue | undefined,
+  createdAt: SqlValue | undefined,
+): PhotoAnalysisError | null => {
+  if (code === null || code === undefined) return null;
+  return {
+    code: appErrorCodeSchema.parse(code),
+    message: z.string().parse(message),
+    createdAt: z.string().parse(createdAt),
+  };
+};
 
 const rowToPhotoListItem = (row: readonly SqlValue[]): PhotoListItem => ({
   fingerprint: stringValue(row[0]),
@@ -1306,6 +1365,7 @@ const rowToPhotoListItem = (row: readonly SqlValue[]): PhotoListItem => ({
   exifReadAt: nullableStringValue(row[11]),
   sightings: numberValue(row[12]),
   analysed: numberValue(row[13]) === 1,
+  analysisError: photoAnalysisErrorFromValues(row[14], row[15], row[16]),
 });
 
 const parsePhotoGpsSource = (value: string | null): GpsSource | null =>
@@ -1501,6 +1561,20 @@ const resolveSelectedPhotoAnalysis = (
   if (folderDefault !== undefined) return folderDefault;
   return [...rows].sort((left, right) =>
     right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+};
+
+const resolveLatestPhotoAnalysisError = (
+  db: PhotosDrizzle,
+  fingerprint: string,
+): PhotoAnalysisError | null => {
+  const row = db.select().from(photoAnalysisErrors).where(eq(photoAnalysisErrors.fingerprint, fingerprint)).all()
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+  if (row === undefined) return null;
+  return {
+    code: appErrorCodeSchema.parse(row.errorCode),
+    message: row.errorMessage,
+    createdAt: row.createdAt,
+  };
 };
 
 const tagsForPhotoVariant = (db: PhotosDrizzle, fingerprint: string, configIdValue: string): string[] => {

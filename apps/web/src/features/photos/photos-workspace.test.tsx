@@ -32,6 +32,7 @@ const item = (overrides: Partial<PhotoListItem> & { fingerprint: string }): Phot
   gridThumbPath: null,
   proxyPath: `/artifacts/proxies/${overrides.fingerprint}.jpg`,
   analysed: false,
+  analysisError: null,
   exifReadAt: '2026-01-01T00:00:00.000Z',
   ...overrides,
 });
@@ -71,6 +72,7 @@ const detailFor = (photoItem: PhotoListItem) => ({
   thumbPath: photoItem.thumbPath,
   gridThumbPath: photoItem.gridThumbPath,
   analysis: null,
+  analysisError: photoItem.analysisError,
 });
 
 const analysedVariant = {
@@ -194,6 +196,38 @@ describe('PhotosWorkspace', () => {
     expect(strip.getAttribute('role')).not.toBe('alert');
     expect(screen.getByTestId('photos-analyze-action').textContent).toBe('Analyze');
     expect(screen.queryByTestId('photos-workspace-empty')).toBeNull();
+  });
+
+  it('renders a sanitized persisted analysis error card with a retry action', () => {
+    const items = [item({
+      fingerprint: 'ph_0000000000000001',
+      analysisError: {
+        code: 'processing_error',
+        message: 'Command failed: secret provider response from /Users/provider/private/output.txt',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    const analyzeSelectedPhoto = vi.fn();
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({
+        items,
+        selectedFingerprint: firstItem.fingerprint,
+        detail: detailFor(firstItem),
+        analyzeSelectedPhoto,
+      })}
+    />);
+
+    const card = screen.getByTestId('photo-analysis-error-card');
+    expect(card.getAttribute('data-detail-status-card')).toBe('true');
+    expect(card.textContent).toContain('Analysis failed.');
+    expect(card.textContent).not.toContain('secret provider response');
+    expect(card.textContent).not.toContain('/Users/provider');
+    expect(screen.getByTestId('photos-analyze-action').textContent).toBe('Analyze again');
+    fireEvent.click(screen.getByTestId('photos-analyze-action'));
+    expect(analyzeSelectedPhoto).toHaveBeenCalled();
   });
 
   it('renders the photo filename, path, and pending status in the detail header', () => {

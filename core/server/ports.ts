@@ -513,6 +513,17 @@ export interface RecordPhotoAnalysisInput {
   resolvedTagLanguage?: string | undefined;
 }
 
+export interface PhotoAnalysisError {
+  code: AppError['code'];
+  message: string;
+  createdAt: string;
+}
+
+export interface RecordPhotoAnalysisFailureInput extends PhotoAnalysisError {
+  fingerprint: string;
+  configId: string;
+}
+
 export interface AnalysisLanguageCandidateRule extends AnalysisLanguageResolution {
   outputAuto: boolean;
   tagAuto: boolean;
@@ -547,12 +558,14 @@ export interface PhotoListItem {
   missingAt: number | null;
   sightings: number;
   analysed: boolean;
+  analysisError: PhotoAnalysisError | null;
   exifReadAt: string | null;
 }
 
 export interface PhotoDetail {
   photo: PhotoRecord;
   sightings: PhotoSightingRecord[];
+  analysisError: PhotoAnalysisError | null;
 }
 
 export interface PhotoFolderTreeEntry {
@@ -621,6 +634,7 @@ export interface PhotosStore {
   ): Promise<Result<PhotoAnalysisCandidates, AppError>>;
   upsertAnalysisConfig(input: { configId: string; descriptorJson: string; label: string; now: string }): Promise<Result<void, AppError>>;
   recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>>;
+  recordPhotoAnalysisFailure(input: RecordPhotoAnalysisFailureInput): Promise<Result<void, AppError>>;
   searchPhotos(input: { match: string; rankingTerms: readonly string[]; limit: number; offset: number }):
     Promise<Result<PhotoSearchRow[], AppError>>;
   collectionPage(input: {

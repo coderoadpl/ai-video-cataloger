@@ -42,6 +42,7 @@ import {
   type JobsPort,
   type MediaPort,
   type PhotoFolderRecord,
+  type PhotoAnalysisError,
   type PhotoListItem,
   type PhotoMediaPort,
   type PhotoProxyCandidate,
@@ -983,6 +984,7 @@ export interface PhotosDetailOutput {
   thumbPath: string | null;
   gridThumbPath: string | null;
   analysis: PhotosDetailAnalysis | null;
+  analysisError: PhotoAnalysisError | null;
 }
 
 export const photosDetail = async (
@@ -1006,6 +1008,7 @@ export const photosDetail = async (
     thumbPath: detail.value.photo.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
     gridThumbPath: gridThumbPath.value,
     analysis: analysis.value,
+    analysisError: detail.value.analysisError,
   });
 };
 
@@ -1434,7 +1437,7 @@ const failPhotoBatch = async (
   deps: PhotosDeps,
   items: readonly PhotoAnalysisItem[],
   ctx: CascadeContext,
-  code: AppError['code'],
+  error: AppError,
 ): Promise<Result<void, AppError>> => {
   const split = splitPhotoBatch(items);
   if (split === null) {
@@ -1442,7 +1445,19 @@ const failPhotoBatch = async (
     ctx.counters.failed += 1;
     ctx.state.run = { ...ctx.state.run, filesFailed: ctx.state.run.filesFailed + 1, lastActivityAt: new Date().toISOString() };
     if (item !== undefined) {
-      const reported = await report(ctx.progress, 'photo-analysis-failed', { path: item.currentPath, fingerprint: item.fingerprint, code });
+      const recorded = await deps.photos.recordPhotoAnalysisFailure({
+        fingerprint: item.fingerprint,
+        configId: ctx.configId,
+        code: error.code,
+        message: error.message,
+        createdAt: new Date().toISOString(),
+      });
+      if (!recorded.ok) return recorded;
+      const reported = await report(ctx.progress, 'photo-analysis-failed', {
+        path: item.currentPath,
+        fingerprint: item.fingerprint,
+        code: error.code,
+      });
       if (!reported.ok) return reported;
     }
     return ok(undefined);
@@ -1474,7 +1489,7 @@ export const runPhotoAnalysisCascade = async (
   const analyzeInput: { items: AnalyzePhotoItem[] } = {
     items: items.map((item) => ({ fingerprint: item.fingerprint, fileName: item.fileName, proxyPath: item.proxyPath })),
   };
-  const analyzeResult = await deps.analyzer.analyzePhotos({
+  let analyzeResult = await deps.analyzer.analyzePhotos({
     ...analyzeInput,
     provider: ctx.provider,
     outputLanguage: ctx.outputLanguage,
@@ -1485,13 +1500,27 @@ export const runPhotoAnalysisCascade = async (
     signal: ctx.progress?.signal,
   });
 
+  if (!analyzeResult.ok && items.length === 1 && analyzeResult.error.code === 'processing_error') {
+    if (ctx.progress?.signal.aborted === true) return analyzeResult;
+    analyzeResult = await deps.analyzer.analyzePhotos({
+      ...analyzeInput,
+      provider: ctx.provider,
+      outputLanguage: ctx.outputLanguage,
+      tagLanguage: ctx.tagLanguage,
+      uiLanguage: ctx.uiLanguage,
+      timeoutSeconds: ctx.timeoutSeconds,
+      verbose: false,
+      signal: ctx.progress?.signal,
+    });
+  }
+
   if (!analyzeResult.ok) {
     if (ctx.progress?.signal.aborted === true) return analyzeResult;
-    return failPhotoBatch(deps, items, ctx, analyzeResult.error.code);
+    return failPhotoBatch(deps, items, ctx, analyzeResult.error);
   }
 
   const parsed = parsePhotoBatchResponse(analyzeResult.value.rawResponse, items.length);
-  if (!parsed.ok) return failPhotoBatch(deps, items, ctx, parsed.error.code);
+  if (!parsed.ok) return failPhotoBatch(deps, items, ctx, parsed.error);
 
   for (const element of parsed.value) {
     const item = items[element.index - 1];

@@ -177,7 +177,7 @@ describe('SqlJsPhotosStore', () => {
       'idx_photos_folder',
       'idx_photos_proxy_state_path',
     ]);
-    expect(version).toBe(3);
+    expect(version).toBe(4);
   });
 
   it('checkpoint persists mid-batch work without ending the batch', async () => {
@@ -724,6 +724,51 @@ describe('SqlJsPhotosStore', () => {
     ]);
   });
 
+  it('persists the latest analysis failure across reopen and clears it when the same variant succeeds', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo({ proxyState: 'done' }));
+    await store.upsertSighting(sighting());
+
+    const failed = await store.recordPhotoAnalysisFailure({
+      fingerprint: photo().fingerprint,
+      configId: 'cfg_aaaaaaaaaaaa',
+      code: 'processing_error',
+      message: 'Command failed: secret provider response',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+    expect(failed.ok).toBe(true);
+    await store.flush();
+
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const failedPage = await reopened.listPhotosPage({ root: null, offset: 0, limit: 10 });
+    expect(failedPage.ok && failedPage.value.items[0]?.analysed).toBe(false);
+    expect(failedPage.ok && failedPage.value.items[0]?.analysisError).toEqual({
+      code: 'processing_error',
+      message: 'Command failed: secret provider response',
+      createdAt: '2026-01-01T00:00:00.000Z',
+    });
+
+    await reopened.recordPhotoAnalysis({
+      fingerprint: photo().fingerprint,
+      configId: 'cfg_aaaaaaaaaaaa',
+      description: 'recovered',
+      scene: 'other',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'local',
+      model: 'gemma3:4b',
+      batchSize: 1,
+      usageJson: null,
+      tags: [],
+      createdAt: '2026-01-01T00:01:00.000Z',
+    });
+    const recoveredPage = await reopened.listPhotosPage({ root: null, offset: 0, limit: 10 });
+    expect(recoveredPage.ok && recoveredPage.value.items[0]?.analysisError).toBeNull();
+    expect(recoveredPage.ok && recoveredPage.value.items[0]?.analysed).toBe(true);
+  });
+
   it('getPhotoDetail returns the photo and its sightings ordered by last-seen then path', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });
@@ -930,7 +975,7 @@ describe('SqlJsPhotosStore', () => {
     const version = migrated.exec('SELECT version FROM schema_meta')[0]?.values[0]?.[0];
     migrated.close();
     expect(row).toEqual([null, null]);
-    expect(version).toBe(3);
+    expect(version).toBe(4);
   });
 
   it('searchPhotos finds an un-analysed photo by file name only, and matches an analysed photo by description and tag terms, with a mark-carrying snippet and place matches (P1)', async () => {

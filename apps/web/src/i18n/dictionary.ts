@@ -732,12 +732,17 @@ export interface Dictionary {
     detailAlsoAt: (count: number) => string;
     analyzeAction: string;
     analyzeCompletedLog: string;
+    analyzeCompletedWithFailuresLog: (analysed: number, failed: number) => string;
+    analyzeAllFailedLog: (failed: number) => string;
+    analyzeFileFailedLog: (path: string) => string;
     analyzeFailedLog: string;
     analyzeProgress: (current: number, total: number) => string;
     analyzeProgressFolders: (folderIndex: number, foldersTotal: number, current: number, total: number) => string;
     cancelAnalysisAction: string;
     analysisCancelled: string;
     analysisNone: string;
+    analysisFailedTitle: string;
+    analyzeAgainAction: string;
     analyzeUnavailable: string;
     detailDescription: string;
     detailScene: string;
@@ -780,6 +785,7 @@ export interface Dictionary {
     badgeAnalyzing: string;
     badgePending: string;
     badgeAnalyzed: string;
+    badgeAnalysisFailed: string;
     loadMore: string;
     treeFolderCounts: (photoCount: number, analysedCount: number) => string;
   };
@@ -1652,6 +1658,11 @@ export const en: Dictionary = {
     detailAlsoAt: (count) => `Also at: ${count} path${count === 1 ? '' : 's'}`,
     analyzeAction: 'Analyze',
     analyzeCompletedLog: 'Photo analysis complete',
+    analyzeCompletedWithFailuresLog: (analysed, failed) =>
+      `Photo analysis complete: ${analysed} analyzed, ${failed} failed`,
+    analyzeAllFailedLog: (failed) =>
+      `Photo analysis failed: ${failed} ${failed === 1 ? 'file' : 'files'} failed`,
+    analyzeFileFailedLog: (path) => `Photo analysis failed for ${path}`,
     analyzeFailedLog: 'Photo analysis failed',
     analyzeProgress: (current, total) => `Analyzing ${current} of ${total}…`,
     analyzeProgressFolders: (folderIndex, foldersTotal, current, total) =>
@@ -1659,6 +1670,8 @@ export const en: Dictionary = {
     cancelAnalysisAction: 'Cancel analysis',
     analysisCancelled: 'Analysis cancelled by user',
     analysisNone: 'Not analyzed yet.',
+    analysisFailedTitle: 'Analysis failed',
+    analyzeAgainAction: 'Analyze again',
     analyzeUnavailable: 'Select a photo whose folder has been scanned before analyzing.',
     detailDescription: 'Description',
     detailScene: 'Scene',
@@ -1701,6 +1714,7 @@ export const en: Dictionary = {
     badgeAnalyzing: 'Analyzing…',
     badgePending: 'Not analyzed',
     badgeAnalyzed: 'Analyzed',
+    badgeAnalysisFailed: 'Analysis failed',
     loadMore: 'Load more',
     treeFolderCounts: (photoCount, analysedCount) => `${photoCount} ${photoCount === 1 ? 'photo' : 'photos'} · ${analysedCount} analyzed`,
   },
@@ -2588,6 +2602,11 @@ export const pl: Dictionary = {
     detailAlsoAt: (count) => `Także w: ${count} ${plPlural(count, 'ścieżce', 'ścieżkach', 'ścieżkach')}`,
     analyzeAction: 'Analizuj',
     analyzeCompletedLog: 'Analiza zdjęć zakończona',
+    analyzeCompletedWithFailuresLog: (analysed, failed) =>
+      `Analiza zdjęć zakończona: ${analysed} ${plPlural(analysed, 'przeanalizowane zdjęcie', 'przeanalizowane zdjęcia', 'przeanalizowanych zdjęć')}, ${failed} ${plPlural(failed, 'nieudane zdjęcie', 'nieudane zdjęcia', 'nieudanych zdjęć')}`,
+    analyzeAllFailedLog: (failed) =>
+      `Analiza zdjęć nie powiodła się: ${failed} ${plPlural(failed, 'nieudane zdjęcie', 'nieudane zdjęcia', 'nieudanych zdjęć')}`,
+    analyzeFileFailedLog: (path) => `Analiza zdjęcia nie powiodła się: ${path}`,
     analyzeFailedLog: 'Analiza zdjęć nie powiodła się',
     analyzeProgress: (current, total) => `Analizowanie ${current} z ${total}…`,
     analyzeProgressFolders: (folderIndex, foldersTotal, current, total) =>
@@ -2595,6 +2614,8 @@ export const pl: Dictionary = {
     cancelAnalysisAction: 'Anuluj analizę',
     analysisCancelled: 'Analiza anulowana przez użytkownika',
     analysisNone: 'Jeszcze nie przeanalizowano.',
+    analysisFailedTitle: 'Błąd analizy',
+    analyzeAgainAction: 'Analizuj ponownie',
     analyzeUnavailable: 'Wybierz zdjęcie, którego folder został już zeskanowany, aby rozpocząć analizę.',
     detailDescription: 'Opis',
     detailScene: 'Scena',
@@ -2637,6 +2658,7 @@ export const pl: Dictionary = {
     badgeAnalyzing: 'Analizowanie…',
     badgePending: 'Nieprzeanalizowane',
     badgeAnalyzed: 'Przeanalizowane',
+    badgeAnalysisFailed: 'Błąd analizy',
     loadMore: 'Wczytaj więcej',
     treeFolderCounts: (photoCount, analysedCount) =>
       `${photoCount} ${plPlural(photoCount, 'zdjęcie', 'zdjęcia', 'zdjęć')} · ${analysedCount} ${plPlural(analysedCount, 'przeanalizowane', 'przeanalizowane', 'przeanalizowanych')}`,

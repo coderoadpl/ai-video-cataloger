@@ -32,6 +32,7 @@ const photoItem = (overrides: Partial<PhotoListItem> & { fingerprint: string; cu
   gridThumbPath: null,
   proxyPath: null,
   analysed: false,
+  analysisError: null,
   exifReadAt: null,
   ...overrides,
 });
@@ -992,6 +993,88 @@ describe('usePhotosAnalysis', () => {
     act(() => result.current.analyzePhotos());
 
     await waitFor(() => expect(result.current.error).toContain('ffmpeg exploded'));
+  });
+
+  it('logs each failed file and an honest completed-with-failures summary for a partial photo run', async () => {
+    stubTree([{ root: '/media', photos: 2, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([
+      photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' }),
+      photoItem({ fingerprint: 'b', currentPath: '/media/b.jpg' }),
+    ]);
+    stubStatus();
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: { step: 'photo-analysis-failed', data: { fingerprint: 'b', path: '/media/b.jpg', code: 'processing_error' } },
+          progressEvents: [
+            { sequence: 1, progress: { step: 'photo-analysed', data: { fingerprint: 'a', path: '/media/a.jpg', current: 1, total: 2 } } },
+            { sequence: 2, progress: { step: 'photo-analysis-failed', data: { fingerprint: 'b', path: '/media/b.jpg', code: 'processing_error' } } },
+          ],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 2, candidates: 2, analysed: 1, failed: 1, skippedExisting: 0, splitRetries: 1 },
+        },
+      })),
+    );
+    const addLine = vi.fn();
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine, folder: '/media', intervalMs: 250 }),
+      { wrapper: Wrapper },
+    );
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+
+    act(() => result.current.analyzePhotos());
+    await waitFor(() => expect(result.current.activeJobLabel).toBeNull());
+
+    expect(addLine).toHaveBeenCalledWith('Photo analysis failed for /media/b.jpg', 'error');
+    expect(addLine).toHaveBeenCalledWith('Photo analysis complete: 1 analyzed, 1 failed', 'success');
+    expect(addLine).not.toHaveBeenCalledWith('Photo analysis complete', 'success');
+    expect(result.current.error).toBeNull();
+  });
+
+  it('reports an all-failed completed photo run through the terminal and job error path', async () => {
+    stubTree([{ root: '/media', photos: 1, missing: 0, lastScanAt: '2026-01-01T00:00:00.000Z' }]);
+    stubList([photoItem({ fingerprint: 'a', currentPath: '/media/a.jpg' })]);
+    stubStatus();
+    server.use(
+      http.post('/api/photos/process', () => HttpResponse.json({ ok: true, data: { jobId: 'job-1' } })),
+      http.get('/api/jobs/status', () => HttpResponse.json({
+        ok: true,
+        data: {
+          jobId: 'job-1',
+          kind: 'photo_process',
+          status: 'completed',
+          progress: { step: 'photo-analysis-failed', data: { fingerprint: 'a', path: '/media/a.jpg', code: 'processing_error' } },
+          progressEvents: [
+            { sequence: 1, progress: { step: 'photo-analysis-failed', data: { fingerprint: 'a', path: '/media/a.jpg', code: 'processing_error' } } },
+          ],
+          error: null,
+          createdAt: '2026-01-01T00:00:00.000Z',
+          updatedAt: '2026-01-01T00:00:00.000Z',
+          result: { media: 'photo', root: '/media', force: false, configId: 'cfg_1', batchSize: 1, candidates: 1, analysed: 0, failed: 1, skippedExisting: 0, splitRetries: 0 },
+        },
+      })),
+    );
+    const addLine = vi.fn();
+    const { result } = renderHook(
+      () => usePhotosAnalysis({ active: true, addLine, folder: '/media', intervalMs: 250 }),
+      { wrapper: Wrapper },
+    );
+    await waitFor(() => expect(result.current.selectedRoot).toBe('/media'));
+
+    act(() => result.current.analyzePhotos());
+    await waitFor(() => expect(result.current.activeJobLabel).toBeNull());
+
+    expect(addLine).toHaveBeenCalledWith('Photo analysis failed for /media/a.jpg', 'error');
+    expect(addLine).toHaveBeenCalledWith('Photo analysis failed: 1 file failed', 'error');
+    expect(addLine).not.toHaveBeenCalledWith('Photo analysis complete', 'success');
+    expect(result.current.error).toBe('Photo analysis failed: 1 file failed');
   });
 
   it('surfaces a variant selection failure instead of leaving it fire-and-forget', async () => {

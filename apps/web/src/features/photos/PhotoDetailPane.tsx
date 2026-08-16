@@ -4,7 +4,8 @@ import { useDictionary } from '../../i18n/use-dictionary.js';
 import { CardHeader } from '../../components/ui/CardHeader.js';
 import { DetailStatusCard } from '../../components/ui/DetailStatusCard.js';
 import { VariantControl } from '../../components/ui/VariantControl.js';
-import { ClockIcon, DescriptionIcon } from '../../components/ui/icons.js';
+import { ClockIcon, DescriptionIcon, ErrorIcon } from '../../components/ui/icons.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import type { PHOTO_QUALITIES, PHOTO_SCENES } from '@core/domain/index.js';
 import { analysisProvenanceText } from './analysis-provenance.js';
@@ -84,8 +85,10 @@ export const PhotoDetailPane = ({
 
   if (detail === null) return null;
 
-  const { photo, sightings, analysis } = detail;
-  const statuses: PhotoStatus[] = [analysis === null ? 'pending' : 'analysed'];
+  const { photo, sightings, analysis, analysisError } = detail;
+  const statuses: PhotoStatus[] = analysis === null ? [] : ['analysed'];
+  if (analysisError !== null) statuses.push('analysisFailed');
+  if (analysis === null && analysisError === null) statuses.push('pending');
   if (sightings.length > 1) statuses.push('duplicate');
 
   return (
@@ -105,7 +108,28 @@ export const PhotoDetailPane = ({
         </Box>
       </Box>
       <PhotoMetadataCard detail={detail} />
-      {analysis === null ? (
+      {analysisError === null ? null : (
+        <DetailStatusCard
+          testId="photo-analysis-error-card"
+          icon={<ErrorIcon fontSize="small" />}
+          title={dictionary.photos.analysisFailedTitle}
+          token="error"
+          body={<Typography variant="body2">{formatAnalyzerError(analysisError.message, dictionary.errors)}</Typography>}
+          action={(
+            <Button
+              variant="outlined"
+              size="small"
+              onClick={onAnalyze}
+              disabled={isBusy || !canAnalyze}
+              title={canAnalyze ? undefined : dictionary.photos.analyzeUnavailable}
+              data-testid="photos-analyze-action"
+            >
+              {dictionary.photos.analyzeAgainAction}
+            </Button>
+          )}
+        />
+      )}
+      {analysis === null && analysisError === null ? (
         photo.proxyState === 'done' ? (
           <DetailStatusCard
             testId="photos-analyze-strip"
@@ -134,7 +158,7 @@ export const PhotoDetailPane = ({
         ) : (
           <Typography variant="body2" color="text.secondary">{dictionary.photos.analysisNone}</Typography>
         )
-      ) : (
+      ) : analysis === null ? null : (
         <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }}>
           <Paper
             variant="outlined"

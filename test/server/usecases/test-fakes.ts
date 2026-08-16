@@ -101,6 +101,7 @@ import type {
   ExifPort,
   PhotoAnalysisCandidate,
   PhotoAnalysisCandidates,
+  PhotoAnalysisError,
   PhotoDetail,
   PhotoFaceIndexCandidate,
   PhotoFolderRecord,
@@ -120,6 +121,7 @@ import type {
   PhotosStore,
   PhotoVariantRecord,
   RecordPhotoAnalysisInput,
+  RecordPhotoAnalysisFailureInput,
   ThumbnailFromFrameInput,
   ThumbnailGeneration,
   ThumbnailInput,
@@ -2065,6 +2067,7 @@ export class InMemoryPhotosStore implements PhotosStore {
   readonly runs = new Map<string, PhotoRunRecord>();
   readonly analysisConfigs = new Map<string, InMemoryAnalysisConfig>();
   readonly analyses = new Map<string, InMemoryAnalysisRow>();
+  readonly analysisErrors = new Map<string, RecordPhotoAnalysisFailureInput>();
   readonly photoTagAliases = new Map<string, string>();
   readonly faceIndexState = new Map<string, number>();
   persistCount = 0;
@@ -2143,6 +2146,9 @@ export class InMemoryPhotosStore implements PhotosStore {
     this.faceIndexState.delete(fingerprint);
     for (const key of [...this.sightings.keys()]) {
       if (key.startsWith(`${fingerprint} `)) this.sightings.delete(key);
+    }
+    for (const key of [...this.analysisErrors.keys()]) {
+      if (key.startsWith(`${fingerprint}\u0000`)) this.analysisErrors.delete(key);
     }
     return Promise.resolve(ok(undefined));
   }
@@ -2335,6 +2341,7 @@ export class InMemoryPhotosStore implements PhotosStore {
         missingAt: photo.missingAt,
         sightings: sightingCounts.get(photo.fingerprint) ?? 0,
         analysed: this.analysesFor(photo.fingerprint).length > 0,
+        analysisError: this.latestAnalysisError(photo.fingerprint),
         exifReadAt: photo.exifReadAt,
       }));
     return Promise.resolve(ok(items));
@@ -2373,6 +2380,7 @@ export class InMemoryPhotosStore implements PhotosStore {
       missingAt: photo.missingAt,
       sightings: sightingCounts.get(photo.fingerprint) ?? 0,
       analysed: this.analysesFor(photo.fingerprint).length > 0,
+      analysisError: this.latestAnalysisError(photo.fingerprint),
       exifReadAt: photo.exifReadAt,
     }));
     return Promise.resolve(ok({ total: all.length, items: page }));
@@ -2384,7 +2392,7 @@ export class InMemoryPhotosStore implements PhotosStore {
     const sightings = [...this.sightings.values()]
       .filter((sighting) => sighting.fingerprint === fingerprint)
       .sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt) || left.currentPath.localeCompare(right.currentPath));
-    return Promise.resolve(ok({ photo, sightings }));
+    return Promise.resolve(ok({ photo, sightings, analysisError: this.latestAnalysisError(fingerprint) }));
   }
 
   listAnalysisCandidates(
@@ -2406,8 +2414,9 @@ export class InMemoryPhotosStore implements PhotosStore {
     const candidates: PhotoAnalysisCandidate[] = [];
     for (const photo of eligible) {
       const analysis = this.analyses.get(analysisKey(photo.fingerprint, configId));
+      const failed = this.analysisErrors.has(analysisKey(photo.fingerprint, configId));
       const missingResolution = analysis?.resolvedOutputLanguage === undefined || analysis.resolvedTagLanguage === undefined;
-      const analysed = analysis !== undefined && (
+      const analysed = analysis !== undefined && !failed && (
         languageRule === undefined
         || missingResolution
         || ((!languageRule.outputAuto || analysis.resolvedOutputLanguage === languageRule.outputLanguage)
@@ -2436,11 +2445,25 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   recordPhotoAnalysis(input: RecordPhotoAnalysisInput): Promise<Result<void, AppError>> {
     this.analyses.set(analysisKey(input.fingerprint, input.configId), { ...input, tags: [...input.tags] });
+    this.analysisErrors.delete(analysisKey(input.fingerprint, input.configId));
+    return Promise.resolve(ok(undefined));
+  }
+
+  recordPhotoAnalysisFailure(input: RecordPhotoAnalysisFailureInput): Promise<Result<void, AppError>> {
+    this.analysisErrors.set(analysisKey(input.fingerprint, input.configId), { ...input });
     return Promise.resolve(ok(undefined));
   }
 
   private analysesFor(fingerprint: string): InMemoryAnalysisRow[] {
     return [...this.analyses.values()].filter((row) => row.fingerprint === fingerprint);
+  }
+
+  private latestAnalysisError(fingerprint: string): PhotoAnalysisError | null {
+    const row = [...this.analysisErrors.values()]
+      .filter((error) => error.fingerprint === fingerprint)
+      .sort((left, right) => right.createdAt.localeCompare(left.createdAt) || left.configId.localeCompare(right.configId))[0];
+    if (row === undefined) return null;
+    return { code: row.code, message: row.message, createdAt: row.createdAt };
   }
 
   private resolvePhotoAnalysis(fingerprint: string): InMemoryAnalysisRow | undefined {
@@ -2596,6 +2619,7 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   deletePhotoVariant(fingerprint: string, configId: string): Promise<Result<void, AppError>> {
     this.analyses.delete(analysisKey(fingerprint, configId));
+    this.analysisErrors.delete(analysisKey(fingerprint, configId));
     const photo = this.photoRows.get(fingerprint);
     if (photo?.selectedConfigId === configId) this.photoRows.set(fingerprint, { ...photo, selectedConfigId: null });
     return Promise.resolve(ok(undefined));

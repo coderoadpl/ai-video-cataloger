@@ -19,6 +19,8 @@ const badgeLabel = (status: PhotoStatus, dictionary: Dictionary): string => {
   switch (status) {
     case 'analysed':
       return dictionary.photosSidebar.badgeAnalyzed;
+    case 'analysisFailed':
+      return dictionary.photosSidebar.badgeAnalysisFailed;
     case 'duplicate':
       return dictionary.catalog.duplicateBadge;
     case 'proxyFailed':
@@ -36,6 +38,7 @@ const badgeLabel = (status: PhotoStatus, dictionary: Dictionary): string => {
 
 const TOKEN_FOR_STATUS: Record<PhotoStatus, StatusToken> = {
   analysed: 'completed',
+  analysisFailed: 'error',
   duplicate: 'notTracked',
   proxyFailed: 'pending',
   exifMissing: 'notTracked',
@@ -48,6 +51,8 @@ const BadgeIcon = ({ status, ...props }: { status: PhotoStatus } & SvgIconProps)
   switch (status) {
     case 'analysed':
       return <CheckCircleIcon fontSize="inherit" {...props} />;
+    case 'analysisFailed':
+      return <ErrorIcon fontSize="inherit" {...props} />;
     case 'duplicate':
       return <ContentCopyIcon fontSize="inherit" {...props} />;
     case 'proxyFailed':

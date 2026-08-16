@@ -20,6 +20,7 @@ const item = (fingerprint: string, currentPath: string): PhotoListItem => ({
   gridThumbPath: null,
   proxyPath: null,
   analysed: false,
+  analysisError: null,
   exifReadAt: null,
 });
 

@@ -1086,6 +1086,53 @@ describe('resolvePhotoAnalyzerOptions', () => {
 });
 
 describe('runPhotoProcess', () => {
+  it('retries one retryable single-photo processing failure once and records only the successful analysis', async () => {
+    const { deps, photos, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    analyzer.photoCallScripts = [
+      { kind: 'error', error: appError('processing_error', 'Local AI transient failure') },
+      undefined,
+    ];
+
+    const result = await runPhotoProcess(deps, { root: '/work/photos', force: false, batchSize: 1 });
+
+    expect(result.ok && result.value).toMatchObject({ analysed: 1, failed: 0, splitRetries: 0 });
+    expect(analyzer.analyzePhotosCalls).toHaveLength(2);
+    expect([...photos.analyses.values()].some((analysis) => analysis.fingerprint === 'ph_0000000000000001')).toBe(true);
+    expect(photos.analysisErrors.size).toBe(0);
+  });
+
+  it('persists an exhausted single-photo retry and emits the unchanged failure event', async () => {
+    const { deps, photos, analyzer } = buildDeps();
+    await seedAnalysisReadyPhoto(photos, 'ph_0000000000000001', '/work/photos/a.jpg');
+    analyzer.photoCallScripts = [
+      { kind: 'error', error: appError('processing_error', 'Local AI transient failure') },
+      { kind: 'error', error: appError('processing_error', 'Local AI retry exhausted') },
+    ];
+    const events: JobProgress[] = [];
+
+    const result = await runPhotoProcess(
+      deps,
+      { root: '/work/photos', force: false, batchSize: 1 },
+      recordingProgress(events),
+    );
+
+    expect(result.ok && result.value).toMatchObject({ analysed: 0, failed: 1, splitRetries: 0 });
+    expect(analyzer.analyzePhotosCalls).toHaveLength(2);
+    expect(photos.analyses.size).toBe(0);
+    expect([...photos.analysisErrors.values()]).toEqual([
+      expect.objectContaining({
+        fingerprint: 'ph_0000000000000001',
+        code: 'processing_error',
+        message: 'Local AI retry exhausted',
+      }),
+    ]);
+    expect(events).toContainEqual(expect.objectContaining({
+      step: 'photo-analysis-failed',
+      data: expect.objectContaining({ fingerprint: 'ph_0000000000000001', code: 'processing_error' }),
+    }));
+  });
+
   it('splits a malformed batch, records actual batch_size provenance, and completes ok (P4)', async () => {
     const { deps, photos, analyzer } = buildDeps();
     for (let index = 1; index <= 4; index += 1) {

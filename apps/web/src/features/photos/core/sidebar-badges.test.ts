@@ -4,6 +4,7 @@ import { photoBadges, type PhotoBadgeInput } from './sidebar-badges.js';
 
 const item = (overrides: Partial<PhotoBadgeInput> = {}): PhotoBadgeInput => ({
   analysed: false,
+  analysisError: null,
   sightings: 1,
   proxyState: 'done',
   exifReadAt: '2026-01-01T00:00:00.000Z',
@@ -18,6 +19,16 @@ describe('photoBadges', () => {
 
   it('flags analyzed', () => {
     expect(photoBadges(item({ analysed: true }))).toEqual(['analysed']);
+  });
+
+  it('flags a persisted analysis failure', () => {
+    expect(photoBadges(item({
+      analysisError: {
+        code: 'processing_error',
+        message: 'Command failed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
+    }))).toEqual(['analysisFailed']);
   });
 
   it('flags duplicate when sighted more than once', () => {
@@ -39,10 +50,15 @@ describe('photoBadges', () => {
   it('renders every applicable badge in a fixed order', () => {
     expect(photoBadges(item({
       analysed: true,
+      analysisError: {
+        code: 'processing_error',
+        message: 'Command failed',
+        createdAt: '2026-01-01T00:00:00.000Z',
+      },
       sightings: 3,
       proxyState: 'failed',
       exifReadAt: null,
       missingAt: 999,
-    }))).toEqual(['analysed', 'duplicate', 'proxyFailed', 'exifMissing', 'missing']);
+    }))).toEqual(['analysed', 'analysisFailed', 'duplicate', 'proxyFailed', 'exifMissing', 'missing']);
   });
 });
