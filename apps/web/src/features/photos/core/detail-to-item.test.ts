@@ -64,7 +64,7 @@ describe('detailToListItem', () => {
     });
   });
 
-  it('counts sightings from the sightings array and reports analysed once an analysis exists', () => {
+  it('counts sightings from the sightings array and reports analyzed once an analysis exists', () => {
     const item = detailToListItem(detail({
       sightings: [
         { currentPath: '/a', folderId: 'f', lastSeenAt: '2026-01-01T00:00:00.000Z' },

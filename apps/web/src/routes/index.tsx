@@ -218,6 +218,7 @@ export const IndexRoute = () => {
           scope={effectiveScope}
           onScopeChange={setScope}
           disabled={!treeScopeAvailable || processing.isBusy}
+          disabledReason={processing.isBusy ? 'busy' : 'no-video-subfolders'}
         />
       )}
       toolbar={
@@ -256,6 +257,7 @@ export const IndexRoute = () => {
           scope={photosAnalysis.scope}
           onScopeChange={photosAnalysis.setScope}
           disabled={!photosAnalysis.treeScopeAvailable || photosAnalysis.isBusy}
+          disabledReason={photosAnalysis.isBusy ? 'busy' : 'no-photo-subfolders'}
         />
       )}
       toolbar={(

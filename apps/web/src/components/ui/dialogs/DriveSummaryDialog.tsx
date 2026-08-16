@@ -43,15 +43,15 @@ export const DriveSummaryDialog = ({ open, counts, onClose }: DriveSummaryDialog
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth data-testid="drive-summary-dialog">
       <DialogTitle>{dictionary.driveSummary.title}</DialogTitle>
       <DialogContent sx={{ display: 'flex', gap: 3, flexWrap: 'wrap' }}>
-        <Stat testId="drive-folders-count" value={counts.foldersDone} label={dictionary.driveSummary.folders} />
-        <Stat testId="drive-analyzed-count" value={counts.filesDone} label={dictionary.driveSummary.analyzed} />
-        <Stat testId="drive-skipped-count" value={counts.filesSkipped} label={dictionary.driveSummary.skipped} />
+        <Stat testId="drive-folders-count" value={counts.foldersDone} label={dictionary.driveSummary.folders(counts.foldersDone)} />
+        <Stat testId="drive-analyzed-count" value={counts.filesDone} label={dictionary.driveSummary.analyzed(counts.filesDone)} />
+        <Stat testId="drive-skipped-count" value={counts.filesSkipped} label={dictionary.driveSummary.skipped(counts.filesSkipped)} />
         <Stat
           testId="drive-duplicate-skipped-count"
           value={counts.filesDuplicateSkipped}
-          label={dictionary.driveSummary.duplicatesSkipped}
+          label={dictionary.driveSummary.duplicatesSkipped(counts.filesDuplicateSkipped)}
         />
-        <Stat testId="drive-failed-count" value={counts.filesFailed} label={dictionary.driveSummary.failed} />
+        <Stat testId="drive-failed-count" value={counts.filesFailed} label={dictionary.driveSummary.failed(counts.filesFailed)} />
         {counts.estimatedCostUsd === null ? null : (
           <Stat
             testId="drive-estimated-cost"

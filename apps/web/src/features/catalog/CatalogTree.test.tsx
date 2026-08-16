@@ -163,7 +163,7 @@ describe('CatalogTree', () => {
     expect(rootRow.textContent).toContain('1 duplicate');
   });
 
-  it('shows Processing instead of the Duplicate badge while a duplicate row is being force-analyzed', () => {
+  it('shows Analyzing instead of the Duplicate badge while a duplicate row is being force-analyzed', () => {
     const dupRoot = makeNode({
       path: '/drive',
       name: 'drive',
@@ -175,7 +175,7 @@ describe('CatalogTree', () => {
       children: [],
     });
     renderTree({ root: dupRoot, rootVideos: dupRoot.videos, analyzingPath: '/drive/dupe.mp4' });
-    expect(screen.getByTestId('video-status-badge').textContent).toContain('Processing');
+    expect(screen.getByTestId('video-status-badge').textContent).toContain('Analyzing…');
     expect(screen.queryByTestId('duplicate-badge')).toBeNull();
   });
 

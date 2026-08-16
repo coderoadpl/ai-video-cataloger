@@ -405,10 +405,10 @@ describe('details panel', () => {
     expect(onNavigateToCanonical).toHaveBeenCalledWith('/videos/canon.mp4');
   });
 
-  it('replaces the duplicate badge with Processing while a forced analysis runs', () => {
+  it('replaces the duplicate badge with Analyzing while a forced analysis runs', () => {
     const video = makeVideo({ status: 'pending', duplicate: { canonicalPath: '/videos/canon.mp4' } });
     renderThemed(<DetailsPanel video={video} analyzing onAnalyze={vi.fn()} />);
-    expect(screen.getByTestId('video-status-badge').textContent).toContain('Processing');
+    expect(screen.getByTestId('video-status-badge').textContent).toContain('Analyzing…');
     expect(screen.queryByTestId('duplicate-badge')).toBeNull();
   });
 

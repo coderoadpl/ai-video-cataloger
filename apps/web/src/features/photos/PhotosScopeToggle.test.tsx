@@ -1,5 +1,6 @@
 import { ThemeProvider } from '@mui/material/styles';
 import { fireEvent, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 
 import { renderWithProviders } from '../../test/render.js';
@@ -21,8 +22,17 @@ describe('PhotosScopeToggle', () => {
     expect(screen.getByTestId('scope-tree').textContent).toBe('Whole tree');
   });
 
-  it('disables whole-tree selection under the same rule as videos', () => {
-    renderThemed(<PhotosScopeToggle scope="folder" onScopeChange={vi.fn()} disabled />);
+  it('shows the photo-specific reason when whole-tree selection is disabled', async () => {
+    renderThemed(
+      <PhotosScopeToggle
+        scope="folder"
+        onScopeChange={vi.fn()}
+        disabled
+        disabledReason="no-photo-subfolders"
+      />,
+    );
     expect(screen.getByTestId('scope-tree').getAttribute('disabled')).not.toBeNull();
+    await userEvent.hover(screen.getByTestId('scope-tree').parentElement ?? screen.getByTestId('scope-tree'));
+    expect((await screen.findByRole('tooltip')).textContent).toBe('This folder has no subfolders with photos.');
   });
 });

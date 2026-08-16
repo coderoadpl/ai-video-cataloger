@@ -16,7 +16,7 @@ describe('photoBadges', () => {
     expect(photoBadges(item())).toEqual([]);
   });
 
-  it('flags analysed', () => {
+  it('flags analyzed', () => {
     expect(photoBadges(item({ analysed: true }))).toEqual(['analysed']);
   });
 

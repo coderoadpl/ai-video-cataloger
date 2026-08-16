@@ -39,19 +39,19 @@ export const BatchSummaryDialog = ({ open, results, onClose }: BatchSummaryDialo
             <Box component="span" data-testid="batch-success-count" sx={{ fontWeight: 600 }}>
               {successCount}
             </Box>{' '}
-            {dictionary.batchSummary.successful}
+            {dictionary.batchSummary.successful(successCount)}
           </Typography>
           <Typography variant="body2">
             <Box component="span" data-testid="batch-failed-count" sx={{ fontWeight: 600 }}>
               {failed.length}
             </Box>{' '}
-            {dictionary.batchSummary.failed}
+            {dictionary.batchSummary.failed(failed.length)}
           </Typography>
           <Typography variant="body2">
             <Box component="span" data-testid="batch-duplicate-skipped-count" sx={{ fontWeight: 600 }}>
               {duplicateSkippedCount}
             </Box>{' '}
-            {dictionary.batchSummary.duplicatesSkipped}
+            {dictionary.batchSummary.duplicatesSkipped(duplicateSkippedCount)}
           </Typography>
         </Box>
         {failed.length > 0 ? (

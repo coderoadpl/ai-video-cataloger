@@ -20,9 +20,19 @@ describe('AnalyzeScopeToggle', () => {
     expect(onScopeChange).toHaveBeenCalledWith('tree');
   });
 
-  it('disables the toggle group when disabled', () => {
-    renderThemed(<AnalyzeScopeToggle scope="folder" onScopeChange={vi.fn()} disabled />);
+  it('shows the supplied reason when the toggle group is disabled', async () => {
+    renderThemed(
+      <AnalyzeScopeToggle
+        scope="folder"
+        onScopeChange={vi.fn()}
+        disabled
+        disabledReason="busy"
+      />,
+    );
 
     expect(screen.getByTestId('scope-tree').hasAttribute('disabled')).toBe(true);
+    await userEvent.hover(screen.getByTestId('scope-tree').parentElement ?? screen.getByTestId('scope-tree'));
+    expect((await screen.findByRole('tooltip')).textContent)
+      .toBe('The analysis scope cannot be changed while another task is running.');
   });
 });

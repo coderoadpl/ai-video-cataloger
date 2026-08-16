@@ -72,7 +72,9 @@ export interface Dictionary {
     analyzeScope: string;
     thisFolder: string;
     wholeTree: string;
-    scopeToggleDisabled: string;
+    scopeToggleNoVideoSubfolders: string;
+    scopeToggleNoPhotoSubfolders: string;
+    scopeToggleBusy: string;
     batchWaitHint: string;
     processingCount: (current: number, total: number) => string;
     stop: string;
@@ -658,19 +660,19 @@ export interface Dictionary {
   };
   batchSummary: {
     title: string;
-    successful: string;
-    failed: string;
-    duplicatesSkipped: string;
+    successful: (count: number) => string;
+    failed: (count: number) => string;
+    duplicatesSkipped: (count: number) => string;
     failedVideos: string;
     unknownError: string;
   };
   driveSummary: {
     title: string;
-    folders: string;
-    analyzed: string;
-    skipped: string;
-    duplicatesSkipped: string;
-    failed: string;
+    folders: (count: number) => string;
+    analyzed: (count: number) => string;
+    skipped: (count: number) => string;
+    duplicatesSkipped: (count: number) => string;
+    failed: (count: number) => string;
     estimatedCost: (files: number) => string;
   };
   harnessModelPicker: {
@@ -697,8 +699,6 @@ export interface Dictionary {
     cancelAnalysis: string;
   };
   photos: {
-    emptyNoRootsTitle: string;
-    scanFolderAction: string;
     scanStartedLog: string;
     scanCompletedLog: string;
     scanFailedLog: string;
@@ -778,6 +778,8 @@ export interface Dictionary {
     badgeExifMissing: string;
     badgeMissing: string;
     badgeAnalyzing: string;
+    badgePending: string;
+    badgeAnalyzed: string;
     loadMore: string;
     treeFolderCounts: (photoCount: number, analysedCount: number) => string;
   };
@@ -873,7 +875,7 @@ export const en: Dictionary = {
     outputHelper: 'Language the AI writes descriptions and filenames in.',
     tagLabel: 'Tag language',
     tagHelper: 'Language the AI writes tags in. Follows the description language unless you set it.',
-    optionAuto: 'Automatic (model chooses)',
+    optionAuto: 'Automatic (follows the app language)',
     optionEnglish: 'English',
     optionPolish: 'Polish',
   },
@@ -915,7 +917,9 @@ export const en: Dictionary = {
     analyzeScope: 'Analyze scope',
     thisFolder: 'This folder',
     wholeTree: 'Whole tree',
-    scopeToggleDisabled: 'This folder has no subfolders with videos.',
+    scopeToggleNoVideoSubfolders: 'This folder has no subfolders with videos.',
+    scopeToggleNoPhotoSubfolders: 'This folder has no subfolders with photos.',
+    scopeToggleBusy: 'The analysis scope cannot be changed while another task is running.',
     batchWaitHint: 'Results usually arrive in minutes, but the API allows up to 24 hours.',
     processingCount: (current, total) => `Processing ${current} of ${total}`,
     stop: 'Stop',
@@ -1032,7 +1036,7 @@ export const en: Dictionary = {
       actionError: 'Could not update the analysis variant.',
     },
     status: {
-      analyzing: 'Video is being processed…',
+      analyzing: 'Video is being analyzed…',
       completed: ({ transcript, frames }) => {
         if (transcript && frames) return 'Analysis complete. Summary, transcript, and frames are available.';
         if (transcript) return 'Analysis complete. Summary and transcript are available.';
@@ -1281,7 +1285,7 @@ export const en: Dictionary = {
     },
   },
   readinessNotice: {
-    title: 'Processing setup is incomplete',
+    title: 'Analysis setup is incomplete',
     missing: (pieces) => `${pieces} must be configured before analysis can run.`,
     openSettings: 'Open Settings',
     openSetupWizard: 'Open Setup Wizard',
@@ -1325,7 +1329,7 @@ export const en: Dictionary = {
     cancelledByUser: 'Cancelled by user',
     processingFailed: 'Processing failed',
     processingDidNotFinish: 'Processing did not finish',
-    setupIncomplete: 'Processing setup is incomplete. Open Settings or run the Setup Wizard.',
+    setupIncomplete: 'Analysis setup is incomplete. Open Settings or run the Setup Wizard.',
     startingAnalysis: (filename) => `Starting analysis of ${filename}…`,
     noPendingVideos: 'No pending videos to analyze',
     analysisBusy: 'Another analysis is already running. Wait for it to finish before starting a new one.',
@@ -1418,14 +1422,14 @@ export const en: Dictionary = {
   },
   map: {
     title: 'Map',
-    subtitle: 'Where your catalogued videos were recorded — offline, no map tiles are ever downloaded.',
+    subtitle: 'Where your catalogued videos and photos were captured — offline, no map tiles are ever downloaded.',
     loading: 'Reading locations from the catalog…',
     coverage: (located, total) => `${located} of ${total} catalogued files have location`,
     coveragePhotos: (located, total) => `${located} of ${total} catalogued photos have location`,
     emptyTitle: 'No files with location yet',
-    emptyBody: 'Location comes from GPS metadata the camera wrote into the file. Analyse a folder to add its files to the catalog; files without GPS metadata never appear here.',
-    canvasLabel: 'Map of catalogued videos',
-    clusterLabel: (count) => `${count} videos in this area`,
+    emptyBody: 'Location comes from GPS metadata the camera wrote into the file. Analyze a folder to add its files to the catalog; files without GPS metadata never appear here.',
+    canvasLabel: 'Map of catalogued files',
+    clusterLabel: (count) => `${count} ${count === 1 ? 'item' : 'items'} in this area`,
     zoomIn: 'Zoom in',
     zoomOut: 'Zoom out',
     resetView: 'Reset view',
@@ -1484,7 +1488,7 @@ export const en: Dictionary = {
       + 'Leave blank for no cap. The figure is a local estimate from token counts, not a Google invoice.',
     geminiBudgetInvalid: 'Enter an amount above 0, or leave the field blank.',
     geminiSpendReadout: (month, estimatedCostUsd, entries) =>
-      `Estimated spend for ${month}: $${estimatedCostUsd.toFixed(4)} USD across ${String(entries)} analyses.`,
+      `Estimated spend for ${month}: $${estimatedCostUsd.toFixed(4)} USD across ${String(entries)} ${entries === 1 ? 'analysis' : 'analyses'}.`,
     geminiSpendUnknown: 'Estimated spend for this month is not available yet.',
     skipAutoRename: 'Skip Auto-Rename',
     runSetupWizard: 'Run Setup Wizard',
@@ -1567,7 +1571,7 @@ export const en: Dictionary = {
     error: 'Error',
     pending: 'Pending',
     notTracked: 'Not Tracked',
-    processing: 'Processing',
+    processing: 'Analyzing…',
   },
   nestedDbDialog: {
     title: 'Nested Databases Detected',
@@ -1576,20 +1580,20 @@ export const en: Dictionary = {
   },
   batchSummary: {
     title: 'Batch Analysis Complete',
-    successful: 'successful',
-    failed: 'failed',
-    duplicatesSkipped: 'duplicates skipped',
+    successful: (count) => `successful ${count === 1 ? 'video' : 'videos'}`,
+    failed: (count) => `failed ${count === 1 ? 'video' : 'videos'}`,
+    duplicatesSkipped: (count) => `${count === 1 ? 'duplicate' : 'duplicates'} skipped`,
     failedVideos: 'Failed videos:',
     unknownError: 'Unknown error',
   },
   driveSummary: {
     title: 'Folder Analysis Complete',
-    folders: 'folders',
-    analyzed: 'analyzed',
-    skipped: 'skipped',
-    duplicatesSkipped: 'duplicates skipped',
-    failed: 'failed',
-    estimatedCost: (files) => `estimated Gemini cost · ${String(files)} priced file(s)`,
+    folders: (count) => count === 1 ? 'folder' : 'folders',
+    analyzed: (count) => `analyzed ${count === 1 ? 'file' : 'files'}`,
+    skipped: (count) => `skipped ${count === 1 ? 'file' : 'files'}`,
+    duplicatesSkipped: (count) => `${count === 1 ? 'duplicate' : 'duplicates'} skipped`,
+    failed: (count) => `failed ${count === 1 ? 'file' : 'files'}`,
+    estimatedCost: (files) => `estimated Gemini cost · ${String(files)} priced ${files === 1 ? 'file' : 'files'}`,
   },
   harnessModelPicker: {
     model: 'Model',
@@ -1610,13 +1614,11 @@ export const en: Dictionary = {
     photoTitle: 'Cancel photo analysis?',
     photoBody: 'Are you sure you want to cancel the current photo analysis?',
     photoAlert: 'Photos already analyzed will keep their results. The current photo may need to be analyzed again.',
-    continueProcessing: 'Continue Processing',
+    continueProcessing: 'Continue Analysis',
     stopBatch: 'Stop Batch',
     cancelAnalysis: 'Cancel Analysis',
   },
   photos: {
-    emptyNoRootsTitle: 'No photo folders scanned yet',
-    scanFolderAction: 'Scan a folder…',
     scanStartedLog: 'Scanning photos…',
     scanCompletedLog: 'Photo scan complete',
     scanFailedLog: 'Photo scan failed',
@@ -1656,7 +1658,7 @@ export const en: Dictionary = {
       `Folder ${folderIndex} of ${foldersTotal} — analyzing ${current} of ${total}…`,
     cancelAnalysisAction: 'Cancel analysis',
     analysisCancelled: 'Analysis cancelled by user',
-    analysisNone: 'Not analysed yet.',
+    analysisNone: 'Not analyzed yet.',
     analyzeUnavailable: 'Select a photo whose folder has been scanned before analyzing.',
     detailDescription: 'Description',
     detailScene: 'Scene',
@@ -1697,12 +1699,14 @@ export const en: Dictionary = {
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
     badgeAnalyzing: 'Analyzing…',
+    badgePending: 'Not analyzed',
+    badgeAnalyzed: 'Analyzed',
     loadMore: 'Load more',
-    treeFolderCounts: (photoCount, analysedCount) => `${photoCount} ${photoCount === 1 ? 'photo' : 'photos'} · ${analysedCount} analysed`,
+    treeFolderCounts: (photoCount, analysedCount) => `${photoCount} ${photoCount === 1 ? 'photo' : 'photos'} · ${analysedCount} analyzed`,
   },
   library: {
     title: 'Library',
-    subtitle: 'Browse everything ever processed, across every catalogued folder.',
+    subtitle: 'Browse everything ever analyzed, across every catalogued folder.',
     countHeader: (shown, total) => shown === total ? `${total} files` : `${shown} of ${total} files`,
     searchPlaceholder: 'Search the library…',
     recentSearches: 'Recent searches',
@@ -1711,8 +1715,8 @@ export const en: Dictionary = {
     loadingLibrary: 'Loading library…',
     loadMore: 'Load more',
     unknownDate: 'No date',
-    emptyCatalogTitle: 'Nothing processed yet',
-    emptyCatalogBody: 'Process a folder of videos or photos to start building your library.',
+    emptyCatalogTitle: 'Nothing analyzed yet',
+    emptyCatalogBody: 'Analyze a folder of videos or photos to start building your library.',
     emptyCatalogAction: 'Go to Videos',
     noMatchTitle: (query) => query.length === 0 ? 'No results' : `No results for "${query}"`,
     noMatchBody: 'Try a different search or clear the filters.',
@@ -1755,7 +1759,7 @@ export const en: Dictionary = {
     mediaAll: 'All',
     mediaVideo: 'Videos',
     mediaPhoto: 'Photos',
-    videoOnlyFilterNotice: (parts) => `${parts} only applies to videos — photos are hidden while it is active.`,
+    videoOnlyFilterNotice: (parts) => `Filtering by ${parts} applies only to videos — photos are hidden while it is active.`,
   },
   preview: {
     offline: 'This file is on a drive that is not connected.',
@@ -1800,7 +1804,7 @@ export const pl: Dictionary = {
     outputHelper: 'Język, w którym AI pisze opisy i nazwy plików.',
     tagLabel: 'Język tagów',
     tagHelper: 'Język, w którym AI zapisuje tagi. Domyślnie taki jak język opisów.',
-    optionAuto: 'Automatycznie (wybiera model)',
+    optionAuto: 'Automatycznie (język aplikacji)',
     optionEnglish: 'Angielski',
     optionPolish: 'Polski',
   },
@@ -1842,7 +1846,9 @@ export const pl: Dictionary = {
     analyzeScope: 'Zakres analizy',
     thisFolder: 'Ten folder',
     wholeTree: 'Całe drzewo',
-    scopeToggleDisabled: 'Ten folder nie ma podfolderów z filmami.',
+    scopeToggleNoVideoSubfolders: 'Ten folder nie ma podfolderów z filmami.',
+    scopeToggleNoPhotoSubfolders: 'Ten folder nie ma podfolderów ze zdjęciami.',
+    scopeToggleBusy: 'Nie można zmienić zakresu analizy, gdy trwa inne zadanie.',
     batchWaitHint: 'Wyniki zwykle przychodzą w kilka minut, ale API dopuszcza do 24 godzin.',
     processingCount: (current, total) => `Analizowanie ${current} z ${total}`,
     stop: 'Stop',
@@ -1934,7 +1940,7 @@ export const pl: Dictionary = {
       transcriptionSkipped: 'Bez transkrypcji',
       frameCount: (count) => `${count} ${plPlural(count, 'klatka', 'klatki', 'klatek')}`,
       noFrames: 'bez klatek',
-      frameExtractionDisabled: 'ten wariant nie ekstrahuje klatek',
+      frameExtractionDisabled: 'Ten wariant nie wyodrębnia klatek',
       useAsSelected: 'Użyj jako wybranego',
       selectionImpact: 'Zmienia wyniki wyszukiwania oraz pliki klatek, transkrypcji i streszczenia na dysku.',
       compare: 'Porównaj warianty',
@@ -1959,7 +1965,7 @@ export const pl: Dictionary = {
       actionError: 'Nie udało się zaktualizować wariantu analizy.',
     },
     status: {
-      analyzing: 'Film jest przetwarzany…',
+      analyzing: 'Film jest analizowany…',
       completed: ({ transcript, frames }) => {
         if (transcript && frames) return 'Analiza zakończona. Streszczenie, transkrypcja i klatki są dostępne.';
         if (transcript) return 'Analiza zakończona. Streszczenie i transkrypcja są dostępne.';
@@ -2015,7 +2021,7 @@ export const pl: Dictionary = {
     welcome: {
       title: 'Witaj w AI Video Cataloger',
       body: 'Ten kreator konfiguruje analizator i transkrypcję, aby pierwsza analiza działała od początku do końca. Wszystko możesz później zmienić w Ustawieniach.',
-      privacy: 'Wybierz w pełni lokalny model (bez konta), dostawcę API albo jednego z zainstalowanych agentów CLI. Sama aplikacja niczego nie wysyła do chmury. Twoje dane — klatki i transkrypcje — opuszczają ten komputer tylko wtedy, gdy wybierzesz własnych dostawców: wpisany klucz API albo używany już harness agent CLI (Claude Code, Codex, Cursor). W pełni lokalny model trzyma wszystko na Macu.',
+      privacy: 'Wybierz w pełni lokalny model (bez konta), dostawcę API albo jednego z zainstalowanych agentów CLI. Sama aplikacja niczego nie wysyła do chmury. Twoje dane — klatki i transkrypcje — opuszczają ten komputer tylko wtedy, gdy wybierzesz własnych dostawców: wpisany klucz API albo harness agenta CLI, którego już używasz (Claude Code, Codex, Cursor). W pełni lokalny model trzyma wszystko na Macu.',
     },
     analyzer: {
       title: 'Wybierz analizator',
@@ -2072,10 +2078,10 @@ export const pl: Dictionary = {
       none: 'Nie ma nic do pobrania — wybrane elementy są już dostępne. Kontynuuj, aby sprawdzić gotowość.',
     },
     readiness: {
-      title: 'Końcowy test',
+      title: 'Ostatnie sprawdzenie',
       checking: 'Sprawdzanie konfiguracji…',
       ready: 'Wszystko skonfigurowane. Możesz analizować filmy.',
-      notReady: 'Niektóre testy wymagają uwagi. Użyj akcji poniżej, aby je naprawić.',
+      notReady: 'Niektóre elementy wymagają uwagi. Użyj akcji poniżej, aby je naprawić.',
     },
     done: {
       title: 'Konfiguracja zakończona',
@@ -2208,36 +2214,39 @@ export const pl: Dictionary = {
     },
   },
   readinessNotice: {
-    title: 'Konfiguracja przetwarzania jest niepełna',
+    title: 'Konfiguracja analizy jest niepełna',
     missing: (pieces) => `${pieces} musi być skonfigurowane przed uruchomieniem analizy.`,
     openSettings: 'Otwórz ustawienia',
     openSetupWizard: 'Otwórz kreator konfiguracji',
   },
   processing: {
-    driveRunStarted: (folders, files) => `Skanowanie: ${String(folders)} folder(y), ${String(files)} plik(i)…`,
-    driveFolderStarted: (path, files) => `→ ${path} (${String(files)} plik(i))`,
+    driveRunStarted: (folders, files) =>
+      `Skanowanie: ${String(folders)} ${plPlural(folders, 'folder', 'foldery', 'folderów')}, ${String(files)} ${plPlural(files, 'plik', 'pliki', 'plików')}…`,
+    driveFolderStarted: (path, files) =>
+      `→ ${path} (${String(files)} ${plPlural(files, 'plik', 'pliki', 'plików')})`,
     driveFolderDone: (path, done, skipped, duplicatesSkipped, failed) =>
-      `✓ ${path}: ${String(done)} gotowe, ${String(skipped)} pominięte (${String(duplicatesSkipped)} duplikatów), ${String(failed)} błędne`,
+      `✓ ${path}: ${String(done)} ${plPlural(done, 'gotowy', 'gotowe', 'gotowych')}, ${String(skipped)} ${plPlural(skipped, 'pominięty', 'pominięte', 'pominiętych')} (${String(duplicatesSkipped)} ${plPlural(duplicatesSkipped, 'duplikat', 'duplikaty', 'duplikatów')}), ${String(failed)} ${plPlural(failed, 'nieudany', 'nieudane', 'nieudanych')}`,
     driveFileSkipped: (filename) => `↷ Pominięto (już przeanalizowano): ${filename}`,
     driveDuplicateSkipped: (filename) => `↷ Pominięto duplikat: ${filename}`,
     driveSnapshotSkipped: (folder) => `⚠ Folder tylko do odczytu — pominięto migawkę: ${folder}`,
     driveRunComplete: (foldersDone, foldersTotal, done, skipped, duplicatesSkipped, failed, estimatedCostUsd, costedFiles) => {
       const estimate = estimatedCostUsd === null
         ? ''
-        : `, szacowany koszt Gemini ${estimatedCostUsd.toFixed(4)} USD (${String(costedFiles)} plik(i))`;
-      return `=== Analiza drzewa ukończona: ${String(foldersDone)}/${String(foldersTotal)} folder(y), ${String(done)} gotowe, ${String(skipped)} pominięte (${String(duplicatesSkipped)} duplikatów), ${String(failed)} błędne${estimate} ===`;
+        : `, szacowany koszt Gemini ${estimatedCostUsd.toFixed(4)} USD (${String(costedFiles)} ${plPlural(costedFiles, 'wyceniony plik', 'wycenione pliki', 'wycenionych plików')})`;
+      return `=== Analiza drzewa ukończona: ${String(foldersDone)}/${String(foldersTotal)} ${plPlural(foldersTotal, 'folder', 'foldery', 'folderów')}, ${String(done)} ${plPlural(done, 'gotowy', 'gotowe', 'gotowych')}, ${String(skipped)} ${plPlural(skipped, 'pominięty', 'pominięte', 'pominiętych')} (${String(duplicatesSkipped)} ${plPlural(duplicatesSkipped, 'duplikat', 'duplikaty', 'duplikatów')}), ${String(failed)} ${plPlural(failed, 'nieudany', 'nieudane', 'nieudanych')}${estimate} ===`;
     },
     driveBudgetCapReached: (month, estimatedSpendUsd, budgetUsd) =>
       `Osiągnięto budżet Gemini za ${month}: szacowane wydatki ${estimatedSpendUsd.toFixed(4)} USD / ${budgetUsd.toFixed(2)} USD. Analiza dysku została wstrzymana.`,
     driveBatchSubmitted: (requestCount, reattached) =>
       reattached
-        ? `↻ Podpięto do już uruchomionego zadania wsadowego dla ${String(requestCount)} plik(ów)`
-        : `⇪ Wysłano wsad: ${String(requestCount)} plik(i) za pół ceny — zwykle minuty, do 24 h`,
-    driveBatchPoll: (state, requestCount) => `… Wsad: ${state} (${String(requestCount)} plik(i))`,
+        ? `↻ Podpięto do już uruchomionego zadania wsadowego dla ${String(requestCount)} ${plPlural(requestCount, 'pliku', 'plików', 'plików')}`
+        : `⇪ Wysłano wsad: ${String(requestCount)} ${plPlural(requestCount, 'plik', 'pliki', 'plików')} za pół ceny — zwykle minuty, do 24 h`,
+    driveBatchPoll: (state, requestCount) =>
+      `… Wsad: ${state} (${String(requestCount)} ${plPlural(requestCount, 'plik', 'pliki', 'plików')})`,
     driveBatchCompleted: (succeeded, failed) =>
-      `✓ Wyniki wsadu: ${String(succeeded)} z odpowiedzią, ${String(failed)} błędnych`,
+      `✓ Wyniki wsadu: ${String(succeeded)} ${plPlural(succeeded, 'odpowiedź', 'odpowiedzi', 'odpowiedzi')}, ${String(failed)} ${plPlural(failed, 'błąd', 'błędy', 'błędów')}`,
     driveBatchUploadsRetained: (retained) =>
-      `! Nie udało się usunąć ${String(retained)} przesłanych plików z Gemini; wygasną same po 48 h`,
+      `! Nie udało się usunąć ${String(retained)} ${plPlural(retained, 'przesłanego pliku', 'przesłanych plików', 'przesłanych plików')} z Gemini; wygasną same po 48 h`,
     driveBatchOrphanJobs: (jobNames) =>
       '! Ten przebieg podpina się tylko do jednego zadania wsadowego. Inne niedokończone przebiegi tego katalogu '
       + `wciąż trzymają opłacone zadania: ${jobNames.join(', ')}. Uruchom ten katalog ponownie po zakończeniu `
@@ -2245,7 +2254,8 @@ export const pl: Dictionary = {
     driveBatchModelChanged: (jobModel, resolvedModel) =>
       `! Zadanie wsadowe kupiono na modelu ${jobModel}, a konfiguracja wskazuje teraz ${resolvedModel}; `
       + 'jego odpowiedzi zapisujemy pod modelem, który je wygenerował',
-    driveBatchWaiting: (requestCount) => `Wysłano wsad — czekamy na wyniki (${String(requestCount)} plik(i))`,
+    driveBatchWaiting: (requestCount) =>
+      `Wysłano wsad — czekamy na wyniki (${String(requestCount)} ${plPlural(requestCount, 'plik', 'pliki', 'plików')})`,
     progressLine: (percentage, label) => `[${String(percentage)}%] ${label}`,
     fileProgressLine: (current, total, label, filename) => `[${String(current)}/${String(total)}] ${label}: ${filename}`,
     error: (message) => `Błąd: ${message}`,
@@ -2257,7 +2267,8 @@ export const pl: Dictionary = {
     startingAnalysis: (filename) => `Rozpoczynanie analizy ${filename}…`,
     noPendingVideos: 'Brak oczekujących filmów do analizy',
     analysisBusy: 'Inna analiza jest już w toku. Poczekaj na jej zakończenie przed rozpoczęciem nowej.',
-    batchStart: (count) => `=== Rozpoczynanie analizy wsadowej ${String(count)} film(ów) ===`,
+    batchStart: (count) =>
+      `=== Rozpoczynanie analizy wsadowej ${String(count)} ${plPlural(count, 'filmu', 'filmów', 'filmów')} ===`,
     batchCancelled: (processed, total) => `Analiza wsadowa anulowana. Przeanalizowano ${String(processed)} z ${String(total)} filmów.`,
     batchProcessing: (current, total, filename) => `[${String(current)}/${String(total)}] Analizowanie: ${filename}`,
     duplicateSkipped: (filename) => `↷ Pominięto duplikat: ${filename}`,
@@ -2316,7 +2327,7 @@ export const pl: Dictionary = {
     displayName: 'Nazwa wyświetlana',
     personName: (index) => `Osoba ${String(index + 1)}`,
     mergeGroupings: 'Scal grupy',
-    mergeBody: (from, to) => `Scalić ${from} z ${to}? Tego nie można cofnąć.`,
+    mergeBody: (from, to) => `Włączyć ${from} do ${to}? Grupa ${from} zniknie. Tego nie można cofnąć.`,
     merge: 'Scal',
     deleteFaceGrouping: 'Usuń grupę twarzy',
     deleteFaceGroupingBody: 'To trwale usuwa grupę tej osoby, obserwacje twarzy (w tym embeddingi) i przykładowe wycinki. Tego nie można cofnąć.',
@@ -2346,14 +2357,14 @@ export const pl: Dictionary = {
   },
   map: {
     title: 'Mapa',
-    subtitle: 'Gdzie nagrano skatalogowane filmy — offline, kafelki mapy nigdy nie są pobierane.',
+    subtitle: 'Gdzie powstały skatalogowane nagrania i zdjęcia — offline, bez pobierania kafelków mapy.',
     loading: 'Wczytywanie lokalizacji z katalogu…',
     coverage: (located, total) => `${located} z ${total} skatalogowanych plików ma lokalizację`,
     coveragePhotos: (located, total) => `${located} z ${total} skatalogowanych zdjęć ma lokalizację`,
     emptyTitle: 'Brak plików z lokalizacją',
     emptyBody: 'Lokalizacja pochodzi z metadanych GPS zapisanych przez aparat. Przeanalizuj folder, aby dodać jego pliki do katalogu; pliki bez metadanych GPS nigdy się tu nie pojawią.',
-    canvasLabel: 'Mapa skatalogowanych filmów',
-    clusterLabel: (count) => `${count} ${plPlural(count, 'film', 'filmy', 'filmów')} w tym obszarze`,
+    canvasLabel: 'Mapa skatalogowanych plików',
+    clusterLabel: (count) => `${count} ${plPlural(count, 'plik', 'pliki', 'plików')} w tym obszarze`,
     zoomIn: 'Przybliż',
     zoomOut: 'Oddal',
     resetView: 'Zresetuj widok',
@@ -2403,16 +2414,16 @@ export const pl: Dictionary = {
     facesHelper: 'Wszystko pozostaje na tym Macu; grupowanie twarzy jest opcjonalne; w każdej chwili możesz usunąć wszystkie dane twarzy.',
     geminiBatchSectionTitle: 'Tryb wsadowy Gemini (analiza drzewa folderów)',
     geminiBatchEnableLabel: 'Wysyłaj analizę drzewa przez Gemini Batch API (połowa ceny)',
-    geminiBatchHelper: 'Pliki lecą po kolei, a potem cały bieg czeka na jedno zadanie wsadowe. '
+    geminiBatchHelper: 'Pliki są wysyłane po kolei, a potem cały przebieg czeka na jedno zadanie wsadowe. '
       + 'Wyniki zwykle są w kilka minut, ale Google dopuszcza do 24 godzin, więc nie ma paska postępu per plik. '
-      + 'Analiza pojedynczego filmu nigdy nie idzie wsadowo. Zamknięcie aplikacji jest bezpieczne: bieg podepnie się do tego samego zadania.',
+      + 'Analiza pojedynczego filmu nigdy nie idzie wsadowo. Zamknięcie aplikacji jest bezpieczne: przebieg podepnie się do tego samego zadania.',
     geminiBudgetSectionTitle: 'Miesięczny budżet Gemini',
     geminiBudgetLabel: 'Budżet miesięczny (USD)',
     geminiBudgetHelper: 'Analiza drzewa zatrzyma się, gdy szacowane wydatki Gemini w tym miesiącu osiągną limit. '
       + 'Puste pole oznacza brak limitu. Kwota to lokalny szacunek z liczby tokenów, a nie faktura od Google.',
     geminiBudgetInvalid: 'Podaj kwotę większą od 0 albo zostaw pole puste.',
     geminiSpendReadout: (month, estimatedCostUsd, entries) =>
-      `Szacowane wydatki za ${month}: ${estimatedCostUsd.toFixed(4)} USD w ${String(entries)} analizach.`,
+      `Szacowane wydatki za ${month}: ${estimatedCostUsd.toFixed(4)} USD w ${String(entries)} ${plPlural(entries, 'analizie', 'analizach', 'analizach')}.`,
     geminiSpendUnknown: 'Szacowane wydatki za ten miesiąc nie są jeszcze dostępne.',
     skipAutoRename: 'Pomiń automatyczną zmianę nazw',
     runSetupWizard: 'Uruchom kreatora konfiguracji',
@@ -2504,20 +2515,21 @@ export const pl: Dictionary = {
   },
   batchSummary: {
     title: 'Analiza wsadowa ukończona',
-    successful: 'udanych',
-    failed: 'nieudanych',
-    duplicatesSkipped: 'pominiętych duplikatów',
+    successful: (count) => plPlural(count, 'udany film', 'udane filmy', 'udanych filmów'),
+    failed: (count) => plPlural(count, 'nieudany film', 'nieudane filmy', 'nieudanych filmów'),
+    duplicatesSkipped: (count) => plPlural(count, 'pominięty duplikat', 'pominięte duplikaty', 'pominiętych duplikatów'),
     failedVideos: 'Nieudane filmy:',
     unknownError: 'Nieznany błąd',
   },
   driveSummary: {
     title: 'Analiza folderu ukończona',
-    folders: 'folderów',
-    analyzed: 'przeanalizowanych',
-    skipped: 'pominiętych',
-    duplicatesSkipped: 'pominiętych duplikatów',
-    failed: 'nieudanych',
-    estimatedCost: (files) => `szacowany koszt Gemini · ${String(files)} wycenionych plików`,
+    folders: (count) => plPlural(count, 'folder', 'foldery', 'folderów'),
+    analyzed: (count) => plPlural(count, 'przeanalizowany plik', 'przeanalizowane pliki', 'przeanalizowanych plików'),
+    skipped: (count) => plPlural(count, 'pominięty plik', 'pominięte pliki', 'pominiętych plików'),
+    duplicatesSkipped: (count) => plPlural(count, 'pominięty duplikat', 'pominięte duplikaty', 'pominiętych duplikatów'),
+    failed: (count) => plPlural(count, 'nieudany plik', 'nieudane pliki', 'nieudanych plików'),
+    estimatedCost: (files) =>
+      `szacowany koszt Gemini · ${String(files)} ${plPlural(files, 'wyceniony plik', 'wycenione pliki', 'wycenionych plików')}`,
   },
   harnessModelPicker: {
     model: 'Model',
@@ -2538,13 +2550,11 @@ export const pl: Dictionary = {
     photoTitle: 'Anulować analizę zdjęć?',
     photoBody: 'Czy na pewno chcesz anulować bieżącą analizę zdjęć?',
     photoAlert: 'Już przeanalizowane zdjęcia zachowają wyniki. Bieżące zdjęcie może wymagać ponownej analizy.',
-    continueProcessing: 'Kontynuuj przetwarzanie',
+    continueProcessing: 'Kontynuuj analizę',
     stopBatch: 'Zatrzymaj wsad',
     cancelAnalysis: 'Anuluj analizę',
   },
   photos: {
-    emptyNoRootsTitle: 'Nie zeskanowano jeszcze żadnego folderu zdjęć',
-    scanFolderAction: 'Zeskanuj folder…',
     scanStartedLog: 'Skanowanie zdjęć…',
     scanCompletedLog: 'Skanowanie zdjęć zakończone',
     scanFailedLog: 'Skanowanie zdjęć nie powiodło się',
@@ -2625,13 +2635,15 @@ export const pl: Dictionary = {
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',
     badgeAnalyzing: 'Analizowanie…',
+    badgePending: 'Nieprzeanalizowane',
+    badgeAnalyzed: 'Przeanalizowane',
     loadMore: 'Wczytaj więcej',
     treeFolderCounts: (photoCount, analysedCount) =>
-      `${photoCount} ${plPlural(photoCount, 'zdjęcie', 'zdjęcia', 'zdjęć')} · ${analysedCount} przeanalizowanych`,
+      `${photoCount} ${plPlural(photoCount, 'zdjęcie', 'zdjęcia', 'zdjęć')} · ${analysedCount} ${plPlural(analysedCount, 'przeanalizowane', 'przeanalizowane', 'przeanalizowanych')}`,
   },
   library: {
     title: 'Biblioteka',
-    subtitle: 'Przeglądaj wszystko, co kiedykolwiek przetworzono, ze wszystkich skatalogowanych folderów.',
+    subtitle: 'Przeglądaj wszystko, co kiedykolwiek przeanalizowano, ze wszystkich skatalogowanych folderów.',
     countHeader: (shown, total) => shown === total
       ? `${total} ${plPlural(total, 'plik', 'pliki', 'plików')}`
       : `${shown} z ${total} ${plPlural(total, 'pliku', 'plików', 'plików')}`,
@@ -2642,8 +2654,8 @@ export const pl: Dictionary = {
     loadingLibrary: 'Ładowanie biblioteki…',
     loadMore: 'Wczytaj więcej',
     unknownDate: 'Brak daty',
-    emptyCatalogTitle: 'Jeszcze nic nie przetworzono',
-    emptyCatalogBody: 'Przetwórz folder z filmami lub zdjęciami, aby zacząć budować bibliotekę.',
+    emptyCatalogTitle: 'Jeszcze nic nie przeanalizowano',
+    emptyCatalogBody: 'Przeanalizuj folder z filmami lub zdjęciami, aby zacząć budować bibliotekę.',
     emptyCatalogAction: 'Przejdź do Filmów',
     noMatchTitle: (query) => query.length === 0 ? 'Brak wyników' : `Brak wyników dla „${query}”`,
     noMatchBody: 'Spróbuj innego wyszukiwania lub wyczyść filtry.',
@@ -2686,7 +2698,7 @@ export const pl: Dictionary = {
     mediaAll: 'Wszystko',
     mediaVideo: 'Filmy',
     mediaPhoto: 'Zdjęcia',
-    videoOnlyFilterNotice: (parts) => `${parts} dotyczy tylko filmów — zdjęcia są ukryte, dopóki jest aktywny.`,
+    videoOnlyFilterNotice: (parts) => `Filtrowanie według ${parts} dotyczy tylko filmów — zdjęcia są ukryte, gdy jest aktywne.`,
   },
   preview: {
     offline: 'Ten plik znajduje się na dysku, który nie jest podłączony.',
