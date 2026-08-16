@@ -6,6 +6,7 @@ import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
 import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 
 const enabledValue = (value: string | undefined): boolean | null => {
@@ -73,12 +74,16 @@ export const useFacesIndex = ({
           addLine(dictionary.people.indexUpdatedLog, 'success');
           await queryClient.invalidateQueries();
         } else {
-          const message = `${dictionary.people.indexFacesFailedLog}: ${final.error?.message ?? 'unknown error'}`;
+          const failure = formatAnalyzerError(final.error?.message ?? '', dictionary.errors);
+          const message = failure.length === 0
+            ? dictionary.people.indexFacesFailedLog
+            : `${dictionary.people.indexFacesFailedLog}: ${failure}`;
           addLine(message, 'error');
           setActionError(message);
         }
       } catch (error) {
-        const message = `${dictionary.people.indexFacesFailedLog}: ${messageOf(error)}`;
+        const failure = formatAnalyzerError(messageOf(error), dictionary.errors);
+        const message = `${dictionary.people.indexFacesFailedLog}: ${failure}`;
         addLine(message, 'error');
         setActionError(message);
       } finally {

@@ -116,7 +116,7 @@ describe('FacesIndexAction', () => {
   it('is disabled without a folder', async () => {
     stubFaces({ facesEnabled: true, artifactsReady: true });
 
-    renderThemed(<FacesIndexAction active folder={null} addLine={vi.fn()} />);
+    renderThemed(<FacesIndexAction active folder={null} addLine={vi.fn()} hasAnalyzedPhotos={false} />);
 
     await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).not.toBeNull());
   });
@@ -132,13 +132,23 @@ describe('FacesIndexAction', () => {
       }),
     );
 
-    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={addLine} />);
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={addLine} hasAnalyzedPhotos />);
 
     await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).toBeNull());
     fireEvent.click(screen.getByTestId('people-index'));
 
     await waitFor(() => expect(addLine).toHaveBeenCalledWith('Face grouping index is updated', 'success'));
     expect(indexBody).toEqual({ root: FOLDER });
+  });
+
+  it('is disabled with an explanatory tooltip when the current root has no analyzed photos', async () => {
+    stubFaces({ facesEnabled: true, artifactsReady: true });
+
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasAnalyzedPhotos={false} />);
+
+    const button = screen.getByTestId('people-index');
+    await waitFor(() => expect(button.getAttribute('disabled')).not.toBeNull());
+    expect(button.getAttribute('title')).toBe('Analyze at least one photo in this folder before indexing faces.');
   });
 
   it('surfaces a failed faces index job via a visible alert instead of only the terminal', async () => {
@@ -150,11 +160,31 @@ describe('FacesIndexAction', () => {
       )),
     );
 
-    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} />);
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasAnalyzedPhotos />);
 
     await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).toBeNull());
     fireEvent.click(screen.getByTestId('people-index'));
 
     expect((await screen.findByTestId('people-index-error')).textContent).toContain('index build crashed');
+  });
+
+  it('sanitizes an empty-catalog failure without exposing raw server copy or its path', async () => {
+    stubFaces({ facesEnabled: true, artifactsReady: true });
+    server.use(
+      http.post('/api/faces/index', () => HttpResponse.json(
+        { ok: false, error: { code: 'drive_root_empty', message: `No catalog folders found under: ${FOLDER}` } },
+        { status: 404 },
+      )),
+    );
+
+    renderThemed(<FacesIndexAction active folder={FOLDER} addLine={vi.fn()} hasAnalyzedPhotos />);
+
+    await waitFor(() => expect(screen.getByTestId('people-index').getAttribute('disabled')).toBeNull());
+    fireEvent.click(screen.getByTestId('people-index'));
+
+    const error = await screen.findByTestId('people-index-error');
+    expect(error.textContent).toContain('No analyzed catalog data is available for this folder.');
+    expect(error.textContent).not.toContain('No catalog folders found');
+    expect(error.textContent).not.toContain(FOLDER);
   });
 });

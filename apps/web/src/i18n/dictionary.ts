@@ -111,7 +111,6 @@ export interface Dictionary {
     welcomeBody: string;
     gettingStarted: string;
     gettingStartedSteps: readonly string[];
-    selectVideoPrompt: string;
     videoTags: string;
     videoInformation: string;
     duration: string;
@@ -191,6 +190,12 @@ export interface Dictionary {
       analyzed: string;
       notTracked: string;
     };
+  };
+  analysisEmptyState: {
+    selectVideo: string;
+    selectPhoto: string;
+    noVideos: string;
+    noPhotos: string;
   };
   search: {
     genericError: string;
@@ -467,6 +472,7 @@ export interface Dictionary {
     subtitle: string;
     mergeSelected: string;
     indexFaces: string;
+    indexFacesNoAnalyzedPhotos: string;
     localFaceGroupingOffTitle: string;
     localFaceGroupingOffBody: string;
     modelsMissingTitle: string;
@@ -774,9 +780,6 @@ export interface Dictionary {
     loadMore: string;
     treeFolderCounts: (photoCount: number, analysedCount: number) => string;
   };
-  photosWorkspace: {
-    emptyTitle: string;
-  };
   library: {
     title: string;
     subtitle: string;
@@ -957,7 +960,6 @@ export const en: Dictionary = {
       'Click "Analyze" to process individual videos',
       'Terminal output shows real-time progress',
     ],
-    selectVideoPrompt: 'Select a video from the list',
     videoTags: 'Video tags',
     videoInformation: 'Video Information',
     duration: 'Duration',
@@ -1043,6 +1045,12 @@ export const en: Dictionary = {
       analyzed: 'Processing was interrupted at analysis step. Click Analyze to continue.',
       notTracked: 'This video has not been processed yet.',
     },
+  },
+  analysisEmptyState: {
+    selectVideo: 'Select a video from the list on the left to see its details.',
+    selectPhoto: 'Select a photo from the list on the left to see its details.',
+    noVideos: 'No videos were found in this folder.',
+    noPhotos: 'No photos were found in this folder.',
   },
   search: {
     genericError: 'Could not search the catalog.',
@@ -1361,6 +1369,7 @@ export const en: Dictionary = {
     subtitle: 'Local face grouping across indexed catalog videos.',
     mergeSelected: 'Merge selected',
     indexFaces: 'Index faces',
+    indexFacesNoAnalyzedPhotos: 'Analyze at least one photo in this folder before indexing faces.',
     localFaceGroupingOffTitle: 'Local face grouping is off',
     localFaceGroupingOffBody: 'Turn on local face grouping in Settings to group faces on this Mac.',
     modelsMissingTitle: 'Face grouping models are not installed',
@@ -1541,6 +1550,7 @@ export const en: Dictionary = {
     providerRequestFailed: 'The provider request failed.',
     providerEmptyResponse: 'The provider returned an empty response.',
     rootNotFound: (path) => `Root not found: ${path}`,
+    catalogRootEmpty: 'No analyzed catalog data is available for this folder.',
   },
   folderBar: {
     openFolder: 'Open Folder',
@@ -1687,9 +1697,6 @@ export const en: Dictionary = {
     badgeAnalyzing: 'Analyzing…',
     loadMore: 'Load more',
     treeFolderCounts: (photoCount, analysedCount) => `${photoCount} ${photoCount === 1 ? 'photo' : 'photos'} · ${analysedCount} analysed`,
-  },
-  photosWorkspace: {
-    emptyTitle: 'Select a photo from the list',
   },
   library: {
     title: 'Library',
@@ -1879,7 +1886,6 @@ export const pl: Dictionary = {
       'Kliknij „Analizuj”, aby przetworzyć pojedyncze filmy',
       'Terminal pokazuje postęp w czasie rzeczywistym',
     ],
-    selectVideoPrompt: 'Wybierz film z listy',
     videoTags: 'Tagi filmu',
     videoInformation: 'Informacje o filmie',
     duration: 'Czas trwania',
@@ -1965,6 +1971,12 @@ export const pl: Dictionary = {
       analyzed: 'Przetwarzanie przerwano na etapie analizy. Kliknij Analizuj, aby kontynuować.',
       notTracked: 'Ten film nie został jeszcze przetworzony.',
     },
+  },
+  analysisEmptyState: {
+    selectVideo: 'Wybierz film z listy po lewej, aby zobaczyć szczegóły.',
+    selectPhoto: 'Wybierz zdjęcie z listy po lewej, aby zobaczyć szczegóły.',
+    noVideos: 'W tym folderze nie znaleziono filmów.',
+    noPhotos: 'W tym folderze nie znaleziono zdjęć.',
   },
   search: {
     genericError: 'Nie udało się przeszukać katalogu.',
@@ -2284,6 +2296,7 @@ export const pl: Dictionary = {
     subtitle: 'Lokalne grupowanie twarzy w zindeksowanych filmach katalogu.',
     mergeSelected: 'Scal wybrane',
     indexFaces: 'Indeksuj twarze',
+    indexFacesNoAnalyzedPhotos: 'Przeanalizuj co najmniej jedno zdjęcie w tym folderze przed indeksowaniem twarzy.',
     localFaceGroupingOffTitle: 'Lokalne grupowanie twarzy jest wyłączone',
     localFaceGroupingOffBody: 'Włącz lokalne grupowanie twarzy w Ustawieniach, aby grupować twarze na tym Macu.',
     modelsMissingTitle: 'Modele grupowania twarzy nie są zainstalowane',
@@ -2464,6 +2477,7 @@ export const pl: Dictionary = {
     providerRequestFailed: 'Żądanie do dostawcy nie powiodło się.',
     providerEmptyResponse: 'Dostawca zwrócił pustą odpowiedź.',
     rootNotFound: (path) => `Nie znaleziono folderu: ${path}`,
+    catalogRootEmpty: 'W tym folderze nie ma przeanalizowanych danych katalogu.',
   },
   folderBar: {
     openFolder: 'Otwórz folder',
@@ -2611,9 +2625,6 @@ export const pl: Dictionary = {
     loadMore: 'Wczytaj więcej',
     treeFolderCounts: (photoCount, analysedCount) =>
       `${photoCount} ${plPlural(photoCount, 'zdjęcie', 'zdjęcia', 'zdjęć')} · ${analysedCount} przeanalizowanych`,
-  },
-  photosWorkspace: {
-    emptyTitle: 'Wybierz zdjęcie z listy po lewej',
   },
   library: {
     title: 'Biblioteka',

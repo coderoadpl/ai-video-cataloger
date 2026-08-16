@@ -13,6 +13,7 @@ export interface AnalyzerErrorMessages {
   providerRequestFailed: string;
   providerEmptyResponse: string;
   rootNotFound: (path: string) => string;
+  catalogRootEmpty: string;
 }
 
 interface KnownErrorShape {
@@ -41,6 +42,7 @@ const KNOWN_ERROR_SHAPES: readonly KnownErrorShape[] = [
   { pattern: /^API provider request failed$/, resolve: (_match, messages) => messages.providerRequestFailed },
   { pattern: /returned an empty response$/, resolve: (_match, messages) => messages.providerEmptyResponse },
   { pattern: /^Root not found: (.+)$/, resolve: (match, messages) => messages.rootNotFound(match[1] ?? '') },
+  { pattern: /^No catalog folders found under:/, resolve: (_match, messages) => messages.catalogRootEmpty },
 ];
 
 // Two or more segments, so "and/or" stays prose; never preceded by a word

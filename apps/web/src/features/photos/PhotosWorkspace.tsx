@@ -1,7 +1,8 @@
-import { useMemo, useState, type ReactNode } from 'react';
-import { Box, Typography } from '@mui/material';
+import { useMemo, useState } from 'react';
+import { Box } from '@mui/material';
 
-import { useDictionary } from '../../i18n/use-dictionary.js';
+import { AnalysisEmptyState } from '../../components/ui/AnalysisEmptyState.js';
+import { AnalysisWelcome } from '../../components/ui/AnalysisWelcome.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { adjacentFingerprint, detailToListItem, flattenOrder, sidebarSections } from './core/index.js';
 import { PhotoDetailPane } from './PhotoDetailPane.js';
@@ -11,11 +12,9 @@ import type { PhotosAnalysisState } from './use-photos-analysis.js';
 interface PhotosWorkspaceProps {
   active: boolean;
   state: PhotosAnalysisState;
-  topStrip?: ReactNode;
 }
 
-export const PhotosWorkspace = ({ active, state, topStrip }: PhotosWorkspaceProps) => {
-  const dictionary = useDictionary();
+export const PhotosWorkspace = ({ active, state }: PhotosWorkspaceProps) => {
   const [viewerOpen, setViewerOpen] = useState(false);
 
   const sections = useMemo(
@@ -37,13 +36,14 @@ export const PhotosWorkspace = ({ active, state, topStrip }: PhotosWorkspaceProp
 
   return (
     <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {topStrip === undefined ? null : <Box sx={{ px: 2, pt: 1 }}>{topStrip}</Box>}
-      {selectedItem === null ? (
+      {state.folder === null ? (
+        <AnalysisWelcome />
+      ) : selectedItem === null ? (
         <Box
           data-testid="photos-workspace-empty"
-          sx={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', p: 4 }}
+          sx={{ flex: 1 }}
         >
-          <Typography variant="body2" color="text.secondary">{dictionary.photosWorkspace.emptyTitle}</Typography>
+          <AnalysisEmptyState media="photo" empty={state.counts?.photos === 0} />
         </Box>
       ) : (
         <Box data-testid="photos-analysis-detail" sx={{ flex: 1, minHeight: 0, overflow: 'auto', p: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
