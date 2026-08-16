@@ -54,11 +54,6 @@ export const PhotosSidebar = ({
         onOpenFolder={onOpenFolder}
         onSelectRecentFolder={onSelectRecentFolder}
         onClearRecentFolders={onClearRecentFolders}
-        secondaryAction={currentFolder === null ? undefined : {
-          label: dictionary.photosSidebar.scanCurrentFolderAction,
-          onSelect: state.scanFolder,
-          disabled: state.isBusy,
-        }}
         emptyHint={(
           <>
             <Typography variant="body2" sx={{ fontWeight: 500 }}>{dictionary.photosSidebar.noFolderTitle}</Typography>

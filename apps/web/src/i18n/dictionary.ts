@@ -774,7 +774,6 @@ export interface Dictionary {
     noFolderTitle: string;
     noFolderBody: string;
     autoScanningBody: string;
-    scanCurrentFolderAction: string;
     badgeProxyFailed: string;
     badgeExifMissing: string;
     badgeMissing: string;
@@ -1694,7 +1693,6 @@ export const en: Dictionary = {
     noFolderTitle: 'No folder open',
     noFolderBody: 'Open a folder to see its photos.',
     autoScanningBody: 'Indexing photos in this folder…',
-    scanCurrentFolderAction: 'Rescan current folder',
     badgeProxyFailed: 'Preview failed',
     badgeExifMissing: 'No EXIF',
     badgeMissing: 'File missing',
@@ -2623,7 +2621,6 @@ export const pl: Dictionary = {
     noFolderTitle: 'Brak otwartego folderu',
     noFolderBody: 'Otwórz folder, aby zobaczyć jego zdjęcia.',
     autoScanningBody: 'Indeksowanie zdjęć w tym folderze…',
-    scanCurrentFolderAction: 'Zeskanuj ponownie bieżący folder',
     badgeProxyFailed: 'Podgląd nieudany',
     badgeExifMissing: 'Brak EXIF',
     badgeMissing: 'Brak pliku',

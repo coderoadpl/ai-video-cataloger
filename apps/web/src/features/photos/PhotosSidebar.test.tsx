@@ -112,7 +112,7 @@ describe('PhotosSidebar', () => {
     expect(screen.queryByTestId('photos-scan-action')).toBeNull();
   });
 
-  it('moves manual scan retry into the open-folder dropdown after auto-scan fails', () => {
+  it('does not offer a manual rescan entry in the open-folder dropdown', () => {
     const scanFolder = vi.fn();
     renderThemed(
       <PhotosSidebar
@@ -126,15 +126,18 @@ describe('PhotosSidebar', () => {
           scanFolder,
         })}
         onOpenFolder={vi.fn()}
+        recentFolders={['/recent']}
       />,
     );
 
     expect(screen.getByTestId('photos-job-error').textContent).toContain('Root not found: /a/b');
     expect(screen.queryByTestId('photos-sidebar-scanning')).toBeNull();
     expect(screen.queryByTestId('photos-scan-action')).toBeNull();
-    fireEvent.click(screen.getByRole('button', { name: en.folderBar.folderActions }));
-    fireEvent.click(screen.getByText(en.photosSidebar.scanCurrentFolderAction));
-    expect(scanFolder).toHaveBeenCalled();
+    fireEvent.click(screen.getByRole('button', {
+      name: (name) => [en.folderBar.folderActions, en.folderBar.recentFolders].includes(name),
+    }));
+    expect(screen.getAllByRole('menuitem')).toHaveLength(1);
+    expect(scanFolder).not.toHaveBeenCalled();
   });
 
   it('keeps the indexing caption while the auto-fired scan is still running despite an earlier error', () => {

@@ -81,7 +81,11 @@ export const IndexRoute = () => {
   const catalog = useCatalog(shell.currentFolder);
   const videoRegistry = useCatalogVideoRegistry();
   const tree = useCatalogTree(shell.currentFolder);
-  useFolderWatch(shell.currentFolder);
+  useFolderWatch(shell.currentFolder, {
+    photosActive: photosAnalysisActive,
+    photosBusy: photosAnalysis.isBusy,
+    scanPhotos: photosAnalysis.scanFolder,
+  });
   const readiness = useReadiness(shell.currentFolder);
   const catalogLock = useCatalogLock();
   const firstLaunch = useFirstLaunch();
