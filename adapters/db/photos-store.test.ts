@@ -538,6 +538,28 @@ describe('SqlJsPhotosStore', () => {
     ]);
   });
 
+  it('listFolderTree and listPhotosInFolder count distinct fingerprints from sightings rather than paths', async () => {
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+    const ownerFolder: PhotoFolderRecord = { ...folder, folderId: 'path-bbbbbbbb', currentPath: '/elsewhere', displayName: 'elsewhere' };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(ownerFolder);
+    await store.upsertPhoto(photo({ folderId: ownerFolder.folderId, currentPath: '/elsewhere/a.jpg' }));
+    await store.upsertSighting(sighting({ currentPath: '/media/photos/a.jpg' }));
+    await store.upsertSighting(sighting({ currentPath: '/media/photos/a-copy.jpg' }));
+
+    const tree = await store.listFolderTree();
+    expect(tree.ok && tree.value).toContainEqual({
+      folderId: folder.folderId,
+      currentPath: '/media/photos',
+      photoCount: 1,
+      analysedCount: 0,
+    });
+
+    const items = await store.listPhotosInFolder(folder.folderId);
+    expect(items.ok && items.value.map((item) => item.fingerprint)).toEqual(['ph_0000000000000001']);
+  });
+
   it('listFolderTree omits a photo_folders row with no photos', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });

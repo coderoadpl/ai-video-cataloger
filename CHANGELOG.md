@@ -22,6 +22,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - "Show in Finder" now admits Kolekcja photos under registered photo roots while preserving the existing path-scope guard (N7).
 - Kolekcja's Wszystko, Filmy, and Zdjęcia chips now keep stable totals for the active non-media filters when the media selection changes (N8).
+- Photo analysis provenance now renders configured provider names and localized English, Polish, and automatic output-language labels while title-casing unknown provider IDs (N6).
+- Analysis wording, photo variant-picker labeling, and fingerprint-distinct photo tree counts now stay coherent across Polish analysis surfaces and duplicate sightings (N11).
+- In-progress photo rows now keep their normal thumbnail placeholder and show the same orange analyzing status-badge treatment as video rows (N13).
 
 ## [0.6.21] - 2026-08-16
 

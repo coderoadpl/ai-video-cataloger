@@ -343,7 +343,7 @@ describe('PhotosSidebar', () => {
     expect(rows.map((row) => within(row).queryByTestId('photos-sidebar-badge-proxyFailed') !== null)).toEqual([true, false]);
   });
 
-  it('marks only the in-flight rows whose fingerprint is currently being analyzed', () => {
+  it('shows a videos-style analyzing badge only on in-flight rows without replacing the thumbnail placeholder', () => {
     const items = [
       item({ fingerprint: 'a' }),
       item({ fingerprint: 'b' }),
@@ -355,7 +355,14 @@ describe('PhotosSidebar', () => {
 
     const rows = screen.getAllByTestId('photos-sidebar-row');
     expect(rows.map((row) => row.getAttribute('data-processing'))).toEqual(['false', 'true', 'false']);
-    expect(screen.getAllByTestId('photos-sidebar-row-inflight')).toHaveLength(1);
+    const analyzingBadge = screen.getByTestId('photos-sidebar-badge-analyzing');
+    expect(analyzingBadge.hasAttribute('data-status-badge')).toBe(true);
+    expect(analyzingBadge.textContent).toBe('Analyzing…');
+    expect(analyzingBadge.querySelector('.MuiCircularProgress-root')).not.toBeNull();
+    expect(screen.queryByTestId('photos-sidebar-row-inflight')).toBeNull();
+    const processingRow = rows[1];
+    if (processingRow === undefined) throw new Error('missing processing row');
+    expect(processingRow.querySelector('img')).toBeNull();
   });
 
   it('shows no in-flight rows when no analyze job is running', () => {

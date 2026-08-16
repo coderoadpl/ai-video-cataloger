@@ -2248,11 +2248,22 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   listFolderTree(): Promise<Result<PhotoFolderTreeEntry[], AppError>> {
     const counts = new Map<string, { photoCount: number; analysedCount: number }>();
+    const fingerprintsByFolder = new Map<string, Set<string>>();
     for (const photo of this.photoRows.values()) {
-      const current = counts.get(photo.folderId) ?? { photoCount: 0, analysedCount: 0 };
-      current.photoCount += 1;
-      if (this.analysesFor(photo.fingerprint).length > 0) current.analysedCount += 1;
-      counts.set(photo.folderId, current);
+      const fingerprints = fingerprintsByFolder.get(photo.folderId) ?? new Set<string>();
+      fingerprints.add(photo.fingerprint);
+      fingerprintsByFolder.set(photo.folderId, fingerprints);
+    }
+    for (const sighting of this.sightings.values()) {
+      const fingerprints = fingerprintsByFolder.get(sighting.folderId) ?? new Set<string>();
+      fingerprints.add(sighting.fingerprint);
+      fingerprintsByFolder.set(sighting.folderId, fingerprints);
+    }
+    for (const [folderId, fingerprints] of fingerprintsByFolder) {
+      counts.set(folderId, {
+        photoCount: fingerprints.size,
+        analysedCount: [...fingerprints].filter((fingerprint) => this.analysesFor(fingerprint).length > 0).length,
+      });
     }
     const entries = [...this.folders.values()]
       .filter((folder) => counts.has(folder.folderId))
@@ -2267,8 +2278,13 @@ export class InMemoryPhotosStore implements PhotosStore {
   listPhotosInFolder(folderId: string): Promise<Result<PhotoListItem[], AppError>> {
     const sightingCounts = new Map<string, number>();
     for (const sighting of this.sightings.values()) sightingCounts.set(sighting.fingerprint, (sightingCounts.get(sighting.fingerprint) ?? 0) + 1);
+    const fingerprints = new Set(
+      [...this.sightings.values()]
+        .filter((sighting) => sighting.folderId === folderId)
+        .map((sighting) => sighting.fingerprint),
+    );
     const items = [...this.photoRows.values()]
-      .filter((photo) => photo.folderId === folderId)
+      .filter((photo) => photo.folderId === folderId || fingerprints.has(photo.fingerprint))
       .sort((left, right) => {
         const leftCaptured = left.capturedAt ?? '';
         const rightCaptured = right.capturedAt ?? '';

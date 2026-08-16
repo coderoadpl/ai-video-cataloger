@@ -253,6 +253,8 @@ describe('PhotosWorkspace', () => {
     />);
 
     const picker = screen.getByTestId('photo-variant-picker');
+    expect(screen.getByText('Analysis variant')).toBeDefined();
+    expect(screen.queryByText('2 variants')).toBeNull();
     const combobox = picker.querySelector('[role="combobox"]');
     if (combobox === null) throw new Error('missing combobox element');
     fireEvent.mouseDown(combobox);

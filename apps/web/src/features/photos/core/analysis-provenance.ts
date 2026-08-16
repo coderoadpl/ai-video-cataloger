@@ -10,6 +10,14 @@ export interface AnalysisProvenanceCopy {
 
 const SEGMENT_SEPARATOR = ' · ';
 
+const titleCaseToken = (token: string): string => token
+  .split(/[-_]/)
+  .map((segment) => {
+    const first = segment[0];
+    return first === undefined ? segment : `${first.toLocaleUpperCase()}${segment.slice(1)}`;
+  })
+  .join(' ');
+
 const namedLabel = (label: string, copy: AnalysisProvenanceCopy): string => {
   const segments = label.split(SEGMENT_SEPARATOR);
   const [providerId, model, outputLanguage] = segments;
@@ -17,7 +25,7 @@ const namedLabel = (label: string, copy: AnalysisProvenanceCopy): string => {
     return label;
   }
   return [
-    copy.provider[providerId] ?? providerId,
+    copy.provider[providerId] ?? titleCaseToken(providerId),
     model,
     copy.language[outputLanguage] ?? outputLanguage,
   ].join(SEGMENT_SEPARATOR);

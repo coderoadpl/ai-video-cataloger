@@ -1,4 +1,4 @@
-import { alpha, Box, CircularProgress, ListItemButton, Tooltip, Typography } from '@mui/material';
+import { Box, ListItemButton, Typography } from '@mui/material';
 
 import type { Dictionary } from '../../i18n/dictionary.js';
 import { formatCapturedAt } from '../../lib/format.js';
@@ -31,27 +31,10 @@ export const PhotoRow = ({
       data-processing={isProcessing ? 'true' : 'false'}
       sx={{ alignItems: 'center', gap: 1.25, borderRadius: 1, py: 1 }}
     >
-      <Box sx={{ position: 'relative', width: PHOTO_ROW_THUMB_BOX, height: PHOTO_ROW_THUMB_BOX, flexShrink: 0, borderRadius: 1, overflow: 'hidden', bgcolor: 'action.hover' }}>
+      <Box sx={{ width: PHOTO_ROW_THUMB_BOX, height: PHOTO_ROW_THUMB_BOX, flexShrink: 0, borderRadius: 1, overflow: 'hidden', bgcolor: 'action.hover' }}>
         {thumbPath === null ? null : (
           <Box component="img" loading="lazy" alt={item.fileName} src={mediaUrl(thumbPath, item.fingerprint)} sx={{ width: '100%', height: '100%', objectFit: 'cover' }} />
         )}
-        {isProcessing ? (
-          <Tooltip title={dictionary.photosSidebar.badgeAnalyzing}>
-            <Box
-              data-testid="photos-sidebar-row-inflight"
-              sx={{
-                position: 'absolute',
-                inset: 0,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                bgcolor: (theme) => alpha(theme.palette.common.black, 0.35),
-              }}
-            >
-              <CircularProgress size={20} sx={{ color: 'common.white' }} />
-            </Box>
-          </Tooltip>
-        ) : null}
       </Box>
       <Box sx={{ flex: 1, minWidth: 0, display: 'flex', flexDirection: 'column', gap: 0.5 }}>
         <Typography variant="body2" noWrap sx={{ fontWeight: 500 }}>
@@ -61,6 +44,13 @@ export const PhotoRow = ({
           {formatCapturedAt(item.capturedAt, dictionary.locale) ?? dictionary.photos.unknownDate}
         </Typography>
         <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+          {isProcessing ? (
+            <PhotoStatusBadge
+              status="analyzing"
+              dictionary={dictionary}
+              testId="photos-sidebar-badge-analyzing"
+            />
+          ) : null}
           {photoBadges(item).map((badge) => (
             <PhotoStatusBadge
               key={badge}
