@@ -14,29 +14,39 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.23] - 2026-08-16
+
 ### Changed
 
 - The release walkthrough now derives its default Library query from the
   analyzed fixture filename, requires a matching result, and clears that query
-  before exercising the preview overlay and its Analysis action.
+  before exercising the preview overlay and its Analysis action
+  ([`d2d0db8`](https://github.com/coderoadpl/ai-video-cataloger/commit/d2d0db82615f089ecdfcb60f4175dc4bc6e81f5c)).
 - The release walkthrough now dismisses the Library search suggestions with a
   single real `Escape` keypress after clearing the query and waits for the
-  popper to disappear, so it can no longer intercept the preview tile click.
+  popper to disappear, so it can no longer intercept the preview tile click
+  ([`b5d596d`](https://github.com/coderoadpl/ai-video-cataloger/commit/b5d596d76a4afb7bf8372a1aa18db89af6ad17be),
+  [`c25c98f`](https://github.com/coderoadpl/ai-video-cataloger/commit/c25c98f800fde38cb61b5df4df5f1295f99f0d67)).
 
 ### Fixed
 
 - Pressing `Escape` over the Library search suggestions now closes them; the
   popper reopens when the field is focused again or the query is emptied by
-  typing or the clear button.
+  typing or the clear button
+  ([`c25c98f`](https://github.com/coderoadpl/ai-video-cataloger/commit/c25c98f800fde38cb61b5df4df5f1295f99f0d67)).
 - Tag and suggested-filename normalization now share NFD-based diacritic
   transliteration, including Polish `ł` and common non-decomposing Latin
   characters, so normalized tag values now retain their ASCII letters (for
   example, `jeżowak` becomes `jezowak`); catalog and photo-store migrations
   recover remaining Unicode tag rows, merge normalization collisions, and
   rebuild their search indexes without changing CLI, NDJSON, or contract
-  shapes.
+  shapes
+  ([`d2d0db8`](https://github.com/coderoadpl/ai-video-cataloger/commit/d2d0db82615f089ecdfcb60f4175dc4bc6e81f5c)).
 
 ## [0.6.22] - 2026-08-16
+
+**Note:** this build was merged and tagged but never published; `v0.6.23`
+supersedes it. The tag stays unpublished and this section stays as history.
 
 ### Changed
 
