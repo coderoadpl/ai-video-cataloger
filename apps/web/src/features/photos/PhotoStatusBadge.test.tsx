@@ -37,4 +37,16 @@ describe('PhotoStatusBadge', () => {
     expect(screen.getByTestId('analysed').textContent).toBe('Przeanalizowane');
     expect(screen.getByTestId('analysis-failed').textContent).toBe('Błąd analizy');
   });
+
+  it('insets the analyzing spinner from the badge edge by one theme spacing unit', () => {
+    renderWithProviders(
+      <ThemeProvider theme={theme}>
+        <PhotoStatusBadge status="analyzing" dictionary={en} testId="analyzing" />
+      </ThemeProvider>,
+    );
+
+    const spinner = screen.getByTestId('analyzing').querySelector('.MuiCircularProgress-root');
+    if (spinner === null) throw new Error('missing analyzing spinner');
+    expect(getComputedStyle(spinner).marginLeft).toBe(theme.spacing(1));
+  });
 });

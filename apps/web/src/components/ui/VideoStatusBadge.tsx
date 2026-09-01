@@ -1,10 +1,10 @@
-import { CircularProgress, type SvgIconProps } from '@mui/material';
+import { type SvgIconProps } from '@mui/material';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
 import type { Dictionary } from '../../i18n/dictionary.js';
 import type { StatusToken } from '../../theme.js';
 import { CheckCircleIcon, ClockIcon, ErrorIcon, FilmIcon, WarningIcon } from './icons.js';
-import { StatusBadge } from './StatusBadge.js';
+import { StatusBadge, StatusBadgeSpinner } from './StatusBadge.js';
 
 export type VideoStatusValue =
   | 'pending'
@@ -80,7 +80,7 @@ export const VideoStatusBadge = ({
   if (analyzing) {
     return (
       <StatusBadge
-        icon={<CircularProgress size={12} thickness={6} color="inherit" />}
+        icon={<StatusBadgeSpinner />}
         label={dictionary.videoStatus.processing}
         token="pending"
         testId="video-status-badge"
@@ -88,6 +88,7 @@ export const VideoStatusBadge = ({
     );
   }
 
+  if (status === 'pending' && variant === 'details') return null;
   if (status === 'not_tracked' && variant === 'list') return null;
 
   return (

@@ -374,6 +374,15 @@ describe('details panel', () => {
     expect(screen.getByText('Video Information')).toBeDefined();
   });
 
+  it('hides the pending badge in video details while keeping the completed badge', () => {
+    const pending = renderThemed(<DetailsPanel video={makeVideo({ status: 'pending' })} analyzing={false} />);
+    expect(screen.queryByTestId('video-status-badge')).toBeNull();
+
+    pending.unmount();
+    renderThemed(<DetailsPanel video={makeVideo({ status: 'completed' })} analyzing={false} />);
+    expect(screen.getByTestId('video-status-badge').textContent).toContain('Completed');
+  });
+
   it('shows a duplicate video with the analyze-anyway affordance when idle', () => {
     const video = makeVideo({ status: 'pending', duplicate: { canonicalPath: '/videos/canon.mp4' } });
     renderThemed(<DetailsPanel video={video} analyzing={false} onAnalyze={vi.fn()} />);

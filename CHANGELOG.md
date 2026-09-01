@@ -14,6 +14,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Unanalyzed photos and videos no longer show a redundant status badge in Analysis detail headers, while analyzed badges remain unchanged.
+- Analyzing status badges now inset their spinner by the shared chip-icon spacing.
+- The photo analysis variant selector was verified to have no automatic-open or focus-stealing path; the W70 investigation is recorded in `W70_VARIANT_FINDING.txt`.
+
 ## [0.6.23] - 2026-08-16
 
 ### Changed

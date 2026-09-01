@@ -1,10 +1,13 @@
 import { test, expect, _electron as electron, type ElectronApplication, type Page } from '@playwright/test';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '../../adapters/db/index.js';
+import { derivedFolderId, type AppError, type Result } from '../../core/domain/index.js';
+import { REAL_JPEG_RED_LARGE } from '../fixtures/real-jpegs.js';
 import { E2E_ANALYZER, E2E_LOCAL_MODEL } from './analyzer-mode.js';
-import { ELECTRON_MAIN, isolatedHome, makeWorkdir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
+import { ELECTRON_MAIN, isolatedHome, makeEmptyWorkdir, makeWorkdir, RENDERER_HTML, REPO_ROOT, runCli, stubOpenDialog } from './helpers.js';
 import { SAMPLES } from './samples.js';
 
 interface Session {
@@ -14,6 +17,142 @@ interface Session {
 
 const SPEECH_SAMPLE = SAMPLES.find((sample) => sample.id === 'speech');
 if (SPEECH_SAMPLE === undefined) throw new Error('speech sample missing from SAMPLES');
+
+const expectResult = <T>(result: Result<T, AppError>): asserts result is { ok: true; value: T } => {
+  if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
+};
+
+const seedFolderPhoto = async (workdir: string): Promise<{ fingerprint: string; folderId: string; folderLabel: string }> => {
+  const homeDirectory = isolatedHome(workdir);
+  const folderPath = join(workdir, 'selected-folder');
+  const folderLabel = 'Selected Folder';
+  const folderId = '70707070-7070-4070-8070-707070707070';
+  const photoFolderId = derivedFolderId(folderPath);
+  const fingerprint = 'ph_7000000000000001';
+  const fileName = 'folder-photo.jpg';
+  const photoPath = join(folderPath, fileName);
+  const videoFingerprint = 'video-folder-filter';
+  const videoName = 'folder-video.mp4';
+  const timestamp = '2026-08-16T12:00:00.000Z';
+  mkdirSync(folderPath, { recursive: true });
+  writeFileSync(photoPath, REAL_JPEG_RED_LARGE);
+  writeFileSync(join(folderPath, videoName), Buffer.from([0]));
+
+  const globalCatalog = new SqlJsGlobalCatalogStore({ homeDirectory });
+  const photos = new SqlJsPhotosStore({ homeDirectory });
+  try {
+    expectResult(await globalCatalog.upsertFolder({
+      folderId,
+      currentPath: folderPath,
+      displayName: folderLabel,
+      firstSeenAt: timestamp,
+      lastSeenAt: timestamp,
+    }));
+    expectResult(await globalCatalog.upsertFile({
+      fingerprint: videoFingerprint,
+      folderId,
+      fileName: videoName,
+      size: 1,
+      durationS: null,
+      width: null,
+      height: null,
+      gpsLat: null,
+      gpsLon: null,
+      processedAt: timestamp,
+      analyzer: 'harness',
+      model: 'claude-code',
+      missingAt: null,
+      capturedAt: timestamp,
+      capturedAtSource: 'container',
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      place: null,
+    }));
+    expectResult(await globalCatalog.upsertAnalysis({
+      fingerprint: videoFingerprint,
+      finalName: null,
+      description: 'A video sharing the photo folder.',
+      transcript: null,
+      language: 'en',
+      tags: [],
+    }));
+    expectResult(await photos.upsertFolder({
+      folderId: photoFolderId,
+      currentPath: folderPath,
+      displayName: folderLabel,
+      firstSeenAt: timestamp,
+      lastSeenAt: timestamp,
+      defaultConfigId: null,
+    }));
+    expectResult(await photos.upsertPhoto({
+      fingerprint,
+      folderId: photoFolderId,
+      fileName,
+      currentPath: photoPath,
+      ext: 'jpg',
+      size: REAL_JPEG_RED_LARGE.length,
+      width: 1600,
+      height: 1200,
+      orientation: 1,
+      cameraMake: null,
+      cameraModel: null,
+      lens: null,
+      iso: null,
+      fNumber: null,
+      exposureTime: null,
+      exifRating: null,
+      capturedAt: timestamp,
+      capturedAtSource: 'file_mtime',
+      gpsLat: null,
+      gpsLon: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      placeName: null,
+      placeRegion: null,
+      placeCountry: null,
+      placeCountryCode: null,
+      placeDistanceM: null,
+      placeDataset: null,
+      discoveredAt: timestamp,
+      exifReadAt: timestamp,
+      proxyState: 'pending',
+      proxyWidth: null,
+      proxyHeight: null,
+      thumbState: 'pending',
+      missingAt: null,
+      selectedConfigId: null,
+    }));
+    expectResult(await photos.upsertAnalysisConfig({
+      configId: 'cfg_707070707070',
+      descriptorJson: JSON.stringify({ family: 'harness', providerId: 'claude-code', output_language: 'en' }),
+      label: 'harness · claude-code · en',
+      now: timestamp,
+    }));
+    expectResult(await photos.recordPhotoAnalysis({
+      fingerprint,
+      configId: 'cfg_707070707070',
+      description: 'A photo used to verify the Library folder filter.',
+      scene: 'object',
+      quality: 'good',
+      language: 'en',
+      analyzer: 'harness',
+      model: 'claude-code',
+      batchSize: 1,
+      usageJson: null,
+      tags: [],
+      createdAt: timestamp,
+    }));
+  } finally {
+    expectResult(await photos.dispose());
+    expectResult(await globalCatalog.dispose());
+  }
+
+  return { fingerprint, folderId, folderLabel };
+};
 
 async function launch(workdir: string): Promise<Session> {
   const userDataDir = mkdtempSync(join(tmpdir(), 'avc-library-userdata-'));
@@ -112,6 +251,35 @@ test.describe('Library: same-session visibility, search, and subtitled preview',
       const subtitles = player.getByTestId('preview-subtitles-track');
       await expect(subtitles).toHaveCount(1, { timeout: 15_000 });
       await expect(subtitles).toHaveAttribute('kind', 'subtitles');
+    } finally {
+      await session.app.close().catch(() => undefined);
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
+  test('a folder filter with All media keeps photos from that folder visible', async () => {
+    const workdir = makeEmptyWorkdir('library-folder-photo');
+    const fixture = await seedFolderPhoto(workdir);
+    const session = await launch(workdir);
+    try {
+      await session.page.getByTestId('mode-library').click();
+      await session.page.getByTestId('subnav-collection').click();
+
+      const allMedia = session.page.getByTestId('library-media-all');
+      await expect(allMedia).toBeVisible({ timeout: 15_000 });
+      await allMedia.click();
+      await expect(allMedia).toHaveAttribute('aria-pressed', 'true');
+
+      const folderInput = session.page.getByTestId('library-filter-folder').getByRole('combobox');
+      await folderInput.click();
+      await folderInput.pressSequentially(fixture.folderLabel);
+      await session.page.getByRole('option', { name: `${fixture.folderLabel} (1)` }).click();
+      await expect(session.page.getByTestId(`library-chip-folder:${fixture.folderId}`)).toBeVisible();
+
+      const photo = session.page.locator(
+        `[data-testid="library-tile"][data-media="photo"][data-fingerprint="${fixture.fingerprint}"]`,
+      );
+      await expect(photo).toBeVisible({ timeout: 20_000 });
     } finally {
       await session.app.close().catch(() => undefined);
       rmSync(workdir, { recursive: true, force: true });

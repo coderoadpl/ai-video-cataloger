@@ -129,7 +129,7 @@ export const placeholderGradients = {
 const RADIUS = 8;
 const CHIP_ICON_INSET = 8;
 const CHIP_ICON_GAP = -4;
-const chipIconSpacing = { marginLeft: CHIP_ICON_INSET, marginRight: CHIP_ICON_GAP } as const;
+export const CHIP_ICON_SPACING = { marginLeft: CHIP_ICON_INSET, marginRight: CHIP_ICON_GAP } as const;
 
 export const createAppTheme = (mode: ThemeMode): Theme => {
   const c = mode === 'dark' ? DARK : LIGHT;
@@ -189,7 +189,7 @@ export const createAppTheme = (mode: ThemeMode): Theme => {
             borderRadius: RADIUS - 2,
             fontWeight: 600,
             fontSize: '0.72rem',
-            '& .MuiChip-icon': chipIconSpacing,
+            '& .MuiChip-icon': CHIP_ICON_SPACING,
           },
         },
       },
