@@ -405,6 +405,23 @@ describe('route schemas', () => {
     expect(output.people).toEqual([{ personId: 'person-a', displayName: 'Ada' }]);
     expect(output.transcriptSegments).toEqual([{ start: 0, end: 1, text: 'hello' }]);
     expect(output.width).toBe(1920);
+    expect(output.analysis).toBeNull();
+    expect(libraryPreviewOutputSchema.parse({
+      fingerprint: 'fp-1',
+      path: '/videos/clip.mp4',
+      fileName: 'clip.mp4',
+      size: 2048,
+      sizeFormatted: '2.0 KB',
+      durationS: null,
+      durationFormatted: null,
+      transcript: null,
+      transcriptSegments: null,
+      width: null,
+      height: null,
+      rotation: null,
+      people: [],
+      analysis: { label: 'harness / claude-code', createdAt: '2026-02-03T09:00:00.000Z' },
+    }).analysis).toEqual({ label: 'harness / claude-code', createdAt: '2026-02-03T09:00:00.000Z' });
   });
 
   it('parses a bare browse-everything collection input with defaults, cursor optional', () => {

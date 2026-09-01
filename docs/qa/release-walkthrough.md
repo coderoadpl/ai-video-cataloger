@@ -220,10 +220,10 @@ The steps captured, in order: `launch` (with time-to-window), `first-run-wizard`
 `settings`, `wizard`.
 `mode-switch`, `mode-analysis` and `search` drive the two-mode switcher: the
 workspace steps run in Analysis mode, while `search` and the collection photo
-steps switch to Library first. `library-preview` clicks a Kolekcja tile, asserts the browse
-preview overlay and its player render, then follows the "Otwórz w Analizie"
-escape hatch and asserts it lands in the Analysis details panel with the file
-selected. `photos-sidebar` switches
+steps switch to Library first. `library-preview` clicks a Kolekcja tile, asserts the
+fullscreen media viewer and its player render for a video tile, then follows
+the "Otwórz w Analizie" escape hatch and asserts it lands in the Analysis
+details panel with the file selected. `photos-sidebar` switches
 Analysis to Zdjęcia and captures the sidebar state (folder header, scope
 toggle, badge rows) before any row is clicked. `analysis-photos` then clicks
 the first sidebar row that does not carry the `proxyFailed` badge (the analyze
@@ -273,7 +273,7 @@ select a photo.
   source") now requires; before that filter this chip could show >0 with zero
   analyzed photos underneath, per the same review finding.
 - `collection-photo-viewer` keeps the Zdjęcia chip selected, clicks the first
-  analyzed photo tile in Kolekcja and asserts the shared photo viewer opens.
+  analyzed photo tile in Kolekcja and asserts the shared media viewer opens.
   This replaces the retired Library → Zdjęcia tab/grid/detail steps.
 
 None of these four are in `TOLERATED_SKIPS`: like `analyze`, a release run

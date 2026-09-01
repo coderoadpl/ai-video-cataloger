@@ -588,19 +588,19 @@ const drive = async (plan) => {
     const tile = page.getByTestId('library-tile').first();
     if (!(await appeared(tile, SETTLE_TIMEOUT_MS))) return skipped('no library tile to preview');
     await tile.click();
-    if (!(await appeared(page.getByTestId('browse-preview'), VISIBLE_TIMEOUT_MS))) {
-      return skipped('browse preview did not open');
+    const viewer = page.getByTestId('library-media-viewer');
+    if (!(await appeared(viewer, VISIBLE_TIMEOUT_MS))) return skipped('media viewer did not open');
+    if ((await viewer.getAttribute('data-media')) !== 'video') return skipped('first Kolekcja tile is not a video');
+    if (!(await appeared(page.getByTestId('library-media-viewer-player'), SETTLE_TIMEOUT_MS))) {
+      return skipped('viewer player did not render (offline or missing file)');
     }
-    if (!(await appeared(page.getByTestId('preview-player'), SETTLE_TIMEOUT_MS))) {
-      return skipped('preview player did not render (offline or missing file)');
-    }
-    const escapeHatch = page.getByTestId('preview-open-analysis');
+    const escapeHatch = page.getByTestId('library-media-viewer-open-analysis');
     if (!(await appeared(escapeHatch, SETTLE_TIMEOUT_MS))) return skipped('no open-in-analysis escape hatch');
     await escapeHatch.click();
     if (!(await appeared(page.getByTestId('detail-layout'), VISIBLE_TIMEOUT_MS))) {
       return skipped('escape hatch did not land in Analysis with the file selected');
     }
-    return done('tile opened a preview; escape hatch landed in Analysis');
+    return done('video tile opened the shared viewer; escape hatch landed in Analysis');
   });
 
   await record('photos-sidebar', async () => {
@@ -708,14 +708,14 @@ const drive = async (plan) => {
     const tile = page.getByTestId('library-tile').first();
     if (!(await appeared(tile, FOLDER_TIMEOUT_MS))) return skipped('no analyzed photo in Kolekcja');
     await tile.click();
-    if (!(await appeared(page.getByTestId('photos-viewer'), VISIBLE_TIMEOUT_MS))) {
+    if (!(await appeared(page.getByTestId('library-media-viewer'), VISIBLE_TIMEOUT_MS))) {
       return skipped('Kolekcja photo viewer did not render');
     }
     return done('Kolekcja photo tile opened the shared viewer');
   });
 
   await record('settings', async () => {
-    const viewerClose = page.getByTestId('photos-viewer-close');
+    const viewerClose = page.getByTestId('library-media-viewer-close');
     if (await appeared(viewerClose, SETTLE_TIMEOUT_MS)) await viewerClose.click();
     const settingsButton = page.getByTestId('open-settings-button');
     if (!(await appeared(settingsButton, SETTLE_TIMEOUT_MS))) return skipped('no Settings control in this build');

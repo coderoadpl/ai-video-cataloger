@@ -14,6 +14,19 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Changed
+
+- Kolekcja now opens every tile — video or photo — in one fullscreen media
+  viewer: the video player replaces the centered dialog, the right-hand panel
+  carries description, tags, transcript, path, duration, size, capture date and
+  analysis provenance, and the prev/next arrows walk the current filtered
+  collection across both media types.
+
+### Added
+
+- `GET /api/library/preview` now returns the selected variant's analysis
+  provenance (`analysis: { label, createdAt }`, nullable).
+
 ### Fixed
 
 - Unanalyzed photos and videos no longer show a redundant status badge in Analysis detail headers, while analyzed badges remain unchanged.

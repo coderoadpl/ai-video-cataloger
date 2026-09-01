@@ -13,7 +13,7 @@ export const ownerPhotoRootFor = (currentPath: string, roots: readonly LibraryPh
   return matches.reduce((deepest, candidate) => candidate.root.length > deepest.root.length ? candidate : deepest).root;
 };
 
-export const adjacentPhotoFingerprint = (order: readonly string[], current: string, delta: 1 | -1): string | null => {
+export const adjacentFingerprint = (order: readonly string[], current: string, delta: 1 | -1): string | null => {
   const index = order.indexOf(current);
   if (index === -1) return null;
   const nextIndex = index + delta;

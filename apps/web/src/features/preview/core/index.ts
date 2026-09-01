@@ -1,1 +1,1 @@
-export { previewFromLocation, previewFromSearchResult, type PreviewMedia } from './preview-media.js';
+export { previewFromLocation, type PreviewMedia } from './preview-media.js';

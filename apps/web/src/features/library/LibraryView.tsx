@@ -6,20 +6,18 @@ import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { formatDayLabel } from '../../lib/format.js';
 import { CancelIcon, SearchIcon } from '../../components/ui/icons.js';
 import { FilterBar, type LibraryGroupBy } from './FilterBar.js';
-import { LibraryPhotoViewer } from './LibraryPhotoViewer.js';
+import { LibraryMediaViewer } from './LibraryMediaViewer.js';
 import {
-  adjacentPhotoFingerprint,
+  adjacentFingerprint,
   groupByCaptureDay,
   groupByFolder,
   isLibraryMedia,
   ownerPhotoRootFor,
   type LibraryItem,
   type LibraryMedia,
-  type LibraryPhotoItem,
   type LibraryVideoItem,
 } from './core/index.js';
 
-export type { LibraryItem, LibraryVideoItem } from './core/index.js';
 import {
   EMPTY_LIBRARY_FILTERS,
   libraryFilterIsEmpty,
@@ -46,7 +44,6 @@ interface LibraryViewProps {
   active: boolean;
   onOpenResult: (folderPath: string, videoPath: string) => void;
   onOpenPhotoInAnalysis?: (root: string, fingerprint: string) => void;
-  onPreview: (item: LibraryVideoItem) => void;
   onGoToVideos: () => void;
   seed?: LibrarySeed | null;
   onSeedConsumed?: () => void;
@@ -79,7 +76,6 @@ export const LibraryView = ({
   active,
   onOpenResult,
   onOpenPhotoInAnalysis,
-  onPreview,
   onGoToVideos,
   seed = null,
   onSeedConsumed,
@@ -91,7 +87,7 @@ export const LibraryView = ({
   const [sort, setSort] = useState<LibrarySort>('captured_desc');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchDismissed, setSearchDismissed] = useState(false);
-  const [photoViewerFingerprint, setPhotoViewerFingerprint] = useState<string | null>(null);
+  const [viewerFingerprint, setViewerFingerprint] = useState<string | null>(null);
   const suggestions = useSearchSuggestions();
 
   const setGroupBy = (next: LibraryGroupBy) => {
@@ -168,27 +164,19 @@ export const LibraryView = ({
     }));
   }, [effectiveGroupBy, library.items, library.effectiveSort, dictionary.library.unknownDate, dictionary.locale]);
 
-  const photoOrder = useMemo(
-    () => sections.flatMap((section) => section.items.filter((item) => item.media === 'photo').map((item) => item.fingerprint)),
+  const viewerOrder = useMemo(
+    () => sections.flatMap((section) => section.items.map((item) => item.fingerprint)),
     [sections],
   );
-  const photoViewerItem = photoViewerFingerprint === null
+  const viewerItem = viewerFingerprint === null
     ? null
-    : library.items.find((item): item is LibraryPhotoItem => item.media === 'photo' && item.fingerprint === photoViewerFingerprint) ?? null;
+    : library.items.find((item) => item.fingerprint === viewerFingerprint) ?? null;
 
   useEffect(() => {
     if (sort === 'relevance' && media === 'all') setSort('captured_desc');
   }, [sort, media]);
 
   if (!active) return null;
-
-  const previewItem = (item: LibraryItem): void => {
-    if (item.media === 'video') {
-      onPreview(item);
-      return;
-    }
-    setPhotoViewerFingerprint(item.fingerprint);
-  };
 
   const openInAnalysis = (item: LibraryItem): void => {
     if (item.media === 'video') {
@@ -283,7 +271,7 @@ export const LibraryView = ({
         ) : null}
         <LibraryGrid
           sections={sections}
-          onOpen={previewItem}
+          onOpen={(item) => setViewerFingerprint(item.fingerprint)}
           onOpenInAnalysis={openInAnalysis}
         />
         {library.hasMore ? (
@@ -410,20 +398,20 @@ export const LibraryView = ({
         />
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{body()}</Box>
-      {photoViewerItem === null ? null : (
-        <LibraryPhotoViewer
-          item={photoViewerItem}
-          onClose={() => setPhotoViewerFingerprint(null)}
-          onOpenInAnalysis={() => openInAnalysis(photoViewerItem)}
+      {viewerItem === null ? null : (
+        <LibraryMediaViewer
+          item={viewerItem}
+          onClose={() => setViewerFingerprint(null)}
+          onOpenInAnalysis={() => openInAnalysis(viewerItem)}
           onPrevious={
-            adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, -1) === null
+            adjacentFingerprint(viewerOrder, viewerItem.fingerprint, -1) === null
               ? null
-              : () => setPhotoViewerFingerprint(adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, -1))
+              : () => setViewerFingerprint(adjacentFingerprint(viewerOrder, viewerItem.fingerprint, -1))
           }
           onNext={
-            adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, 1) === null
+            adjacentFingerprint(viewerOrder, viewerItem.fingerprint, 1) === null
               ? null
-              : () => setPhotoViewerFingerprint(adjacentPhotoFingerprint(photoOrder, photoViewerItem.fingerprint, 1))
+              : () => setViewerFingerprint(adjacentFingerprint(viewerOrder, viewerItem.fingerprint, 1))
           }
         />
       )}
