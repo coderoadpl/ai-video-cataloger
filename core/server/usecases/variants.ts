@@ -36,7 +36,7 @@ import {
   resolveProcessOptions,
   type ProcessConfigIdentity,
 } from './process.js';
-import { artifactPaths } from './shared.js';
+import { artifactPaths, variantProvenanceLabel } from './shared.js';
 
 const configIdSchema = z.union([z.literal('legacy'), z.string().regex(/^cfg_[0-9a-f]{12}$/)]);
 const variantInputSchema = z.object({
@@ -629,7 +629,7 @@ const variantListItem = (
   return {
     configId: variant.configId,
     descriptor: variant.descriptor,
-    label: variantLabel(variant),
+    label: variantProvenanceLabel(variant),
     createdAt: variant.createdAt,
     analyzer: variant.analyzer,
     model: variant.model,
@@ -647,13 +647,6 @@ const variantListItem = (
     language: variant.language,
     tags: variant.tags,
   };
-};
-
-const variantLabel = (variant: CatalogVariant): string => {
-  if (variant.configId === 'legacy') return 'settings partly unknown';
-  return [variant.analyzer, variant.model]
-    .filter((value): value is string => value !== null && value.length > 0)
-    .join(' / ') || variant.configId;
 };
 
 const removePreviousProjection = async (

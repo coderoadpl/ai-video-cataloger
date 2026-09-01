@@ -36,5 +36,6 @@ export {
   type LibraryFilterState,
   type LibrarySearchParams,
 } from './filter-state.js';
-export { adjacentPhotoFingerprint, ownerPhotoRootFor, type LibraryPhotoRoot } from './photo-nav.js';
+export { adjacentFingerprint, ownerPhotoRootFor, type LibraryPhotoRoot } from './photo-nav.js';
 export { photoViewerSourceCandidates } from './photo-source.js';
+export { videoViewerStage, viewerTitle, type LibraryVideoStage } from './viewer-media.js';

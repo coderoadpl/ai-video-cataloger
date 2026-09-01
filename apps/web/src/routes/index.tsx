@@ -19,7 +19,7 @@ import { useCatalogTree } from '../features/catalog/use-catalog-tree.js';
 import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
-import { LibraryView, type LibrarySeed, type LibraryVideoItem } from '../features/library/LibraryView.js';
+import { LibraryView, type LibrarySeed } from '../features/library/LibraryView.js';
 import { useCatalogIndex } from '../features/library/use-catalog-index.js';
 import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations, type CatalogLocation } from '../features/map/use-catalog-locations.js';
@@ -32,7 +32,7 @@ import { PhotosSidebar } from '../features/photos/PhotosSidebar.js';
 import { PhotosWorkspace } from '../features/photos/PhotosWorkspace.js';
 import { usePhotosAnalysis } from '../features/photos/use-photos-analysis.js';
 import { usePhotosAutoScan } from '../features/photos/use-photos-auto-scan.js';
-import { BrowsePreview, previewFromLocation, previewFromSearchResult, type PreviewMedia } from '../features/preview/index.js';
+import { BrowsePreview, previewFromLocation, type PreviewMedia } from '../features/preview/index.js';
 import { PrerequisitesModal } from '../features/prerequisites/PrerequisitesModal.js';
 import { ReadinessNotice } from '../features/readiness/ReadinessNotice.js';
 import { useReadiness } from '../features/readiness/use-readiness.js';
@@ -193,7 +193,6 @@ export const IndexRoute = () => {
     previousFolderAcceptedTokenRef.current = folderAcceptedToken;
     if (mode === 'library') setMode('analysis');
   }, [folderAcceptedToken, mode, setMode]);
-  const onPreview = useCallback((item: LibraryVideoItem) => setPreview(previewFromSearchResult(item)), []);
   const onOpenMapPreview = useCallback((location: CatalogLocation) => {
     const media = previewFromLocation(location);
     if (media !== null) setPreview(media);
@@ -315,7 +314,6 @@ export const IndexRoute = () => {
           active={mode === 'library' && librarySurface === 'collection'}
           onOpenResult={openInAnalysis}
           onOpenPhotoInAnalysis={openPhotoInAnalysis}
-          onPreview={onPreview}
           onGoToVideos={() => {
             setMode('analysis');
             setAnalysisMedia('videos');

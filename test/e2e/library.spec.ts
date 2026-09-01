@@ -22,7 +22,12 @@ const expectResult = <T>(result: Result<T, AppError>): asserts result is { ok: t
   if (!result.ok) throw new Error(`${result.error.code}: ${result.error.message}`);
 };
 
-const seedFolderPhoto = async (workdir: string): Promise<{ fingerprint: string; folderId: string; folderLabel: string }> => {
+const seedFolderPhoto = async (workdir: string): Promise<{
+  fingerprint: string;
+  videoFingerprint: string;
+  folderId: string;
+  folderLabel: string;
+}> => {
   const homeDirectory = isolatedHome(workdir);
   const folderPath = join(workdir, 'selected-folder');
   const folderLabel = 'Selected Folder';
@@ -34,6 +39,7 @@ const seedFolderPhoto = async (workdir: string): Promise<{ fingerprint: string; 
   const videoFingerprint = 'video-folder-filter';
   const videoName = 'folder-video.mp4';
   const timestamp = '2026-08-16T12:00:00.000Z';
+  const videoTimestamp = '2026-08-17T12:00:00.000Z';
   mkdirSync(folderPath, { recursive: true });
   writeFileSync(photoPath, REAL_JPEG_RED_LARGE);
   writeFileSync(join(folderPath, videoName), Buffer.from([0]));
@@ -62,7 +68,7 @@ const seedFolderPhoto = async (workdir: string): Promise<{ fingerprint: string; 
       analyzer: 'harness',
       model: 'claude-code',
       missingAt: null,
-      capturedAt: timestamp,
+      capturedAt: videoTimestamp,
       capturedAtSource: 'container',
       gpsSource: null,
       gpsAccuracyM: null,
@@ -151,7 +157,7 @@ const seedFolderPhoto = async (workdir: string): Promise<{ fingerprint: string; 
     expectResult(await globalCatalog.dispose());
   }
 
-  return { fingerprint, folderId, folderLabel };
+  return { fingerprint, videoFingerprint, folderId, folderLabel };
 };
 
 async function launch(workdir: string): Promise<Session> {
@@ -246,11 +252,22 @@ test.describe('Library: same-session visibility, search, and subtitled preview',
       await expect(tile).toBeVisible({ timeout: 20_000 });
       await tile.click();
 
-      const player = session.page.getByTestId('preview-player');
+      const viewer = session.page.getByTestId('library-media-viewer');
+      await expect(viewer).toBeVisible({ timeout: 15_000 });
+      await expect(viewer).toHaveAttribute('data-media', 'video');
+      const player = session.page.getByTestId('library-media-viewer-player');
       await expect(player).toBeVisible({ timeout: 15_000 });
-      const subtitles = player.getByTestId('preview-subtitles-track');
+      const subtitles = player.getByTestId('library-media-viewer-subtitles-track');
       await expect(subtitles).toHaveCount(1, { timeout: 15_000 });
       await expect(subtitles).toHaveAttribute('kind', 'subtitles');
+
+      const details = session.page.getByTestId('library-media-viewer-details');
+      await expect(details).toBeVisible({ timeout: 15_000 });
+      await expect(details.getByTestId('library-media-viewer-description')).toBeVisible({ timeout: 15_000 });
+      await expect(details.getByTestId('library-media-viewer-tags')).toBeVisible({ timeout: 15_000 });
+      await expect(details.getByTestId('library-media-viewer-transcript')).toBeVisible({ timeout: 15_000 });
+      await expect(session.page.getByTestId('library-media-viewer-open-analysis')).toBeVisible({ timeout: 15_000 });
+      await expect(session.page.getByTestId('browse-preview')).toHaveCount(0);
     } finally {
       await session.app.close().catch(() => undefined);
       rmSync(workdir, { recursive: true, force: true });
@@ -280,6 +297,50 @@ test.describe('Library: same-session visibility, search, and subtitled preview',
         `[data-testid="library-tile"][data-media="photo"][data-fingerprint="${fixture.fingerprint}"]`,
       );
       await expect(photo).toBeVisible({ timeout: 20_000 });
+    } finally {
+      await session.app.close().catch(() => undefined);
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
+  test('a video tile opens the same fullscreen viewer as a photo and the arrows walk the mixed collection', async () => {
+    const workdir = makeEmptyWorkdir('library-media-viewer');
+    const fixture = await seedFolderPhoto(workdir);
+    const session = await launch(workdir);
+    try {
+      await session.page.getByTestId('mode-library').click();
+      await session.page.getByTestId('subnav-collection').click();
+
+      const allMedia = session.page.getByTestId('library-media-all');
+      await expect(allMedia).toBeVisible({ timeout: 15_000 });
+      await allMedia.click();
+
+      const videoTile = session.page.locator(
+        `[data-testid="library-tile"][data-media="video"][data-fingerprint="${fixture.videoFingerprint}"]`,
+      );
+      await expect(videoTile).toBeVisible({ timeout: 20_000 });
+      await videoTile.click();
+
+      const viewer = session.page.getByTestId('library-media-viewer');
+      await expect(viewer).toBeVisible({ timeout: 15_000 });
+      await expect(viewer).toHaveAttribute('data-fingerprint', fixture.videoFingerprint);
+      await expect(viewer).toHaveAttribute('data-media', 'video');
+      await expect(session.page.getByTestId('library-media-viewer-player')).toBeVisible({ timeout: 15_000 });
+      await expect(session.page.getByTestId('library-media-viewer-details')).toBeVisible({ timeout: 15_000 });
+      await expect(session.page.getByTestId('library-media-viewer-description')).toBeVisible({ timeout: 15_000 });
+      await expect(session.page.getByTestId('library-media-viewer-open-analysis')).toBeVisible({ timeout: 15_000 });
+
+      await session.page.getByTestId('library-media-viewer-next').click();
+      await expect(viewer).toHaveAttribute('data-fingerprint', fixture.fingerprint, { timeout: 15_000 });
+      await expect(viewer).toHaveAttribute('data-media', 'photo');
+      await expect(session.page.getByTestId('library-media-viewer-image')).toBeVisible({ timeout: 15_000 });
+
+      await session.page.getByTestId('library-media-viewer-previous').click();
+      await expect(viewer).toHaveAttribute('data-fingerprint', fixture.videoFingerprint, { timeout: 15_000 });
+      await expect(session.page.getByTestId('library-media-viewer-player')).toBeVisible({ timeout: 15_000 });
+
+      await session.page.getByTestId('library-media-viewer-close').click();
+      await expect(viewer).toHaveCount(0, { timeout: 15_000 });
     } finally {
       await session.app.close().catch(() => undefined);
       rmSync(workdir, { recursive: true, force: true });

@@ -845,6 +845,9 @@ export interface Dictionary {
     mediaVideo: string;
     mediaPhoto: string;
     videoOnlyFilterNotice: (parts: string) => string;
+    viewerClose: string;
+    viewerPrevious: string;
+    viewerNext: string;
   };
   preview: {
     offline: string;
@@ -1775,6 +1778,9 @@ export const en: Dictionary = {
     mediaVideo: 'Videos',
     mediaPhoto: 'Photos',
     videoOnlyFilterNotice: (parts) => `Filtering by ${parts} applies only to videos — photos are hidden while it is active.`,
+    viewerClose: 'Close viewer',
+    viewerPrevious: 'Previous item',
+    viewerNext: 'Next item',
   },
   preview: {
     offline: 'This file is on a drive that is not connected.',
@@ -2723,6 +2729,9 @@ export const pl: Dictionary = {
     mediaVideo: 'Filmy',
     mediaPhoto: 'Zdjęcia',
     videoOnlyFilterNotice: (parts) => `Filtrowanie według ${parts} dotyczy tylko filmów — zdjęcia są ukryte, gdy jest aktywne.`,
+    viewerClose: 'Zamknij podgląd',
+    viewerPrevious: 'Poprzedni element',
+    viewerNext: 'Następny element',
   },
   preview: {
     offline: 'Ten plik znajduje się na dysku, który nie jest podłączony.',

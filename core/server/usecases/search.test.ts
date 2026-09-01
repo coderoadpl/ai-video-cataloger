@@ -620,8 +620,46 @@ describe('libraryPreviewDetail', () => {
         height: null,
         rotation: null,
         people: [{ personId: 'person-a', displayName: 'Ada' }],
+        analysis: { label: 'settings partly unknown', createdAt: '2026-01-02T00:00:00.000Z' },
       },
     });
+  });
+
+  it('reports the selected variant as the preview analysis provenance', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-preview', folderA.folderId, 'drone-sunset.mp4'));
+    await store.upsertVariant({
+      ...analysis('fp-preview', {}),
+      configId: 'cfg-a',
+      descriptor: null,
+      analyzer: 'harness',
+      model: 'claude-code',
+      createdAt: '2026-02-03T09:00:00.000Z',
+      usage: null,
+      resolvedOutputLanguage: null,
+      resolvedTagLanguage: null,
+    });
+    await store.setSelectedVariant('fp-preview', 'cfg-a');
+
+    const result = await libraryPreviewDetail({ globalCatalog: store, fs, media: new InMemoryMedia() }, { fingerprint: 'fp-preview' });
+
+    expect(result).toMatchObject({
+      ok: true,
+      value: { analysis: { label: 'harness / claude-code', createdAt: '2026-02-03T09:00:00.000Z' } },
+    });
+  });
+
+  it('reports a null preview analysis provenance for a catalogued file with no analysis', async () => {
+    const fs = new InMemoryFileSystem('/media');
+    const store = new InMemoryGlobalCatalogStore();
+    await store.upsertFolder(folderA);
+    await store.upsertFile(file('fp-preview', folderA.folderId, 'drone-sunset.mp4'));
+
+    const result = await libraryPreviewDetail({ globalCatalog: store, fs, media: new InMemoryMedia() }, { fingerprint: 'fp-preview' });
+
+    expect(result).toMatchObject({ ok: true, value: { analysis: null } });
   });
 
   it('reports not_found for an unknown fingerprint', async () => {

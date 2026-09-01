@@ -227,6 +227,37 @@ const stubPhotoDetail = (fingerprint: string) => {
   })));
 };
 
+const stubLibraryPreview = (
+  overrides: {
+    transcript?: string | null;
+    analysis?: { label: string; createdAt: string } | null;
+    people?: { personId: string; displayName: string | null }[];
+  } = {},
+) => {
+  server.use(http.get('/api/library/preview', ({ request }) => {
+    const fingerprint = new URL(request.url).searchParams.get('fingerprint') ?? 'fp-1';
+    return HttpResponse.json({
+      ok: true,
+      data: {
+        fingerprint,
+        path: `/videos/${fingerprint}.mp4`,
+        fileName: `${fingerprint}.mp4`,
+        size: 2048,
+        sizeFormatted: '2.0 KB',
+        durationS: 65,
+        durationFormatted: '1:05',
+        transcript: overrides.transcript ?? null,
+        transcriptSegments: null,
+        width: 1920,
+        height: 1080,
+        rotation: null,
+        people: overrides.people ?? [],
+        analysis: overrides.analysis ?? null,
+      },
+    });
+  }));
+};
+
 describe('LibraryView', () => {
   beforeEach(() => {
     collectionRequests.length = 0;
@@ -240,7 +271,7 @@ describe('LibraryView', () => {
   it('renders the honest empty-catalog state, not a generic no-results message', async () => {
     stubCollection([]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
     expect(await screen.findByTestId('library-empty-catalog')).toBeDefined();
     expect(screen.queryByTestId('library-no-match')).toBeNull();
@@ -249,7 +280,7 @@ describe('LibraryView', () => {
   it('mentions both videos and photos in the empty-catalog copy', async () => {
     stubCollection([]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
     const body = await screen.findByText(en.library.emptyCatalogBody);
     expect(body.textContent?.toLowerCase()).toContain('video');
@@ -260,7 +291,7 @@ describe('LibraryView', () => {
     stubCollection([]);
     const onGoToVideos = vi.fn();
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={onGoToVideos} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={onGoToVideos} />);
     fireEvent.click(await screen.findByTestId('library-empty-go-videos'));
 
     expect(onGoToVideos).toHaveBeenCalledOnce();
@@ -273,7 +304,7 @@ describe('LibraryView', () => {
     ];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
     const tiles = await screen.findAllByTestId('library-tile');
     expect(tiles).toHaveLength(2);
@@ -284,44 +315,46 @@ describe('LibraryView', () => {
     stubCollection([videoItem({ fingerprint: 'fp-1', capturedAt: '2026-01-02T10:00:00.000Z' })]);
     server.use(http.get('/api/config', () => HttpResponse.json(configResponse('pl'))));
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
     await waitFor(() => {
       expect(screen.getByTestId('library-section-header').textContent).toBe('2 stycznia 2026');
     });
   });
 
-  it('opens the preview for an online tile, not the analysis workspace', async () => {
-    const items = [videoItem({ fingerprint: 'fp-open' })];
-    stubCollection(items);
-    const onPreview = vi.fn();
+  it('opens the shared media viewer for an online video tile, not the analysis workspace', async () => {
+    stubCollection([videoItem({ fingerprint: 'fp-open' })]);
+    stubLibraryPreview();
     const onOpenResult = vi.fn();
 
-    renderThemed(<LibraryView active onOpenResult={onOpenResult} onPreview={onPreview} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={onOpenResult} onGoToVideos={vi.fn()} />);
     fireEvent.click(await screen.findByTestId('library-tile'));
 
-    expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ fingerprint: 'fp-open' }));
+    const viewer = await screen.findByTestId('library-media-viewer');
+    expect(viewer.getAttribute('data-media')).toBe('video');
+    expect(viewer.getAttribute('data-fingerprint')).toBe('fp-open');
+    expect(screen.getByTestId('library-media-viewer-player')).toBeDefined();
     expect(onOpenResult).not.toHaveBeenCalled();
   });
 
-  it('opens the preview for an offline-folder tile instead of doing nothing', async () => {
-    const items = [videoItem({ fingerprint: 'fp-offline', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/Volumes/Ghost', displayName: 'offline', online: false, offlineReason: 'drive-disconnected' } })];
-    stubCollection(items);
-    const onPreview = vi.fn();
+  it('opens the shared media viewer for an offline-folder tile and states why the video cannot play', async () => {
+    stubCollection([videoItem({ fingerprint: 'fp-offline', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/Volumes/Ghost', displayName: 'offline', online: false, offlineReason: 'drive-disconnected' } })]);
+    stubLibraryPreview();
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={onPreview} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     fireEvent.click(await screen.findByTestId('library-tile'));
 
-    expect(screen.getByTestId('library-offline-badge')).toBeDefined();
     expect(screen.getByTestId('library-offline-badge').textContent).toBe(en.library.offlineFolderBadge);
-    expect(onPreview).toHaveBeenCalledWith(expect.objectContaining({ fingerprint: 'fp-offline' }));
+    expect((await screen.findByTestId('library-media-viewer')).getAttribute('data-fingerprint')).toBe('fp-offline');
+    expect(screen.getByTestId('library-media-viewer-unavailable').textContent).toBe(en.preview.offline);
+    expect(screen.queryByTestId('library-media-viewer-player')).toBeNull();
   });
 
   it('shows the file-missing badge for a folder deleted on a still-mounted volume, not a drive-disconnected badge', async () => {
     const items = [videoItem({ fingerprint: 'fp-deleted-folder', folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/videos/deleted', displayName: 'deleted', online: false, offlineReason: 'file-missing' } })];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
 
     expect(screen.getByTestId('library-offline-badge').textContent).toBe(en.library.missingBadge);
@@ -337,7 +370,7 @@ describe('LibraryView', () => {
     })];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
 
     expect(screen.queryByTestId('library-missing-badge')).toBeNull();
@@ -363,7 +396,7 @@ describe('LibraryView', () => {
     ];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const offlineOnly = document.querySelector('[data-testid="library-tile"][data-fingerprint="fp-offline-only"]');
@@ -384,7 +417,7 @@ describe('LibraryView', () => {
     })];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
 
     expect(screen.getByTestId('library-missing-badge').textContent).toBe(en.library.missingBadge);
@@ -394,7 +427,7 @@ describe('LibraryView', () => {
     const items = [videoItem({ fingerprint: 'fp-portrait', width: 1080, height: 1920 })];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
 
     expect(screen.getByTestId('library-aspect-indicator')).toBeDefined();
@@ -404,7 +437,7 @@ describe('LibraryView', () => {
     const items = [videoItem({ fingerprint: 'fp-panorama', width: 3000, height: 1000 })];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
 
     expect(screen.getByTestId('library-aspect-indicator')).toBeDefined();
@@ -414,7 +447,7 @@ describe('LibraryView', () => {
     const items = [videoItem({ fingerprint: 'fp-landscape', width: 1920, height: 1080 })];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
 
     expect(screen.queryByTestId('library-aspect-indicator')).toBeNull();
@@ -424,7 +457,7 @@ describe('LibraryView', () => {
     const items = [videoItem({ fingerprint: 'fp-unknown-dims', width: null, height: null })];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findByTestId('library-tile');
 
     expect(screen.queryByTestId('library-aspect-indicator')).toBeNull();
@@ -445,7 +478,7 @@ describe('LibraryView', () => {
     ];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
     const tiles = await screen.findAllByTestId('library-tile');
     expect(tiles).toHaveLength(2);
@@ -464,7 +497,7 @@ describe('LibraryView', () => {
     const items = [videoItem({ fingerprint: 'fp-none', thumbnailPath: null, gridThumbnailPath: null, fileName: 'clip.mp4' })];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
     const placeholder = await screen.findByTestId('library-tile-placeholder');
     expect(placeholder.getAttribute('style')).toContain('linear-gradient');
@@ -480,7 +513,7 @@ describe('LibraryView', () => {
     stubCollection(items);
     const onOpenResult = vi.fn();
 
-    renderThemed(<LibraryView active onOpenResult={onOpenResult} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={onOpenResult} onGoToVideos={vi.fn()} />);
     fireEvent.contextMenu(await screen.findByTestId('library-tile'));
 
     expect(screen.queryByTestId('library-tile-menu-open-folder')).toBeNull();
@@ -494,7 +527,7 @@ describe('LibraryView', () => {
     stubCollection(items);
     const reveal = vi.spyOn(bridge, 'revealInFinder').mockResolvedValue(false);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     fireEvent.contextMenu(await screen.findByTestId('library-tile'));
     fireEvent.click(await screen.findByTestId('library-tile-menu-reveal'));
 
@@ -508,7 +541,7 @@ describe('LibraryView', () => {
     const writeText = vi.fn().mockRejectedValueOnce(new Error('denied')).mockResolvedValueOnce(undefined);
     Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     fireEvent.contextMenu(await screen.findByTestId('library-tile'));
     fireEvent.click(await screen.findByTestId('library-tile-menu-copy-path'));
 
@@ -523,7 +556,7 @@ describe('LibraryView', () => {
   it('surfaces a failed catalog read instead of claiming nothing has been processed', async () => {
     server.use(http.get('/api/library/collection', () => HttpResponse.json({ ok: false, error: { code: 'read_error', message: 'catalog is locked' } }, { status: 500 })));
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
     expect(await screen.findByTestId('library-error')).toBeDefined();
     expect(screen.queryByTestId('library-empty-catalog')).toBeNull();
@@ -535,7 +568,7 @@ describe('LibraryView', () => {
       { status: 500 },
     )));
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
     expect((await screen.findByTestId('library-error')).textContent).toBe(en.errors.analyzerFailed);
     expect(document.body.textContent).not.toContain('/var/folders');
@@ -544,7 +577,7 @@ describe('LibraryView', () => {
   it('renders the no-match state, distinct from the empty-catalog state, once a query eliminates everything', async () => {
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     fireEvent.change(screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input'), {
@@ -558,7 +591,7 @@ describe('LibraryView', () => {
   it('names the active chip in the no-match copy', async () => {
     stubCollection([videoItem({ fingerprint: 'fp-1', gps: { lat: 1, lon: 2 } })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const gpsSelect = screen.getByTestId('library-filter-has-gps').querySelector('input');
@@ -574,7 +607,7 @@ describe('LibraryView', () => {
       videoItem({ fingerprint: 'fp-no-gps' }),
     ]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     expect(await screen.findAllByTestId('library-tile')).toHaveLength(2);
 
     const gpsSelect = screen.getByTestId('library-filter-has-gps').querySelector('input');
@@ -600,7 +633,7 @@ describe('LibraryView', () => {
       ],
     });
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     expect(await screen.findAllByTestId('library-tile')).toHaveLength(2);
 
     const folderInput = screen.getByTestId('library-filter-folder').querySelector('input');
@@ -622,7 +655,7 @@ describe('LibraryView', () => {
       folders: [{ folderId: '11111111-1111-4111-8111-111111111111', displayName: 'videos', currentPath: '/videos', online: true, count: 1 }],
     });
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const folderInput = screen.getByTestId('library-filter-folder').querySelector('input');
@@ -644,7 +677,7 @@ describe('LibraryView', () => {
   it('keeps the chosen sort while a text query is active instead of silently falling back to relevance', async () => {
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const sortSelect = screen.getByTestId('library-sort').querySelector('input');
@@ -662,7 +695,7 @@ describe('LibraryView', () => {
     stubFacets({ tags: [{ name: 'beach', count: 4 }, { name: 'sunset', count: 2 }] });
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const tagInput = screen.getByTestId('library-filter-tags').querySelector('input');
@@ -675,7 +708,7 @@ describe('LibraryView', () => {
     stubFacets({ people: [{ personId: 'person-abc123', displayName: null, count: 3, fallbackIndex: 6 }] });
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const peopleInput = screen.getByTestId('library-filter-people').querySelector('input');
@@ -688,7 +721,7 @@ describe('LibraryView', () => {
   it('debounces the free-text place filter into a single search request', async () => {
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const placeInput = screen.getByTestId('library-filter-place').querySelector('input');
@@ -708,7 +741,7 @@ describe('LibraryView', () => {
     ];
     stubCollection(items);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     fireEvent.click(screen.getByTestId('library-group-by-folder'));
@@ -724,7 +757,7 @@ describe('LibraryView', () => {
     stubTags([{ name: 'beach', count: 4 }]);
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
@@ -739,7 +772,7 @@ describe('LibraryView', () => {
     stubTags([{ name: 'beach', count: 4 }]);
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
@@ -759,7 +792,7 @@ describe('LibraryView', () => {
     stubTags([{ name: 'beach', count: 4 }]);
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
@@ -781,7 +814,7 @@ describe('LibraryView', () => {
     stubTags([]);
     stubCollection([videoItem({ fingerprint: 'fp-1', fileName: 'drone-clip.mp4' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
@@ -799,7 +832,7 @@ describe('LibraryView', () => {
     stubTags([]);
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
@@ -814,7 +847,7 @@ describe('LibraryView', () => {
     stubTags([]);
     stubCollection([videoItem({ fingerprint: 'fp-1' })]);
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     const input = screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input');
@@ -833,7 +866,7 @@ describe('LibraryView', () => {
       <LibraryView
         active
         onOpenResult={vi.fn()}
-        onPreview={vi.fn()}
+       
         onGoToVideos={vi.fn()}
         seed={{ kind: 'tag', tag: 'aerial' }}
         onSeedConsumed={vi.fn()}
@@ -850,7 +883,7 @@ describe('LibraryView', () => {
       <LibraryView
         active
         onOpenResult={vi.fn()}
-        onPreview={vi.fn()}
+       
         onGoToVideos={vi.fn()}
         seed={{ kind: 'person', personId: 'person-abc123', label: 'Alex' }}
         onSeedConsumed={vi.fn()}
@@ -870,7 +903,7 @@ describe('LibraryView', () => {
       <LibraryView
         active
         onOpenResult={vi.fn()}
-        onPreview={vi.fn()}
+       
         onGoToVideos={vi.fn()}
         seed={{ kind: 'media', media: 'photo' }}
         onSeedConsumed={vi.fn()}
@@ -912,7 +945,7 @@ describe('LibraryView', () => {
       }),
     );
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     fireEvent.click(await screen.findByTestId('library-load-more'));
@@ -956,7 +989,7 @@ describe('LibraryView', () => {
       }),
     );
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     fireEvent.click(await screen.findByTestId('library-load-more'));
     await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
 
@@ -995,7 +1028,7 @@ describe('LibraryView', () => {
       }),
     );
 
-    renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
     await screen.findAllByTestId('library-tile');
 
     fireEvent.click(await screen.findByTestId('library-load-more'));
@@ -1014,7 +1047,7 @@ describe('LibraryView', () => {
       ];
       stubCollection(items);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
 
       const tiles = await screen.findAllByTestId('library-tile');
       expect(tiles).toHaveLength(2);
@@ -1030,7 +1063,7 @@ describe('LibraryView', () => {
         photoItem({ fingerprint: 'ph_0000000000000002' }),
       ]);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
 
       expect(screen.getByTestId('library-media-all').textContent).toContain('3');
@@ -1041,7 +1074,7 @@ describe('LibraryView', () => {
     it('clicking the Photos media chip narrows the request to photos only', async () => {
       stubCollection([videoItem({ fingerprint: 'fp-v1' }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
 
       fireEvent.click(screen.getByTestId('library-media-photo'));
@@ -1057,7 +1090,7 @@ describe('LibraryView', () => {
     it('shows an inline notice and hides photos when a video-only filter is active with media set to all', async () => {
       stubCollection([videoItem({ fingerprint: 'fp-v1', gps: { lat: 1, lon: 2 } }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
       expect(screen.queryByTestId('library-video-only-filter-notice')).toBeNull();
 
@@ -1085,7 +1118,7 @@ describe('LibraryView', () => {
         folders: [{ folderId, displayName: 'Shared', currentPath: '/shared', online: true, count: 1 }],
       });
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
 
       const folderInput = screen.getByTestId('library-filter-folder').querySelector('input');
@@ -1103,7 +1136,7 @@ describe('LibraryView', () => {
     it('disables folder grouping once photos are mixed into the Kolekcja results', async () => {
       stubCollection([videoItem({ fingerprint: 'fp-v1' }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
 
       expect(screen.getByTestId('library-group-by-folder')).toHaveProperty('disabled', true);
@@ -1112,7 +1145,7 @@ describe('LibraryView', () => {
     it('hides the relevance sort option while media is set to all, even with an active query', async () => {
       stubCollection([videoItem({ fingerprint: 'fp-v1', fileName: 'drone-1.mp4' }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
 
       fireEvent.change(screen.getByTestId('library-search-input').querySelector('input') ?? screen.getByTestId('library-search-input'), { target: { value: 'drone' } });
@@ -1128,7 +1161,7 @@ describe('LibraryView', () => {
     it('offers the relevance sort option once media is narrowed to a single medium with a query', async () => {
       stubCollection([videoItem({ fingerprint: 'fp-v1', fileName: 'drone-1.mp4' })]);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
 
       fireEvent.click(screen.getByTestId('library-media-video'));
@@ -1142,15 +1175,67 @@ describe('LibraryView', () => {
       expect(screen.getByRole('option', { name: en.library.sortRelevance })).toBeDefined();
     });
 
-    it('opens the photo viewer, not the video preview, for a photo tile', async () => {
-      stubCollection([photoItem({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-01-02T10:00:00.000Z' })]);
-      const onPreview = vi.fn();
+    it('opens the same shared media viewer for a photo tile', async () => {
+      const fingerprint = 'ph_0000000000000001';
+      stubCollection([photoItem({ fingerprint, capturedAt: '2026-01-02T10:00:00.000Z' })]);
+      stubPhotoDetail(fingerprint);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={onPreview} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       fireEvent.click(await screen.findByTestId('library-tile'));
 
-      expect(await screen.findByTestId('photos-viewer')).toBeDefined();
-      expect(onPreview).not.toHaveBeenCalled();
+      const viewer = await screen.findByTestId('library-media-viewer');
+      expect(viewer.getAttribute('data-media')).toBe('photo');
+      expect(await screen.findByTestId('library-media-viewer-image')).toBeDefined();
+      expect(screen.queryByTestId('library-media-viewer-player')).toBeNull();
+    });
+
+    it('walks a mixed collection with the viewer arrows, across both media types', async () => {
+      stubCollection([
+        videoItem({ fingerprint: 'fp-v1', capturedAt: '2026-01-03T10:00:00.000Z' }),
+        photoItem({ fingerprint: 'ph_0000000000000001', capturedAt: '2026-01-02T10:00:00.000Z' }),
+      ]);
+      stubLibraryPreview();
+      stubPhotoDetail('ph_0000000000000001');
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+      await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
+      fireEvent.click(screen.getAllByTestId('library-tile')[0] ?? screen.getByTestId('library-tile'));
+
+      const viewer = await screen.findByTestId('library-media-viewer');
+      expect(viewer.getAttribute('data-fingerprint')).toBe('fp-v1');
+      expect(screen.queryByTestId('library-media-viewer-previous')).toBeNull();
+
+      fireEvent.click(screen.getByTestId('library-media-viewer-next'));
+      await waitFor(() => {
+        expect(screen.getByTestId('library-media-viewer').getAttribute('data-fingerprint')).toBe('ph_0000000000000001');
+      });
+      expect(screen.getByTestId('library-media-viewer').getAttribute('data-media')).toBe('photo');
+      expect(screen.queryByTestId('library-media-viewer-next')).toBeNull();
+
+      fireEvent.click(screen.getByTestId('library-media-viewer-previous'));
+      await waitFor(() => {
+        expect(screen.getByTestId('library-media-viewer').getAttribute('data-fingerprint')).toBe('fp-v1');
+      });
+    });
+
+    it('shows description, tags, transcript and analysis provenance beside a video in the shared viewer', async () => {
+      stubCollection([videoItem({ fingerprint: 'fp-v1', description: 'A drone pass over the bay', tags: ['drone', 'bay'] })]);
+      stubLibraryPreview({
+        transcript: 'quiet audio over the bay',
+        analysis: { label: 'harness / claude-code', createdAt: '2026-01-03T12:00:00.000Z' },
+      });
+
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+      fireEvent.click(await screen.findByTestId('library-tile'));
+
+      expect(await screen.findByTestId('library-media-viewer-details')).toBeDefined();
+      expect(screen.getByTestId('library-media-viewer-description').textContent).toContain('A drone pass over the bay');
+      expect(screen.getByTestId('library-media-viewer-tags').textContent).toContain('drone');
+      await waitFor(() => {
+        expect(screen.getByTestId('library-media-viewer-transcript').textContent).toContain('quiet audio over the bay');
+      });
+      expect(screen.getByTestId('library-media-viewer-path').textContent).toContain('/videos/fp-v1.mp4');
+      expect(screen.getByText(/^harness \/ claude-code · /)).toBeDefined();
     });
 
     it('the tile menu opens a photo in Analysis by resolving its owning photo root', async () => {
@@ -1158,7 +1243,7 @@ describe('LibraryView', () => {
       stubCollection([photoItem({ fingerprint: 'ph_0000000000000001', currentPath: '/photos/2024/a.jpg' })]);
       const onOpenPhotoInAnalysis = vi.fn();
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onOpenPhotoInAnalysis={onOpenPhotoInAnalysis} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onOpenPhotoInAnalysis={onOpenPhotoInAnalysis} onGoToVideos={vi.fn()} />);
       fireEvent.contextMenu(await screen.findByTestId('library-tile'));
       fireEvent.click(await screen.findByTestId('library-tile-menu-open-analysis'));
 
@@ -1194,7 +1279,7 @@ describe('LibraryView', () => {
         }),
       );
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(2));
 
       fireEvent.click(screen.getByTestId('library-media-video'));
@@ -1213,7 +1298,7 @@ describe('LibraryView', () => {
         photoItem({ fingerprint: 'ph_0000000000000002' }),
       ]);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
 
       fireEvent.click(screen.getByTestId('library-media-photo'));
@@ -1227,7 +1312,7 @@ describe('LibraryView', () => {
     it('drops the photo count while a video-only filter hides photos from an all-media request', async () => {
       stubCollection([videoItem({ fingerprint: 'fp-v1', gps: { lat: 1, lon: 2 } }), photoItem({ fingerprint: 'ph_0000000000000001' })]);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       await screen.findAllByTestId('library-tile');
       expect(screen.getByTestId('library-media-photo').textContent).toContain('1');
 
@@ -1245,10 +1330,10 @@ describe('LibraryView', () => {
       stubCollection([photoItem({ fingerprint })]);
       stubPhotoDetail(fingerprint);
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
       fireEvent.click(await screen.findByTestId('library-tile'));
 
-      expect(await screen.findByTestId('library-photo-viewer-details')).toBeDefined();
+      expect(await screen.findByTestId('library-media-viewer-details')).toBeDefined();
       expect(await screen.findByText('Sunset over a quiet lake')).toBeDefined();
       expect(screen.getByText(en.photos.sceneLandscape)).toBeDefined();
       expect(screen.getByText(en.photos.qualityGood)).toBeDefined();
@@ -1263,9 +1348,9 @@ describe('LibraryView', () => {
       stubPhotoDetail(fingerprint);
       const onOpenPhotoInAnalysis = vi.fn();
 
-      renderThemed(<LibraryView active onOpenResult={vi.fn()} onOpenPhotoInAnalysis={onOpenPhotoInAnalysis} onPreview={vi.fn()} onGoToVideos={vi.fn()} />);
+      renderThemed(<LibraryView active onOpenResult={vi.fn()} onOpenPhotoInAnalysis={onOpenPhotoInAnalysis} onGoToVideos={vi.fn()} />);
       fireEvent.click(await screen.findByTestId('library-tile'));
-      fireEvent.click(await screen.findByTestId('library-photo-viewer-open-analysis'));
+      fireEvent.click(await screen.findByTestId('library-media-viewer-open-analysis'));
 
       expect(onOpenPhotoInAnalysis).toHaveBeenCalledWith('/photos', fingerprint);
     });

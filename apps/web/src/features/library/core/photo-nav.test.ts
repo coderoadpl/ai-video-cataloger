@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { adjacentPhotoFingerprint, ownerPhotoRootFor, type LibraryPhotoRoot } from './photo-nav.js';
+import { adjacentFingerprint, ownerPhotoRootFor, type LibraryPhotoRoot } from './photo-nav.js';
 
 const root = (overrides: Partial<LibraryPhotoRoot> & { root: string }): LibraryPhotoRoot => ({
   photos: 1,
@@ -21,20 +21,20 @@ describe('ownerPhotoRootFor', () => {
   });
 });
 
-describe('adjacentPhotoFingerprint', () => {
+describe('adjacentFingerprint', () => {
   it('returns the previous and next fingerprint in the order', () => {
     const order = ['a', 'b', 'c'];
-    expect(adjacentPhotoFingerprint(order, 'b', -1)).toBe('a');
-    expect(adjacentPhotoFingerprint(order, 'b', 1)).toBe('c');
+    expect(adjacentFingerprint(order, 'b', -1)).toBe('a');
+    expect(adjacentFingerprint(order, 'b', 1)).toBe('c');
   });
 
   it('returns null past either end of the order', () => {
     const order = ['a', 'b'];
-    expect(adjacentPhotoFingerprint(order, 'a', -1)).toBeNull();
-    expect(adjacentPhotoFingerprint(order, 'b', 1)).toBeNull();
+    expect(adjacentFingerprint(order, 'a', -1)).toBeNull();
+    expect(adjacentFingerprint(order, 'b', 1)).toBeNull();
   });
 
   it('returns null for a fingerprint not present in the order', () => {
-    expect(adjacentPhotoFingerprint(['a'], 'missing', 1)).toBeNull();
+    expect(adjacentFingerprint(['a'], 'missing', 1)).toBeNull();
   });
 });

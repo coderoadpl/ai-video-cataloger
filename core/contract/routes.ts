@@ -1706,6 +1706,10 @@ export const libraryPreviewOutputSchema = z.object({
   height: z.number().int().positive().nullable(),
   rotation: z.number().nullable(),
   people: z.array(libraryPreviewPersonSchema),
+  analysis: z.object({
+    label: z.string().min(1),
+    createdAt: z.iso.datetime(),
+  }).nullable().default(null),
 });
 
 export const collectionMediaSchema = z.enum(['all', 'video', 'photo']);

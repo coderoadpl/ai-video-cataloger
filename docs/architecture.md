@@ -853,8 +853,8 @@ other path (the boot volume, which this darwin-only product always treats as
 mounted) is `'file-missing'` — the folder itself was deleted while its drive
 stayed connected, the "avc-bench ghosts" case. The classifier only runs when
 `online` is already `false`, so it costs nothing on the hot path. `LibraryGrid`
-(both the per-tile badge and the folder-section header) and `BrowsePreview`
-switch their existing offline/missing copy — `library.offlineFolderBadge` /
+(both the per-tile badge and the folder-section header), `LibraryVideoPane` and
+`BrowsePreview` switch their existing offline/missing copy — `library.offlineFolderBadge` /
 `library.missingBadge`, `preview.offline` / `preview.missing` — on this
 discriminant instead of hard-coding the drive-disconnected wording for every
 offline row; no new dictionary strings were added. `MapPinPopover` and
@@ -893,8 +893,11 @@ shows no indicator until it is reprocessed, which is the honest answer for
 **Player fields for an online tile.** For a tile whose folder is online,
 `libraryPreviewDetail` also returns `transcriptSegments` (`{ start, end,
 text }[]`, nullable) and the source `width`/`height`/`rotation` (nullable),
-so `BrowsePreview`'s player can render an in-player subtitles track and
-letterbox portrait video exactly like the details player does. Segments are
+so the `LibraryVideoPane` and `BrowsePreview` players can render an in-player
+subtitles track and letterbox portrait video exactly like the details player
+does. It also returns `analysis` (`{ label, createdAt }`, nullable) for the
+selected variant, so a video carries the same provenance line the photo viewer
+already showed. Segments are
 derived the same way `core/server/usecases/scan.ts` derives them for the
 per-folder scan view — reading the on-disk `transcript.txt` /
 `transcript.json` artifacts through `filterTranscript` — rather than persisted
@@ -1030,10 +1033,19 @@ relevance sort option are disabled (with a tooltip) whenever the loaded page
 actually mixes photos in (`photoTotal > 0`) or, for relevance, whenever
 `media` isn't a single medium — both because neither operation is meaningful
 across the two shapes (photos carry no `folder`, and the two FTS engines'
-scores are not comparable, per the Ordering note above). A photo tile opens a
-self-contained `LibraryPhotoViewer`, which fetches the registered
-`photosDetail` query to show description, scene, quality, tags, and humanized
-analysis provenance alongside the image. Its "Otwórz w analizie" action
+scores are not comparable, per the Ordering note above). Every tile — video or
+photo — opens the same fullscreen `LibraryMediaViewer` (W69): one shell owning
+the modal, the "Otwórz w analizie" action, the prev/next arrows, the keyboard
+bindings and the filename/date caption, with two per-medium panes plugged into
+its stage and details slots. `LibraryPhotoPane` fetches `photosDetail` to show
+description, scene, quality, tags, capture date and humanized analysis
+provenance beside the image; `LibraryVideoPane` fetches `libraryPreview` to
+show description, tags, transcript, path, duration, size, place, coordinates,
+people, capture date and analysis provenance beside the player. The arrows walk
+the whole filtered, sorted collection in grid order, so a mixed list steps
+across both media types. The old centered `BrowsePreview` dialog is no longer
+reachable from Kolekcja; it survives only as the map's video popover.
+The viewer's "Otwórz w analizie" action
 resolves against `GET /api/photos/tree`'s roots (`ownerPhotoRootFor`, a `features/library/core`
 copy of the photos feature's `ownerRootFor` — the two features are lint-enforced
 islands, so small pure helpers are duplicated rather than cross-imported,

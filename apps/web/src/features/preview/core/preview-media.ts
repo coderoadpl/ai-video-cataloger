@@ -1,6 +1,6 @@
 import type { z } from 'zod';
 
-import type { catalogLocationSchema, searchResultSchema } from '@core/contract/index.js';
+import type { catalogLocationSchema } from '@core/contract/index.js';
 
 export type PreviewOfflineReason = 'drive-disconnected' | 'file-missing';
 
@@ -20,23 +20,6 @@ export interface PreviewMedia {
   posterPath: string | null;
   gps: { lat: number; lon: number } | null;
 }
-
-export const previewFromSearchResult = (item: z.output<typeof searchResultSchema>): PreviewMedia => ({
-  kind: 'video',
-  fingerprint: item.fingerprint,
-  title: item.finalName ?? item.fileName,
-  path: `${item.folder.currentPath}/${item.fileName}`,
-  folderPath: item.folder.currentPath,
-  online: item.folder.online,
-  offlineReason: item.folder.offlineReason,
-  missing: item.missing,
-  description: item.description,
-  tags: item.tags,
-  placeName: item.place?.name ?? null,
-  capturedAt: item.capturedAt,
-  posterPath: item.gridThumbnailPath ?? item.thumbnailPath,
-  gps: item.gps,
-});
 
 export const previewFromLocation = (location: z.output<typeof catalogLocationSchema>): PreviewMedia | null => {
   if (location.media === 'photo') return null;

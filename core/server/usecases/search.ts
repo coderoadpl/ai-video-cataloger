@@ -1,7 +1,7 @@
 import { appError, ok, type AppError, type CatalogPlace, type Result } from '@core/domain/index.js';
 
 import type { CatalogFilePerson, CatalogSearchInput, CatalogSearchRow, CatalogSearchSort, FileSystemPort, GlobalCatalogStore, MediaPort } from '../ports.js';
-import { artifactPaths, classifyOfflineFolder, formatDuration, formatSize, readRichSegments, type OfflineReason } from './shared.js';
+import { artifactPaths, classifyOfflineFolder, formatDuration, formatSize, readRichSegments, variantProvenanceLabel, type OfflineReason } from './shared.js';
 import { discoverArtifactRoot, type ArtifactRoot } from './artifact-root.js';
 import { ensureGridThumbnail, generateThumbnail, storedAnalysisFramePath } from './thumbnail.js';
 import { filterTranscript } from './transcript-hallucinations.js';
@@ -269,6 +269,7 @@ export interface LibraryPreviewDetail {
   height: number | null;
   rotation: number | null;
   people: CatalogFilePerson[];
+  analysis: { label: string; createdAt: string } | null;
 }
 
 export const libraryPreviewDetail = async (
@@ -289,6 +290,8 @@ export const libraryPreviewDetail = async (
   if (!analysis.ok) return analysis;
   const people = await deps.globalCatalog.listPeopleForFile(input.fingerprint);
   if (!people.ok) return people;
+  const provenance = await selectedVariantProvenance(deps.globalCatalog, input.fingerprint);
+  if (!provenance.ok) return provenance;
 
   const online = await deps.fs.exists(folder.value.currentPath);
   if (!online.ok) return online;
@@ -314,7 +317,22 @@ export const libraryPreviewDetail = async (
     height: player.height,
     rotation: player.rotation,
     people: people.value,
+    analysis: provenance.value,
   });
+};
+
+const selectedVariantProvenance = async (
+  store: GlobalCatalogStore,
+  fingerprint: string,
+): Promise<Result<{ label: string; createdAt: string } | null, AppError>> => {
+  const selectedConfigId = await store.getSelectedConfigId(fingerprint);
+  if (!selectedConfigId.ok) return selectedConfigId;
+  if (selectedConfigId.value === null) return ok(null);
+  const variants = await store.listVariants(fingerprint);
+  if (!variants.ok) return variants;
+  const selected = variants.value.find((variant) => variant.configId === selectedConfigId.value);
+  if (selected === undefined) return ok(null);
+  return ok({ label: variantProvenanceLabel(selected), createdAt: selected.createdAt });
 };
 
 interface PreviewPlayerDetail {

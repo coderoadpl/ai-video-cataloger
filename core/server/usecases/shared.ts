@@ -6,6 +6,7 @@ import {
   type AppConfig,
   type AppError,
   type ConfigKey,
+  type CatalogVariant,
   type Result,
   type VideoStatus,
 } from '@core/domain/index.js';
@@ -112,6 +113,13 @@ export const formatDuration = (seconds: number): string => {
   const paddedSecs = secs.toString().padStart(2, '0');
   if (hours > 0) return `${hours}:${minutes.toString().padStart(2, '0')}:${paddedSecs}`;
   return `${minutes}:${paddedSecs}`;
+};
+
+export const variantProvenanceLabel = (variant: CatalogVariant): string => {
+  if (variant.configId === 'legacy') return 'settings partly unknown';
+  return [variant.analyzer, variant.model]
+    .filter((value): value is string => value !== null && value.length > 0)
+    .join(' / ') || variant.configId;
 };
 
 export const artifactBaseName = (fs: FileSystemPort, videoPath: string, newName: string | null): string => {
