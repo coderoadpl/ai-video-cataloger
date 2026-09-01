@@ -31,6 +31,7 @@ const EMPTY_FILTERS: CollectionFiltersInput = {
   to: null,
   hasGps: null,
   folderId: null,
+  hideUnavailable: false,
 };
 
 const videoFolder: CatalogFolder = {

@@ -20,6 +20,15 @@ const EMPTY_FILTERS: CollectionFiltersInput = {
   to: null,
   hasGps: null,
   folderId: null,
+  hideUnavailable: false,
+};
+
+const offlineFolder: CatalogFolder = {
+  folderId: '33333333-3333-4333-8333-333333333333',
+  currentPath: '/media/unplugged',
+  displayName: 'unplugged',
+  firstSeenAt: '2026-01-01T00:00:00.000Z',
+  lastSeenAt: '2026-01-01T00:00:00.000Z',
 };
 
 const folderA: CatalogFolder = {
@@ -405,6 +414,71 @@ describe('libraryCollection', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) return;
     expect(result.value.items.map((item) => item.fingerprint)).toEqual(['p-older-stronger', 'p-newer-weaker']);
+  });
+
+  it('hides offline-folder videos, missing videos, and missing photos when hideUnavailable is set', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    await globalCatalog.upsertFolder(folderA);
+    await globalCatalog.upsertFolder(offlineFolder);
+    await globalCatalog.upsertFile(video('v-online', '2026-01-04T00:00:00.000Z'));
+    await globalCatalog.upsertFile({ ...video('v-missing', '2026-01-03T00:00:00.000Z'), missingAt: 1767225600000 });
+    await globalCatalog.upsertFile({ ...video('v-offline', '2026-01-02T00:00:00.000Z'), folderId: offlineFolder.folderId });
+    for (const fingerprint of ['v-online', 'v-missing', 'v-offline']) {
+      await globalCatalog.upsertAnalysis(videoAnalysis(fingerprint));
+    }
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertPhoto(photo('p-here', '2026-01-01T00:00:00.000Z', 'p-here.jpg'));
+    await photos.upsertPhoto({ ...photo('p-gone', '2026-01-01T00:00:00.000Z', 'p-gone.jpg'), missingAt: 1767225600000 });
+    await analyzePhoto(photos, 'p-here');
+    await analyzePhoto(photos, 'p-gone');
+
+    const shown = await libraryCollection(deps, {
+      query: null, filters: EMPTY_FILTERS, sort: 'captured_desc', media: 'all', limit: 50, cursor: null,
+    });
+    expect(shown.ok && shown.value.items.map((item) => item.fingerprint))
+      .toEqual(['v-online', 'v-missing', 'v-offline', 'p-gone', 'p-here']);
+
+    const hidden = await libraryCollection(deps, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, hideUnavailable: true },
+      sort: 'captured_desc',
+      media: 'all',
+      limit: 50,
+      cursor: null,
+    });
+
+    expect(hidden.ok).toBe(true);
+    if (!hidden.ok) return;
+    expect(hidden.value.items.map((item) => item.fingerprint)).toEqual(['v-online', 'p-here']);
+    expect(hidden.value.total).toBe(2);
+    expect(hidden.value.mediaTotals).toEqual({ all: 2, video: 1, photo: 1 });
+    expect(hidden.value.nextCursor).toBeNull();
+  });
+
+  it('keeps hideUnavailable pagination truthful: a full page of available items still advances the cursor', async () => {
+    const { deps, globalCatalog } = buildDeps();
+    await globalCatalog.upsertFolder(folderA);
+    await globalCatalog.upsertFolder(offlineFolder);
+    await globalCatalog.upsertFile({ ...video('v-offline', '2026-01-09T00:00:00.000Z'), folderId: offlineFolder.folderId });
+    for (const index of [1, 2, 3]) {
+      const fingerprint = `v${String(index)}`;
+      await globalCatalog.upsertFile(video(fingerprint, `2026-01-0${String(index)}T00:00:00.000Z`));
+      await globalCatalog.upsertAnalysis(videoAnalysis(fingerprint));
+    }
+
+    const filters = { ...EMPTY_FILTERS, hideUnavailable: true };
+    const page1 = await libraryCollection(deps, { query: null, filters, sort: 'captured_desc', media: 'all', limit: 2, cursor: null });
+    expect(page1.ok).toBe(true);
+    if (!page1.ok) return;
+    expect(page1.value.items.map((item) => item.fingerprint)).toEqual(['v3', 'v2']);
+    expect(page1.value.total).toBe(3);
+    expect(page1.value.nextCursor).not.toBeNull();
+
+    const page2 = await libraryCollection(deps, {
+      query: null, filters, sort: 'captured_desc', media: 'all', limit: 2, cursor: page1.value.nextCursor,
+    });
+    expect(page2.ok && page2.value.items.map((item) => item.fingerprint)).toEqual(['v1']);
+    expect(page2.ok && page2.value.nextCursor).toBeNull();
   });
 
   it('rejects an explicit relevance sort without a query', async () => {

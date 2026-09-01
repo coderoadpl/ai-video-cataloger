@@ -72,6 +72,12 @@ const readMedia = (): LibraryMedia => {
   return raw !== null && isLibraryMedia(raw) ? raw : 'all';
 };
 
+const HIDE_UNAVAILABLE_KEY = 'avc.library.hideUnavailable';
+const readHideUnavailable = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  return window.localStorage.getItem(HIDE_UNAVAILABLE_KEY) === 'true';
+};
+
 export const LibraryView = ({
   active,
   onOpenResult,
@@ -84,6 +90,7 @@ export const LibraryView = ({
   const [filters, dispatch] = useReducer(libraryFilterReducer, EMPTY_LIBRARY_FILTERS);
   const [groupBy, setGroupByState] = useState<LibraryGroupBy>(() => readGroupBy());
   const [media, setMediaState] = useState<LibraryMedia>(() => readMedia());
+  const [hideUnavailable, setHideUnavailableState] = useState(() => readHideUnavailable());
   const [sort, setSort] = useState<LibrarySort>('captured_desc');
   const [searchFocused, setSearchFocused] = useState(false);
   const [searchDismissed, setSearchDismissed] = useState(false);
@@ -97,6 +104,10 @@ export const LibraryView = ({
   const setMedia = (next: LibraryMedia) => {
     setMediaState(next);
     if (typeof window !== 'undefined') window.localStorage.setItem(MEDIA_KEY, next);
+  };
+  const setHideUnavailable = (next: boolean) => {
+    setHideUnavailableState(next);
+    if (typeof window !== 'undefined') window.localStorage.setItem(HIDE_UNAVAILABLE_KEY, String(next));
   };
 
   useEffect(() => {
@@ -120,7 +131,7 @@ export const LibraryView = ({
     dateTo: dictionary.library.chipDateTo,
   }), [dictionary]);
 
-  const library = useLibrary({ active, filters, sort, media });
+  const library = useLibrary({ active, filters, sort, media, hideUnavailable });
   const facetsState = useLibraryFacets({ active });
   const photoRoots = usePhotoRoots({ active });
   const backfillFolders = useMemo(
@@ -191,7 +202,7 @@ export const LibraryView = ({
   };
 
   const isEmptyCatalog = !library.isLoading && library.error === null && library.debouncedQuery.length === 0
-    && libraryFilterIsEmpty(filters) && library.total === 0;
+    && libraryFilterIsEmpty(filters) && !hideUnavailable && library.total === 0;
   const isNoMatch = !library.isLoading && library.error === null && library.total === 0 && !isEmptyCatalog;
   const videoOnlyFilterActive = filters.personIds.length > 0 || filters.place !== null || filters.hasGps !== null;
   const showVideoOnlyFilterNotice = media === 'all' && videoOnlyFilterActive;
@@ -253,7 +264,7 @@ export const LibraryView = ({
           </Typography>
           <Button
             variant="outlined"
-            onClick={() => { library.setQuery(''); dispatch({ type: 'clearAll' }); }}
+            onClick={() => { library.setQuery(''); dispatch({ type: 'clearAll' }); setHideUnavailable(false); }}
             data-testid="library-no-match-clear"
             sx={{ mt: 1 }}
           >
@@ -395,6 +406,8 @@ export const LibraryView = ({
           media={media}
           onMediaChange={setMedia}
           mediaTotals={library.mediaTotals}
+          hideUnavailable={hideUnavailable}
+          onHideUnavailableChange={setHideUnavailable}
         />
       </Box>
       <Box sx={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column' }}>{body()}</Box>

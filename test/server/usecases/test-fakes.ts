@@ -1518,6 +1518,8 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     if (filters.hasGps === true && (file.gpsLat === null || file.gpsLon === null)) return false;
     if (filters.hasGps === false && file.gpsLat !== null) return false;
     if (filters.folderId !== null && filters.folderId !== folderId) return false;
+    if (filters.excludeFolderIds.includes(folderId)) return false;
+    if (filters.excludeMissing && file.missingAt !== null) return false;
     return true;
   }
 
@@ -2520,6 +2522,7 @@ export class InMemoryPhotosStore implements PhotosStore {
     to: string | null;
     folderId: string | null;
     tagTermSets: readonly (readonly string[])[];
+    excludeMissing: boolean;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
     offset: number;
@@ -2538,6 +2541,7 @@ export class InMemoryPhotosStore implements PhotosStore {
         if (input.tagTermSets.length > 0 && !input.tagTermSets.every((termSet) => termSet.some((term) => tags.includes(term)))) {
           return null;
         }
+        if (input.excludeMissing && photo.missingAt !== null) return null;
         if (input.from !== null && (photo.capturedAt === null || photo.capturedAt < input.from)) return null;
         if (input.to !== null && (photo.capturedAt === null || photo.capturedAt > input.to)) return null;
         if (input.folderId !== null && photo.folderId !== input.folderId

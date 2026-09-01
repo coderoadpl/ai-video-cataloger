@@ -131,6 +131,8 @@ export const search = async (
       capturedTo: input.filters.to,
       hasGps: input.filters.hasGps,
       folderId: input.filters.folderId,
+      excludeFolderIds: [],
+      excludeMissing: false,
     },
     sort,
     limit: input.limit,

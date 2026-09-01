@@ -31,6 +31,7 @@ export interface CollectionFiltersInput {
   to: string | null;
   hasGps: boolean | null;
   folderId: string | null;
+  hideUnavailable: boolean;
 }
 
 export type CollectionMedia = 'all' | 'video' | 'photo';
@@ -186,6 +187,9 @@ export const libraryCollection = async (
     if (folder.value !== null) photoFolderId = derivedFolderId(folder.value.currentPath);
   }
 
+  const offlineFolderIds = await resolveOfflineFolderIds(deps, input.filters.hideUnavailable);
+  if (!offlineFolderIds.ok) return offlineFolderIds;
+
   let videoMatch: string | null = null;
   let videoRankingTerms: string[] = [];
   let photoMatch: string | null = null;
@@ -220,6 +224,7 @@ export const libraryCollection = async (
       match: videoMatch,
       rankingTerms: videoRankingTerms,
       filters: input.filters,
+      excludeFolderIds: offlineFolderIds.value,
       tagTermSets: videoTagTermSets.value,
       sort,
       limit: input.limit,
@@ -237,6 +242,7 @@ export const libraryCollection = async (
       to: input.filters.to,
       folderId: photoFolderId,
       tagTermSets: photoTagTermSets.value,
+      excludeMissing: input.filters.hideUnavailable,
       sort,
       limit: input.limit,
       offset: cursor.value.photo,
@@ -250,6 +256,7 @@ export const libraryCollection = async (
       match: videoMatch,
       rankingTerms: videoRankingTerms,
       filters: input.filters,
+      excludeFolderIds: offlineFolderIds.value,
       tagTermSets: videoTagTermSets.value,
       sort,
       limit: 0,
@@ -268,6 +275,7 @@ export const libraryCollection = async (
         to: input.filters.to,
         folderId: photoFolderId,
         tagTermSets: photoTagTermSets.value,
+        excludeMissing: input.filters.hideUnavailable,
         sort,
         limit: 0,
         offset: 0,
@@ -325,12 +333,29 @@ const tagTermSetsFor = async (
   return ok(tags.map((tag) => [tag, ...(equivalents.get(tag) ?? [])]));
 };
 
+const resolveOfflineFolderIds = async (
+  deps: CollectionDeps,
+  hideUnavailable: boolean,
+): Promise<Result<string[], AppError>> => {
+  if (!hideUnavailable) return ok([]);
+  const folders = await deps.globalCatalog.listFolders();
+  if (!folders.ok) return folders;
+  const offline: string[] = [];
+  for (const folder of folders.value) {
+    const exists = await deps.fs.exists(folder.currentPath);
+    if (!exists.ok) return exists;
+    if (!exists.value) offline.push(folder.folderId);
+  }
+  return ok(offline);
+};
+
 const fetchVideoPage = async (
   deps: CollectionDeps,
   input: {
     match: string | null;
     rankingTerms: string[];
     filters: CollectionFiltersInput;
+    excludeFolderIds: string[];
     tagTermSets: string[][];
     sort: CatalogSearchSort;
     limit: number;
@@ -348,6 +373,8 @@ const fetchVideoPage = async (
       capturedTo: input.filters.to,
       hasGps: input.filters.hasGps,
       folderId: input.filters.folderId,
+      excludeFolderIds: input.excludeFolderIds,
+      excludeMissing: input.filters.hideUnavailable,
     },
     sort: input.sort,
     limit: input.limit,

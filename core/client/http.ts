@@ -691,6 +691,7 @@ export const createApiClient = (options: ApiClientOptions) => ({
         ['folderId', parsed.value.folderId ?? null],
         ['sort', parsed.value.sort ?? null],
         ['media', parsed.value.media],
+        ['hideUnavailable', String(parsed.value.hideUnavailable)],
         ['limit', String(parsed.value.limit)],
         ['cursor', parsed.value.cursor ?? null],
       ]),

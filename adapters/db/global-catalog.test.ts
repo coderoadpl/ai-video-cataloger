@@ -44,6 +44,8 @@ const NO_SEARCH_FILTERS: CatalogSearchFilters = {
   capturedTo: null,
   hasGps: null,
   folderId: null,
+  excludeFolderIds: [],
+  excludeMissing: false,
 };
 
 const tempHome = async (): Promise<string> => {
@@ -2267,6 +2269,49 @@ describe('SqlJsGlobalCatalogStore search filters (Library spec 1)', () => {
     });
 
     expect(found.ok && found.value.rows.map((row) => row.fingerprint)).toEqual(['fp-gps-match']);
+  });
+
+  it('drops excluded folders and missing rows from both the page and the total, in match and browse mode', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const excludedFolder: CatalogFolder = {
+      folderId: '44444444-4444-4444-8444-444444444444',
+      currentPath: '/media/unplugged',
+      displayName: 'unplugged',
+      firstSeenAt: '2026-01-01T00:00:00.000Z',
+      lastSeenAt: '2026-01-02T00:00:00.000Z',
+    };
+    await store.upsertFolder(folder);
+    await store.upsertFolder(excludedFolder);
+    const rows: CatalogFile[] = [
+      { ...file, fingerprint: 'fp-here', fileName: 'here.mp4' },
+      { ...file, fingerprint: 'fp-missing', fileName: 'missing.mp4', missingAt: 1767225600000 },
+      { ...file, fingerprint: 'fp-elsewhere', fileName: 'elsewhere.mp4', folderId: excludedFolder.folderId },
+    ];
+    for (const row of rows) {
+      await store.upsertFile(row);
+      await store.upsertAnalysis({
+        fingerprint: row.fingerprint,
+        finalName: null,
+        description: 'a clip',
+        transcript: null,
+        language: null,
+        tags: [],
+      });
+    }
+    const filters: CatalogSearchFilters = {
+      ...NO_SEARCH_FILTERS,
+      excludeFolderIds: [excludedFolder.folderId],
+      excludeMissing: true,
+    };
+
+    const browse = await store.search({ match: null, rankingTerms: [], filters, sort: 'name_asc', limit: 10, offset: 0 });
+    expect(browse.ok && browse.value.rows.map((row) => row.fingerprint)).toEqual(['fp-here']);
+    expect(browse.ok && browse.value.total).toBe(1);
+
+    const matched = await store.search({ match: 'clip*', rankingTerms: ['clip'], filters, sort: 'name_asc', limit: 10, offset: 0 });
+    expect(matched.ok && matched.value.rows.map((row) => row.fingerprint)).toEqual(['fp-here']);
+    expect(matched.ok && matched.value.total).toBe(1);
   });
 
   it('matches a tag filter through an alias-expanded term set', async () => {

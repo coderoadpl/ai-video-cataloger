@@ -240,6 +240,7 @@ export const collectionScopes = {
     input.folderId ?? null,
     input.sort ?? null,
     input.media,
+    input.hideUnavailable,
     input.limit,
     input.cursor ?? null,
   ] as const,

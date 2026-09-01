@@ -974,6 +974,33 @@ computed from the same query and non-media filters with the media selection
 removed, so all three chip labels stay stable without a second renderer round
 trip.
 
+**`hideUnavailable` — pushed down to SQL so counts stay truthful (W71).**
+A catalog spanning external drives renders every item from an unplugged
+volume as a grey placeholder, so `collectionInputSchema` carries an additive
+`hideUnavailable` flag (query boolean, default `false`). It is **not** a
+renderer-side `Array.filter`: dropping rows after the page was cut would
+leave `total`, `mediaTotals` and the composite cursor describing rows the
+user cannot see. Instead the flag resolves to store-level predicates, so
+page size, `total`, `mediaTotals` and `nextCursor` all describe the same set
+the grid renders.
+
+Availability is not a single column. A video is unavailable when its
+**folder** is offline (`FileSystemPort.exists` on `folders.current_path` —
+the same probe that drives the "Dysk niepodłączony" badge) or when its own
+row is flagged missing (`files.missing_at`). Only the folder half needs the
+filesystem, and there are orders of magnitude fewer folders than files, so
+`libraryCollection` resolves the offline set once per request from
+`GlobalCatalogStore.listFolders` and passes it to the store as
+`CatalogSearchFilters.excludeFolderIds`, alongside `excludeMissing` for the
+row flag — never one `exists` call per row.
+
+A photo is unavailable when `photos.missing_at` is set
+(`PhotosStore.collectionPage` gains the same `excludeMissing`). A photo on
+an unplugged drive is deliberately **not** hidden: its grid thumbnail and
+proxy live in the local artifacts root, so it still renders and still opens
+in the viewer, and the grid never badges it as offline. The filter hides
+exactly what the grid marks unavailable and nothing else.
+
 **Analyzed-only photo source (W60), asymmetric with browse on purpose.**
 Videos already appear in Kolekcja only once analyzed (`globalCatalog.search`
 reads the catalog's `files` table, populated at analysis completion, never at

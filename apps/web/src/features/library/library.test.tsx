@@ -87,6 +87,7 @@ const stubCollection = (items: LibraryItem[]) => {
       const sort = url.searchParams.get('sort');
       const limit = Number(url.searchParams.get('limit') ?? String(CURSOR_LIMIT_DEFAULT));
       const cursor = url.searchParams.get('cursor');
+      const hideUnavailable = url.searchParams.get('hideUnavailable') === 'true';
       const offset = cursor === null ? 0 : Number(cursor);
 
       const videoOnlyFilterActive = (people !== null && people.length > 0) || place !== null || hasGps !== null;
@@ -108,6 +109,10 @@ const stubCollection = (items: LibraryItem[]) => {
         matchedPhoto = folderPath === undefined
           ? []
           : matchedPhoto.filter((item) => item.media === 'photo' && item.currentPath.startsWith(`${folderPath}/`));
+      }
+      if (hideUnavailable) {
+        matchedVideo = matchedVideo.filter((item) => item.media === 'video' && item.folder.online && !item.missing);
+        matchedPhoto = matchedPhoto.filter((item) => item.media === 'photo' && item.missingAt === null);
       }
       const mediaTotals = {
         all: matchedVideo.length + matchedPhoto.length,
@@ -348,6 +353,54 @@ describe('LibraryView', () => {
     expect((await screen.findByTestId('library-media-viewer')).getAttribute('data-fingerprint')).toBe('fp-offline');
     expect(screen.getByTestId('library-media-viewer-unavailable').textContent).toBe(en.preview.offline);
     expect(screen.queryByTestId('library-media-viewer-player')).toBeNull();
+  });
+
+  it('hides offline-folder tiles behind the hide-unavailable toggle, restores them when it is switched back, and remembers the choice', async () => {
+    stubCollection([
+      videoItem({ fingerprint: 'fp-here' }),
+      videoItem({
+        fingerprint: 'fp-unplugged',
+        folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/Volumes/Ghost', displayName: 'offline', online: false, offlineReason: 'drive-disconnected' },
+      }),
+    ]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await waitFor(() => { expect(screen.getAllByTestId('library-tile')).toHaveLength(2); });
+
+    const toggle = screen.getByTestId('library-hide-unavailable');
+    expect(toggle.textContent).toBe(en.library.hideUnavailable);
+    fireEvent.click(toggle);
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId('library-tile').map((tile) => tile.getAttribute('data-fingerprint'))).toEqual(['fp-here']);
+    });
+    expect(window.localStorage.getItem('avc.library.hideUnavailable')).toBe('true');
+
+    fireEvent.click(screen.getByTestId('library-hide-unavailable'));
+
+    await waitFor(() => { expect(screen.getAllByTestId('library-tile')).toHaveLength(2); });
+    expect(window.localStorage.getItem('avc.library.hideUnavailable')).toBe('false');
+  });
+
+  it('offers the no-match state, not the empty-catalog pitch, when hide-unavailable empties a catalog of offline items', async () => {
+    stubCollection([
+      videoItem({
+        fingerprint: 'fp-unplugged',
+        folder: { folderId: '22222222-2222-4222-8222-222222222222', currentPath: '/Volumes/Ghost', displayName: 'offline', online: false, offlineReason: 'drive-disconnected' },
+      }),
+    ]);
+
+    renderThemed(<LibraryView active onOpenResult={vi.fn()} onGoToVideos={vi.fn()} />);
+    await screen.findByTestId('library-tile');
+    fireEvent.click(screen.getByTestId('library-hide-unavailable'));
+
+    await screen.findByTestId('library-no-match');
+    expect(screen.queryByTestId('library-empty-catalog')).toBeNull();
+
+    fireEvent.click(screen.getByTestId('library-no-match-clear'));
+
+    await waitFor(() => { expect(screen.getAllByTestId('library-tile')).toHaveLength(1); });
+    expect(window.localStorage.getItem('avc.library.hideUnavailable')).toBe('false');
   });
 
   it('shows the file-missing badge for a folder deleted on a still-mounted volume, not a drive-disconnected badge', async () => {

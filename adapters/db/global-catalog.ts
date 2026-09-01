@@ -2172,6 +2172,19 @@ const buildSearchFilterClauses = (filters: CatalogSearchFilters): SearchWhereCla
     clauses.push({ sql: `fo.folder_id = $folderId`, params: { $folderId: filters.folderId } });
   }
 
+  if (filters.excludeFolderIds.length > 0) {
+    const placeholders = filters.excludeFolderIds.map((_, index) => `$excludedFolder${String(index)}`);
+    const params: Record<string, SqlValue> = {};
+    filters.excludeFolderIds.forEach((folderId, index) => {
+      params[`$excludedFolder${String(index)}`] = folderId;
+    });
+    clauses.push({ sql: `fo.folder_id NOT IN (${placeholders.join(', ')})`, params });
+  }
+
+  if (filters.excludeMissing) {
+    clauses.push({ sql: `f.missing_at IS NULL`, params: {} });
+  }
+
   return clauses;
 };
 

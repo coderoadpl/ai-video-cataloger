@@ -96,6 +96,8 @@ export interface CatalogSearchFilters {
   capturedTo: string | null;
   hasGps: boolean | null;
   folderId: string | null;
+  excludeFolderIds: string[];
+  excludeMissing: boolean;
 }
 
 export type CatalogSearchSort = 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
@@ -644,6 +646,7 @@ export interface PhotosStore {
     to: string | null;
     folderId: string | null;
     tagTermSets: readonly (readonly string[])[];
+    excludeMissing: boolean;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
     offset: number;

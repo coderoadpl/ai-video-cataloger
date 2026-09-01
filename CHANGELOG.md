@@ -24,6 +24,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Kolekcja has a "Ukryj niedostępne" / "Hide unavailable" toggle that hides
+  items on a disconnected drive or with a missing file; the choice persists
+  across restarts, and `GET /api/library/collection` gained the additive
+  `hideUnavailable` query parameter that keeps totals, chip counts and
+  pagination consistent with what the grid shows.
 - `GET /api/library/preview` now returns the selected variant's analysis
   provenance (`analysis: { label, createdAt }`, nullable).
 
