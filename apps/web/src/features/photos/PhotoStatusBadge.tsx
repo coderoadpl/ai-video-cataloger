@@ -1,6 +1,6 @@
-import { CircularProgress, type SvgIconProps } from '@mui/material';
+import { type SvgIconProps } from '@mui/material';
 
-import { StatusBadge } from '../../components/ui/StatusBadge.js';
+import { StatusBadge, StatusBadgeSpinner } from '../../components/ui/StatusBadge.js';
 import {
   CheckCircleIcon,
   ClockIcon,
@@ -64,7 +64,7 @@ const BadgeIcon = ({ status, ...props }: { status: PhotoStatus } & SvgIconProps)
     case 'pending':
       return <ClockIcon fontSize="inherit" {...props} />;
     case 'analyzing':
-      return <CircularProgress size={12} thickness={6} color="inherit" />;
+      return <StatusBadgeSpinner />;
   }
 };
 

@@ -230,7 +230,7 @@ describe('PhotosWorkspace', () => {
     expect(analyzeSelectedPhoto).toHaveBeenCalled();
   });
 
-  it('renders the photo filename, path, and pending status in the detail header', () => {
+  it('renders the photo filename and path without a pending status badge in the detail header', () => {
     const items = [item({ fingerprint: 'ph_0000000000000001' })];
     const firstItem = items[0];
     if (firstItem === undefined) throw new Error('missing item');
@@ -241,7 +241,23 @@ describe('PhotosWorkspace', () => {
 
     expect(screen.getByRole('heading', { level: 1, name: firstItem.fileName })).toBeDefined();
     expect(within(screen.getByTestId('photos-detail-header')).getByTitle(firstItem.currentPath)).toBeDefined();
-    expect(screen.getByTestId('photos-detail-badge-pending').textContent).toContain('Not analyzed');
+    expect(screen.queryByTestId('photos-detail-badge-pending')).toBeNull();
+  });
+
+  it('keeps the analyzed status badge in the photo detail header', () => {
+    const items = [item({ fingerprint: 'ph_0000000000000001', analysed: true })];
+    const firstItem = items[0];
+    if (firstItem === undefined) throw new Error('missing item');
+    renderThemed(<PhotosWorkspace
+      active
+      state={baseState({
+        items,
+        selectedFingerprint: firstItem.fingerprint,
+        detail: { ...detailFor(firstItem), analysis: analysedVariant },
+      })}
+    />);
+
+    expect(screen.getByTestId('photos-detail-badge-analysed').textContent).toContain('Analyzed');
   });
 
   it('renders photo information in an outlined metadata card with icon rows', () => {

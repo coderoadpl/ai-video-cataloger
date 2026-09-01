@@ -88,7 +88,6 @@ export const PhotoDetailPane = ({
   const { photo, sightings, analysis, analysisError } = detail;
   const statuses: PhotoStatus[] = analysis === null ? [] : ['analysed'];
   if (analysisError !== null) statuses.push('analysisFailed');
-  if (analysis === null && analysisError === null) statuses.push('pending');
   if (sightings.length > 1) statuses.push('duplicate');
 
   return (

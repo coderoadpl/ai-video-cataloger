@@ -1,7 +1,7 @@
-import { Chip, type SvgIconProps } from '@mui/material';
+import { Chip, CircularProgress, type SvgIconProps } from '@mui/material';
 import type { ReactElement } from 'react';
 
-import type { StatusToken } from '../../theme.js';
+import { CHIP_ICON_SPACING, type StatusToken } from '../../theme.js';
 
 interface StatusBadgeProps {
   icon: ReactElement<SvgIconProps>;
@@ -9,6 +9,10 @@ interface StatusBadgeProps {
   token: StatusToken;
   testId: string;
 }
+
+export const StatusBadgeSpinner = () => (
+  <CircularProgress size={12} thickness={6} color="inherit" style={CHIP_ICON_SPACING} />
+);
 
 export const StatusBadge = ({ icon, label, token, testId }: StatusBadgeProps) => (
   <Chip
