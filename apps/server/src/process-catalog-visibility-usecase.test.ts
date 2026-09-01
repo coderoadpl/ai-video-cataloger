@@ -114,7 +114,7 @@ describe('a single-file analysis lands in the same-process global catalog', () =
 
     const found = await libraryCollection(
       { globalCatalog: deps.globalCatalog, photos: new InMemoryPhotosStore(), fs: deps.fs, media: deps.media },
-      { query: null, filters: EMPTY_FILTERS, sort: undefined, media: 'video', limit: 10, cursor: null },
+      { query: null, filters: { ...EMPTY_FILTERS, hideUnavailable: false }, sort: undefined, media: 'video', limit: 10, cursor: null },
     );
 
     expect(found.ok).toBe(true);

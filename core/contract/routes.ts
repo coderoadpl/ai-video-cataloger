@@ -1751,6 +1751,7 @@ export const collectionInputSchema = z.object({
   folderId: folderIdSchema.optional(),
   sort: z.enum(SEARCH_SORTS).optional(),
   media: collectionMediaSchema.default('all'),
+  hideUnavailable: queryBoolean,
   limit: queryInteger(50, 1, 200),
   cursor: z.string().optional(),
 });

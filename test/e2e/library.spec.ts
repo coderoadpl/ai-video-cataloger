@@ -160,6 +160,71 @@ const seedFolderPhoto = async (workdir: string): Promise<{
   return { fingerprint, videoFingerprint, folderId, folderLabel };
 };
 
+const seedUnavailableVideo = async (workdir: string): Promise<{
+  availableFingerprint: string;
+  unavailableFingerprint: string;
+}> => {
+  const homeDirectory = isolatedHome(workdir);
+  const onlineFolderPath = join(workdir, 'mounted-folder');
+  const offlineFolderPath = join(workdir, 'unplugged-drive');
+  const timestamp = '2026-08-16T12:00:00.000Z';
+  const availableFingerprint = 'video-available';
+  const unavailableFingerprint = 'video-unavailable';
+  mkdirSync(onlineFolderPath, { recursive: true });
+
+  const globalCatalog = new SqlJsGlobalCatalogStore({ homeDirectory });
+  try {
+    const folders = [
+      { folderId: '80808080-8080-4080-8080-808080808080', currentPath: onlineFolderPath, displayName: 'Mounted Folder' },
+      { folderId: '81818181-8181-4181-8181-818181818181', currentPath: offlineFolderPath, displayName: 'Unplugged Drive' },
+    ];
+    for (const folder of folders) {
+      expectResult(await globalCatalog.upsertFolder({ ...folder, firstSeenAt: timestamp, lastSeenAt: timestamp }));
+    }
+    const videos = [
+      { fingerprint: availableFingerprint, folderId: folders[0]?.folderId ?? '', fileName: 'mounted.mp4', capturedAt: '2026-08-17T12:00:00.000Z' },
+      { fingerprint: unavailableFingerprint, folderId: folders[1]?.folderId ?? '', fileName: 'unplugged.mp4', capturedAt: '2026-08-16T12:00:00.000Z' },
+    ];
+    for (const video of videos) {
+      writeFileSync(join(onlineFolderPath, video.fileName), Buffer.from([0]));
+      expectResult(await globalCatalog.upsertFile({
+        fingerprint: video.fingerprint,
+        folderId: video.folderId,
+        fileName: video.fileName,
+        size: 1,
+        durationS: null,
+        width: null,
+        height: null,
+        gpsLat: null,
+        gpsLon: null,
+        processedAt: timestamp,
+        analyzer: 'harness',
+        model: 'claude-code',
+        missingAt: null,
+        capturedAt: video.capturedAt,
+        capturedAtSource: 'container',
+        gpsSource: null,
+        gpsAccuracyM: null,
+        gpsIntervalKind: null,
+        gpsResolvedAt: null,
+        place: null,
+      }));
+      expectResult(await globalCatalog.upsertAnalysis({
+        fingerprint: video.fingerprint,
+        finalName: null,
+        description: `A clip named ${video.fileName}.`,
+        transcript: null,
+        language: 'en',
+        tags: [],
+      }));
+    }
+  } finally {
+    expectResult(await globalCatalog.dispose());
+  }
+
+  return { availableFingerprint, unavailableFingerprint };
+};
+
 async function launch(workdir: string): Promise<Session> {
   const userDataDir = mkdtempSync(join(tmpdir(), 'avc-library-userdata-'));
   mkdirSync(userDataDir, { recursive: true });
@@ -297,6 +362,34 @@ test.describe('Library: same-session visibility, search, and subtitled preview',
         `[data-testid="library-tile"][data-media="photo"][data-fingerprint="${fixture.fingerprint}"]`,
       );
       await expect(photo).toBeVisible({ timeout: 20_000 });
+    } finally {
+      await session.app.close().catch(() => undefined);
+      rmSync(workdir, { recursive: true, force: true });
+    }
+  });
+
+  test('the hide-unavailable toggle removes a disconnected-drive tile and brings it back when switched off', async () => {
+    const workdir = makeEmptyWorkdir('library-hide-unavailable');
+    const fixture = await seedUnavailableVideo(workdir);
+    const session = await launch(workdir);
+    try {
+      await session.page.getByTestId('mode-library').click();
+      await session.page.getByTestId('subnav-collection').click();
+
+      const available = session.page.locator(`[data-testid="library-tile"][data-fingerprint="${fixture.availableFingerprint}"]`);
+      const unavailable = session.page.locator(`[data-testid="library-tile"][data-fingerprint="${fixture.unavailableFingerprint}"]`);
+      await expect(available).toBeVisible({ timeout: 20_000 });
+      await expect(unavailable).toBeVisible({ timeout: 20_000 });
+
+      const toggle = session.page.getByTestId('library-hide-unavailable');
+      await expect(toggle).toBeVisible({ timeout: 15_000 });
+      await toggle.click();
+
+      await expect(unavailable).toHaveCount(0, { timeout: 20_000 });
+      await expect(available).toBeVisible();
+
+      await toggle.click();
+      await expect(unavailable).toBeVisible({ timeout: 20_000 });
     } finally {
       await session.app.close().catch(() => undefined);
       rmSync(workdir, { recursive: true, force: true });

@@ -24,6 +24,8 @@ const EMPTY_SEARCH_FILTERS: CatalogSearchFilters = {
   capturedTo: null,
   hasGps: null,
   folderId: null,
+  excludeFolderIds: [],
+  excludeMissing: false,
 };
 
 const processedInput = (folderPath: string) => ({

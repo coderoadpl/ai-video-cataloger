@@ -423,6 +423,8 @@ describe('search', () => {
       capturedTo: '2026-01-31',
       hasGps: true,
       folderId: folderA.folderId,
+      excludeFolderIds: [],
+      excludeMissing: false,
     });
     expect(store.lastSearchInput?.sort).toBe('captured_desc');
     expect(store.lastSearchInput?.match).toBeNull();

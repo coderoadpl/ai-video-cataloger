@@ -841,6 +841,8 @@ export interface Dictionary {
     sortRelevance: string;
     sortRelevanceUnavailableTooltip: string;
     groupByFolderUnavailableTooltip: string;
+    hideUnavailable: string;
+    hideUnavailableTooltip: string;
     mediaAll: string;
     mediaVideo: string;
     mediaPhoto: string;
@@ -1774,6 +1776,8 @@ export const en: Dictionary = {
     sortRelevance: 'Relevance',
     sortRelevanceUnavailableTooltip: 'Relevance sort needs a single media type — choose Videos or Photos.',
     groupByFolderUnavailableTooltip: 'Folder grouping is only available for Videos.',
+    hideUnavailable: 'Hide unavailable',
+    hideUnavailableTooltip: 'Hide items whose drive is disconnected or whose file is missing.',
     mediaAll: 'All',
     mediaVideo: 'Videos',
     mediaPhoto: 'Photos',
@@ -2725,6 +2729,8 @@ export const pl: Dictionary = {
     sortRelevance: 'Trafność',
     sortRelevanceUnavailableTooltip: 'Sortowanie po trafności wymaga jednego typu mediów — wybierz Filmy lub Zdjęcia.',
     groupByFolderUnavailableTooltip: 'Grupowanie po folderze jest dostępne tylko dla filmów.',
+    hideUnavailable: 'Ukryj niedostępne',
+    hideUnavailableTooltip: 'Ukrywa pozycje z odłączonego dysku oraz te, których plik zniknął.',
     mediaAll: 'Wszystko',
     mediaVideo: 'Filmy',
     mediaPhoto: 'Zdjęcia',

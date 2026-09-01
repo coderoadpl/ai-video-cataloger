@@ -898,6 +898,7 @@ export class SqlJsPhotosStore implements PhotosStore {
     to: string | null;
     folderId: string | null;
     tagTermSets: readonly (readonly string[])[];
+    excludeMissing: boolean;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
     limit: number;
     offset: number;
@@ -906,7 +907,12 @@ export class SqlJsPhotosStore implements PhotosStore {
       const tagWhere = photoTagWhereClauses(input.tagTermSets);
       const dateWhere = photoDateWhereClauses(input.from, input.to);
       const folderWhere = photoFolderWhereClause(input.folderId);
-      const clauses = [...tagWhere.clauses, ...dateWhere.clauses, ...folderWhere.clauses];
+      const clauses = [
+        ...tagWhere.clauses,
+        ...dateWhere.clauses,
+        ...folderWhere.clauses,
+        ...(input.excludeMissing ? ['p.missing_at IS NULL'] : []),
+      ];
       const params = { ...tagWhere.params, ...dateWhere.params, ...folderWhere.params };
 
       const analysedClause = 'EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint)';

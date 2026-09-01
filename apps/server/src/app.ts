@@ -537,6 +537,7 @@ export const buildApp = (deps: AppDeps): Hono => {
         to: input.value.to ?? null,
         hasGps: input.value.hasGps ?? null,
         folderId: input.value.folderId ?? null,
+        hideUnavailable: input.value.hideUnavailable,
       },
       sort: input.value.sort,
       media: input.value.media,
