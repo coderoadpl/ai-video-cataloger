@@ -14,13 +14,16 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+## [0.6.24] - 2026-09-01
+
 ### Changed
 
 - Kolekcja now opens every tile — video or photo — in one fullscreen media
   viewer: the video player replaces the centered dialog, the right-hand panel
   carries description, tags, transcript, path, duration, size, capture date and
   analysis provenance, and the prev/next arrows walk the current filtered
-  collection across both media types.
+  collection across both media types
+  ([`63acd7a`](https://github.com/coderoadpl/ai-video-cataloger/commit/63acd7a8f6cfdc1d64cd1e37fef301504724a786)).
 
 ### Added
 
@@ -28,15 +31,23 @@ release history jumps from `0.5.10` to `0.5.12`.
   items on a disconnected drive or with a missing file; the choice persists
   across restarts, and `GET /api/library/collection` gained the additive
   `hideUnavailable` query parameter that keeps totals, chip counts and
-  pagination consistent with what the grid shows.
+  pagination consistent with what the grid shows
+  ([`f506625`](https://github.com/coderoadpl/ai-video-cataloger/commit/f5066256900ad222d699fa75d540cf71bc388c61)).
 - `GET /api/library/preview` now returns the selected variant's analysis
-  provenance (`analysis: { label, createdAt }`, nullable).
+  provenance (`analysis: { label, createdAt }`, nullable)
+  ([`63acd7a`](https://github.com/coderoadpl/ai-video-cataloger/commit/63acd7a8f6cfdc1d64cd1e37fef301504724a786)).
 
 ### Fixed
 
-- Unanalyzed photos and videos no longer show a redundant status badge in Analysis detail headers, while analyzed badges remain unchanged.
-- Analyzing status badges now inset their spinner by the shared chip-icon spacing.
-- The photo analysis variant selector was verified to have no automatic-open or focus-stealing path; the W70 investigation is recorded in `W70_VARIANT_FINDING.txt`.
+- Unanalyzed photos and videos no longer show a redundant status badge in
+  Analysis detail headers, while analyzed badges remain unchanged
+  ([`fd34294`](https://github.com/coderoadpl/ai-video-cataloger/commit/fd34294682d1b4fdc6ecdbd783e655be9a6a04c9)).
+- Analyzing status badges now inset their spinner by the shared chip-icon
+  spacing
+  ([`fd34294`](https://github.com/coderoadpl/ai-video-cataloger/commit/fd34294682d1b4fdc6ecdbd783e655be9a6a04c9)).
+- The photo analysis variant selector was verified to have no automatic-open or
+  focus-stealing path
+  ([`fd34294`](https://github.com/coderoadpl/ai-video-cataloger/commit/fd34294682d1b4fdc6ecdbd783e655be9a6a04c9)).
 
 ## [0.6.23] - 2026-08-16
 
