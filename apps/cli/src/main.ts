@@ -1938,6 +1938,8 @@ const faceArtifactsStatusHuman = (
   const lines = [`Face models: ${data.ready ? 'ready' : 'not installed'}`];
   for (const artifact of data.artifacts) {
     lines.push(`${artifact.downloaded ? '*' : ' '} ${artifact.artifactId} (${artifact.license})`);
+    if (artifact.reason !== null) lines.push(`  ${artifact.reason}`);
+    if (artifact.remedy !== null) lines.push(`  ${artifact.remedy}`);
   }
   return lines.join('\n');
 };
@@ -1956,7 +1958,7 @@ const facesStatusHuman = (
 ): string =>
   `Faces: ${data.enabled ? 'enabled' : 'disabled'}, models ${data.artifactsReady ? 'ready' : 'missing'}\n`
   + `People: ${data.people}\nObservations: ${data.observations} (${data.assignedObservations} assigned, ${data.unassignedObservations} unassigned)\n`
-  + `Files indexed: ${data.filesIndexed} (${data.videosIndexed} videos, ${data.photosIndexed} photos)`
+  + `Files indexed: ${data.filesIndexed} (${data.videosIndexed} videos, ${data.photosWithFaces} photos with faces, ${data.photosProcessed} photos processed)`
   + (data.staleVersionFiles > 0 ? `\nStale-version video files (need re-index): ${data.staleVersionFiles}` : '')
   + (data.stalePhotoFiles > 0 ? `\nStale-version photo files (need re-index): ${data.stalePhotoFiles}` : '');
 
@@ -1968,8 +1970,10 @@ const facesIndexHuman = (data: unknown): string => {
     return `Nothing to index: ${output.foldersMatched} catalog folders, ${output.filesInScope} analyzed videos and `
       + `${output.photo.inScope} proxied photos already indexed`;
   }
+  const rejectedLowQuality = output.rejectedLowQuality + output.photo.rejectedLowQuality;
   return `Indexed ${output.filesIndexed} videos and ${output.photo.indexed} photos, added `
     + `${output.observationsAdded + output.photo.observationsAdded} observations, created ${output.peopleCreated} people`
+    + (rejectedLowQuality > 0 ? `, rejected ${rejectedLowQuality} low-quality detection(s)` : '')
     + (output.filesFailed + output.photo.failed > 0 ? `, ${output.filesFailed + output.photo.failed} file(s) failed` : '');
 };
 

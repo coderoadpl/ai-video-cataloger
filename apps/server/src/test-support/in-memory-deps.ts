@@ -95,6 +95,7 @@ import type {
   FaceIndexCandidate,
   FaceIndexScope,
   FaceStatusCounts,
+  FileArtifactStatus,
   FileStat,
   FileSystemPort,
   FolderWatchHandle,
@@ -1321,7 +1322,7 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       unassignedObservations: observations.filter((observation) => observation.personId === null).length,
       filesIndexed: new Set(observations.map((observation) => observation.fingerprint)).size,
       videosIndexed: new Set(observations.filter((observation) => observation.media === 'video').map((observation) => observation.fingerprint)).size,
-      photosIndexed: new Set(observations.filter((observation) => observation.media === 'photo').map((observation) => observation.fingerprint)).size,
+      photosWithFaces: new Set(observations.filter((observation) => observation.media === 'photo').map((observation) => observation.fingerprint)).size,
       staleVersionFiles: [...this.faceIndexState.values()].filter((state) => state.engineVersion < FACE_ENGINE_VERSION).length,
     }));
   }
@@ -1721,6 +1722,8 @@ class InMemoryLocalAiRuntimePort implements LocalAiRuntimePort {
 class InMemoryModelDownloadPort implements ModelDownloadPort {
   private readonly downloaded = new Set<WhisperModelName>();
   private readonly fileArtifacts = new Set<string>();
+  private readonly fileArtifactSizes = new Map<string, number>();
+  private readonly fileArtifactHashes = new Map<string, string>();
 
   whisperModelPath(model: WhisperModelName): string {
     return path.join('.ai-video-cataloger', 'models', 'whisper', `ggml-${model}.bin`);
@@ -1758,8 +1761,53 @@ class InMemoryModelDownloadPort implements ModelDownloadPort {
     return path.join('.ai-video-cataloger', 'models', ...artifact.id.split('/'), artifact.filename);
   }
 
-  isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>> {
-    return Promise.resolve(ok(this.fileArtifacts.has(artifact.id)));
+  async isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>> {
+    const status = await this.fileArtifactStatus(artifact);
+    if (!status.ok) return status;
+    return ok(status.value.valid);
+  }
+
+  fileArtifactStatus(artifact: FileArtifact): Promise<Result<FileArtifactStatus, AppError>> {
+    if (!this.fileArtifacts.has(artifact.id)) {
+      return Promise.resolve(ok({
+        downloaded: false,
+        valid: false,
+        sizeBytes: null,
+        sha256: null,
+        reason: 'File is missing.',
+        remedy: 'Run: ai-video-cataloger models faces install --force',
+      }));
+    }
+    const sizeBytes = this.fileArtifactSizes.get(artifact.id) ?? artifact.bytes;
+    if (artifact.bytes !== null && sizeBytes !== artifact.bytes) {
+      return Promise.resolve(ok({
+        downloaded: true,
+        valid: false,
+        sizeBytes,
+        sha256: null,
+        reason: `Expected ${String(artifact.bytes)} bytes but found ${String(sizeBytes)}.`,
+        remedy: 'Run: ai-video-cataloger models faces install --force',
+      }));
+    }
+    const sha256 = this.fileArtifactHashes.get(artifact.id) ?? artifact.sha256;
+    if (sha256 !== artifact.sha256) {
+      return Promise.resolve(ok({
+        downloaded: true,
+        valid: false,
+        sizeBytes,
+        sha256,
+        reason: 'SHA-256 checksum does not match the face model manifest.',
+        remedy: 'Run: ai-video-cataloger models faces install --force',
+      }));
+    }
+    return Promise.resolve(ok({
+      downloaded: true,
+      valid: true,
+      sizeBytes,
+      sha256,
+      reason: null,
+      remedy: null,
+    }));
   }
 
   downloadFileArtifact(
@@ -1771,6 +1819,8 @@ class InMemoryModelDownloadPort implements ModelDownloadPort {
       return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: false, skipped: true }));
     }
     this.fileArtifacts.add(artifact.id);
+    if (artifact.bytes !== null) this.fileArtifactSizes.set(artifact.id, artifact.bytes);
+    this.fileArtifactHashes.set(artifact.id, artifact.sha256);
     if (artifact.bytes === null) {
       return Promise.resolve(ok({ artifactId: artifact.id, path: artifactPath, downloaded: true, skipped: false }));
     }

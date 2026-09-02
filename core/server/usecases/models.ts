@@ -18,6 +18,7 @@ import {
 import { JOB_CANCELLED_ERROR_MESSAGE } from '../ports.js';
 import type {
   ConfigStore,
+  FileArtifactStatus,
   JobsPort,
   LocalAiRuntimePort,
   ModelDownloadPort,
@@ -54,6 +55,11 @@ export interface FaceArtifactListEntry {
   license: string;
   path: string;
   downloaded: boolean;
+  valid: boolean;
+  sizeBytes: number | null;
+  actualSha256: string | null;
+  reason: string | null;
+  remedy: string | null;
 }
 
 export interface FaceArtifactsStatusOutput {
@@ -153,13 +159,13 @@ export const listWhisperModels = async (deps: ModelsDeps): Promise<Result<Whispe
 export const faceArtifactsStatus = async (deps: ModelsDeps): Promise<Result<FaceArtifactsStatusOutput, AppError>> => {
   const artifacts: FaceArtifactListEntry[] = [];
   for (const artifact of Object.values(FILE_ARTIFACTS)) {
-    const downloaded = await deps.downloads.isFileArtifactDownloaded(artifact);
-    if (!downloaded.ok) return downloaded;
-    artifacts.push(faceArtifactEntry(deps, artifact, downloaded.value));
+    const status = await deps.downloads.fileArtifactStatus(artifact);
+    if (!status.ok) return status;
+    artifacts.push(faceArtifactEntry(deps, artifact, status.value));
   }
   return ok({
     artifacts,
-    ready: artifacts.every((artifact) => artifact.downloaded),
+    ready: artifacts.every((artifact) => artifact.valid),
   });
 };
 
@@ -371,7 +377,7 @@ const findTier = (tag: string): LocalAiHardwareTier | null =>
 const faceArtifactEntry = (
   deps: Pick<ModelsDeps, 'downloads'>,
   artifact: FileArtifact,
-  downloaded: boolean,
+  status: FileArtifactStatus,
 ): FaceArtifactListEntry => ({
   artifactId: artifact.id,
   filename: artifact.filename,
@@ -380,7 +386,12 @@ const faceArtifactEntry = (
   url: artifact.url,
   license: artifact.license,
   path: deps.downloads.fileArtifactPath(artifact),
-  downloaded,
+  downloaded: status.downloaded && status.valid,
+  valid: status.valid,
+  sizeBytes: status.sizeBytes,
+  actualSha256: status.sha256,
+  reason: status.reason,
+  remedy: status.remedy,
 });
 
 const recommendTier = (machine: { platform: string; arch: string; ramGb: number }): LocalAiHardwareTier | null => {

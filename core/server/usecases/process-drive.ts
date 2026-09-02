@@ -109,6 +109,7 @@ export interface DriveRunFacesSummary {
   skippedReason: DriveRunFacesSkipReason | null;
   filesIndexed: number;
   observationsAdded: number;
+  rejectedLowQuality: number;
   peopleCreated: number;
   filesFailed: number;
   failureCodes: { code: AppError['code']; count: number }[];
@@ -936,6 +937,7 @@ const runDriveFacesPass = async (
       skippedReason: null,
       filesIndexed: pass.value.filesIndexed,
       observationsAdded: pass.value.observationsAdded,
+      rejectedLowQuality: pass.value.rejectedLowQuality + pass.value.photo.rejectedLowQuality,
       peopleCreated: pass.value.peopleCreated,
       filesFailed: pass.value.filesFailed,
       failureCodes: aggregateFailureCodes(pass.value.failures),
@@ -978,6 +980,7 @@ const skipFacesPass = async (
     skippedReason: reason,
     filesIndexed: 0,
     observationsAdded: 0,
+    rejectedLowQuality: 0,
     peopleCreated: 0,
     filesFailed: 0,
     failureCodes: [],

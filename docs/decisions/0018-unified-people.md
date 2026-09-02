@@ -183,9 +183,9 @@ and counting semantics as Kolekcja's (`apps/web/src/features/library/FilterBar.t
 
 **D8 — Counters tell the truth per medium.** `facesStatusOutputSchema`
 (`core/contract/routes.ts:2028`) gains additive per-medium counts
-(`videosIndexed`, `photosIndexed`, `stalePhotoFiles`) alongside the existing
-fields, which keep their current meaning; `filesIndexed` stops being a number
-that reads as videos and is documented as the union.
+(`videosIndexed`, `photosWithFaces`, `photosProcessed`, `stalePhotoFiles`)
+alongside the existing fields, which keep their current meaning; `filesIndexed`
+now documents the union rather than a video-only count.
 
 ## Alternatives rejected
 

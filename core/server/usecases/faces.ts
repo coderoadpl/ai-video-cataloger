@@ -110,6 +110,7 @@ export interface FacesIndexOutput {
   filesScanned: number;
   filesIndexed: number;
   observationsAdded: number;
+  rejectedLowQuality: number;
   peopleCreated: number;
   filesFailed: number;
   failures: FacesIndexFailure[];
@@ -119,6 +120,7 @@ export interface FacesIndexOutput {
     scanned: number;
     indexed: number;
     observationsAdded: number;
+    rejectedLowQuality: number;
     failed: number;
   };
 }
@@ -134,7 +136,8 @@ export interface FacesStatusOutput {
   unassignedObservations: number;
   filesIndexed: number;
   videosIndexed: number;
-  photosIndexed: number;
+  photosWithFaces: number;
+  photosProcessed: number;
   staleVersionFiles: number;
   stalePhotoFiles: number;
 }
@@ -388,9 +391,17 @@ export const facesStatus = async (deps: FacesDeps): Promise<Result<FacesStatusOu
   if (!counts.ok) return counts;
   const stalePhotoFiles = await deps.photos.countStalePhotoFaceIndexFiles(FACE_ENGINE_VERSION);
   if (!stalePhotoFiles.ok) return stalePhotoFiles;
+  const photosProcessed = await deps.photos.countPhotoFaceIndexFiles();
+  if (!photosProcessed.ok) return photosProcessed;
   const artifactsReady = await faceArtifactsInstalled(deps.downloads);
   if (!artifactsReady.ok) return artifactsReady;
-  return ok({ enabled: true, artifactsReady: artifactsReady.value, ...counts.value, stalePhotoFiles: stalePhotoFiles.value });
+  return ok({
+    enabled: true,
+    artifactsReady: artifactsReady.value,
+    ...counts.value,
+    photosProcessed: photosProcessed.value,
+    stalePhotoFiles: stalePhotoFiles.value,
+  });
 };
 
 const cancelled = (progress: JobExecutionContext | undefined): Result<void, AppError> => {
@@ -398,6 +409,13 @@ const cancelled = (progress: JobExecutionContext | undefined): Result<void, AppE
     return { ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) };
   }
   return ok(undefined);
+};
+
+const flushFaceStores = async (deps: Pick<FacesIndexDeps, 'globalCatalog' | 'photos'>): Promise<Result<void, AppError>> => {
+  const catalogFlushed = await deps.globalCatalog.flush();
+  if (!catalogFlushed.ok) return catalogFlushed;
+  if (deps.photos === undefined) return ok(undefined);
+  return deps.photos.flush();
 };
 
 const report = (
@@ -461,14 +479,16 @@ export const runFacesIndexPass = async (
 
   let filesIndexed = 0;
   let observationsAdded = 0;
+  let rejectedLowQuality = 0;
   let peopleCreated = 0;
   let filesFailed = 0;
   let aborted = false;
   const failures: FacesIndexFailure[] = [];
   let streak = 0;
   let streakCode: AppError['code'] | null = null;
-  let photosIndexed = 0;
+  let photosCompleted = 0;
   let photoObservationsAdded = 0;
+  let photoRejectedLowQuality = 0;
   let photoPeopleCreated = 0;
   let photosFailed = 0;
   const seeded = await deps.globalCatalog.listUnassignedFaceObservations();
@@ -482,11 +502,19 @@ export const runFacesIndexPass = async (
       const candidate = scope.value.candidates[candidateIndex];
       if (candidate === undefined) continue;
       const cancellation = cancelled(progress);
-      if (!cancellation.ok) return cancellation;
+      if (!cancellation.ok) {
+        const flushedStores = await flushFaceStores(deps);
+        if (!flushedStores.ok) return flushedStores;
+        return cancellation;
+      }
       const outcome = await indexCandidate(deps, candidate, pool, progress, candidateIndex, scope.value.candidates.length);
       pool = outcome.pool;
       if (!outcome.result.ok) {
-        if (isCancellation(progress, outcome.result.error)) return outcome.result;
+        if (isCancellation(progress, outcome.result.error)) {
+          const flushedStores = await flushFaceStores(deps);
+          if (!flushedStores.ok) return flushedStores;
+          return outcome.result;
+        }
         const fingerprint = candidate.file.fingerprint;
         const videoPath = deps.fs.join(candidate.folder.currentPath, candidate.file.fileName);
         const failureCode = outcome.result.error.code;
@@ -508,6 +536,7 @@ export const runFacesIndexPass = async (
         continue;
       }
       observationsAdded += outcome.result.value.observationsAdded;
+      rejectedLowQuality += outcome.result.value.rejectedLowQuality;
       peopleCreated += outcome.result.value.peopleCreated;
       filesIndexed += 1;
       streak = 0;
@@ -518,7 +547,11 @@ export const runFacesIndexPass = async (
       const candidate = photoScope.value.candidates[candidateIndex];
       if (candidate === undefined) continue;
       const cancellation = cancelled(progress);
-      if (!cancellation.ok) return cancellation;
+      if (!cancellation.ok) {
+        const flushedStores = await flushFaceStores(deps);
+        if (!flushedStores.ok) return flushedStores;
+        return cancellation;
+      }
       if (deps.photos === undefined) continue;
       const outcome = await indexPhotoCandidate(
         deps,
@@ -531,7 +564,11 @@ export const runFacesIndexPass = async (
       );
       pool = outcome.pool;
       if (!outcome.result.ok) {
-        if (isCancellation(progress, outcome.result.error)) return outcome.result;
+        if (isCancellation(progress, outcome.result.error)) {
+          const flushedStores = await flushFaceStores(deps);
+          if (!flushedStores.ok) return flushedStores;
+          return outcome.result;
+        }
         photosFailed += 1;
         const failed = await report(progress, {
           step: 'photo-faces-file-failed',
@@ -547,8 +584,9 @@ export const runFacesIndexPass = async (
         if (!failed.ok) return failed;
         continue;
       }
-      photosIndexed += 1;
+      photosCompleted += 1;
       photoObservationsAdded += outcome.result.value.observationsAdded;
+      photoRejectedLowQuality += outcome.result.value.rejectedLowQuality;
       photoPeopleCreated += outcome.result.value.peopleCreated;
       peopleCreated += outcome.result.value.peopleCreated;
     }
@@ -566,8 +604,9 @@ export const runFacesIndexPass = async (
   const photo = {
     inScope: photoScope.value.inScope,
     scanned: photoScope.value.candidates.length,
-    indexed: photosIndexed,
+    indexed: photosCompleted,
     observationsAdded: photoObservationsAdded,
+    rejectedLowQuality: photoRejectedLowQuality,
     failed: photosFailed,
   };
   if (deps.photos !== undefined) {
@@ -582,7 +621,7 @@ export const runFacesIndexPass = async (
   const done = await report(progress, {
     step: 'faces_done',
     percentage: 100,
-    data: { filesIndexed, observationsAdded, peopleCreated, filesFailed, aborted, photo },
+    data: { filesIndexed, observationsAdded, rejectedLowQuality, peopleCreated, filesFailed, aborted, photo },
   });
   if (!done.ok) return done;
   return ok({
@@ -592,6 +631,7 @@ export const runFacesIndexPass = async (
     filesScanned: scope.value.candidates.length,
     filesIndexed,
     observationsAdded,
+    rejectedLowQuality,
     peopleCreated,
     filesFailed,
     failures,
@@ -623,6 +663,7 @@ export const runPhotoFacesIndexPass = async (
       scanned: 0,
       indexed: 0,
       observationsAdded: 0,
+      rejectedLowQuality: 0,
       failed: 0,
     };
     const done = await report(progress, {
@@ -639,6 +680,7 @@ export const runPhotoFacesIndexPass = async (
   if (!loaded.ok) return loaded;
   let indexed = 0;
   let observationsAdded = 0;
+  let rejectedLowQuality = 0;
   let peopleCreated = 0;
   let failed = 0;
   try {
@@ -646,7 +688,11 @@ export const runPhotoFacesIndexPass = async (
       const candidate = scope.value.candidates[candidateIndex];
       if (candidate === undefined) continue;
       const cancellation = cancelled(progress);
-      if (!cancellation.ok) return cancellation;
+      if (!cancellation.ok) {
+        const flushedStores = await flushFaceStores(deps);
+        if (!flushedStores.ok) return flushedStores;
+        return cancellation;
+      }
       const outcome = await indexPhotoCandidate(
         deps,
         deps.photos,
@@ -658,7 +704,11 @@ export const runPhotoFacesIndexPass = async (
       );
       pool = outcome.pool;
       if (!outcome.result.ok) {
-        if (isCancellation(progress, outcome.result.error)) return outcome.result;
+        if (isCancellation(progress, outcome.result.error)) {
+          const flushedStores = await flushFaceStores(deps);
+          if (!flushedStores.ok) return flushedStores;
+          return outcome.result;
+        }
         failed += 1;
         const failedReport = await report(progress, {
           step: 'photo-faces-file-failed',
@@ -676,6 +726,7 @@ export const runPhotoFacesIndexPass = async (
       }
       indexed += 1;
       observationsAdded += outcome.result.value.observationsAdded;
+      rejectedLowQuality += outcome.result.value.rejectedLowQuality;
       peopleCreated += outcome.result.value.peopleCreated;
     }
   } finally {
@@ -690,6 +741,7 @@ export const runPhotoFacesIndexPass = async (
     scanned: scope.value.candidates.length,
     indexed,
     observationsAdded,
+    rejectedLowQuality,
     failed,
   };
   const done = await report(progress, {
@@ -705,8 +757,14 @@ const isCancellation = (progress: JobExecutionContext | undefined, error: AppErr
   progress?.signal.aborted === true || error.message === JOB_CANCELLED_ERROR_MESSAGE;
 
 interface IndexCandidateOutcome {
-  result: Result<{ observationsAdded: number; peopleCreated: number }, AppError>;
+  result: Result<FacesIndexedCandidateCounts, AppError>;
   pool: FaceObservation[];
+}
+
+interface FacesIndexedCandidateCounts {
+  observationsAdded: number;
+  rejectedLowQuality: number;
+  peopleCreated: number;
 }
 
 const indexCandidate = async (
@@ -814,6 +872,11 @@ const indexPhotoCandidate = async (
   const existing = await deps.globalCatalog.listFaceObservations({ fingerprint });
   if (!existing.ok) return { result: existing, pool };
   const existingObsIds = new Set(existing.value.map((observation) => observation.obsId));
+  if (!stale && existing.value.length > 0) {
+    const completed = await photos.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION);
+    if (!completed.ok) return { result: completed, pool };
+    return { result: ok({ observationsAdded: 0, rejectedLowQuality: 0, peopleCreated: 0 }), pool };
+  }
   const detecting = await report(progress, {
     step: 'photo-faces-detecting',
     current: candidateIndex + 1,
@@ -825,6 +888,7 @@ const indexPhotoCandidate = async (
   const detections = await deps.faceEngine.detect(frame);
   if (!detections.ok) return { result: detections, pool };
   let observationsAdded = 0;
+  let rejectedLowQuality = 0;
   let peopleCreated = 0;
   for (let detectionIndex = 0; detectionIndex < detections.value.length; detectionIndex += 1) {
     const detection = detections.value[detectionIndex];
@@ -843,11 +907,12 @@ const indexPhotoCandidate = async (
     );
     if (!indexed.ok) return { result: indexed, pool };
     observationsAdded += indexed.value.observationsAdded;
+    rejectedLowQuality += indexed.value.rejectedLowQuality;
     peopleCreated += indexed.value.peopleCreated;
   }
   const completed = await photos.completePhotoFaceIndex(fingerprint, FACE_ENGINE_VERSION);
   if (!completed.ok) return { result: completed, pool };
-  return { result: ok({ observationsAdded, peopleCreated }), pool };
+  return { result: ok({ observationsAdded, rejectedLowQuality, peopleCreated }), pool };
 };
 
 type ExemplarSource =
@@ -1063,8 +1128,9 @@ const indexFramesForFile = async (
   pool: FaceObservation[],
   existingObsIds: ReadonlySet<string>,
   progress: JobExecutionContext | undefined,
-): Promise<Result<{ observationsAdded: number; peopleCreated: number }, AppError>> => {
+): Promise<Result<FacesIndexedCandidateCounts, AppError>> => {
   let observationsAdded = 0;
+  let rejectedLowQuality = 0;
   let peopleCreated = 0;
   for (let frameIndex = 0; frameIndex < input.framePaths.length; frameIndex += 1) {
     const framePath = input.framePaths[frameIndex];
@@ -1089,11 +1155,12 @@ const indexFramesForFile = async (
       const indexed = await indexDetection(deps, { fingerprint: input.fingerprint, frameTsS: timestampS }, framePath, frameIndex, detectionIndex, detection, pool, existingObsIds, 'video');
       if (!indexed.ok) return indexed;
       observationsAdded += indexed.value.observationsAdded;
+      rejectedLowQuality += indexed.value.rejectedLowQuality;
       peopleCreated += indexed.value.peopleCreated;
       detectionIndex += 1;
     }
   }
-  return ok({ observationsAdded, peopleCreated });
+  return ok({ observationsAdded, rejectedLowQuality, peopleCreated });
 };
 
 const indexDetection = async (
@@ -1107,11 +1174,11 @@ const indexDetection = async (
   existingObsIds: ReadonlySet<string>,
   media: FaceObservation['media'],
   sourceDimensions?: { sourceWidth: number; sourceHeight: number } | undefined,
-): Promise<Result<{ observationsAdded: number; peopleCreated: number }, AppError>> => {
+): Promise<Result<FacesIndexedCandidateCounts, AppError>> => {
   const obsId = `${input.fingerprint}:face:${frameIndex + 1}:${detectionIndex + 1}`;
-  if (existingObsIds.has(obsId)) return ok({ observationsAdded: 0, peopleCreated: 0 });
+  if (existingObsIds.has(obsId)) return ok({ observationsAdded: 0, rejectedLowQuality: 0, peopleCreated: 0 });
   const boxPx = Math.min(detection.bbox.width, detection.bbox.height);
-  if (!passesFaceQuality({ score: detection.score, boxPx })) return ok({ observationsAdded: 0, peopleCreated: 0 });
+  if (!passesFaceQuality({ score: detection.score, boxPx })) return ok({ observationsAdded: 0, rejectedLowQuality: 1, peopleCreated: 0 });
   const aligned = await deps.faceEngine.align(frame, detection);
   if (!aligned.ok) return aligned;
   const cropPath = await writeObservationCrop(deps, obsId, aligned.value);
@@ -1141,11 +1208,11 @@ const indexDetection = async (
   if (assignedPersonId !== null) {
     const updated = await updatePersonCentroid(deps.globalCatalog, assignedPersonId, embedding);
     if (!updated.ok) return updated;
-    return ok({ observationsAdded: 1, peopleCreated: 0 });
+    return ok({ observationsAdded: 1, rejectedLowQuality: 0, peopleCreated: 0 });
   }
   const clustered = await seedNewPersonIfReady(deps, pool);
   if (!clustered.ok) return clustered;
-  return ok({ observationsAdded: 1, peopleCreated: clustered.value });
+  return ok({ observationsAdded: 1, rejectedLowQuality: 0, peopleCreated: clustered.value });
 };
 
 const seedNewPersonIfReady = async (

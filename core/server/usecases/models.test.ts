@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   deleteWhisperModel,
   downloadWhisperModel,
+  faceArtifactsStatus,
   installWhisperRuntime,
   listWhisperModels,
   localAiRequirements,
@@ -28,6 +29,28 @@ describe('model use-cases', () => {
     expect(result.value.models).toEqual(
       expect.arrayContaining([{ name: 'small', size: '466MB', downloaded: true, active: true }]),
     );
+  });
+
+  it('marks truncated face artifacts unready with a force reinstall remedy', async () => {
+    const downloads = new InMemoryDownloads();
+    downloads.downloadedArtifacts.add('face-detector/yunet-2023mar');
+    downloads.fileArtifactSizes.set('face-detector/yunet-2023mar', 1);
+    const result = await faceArtifactsStatus({
+      config: new InMemoryConfig(),
+      downloads,
+      jobs: new InMemoryJobs(),
+      localAi: new InMemoryLocalAi(),
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.ready).toBe(false);
+    expect(result.value.artifacts[0]).toMatchObject({
+      artifactId: 'face-detector/yunet-2023mar',
+      downloaded: false,
+      reason: 'Expected 232589 bytes but found 1.',
+      remedy: 'Run: ai-video-cataloger models faces install --force',
+    });
   });
 
   it('uses jobs for long-running downloads and local model pulls', async () => {

@@ -44,13 +44,19 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Face identity rebuild (`faces recluster`) now uses deterministic agglomerative average-linkage clustering over stored embeddings instead of order-dependent greedy centroid assignment; the cut threshold is biased towards splitting a person rather than merging two (ADR-0018).
 - `scripts/faces-benchmark.ts` sweeps recluster thresholds against supplied reference partitions and labelled pairs, reporting pairwise precision/recall/F1, purity, completeness, zero-different-pair thresholds and a conservative selected threshold.
-- `GET /api/faces/status` reports `videosIndexed`, `photosIndexed` and
-  `stalePhotoFiles` alongside the existing counters.
+- `GET /api/faces/status` reports `videosIndexed`, `photosWithFaces`,
+  `photosProcessed` and `stalePhotoFiles` alongside the existing counters.
 - The AI review gate has a 90-turn budget and reads large diffs in grouped
   `git diff` calls, always returning a verdict.
 
 ### Fixed
 
+- E2E face model fixtures now stay inside isolated test homes, and Vitest/e2e guards fail fast before tests can write through the host face-model cache.
+- Long face-indexing runs auto-flush SQL.js catalogs by elapsed time plus mutation count, force-flush on completion or cancellation, and avoid an extra exported-buffer copy per persist.
+- Face model status now rejects truncated or checksum-mismatched ONNX artifacts and names the forced reinstall command.
+- Face-index summaries now report low-quality detections rejected by the face quality floor.
+- Face status now distinguishes `photosWithFaces` from `photosProcessed`.
+- Photo face-index resume now reconciles existing observations with missing completion rows without re-detecting or duplicating observations.
 - Read-only folder artifacts remain reachable after a registered source folder
   is renamed or moved.
 - Backup database snapshots now stop waiting on a foreign catalog lock after a bounded deadline and honor job cancellation while waiting.

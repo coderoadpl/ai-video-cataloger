@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { homedir } from 'node:os';
+import { homedir, userInfo } from 'node:os';
 import { join } from 'node:path';
 import { z } from 'zod';
 
@@ -35,6 +35,12 @@ function verifyClaudeAuth(): void {
       'claude CLI is installed but a test prompt failed. Run "claude" and log in, then retry.\n' +
         `exit code: ${String(ping.status)}\noutput: ${output.slice(-500)}`,
     );
+  }
+}
+
+function verifyHomeIsolation(): void {
+  if ((process.env.HOME ?? '') === userInfo().homedir) {
+    fail('Playwright e2e requires HOME to point at an isolated temp directory.');
   }
 }
 
@@ -79,6 +85,7 @@ async function verifyLocalAnalyzer(model: string): Promise<void> {
 }
 
 export default async function preflight(): Promise<void> {
+  verifyHomeIsolation();
   const argv = process.argv.join(' ');
   if (/--project[= ]matrix(\s|$)/.test(argv)) return;
   const samples = selectedSamples();

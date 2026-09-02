@@ -25,6 +25,11 @@ describe('driveFacesSummaryLine', () => {
     expect(driveFacesSummaryLine(ranFaces)).toBe('faces: indexed 3 file(s), 12 observation(s), 2 new person(s)');
   });
 
+  it('reports low-quality rejection counts when present', () => {
+    expect(driveFacesSummaryLine({ ...ranFaces, rejectedLowQuality: 4 }))
+      .toBe('faces: indexed 3 file(s), 12 observation(s), 2 new person(s), 4 low-quality detection(s) rejected');
+  });
+
   it('appends the failure breakdown when files failed', () => {
     expect(driveFacesSummaryLine({
       ...ranFaces,

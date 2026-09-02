@@ -2,7 +2,7 @@ import OpenAI from 'openai';
 import type { TranscriptionCreateParamsNonStreaming } from 'openai/resources/audio/transcriptions.js';
 import { execFile } from 'node:child_process';
 import { accessSync, createReadStream, createWriteStream, type ReadStream, type WriteStream } from 'node:fs';
-import { access, mkdir, mkdtemp, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { access, mkdir, mkdtemp, readFile, rename, rm, stat, writeFile } from 'node:fs/promises';
 import { createHash } from 'node:crypto';
 import { homedir } from 'node:os';
 import path from 'node:path';
@@ -24,6 +24,7 @@ import {
   type FilteredTranscript,
   type DependencyStatus,
   type CredentialsStore,
+  type FileArtifactStatus,
   type FileArtifactDownloadProgress,
   type ModelDownloadPort,
   type TranscriptionOutput,
@@ -403,8 +404,54 @@ export class HuggingFaceWhisperModelDownloader implements ModelDownloadPort {
   }
 
   async isFileArtifactDownloaded(artifact: FileArtifact): Promise<Result<boolean, AppError>> {
+    const status = await this.fileArtifactStatus(artifact);
+    if (!status.ok) return status;
+    return ok(status.value.valid);
+  }
+
+  async fileArtifactStatus(artifact: FileArtifact): Promise<Result<FileArtifactStatus, AppError>> {
+    const artifactPath = this.fileArtifactPath(artifact);
     try {
-      return ok(await pathExists(this.fileArtifactPath(artifact)));
+      if (!await pathExists(artifactPath)) {
+        return ok({
+          downloaded: false,
+          valid: false,
+          sizeBytes: null,
+          sha256: null,
+          reason: 'File is missing.',
+          remedy: 'Run: ai-video-cataloger models faces install --force',
+        });
+      }
+      const stats = await stat(artifactPath);
+      if (artifact.bytes !== null && stats.size !== artifact.bytes) {
+        return ok({
+          downloaded: true,
+          valid: false,
+          sizeBytes: stats.size,
+          sha256: null,
+          reason: `Expected ${String(artifact.bytes)} bytes but found ${String(stats.size)}.`,
+          remedy: 'Run: ai-video-cataloger models faces install --force',
+        });
+      }
+      const actualSha256 = createHash('sha256').update(await readFile(artifactPath)).digest('hex');
+      if (actualSha256 !== artifact.sha256) {
+        return ok({
+          downloaded: true,
+          valid: false,
+          sizeBytes: stats.size,
+          sha256: actualSha256,
+          reason: 'SHA-256 checksum does not match the face model manifest.',
+          remedy: 'Run: ai-video-cataloger models faces install --force',
+        });
+      }
+      return ok({
+        downloaded: true,
+        valid: true,
+        sizeBytes: stats.size,
+        sha256: actualSha256,
+        reason: null,
+        remedy: null,
+      });
     } catch (cause) {
       return downloadFailure(cause, 'Failed to check artifact status');
     }

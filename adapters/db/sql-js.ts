@@ -384,7 +384,7 @@ const persistDatabase = (databasePath: string, client: Database): void => {
   const tempPath = `${databasePath}.tmp`;
   const descriptor = openSync(tempPath, 'w');
   try {
-    writeFileSync(descriptor, Buffer.from(client.export()));
+    writeFileSync(descriptor, client.export());
     fsyncSync(descriptor);
   } finally {
     closeSync(descriptor);
