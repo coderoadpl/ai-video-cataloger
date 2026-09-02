@@ -147,9 +147,11 @@ export const runPhotoImportLibra = async (
   if (!started.ok) return started;
 
   const md5ToFingerprint = new Map<string, string>();
+  const pathToMd5 = new Map<string, string>();
   for (const entry of manifestParsed.values) {
     const cancellation = cancelled(progress);
     if (!cancellation.ok) return cancellation;
+    pathToMd5.set(normalizeLibraPath(entry.path), entry.md5);
     const fingerprint = await resolveFingerprintByLibraPath(deps, roots, entry.path);
     if (fingerprint === null) {
       summary.manifest.unmatched += 1;
@@ -165,7 +167,7 @@ export const runPhotoImportLibra = async (
   const facesImported = await importFaces(deps, input, md5ToFingerprint, summary, progress);
   if (!facesImported.ok) return facesImported;
 
-  const geoImported = await importGeo(deps, input, roots, summary, progress);
+  const geoImported = await importGeo(deps, input, roots, pathToMd5, md5ToFingerprint, summary, progress);
   if (!geoImported.ok) return geoImported;
 
   summary.finishedAt = new Date().toISOString();
@@ -305,6 +307,8 @@ const importGeo = async (
   deps: PhotoImportLibraPassDeps,
   input: PhotoImportLibraInput,
   roots: readonly string[],
+  pathToMd5: ReadonlyMap<string, string>,
+  md5ToFingerprint: ReadonlyMap<string, string>,
   summary: PhotoImportLibraSummary,
   progress: JobExecutionContext | undefined,
 ): Promise<Result<void, AppError>> => {
@@ -328,7 +332,9 @@ const importGeo = async (
       continue;
     }
 
-    const fingerprint = await resolveFingerprintByLibraPath(deps, roots, entry.path);
+    const md5 = pathToMd5.get(normalizeLibraPath(entry.path));
+    const manifestFingerprint = md5 === undefined ? undefined : md5ToFingerprint.get(md5);
+    const fingerprint = manifestFingerprint ?? await resolveFingerprintByLibraPath(deps, roots, entry.path);
     if (fingerprint === null) {
       summary.geo.unmatched += 1;
       continue;

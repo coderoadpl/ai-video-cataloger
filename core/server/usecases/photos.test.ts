@@ -237,6 +237,40 @@ describe('runPhotoScan', () => {
     expect(status.ok && status.value.counts).toMatchObject({ photos: 2, paths: 2 });
   });
 
+  it('continues after a content hash read error and reports the failed file', async () => {
+    const { deps, fs, photos } = buildDeps();
+    fs.addFile('/work/photos/corrupt.jpg', { content: 'corrupt' });
+    fs.addFile('/work/photos/good.jpg', { content: 'good' });
+    const fullContentHash = fs.fullContentHash.bind(fs);
+    fs.fullContentHash = (filePath) => filePath === '/work/photos/corrupt.jpg'
+      ? Promise.resolve({ ok: false, error: appError('read_error', 'Failed to hash corrupt entry') })
+      : fullContentHash(filePath);
+    const events: JobProgress[] = [];
+
+    const result = await runPhotoScan(deps, { root: '/work/photos' }, recordingProgress(events));
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({
+      filesTotal: 2,
+      photosNew: 1,
+      pathsSeen: 1,
+      readFailed: 1,
+    });
+    const run = photos.runs.get(result.value.runId);
+    expect(run).toMatchObject({ filesDone: 1, filesFailed: 1 });
+    const status = await photosStatus(deps, {});
+    expect(status.ok && status.value.counts).toMatchObject({ photos: 1, paths: 1 });
+    expect(events).toContainEqual(expect.objectContaining({
+      step: 'photo-file-skipped',
+      data: expect.objectContaining({ path: '/work/photos/corrupt.jpg', reason: 'read_failed' }),
+    }));
+    expect(events).toContainEqual(expect.objectContaining({
+      step: 'photo-run-summary',
+      data: expect.objectContaining({ readFailed: 1 }),
+    }));
+  });
+
   it('skips the AppleDouble prefix, dotfiles, wrong extensions, and the catalog directory', async () => {
     const { deps, fs } = buildDeps();
     fs.addFile('/work/photos/a.jpg', { content: 'a' });

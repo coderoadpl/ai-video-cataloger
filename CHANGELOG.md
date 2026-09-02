@@ -14,6 +14,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ## [Unreleased]
 
+### Fixed
+
+- Photo scans now count unreadable file contents as failed candidates and continue indexing the remaining files.
+- PHOTO LIBRA geo imports now join through manifest md5 values when artifact paths no longer match scanned paths.
+
 ## [0.6.24] - 2026-09-01
 
 ### Changed

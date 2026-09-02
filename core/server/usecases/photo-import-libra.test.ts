@@ -162,6 +162,34 @@ describe('runPhotoImportLibra', () => {
     expect(stored.ok && stored.value?.gpsSource).toBe('timeline');
   });
 
+  it('joins geo through the manifest md5 when its source path is no longer scanned', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    fs.addFile('/manifest.ndjson', {
+      content: [
+        JSON.stringify({ path: 'photos/old/a.jpg', size: 10, mtime: 0, md5 }),
+        JSON.stringify({ path: 'photos/a.jpg', size: 10, mtime: 0, md5 }),
+      ].join('\n'),
+    });
+    fs.addFile('/artifacts/geo.ndjson', {
+      content: `${JSON.stringify({ path: 'photos/old/a.jpg', lat: 50, lon: 19, placeId: null, semanticType: 'Unknown', source: 'visit', confidence: 'high' })}\n`,
+    });
+    const photos = new InMemoryPhotosStore();
+    await setupScannedPhoto(photos);
+    const globalCatalog = new InMemoryGlobalCatalogStore();
+
+    const result = await runPhotoImportLibra(
+      { fs, photos, globalCatalog },
+      { artifactsDir: '/artifacts', manifestPath: '/manifest.ndjson', dryRun: false },
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.manifest).toMatchObject({ entries: 2, matched: 1, unmatched: 1 });
+    expect(result.value.geo).toMatchObject({ written: 1, unmatched: 0 });
+    const stored = await photos.getPhoto(fingerprint);
+    expect(stored.ok && stored.value).toMatchObject({ gpsLat: 50, gpsLon: 19, gpsSource: 'timeline' });
+  });
+
   it('dry-run reports matches without writing anything', async () => {
     const fs = new InMemoryFileSystem('/work');
     buildArtifacts(fs);
