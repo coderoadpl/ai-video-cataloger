@@ -46,6 +46,11 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Backup database snapshots now stop waiting on a foreign catalog lock after a bounded deadline and honor job cancellation while waiting.
+- Backup archives now fail with `backup_integrity_failed` if a file changes size while it is being streamed into the tar archive.
+- Backup retention pruning now lists and deletes only the completed run's archive tier.
+- Google OAuth backup now verifies a saved Drive folder id and recreates the app backup folder when the saved folder is missing or trashed.
+- Google Drive resumable uploads now retry `rateLimitExceeded` and `userRateLimitExceeded` 403 responses consistently with Drive error mapping.
 - Filtering Kolekcja by a person no longer hides every photo, so the person
   counts in the Osoby facet and the results now agree.
 - `faces exemplars` repairs a photo observation's crop from the photo proxy

@@ -3,6 +3,7 @@ import { open, readFile, rename, rm, stat, type FileHandle } from 'node:fs/promi
 import { z } from 'zod';
 
 import { appError, ok, type AppError, type Result } from '@core/domain/index.js';
+import { JOB_CANCELLED_ERROR_MESSAGE } from '@core/server/index.js';
 
 const RESUMABLE_THRESHOLD = 5 * 1024 * 1024;
 const UPLOAD_CHUNK_SIZE = 8 * 1024 * 1024;
@@ -199,7 +200,7 @@ const resumableUpload = async (
             signal: input.signal,
           });
           if (response.status === 308 || response.ok) break;
-          if (!retryableStatus(response.status) || attempt === MAX_UPLOAD_ATTEMPTS - 1) {
+          if (!await retryableResponse(response) || attempt === MAX_UPLOAD_ATTEMPTS - 1) {
             return googleResponseFailure(response, [input.accessToken]);
           }
         } catch (cause) {
@@ -316,9 +317,19 @@ const acknowledgedOffset = (range: string | null, fallback: number): number => {
   return Number(match[1]) + 1;
 };
 
-const retryableStatus = (status: number): boolean => status === 429 || status >= 500;
+const retryableResponse = async (response: Response): Promise<boolean> => {
+  if (response.status === 429 || response.status >= 500) return true;
+  if (response.status !== 403) return false;
+  let body = '';
+  try {
+    body = await response.clone().text();
+  } catch {
+    return false;
+  }
+  return mapGoogleDriveError(response.status, body, response.headers.get('retry-after')).code === 'rate_limited';
+};
 const defaultSleep = (milliseconds: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, milliseconds));
-const aborted = <T>(): Result<T, AppError> => ({ ok: false, error: appError('processing_error', 'Job cancelled') });
+const aborted = <T>(): Result<T, AppError> => ({ ok: false, error: appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE) });
 const transportFailure = <T>(cause: unknown): Result<T, AppError> => ({
   ok: false,
   error: appError('backup_destination_error', cause instanceof Error ? cause.message : 'Google Drive request failed'),
