@@ -70,6 +70,7 @@ import {
 } from './photos-human.js';
 import { waitForJob } from './job-wait.js';
 import { createMaskedPrompter, isInteractiveInput, promptMaskedSecret, promptStreams } from './masked-prompt.js';
+import { RECOVERY_KEY_ENV, resolveRecoveryKey } from './recovery-key.js';
 import { runProgram } from './run-program.js';
 import {
   executeSetup,
@@ -175,7 +176,7 @@ interface BackupStatusOptions extends JsonOption {
 }
 
 interface BackupRestoreOptions extends JsonOption {
-  recoveryKey?: string | undefined;
+  recoveryKey?: boolean | undefined;
   yes?: boolean | undefined;
 }
 
@@ -657,7 +658,7 @@ backup
   .command('restore')
   .description('Restore a remote backup')
   .argument('<remoteId>', 'remote backup id from backup list')
-  .option('--recovery-key <key>', 'recovery key for this restore operation')
+  .option('--recovery-key', `read the recovery key from ${RECOVERY_KEY_ENV} or a terminal prompt`, false)
   .option('--yes', 'confirm overwrite and run restore', false)
   .option('--json', 'machine-readable NDJSON output', false)
   .action(async (remoteId: string, options: BackupRestoreOptions) => {
@@ -682,9 +683,19 @@ backup
       });
       return;
     }
+    const recoveryKey = await resolveRecoveryKey({
+      requested: options.recoveryKey === true,
+      env: process.env[RECOVERY_KEY_ENV],
+      interactive: isInteractiveInput(promptStreams().input),
+      prompt: () => promptMaskedSecret(promptStreams(), 'Backup recovery key: '),
+    });
+    if (!recoveryKey.ok) {
+      emitError(json, recoveryKey.error);
+      return;
+    }
     const result = await api.backupRestore({
       remoteId,
-      ...(options.recoveryKey === undefined ? {} : { recoveryKey: options.recoveryKey }),
+      ...(recoveryKey.value === undefined ? {} : { recoveryKey: recoveryKey.value }),
     });
     if (!result.ok) {
       emitError(json, result.error);

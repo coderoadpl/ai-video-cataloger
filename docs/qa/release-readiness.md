@@ -38,6 +38,13 @@ skipped legs are named in the release notes to the owner.
 
 ## 3. The packaged app
 
+The Google-account backup destination is a build-time secret: export
+`AVC_GOOGLE_OAUTH_CLIENT_ID` and `AVC_GOOGLE_OAUTH_CLIENT_SECRET` **before**
+`pnpm run electron:package`. A bundle built without them still runs, but
+`Settings > Backup > Google account` fails immediately with
+`backup_destination_error` instead of opening a browser, and only the
+service-account path works.
+
 | Step | Command | Pass condition |
 |---|---|---|
 | Build | `pnpm run electron:package` | the bundle builds |

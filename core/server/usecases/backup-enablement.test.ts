@@ -5,6 +5,7 @@ import {
   BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT,
   ok,
   type AppError,
+  type RemoteBackup,
   type Result,
 } from '@core/domain/index.js';
 
@@ -17,6 +18,7 @@ import {
   disableBackup,
   enableBackup,
   exportBackupRecoveryKey,
+  importBackupRecoveryKey,
   runBackupNow,
   type BackupEnablementDeps,
 } from './backup-enablement.js';
@@ -30,6 +32,7 @@ const report: BackupConnectionReport = {
 
 class RecordingDestination implements BackupDestinationPort {
   readonly connectInputs: BackupConnectInput[] = [];
+  archives: RemoteBackup[] = [];
 
   describe(): Result<{ provider: 'service_account'; folderName: string }, AppError> {
     return ok({ provider: 'service_account', folderName: report.folderName });
@@ -44,8 +47,8 @@ class RecordingDestination implements BackupDestinationPort {
   ensureFolder(): Promise<Result<{ folderId: string; name: string }, AppError>> {
     return Promise.resolve(ok({ folderId: 'folder', name: report.folderName }));
   }
-  list(): Promise<Result<[], AppError>> {
-    return Promise.resolve(ok([]));
+  list(): Promise<Result<RemoteBackup[], AppError>> {
+    return Promise.resolve(ok(this.archives));
   }
   upload(): Promise<Result<never, AppError>> {
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'unused' } });
@@ -86,6 +89,19 @@ interface Harness {
 
 const emptySecrets = (): MemorySecrets => new MemorySecrets();
 
+const PASTED_RECOVERY_KEY = 'PASTED-RECOVERY-KEY';
+
+const remoteArchive = (remoteId: string, keyFingerprint: string | null): RemoteBackup => ({
+  remoteId,
+  name: `${remoteId}.avcbak`,
+  tier: 'critical',
+  createdAt: '2026-08-01T10:00:00.000Z',
+  sizeBytes: 100,
+  appVersion: '0.6.24',
+  schemaVersions: { globalCatalog: 16, photos: 6 },
+  keyFingerprint,
+});
+
 const harness = (options: { savePath?: string | null } = {}): Harness => {
   const config = new InMemoryConfig();
   const secrets = new MemorySecrets();
@@ -104,6 +120,10 @@ const harness = (options: { savePath?: string | null } = {}): Harness => {
       if (existing.value === null) await secrets.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, 'stored-key-material');
       return ok({ fingerprint: 'sha256:0123456789ab', document: 'recovery document stored-key-material' });
     },
+    parseRecoveryKey: (value) => value === PASTED_RECOVERY_KEY
+      ? ok(Buffer.alloc(32, 7))
+      : { ok: false, error: { code: 'recovery_key_required', message: 'invalid' } },
+    fingerprintKey: (key) => `sha256:${key.toString('base64').slice(0, 12)}`,
     fileSave: {
       save: (input) => {
         saved.push(input);
@@ -218,6 +238,57 @@ describe('backup enablement', () => {
     await disableBackup(deps, { purgeCredentials: false });
 
     expect(await enableBackup(deps, { includeOptional: false, keepLast: 7, keepWeekly: 8, runFirstBackup: false }))
+      .toMatchObject({ ok: false, error: { code: 'recovery_key_required' } });
+  });
+
+  it('refuses to enable while the destination holds archives written under another recovery key', async () => {
+    const { deps, destination, config } = harness();
+    destination.archives = [remoteArchive('other-mac', 'sha256:ffffffffffff')];
+    await connectBackupDestination(deps, { provider: 'service_account', keyJson: '{}', sharedDriveId: 'drive-1' }, new AbortController().signal);
+    await exportBackupRecoveryKey(deps);
+    await confirmBackupRecoveryKey(deps);
+
+    expect(await enableBackup(deps, { includeOptional: false, keepLast: 7, keepWeekly: 8, runFirstBackup: false }))
+      .toMatchObject({ ok: false, error: { code: 'recovery_key_required' } });
+    expect(await config.get({ kind: 'home' }, 'backup_enabled')).toEqual(ok(null));
+  });
+
+  it('enables once the user acknowledges that the other key\'s archives stay unreadable', async () => {
+    const { deps, destination, config } = harness();
+    destination.archives = [remoteArchive('other-mac', 'sha256:ffffffffffff')];
+    await connectBackupDestination(deps, { provider: 'service_account', keyJson: '{}', sharedDriveId: 'drive-1' }, new AbortController().signal);
+    await exportBackupRecoveryKey(deps);
+    await confirmBackupRecoveryKey(deps);
+
+    expect(await enableBackup(deps, {
+      includeOptional: false,
+      keepLast: 7,
+      keepWeekly: 8,
+      runFirstBackup: false,
+      acknowledgeUnreadableArchives: true,
+    })).toEqual(ok({ enabled: true, jobId: null }));
+    expect(await config.get({ kind: 'home' }, 'backup_enabled')).toEqual(ok('true'));
+  });
+
+  it('imports a pasted recovery key instead of minting a new one', async () => {
+    const { deps, secrets } = harness();
+
+    const imported = await importBackupRecoveryKey(deps, { recoveryKey: PASTED_RECOVERY_KEY });
+
+    expect(imported).toMatchObject({ ok: true });
+    expect(secrets.values.get(BACKUP_ENCRYPTION_KEY_ACCOUNT)).toBe(Buffer.alloc(32, 7).toString('base64'));
+    expect(JSON.stringify(imported)).not.toContain(Buffer.alloc(32, 7).toString('base64'));
+  });
+
+  it('rejects an invalid recovery key and refuses to replace a different stored key', async () => {
+    const { deps, secrets } = harness();
+
+    expect(await importBackupRecoveryKey(deps, { recoveryKey: 'nonsense' }))
+      .toMatchObject({ ok: false, error: { code: 'recovery_key_required' } });
+    await importBackupRecoveryKey(deps, { recoveryKey: PASTED_RECOVERY_KEY });
+    secrets.values.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, Buffer.alloc(32, 9).toString('base64'));
+
+    expect(await importBackupRecoveryKey(deps, { recoveryKey: PASTED_RECOVERY_KEY }))
       .toMatchObject({ ok: false, error: { code: 'recovery_key_required' } });
   });
 

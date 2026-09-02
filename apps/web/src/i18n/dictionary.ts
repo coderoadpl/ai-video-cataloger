@@ -690,6 +690,8 @@ export interface Dictionary {
     providerServiceAccount: string;
     providerServiceAccountHelper: string;
     connectGoogle: string;
+    connectWaiting: string;
+    connectCancel: string;
     sharedDriveIdLabel: string;
     sharedDriveIdHelper: string;
     keyJsonLabel: string;
@@ -702,6 +704,11 @@ export interface Dictionary {
     recoveryKeyExported: (path: string) => string;
     recoveryKeyFingerprint: (fingerprint: string) => string;
     recoveryKeySavedCheckbox: string;
+    existingArchivesWarning: string;
+    importRecoveryKeyLabel: string;
+    importRecoveryKey: string;
+    recoveryKeyImported: (fingerprint: string) => string;
+    acknowledgeUnreadableArchives: string;
     finish: string;
     listTitle: string;
     listEmpty: string;
@@ -716,6 +723,8 @@ export interface Dictionary {
     restoreDialogOverwrite: string;
     restoreDialogPreRestore: string;
     restoreDialogRelaunch: string;
+    restoreRecoveryKeyLabel: string;
+    restoreRecoveryKeyHelper: string;
     restoreConfirm: string;
     restoreConfirmAgain: string;
     restoreRunning: (phase: string) => string;
@@ -1697,6 +1706,8 @@ export const en: Dictionary = {
     providerServiceAccount: 'Service account (advanced)',
     providerServiceAccountHelper: 'For a company Shared Drive. Follow the setup runbook before you continue.',
     connectGoogle: 'Connect Google Drive',
+    connectWaiting: 'Waiting for your browser…',
+    connectCancel: 'Cancel connecting',
     sharedDriveIdLabel: 'Shared Drive id',
     sharedDriveIdHelper: 'The last part of the Shared Drive address in your browser.',
     keyJsonLabel: 'Service-account key JSON',
@@ -1709,6 +1720,11 @@ export const en: Dictionary = {
     recoveryKeyExported: (path) => `Saved to ${path}`,
     recoveryKeyFingerprint: (fingerprint) => `Fingerprint: ${fingerprint}`,
     recoveryKeySavedCheckbox: 'I saved my recovery key',
+    existingArchivesWarning: 'This destination already holds backups written on another Mac. Paste that recovery key to keep them readable, or confirm that they stay unreadable.',
+    importRecoveryKeyLabel: 'Recovery key from the other Mac',
+    importRecoveryKey: 'Use this key',
+    recoveryKeyImported: (fingerprint) => `Key accepted: ${fingerprint}`,
+    acknowledgeUnreadableArchives: 'I understand the existing backups will stay unreadable',
     finish: 'Finish',
     listTitle: 'Backups',
     listEmpty: 'No backups yet.',
@@ -1723,6 +1739,8 @@ export const en: Dictionary = {
     restoreDialogOverwrite: 'Your catalog, photo database, app settings, per-folder settings and face crops will be replaced by the ones in this backup.',
     restoreDialogPreRestore: 'A local copy of the current catalog is taken first, so nothing is lost if the restore fails.',
     restoreDialogRelaunch: 'The app restarts when the restore finishes.',
+    restoreRecoveryKeyLabel: 'Recovery key',
+    restoreRecoveryKeyHelper: 'Needed when this Mac never held the key that encrypted this backup.',
     restoreConfirm: 'Restore',
     restoreConfirmAgain: 'Yes, restore now',
     restoreRunning: (phase) => `Restoring: ${phase}`,
@@ -2759,6 +2777,8 @@ export const pl: Dictionary = {
     providerServiceAccount: 'Konto serwisowe (zaawansowane)',
     providerServiceAccountHelper: 'Dla firmowego Dysku współdzielonego. Najpierw wykonaj instrukcję konfiguracji.',
     connectGoogle: 'Połącz z Dyskiem Google',
+    connectWaiting: 'Czekam na przeglądarkę…',
+    connectCancel: 'Anuluj łączenie',
     sharedDriveIdLabel: 'Identyfikator Dysku współdzielonego',
     sharedDriveIdHelper: 'Ostatni fragment adresu Dysku współdzielonego w przeglądarce.',
     keyJsonLabel: 'Klucz konta serwisowego (JSON)',
@@ -2771,6 +2791,11 @@ export const pl: Dictionary = {
     recoveryKeyExported: (path) => `Zapisano w ${path}`,
     recoveryKeyFingerprint: (fingerprint) => `Odcisk klucza: ${fingerprint}`,
     recoveryKeySavedCheckbox: 'Zapisałem klucz odzyskiwania',
+    existingArchivesWarning: 'W tym miejscu docelowym są już kopie z innego Maca. Wklej tamten klucz odzyskiwania, żeby dało się je odczytać, albo potwierdź, że pozostaną nieczytelne.',
+    importRecoveryKeyLabel: 'Klucz odzyskiwania z tamtego Maca',
+    importRecoveryKey: 'Użyj tego klucza',
+    recoveryKeyImported: (fingerprint) => `Klucz przyjęty: ${fingerprint}`,
+    acknowledgeUnreadableArchives: 'Rozumiem, że stare kopie pozostaną nieczytelne',
     finish: 'Zakończ',
     listTitle: 'Kopie zapasowe',
     listEmpty: 'Nie ma jeszcze żadnej kopii.',
@@ -2785,6 +2810,8 @@ export const pl: Dictionary = {
     restoreDialogOverwrite: 'Katalog, baza zdjęć, ustawienia aplikacji, ustawienia folderów i wycinki twarzy zostaną zastąpione tymi z kopii.',
     restoreDialogPreRestore: 'Najpierw powstanie lokalna kopia obecnego katalogu, więc nic nie przepadnie, jeśli przywracanie się nie uda.',
     restoreDialogRelaunch: 'Po zakończeniu aplikacja uruchomi się ponownie.',
+    restoreRecoveryKeyLabel: 'Klucz odzyskiwania',
+    restoreRecoveryKeyHelper: 'Potrzebny, gdy ten Mac nigdy nie miał klucza, którym zaszyfrowano tę kopię.',
     restoreConfirm: 'Przywróć',
     restoreConfirmAgain: 'Tak, przywróć teraz',
     restoreRunning: (phase) => `Przywracanie: ${phase}`,

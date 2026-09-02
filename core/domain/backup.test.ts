@@ -90,12 +90,13 @@ describe('backup domain', () => {
       totalBytes: 3,
       files: [{ path: 'catalog.db', sizeBytes: 3, sha256: 'c'.repeat(64) }],
       folders: [{ folderId: 'folder-1', path: '/media/library' }],
-    }).formatVersion).toBe(1);
+    }).keyFingerprint).toBeNull();
     expect(remoteBackupSchema.parse({
       remoteId: 'remote-1',
       name: 'avc-critical-20260902T120000Z.avcbak',
       ...common,
       sizeBytes: 42,
+      keyFingerprint: 'sha256:0123456789ab',
     }).remoteId).toBe('remote-1');
   });
 });

@@ -346,6 +346,7 @@ export const backupEnableInputSchema = z.object({
   keepLast: z.number().int().min(1).max(90).default(CONFIG_DEFAULTS.backup_keep_last),
   keepWeekly: z.number().int().min(0).max(52).default(CONFIG_DEFAULTS.backup_keep_weekly),
   runFirstBackup: z.boolean().default(true),
+  acknowledgeUnreadableArchives: z.boolean().default(false),
 });
 
 export const backupEnableOutputSchema = z.object({
@@ -366,6 +367,20 @@ export const backupRecoveryKeyExportInputSchema = z.object({});
 export const backupRecoveryKeyExportOutputSchema = z.object({
   fingerprint: z.string().min(1),
   path: z.string().min(1),
+});
+
+export const backupRecoveryKeyImportInputSchema = z.object({
+  recoveryKey: z.string().min(1),
+});
+
+export const backupRecoveryKeyImportOutputSchema = z.object({
+  fingerprint: z.string().min(1),
+});
+
+export const backupConnectCancelInputSchema = z.object({});
+
+export const backupConnectCancelOutputSchema = z.object({
+  cancelled: z.boolean(),
 });
 
 export const backupRecoveryKeyConfirmInputSchema = z.object({});
@@ -406,6 +421,7 @@ export const backupStatusOutputSchema = z.object({
   nextDueAt: z.iso.datetime().nullable(),
   supportedSchemaVersions: backupSchemaVersionsSchema,
   connection: backupConnectionSchema.nullable(),
+  recoveryKeyStored: z.boolean(),
 });
 
 export const processCompletedOutputSchema = z.object({
@@ -2404,6 +2420,18 @@ export const API_ROUTES = {
     input: backupRecoveryKeyConfirmInputSchema,
     output: backupRecoveryKeyConfirmOutputSchema,
   },
+  backupRecoveryKeyImport: {
+    method: 'POST',
+    path: '/api/backup/recovery-key/import',
+    input: backupRecoveryKeyImportInputSchema,
+    output: backupRecoveryKeyImportOutputSchema,
+  },
+  backupConnectCancel: {
+    method: 'POST',
+    path: '/api/backup/connect/cancel',
+    input: backupConnectCancelInputSchema,
+    output: backupConnectCancelOutputSchema,
+  },
   indexStatus: { method: 'GET', path: '/api/index/status', input: emptyInputSchema, output: indexStatusOutputSchema },
   indexRebuild: { method: 'POST', path: '/api/index/rebuild', input: emptyInputSchema, output: indexRebuildOutputSchema },
   indexForget: { method: 'POST', path: '/api/index/forget', input: indexForgetInputSchema, output: indexForgetOutputSchema },
@@ -2640,6 +2668,8 @@ export const API_PATHS = {
   backupDisable: API_ROUTES.backupDisable.path,
   backupRecoveryKeyExport: API_ROUTES.backupRecoveryKeyExport.path,
   backupRecoveryKeyConfirm: API_ROUTES.backupRecoveryKeyConfirm.path,
+  backupRecoveryKeyImport: API_ROUTES.backupRecoveryKeyImport.path,
+  backupConnectCancel: API_ROUTES.backupConnectCancel.path,
   indexStatus: API_ROUTES.indexStatus.path,
   indexRebuild: API_ROUTES.indexRebuild.path,
   indexForget: API_ROUTES.indexForget.path,

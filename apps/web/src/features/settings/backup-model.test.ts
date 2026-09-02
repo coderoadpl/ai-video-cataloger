@@ -31,6 +31,7 @@ const remote = (globalCatalog: number, photos: number): RemoteBackupView => ({
   sizeBytes: 1024,
   appVersion: '0.7.0',
   schemaVersions: { globalCatalog, photos },
+  keyFingerprint: null,
 });
 
 describe('backup error messages', () => {

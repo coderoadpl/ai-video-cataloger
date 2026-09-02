@@ -5,6 +5,7 @@ import initSqlJs from 'sql.js';
 import { PHOTOS_SCHEMA_VERSION, sqlJsWasmConfig } from '@adapters/db/index.js';
 import { BackupStateFile } from '@adapters/backup/state-store.js';
 import {
+  backupKeyFingerprint,
   decryptBackupEnvelope,
   encryptBackupEnvelope,
   ensureBackupRecoveryKey,
@@ -32,6 +33,7 @@ import {
   enqueueRestore,
   evaluateScheduledBackup,
   exportBackupRecoveryKey,
+  importBackupRecoveryKey,
   listBackups,
   performRestoreStartupRecovery,
   prepareBackupScope,
@@ -84,6 +86,7 @@ export interface BackupLifecycle {
   disable(request: { purgeCredentials: boolean }): Promise<Result<{ enabled: false }, AppError>>;
   exportRecoveryKey(): Promise<Result<{ fingerprint: string; path: string }, AppError>>;
   confirmRecoveryKey(): Promise<Result<{ confirmed: true }, AppError>>;
+  importRecoveryKey(request: { recoveryKey: string }): Promise<Result<{ fingerprint: string }, AppError>>;
   run(request: { tier: BackupTier }): Promise<Result<{ jobId: string }, AppError>>;
 }
 
@@ -103,6 +106,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       state,
       now,
       loadEncryptionKey: () => loadBackupEncryptionKey(options.secrets),
+      fingerprintKey: backupKeyFingerprint,
       archive: (entries, targetPath, createdAt, signal) => writeTarZstd(entries, targetPath, createdAt, { signal }),
       encrypt: encryptBackupEnvelope,
     });
@@ -166,6 +170,8 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
     destination: options.destination,
     enqueueBackup: enqueueTier,
     recoveryKey: () => ensureBackupRecoveryKey(options.secrets),
+    parseRecoveryKey,
+    fingerprintKey: backupKeyFingerprint,
   };
   return {
     cleanup: async () => {
@@ -198,6 +204,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       config: options.config,
       state,
       jobs: options.jobs,
+      secrets: options.secrets,
       supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
       destination: options.destination,
     }, input),
@@ -207,6 +214,7 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
     disable: (request) => disableBackup(enablementDeps, request),
     exportRecoveryKey: () => exportBackupRecoveryKey(enablementDeps),
     confirmRecoveryKey: () => confirmBackupRecoveryKey(enablementDeps),
+    importRecoveryKey: (request) => importBackupRecoveryKey(enablementDeps, request),
     run: (request) => runBackupNow(enablementDeps, request),
   };
 };

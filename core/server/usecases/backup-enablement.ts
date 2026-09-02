@@ -45,6 +45,8 @@ export interface BackupEnablementDeps {
     manual: boolean;
   }): Promise<Result<{ jobId: string }, AppError>>;
   recoveryKey(): Promise<Result<RecoveryKeyMaterial, AppError>>;
+  parseRecoveryKey(value: string): Result<Buffer, AppError>;
+  fingerprintKey(key: Buffer): string;
 }
 
 export interface BackupConnectRequest {
@@ -64,6 +66,7 @@ export interface BackupEnableRequest {
   keepLast: number;
   keepWeekly: number;
   runFirstBackup: boolean;
+  acknowledgeUnreadableArchives?: boolean | undefined;
 }
 
 export const createRecoveryKeyCeremony = (): RecoveryKeyCeremony => {
@@ -143,6 +146,26 @@ export const confirmBackupRecoveryKey = async (
   return ok({ confirmed: true });
 };
 
+export const importBackupRecoveryKey = async (
+  deps: BackupEnablementDeps,
+  request: { recoveryKey: string },
+): Promise<Result<{ fingerprint: string }, AppError>> => {
+  const parsed = deps.parseRecoveryKey(request.recoveryKey);
+  if (!parsed.ok) return parsed;
+  const encoded = parsed.value.toString('base64');
+  const stored = await deps.secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
+  if (!stored.ok) return stored;
+  if (stored.value !== null && stored.value !== encoded) {
+    return {
+      ok: false,
+      error: appError('recovery_key_required', 'A different backup key is already stored on this Mac'),
+    };
+  }
+  const written = await deps.secrets.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, encoded);
+  if (!written.ok) return written;
+  return ok({ fingerprint: deps.fingerprintKey(parsed.value) });
+};
+
 export const enableBackup = async (
   deps: BackupEnablementDeps,
   request: BackupEnableRequest,
@@ -154,6 +177,19 @@ export const enableBackup = async (
   if (!settings.ok) return settings;
   if (settings.value.accountEmail.length === 0 && settings.value.serviceAccountFingerprint.length === 0) {
     return { ok: false, error: appError('backup_auth_required', 'Connect a backup destination first') };
+  }
+  if (request.acknowledgeUnreadableArchives !== true) {
+    const foreign = await holdsArchivesFromAnotherKey(deps);
+    if (!foreign.ok) return foreign;
+    if (foreign.value) {
+      return {
+        ok: false,
+        error: appError(
+          'recovery_key_required',
+          'This destination already holds archives written under another recovery key; import that key or acknowledge that they stay unreadable',
+        ),
+      };
+    }
   }
   const written = await writeAll(deps.config, [
     ['backup_include_optional', String(request.includeOptional)],
@@ -215,6 +251,27 @@ export const runBackupNow = async (
     keepWeekly: settings.value.keepWeekly,
     manual: true,
   });
+};
+
+const holdsArchivesFromAnotherKey = async (
+  deps: BackupEnablementDeps,
+): Promise<Result<boolean, AppError>> => {
+  const fingerprint = await storedKeyFingerprint(deps);
+  if (!fingerprint.ok) return fingerprint;
+  const destination = await deps.destination();
+  if (!destination.ok) return destination;
+  const listed = await destination.value.list(null, new AbortController().signal);
+  if (!listed.ok) return listed;
+  return ok(listed.value.some((backup) =>
+    backup.keyFingerprint !== null && backup.keyFingerprint !== fingerprint.value));
+};
+
+const storedKeyFingerprint = async (
+  deps: BackupEnablementDeps,
+): Promise<Result<string | null, AppError>> => {
+  const stored = await deps.secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
+  if (!stored.ok) return stored;
+  return ok(stored.value === null ? null : deps.fingerprintKey(Buffer.from(stored.value, 'base64')));
 };
 
 const writeAll = async (

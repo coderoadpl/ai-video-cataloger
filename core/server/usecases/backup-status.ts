@@ -1,4 +1,5 @@
 import {
+  BACKUP_ENCRYPTION_KEY_ACCOUNT,
   BACKUP_FOLDER_NAME,
   backupPhaseSchema,
   ok,
@@ -17,6 +18,7 @@ import type {
   ConfigStore,
   JobRecord,
   JobsPort,
+  SecretsStore,
 } from '../ports.js';
 import type { BackupStatePort } from './backup-run.js';
 import { readBackupSettings } from './backup-settings.js';
@@ -48,12 +50,14 @@ export interface BackupStatusView extends BackupIndicator {
   nextDueAt: string | null;
   supportedSchemaVersions: BackupSchemaVersions;
   connection: BackupConnectionReport | null;
+  recoveryKeyStored: boolean;
 }
 
 export interface BackupStatusDeps {
   config: ConfigStore;
   state: BackupStatePort;
   jobs: Pick<JobsPort, 'list'>;
+  secrets: SecretsStore;
   supportedSchemaVersions: BackupSchemaVersions;
   destination(): Promise<Result<BackupDestinationPort, AppError>>;
 }
@@ -101,6 +105,8 @@ export const readBackupStatus = async (
   if (!jobs.ok) return jobs;
   const connection = input.testConnection ? await testConnection(deps) : ok(null);
   if (!connection.ok) return connection;
+  const storedKey = await deps.secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
+  if (!storedKey.ok) return storedKey;
   const indicator = deriveBackupIndicator({
     enabled: settings.value.enabled,
     jobs: jobs.value,
@@ -125,6 +131,7 @@ export const readBackupStatus = async (
     nextDueAt: nextBackupDueAt(state.value?.lastSuccessAt ?? null),
     supportedSchemaVersions: deps.supportedSchemaVersions,
     connection: connection.value,
+    recoveryKeyStored: storedKey.value !== null,
   });
 };
 

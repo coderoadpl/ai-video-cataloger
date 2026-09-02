@@ -193,6 +193,7 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
 
       <BackupRestoreDialog
         backup={restoreTarget}
+        recoveryKeyRequired={status?.recoveryKeyStored === false}
         phase={backup.restorePhase}
         isRestoring={backup.isRestoring}
         error={backup.restoreError}

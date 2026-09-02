@@ -111,6 +111,7 @@ export class MemoryBackupDestination implements BackupDestinationPort {
       sizeBytes: bytes.length,
       appVersion: input.manifest.appVersion,
       schemaVersions: input.manifest.schemaVersions,
+      keyFingerprint: input.manifest.keyFingerprint,
     };
     this.backups.set(remoteId, { metadata, bytes });
     return ok(metadata);
