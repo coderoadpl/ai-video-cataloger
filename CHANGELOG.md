@@ -16,6 +16,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Encrypted critical and optional backup archives can now run through the scheduled backup job pipeline with independent retention and crash-safe local staging.
+- Google Drive backup destinations now support either desktop OAuth with `drive.file` access or a service account restricted to one configured Shared Drive folder.
 - `faces recluster --dry-run` can print benchmark metrics from supplied reference-partition and labelled-pairs files, and Osoby now requires a dry-run report before starting a full people recluster.
 - `faces index` and `photos process` now detect faces in photos themselves,
   over the photo proxy, writing one crop per observation like the video pass;

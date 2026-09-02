@@ -1,4 +1,5 @@
 import { homedir } from 'node:os';
+import { shell } from 'electron';
 
 import { createApp, type App } from '@server/src/create-app.js';
 import { inMemoryDbRequested } from '@server/src/composition.js';
@@ -17,6 +18,7 @@ export const createDesktopApp = async (options: DesktopCompositionOptions): Prom
     isPackaged: options.isPackaged,
     processName: 'gui',
     catalogLockMode: 'lazy',
+    openExternal: (url: string) => shell.openExternal(url),
   } as const;
   if (options.isPackaged || !inMemoryDbRequested()) return createApp(config);
   const { createInMemoryDeps } = await import('@server/src/test-support/in-memory-deps.js');

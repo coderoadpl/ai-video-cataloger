@@ -50,4 +50,18 @@ describe('error taxonomy mappings', () => {
     expect(EXIT_CODE_BY_ERROR_CODE.target_read_only).toBe(46);
     expect(LEGACY_ERROR_CODE_BY_ERROR_CODE.target_read_only).toBe('TARGET_READ_ONLY');
   });
+
+  it('maps backup failures to the specified distinct exit codes', () => {
+    expect([
+      EXIT_CODE_BY_ERROR_CODE.backup_disabled,
+      EXIT_CODE_BY_ERROR_CODE.backup_auth_required,
+      EXIT_CODE_BY_ERROR_CODE.backup_destination_error,
+      EXIT_CODE_BY_ERROR_CODE.backup_quota_exceeded,
+      EXIT_CODE_BY_ERROR_CODE.backup_encryption_failed,
+      EXIT_CODE_BY_ERROR_CODE.backup_integrity_failed,
+      EXIT_CODE_BY_ERROR_CODE.restore_refused,
+      EXIT_CODE_BY_ERROR_CODE.recovery_key_required,
+    ]).toEqual([47, 48, 49, 50, 51, 52, 53, 54]);
+    expect(HTTP_STATUS_BY_ERROR_CODE.backup_quota_exceeded).toBe(507);
+  });
 });

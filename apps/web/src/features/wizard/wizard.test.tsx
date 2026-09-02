@@ -243,6 +243,15 @@ const configDefaults = {
   output_language: 'auto',
   tag_language: 'auto',
   ui_language: 'en',
+  backup_enabled: 'false',
+  backup_provider: 'google_oauth',
+  backup_include_optional: 'false',
+  backup_keep_last: '7',
+  backup_keep_weekly: '8',
+  backup_folder_id: '',
+  backup_shared_drive_id: '',
+  backup_service_account_fingerprint: '',
+  backup_account_email: '',
 };
 
 const configView = (uiLanguage: string, outputLanguage: string, facesEnabled = false) => {

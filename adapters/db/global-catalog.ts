@@ -9,6 +9,7 @@ import {
   readFileSync,
   renameSync,
   statSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -178,6 +179,40 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
 
   databasePath(): string {
     return this.filePath;
+  }
+
+  async snapshotTo(targetPath: string): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
+    const wasOpen = this.state !== null;
+    let leased = false;
+    try {
+      await acquireSnapshotLease(this.lock);
+      leased = true;
+      const flushed = await this.flush();
+      if (!flushed.ok) return flushed;
+      const state = await this.ensureOpen(false);
+      mkdirSync(path.dirname(targetPath), { recursive: true });
+      persistDatabase(targetPath, state.client);
+      verifySnapshotIntegrity(state.SQL, targetPath);
+      const sizeBytes = statSync(targetPath).size;
+      if (!wasOpen) {
+        state.client.close();
+        this.state = null;
+      }
+      return ok({ sizeBytes, schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION });
+    } catch (cause) {
+      removeSnapshotFile(targetPath);
+      return failure(cause);
+    } finally {
+      if (!wasOpen && this.state !== null) {
+        this.state.client.close();
+        this.state = null;
+        this.dirtyCount = 0;
+      }
+      if (leased) {
+        this.lock.releaseLease();
+        this.lock.releaseIfIdle();
+      }
+    }
   }
 
   async flush(): Promise<Result<void, AppError>> {
@@ -1616,6 +1651,39 @@ const persistDatabase = (databasePath: string, client: Database): void => {
     closeSync(descriptor);
   }
   renameSync(tempPath, databasePath);
+};
+
+const acquireSnapshotLease = async (lock: HomeLock): Promise<void> => {
+  for (;;) {
+    try {
+      lock.acquireLease();
+      return;
+    } catch (cause) {
+      if (!(cause instanceof CatalogAppError) || cause.appError.code !== 'catalog_locked') throw cause;
+      await new Promise<void>((resolve) => setTimeout(resolve, 10));
+    }
+  }
+};
+
+const verifySnapshotIntegrity = (SQL: SqlJsStatic, targetPath: string): void => {
+  const client = new SQL.Database(readFileSync(targetPath));
+  try {
+    if (client.exec('PRAGMA integrity_check')[0]?.values[0]?.[0] !== 'ok') {
+      throw new CatalogAppError(appError('backup_integrity_failed', 'Global catalog snapshot failed integrity_check'));
+    }
+  } finally {
+    client.close();
+  }
+};
+
+const removeSnapshotFile = (targetPath: string): void => {
+  for (const filePath of [targetPath, `${targetPath}.tmp`]) {
+    try {
+      unlinkSync(filePath);
+    } catch (cause) {
+      if (!(cause instanceof Error) || !('code' in cause) || cause.code !== 'ENOENT') throw cause;
+    }
+  }
 };
 
 const fileStateOf = (databasePath: string): FileState => {

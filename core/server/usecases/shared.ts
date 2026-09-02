@@ -233,6 +233,24 @@ export const configValueForKey = (key: ConfigKey, value: string): AppConfig[Conf
       return outputLanguageSchema.parse(value);
     case 'ui_language':
       return configValueSchema.shape.ui_language.parse(value);
+    case 'backup_enabled':
+      return configValueSchema.shape.backup_enabled.parse(value);
+    case 'backup_provider':
+      return configValueSchema.shape.backup_provider.parse(value);
+    case 'backup_include_optional':
+      return configValueSchema.shape.backup_include_optional.parse(value);
+    case 'backup_keep_last':
+      return configValueSchema.shape.backup_keep_last.parse(value);
+    case 'backup_keep_weekly':
+      return configValueSchema.shape.backup_keep_weekly.parse(value);
+    case 'backup_folder_id':
+      return configValueSchema.shape.backup_folder_id.parse(value);
+    case 'backup_shared_drive_id':
+      return configValueSchema.shape.backup_shared_drive_id.parse(value);
+    case 'backup_service_account_fingerprint':
+      return configValueSchema.shape.backup_service_account_fingerprint.parse(value);
+    case 'backup_account_email':
+      return configValueSchema.shape.backup_account_email.parse(value);
   }
 };
 
@@ -261,6 +279,15 @@ export const emptyStoredConfig = (): Record<ConfigKey, string | null> => ({
   output_language: null,
   tag_language: null,
   ui_language: null,
+  backup_enabled: null,
+  backup_provider: null,
+  backup_include_optional: null,
+  backup_keep_last: null,
+  backup_keep_weekly: null,
+  backup_folder_id: null,
+  backup_shared_drive_id: null,
+  backup_service_account_fingerprint: null,
+  backup_account_email: null,
 });
 
 export const storedDefaults = (): Record<ConfigKey, string> => ({
@@ -282,6 +309,15 @@ export const storedDefaults = (): Record<ConfigKey, string> => ({
   output_language: stringifyConfigDefault('output_language'),
   tag_language: stringifyConfigDefault('tag_language'),
   ui_language: stringifyConfigDefault('ui_language'),
+  backup_enabled: stringifyConfigDefault('backup_enabled'),
+  backup_provider: stringifyConfigDefault('backup_provider'),
+  backup_include_optional: stringifyConfigDefault('backup_include_optional'),
+  backup_keep_last: stringifyConfigDefault('backup_keep_last'),
+  backup_keep_weekly: stringifyConfigDefault('backup_keep_weekly'),
+  backup_folder_id: stringifyConfigDefault('backup_folder_id'),
+  backup_shared_drive_id: stringifyConfigDefault('backup_shared_drive_id'),
+  backup_service_account_fingerprint: stringifyConfigDefault('backup_service_account_fingerprint'),
+  backup_account_email: stringifyConfigDefault('backup_account_email'),
 });
 
 export const configKeys = (): readonly ConfigKey[] => CONFIG_KEYS;

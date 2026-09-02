@@ -1,6 +1,10 @@
 import type {
   AppConfig,
   AppError,
+  BackupManifest,
+  BackupPhase,
+  BackupProvider,
+  BackupTier,
   AnalysisLanguageResolution,
   AnalyzerProviderConfig,
   CliPathEntry,
@@ -27,6 +31,7 @@ import type {
   MachineProfile,
   Person,
   Result,
+  RemoteBackup,
   TimelineIntervalKind,
   Video,
   WhisperEngine,
@@ -598,6 +603,7 @@ export interface PhotoMediaPort {
 
 export interface PhotosStore {
   databasePath(): string;
+  snapshotTo(targetPath: string): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>>;
   flush(): Promise<Result<void, AppError>>;
   checkpoint(): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
@@ -684,6 +690,7 @@ export interface DriveRunRecord {
 
 export interface GlobalCatalogStore {
   databasePath(): string;
+  snapshotTo(targetPath: string): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>>;
   flush(): Promise<Result<void, AppError>>;
   dispose(): Promise<Result<void, AppError>>;
   withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>>;
@@ -804,6 +811,32 @@ export interface SecretsStore {
   get(account: string): Promise<Result<string | null, AppError>>;
   set(account: string, secret: string): Promise<Result<void, AppError>>;
   delete(account: string): Promise<Result<{ existed: boolean }, AppError>>;
+}
+
+export interface BackupDestinationDescription {
+  provider: BackupProvider | 'memory';
+  folderName: string;
+}
+
+export interface BackupConnectionReport {
+  accountEmail: string | null;
+  driveName: string | null;
+  folderName: string;
+  remainingQuotaBytes: number | null;
+}
+
+export interface BackupDestinationPort {
+  describe(): Result<BackupDestinationDescription, AppError>;
+  test(signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>>;
+  ensureFolder(signal: AbortSignal): Promise<Result<{ folderId: string; name: string }, AppError>>;
+  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
+  upload(input: {
+    sourcePath: string;
+    name: string;
+    manifest: BackupManifest;
+  }, signal: AbortSignal): Promise<Result<RemoteBackup, AppError>>;
+  download(remoteId: string, destinationPath: string, signal: AbortSignal): Promise<Result<{ sizeBytes: number }, AppError>>;
+  remove(remoteId: string, signal: AbortSignal): Promise<Result<{ removed: boolean }, AppError>>;
 }
 
 export type CredentialMigrationOutcome = 'migrated' | 'value_conflict' | 'superseded';
@@ -1281,7 +1314,8 @@ export type JobKind =
   | 'photo_grid_thumbs'
   | 'photo_process'
   | 'photo_gps_backfill'
-  | 'photo_import_libra';
+  | 'photo_import_libra'
+  | 'backup';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =
@@ -1350,7 +1384,7 @@ export type ProcessJobStep =
   | 'photo-import-libra-summary';
 
 export interface JobProgress {
-  step: ProcessJobStep | 'downloading' | 'runtime_setup' | 'model_download';
+  step: ProcessJobStep | BackupPhase | 'downloading' | 'runtime_setup' | 'model_download';
   percentage?: number;
   current?: number;
   total?: number;
@@ -1378,6 +1412,7 @@ export interface JobRecord {
 }
 
 export interface JobExecutionContext {
+  jobId?: string | undefined;
   signal: AbortSignal;
   reportProgress(progress: JobProgress): Promise<Result<void, AppError>>;
 }

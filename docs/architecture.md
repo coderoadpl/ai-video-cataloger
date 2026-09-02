@@ -1197,6 +1197,13 @@ too early to justify a new visual surface.
 
 ## Delta 5 — long-running work
 
+Encrypted backup recovery keys retain the full 256 bits generated for
+AES-256-GCM. The recovery rendering therefore uses 52 Crockford-base32 data
+characters plus a 4-character checksum. This is a deliberate correction to
+the backup PRD's US-003 wording, which asks 26 base32 characters to round-trip
+32 bytes; 26 base32 characters can encode only 130 bits and cannot satisfy the
+same story's 256-bit key requirement.
+
 The Electron main process (and the CLI process, for its lifetime) is a
 resident executor. The foundation's `JobsPort` pattern applies **in-process**
 at the first real job — which exists on day one: the processing pipeline

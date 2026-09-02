@@ -3,6 +3,7 @@ import path from 'node:path';
 import { sha256Hex } from '@core/domain/sha256.js';
 import {
   FACE_ENGINE_VERSION,
+  GLOBAL_CATALOG_SCHEMA_VERSION,
   LEGACY_CONFIG_ID,
   acceptsGpsWrite,
   appError,
@@ -1185,6 +1186,10 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return this.path;
   }
 
+  snapshotTo(): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
+    return Promise.resolve(ok({ sizeBytes: 0, schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION }));
+  }
+
   flush(): Promise<Result<void, AppError>> {
     this.flushCount += 1;
     return Promise.resolve(ok(undefined));
@@ -2083,6 +2088,10 @@ export class InMemoryPhotosStore implements PhotosStore {
 
   databasePath(): string {
     return '/home/.ai-video-cataloger/photos.db';
+  }
+
+  snapshotTo(): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
+    return Promise.resolve(ok({ sizeBytes: 0, schemaVersion: 5 }));
   }
 
   flush(): Promise<Result<void, AppError>> {

@@ -57,6 +57,15 @@ const defaults = {
   output_language: 'auto',
   tag_language: 'auto',
   ui_language: 'en',
+  backup_enabled: 'false',
+  backup_provider: 'google_oauth',
+  backup_include_optional: 'false',
+  backup_keep_last: '7',
+  backup_keep_weekly: '8',
+  backup_folder_id: '',
+  backup_shared_drive_id: '',
+  backup_service_account_fingerprint: '',
+  backup_account_email: '',
 };
 
 const emptyConfig: StoredConfig = {
@@ -78,6 +87,15 @@ const emptyConfig: StoredConfig = {
   output_language: null,
   tag_language: null,
   ui_language: null,
+  backup_enabled: null,
+  backup_provider: null,
+  backup_include_optional: null,
+  backup_keep_last: null,
+  backup_keep_weekly: null,
+  backup_folder_id: null,
+  backup_shared_drive_id: null,
+  backup_service_account_fingerprint: null,
+  backup_account_email: null,
 };
 
 const apiProviderConfig: StoredConfig = {
@@ -142,6 +160,15 @@ const stubEndpoints = (
     output_language: config.output_language ?? defaults.output_language,
     tag_language: config.tag_language ?? defaults.tag_language,
     ui_language: config.ui_language ?? defaults.ui_language,
+    backup_enabled: config.backup_enabled ?? defaults.backup_enabled,
+    backup_provider: config.backup_provider ?? defaults.backup_provider,
+    backup_include_optional: config.backup_include_optional ?? defaults.backup_include_optional,
+    backup_keep_last: config.backup_keep_last ?? defaults.backup_keep_last,
+    backup_keep_weekly: config.backup_keep_weekly ?? defaults.backup_keep_weekly,
+    backup_folder_id: config.backup_folder_id ?? defaults.backup_folder_id,
+    backup_shared_drive_id: config.backup_shared_drive_id ?? defaults.backup_shared_drive_id,
+    backup_service_account_fingerprint: config.backup_service_account_fingerprint ?? defaults.backup_service_account_fingerprint,
+    backup_account_email: config.backup_account_email ?? defaults.backup_account_email,
   };
   const sources = inherited?.sources ?? {
     whisper_binary_path: config.whisper_binary_path === null ? 'default' : 'folder',
@@ -162,6 +189,15 @@ const stubEndpoints = (
     ui_language: config.ui_language === null ? 'default' : 'folder',
     gemini_batch_mode: config.gemini_batch_mode === null ? 'default' : 'folder',
     gemini_monthly_budget_usd: config.gemini_monthly_budget_usd === null ? 'default' : 'home',
+    backup_enabled: config.backup_enabled === null ? 'default' : 'home',
+    backup_provider: config.backup_provider === null ? 'default' : 'home',
+    backup_include_optional: config.backup_include_optional === null ? 'default' : 'home',
+    backup_keep_last: config.backup_keep_last === null ? 'default' : 'home',
+    backup_keep_weekly: config.backup_keep_weekly === null ? 'default' : 'home',
+    backup_folder_id: config.backup_folder_id === null ? 'default' : 'home',
+    backup_shared_drive_id: config.backup_shared_drive_id === null ? 'default' : 'home',
+    backup_service_account_fingerprint: config.backup_service_account_fingerprint === null ? 'default' : 'home',
+    backup_account_email: config.backup_account_email === null ? 'default' : 'home',
   } as const;
   server.use(
     http.get('/api/config', ({ request }) => {
@@ -230,6 +266,15 @@ describe('settings modal', () => {
       output_language: 'default',
       tag_language: 'default',
       ui_language: 'default',
+      backup_enabled: 'default',
+      backup_provider: 'default',
+      backup_include_optional: 'default',
+      backup_keep_last: 'default',
+      backup_keep_weekly: 'default',
+      backup_folder_id: 'default',
+      backup_shared_drive_id: 'default',
+      backup_service_account_fingerprint: 'default',
+      backup_account_email: 'default',
     } as const;
     stubEndpoints(emptyConfig, [], { effective, sources });
     renderThemed(<SettingsModal open folder={FOLDER} onClose={vi.fn()} />);
