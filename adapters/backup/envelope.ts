@@ -64,6 +64,7 @@ export const loadBackupEncryptionKey = async (
 
 export const ensureBackupRecoveryKey = async (
   secrets: SecretsStore,
+  locale: 'en' | 'pl' = 'en',
 ): Promise<Result<{ fingerprint: string; document: string }, AppError>> => {
   const stored = await secrets.get(BACKUP_ENCRYPTION_KEY_ACCOUNT);
   if (!stored.ok) return stored;
@@ -77,22 +78,35 @@ export const ensureBackupRecoveryKey = async (
   }
   return ok({
     fingerprint: backupKeyFingerprint(key),
-    document: recoveryKeyDocument(renderRecoveryKey(key)),
+    document: recoveryKeyDocument(renderRecoveryKey(key), locale),
   });
 };
 
 export const backupKeyFingerprint = (key: Buffer): string =>
   `sha256:${createHash('sha256').update(key).digest('hex').slice(0, 12)}`;
 
-const recoveryKeyDocument = (recoveryKey: string): string => [
-  'AI Video Cataloger — backup recovery key',
-  '',
-  recoveryKey,
-  '',
-  'This key is the only way to read your encrypted backups on another Mac.',
-  'Anyone holding it can read them. Store it where you store passwords.',
-  '',
-].join('\n');
+const recoveryKeyDocument = (recoveryKey: string, locale: 'en' | 'pl'): string => {
+  const lines = locale === 'pl'
+    ? [
+        'AI Video Cataloger - klucz odzyskiwania kopii zapasowej',
+        '',
+        recoveryKey,
+        '',
+        'Ten klucz jest jedynym sposobem odczytania zaszyfrowanych kopii na innym Macu.',
+        'Kazda osoba z tym kluczem moze je odczytac. Przechowuj go tam, gdzie hasla.',
+        '',
+      ]
+    : [
+        'AI Video Cataloger - backup recovery key',
+        '',
+        recoveryKey,
+        '',
+        'This key is the only way to read your encrypted backups on another Mac.',
+        'Anyone holding it can read them. Store it where you store passwords.',
+        '',
+      ];
+  return lines.join('\n');
+};
 
 export const renderRecoveryKey = (key: Buffer): string => {
   if (key.length !== 32) throw new Error('Backup encryption keys must be 32 bytes');

@@ -53,6 +53,22 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Restore now stages each restored file beside its live target before swapping, so folder-scoped config restores work across volumes.
+- Restore failures after rollback protection starts now surface `restore_incomplete` instead of saying nothing changed.
+- Startup restore recovery now runs before both GUI and CLI stores open, and a failed rollback stops scheduled backup evaluation.
+- Restore rollback markers are kept until backup-state persistence and pre-restore pruning both succeed.
+- Backup and restore jobs now conflict with photo proxy and photo grid thumbnail generation.
+- Google Drive resumable uploads now resend the current chunk when a `308 Resume Incomplete` response omits `Range`.
+- Service-account Shared Drive permission checks now paginate through all permission pages before rejecting membership.
+- Service-account key import now restores the previous Keychain value if fingerprint config persistence fails.
+- Google Drive backup listing now skips malformed sibling files and tags connection probes separately.
+- Disabled or unsupported Keychain configurations now block backup secret get/set/delete operations before invoking macOS `security`.
+- `backup status` no longer fails outright when the Keychain is structurally unavailable; it now reports `recoveryKeyStored: false` instead of surfacing a `keychain_unavailable` error.
+- Backup timestamps in Settings, restore dialogs and the bottom-bar indicator now render in the active locale instead of raw ISO strings.
+- Polish backup copy now names derived files, media scope, retention fields, Keychain storage and recovery-key confirmation accurately.
+- Recovery-key exports now use Polish text when the UI language is Polish.
+- The bottom-bar backup indicator now exposes an assistive status region, including polite announcements while a backup is running.
+- Backup release docs now record the archive format ADR, fake-Drive walkthrough step and OAuth packaging prerequisites.
 - `faces exemplars` normalizes existing observation crop paths to the current catalog home when the re-anchored file is present, and reports how many paths were normalized.
 - E2E face model fixtures now stay inside isolated test homes, and Vitest/e2e guards fail fast before tests can write through the host face-model cache.
 - The Vitest home guard no longer forces a shared `AVC_HOME_DIRECTORY` across every test in a worker; CLI-spawning tests keep the per-test isolated home they pass explicitly instead of leaking state across tests.

@@ -339,7 +339,7 @@ const enqueueSimulatedRestore = (
   run: async (context) => {
     const listed = await destination.list(null, context.signal);
     if (!listed.ok) return listed;
-    const restored = listed.value.find((backup) => backup.remoteId === remoteId);
+    const restored = listed.value.backups.find((backup) => backup.remoteId === remoteId);
     if (restored === undefined) return { ok: false, error: appError('not_found', 'Remote backup not found') };
     for (const [step, percentage] of RESTORE_PROGRESS) {
       const reported = await context.reportProgress({ step, percentage });

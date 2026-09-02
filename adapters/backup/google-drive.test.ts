@@ -94,6 +94,40 @@ describe('shared Google Drive transport', () => {
     expect(putAttempts).toBe(2);
   });
 
+  it('resends a resumable chunk when Drive returns 308 without a Range header', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'avc-google-upload-308-'));
+    const sourcePath = path.join(root, 'large.avcbak');
+    writeFileSync(sourcePath, Buffer.alloc(10 * 1024 * 1024, 7));
+    const ranges: string[] = [];
+    let putAttempts = 0;
+
+    const result = await uploadGoogleDriveFile({
+      fetchImpl: async (_input, init) => {
+        if (init?.method === 'POST') {
+          return new Response('', { status: 200, headers: { Location: 'https://upload.example.test/session' } });
+        }
+        const headers = new Headers(init?.headers);
+        ranges.push(headers.get('content-range') ?? '');
+        putAttempts += 1;
+        if (putAttempts === 1) return new Response('', { status: 308 });
+        return Response.json({ id: 'remote-1', name: 'large.avcbak', size: String(10 * 1024 * 1024) });
+      },
+      uploadBaseUrl: 'https://upload.example.test/drive/v3',
+      accessToken: 'secret-token',
+      folderId: 'folder-1',
+      sourcePath,
+      name: 'large.avcbak',
+      appProperties: {},
+      sharedDrive: false,
+      signal: new AbortController().signal,
+      sleep: () => Promise.resolve(),
+      random: () => 0,
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { id: 'remote-1' } });
+    expect(ranges).toEqual(['bytes 0-8388607/10485760', 'bytes 0-8388607/10485760']);
+  });
+
   it('cancels a resumable session when the upload is aborted', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'avc-google-cancel-'));
     const sourcePath = path.join(root, 'large.avcbak');

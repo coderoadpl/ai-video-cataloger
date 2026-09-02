@@ -76,7 +76,7 @@ describe('POST /api/backup/restore on a Mac whose Keychain holds no backup key',
       await waitForJob(app.jobs, backedUp.value.jobId);
       const listed = await lifecycle.list(null, new AbortController().signal);
       if (!listed.ok) throw new Error(listed.error.message);
-      const remoteId = listed.value[0]?.remoteId ?? '';
+      const remoteId = listed.value.backups[0]?.remoteId ?? '';
       await configStore.set({ kind: 'home' }, 'backup_keep_last', '21');
       secrets.values.delete(BACKUP_ENCRYPTION_KEY_ACCOUNT);
 

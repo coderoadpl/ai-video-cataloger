@@ -145,6 +145,17 @@ describe('backup encryption envelope', () => {
     expect(first.value.document).not.toContain(stored);
   });
 
+  it('renders the recovery-key document in Polish when requested', async () => {
+    const secrets = new MemorySecrets();
+
+    const created = await ensureBackupRecoveryKey(secrets, 'pl');
+
+    expect(created).toMatchObject({ ok: true });
+    if (!created.ok) throw new Error(created.error.message);
+    expect(created.value.document).toContain('klucz odzyskiwania kopii zapasowej');
+    expect(created.value.document).not.toContain('This key is the only way');
+  });
+
   it('refuses to rebuild a recovery key from a corrupted Keychain entry', async () => {
     const secrets = new MemorySecrets();
     secrets.values.set(BACKUP_ENCRYPTION_KEY_ACCOUNT, 'dG9vLXNob3J0');

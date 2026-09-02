@@ -19,6 +19,7 @@ const messages: Record<BackupErrorCode, string> = {
   backup_quota_exceeded: 'message for backup_quota_exceeded',
   backup_encryption_failed: 'message for backup_encryption_failed',
   backup_integrity_failed: 'message for backup_integrity_failed',
+  restore_incomplete: 'message for restore_incomplete',
   restore_refused: 'message for restore_refused',
   recovery_key_required: 'message for recovery_key_required',
 };

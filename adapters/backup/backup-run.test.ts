@@ -17,7 +17,7 @@ import {
   type Result,
 } from '@core/domain/index.js';
 import { enqueueBackup, runBackup, type BackupRunDeps } from '@core/server/index.js';
-import type { JobExecutionContext, JobProgress, JobRecord, SecretsAvailability, SecretsStore } from '@core/server/index.js';
+import type { BackupListResult, JobExecutionContext, JobProgress, JobRecord, SecretsAvailability, SecretsStore } from '@core/server/index.js';
 
 import {
   backupKeyFingerprint,
@@ -116,7 +116,7 @@ describe('backup run pipeline', () => {
     const result = await runBackup(fixture.deps, { tier: 'critical', keepLast: 7, keepWeekly: 8 }, context('failed-job'));
 
     expect(result).toMatchObject({ ok: false, error: { code: 'backup_destination_error' } });
-    expect(await fixture.destination.list(null, new AbortController().signal)).toEqual(ok([]));
+    expect(await fixture.destination.list(null, new AbortController().signal)).toEqual(ok({ backups: [], skipped: 0 }));
     expect(await fixture.state.read()).toEqual(ok({
       lastSuccessAt: null,
       lastFingerprint: null,
@@ -145,7 +145,7 @@ describe('backup run pipeline', () => {
     const terminal = await waitForJob(jobs, enqueued.value.jobId, (record) => record.status === 'cancelled');
 
     expect(terminal.status).toBe('cancelled');
-    expect(await destination.list(null, new AbortController().signal)).toEqual(ok([]));
+    expect(await destination.list(null, new AbortController().signal)).toEqual(ok({ backups: [], skipped: 0 }));
     expect(await fixture.state.read()).toEqual(ok(null));
     expect(existsSync(path.join(fixture.home, '.ai-video-cataloger', 'backup-staging', enqueued.value.jobId))).toBe(false);
   }, scaledTimeout(30_000));
@@ -230,6 +230,14 @@ describe('backup run pipeline', () => {
       ok: false,
       error: { code: 'conflict' },
     });
+    expect(await jobs.enqueue({ kind: 'photo_proxies', payload: {}, run: () => Promise.resolve(ok({})) })).toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    });
+    expect(await jobs.enqueue({ kind: 'photo_grid_thumbs', payload: {}, run: () => Promise.resolve(ok({})) })).toMatchObject({
+      ok: false,
+      error: { code: 'conflict' },
+    });
     uploadGate.resolve();
     await waitForJob(jobs, backup.value.jobId, (record) => record.status === 'completed');
   }, scaledTimeout(30_000));
@@ -263,10 +271,10 @@ class TrackingBackupDestination extends MemoryBackupDestination {
     this.existing = existing;
   }
 
-  override list(tier: 'critical' | 'optional' | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>> {
+  override list(tier: 'critical' | 'optional' | null, signal: AbortSignal): Promise<Result<BackupListResult, AppError>> {
     this.listedTiers.push(tier);
     if (signal.aborted) return super.list(tier, signal);
-    return Promise.resolve(ok(this.existing.filter((remote) => tier === null || remote.tier === tier)));
+    return Promise.resolve(ok({ backups: this.existing.filter((remote) => tier === null || remote.tier === tier), skipped: 0 }));
   }
 
   override upload(

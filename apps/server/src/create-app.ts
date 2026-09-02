@@ -21,17 +21,22 @@ export interface App {
 
 export const createApp = (config: AppConfig = {}, inMemoryDepsFactory?: InMemoryDepsFactory): App => {
   const deps = createDeps(config, inMemoryDepsFactory);
+  const startupCleanup = deps.cleanupBackupStaging().then((result) => {
+    if (!result.ok) console.error(`[backup] startup recovery failed: ${result.error.code}: ${result.error.message}`);
+    return result;
+  });
   const backupSchedule = config.processName === 'gui'
     ? (() => {
-      const cleanup = deps.cleanupBackupStaging();
       return startBackupSchedule(async () => {
-        await cleanup;
+        const cleanup = await startupCleanup;
+        if (!cleanup.ok) return;
         await deps.evaluateScheduledBackup();
       });
     })()
     : null;
+  const honoApp = buildApp({ ...deps, beforeRequest: () => startupCleanup });
   return {
-    honoApp: buildApp(deps),
+    honoApp,
     jobs: deps.jobs,
     watchFolder: (root, onChange, onStopped) =>
       watchCatalogFolder({ watcher: deps.folderWatcher, jobs: deps.jobs }, root, onChange, { onStopped }),

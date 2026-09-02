@@ -22,6 +22,7 @@ import type {
   BackupConnectionReport,
   BackupDestinationDescription,
   BackupDestinationPort,
+  BackupListResult,
   ConfigStore,
   SecretsStore,
 } from '@core/server/index.js';
@@ -68,7 +69,7 @@ const remoteFilesSchema = z.object({
     name: z.string().min(1),
     size: z.string().regex(/^\d+$/),
     createdTime: z.iso.datetime(),
-    appProperties: z.record(z.string(), z.string()),
+    appProperties: z.record(z.string(), z.string()).optional().default({}),
   }).passthrough()),
   nextPageToken: z.string().min(1).optional(),
 }).passthrough();
@@ -161,6 +162,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
   async test(signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>> {
     const folder = await this.ensureFolder(signal);
     if (!folder.ok) return folder;
+    await this.deleteProbeFiles(folder.value.folderId, signal);
     const listed = await this.request(filesInFolderUrl(this.driveBaseUrl, folder.value.folderId), {}, signal);
     if (!listed.ok) return listed;
     const parsedList = await parseGoogleResponse(listed.value, filesSchema, 'files.list');
@@ -169,7 +171,7 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     const sourcePath = path.join(directory, 'connection-test.bin');
     try {
       await writeFile(sourcePath, Buffer.alloc(1024), { mode: 0o600 });
-      const uploaded = await this.uploadFile(folder.value.folderId, sourcePath, 'connection-test.bin', {}, false, signal);
+      const uploaded = await this.uploadFile(folder.value.folderId, sourcePath, 'connection-test.bin', { kind: 'probe' }, false, signal);
       if (!uploaded.ok) return uploaded;
       const removed = await this.remove(uploaded.value.id, signal);
       if (!removed.ok) return removed;
@@ -220,15 +222,16 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     return ok({ folderId: parsed.value.id, name: parsed.value.name });
   }
 
-  async list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>> {
+  async list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<BackupListResult, AppError>> {
     const folder = await this.ensureFolder(signal);
     if (!folder.ok) return folder;
     const backups: RemoteBackup[] = [];
+    let skipped = 0;
+    await this.deleteProbeFiles(folder.value.folderId, signal);
     let pageToken: string | undefined;
     do {
       const url = new URL(`${this.driveBaseUrl}/files`);
-      const tierQuery = tier === null ? '' : ` and appProperties has { key='tier' and value='${tier}' }`;
-      url.searchParams.set('q', `'${folder.value.folderId}' in parents and trashed=false${tierQuery}`);
+      url.searchParams.set('q', backupFilesQuery(folder.value.folderId, tier));
       url.searchParams.set('spaces', 'drive');
       url.searchParams.set('orderBy', 'createdTime desc');
       url.searchParams.set('pageSize', '1000');
@@ -252,12 +255,12 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
           },
           keyFingerprint: file.appProperties.keyFingerprint ?? null,
         });
-        if (!remote.success) return destinationSchemaError('backup metadata');
-        backups.push(remote.data);
+        if (remote.success) backups.push(remote.data);
+        else skipped += 1;
       }
       pageToken = parsed.value.nextPageToken;
     } while (pageToken !== undefined);
-    return ok(backups);
+    return ok({ backups, skipped });
   }
 
   async upload(
@@ -469,6 +472,14 @@ export class GoogleOAuthBackupDestination implements BackupDestinationPort {
     }
     return result;
   }
+
+  private async deleteProbeFiles(folderId: string, signal: AbortSignal): Promise<void> {
+    const response = await this.request(probeFilesUrl(this.driveBaseUrl, folderId), {}, signal);
+    if (!response.ok) return;
+    const parsed = await parseGoogleResponse(response.value, filesSchema, 'probe list');
+    if (!parsed.ok) return;
+    for (const file of parsed.value.files) await this.remove(file.id, signal);
+  }
 }
 
 interface AuthorizationCodeInput {
@@ -546,6 +557,21 @@ const receiveAuthorizationCode = async (
 const filesInFolderUrl = (baseUrl: string, folderId: string): string => {
   const url = new URL(`${baseUrl}/files`);
   url.searchParams.set('q', `'${folderId}' in parents and trashed=false`);
+  url.searchParams.set('spaces', 'drive');
+  url.searchParams.set('fields', 'files(id,name)');
+  return url.toString();
+};
+
+const backupFilesQuery = (folderId: string, tier: BackupTier | null): string => {
+  const tierQuery = tier === null
+    ? "(appProperties has { key='tier' and value='critical' } or appProperties has { key='tier' and value='optional' })"
+    : `appProperties has { key='tier' and value='${tier}' }`;
+  return `'${folderId}' in parents and trashed=false and ${tierQuery}`;
+};
+
+const probeFilesUrl = (baseUrl: string, folderId: string): string => {
+  const url = new URL(`${baseUrl}/files`);
+  url.searchParams.set('q', `'${folderId}' in parents and trashed=false and appProperties has { key='kind' and value='probe' }`);
   url.searchParams.set('spaces', 'drive');
   url.searchParams.set('fields', 'files(id,name)');
   return url.toString();

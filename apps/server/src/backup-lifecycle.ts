@@ -17,9 +17,9 @@ import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
   appError,
   ok,
+  uiLanguageSchema,
   type AppError,
   type BackupTier,
-  type RemoteBackup,
   type Result,
 } from '@core/domain/index.js';
 import {
@@ -46,6 +46,7 @@ import {
   type BackupConnectionReport,
   type BackupEnableRequest,
   type BackupEnablementDeps,
+  type BackupListResult,
   type BackupRestoreDeps,
   type BackupRestoreInput,
   type BackupRunDeps,
@@ -77,7 +78,7 @@ export interface BackupLifecycleOptions {
 export interface BackupLifecycle {
   cleanup(): Promise<Result<void, AppError>>;
   evaluate(): Promise<Result<void, AppError>>;
-  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
+  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<BackupListResult, AppError>>;
   restore(input: BackupRestoreInput): Promise<Result<{ jobId: string }, AppError>>;
   status(input: { testConnection: boolean }): Promise<Result<BackupStatusView, AppError>>;
   connect(request: BackupConnectRequest, signal: AbortSignal): Promise<Result<BackupConnectResult, AppError>>;
@@ -169,7 +170,12 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
     fileSave: options.fileSave,
     destination: options.destination,
     enqueueBackup: enqueueTier,
-    recoveryKey: () => ensureBackupRecoveryKey(options.secrets),
+    recoveryKey: async () => {
+      const locale = await options.config.get({ kind: 'home' }, 'ui_language');
+      if (!locale.ok) return locale;
+      const parsed = uiLanguageSchema.safeParse(locale.value ?? undefined);
+      return ensureBackupRecoveryKey(options.secrets, parsed.success ? parsed.data : 'en');
+    },
     parseRecoveryKey,
     fingerprintKey: backupKeyFingerprint,
   };

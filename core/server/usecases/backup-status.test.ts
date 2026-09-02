@@ -48,7 +48,7 @@ const stubDestination = (report: BackupConnectionReport): BackupDestinationPort 
   connect: () => Promise.resolve(ok(report)),
   test: () => Promise.resolve(ok(report)),
   ensureFolder: () => Promise.resolve(ok({ folderId: 'folder', name: report.folderName })),
-  list: () => Promise.resolve(ok([])),
+  list: () => Promise.resolve(ok({ backups: [], skipped: 0 })),
   upload: () => Promise.resolve({ ok: false, error: { code: 'internal', message: 'unused' } }),
   download: () => Promise.resolve({ ok: false, error: { code: 'internal', message: 'unused' } }),
   remove: () => Promise.resolve(ok({ removed: false })),
@@ -220,5 +220,23 @@ describe('backup status', () => {
     }, { testConnection: false });
 
     expect(status).toMatchObject({ ok: true, value: { recoveryKeyStored: true } });
+  });
+
+  it('reports the status without a recovery key when the keychain is structurally unavailable', async () => {
+    const status = await readBackupStatus({
+      config: new InMemoryConfig(),
+      state: new StubState(null),
+      jobs: new InMemoryJobs(),
+      secrets: {
+        availability: () => Promise.resolve('disabled'),
+        get: () => Promise.resolve({ ok: false, error: { code: 'keychain_unavailable', message: 'nope' } }),
+        set: () => Promise.resolve(ok(undefined)),
+        delete: () => Promise.resolve(ok({ existed: false })),
+      },
+      supportedSchemaVersions: { globalCatalog: 9, photos: 4 },
+      destination: () => Promise.resolve(ok(stubDestination(connectionReport))),
+    }, { testConnection: false });
+
+    expect(status).toMatchObject({ ok: true, value: { recoveryKeyStored: false } });
   });
 });

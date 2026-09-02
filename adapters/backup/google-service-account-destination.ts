@@ -21,6 +21,7 @@ import type {
   BackupConnectionReport,
   BackupDestinationDescription,
   BackupDestinationPort,
+  BackupListResult,
   ConfigStore,
   SecretsStore,
 } from '@core/server/index.js';
@@ -72,6 +73,7 @@ const permissionsSchema = z.object({
     role: z.string(),
     type: z.string(),
   }).passthrough()),
+  nextPageToken: z.string().min(1).optional(),
 }).passthrough();
 const filesSchema = z.object({ files: z.array(z.object({ id: z.string(), name: z.string() }).passthrough()) }).passthrough();
 const remoteFilesSchema = z.object({
@@ -80,7 +82,7 @@ const remoteFilesSchema = z.object({
     name: z.string().min(1),
     size: z.string().regex(/^\d+$/),
     createdTime: z.iso.datetime(),
-    appProperties: z.record(z.string(), z.string()),
+    appProperties: z.record(z.string(), z.string()).optional().default({}),
   }).passthrough()),
   nextPageToken: z.string().min(1).optional(),
 }).passthrough();
@@ -130,11 +132,14 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
       .update(parsed.value.client_email + parsed.value.private_key_id)
       .digest('hex')
       .slice(0, 12)}`;
+    const previous = await this.secrets.get(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT);
+    if (!previous.ok) return previous;
     const stored = await this.secrets.set(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT, keyJson);
     if (!stored.ok) return stored;
     const configured = await this.config.set({ kind: 'home' }, 'backup_service_account_fingerprint', fingerprint);
     if (!configured.ok) {
-      await this.secrets.delete(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT);
+      if (previous.value === null) await this.secrets.delete(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT);
+      else await this.secrets.set(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT, previous.value);
       return configured;
     }
     this.accessToken = null;
@@ -160,6 +165,7 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
     if (!key.ok) return key;
     const folder = await this.ensureFolder(signal);
     if (!folder.ok) return folder;
+    await this.deleteProbeFiles(folder.value.folderId, folder.value.driveId, signal);
     const drive = await this.drive(folder.value.driveId, signal);
     if (!drive.ok) return drive;
     const membership = await this.verifyMembership(folder.value.driveId, key.value.client_email, signal);
@@ -172,7 +178,7 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
     const sourcePath = path.join(directory, 'connection-test.bin');
     try {
       await writeFile(sourcePath, Buffer.alloc(1024), { mode: 0o600 });
-      const uploaded = await this.uploadFile(folder.value.folderId, sourcePath, 'connection-test.bin', {}, false, signal);
+      const uploaded = await this.uploadFile(folder.value.folderId, sourcePath, 'connection-test.bin', { kind: 'probe' }, false, signal);
       if (!uploaded.ok) return uploaded;
       const removed = await this.remove(uploaded.value.id, signal);
       if (!removed.ok) return removed;
@@ -211,15 +217,16 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
     return ok({ folderId: parsed.value.id, name: parsed.value.name, driveId: parsed.value.driveId });
   }
 
-  async list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>> {
+  async list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<BackupListResult, AppError>> {
     const folder = await this.ensureFolder(signal);
     if (!folder.ok) return folder;
     const backups: RemoteBackup[] = [];
+    let skipped = 0;
+    await this.deleteProbeFiles(folder.value.folderId, folder.value.driveId, signal);
     let pageToken: string | undefined;
     do {
       const url = new URL(`${this.driveBaseUrl}/files`);
-      const tierQuery = tier === null ? '' : ` and appProperties has { key='tier' and value='${tier}' }`;
-      url.searchParams.set('q', `'${folder.value.folderId}' in parents and trashed=false${tierQuery}`);
+      url.searchParams.set('q', backupFilesQuery(folder.value.folderId, tier));
       setSharedDriveParameters(url, folder.value.driveId);
       url.searchParams.set('orderBy', 'createdTime desc');
       url.searchParams.set('pageSize', '1000');
@@ -243,12 +250,12 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
           },
           keyFingerprint: file.appProperties.keyFingerprint ?? null,
         });
-        if (!remote.success) return destinationSchemaError('backup metadata');
-        backups.push(remote.data);
+        if (remote.success) backups.push(remote.data);
+        else skipped += 1;
       }
       pageToken = parsed.value.nextPageToken;
     } while (pageToken !== undefined);
-    return ok(backups);
+    return ok({ backups, skipped });
   }
 
   async upload(
@@ -364,18 +371,21 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
   }
 
   private async verifyMembership(driveId: string, email: string, signal: AbortSignal): Promise<Result<void, AppError>> {
-    const url = new URL(`${this.driveBaseUrl}/files/${encodeURIComponent(driveId)}/permissions`);
-    url.searchParams.set('supportsAllDrives', 'true');
-    url.searchParams.set('fields', 'permissions(emailAddress,role,type)');
-    const response = await this.request(url.toString(), {}, signal);
-    if (!response.ok) return response;
-    const parsed = await parseGoogleResponse(response.value, permissionsSchema, 'Shared Drive membership');
-    if (!parsed.ok) return parsed;
-    const permission = parsed.value.permissions.find((item) => item.emailAddress === email);
-    if (permission === undefined || !['fileOrganizer', 'organizer'].includes(permission.role)) {
-      return { ok: false, error: appError('validation', 'The service account must have at least the Content manager role in the Shared Drive') };
-    }
-    return ok(undefined);
+    let pageToken: string | undefined;
+    do {
+      const url = new URL(`${this.driveBaseUrl}/files/${encodeURIComponent(driveId)}/permissions`);
+      url.searchParams.set('supportsAllDrives', 'true');
+      url.searchParams.set('fields', 'nextPageToken,permissions(emailAddress,role,type)');
+      if (pageToken !== undefined) url.searchParams.set('pageToken', pageToken);
+      const response = await this.request(url.toString(), {}, signal);
+      if (!response.ok) return response;
+      const parsed = await parseGoogleResponse(response.value, permissionsSchema, 'Shared Drive membership');
+      if (!parsed.ok) return parsed;
+      const permission = parsed.value.permissions.find((item) => item.emailAddress === email);
+      if (permission !== undefined && ['fileOrganizer', 'organizer'].includes(permission.role)) return ok(undefined);
+      pageToken = parsed.value.nextPageToken;
+    } while (pageToken !== undefined);
+    return { ok: false, error: appError('validation', 'The service account must have at least the Content manager role in the Shared Drive') };
   }
 
   private async request(url: string, init: RequestInit, signal: AbortSignal): Promise<Result<Response, AppError>> {
@@ -480,6 +490,14 @@ export class GoogleServiceAccountBackupDestination implements BackupDestinationP
     }
     return result;
   }
+
+  private async deleteProbeFiles(folderId: string, driveId: string, signal: AbortSignal): Promise<void> {
+    const response = await this.request(probeFilesUrl(this.driveBaseUrl, folderId, driveId), {}, signal);
+    if (!response.ok) return;
+    const parsed = await parseGoogleResponse(response.value, filesSchema, 'probe list');
+    if (!parsed.ok) return;
+    for (const file of parsed.value.files) await this.remove(file.id, signal);
+  }
 }
 
 const parseServiceAccountKey = (keyJson: string): Result<ServiceAccountKey, AppError> => {
@@ -497,6 +515,21 @@ const parseServiceAccountKey = (keyJson: string): Result<ServiceAccountKey, AppE
 const filesInFolderUrl = (baseUrl: string, folderId: string, driveId: string): string => {
   const url = new URL(`${baseUrl}/files`);
   url.searchParams.set('q', `'${folderId}' in parents and trashed=false`);
+  setSharedDriveParameters(url, driveId);
+  url.searchParams.set('fields', 'files(id,name)');
+  return url.toString();
+};
+
+const backupFilesQuery = (folderId: string, tier: BackupTier | null): string => {
+  const tierQuery = tier === null
+    ? "(appProperties has { key='tier' and value='critical' } or appProperties has { key='tier' and value='optional' })"
+    : `appProperties has { key='tier' and value='${tier}' }`;
+  return `'${folderId}' in parents and trashed=false and ${tierQuery}`;
+};
+
+const probeFilesUrl = (baseUrl: string, folderId: string, driveId: string): string => {
+  const url = new URL(`${baseUrl}/files`);
+  url.searchParams.set('q', `'${folderId}' in parents and trashed=false and appProperties has { key='kind' and value='probe' }`);
   setSharedDriveParameters(url, driveId);
   url.searchParams.set('fields', 'files(id,name)');
   return url.toString();

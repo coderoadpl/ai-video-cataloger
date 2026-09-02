@@ -7,6 +7,7 @@ import { describe, expect, it } from 'vitest';
 import type { BackupIndicatorState } from '@core/domain/index.js';
 
 import { en } from '../../i18n/dictionary.js';
+import { formatCapturedAt } from '../../lib/format.js';
 import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
@@ -91,13 +92,15 @@ describe('Settings > Backup', () => {
   });
 
   it('shows last backup, next evaluation and the manual run action once enabled', async () => {
-    server.use(statusHandler(), listHandler([]));
+    server.use(statusHandler(), listHandler([backupRow({ remoteId: 'old' })]));
     renderThemed(<SettingsBackupSection open />);
 
     await waitFor(() => expect(screen.getByTestId('backup-run-now')).toBeTruthy());
-    expect(screen.getByTestId('backup-last-success').textContent).toContain('2026-09-01T12:00:00.000Z');
-    expect(screen.getByTestId('backup-next-due').textContent).toContain('2026-09-02T12:00:00.000Z');
-    await waitFor(() => expect(screen.getByTestId('backup-list-empty').textContent).toBe(en.backup.listEmpty));
+    const last = formatCapturedAt('2026-09-01T12:00:00.000Z', en.locale);
+    const next = formatCapturedAt('2026-09-02T12:00:00.000Z', en.locale);
+    expect(screen.getByTestId('backup-last-success').textContent).toBe(en.backup.lastBackup(last ?? ''));
+    expect(screen.getByTestId('backup-next-due').textContent).toBe(en.backup.nextDue(next ?? ''));
+    await waitFor(() => expect(screen.getByTestId('backup-row-old').textContent).toContain(en.backup.backupRow(last ?? '', '2.0 KB', '0.7.0')));
   });
 
   it('surfaces the last failure with its taxonomy message', async () => {
@@ -182,6 +185,24 @@ describe('Settings > Backup', () => {
       JSON.stringify({ remoteId: 'old', recoveryKey: 'RECOVERY-KEY-FROM-OTHER-MAC' }),
     ]));
   });
+
+  it('does not say nothing changed when restore failed after rollback protection started', async () => {
+    server.use(
+      statusHandler(),
+      listHandler([backupRow({ remoteId: 'old' })]),
+      http.post('/api/backup/restore', () =>
+        HttpResponse.json({ ok: false, error: { code: 'restore_incomplete', message: 'Restore did not finish' } }, { status: 500 })),
+    );
+    renderThemed(<SettingsBackupSection open />);
+
+    await waitFor(() => expect(screen.getByTestId('backup-restore-old')).toBeTruthy());
+    fireEvent.click(screen.getByTestId('backup-restore-old'));
+    await screen.findByTestId('backup-restore-dialog');
+    fireEvent.click(screen.getByTestId('backup-restore-confirm'));
+    fireEvent.click(screen.getByTestId('backup-restore-confirm-final'));
+
+    await waitFor(() => expect(screen.getByTestId('backup-restore-error').textContent).toBe(en.backup.errorMessages.restore_incomplete));
+  });
 });
 
 describe('bottom-bar backup indicator', () => {
@@ -198,9 +219,21 @@ describe('bottom-bar backup indicator', () => {
 
     const indicator = await screen.findByTestId('backup-indicator');
     expect(indicator.getAttribute('data-state')).toBe('idle');
+    expect(screen.getByRole('status')).toBe(indicator);
     fireEvent.mouseOver(indicator);
+    const last = formatCapturedAt('2026-09-01T12:00:00.000Z', en.locale) ?? '';
     await waitFor(() =>
-      expect(screen.getByRole('tooltip').textContent).toBe(en.backup.indicatorIdle('2026-09-01T12:00:00.000Z')));
+      expect(screen.getByRole('tooltip').textContent).toBe(en.backup.indicatorIdle(last)));
+  });
+
+  it('announces a running backup as a polite status region', async () => {
+    server.use(statusHandler({ indicator: 'running' }));
+    renderThemed(<BackupIndicator onOpenSettings={() => undefined} />);
+
+    const indicator = await screen.findByRole('status');
+
+    expect(indicator.getAttribute('data-state')).toBe('running');
+    expect(indicator.getAttribute('aria-live')).toBe('polite');
   });
 
   it('opens Settings from the failed state', async () => {

@@ -59,9 +59,10 @@ describe('error taxonomy mappings', () => {
       EXIT_CODE_BY_ERROR_CODE.backup_quota_exceeded,
       EXIT_CODE_BY_ERROR_CODE.backup_encryption_failed,
       EXIT_CODE_BY_ERROR_CODE.backup_integrity_failed,
+      EXIT_CODE_BY_ERROR_CODE.restore_incomplete,
       EXIT_CODE_BY_ERROR_CODE.restore_refused,
       EXIT_CODE_BY_ERROR_CODE.recovery_key_required,
-    ]).toEqual([47, 48, 49, 50, 51, 52, 53, 54]);
+    ]).toEqual([47, 48, 49, 50, 51, 52, 55, 53, 54]);
     expect(HTTP_STATUS_BY_ERROR_CODE.backup_quota_exceeded).toBe(507);
   });
 });

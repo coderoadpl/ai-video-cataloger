@@ -193,6 +193,31 @@ describe('Google OAuth backup destination', () => {
     expect(await config.get({ kind: 'home' }, 'backup_folder_id')).toEqual(ok('folder-recreated'));
   });
 
+  it('skips malformed sibling files when listing backups', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    const queries: string[] = [];
+    secrets.values.set(BACKUP_GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
+    await config.set({ kind: 'home' }, 'backup_folder_id', 'folder-1');
+    const destination = new GoogleOAuthBackupDestination({
+      config,
+      secrets,
+      clientId: 'client',
+      clientSecret: 'secret',
+      tokenUrl: 'https://oauth.example.test/token',
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: malformedSiblingFake(queries),
+      openExternal: () => Promise.resolve(),
+    });
+
+    expect(await destination.list(null, new AbortController().signal)).toMatchObject({
+      ok: true,
+      value: { backups: [{ remoteId: 'backup-1' }], skipped: 1 },
+    });
+    expect(queries.some((query) => query.includes("appProperties has { key='tier'"))).toBe(true);
+  });
+
   it('closes an unanswered loopback listener after the configured timeout', async () => {
     const destination = new GoogleOAuthBackupDestination({
       config: new InMemoryConfig(),
@@ -243,6 +268,36 @@ const folderHealthFake = (requests: string[], folderResponse: Response): typeof 
   if (url.pathname.endsWith('/files') && init?.method !== 'POST') return Response.json({ files: [] });
   if (url.pathname.endsWith('/files') && init?.method === 'POST') {
     return Response.json({ id: 'folder-recreated', name: 'AI Video Cataloger Backups' });
+  }
+  return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
+};
+
+const malformedSiblingFake = (queries: string[]): typeof fetch => async (input) => {
+  const url = new URL(String(input));
+  if (url.pathname.endsWith('/token')) {
+    return Response.json({ access_token: 'access-token', expires_in: 3600, token_type: 'Bearer' });
+  }
+  if (url.pathname.endsWith('/files/folder-1')) {
+    return Response.json({ id: 'folder-1', name: 'AI Video Cataloger Backups', trashed: false });
+  }
+  if (url.pathname.endsWith('/files')) {
+    queries.push(url.searchParams.get('q') ?? '');
+    return Response.json({ files: [
+      { id: 'stray', name: 'connection-test.bin', size: '1024', createdTime: '2026-09-02T11:00:00.000Z' },
+      {
+        id: 'backup-1',
+        name: 'archive.avcbak',
+        size: '17',
+        createdTime: '2026-09-02T12:00:00.000Z',
+        appProperties: {
+          tier: 'critical',
+          createdAt: '2026-09-02T12:00:00.000Z',
+          appVersion: '1.2.3',
+          schemaGlobalCatalog: '7',
+          schemaPhotos: '3',
+        },
+      },
+    ] });
   }
   return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
 };

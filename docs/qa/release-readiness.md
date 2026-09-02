@@ -43,7 +43,8 @@ The Google-account backup destination is a build-time secret: export
 `pnpm run electron:package`. A bundle built without them still runs, but
 `Settings > Backup > Google account` fails immediately with
 `backup_destination_error` instead of opening a browser, and only the
-service-account path works.
+service-account path works. Record that the variables were present, not their
+values, in the release notes handed to the owner.
 
 | Step | Command | Pass condition |
 |---|---|---|

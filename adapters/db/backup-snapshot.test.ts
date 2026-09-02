@@ -7,8 +7,9 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CatalogFolder } from '@core/domain/index.js';
 
-import { SNAPSHOT_LEASE_TIMEOUT_MS, SqlJsGlobalCatalogStore } from './global-catalog.js';
+import { SqlJsGlobalCatalogStore } from './global-catalog.js';
 import { SqlJsPhotosStore } from './photos-store.js';
+import { SNAPSHOT_LEASE_TIMEOUT_MS } from './sql-js.js';
 
 const roots: string[] = [];
 

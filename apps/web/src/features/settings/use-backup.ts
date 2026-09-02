@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { z } from 'zod';
 
 import { invalidateBackupQueries, type BackupStatusOutput } from '@core/client/index.js';
-import { backupPhaseSchema, isBackupErrorCode, type AppError, type BackupTier } from '@core/domain/index.js';
+import { backupPhaseSchema, isBackupErrorCode, type AppError, type BackupErrorCode, type BackupTier } from '@core/domain/index.js';
 
 import { actions, bridge } from '../../api.js';
 import { apiErrorMessage } from '../../i18n/api-error-message.js';
@@ -27,6 +28,7 @@ export interface BackupSectionState {
   restorePhase: string | null;
   isRestoring: boolean;
   restoreError: string | null;
+  restoreErrorCode: BackupErrorCode | null;
 }
 
 export const useBackupStatus = (options: { enabled?: boolean } = {}) =>
@@ -60,6 +62,7 @@ export const useBackupSection = (open: boolean): BackupSectionState => {
 
   const jobError = restoreJob.data?.error ?? null;
   const restoreFailure = restoreBackup.error ?? null;
+  const restoreErrorCode = backupErrorCode(restoreFailure) ?? backupErrorCode(jobError);
 
   return {
     status: statusQuery.data,
@@ -97,6 +100,7 @@ export const useBackupSection = (open: boolean): BackupSectionState => {
     restoreError: restoreFailure === null
       ? appErrorMessage(jobError, dictionary)
       : describeError(restoreFailure, dictionary),
+    restoreErrorCode,
   };
 };
 
@@ -118,3 +122,18 @@ const firstErrorMessage = (errors: readonly unknown[], dictionary: Dictionary): 
 
 const describeError = (error: unknown, dictionary: Dictionary): string =>
   backupErrorMessage(error, dictionary.backup.errorMessages) ?? apiErrorMessage(error, dictionary);
+
+const backupErrorCode = (error: AppError | unknown): BackupErrorCode | null => {
+  if (error === null || error === undefined) return null;
+  if (error instanceof Error && 'appError' in error) {
+    const parsed = appErrorShape.safeParse(error.appError);
+    return parsed.success && isBackupErrorCode(parsed.data.code) ? parsed.data.code : null;
+  }
+  const parsed = appErrorShape.safeParse(error);
+  return parsed.success && isBackupErrorCode(parsed.data.code) ? parsed.data.code : null;
+};
+
+const appErrorShape = z.object({
+  code: z.string(),
+  message: z.string(),
+}).passthrough();

@@ -15,6 +15,8 @@ import {
   ok,
   type AppError,
   type BackupManifest,
+  type BackupState,
+  type RemoteBackup,
   type Result,
 } from '@core/domain/index.js';
 import {
@@ -160,13 +162,43 @@ describe('backup restore pipeline', () => {
     const failingFs = new FailingRenameFs(fixture.fs, 2);
     const result = await runRestore({ ...fixture.restoreDeps, fs: failingFs }, { remoteId: fixture.remoteId }, context('swap-failure'));
 
-    expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(result).toMatchObject({ ok: false, error: { code: 'restore_incomplete' } });
     const marker = path.join(fixture.targetHome, '.ai-video-cataloger', 'restore-incomplete.json');
     expect(existsSync(marker)).toBe(true);
     expect(await performRestoreStartupRecovery({ fs: fixture.fs, homeDirectory: fixture.targetHome })).toEqual(ok(undefined));
     expect(existsSync(marker)).toBe(false);
     expect(readFileSync(path.join(fixture.targetHome, '.ai-video-cataloger', 'config.json'), 'utf8')).toContain('current-target');
     await expectCatalogCounts(fixture.targetHome, { folders: 0, files: 0 });
+  });
+
+  it('restores a folder config when the extracted staging path cannot be renamed across devices', async () => {
+    const fixture = await createRestoreFixture();
+    const folder = fixture.backupManifest.folders[0];
+    if (folder === undefined) throw new Error('expected a backed-up folder');
+    const liveFolderConfig = path.join(folder.path, '.ai-video-cataloger', 'config.json');
+    await fixture.replaceRemoteArchive(async (extracted, manifest) => {
+      await writeFile(path.join(extracted, 'folders', folder.folderId, 'config.json'), '{"marker":"restored-folder-config"}\n');
+      await rewriteManifestForExtractedTree(extracted, manifest);
+    });
+    const failingFs = new FailingCrossDeviceRestoreRenameFs(fixture.fs, liveFolderConfig);
+
+    const result = await runRestore({ ...fixture.restoreDeps, fs: failingFs }, { remoteId: fixture.remoteId }, context('exdev-folder-config'));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(readFileSync(liveFolderConfig, 'utf8')).toContain('restored-folder-config');
+  });
+
+  it('keeps the rollback marker when post-restore state persistence fails', async () => {
+    const fixture = await createRestoreFixture();
+    const marker = path.join(fixture.targetHome, '.ai-video-cataloger', 'restore-incomplete.json');
+
+    const result = await runRestore({
+      ...fixture.restoreDeps,
+      state: new FailingBackupState(),
+    }, { remoteId: fixture.remoteId }, context('state-failure'));
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'internal' } });
+    expect(existsSync(marker)).toBe(true);
   });
 
   it('refuses an unknown remote id', async () => {
@@ -261,7 +293,12 @@ describe('restoreAdmissionError', () => {
   });
 
   it('ignores queued/running jobs of unrelated kinds with no shared resource', () => {
-    expect(restoreAdmissionError([baseRecord({ kind: 'photo_proxies', status: 'queued' })])).toBeNull();
+    expect(restoreAdmissionError([baseRecord({ kind: 'variant_projection', status: 'queued' })])).toBeNull();
+  });
+
+  it('blocks while photo proxy and grid thumbnail jobs are active', () => {
+    expect(restoreAdmissionError([baseRecord({ kind: 'photo_proxies', status: 'queued' })])).toMatchObject({ code: 'restore_refused' });
+    expect(restoreAdmissionError([baseRecord({ kind: 'photo_grid_thumbs', status: 'running' })])).toMatchObject({ code: 'restore_refused' });
   });
 });
 
@@ -291,11 +328,37 @@ class FailingRenameFs extends NodeFileSystemPort {
   }
 }
 
+class FailingCrossDeviceRestoreRenameFs extends NodeFileSystemPort {
+  constructor(
+    private readonly delegate: NodeFileSystemPort,
+    private readonly livePath: string,
+  ) {
+    super({ homeDirectory: delegate.homeDirectory(), workingDirectory: delegate.cwd() });
+  }
+
+  override renamePath(from: string, to: string): Promise<Result<void, AppError>> {
+    if (from.includes(`${path.sep}backup-staging${path.sep}`) && to === this.livePath) {
+      return Promise.resolve({ ok: false, error: appError('internal', 'EXDEV: cross-device link not permitted') });
+    }
+    return this.delegate.renamePath(from, to);
+  }
+}
+
+class FailingBackupState {
+  read(): Promise<Result<BackupState | null, AppError>> {
+    return Promise.resolve({ ok: false, error: appError('internal', 'Injected state read failure') });
+  }
+
+  write(): Promise<Result<void, AppError>> {
+    return Promise.resolve(ok(undefined));
+  }
+}
+
 const createRestoreFixture = async (): Promise<{
   targetHome: string;
   destination: MemoryBackupDestination;
   remoteId: string;
-  remote: Awaited<ReturnType<MemoryBackupDestination['list']>> extends Result<Array<infer T>, AppError> ? T : never;
+  remote: RemoteBackup;
   backupManifest: BackupManifest;
   restoreState: BackupStateFile;
   restoreDeps: BackupRestoreDeps;
