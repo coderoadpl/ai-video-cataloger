@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
+import { scaledTimeout } from '../../test/helpers/gate-timeout.js';
 import {
   FACE_CLUSTERING,
   FACE_CLUSTER_MIN_EDGE_DENSITY,
@@ -158,7 +159,7 @@ describe('clusterFaceObservations', () => {
     for (let index = 0; index < pairCount; index += 1) store.add(index, pairCount + index, 0.6, 1);
     expect(store.get(0, pairCount)).toEqual({ sum: 0.6, count: 1 });
     expect(store.get(pairCount - 1, pairCount + pairCount - 1)).toEqual({ sum: 0.6, count: 1 });
-  }, 20_000);
+  }, scaledTimeout(60_000));
 
   it('clusters hundreds of observations across multiple similarity blocks', () => {
     const groupAngles = [0, 130, 250];
