@@ -514,16 +514,85 @@ Mechanics:
 - Per-photo completion state lives in `photos.db`
   (`photo_face_index_state`) so the photos pipeline owns its own progress;
   the identity data itself is never split.
-- `faces index` covers both media; `photos process` auto-chains the faces
-  pass best-effort exactly like `process-drive` (ADR-0011 semantics:
-  skip event, never a failed run). Exemplar selection (read-time, pure
-  function) now naturally mixes media — a person's best crops may be photos.
+- `faces index` is **planned** to cover both media, with `photos process`
+  auto-chaining the faces pass best-effort exactly like `process-drive`
+  (ADR-0011 semantics: skip event, never a failed run), so that exemplar
+  selection (read-time, pure function) naturally mixes media — a person's
+  best crops may be photos. **Not built as of 2026-09-02** — see the
+  correction in §5a.
 - **Mutual exclusion**: every job that writes `people`/`face_observations`
   (faces index legs — video and photo — and `faces_recluster`) declares the
   same `resourceKey: 'faces-write'` so the `JobsPort` serializes them; a
   recluster can never rebuild people while a photo faces pass inserts
   observations (challenge C6).
 - No AI naming. The People feature stays the only naming surface.
+
+### 5a. Unified people — correction and design (2026-09-02, ADR-0017)
+
+**The paragraph above was written as shipped and never was.** Wave 4 delivered
+the schema, the ports and the PHOTO LIBRA import, but no photo detection leg,
+and every people surface stayed video-only. What this section now describes is
+the design that makes §5 true; the decision record, the evidence behind it and
+the migration are [ADR-0017](decisions/0017-unified-people.md), and the phased
+plan is [tasks/prd-unified-people.md](../tasks/prd-unified-people.md).
+
+**What was actually shipped in Wave 4.** `catalog.db` V11 and the `media`
+column; `PhotosStore.listPhotoFaceIndexCandidates` /
+`completePhotoFaceIndex` (`core/server/ports.ts:660`,
+`adapters/db/photos-store.ts:375`) — the candidate query is **called by no
+use-case**; and `photo-import-libra`'s faces pass
+(`core/server/usecases/photo-import-libra.ts:290`), which inserted 24,322
+observations with `media: 'photo'`, `person_id` NULL and `crop_path` NULL, and
+pre-marked their photos complete at `FACE_ENGINE_VERSION`.
+
+**What was not shipped.** Candidate discovery for photos
+(`adapters/db/global-catalog.ts:1086` walks `folders`/`files` only); a photo
+detection leg (`core/server/usecases/faces.ts:454`/`:574` resolve a video path
+and call `extractFrames`); a non-video `media` value at write time
+(`core/server/usecases/faces.ts:852` defaults to `'video'` and nothing
+overrides it); photo-aware exemplar repair
+(`core/server/usecases/faces.ts:644` re-detects through video timestamps, so a
+`ph_` fingerprint lands in `filesUnavailable`); a photo-capable person filter
+(`adapters/db/global-catalog.ts:2132` joins `files`, and
+`core/server/usecases/collection.ts:163` disables the whole photo leg of the
+feed when a person filter is set — while
+`adapters/db/global-catalog.ts:804` counts photos into the same Osoby facet);
+people in photo detail (`core/server/usecases/photos.ts:999`); per-medium
+faces counters (`adapters/db/global-catalog.ts:1287`).
+
+**Design.**
+
+- **Photo detection runs over the proxy**, `photo-artifacts/proxies/<fingerprint>.jpg`,
+  through the `FaceEnginePort` `{ kind: 'image-path' }` input the adapter
+  already supports (`adapters/faces/index.ts:89`). Frame index 1, crops under
+  `faces/obs/ph_<hex>/`, proxy dimensions on the observation, completion via
+  `completePhotoFaceIndex` — exactly as §5 specified, now with a caller.
+- **The imported PHOTO LIBRA observations are dropped**, not repaired. They
+  carry the same SFace checkpoint (verified by sha256 against
+  `core/domain/models.ts:48-61`) but no crops, foreign proxy geometry, a
+  foreign alignment path and a foreign obsId numbering; a one-shot
+  `catalog.db` V16 / `photos.db` v6 migration dumps them to
+  `~/.ai-video-cataloger/backups/` and deletes them together with their
+  completion rows. `faces purge` is never used for this — it would take the
+  video embeddings with it and would leave completion state stale.
+- **Clustering becomes deterministic agglomerative average-linkage** over
+  cosine similarity on a sparse neighbour graph (edges at cosine ≥ 0.36,
+  non-edges counted as 0), replacing the order-dependent greedy centroid
+  assigner. Live indexing keeps the greedy assignment; the rebuild is what
+  makes its mistakes cheap.
+- **The cut threshold is calibrated, not guessed**, by `scripts/faces-benchmark.ts`
+  against PHOTO LIBRA's partition plus an owner-labelled pair sample, reporting
+  purity, completeness and pairwise F1, and chosen on the conservative side of
+  the optimum. The libra partition is a machine-made reference, not ground
+  truth: it is libra's own greedy output at 0.45/0.50/min-3, touched by four
+  human actions in `faces-ui-log.ndjson`.
+- **Every people surface becomes media-agnostic**: person filter joins photos,
+  facet counts stay honest against it, person cards list both media, photo
+  detail carries `people`, `faces exemplars` repairs photo crops from the
+  proxy, and Osoby gains Wszystko / Filmy / Zdjęcia chips with Kolekcja's
+  semantics (`apps/web/src/features/library/FilterBar.tsx:271`).
+- **A full from-scratch recluster is reachable from Osoby**, dry run first,
+  and drops all names (there is exactly one to lose).
 
 ## 6. GPS and places
 
