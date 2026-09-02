@@ -262,7 +262,7 @@ const holdsArchivesFromAnotherKey = async (
   if (!destination.ok) return destination;
   const listed = await destination.value.list(null, new AbortController().signal);
   if (!listed.ok) return listed;
-  return ok(listed.value.some((backup) =>
+  return ok(listed.value.backups.some((backup) =>
     backup.keyFingerprint !== null && backup.keyFingerprint !== fingerprint.value));
 };
 

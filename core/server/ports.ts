@@ -838,12 +838,17 @@ export interface BackupConnectInput {
   sharedDriveId: string | null;
 }
 
+export interface BackupListResult {
+  backups: RemoteBackup[];
+  skipped: number;
+}
+
 export interface BackupDestinationPort {
   describe(): Result<BackupDestinationDescription, AppError>;
   connect(input: BackupConnectInput, signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>>;
   test(signal: AbortSignal): Promise<Result<BackupConnectionReport, AppError>>;
   ensureFolder(signal: AbortSignal): Promise<Result<{ folderId: string; name: string }, AppError>>;
-  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
+  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<BackupListResult, AppError>>;
   upload(input: {
     sourcePath: string;
     name: string;

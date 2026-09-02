@@ -214,7 +214,7 @@ const resumableUpload = async (
       }
       if (response === null) return { ok: false, error: appError('backup_destination_error', 'Google resumable upload did not respond') };
       if (response.status === 308) {
-        offset = acknowledgedOffset(response.headers.get('range'), offset + length);
+        offset = acknowledgedOffset(response.headers.get('range'));
         continue;
       }
       return parseUploadedFile(await response.json(), sizeBytes);
@@ -310,10 +310,10 @@ const parseGoogleError = (body: string): z.output<typeof googleErrorSchema> | nu
   }
 };
 
-const acknowledgedOffset = (range: string | null, fallback: number): number => {
-  if (range === null) return fallback;
+const acknowledgedOffset = (range: string | null): number => {
+  if (range === null) return 0;
   const match = /^bytes=0-(\d+)$/.exec(range);
-  if (match?.[1] === undefined) return fallback;
+  if (match?.[1] === undefined) return 0;
   return Number(match[1]) + 1;
 };
 

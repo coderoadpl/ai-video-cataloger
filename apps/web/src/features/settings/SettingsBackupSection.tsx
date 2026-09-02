@@ -15,6 +15,7 @@ import {
 import type { BackupTier } from '@core/domain/index.js';
 
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatCapturedAt } from '../../lib/format.js';
 import { BackupEnablementDialog } from './BackupEnablementDialog.js';
 import { BackupRestoreDialog } from './BackupRestoreDialog.js';
 import { formatArchiveSize, isRestorable, retentionInput, type RemoteBackupView } from './backup-model.js';
@@ -31,6 +32,8 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
   const [restoreTarget, setRestoreTarget] = useState<RemoteBackupView | null>(null);
   const status = backup.status;
   const enabled = status?.enabled === true;
+  const lastSuccessAt = formatCapturedAt(status?.lastSuccessAt ?? null, dictionary.locale);
+  const nextDueAt = formatCapturedAt(status?.nextDueAt ?? null, dictionary.locale);
   const lastErrorMessage = status === undefined
     ? null
     : appErrorMessage(status.lastErrorCode === null ? null : { code: status.lastErrorCode, message: '' }, dictionary);
@@ -69,12 +72,12 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
           <Typography variant="caption" data-testid="backup-last-success">
             {status.lastSuccessAt === null
               ? dictionary.backup.lastBackupNever
-              : dictionary.backup.lastBackup(status.lastSuccessAt)}
+              : dictionary.backup.lastBackup(lastSuccessAt ?? status.lastSuccessAt)}
           </Typography>
           <Typography variant="caption" data-testid="backup-next-due">
             {status.nextDueAt === null
               ? dictionary.backup.nextDueUnknown
-              : dictionary.backup.nextDue(status.nextDueAt)}
+              : dictionary.backup.nextDue(nextDueAt ?? status.nextDueAt)}
           </Typography>
 
           <Box>
@@ -148,6 +151,7 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
             <Box sx={{ display: 'flex', flexDirection: 'column', gap: 0.5 }} data-testid="backup-list">
               {backup.backups.map((remote) => {
                 const restorable = isRestorable(remote, status.supportedSchemaVersions);
+                const createdAt = formatCapturedAt(remote.createdAt, dictionary.locale) ?? remote.createdAt;
                 return (
                   <Box
                     key={remote.remoteId}
@@ -156,7 +160,7 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
                   >
                     <Typography variant="caption">
                       {`${tierLabel(remote.tier, dictionary)} · ${dictionary.backup.backupRow(
-                        remote.createdAt,
+                        createdAt,
                         formatArchiveSize(remote.sizeBytes),
                         remote.appVersion,
                       )}`}
@@ -197,6 +201,7 @@ export const SettingsBackupSection = ({ open }: SettingsBackupSectionProps) => {
         phase={backup.restorePhase}
         isRestoring={backup.isRestoring}
         error={backup.restoreError}
+        errorCode={backup.restoreErrorCode}
         onConfirm={backup.restore}
         onClose={() => setRestoreTarget(null)}
       />

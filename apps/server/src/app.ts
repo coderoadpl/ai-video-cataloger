@@ -179,6 +179,15 @@ export const buildApp = (deps: AppDeps): Hono => {
     }),
   );
 
+  const beforeRequest = deps.beforeRequest;
+  if (beforeRequest !== undefined) {
+    app.use('*', async (_context, next) => {
+      const ready = await beforeRequest();
+      if (!ready.ok) return respond(ready, z.unknown());
+      await next();
+    });
+  }
+
   app.get(API_ROUTES.health.path, () =>
     respond(checkHealth({ version: deps.version }), API_ROUTES.health.output),
   );
@@ -472,7 +481,7 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!input.ok) return respond(input, API_ROUTES.backupList.output);
     const controller = new AbortController();
     const result = await deps.listBackups(input.value.tier, controller.signal);
-    return respond(result.ok ? ok({ backups: result.value }) : result, API_ROUTES.backupList.output);
+    return respond(result, API_ROUTES.backupList.output);
   });
 
   app.post(API_ROUTES.backupRestore.path, async (context) => {

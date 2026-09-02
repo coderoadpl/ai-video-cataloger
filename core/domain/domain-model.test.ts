@@ -66,6 +66,7 @@ describe('domain taxonomy', () => {
       'backup_quota_exceeded',
       'backup_encryption_failed',
       'backup_integrity_failed',
+      'restore_incomplete',
       'restore_refused',
       'recovery_key_required',
       'unavailable',

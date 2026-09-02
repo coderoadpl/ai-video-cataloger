@@ -13,7 +13,10 @@ import {
   Typography,
 } from '@mui/material';
 
+import type { BackupErrorCode } from '@core/domain/index.js';
+
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatCapturedAt } from '../../lib/format.js';
 import { formatArchiveSize, type RemoteBackupView } from './backup-model.js';
 
 interface BackupRestoreDialogProps {
@@ -21,6 +24,7 @@ interface BackupRestoreDialogProps {
   phase: string | null;
   isRestoring: boolean;
   error: string | null;
+  errorCode: BackupErrorCode | null;
   recoveryKeyRequired: boolean;
   onConfirm: (remoteId: string, recoveryKey: string | undefined) => void;
   onClose: () => void;
@@ -31,6 +35,7 @@ export const BackupRestoreDialog = ({
   phase,
   isRestoring,
   error,
+  errorCode,
   recoveryKeyRequired,
   onConfirm,
   onClose,
@@ -40,6 +45,7 @@ export const BackupRestoreDialog = ({
   const [recoveryKey, setRecoveryKey] = useState('');
   const running = isRestoring && error === null;
   const missingRecoveryKey = recoveryKeyRequired && recoveryKey.trim().length === 0;
+  const targetCreatedAt = formatCapturedAt(backup?.createdAt ?? null, dictionary.locale);
 
   const close = () => {
     setArmed(false);
@@ -59,7 +65,7 @@ export const BackupRestoreDialog = ({
       <DialogContent dividers>
         {backup === null ? null : (
           <Typography variant="body2" sx={{ mb: 1.5 }} data-testid="backup-restore-target">
-            {dictionary.backup.backupRow(backup.createdAt, formatArchiveSize(backup.sizeBytes), backup.appVersion)}
+            {dictionary.backup.backupRow(targetCreatedAt ?? backup.createdAt, formatArchiveSize(backup.sizeBytes), backup.appVersion)}
           </Typography>
         )}
         <DialogContentText>{dictionary.backup.restoreDialogOverwrite}</DialogContentText>
@@ -85,7 +91,7 @@ export const BackupRestoreDialog = ({
         ) : null}
         {error === null ? null : (
           <Alert severity="error" sx={{ mt: 2 }} data-testid="backup-restore-error">
-            {`${error} ${dictionary.backup.restoreFailedNothingChanged}`}
+            {errorCode === 'restore_incomplete' ? error : `${error} ${dictionary.backup.restoreFailedNothingChanged}`}
           </Alert>
         )}
       </DialogContent>

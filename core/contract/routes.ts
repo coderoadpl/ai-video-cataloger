@@ -299,6 +299,7 @@ export const backupListInputSchema = z.object({
 
 export const backupListOutputSchema = z.object({
   backups: z.array(remoteBackupSchema),
+  skipped: z.number().int().nonnegative().default(0),
 });
 
 export const backupRestoreInputSchema = z.object({

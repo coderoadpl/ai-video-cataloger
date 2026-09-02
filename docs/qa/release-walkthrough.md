@@ -144,7 +144,19 @@ covers the grid and intercepts the preview tile click.
    pnpm run verify:package
    ```
 
-3. Set `AVC_SCRATCH_DIR` to a scratch directory outside the repository, then
+3. For a release that includes backup changes, start the local fake Google
+   Drive endpoint and export the app to it before the walkthrough:
+
+   ```bash
+   export AVC_GOOGLE_DRIVE_BASE_URL="http://127.0.0.1:<fake-drive-port>/drive/v3"
+   export AVC_GOOGLE_UPLOAD_BASE_URL="http://127.0.0.1:<fake-drive-port>/upload/drive/v3"
+   ```
+
+   The backup portion of the walkthrough must enable the Google-account
+   destination against that fake endpoint, run a backup, show the remote list,
+   restore the archive, and confirm the restored catalog state in the UI.
+
+4. Set `AVC_SCRATCH_DIR` to a scratch directory outside the repository, then
    run the walkthrough against the built `.app` and a fixture folder of sample
    videos, archiving the finished set as part of the same command:
 
@@ -189,8 +201,8 @@ covers the grid and intercepts the preview tile click.
    the process exits — run it **before any worktree cleanup**; a set that
    only exists inside a worktree does not survive the worktree being removed.
 
-4. Hand the archived set to an **independent reviewer** — someone other than
-   whoever ran step 3 — and have them work the checklist below against the
+5. Hand the archived set to an **independent reviewer** — someone other than
+   whoever ran step 4 — and have them work the checklist below against the
    archived PNGs, not against a description of them. This reviewer has
    authority to fail the release: a release does not proceed on the release
    agent's own "looks correct" verdict.

@@ -74,9 +74,19 @@ describe('KeychainSecretsAdapter', () => {
     expect(runner.calls).toHaveLength(0);
   });
 
+  it('does not invoke security for disabled get, set, or delete operations', async () => {
+    const runner = new FakeSecurity(() => ({ code: 0, stdout: 'secret\n', stderr: '' }));
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: true, commandRunner: runner });
+
+    expect(await adapter.get('openai')).toMatchObject({ ok: false, error: { code: 'keychain_unavailable' } });
+    expect(await adapter.set('openai', 'sk-test')).toMatchObject({ ok: false, error: { code: 'keychain_unavailable' } });
+    expect(await adapter.delete('openai')).toMatchObject({ ok: false, error: { code: 'keychain_unavailable' } });
+    expect(runner.calls).toHaveLength(0);
+  });
+
   it('runs the absolute security binary instead of resolving it on PATH', async () => {
     const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     await adapter.availability();
     await adapter.get('openai');
@@ -89,7 +99,7 @@ describe('KeychainSecretsAdapter', () => {
 
   it('reads a stored secret and strips the trailing newline', async () => {
     const runner = new FakeSecurity((args) => (args[0] === 'find-generic-password' ? found('sk-test') : notFound()));
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     expect(await adapter.get('openai')).toEqual({ ok: true, value: 'sk-test' });
     const call = runner.calls.find((entry) => entry.args[0] === 'find-generic-password');
@@ -98,14 +108,14 @@ describe('KeychainSecretsAdapter', () => {
 
   it('returns null when the item is not found', async () => {
     const runner = new FakeSecurity(() => notFound());
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     expect(await adapter.get('missing')).toEqual({ ok: true, value: null });
   });
 
   it('surfaces an error for an unexpected security failure', async () => {
     const runner = new FakeSecurity(() => ({ code: 1, stdout: '', stderr: 'boom' }));
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     const result = await adapter.get('openai');
     expect(result.ok).toBe(false);
@@ -113,7 +123,7 @@ describe('KeychainSecretsAdapter', () => {
 
   it('writes a secret with the update flag', async () => {
     const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', service: 'svc', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, service: 'svc', commandRunner: runner });
 
     expect(await adapter.set('openai', 'sk-new')).toEqual({ ok: true, value: undefined });
     const call = runner.calls.find((entry) => entry.args[0] === 'add-generic-password');
@@ -122,21 +132,21 @@ describe('KeychainSecretsAdapter', () => {
 
   it('treats a missing item as a successful delete that removed nothing', async () => {
     const runner = new FakeSecurity(() => notFound());
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     expect(await adapter.delete('openai')).toEqual({ ok: true, value: { existed: false } });
   });
 
   it('reports that a deleted item existed', async () => {
     const runner = new FakeSecurity(() => ({ code: 0, stdout: '', stderr: '' }));
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     expect(await adapter.delete('openai')).toEqual({ ok: true, value: { existed: true } });
   });
 
   it('surfaces an error when an unreachable keychain refuses the delete', async () => {
     const runner = new FakeSecurity(() => ({ code: 36, stdout: '', stderr: 'The specified keychain could not be found.' }));
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     expect(await adapter.delete('openai')).toMatchObject({ ok: false, error: { code: 'internal' } });
   });
@@ -150,7 +160,7 @@ describe('KeychainSecretsAdapter', () => {
 
   it('surfaces an error when a read times out so callers can fall back', async () => {
     const runner = new FakeSecurity(() => timedOut());
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     const result = await adapter.get('openai');
     expect(result.ok).toBe(false);
@@ -227,7 +237,7 @@ describe('KeychainSecretsAdapter', () => {
     const runner = new FakeSecurity((args) => (
       args[0] === 'find-generic-password' ? found('sk-temp') : { code: 0, stdout: '', stderr: '' }
     ));
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     expect(await adapter.availability()).toBe('available');
     await adapter.get('openai');
@@ -240,7 +250,7 @@ describe('KeychainSecretsAdapter', () => {
 
   it('never repeats the secret in a failure message', async () => {
     const runner = new FakeSecurity(() => ({ code: 1, stdout: '', stderr: 'SecKeychainAddGenericPassword failed' }));
-    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', commandRunner: runner });
+    const adapter = new KeychainSecretsAdapter({ platform: 'darwin', disabled: false, commandRunner: runner });
 
     const result = await adapter.set('openai', 'sk-must-not-leak');
     expect(result.ok).toBe(false);

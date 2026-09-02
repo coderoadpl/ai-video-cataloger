@@ -8,12 +8,14 @@ import { z } from 'zod';
 
 import {
   BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT,
+  appError,
   ok,
+  type ConfigKey,
   type AppError,
   type BackupManifest,
   type Result,
 } from '@core/domain/index.js';
-import type { SecretsAvailability, SecretsStore } from '@core/server/index.js';
+import type { ConfigScope, ConfigStore, SecretsAvailability, SecretsStore } from '@core/server/index.js';
 import { InMemoryConfig } from '../../test/server/usecases/test-fakes.js';
 
 import { GoogleServiceAccountBackupDestination } from './google-service-account-destination.js';
@@ -57,6 +59,23 @@ describe('Google service-account backup destination', () => {
       error: { code: 'validation' },
     });
     expect(secrets.values.size).toBe(0);
+  });
+
+  it('restores the previous key when fingerprint persistence fails', async () => {
+    const secrets = new MemorySecrets();
+    const oldKey = serviceAccountKey();
+    const newKey = serviceAccountKey();
+    secrets.values.set(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT, oldKey);
+    const destination = new GoogleServiceAccountBackupDestination({
+      config: new FailingFingerprintConfig(),
+      secrets,
+    });
+
+    expect(await destination.importKeyJson(newKey)).toMatchObject({
+      ok: false,
+      error: { code: 'internal' },
+    });
+    expect(secrets.values.get(BACKUP_SERVICE_ACCOUNT_KEY_ACCOUNT)).toBe(oldKey);
   });
 
   it('stores the whole validated key and signs a drive.file JWT without delegation', async () => {
@@ -139,6 +158,25 @@ describe('Google service-account backup destination', () => {
         message: expect.stringContaining('Content manager'),
       },
     });
+  });
+
+  it('accepts service-account membership from a later permissions page', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    const requests: string[] = [];
+    await config.set({ kind: 'home' }, 'backup_shared_drive_id', 'drive-1');
+    await config.set({ kind: 'home' }, 'backup_folder_id', 'folder-1');
+    const destination = new GoogleServiceAccountBackupDestination({
+      config,
+      secrets,
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: fakeGooglePaginatedPermissions(requests),
+    });
+    await destination.importKeyJson(serviceAccountKey());
+
+    expect(await destination.test(new AbortController().signal)).toMatchObject({ ok: true });
+    expect(requests.some((request) => request.includes('pageToken=page-2'))).toBe(true);
   });
 
   it('creates the backup folder inside the Shared Drive when connecting', async () => {
@@ -227,7 +265,42 @@ describe('Google service-account backup destination', () => {
       await rm(directory, { recursive: true, force: true });
     }
   });
+
+  it('skips malformed sibling files when listing backups', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    const queries: string[] = [];
+    await config.set({ kind: 'home' }, 'backup_shared_drive_id', 'drive-1');
+    await config.set({ kind: 'home' }, 'backup_folder_id', 'folder-1');
+    const destination = new GoogleServiceAccountBackupDestination({
+      config,
+      secrets,
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: fakeGoogleWithMalformedSibling(queries),
+    });
+    await destination.importKeyJson(serviceAccountKey());
+
+    expect(await destination.list(null, new AbortController().signal)).toMatchObject({
+      ok: true,
+      value: { backups: [{ remoteId: 'backup-1' }], skipped: 1 },
+    });
+    expect(queries.some((query) => query.includes("appProperties has { key='tier'"))).toBe(true);
+  });
 });
+
+class FailingFingerprintConfig extends InMemoryConfig implements ConfigStore {
+  override set(
+    scope: ConfigScope,
+    key: ConfigKey,
+    value: string,
+  ): Promise<Result<{ previousValue: string | null }, AppError>> {
+    if (key === 'backup_service_account_fingerprint') {
+      return Promise.resolve({ ok: false, error: appError('internal', 'Injected fingerprint write failure') });
+    }
+    return super.set(scope, key, value);
+  }
+}
 
 const serviceAccountKey = (): string => {
   const { privateKey } = generateKeyPairSync('rsa', {
@@ -292,6 +365,54 @@ const fakeGoogle = (
     return new Response('encrypted archive');
   }
   if (url.pathname.endsWith('/files/backup-1') && init?.method === 'DELETE') return new Response(null, { status: 204 });
+  return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
+};
+
+const fakeGooglePaginatedPermissions = (requests: string[]): typeof fetch => async (input, init) => {
+  const url = new URL(String(input));
+  requests.push(url.toString());
+  if (url.hostname === 'oauth.example.test') return Response.json({ access_token: 'access-token', expires_in: 3600 });
+  if (url.pathname.endsWith('/files/folder-1')) return Response.json({ id: 'folder-1', name: 'Backups', driveId: 'drive-1' });
+  if (url.pathname.endsWith('/drives/drive-1')) return Response.json({ id: 'drive-1', name: 'Company Archive' });
+  if (url.pathname.endsWith('/permissions')) {
+    if (url.searchParams.get('pageToken') === 'page-2') {
+      return Response.json({ permissions: [{ emailAddress: 'backup@example.com', role: 'fileOrganizer', type: 'user' }] });
+    }
+    return Response.json({ permissions: [{ emailAddress: 'someone@example.com', role: 'fileOrganizer', type: 'user' }], nextPageToken: 'page-2' });
+  }
+  if (url.pathname.endsWith('/files') && !url.pathname.includes('/upload/') && init?.method !== 'POST') return Response.json({ files: [] });
+  if (url.pathname.includes('/upload/') && init?.method === 'POST') {
+    return Response.json({ id: 'probe-1', name: 'connection-test.bin', size: '1024' });
+  }
+  if (url.pathname.endsWith('/files/probe-1')) return Response.json({ id: 'probe-1', parents: ['folder-1'], driveId: 'drive-1' });
+  if (url.pathname.endsWith('/files/probe-1') && init?.method === 'DELETE') return new Response(null, { status: 204 });
+  if (init?.method === 'DELETE') return new Response(null, { status: 204 });
+  return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
+};
+
+const fakeGoogleWithMalformedSibling = (queries: string[]): typeof fetch => async (input) => {
+  const url = new URL(String(input));
+  if (url.hostname === 'oauth.example.test') return Response.json({ access_token: 'access-token', expires_in: 3600 });
+  if (url.pathname.endsWith('/files/folder-1')) return Response.json({ id: 'folder-1', name: 'Backups', driveId: 'drive-1' });
+  if (url.pathname.endsWith('/files') && !url.pathname.includes('/upload/')) {
+    queries.push(url.searchParams.get('q') ?? '');
+    return Response.json({ files: [
+      { id: 'stray', name: 'connection-test.bin', size: '1024', createdTime: '2026-09-02T11:00:00.000Z' },
+      {
+        id: 'backup-1',
+        name: 'archive.avcbak',
+        size: '17',
+        createdTime: '2026-09-02T12:00:00.000Z',
+        appProperties: {
+          tier: 'critical',
+          createdAt: '2026-09-02T12:00:00.000Z',
+          appVersion: '1.2.3',
+          schemaGlobalCatalog: '7',
+          schemaPhotos: '3',
+        },
+      },
+    ] });
+  }
   return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
 };
 

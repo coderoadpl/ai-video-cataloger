@@ -15,6 +15,7 @@ import {
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
   type BackupDestinationPort,
+  type BackupListResult,
   type FileSystemPort,
   type GlobalCatalogStore,
   type JobExecutionContext,
@@ -64,7 +65,7 @@ export const listBackups = (
   destination: BackupDestinationPort,
   tier: BackupTier | null,
   signal: AbortSignal,
-): Promise<Result<RemoteBackup[], AppError>> => destination.list(tier, signal);
+): Promise<Result<BackupListResult, AppError>> => destination.list(tier, signal);
 
 export const enqueueRestore = async (
   jobs: JobsPort,
@@ -138,13 +139,9 @@ export const runRestore = async (
     await deps.photos.dispose();
     await deps.globalCatalog.dispose();
     for (const entry of plan) {
-      const parent = await deps.fs.ensureDirectory(deps.fs.dirname(entry.livePath));
-      if (!parent.ok) return parent;
-      const renamed = await deps.fs.renamePath(entry.restoredPath, entry.livePath);
-      if (!renamed.ok) return renamed;
+      const moved = await stageAndSwapRestoredFile(deps.fs, entry.restoredPath, entry.livePath);
+      if (!moved.ok) return restoreIncomplete();
     }
-    const markerRemoved = await deps.fs.deleteFile(restoreMarkerPath(deps.fs, deps.homeDirectory));
-    if (!markerRemoved.ok) return markerRemoved;
     const previous = await deps.state.read();
     if (!previous.ok) return previous;
     const restoredAt = deps.now().toISOString();
@@ -158,6 +155,8 @@ export const runRestore = async (
     if (!stateWritten.ok) return stateWritten;
     const pruned = await prunePreRestoreDirectories(deps.fs, deps.homeDirectory);
     if (!pruned.ok) return pruned;
+    const markerRemoved = await deps.fs.deleteFile(restoreMarkerPath(deps.fs, deps.homeDirectory));
+    if (!markerRemoved.ok) return markerRemoved;
     return ok({ restored: remote.value, relaunchRequired: true, preRestoreDirectory: preRestore.value.directory });
   } finally {
     await deps.fs.deletePath(stagingDirectory);
@@ -229,7 +228,7 @@ const findRemoteBackup = async (
 ): Promise<Result<RemoteBackup, AppError>> => {
   const listed = await destination.list(null, signal);
   if (!listed.ok) return listed;
-  const remote = listed.value.find((backup) => backup.remoteId === remoteId);
+  const remote = listed.value.backups.find((backup) => backup.remoteId === remoteId);
   return remote === undefined
     ? { ok: false, error: appError('not_found', 'Remote backup not found') }
     : ok(remote);
@@ -359,6 +358,30 @@ const restorePlan = (
       ? []
       : [{ archivePath: file.path, restoredPath: fs.join(extractedDirectory, ...file.path.split('/')), livePath }];
   });
+
+const stageAndSwapRestoredFile = async (
+  fs: FileSystemPort,
+  restoredPath: string,
+  livePath: string,
+): Promise<Result<void, AppError>> => {
+  const parent = await fs.ensureDirectory(fs.dirname(livePath));
+  if (!parent.ok) return parent;
+  const stagedPath = `${livePath}.restore-tmp`;
+  const copied = await fs.copyFile(restoredPath, stagedPath);
+  if (!copied.ok) return copied;
+  const renamed = await fs.renamePath(stagedPath, livePath);
+  if (renamed.ok) return renamed;
+  await fs.deleteFile(stagedPath);
+  return renamed;
+};
+
+const restoreIncomplete = (): Result<never, AppError> => ({
+  ok: false,
+  error: appError(
+    'restore_incomplete',
+    'Restore did not finish. Restart the app so it can roll back from the local pre-restore copy.',
+  ),
+});
 
 const livePathForArchivePath = (
   fs: FileSystemPort,

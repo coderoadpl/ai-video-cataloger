@@ -9,7 +9,6 @@ import {
   readFileSync,
   renameSync,
   statSync,
-  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -48,7 +47,6 @@ import {
   type Result,
   type TimelineIntervalKind,
 } from '@core/domain/index.js';
-import { JOB_CANCELLED_ERROR_MESSAGE } from '@core/server/index.js';
 import type {
   AnalyzedFileLocation,
   ApplyGeoBackfillInput,
@@ -111,6 +109,7 @@ import {
 } from './global-catalog-schema.js';
 import { CatalogAppError, HomeLock, type CatalogLockFs } from './home-lock.js';
 import { countTerm } from './search-score.js';
+import { acquireSnapshotLease, removeSnapshotFile, verifySnapshotIntegrity } from './sql-js.js';
 import { normalizeStoredTagNames } from './tag-normalization-migration.js';
 
 const dbDirectoryName = '.ai-video-cataloger';
@@ -203,7 +202,7 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
       const state = await this.ensureOpen(false);
       mkdirSync(path.dirname(targetPath), { recursive: true });
       persistDatabase(targetPath, state.client);
-      verifySnapshotIntegrity(state.SQL, targetPath);
+      verifySnapshotIntegrity(state.SQL, targetPath, 'Global catalog snapshot failed integrity_check');
       const sizeBytes = statSync(targetPath).size;
       if (!wasOpen) {
         state.client.close();
@@ -1692,65 +1691,6 @@ const persistDatabase = (databasePath: string, client: Database): void => {
     closeSync(descriptor);
   }
   renameSync(tempPath, databasePath);
-};
-
-const SNAPSHOT_LEASE_RETRY_MS = 10;
-export const SNAPSHOT_LEASE_TIMEOUT_MS = 30_000;
-
-const acquireSnapshotLease = async (lock: HomeLock, signal?: AbortSignal | undefined): Promise<void> => {
-  const deadline = Date.now() + SNAPSHOT_LEASE_TIMEOUT_MS;
-  for (;;) {
-    if (signal?.aborted === true) throw cancelledError();
-    try {
-      lock.acquireLease();
-      return;
-    } catch (cause) {
-      if (!(cause instanceof CatalogAppError) || cause.appError.code !== 'catalog_locked') throw cause;
-      if (Date.now() >= deadline) throw cause;
-      await sleepUntilRetry(signal);
-    }
-  }
-};
-
-const sleepUntilRetry = (signal?: AbortSignal | undefined): Promise<void> => new Promise((resolve, reject) => {
-  if (signal?.aborted === true) {
-    reject(cancelledError());
-    return;
-  }
-  let timer: ReturnType<typeof setTimeout> | null = null;
-  const onAbort = (): void => {
-    if (timer !== null) clearTimeout(timer);
-    reject(cancelledError());
-  };
-  timer = setTimeout(() => {
-    signal?.removeEventListener('abort', onAbort);
-    resolve();
-  }, SNAPSHOT_LEASE_RETRY_MS);
-  signal?.addEventListener('abort', onAbort, { once: true });
-});
-
-const cancelledError = (): CatalogAppError =>
-  new CatalogAppError(appError('processing_error', JOB_CANCELLED_ERROR_MESSAGE));
-
-const verifySnapshotIntegrity = (SQL: SqlJsStatic, targetPath: string): void => {
-  const client = new SQL.Database(readFileSync(targetPath));
-  try {
-    if (client.exec('PRAGMA integrity_check')[0]?.values[0]?.[0] !== 'ok') {
-      throw new CatalogAppError(appError('backup_integrity_failed', 'Global catalog snapshot failed integrity_check'));
-    }
-  } finally {
-    client.close();
-  }
-};
-
-const removeSnapshotFile = (targetPath: string): void => {
-  for (const filePath of [targetPath, `${targetPath}.tmp`]) {
-    try {
-      unlinkSync(filePath);
-    } catch (cause) {
-      if (!(cause instanceof Error) || !('code' in cause) || cause.code !== 'ENOENT') throw cause;
-    }
-  }
 };
 
 const fileStateOf = (databasePath: string): FileState => {

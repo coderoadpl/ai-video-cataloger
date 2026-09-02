@@ -32,6 +32,8 @@ export const BACKUP_CONFLICTING_JOB_KINDS: ReadonlySet<JobKind> = new Set([
   'process_drive',
   'photo_scan',
   'photo_process',
+  'photo_proxies',
+  'photo_grid_thumbs',
   'photo_import_libra',
   'faces_index',
   'faces_recluster',
@@ -352,7 +354,7 @@ const pruneBestEffort = async (
 ): Promise<string | null> => {
   const listed = await destination.list(input.tier, signal);
   if (!listed.ok) return listed.error.message;
-  for (const backup of selectForDeletion(listed.value, input, now, keyFingerprint)) {
+  for (const backup of selectForDeletion(listed.value.backups, input, now, keyFingerprint)) {
     const removed = await destination.remove(backup.remoteId, signal);
     if (!removed.ok) return removed.error.message;
   }

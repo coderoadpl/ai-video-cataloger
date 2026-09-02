@@ -4,6 +4,7 @@ import type { BackupIndicatorState } from '@core/domain/index.js';
 
 import { CheckCircleIcon, WarningIcon } from '../../components/ui/icons.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { formatCapturedAt } from '../../lib/format.js';
 import { phaseLabel, useBackupStatus } from './use-backup.js';
 
 export interface BackupIndicatorViewProps {
@@ -16,6 +17,7 @@ export interface BackupIndicatorViewProps {
 export const BackupIndicatorView = ({ state, phase, lastSuccessAt, onOpenSettings }: BackupIndicatorViewProps) => {
   const dictionary = useDictionary();
   if (state === 'disabled') return null;
+  const lastSuccessLabel = formatCapturedAt(lastSuccessAt, dictionary.locale);
 
   if (state === 'running') {
     return (
@@ -23,6 +25,8 @@ export const BackupIndicatorView = ({ state, phase, lastSuccessAt, onOpenSetting
         sx={{ display: 'flex', alignItems: 'center', gap: 0.75, maxWidth: 160, color: 'grey.400' }}
         data-testid="backup-indicator"
         data-state="running"
+        role="status"
+        aria-live="polite"
       >
         <CircularProgress size={16} thickness={6} color="inherit" />
         <Typography variant="caption" noWrap>{phase ?? dictionary.backup.indicatorLabel}</Typography>
@@ -51,12 +55,13 @@ export const BackupIndicatorView = ({ state, phase, lastSuccessAt, onOpenSetting
     <Tooltip
       title={lastSuccessAt === null
         ? dictionary.backup.lastBackupNever
-        : dictionary.backup.indicatorIdle(lastSuccessAt)}
+        : dictionary.backup.indicatorIdle(lastSuccessLabel ?? lastSuccessAt)}
     >
       <Box
         sx={{ display: 'flex', alignItems: 'center', color: 'grey.400', maxWidth: 160, px: 0.5 }}
         data-testid="backup-indicator"
         data-state="idle"
+        role="status"
         aria-label={dictionary.backup.indicatorLabel}
       >
         <CheckCircleIcon fontSize="small" />

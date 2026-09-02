@@ -10,7 +10,7 @@ import {
 } from '@core/domain/index.js';
 
 import { InMemoryConfig, InMemoryJobs } from '../../../test/server/usecases/test-fakes.js';
-import type { BackupConnectInput, BackupConnectionReport, BackupDestinationPort } from '../ports.js';
+import type { BackupConnectInput, BackupConnectionReport, BackupDestinationPort, BackupListResult } from '../ports.js';
 import {
   confirmBackupRecoveryKey,
   connectBackupDestination,
@@ -47,8 +47,8 @@ class RecordingDestination implements BackupDestinationPort {
   ensureFolder(): Promise<Result<{ folderId: string; name: string }, AppError>> {
     return Promise.resolve(ok({ folderId: 'folder', name: report.folderName }));
   }
-  list(): Promise<Result<RemoteBackup[], AppError>> {
-    return Promise.resolve(ok(this.archives));
+  list(): Promise<Result<BackupListResult, AppError>> {
+    return Promise.resolve(ok({ backups: this.archives, skipped: 0 }));
   }
   upload(): Promise<Result<never, AppError>> {
     return Promise.resolve({ ok: false, error: { code: 'internal', message: 'unused' } });
