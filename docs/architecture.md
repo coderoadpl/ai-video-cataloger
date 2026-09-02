@@ -1239,6 +1239,19 @@ observations. Identity can therefore be rebuilt as often as the thresholds chang
 ever costing the catalog a photograph, and `faces exemplars` exists only to repair catalogs
 indexed before this rule (or crops deleted off disk). ADR-0014.
 
+Face identity spans **media**, not files of one kind: a person is the same person whether
+the evidence is a video frame or a photograph, so the faces pass has a photo leg that
+detects over `photo-artifacts/proxies/<fingerprint>.jpg` through the engine's image-path
+input, and every people surface — the Osoby list, the person card, the collection person
+filter, the facet counts, the media detail panes and `faces exemplars` — answers for both
+media or answers for neither. The person filter narrowing the library to videos while the
+Osoby facet counts photos is a contradiction, not a limitation. Identity rebuild is
+deterministic agglomerative average-linkage over cosine similarity on a sparse neighbour
+graph, calibrated by a repo benchmark script against a user-supplied reference partition
+and cut on the conservative side of the measured optimum (split rather than merge); the
+greedy per-observation assignment stays as the *incremental* path, cheap to be wrong on
+precisely because the rebuild exists. ADR-0018.
+
 ## Delta 6 — observability
 
 OTel facade + wide events per the foundation, but this is a privacy-sensitive
