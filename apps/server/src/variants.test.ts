@@ -146,4 +146,45 @@ describe('variant routes', () => {
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
   });
+
+  it('imports translation NDJSON through the shared contract and validates request bodies', async () => {
+    const translation = JSON.stringify({
+      fingerprint,
+      sourceConfigId: resolvedConfigId,
+      sourceDescription: 'Polish description',
+      sourceTags: ['tag'],
+      description: 'Przetłumaczony opis',
+      tags: ['jeżowak'],
+      finalName: null,
+      translator: { provider: 'codex', model: 'gpt-5.5' },
+    });
+    const deps = createInMemoryDeps({
+      workingDirectory: '/work',
+      files: ['/work/clip.mp4'],
+      textFiles: { '/work/translations.ndjson': translation },
+    });
+    await deps.globalCatalog.upsertFolder(folder);
+    await deps.globalCatalog.upsertFile(file);
+    await deps.globalCatalog.upsertVariant(variant);
+    const app = buildApp(deps);
+
+    const accepted = await app.request('/api/variants/import-translation', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ndjsonPath: '/work/translations.ndjson', dryRun: true, select: true }),
+    });
+    expect(accepted.status).toBe(200);
+    expect(await accepted.json()).toMatchObject({
+      ok: true,
+      data: { total: 1, created: 1, updated: 0, skipped: 0, invalid: 0, dryRun: true },
+    });
+
+    const rejected = await app.request('/api/variants/import-translation', {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ ndjsonPath: '', dryRun: 'yes', select: true }),
+    });
+    expect(rejected.status).toBe(400);
+    expect(await rejected.json()).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
 });

@@ -8,6 +8,7 @@ export type DetailsVideoData = z.output<typeof scanVideoSchema>;
 
 export type VariantLabelCopy =
   | { readonly key: 'legacySettingsUnknown' }
+  | { readonly key: 'translation' }
   | { readonly key: 'nativeTranscription' }
   | { readonly key: 'localTranscription'; readonly model: string | null }
   | { readonly key: 'apiTranscription'; readonly model: string | null }
@@ -49,6 +50,13 @@ export const variantLabelModel = (
     return {
       analyzer: analyzerLabel(variant),
       transcription: { key: 'nativeTranscription' },
+      frames: null,
+    };
+  }
+  if (descriptor.family === 'translation') {
+    return {
+      analyzer: analyzerLabel(variant),
+      transcription: { key: 'translation' },
       frames: null,
     };
   }

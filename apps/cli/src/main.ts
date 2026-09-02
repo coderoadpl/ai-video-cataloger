@@ -141,6 +141,11 @@ interface VariantDefaultOptions extends JsonOption {
   clear?: boolean | undefined;
 }
 
+interface TranslationImportOptions extends JsonOption {
+  dryRun?: boolean | undefined;
+  select: boolean;
+}
+
 type VariantsListOutput = Awaited<ReturnType<ApiClient['listVariants']>> extends Result<infer T, AppError> ? T : never;
 type VariantListItem = VariantsListOutput['variants'][number];
 
@@ -1106,6 +1111,41 @@ variants
       return;
     }
     emitCompleted(false, result.value, variantsListHuman(result.value));
+  });
+
+variants
+  .command('import-translation')
+  .description('Bulk-create Polish translation variants from NDJSON')
+  .argument('<ndjson>', 'translation interchange NDJSON file')
+  .option('--dry-run', 'validate and report without writing', false)
+  .option('--no-select', 'leave each file\'s selected variant unchanged')
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (ndjsonPath: string, options: TranslationImportOptions) => {
+    const json = isJsonMode(options);
+    const input = {
+      ndjsonPath: path.resolve(cliWorkingDirectory, ndjsonPath),
+      dryRun: options.dryRun === true,
+      select: options.select,
+    };
+    emitStarted(json, 'variants_import_translation', input);
+    const result = await api.importTranslationVariants(input);
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    for (const [index, row] of result.value.rows.entries()) {
+      emitProgress(json, {
+        step: `translation_${row.outcome}`,
+        current: index + 1,
+        total: result.value.total,
+        data: row,
+      });
+    }
+    emitCompleted(
+      json,
+      result.value,
+      `Translation import: ${String(result.value.created)} created, ${String(result.value.updated)} updated, ${String(result.value.skipped)} skipped`,
+    );
   });
 
 variants

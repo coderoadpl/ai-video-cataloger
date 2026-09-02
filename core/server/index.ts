@@ -37,3 +37,4 @@ export * from './usecases/photos-gps.js';
 export * from './usecases/photo-import-libra.js';
 export * from './usecases/transcript-hallucinations.js';
 export * from './usecases/variants.js';
+export * from './usecases/translation-import.js';

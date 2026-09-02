@@ -151,6 +151,7 @@ export interface Dictionary {
       count: (count: number) => string;
       selected: string;
       legacySettingsUnknown: string;
+      translation: string;
       configuredLabel: (analyzer: string, transcription: string, frames: string) => string;
       nativeTranscription: string;
       localTranscription: (model: string) => string;
@@ -1015,6 +1016,7 @@ export const en: Dictionary = {
       count: (count) => `${count} ${count === 1 ? 'variant' : 'variants'}`,
       selected: 'Selected',
       legacySettingsUnknown: 'Settings partly unknown',
+      translation: 'Translation',
       configuredLabel: (analyzer, transcription, frames) => `${analyzer} - ${transcription} - ${frames}`,
       nativeTranscription: 'native transcript',
       localTranscription: (model) => `Local Whisper (${model})`,
@@ -1958,6 +1960,7 @@ export const pl: Dictionary = {
       count: (count) => `${count} ${plPlural(count, 'wariant', 'warianty', 'wariantów')}`,
       selected: 'Wybrany',
       legacySettingsUnknown: 'Ustawienia częściowo nieznane',
+      translation: 'Tłumaczenie',
       configuredLabel: (analyzer, transcription, frames) => `${analyzer} - ${transcription} - ${frames}`,
       nativeTranscription: 'transkrypcja natywna',
       localTranscription: (model) => `Lokalny Whisper (${model})`,

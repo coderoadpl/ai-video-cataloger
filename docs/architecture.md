@@ -145,6 +145,33 @@ fingerprint and is therefore shared by duplicate copies of the content; only
 the folder-default fallback is folder-relative. Search indexes the resolved
 variant only.
 
+Translation imports add a fifth closed video config-descriptor family,
+`translation`, whose identity carries `providerId`, `model`, and
+`sourceConfigId` together with pinned Polish output/tag languages and the
+translation prompt version. `POST /api/variants/import-translation` accepts an
+NDJSON path plus dry-run/selection flags; the CLI reaches it only through the
+shared typed client. The server validates every non-empty line with zod, skips
+invalid rows and missing `(fingerprint, sourceConfigId)` analyses without
+aborting valid rows, copies the source transcript verbatim into the new
+analysis, normalizes imported tags through `normalizeTagList`, and upserts the
+translation variant. All catalog mutations for the entire NDJSON batch are
+enclosed in one sql.js transaction. Search-document writes are deferred during
+that batch and each affected fingerprint is rebuilt once after its final
+selection is known.
+Dry runs perform the same parsing, source lookup, identity derivation, and
+created/updated classification without artifact or catalog writes.
+
+Translation artifacts are self-contained below
+`.ai-video-cataloger/variants/{fingerprint}/{translationConfigId}/`: source
+frames are hard-linked into `frames/`, source transcript text/JSON into
+`transcript.txt`/`transcript.json`, and source summary/debug outputs retain the
+normal per-variant names. `FileSystemPort.copyFile` is the fallback when a hard
+link is unavailable. This duplicates directory entries, and sometimes bytes
+across filesystems, but keeps translation selection honest and simple: the
+existing projection path reads only the translation config directory and does
+not need to reconstruct or globally alias the source descriptor's shared
+artifact keys.
+
 `files` records where a coordinate came from — `gps_source`
 (`camera | timeline | manual`), `gps_accuracy_m`, `gps_interval_kind`
 (`visit | activity | path` for a timeline fix), `gps_resolved_at` — and a

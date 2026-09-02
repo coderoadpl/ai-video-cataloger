@@ -109,6 +109,7 @@ interface InMemoryDepsConfig {
   version?: string;
   workingDirectory?: string;
   files?: readonly string[];
+  textFiles?: Readonly<Record<string, string>>;
 }
 
 export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
@@ -126,7 +127,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     exif: new FakeExifPort(),
     config: configStore,
     credentials,
-    fs: new InMemoryFileSystemPort(config.workingDirectory ?? process.cwd(), config.files ?? []),
+    fs: new InMemoryFileSystemPort(config.workingDirectory ?? process.cwd(), config.files ?? [], config.textFiles ?? {}),
     folderWatcher: new InertFolderWatcherPort(),
     media: new InMemoryMediaPort(),
     transcriber: new InMemoryTranscriberPort(),
@@ -404,6 +405,10 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   dispose(): Promise<Result<void, AppError>> {
     return Promise.resolve(ok(undefined));
+  }
+
+  withBatch<T>(operation: () => Promise<Result<T, AppError>>): Promise<Result<T, AppError>> {
+    return operation();
   }
 
   lockStatus(): Promise<Result<CatalogLockSnapshot, AppError>> {
@@ -1188,9 +1193,16 @@ class InMemoryCredentialsStore implements CredentialsStore {
 
 class InMemoryFileSystemPort implements FileSystemPort {
   private readonly files: Set<string>;
+  private readonly textFiles: Map<string, string>;
 
-  constructor(private readonly workingDirectory: string, files: readonly string[]) {
+  constructor(
+    private readonly workingDirectory: string,
+    files: readonly string[],
+    textFiles: Readonly<Record<string, string>>,
+  ) {
     this.files = new Set(files.map((file) => path.resolve(workingDirectory, file)));
+    this.textFiles = new Map(Object.entries(textFiles).map(([file, content]) => [path.resolve(workingDirectory, file), content]));
+    for (const file of this.textFiles.keys()) this.files.add(file);
   }
 
   cwd(): string {
@@ -1245,8 +1257,8 @@ class InMemoryFileSystemPort implements FileSystemPort {
     return Promise.resolve({ ok: false, error: appError('file_not_found', 'File not found') });
   }
 
-  readTextFile(): Promise<Result<string | null, AppError>> {
-    return Promise.resolve(ok(null));
+  readTextFile(value: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.textFiles.get(path.resolve(this.workingDirectory, value)) ?? null));
   }
 
   writeTextFile(): Promise<Result<void, AppError>> {

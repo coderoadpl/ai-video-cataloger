@@ -92,6 +92,7 @@ process <path> [-f number] [-s] [-v] [-t seconds] [-w local|api|skip] [--whisper
 process-drive <root> [--gemini-batch] [--skip-faces] [--json]
 materialize <root> [--dry-run] [--keep-awake] [--json]
 variants list <path> [--json]
+variants import-translation <ndjson> [--dry-run] [--no-select] [--json]
 variants select <path> --config <configId> [--json]
 variants delete <path> --config <configId> [--json]
 variants default <folder> (--config <configId>|--clear) [--json]
@@ -136,6 +137,15 @@ the last one. `variants default` sets the preferred configuration for files in
 a folder; `--clear` restores the resolved processing configuration as the
 folder fallback. A file's explicit selection is shared by duplicate copies of
 the same content.
+
+`variants import-translation <ndjson>` validates one translation interchange
+object per line and upserts Polish variants keyed by the source configuration,
+translator provider, and model. Tags use the same ASCII transliteration and
+normalization as live analysis. The imported variant becomes selected unless
+`--no-select` is present; `--dry-run` reports created, updated, skipped, and
+invalid counts without changing the catalog or artifacts. In `--json` mode the
+command emits one progress envelope per input row followed by the completed
+summary envelope.
 
 `tags suggest-aliases` proposes tag merges (normalisation, English and Polish
 plurals, spelling variants) with file counts and never writes anything; apply

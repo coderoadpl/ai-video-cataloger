@@ -1881,6 +1881,34 @@ export const variantFolderDefaultInputSchema = z.object({
   configId: configIdSchema.nullable(),
 }).strict();
 
+export const translationImportInputSchema = z.object({
+  ndjsonPath: canonicalPathString(),
+  dryRun: z.boolean().default(false),
+  select: z.boolean().default(true),
+}).strict();
+
+export const translationImportProgressRowSchema = z.object({
+  line: z.number().int().positive(),
+  fingerprint: z.string().min(1).nullable(),
+  sourceConfigId: configIdSchema.nullable(),
+  configId: configIdSchema.nullable(),
+  outcome: z.enum(['created', 'updated', 'skipped']),
+  reason: z.string().nullable(),
+}).strict();
+
+export const translationImportOutputSchema = z.object({
+  ndjsonPath: canonicalPathString(),
+  dryRun: z.boolean(),
+  select: z.boolean(),
+  total: z.number().int().nonnegative(),
+  created: z.number().int().nonnegative(),
+  updated: z.number().int().nonnegative(),
+  skipped: z.number().int().nonnegative(),
+  invalid: z.number().int().nonnegative(),
+  selected: z.number().int().nonnegative(),
+  rows: z.array(translationImportProgressRowSchema),
+}).strict();
+
 export const variantArtifactsSchema = z.object({
   framesDirectory: z.string().min(1).nullable(),
   transcriptPath: z.string().min(1).nullable(),
@@ -2209,6 +2237,12 @@ export const API_ROUTES = {
     input: variantFolderDefaultInputSchema,
     output: variantFolderDefaultOutputSchema,
   },
+  variantsImportTranslation: {
+    method: 'POST',
+    path: '/api/variants/import-translation',
+    input: translationImportInputSchema,
+    output: translationImportOutputSchema,
+  },
   facesIndex: { method: 'POST', path: '/api/faces/index', input: facesIndexInputSchema, output: jobAcceptedOutputSchema },
   facesPeople: { method: 'GET', path: '/api/faces/people', input: emptyInputSchema, output: facesPeopleOutputSchema },
   facesName: { method: 'POST', path: '/api/faces/name', input: facesNameInputSchema, output: facesNameOutputSchema },
@@ -2398,6 +2432,7 @@ export const API_PATHS = {
   variantsSelect: API_ROUTES.variantsSelect.path,
   variantsDelete: API_ROUTES.variantsDelete.path,
   variantsFolderDefault: API_ROUTES.variantsFolderDefault.path,
+  variantsImportTranslation: API_ROUTES.variantsImportTranslation.path,
   facesIndex: API_ROUTES.facesIndex.path,
   facesPeople: API_ROUTES.facesPeople.path,
   facesName: API_ROUTES.facesName.path,

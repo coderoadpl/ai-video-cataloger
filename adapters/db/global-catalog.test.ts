@@ -7,8 +7,10 @@ import { afterEach, describe, expect, it } from 'vitest';
 
 import {
   GLOBAL_CATALOG_SCHEMA_VERSION,
+  appError,
   configDescriptorSchema,
   configId,
+  err,
   type CatalogFile,
   type CatalogFolder,
   type CatalogVariant,
@@ -232,6 +234,68 @@ describe('SqlJsGlobalCatalogStore', () => {
     expect(await store.listVariants(file.fingerprint)).toEqual({ ok: true, value: [] });
     expect(await store.getAnalysis(file.fingerprint)).toEqual({ ok: true, value: null });
     expect(await store.getSelectedConfigId(file.fingerprint)).toEqual({ ok: true, value: null });
+  });
+
+  it('commits variant batches atomically and refreshes search after the final selection', async () => {
+    const home = await tempHome();
+    const store = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    await store.upsertFolder(folder);
+    await store.upsertFile(file);
+    const descriptor = configDescriptorSchema.parse({
+      family: 'local',
+      providerId: 'local',
+      modelTag: 'gemma3:12b',
+      whisper_mode: 'skip',
+      frames: 3,
+      output_language: 'en',
+      promptVersion: 1,
+    });
+    const variant: CatalogVariant = {
+      fingerprint: file.fingerprint,
+      configId: configId(descriptor),
+      descriptor,
+      finalName: null,
+      description: 'batchonly description',
+      transcript: 'batch transcript',
+      language: 'en',
+      tags: ['batch-tag'],
+      analyzer: 'local',
+      model: 'gemma3:12b',
+      createdAt: '2026-01-03T00:00:00.000Z',
+      usage: null,
+      resolvedOutputLanguage: 'en',
+      resolvedTagLanguage: 'en',
+    };
+
+    const rolledBack = await store.withBatch(async () => {
+      const upserted = await store.upsertVariant(variant);
+      if (!upserted.ok) return upserted;
+      return err(appError('internal', 'rollback'));
+    });
+    expect(rolledBack).toMatchObject({ ok: false, error: { message: 'rollback' } });
+    expect(await store.listVariants(file.fingerprint)).toEqual({ ok: true, value: [] });
+
+    const committed = await store.withBatch(async () => {
+      const upserted = await store.upsertVariant(variant);
+      if (!upserted.ok) return upserted;
+      return store.setSelectedVariant(file.fingerprint, variant.configId);
+    });
+    expect(committed.ok).toBe(true);
+
+    const reopened = new SqlJsGlobalCatalogStore({ homeDirectory: home });
+    const search = await reopened.search({
+      match: 'batchonly*',
+      rankingTerms: ['batchonly'],
+      filters: NO_SEARCH_FILTERS,
+      sort: 'relevance',
+      limit: 10,
+      offset: 0,
+    });
+    expect(search.ok && search.value.rows[0]).toMatchObject({
+      fingerprint: file.fingerprint,
+      description: variant.description,
+      tags: variant.tags,
+    });
   });
 
   it('rejects a second writer with catalog_locked and the owner PID', async () => {
