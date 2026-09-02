@@ -1318,7 +1318,8 @@ export type JobKind =
   | 'photo_process'
   | 'photo_gps_backfill'
   | 'photo_import_libra'
-  | 'backup';
+  | 'backup'
+  | 'restore';
 export type JobStatus = 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
 export const JOB_CANCELLED_ERROR_MESSAGE = 'Job cancelled';
 export type ProcessJobStep =

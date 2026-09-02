@@ -40,6 +40,10 @@ export class MemoryBackupDestination implements BackupDestinationPort {
     this.failList = options.failList ?? false;
   }
 
+  seed(metadata: RemoteBackup, bytes: Buffer): void {
+    this.backups.set(metadata.remoteId, { metadata, bytes });
+  }
+
   describe(): Result<BackupDestinationDescription, AppError> {
     return ok({ provider: 'memory', folderName: 'AI Video Cataloger Backups' });
   }

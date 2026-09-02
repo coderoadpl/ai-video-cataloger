@@ -99,6 +99,8 @@ variants default <folder> (--config <configId>|--clear) [--json]
 thumbnail <video-path> [--force] [--json]
 thumbnails <root> [--force] [--json]
 gps backfill <timeline.json> [--root <path>] [--dry-run] [--tolerance-minutes 30] [--max-visit-hours 36] [--reresolve-places] [--json]
+backup list [--tier critical|optional] [--json]
+backup restore <remoteId> [--recovery-key <key>] [--yes] [--json]
 status [--json]
 reset [filename] [--force] [--json]
 config get [key] [--json]
@@ -121,7 +123,15 @@ models list|requirements|pull|rm|daemon-stop|use|download|delete|faces status|fa
 models whisper-runtime status|install
 ```
 
-Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`, `gemini_batch_mode`, `output_language`, `tag_language`. `tag_language` follows `output_language` until you set it.
+Config keys: `whisper_model`, `whisper_mode`, `frames`, `timeout`, `skip_rename`, `analyzer_backend`, `local_model`, `gemini_batch_mode`, `output_language`, `tag_language`, `backup_enabled`, `backup_provider`, `backup_include_optional`, `backup_keep_last`, `backup_keep_weekly`, `backup_folder_id`, `backup_shared_drive_id`, `backup_service_account_fingerprint`, `backup_account_email`. `tag_language` follows `output_language` until you set it.
+
+`backup list` prints remote backup date, tier, size, app version, schema versions,
+and remote id; `--json` emits a completed NDJSON event carrying the array.
+`backup restore <remoteId>` refuses with `CONFIRMATION_REQUIRED` until `--yes`
+is supplied, printing the tier, date, and size that will be overwritten. With
+`--yes`, restore streams the same job `started` / `progress` / `completed` /
+`error` NDJSON envelopes as other long-running commands and prints a restart
+instruction when the swap completes.
 
 Each file handled by `process` or `process-drive` uses one resolved
 configuration; an invocation does not request a configuration matrix. Running

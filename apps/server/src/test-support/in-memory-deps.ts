@@ -1,6 +1,7 @@
 import path from 'node:path';
 import { access, constants } from 'node:fs/promises';
 import packageJson from '../../../../package.json' with { type: 'json' };
+import { z } from 'zod';
 
 import { MemoryBackupDestination } from '@adapters/backup/memory-destination.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
@@ -27,6 +28,7 @@ import {
   type FileArtifact,
   type Person,
   type Result,
+  type RemoteBackup,
   type SpendLedgerEntry,
   type WhisperModelName,
 } from '@core/domain/index.js';
@@ -121,6 +123,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
   const configStore = new InvalidatingConfigStore(new InMemoryConfigStore(), readiness);
   const credentials = new InvalidatingCredentialsStore(new InMemoryCredentialsStore(), readiness);
   const backupDestination = new MemoryBackupDestination();
+  seedMemoryBackups(backupDestination, process.env.AVC_TEST_MEMORY_BACKUPS);
   return {
     version: config.version ?? packageJson.version,
     cliPath: stubCliPathPort,
@@ -147,8 +150,46 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     backupDestination: () => Promise.resolve(ok(backupDestination)),
     cleanupBackupStaging: () => Promise.resolve(ok(undefined)),
     evaluateScheduledBackup: () => Promise.resolve(ok(undefined)),
+    listBackups: (tier: 'critical' | 'optional' | null, signal: AbortSignal) => backupDestination.list(tier, signal),
+    restoreBackup: (): Promise<Result<{ jobId: string }, AppError>> =>
+      Promise.resolve({ ok: false, error: appError('backup_disabled', 'Backup restore is not available in memory mode') }),
     readiness,
   };
+};
+
+const memoryBackupSeedSchema = z.array(z.object({
+  metadata: z.object({
+    remoteId: z.string().min(1),
+    name: z.string().min(1),
+    tier: z.enum(['critical', 'optional']),
+    createdAt: z.iso.datetime(),
+    sizeBytes: z.number().int().nonnegative(),
+    appVersion: z.string().min(1),
+    schemaVersions: z.object({
+      globalCatalog: z.number().int().nonnegative(),
+      photos: z.number().int().nonnegative(),
+    }).strict(),
+  }).strict(),
+  base64: z.string(),
+}).strict());
+
+const seedMemoryBackups = (
+  destination: MemoryBackupDestination,
+  encoded: string | undefined,
+): void => {
+  if (encoded === undefined || encoded.length === 0) return;
+  let decoded: unknown;
+  try {
+    decoded = JSON.parse(Buffer.from(encoded, 'base64url').toString('utf8'));
+  } catch {
+    return;
+  }
+  const parsed = memoryBackupSeedSchema.safeParse(decoded);
+  if (!parsed.success) return;
+  for (const item of parsed.data) {
+    const metadata: RemoteBackup = item.metadata;
+    destination.seed(metadata, Buffer.from(item.base64, 'base64'));
+  }
 };
 
 class InvalidatingConfigStore implements ConfigStore {

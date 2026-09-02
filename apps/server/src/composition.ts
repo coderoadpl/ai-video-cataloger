@@ -36,9 +36,11 @@ import {
   ok,
   type AnalyzerProviderConfig,
   type AppError,
+  type BackupTier,
   type ConfigKey,
   type CredentialDeletion,
   type CredentialsBackendStatus,
+  type RemoteBackup,
   type Result,
 } from '@core/domain/index.js';
 import { ReadinessCache } from '@core/server/index.js';
@@ -113,6 +115,8 @@ export interface AppDeps {
   backupDestination(): Promise<Result<BackupDestinationPort, AppError>>;
   cleanupBackupStaging(): Promise<Result<void, AppError>>;
   evaluateScheduledBackup(): Promise<Result<void, AppError>>;
+  listBackups(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
+  restoreBackup(input: { remoteId: string; recoveryKey?: string | undefined }): Promise<Result<{ jobId: string }, AppError>>;
   readiness: ReadinessCache;
 }
 
@@ -240,6 +244,8 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     backupDestination,
     cleanupBackupStaging: backupLifecycle.cleanup,
     evaluateScheduledBackup: backupLifecycle.evaluate,
+    listBackups: backupLifecycle.list,
+    restoreBackup: backupLifecycle.restore,
     readiness,
   };
 };

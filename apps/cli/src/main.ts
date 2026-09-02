@@ -10,6 +10,7 @@ import { createApiClient, type ApiClient } from '@core/client/index.js';
 import {
   EXIT_CODE_BY_ERROR_CODE,
   SEARCH_SORTS,
+  backupRestoreOutputSchema,
   facesIndexOutputSchema,
   facesReclusterOutputSchema,
   gpsBackfillSummarySchema,
@@ -32,6 +33,7 @@ import {
   type AnalyzerProviderConfig,
   type AnalyzerProviderId,
   type AppError,
+  type BackupTier,
   type Result,
   type WhisperLanguage,
   type WhisperModelName,
@@ -162,6 +164,15 @@ interface TranslationImportOptions extends JsonOption {
   select: boolean;
 }
 
+interface BackupListOptions extends JsonOption {
+  tier?: BackupTier | undefined;
+}
+
+interface BackupRestoreOptions extends JsonOption {
+  recoveryKey?: string | undefined;
+  yes?: boolean | undefined;
+}
+
 type VariantsListOutput = Awaited<ReturnType<ApiClient['listVariants']>> extends Result<infer T, AppError> ? T : never;
 type VariantListItem = VariantsListOutput['variants'][number];
 
@@ -202,6 +213,11 @@ const whisperLanguageOption = (value: string): WhisperLanguage => {
   const parsed = whisperLanguageSchema.safeParse(value);
   if (parsed.success) return parsed.data;
   throw new InvalidArgumentError(`Invalid whisper language: ${value}`);
+};
+
+const backupTierOption = (value: string): BackupTier => {
+  if (value === 'critical' || value === 'optional') return value;
+  throw new InvalidArgumentError(`Invalid backup tier: ${value}. Valid tiers: critical, optional`);
 };
 
 const analyzerSelection = (options: ProcessOptions): AnalyzerSelection => ({
@@ -578,6 +594,66 @@ program
   .action(async (options: JsonOption) => {
     const json = isJsonMode(options);
     await runSimple(json, 'status', () => api.status({ folder: cliWorkingDirectory }), statusHuman, { raw: true });
+  });
+
+const backup = program
+  .command('backup')
+  .description('Encrypted catalog backup commands');
+
+backup
+  .command('list')
+  .description('List remote backups')
+  .option('--tier <tier>', 'backup tier: critical or optional', backupTierOption)
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (options: BackupListOptions) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'backup_list', { tier: options.tier ?? null });
+    const result = await api.backupList({ tier: options.tier ?? null });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    emitCompleted(json, result.value.backups, backupListHuman(result.value.backups));
+  });
+
+backup
+  .command('restore')
+  .description('Restore a remote backup')
+  .argument('<remoteId>', 'remote backup id from backup list')
+  .option('--recovery-key <key>', 'recovery key for this restore operation')
+  .option('--yes', 'confirm overwrite and run restore', false)
+  .option('--json', 'machine-readable NDJSON output', false)
+  .action(async (remoteId: string, options: BackupRestoreOptions) => {
+    const json = isJsonMode(options);
+    emitStarted(json, 'backup_restore', { remoteId });
+    if (options.yes !== true) {
+      const listed = await api.backupList({});
+      if (!listed.ok) {
+        emitError(json, listed.error);
+        return;
+      }
+      const remote = listed.value.backups.find((backupItem) => backupItem.remoteId === remoteId);
+      if (remote === undefined) {
+        emitError(json, appError('not_found', 'Remote backup not found'));
+        return;
+      }
+      if (!json) process.stdout.write(backupRestoreConfirmationHuman(remote));
+      emitError(json, appError('confirmation_required', 'Restore requires --yes'), {
+        tier: remote.tier,
+        date: remote.createdAt,
+        size: remote.sizeBytes,
+      });
+      return;
+    }
+    const result = await api.backupRestore({
+      remoteId,
+      ...(options.recoveryKey === undefined ? {} : { recoveryKey: options.recoveryKey }),
+    });
+    if (!result.ok) {
+      emitError(json, result.error);
+      return;
+    }
+    await waitForJobAndEmit(json, result.value.jobId, backupRestoreHuman);
   });
 
 program
@@ -1940,6 +2016,31 @@ const whisperRuntimeInstallHuman = (data: unknown): string => {
     : `Installed managed whisper.cpp runtime${typeof data.path === 'string' ? ` at ${data.path}` : ''}`;
 };
 
+type BackupListOutput = Awaited<ReturnType<ApiClient['backupList']>> extends Result<infer T, AppError> ? T : never;
+type BackupListItem = BackupListOutput['backups'][number];
+
+const backupListHuman = (backups: readonly BackupListItem[]): string => {
+  if (backups.length === 0) return 'No backups found';
+  const rows = backups.map((backupItem) => [
+    backupItem.createdAt,
+    backupItem.tier,
+    formatBytes(backupItem.sizeBytes),
+    backupItem.appVersion,
+    `global=${String(backupItem.schemaVersions.globalCatalog)},photos=${String(backupItem.schemaVersions.photos)}`,
+    backupItem.remoteId,
+  ].join('\t'));
+  return ['DATE\tTIER\tSIZE\tAPP\tSCHEMA\tREMOTE ID', ...rows].join('\n');
+};
+
+const backupRestoreConfirmationHuman = (backupItem: BackupListItem): string =>
+  `tier: ${backupItem.tier}\ndate: ${backupItem.createdAt}\nsize: ${String(backupItem.sizeBytes)}\n`;
+
+const backupRestoreHuman = (data: unknown): string => {
+  const parsed = backupRestoreOutputSchema.safeParse(data);
+  if (!parsed.success) return 'Restore complete. Restart the app before continuing.';
+  return `Restored ${parsed.data.restored.remoteId}. Restart the app before continuing.`;
+};
+
 const statusHuman = (data: Awaited<ReturnType<ApiClient['status']>> extends Result<infer T, AppError> ? T : never): string =>
   `Completed: ${data.summary.completed}\nIn Progress: ${data.summary.inProgress}\nPending: ${data.summary.pending}\nError: ${data.summary.error}`;
 
@@ -2123,6 +2224,15 @@ const installedHuman = (data: unknown, tag: string): string => {
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === 'object' && value !== null;
+
+const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return `${String(bytes)} B`;
+  const kib = bytes / 1024;
+  if (kib < 1024) return `${kib.toFixed(1)} KiB`;
+  const mib = kib / 1024;
+  if (mib < 1024) return `${mib.toFixed(1)} MiB`;
+  return `${(mib / 1024).toFixed(1)} GiB`;
+};
 
 const emitDriveEvent = (json: boolean, type: DriveEventStep, data: unknown): void => {
   if (!json) return;

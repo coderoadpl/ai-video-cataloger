@@ -400,7 +400,7 @@ const databaseFileState = (databasePath: string): DatabaseFileState => {
 const sameFileState = (left: DatabaseFileState, right: DatabaseFileState): boolean =>
   left.mtimeMs === right.mtimeMs && left.size === right.size;
 
-const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined => {
+export const sqlJsWasmConfig = (): { locateFile: (file: string) => string } | undefined => {
   const wasmPath = findSqlJsWasmPath();
   return wasmPath === null ? undefined : { locateFile: () => wasmPath };
 };

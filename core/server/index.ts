@@ -9,6 +9,7 @@ export * from './usecases/backup-fingerprint.js';
 export * from './usecases/backup-schedule.js';
 export * from './usecases/backup-retention.js';
 export * from './usecases/backup-run.js';
+export * from './usecases/backup-restore.js';
 export * from './usecases/artifact-store.js';
 export * from './usecases/collection.js';
 export * from './usecases/folder-identity.js';
