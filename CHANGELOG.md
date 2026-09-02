@@ -16,6 +16,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- A privacy-lint gate now runs in `check`, and `AVC_SCRATCH_DIR` replaces the previous fixed scratch-directory convention.
 - `variants import-translation` bulk-upserts Polish analysis variants from NDJSON with dry-run, optional selection, normalized tags, copied source transcripts and selectable source artifacts.
 
 ### Fixed

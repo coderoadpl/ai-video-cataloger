@@ -12,6 +12,7 @@ import { useRef } from "react";
 export default function HeroSection({ dict }: { dict: Dictionary }) {
   const ref = useRef(null);
   const inView = useInView(ref, { once: true, margin: "-100px" });
+  const feedbackEmail = process.env.NEXT_PUBLIC_FEEDBACK_EMAIL ?? "feedback@example.com";
 
   return (
     <section
@@ -49,7 +50,7 @@ export default function HeroSection({ dict }: { dict: Dictionary }) {
         <p className="max-w-md text-xs text-gray-600 text-balance dark:text-gray-500">
           {dict.hero.gatekeeperPrefix}
           <a
-            href="mailto:kontakt@coderoad.pl?subject=AI%20Video%20Cataloger%20feedback"
+            href={`mailto:${feedbackEmail}?subject=AI%20Video%20Cataloger%20feedback`}
             className="text-gray-800 underline underline-offset-4 transition-colors hover:text-black dark:text-gray-300 dark:hover:text-white"
           >
             {dict.hero.gatekeeperLink}

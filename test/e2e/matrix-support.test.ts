@@ -1,11 +1,15 @@
+import { homedir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { formatMatrixSummary, matrixAllowsSkip, matrixHome, missingLegMessage } from './matrix-support.js';
 
 describe('matrix support', () => {
-  it('uses the persistent owner cache unless explicitly overridden', () => {
-    expect(matrixHome({})).toMatch(/repositories\/claude-tmp\/avc-e2e-matrix-home$/);
-    expect(matrixHome({ E2E_MATRIX_HOME: '/matrix-cache' })).toBe('/matrix-cache');
+  it('uses the persistent scratch cache unless explicitly overridden', () => {
+    expect(matrixHome({})).toBe(join(homedir(), '.ai-video-cataloger-scratch', 'avc-e2e-matrix-home'));
+    expect(matrixHome({ AVC_SCRATCH_DIR: '/scratch-base' })).toBe('/scratch-base/avc-e2e-matrix-home');
+    expect(matrixHome({ E2E_MATRIX_HOME: '/matrix-cache', AVC_SCRATCH_DIR: '/scratch-base' })).toBe('/matrix-cache');
   });
 
   it('requires an explicit skip opt-out', () => {

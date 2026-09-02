@@ -33,7 +33,10 @@ export const systemOllamaModelMissingReason = async (
 };
 
 export const matrixHome = (environment: NodeJS.ProcessEnv): string =>
-  environment.E2E_MATRIX_HOME ?? join(homedir(), 'repositories', 'claude-tmp', 'avc-e2e-matrix-home');
+  environment.E2E_MATRIX_HOME ?? join(
+    environment.AVC_SCRATCH_DIR ?? join(homedir(), '.ai-video-cataloger-scratch'),
+    'avc-e2e-matrix-home',
+  );
 
 export const matrixAllowsSkip = (value: string | undefined): boolean =>
   value === '1' || value === 'true';

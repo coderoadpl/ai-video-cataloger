@@ -13,5 +13,6 @@ coverage/
 playwright-report/
 .cli-stage/
 **/__avc_probe_*/
+.claude/privacy-denylist.local
 .claude/
 .gallery-shots/
