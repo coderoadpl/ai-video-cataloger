@@ -42,7 +42,9 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Face identity rebuild (`faces recluster`) now uses a typed-array similarity store with a cross-edge density guard, and detections below the identity score floor stay unassigned while remaining stored observations.
 - Face identity rebuild (`faces recluster`) now uses deterministic agglomerative average-linkage clustering over stored embeddings instead of order-dependent greedy centroid assignment; the cut threshold is biased towards splitting a person rather than merging two (ADR-0018).
+- `scripts/faces-benchmark.ts` can sweep cross-edge density values alongside clustering thresholds while reusing one similarity edge pass.
 - `scripts/faces-benchmark.ts` sweeps recluster thresholds against supplied reference partitions and labelled pairs, reporting pairwise precision/recall/F1, purity, completeness, zero-different-pair thresholds and a conservative selected threshold.
 - `GET /api/faces/status` reports `videosIndexed`, `photosWithFaces`,
   `photosProcessed` and `stalePhotoFiles` alongside the existing counters.
@@ -51,6 +53,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- `faces exemplars` normalizes existing observation crop paths to the current catalog home when the re-anchored file is present, and reports how many paths were normalized.
 - E2E face model fixtures now stay inside isolated test homes, and Vitest/e2e guards fail fast before tests can write through the host face-model cache.
 - The Vitest home guard no longer forces a shared `AVC_HOME_DIRECTORY` across every test in a worker; CLI-spawning tests keep the per-test isolated home they pass explicitly instead of leaking state across tests.
 - Long face-indexing runs auto-flush SQL.js catalogs by elapsed time plus mutation count, force-flush on completion or cancellation, and avoid an extra exported-buffer copy per persist.

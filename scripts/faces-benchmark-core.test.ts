@@ -8,6 +8,7 @@ import {
   benchmarkObservationSchema,
   benchmarkReportTable,
   buildFixtureCorpus,
+  defaultDensitySweep,
   labelledPairSchema,
   matchReferenceToNative,
   referencePartitionRecordSchema,
@@ -70,6 +71,32 @@ describe('faces benchmark metrics', () => {
     expect(report.bestPairwiseF1Threshold).toBe(0.59);
     expect(report.largestZeroDifferentThreshold).toBe(0.79);
     expect(report.selectedThreshold).toBe(0.79);
+  });
+
+  it('sweeps edge density as a calibration axis', () => {
+    const records: ReferencePartitionRecord[] = [
+      { observationId: 'a1', clusterId: 'identity-a', obsId: 'a1', embedding: [1, 0], quality: 1 },
+      { observationId: 'a2', clusterId: 'identity-a', obsId: 'a2', embedding: [1, 0], quality: 1 },
+      { observationId: 'a3', clusterId: 'identity-a', obsId: 'a3', embedding: [1, 0], quality: 1 },
+      { observationId: 'bridge', clusterId: 'identity-a', obsId: 'bridge', embedding: [0.7745966692414834, 0.6324555320336759], quality: 1 },
+      { observationId: 'b1', clusterId: 'identity-b', obsId: 'b1', embedding: [0.2, 0.9797958971132712], quality: 1 },
+      { observationId: 'b2', clusterId: 'identity-b', obsId: 'b2', embedding: [0.2, 0.9797958971132712], quality: 1 },
+      { observationId: 'b3', clusterId: 'identity-b', obsId: 'b3', embedding: [0.2, 0.9797958971132712], quality: 1 },
+    ];
+    const pairs: LabelledPair[] = [
+      { left: 'a1', right: 'a2', verdict: 'same' },
+      { left: 'b1', right: 'b2', verdict: 'same' },
+      { left: 'a1', right: 'b1', verdict: 'different' },
+    ];
+
+    const report = runBenchmark(buildFixtureCorpus(records, pairs), [0.19], [0, 0.3]);
+
+    expect(defaultDensitySweep()).toContain(0.3);
+    expect(report.thresholds.map((row) => [row.threshold, row.minEdgeDensity, row.differentPairsMerged])).toEqual([
+      [0.19, 0, 1],
+      [0.19, 0.3, 0],
+    ]);
+    expect(benchmarkReportTable(report)).toContain('density');
   });
 
   it('matches external reference ids to native photo observations by fingerprint and bbox IoU', () => {

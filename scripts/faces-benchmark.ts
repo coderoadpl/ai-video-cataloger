@@ -30,6 +30,7 @@ const cliOptionsSchema = z.object({
   catalog: z.string().min(1).optional(),
   corpus: z.string().min(1).optional(),
   thresholds: z.array(z.number()).optional(),
+  densities: z.array(z.number()).optional(),
 });
 
 const sqlRowSchema = z.tuple([
@@ -59,9 +60,10 @@ export const runFromOptions = async (input: z.input<typeof cliOptionsSchema>): P
     const reference = await readReferencePartition(paths.reference);
     const pairs = await readLabelledPairs(paths.pairs);
     const thresholds = options.data.thresholds ?? defaultThresholdSweep();
+    const densities = options.data.densities;
     if (paths.catalog !== undefined) {
       const native = await readNativeObservations(paths.catalog);
-      return ok(runBenchmark(matchReferenceToNative(reference, native, pairs), thresholds));
+      return ok(runBenchmark(matchReferenceToNative(reference, native, pairs), thresholds, densities));
     }
     const observations = paths.observations === undefined
       ? reference
@@ -70,7 +72,7 @@ export const runFromOptions = async (input: z.input<typeof cliOptionsSchema>): P
     if (corpus.observations.length === 0 && reference.length > 0) {
       return err(appError('validation', 'Benchmark observations need embeddings from --observations or --catalog.'));
     }
-    return ok(runBenchmark(corpus, thresholds));
+    return ok(runBenchmark(corpus, thresholds, densities));
   } catch (error) {
     return err(appError('validation', error instanceof Error ? error.message : String(error)));
   }
@@ -97,6 +99,9 @@ const parseArgs = (args: readonly string[]): z.input<typeof cliOptionsSchema> =>
     ...(values.thresholds === undefined
       ? {}
       : { thresholds: values.thresholds.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) }),
+    ...(values.densities === undefined
+      ? {}
+      : { densities: values.densities.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) }),
   };
 };
 

@@ -26,7 +26,7 @@ import {
   InMemoryMedia,
   InMemoryPhotosStore,
 } from '../../../test/server/usecases/test-fakes.js';
-import { FACE_ENGINE_VERSION, FACE_QUALITY, appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
+import { FACE_ENGINE_VERSION, FACE_IDENTITY_MIN_SCORE, FACE_QUALITY, appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
 import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput, JobExecutionContext, JobProgress } from '../ports.js';
 
 const unit128 = (offset = 0): number[] =>
@@ -516,6 +516,27 @@ describe('facesIndex', () => {
     expect(second.ok).toBe(true);
     const afterSecond = await facesStatus(deps);
     expect(afterSecond.ok && afterSecond.value.observations).toBe(6);
+  });
+
+  it('stores detections below the identity floor without seeding or joining a person', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await seedCatalog(deps);
+    deps.fs.addFile('/work/videos/clip.mp4', { content: 'video' });
+    deps.faceEngine.detection = { ...deps.faceEngine.detection, score: FACE_IDENTITY_MIN_SCORE - 0.01 };
+
+    const result = await runFacesIndexPass(deps, { root: '/work/videos' });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.observationsAdded).toBe(6);
+    expect(result.value.rejectedLowQuality).toBe(0);
+    expect(result.value.peopleCreated).toBe(0);
+    const observations = await deps.globalCatalog.listFaceObservations();
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error('expected observations');
+    expect(observations.value).toHaveLength(6);
+    expect(observations.value.every((observation) => observation.personId === null)).toBe(true);
   });
 
   it('indexes photo proxies with native geometry and completes zero-face photos', async () => {
@@ -1411,14 +1432,14 @@ describe('facesRecluster', () => {
     expect(peopleAfterDry.value.some((person) => person.personId === 'legacy-person')).toBe(true);
   });
 
-  it('leaves stored observations below the face quality floor unassigned', async () => {
+  it('leaves stored observations below the identity quality floor unassigned', async () => {
     const deps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: new InMemoryGlobalCatalogStore() };
     await enableFaces(deps);
     await deps.globalCatalog.upsertFaceObservation(observationFixture({
       obsId: 'good-1',
       fingerprint: 'fp-good-1',
       embedding: unit128(0),
-      quality: FACE_QUALITY.minScore,
+      quality: FACE_IDENTITY_MIN_SCORE,
       bbox: { x: 0, y: 0, width: FACE_QUALITY.minBoxPx, height: FACE_QUALITY.minBoxPx },
     }));
     await deps.globalCatalog.upsertFaceObservation(observationFixture({
@@ -1429,10 +1450,10 @@ describe('facesRecluster', () => {
       bbox: { x: 0, y: 0, width: FACE_QUALITY.minBoxPx + 10, height: FACE_QUALITY.minBoxPx + 10 },
     }));
     await deps.globalCatalog.upsertFaceObservation(observationFixture({
-      obsId: 'low-score',
+      obsId: 'stored-low-score',
       fingerprint: 'fp-low-score',
       embedding: unit128(0),
-      quality: FACE_QUALITY.minScore - 0.01,
+      quality: FACE_QUALITY.minScore,
       bbox: { x: 0, y: 0, width: FACE_QUALITY.minBoxPx + 10, height: FACE_QUALITY.minBoxPx + 10 },
     }));
     await deps.globalCatalog.upsertFaceObservation(observationFixture({
@@ -1452,7 +1473,7 @@ describe('facesRecluster', () => {
     const observations = await deps.globalCatalog.listFaceObservations();
     expect(observations.ok).toBe(true);
     if (!observations.ok) throw new Error('expected observations');
-    expect(observations.value.filter((observation) => observation.personId === null).map((observation) => observation.obsId).sort()).toEqual(['low-score', 'small-box']);
+    expect(observations.value.filter((observation) => observation.personId === null).map((observation) => observation.obsId).sort()).toEqual(['small-box', 'stored-low-score']);
   });
 
   it('clusters video and photo observations into one media-agnostic identity', async () => {
@@ -1765,8 +1786,13 @@ describe('facesExemplars', () => {
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error(result.error.message);
     expect(result.value.cropsWritten).toBe(0);
+    expect(result.value.cropPathsNormalized).toBe(1);
     expect(result.value.peopleWithoutExemplarBefore).toBe(0);
     expect(result.value.peopleWithoutExemplarAfter).toBe(0);
+    const observations = await deps.globalCatalog.listFaceObservations({ fingerprint: 'fp-a' });
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error('expected observations');
+    expect(observations.value[0]?.cropPath).toBe(currentCropPath);
   });
 
   it('never re-embeds and never re-indexes while filling crops', async () => {

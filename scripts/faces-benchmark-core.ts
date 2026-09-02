@@ -4,9 +4,11 @@ import {
   EXEMPLAR_BBOX_MIN_IOU,
   FACE_CLUSTERING,
   boxIoU,
-  clusterFaceObservations,
+  clusterPreparedFaceObservations,
+  prepareFaceClustering,
   type FaceBox,
   type FaceClusterInput,
+  type PreparedFaceClustering,
 } from '@core/domain/index.js';
 
 export const pairVerdictSchema = z.enum(['same', 'different', 'unsure', 'not_face']);
@@ -64,6 +66,7 @@ export interface MatchedBenchmarkCorpus {
 
 export interface ThresholdBenchmarkRow {
   threshold: number;
+  minEdgeDensity: number;
   pairwise: { precision: number; recall: number; f1: number; truePositive: number; falsePositive: number; falseNegative: number };
   purity: number;
   completeness: number;
@@ -76,8 +79,11 @@ export interface ThresholdBenchmarkRow {
 export interface BenchmarkReport {
   thresholds: ThresholdBenchmarkRow[];
   selectedThreshold: number;
+  selectedMinEdgeDensity: number;
   bestPairwiseF1Threshold: number;
+  bestPairwiseF1MinEdgeDensity: number;
   largestZeroDifferentThreshold: number | null;
+  largestZeroDifferentMinEdgeDensity: number | null;
   pairSample: { left: string; right: string; similarity: number; bandMin: number; bandMax: number }[];
   unmatchedReference: number;
   unmatchedNative: number;
@@ -85,6 +91,8 @@ export interface BenchmarkReport {
 
 export const defaultThresholdSweep = (): number[] =>
   Array.from({ length: 26 }, (_unused, index) => Number((0.36 + index * 0.02).toFixed(2)));
+
+export const defaultDensitySweep = (): number[] => [0, 0.15, 0.3, 0.45];
 
 export const buildFixtureCorpus = (
   records: readonly ReferencePartitionRecord[],
@@ -169,22 +177,31 @@ export const matchReferenceToNative = (
 export const runBenchmark = (
   corpus: MatchedBenchmarkCorpus,
   thresholds: readonly number[] = defaultThresholdSweep(),
+  minEdgeDensities: readonly number[] = defaultDensitySweep(),
 ): BenchmarkReport => {
-  const rows = thresholds.map((threshold) => benchmarkThreshold(corpus, threshold));
+  const prepared = prepareFaceClustering(corpus.observations.map(toClusterInput));
+  const rows = thresholds.flatMap((threshold) =>
+    minEdgeDensities.map((minEdgeDensity) => benchmarkThreshold(corpus, prepared, threshold, minEdgeDensity)));
   const bestPairwise = [...rows].sort((left, right) =>
-    right.pairwise.f1 - left.pairwise.f1 || right.threshold - left.threshold)[0];
+    right.pairwise.f1 - left.pairwise.f1
+    || right.threshold - left.threshold
+    || right.minEdgeDensity - left.minEdgeDensity)[0];
   const largestZeroDifferent = [...rows]
     .filter((row) => row.differentPairsMerged === 0)
-    .sort((left, right) => right.threshold - left.threshold)[0];
+    .sort((left, right) => right.threshold - left.threshold || right.minEdgeDensity - left.minEdgeDensity)[0];
   const candidates = rows.filter((row) =>
     row.differentPairsMerged === 0 && bestPairwise !== undefined && row.threshold >= bestPairwise.threshold);
-  const selected = (candidates.length === 0 ? largestZeroDifferent : [...candidates].sort((left, right) => right.threshold - left.threshold)[0])
+  const selected = (candidates.length === 0 ? largestZeroDifferent : [...candidates].sort((left, right) =>
+    right.threshold - left.threshold || right.minEdgeDensity - left.minEdgeDensity)[0])
     ?? [...rows].sort((left, right) => right.threshold - left.threshold)[0];
   return {
     thresholds: rows,
     selectedThreshold: selected?.threshold ?? FACE_CLUSTERING.clusterCutSimilarity,
+    selectedMinEdgeDensity: selected?.minEdgeDensity ?? 0,
     bestPairwiseF1Threshold: bestPairwise?.threshold ?? FACE_CLUSTERING.clusterCutSimilarity,
+    bestPairwiseF1MinEdgeDensity: bestPairwise?.minEdgeDensity ?? 0,
     largestZeroDifferentThreshold: largestZeroDifferent?.threshold ?? null,
+    largestZeroDifferentMinEdgeDensity: largestZeroDifferent?.minEdgeDensity ?? null,
     pairSample: stratifiedPairSample(corpus.observations),
     unmatchedReference: corpus.unmatchedReference,
     unmatchedNative: corpus.unmatchedNative,
@@ -193,12 +210,13 @@ export const runBenchmark = (
 
 export const benchmarkReportTable = (report: BenchmarkReport): string => {
   const lines = [
-    'threshold precision recall f1 purity completeness clusters largest differentMerged elapsedMs',
+    'threshold precision recall f1 density purity completeness clusters largest differentMerged elapsedMs',
     ...report.thresholds.map((row) => [
       row.threshold.toFixed(2),
       row.pairwise.precision.toFixed(3),
       row.pairwise.recall.toFixed(3),
       row.pairwise.f1.toFixed(3),
+      row.minEdgeDensity.toFixed(2),
       row.purity.toFixed(3),
       row.completeness.toFixed(3),
       String(row.clusterCount),
@@ -206,9 +224,9 @@ export const benchmarkReportTable = (report: BenchmarkReport): string => {
       String(row.differentPairsMerged),
       String(row.elapsedMs),
     ].join(' ')),
-    `selected ${report.selectedThreshold.toFixed(2)}`,
-    `bestPairwiseF1 ${report.bestPairwiseF1Threshold.toFixed(2)}`,
-    `largestZeroDifferent ${report.largestZeroDifferentThreshold === null ? 'none' : report.largestZeroDifferentThreshold.toFixed(2)}`,
+    `selected ${report.selectedThreshold.toFixed(2)} density=${report.selectedMinEdgeDensity.toFixed(2)}`,
+    `bestPairwiseF1 ${report.bestPairwiseF1Threshold.toFixed(2)} density=${report.bestPairwiseF1MinEdgeDensity.toFixed(2)}`,
+    `largestZeroDifferent ${report.largestZeroDifferentThreshold === null ? 'none' : report.largestZeroDifferentThreshold.toFixed(2)} density=${report.largestZeroDifferentMinEdgeDensity === null ? 'none' : report.largestZeroDifferentMinEdgeDensity.toFixed(2)}`,
     `pairSample ${String(report.pairSample.length)}`,
     `unmatched reference=${String(report.unmatchedReference)} native=${String(report.unmatchedNative)}`,
   ];
@@ -229,9 +247,14 @@ const bestNativeMatch = (bbox: FaceBox, candidates: readonly NativeObservation[]
   return ranked[0]?.candidate ?? null;
 };
 
-const benchmarkThreshold = (corpus: MatchedBenchmarkCorpus, threshold: number): ThresholdBenchmarkRow => {
+const benchmarkThreshold = (
+  corpus: MatchedBenchmarkCorpus,
+  prepared: PreparedFaceClustering,
+  threshold: number,
+  minEdgeDensity: number,
+): ThresholdBenchmarkRow => {
   const startedAt = Date.now();
-  const outcome = clusterFaceObservations(corpus.observations.map(toClusterInput), { clusterCutSimilarity: threshold });
+  const outcome = clusterPreparedFaceObservations(prepared, { clusterCutSimilarity: threshold, minEdgeDensity });
   const clusterByObsId = new Map<string, string>();
   for (const cluster of outcome.clusters) {
     for (const obsId of cluster.memberObsIds) clusterByObsId.set(obsId, cluster.personId);
@@ -241,6 +264,7 @@ const benchmarkThreshold = (corpus: MatchedBenchmarkCorpus, threshold: number): 
   const partitionScores = scorePartition(corpus.partition, clusterByObsId);
   return {
     threshold,
+    minEdgeDensity,
     pairwise,
     purity: partitionScores.purity,
     completeness: partitionScores.completeness,

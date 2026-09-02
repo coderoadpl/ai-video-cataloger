@@ -274,3 +274,26 @@ Ordered, and the order is load-bearing:
   `CHANGELOG.md` line, per the repo rule that a changelog entry travels with a
   behaviour-visible change. The lines each of F1–F5 must land are enumerated
   in [tasks/prd-unified-people.md](../../tasks/prd-unified-people.md).
+
+## Amendment: scale and bridge controls
+
+Date: 2026-09-02 · Status: accepted
+
+The F2 implementation keeps D3's agglomerative average-linkage decision but
+changes the in-memory representation and adds two quality controls:
+
+- Pair sums are stored in typed-array open-addressing tables keyed by numeric
+  cluster ids, and the benchmark prepares the sparse similarity edge set once
+  before sweeping threshold candidates. This avoids string-keyed `Map` growth
+  as the limiting factor for large native catalogs.
+- A merge between two established clusters now also requires cross-edge density
+  of at least `FACE_CLUSTER_MIN_EDGE_DENSITY`. The default is `0.30`: a bridge
+  observation can still attach to a small cluster, but two already-established
+  clusters need support from more than isolated bridge edges before the rebuild
+  treats them as one identity. The benchmark sweeps this value as a second
+  calibration axis because labelled different-person pairs decide whether the
+  default should move.
+- `FACE_QUALITY.minScore` remains the storage floor, so crops and telemetry
+  still include borderline detections. `FACE_IDENTITY_MIN_SCORE` is the higher
+  identity floor; observations below it do not join existing identities, seed
+  new identities, or participate in full reclustering.
