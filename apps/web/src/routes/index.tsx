@@ -20,6 +20,7 @@ import { useFolderWatch } from '../features/catalog/use-folder-watch.js';
 import { useTreeScopeAvailability } from '../features/catalog/use-tree-absent-files.js';
 import { DetailsPanel } from '../features/details/DetailsPanel.js';
 import { LibraryView, type LibrarySeed } from '../features/library/LibraryView.js';
+import { PersonMediaPanel } from '../features/library/PersonMediaPanel.js';
 import { useCatalogIndex } from '../features/library/use-catalog-index.js';
 import { MapView } from '../features/map/MapView.js';
 import { useCatalogLocations, type CatalogLocation } from '../features/map/use-catalog-locations.js';
@@ -331,6 +332,16 @@ export const IndexRoute = () => {
             setMode('library');
             setLibrarySurface('collection');
           }}
+          renderPersonMedia={(request) => (
+            <PersonMediaPanel
+              personId={request.personId}
+              label={request.label}
+              media={request.media}
+              onClose={request.onClose}
+              onOpenResult={openInAnalysis}
+              onOpenPhotoInAnalysis={openPhotoInAnalysis}
+            />
+          )}
           lockReason={catalogLock.disabledReason}
         />
         <MapView

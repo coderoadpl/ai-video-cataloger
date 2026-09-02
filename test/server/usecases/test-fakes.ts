@@ -1619,6 +1619,19 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
     return Promise.resolve(ok({ tags, people, places, years, folders: facetFolders, counts }));
   }
 
+  listFingerprintsForPeople(
+    input: { personIds: readonly string[]; media: FaceObservation['media'] },
+  ): Promise<Result<string[], AppError>> {
+    const wanted = new Set(input.personIds);
+    const fingerprints = new Set<string>();
+    for (const observation of this.faceObservations.values()) {
+      if (observation.personId === null || !wanted.has(observation.personId)) continue;
+      if (observation.media !== input.media) continue;
+      fingerprints.add(observation.fingerprint);
+    }
+    return Promise.resolve(ok([...fingerprints].sort(compareUtf8Bytes)));
+  }
+
   listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>> {
     const personIds = new Set<string>();
     for (const observation of this.faceObservations.values()) {
@@ -2536,6 +2549,7 @@ export class InMemoryPhotosStore implements PhotosStore {
     from: string | null;
     to: string | null;
     folderId: string | null;
+    fingerprints: readonly string[] | null;
     tagTermSets: readonly (readonly string[])[];
     excludeMissing: boolean;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
@@ -2545,6 +2559,7 @@ export class InMemoryPhotosStore implements PhotosStore {
     const rows = [...this.photoRows.values()]
       .map((photo): PhotoSearchRow | null => {
         if (this.analysesFor(photo.fingerprint).length === 0) return null;
+        if (input.fingerprints !== null && !input.fingerprints.includes(photo.fingerprint)) return null;
         const selected = this.resolvePhotoAnalysis(photo.fingerprint);
         const tags = selected?.tags === undefined ? [] : [...selected.tags];
         const searchable = [photo.fileName, selected?.description ?? '', ...tags, photo.placeName ?? '']

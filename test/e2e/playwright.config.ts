@@ -16,6 +16,7 @@ export default defineConfig({
     { name: 'settings', testMatch: /settings\.spec\.ts/ },
     { name: 'photos', testMatch: /photos\.spec\.ts/ },
     { name: 'people', testMatch: /people\.spec\.ts/ },
+    { name: 'people-media', testMatch: /people-media\.spec\.ts/ },
     { name: 'library', testMatch: /library\.spec\.ts/ },
     { name: 'map', testMatch: /map\.spec\.ts/ },
   ],

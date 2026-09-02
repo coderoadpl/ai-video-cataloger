@@ -942,6 +942,7 @@ export class SqlJsPhotosStore implements PhotosStore {
     from: string | null;
     to: string | null;
     folderId: string | null;
+    fingerprints: readonly string[] | null;
     tagTermSets: readonly (readonly string[])[];
     excludeMissing: boolean;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
@@ -952,13 +953,15 @@ export class SqlJsPhotosStore implements PhotosStore {
       const tagWhere = photoTagWhereClauses(input.tagTermSets);
       const dateWhere = photoDateWhereClauses(input.from, input.to);
       const folderWhere = photoFolderWhereClause(input.folderId);
+      const fingerprintWhere = photoFingerprintWhereClause(input.fingerprints);
       const clauses = [
         ...tagWhere.clauses,
         ...dateWhere.clauses,
         ...folderWhere.clauses,
+        ...fingerprintWhere.clauses,
         ...(input.excludeMissing ? ['p.missing_at IS NULL'] : []),
       ];
-      const params = { ...tagWhere.params, ...dateWhere.params, ...folderWhere.params };
+      const params = { ...tagWhere.params, ...dateWhere.params, ...folderWhere.params, ...fingerprintWhere.params };
 
       const analysedClause = 'EXISTS (SELECT 1 FROM photo_analyses pa WHERE pa.fingerprint = p.fingerprint)';
 
@@ -1870,6 +1873,21 @@ const photoFolderWhereClause = (
       ))`],
       params: { $folderId: folderId },
     };
+
+const photoFingerprintWhereClause = (
+  fingerprints: readonly string[] | null,
+): { clauses: string[]; params: Record<string, string> } => {
+  if (fingerprints === null) return { clauses: [], params: {} };
+  const unique = [...new Set(fingerprints)];
+  if (unique.length === 0) return { clauses: ['1 = 0'], params: {} };
+  const params: Record<string, string> = {};
+  const placeholders = unique.map((fingerprint, index) => {
+    const name = `$fingerprint${String(index)}`;
+    params[name] = fingerprint;
+    return name;
+  });
+  return { clauses: [`p.fingerprint IN (${placeholders.join(', ')})`], params };
+};
 
 const photoCollectionOrderBySql = (sort: 'captured_desc' | 'captured_asc' | 'name_asc'): string => {
   switch (sort) {

@@ -961,6 +961,28 @@ export class SqlJsGlobalCatalogStore implements GlobalCatalogStore {
     });
   }
 
+  async listFingerprintsForPeople(
+    input: { personIds: readonly string[]; media: FaceObservation['media'] },
+  ): Promise<Result<string[], AppError>> {
+    if (input.personIds.length === 0) return ok([]);
+    return this.read((_db, client) => {
+      const params: Record<string, SqlValue> = { $media: input.media };
+      const placeholders = [...new Set(input.personIds)].map((personId, index) => {
+        const name = `$person${String(index)}`;
+        params[name] = personId;
+        return name;
+      });
+      const rows = client.exec(
+        `SELECT DISTINCT o.fingerprint
+          FROM face_observations o
+          WHERE o.media = $media AND o.person_id IN (${placeholders.join(', ')})
+          ORDER BY o.fingerprint`,
+        params,
+      )[0]?.values ?? [];
+      return rows.map((row) => stringValue(row[0]));
+    });
+  }
+
   async listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>> {
     return this.read((db, client) => {
       const root = input.root === null ? null : canonicalPath(input.root);

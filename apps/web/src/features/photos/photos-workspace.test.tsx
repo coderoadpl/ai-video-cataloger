@@ -71,6 +71,7 @@ const detailFor = (photoItem: PhotoListItem) => ({
   proxyPath: photoItem.proxyPath,
   thumbPath: photoItem.thumbPath,
   gridThumbPath: photoItem.gridThumbPath,
+  people: [],
   analysis: null,
   analysisError: photoItem.analysisError,
 });

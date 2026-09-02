@@ -94,6 +94,7 @@ export const boxIoU = (left: FaceBox, right: FaceBox): number => {
 export interface ExemplarPlanObservation extends ExemplarCandidate {
   personId: string;
   frameTsS: number | null;
+  media: FaceObservation['media'];
   bbox: FaceBox;
 }
 
@@ -103,7 +104,8 @@ export interface ExemplarBackfillItem {
   personId: string;
   frameIndex: number;
   detectionIndex: number;
-  frameTsS: number;
+  frameTsS: number | null;
+  media: FaceObservation['media'];
   bbox: FaceBox;
 }
 
@@ -133,7 +135,7 @@ export const planExemplarBackfill = (
     for (const observation of selected) {
       if (observation.cropPath !== null) continue;
       const parsed = parseFaceObsId(observation.obsId);
-      if (parsed === null || observation.frameTsS === null) {
+      if (parsed === null || (observation.media === 'video' && observation.frameTsS === null)) {
         observationsUnaddressable += 1;
         continue;
       }
@@ -144,6 +146,7 @@ export const planExemplarBackfill = (
         frameIndex: parsed.frameIndex,
         detectionIndex: parsed.detectionIndex,
         frameTsS: observation.frameTsS,
+        media: observation.media,
         bbox: observation.bbox,
       });
     }

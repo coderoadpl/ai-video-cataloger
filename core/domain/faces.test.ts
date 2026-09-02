@@ -328,10 +328,10 @@ describe('faceObservationSchema media', () => {
 describe('planExemplarBackfill', () => {
   it('plans a backfill only for the exemplars a person is missing', () => {
     const observations: ExemplarPlanObservation[] = [
-      { obsId: 'p1:face:1:1', fingerprint: 'fp-a', quality: 0.9, cropPath: 'existing.jpg', personId: 'p1', frameTsS: 1, bbox: { x: 0, y: 0, width: 10, height: 10 } },
-      { obsId: 'p1:face:1:2', fingerprint: 'fp-b', quality: 0.5, cropPath: null, personId: 'p1', frameTsS: 2, bbox: { x: 0, y: 0, width: 10, height: 10 } },
-      { obsId: 'p1:face:1:3', fingerprint: 'fp-c', quality: 0.4, cropPath: null, personId: 'p1', frameTsS: 3, bbox: { x: 0, y: 0, width: 10, height: 10 } },
-      { obsId: 'p2:face:1:1', fingerprint: 'fp-d', quality: 0.3, cropPath: null, personId: 'p2', frameTsS: 4, bbox: { x: 0, y: 0, width: 10, height: 10 } },
+      { obsId: 'p1:face:1:1', fingerprint: 'fp-a', quality: 0.9, cropPath: 'existing.jpg', personId: 'p1', frameTsS: 1, media: 'video', bbox: { x: 0, y: 0, width: 10, height: 10 } },
+      { obsId: 'p1:face:1:2', fingerprint: 'fp-b', quality: 0.5, cropPath: null, personId: 'p1', frameTsS: 2, media: 'video', bbox: { x: 0, y: 0, width: 10, height: 10 } },
+      { obsId: 'p1:face:1:3', fingerprint: 'fp-c', quality: 0.4, cropPath: null, personId: 'p1', frameTsS: 3, media: 'video', bbox: { x: 0, y: 0, width: 10, height: 10 } },
+      { obsId: 'p2:face:1:1', fingerprint: 'fp-d', quality: 0.3, cropPath: null, personId: 'p2', frameTsS: 4, media: 'video', bbox: { x: 0, y: 0, width: 10, height: 10 } },
     ];
     const plan = planExemplarBackfill(observations);
     expect(plan.items.map((item) => item.obsId)).toEqual(['p1:face:1:2', 'p1:face:1:3', 'p2:face:1:1']);
@@ -340,9 +340,28 @@ describe('planExemplarBackfill', () => {
     expect(plan.observationsUnaddressable).toBe(0);
   });
 
+  it('plans a photo observation, whose frame timestamp is absent by design', () => {
+    const observations: ExemplarPlanObservation[] = [
+      { obsId: 'ph_1:face:1:1', fingerprint: 'ph_1', quality: 0.9, cropPath: null, personId: 'p1', frameTsS: null, media: 'photo', bbox: { x: 0, y: 0, width: 10, height: 10 } },
+    ];
+    const plan = planExemplarBackfill(observations);
+    expect(plan.items.map((item) => item.obsId)).toEqual(['ph_1:face:1:1']);
+    expect(plan.items[0]?.media).toBe('photo');
+    expect(plan.observationsUnaddressable).toBe(0);
+  });
+
+  it('still counts a video observation without a frame timestamp as unaddressable', () => {
+    const observations: ExemplarPlanObservation[] = [
+      { obsId: 'fp-a:face:1:1', fingerprint: 'fp-a', quality: 0.9, cropPath: null, personId: 'p1', frameTsS: null, media: 'video', bbox: { x: 0, y: 0, width: 10, height: 10 } },
+    ];
+    const plan = planExemplarBackfill(observations);
+    expect(plan.items).toEqual([]);
+    expect(plan.observationsUnaddressable).toBe(1);
+  });
+
   it('counts an unparsable observation id as unaddressable rather than throwing', () => {
     const observations: ExemplarPlanObservation[] = [
-      { obsId: 'not-a-valid-id', fingerprint: 'fp-a', quality: 0.9, cropPath: null, personId: 'p1', frameTsS: 1, bbox: { x: 0, y: 0, width: 10, height: 10 } },
+      { obsId: 'not-a-valid-id', fingerprint: 'fp-a', quality: 0.9, cropPath: null, personId: 'p1', frameTsS: 1, media: 'video', bbox: { x: 0, y: 0, width: 10, height: 10 } },
     ];
     const plan = planExemplarBackfill(observations);
     expect(plan.items).toEqual([]);
