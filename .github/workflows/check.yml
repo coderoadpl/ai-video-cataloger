@@ -21,6 +21,9 @@ jobs:
       # The hosted rasterizer is not the machine that authored the darwin
       # baselines, so the visual gate compares against its own set (ADR-0005 (f)).
       VISUAL_ENV: ci-macos-15
+      # The hosted image gives node a ~2 GB old space, which typed eslint over
+      # this repo exhausts; the runner itself has 7 GB.
+      NODE_OPTIONS: --max-old-space-size=5120
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       # No `version:` input — the packageManager pin is the single source. Must
