@@ -1072,6 +1072,8 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       assignedObservations: observations.filter((observation) => observation.personId !== null).length,
       unassignedObservations: observations.filter((observation) => observation.personId === null).length,
       filesIndexed: new Set(observations.map((observation) => observation.fingerprint)).size,
+      videosIndexed: new Set(observations.filter((observation) => observation.media === 'video').map((observation) => observation.fingerprint)).size,
+      photosIndexed: new Set(observations.filter((observation) => observation.media === 'photo').map((observation) => observation.fingerprint)).size,
       staleVersionFiles: [...this.faceIndexState.values()].filter((state) => state.engineVersion < FACE_ENGINE_VERSION).length,
     }));
   }

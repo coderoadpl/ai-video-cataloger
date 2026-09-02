@@ -18,8 +18,16 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { EXIT_CODE_BY_ERROR_CODE } from '@core/contract/index.js';
-import { configDescriptorSchema, configId, derivedFolderId, type AppError, type Result } from '@core/domain/index.js';
+import { createApiClient } from '@core/client/index.js';
+import { EXIT_CODE_BY_ERROR_CODE, facesIndexOutputSchema } from '@core/contract/index.js';
+import {
+  FILE_ARTIFACTS,
+  configDescriptorSchema,
+  configId,
+  derivedFolderId,
+  type AppError,
+  type Result,
+} from '@core/domain/index.js';
 import { SqlJsGlobalCatalogStore } from '@adapters/db/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { createApp } from '@server/src/create-app.js';
@@ -223,6 +231,87 @@ const bootInProcess = async (): Promise<void> => {
     assert(parsed.data.checks.every((check) => check.ok), 'in-process readiness reported a failed check');
   } finally {
     await ready.dispose();
+  }
+
+  const photoRoot = '/smoke/photos';
+  const fingerprint = 'ph_0000000000000001';
+  const deps = createInMemoryDeps({ workingDirectory: photoRoot });
+  await deps.config.set({ kind: 'home' }, 'faces_enabled', 'true');
+  for (const artifact of Object.values(FILE_ARTIFACTS)) {
+    await deps.downloads.downloadFileArtifact(artifact, { force: false });
+  }
+  await deps.photos.upsertFolder({
+    folderId: 'photo-folder',
+    currentPath: photoRoot,
+    displayName: 'photos',
+    firstSeenAt: '2026-01-01T00:00:00.000Z',
+    lastSeenAt: '2026-01-01T00:00:00.000Z',
+    defaultConfigId: null,
+  });
+  await deps.photos.upsertPhoto({
+    fingerprint,
+    folderId: 'photo-folder',
+    fileName: 'fixture.jpg',
+    currentPath: `${photoRoot}/fixture.jpg`,
+    ext: 'jpg',
+    size: 1,
+    width: 1280,
+    height: 720,
+    orientation: null,
+    cameraMake: null,
+    cameraModel: null,
+    lens: null,
+    iso: null,
+    fNumber: null,
+    exposureTime: null,
+    exifRating: null,
+    capturedAt: null,
+    capturedAtSource: 'file_mtime',
+    gpsLat: null,
+    gpsLon: null,
+    gpsSource: null,
+    gpsAccuracyM: null,
+    gpsIntervalKind: null,
+    gpsResolvedAt: null,
+    placeName: null,
+    placeRegion: null,
+    placeCountry: null,
+    placeCountryCode: null,
+    placeDistanceM: null,
+    placeDataset: null,
+    discoveredAt: '2026-01-01T00:00:00.000Z',
+    exifReadAt: '2026-01-01T00:00:00.000Z',
+    proxyState: 'done',
+    proxyWidth: 1280,
+    proxyHeight: 720,
+    thumbState: 'done',
+    missingAt: null,
+    selectedConfigId: null,
+  });
+  await deps.photos.upsertSighting({
+    fingerprint,
+    currentPath: `${photoRoot}/fixture.jpg`,
+    folderId: 'photo-folder',
+    size: 1,
+    mtimeMs: 1,
+    lastSeenAt: '2026-01-01T00:00:00.000Z',
+  });
+  const facesApp = createApp({ dbDriver: 'memory', workingDirectory: photoRoot }, () => deps);
+  try {
+    const api = createApiClient({
+      baseUrl: '',
+      fetchImpl: async (input, init) => facesApp.honoApp.request(input, init),
+    });
+    const started = await api.facesIndex({ root: photoRoot });
+    assert(started.ok, 'in-process photo faces index returned an error envelope');
+    await new Promise<void>((resolve) => facesApp.jobs.onSettled(started.value.jobId, resolve));
+    const job = await facesApp.jobs.get(started.value.jobId);
+    assert(job.ok && job.value !== null, 'in-process photo faces index job was not found');
+    assert(job.value.status === 'completed', `in-process photo faces index finished as ${job.value.status}`);
+    const output = facesIndexOutputSchema.parse(job.value.result);
+    assert(output.photo.indexed === 1, `in-process photo faces index indexed ${output.photo.indexed} photos`);
+  } finally {
+    await facesApp.dispose();
   }
 };
 
@@ -506,6 +595,18 @@ const photosCli = async (home: string, folder: string): Promise<void> => {
   writeFileSync(join(photosDir, 'b.jpg'), REAL_JPEG_BLUE_LARGE);
   writeFileSync(join(photosDir, 'notes.txt'), 'not a photo');
   writeFileSync(join(photosDir, '._a.jpg'), 'apple double sidecar');
+
+  const facesIndexEnvelope = await run(['faces', 'index', photosDir, '--json'], { ...env, DB_DRIVER: 'memory' }, folder);
+  const facesDisabledExit = EXIT_CODE_BY_ERROR_CODE.faces_disabled;
+  assert(
+    facesIndexEnvelope.code === facesDisabledExit,
+    `faces index envelope: expected exit ${facesDisabledExit}, got ${facesIndexEnvelope.code}.\nstdout: ${facesIndexEnvelope.stdout}\nstderr: ${facesIndexEnvelope.stderr}`,
+  );
+  const facesIndexError = errorEvent(facesIndexEnvelope, 'faces index envelope');
+  assert(
+    facesIndexError.type === 'error' && facesIndexError.code === 'FACES_DISABLED',
+    `faces index envelope: expected FACES_DISABLED, got ${JSON.stringify(facesIndexError)}`,
+  );
 
   const scan = await run(['photos', 'scan', photosDir, '--json'], env, folder);
   assert(scan.code === 0, `photos scan: expected exit 0, got ${scan.code}.\nstdout: ${scan.stdout}\nstderr: ${scan.stderr}`);

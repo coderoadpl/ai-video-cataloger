@@ -1935,6 +1935,8 @@ export class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       assignedObservations: observationRows.filter((observation) => observation.personId !== null).length,
       unassignedObservations: observationRows.filter((observation) => observation.personId === null).length,
       filesIndexed: new Set(observationRows.map((observation) => observation.fingerprint)).size,
+      videosIndexed: new Set(observationRows.filter((observation) => observation.media === 'video').map((observation) => observation.fingerprint)).size,
+      photosIndexed: new Set(observationRows.filter((observation) => observation.media === 'photo').map((observation) => observation.fingerprint)).size,
       staleVersionFiles: [...this.faceIndexState.values()].filter((state) => state.engineVersion < FACE_ENGINE_VERSION).length,
     }));
   }
@@ -2660,6 +2662,10 @@ export class InMemoryPhotosStore implements PhotosStore {
   completePhotoFaceIndex(fingerprint: string, engineVersion: number): Promise<Result<void, AppError>> {
     this.faceIndexState.set(fingerprint, engineVersion);
     return Promise.resolve(ok(undefined));
+  }
+
+  countStalePhotoFaceIndexFiles(engineVersion: number): Promise<Result<number, AppError>> {
+    return Promise.resolve(ok([...this.faceIndexState.values()].filter((version) => version < engineVersion).length));
   }
 
   private isPhotoScoped(fingerprint: string, currentPath: string, root: string | null): boolean {

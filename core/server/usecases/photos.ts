@@ -38,9 +38,12 @@ import {
   type ConfigStore,
   type ExifPort,
   type FileSystemPort,
+  type FaceEnginePort,
+  type GlobalCatalogStore,
   type JobExecutionContext,
   type JobsPort,
   type MediaPort,
+  type ModelDownloadPort,
   type PhotoFolderRecord,
   type PhotoAnalysisError,
   type PhotoListItem,
@@ -63,6 +66,7 @@ import { reportStep as report } from './process-drive-batch.js';
 import { buildSearchMatch, sanitizeSearchQuery } from './search.js';
 import { isUnderExcludedDirectory, shouldSkipDirectory } from './shared.js';
 import { generateGridThumbnail, type GridThumbnailCandidate } from './thumbnail.js';
+import { faceArtifactsInstalled, facesEnabled, runPhotoFacesIndexPass } from './faces.js';
 
 export const PHOTO_SCAN_BATCH_SIZE = 500;
 export const PHOTO_PROXY_CONCURRENCY = 4;
@@ -77,6 +81,9 @@ export interface PhotosDeps {
   media: MediaPort;
   config: ConfigStore;
   analyzer: AnalyzerPort;
+  downloads?: ModelDownloadPort | undefined;
+  faceEngine?: FaceEnginePort | undefined;
+  globalCatalog?: GlobalCatalogStore | undefined;
   spendLedger?: SpendLedgerPort | undefined;
 }
 
@@ -1609,6 +1616,76 @@ interface PhotoProcessRootSummary {
   splitRetries: number;
 }
 
+const reportPhotoFacesSkipped = async (
+  progress: JobExecutionContext | undefined,
+  root: string,
+  reason: string,
+  error?: AppError | undefined,
+): Promise<void> => {
+  await report(progress, 'photo-faces-skipped', {
+    root,
+    reason,
+    ...(error === undefined ? {} : { code: error.code, message: error.message }),
+  });
+};
+
+const photoFacesCancelled = (progress: JobExecutionContext | undefined): boolean =>
+  progress?.signal.aborted === true;
+
+const runChainedPhotoFacesPass = async (
+  deps: PhotosDeps,
+  root: string,
+  progress: JobExecutionContext | undefined,
+): Promise<void> => {
+  if (photoFacesCancelled(progress)) {
+    await reportPhotoFacesSkipped(progress, root, 'cancelled');
+    return;
+  }
+  if (deps.downloads === undefined || deps.faceEngine === undefined || deps.globalCatalog === undefined) {
+    await reportPhotoFacesSkipped(progress, root, 'unavailable');
+    return;
+  }
+  const enabled = await facesEnabled(deps, root);
+  if (!enabled.ok) {
+    await reportPhotoFacesSkipped(progress, root, 'failed', enabled.error);
+    return;
+  }
+  if (!enabled.value) {
+    await reportPhotoFacesSkipped(progress, root, 'disabled');
+    return;
+  }
+  const artifactsReady = await faceArtifactsInstalled(deps.downloads);
+  if (!artifactsReady.ok) {
+    await reportPhotoFacesSkipped(progress, root, 'failed', artifactsReady.error);
+    return;
+  }
+  if (!artifactsReady.value) {
+    await reportPhotoFacesSkipped(progress, root, 'artifacts_missing');
+    return;
+  }
+  const claim = await deps.jobs.acquireResource('faces-write', progress?.signal);
+  if (!claim.ok) {
+    await reportPhotoFacesSkipped(progress, root, photoFacesCancelled(progress) ? 'cancelled' : 'failed', claim.error);
+    return;
+  }
+  try {
+    const pass = await runPhotoFacesIndexPass({
+      config: deps.config,
+      downloads: deps.downloads,
+      faceEngine: deps.faceEngine,
+      fs: deps.fs,
+      globalCatalog: deps.globalCatalog,
+      media: deps.media,
+      photos: deps.photos,
+    }, { root }, progress);
+    if (!pass.ok) {
+      await reportPhotoFacesSkipped(progress, root, photoFacesCancelled(progress) ? 'cancelled' : 'failed', pass.error);
+    }
+  } finally {
+    claim.value();
+  }
+};
+
 const runPhotoProcessForRoot = async (
   deps: PhotosDeps,
   input: { root: string; force: boolean; batchSize: number | null; fingerprints: readonly string[] | null },
@@ -1781,6 +1858,7 @@ export const runPhotoProcess = async (
     lastConfigId = perRoot.value.configId;
     lastBatchSize = perRoot.value.batchSize;
     rootsProcessed += 1;
+    await runChainedPhotoFacesPass(deps, root, progress);
   }
 
   const summaryReported = await report(progress, 'photo-process-summary', {

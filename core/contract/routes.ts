@@ -1431,6 +1431,11 @@ export const jobProgressStepSchema = z.enum([
   'photo-analysis-failed',
   'photo-analysis-usage',
   'photo-process-summary',
+  'photo-faces-scanning',
+  'photo-faces-detecting',
+  'photo-faces-file-failed',
+  'photo-faces-summary',
+  'photo-faces-skipped',
   'photo-import-libra-scanning',
   'photo-import-libra-summary',
 ]);
@@ -2033,7 +2038,10 @@ export const facesStatusOutputSchema = z.object({
   assignedObservations: z.number().int().nonnegative(),
   unassignedObservations: z.number().int().nonnegative(),
   filesIndexed: z.number().int().nonnegative(),
+  videosIndexed: z.number().int().nonnegative(),
+  photosIndexed: z.number().int().nonnegative(),
   staleVersionFiles: z.number().int().nonnegative(),
+  stalePhotoFiles: z.number().int().nonnegative(),
 });
 
 export const facesReclusterInputSchema = z.object({
