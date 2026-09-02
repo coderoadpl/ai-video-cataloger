@@ -18,6 +18,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 - Encrypted critical and optional backup archives can now run through the scheduled backup job pipeline with independent retention and crash-safe local staging.
 - Google Drive backup destinations now support either desktop OAuth with `drive.file` access or a service account restricted to one configured Shared Drive folder.
+- `faces recluster --dry-run` can print benchmark metrics from supplied reference-partition and labelled-pairs files, and Osoby now requires a dry-run report before starting a full people recluster.
 - `faces index` and `photos process` now detect faces in photos themselves,
   over the photo proxy, writing one crop per observation like the video pass;
   photo face observations that arrived through `photos import-libra` are
@@ -30,8 +31,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Changed
 
+- Face identity rebuild (`faces recluster`) now uses deterministic agglomerative average-linkage clustering over stored embeddings instead of order-dependent greedy centroid assignment; the cut threshold is biased towards splitting a person rather than merging two (ADR-0018).
+- `scripts/faces-benchmark.ts` sweeps recluster thresholds against supplied reference partitions and labelled pairs, reporting pairwise precision/recall/F1, purity, completeness, zero-different-pair thresholds and a conservative selected threshold.
 - `GET /api/faces/status` reports `videosIndexed`, `photosIndexed` and
   `stalePhotoFiles` alongside the existing counters.
+- The AI review gate has a 90-turn budget and reads large diffs in grouped
+  `git diff` calls, always returning a verdict.
 
 ### Fixed
 

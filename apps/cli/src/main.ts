@@ -11,6 +11,7 @@ import {
   EXIT_CODE_BY_ERROR_CODE,
   SEARCH_SORTS,
   facesIndexOutputSchema,
+  facesReclusterOutputSchema,
   gpsBackfillSummarySchema,
   thumbnailsSummarySchema,
 } from '@core/contract/index.js';
@@ -74,6 +75,8 @@ import {
   type SetupPrompter,
   type SetupTranscription,
 } from './setup.js';
+import { runFromOptions } from '../../../scripts/faces-benchmark.js';
+import { benchmarkReportTable } from '../../../scripts/faces-benchmark-core.js';
 
 interface JsonOption {
   json?: boolean | undefined;
@@ -106,6 +109,13 @@ interface ProcessDriveOptions extends ProcessOptions {
 interface MaterializeOptions extends JsonOption {
   dryRun?: boolean | undefined;
   keepAwake?: boolean | undefined;
+}
+
+interface FacesReclusterOptions extends JsonOption {
+  dryRun?: boolean | undefined;
+  reference?: string | undefined;
+  labelledPairs?: string | undefined;
+  thresholds?: string | undefined;
 }
 
 interface AnalyzerSelection {
@@ -1402,10 +1412,38 @@ faces
   .command('recluster')
   .description('rebuild people and assignments from stored embeddings (person ids change)')
   .option('--dry-run', 'compute the report without writing', false)
+  .option('--reference <path>', 'reference partition file for benchmark scoring')
+  .option('--labelled-pairs <path>', 'labelled pairs file for benchmark scoring')
+  .option('--thresholds <list>', 'comma-separated benchmark threshold sweep')
   .option('--json', 'machine-readable JSON output', false)
-  .action(async (options: JsonOption & { dryRun?: boolean }) => {
+  .action(async (options: FacesReclusterOptions) => {
     const json = isJsonMode(options);
     const dryRun = options.dryRun === true;
+    const benchmarkRequested = options.reference !== undefined || options.labelledPairs !== undefined;
+    if (benchmarkRequested) {
+      if (!dryRun || options.reference === undefined || options.labelledPairs === undefined) {
+        emitError(json, appError('validation', 'Use --reference and --labelled-pairs together with faces recluster --dry-run.'));
+        return;
+      }
+      const status = await api.indexStatus();
+      if (!status.ok) {
+        emitError(json, status.error);
+        return;
+      }
+      const report = await runFromOptions({
+        reference: options.reference,
+        pairs: options.labelledPairs,
+        catalog: status.value.databasePath,
+        ...(options.thresholds === undefined
+          ? {}
+          : { thresholds: options.thresholds.split(',').map((value) => Number(value.trim())).filter((value) => Number.isFinite(value)) }),
+      });
+      if (!report.ok) {
+        emitError(json, report.error);
+        return;
+      }
+      process.stdout.write(`${JSON.stringify({ type: 'faces_benchmark', data: report.value }, null, 2)}\n${benchmarkReportTable(report.value)}\n`);
+    }
     emitStarted(json, 'faces_recluster', { dryRun });
     const result = await api.facesRecluster({ dryRun });
     if (!result.ok) {
@@ -1824,21 +1862,17 @@ const facesIndexHuman = (data: unknown): string => {
 };
 
 const facesReclusterHuman = (data: unknown): string => {
-  if (!isRecord(data)) return 'Recluster complete';
-  const observations = typeof data.observations === 'number' ? data.observations : 0;
-  const personsBefore = typeof data.personsBefore === 'number' ? data.personsBefore : 0;
-  const personsAfter = typeof data.personsAfter === 'number' ? data.personsAfter : 0;
-  const reassigned = typeof data.observationsReassigned === 'number' ? data.observationsReassigned : 0;
-  const unassigned = typeof data.observationsUnassigned === 'number' ? data.observationsUnassigned : 0;
-  const namesCarried = typeof data.namesCarried === 'number' ? data.namesCarried : 0;
-  const namesDropped = Array.isArray(data.namesDropped) ? data.namesDropped.length : 0;
-  const personsWithoutExemplar = typeof data.personsWithoutExemplar === 'number' ? data.personsWithoutExemplar : 0;
-  const dryRun = data.dryRun === true;
-  return `Reclustered ${observations} observations: ${personsBefore} → ${personsAfter} people `
-    + `(${reassigned} reassigned, ${unassigned} unassigned), `
-    + `${namesCarried} names carried, ${namesDropped} dropped`
-    + (dryRun ? ' — dry run, nothing written' : '')
-    + (personsWithoutExemplar > 0 ? ` — ${personsWithoutExemplar} people have no photo yet, run \`faces exemplars\`` : '');
+  const parsed = facesReclusterOutputSchema.safeParse(data);
+  if (!parsed.success) return 'Recluster complete';
+  const output = parsed.data;
+  const largest = output.largestClusters.length === 0
+    ? 'none'
+    : output.largestClusters.map((cluster) => `${cluster.personId}:${String(cluster.observations)}`).join(', ');
+  return `Reclustered ${output.observations} observations: ${output.personsBefore} → ${output.personsAfter} people `
+    + `(${output.observationsReassigned} reassigned, ${output.observationsUnassigned} unassigned), `
+    + `${output.namesDropped.length} names dropped, largest clusters: ${largest}`
+    + (output.dryRun ? ' — dry run, nothing written' : '')
+    + (output.personsWithoutExemplar > 0 ? ` — ${output.personsWithoutExemplar} people have no photo yet, run \`faces exemplars\`` : '');
 };
 
 const facesExemplarsHuman = (data: unknown): string => {

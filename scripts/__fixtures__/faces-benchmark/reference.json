@@ -1,0 +1,6 @@
+[
+  { "observationId": "obs-a1", "clusterId": "identity-a" },
+  { "observationId": "obs-a2", "clusterId": "identity-a" },
+  { "observationId": "obs-b1", "clusterId": "identity-b" },
+  { "observationId": "obs-b2", "clusterId": "identity-b" }
+]

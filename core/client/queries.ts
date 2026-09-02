@@ -95,6 +95,7 @@ export type FacesNameInput = z.input<typeof API_ROUTES.facesName.input>;
 export type FacesMergeInput = z.input<typeof API_ROUTES.facesMerge.input>;
 export type FacesForgetInput = z.input<typeof API_ROUTES.facesForget.input>;
 export type FacesPurgeInput = z.input<typeof API_ROUTES.facesPurge.input>;
+export type FacesReclusterInput = z.input<typeof API_ROUTES.facesRecluster.input>;
 export type IndexForgetInput = z.input<typeof API_ROUTES.indexForget.input>;
 export type VariantsInput = z.input<typeof API_ROUTES.variantsList.input>;
 export type PhotosScanInput = z.input<typeof API_ROUTES.photosScan.input>;
@@ -324,6 +325,7 @@ export const mutationScopes = {
   facesMerge: () => ['facesMerge'] as const,
   facesForget: () => ['facesForget'] as const,
   facesPurge: () => ['facesPurge'] as const,
+  facesRecluster: () => ['facesRecluster'] as const,
   indexForget: () => ['indexForget'] as const,
   photosScan: () => ['photosScan'] as const,
   photosForget: () => ['photosForget'] as const,
@@ -890,6 +892,12 @@ export const facesPurgeMutation = (api: ApiClient) =>
   defineMutation({
     mutationKey: mutationScopes.facesPurge(),
     call: (variables: FacesPurgeInput) => api.facesPurge(variables),
+  });
+
+export const facesReclusterMutation = (api: ApiClient) =>
+  defineMutation({
+    mutationKey: mutationScopes.facesRecluster(),
+    call: (variables: FacesReclusterInput) => api.facesRecluster(variables),
   });
 
 export const indexForgetMutation = (api: ApiClient) =>

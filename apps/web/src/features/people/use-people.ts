@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { z } from 'zod';
 
 import { ApiError, isTerminalJobStatus } from '@core/client/index.js';
-import type { facesPeopleOutputSchema } from '@core/contract/index.js';
+import { facesReclusterOutputSchema, type facesPeopleOutputSchema } from '@core/contract/index.js';
 
 import { actions } from '../../api.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
@@ -12,6 +12,7 @@ import { pollJobUntilTerminal, sleep } from '../../lib/poll-job.js';
 import { useFacesIndex } from './use-faces-index.js';
 
 export type FacePerson = z.output<typeof facesPeopleOutputSchema>['people'][number];
+export type FacesReclusterReport = z.output<typeof facesReclusterOutputSchema>;
 
 export interface PeopleState {
   facesEnabled: boolean | null;
@@ -33,6 +34,10 @@ export interface PeopleState {
   merge: (fromPersonId: string, toPersonId: string) => void;
   forget: (personId: string) => void;
   purge: () => void;
+  reclusterDryRunReport: FacesReclusterReport | null;
+  startReclusterDryRun: () => void;
+  confirmRecluster: () => void;
+  clearReclusterReport: () => void;
 }
 
 interface UsePeopleOptions {
@@ -70,16 +75,19 @@ export const usePeople = ({
   const mergeMutation = useMutation(actions.facesMerge);
   const forgetMutation = useMutation(actions.facesForget);
   const purgeMutation = useMutation(actions.facesPurge);
+  const reclusterMutation = useMutation(actions.facesRecluster);
 
   const [selectedPersonIds, setSelectedPersonIds] = useState<string[]>([]);
   const [activeJobLabel, setActiveJobLabel] = useState<string | null>(null);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [reclusterDryRunReport, setReclusterDryRunReport] = useState<FacesReclusterReport | null>(null);
   const isBusy = activeJobLabel !== null
     || facesIndex.isBusy
     || renameMutation.isPending
     || mergeMutation.isPending
     || forgetMutation.isPending
-    || purgeMutation.isPending;
+    || purgeMutation.isPending
+    || reclusterMutation.isPending;
 
   const invalidate = useCallback(async () => {
     await queryClient.invalidateQueries();
@@ -190,6 +198,59 @@ export const usePeople = ({
     );
   }, [dictionary, mutateAndRefresh, purgeMutation]);
 
+  const startReclusterDryRun = useCallback(() => {
+    if (activeJobLabel !== null) return;
+    const label = dictionary.people.reclusterDryRunLog;
+    setActiveJobLabel(label);
+    setMutationError(null);
+    setReclusterDryRunReport(null);
+    addLine(label, 'info');
+    void (async () => {
+      try {
+        const job = await reclusterMutation.mutateAsync({ dryRun: true });
+        const final = await pollJobUntilTerminal(job.jobId, {
+          intervalMs,
+          delay: sleep,
+          fetchJob: (jobId) => queryClient.fetchQuery(actions.job({ jobId })),
+          isTerminal: (snapshot) => isTerminalJobStatus(snapshot.status),
+          onSnapshot: () => undefined,
+        });
+        if (final.status !== 'completed') {
+          const message = `${dictionary.people.reclusterDryRunFailedLog}: ${final.error?.message ?? 'unknown error'}`;
+          addLine(message, 'error');
+          setMutationError(message);
+          return;
+        }
+        const parsed = facesReclusterOutputSchema.safeParse(final.result);
+        if (!parsed.success) {
+          const message = `${dictionary.people.reclusterDryRunFailedLog}: ${dictionary.people.reclusterReportUnavailable}`;
+          addLine(message, 'error');
+          setMutationError(message);
+          return;
+        }
+        setReclusterDryRunReport(parsed.data);
+        addLine(dictionary.people.reclusterDryRunReadyLog, 'success');
+        await invalidate();
+      } catch (error) {
+        const message = `${dictionary.people.reclusterDryRunFailedLog}: ${messageOf(error)}`;
+        addLine(message, 'error');
+        setMutationError(message);
+      } finally {
+        setActiveJobLabel(null);
+      }
+    })();
+  }, [activeJobLabel, addLine, dictionary, intervalMs, invalidate, queryClient, reclusterMutation]);
+
+  const confirmRecluster = useCallback(() => {
+    setReclusterDryRunReport(null);
+    runJob(
+      reclusterMutation.mutateAsync({ dryRun: false }),
+      dictionary.people.reclusterLog,
+      dictionary.people.reclusteredLog,
+      dictionary.people.reclusterFailedLog,
+    );
+  }, [dictionary, reclusterMutation, runJob]);
+
   const toggleSelected = useCallback((personId: string) => {
     setSelectedPersonIds((current) =>
       current.includes(personId)
@@ -228,5 +289,9 @@ export const usePeople = ({
     merge,
     forget,
     purge,
+    reclusterDryRunReport,
+    startReclusterDryRun,
+    confirmRecluster,
+    clearReclusterReport: () => setReclusterDryRunReport(null),
   };
 };
