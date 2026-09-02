@@ -16,6 +16,7 @@ import {
   analyzerProviderDescriptorSchema,
   analyzerProviderFamilySchema,
   analyzerProviderIdSchema,
+  backupTierSchema,
   configDescriptorSchema,
   configKeySchema,
   canonicalPath,
@@ -26,6 +27,7 @@ import {
   geminiCostEstimateSchema,
   photoExtensionSchema,
   photoFingerprintSchema,
+  remoteBackupSchema,
   videoStatusSchema,
   whisperLanguageSchema,
   whisperEngineSchema,
@@ -285,6 +287,25 @@ export const processDriveInputSchema = z.object({
 
 export const jobAcceptedOutputSchema = z.object({
   jobId: z.string(),
+});
+
+export const backupListInputSchema = z.object({
+  tier: backupTierSchema.nullable().default(null),
+});
+
+export const backupListOutputSchema = z.object({
+  backups: z.array(remoteBackupSchema),
+});
+
+export const backupRestoreInputSchema = z.object({
+  remoteId: z.string().min(1),
+  recoveryKey: z.string().min(1).optional(),
+});
+
+export const backupRestoreOutputSchema = z.object({
+  restored: remoteBackupSchema,
+  relaunchRequired: z.literal(true),
+  preRestoreDirectory: z.string().min(1),
 });
 
 export const processCompletedOutputSchema = z.object({
@@ -1405,6 +1426,8 @@ export const jobKindSchema = z.enum([
   'photo_process',
   'photo_gps_backfill',
   'photo_import_libra',
+  'backup',
+  'restore',
 ]);
 export const jobProgressStepSchema = z.enum([
   'run-started',
@@ -1473,6 +1496,16 @@ export const jobProgressStepSchema = z.enum([
   'photo-faces-skipped',
   'photo-import-libra-scanning',
   'photo-import-libra-summary',
+  'idle',
+  'fingerprinting',
+  'snapshotting',
+  'archiving',
+  'encrypting',
+  'uploading',
+  'pruning',
+  'verifying',
+  'decrypting',
+  'restoring',
 ]);
 
 export const jobProgressSchema = z.object({
@@ -1533,6 +1566,8 @@ export const jobResultSchema = z.union([
   thumbnailsSummarySchema,
   facesReclusterOutputSchema,
   facesExemplarsOutputSchema,
+  remoteBackupSchema,
+  backupRestoreOutputSchema,
   photoGpsBackfillSummarySchema,
   photoImportLibraSummarySchema,
   gpsBackfillSummarySchema,
@@ -2239,6 +2274,8 @@ export const API_ROUTES = {
   jobStatus: { method: 'GET', path: '/api/jobs/status', input: jobIdInputSchema, output: jobOutputSchema },
   jobsList: { method: 'GET', path: '/api/jobs', input: emptyInputSchema, output: jobsListOutputSchema },
   jobCancel: { method: 'POST', path: '/api/jobs/cancel', input: jobIdInputSchema, output: jobCancelOutputSchema },
+  backupList: { method: 'GET', path: '/api/backup/list', input: backupListInputSchema, output: backupListOutputSchema },
+  backupRestore: { method: 'POST', path: '/api/backup/restore', input: backupRestoreInputSchema, output: jobAcceptedOutputSchema },
   indexStatus: { method: 'GET', path: '/api/index/status', input: emptyInputSchema, output: indexStatusOutputSchema },
   indexRebuild: { method: 'POST', path: '/api/index/rebuild', input: emptyInputSchema, output: indexRebuildOutputSchema },
   indexForget: { method: 'POST', path: '/api/index/forget', input: indexForgetInputSchema, output: indexForgetOutputSchema },
@@ -2465,6 +2502,8 @@ export const API_PATHS = {
   jobStatus: API_ROUTES.jobStatus.path,
   jobsList: API_ROUTES.jobsList.path,
   jobCancel: API_ROUTES.jobCancel.path,
+  backupList: API_ROUTES.backupList.path,
+  backupRestore: API_ROUTES.backupRestore.path,
   indexStatus: API_ROUTES.indexStatus.path,
   indexRebuild: API_ROUTES.indexRebuild.path,
   indexForget: API_ROUTES.indexForget.path,

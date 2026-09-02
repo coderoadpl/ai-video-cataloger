@@ -2,6 +2,7 @@ import { type z } from 'zod';
 
 import {
   API_ROUTES,
+  backupListOutputSchema,
   catalogFolderOutputSchema,
   catalogLocationsOutputSchema,
   catalogLockOutputSchema,
@@ -359,6 +360,30 @@ export const createApiClient = (options: ApiClientOptions) => ({
   },
   jobs: (signal?: AbortSignal) =>
     request(options, API_ROUTES.jobsList.method, API_ROUTES.jobsList.path, jobsListOutputSchema, undefined, signal),
+  backupList: (input: z.input<typeof API_ROUTES.backupList.input> = {}, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.backupList.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.backupList.method,
+      queryPath(API_ROUTES.backupList.path, [['tier', parsed.value.tier]]),
+      backupListOutputSchema,
+      undefined,
+      signal,
+    );
+  },
+  backupRestore: (input: z.input<typeof API_ROUTES.backupRestore.input>, signal?: AbortSignal) => {
+    const parsed = parseInput(API_ROUTES.backupRestore.input, input);
+    if (!parsed.ok) return Promise.resolve(err(parsed.error));
+    return request(
+      options,
+      API_ROUTES.backupRestore.method,
+      API_ROUTES.backupRestore.path,
+      jobAcceptedOutputSchema,
+      parsed.value,
+      signal,
+    );
+  },
   processVideo: (input: z.input<typeof API_ROUTES.process.input>, signal?: AbortSignal) => {
     const parsed = parseInput(API_ROUTES.process.input, input);
     if (!parsed.ok) return Promise.resolve(err(parsed.error));

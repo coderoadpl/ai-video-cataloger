@@ -1,6 +1,7 @@
 export {
   JsonConfigStore,
   SqlJsCatalogRepositoryFactory,
+  sqlJsWasmConfig,
   type SqlJsAdapterOptions,
 } from './sql-js.js';
 export {

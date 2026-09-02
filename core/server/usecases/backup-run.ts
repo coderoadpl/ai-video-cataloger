@@ -212,8 +212,8 @@ export const backupAdmissionError = (incoming: JobKind, records: readonly JobRec
   if (incoming === 'backup' && active.some((record) => BACKUP_CONFLICTING_JOB_KINDS.has(record.kind))) {
     return appError('conflict', 'A catalog job is already queued or running');
   }
-  if (BACKUP_CONFLICTING_JOB_KINDS.has(incoming) && active.some((record) => record.kind === 'backup')) {
-    return appError('conflict', 'A backup job is already queued or running');
+  if (BACKUP_CONFLICTING_JOB_KINDS.has(incoming) && active.some((record) => record.kind === 'backup' || record.kind === 'restore')) {
+    return appError('conflict', 'A backup or restore job is already queued or running');
   }
   return null;
 };

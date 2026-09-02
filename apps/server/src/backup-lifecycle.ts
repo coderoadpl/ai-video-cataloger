@@ -1,20 +1,36 @@
 import { randomUUID } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import initSqlJs from 'sql.js';
 
+import { PHOTOS_SCHEMA_VERSION, sqlJsWasmConfig } from '@adapters/db/index.js';
 import { BackupStateFile } from '@adapters/backup/state-store.js';
-import { encryptBackupEnvelope, loadBackupEncryptionKey } from '@adapters/backup/envelope.js';
-import { writeTarZstd } from '@adapters/backup/tar.js';
 import {
+  decryptBackupEnvelope,
+  encryptBackupEnvelope,
+  loadBackupEncryptionKey,
+  parseRecoveryKey,
+} from '@adapters/backup/envelope.js';
+import { extractTarZstd, writeTarZstd } from '@adapters/backup/tar.js';
+import {
+  GLOBAL_CATALOG_SCHEMA_VERSION,
   appError,
   configValueSchema,
   ok,
   type AppError,
+  type BackupTier,
+  type RemoteBackup,
   type Result,
 } from '@core/domain/index.js';
 import {
   cleanupBackupStaging,
   enqueueBackup,
+  enqueueRestore,
   evaluateScheduledBackup,
+  listBackups,
+  performRestoreStartupRecovery,
   prepareBackupScope,
+  type BackupRestoreDeps,
+  type BackupRestoreInput,
   type BackupRunDeps,
   type BackupDestinationPort,
   type ConfigStore,
@@ -41,6 +57,8 @@ export interface BackupLifecycleOptions {
 export interface BackupLifecycle {
   cleanup(): Promise<Result<void, AppError>>;
   evaluate(): Promise<Result<void, AppError>>;
+  list(tier: BackupTier | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>>;
+  restore(input: BackupRestoreInput): Promise<Result<{ jobId: string }, AppError>>;
 }
 
 export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLifecycle => {
@@ -61,6 +79,25 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       loadEncryptionKey: () => loadBackupEncryptionKey(options.secrets),
       archive: (entries, targetPath, createdAt, signal) => writeTarZstd(entries, targetPath, createdAt, { signal }),
       encrypt: encryptBackupEnvelope,
+    });
+  };
+  const restoreDeps = async (): Promise<Result<BackupRestoreDeps, AppError>> => {
+    const destination = await options.destination();
+    if (!destination.ok) return destination;
+    return ok({
+      homeDirectory: options.homeDirectory,
+      supportedSchemaVersions: { globalCatalog: GLOBAL_CATALOG_SCHEMA_VERSION, photos: PHOTOS_SCHEMA_VERSION },
+      fs: options.fs,
+      globalCatalog: options.globalCatalog,
+      photos: options.photos,
+      destination: destination.value,
+      state,
+      now,
+      loadEncryptionKey: () => loadBackupEncryptionKey(options.secrets),
+      parseRecoveryKey,
+      verifyDatabase: verifySqliteIntegrity,
+      decrypt: decryptBackupEnvelope,
+      extract: extractTarZstd,
     });
   };
   const enqueue = async (): Promise<Result<{ jobId: string }, AppError>> => {
@@ -90,7 +127,11 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
     return critical;
   };
   return {
-    cleanup: () => cleanupBackupStaging(options.fs, options.homeDirectory),
+    cleanup: async () => {
+      const recovered = await performRestoreStartupRecovery({ fs: options.fs, homeDirectory: options.homeDirectory });
+      if (!recovered.ok) return recovered;
+      return cleanupBackupStaging(options.fs, options.homeDirectory);
+    },
     evaluate: async () => {
       const evaluated = await evaluateScheduledBackup({
         enabled: () => readEnabled(options.config),
@@ -102,7 +143,37 @@ export const createBackupLifecycle = (options: BackupLifecycleOptions): BackupLi
       });
       return evaluated.ok ? ok(undefined) : evaluated;
     },
+    list: async (tier, signal) => {
+      const destination = await options.destination();
+      if (!destination.ok) return destination;
+      return listBackups(destination.value, tier, signal);
+    },
+    restore: async (input) => {
+      const deps = await restoreDeps();
+      if (!deps.ok) return deps;
+      return enqueueRestore(options.jobs, deps.value, input);
+    },
   };
+};
+
+const verifySqliteIntegrity = async (
+  databasePath: string,
+  archivePath: string,
+): Promise<Result<void, AppError>> => {
+  try {
+    const SQL = await initSqlJs(sqlJsWasmConfig());
+    const client = new SQL.Database(readFileSync(databasePath));
+    try {
+      if (client.exec('PRAGMA integrity_check')[0]?.values[0]?.[0] !== 'ok') {
+        return { ok: false, error: appError('backup_integrity_failed', `Backup database failed integrity_check: ${archivePath}`) };
+      }
+      return ok(undefined);
+    } finally {
+      client.close();
+    }
+  } catch {
+    return { ok: false, error: appError('backup_integrity_failed', `Backup database failed integrity_check: ${archivePath}`) };
+  }
 };
 
 const scheduledFingerprint = async (

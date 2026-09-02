@@ -466,6 +466,22 @@ export const buildApp = (deps: AppDeps): Hono => {
     return respond(await cancelJob(deps, input.value), API_ROUTES.jobCancel.output);
   });
 
+  app.get(API_ROUTES.backupList.path, async (context) => {
+    const input = parseInput(API_ROUTES.backupList.input, queryInput(context));
+    if (!input.ok) return respond(input, API_ROUTES.backupList.output);
+    const controller = new AbortController();
+    const result = await deps.listBackups(input.value.tier, controller.signal);
+    return respond(result.ok ? ok({ backups: result.value }) : result, API_ROUTES.backupList.output);
+  });
+
+  app.post(API_ROUTES.backupRestore.path, async (context) => {
+    const body = await readBody(context);
+    if (!body.ok) return respond(body, API_ROUTES.backupRestore.output);
+    const input = parseInput(API_ROUTES.backupRestore.input, body.value);
+    if (!input.ok) return respond(input, API_ROUTES.backupRestore.output);
+    return respond(await deps.restoreBackup(input.value), API_ROUTES.backupRestore.output);
+  });
+
   app.get(API_ROUTES.indexStatus.path, async () =>
     respond(await indexStatus(deps), API_ROUTES.indexStatus.output),
   );
