@@ -6,6 +6,7 @@ import {
 } from '@core/domain/index.js';
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
+  backupAdmissionError,
   type JobExecutionContext,
   type JobKind,
   type JobProgress,
@@ -47,6 +48,8 @@ export class InProcessJobsPort implements JobsPort {
     resourceKey?: string | undefined;
     run?: (context: JobExecutionContext) => Promise<Result<unknown, AppError>>;
   }): Promise<Result<{ jobId: string }, AppError>> {
+    const admission = backupAdmissionError(input.kind, [...this.records.values()]);
+    if (admission !== null) return Promise.resolve({ ok: false, error: admission });
     if (input.resourceKey !== undefined && this.isResourceBusy(input.resourceKey)) {
       return Promise.resolve({
         ok: false,
@@ -169,6 +172,7 @@ export class InProcessJobsPort implements JobsPort {
     if (this.cancellationRequests.has(jobId)) controller.abort();
 
     const result = await runSafely(run, {
+      jobId,
       signal: controller.signal,
       reportProgress: (progress) => this.reportProgress(jobId, progress),
     });

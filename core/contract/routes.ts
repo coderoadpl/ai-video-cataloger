@@ -1008,6 +1008,15 @@ export const storedConfigSchema = z.object({
   output_language: z.string().nullable(),
   tag_language: z.string().nullable(),
   ui_language: z.string().nullable(),
+  backup_enabled: z.string().nullable(),
+  backup_provider: z.string().nullable(),
+  backup_include_optional: z.string().nullable(),
+  backup_keep_last: z.string().nullable(),
+  backup_keep_weekly: z.string().nullable(),
+  backup_folder_id: z.string().nullable(),
+  backup_shared_drive_id: z.string().nullable(),
+  backup_service_account_fingerprint: z.string().nullable(),
+  backup_account_email: z.string().nullable(),
 });
 
 export const storedConfigDefaultsSchema = z.object({
@@ -1029,6 +1038,15 @@ export const storedConfigDefaultsSchema = z.object({
   output_language: z.string(),
   tag_language: z.string(),
   ui_language: z.string(),
+  backup_enabled: z.string(),
+  backup_provider: z.string(),
+  backup_include_optional: z.string(),
+  backup_keep_last: z.string(),
+  backup_keep_weekly: z.string(),
+  backup_folder_id: z.string(),
+  backup_shared_drive_id: z.string(),
+  backup_service_account_fingerprint: z.string(),
+  backup_account_email: z.string(),
 });
 
 export const configValueSourcesSchema = z.object({
@@ -1050,6 +1068,15 @@ export const configValueSourcesSchema = z.object({
   output_language: z.enum(['folder', 'home', 'default']),
   tag_language: z.enum(['folder', 'home', 'default']),
   ui_language: z.enum(['folder', 'home', 'default']),
+  backup_enabled: z.enum(['folder', 'home', 'default']),
+  backup_provider: z.enum(['folder', 'home', 'default']),
+  backup_include_optional: z.enum(['folder', 'home', 'default']),
+  backup_keep_last: z.enum(['folder', 'home', 'default']),
+  backup_keep_weekly: z.enum(['folder', 'home', 'default']),
+  backup_folder_id: z.enum(['folder', 'home', 'default']),
+  backup_shared_drive_id: z.enum(['folder', 'home', 'default']),
+  backup_service_account_fingerprint: z.enum(['folder', 'home', 'default']),
+  backup_account_email: z.enum(['folder', 'home', 'default']),
 });
 
 export const configEntrySchema = z.object({

@@ -10,6 +10,11 @@ const requireShim = [
   'const require = __avcCreateRequire(import.meta.url);',
 ].join('\n');
 
+const googleOAuthDefines = {
+  'process.env.AVC_GOOGLE_OAUTH_CLIENT_ID': JSON.stringify(process.env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? ''),
+  'process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET': JSON.stringify(process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? ''),
+};
+
 await rm('dist-electron', { recursive: true, force: true });
 
 await Promise.all([
@@ -22,6 +27,7 @@ await Promise.all([
     target: 'node22',
     external: ['electron', 'onnxruntime-node'],
     banner: { js: requireShim },
+    define: googleOAuthDefines,
   }),
   build({
     entryPoints: ['apps/desktop/src/preload.ts'],

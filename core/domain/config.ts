@@ -2,6 +2,7 @@ import { z } from 'zod';
 
 import { WHISPER_MODEL_NAMES, whisperModelNameSchema } from './models.js';
 import { analyzerProviderConfigSchema, legacyAnalyzerProvider } from './providers.js';
+import { backupProviderSchema } from './backup.js';
 
 export const WHISPER_MODES = ['local', 'api', 'skip'] as const;
 export const ANALYZER_BACKENDS = ['claude', 'local'] as const;
@@ -88,6 +89,15 @@ export const configValueSchema = z.object({
   output_language: outputLanguageSchema.default('auto'),
   tag_language: outputLanguageSchema.optional(),
   ui_language: uiLanguageSchema.default('en'),
+  backup_enabled: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
+  backup_provider: backupProviderSchema.default('google_oauth'),
+  backup_include_optional: z.preprocess(booleanFromPersistedValue, z.boolean()).default(false),
+  backup_keep_last: z.preprocess(integerFromPersistedValue, z.number().int().min(1).max(90)).default(7),
+  backup_keep_weekly: z.preprocess(integerFromPersistedValue, z.number().int().min(0).max(52)).default(8),
+  backup_folder_id: z.string().default(''),
+  backup_shared_drive_id: z.string().default(''),
+  backup_service_account_fingerprint: z.string().default(''),
+  backup_account_email: z.string().default(''),
 });
 
 export const configSchema = configValueSchema.transform((config) => ({
@@ -118,12 +128,34 @@ export const CONFIG_KEYS = [
   'output_language',
   'tag_language',
   'ui_language',
+  'backup_enabled',
+  'backup_provider',
+  'backup_include_optional',
+  'backup_keep_last',
+  'backup_keep_weekly',
+  'backup_folder_id',
+  'backup_shared_drive_id',
+  'backup_service_account_fingerprint',
+  'backup_account_email',
 ] as const;
 
 export const configKeySchema = z.enum(CONFIG_KEYS);
 export type ConfigKey = z.output<typeof configKeySchema>;
 
-export const APP_GLOBAL_CONFIG_KEYS: readonly ConfigKey[] = ['ui_language', 'faces_enabled', 'gemini_monthly_budget_usd'];
+export const APP_GLOBAL_CONFIG_KEYS: readonly ConfigKey[] = [
+  'ui_language',
+  'faces_enabled',
+  'gemini_monthly_budget_usd',
+  'backup_enabled',
+  'backup_provider',
+  'backup_include_optional',
+  'backup_keep_last',
+  'backup_keep_weekly',
+  'backup_folder_id',
+  'backup_shared_drive_id',
+  'backup_service_account_fingerprint',
+  'backup_account_email',
+];
 
 export const isAppGlobalConfigKey = (key: ConfigKey): boolean => APP_GLOBAL_CONFIG_KEYS.includes(key);
 
@@ -153,4 +185,13 @@ export const configDescriptions: Record<ConfigKey, string> = {
   output_language: 'Language for generated descriptions and filenames (auto, en, pl, or a BCP-47 code)',
   tag_language: 'Language of generated tags (auto, en, pl, or a BCP-47 code); unset follows output_language',
   ui_language: 'Language of the desktop app interface (en, pl)',
+  backup_enabled: 'Enable encrypted Google Drive backups',
+  backup_provider: 'Google Drive backup destination provider',
+  backup_include_optional: 'Back up regenerable artifacts as a separate archive series',
+  backup_keep_last: 'Number of newest backups retained per archive series',
+  backup_keep_weekly: 'Number of weekly backups retained per archive series',
+  backup_folder_id: 'Google Drive folder used for backups',
+  backup_shared_drive_id: 'Shared Drive used by the service-account destination',
+  backup_service_account_fingerprint: 'Service-account key fingerprint',
+  backup_account_email: 'Connected Google account e-mail address',
 };

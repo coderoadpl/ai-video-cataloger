@@ -15,6 +15,11 @@ const requireShim = [
   'const require = __avcCreateRequire(import.meta.url);',
 ].join('\n');
 
+const googleOAuthDefines = {
+  'process.env.AVC_GOOGLE_OAUTH_CLIENT_ID': JSON.stringify(process.env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? ''),
+  'process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET': JSON.stringify(process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? ''),
+};
+
 const stageDir = 'dist/cli';
 const stagedEntry = path.join(stageDir, 'index.js');
 
@@ -29,6 +34,7 @@ await build({
   target: 'node22',
   external: ['onnxruntime-node'],
   banner: { js: requireShim },
+  define: googleOAuthDefines,
 });
 await writeFile(
   path.join(stageDir, 'package.json'),

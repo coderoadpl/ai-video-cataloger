@@ -2,10 +2,12 @@ import path from 'node:path';
 import { access, constants } from 'node:fs/promises';
 import packageJson from '../../../../package.json' with { type: 'json' };
 
+import { MemoryBackupDestination } from '@adapters/backup/memory-destination.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { FakeExifPort, FakePhotoMediaPort, InMemoryPhotosStore } from '../../../../test/server/usecases/test-fakes.js';
 import {
   FACE_ENGINE_VERSION,
+  GLOBAL_CATALOG_SCHEMA_VERSION,
   LEGACY_CONFIG_ID,
   acceptsGpsWrite,
   appError,
@@ -117,6 +119,7 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
   const jobs = new InvalidatingJobsPort(new InProcessJobsPort(), readiness);
   const configStore = new InvalidatingConfigStore(new InMemoryConfigStore(), readiness);
   const credentials = new InvalidatingCredentialsStore(new InMemoryCredentialsStore(), readiness);
+  const backupDestination = new MemoryBackupDestination();
   return {
     version: config.version ?? packageJson.version,
     cliPath: stubCliPathPort,
@@ -140,6 +143,9 @@ export const createInMemoryDeps = (config: InMemoryDepsConfig = {}) => {
     faceEngine: new InMemoryFaceEnginePort(),
     places: new InMemoryPlacesPort(),
     jobs,
+    backupDestination: () => Promise.resolve(ok(backupDestination)),
+    cleanupBackupStaging: () => Promise.resolve(ok(undefined)),
+    evaluateScheduledBackup: () => Promise.resolve(ok(undefined)),
     readiness,
   };
 };
@@ -397,6 +403,10 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
 
   databasePath(): string {
     return path.join('.ai-video-cataloger', 'catalog.db');
+  }
+
+  snapshotTo(): Promise<Result<{ sizeBytes: number; schemaVersion: number }, AppError>> {
+    return Promise.resolve(ok({ sizeBytes: 0, schemaVersion: GLOBAL_CATALOG_SCHEMA_VERSION }));
   }
 
   flush(): Promise<Result<void, AppError>> {

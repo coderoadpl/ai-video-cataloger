@@ -40,6 +40,15 @@ export const CONFIG_IDENTITY_CLASSIFICATION = {
   output_language: 'identity',
   tag_language: 'identity',
   ui_language: 'excluded',
+  backup_enabled: 'excluded',
+  backup_provider: 'excluded',
+  backup_include_optional: 'excluded',
+  backup_keep_last: 'excluded',
+  backup_keep_weekly: 'excluded',
+  backup_folder_id: 'excluded',
+  backup_shared_drive_id: 'excluded',
+  backup_service_account_fingerprint: 'excluded',
+  backup_account_email: 'excluded',
 } satisfies Record<ConfigKey, 'identity' | 'excluded'>;
 
 const configDescriptorShape = z.object({

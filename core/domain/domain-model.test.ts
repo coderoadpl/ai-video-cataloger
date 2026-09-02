@@ -60,6 +60,14 @@ describe('domain taxonomy', () => {
       'snapshot_incompatible',
       'catalog_locked',
       'keychain_unavailable',
+      'backup_disabled',
+      'backup_auth_required',
+      'backup_destination_error',
+      'backup_quota_exceeded',
+      'backup_encryption_failed',
+      'backup_integrity_failed',
+      'restore_refused',
+      'recovery_key_required',
       'unavailable',
       'internal',
     ]);
@@ -106,6 +114,15 @@ describe('config schema', () => {
       output_language: 'auto',
       tag_language: 'auto',
       ui_language: 'en',
+      backup_enabled: false,
+      backup_provider: 'google_oauth',
+      backup_include_optional: false,
+      backup_keep_last: 7,
+      backup_keep_weekly: 8,
+      backup_folder_id: '',
+      backup_shared_drive_id: '',
+      backup_service_account_fingerprint: '',
+      backup_account_email: '',
     });
   });
 

@@ -114,4 +114,13 @@ const defaultSources = (): Record<ConfigKey, ConfigValueSource> => ({
   output_language: 'default',
   tag_language: 'default',
   ui_language: 'default',
+  backup_enabled: 'default',
+  backup_provider: 'default',
+  backup_include_optional: 'default',
+  backup_keep_last: 'default',
+  backup_keep_weekly: 'default',
+  backup_folder_id: 'default',
+  backup_shared_drive_id: 'default',
+  backup_service_account_fingerprint: 'default',
+  backup_account_email: 'default',
 });

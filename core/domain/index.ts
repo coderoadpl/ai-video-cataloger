@@ -1,4 +1,5 @@
 export * from './config.js';
+export * from './backup.js';
 export * from './config-descriptor.js';
 export * from './photo-config-descriptor.js';
 export * from './photo-analysis.js';

@@ -8,9 +8,7 @@ import {
   OllamaAnalyzerAdapter,
   OpenAiCompatibleAnalyzerAdapter,
 } from '@adapters/analyzers/index.js';
-import { GeminiNativeAnalyzerAdapter } from '@adapters/gemini/index.js';
 import { JsonCredentialsStore, KeychainCredentialsStore, NdjsonMigrationLog } from '@adapters/credentials/index.js';
-import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
 import {
   HomeLock,
   JsonConfigStore,
@@ -22,12 +20,14 @@ import { ExifrExifAdapter } from '@adapters/exif/index.js';
 import { NodeCliPathAdapter } from '@adapters/cli-path/index.js';
 import { OnnxFaceEngineAdapter } from '@adapters/faces/index.js';
 import { FfmpegMediaAdapter } from '@adapters/ffmpeg/index.js';
+import { GeminiNativeAnalyzerAdapter } from '@adapters/gemini/index.js';
 import { GeoNamesPlacesAdapter } from '@adapters/places/index.js';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { SipsPhotoMediaAdapter } from '@adapters/photo-media/index.js';
 import { NodeFolderWatcherPort } from '@adapters/fs/folder-watcher.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { ManagedOllamaRuntimeAdapter } from '@adapters/ollama-runtime/index.js';
+import { KeychainSecretsAdapter } from '@adapters/secrets/index.js';
 import { NdjsonSpendLedger } from '@adapters/spend-ledger/index.js';
 import { ManagedWhisperRuntimeAdapter } from '@adapters/whisper-runtime/index.js';
 import { HuggingFaceWhisperModelDownloader, WhisperTranscriberAdapter } from '@adapters/whisper/index.js';
@@ -49,6 +49,7 @@ import type {
   AnalyzePhotosOutput,
   AnalyzerBatchPort,
   AnalyzerPort,
+  BackupDestinationPort,
   CatalogRepositoryFactory,
   ConfigScope,
   ConfigStore,
@@ -79,6 +80,9 @@ import type {
   WhisperRuntimePort,
 } from '@core/server/index.js';
 
+import { createGoogleBackupDestination } from './backup-destination.js';
+import { createBackupLifecycle } from './backup-lifecycle.js';
+
 const CLI_COMMAND_NAME = 'ai-video-cataloger';
 const CLI_OWNED_INSTALL_PATHS = ['/usr/local/bin/ai-video-cataloger'];
 
@@ -106,6 +110,9 @@ export interface AppDeps {
   faceEngine: FaceEnginePort;
   places: PlacesPort;
   jobs: JobsPort;
+  backupDestination(): Promise<Result<BackupDestinationPort, AppError>>;
+  cleanupBackupStaging(): Promise<Result<void, AppError>>;
+  evaluateScheduledBackup(): Promise<Result<void, AppError>>;
   readiness: ReadinessCache;
 }
 
@@ -117,6 +124,9 @@ export interface AppConfig {
   isPackaged?: boolean;
   processName?: CatalogLockProcessName | undefined;
   catalogLockMode?: 'lazy' | 'eager' | undefined;
+  openExternal?: ((url: string) => Promise<void>) | undefined;
+  googleOAuthClientId?: string | undefined;
+  googleOAuthClientSecret?: string | undefined;
 }
 
 export interface InMemoryDepsConfig {
@@ -144,10 +154,11 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
   }
   const readiness = new ReadinessCache();
   const jobs = new InvalidatingJobsPort(new InProcessJobsPort(), readiness);
+  const secrets = new KeychainSecretsAdapter();
   const localAi = new ManagedOllamaRuntimeAdapter({ homeDirectory });
   const credentials = new InvalidatingCredentialsStore(
     new KeychainCredentialsStore(
-      new KeychainSecretsAdapter(),
+      secrets,
       new JsonCredentialsStore({ homeDirectory }),
       { migrationLog: new NdjsonMigrationLog({ homeDirectory }) },
     ),
@@ -170,27 +181,49 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     processName: config.processName ?? 'cli',
     lockMode: config.catalogLockMode ?? 'lazy',
   });
+  const resolvedHomeDirectory = homeDirectory ?? homedir();
+  const globalCatalog = new SqlJsGlobalCatalogStore({
+    homeDirectory,
+    lock: catalogLock,
+    processName: config.processName ?? 'cli',
+    lockMode: config.catalogLockMode ?? 'lazy',
+  });
+  const photos = new SqlJsPhotosStore({
+    homeDirectory,
+    lock: catalogLock,
+    processName: config.processName ?? 'cli',
+    lockMode: config.catalogLockMode ?? 'lazy',
+  });
+  const fs = new NodeFileSystemPort({ workingDirectory, homeDirectory });
+  const backupDestination = () => createGoogleBackupDestination({
+    config: configStore,
+    secrets,
+    oauthClientId: config.googleOAuthClientId ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_ID ?? '',
+    oauthClientSecret: config.googleOAuthClientSecret ?? process.env.AVC_GOOGLE_OAUTH_CLIENT_SECRET ?? '',
+    openExternal: config.openExternal ?? (() => Promise.reject(new Error('System browser integration is unavailable'))),
+  });
+  const backupLifecycle = createBackupLifecycle({
+    homeDirectory: resolvedHomeDirectory,
+    appVersion: config.version ?? packageJson.version,
+    fs,
+    globalCatalog,
+    photos,
+    config: configStore,
+    secrets,
+    jobs,
+    destination: backupDestination,
+  });
   return {
     version: config.version ?? packageJson.version,
     cliPath: new NodeCliPathAdapter({ commandName: CLI_COMMAND_NAME, ownedInstallPaths: CLI_OWNED_INSTALL_PATHS }),
     catalogs: new SqlJsCatalogRepositoryFactory(),
-    globalCatalog: new SqlJsGlobalCatalogStore({
-      homeDirectory,
-      lock: catalogLock,
-      processName: config.processName ?? 'cli',
-      lockMode: config.catalogLockMode ?? 'lazy',
-    }),
-    photos: new SqlJsPhotosStore({
-      homeDirectory,
-      lock: catalogLock,
-      processName: config.processName ?? 'cli',
-      lockMode: config.catalogLockMode ?? 'lazy',
-    }),
+    globalCatalog,
+    photos,
     photoMedia: new SipsPhotoMediaAdapter(),
     exif: new ExifrExifAdapter(),
     config: configStore,
     credentials,
-    fs: new NodeFileSystemPort({ workingDirectory, homeDirectory }),
+    fs,
     folderWatcher: new NodeFolderWatcherPort(),
     media: new FfmpegMediaAdapter(),
     transcriber: new WhisperTranscriberAdapter({ credentials, homeDirectory, runtime: whisperRuntime }),
@@ -204,6 +237,9 @@ export const createDeps = (config: AppConfig = {}, inMemoryDepsFactory?: InMemor
     faceEngine: new OnnxFaceEngineAdapter({ downloads }),
     places: new GeoNamesPlacesAdapter({ fs: new NodeFileSystemPort({ workingDirectory, homeDirectory }), datasetPath: null }),
     jobs,
+    backupDestination,
+    cleanupBackupStaging: backupLifecycle.cleanup,
+    evaluateScheduledBackup: backupLifecycle.evaluate,
     readiness,
   };
 };
