@@ -262,7 +262,7 @@ or "wizard writes a scope nothing reads" cannot ship again.
   working configuration → open a folder → readiness gate reflects the
   choices → a real process run succeeds.
 - [ ] **Big-artifact caching**: model/runtime downloads land in a persistent
-  matrix cache (`~/repositories/claude-tmp/avc-e2e-matrix-home/`), reused
+  matrix cache below `AVC_SCRATCH_DIR`, reused
   across runs — first run pays the downloads (~4 GB), later runs are
   minutes; per-test folder state stays isolated per run.
 - [ ] Preflight per cell: a cell whose environmental leg is missing (no API

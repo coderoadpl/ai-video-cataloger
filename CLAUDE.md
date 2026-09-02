@@ -1,7 +1,7 @@
 # ai-video-cataloger — repo map for agents (branch: rewrite/foundation)
 
-Ground-up rewrite on the agentproofarch foundation
-(`~/repositories/agentproofarch`). Read before designing anything:
+Ground-up rewrite on the agentproofarch foundation. Read before designing
+anything:
 
 - `docs/architecture.md` — normative architecture, written as a **delta**
   against the foundation's `docs/architecture.md` (foundation rules apply
@@ -30,8 +30,8 @@ Ground-up rewrite on the agentproofarch foundation
   with the renderer phase) + dependency-cruiser + the renderer bundle build
   (`electron:build:renderer`, which refuses any Node builtin in the renderer
   module graph) + vitest + `pnpm run visual` (Playwright screenshot comparison
-  against the darwin baselines, armed into `check` 2026-08-03 per owner mandate
-  — [ADR-0005](docs/decisions/0005-visual-regression.md)(d)).
+  against the darwin baselines, as required by
+  [ADR-0005](docs/decisions/0005-visual-regression.md)(d)).
 - `pnpm run smoke` = installed-tree check → lockfile lint → boot the real
   in-process app in a temp HOME/folder → drive doctor/scan/config/status
   through the CLI → assert envelope shapes and taxonomy exit codes.
@@ -40,7 +40,7 @@ Ground-up rewrite on the agentproofarch foundation
 sidebar surfaces, against the darwin baselines in `visual/__screenshots__/` —
 [ADR-0005](docs/decisions/0005-visual-regression.md)) builds and previews the
 `apps/web/visual.html` harness — no Electron, no server, no analysis run — and
-is now part of `check` (armed 2026-08-03, owner mandate, W43). An intentional
+is now part of `check` (W43). An intentional
 UI change is a two-step commit: land the change, run
 `pnpm run visual --update-snapshots` (no `--` — pnpm 10 forwards the literal
 `--` and Playwright then silently ignores the flag), review and commit the
@@ -82,7 +82,7 @@ Playwright runs with exactly one retry (`retries: 1`) and
 green is flaky-flagged and requires a filed P1 before merging, never a silent
 re-run.
 
-**e2e drives the real UI (owner's binding rule, 2026-08-02).** Every in-app
+**e2e drives the real UI.** Every in-app
 interaction in an e2e spec/script is a real click/keystroke. Native macOS
 surfaces (dialogs, menu bar) are the only sanctioned stub point, patched in
 the Electron main process via `app.evaluate` while the in-app control that
@@ -98,7 +98,8 @@ specs testing the CLI surface itself are exempt. Reference:
 ## On-demand real-provider suite
 
 - `pnpm run test:e2e:matrix` = batch-end/pre-release real-provider suite. It
-  uses the persistent `~/repositories/claude-tmp/avc-e2e-matrix-home` cache,
+  uses a persistent cache below a scratch directory outside the repository
+  (`AVC_SCRATCH_DIR`, defaulting to `~/.ai-video-cataloger-scratch`),
   exercises managed/system/API/harness analyzers and every transcription
   source, plus two `ro-mount` legs that mount a real read-only `hdiutil` image
   and assert index-only mode (the detection leg is never skippable on macOS),
@@ -133,6 +134,11 @@ specs testing the CLI surface itself are exempt. Reference:
 - Renderer: bound actions only — no `electron`/`ipcRenderer`/`fetch`, no
   inline query keys, no global state libs; visual language only in `theme.ts`.
 - Zero code comments except a non-obvious WHY.
+- Public-repository privacy: never put owner-private data in repo artifacts,
+  including names or handles, local paths, home-directory paths, scratch paths,
+  volume names, personal library facts or run statistics, or private
+  tooling-session names or contents; use generic product language. Every worker
+  prompt that can produce repo artifacts must carry this rule verbatim.
 - Parity first: user-observable behavior (NDJSON events, exit codes, on-disk
   layout, DB files) must match `tasks/parity-inventory.md`; the four
   sanctioned deviations are listed in the PRD's Technical Considerations.
@@ -150,18 +156,16 @@ specs testing the CLI surface itself are exempt. Reference:
 - Dev component gallery is a QA tool, not shipped: `apps/web/src/gallery` +
   `apps/web/gallery.html` render components in isolation, and
   `scripts/gallery-shots.mjs` captures reference screenshots.
-- **Keychain fixture hygiene (audits/tests, incident 2026-07-28/29).** Never
+- **Keychain fixture hygiene.** Never
   run `security` against a fixture keychain without supplying its password
   (`unlock-keychain -p` first, or the trailing-path form with the item's
-  password known) — a password-less open queues a GUI SecurityAgent dialog on
-  the owner's screen, named after the fixture file (the overnight wf-audit
-  r2–r8 rounds left recurring "unlock the 'ro' keychain" prompts). Wrap every
-  `security` invocation in a timeout — FIFO fixtures hang it forever (4
-  `security` processes survived overnight). End every round by killing
+  password known) because a password-less open queues a GUI SecurityAgent
+  dialog. Wrap every `security` invocation in a timeout because FIFO fixtures
+  can hang it indefinitely. End every round by killing
   leftover `security` processes and deleting FIFO fixtures. Any scenario that
-  intentionally can raise a GUI prompt: warn the owner BEFORE the run, never
+  intentionally can raise a GUI prompt: warn the operator BEFORE the run, never
   fire it unattended.
-- **Versioning policy (owner decision 2026-08-02).** The patch version is
+- **Versioning policy.** The patch version is
   bumped with practically every merged PR (at minimum every wave); no two
   differing builds may ever share a version string. See
   [docs/qa/release-readiness.md](docs/qa/release-readiness.md).

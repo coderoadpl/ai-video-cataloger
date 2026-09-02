@@ -73,6 +73,12 @@ jobs:
           - Comment doctrine: zero narration. A comment is allowed ONLY for a
             non-obvious WHY the code cannot express; flag any what-narration,
             section headers, or change-describing comments as blocking.
+          - Privacy: FAIL any PR that introduces owner-private data into a repo
+            artifact, including names or personal/company handles, absolute
+            local/home paths, scratch-directory or external-volume names,
+            personal library facts or run statistics, and names or contents of
+            private tooling sessions. Require generic product language; existing
+            shipped product feature identifiers remain permitted.
           - No false claims in docs/prose; no weakening of the gates (`check` /
             `smoke`), lint rules, or coverage floors to go green.
           - `zod`-parse at every boundary; use-cases return `Result<T, AppError>`

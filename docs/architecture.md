@@ -1,10 +1,9 @@
 # Architecture — AI Video Cataloger (local-first Electron)
 
 Normative reference for this app. This document is a **delta** against the
-agentproofarch foundation
-([`agentproofarch/docs/architecture.md`](https://github.com/chomamateusz/agentproofarch/blob/main/docs/architecture.md),
-read it first — its rules apply here except where this document overrides
-them). Provenance: foundation docs as of 2026-07-12; local-first decisions in
+agentproofarch foundation architecture; its rules apply here except where this
+document overrides them. Provenance: foundation docs as of 2026-07-12;
+local-first decisions in
 [ADR-0001](decisions/0001-local-first-electron.md). Product scope:
 [`../tasks/prd-foundation-rewrite.md`](../tasks/prd-foundation-rewrite.md);
 behavioral ground truth: [`../tasks/parity-inventory.md`](../tasks/parity-inventory.md).
@@ -1331,9 +1330,8 @@ managed runtimes, and its working-directory fallback.
   processing path that **skips frame extraction and Whisper** — the model
   returns the description and a timestamped transcript in one call, and
   `usageMetadata` (tokens + est cost per file) is surfaced as an NDJSON
-  event; GPS still comes from metadata. Budget-capped smoke bench (real key,
-  11-clip subset, flash vs flash-lite, $0.096 total) recorded at
-  `~/repositories/claude-tmp/wf-mg1/bench-report.md`.
+  event; GPS still comes from metadata. A budget-capped smoke bench recorded
+  in a scratch directory outside the repository validated this path.
 - `AnalyzerBatchPort` — the Gemini **Batch API** half of the same adapter,
   used only by `process_drive` and only when batch mode is on
   ([ADR-0008](decisions/0008-gemini-batch-drive-runs.md)): per-file uploads
