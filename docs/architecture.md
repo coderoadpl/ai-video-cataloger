@@ -1250,7 +1250,7 @@ deterministic agglomerative average-linkage over cosine similarity on a sparse n
 graph, calibrated by a repo benchmark script against a user-supplied reference partition
 and cut on the conservative side of the measured optimum (split rather than merge); the
 greedy per-observation assignment stays as the *incremental* path, cheap to be wrong on
-precisely because the rebuild exists. ADR-0017.
+precisely because the rebuild exists. ADR-0018.
 
 ## Delta 6 — observability
 

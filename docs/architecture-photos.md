@@ -527,14 +527,14 @@ Mechanics:
   observations (challenge C6).
 - No AI naming. The People feature stays the only naming surface.
 
-### 5a. Unified people — correction and design (2026-09-02, ADR-0017)
+### 5a. Unified people — correction and design (2026-09-02, ADR-0018)
 
 **The paragraph above was written as shipped and never was.** Wave 4 delivered
 the schema, the ports and the `photos import-libra` provider, but no photo
 detection leg, and every people surface stayed video-only. What this section
 now describes is the design that makes §5 true; the decision record, the
 evidence behind it and the migration are
-[ADR-0017](decisions/0017-unified-people.md), and the phased plan is
+[ADR-0018](decisions/0018-unified-people.md), and the phased plan is
 [tasks/prd-unified-people.md](../tasks/prd-unified-people.md).
 
 **What was actually shipped in Wave 4.** `catalog.db` V11 and the `media`

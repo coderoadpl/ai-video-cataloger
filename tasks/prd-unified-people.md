@@ -1,6 +1,6 @@
 # Unified people: faces across photos and videos — phased plan F1–F5
 
-Decision record: [ADR-0017](../docs/decisions/0017-unified-people.md).
+Decision record: [ADR-0018](../docs/decisions/0018-unified-people.md).
 Design: [docs/architecture-photos.md](../docs/architecture-photos.md) §5a,
 [docs/architecture.md](../docs/architecture.md) Delta 5.
 Target release: **v0.6.25**.
@@ -158,7 +158,7 @@ end with crops on disk.
 deterministic agglomerative average-linkage clustering over the stored
 embeddings instead of order-dependent greedy centroid assignment; the cut
 threshold is calibrated against a real photo corpus and biased towards
-splitting a person rather than merging two (ADR-0017)."
+splitting a person rather than merging two (ADR-0018)."
 
 **Exit criteria.** `check` + `smoke` green; benchmark report attached to the
 PR; wall-clock for a full rebuild at catalog scale recorded. If it exceeds ten
@@ -189,7 +189,7 @@ never a lower `reviewBandMin`.
 - **`faces exemplars` covers both media**: a `ph_` fingerprint resolves to its
   proxy and re-detects with `{ kind: 'image-path' }` instead of counting as
   `filesUnavailable`.
-- **Recluster from Osoby** (ADR-0017 D5): a destructive-action affordance that
+- **Recluster from Osoby** (ADR-0018 D5): a destructive-action affordance that
   runs `--dry-run` first, shows the report (people before/after, observations
   reassigned, largest clusters, `personsWithoutExemplar`, `namesDropped`), and
   only then offers the real run. Names are **not** recovered; the dialog says
@@ -249,7 +249,7 @@ adds no changelog line.
 **Never** `faces purge` at any point: it destroys embeddings and leaves
 completion state stale, so the next pass believes the work is done.
 
-**Rollback at each step** is ADR-0017's rollback section; the only
+**Rollback at each step** is ADR-0018's rollback section; the only
 non-revertible step is 1, which is why it writes the backup first.
 
 ---
@@ -276,7 +276,7 @@ non-revertible step is 1, which is why it writes the backup first.
    supplies is another clusterer's output with only a few manual corrections,
    maximising agreement with it selects for the algorithm being replaced.
    *Mitigation:* the user-labelled pair sample is the deciding criterion
-   (ADR-0017 D4); the reference partition is reported as agreement, not as
+   (ADR-0018 D4); the reference partition is reported as agreement, not as
    accuracy.
 2. **Native detection will not reproduce an imported observation set.**
    Different proxies, different alignment, possibly different detector recall
@@ -300,7 +300,7 @@ non-revertible step is 1, which is why it writes the backup first.
    catalog whose photos and videos live under different roots needs two runs.
    Not changed here; called out so it is not discovered as a bug.
 7. **The migration is not revertible by the app.** Only by hand, from the
-   NDJSON dump. Accepted: the rows it deletes are the ones ADR-0017 D2
+   NDJSON dump. Accepted: the rows it deletes are the ones ADR-0018 D2
    establishes are unusable.
 
 ---

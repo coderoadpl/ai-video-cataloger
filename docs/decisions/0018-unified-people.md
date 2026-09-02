@@ -1,4 +1,4 @@
-# ADR-0017: Unified people — one face pipeline across photos and videos
+# ADR-0018: Unified people — one face pipeline across photos and videos
 
 Date: 2026-09-02 · Status: accepted · Supersedes in part
 [ADR-0012](0012-face-clustering-symmetry-and-recluster.md) (clustering algorithm)
