@@ -6,28 +6,21 @@ on:
   push:
     branches: [main]
 
-# One run per ref; a new push cancels the superseded run so the single
-# self-hosted runner is never blocked behind stale work.
 concurrency:
   group: check-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: true
 
 jobs:
   check:
-    name: "${{ vars.CI_RUNNER_READY == 'true' && 'check' || 'check (dormant: register the self-hosted macOS runner, then set repository variable CI_RUNNER_READY=true; see docs/ci.md)' }}"
-    # `CI_RUNNER_READY` is the arming switch: this job targets a self-hosted Mac
-    # that only the owner can register, and an unmatched self-hosted job queues
-    # for 24h on every PR instead of skipping. Self-hosted safety: this repo
-    # only, and never a fork PR — a fork's head would otherwise execute
-    # untrusted code on the owner's Mac.
-    if: >-
-      vars.CI_RUNNER_READY == 'true' &&
-      github.repository == 'coderoadpl/ai-video-cataloger' &&
-      (github.event_name != 'pull_request' ||
-       github.event.pull_request.head.repo.full_name == github.repository)
-    # Native arm64 the packaged build (Electron + onnxruntime) actually targets,
-    # at zero GitHub-minute cost (10x multiplier on private macOS runners).
-    runs-on: [self-hosted, macOS, arm64]
+    name: check
+    # Native arm64, the architecture the packaged build (Electron + onnxruntime)
+    # targets (docs/decisions/0017-hosted-ci-runners.md).
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      # The hosted rasterizer is not the machine that authored the darwin
+      # baselines, so the visual gate compares against its own set (ADR-0005 (f)).
+      VISUAL_ENV: ci-macos-15
     steps:
       - uses: actions/checkout@08eba0b27e820071cde6df949e0beb9ba4906955
       # No `version:` input — the packageManager pin is the single source. Must
@@ -38,8 +31,18 @@ jobs:
           node-version-file: .nvmrc
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install chromium
       - run: pnpm run check
       # Advisory only: high/critical findings are triaged, but audit's transitive
       # noise must not break the build.
       - run: pnpm audit --prod --audit-level high
         continue-on-error: true
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: failure()
+        with:
+          name: check-visual-artifacts
+          path: |
+            test-results
+            visual/__screenshots__/ci-macos-15
+          retention-days: 7
+          if-no-files-found: ignore

@@ -410,11 +410,12 @@ share the machine with other heavy work; a non-numeric or non-positive value
 falls back to `1`. It buys headroom on a loaded machine — it never excuses a red
 gate, which stays a P1 under the flake doctrine.
 
-CI (`check`, `smoke`, `e2e`, `ai-review`) runs on a self-hosted Apple-silicon
-Mac and is dormant until the owner registers that runner and sets the
-`CI_RUNNER_READY` repository variable; dormant jobs skip under a name that says
-so. `pnpm run workflow-lint` (part of `pnpm run check`) keeps the workflow
-guards pointed at this repository. See [docs/ci.md](docs/ci.md).
+CI runs on GitHub-hosted `macos-15` runners: `check`, `smoke` and `ai-review` on
+every PR and on `main`, `e2e-cli` and `visual-baselines` on demand
+([ADR-0017](docs/decisions/0017-hosted-ci-runners.md)). `pnpm run workflow-lint`
+(part of `pnpm run check`) keeps the workflow guards pointed at this repository,
+the job names literal and no `self-hosted` label in the tree. See
+[docs/ci.md](docs/ci.md).
 
 E2E:
 

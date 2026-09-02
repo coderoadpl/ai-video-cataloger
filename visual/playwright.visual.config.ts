@@ -2,6 +2,8 @@ import { join } from 'node:path';
 
 import { defineConfig, devices } from '@playwright/test';
 
+import { resolveVisualEnvironment, visualSnapshotPathTemplate } from '../scripts/visual-env.js';
+
 const repoRoot = join(import.meta.dirname, '..');
 const viteConfig = 'apps/web/vite.visual.config.ts';
 const PORT = 9484;
@@ -24,7 +26,7 @@ export default defineConfig({
   workers: 1,
   retries: 0,
   ignoreSnapshots: process.platform !== 'darwin',
-  snapshotPathTemplate: '{testDir}/__screenshots__/{platform}/{projectName}/{arg}{ext}',
+  snapshotPathTemplate: visualSnapshotPathTemplate(resolveVisualEnvironment(process.env.VISUAL_ENV)),
   expect: {
     timeout: 10_000,
     toHaveScreenshot: {
