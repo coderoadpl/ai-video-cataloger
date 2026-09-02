@@ -60,8 +60,19 @@ core/server/usecases/shared.test.ts:volume-name
 core/server/usecases/shared.test.ts:home-path
 # Documentation uses a generic mount name in runnable CLI examples.
 landing/blog/content/getting-started-catalog-your-first-folder.mdx:volume-name
+
+# Public business contact address on the marketing site.
+landing/components/landing/hero-section.tsx:email
+
+# Public business contact address on the marketing site.
+landing/components/site-footer.tsx:email
+
 # Landing examples use an explicit placeholder home segment.
 landing/lib/i18n.ts:home-path
+
+# Public business contact address on the marketing site.
+landing/scripts/deploy.ts:email
+
 # Synthetic home locations exercise promotion planning.
 scripts/promote-home-plan.test.ts:home-path
 # Retina icon filenames use the standard at-sign scale suffix.
