@@ -14,7 +14,9 @@ import {
 
 import type { LibraryFacetsOutput } from '@core/client/index.js';
 
+import { MediaFilterToggle } from '../../components/ui/MediaFilterToggle.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
+import { labelWithCount } from '../../lib/format.js';
 import { libraryFilterChips, libraryFilterIsEmpty, type LibraryFilterAction, type LibraryFilterChipLabels, type LibraryFilterState } from './core/filter-state.js';
 import { isLibrarySort, type LibrarySort } from './core/folder-groups.js';
 import type { LibraryMedia } from './core/media.js';
@@ -46,8 +48,6 @@ interface FilterBarProps {
   hideUnavailable: boolean;
   onHideUnavailableChange: (value: boolean) => void;
 }
-
-const withCount = (label: string, count: number): string => `${label} (${String(count)})`;
 
 export const FilterBar = ({
   state,
@@ -90,7 +90,7 @@ export const FilterBar = ({
     { value: String(thisYear - 1), label: dictionary.library.filterDatePresetLastYear },
     ...facets.years
       .filter((year) => year.year !== String(thisYear) && year.year !== String(thisYear - 1))
-      .map((year) => ({ value: year.year, label: withCount(year.year, year.count) })),
+      .map((year) => ({ value: year.year, label: labelWithCount(year.year, year.count) })),
   ];
 
   const applyPreset = (year: string) => {
@@ -114,7 +114,7 @@ export const FilterBar = ({
           renderOption={(props, tag) => {
             const { key, ...optionProps } = props;
             const count = facets.tags.find((facet) => facet.name === tag)?.count ?? 0;
-            return <li key={key} {...optionProps}>{withCount(tag, count)}</li>;
+            return <li key={key} {...optionProps}>{labelWithCount(tag, count)}</li>;
           }}
           value={state.tags}
           onChange={(_event, next) => {
@@ -136,7 +136,7 @@ export const FilterBar = ({
             const { key, ...optionProps } = props;
             const person = facets.people.find((candidate) => candidate.personId === personId);
             const label = person?.displayName ?? dictionary.people.personName(person?.fallbackIndex ?? 0);
-            return <li key={key} {...optionProps}>{withCount(label, person?.count ?? 0)}</li>;
+            return <li key={key} {...optionProps}>{labelWithCount(label, person?.count ?? 0)}</li>;
           }}
           value={state.personIds}
           onChange={(_event, next) => {
@@ -159,7 +159,7 @@ export const FilterBar = ({
           renderOption={(props, name) => {
             const { key, ...optionProps } = props;
             const count = facets.places.find((place) => place.name === name)?.count ?? 0;
-            return <li key={key} {...optionProps}>{withCount(name, count)}</li>;
+            return <li key={key} {...optionProps}>{labelWithCount(name, count)}</li>;
           }}
           inputValue={placeInput}
           onInputChange={(_event, next) => setPlaceInput(next)}
@@ -173,7 +173,7 @@ export const FilterBar = ({
           renderOption={(props, folderId) => {
             const { key, ...optionProps } = props;
             const folder = facets.folders.find((candidate) => candidate.folderId === folderId);
-            return <li key={key} {...optionProps}>{withCount(folder?.displayName ?? folderId, folder?.count ?? 0)}</li>;
+            return <li key={key} {...optionProps}>{labelWithCount(folder?.displayName ?? folderId, folder?.count ?? 0)}</li>;
           }}
           value={state.folderId}
           onChange={(_event, next) => {
@@ -261,17 +261,13 @@ export const FilterBar = ({
             {dictionary.library.hideUnavailable}
           </ToggleButton>
         </Tooltip>
-        <ToggleButtonGroup
-          size="small"
-          exclusive
+        <MediaFilterToggle
           value={media}
-          onChange={(_event, next: LibraryMedia | null) => { if (next !== null) onMediaChange(next); }}
-          data-testid="library-media-filter"
-        >
-          <ToggleButton value="all" data-testid="library-media-all">{withCount(dictionary.library.mediaAll, mediaTotals.all)}</ToggleButton>
-          <ToggleButton value="video" data-testid="library-media-video">{withCount(dictionary.library.mediaVideo, mediaTotals.video)}</ToggleButton>
-          <ToggleButton value="photo" data-testid="library-media-photo">{withCount(dictionary.library.mediaPhoto, mediaTotals.photo)}</ToggleButton>
-        </ToggleButtonGroup>
+          counts={mediaTotals}
+          onChange={onMediaChange}
+          groupTestId="library-media-filter"
+          optionTestIdPrefix="library-media"
+        />
         <ToggleButtonGroup
           size="small"
           exclusive

@@ -22,6 +22,7 @@ import {
 } from '@mui/material';
 
 import { MoreVertIcon } from '../../components/ui/icons.js';
+import { MediaFilterToggle } from '../../components/ui/MediaFilterToggle.js';
 import type { AddLogLine } from '../../components/ui/use-terminal-log.js';
 import { type Dictionary } from '../../i18n/dictionary.js';
 import { useDictionary } from '../../i18n/use-dictionary.js';
@@ -29,14 +30,23 @@ import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
 import { placeholderGradients } from '../../theme.js';
+import { peopleForMedium, peopleMediaCounts, personCountForMedium, type PeopleMedia } from './core/index.js';
 import { type FacePerson, type FacesReclusterReport, usePeople } from './use-people.js';
 
-interface PeopleViewProps {
+export interface PersonMediaRequest {
+  personId: string;
+  label: string;
+  media: PeopleMedia;
+  onClose: () => void;
+}
+
+export interface PeopleViewProps {
   active: boolean;
   folder: string | null;
   addLine: AddLogLine;
   onOpenSettings: () => void;
   onSearchInLibrary: (personId: string, label: string) => void;
+  renderPersonMedia?: ((request: PersonMediaRequest) => ReactNode) | undefined;
   lockReason?: string | undefined;
   intervalMs?: number;
 }
@@ -49,12 +59,25 @@ interface RenameState {
 const displayName = (dictionary: Dictionary, person: FacePerson, index: number): string =>
   person.displayName ?? dictionary.people.personName(index);
 
+const observationCountLabel = (dictionary: Dictionary, person: FacePerson, media: PeopleMedia): string => {
+  const count = personCountForMedium(person, media);
+  switch (media) {
+    case 'video':
+      return dictionary.people.videoObservationCount(count);
+    case 'photo':
+      return dictionary.people.photoObservationCount(count);
+    case 'all':
+      return dictionary.people.observationCount(count);
+  }
+};
+
 export const PeopleView = ({
   active,
   folder,
   addLine,
   onOpenSettings,
   onSearchInLibrary,
+  renderPersonMedia,
   lockReason,
   intervalMs,
 }: PeopleViewProps) => {
@@ -66,11 +89,15 @@ export const PeopleView = ({
   const [mergeOpen, setMergeOpen] = useState(false);
   const [purgeOpen, setPurgeOpen] = useState(false);
   const [reclusterOpen, setReclusterOpen] = useState(false);
+  const [media, setMedia] = useState<PeopleMedia>('all');
+  const [openPerson, setOpenPerson] = useState<{ personId: string; label: string } | null>(null);
 
   const indexed = useMemo(
     () => new Map(people.people.map((person, index) => [person.personId, { person, index }])),
     [people.people],
   );
+  const mediaCounts = useMemo(() => peopleMediaCounts(people.people), [people.people]);
+  const visiblePeople = useMemo(() => peopleForMedium(people.people, media), [people.people, media]);
   const selected = people.selectedPersonIds
     .map((personId) => indexed.get(personId))
     .filter((entry): entry is { person: FacePerson; index: number } => entry !== undefined);
@@ -143,6 +170,13 @@ export const PeopleView = ({
         />
       ) : (
         <>
+          <MediaFilterToggle
+            value={media}
+            counts={mediaCounts}
+            onChange={setMedia}
+            groupTestId="people-media-filter"
+            optionTestIdPrefix="people-media"
+          />
           <Box
             sx={{
               display: 'grid',
@@ -151,22 +185,28 @@ export const PeopleView = ({
             }}
             data-testid="people-grid"
           >
-            {people.people.map((person, index) => (
-              <PersonCard
-                key={person.personId}
-                person={person}
-                name={displayName(dictionary, person, index)}
-                fallbackGlyph={person.displayName === null ? String(index + 1) : displayName(dictionary, person, index).charAt(0)}
-                selected={people.selectedPersonIds.includes(person.personId)}
-                disabled={people.isBusy}
-                mutationsDisabled={mutationsBlocked}
-                lockReason={lockReason}
-                onToggle={() => people.toggleSelected(person.personId)}
-                onRename={() => setRename({ person, value: displayName(dictionary, person, index) })}
-                onForget={() => setForgetTarget(person)}
-                onSearchInLibrary={() => onSearchInLibrary(person.personId, displayName(dictionary, person, index))}
-              />
-            ))}
+            {visiblePeople.map((person) => {
+              const index = indexed.get(person.personId)?.index ?? 0;
+              const name = displayName(dictionary, person, index);
+              return (
+                <PersonCard
+                  key={person.personId}
+                  person={person}
+                  name={name}
+                  media={media}
+                  fallbackGlyph={person.displayName === null ? String(index + 1) : name.charAt(0)}
+                  selected={people.selectedPersonIds.includes(person.personId)}
+                  disabled={people.isBusy}
+                  mutationsDisabled={mutationsBlocked}
+                  lockReason={lockReason}
+                  onToggle={() => people.toggleSelected(person.personId)}
+                  onRename={() => setRename({ person, value: name })}
+                  onForget={() => setForgetTarget(person)}
+                  onOpen={() => setOpenPerson({ personId: person.personId, label: name })}
+                  onSearchInLibrary={() => onSearchInLibrary(person.personId, name)}
+                />
+              );
+            })}
           </Box>
           <Divider />
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1 }} data-testid="people-danger-area">
@@ -334,6 +374,10 @@ export const PeopleView = ({
         }}
       />
 
+      {openPerson === null || renderPersonMedia === undefined
+        ? null
+        : renderPersonMedia({ ...openPerson, media, onClose: () => setOpenPerson(null) })}
+
       <Snackbar
         open={people.mutationError !== null}
         onClose={people.dismissMutationError}
@@ -415,6 +459,7 @@ const EmptyState = ({ title, body, action, testId }: EmptyStateProps) => (
 interface PersonCardProps {
   person: FacePerson;
   name: string;
+  media: PeopleMedia;
   fallbackGlyph: string;
   selected: boolean;
   disabled: boolean;
@@ -423,12 +468,14 @@ interface PersonCardProps {
   onToggle: () => void;
   onRename: () => void;
   onForget: () => void;
+  onOpen: () => void;
   onSearchInLibrary: () => void;
 }
 
 const PersonCard = ({
   person,
   name,
+  media,
   fallbackGlyph,
   selected,
   disabled,
@@ -437,6 +484,7 @@ const PersonCard = ({
   onToggle,
   onRename,
   onForget,
+  onOpen,
   onSearchInLibrary,
 }: PersonCardProps) => {
   const dictionary = useDictionary();
@@ -521,11 +569,11 @@ const PersonCard = ({
     </Box>
     <CardContent
       sx={{ p: 1.25, flex: 1, cursor: 'pointer' }}
-      onClick={onSearchInLibrary}
+      onClick={onOpen}
       data-testid="people-card-body"
     >
       <Typography variant="body2" sx={{ fontWeight: 600 }} noWrap title={name}>{name}</Typography>
-      <Typography variant="caption">{dictionary.people.observationCount(person.observationCount)}</Typography>
+      <Typography variant="caption">{observationCountLabel(dictionary, person, media)}</Typography>
     </CardContent>
   </Card>
   );

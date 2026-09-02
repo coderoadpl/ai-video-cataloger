@@ -80,10 +80,28 @@ export const LibraryPhotoDetails = ({ item }: { item: LibraryPhotoItem }) => {
   const dictionary = useDictionary();
   const detail = useQuery(actions.photosDetail({ fingerprint: item.fingerprint }));
   const analysis = detail.data?.analysis ?? null;
+  const people = detail.data?.people ?? [];
 
   if (detail.isLoading) return <CircularProgress size={20} />;
+
+  const peopleRow = people.length === 0 ? null : (
+    <Box data-testid="library-media-viewer-people">
+      <Typography variant="caption" color="text.secondary">{dictionary.people.title}</Typography>
+      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5, mt: 0.5 }}>
+        {people.map((person) => (
+          <Chip key={person.personId} label={person.displayName ?? person.personId} size="small" />
+        ))}
+      </Box>
+    </Box>
+  );
+
   if (analysis === null) {
-    return <Typography variant="body2" color="text.secondary">{dictionary.photos.analysisNone}</Typography>;
+    return (
+      <>
+        {peopleRow}
+        <Typography variant="body2" color="text.secondary">{dictionary.photos.analysisNone}</Typography>
+      </>
+    );
   }
 
   return (
@@ -103,6 +121,7 @@ export const LibraryPhotoDetails = ({ item }: { item: LibraryPhotoItem }) => {
           </Box>
         </Box>
       )}
+      {peopleRow}
       <ViewerDetailRow
         label={dictionary.photos.detailCaptured}
         value={formatCapturedAt(item.capturedAt, dictionary.locale)}
