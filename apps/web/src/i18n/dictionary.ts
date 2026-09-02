@@ -488,6 +488,19 @@ export interface Dictionary {
     runIndexingInAnalysis: string;
     dangerArea: string;
     dangerBody: string;
+    recluster: string;
+    reclusterDryRun: string;
+    reclusterConfirm: string;
+    reclusterDryRunBody: string;
+    reclusterNamesBody: string;
+    reclusterPeopleBefore: string;
+    reclusterPeopleAfter: string;
+    reclusterReassigned: string;
+    reclusterUnassigned: string;
+    reclusterWithoutExemplar: string;
+    reclusterNamesDropped: string;
+    reclusterLargestClusters: string;
+    reclusterNoClusters: string;
     deleteAllFaceData: string;
     renameGrouping: string;
     displayName: string;
@@ -520,6 +533,13 @@ export interface Dictionary {
     deleteGroupingFailedLog: string;
     deletedAllFaceDataLog: string;
     deleteAllFaceDataFailedLog: string;
+    reclusterDryRunLog: string;
+    reclusterDryRunReadyLog: string;
+    reclusterDryRunFailedLog: string;
+    reclusterLog: string;
+    reclusteredLog: string;
+    reclusterFailedLog: string;
+    reclusterReportUnavailable: string;
   };
   map: {
     title: string;
@@ -1405,6 +1425,19 @@ export const en: Dictionary = {
     runIndexingInAnalysis: 'Open a folder in Analysis > Videos to index faces.',
     dangerArea: 'Danger area',
     dangerBody: 'Delete all local face data if you want to remove every grouping and exemplar crop.',
+    recluster: 'Recluster people',
+    reclusterDryRun: 'Dry run',
+    reclusterConfirm: 'Recluster',
+    reclusterDryRunBody: 'Run a dry run first to see how many people and observations would change.',
+    reclusterNamesBody: 'The real rebuild remints person ids and drops all display names.',
+    reclusterPeopleBefore: 'People before',
+    reclusterPeopleAfter: 'People after',
+    reclusterReassigned: 'Reassigned observations',
+    reclusterUnassigned: 'Unassigned observations',
+    reclusterWithoutExemplar: 'Without exemplar',
+    reclusterNamesDropped: 'Names dropped',
+    reclusterLargestClusters: 'Largest clusters',
+    reclusterNoClusters: 'No clusters',
     deleteAllFaceData: 'Delete all face data',
     renameGrouping: 'Rename grouping',
     displayName: 'Display name',
@@ -1437,6 +1470,13 @@ export const en: Dictionary = {
     deleteGroupingFailedLog: 'Failed to delete face grouping',
     deletedAllFaceDataLog: 'Deleted all face data',
     deleteAllFaceDataFailedLog: 'Failed to delete all face data',
+    reclusterDryRunLog: 'Running people recluster dry run...',
+    reclusterDryRunReadyLog: 'People recluster dry-run report is ready',
+    reclusterDryRunFailedLog: 'Failed to dry-run people recluster',
+    reclusterLog: 'Reclustering people...',
+    reclusteredLog: 'People were reclustered',
+    reclusterFailedLog: 'Failed to recluster people',
+    reclusterReportUnavailable: 'dry-run report was unavailable',
   },
   map: {
     title: 'Map',
@@ -2360,6 +2400,19 @@ export const pl: Dictionary = {
     runIndexingInAnalysis: 'Otwórz folder w Analiza > Filmy, aby zindeksować twarze.',
     dangerArea: 'Strefa ryzyka',
     dangerBody: 'Usuń wszystkie lokalne dane twarzy, jeśli chcesz usunąć każdą grupę i przykładowe wycinki.',
+    recluster: 'Przebuduj osoby',
+    reclusterDryRun: 'Próba bez zapisu',
+    reclusterConfirm: 'Przebuduj',
+    reclusterDryRunBody: 'Najpierw uruchom próbę bez zapisu, aby zobaczyć, ile osób i obserwacji się zmieni.',
+    reclusterNamesBody: 'Pełna przebudowa tworzy nowe identyfikatory osób i usuwa wszystkie nazwy wyświetlane.',
+    reclusterPeopleBefore: 'Osoby przed',
+    reclusterPeopleAfter: 'Osoby po',
+    reclusterReassigned: 'Przypisane ponownie',
+    reclusterUnassigned: 'Nieprzypisane obserwacje',
+    reclusterWithoutExemplar: 'Bez przykładu',
+    reclusterNamesDropped: 'Usunięte nazwy',
+    reclusterLargestClusters: 'Największe klastry',
+    reclusterNoClusters: 'Brak klastrów',
     deleteAllFaceData: 'Usuń wszystkie dane twarzy',
     renameGrouping: 'Zmień nazwę grupy',
     displayName: 'Nazwa wyświetlana',
@@ -2392,6 +2445,13 @@ export const pl: Dictionary = {
     deleteGroupingFailedLog: 'Nie udało się usunąć grupy twarzy',
     deletedAllFaceDataLog: 'Usunięto wszystkie dane twarzy',
     deleteAllFaceDataFailedLog: 'Nie udało się usunąć wszystkich danych twarzy',
+    reclusterDryRunLog: 'Uruchamianie próby przebudowy osób bez zapisu...',
+    reclusterDryRunReadyLog: 'Raport próby przebudowy osób jest gotowy',
+    reclusterDryRunFailedLog: 'Nie udało się wykonać próby przebudowy osób',
+    reclusterLog: 'Przebudowywanie osób...',
+    reclusteredLog: 'Przebudowano osoby',
+    reclusterFailedLog: 'Nie udało się przebudować osób',
+    reclusterReportUnavailable: 'raport próby bez zapisu jest niedostępny',
   },
   map: {
     title: 'Mapa',

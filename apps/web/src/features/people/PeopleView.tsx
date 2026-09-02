@@ -29,7 +29,7 @@ import { formatAnalyzerError } from '../../lib/analyzer-error-message.js';
 import { mediaUrl } from '../../lib/media-url.js';
 import { gradientIndexFor } from '../../lib/placeholder-gradient.js';
 import { placeholderGradients } from '../../theme.js';
-import { type FacePerson, usePeople } from './use-people.js';
+import { type FacePerson, type FacesReclusterReport, usePeople } from './use-people.js';
 
 interface PeopleViewProps {
   active: boolean;
@@ -65,6 +65,7 @@ export const PeopleView = ({
   const [forgetTarget, setForgetTarget] = useState<FacePerson | null>(null);
   const [mergeOpen, setMergeOpen] = useState(false);
   const [purgeOpen, setPurgeOpen] = useState(false);
+  const [reclusterOpen, setReclusterOpen] = useState(false);
 
   const indexed = useMemo(
     () => new Map(people.people.map((person, index) => [person.personId, { person, index }])),
@@ -180,6 +181,18 @@ export const PeopleView = ({
                 size="small"
                 disabled={people.isBusy || mutationsBlocked}
                 title={lockReason}
+                onClick={() => setReclusterOpen(true)}
+                data-testid="people-recluster"
+                sx={{ mr: 1 }}
+              >
+                {dictionary.people.recluster}
+              </Button>
+              <Button
+                color="error"
+                variant="outlined"
+                size="small"
+                disabled={people.isBusy || mutationsBlocked}
+                title={lockReason}
                 onClick={() => setPurgeOpen(true)}
                 data-testid="people-purge"
               >
@@ -256,6 +269,57 @@ export const PeopleView = ({
         }}
       />
 
+      <Dialog
+        open={reclusterOpen}
+        onClose={() => {
+          setReclusterOpen(false);
+          people.clearReclusterReport();
+        }}
+        fullWidth
+        maxWidth="sm"
+      >
+        <DialogTitle>{dictionary.people.recluster}</DialogTitle>
+        <DialogContent sx={{ display: 'flex', flexDirection: 'column', gap: 1.5 }}>
+          <DialogContentText>{dictionary.people.reclusterDryRunBody}</DialogContentText>
+          <DialogContentText>{dictionary.people.reclusterNamesBody}</DialogContentText>
+          {people.reclusterDryRunReport === null ? null : (
+            <ReclusterReport report={people.reclusterDryRunReport} dictionary={dictionary} />
+          )}
+        </DialogContent>
+        <DialogActions>
+          <Button
+            color="inherit"
+            onClick={() => {
+              setReclusterOpen(false);
+              people.clearReclusterReport();
+            }}
+          >
+            {dictionary.common.cancel}
+          </Button>
+          <Button
+            variant="outlined"
+            color="error"
+            onClick={people.startReclusterDryRun}
+            disabled={people.isBusy || mutationsBlocked}
+            data-testid="people-recluster-dry-run"
+          >
+            {dictionary.people.reclusterDryRun}
+          </Button>
+          <Button
+            variant="contained"
+            color="error"
+            onClick={() => {
+              people.confirmRecluster();
+              setReclusterOpen(false);
+            }}
+            disabled={people.reclusterDryRunReport === null || people.isBusy || mutationsBlocked}
+            data-testid="people-recluster-confirm"
+          >
+            {dictionary.people.reclusterConfirm}
+          </Button>
+        </DialogActions>
+      </Dialog>
+
       <ConfirmDialog
         open={purgeOpen}
         title={dictionary.people.deleteAllFaceData}
@@ -282,6 +346,32 @@ export const PeopleView = ({
     </Box>
   );
 };
+
+const ReclusterReport = ({ report, dictionary }: { report: FacesReclusterReport; dictionary: Dictionary }) => (
+  <Box data-testid="people-recluster-report" sx={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 1 }}>
+    <ReportMetric label={dictionary.people.reclusterPeopleBefore} value={report.personsBefore} />
+    <ReportMetric label={dictionary.people.reclusterPeopleAfter} value={report.personsAfter} />
+    <ReportMetric label={dictionary.people.reclusterReassigned} value={report.observationsReassigned} />
+    <ReportMetric label={dictionary.people.reclusterUnassigned} value={report.observationsUnassigned} />
+    <ReportMetric label={dictionary.people.reclusterWithoutExemplar} value={report.personsWithoutExemplar} />
+    <ReportMetric label={dictionary.people.reclusterNamesDropped} value={report.namesDropped.length} />
+    <Box sx={{ gridColumn: '1 / -1' }}>
+      <Typography variant="caption" color="text.secondary">{dictionary.people.reclusterLargestClusters}</Typography>
+      <Typography variant="body2" data-testid="people-recluster-largest">
+        {report.largestClusters.length === 0
+          ? dictionary.people.reclusterNoClusters
+          : report.largestClusters.map((cluster) => `${cluster.personId}: ${String(cluster.observations)}`).join(', ')}
+      </Typography>
+    </Box>
+  </Box>
+);
+
+const ReportMetric = ({ label, value }: { label: string; value: number }) => (
+  <Box>
+    <Typography variant="caption" color="text.secondary">{label}</Typography>
+    <Typography variant="body2">{value}</Typography>
+  </Box>
+);
 
 const LoadingState = () => {
   const dictionary = useDictionary();
