@@ -91,7 +91,7 @@ jobs:
       # from the model's tool use).
       CLAUDE_ARGS: >-
         --model sonnet
-        --max-turns 20
+        --max-turns 40
         --allowedTools "Read,Grep,Glob,Bash(git diff:*),Bash(git fetch:*),Bash(git log:*),Bash(git show:*)"
         --json-schema '{"type":"object","properties":{"verdict":{"type":"string","enum":["PASS","FAIL"]},"summary":{"type":"string"},"blocking_issues":{"type":"array","items":{"type":"string"}}},"required":["verdict","summary"]}'
     steps:
