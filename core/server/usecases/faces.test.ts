@@ -1762,6 +1762,112 @@ describe('facesExemplars', () => {
     expect(observations.value[0]?.cropPath).not.toBeNull();
   });
 
+  const seedPhoto = async (
+    deps: FacesDeps & { fs: InMemoryFileSystem; photos: InMemoryPhotosStore },
+    fingerprint: string,
+    fileName: string,
+    proxyState: 'done' | 'failed' = 'done',
+  ): Promise<string> => {
+    const proxyPath = `/home/.ai-video-cataloger/photo-artifacts/proxies/${fingerprint}.jpg`;
+    if (proxyState === 'done') deps.fs.addFile(proxyPath, { content: 'proxy' });
+    await deps.photos.upsertPhoto({
+      fingerprint,
+      folderId: 'photo-folder',
+      fileName,
+      currentPath: `/work/photos/${fileName}`,
+      ext: 'jpg',
+      size: 1,
+      width: 1280,
+      height: 720,
+      orientation: null,
+      cameraMake: null,
+      cameraModel: null,
+      lens: null,
+      iso: null,
+      fNumber: null,
+      exposureTime: null,
+      exifRating: null,
+      capturedAt: null,
+      capturedAtSource: 'file_mtime',
+      gpsLat: null,
+      gpsLon: null,
+      gpsSource: null,
+      gpsAccuracyM: null,
+      gpsIntervalKind: null,
+      gpsResolvedAt: null,
+      placeName: null,
+      placeRegion: null,
+      placeCountry: null,
+      placeCountryCode: null,
+      placeDistanceM: null,
+      placeDataset: null,
+      discoveredAt: '2026-01-01T00:00:00.000Z',
+      exifReadAt: '2026-01-01T00:00:00.000Z',
+      proxyState,
+      proxyWidth: proxyState === 'done' ? 1280 : null,
+      proxyHeight: proxyState === 'done' ? 720 : null,
+      thumbState: 'done',
+      missingAt: null,
+      selectedConfigId: null,
+    });
+    return proxyPath;
+  };
+
+  it('repairs a photo crop from the photo proxy instead of reporting the photo unavailable', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    const fingerprint = 'ph_0000000000000001';
+    const proxyPath = await seedPhoto(deps, fingerprint, 'one.jpg');
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: `${fingerprint}:face:1:1`,
+      fingerprint,
+      personId: 'p1',
+      frameTsS: null,
+      media: 'photo',
+      bbox: boxFixture,
+      cropPath: null,
+    }));
+
+    const result = await runFacesExemplarsPass(deps, { dryRun: false, limit: null });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.filesUnavailable).toBe(0);
+    expect(result.value.filesVisited).toBe(1);
+    expect(result.value.cropsWritten).toBe(1);
+    expect(result.value.peopleWithoutExemplarAfter).toBe(0);
+    expect(deps.faceEngine.detectInputs).toContainEqual({ kind: 'image-path', frameJpegPath: proxyPath });
+    const observations = await deps.globalCatalog.listFaceObservations({ fingerprint });
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error('expected observations');
+    expect(observations.value[0]?.cropPath).toMatch(/faces\/obs\/ph_0000000000000001\/1-1\.jpg$/);
+  });
+
+  it('counts a photo whose proxy is missing as unavailable rather than failing the pass', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    const fingerprint = 'ph_0000000000000002';
+    await seedPhoto(deps, fingerprint, 'two.jpg', 'failed');
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: `${fingerprint}:face:1:1`,
+      fingerprint,
+      personId: 'p1',
+      frameTsS: null,
+      media: 'photo',
+      bbox: boxFixture,
+      cropPath: null,
+    }));
+
+    const result = await runFacesExemplarsPass(deps, { dryRun: false, limit: null });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.filesUnavailable).toBe(1);
+    expect(result.value.cropsWritten).toBe(0);
+  });
+
   it('facesExemplars enqueues a job that runs the pass and gates on faces_enabled', async () => {
     const deps = buildDeps();
     const disabled = await facesExemplars(deps, { dryRun: false, limit: null });
@@ -1829,5 +1935,27 @@ describe('faces jobs share a single faces-write resource', () => {
 
     blocked.release();
     await holder;
+  });
+});
+
+describe('facesPeople per-medium counts', () => {
+  it('reports how many of a person\'s observations are videos and how many are photos', async () => {
+    const deps = buildDeps();
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p2' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'fp-a:face:1:1', fingerprint: 'fp-a', personId: 'p1', media: 'video' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'ph_1:face:1:1', fingerprint: 'ph_1', personId: 'p1', frameTsS: null, media: 'photo' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'ph_2:face:1:1', fingerprint: 'ph_2', personId: 'p1', frameTsS: null, media: 'photo' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'fp-b:face:1:1', fingerprint: 'fp-b', personId: 'p2', media: 'video' }));
+
+    const result = await facesPeople(deps);
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    const first = result.value.people.find((person) => person.personId === 'p1');
+    const second = result.value.people.find((person) => person.personId === 'p2');
+    expect(first).toMatchObject({ observationCount: 3, videoCount: 1, photoCount: 2 });
+    expect(second).toMatchObject({ observationCount: 1, videoCount: 1, photoCount: 0 });
   });
 });

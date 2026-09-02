@@ -10,6 +10,7 @@ import {
   acceptsGpsWrite,
   appError,
   canonicalPath,
+  compareUtf8Bytes,
   ok,
   type AnalysisLanguageResolution,
   type AppError,
@@ -772,6 +773,19 @@ class InMemoryGlobalCatalogStore implements GlobalCatalogStore {
       .map((personId) => ({ personId, displayName: this.people.get(personId)?.displayName ?? null }))
       .sort((left, right) => (left.displayName ?? '').localeCompare(right.displayName ?? '') || left.personId.localeCompare(right.personId));
     return Promise.resolve(ok(result));
+  }
+
+  listFingerprintsForPeople(
+    input: { personIds: readonly string[]; media: FaceObservation['media'] },
+  ): Promise<Result<string[], AppError>> {
+    const wanted = new Set(input.personIds);
+    const fingerprints = new Set<string>();
+    for (const observation of this.faceObservations.values()) {
+      if (observation.personId === null || !wanted.has(observation.personId)) continue;
+      if (observation.media !== input.media) continue;
+      fingerprints.add(observation.fingerprint);
+    }
+    return Promise.resolve(ok([...fingerprints].sort(compareUtf8Bytes)));
   }
 
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>> {

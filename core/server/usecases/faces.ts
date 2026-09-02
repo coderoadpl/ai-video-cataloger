@@ -27,6 +27,7 @@ import {
 import {
   JOB_CANCELLED_ERROR_MESSAGE,
   type AlignedFaceCrop,
+  type AnalyzedFileLocation,
   type FaceDetection,
   type FaceEnginePort,
   type FaceIndexCandidate,
@@ -140,6 +141,8 @@ export interface FacesStatusOutput {
 
 interface FacePersonView extends Person {
   observationCount: number;
+  videoCount: number;
+  photoCount: number;
   exemplarCropPath: string | null;
   exemplarCropPaths: string[];
 }
@@ -847,6 +850,42 @@ const indexPhotoCandidate = async (
   return { result: ok({ observationsAdded, peopleCreated }), pool };
 };
 
+type ExemplarSource =
+  | { kind: 'video'; videoPath: string }
+  | { kind: 'photo'; proxyPath: string };
+
+const sourceEventData = (source: ExemplarSource): Record<string, string> =>
+  source.kind === 'photo' ? { proxyPath: source.proxyPath } : { videoPath: source.videoPath };
+
+const exemplarFrame = (source: ExemplarSource, frameTsS: number | null): FaceFrameInput | null => {
+  if (source.kind === 'photo') return { kind: 'image-path', frameJpegPath: source.proxyPath };
+  return frameTsS === null ? null : { kind: 'video-timestamp', videoPath: source.videoPath, timestampS: frameTsS };
+};
+
+const videoExemplarSource = async (
+  deps: FacesExemplarsDeps,
+  location: AnalyzedFileLocation | undefined,
+): Promise<Result<ExemplarSource | null, AppError>> => {
+  if (location === undefined || location.folderPath === null) return ok(null);
+  const videoPath = deps.fs.join(location.folderPath, location.fileName);
+  const exists = await deps.fs.exists(videoPath);
+  if (!exists.ok) return exists;
+  return ok(exists.value ? { kind: 'video', videoPath } : null);
+};
+
+const photoExemplarSource = async (
+  deps: FacesExemplarsDeps,
+  fingerprint: string,
+): Promise<Result<ExemplarSource | null, AppError>> => {
+  const photo = await deps.photos.getPhoto(fingerprint);
+  if (!photo.ok) return photo;
+  if (photo.value === null || photo.value.proxyState !== 'done') return ok(null);
+  const proxyPath = photoProxyPath(deps.fs, photoArtifactsRoot(deps.fs, deps.photos), fingerprint);
+  const exists = await deps.fs.exists(proxyPath);
+  if (!exists.ok) return exists;
+  return ok(exists.value ? { kind: 'photo', proxyPath } : null);
+};
+
 export const runFacesExemplarsPass = async (
   deps: FacesExemplarsDeps,
   input: { dryRun: boolean; limit: number | null },
@@ -879,6 +918,7 @@ export const runFacesExemplarsPass = async (
       cropPath,
       personId: observation.personId,
       frameTsS: observation.frameTsS,
+      media: observation.media,
       bbox: observation.bbox,
     });
   }
@@ -897,7 +937,10 @@ export const runFacesExemplarsPass = async (
   const selectedFingerprintSet = new Set(selectedFingerprints);
   const items = plan.items.filter((item) => selectedFingerprintSet.has(item.fingerprint));
 
-  const locations = await deps.globalCatalog.listAnalyzedFileLocations(selectedFingerprints);
+  const mediaByFingerprint = new Map(observations.value.map((observation) => [observation.fingerprint, observation.media]));
+  const locations = await deps.globalCatalog.listAnalyzedFileLocations(
+    selectedFingerprints.filter((fingerprint) => mediaByFingerprint.get(fingerprint) !== 'photo'),
+  );
   if (!locations.ok) return locations;
   const locationByFingerprint = new Map(locations.value.map((location) => [location.fingerprint, location]));
 
@@ -920,26 +963,22 @@ export const runFacesExemplarsPass = async (
     for (let fileIndex = 0; fileIndex < selectedFingerprints.length; fileIndex += 1) {
       const fingerprint = selectedFingerprints[fileIndex];
       if (fingerprint === undefined) continue;
-      const location = locationByFingerprint.get(fingerprint);
       const fingerprintItems = itemsByFingerprint.get(fingerprint) ?? [];
-      if (location === undefined || location.folderPath === null) {
+      const source = mediaByFingerprint.get(fingerprint) === 'photo'
+        ? await photoExemplarSource(deps, fingerprint)
+        : await videoExemplarSource(deps, locationByFingerprint.get(fingerprint));
+      if (!source.ok) return source;
+      if (source.value === null) {
         filesUnavailable += 1;
         continue;
       }
-      const videoPath = deps.fs.join(location.folderPath, location.fileName);
-      const extracting = await report(progress, {
-        step: 'faces_extracting_frames',
+      const opening = await report(progress, {
+        step: source.value.kind === 'photo' ? 'photo-faces-detecting' : 'faces_extracting_frames',
         current: fileIndex + 1,
         total: selectedFingerprints.length,
-        data: { fingerprint, videoPath },
+        data: { fingerprint, ...sourceEventData(source.value) },
       });
-      if (!extracting.ok) return extracting;
-      const exists = await deps.fs.exists(videoPath);
-      if (!exists.ok) return exists;
-      if (!exists.value) {
-        filesUnavailable += 1;
-        continue;
-      }
+      if (!opening.ok) return opening;
       const cancellation = cancelled(progress);
       if (!cancellation.ok) return cancellation;
       if (input.dryRun) {
@@ -949,14 +988,16 @@ export const runFacesExemplarsPass = async (
 
       let undecodable = false;
       for (const item of fingerprintItems) {
+        const frame = exemplarFrame(source.value, item.frameTsS);
+        if (frame === null) continue;
         const detecting = await report(progress, {
           step: 'faces_detecting',
           current: fileIndex + 1,
           total: selectedFingerprints.length,
-          data: { fingerprint, videoPath, frameTsS: item.frameTsS },
+          data: { fingerprint, ...sourceEventData(source.value), frameTsS: item.frameTsS },
         });
         if (!detecting.ok) return detecting;
-        const detections = await deps.faceEngine.detect({ kind: 'video-timestamp', videoPath, timestampS: item.frameTsS });
+        const detections = await deps.faceEngine.detect(frame);
         if (!detections.ok) {
           undecodable = true;
           break;
@@ -966,7 +1007,7 @@ export const runFacesExemplarsPass = async (
           detectionsMismatched += 1;
           continue;
         }
-        const aligned = await deps.faceEngine.align({ kind: 'video-timestamp', videoPath, timestampS: item.frameTsS }, detected);
+        const aligned = await deps.faceEngine.align(frame, detected);
         if (!aligned.ok) return aligned;
         const cropPath = await writeObservationCrop(deps, item.obsId, aligned.value);
         if (typeof cropPath !== 'string') return cropPath;
@@ -1219,6 +1260,8 @@ const personView = (person: Person, observations: readonly FaceObservation[], cu
   return {
     ...person,
     observationCount: matching.length,
+    videoCount: matching.filter((observation) => observation.media === 'video').length,
+    photoCount: matching.filter((observation) => observation.media === 'photo').length,
     exemplarCropPath: exemplarCropPaths[0] ?? null,
     exemplarCropPaths,
   };

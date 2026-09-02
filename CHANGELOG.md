@@ -16,6 +16,12 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Added
 
+- Osoby has Wszystko / Filmy / Zdjęcia chips that narrow the person list and its
+  per-person counts, and a person card opens a grid of that person's photos and
+  videos in the shared Kolekcja media viewer.
+- Photo detail shows the people detected in the photo, the way video detail
+  already did; `GET /api/photos/detail` gained an additive `people` field and
+  `GET /api/faces/people` gained additive `videoCount` and `photoCount`.
 - `faces recluster --dry-run` can print benchmark metrics from supplied reference-partition and labelled-pairs files, and Osoby now requires a dry-run report before starting a full people recluster.
 - `faces index` and `photos process` now detect faces in photos themselves,
   over the photo proxy, writing one crop per observation like the video pass;
@@ -38,6 +44,10 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Filtering Kolekcja by a person no longer hides every photo, so the person
+  counts in the Osoby facet and the results now agree.
+- `faces exemplars` repairs a photo observation's crop from the photo proxy
+  instead of reporting the photo as unavailable.
 - Photo scans now count unreadable file contents as failed candidates and continue indexing the remaining files.
 - PHOTO LIBRA geo imports now join through manifest md5 values when artifact paths no longer match scanned paths.
 

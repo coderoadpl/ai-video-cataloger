@@ -35,6 +35,7 @@ import {
   JOB_CANCELLED_ERROR_MESSAGE,
   type AnalyzePhotoItem,
   type AnalyzerPort,
+  type CatalogFilePerson,
   type ConfigStore,
   type ExifPort,
   type FileSystemPort,
@@ -999,6 +1000,7 @@ export interface PhotosDetailOutput {
   proxyPath: string | null;
   thumbPath: string | null;
   gridThumbPath: string | null;
+  people: CatalogFilePerson[];
   analysis: PhotosDetailAnalysis | null;
   analysisError: PhotoAnalysisError | null;
 }
@@ -1015,6 +1017,10 @@ export const photosDetail = async (
   if (!analysis.ok) return analysis;
   const gridThumbPath = await resolveGridThumbPath(deps, artifactsRoot, detail.value.photo.fingerprint);
   if (!gridThumbPath.ok) return gridThumbPath;
+  const people = deps.globalCatalog === undefined
+    ? null
+    : await deps.globalCatalog.listPeopleForFile(input.fingerprint);
+  if (people !== null && !people.ok) return people;
   return ok({
     media: 'photo',
     photo: detail.value.photo,
@@ -1023,6 +1029,7 @@ export const photosDetail = async (
     proxyPath: detail.value.photo.proxyState === 'done' ? photoProxyPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
     thumbPath: detail.value.photo.thumbState === 'done' ? photoThumbPath(deps.fs, artifactsRoot, detail.value.photo.fingerprint) : null,
     gridThumbPath: gridThumbPath.value,
+    people: people === null ? [] : people.value,
     analysis: analysis.value,
     analysisError: detail.value.analysisError,
   });

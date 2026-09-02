@@ -161,7 +161,7 @@ const resolveSort = (requested: CatalogSearchSort | undefined, hasQuery: boolean
   requested ?? (hasQuery ? 'relevance' : 'captured_desc');
 
 const photoUnsupportedFiltersActive = (filters: CollectionFiltersInput): boolean =>
-  filters.people.length > 0 || filters.place !== null || filters.hasGps !== null;
+  filters.place !== null || filters.hasGps !== null;
 
 export const libraryCollection = async (
   deps: CollectionDeps,
@@ -189,6 +189,16 @@ export const libraryCollection = async (
 
   const offlineFolderIds = await resolveOfflineFolderIds(deps, input.filters.hideUnavailable);
   if (!offlineFolderIds.ok) return offlineFolderIds;
+
+  let photoFingerprints: string[] | null = null;
+  if (photosMatchFilters && input.filters.people.length > 0) {
+    const matched = await deps.globalCatalog.listFingerprintsForPeople({
+      personIds: input.filters.people,
+      media: 'photo',
+    });
+    if (!matched.ok) return matched;
+    photoFingerprints = matched.value;
+  }
 
   let videoMatch: string | null = null;
   let videoRankingTerms: string[] = [];
@@ -241,6 +251,7 @@ export const libraryCollection = async (
       from: input.filters.from,
       to: input.filters.to,
       folderId: photoFolderId,
+      fingerprints: photoFingerprints,
       tagTermSets: photoTagTermSets.value,
       excludeMissing: input.filters.hideUnavailable,
       sort,
@@ -274,6 +285,7 @@ export const libraryCollection = async (
         from: input.filters.from,
         to: input.filters.to,
         folderId: photoFolderId,
+        fingerprints: photoFingerprints,
         tagTermSets: photoTagTermSets.value,
         excludeMissing: input.filters.hideUnavailable,
         sort,
