@@ -165,6 +165,12 @@ PR; wall-clock for a full rebuild at catalog scale recorded. If it exceeds ten
 minutes, the sanctioned fallback is a random-projection banding prefilter —
 never a lower `reviewBandMin`.
 
+**Implementation note.** The F2 code ships `DEFAULT_FACE_CLUSTER_CUT_SIMILARITY`
+as a conservative public default and lets the benchmark override the sweep.
+Real-corpus measurements are intentionally not committed to this public repo;
+operators must run the benchmark against their own supplied files before
+changing that default.
+
 ---
 
 ## F3 — UI and the media-agnostic people surfaces

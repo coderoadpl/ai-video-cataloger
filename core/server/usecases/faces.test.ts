@@ -26,7 +26,7 @@ import {
   InMemoryMedia,
   InMemoryPhotosStore,
 } from '../../../test/server/usecases/test-fakes.js';
-import { FACE_ENGINE_VERSION, appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
+import { FACE_ENGINE_VERSION, FACE_QUALITY, appError, normalizeEmbedding, ok, type AppError, type FaceObservation, type Person, type Result } from '@core/domain/index.js';
 import type { AlignedFaceCrop, DependencyStatus, FaceDetection, FaceEnginePort, FaceFrameInput, JobExecutionContext, JobProgress } from '../ports.js';
 
 const unit128 = (offset = 0): number[] =>
@@ -1170,16 +1170,16 @@ describe('facesRecluster', () => {
     expect(people.value.people[0]?.exemplarCropPaths).toEqual([]);
   });
 
-  it('splits a merged person into two and carries the owner name to the larger half', async () => {
+  it('splits a merged person into two and drops old names', async () => {
     const deps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: new InMemoryGlobalCatalogStore() };
     await enableFaces(deps);
-    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'ala', displayName: 'Ala' }));
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'legacy-person', displayName: 'Legacy Name' }));
     for (let index = 0; index < 4; index += 1) {
       await deps.globalCatalog.upsertFaceObservation(observationFixture({
         obsId: `a${index}`,
         fingerprint: `fp-a${index}`,
         embedding: unit128(0),
-        personId: 'ala',
+        personId: 'legacy-person',
       }));
     }
     for (let index = 0; index < 2; index += 1) {
@@ -1187,7 +1187,7 @@ describe('facesRecluster', () => {
         obsId: `b${index}`,
         fingerprint: `fp-b${index}`,
         embedding: unit128(5),
-        personId: 'ala',
+        personId: 'legacy-person',
       }));
     }
 
@@ -1197,15 +1197,17 @@ describe('facesRecluster', () => {
     expect(result.value.personsBefore).toBe(1);
     expect(result.value.personsAfter).toBe(2);
     expect(result.value.observationsReassigned).toBe(6);
-    expect(result.value.namesCarried).toBe(1);
-    expect(result.value.namesDropped).toEqual([]);
+    expect(result.value.namesCarried).toBe(0);
+    expect(result.value.namesDropped).toEqual(['Legacy Name']);
+    expect(result.value.largestClusters).toEqual([
+      { personId: 'person-a0', observations: 4 },
+      { personId: 'person-b0', observations: 2 },
+    ]);
 
     const people = await deps.globalCatalog.listPeople();
     expect(people.ok).toBe(true);
     if (!people.ok) throw new Error('expected people');
-    const named = people.value.filter((person) => person.displayName === 'Ala');
-    expect(named.length).toBe(1);
-    expect(named[0]?.exemplarCount).toBe(4);
+    expect(people.value.every((person) => person.displayName === null)).toBe(true);
   });
 
   it('writes nothing on a dry run but predicts the real run', async () => {
@@ -1215,9 +1217,9 @@ describe('facesRecluster', () => {
     const realDeps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: realStore };
     for (const deps of [dryDeps, realDeps]) {
       await enableFaces(deps);
-      await deps.globalCatalog.upsertPerson(personFixture({ personId: 'ala', displayName: 'Ala' }));
-      await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'a0', fingerprint: 'fp-a0', embedding: unit128(0), personId: 'ala' }));
-      await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'a1', fingerprint: 'fp-a1', embedding: unit128(0), personId: 'ala' }));
+      await deps.globalCatalog.upsertPerson(personFixture({ personId: 'legacy-person', displayName: 'Legacy Name' }));
+      await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'a0', fingerprint: 'fp-a0', embedding: unit128(0), personId: 'legacy-person' }));
+      await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'a1', fingerprint: 'fp-a1', embedding: unit128(0), personId: 'legacy-person' }));
     }
     const flushCountBefore = dryStore.flushCount;
 
@@ -1233,25 +1235,124 @@ describe('facesRecluster', () => {
     const peopleAfterDry = await dryDeps.globalCatalog.listPeople();
     expect(peopleAfterDry.ok).toBe(true);
     if (!peopleAfterDry.ok) throw new Error('expected people');
-    expect(peopleAfterDry.value.some((person) => person.personId === 'ala')).toBe(true);
+    expect(peopleAfterDry.value.some((person) => person.personId === 'legacy-person')).toBe(true);
+  });
+
+  it('leaves stored observations below the face quality floor unassigned', async () => {
+    const deps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: new InMemoryGlobalCatalogStore() };
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'good-1',
+      fingerprint: 'fp-good-1',
+      embedding: unit128(0),
+      quality: FACE_QUALITY.minScore,
+      bbox: { x: 0, y: 0, width: FACE_QUALITY.minBoxPx, height: FACE_QUALITY.minBoxPx },
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'good-2',
+      fingerprint: 'fp-good-2',
+      embedding: unit128(0),
+      quality: 0.9,
+      bbox: { x: 0, y: 0, width: FACE_QUALITY.minBoxPx + 10, height: FACE_QUALITY.minBoxPx + 10 },
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'low-score',
+      fingerprint: 'fp-low-score',
+      embedding: unit128(0),
+      quality: FACE_QUALITY.minScore - 0.01,
+      bbox: { x: 0, y: 0, width: FACE_QUALITY.minBoxPx + 10, height: FACE_QUALITY.minBoxPx + 10 },
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'small-box',
+      fingerprint: 'fp-small-box',
+      embedding: unit128(0),
+      quality: 0.9,
+      bbox: { x: 0, y: 0, width: FACE_QUALITY.minBoxPx - 1, height: FACE_QUALITY.minBoxPx - 1 },
+    }));
+
+    const result = await runFacesReclusterPass(deps, { dryRun: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.observationsAssigned).toBe(2);
+    expect(result.value.observationsUnassigned).toBe(2);
+
+    const observations = await deps.globalCatalog.listFaceObservations();
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error('expected observations');
+    expect(observations.value.filter((observation) => observation.personId === null).map((observation) => observation.obsId).sort()).toEqual(['low-score', 'small-box']);
+  });
+
+  it('clusters video and photo observations into one media-agnostic identity', async () => {
+    const deps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: new InMemoryGlobalCatalogStore() };
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'fp-video:face:1:1',
+      fingerprint: 'fp-video',
+      embedding: unit128(0),
+      media: 'video',
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'ph_photo:face:1:1',
+      fingerprint: 'ph_photo',
+      embedding: unit128(0),
+      media: 'photo',
+    }));
+
+    const result = await runFacesReclusterPass(deps, { dryRun: false });
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.personsAfter).toBe(1);
+
+    const observations = await deps.globalCatalog.listFaceObservations();
+    expect(observations.ok).toBe(true);
+    if (!observations.ok) throw new Error('expected observations');
+    expect(new Set(observations.value.map((observation) => observation.personId)).size).toBe(1);
+  });
+
+  it('selects exemplars from both video and photo observations', async () => {
+    const deps = buildReclusterDeps();
+    await enableFaces(deps);
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'p1' }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'fp-video:face:1:1',
+      fingerprint: 'fp-video',
+      personId: 'p1',
+      cropPath: '/home/.ai-video-cataloger/faces/obs/fp-video/1-1.jpg',
+      media: 'video',
+    }));
+    await deps.globalCatalog.upsertFaceObservation(observationFixture({
+      obsId: 'ph_photo:face:1:1',
+      fingerprint: 'ph_photo',
+      personId: 'p1',
+      cropPath: '/home/.ai-video-cataloger/faces/obs/ph_photo/1-1.jpg',
+      media: 'photo',
+    }));
+
+    const result = await facesPeople(deps);
+    expect(result.ok).toBe(true);
+    if (!result.ok) throw new Error(result.error.message);
+    expect(result.value.people[0]?.exemplarCropPaths).toEqual([
+      '/home/.ai-video-cataloger/faces/obs/fp-video/1-1.jpg',
+      '/home/.ai-video-cataloger/faces/obs/ph_photo/1-1.jpg',
+    ]);
   });
 
   it('carries crop paths under the new owner and counts persons without an exemplar', async () => {
     const deps: FacesReclusterDeps = { config: new InMemoryConfig(), fs: new InMemoryFileSystem(), globalCatalog: new InMemoryGlobalCatalogStore() };
     await enableFaces(deps);
-    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'ala', displayName: 'Ala' }));
+    await deps.globalCatalog.upsertPerson(personFixture({ personId: 'legacy-person', displayName: 'Legacy Name' }));
     await deps.globalCatalog.upsertFaceObservation(observationFixture({
       obsId: 'a0',
       fingerprint: 'fp-a0',
       embedding: unit128(0),
-      personId: 'ala',
-      cropPath: '/home/.ai-video-cataloger/faces/ala/exemplar-001.jpg',
+      personId: 'legacy-person',
+      cropPath: '/home/.ai-video-cataloger/faces/legacy/exemplar-001.jpg',
     }));
     await deps.globalCatalog.upsertFaceObservation(observationFixture({
       obsId: 'a1',
       fingerprint: 'fp-a1',
       embedding: unit128(0),
-      personId: 'ala',
+      personId: 'legacy-person',
       cropPath: null,
     }));
     await deps.globalCatalog.upsertFaceObservation(observationFixture({ obsId: 'b0', fingerprint: 'fp-b0', embedding: unit128(5) }));
@@ -1266,7 +1367,7 @@ describe('facesRecluster', () => {
     expect(reloaded.ok).toBe(true);
     if (!reloaded.ok) throw new Error('expected observations');
     const carried = reloaded.value.find((observation) => observation.obsId === 'a0');
-    expect(carried?.cropPath).toBe('/home/.ai-video-cataloger/faces/ala/exemplar-001.jpg');
+    expect(carried?.cropPath).toBe('/home/.ai-video-cataloger/faces/legacy/exemplar-001.jpg');
   });
 
   it('every rebuilt cluster of two or more observations keeps a photographed observation', async () => {

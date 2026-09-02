@@ -8,14 +8,14 @@ export const FACE_EMBEDDING_DIM = 128;
 
 export const FACE_ENGINE_VERSION = 2;
 
-// SFace cosine: same person ~0.4-0.6, different ~0.1-0.3 (OpenCV's reference verification
-// threshold is 0.363). A false merge is unrecoverable without a full rebuild and poisons
-// the centroid; a false split is one `faces merge` away — so the floor sits high, and
-// founding an identity never needs a higher similarity than joining one (ADR-0012).
+export const DEFAULT_FACE_CLUSTER_CUT_SIMILARITY = 0.56;
+
 export const FACE_CLUSTERING = {
   autoAssignSimilarity: 0.5,
   autoAssignMargin: 0.05,
   reviewBandMin: 0.36,
+  clusterCutSimilarity: DEFAULT_FACE_CLUSTER_CUT_SIMILARITY,
+  edgeBlockSize: 256,
   newClusterSimilarity: 0.5,
   newClusterMinObservations: 2,
   autoMergeSimilarity: 0.55,
@@ -313,6 +313,7 @@ export interface FaceClusterInput {
   obsId: string;
   embedding: readonly number[];
   quality: number;
+  boxPx?: number | undefined;
 }
 
 export interface FaceCluster {
@@ -326,6 +327,11 @@ export interface FaceClusteringOutcome {
   unassignedObsIds: string[];
 }
 
+export interface FaceClusteringOptions {
+  clusterCutSimilarity?: number | undefined;
+  onSimilarityBlock?: ((candidatePairs: number) => void) | undefined;
+}
+
 const personIdFromSeed = (seedObsId: string, taken: ReadonlySet<string>): string => {
   const base = `person-${seedObsId.replace(/[^A-Za-z0-9]+/g, '-').toLowerCase().slice(0, 32)}`;
   if (!taken.has(base)) return base;
@@ -334,52 +340,240 @@ const personIdFromSeed = (seedObsId: string, taken: ReadonlySet<string>): string
   return `${base}-${suffix}`;
 };
 
-export const clusterFaceObservations = (observations: readonly FaceClusterInput[]): FaceClusteringOutcome => {
-  const ordered = [...observations].sort(
-    (left, right) => right.quality - left.quality || left.obsId.localeCompare(right.obsId),
-  );
+interface AgglomerativeCluster {
+  id: number;
+  members: number[];
+  minObsId: string;
+  totals: number[];
+}
 
-  interface ProvisionalCluster {
-    seedObsId: string;
-    centroid: number[];
-    memberObsIds: string[];
+interface MergeCandidate {
+  leftId: number;
+  rightId: number;
+  score: number;
+  mergedSize: number;
+  minObsId: string;
+}
+
+class MergeHeap {
+  private readonly values: MergeCandidate[] = [];
+
+  push(candidate: MergeCandidate): void {
+    this.values.push(candidate);
+    this.bubbleUp(this.values.length - 1);
   }
 
-  const provisional: ProvisionalCluster[] = [];
-  for (const observation of ordered) {
-    const assignment = classifyFace(
-      observation.embedding,
-      provisional.map((cluster) => ({ personId: cluster.seedObsId, centroid: cluster.centroid })),
-    );
-    const target = assignment.decision === 'assign'
-      ? provisional.find((cluster) => cluster.seedObsId === assignment.personId)
-      : undefined;
-    if (target !== undefined) {
-      target.centroid = updateCentroid(target.centroid, target.memberObsIds.length, observation.embedding);
-      target.memberObsIds.push(observation.obsId);
-      continue;
+  pop(): MergeCandidate | undefined {
+    const first = this.values[0];
+    const last = this.values.pop();
+    if (first === undefined || last === undefined) return undefined;
+    if (this.values.length > 0) {
+      this.values[0] = last;
+      this.bubbleDown(0);
     }
-    provisional.push({
-      seedObsId: observation.obsId,
-      centroid: normalizeEmbedding(observation.embedding),
-      memberObsIds: [observation.obsId],
+    return first;
+  }
+
+  private bubbleUp(index: number): void {
+    let child = index;
+    while (child > 0) {
+      const parent = Math.floor((child - 1) / 2);
+      const childValue = this.values[child];
+      const parentValue = this.values[parent];
+      if (childValue === undefined || parentValue === undefined || compareMergeCandidate(childValue, parentValue) >= 0) return;
+      this.values[child] = parentValue;
+      this.values[parent] = childValue;
+      child = parent;
+    }
+  }
+
+  private bubbleDown(index: number): void {
+    let parent = index;
+    while (true) {
+      const left = parent * 2 + 1;
+      const right = left + 1;
+      let best = parent;
+      const leftValue = this.values[left];
+      const rightValue = this.values[right];
+      const bestValue = this.values[best];
+      if (leftValue !== undefined && bestValue !== undefined && compareMergeCandidate(leftValue, bestValue) < 0) best = left;
+      const nextBestValue = this.values[best];
+      if (rightValue !== undefined && nextBestValue !== undefined && compareMergeCandidate(rightValue, nextBestValue) < 0) best = right;
+      if (best === parent) return;
+      const parentValue = this.values[parent];
+      const swapValue = this.values[best];
+      if (parentValue === undefined || swapValue === undefined) return;
+      this.values[parent] = swapValue;
+      this.values[best] = parentValue;
+      parent = best;
+    }
+  }
+}
+
+const compareMergeCandidate = (left: MergeCandidate, right: MergeCandidate): number =>
+  right.score - left.score
+  || right.mergedSize - left.mergedSize
+  || left.minObsId.localeCompare(right.minObsId)
+  || left.leftId - right.leftId
+  || left.rightId - right.rightId;
+
+const clusterPairKey = (leftId: number, rightId: number): string =>
+  leftId < rightId ? `${leftId}:${rightId}` : `${rightId}:${leftId}`;
+
+const pairIds = (leftId: number, rightId: number): { leftId: number; rightId: number } =>
+  leftId < rightId ? { leftId, rightId } : { leftId: rightId, rightId: leftId };
+
+const isClusterableFaceInput = (observation: FaceClusterInput): boolean =>
+  observation.quality >= FACE_QUALITY.minScore
+  && (observation.boxPx === undefined || observation.boxPx >= FACE_QUALITY.minBoxPx);
+
+const pushMergeCandidate = (
+  heap: MergeHeap,
+  clusters: ReadonlyMap<number, AgglomerativeCluster>,
+  edgeSums: ReadonlyMap<string, number>,
+  leftId: number,
+  rightId: number,
+): void => {
+  const left = clusters.get(leftId);
+  const right = clusters.get(rightId);
+  if (left === undefined || right === undefined) return;
+  const sum = edgeSums.get(clusterPairKey(leftId, rightId)) ?? 0;
+  const score = sum / (left.members.length * right.members.length);
+  const ids = pairIds(leftId, rightId);
+  heap.push({
+    ...ids,
+    score,
+    mergedSize: left.members.length + right.members.length,
+    minObsId: left.minObsId.localeCompare(right.minObsId) <= 0 ? left.minObsId : right.minObsId,
+  });
+};
+
+const centroidFromMemberTotals = (totals: readonly number[], size: number): number[] =>
+  normalizeEmbedding(totals.map((value) => value / size));
+
+export const clusterFaceObservations = (
+  observations: readonly FaceClusterInput[],
+  options: FaceClusteringOptions = {},
+): FaceClusteringOutcome => {
+  const clusterCutSimilarity = options.clusterCutSimilarity ?? FACE_CLUSTERING.clusterCutSimilarity;
+  const allOrdered = [...observations].sort((left, right) => left.obsId.localeCompare(right.obsId));
+  const ordered = allOrdered.filter(isClusterableFaceInput);
+  const unassignedObsIds = allOrdered
+    .filter((observation) => !isClusterableFaceInput(observation))
+    .map((observation) => observation.obsId);
+
+  const clusters = new Map<number, AgglomerativeCluster>();
+  for (let index = 0; index < ordered.length; index += 1) {
+    const observation = ordered[index];
+    if (observation === undefined) continue;
+    clusters.set(index, {
+      id: index,
+      members: [index],
+      minObsId: observation.obsId,
+      totals: [...observation.embedding],
     });
   }
 
+  const edgeSums = new Map<string, number>();
+  const neighbours = new Map<number, Set<number>>();
+  const heap = new MergeHeap();
+  for (let leftBlockStart = 0; leftBlockStart < ordered.length; leftBlockStart += FACE_CLUSTERING.edgeBlockSize) {
+    const leftBlockEnd = Math.min(leftBlockStart + FACE_CLUSTERING.edgeBlockSize, ordered.length);
+    for (let rightBlockStart = leftBlockStart; rightBlockStart < ordered.length; rightBlockStart += FACE_CLUSTERING.edgeBlockSize) {
+      const rightBlockEnd = Math.min(rightBlockStart + FACE_CLUSTERING.edgeBlockSize, ordered.length);
+      options.onSimilarityBlock?.((leftBlockEnd - leftBlockStart) * (rightBlockEnd - rightBlockStart));
+      for (let leftIndex = leftBlockStart; leftIndex < leftBlockEnd; leftIndex += 1) {
+        const left = ordered[leftIndex];
+        if (left === undefined) continue;
+        const firstRight = rightBlockStart === leftBlockStart ? leftIndex + 1 : rightBlockStart;
+        for (let rightIndex = firstRight; rightIndex < rightBlockEnd; rightIndex += 1) {
+          const right = ordered[rightIndex];
+          if (right === undefined) continue;
+          const similarity = cosineSimilarity(left.embedding, right.embedding);
+          if (similarity < FACE_CLUSTERING.reviewBandMin) continue;
+          edgeSums.set(clusterPairKey(leftIndex, rightIndex), similarity);
+          const leftNeighbours = neighbours.get(leftIndex) ?? new Set<number>();
+          leftNeighbours.add(rightIndex);
+          neighbours.set(leftIndex, leftNeighbours);
+          const rightNeighbours = neighbours.get(rightIndex) ?? new Set<number>();
+          rightNeighbours.add(leftIndex);
+          neighbours.set(rightIndex, rightNeighbours);
+          pushMergeCandidate(heap, clusters, edgeSums, leftIndex, rightIndex);
+        }
+      }
+    }
+  }
+
+  let nextClusterId = ordered.length;
+  while (true) {
+    const candidate = heap.pop();
+    if (candidate === undefined || candidate.score < clusterCutSimilarity) break;
+    const left = clusters.get(candidate.leftId);
+    const right = clusters.get(candidate.rightId);
+    if (left === undefined || right === undefined) continue;
+    const currentSum = edgeSums.get(clusterPairKey(left.id, right.id)) ?? 0;
+    const currentScore = currentSum / (left.members.length * right.members.length);
+    if (Math.abs(currentScore - candidate.score) > Number.EPSILON) continue;
+
+    const members = [...left.members, ...right.members].sort((leftMember, rightMember) =>
+      (ordered[leftMember]?.obsId ?? '').localeCompare(ordered[rightMember]?.obsId ?? ''));
+    const merged: AgglomerativeCluster = {
+      id: nextClusterId,
+      members,
+      minObsId: left.minObsId.localeCompare(right.minObsId) <= 0 ? left.minObsId : right.minObsId,
+      totals: left.totals.map((value, index) => value + (right.totals[index] ?? 0)),
+    };
+    nextClusterId += 1;
+
+    const neighbourIds = new Set<number>([
+      ...(neighbours.get(left.id) ?? []),
+      ...(neighbours.get(right.id) ?? []),
+    ]);
+    neighbourIds.delete(left.id);
+    neighbourIds.delete(right.id);
+    clusters.delete(left.id);
+    clusters.delete(right.id);
+    neighbours.delete(left.id);
+    neighbours.delete(right.id);
+    clusters.set(merged.id, merged);
+    neighbours.set(merged.id, new Set<number>());
+
+    for (const neighbourId of neighbourIds) {
+      const neighbourCluster = clusters.get(neighbourId);
+      if (neighbourCluster === undefined) continue;
+      const mergedSum = (edgeSums.get(clusterPairKey(left.id, neighbourId)) ?? 0)
+        + (edgeSums.get(clusterPairKey(right.id, neighbourId)) ?? 0);
+      neighbours.get(neighbourId)?.delete(left.id);
+      neighbours.get(neighbourId)?.delete(right.id);
+      if (mergedSum <= 0) continue;
+      edgeSums.set(clusterPairKey(merged.id, neighbourId), mergedSum);
+      neighbours.get(neighbourId)?.add(merged.id);
+      neighbours.get(merged.id)?.add(neighbourId);
+      pushMergeCandidate(heap, clusters, edgeSums, merged.id, neighbourId);
+    }
+  }
+
   const taken = new Set<string>();
-  const clusters: FaceCluster[] = [];
-  const unassignedObsIds: string[] = [];
-  for (const cluster of provisional) {
-    if (cluster.memberObsIds.length < FACE_CLUSTERING.newClusterMinObservations) {
-      unassignedObsIds.push(...cluster.memberObsIds);
+  const finalClusters: FaceCluster[] = [];
+  for (const cluster of [...clusters.values()].sort((left, right) => left.minObsId.localeCompare(right.minObsId))) {
+    const memberObsIds = cluster.members
+      .map((index) => ordered[index]?.obsId)
+      .filter((obsId): obsId is string => obsId !== undefined)
+      .sort();
+    if (memberObsIds.length < FACE_CLUSTERING.newClusterMinObservations) {
+      unassignedObsIds.push(...memberObsIds);
       continue;
     }
-    const personId = personIdFromSeed(cluster.seedObsId, taken);
+    const personId = personIdFromSeed(memberObsIds[0] ?? cluster.minObsId, taken);
     taken.add(personId);
-    clusters.push({ personId, centroid: cluster.centroid, memberObsIds: [...cluster.memberObsIds].sort() });
+    finalClusters.push({
+      personId,
+      centroid: centroidFromMemberTotals(cluster.totals, cluster.members.length),
+      memberObsIds,
+    });
   }
-  unassignedObsIds.sort();
-  return { clusters, unassignedObsIds };
+
+  return { clusters: finalClusters, unassignedObsIds: unassignedObsIds.sort() };
 };
 
 export const shouldMergePeople = (

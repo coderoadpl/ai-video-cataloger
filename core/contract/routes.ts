@@ -908,6 +908,10 @@ export const facesReclusterOutputSchema = z.object({
   namesCarried: z.number().int().nonnegative(),
   namesDropped: z.array(z.string()),
   personsWithoutExemplar: z.number().int().nonnegative(),
+  largestClusters: z.array(z.object({
+    personId: z.string().min(1),
+    observations: z.number().int().nonnegative(),
+  })),
   elapsedMs: z.number().int().nonnegative(),
 });
 

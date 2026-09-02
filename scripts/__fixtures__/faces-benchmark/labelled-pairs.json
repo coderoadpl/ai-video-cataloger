@@ -1,0 +1,8 @@
+[
+  { "left": "obs-a1", "right": "obs-a2", "verdict": "same" },
+  { "left": "obs-b1", "right": "obs-b2", "verdict": "same" },
+  { "left": "obs-a1", "right": "obs-b1", "verdict": "different" },
+  { "left": "obs-a2", "right": "obs-b2", "verdict": "different" },
+  { "left": "obs-a1", "right": "obs-b2", "verdict": "unsure" },
+  { "left": "obs-a2", "right": "obs-b1", "verdict": "not_face" }
+]

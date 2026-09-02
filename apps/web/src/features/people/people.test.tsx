@@ -24,12 +24,13 @@ type FacePerson = z.output<typeof facesPeopleOutputSchema>['people'][number];
 const FOLDER = '/videos';
 const centroid = Array.from({ length: 128 }, () => 0);
 
-const terminalJob = (jobId: string, kind: string) => ({
+const terminalJob = (jobId: string, kind: string, result?: unknown) => ({
   jobId,
   kind,
   status: 'completed',
   progress: null,
   progressEvents: [],
+  ...(result === undefined ? {} : { result }),
   error: null,
   createdAt: '2026-01-01T00:00:00.000Z',
   updatedAt: '2026-01-01T00:00:00.000Z',
@@ -438,6 +439,62 @@ describe('PeopleView', () => {
     expect(bodies).toContainEqual({ fromPersonId: 'p2', toPersonId: 'p1' });
     expect(bodies).toContainEqual({ personId: 'p1', force: true });
     expect(bodies).toContainEqual({ force: true });
+  }, scaledTimeout(30_000));
+
+  it('requires a recluster dry-run report before enabling the destructive run', async () => {
+    const bodies: unknown[] = [];
+    stubPeople({
+      facesEnabled: true,
+      artifactsReady: true,
+      observations: 4,
+      people: [person({ personId: 'p1', displayName: 'Sample Name', observationCount: 4 })],
+    });
+    server.use(
+      http.post('/api/faces/recluster', async ({ request }) => {
+        const body = await request.json();
+        bodies.push(body);
+        return HttpResponse.json({
+          ok: true,
+          data: { jobId: body !== null && typeof body === 'object' && 'dryRun' in body && body.dryRun === true ? 'dry-recluster' : 'real-recluster' },
+        });
+      }),
+      http.get('/api/jobs/status', ({ request }) => {
+        const jobId = new URL(request.url).searchParams.get('jobId') ?? '';
+        const result = {
+          dryRun: jobId === 'dry-recluster',
+          observations: 4,
+          personsBefore: 1,
+          personsAfter: 2,
+          observationsReassigned: 4,
+          observationsAssigned: 4,
+          observationsUnassigned: 0,
+          namesCarried: 0,
+          namesDropped: ['Sample Name'],
+          personsWithoutExemplar: 1,
+          largestClusters: [{ personId: 'person-a', observations: 3 }],
+          elapsedMs: 5,
+        };
+        return HttpResponse.json({ ok: true, data: terminalJob(jobId, 'faces_recluster', result) });
+      }),
+    );
+
+    renderThemed(
+      <PeopleView active folder={FOLDER} addLine={vi.fn()} onOpenSettings={vi.fn()} onSearchInLibrary={vi.fn()} intervalMs={0} />,
+    );
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-recluster'));
+    expect((await screen.findByTestId('people-recluster-confirm')).getAttribute('disabled')).not.toBeNull();
+
+    fireEvent.click(screen.getByTestId('people-recluster-dry-run'));
+
+    expect(await screen.findByTestId('people-recluster-report')).toBeDefined();
+    await waitFor(() => expect(screen.getByTestId('people-recluster-confirm').getAttribute('disabled')).toBeNull());
+    expect(screen.getByTestId('people-recluster-largest').textContent).toContain('person-a: 3');
+    fireEvent.click(screen.getByTestId('people-recluster-confirm'));
+
+    await waitFor(() => expect(bodies).toContainEqual({ dryRun: false }));
+    expect(bodies).toContainEqual({ dryRun: true });
   }, scaledTimeout(30_000));
 
   it('surfaces a purge mutation failure via a visible alert instead of only the terminal', async () => {

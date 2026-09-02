@@ -89,6 +89,7 @@ export interface FacesReclusterOutput {
   namesCarried: number;
   namesDropped: string[];
   personsWithoutExemplar: number;
+  largestClusters: { personId: string; observations: number }[];
   elapsedMs: number;
 }
 
@@ -229,21 +230,22 @@ export const runFacesReclusterPass = async (
     obsId: observation.obsId,
     embedding: observation.embedding,
     quality: observation.quality,
+    boxPx: Math.min(observation.bbox.width, observation.bbox.height),
   }));
   const outcome = clusterFaceObservations(clusterInputs);
 
   const postCancellation = cancelled(progress);
   if (!postCancellation.ok) return postCancellation;
 
-  const namedPeople = inheritNames(outcome, {
-    oldPeople: peopleBefore.value,
-    oldAssignments: new Map(observations.value.map((observation) => [observation.obsId, observation.personId])),
-  });
+  const namesDropped = peopleBefore.value
+    .map((person) => person.displayName)
+    .filter((displayName): displayName is string => displayName !== null)
+    .sort();
 
   const nowIso = new Date().toISOString();
-  const people: Person[] = namedPeople.clusters.map((cluster) => ({
+  const people: Person[] = outcome.clusters.map((cluster) => ({
     personId: cluster.personId,
-    displayName: cluster.displayName,
+    displayName: null,
     kind: 'face',
     createdAt: nowIso,
     centroid: cluster.centroid,
@@ -282,88 +284,19 @@ export const runFacesReclusterPass = async (
     observationsReassigned,
     observationsAssigned: outcome.clusters.reduce((sum, cluster) => sum + cluster.memberObsIds.length, 0),
     observationsUnassigned: outcome.unassignedObsIds.length,
-    namesCarried: namedPeople.namesCarried,
-    namesDropped: namedPeople.namesDropped,
+    namesCarried: 0,
+    namesDropped,
     personsWithoutExemplar,
+    largestClusters: outcome.clusters
+      .map((cluster) => ({ personId: cluster.personId, observations: cluster.memberObsIds.length }))
+      .sort((left, right) => right.observations - left.observations || left.personId.localeCompare(right.personId))
+      .slice(0, 5),
     elapsedMs: Date.now() - startedAt,
   };
 
   const done = await report(progress, { step: 'faces_done', percentage: 100, data: { ...output } });
   if (!done.ok) return done;
   return ok(output);
-};
-
-interface NamedCluster {
-  personId: string;
-  displayName: string | null;
-  centroid: number[];
-  memberObsIds: string[];
-}
-
-const inheritNames = (
-  outcome: { clusters: readonly { personId: string; centroid: number[]; memberObsIds: readonly string[] }[] },
-  history: { oldPeople: readonly Person[]; oldAssignments: ReadonlyMap<string, string | null> },
-): { clusters: NamedCluster[]; namesCarried: number; namesDropped: string[] } => {
-  const oldNames = new Map(
-    history.oldPeople
-      .filter((person): person is Person & { displayName: string } => person.displayName !== null)
-      .map((person) => [person.personId, person.displayName]),
-  );
-
-  const claimedNames = new Set<string>();
-  const clusters: NamedCluster[] = [];
-  for (const cluster of outcome.clusters) {
-    const plurality = new Map<string, number>();
-    for (const obsId of cluster.memberObsIds) {
-      const oldPersonId = history.oldAssignments.get(obsId);
-      if (oldPersonId === null || oldPersonId === undefined) continue;
-      const name = oldNames.get(oldPersonId);
-      if (name === undefined) continue;
-      plurality.set(name, (plurality.get(name) ?? 0) + 1);
-    }
-    const ranked = [...plurality.entries()].sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
-    clusters.push({
-      personId: cluster.personId,
-      displayName: ranked[0]?.[0] ?? null,
-      centroid: cluster.centroid,
-      memberObsIds: [...cluster.memberObsIds],
-    });
-  }
-
-  const byName = new Map<string, { clusterIndex: number; votes: number }[]>();
-  clusters.forEach((cluster, index) => {
-    if (cluster.displayName === null) return;
-    const votes = cluster.memberObsIds.filter((obsId) => {
-      const oldPersonId = history.oldAssignments.get(obsId);
-      return oldPersonId !== null && oldPersonId !== undefined && oldNames.get(oldPersonId) === cluster.displayName;
-    }).length;
-    const existing = byName.get(cluster.displayName) ?? [];
-    existing.push({ clusterIndex: index, votes });
-    byName.set(cluster.displayName, existing);
-  });
-
-  const clusterSize = (index: number): number => clusters[index]?.memberObsIds.length ?? 0;
-  const clusterPersonId = (index: number): string => clusters[index]?.personId ?? '';
-
-  let namesCarried = 0;
-  for (const [name, candidates] of byName) {
-    const winner = [...candidates].sort((left, right) =>
-      right.votes - left.votes
-      || clusterSize(right.clusterIndex) - clusterSize(left.clusterIndex)
-      || clusterPersonId(left.clusterIndex).localeCompare(clusterPersonId(right.clusterIndex)))[0];
-    for (const candidate of candidates) {
-      if (winner !== undefined && candidate.clusterIndex === winner.clusterIndex) continue;
-      const loser = clusters[candidate.clusterIndex];
-      if (loser !== undefined) loser.displayName = null;
-    }
-    if (winner !== undefined) {
-      claimedNames.add(name);
-      namesCarried += 1;
-    }
-  }
-
-  const namesDropped = [...oldNames.values()].filter((name) => !claimedNames.has(name)).sort();
-  return { clusters, namesCarried, namesDropped };
 };
 
 export const facesPeople = async (deps: FacesDeps): Promise<Result<{ people: FacePersonView[] }, AppError>> => {

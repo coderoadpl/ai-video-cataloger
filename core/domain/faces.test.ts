@@ -5,6 +5,7 @@ import {
   FACE_EMBEDDING_DIM,
   FACE_ENGINE_VERSION,
   FACE_QUALITY,
+  DEFAULT_FACE_CLUSTER_CUT_SIMILARITY,
   boxIoU,
   classifyFace,
   clusterFaceObservations,
@@ -166,8 +167,83 @@ describe('clusterFaceObservations', () => {
     const normalize = (outcome: typeof first) =>
       outcome.clusters
         .map((cluster) => [...cluster.memberObsIds].sort())
-        .sort((left, right) => (left[0] ?? '').localeCompare(right[0] ?? ''));
+      .sort((left, right) => (left[0] ?? '').localeCompare(right[0] ?? ''));
     expect(normalize(second)).toEqual(normalize(first));
+  });
+
+  it('uses stable person ids from the lexicographically first member', () => {
+    const outcome = clusterFaceObservations([
+      { obsId: 'z-last', embedding: unitAtAngleDeg(1), quality: 0.9 },
+      { obsId: 'a-first', embedding: unitAtAngleDeg(0), quality: 0.9 },
+    ]);
+
+    expect(outcome.clusters[0]?.personId).toBe('person-a-first');
+  });
+
+  it('does not chain two people through a bridging observation', () => {
+    const bridge = [0.58, Math.sqrt(1 - 0.58 * 0.58), 0];
+    const far = [0.2, 0.5696021745597227, Math.sqrt(1 - 0.2 * 0.2 - 0.5696021745597227 * 0.5696021745597227)];
+    const farMate = [0.2, 0.349, 0.704, Math.sqrt(1 - 0.2 * 0.2 - 0.349 * 0.349 - 0.704 * 0.704)];
+
+    const outcome = clusterFaceObservations([
+      { obsId: 'a-1', embedding: [1, 0, 0], quality: 0.9 },
+      { obsId: 'a-bridge', embedding: bridge, quality: 0.9 },
+      { obsId: 'b-1', embedding: far, quality: 0.9 },
+      { obsId: 'b-2', embedding: farMate, quality: 0.9 },
+    ]);
+
+    expect(outcome.clusters.map((cluster) => cluster.memberObsIds)).toEqual([
+      ['a-1', 'a-bridge'],
+      ['b-1', 'b-2'],
+    ]);
+  });
+
+  it('scores missing sparse edges as zero for average linkage', () => {
+    const partialNeighbour = [0.37, -0.08362840386889553, Math.sqrt(1 - 0.37 * 0.37 - 0.08362840386889553 * 0.08362840386889553)];
+    const outcome = clusterFaceObservations([
+      { obsId: 'a-1', embedding: [1, 0, 0], quality: 0.9 },
+      { obsId: 'a-2', embedding: unitAtCosine(0.7), quality: 0.9 },
+      { obsId: 'b-1', embedding: partialNeighbour, quality: 0.9 },
+    ]);
+
+    expect(outcome.clusters.map((cluster) => cluster.memberObsIds)).toEqual([['a-1', 'a-2']]);
+    expect(outcome.unassignedObsIds).toEqual(['b-1']);
+  });
+
+  it('keeps observations below the face quality floor unassigned', () => {
+    const outcome = clusterFaceObservations([
+      { obsId: 'good-1', embedding: unitAtAngleDeg(0), quality: FACE_QUALITY.minScore, boxPx: FACE_QUALITY.minBoxPx },
+      { obsId: 'good-2', embedding: unitAtAngleDeg(1), quality: 0.9, boxPx: 80 },
+      { obsId: 'low-score', embedding: unitAtAngleDeg(0), quality: FACE_QUALITY.minScore - 0.01, boxPx: 80 },
+      { obsId: 'small-box', embedding: unitAtAngleDeg(0), quality: 0.9, boxPx: FACE_QUALITY.minBoxPx - 1 },
+    ]);
+
+    expect(outcome.clusters.map((cluster) => cluster.memberObsIds)).toEqual([['good-1', 'good-2']]);
+    expect(outcome.unassignedObsIds).toEqual(['low-score', 'small-box']);
+  });
+
+  it('uses the supplied cut threshold for benchmark sweeps', () => {
+    const observations = [
+      { obsId: 'a', embedding: unitAtAngleDeg(0), quality: 0.9 },
+      { obsId: 'b', embedding: unitAtAngleDeg(60), quality: 0.9 },
+    ];
+
+    expect(clusterFaceObservations(observations).clusters).toEqual([]);
+    expect(clusterFaceObservations(observations, { clusterCutSimilarity: 0.49 }).clusters).toHaveLength(1);
+  });
+
+  it('evaluates similarity candidates in bounded blocks', () => {
+    const blockSizes: number[] = [];
+    const observations = Array.from({ length: 600 }, (_unused, index) => ({
+      obsId: `obs-${String(index).padStart(4, '0')}`,
+      embedding: [0, 0],
+      quality: 0.9,
+    }));
+
+    clusterFaceObservations(observations, { onSimilarityBlock: (candidatePairs) => blockSizes.push(candidatePairs) });
+
+    expect(Math.max(...blockSizes)).toBeLessThanOrEqual(FACE_CLUSTERING.edgeBlockSize * FACE_CLUSTERING.edgeBlockSize);
+    expect(blockSizes.length).toBeGreaterThan(1);
   });
 });
 
@@ -357,6 +433,8 @@ describe('research thresholds are pinned', () => {
       autoAssignSimilarity: 0.5,
       autoAssignMargin: 0.05,
       reviewBandMin: 0.36,
+      clusterCutSimilarity: DEFAULT_FACE_CLUSTER_CUT_SIMILARITY,
+      edgeBlockSize: 256,
       newClusterSimilarity: 0.5,
       newClusterMinObservations: 2,
       autoMergeSimilarity: 0.55,
@@ -367,6 +445,11 @@ describe('research thresholds are pinned', () => {
 
   it('never makes founding an identity harder than joining one', () => {
     expect(FACE_CLUSTERING.newClusterSimilarity).toBeLessThanOrEqual(FACE_CLUSTERING.autoAssignSimilarity);
+  });
+
+  it('keeps the rebuild cut above the candidate review band', () => {
+    expect(DEFAULT_FACE_CLUSTER_CUT_SIMILARITY).toBe(FACE_CLUSTERING.clusterCutSimilarity);
+    expect(FACE_CLUSTERING.clusterCutSimilarity).toBeGreaterThan(FACE_CLUSTERING.reviewBandMin);
   });
 
   it('a threshold or crop-policy change is not an extraction change — the engine version stays 2', () => {

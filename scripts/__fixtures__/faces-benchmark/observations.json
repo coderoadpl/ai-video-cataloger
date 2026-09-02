@@ -1,0 +1,6 @@
+[
+  { "obsId": "obs-a1", "embedding": [1, 0, 0], "quality": 0.95, "boxPx": 80 },
+  { "obsId": "obs-a2", "embedding": [0.99, 0.1410673598, 0], "quality": 0.94, "boxPx": 80 },
+  { "obsId": "obs-b1", "embedding": [0.35, 0.9367496998, 0], "quality": 0.93, "boxPx": 80 },
+  { "obsId": "obs-b2", "embedding": [0.35, 0.9267496998, 0.1410673598], "quality": 0.92, "boxPx": 80 }
+]
