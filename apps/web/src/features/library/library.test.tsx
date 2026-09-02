@@ -15,6 +15,7 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { createAppTheme } from '../../theme.js';
 import { LibraryView } from './LibraryView.js';
+import { PersonMediaPanel } from './PersonMediaPanel.js';
 import type { LibraryItem, LibraryPhotoItem, LibraryVideoItem } from './core/index.js';
 
 const theme = createAppTheme('light');
@@ -1090,6 +1091,57 @@ describe('LibraryView', () => {
     await waitFor(() => expect(screen.getAllByTestId('library-tile')).toHaveLength(3));
     const fingerprints = screen.getAllByTestId('library-tile').map((tile) => tile.getAttribute('data-fingerprint'));
     expect(new Set(fingerprints).size).toBe(3);
+  });
+
+  it('loads more person media by cursor so items behind the displayed total are reachable', async () => {
+    const page1 = [photoItem({ fingerprint: 'ph_0000000000000001' })];
+    const page2 = [photoItem({ fingerprint: 'ph_0000000000000002' })];
+
+    server.use(
+      http.get('/api/library/collection', ({ request }) => {
+        const url = new URL(request.url);
+        collectionRequests.push(url.searchParams);
+        const cursor = url.searchParams.get('cursor');
+        const items = cursor === null ? page1 : page2;
+        return HttpResponse.json({
+          ok: true,
+          data: {
+            query: null,
+            media: 'photo',
+            limit: 200,
+            total: 201,
+            videoTotal: 0,
+            photoTotal: 201,
+            mediaTotals: { all: 201, video: 0, photo: 201 },
+            count: items.length,
+            items,
+            nextCursor: cursor === null ? 'page-2' : null,
+          },
+        });
+      }),
+    );
+
+    renderThemed(
+      <PersonMediaPanel
+        personId="person-abc123"
+        label="Anna"
+        media="photo"
+        onClose={vi.fn()}
+        onOpenResult={vi.fn()}
+        onOpenPhotoInAnalysis={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText('Anna (201)')).toBeDefined();
+    expect((await screen.findByTestId('library-tile')).getAttribute('data-fingerprint')).toBe('ph_0000000000000001');
+
+    fireEvent.click(await screen.findByTestId('person-media-load-more'));
+
+    await waitFor(() => expect(collectionRequests.some((params) => params.get('cursor') === 'page-2')).toBe(true));
+    await waitFor(() => {
+      const fingerprints = screen.getAllByTestId('library-tile').map((tile) => tile.getAttribute('data-fingerprint'));
+      expect(fingerprints).toEqual(['ph_0000000000000001', 'ph_0000000000000002']);
+    });
   });
 
   describe('mixed media (Kolekcja)', () => {

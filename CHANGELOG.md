@@ -53,6 +53,13 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- SQL.js-backed catalogs now auto-flush dirty state after the elapsed interval even when no further writes occur.
+- Photo face indexing now skips a photo only after a matching completion marker exists for the current face engine version.
+- PHOTO LIBRA imports now skip and count legacy foreign face embeddings instead of writing them into native face identities.
+- Face benchmark real-data mapping now derives native photo fingerprints from the first 16 hex characters of SHA-256 hashes.
+- Face benchmark IoU matching now pairs reference and native observations one-to-one instead of reusing a native detection.
+- Face benchmark reports labelled-sample pairwise F1 separately from full reference-partition pairwise F1.
+- Person media panels now page through all matching library items with cursor load-more instead of showing only the first page.
 - `faces exemplars` normalizes existing observation crop paths to the current catalog home when the re-anchored file is present, and reports how many paths were normalized.
 - E2E face model fixtures now stay inside isolated test homes, and Vitest/e2e guards fail fast before tests can write through the host face-model cache.
 - The Vitest home guard no longer forces a shared `AVC_HOME_DIRECTORY` across every test in a worker; CLI-spawning tests keep the per-test isolated home they pass explicitly instead of leaking state across tests.

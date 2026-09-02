@@ -87,6 +87,7 @@ import {
   photosSchemaMeta,
   PHOTOS_SCHEMA_VERSION,
 } from './photos-schema.js';
+import { clearAutoFlush, createAutoFlushState, scheduleAutoFlush } from './auto-flush.js';
 import { CatalogAppError, HomeLock, type CatalogLockFs } from './home-lock.js';
 import { countTerm } from './search-score.js';
 import { normalizeStoredTagNames } from './tag-normalization-migration.js';
@@ -126,6 +127,19 @@ export class SqlJsPhotosStore implements PhotosStore {
   private dirtyCount = 0;
   private lastPersistedAtMs: number;
   private batchDepth = 0;
+  private readonly autoFlushState = createAutoFlushState();
+  private readonly flushOnExit = (): void => {
+    if (this.state === null || this.dirtyCount === 0) return;
+    try {
+      this.lock.takeWriteLock();
+      this.persist(this.state);
+      this.lock.releaseIfIdle();
+    } catch {
+      clearAutoFlush(this.autoFlushState);
+      this.state = null;
+      this.dirtyCount = 0;
+    }
+  };
   private state: {
     SQL: SqlJsStatic;
     client: Database;
@@ -189,6 +203,7 @@ export class SqlJsPhotosStore implements PhotosStore {
 
   async flush(): Promise<Result<void, AppError>> {
     if (this.state === null || this.dirtyCount === 0) {
+      clearAutoFlush(this.autoFlushState);
       this.lock.releaseIfIdle();
       return ok(undefined);
     }
@@ -198,6 +213,7 @@ export class SqlJsPhotosStore implements PhotosStore {
       this.lock.releaseIfIdle();
       return ok(undefined);
     } catch (cause) {
+      clearAutoFlush(this.autoFlushState);
       this.state = null;
       this.dirtyCount = 0;
       return failure(cause);
@@ -211,6 +227,7 @@ export class SqlJsPhotosStore implements PhotosStore {
       this.persist(this.state);
       return ok(undefined);
     } catch (cause) {
+      clearAutoFlush(this.autoFlushState);
       this.state = null;
       this.dirtyCount = 0;
       return failure(cause);
@@ -223,6 +240,7 @@ export class SqlJsPhotosStore implements PhotosStore {
       if (this.state !== null) this.state.client.close();
       this.state = null;
       this.dirtyCount = 0;
+      clearAutoFlush(this.autoFlushState);
       this.lock.releaseIfIdle();
       return flushed;
     } catch (cause) {
@@ -247,6 +265,7 @@ export class SqlJsPhotosStore implements PhotosStore {
         try {
           this.persist(this.state);
         } catch {
+          clearAutoFlush(this.autoFlushState);
           this.state = null;
           this.dirtyCount = 0;
         }
@@ -1175,9 +1194,11 @@ export class SqlJsPhotosStore implements PhotosStore {
       const value = operation(state.db, state.client);
       this.dirtyCount += 1;
       if (this.batchDepth === 0 && this.shouldAutoFlush()) this.persist(state);
+      else if (this.batchDepth === 0) this.scheduleAutoFlush();
       return ok(value);
     } catch (cause) {
       if (!(cause instanceof CatalogAppError)) {
+        clearAutoFlush(this.autoFlushState);
         this.state = null;
         this.dirtyCount = 0;
       }
@@ -1186,6 +1207,7 @@ export class SqlJsPhotosStore implements PhotosStore {
   }
 
   private persist(state: NonNullable<SqlJsPhotosStore['state']>): void {
+    clearAutoFlush(this.autoFlushState);
     persistDatabase(this.filePath, state.client);
     this.onPersist();
     state.fileState = fileStateOf(this.filePath);
@@ -1197,6 +1219,16 @@ export class SqlJsPhotosStore implements PhotosStore {
     if (this.dirtyCount >= AUTO_FLUSH_MAX_MUTATION_COUNT) return true;
     return this.dirtyCount >= AUTO_FLUSH_MIN_MUTATION_COUNT
       && this.nowMs() - this.lastPersistedAtMs >= AUTO_FLUSH_INTERVAL_MS;
+  }
+
+  private scheduleAutoFlush(): void {
+    if (this.dirtyCount === 0) return;
+    scheduleAutoFlush(
+      this.autoFlushState,
+      Math.max(0, AUTO_FLUSH_INTERVAL_MS - (this.nowMs() - this.lastPersistedAtMs)),
+      () => { void this.flush(); },
+      this.flushOnExit,
+    );
   }
 
   private async ensureOpen(canPersist: boolean): Promise<NonNullable<SqlJsPhotosStore['state']>> {

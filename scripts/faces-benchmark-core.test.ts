@@ -5,6 +5,10 @@ import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 
 import {
+  photoFingerprintFromSha256,
+} from '@core/domain/index.js';
+
+import {
   benchmarkObservationSchema,
   benchmarkReportTable,
   buildFixtureCorpus,
@@ -49,7 +53,7 @@ describe('faces benchmark metrics', () => {
     expect(report.largestZeroDifferentThreshold).toBe(0.56);
     expect(report.selectedThreshold).toBe(0.56);
     expect(report.pairSample.length).toBeGreaterThan(0);
-    expect(benchmarkReportTable(report)).toContain('threshold precision recall f1');
+    expect(benchmarkReportTable(report)).toContain('threshold samplePrecision sampleRecall sampleF1 referencePrecision referenceRecall referenceF1');
   });
 
   it('selects the higher zero-different threshold over a lower F1 optimum', () => {
@@ -100,31 +104,33 @@ describe('faces benchmark metrics', () => {
   });
 
   it('matches external reference ids to native photo observations by fingerprint and bbox IoU', () => {
+    const sourceHash = '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef';
     const reference: ReferencePartitionRecord[] = [
       {
         observationId: 'external-a',
         clusterId: 'identity-a',
-        sourceContentHash: 'abc123',
+        sourceContentHash: sourceHash,
         bbox: { x: 10, y: 10, width: 50, height: 50 },
       },
       {
         observationId: 'external-missing',
         clusterId: 'identity-b',
-        sourceContentHash: 'abc123',
+        sourceContentHash: sourceHash,
         bbox: { x: 200, y: 200, width: 50, height: 50 },
       },
     ];
+    const fingerprint = photoFingerprintFromSha256(sourceHash);
     const native: NativeObservation[] = [
       {
-        obsId: 'ph_abc123:face:1:1',
-        fingerprint: 'ph_abc123',
+        obsId: `${fingerprint}:face:1:1`,
+        fingerprint,
         bbox: { x: 12, y: 12, width: 50, height: 50 },
         embedding: [1, 0],
         quality: 1,
       },
       {
-        obsId: 'ph_abc123:face:1:2',
-        fingerprint: 'ph_abc123',
+        obsId: `${fingerprint}:face:1:2`,
+        fingerprint,
         bbox: { x: 100, y: 100, width: 50, height: 50 },
         embedding: [0, 1],
         quality: 1,
@@ -135,10 +141,58 @@ describe('faces benchmark metrics', () => {
       { left: 'external-a', right: 'external-missing', verdict: 'different' },
     ]);
 
-    expect(corpus.observations.map((observation) => observation.obsId)).toEqual(['ph_abc123:face:1:1']);
-    expect(corpus.partition.get('ph_abc123:face:1:1')).toBe('identity-a');
-    expect(corpus.pairs[0]).toEqual({ left: 'ph_abc123:face:1:1', right: 'external-missing', verdict: 'different' });
+    expect(corpus.observations.map((observation) => observation.obsId)).toEqual([`${fingerprint}:face:1:1`]);
+    expect(corpus.partition.get(`${fingerprint}:face:1:1`)).toBe('identity-a');
+    expect(corpus.pairs[0]).toEqual({ left: `${fingerprint}:face:1:1`, right: 'external-missing', verdict: 'different' });
     expect(corpus.unmatchedReference).toBe(1);
     expect(corpus.unmatchedNative).toBe(1);
+  });
+
+  it('matches reference boxes to native detections one-to-one by descending IoU', () => {
+    const fingerprint = 'ph_0123456789abcdef';
+    const reference: ReferencePartitionRecord[] = [
+      {
+        observationId: 'external-low-iou',
+        clusterId: 'identity-low',
+        photoFingerprint: fingerprint,
+        bbox: { x: 5, y: 5, width: 100, height: 100 },
+      },
+      {
+        observationId: 'external-high-iou',
+        clusterId: 'identity-high',
+        photoFingerprint: fingerprint,
+        bbox: { x: 0, y: 0, width: 100, height: 100 },
+      },
+    ];
+    const native: NativeObservation[] = [{
+      obsId: `${fingerprint}:face:1:1`,
+      fingerprint,
+      bbox: { x: 0, y: 0, width: 100, height: 100 },
+      embedding: [1, 0],
+      quality: 1,
+    }];
+
+    const corpus = matchReferenceToNative(reference, native, []);
+
+    expect(corpus.observations.map((observation) => observation.obsId)).toEqual([`${fingerprint}:face:1:1`]);
+    expect(corpus.partition.get(`${fingerprint}:face:1:1`)).toBe('identity-high');
+    expect(corpus.unmatchedReference).toBe(1);
+    expect(corpus.unmatchedNative).toBe(0);
+  });
+
+  it('reports labelled-sample F1 separately from reference-partition F1', () => {
+    const records: ReferencePartitionRecord[] = [
+      { observationId: 'a1', clusterId: 'identity-a', obsId: 'a1', embedding: [1, 0], quality: 1 },
+      { observationId: 'a2', clusterId: 'identity-a', obsId: 'a2', embedding: [1, 0], quality: 1 },
+      { observationId: 'b1', clusterId: 'identity-b', obsId: 'b1', embedding: [0, 1], quality: 1 },
+    ];
+
+    const report = runBenchmark(buildFixtureCorpus(records, []), [0.9], [0]);
+    const row = report.thresholds[0];
+
+    expect(row?.pairwise.f1).toBe(0);
+    expect(row?.referencePairwise.f1).toBe(1);
+    expect(benchmarkReportTable(report)).toContain('sampleF1');
+    expect(benchmarkReportTable(report)).toContain('referenceF1');
   });
 });

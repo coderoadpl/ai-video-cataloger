@@ -37,6 +37,7 @@ const tempHome = async (): Promise<string> => {
 };
 
 afterEach(async () => {
+  vi.useRealTimers();
   while (tempRoots.length > 0) {
     const root = tempRoots.pop();
     if (root !== undefined) await rm(root, { recursive: true, force: true });
@@ -384,6 +385,41 @@ describe('SqlJsPhotosStore', () => {
     const reopened = new SqlJsPhotosStore({ homeDirectory: home });
     const counts = await reopened.counts(null);
     expect(counts.ok && counts.value.paths).toBe(24);
+  });
+
+  it('auto-flushes from wall-clock time without another mutation', async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const home = await tempHome();
+    let persistCount = 0;
+    const store = new SqlJsPhotosStore({ homeDirectory: home, nowMs: () => Date.now(), onPersist: () => { persistCount += 1; } });
+    await store.upsertFolder(folder);
+    await store.upsertPhoto(photo());
+    for (let index = 0; index < 23; index += 1) {
+      const result = await store.upsertSighting(sighting({ currentPath: `/media/photos/idle-${String(index)}.jpg` }));
+      expect(result.ok).toBe(true);
+    }
+
+    expect(persistCount).toBe(0);
+    await vi.advanceTimersByTimeAsync(30_000);
+
+    expect(persistCount).toBe(1);
+    const reopened = new SqlJsPhotosStore({ homeDirectory: home });
+    const counts = await reopened.counts(null);
+    expect(counts.ok && counts.value.paths).toBe(23);
+  });
+
+  it('unrefs the auto-flush timer so pending dirty state does not keep the process alive', async () => {
+    const probeTimer = setTimeout(() => undefined, 1);
+    const unrefSpy = vi.spyOn(Object.getPrototypeOf(probeTimer), 'unref');
+    clearTimeout(probeTimer);
+    const home = await tempHome();
+    const store = new SqlJsPhotosStore({ homeDirectory: home });
+
+    await store.upsertFolder(folder);
+
+    expect(unrefSpy).toHaveBeenCalled();
+    expect((await store.dispose()).ok).toBe(true);
   });
 
   it('explicit flush persists writes below the auto-flush threshold', async () => {
