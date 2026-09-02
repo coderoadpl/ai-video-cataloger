@@ -15,7 +15,6 @@ const protectedRoots = [
 const testHome = fs.mkdtempSync(path.join(tmpdir(), 'avc-vitest-home-'));
 
 process.env.HOME = testHome;
-process.env.AVC_HOME_DIRECTORY = testHome;
 
 const pathValue = (file) => {
   if (file instanceof globalThis.URL) return fileURLToPath(file);

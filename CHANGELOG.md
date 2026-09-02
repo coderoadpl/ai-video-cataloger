@@ -52,6 +52,7 @@ release history jumps from `0.5.10` to `0.5.12`.
 ### Fixed
 
 - E2E face model fixtures now stay inside isolated test homes, and Vitest/e2e guards fail fast before tests can write through the host face-model cache.
+- The Vitest home guard no longer forces a shared `AVC_HOME_DIRECTORY` across every test in a worker; CLI-spawning tests keep the per-test isolated home they pass explicitly instead of leaking state across tests.
 - Long face-indexing runs auto-flush SQL.js catalogs by elapsed time plus mutation count, force-flush on completion or cancellation, and avoid an extra exported-buffer copy per persist.
 - Face model status now rejects truncated or checksum-mismatched ONNX artifacts and names the forced reinstall command.
 - Face-index summaries now report low-quality detections rejected by the face quality floor.
