@@ -79,3 +79,5 @@ scripts/promote-home-plan.test.ts:home-path
 scripts/build-app-icon.mjs:email
 # The historical UI wireframe uses a generic placeholder home path.
 tasks/prd-gui-mvp.md:home-path
+# Illustrative Google service-account address format in a setup runbook, not a real account.
+tasks/prd-google-drive-backup.md:email
