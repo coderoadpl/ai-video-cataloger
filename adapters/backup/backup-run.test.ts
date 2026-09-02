@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, mkdirSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 
@@ -7,11 +7,17 @@ import { describe, expect, it, vi } from 'vitest';
 import { NodeFileSystemPort } from '@adapters/fs/index.js';
 import { InProcessJobsPort } from '@adapters/jobs/index.js';
 import { SqlJsGlobalCatalogStore, SqlJsPhotosStore } from '@adapters/db/index.js';
-import { appError, ok } from '@core/domain/index.js';
+import { appError, ok, type AppError, type BackupManifest, type RemoteBackup, type Result } from '@core/domain/index.js';
 import { enqueueBackup, runBackup, type BackupRunDeps } from '@core/server/index.js';
-import type { JobExecutionContext, JobProgress, JobRecord } from '@core/server/index.js';
+import type { JobExecutionContext, JobProgress, JobRecord, SecretsAvailability, SecretsStore } from '@core/server/index.js';
 
-import { decryptBackupEnvelope, encryptBackupEnvelope } from './envelope.js';
+import {
+  BACKUP_ENCRYPTION_KEY_ACCOUNT,
+  createBackupEncryptionKey,
+  decryptBackupEnvelope,
+  encryptBackupEnvelope,
+  loadBackupEncryptionKey,
+} from './envelope.js';
 import { MemoryBackupDestination } from './memory-destination.js';
 import { BackupStateFile } from './state-store.js';
 import { extractTarZstd, writeTarZstd } from './tar.js';
@@ -53,6 +59,48 @@ describe('backup run pipeline', () => {
     expect(await fixture.state.read()).toEqual(tier === 'critical'
       ? { ok: true, value: expect.objectContaining({ lastSuccessAt: '2026-09-02T12:00:00.000Z' }) }
       : ok(null));
+  });
+
+  it('keeps backup key material out of captured logs, NDJSON events, manifest, and uploaded bytes', async () => {
+    const secrets = new MemorySecrets();
+    const created = await createBackupEncryptionKey(secrets);
+    if (!created.ok) throw new Error(created.error.message);
+    const rawKey = secrets.values.get(BACKUP_ENCRYPTION_KEY_ACCOUNT) ?? '';
+    const fixture = await createFixture();
+    const deps: BackupRunDeps = {
+      ...fixture.deps,
+      loadEncryptionKey: () => loadBackupEncryptionKey(secrets),
+    };
+    const events: JobProgress[] = [];
+    const logLines: string[] = [];
+    const result = await runBackup(deps, { tier: 'critical', keepLast: 7, keepWeekly: 8 }, {
+      jobId: 'key-leak',
+      signal: new AbortController().signal,
+      reportProgress: (progress) => {
+        events.push(progress);
+        logLines.push(JSON.stringify({ level: 'debug', progress }));
+        return Promise.resolve(ok(undefined));
+      },
+    });
+
+    expect(result).toMatchObject({ ok: true });
+    if (!result.ok) return;
+    logLines.push(JSON.stringify({ level: 'debug', remote: result.value }));
+    const inspection = path.join(fixture.home, 'key-inspection');
+    const encryptedPath = path.join(inspection, result.value.name);
+    const archivePath = path.join(inspection, 'backup.tar.zst');
+    expect(await fixture.destination.download(result.value.remoteId, encryptedPath, new AbortController().signal)).toMatchObject({ ok: true });
+    const encryptedBytes = readFileSync(encryptedPath);
+    expect(encryptedBytes.toString('utf8')).not.toContain(rawKey);
+    expect(encryptedBytes.toString('utf8')).not.toContain(created.value.recoveryKey);
+    expect(await decryptBackupEnvelope(encryptedPath, archivePath, Buffer.from(rawKey, 'base64'))).toMatchObject({ ok: true });
+    expect(await extractTarZstd(archivePath, path.join(inspection, 'files'))).toMatchObject({ ok: true });
+    const manifest = readFileSync(path.join(inspection, 'files', 'manifest.json'), 'utf8');
+    const ndjson = events.map((event) => JSON.stringify({ type: 'progress', data: event })).join('\n');
+    for (const output of [...logLines, ndjson, manifest]) {
+      expect(output).not.toContain(rawKey);
+      expect(output).not.toContain(created.value.recoveryKey);
+    }
   });
 
   it('records a failing upload without leaving a remote artifact', async () => {
@@ -128,6 +176,21 @@ describe('backup run pipeline', () => {
     });
   });
 
+  it('prunes only the completed run tier', async () => {
+    const destination = new TrackingBackupDestination([
+      backup('critical-new', 'critical', '2026-09-01T12:00:00.000Z'),
+      backup('critical-old', 'critical', '2026-08-01T12:00:00.000Z'),
+      backup('optional-new', 'optional', '2026-09-01T12:00:00.000Z'),
+      backup('optional-old', 'optional', '2026-08-01T12:00:00.000Z'),
+    ]);
+    const fixture = await createFixture(destination);
+    const result = await runBackup(fixture.deps, { tier: 'critical', keepLast: 2, keepWeekly: 0 }, context('critical-prune'));
+
+    expect(result).toMatchObject({ ok: true });
+    expect(destination.listedTiers).toEqual(['critical']);
+    expect(destination.removedIds).toEqual(['critical-old']);
+  });
+
   it('rejects a backup while an analysis job is active and blocks analysis while backup is active', async () => {
     const fixture = await createFixture();
     const jobs = new InProcessJobsPort();
@@ -180,6 +243,71 @@ describe('backup run pipeline', () => {
     await waitForJob(jobs, backup.value.jobId, (record) => record.status === 'completed');
     expect(snapshot).toHaveBeenCalledOnce();
   }, scaledTimeout(30_000));
+});
+
+class TrackingBackupDestination extends MemoryBackupDestination {
+  readonly listedTiers: Array<'critical' | 'optional' | null> = [];
+  readonly removedIds: string[] = [];
+  private readonly existing: RemoteBackup[];
+
+  constructor(existing: RemoteBackup[]) {
+    super();
+    this.existing = existing;
+  }
+
+  override list(tier: 'critical' | 'optional' | null, signal: AbortSignal): Promise<Result<RemoteBackup[], AppError>> {
+    this.listedTiers.push(tier);
+    if (signal.aborted) return super.list(tier, signal);
+    return Promise.resolve(ok(this.existing.filter((remote) => tier === null || remote.tier === tier)));
+  }
+
+  override upload(
+    input: { sourcePath: string; name: string; manifest: BackupManifest },
+    signal: AbortSignal,
+  ): Promise<Result<RemoteBackup, AppError>> {
+    if (signal.aborted) return super.upload(input, signal);
+    const remote = backup('uploaded-critical', input.manifest.tier, input.manifest.createdAt);
+    this.existing.unshift(remote);
+    return Promise.resolve(ok(remote));
+  }
+
+  override remove(remoteId: string, signal: AbortSignal): Promise<Result<{ removed: boolean }, AppError>> {
+    this.removedIds.push(remoteId);
+    const index = this.existing.findIndex((remote) => remote.remoteId === remoteId);
+    if (index >= 0) this.existing.splice(index, 1);
+    return signal.aborted ? super.remove(remoteId, signal) : Promise.resolve(ok({ removed: index >= 0 }));
+  }
+}
+
+class MemorySecrets implements SecretsStore {
+  readonly values = new Map<string, string>();
+
+  availability(): Promise<SecretsAvailability> {
+    return Promise.resolve('available');
+  }
+
+  get(account: string): Promise<Result<string | null, AppError>> {
+    return Promise.resolve(ok(this.values.get(account) ?? null));
+  }
+
+  set(account: string, secret: string): Promise<Result<void, AppError>> {
+    this.values.set(account, secret);
+    return Promise.resolve(ok(undefined));
+  }
+
+  delete(account: string): Promise<Result<{ existed: boolean }, AppError>> {
+    return Promise.resolve(ok({ existed: this.values.delete(account) }));
+  }
+}
+
+const backup = (remoteId: string, tier: 'critical' | 'optional', createdAt: string): RemoteBackup => ({
+  remoteId,
+  name: `${remoteId}.avcbak`,
+  tier,
+  createdAt,
+  sizeBytes: 100,
+  appVersion: '1.0.0',
+  schemaVersions: { globalCatalog: 16, photos: 6 },
 });
 
 const createFixture = async (destination = new MemoryBackupDestination()): Promise<{

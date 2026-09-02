@@ -260,11 +260,11 @@ const takeSnapshotsWithResource = async (
   signal?: AbortSignal | undefined,
   resources?: Pick<JobsPort, 'acquireResource'> | undefined,
 ): Promise<Result<{ globalCatalog: string; photos: string | null; globalSchema: number; photosSchema: number }, AppError>> => {
-  if (resources === undefined) return takeSnapshots(deps, tier, stagingDirectory);
+  if (resources === undefined) return takeSnapshots(deps, tier, stagingDirectory, signal);
   const acquired = await resources.acquireResource('catalog-write', signal);
   if (!acquired.ok) return acquired;
   try {
-    return await takeSnapshots(deps, tier, stagingDirectory);
+    return await takeSnapshots(deps, tier, stagingDirectory, signal);
   } finally {
     acquired.value();
   }
@@ -274,10 +274,11 @@ const takeSnapshots = async (
   deps: BackupPreparationDeps,
   tier: BackupTier,
   stagingDirectory: string,
+  signal?: AbortSignal | undefined,
 ): Promise<Result<{ globalCatalog: string; photos: string | null; globalSchema: number; photosSchema: number }, AppError>> => {
   const globalPath = deps.fs.join(stagingDirectory, 'catalog.db');
   if (tier === 'optional') return ok({ globalCatalog: globalPath, photos: null, globalSchema: 0, photosSchema: 0 });
-  const global = await deps.globalCatalog.snapshotTo(globalPath);
+  const global = await deps.globalCatalog.snapshotTo(globalPath, signal);
   if (!global.ok) return global;
   let photosPath: string | null = null;
   let photosSchema = 0;
@@ -286,7 +287,7 @@ const takeSnapshots = async (
     if (!exists.ok) return exists;
     if (exists.value) {
       photosPath = deps.fs.join(stagingDirectory, 'photos.db');
-      const photos = await deps.photos.snapshotTo(photosPath);
+      const photos = await deps.photos.snapshotTo(photosPath, signal);
       if (!photos.ok) return photos;
       photosSchema = photos.value.schemaVersion;
     }
@@ -343,7 +344,7 @@ const pruneBestEffort = async (
   now: Date,
   signal: AbortSignal,
 ): Promise<string | null> => {
-  const listed = await destination.list(null, signal);
+  const listed = await destination.list(input.tier, signal);
   if (!listed.ok) return listed.error.message;
   for (const backup of selectForDeletion(listed.value, input, now)) {
     const removed = await destination.remove(backup.remoteId, signal);

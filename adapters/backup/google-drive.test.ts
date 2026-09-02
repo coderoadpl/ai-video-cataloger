@@ -61,6 +61,39 @@ describe('shared Google Drive transport', () => {
     expect(requests[1]?.range).toBe(requests[2]?.range);
   });
 
+  it('retries Drive 403 user rate limits during resumable upload', async () => {
+    const root = mkdtempSync(path.join(tmpdir(), 'avc-google-upload-403-'));
+    const sourcePath = path.join(root, 'large.avcbak');
+    writeFileSync(sourcePath, Buffer.alloc(6 * 1024 * 1024, 7));
+    let putAttempts = 0;
+
+    const result = await uploadGoogleDriveFile({
+      fetchImpl: async (_input, init) => {
+        if (init?.method === 'POST') {
+          return new Response('', { status: 200, headers: { Location: 'https://upload.example.test/session' } });
+        }
+        putAttempts += 1;
+        if (putAttempts === 1) {
+          return Response.json({ error: { errors: [{ reason: 'userRateLimitExceeded' }] } }, { status: 403 });
+        }
+        return Response.json({ id: 'remote-1', name: 'large.avcbak', size: String(6 * 1024 * 1024) });
+      },
+      uploadBaseUrl: 'https://upload.example.test/drive/v3',
+      accessToken: 'secret-token',
+      folderId: 'folder-1',
+      sourcePath,
+      name: 'large.avcbak',
+      appProperties: {},
+      sharedDrive: false,
+      signal: new AbortController().signal,
+      sleep: () => Promise.resolve(),
+      random: () => 0,
+    });
+
+    expect(result).toMatchObject({ ok: true, value: { id: 'remote-1' } });
+    expect(putAttempts).toBe(2);
+  });
+
   it('cancels a resumable session when the upload is aborted', async () => {
     const root = mkdtempSync(path.join(tmpdir(), 'avc-google-cancel-'));
     const sourcePath = path.join(root, 'large.avcbak');

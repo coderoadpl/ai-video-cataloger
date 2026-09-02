@@ -106,6 +106,56 @@ describe('Google OAuth backup destination', () => {
     expect(openExternal).not.toHaveBeenCalled();
   });
 
+  it('recreates and stores the app folder when the saved folder id is missing', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    secrets.values.set(GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
+    await config.set({ kind: 'home' }, 'backup_folder_id', 'stale-folder');
+    const requests: string[] = [];
+    const destination = new GoogleOAuthBackupDestination({
+      config,
+      secrets,
+      clientId: 'client',
+      clientSecret: 'secret',
+      tokenUrl: 'https://oauth.example.test/token',
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: folderHealthFake(requests, Response.json({ error: { message: 'missing' } }, { status: 404 })),
+      openExternal: () => Promise.resolve(),
+    });
+
+    expect(await destination.ensureFolder(new AbortController().signal)).toEqual(ok({
+      folderId: 'folder-recreated',
+      name: 'AI Video Cataloger Backups',
+    }));
+    expect(requests.some((request) => request.includes('/files/stale-folder') && request.includes('trashed'))).toBe(true);
+    expect(await config.get({ kind: 'home' }, 'backup_folder_id')).toEqual(ok('folder-recreated'));
+  });
+
+  it('recreates and stores the app folder when the saved folder id is trashed', async () => {
+    const config = new InMemoryConfig();
+    const secrets = new MemorySecrets();
+    secrets.values.set(GOOGLE_REFRESH_TOKEN_ACCOUNT, 'refresh-token');
+    await config.set({ kind: 'home' }, 'backup_folder_id', 'trashed-folder');
+    const destination = new GoogleOAuthBackupDestination({
+      config,
+      secrets,
+      clientId: 'client',
+      clientSecret: 'secret',
+      tokenUrl: 'https://oauth.example.test/token',
+      driveBaseUrl: 'https://drive.example.test/drive/v3',
+      uploadBaseUrl: 'https://drive.example.test/upload/drive/v3',
+      fetchImpl: folderHealthFake([], Response.json({ id: 'trashed-folder', name: 'AI Video Cataloger Backups', trashed: true })),
+      openExternal: () => Promise.resolve(),
+    });
+
+    expect(await destination.ensureFolder(new AbortController().signal)).toEqual(ok({
+      folderId: 'folder-recreated',
+      name: 'AI Video Cataloger Backups',
+    }));
+    expect(await config.get({ kind: 'home' }, 'backup_folder_id')).toEqual(ok('folder-recreated'));
+  });
+
   it('closes an unanswered loopback listener after the configured timeout', async () => {
     const destination = new GoogleOAuthBackupDestination({
       config: new InMemoryConfig(),
@@ -132,6 +182,9 @@ const fakeGoogle = (requests: string[]): typeof fetch => async (input, init) => 
   if (url.pathname.endsWith('/about')) {
     return Response.json({ user: { emailAddress: 'user@example.com' }, storageQuota: { limit: '10000', usage: '1000' } });
   }
+  if (url.pathname.endsWith('/files/folder-1')) {
+    return Response.json({ id: 'folder-1', name: 'AI Video Cataloger Backups', trashed: false });
+  }
   if (url.pathname.endsWith('/files') && init?.method === 'POST' && !url.pathname.includes('/upload/')) {
     return Response.json({ id: 'folder-1', name: 'AI Video Cataloger Backups' });
   }
@@ -140,5 +193,19 @@ const fakeGoogle = (requests: string[]): typeof fetch => async (input, init) => 
     return Response.json({ id: 'test-file', name: 'connection-test.bin', size: '1024' });
   }
   if (init?.method === 'DELETE') return new Response(null, { status: 204 });
+  return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
+};
+
+const folderHealthFake = (requests: string[], folderResponse: Response): typeof fetch => async (input, init) => {
+  const url = new URL(String(input));
+  requests.push(url.toString());
+  if (url.pathname.endsWith('/token')) {
+    return Response.json({ access_token: 'access-token', expires_in: 3600, token_type: 'Bearer' });
+  }
+  if (url.pathname.includes('/files/stale-folder') || url.pathname.includes('/files/trashed-folder')) return folderResponse;
+  if (url.pathname.endsWith('/files') && init?.method !== 'POST') return Response.json({ files: [] });
+  if (url.pathname.endsWith('/files') && init?.method === 'POST') {
+    return Response.json({ id: 'folder-recreated', name: 'AI Video Cataloger Backups' });
+  }
   return Response.json({ error: { message: 'unexpected fake request' } }, { status: 500 });
 };

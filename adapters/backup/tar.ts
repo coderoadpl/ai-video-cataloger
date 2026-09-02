@@ -33,6 +33,7 @@ export interface TarSourceEntry {
 export interface TarWriteOptions {
   signal?: AbortSignal | undefined;
   allowUnsafeArchivePath?: boolean | undefined;
+  streamFactory?: ((sourcePath: string, signal?: AbortSignal | undefined) => Readable) | undefined;
 }
 
 interface ValidatedEntry {
@@ -62,7 +63,7 @@ export const writeTarZstd = async (
     if (options.allowUnsafeArchivePath !== true) {
       for (const entry of sorted) validateArchivePath(entry.archivePath);
     }
-    const source = Readable.from(tarChunks(sorted, createdAt, options.signal));
+    const source = Readable.from(tarChunks(sorted, createdAt, options.signal, options.streamFactory));
     const compressor = compressorFactory({
       params: { [constants.ZSTD_c_compressionLevel]: 10 },
     });
@@ -73,6 +74,9 @@ export const writeTarZstd = async (
     return ok({ sizeBytes: statSync(destinationPath).size });
   } catch (cause) {
     removeIfPresent(tempPath);
+    if (cause instanceof BackupArchiveIntegrityError) {
+      return { ok: false, error: appError('backup_integrity_failed', cause.message) };
+    }
     return { ok: false, error: appError('internal', `Could not create backup archive: ${errorMessage(cause)}`) };
   }
 };
@@ -110,6 +114,7 @@ const tarChunks = async function* (
   entries: readonly TarSourceEntry[],
   createdAt: string,
   signal?: AbortSignal | undefined,
+  streamFactory?: ((sourcePath: string, signal?: AbortSignal | undefined) => Readable) | undefined,
 ): AsyncGenerator<Buffer> {
   const mtime = Math.floor(new Date(createdAt).getTime() / 1000);
   if (!Number.isFinite(mtime)) throw new Error('Invalid archive creation time');
@@ -118,9 +123,18 @@ const tarChunks = async function* (
     const size = entry.kind === 'file' ? statSync(entry.sourcePath).size : 0;
     yield createHeader(entry.archivePath, entry.kind, size, mtime);
     if (entry.kind === 'file') {
-      for await (const chunk of createReadStream(entry.sourcePath, { signal })) {
+      let written = 0;
+      const stream = streamFactory?.(entry.sourcePath, signal) ?? createReadStream(entry.sourcePath, { signal });
+      for await (const chunk of stream) {
         if (!Buffer.isBuffer(chunk)) throw new Error('File stream returned a non-buffer chunk');
+        if (written + chunk.length > size) {
+          throw new BackupArchiveIntegrityError(`Archive entry changed while reading: ${entry.archivePath}`);
+        }
+        written += chunk.length;
         yield chunk;
+      }
+      if (written !== size) {
+        throw new BackupArchiveIntegrityError(`Archive entry changed while reading: ${entry.archivePath}`);
       }
       const padding = paddingFor(size);
       if (padding > 0) yield Buffer.alloc(padding);
@@ -128,6 +142,8 @@ const tarChunks = async function* (
   }
   yield Buffer.alloc(BLOCK_SIZE * 2);
 };
+
+class BackupArchiveIntegrityError extends Error {}
 
 const createHeader = (archivePath: string, kind: TarSourceEntry['kind'], size: number, mtime: number): Buffer => {
   const normalized = kind === 'directory' && !archivePath.endsWith('/') ? `${archivePath}/` : archivePath;

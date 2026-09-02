@@ -3,11 +3,11 @@ import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
 
 import initSqlJs from 'sql.js';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import type { CatalogFolder } from '@core/domain/index.js';
 
-import { SqlJsGlobalCatalogStore } from './global-catalog.js';
+import { SNAPSHOT_LEASE_TIMEOUT_MS, SqlJsGlobalCatalogStore } from './global-catalog.js';
 import { SqlJsPhotosStore } from './photos-store.js';
 
 const roots: string[] = [];
@@ -19,6 +19,7 @@ const tempHome = async (): Promise<string> => {
 };
 
 afterEach(async () => {
+  vi.useRealTimers();
   await Promise.all(roots.splice(0).map((root) => rm(root, { recursive: true, force: true })));
 });
 
@@ -65,6 +66,40 @@ describe('backup database snapshots', () => {
     expect(result).toMatchObject({ ok: true });
   });
 
+  it('fails the global catalog snapshot with catalog_locked when a foreign lease exceeds the deadline', async () => {
+    vi.useFakeTimers();
+    const home = await tempHome();
+    await writeForeignLock(home);
+    const store = new SqlJsGlobalCatalogStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: () => true,
+    });
+    const snapshot = store.snapshotTo(path.join(home, 'staging', 'catalog.db'));
+
+    await vi.advanceTimersByTimeAsync(SNAPSHOT_LEASE_TIMEOUT_MS + 10);
+
+    await expect(snapshot).resolves.toMatchObject({ ok: false, error: { code: 'catalog_locked' } });
+  });
+
+  it('cancels the photos snapshot promptly while waiting for a foreign lease', async () => {
+    vi.useFakeTimers();
+    const home = await tempHome();
+    await writeForeignLock(home);
+    const store = new SqlJsPhotosStore({
+      homeDirectory: home,
+      processName: 'cli',
+      isProcessAlive: () => true,
+    });
+    const controller = new AbortController();
+    const snapshot = store.snapshotTo(path.join(home, 'staging', 'photos.db'), controller.signal);
+
+    controller.abort();
+    await vi.advanceTimersByTimeAsync(10);
+
+    await expect(snapshot).resolves.toMatchObject({ ok: false, error: { code: 'processing_error' } });
+  });
+
   it('exports the photos database through the same snapshot contract', async () => {
     const home = await tempHome();
     const store = new SqlJsPhotosStore({ homeDirectory: home });
@@ -82,6 +117,17 @@ describe('backup database snapshots', () => {
     expect(result).toEqual({ ok: true, value: { sizeBytes: expect.any(Number), schemaVersion: 6 } });
   });
 });
+
+const writeForeignLock = async (home: string): Promise<void> => {
+  const lockPath = path.join(home, '.ai-video-cataloger', 'catalog.lock');
+  await mkdir(path.dirname(lockPath), { recursive: true });
+  await writeFile(lockPath, `${JSON.stringify({
+    pid: 987654,
+    processName: 'gui',
+    startedAt: '2026-09-02T12:00:00.000Z',
+    hostname: hostname(),
+  })}\n`);
+};
 
 const folder = (index: number): CatalogFolder => ({
   folderId: `00000000-0000-4000-8000-${String(index).padStart(12, '0')}`,
