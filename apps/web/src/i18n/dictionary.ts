@@ -515,9 +515,13 @@ export interface Dictionary {
     loadingPeople: string;
     selectPerson: (name: string) => string;
     observationCount: (count: number) => string;
+    videoObservationCount: (count: number) => string;
+    photoObservationCount: (count: number) => string;
     rename: string;
     delete: string;
     searchInLibrary: string;
+    personMediaSection: string;
+    personMediaEmpty: string;
     moreActions: (name: string) => string;
     installingModelsLog: string;
     modelsInstalledLog: string;
@@ -1452,9 +1456,13 @@ export const en: Dictionary = {
     loadingPeople: 'Loading people...',
     selectPerson: (name) => `Select ${name}`,
     observationCount: (count) => `${count} ${count === 1 ? 'observation' : 'observations'}`,
+    videoObservationCount: (count) => `${count} in videos`,
+    photoObservationCount: (count) => `${count} in photos`,
     rename: 'Rename',
     delete: 'Delete',
     searchInLibrary: 'Search in Library',
+    personMediaSection: 'Photos and videos',
+    personMediaEmpty: 'No photos or videos for this person yet.',
     moreActions: (name) => `More actions for ${name}`,
     installingModelsLog: 'Installing face grouping models...',
     modelsInstalledLog: 'Face grouping models are installed',
@@ -2427,9 +2435,13 @@ export const pl: Dictionary = {
     loadingPeople: 'Ładowanie osób...',
     selectPerson: (name) => `Wybierz ${name}`,
     observationCount: (count) => `${count} ${plPlural(count, 'obserwacja', 'obserwacje', 'obserwacji')}`,
+    videoObservationCount: (count) => `${count} w filmach`,
+    photoObservationCount: (count) => `${count} w zdjęciach`,
     rename: 'Zmień nazwę',
     delete: 'Usuń',
     searchInLibrary: 'Szukaj w Bibliotece',
+    personMediaSection: 'Zdjęcia i filmy',
+    personMediaEmpty: 'Brak zdjęć i filmów dla tej osoby.',
     moreActions: (name) => `Więcej działań dla ${name}`,
     installingModelsLog: 'Instalowanie modeli grupowania twarzy...',
     modelsInstalledLog: 'Modele grupowania twarzy zostały zainstalowane',

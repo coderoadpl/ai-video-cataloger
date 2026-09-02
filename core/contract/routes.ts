@@ -698,6 +698,10 @@ export const photosDetailOutputSchema = z.object({
   proxyPath: z.string().nullable(),
   thumbPath: z.string().nullable(),
   gridThumbPath: z.string().nullable().default(null),
+  people: z.array(z.object({
+    personId: z.string().min(1),
+    displayName: z.string().nullable(),
+  })).default([]),
   analysis: z.object({
     configId: configIdString(),
     label: z.string().min(1),
@@ -2010,6 +2014,8 @@ export const facePersonSchema = z.object({
   centroid: z.array(z.number()).length(128),
   exemplarCount: z.number().int().nonnegative(),
   observationCount: z.number().int().nonnegative(),
+  videoCount: z.number().int().nonnegative(),
+  photoCount: z.number().int().nonnegative(),
   exemplarCropPath: z.string().min(1).nullable(),
   exemplarCropPaths: z.array(z.string().min(1)),
 });

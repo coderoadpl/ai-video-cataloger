@@ -514,12 +514,11 @@ Mechanics:
 - Per-photo completion state lives in `photos.db`
   (`photo_face_index_state`) so the photos pipeline owns its own progress;
   the identity data itself is never split.
-- `faces index` is **planned** to cover both media, with `photos process`
-  auto-chaining the faces pass best-effort exactly like `process-drive`
-  (ADR-0011 semantics: skip event, never a failed run), so that exemplar
-  selection (read-time, pure function) naturally mixes media — a person's
-  best crops may be photos. **Not built as of 2026-09-02** — see the
-  correction in §5a.
+- `faces index` covers both media, with `photos process` auto-chaining the
+  faces pass best-effort exactly like `process-drive` (ADR-0011 semantics:
+  skip event, never a failed run), so that exemplar selection (read-time, pure
+  function) naturally mixes media — a person's best crops may be photos. Built
+  in F1–F3; the record of what was corrected is §5a.
 - **Mutual exclusion**: every job that writes `people`/`face_observations`
   (faces index legs — video and photo — and `faces_recluster`) declares the
   same `resourceKey: 'faces-write'` so the `JobsPort` serializes them; a
@@ -546,20 +545,12 @@ use-case**; and the import provider's faces pass
 with `media: 'photo'`, `person_id` NULL and `crop_path` NULL, and pre-marks
 their photos complete at `FACE_ENGINE_VERSION`.
 
-**What was not shipped.** Candidate discovery for photos
-(`adapters/db/global-catalog.ts:1126` walks `folders`/`files` only); a photo
-detection leg (`core/server/usecases/faces.ts:454`/`:574` resolve a video path
-and call `extractFrames`); a non-video `media` value at write time
-(`core/server/usecases/faces.ts:852` defaults to `'video'` and nothing
-overrides it); photo-aware exemplar repair
-(`core/server/usecases/faces.ts:644` re-detects through video timestamps, so a
-`ph_` fingerprint lands in `filesUnavailable`); a photo-capable person filter
-(`adapters/db/global-catalog.ts:2191` joins `files`, and
-`core/server/usecases/collection.ts:163` disables the whole photo leg of the
-feed when a person filter is set — while
-`adapters/db/global-catalog.ts:830` counts photos into the same Osoby facet);
-people in photo detail (`core/server/usecases/photos.ts:999`); per-medium
-faces counters (`adapters/db/global-catalog.ts:1325`).
+**What was not shipped in Wave 4, and where it landed.** Candidate discovery
+for photos, a photo detection leg, a non-video `media` value at write time and
+per-medium faces counters landed in F1; deterministic clustering and the
+calibration benchmark in F2; photo-aware exemplar repair, a photo-capable
+person filter, people in photo detail and the media-agnostic Osoby surface in
+F3. Every item below is implemented.
 
 **Design.**
 
@@ -588,11 +579,19 @@ faces counters (`adapters/db/global-catalog.ts:1325`).
   reference, never as ground truth: it is typically another clusterer's output
   with a few manual corrections, so agreement with it is reported as agreement
   and the labelled pairs decide.
-- **Every people surface becomes media-agnostic**: person filter joins photos,
-  facet counts stay honest against it, person cards list both media, photo
-  detail carries `people`, `faces exemplars` repairs photo crops from the
-  proxy, and Osoby gains Wszystko / Filmy / Zdjęcia chips with Kolekcja's
-  semantics (`apps/web/src/features/library/FilterBar.tsx:271`).
+- **Every people surface is media-agnostic** (F3): the collection use-case
+  resolves a person filter's photo fingerprints through
+  `GlobalCatalogStore.listFingerprintsForPeople` and passes them to
+  `PhotosStore.collectionPage`, so the facet counts stay honest against the
+  filter; `GET /api/photos/detail` carries `people`; `faces exemplars` repairs
+  a photo crop from the proxy through `{ kind: 'image-path' }`; and Osoby
+  renders the same `MediaFilterToggle` (`apps/web/src/components/ui/`) that
+  Kolekcja's chips use, narrowing the person list and the per-person counts,
+  with a person card opening that person's photos and videos in the shared
+  Kolekcja media viewer. One gap survives by design: a photo enters the
+  collection feed only once it carries an analysis (the pre-existing photo-leg
+  rule), so an un-analysed photo can still be counted by the Osoby facet and
+  absent from the filtered results.
 - **A full from-scratch recluster is reachable from Osoby**, dry run first, and
   drops all names by design.
 

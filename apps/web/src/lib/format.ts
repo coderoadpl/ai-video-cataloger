@@ -8,6 +8,8 @@ export const folderName = (path: string): string => {
   return slash === -1 ? trimmed : trimmed.slice(slash + 1);
 };
 
+export const labelWithCount = (label: string, count: number): string => `${label} (${String(count)})`;
+
 export const versionLabel = (version: string): string =>
   version.length === 0 ? '' : `v${version}`;
 

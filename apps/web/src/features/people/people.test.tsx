@@ -13,7 +13,7 @@ import { renderWithProviders } from '../../test/render.js';
 import { server } from '../../test/server.js';
 import { scaledTimeout } from '../../../../../test/helpers/gate-timeout.js';
 import { createAppTheme } from '../../theme.js';
-import { PeopleView } from './PeopleView.js';
+import { PeopleView, type PeopleViewProps } from './PeopleView.js';
 
 const theme = createAppTheme('light');
 const renderThemed = (ui: ReactElement) =>
@@ -44,6 +44,8 @@ const person = (overrides: Partial<FacePerson> & { personId: string }): FacePers
   centroid,
   exemplarCount: overrides.exemplarCount ?? 1,
   observationCount: overrides.observationCount ?? 1,
+  videoCount: overrides.videoCount ?? overrides.observationCount ?? 1,
+  photoCount: overrides.photoCount ?? 0,
   exemplarCropPath: overrides.exemplarCropPath ?? null,
   exemplarCropPaths: overrides.exemplarCropPaths ?? [],
 });
@@ -312,7 +314,7 @@ describe('PeopleView', () => {
     expect(screen.queryByAltText('Alex')).toBeNull();
   });
 
-  it('opens the person in the Library from the card menu and the card body', async () => {
+  it('opens the person in the Library from the card menu', async () => {
     stubPeople({
       facesEnabled: true,
       artifactsReady: true,
@@ -336,10 +338,6 @@ describe('PeopleView', () => {
     fireEvent.click(screen.getByLabelText('More actions for Alex'));
     const menuItem = await screen.findByTestId('people-search-library');
     fireEvent.click(menuItem);
-    expect(onSearchInLibrary).toHaveBeenCalledWith('p1', 'Alex');
-
-    onSearchInLibrary.mockClear();
-    fireEvent.click(screen.getByTestId('people-card-body'));
     expect(onSearchInLibrary).toHaveBeenCalledWith('p1', 'Alex');
   });
 
@@ -549,5 +547,77 @@ describe('PeopleView', () => {
     const alert = await screen.findByTestId('people-mutation-error');
     expect(alert.textContent).toContain('Faces write lock held by a drive run');
     expect(screen.getByTestId('people-grid')).toBeDefined();
+  });
+});
+
+describe('PeopleView media chips', () => {
+  const mixedPeople = [
+    person({ personId: 'p-both', displayName: 'Both', observationCount: 5, videoCount: 2, photoCount: 3 }),
+    person({ personId: 'p-video', displayName: 'VideoOnly', observationCount: 4, videoCount: 4, photoCount: 0 }),
+    person({ personId: 'p-photo', displayName: 'PhotoOnly', observationCount: 6, videoCount: 0, photoCount: 6 }),
+  ];
+
+  const renderPeople = (renderPersonMedia?: PeopleViewProps['renderPersonMedia']) => {
+    stubPeople({ facesEnabled: true, artifactsReady: true, observations: 15, people: mixedPeople });
+    renderThemed(
+      <PeopleView
+        active
+        folder={FOLDER}
+        addLine={vi.fn()}
+        onOpenSettings={vi.fn()}
+        onSearchInLibrary={vi.fn()}
+        intervalMs={0}
+        {...(renderPersonMedia === undefined ? {} : { renderPersonMedia })}
+      />,
+    );
+  };
+
+  it('counts the people each chip shows, not their observations', async () => {
+    renderPeople();
+
+    expect((await screen.findByTestId('people-media-all')).textContent).toBe('All (3)');
+    expect(screen.getByTestId('people-media-video').textContent).toBe('Videos (2)');
+    expect(screen.getByTestId('people-media-photo').textContent).toBe('Photos (2)');
+  });
+
+  it('narrows the person list to the chosen medium and counts that medium alone', async () => {
+    renderPeople();
+
+    await screen.findByTestId('people-grid');
+    expect(screen.getAllByTestId('people-card')).toHaveLength(3);
+
+    fireEvent.click(screen.getByTestId('people-media-photo'));
+
+    await waitFor(() => expect(screen.getAllByTestId('people-card')).toHaveLength(2));
+    const shown = screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id'));
+    expect(shown).toEqual(['p-both', 'p-photo']);
+    expect(screen.getByTestId('people-grid').textContent).toContain('3 in photos');
+
+    fireEvent.click(screen.getByTestId('people-media-video'));
+
+    await waitFor(() => expect(screen.getAllByTestId('people-card')).toHaveLength(2));
+    expect(screen.getAllByTestId('people-card').map((card) => card.getAttribute('data-person-id')))
+      .toEqual(['p-both', 'p-video']);
+    expect(screen.getByTestId('people-grid').textContent).toContain('2 in videos');
+  });
+
+  it('opens the person media surface for the card, carrying the selected medium', async () => {
+    const renderPersonMedia = vi.fn((input: { personId: string; label: string; media: string }) => (
+      <div data-testid="people-person-media" data-person-id={input.personId} data-media={input.media}>{input.label}</div>
+    ));
+    renderPeople(renderPersonMedia);
+
+    await screen.findByTestId('people-grid');
+    fireEvent.click(screen.getByTestId('people-media-photo'));
+    await waitFor(() => expect(screen.getAllByTestId('people-card')).toHaveLength(2));
+
+    const photoOnlyCard = screen.getAllByTestId('people-card-body')[1];
+    if (photoOnlyCard === undefined) throw new Error('expected a second person card');
+    fireEvent.click(photoOnlyCard);
+
+    const panel = await screen.findByTestId('people-person-media');
+    expect(panel.getAttribute('data-person-id')).toBe('p-photo');
+    expect(panel.getAttribute('data-media')).toBe('photo');
+    expect(panel.textContent).toBe('PhotoOnly');
   });
 });

@@ -306,7 +306,7 @@ describe('libraryCollection', () => {
     expect(photoOnly.ok && photoOnly.value.mediaTotals).toEqual({ all: 3, video: 2, photo: 1 });
   });
 
-  it('zeroes the photo leg when a photo-unsupported people, place, or GPS filter is set', async () => {
+  it('zeroes the photo leg when a photo-unsupported place or GPS filter is set', async () => {
     const { deps, globalCatalog, photos } = buildDeps();
     await globalCatalog.upsertFolder(folderA);
     await globalCatalog.upsertFile(video('v1', '2026-01-01T00:00:00.000Z'));
@@ -487,5 +487,143 @@ describe('libraryCollection', () => {
     const result = await libraryCollection(deps, { query: null, filters: EMPTY_FILTERS, sort: 'relevance', media: 'all', limit: 50, cursor: null });
 
     expect(result).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+});
+
+describe('libraryCollection person filter', () => {
+  const faceObservation = (
+    obsId: string,
+    fingerprint: string,
+    personId: string,
+    media: 'video' | 'photo',
+  ) => ({
+    obsId,
+    fingerprint,
+    kind: 'face' as const,
+    frameTsS: media === 'video' ? 1 : null,
+    bbox: { x: 0, y: 0, width: 10, height: 10 },
+    embedding: Array.from({ length: 128 }, () => 0.1),
+    quality: 0.9,
+    personId,
+    cropPath: null,
+    media,
+  });
+
+  const seedPersonAcrossMedia = async (
+    globalCatalog: InMemoryGlobalCatalogStore,
+    photos: InMemoryPhotosStore,
+  ): Promise<void> => {
+    await globalCatalog.upsertFolder(folderA);
+    await globalCatalog.upsertFile(video('v-with-person', '2026-01-01T00:00:00.000Z'));
+    await globalCatalog.upsertAnalysis(videoAnalysis('v-with-person'));
+    await globalCatalog.upsertFile(video('v-without-person', '2026-01-04T00:00:00.000Z'));
+    await globalCatalog.upsertAnalysis(videoAnalysis('v-without-person'));
+    await photos.upsertFolder(photoFolder);
+    await photos.upsertPhoto(photo('ph_withperson', '2026-01-02T00:00:00.000Z', 'with-person.jpg'));
+    await analyzePhoto(photos, 'ph_withperson');
+    await photos.upsertPhoto(photo('ph_otherperson', '2026-01-03T00:00:00.000Z', 'other-person.jpg'));
+    await analyzePhoto(photos, 'ph_otherperson');
+    await globalCatalog.upsertPerson({
+      personId: 'person-1',
+      displayName: 'Person One',
+      kind: 'face',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.1),
+      exemplarCount: 1,
+    });
+    await globalCatalog.upsertPerson({
+      personId: 'person-2',
+      displayName: 'Person Two',
+      kind: 'face',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.1),
+      exemplarCount: 1,
+    });
+    await globalCatalog.upsertFaceObservation(faceObservation('v-with-person:face:1:1', 'v-with-person', 'person-1', 'video'));
+    await globalCatalog.upsertFaceObservation(faceObservation('ph_withperson:face:1:1', 'ph_withperson', 'person-1', 'photo'));
+    await globalCatalog.upsertFaceObservation(faceObservation('ph_otherperson:face:1:1', 'ph_otherperson', 'person-2', 'photo'));
+  };
+
+  it('returns the photos a person appears in, not only the videos', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    await seedPersonAcrossMedia(globalCatalog, photos);
+
+    const result = await libraryCollection(deps, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, people: ['person-1'] },
+      sort: 'captured_desc',
+      media: 'all',
+      limit: 50,
+      cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.fingerprint)).toEqual(['ph_withperson', 'v-with-person']);
+    expect(result.value.photoTotal).toBe(1);
+    expect(result.value.videoTotal).toBe(1);
+    expect(result.value.mediaTotals).toEqual({ all: 2, video: 1, photo: 1 });
+  });
+
+  it('narrows to the photo leg alone when the photo chip is selected', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    await seedPersonAcrossMedia(globalCatalog, photos);
+
+    const result = await libraryCollection(deps, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, people: ['person-1'] },
+      sort: 'captured_desc',
+      media: 'photo',
+      limit: 50,
+      cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items.map((item) => item.fingerprint)).toEqual(['ph_withperson']);
+    expect(result.value.mediaTotals).toEqual({ all: 2, video: 1, photo: 1 });
+  });
+
+  it('returns nothing for a person with no observations instead of every photo', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    await seedPersonAcrossMedia(globalCatalog, photos);
+
+    const result = await libraryCollection(deps, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, people: ['person-unknown'] },
+      sort: 'captured_desc',
+      media: 'all',
+      limit: 50,
+      cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.items).toEqual([]);
+    expect(result.value.total).toBe(0);
+  });
+
+  it('delivers at least as many items as the Osoby facet promises for a person', async () => {
+    const { deps, globalCatalog, photos } = buildDeps();
+    await seedPersonAcrossMedia(globalCatalog, photos);
+
+    const facets = await globalCatalog.listLibraryFacets();
+    expect(facets.ok).toBe(true);
+    if (!facets.ok) return;
+    const promised = facets.value.people.find((person) => person.personId === 'person-1')?.count ?? 0;
+    expect(promised).toBe(2);
+
+    const result = await libraryCollection(deps, {
+      query: null,
+      filters: { ...EMPTY_FILTERS, people: ['person-1'] },
+      sort: 'captured_desc',
+      media: 'all',
+      limit: 50,
+      cursor: null,
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.total).toBeGreaterThanOrEqual(promised);
   });
 });

@@ -653,6 +653,7 @@ export interface PhotosStore {
     from: string | null;
     to: string | null;
     folderId: string | null;
+    fingerprints: readonly string[] | null;
     tagTermSets: readonly (readonly string[])[];
     excludeMissing: boolean;
     sort: 'relevance' | 'captured_desc' | 'captured_asc' | 'name_asc';
@@ -726,6 +727,8 @@ export interface GlobalCatalogStore {
   listLocations(): Promise<Result<CatalogLocationsSnapshot, AppError>>;
   listLibraryFacets(): Promise<Result<LibraryFacets, AppError>>;
   listPeopleForFile(fingerprint: string): Promise<Result<CatalogFilePerson[], AppError>>;
+  listFingerprintsForPeople(input: { personIds: readonly string[]; media: FaceObservation['media'] }):
+    Promise<Result<string[], AppError>>;
   listGeoBackfillCandidates(input: { root: string | null }): Promise<Result<GeoBackfillCandidate[], AppError>>;
   applyGeoBackfill(input: ApplyGeoBackfillInput): Promise<Result<ApplyGeoBackfillResult, AppError>>;
   rebuildSearchIndex(): Promise<Result<{ indexed: number }, AppError>>;

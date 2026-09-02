@@ -62,6 +62,7 @@ const buildDeps = (): {
   analyzer: InMemoryAnalyzer;
   spendLedger: InMemorySpendLedger;
   downloads: InMemoryDownloads;
+  globalCatalog: InMemoryGlobalCatalogStore;
 } => {
   const fs = new InMemoryFileSystem('/work');
   const photos = new InMemoryPhotosStore();
@@ -87,6 +88,7 @@ const buildDeps = (): {
     analyzer,
     spendLedger,
     downloads,
+    globalCatalog,
   };
 };
 
@@ -971,7 +973,49 @@ describe('photosTree, photosList, photosDetail', () => {
       explicit: false,
     });
   });
+
+  it('detail lists the people detected in the photo, the way video detail does', async () => {
+    const { deps, fs, globalCatalog } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+    const fingerprint = fingerprintOf('a');
+    await globalCatalog.upsertPerson({
+      personId: 'person-1',
+      displayName: 'Person One',
+      kind: 'face',
+      createdAt: '2026-01-01T00:00:00.000Z',
+      centroid: Array.from({ length: 128 }, () => 0.1),
+      exemplarCount: 1,
+    });
+    await globalCatalog.upsertFaceObservation({
+      obsId: `${fingerprint}:face:1:1`,
+      fingerprint,
+      kind: 'face',
+      frameTsS: null,
+      bbox: { x: 0, y: 0, width: 10, height: 10 },
+      embedding: Array.from({ length: 128 }, () => 0.1),
+      quality: 0.9,
+      personId: 'person-1',
+      cropPath: null,
+      media: 'photo',
+    });
+
+    const detail = await photosDetail(deps, { fingerprint });
+
+    expect(detail.ok && detail.value?.people).toEqual([{ personId: 'person-1', displayName: 'Person One' }]);
+  });
+
+  it('detail reports no people for a photo nobody was detected in', async () => {
+    const { deps, fs } = buildDeps();
+    fs.addFile('/work/photos/a.jpg', { content: 'a' });
+    await runPhotoScan(deps, { root: '/work/photos' });
+
+    const detail = await photosDetail(deps, { fingerprint: fingerprintOf('a') });
+
+    expect(detail.ok && detail.value?.people).toEqual([]);
+  });
 });
+
 
 describe('photosSearch (P4)', () => {
   it('reuses the video sanitizer (validation on empty query, quoted phrase intact), expands tag terms and composes thumb/proxy paths only when done', async () => {

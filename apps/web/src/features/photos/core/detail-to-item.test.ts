@@ -36,6 +36,7 @@ const detail = (overrides: Partial<PhotoDetail> = {}): PhotoDetail => ({
   proxyPath: '/artifacts/a-proxy.jpg',
   thumbPath: '/artifacts/a-thumb.jpg',
   gridThumbPath: '/artifacts/a-grid.jpg',
+  people: [],
   analysis: null,
   analysisError: null,
   ...overrides,
