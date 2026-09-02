@@ -20,6 +20,7 @@ import {
 import {
   enqueueRestore,
   performRestoreStartupRecovery,
+  restoreAdmissionError,
   runBackup,
   runRestore,
   type BackupRestoreDeps,
@@ -166,6 +167,101 @@ describe('backup restore pipeline', () => {
     expect(existsSync(marker)).toBe(false);
     expect(readFileSync(path.join(fixture.targetHome, '.ai-video-cataloger', 'config.json'), 'utf8')).toContain('current-target');
     await expectCatalogCounts(fixture.targetHome, { folders: 0, files: 0 });
+  });
+
+  it('refuses an unknown remote id', async () => {
+    const fixture = await createRestoreFixture();
+
+    const result = await runRestore(fixture.restoreDeps, { remoteId: 'not-a-real-remote-id' }, context('unknown-remote'));
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'not_found' } });
+  });
+
+  it('refuses a missing backup manifest after extraction', async () => {
+    const fixture = await createRestoreFixture();
+    await fixture.replaceRemoteArchive(async (extracted) => {
+      await rm(path.join(extracted, 'manifest.json'));
+    });
+
+    const result = await runRestore(fixture.restoreDeps, { remoteId: fixture.remoteId }, context('missing-manifest'));
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'backup_integrity_failed' } });
+  });
+
+  it('refuses an unreadable backup manifest after extraction', async () => {
+    const fixture = await createRestoreFixture();
+    await fixture.replaceRemoteArchive(async (extracted) => {
+      await writeFile(path.join(extracted, 'manifest.json'), 'not json');
+    });
+
+    const result = await runRestore(fixture.restoreDeps, { remoteId: fixture.remoteId }, context('unreadable-manifest'));
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'backup_integrity_failed' } });
+  });
+
+  it('refuses a manifest that fails schema validation', async () => {
+    const fixture = await createRestoreFixture();
+    await fixture.replaceRemoteArchive(async (extracted) => {
+      await writeFile(path.join(extracted, 'manifest.json'), `${JSON.stringify({ notAManifest: true }, null, 2)}\n`);
+    });
+
+    const result = await runRestore(fixture.restoreDeps, { remoteId: fixture.remoteId }, context('invalid-manifest'));
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'backup_integrity_failed' } });
+  });
+
+  it('refuses a file size mismatch before touching live files', async () => {
+    const fixture = await createRestoreFixture();
+    await fixture.replaceRemoteArchive(async (extracted) => {
+      await writeFile(path.join(extracted, 'config.json'), '{}');
+      await writeFile(path.join(extracted, 'manifest.json'), `${JSON.stringify(fixture.backupManifest, null, 2)}\n`);
+    });
+
+    const result = await runRestore(fixture.restoreDeps, { remoteId: fixture.remoteId }, context('size-mismatch'));
+
+    expect(result).toMatchObject({ ok: false, error: { code: 'backup_integrity_failed', message: expect.stringContaining('size mismatch') } });
+  });
+});
+
+describe('restoreAdmissionError', () => {
+  const baseRecord = (overrides: Partial<JobRecord>): JobRecord => ({
+    jobId: 'job-1',
+    kind: 'process',
+    status: 'running',
+    progress: null,
+    progressEvents: [],
+    error: null,
+    createdAt: '2026-09-02T12:00:00.000Z',
+    updatedAt: '2026-09-02T12:00:00.000Z',
+    ...overrides,
+  });
+
+  it('allows a restore when nothing conflicting is active', () => {
+    expect(restoreAdmissionError([baseRecord({ status: 'completed', kind: 'process' })])).toBeNull();
+  });
+
+  it('blocks on an active catalog-write resource lease', () => {
+    const blocked = restoreAdmissionError([baseRecord({ resourceKey: 'catalog-write' })]);
+    expect(blocked).toMatchObject({ code: 'restore_refused' });
+  });
+
+  it('blocks on an active backup resource lease', () => {
+    const blocked = restoreAdmissionError([baseRecord({ resourceKey: 'backup' })]);
+    expect(blocked).toMatchObject({ code: 'restore_refused' });
+  });
+
+  it('blocks on an in-flight backup job', () => {
+    const blocked = restoreAdmissionError([baseRecord({ kind: 'backup' })]);
+    expect(blocked).toMatchObject({ code: 'restore_refused' });
+  });
+
+  it('blocks on an in-flight restore job', () => {
+    const blocked = restoreAdmissionError([baseRecord({ kind: 'restore' })]);
+    expect(blocked).toMatchObject({ code: 'restore_refused' });
+  });
+
+  it('ignores queued/running jobs of unrelated kinds with no shared resource', () => {
+    expect(restoreAdmissionError([baseRecord({ kind: 'photo_proxies', status: 'queued' })])).toBeNull();
   });
 });
 
@@ -383,8 +479,12 @@ const rewriteManifestForExtractedTree = async (extracted: string, manifest: Back
   await writeFile(path.join(extracted, 'manifest.json'), `${JSON.stringify({ ...manifest, files, totalBytes }, null, 2)}\n`);
 };
 
-const tarEntriesFromManifest = async (extracted: string, manifest: BackupManifest) =>
-  manifest.files.map((file) => ({ archivePath: file.path, sourcePath: path.join(extracted, file.path), kind: 'file' as const }));
+const tarEntriesFromManifest = async (extracted: string, manifest: BackupManifest) => [
+  ...manifest.files.map((file) => ({ archivePath: file.path, sourcePath: path.join(extracted, file.path), kind: 'file' as const })),
+  ...(existsSync(path.join(extracted, 'manifest.json'))
+    ? [{ archivePath: 'manifest.json', sourcePath: path.join(extracted, 'manifest.json'), kind: 'file' as const }]
+    : []),
+];
 
 const expectCatalogCounts = async (
   home: string,

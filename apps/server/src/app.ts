@@ -479,7 +479,10 @@ export const buildApp = (deps: AppDeps): Hono => {
     if (!body.ok) return respond(body, API_ROUTES.backupRestore.output);
     const input = parseInput(API_ROUTES.backupRestore.input, body.value);
     if (!input.ok) return respond(input, API_ROUTES.backupRestore.output);
-    return respond(await deps.restoreBackup(input.value), API_ROUTES.backupRestore.output);
+    return respond(
+      await withCatalogWriteLockForJob(deps, () => deps.restoreBackup(input.value)),
+      API_ROUTES.backupRestore.output,
+    );
   });
 
   app.get(API_ROUTES.indexStatus.path, async () =>
