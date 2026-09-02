@@ -46,6 +46,8 @@ release history jumps from `0.5.10` to `0.5.12`.
 
 ### Fixed
 
+- Read-only folder artifacts remain reachable after a registered source folder
+  is renamed or moved.
 - Filtering Kolekcja by a person no longer hides every photo, so the person
   counts in the Osoby facet and the results now agree.
 - `faces exemplars` repairs a photo observation's crop from the photo proxy

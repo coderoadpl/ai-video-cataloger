@@ -41,10 +41,14 @@ const legacyDerivedFolderId = (folder: string): string => {
 export const discoverArtifactRoot = async (
   fs: FileSystemPort,
   folder: string,
+  knownFolderId?: string,
 ): Promise<Result<ArtifactRoot, AppError>> => {
-  const marker = await readFolderMarker(fs, folder);
-  if (!marker.ok) return marker;
-  if (marker.value !== null) return ok(folderArtifactRoot(fs, folder));
+  if (knownFolderId !== undefined) {
+    const knownMirror = readOnlyArtifactRootById(fs, knownFolderId);
+    const knownMirrored = await fs.exists(knownMirror.path);
+    if (!knownMirrored.ok) return knownMirrored;
+    if (knownMirrored.value) return ok(knownMirror);
+  }
   const mirror = readOnlyArtifactRoot(fs, folder);
   const mirrored = await fs.exists(mirror.path);
   if (!mirrored.ok) return mirrored;
@@ -52,5 +56,8 @@ export const discoverArtifactRoot = async (
   const legacyMirror = readOnlyArtifactRootById(fs, legacyDerivedFolderId(fs.resolve(folder).normalize('NFD')));
   const legacyMirrored = await fs.exists(legacyMirror.path);
   if (!legacyMirrored.ok) return legacyMirrored;
-  return ok(legacyMirrored.value ? legacyMirror : folderArtifactRoot(fs, folder));
+  if (legacyMirrored.value) return ok(legacyMirror);
+  const marker = await readFolderMarker(fs, folder);
+  if (!marker.ok) return marker;
+  return ok(folderArtifactRoot(fs, folder));
 };

@@ -205,6 +205,13 @@ verified against a real mount, not a simulated one: the `ro-mount` legs of
 rejected recursive directory creation on such a mount as `ENOENT`, so a
 permission-simulating fake cannot stand in for one.
 
+Artifact-root discovery resolves read-only mirrors by the catalog folder id
+first when the folder record is already known, then by the current
+path-derived id, then by the legacy NFD-derived id, and finally by the
+writable on-volume root. That keeps artifacts reachable after a read-only
+folder is renamed or moved while preserving the existing fallback behavior for
+callers that only have a path.
+
 A folder analysed read-only can be **materialized** once its mount becomes
 writable: `materialize <root>` looks every file up by fingerprint, takes the
 selected variant, and replays the writes the writable path would have made —

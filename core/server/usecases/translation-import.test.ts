@@ -9,6 +9,7 @@ import {
 } from '@core/domain/index.js';
 
 import { InMemoryFileSystem, InMemoryGlobalCatalogStore } from '../../../test/server/usecases/test-fakes.js';
+import { readOnlyArtifactRootById } from './artifact-root.js';
 import { variantArtifactPaths, variantOutputPaths } from './artifact-store.js';
 import { importTranslationVariants } from './translation-import.js';
 
@@ -199,6 +200,49 @@ describe('importTranslationVariants', () => {
       { globalCatalog: store, fs },
       { ndjsonPath: '', dryRun: true, select: true },
     )).toMatchObject({ ok: false, error: { code: 'validation' } });
+  });
+
+  it('copies artifacts from the catalog folder id mirror after a read-only folder is renamed', async () => {
+    const store = new InMemoryGlobalCatalogStore();
+    const fs = new InMemoryFileSystem('/work');
+    const currentFolderPath = '/work/renamed-videos';
+    const fingerprint = 'fp-renamed-read-only';
+    fs.addDirectory(currentFolderPath);
+    await store.upsertFolder({
+      folderId,
+      currentPath: currentFolderPath,
+      displayName: 'renamed-videos',
+      firstSeenAt: '2026-08-01T09:00:00.000Z',
+      lastSeenAt: '2026-08-01T10:00:00.000Z',
+    });
+    await store.upsertFile(file(fingerprint, 'renamed.mp4'));
+    await store.upsertVariant(sourceVariant(fingerprint), { outputLanguage: 'en', tagLanguage: 'en' });
+    await store.setSelectedVariant(fingerprint, sourceConfigId);
+    const root = readOnlyArtifactRootById(fs, folderId);
+    const artifacts = variantArtifactPaths(fs, root, fingerprint, sourceDescriptor);
+    fs.addDirectory(artifacts.directory);
+    fs.addFile(artifacts.summaryPath, { content: 'Source summary from stable mirror' });
+    fs.addFile(artifacts.summaryJsonPath, { content: '{"description":"English source description"}' });
+    fs.addFile(artifacts.transcriptPath, { content: 'Source transcript copied verbatim' });
+    fs.addFile(artifacts.transcriptJsonPath, { content: '{"segments":[]}' });
+    fs.addFile('/work/renamed.ndjson', {
+      content: JSON.stringify(translationRow(fingerprint, 'Polski opis po zmianie nazwy')),
+    });
+
+    const result = await importTranslationVariants(
+      { globalCatalog: store, fs },
+      { ndjsonPath: '/work/renamed.ndjson', dryRun: false, select: true },
+    );
+
+    expect(result.ok && result.value).toMatchObject({ created: 1, skipped: 0, invalid: 0 });
+    if (!result.ok) throw new Error(result.error.message);
+    const importedConfigId = result.value.rows[0]?.configId;
+    if (importedConfigId === undefined || importedConfigId === null) throw new Error('Expected imported config id');
+    const importedArtifacts = variantOutputPaths(fs, root, fingerprint, importedConfigId);
+    expect(await fs.readTextFile(importedArtifacts.summaryPath)).toEqual({
+      ok: true,
+      value: 'Source summary from stable mirror',
+    });
   });
 
   it('counts duplicate identities as one create followed by an update and keeps the last translation', async () => {

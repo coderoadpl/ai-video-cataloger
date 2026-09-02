@@ -38,6 +38,35 @@ describe('discoverArtifactRoot', () => {
     expect(result.value.path).toBe(legacyMirror.path);
   });
 
+  it('prefers the known catalog folder id mirror over the current path-derived mirror', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const knownFolderId = 'path-11111111';
+    const currentFolder = '/work/renamed-videos';
+    const knownMirror = readOnlyArtifactRootById(fs, knownFolderId);
+    const currentMirror = readOnlyArtifactRoot(fs, currentFolder);
+    expect(currentMirror.path).not.toBe(knownMirror.path);
+    fs.addDirectory(knownMirror.path);
+    fs.addDirectory(currentMirror.path);
+
+    const result = await discoverArtifactRoot(fs, currentFolder, knownFolderId);
+
+    expect(result).toEqual({ ok: true, value: knownMirror });
+  });
+
+  it('keeps using the current path-derived mirror when no catalog folder id is known', async () => {
+    const fs = new InMemoryFileSystem('/work');
+    const currentFolder = '/work/renamed-videos';
+    const unrelatedStableMirror = readOnlyArtifactRootById(fs, 'path-11111111');
+    const currentMirror = readOnlyArtifactRoot(fs, currentFolder);
+    expect(currentMirror.path).not.toBe(unrelatedStableMirror.path);
+    fs.addDirectory(unrelatedStableMirror.path);
+    fs.addDirectory(currentMirror.path);
+
+    const result = await discoverArtifactRoot(fs, currentFolder);
+
+    expect(result).toEqual({ ok: true, value: currentMirror });
+  });
+
   it('falls back to the legacy mirror when the caller passes the canonical path, as every production caller now does', async () => {
     const fs = new InMemoryFileSystem('/work');
     const legacyMirror = readOnlyArtifactRootById(fs, legacyDerivedFolderId('/work/Å-ring'.normalize('NFD')));
